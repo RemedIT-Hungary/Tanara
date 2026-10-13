@@ -3,11 +3,11 @@
 
 #include "AppContext.h"
 
-#include "tanara/AppController.h"
-#include "tanara/SettingsManager.h"
+#include "tanara/app/AppController.h"
+#include "tanara/app/SettingsManager.h"
 #include "tanara/cloud/CloudTypes.h"
-#include "tanara/jobs/JobErrors.h"
-#include "tanara/provider/ProviderRegistry.h"
+#include "tanara/library/jobs/JobErrors.h"
+#include "tanara/providers/core/ProviderRegistry.h"
 
 #include <QCoreApplication>
 
@@ -17,14 +17,14 @@ namespace {
 QString trj(const char* text) { return QCoreApplication::translate("JobSupport", text); }
 } // namespace
 
-tanara::AppController* resolveController(QObject* injected)
+tanara::app::AppController* resolveController(QObject* injected)
 {
-    if (auto* c = qobject_cast<tanara::AppController*>(injected))
+    if (auto* c = qobject_cast<tanara::app::AppController*>(injected))
         return c;
     return AppContext::instance()->controller();
 }
 
-bool demoMode(tanara::AppController* controller)
+bool demoMode(tanara::app::AppController* controller)
 {
     return controller == nullptr || AppContext::instance()->demo();
 }
@@ -66,8 +66,8 @@ FixAction fixActionForError(const tanara::JobError& error)
     // button next to it too.
     if (hint.contains(QLatin1String("-context"))) {
         FixAction a{QCoreApplication::translate("JobSupport", "Beállítások"), QStringLiteral("providers")};
-        if (tanara::isReloadContextHint(hint))
-            a.reloadContext = tanara::contextFixTokens(hint);
+        if (tanara::library::isReloadContextHint(hint))
+            a.reloadContext = tanara::library::contextFixTokens(hint);
         return a;
     }
     if (hint.startsWith(QLatin1String("settings"))) {
@@ -80,18 +80,18 @@ FixAction fixActionForError(const tanara::JobError& error)
     return {trj("Beállítások"), QString()};
 }
 
-QVariantMap blockerInfo(tanara::AppController* controller, tanara::WorkflowStep step,
-                        const tanara::ReadinessResult& r)
+QVariantMap blockerInfo(tanara::app::AppController* controller, tanara::providers::WorkflowStep step,
+                        const tanara::providers::ReadinessResult& r)
 {
     QVariantMap out;
     if (r.runnable)
         return out;
-    const bool transcribe = step == tanara::WorkflowStep::Transcribe;
+    const bool transcribe = step == tanara::providers::WorkflowStep::Transcribe;
     QString title, text, actionLabel, actionPage, reason;
 
     const bool cloudProvider = r.providerId == tanara::cloud::ProviderId;
     switch (r.blockerKind) {
-    case tanara::BlockerKind::ProviderConfig:
+    case tanara::providers::BlockerKind::ProviderConfig:
         title = transcribe ? trj("Nincs beállítva átíró szolgáltató")
                            : trj("Nincs beállítva összefoglaló szolgáltató");
         // The exact gap (e.g. "Missing: API key (Soniox)") + where to go next.
@@ -104,7 +104,7 @@ QVariantMap blockerInfo(tanara::AppController* controller, tanara::WorkflowStep 
         actionPage = QStringLiteral("providers");
         reason = trj("A szolgáltató beállítása után indítható.");
         break;
-    case tanara::BlockerKind::Auth:
+    case tanara::providers::BlockerKind::Auth:
         title = cloudProvider ? trj("A Tanara Cloud még nem érhető el")
                               : trj("Nincs bejelentkezve a szolgáltatóhoz");
         text = cloudProvider
@@ -115,7 +115,7 @@ QVariantMap blockerInfo(tanara::AppController* controller, tanara::WorkflowStep 
         reason = cloudProvider ? trj("A szolgáltató beállítása után indítható.")
                                : trj("Bejelentkezés után indítható.");
         break;
-    case tanara::BlockerKind::Cloud:
+    case tanara::providers::BlockerKind::Cloud:
         // The UI does not offer Tanara Cloud (coming soon): the remedy is an own-key provider.
         title = trj("A Tanara Cloud még nem érhető el");
         text = trj("Válts saját kulcsos szolgáltatóra a Beállításokban.");
@@ -123,7 +123,7 @@ QVariantMap blockerInfo(tanara::AppController* controller, tanara::WorkflowStep 
         actionPage = QStringLiteral("providers");
         reason = trj("A szolgáltató beállítása után indítható.");
         break;
-    case tanara::BlockerKind::MeetingState:
+    case tanara::providers::BlockerKind::MeetingState:
         if (transcribe) {
             title = trj("Nincs aktív hangsáv");
             text = trj("Ennek a felvételnek minden sávja eldobott vagy hiányzik, ezért nincs mit átírni.");
@@ -144,16 +144,16 @@ QVariantMap blockerInfo(tanara::AppController* controller, tanara::WorkflowStep 
     return out;
 }
 
-QString providerLabel(tanara::AppController* controller, tanara::WorkflowStep step)
+QString providerLabel(tanara::app::AppController* controller, tanara::providers::WorkflowStep step)
 {
     if (!controller)
         return trj("saját kulcs");
     if (controller->usesCloud(step))
         return QStringLiteral("Tanara Cloud");
     const tanara::AppSettings s = controller->settings()->settings();
-    const QString name = step == tanara::WorkflowStep::Transcribe
-        ? tanara::SttProviderRegistry::instance().descriptor(s.sttProviderId).displayName
-        : tanara::LlmProviderRegistry::instance().descriptor(s.llmProviderId).displayName;
+    const QString name = step == tanara::providers::WorkflowStep::Transcribe
+        ? tanara::providers::SttProviderRegistry::instance().descriptor(s.sttProviderId).displayName
+        : tanara::providers::LlmProviderRegistry::instance().descriptor(s.llmProviderId).displayName;
     if (name.isEmpty())
         return trj("saját kulcs");
     return trj("%1 · saját kulcs").arg(name);

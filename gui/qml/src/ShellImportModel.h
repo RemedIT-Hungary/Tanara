@@ -8,7 +8,7 @@
 // (tanara::AudioImporter via the AppController); without a controller (demo, screenshot) it
 // shows fictional sample data.
 //
-#include "tanara/import/AudioImporter.h"
+#include "tanara/library/import/AudioImporter.h"
 
 #include <QObject>
 #include <QPointer>
@@ -18,7 +18,7 @@
 #include <QtQml/qqmlregistration.h>
 
 namespace tanara {
-class AppController;
+namespace app { class AppController; }
 }
 
 namespace tanara_qml {
@@ -70,7 +70,7 @@ public:
     explicit ShellImportModel(QObject* parent = nullptr);
 
     // Defaults to the App singleton's controller; injectable in tests.
-    void setController(tanara::AppController* controller);
+    void setController(tanara::app::AppController* controller);
 
     QVariantList files() const;
     int fileCount() const { return int(m_rows.size()); }
@@ -144,15 +144,15 @@ signals:
 private:
     struct Row {
         QString path;
-        tanara::ImportFileInfo info;
+        tanara::library::ImportFileInfo info;
         bool probed = false;
         bool split = false;
     };
     void attach();
-    void onProbed(const tanara::ImportFileInfo& info);
+    void onProbed(const tanara::library::ImportFileInfo& info);
     void refreshDefaults();
-    QVector<tanara::ImportSource> sources(QVector<tanara::ImportFileInfo>* infos) const;
-    QVector<tanara::ImportPlannedTrack> plan() const;
+    QVector<tanara::library::ImportSource> sources(QVector<tanara::library::ImportFileInfo>* infos) const;
+    QVector<tanara::library::ImportPlannedTrack> plan() const;
     void setError(const QString& message, const QString& detail = QString());
     void loadDemo();
     void applyTags(const QString& meetingId, const QStringList& ids);
@@ -160,8 +160,8 @@ private:
     struct TagRef { QString id, name; };
     struct Suggestion { QString id, name, source, reason; bool isNew = false; };
 
-    QPointer<tanara::AppController> m_controller;
-    QPointer<tanara::AppController> m_attached;
+    QPointer<tanara::app::AppController> m_controller;
+    QPointer<tanara::app::AppController> m_attached;
     bool m_controllerInjected = false;
 
     QVector<Row> m_rows;

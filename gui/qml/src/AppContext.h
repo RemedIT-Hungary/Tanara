@@ -19,7 +19,7 @@ class QQmlEngine;
 class QJSEngine;
 
 namespace tanara {
-class AppController;
+namespace app { class AppController; }
 }
 
 namespace tanara_qml {
@@ -56,9 +56,9 @@ public:
     QString version() const;
     void setDemo(bool demo);
 
-    tanara::AppController* controller() const;
+    tanara::app::AppController* controller() const;
     QObject* controllerObject() const;
-    void setController(tanara::AppController* controller);
+    void setController(tanara::app::AppController* controller);
 
     QObject* bridge() const { return m_bridge; }
     void setBridge(QObject* bridge);

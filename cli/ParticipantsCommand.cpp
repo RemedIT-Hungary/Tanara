@@ -2,14 +2,14 @@
 #include "ParticipantsCommand.h"
 
 #include "tanara/foundation/paths/Paths.h"
-#include "tanara/SettingsManager.h"
-#include "tanara/edit/ParticipantAnalysis.h"
-#include "tanara/edit/SpeakerOverlay.h"
-#include "tanara/edit/TrackActivity.h"
-#include "tanara/store/JsonSerialization.h"
-#include "tanara/store/MeetingStore.h"
-#include "tanara/store/VoiceprintStore.h"
-#include "tanara/voiceid/VoiceEmbedderSet.h"
+#include "tanara/app/SettingsManager.h"
+#include "tanara/processing/analysis/ParticipantAnalysis.h"
+#include "tanara/editing/session/SpeakerOverlay.h"
+#include "tanara/processing/analysis/TrackActivity.h"
+#include "tanara/library/store/JsonSerialization.h"
+#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/store/VoiceprintStore.h"
+#include "tanara/processing/voiceid/VoiceEmbedderSet.h"
 
 #include <QCoreApplication>
 #include <QDateTime>
@@ -33,7 +33,7 @@ QTextStream& err() { static QTextStream s(stderr); return s; }
 // The evidence strings are short Hungarian GUI labels; the CLI prints their machine names.
 QString evidenceText(const Evidence& e)
 {
-    QString s = evidenceKindName(e.kind) + QLatin1Char(':') + polarityName(e.polarity);
+    QString s = library::evidenceKindName(e.kind) + QLatin1Char(':') + library::polarityName(e.polarity);
     if (e.kind == EvidenceKind::Voice && e.value >= 0.0) s += QStringLiteral("(%1)").arg(e.value, 0, 'f', 2);
     if (!e.fixTarget.isEmpty()) s += QStringLiteral("[fix:%1]").arg(e.fixTarget);
     return s;
@@ -51,9 +51,9 @@ QString groupLabel(ParticipantGroup g)
 
 QJsonObject participantJson(const Participant& p)
 {
-    QJsonObject o = toJson(p);
-    o[QStringLiteral("group")] = participantGroupName(participants::participantGroup(p));
-    o[QStringLiteral("defaultChecked")] = participants::defaultChecked(p);
+    QJsonObject o = library::toJson(p);
+    o[QStringLiteral("group")] = library::participantGroupName(processing::participants::participantGroup(p));
+    o[QStringLiteral("defaultChecked")] = processing::participants::defaultChecked(p);
     return o;
 }
 
@@ -69,16 +69,16 @@ void printText(const Meeting& m, const QString& analysisNote)
     for (ParticipantGroup g : {ParticipantGroup::Sure, ParticipantGroup::Doubt, ParticipantGroup::InvitedNotHeard}) {
         QVector<const Participant*> list;
         for (const Participant& p : m.participants)
-            if (participants::participantGroup(p) == g) list << &p;
+            if (processing::participants::participantGroup(p) == g) list << &p;
         if (list.isEmpty()) continue;
         out() << "\n" << groupLabel(g) << " (" << list.size() << ")\n";
         for (const Participant* p : list) {
             QStringList ev, raw;
             for (const Evidence& e : p->evidence) ev << evidenceText(e);
-            for (const QString& r : p->rawSpeakerIds) raw << participants::rawDisplay(r);
-            out() << "  [" << (participants::defaultChecked(*p) ? 'x' : ' ') << "] "
+            for (const QString& r : p->rawSpeakerIds) raw << processing::participants::rawDisplay(r);
+            out() << "  [" << (processing::participants::defaultChecked(*p) ? 'x' : ' ') << "] "
                   << (p->personName.isEmpty() ? QStringLiteral("(unknown voice)") : p->personName).leftJustified(22)
-                  << " " << p->id.leftJustified(11) << " " << participantSourceName(p->source).leftJustified(8)
+                  << " " << p->id.leftJustified(11) << " " << library::participantSourceName(p->source).leftJustified(8)
                   << " sides " << (p->sides.isEmpty() ? QStringLiteral("-") : p->sides.join(QLatin1Char('+'))).leftJustified(13)
                   << " talk " << QString::number(qRound(p->talkShare * 100)).rightJustified(3) << "%"
                   << (p->approved ? "  approved" : "") << "\n";
@@ -104,7 +104,7 @@ int removeParticipant(Meeting& m, const QString& id, bool json)
     const Participant p = *it;
     bool mapChanged = false;
     for (const QString& raw : p.rawSpeakerIds) {
-        const QString label = participants::rawLabelOf(raw);
+        const QString label = processing::participants::rawLabelOf(raw);
         if (!p.personName.isEmpty() && m.speakerMap.value(label) == p.personName) {
             m.speakerMap.remove(label);
             mapChanged = true;
@@ -118,11 +118,11 @@ int removeParticipant(Meeting& m, const QString& id, bool json)
     }
     QSaveFile f(QDir(m.folder).filePath(QStringLiteral("meeting.json")));
     if (!f.open(QIODevice::WriteOnly)
-        || f.write(QJsonDocument(toJson(m)).toJson(QJsonDocument::Indented)) < 0 || !f.commit()) {
+        || f.write(QJsonDocument(library::toJson(m)).toJson(QJsonDocument::Indented)) < 0 || !f.commit()) {
         err() << "Cannot write meeting.json in " << m.folder << "\n";
         return 1;
     }
-    if (mapChanged && m.hasTranscript) speakeredit::regenerateTranscriptMarkdown(m);
+    if (mapChanged && m.hasTranscript) editing::speakeredit::regenerateTranscriptMarkdown(m);
     if (json) {
         out() << QJsonDocument(QJsonObject{{"removed", id}, {"personName", p.personName},
                                            {"unmappedSpeakers", mapChanged}}).toJson(QJsonDocument::Indented);
@@ -156,57 +156,57 @@ int runParticipantsCommand(const QStringList& args)
         return 2;
     }
     folder = QFileInfo(folder).absoluteFilePath();
-    Meeting m = MeetingStore::readMeetingFolder(folder);
+    Meeting m = library::MeetingStore::readMeetingFolder(folder);
     if (m.id.isEmpty()) { err() << "Not a meeting folder (no readable meeting.json): " << folder << "\n"; return 1; }
     m.folder = folder;
     if (!removeId.isEmpty()) return removeParticipant(m, removeId, json);
 
     QString note;
-    ParticipantAnalysisFile file = ParticipantAnalysisFile::load(folder);
+    processing::ParticipantAnalysisFile file = processing::ParticipantAnalysisFile::load(folder);
     if (analyze) {
-        const SettingsManager sm;
+        const app::SettingsManager sm;
         const QString meta = paths::resolveMetadataDir(sm.settings().metadataDir);
         const QString appDir = QCoreApplication::instance() ? QCoreApplication::applicationDirPath() : QString();
-        const VoiceEmbedderSet set = VoiceEmbedderSet::fromSettings(sm.enabledVoiceModels(), meta, appDir);
+        const processing::VoiceEmbedderSet set = processing::VoiceEmbedderSet::fromSettings(sm.enabledVoiceModels(), meta, appDir);
         if (set.isEmpty() || !set.ensureLoaded()) {
             err() << "No usable voice model (see: tanara-cli voice-models).\n";
             return 1;
         }
-        const QString fp = trackactivity::activityFingerprint(m, folder);
+        const QString fp = processing::trackactivity::activityFingerprint(m, folder);
         MeetingActivity act = MeetingActivity::load(folder, fp);
         const bool fromCache = !act.isEmpty();
         if (!fromCache) {
             err() << "Decoding tracks…\n";
             err().flush();
-            act = computeMeetingActivity(m, folder);
+            act = processing::computeMeetingActivity(m, folder);
         }
         err() << "Embedding speech windows…\n";
         err().flush();
-        ClusterSet cs = participants::computeVoiceClusters(m, act, set, participants::filePcmReader(m));
+        ClusterSet cs = processing::participants::computeVoiceClusters(m, act, set, processing::participants::filePcmReader(m));
         if (!cs.error.isEmpty()) { err() << "Analysis failed: " << cs.error << "\n"; return 1; }
 
-        const VoiceprintStore prints(QDir(meta).filePath(QStringLiteral("voiceprints.json")));
-        participants::CandidateContext ctx;
+        const library::VoiceprintStore prints(QDir(meta).filePath(QStringLiteral("voiceprints.json")));
+        processing::participants::CandidateContext ctx;
         ctx.selfName = sm.settings().userSpeakerName.trimmed();
         ctx.rank = [&prints](const EmbeddingSet& q) { return prints.rankedMatches(q, q.keys()); };
         ctx.hasVoiceprint = [&prints](const QString& n) { return prints.printCount(n) > 0; };
-        m.participants = participants::buildParticipants(cs, m, ctx);
+        m.participants = processing::participants::buildParticipants(cs, m, ctx);
         file.at = QDateTime::currentDateTime().toString(Qt::ISODate);
         file.modelIds = cs.modelIds;
         file.tracksKey = fp;
         file.clusters = cs.clusters;
         note = QStringLiteral("Analysis: %1 windows, %2 clusters, models %3")
                    .arg(cs.windows).arg(cs.clusters.size()).arg(cs.modelIds.join(QLatin1Char(',')));
-        const QVector<TranscriptLine> lines = speakeredit::loadTranscriptLines(folder);
-        if (!lines.isEmpty()) participants::bindRawSpeakers(m.participants, file.clusters, lines);
+        const QVector<TranscriptLine> lines = editing::speakeredit::loadTranscriptLines(folder);
+        if (!lines.isEmpty()) processing::participants::bindRawSpeakers(m.participants, file.clusters, lines);
 
         if (write) {
             if (!fromCache && !act.save(folder))
                 err() << "warning: cannot write " << MeetingActivity::filePath(folder) << "\n";
-            if (!file.save(folder)) { err() << "Cannot write " << ParticipantAnalysisFile::filePath(folder) << "\n"; return 1; }
+            if (!file.save(folder)) { err() << "Cannot write " << processing::ParticipantAnalysisFile::filePath(folder) << "\n"; return 1; }
             QSaveFile f(QDir(folder).filePath(QStringLiteral("meeting.json")));
             if (!f.open(QIODevice::WriteOnly)
-                || f.write(QJsonDocument(toJson(m)).toJson(QJsonDocument::Indented)) < 0 || !f.commit()) {
+                || f.write(QJsonDocument(library::toJson(m)).toJson(QJsonDocument::Indented)) < 0 || !f.commit()) {
                 err() << "Cannot write meeting.json in " << folder << "\n";
                 return 1;
             }
@@ -225,7 +225,7 @@ int runParticipantsCommand(const QStringList& args)
         QJsonArray ps;
         for (const Participant& p : m.participants) ps.append(participantJson(p));
         root["participants"] = ps;
-        if (m.approval) root["approval"] = toJson(*m.approval);
+        if (m.approval) root["approval"] = library::toJson(*m.approval);
         if (!file.isEmpty())
             root["analysis"] = QJsonObject{{"at", file.at}, {"modelIds", QJsonArray::fromStringList(file.modelIds)},
                                            {"clusters", int(file.clusters.size())}};

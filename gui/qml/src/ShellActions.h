@@ -12,9 +12,9 @@
 //
 #include "PlayerController.h"
 
-#include "tanara/Types.h"
+#include "tanara/domain/Types.h"
 #include "tanara/domain/Job.h"
-#include "tanara/provider/ReadinessModel.h"
+#include "tanara/providers/core/ReadinessModel.h"
 
 #include <QHash>
 #include <QObject>
@@ -24,8 +24,8 @@
 #include <QtQml/qqmlregistration.h>
 
 namespace tanara {
-class AppController;
-class MeetingUndoService;
+namespace app { class AppController; }
+namespace editing { class MeetingUndoService; }
 }
 
 namespace tanara_qml {
@@ -60,7 +60,7 @@ public:
     explicit ShellActions(QObject* parent = nullptr);
 
     // Defaults to the App singleton's controller / bridge; injectable in tests.
-    void setController(tanara::AppController* controller);
+    void setController(tanara::app::AppController* controller);
     void setBridge(ShellBridge* bridge);
 
     QString currentMeetingId() const { return m_currentMeetingId; }
@@ -111,7 +111,7 @@ public:
     // cancel); with given files (e.g. dropped on the window) the dialog opens right away.
     // While an import runs, the progress window appears instead.
     Q_INVOKABLE void openImport(const QVariantList& files = {});
-    // Meeting archive (*.tanara.zip, see store/MeetingArchive.h).
+    // Meeting archive (*.tanara.zip, see library/store/MeetingArchive.h).
     // "Export to archive...": native save dialog (default "<folder name>.tanara.zip" in the last
     // used folder, or ~/Tanara), then runs in the background: progress in the task bar, and a
     // toast with a "Show in folder" button at the end.
@@ -223,7 +223,7 @@ private:
     ShellBridge* bridge() const;
     tanara::Meeting meeting(const QString& meetingId) const;
     // Step runnability; if it cannot run, leads to the right remedy. True = can start.
-    bool gate(tanara::WorkflowStep step, const QString& meetingId);
+    bool gate(tanara::providers::WorkflowStep step, const QString& meetingId);
     bool estimateOk(const QString& meetingId, const QString& task, const QString& mode);
     void bumpReadiness();
     void onRetry(const QString& meetingId, const QString& kind);
@@ -234,8 +234,8 @@ private:
     void attachMeetingUndo();
     void checkMeetingUndo();
 
-    QPointer<tanara::AppController> m_controller;
-    QPointer<tanara::AppController> m_attachedController;
+    QPointer<tanara::app::AppController> m_controller;
+    QPointer<tanara::app::AppController> m_attachedController;
     QPointer<ShellBridge> m_bridge;
     QPointer<ShellBridge> m_attachedBridge;
     bool m_controllerInjected = false;
@@ -255,7 +255,7 @@ private:
 
     // Shared undo: the watched stack and its last seen state (to detect a new step: more
     // entries, or the same count with a different newest text).
-    QPointer<tanara::MeetingUndoService> m_meetingUndo;
+    QPointer<tanara::editing::MeetingUndoService> m_meetingUndo;
     QList<QMetaObject::Connection> m_meetingUndoConns;
     QMetaObject::Connection m_undoStoreConn;
     int m_undoSeenCount = 0;

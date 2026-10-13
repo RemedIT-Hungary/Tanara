@@ -4,9 +4,9 @@
 // path is unchanged. Pure functions + SonioxProvider on a hand-written reply (fake HTTP, no real network).
 #include "fake_http.h"
 
-#include "tanara/stt/SonioxProvider.h"
-#include "tanara/stt/SonioxTiming.h"
-#include "tanara/TranscriptMerger.h"
+#include "tanara/providers/stt/SonioxProvider.h"
+#include "tanara/processing/stt/SonioxTiming.h"
+#include "tanara/processing/summary/TranscriptMerger.h"
 
 #include <QSignalSpy>
 #include <QTemporaryDir>
@@ -50,7 +50,7 @@ private slots:
     {
         QVector<Utterance> u{utt(1000, 1300), utt(1450, 2000, "B"), utt(5000, 5060), utt(5100, 5900, "B"),
                              utt(9000, 9060)};
-        sonioxtiming::padUtterances(u);
+        processing::sonioxtiming::padUtterances(u);
         QCOMPARE(u[0].startMs, 700);       // −300
         QCOMPARE(u[0].endMs, 1300);        // the next one's new start (max(1300, 1150) = 1300)
         QCOMPARE(u[1].startMs, 1300);      // up to the previous line's end
@@ -71,7 +71,7 @@ private slots:
     {
         // The same start (two speakers at once): they move equally; an overlapping line is not shortened.
         QVector<Utterance> u{utt(100, 400), utt(1000, 1060), utt(1000, 1500, "B"), utt(1200, 1300, "C")};
-        sonioxtiming::padUtterances(u);
+        processing::sonioxtiming::padUtterances(u);
         QCOMPARE(u[0].startMs, 0);         // not below 0
         QCOMPARE(u[1].startMs, 700);
         QCOMPARE(u[2].startMs, 700);
@@ -90,8 +90,8 @@ private slots:
         for (qint64 t = 0; t <= 13000; t += 1000) times.append({t, t + 60});
         times.append({14620, 14680});
         times.append({14740, 14800});
-        const MergedTranscript raw = mergeTranscripts({track("t1", "A", times, false)});
-        const MergedTranscript padded = mergeTranscripts({track("t1", "A", times, true)});
+        const MergedTranscript raw = processing::mergeTranscripts({track("t1", "A", times, false)});
+        const MergedTranscript padded = processing::mergeTranscripts({track("t1", "A", times, true)});
         QVERIFY(padded.emissionTiming);
         QVERIFY(!raw.emissionTiming);
         const QVector<Utterance> a = raw.segments(), b = padded.segments();
@@ -112,7 +112,7 @@ private slots:
     // Whisper path (without the flag): the lines come exactly from the token times, unchanged.
     void whisperPathUnchanged()
     {
-        const MergedTranscript mt = mergeTranscripts({track("t1", "A", {{0, 320}, {320, 700}}, false),
+        const MergedTranscript mt = processing::mergeTranscripts({track("t1", "A", {{0, 320}, {320, 700}}, false),
                                                       track("t2", "B", {{2000, 2450}}, false)});
         const QVector<Utterance> s = mt.segments();
         QCOMPARE(s.size(), 2);
@@ -125,12 +125,12 @@ private slots:
 
     void medianDetectsEmissionTiming()
     {
-        QVERIFY(!sonioxtiming::looksLikeEmissionTiming({}));
+        QVERIFY(!processing::sonioxtiming::looksLikeEmissionTiming({}));
         QVector<TranscriptToken> soniox{tok(0, 60), tok(120, 180), tok(240, 300), tok(400, 900)};
-        QCOMPARE(sonioxtiming::medianTokenWidthMs(soniox), 60);
-        QVERIFY(sonioxtiming::looksLikeEmissionTiming(soniox));
+        QCOMPARE(processing::sonioxtiming::medianTokenWidthMs(soniox), 60);
+        QVERIFY(processing::sonioxtiming::looksLikeEmissionTiming(soniox));
         QVector<TranscriptToken> whisper{tok(0, 320), tok(320, 610), tok(700, 760), tok(800, 1300)};
-        QVERIFY(!sonioxtiming::looksLikeEmissionTiming(whisper));
+        QVERIFY(!processing::sonioxtiming::looksLikeEmissionTiming(whisper));
     }
 
     // The provider returns the hand-written Soniox reply's tokens untouched, with the emissionTiming flag.
@@ -159,14 +159,14 @@ private slots:
         ProviderConfig cfg;
         cfg.baseUrl = srv.base();
         cfg.apiKey = QStringLiteral("test");
-        SonioxProvider provider(cfg);
-        SttRequest req;
+        providers::SonioxProvider provider(cfg);
+        providers::SttRequest req;
         req.audioFilePath = audio;
         req.trackId = QStringLiteral("t1");
         req.speakerLabel = QStringLiteral("Beszélő 1");
-        SttJob* job = provider.transcribe(req);
-        QSignalSpy done(job, &SttJob::finished);
-        QSignalSpy failed(job, &SttJob::failed);
+        providers::SttJob* job = provider.transcribe(req);
+        QSignalSpy done(job, &providers::SttJob::finished);
+        QSignalSpy failed(job, &providers::SttJob::failed);
         QTRY_VERIFY_WITH_TIMEOUT(done.count() == 1 || failed.count() == 1, 10000);
         QCOMPARE(failed.count(), 0);
         const TrackTranscript tt = done.at(0).at(0).value<TrackTranscript>();
@@ -177,7 +177,7 @@ private slots:
         QCOMPARE(tt.tokens[0].endMs, 127470);
         QCOMPARE(tt.tokens[2].startMs, 127650);
         QCOMPARE(tt.tokens[2].endMs, 127710);
-        const QVector<Utterance> segs = mergeTranscripts({tt}).segments();
+        const QVector<Utterance> segs = processing::mergeTranscripts({tt}).segments();
         QCOMPARE(segs.size(), 1);
         QCOMPARE(segs[0].startMs, 127110);
         QCOMPARE(segs[0].endMs, 127810);

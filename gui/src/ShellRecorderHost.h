@@ -22,7 +22,7 @@
 #include <QObject>
 #include <QStringList>
 
-namespace tanara { class AppController; }
+namespace tanara { namespace app { class AppController; } }
 namespace tanara_qml {
 class RecorderWindowHost;
 struct RecorderRequest;
@@ -39,7 +39,7 @@ tanara_qml::RecorderRequest toRecorderRequest(const RecorderArgs& args);
 class ShellRecorderHost : public QObject {
     Q_OBJECT
 public:
-    explicit ShellRecorderHost(tanara::AppController* controller, QObject* parent = nullptr);
+    explicit ShellRecorderHost(tanara::app::AppController* controller, QObject* parent = nullptr);
     ~ShellRecorderHost() override;
 
     void open();
@@ -63,7 +63,7 @@ private:
     void handleRequest(const QStringList& args);
     void releaseMonitorIfUnused();
 
-    tanara::AppController* m_controller = nullptr;
+    tanara::app::AppController* m_controller = nullptr;
     tanara_qml::RecorderWindowHost* m_host = nullptr;
     RecorderSingleton* m_singleton = nullptr;
     bool m_shutDown = false;

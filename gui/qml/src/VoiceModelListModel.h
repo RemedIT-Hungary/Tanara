@@ -23,7 +23,7 @@
 // B08none | B08fallback | B08error | B08offline | B08backfill | B08partial | B08bundled |
 // B08verify | B08delete.
 //
-#include "tanara/voiceid/VoiceModelRegistry.h"
+#include "tanara/processing/voiceid/VoiceModelRegistry.h"
 
 #include <QAbstractListModel>
 #include <QHash>
@@ -37,8 +37,8 @@
 #include <functional>
 
 namespace tanara {
-class AppController;
-class VoiceModelDownloader;
+namespace app { class AppController; }
+namespace processing { class VoiceModelDownloader; }
 }
 
 namespace tanara_qml {
@@ -109,7 +109,7 @@ public:
 
     QObject* controllerObject() const;
     void setControllerObject(QObject* controller);
-    void setController(tanara::AppController* controller);
+    void setController(tanara::app::AppController* controller);
     QString demoState() const { return m_demoState; }
     void setDemoState(const QString& state);
 
@@ -161,9 +161,9 @@ public:
     void loadDemo(const QString& state);
 
     // ---- teszt-varratok ----
-    tanara::VoiceModelDownloader* downloader() const { return m_downloader; }
+    tanara::processing::VoiceModelDownloader* downloader() const { return m_downloader; }
     // Replaces the descriptors (e.g. with file:// download URLs) and the folders.
-    void setSpecsForTest(const QVector<tanara::VoiceModelSpec>& specs);
+    void setSpecsForTest(const QVector<tanara::processing::VoiceModelSpec>& specs);
     void setDirsForTest(const QString& metaDir, const QString& appDir);
 
 signals:
@@ -179,7 +179,7 @@ signals:
 
 private:
     struct Row {
-        tanara::VoiceModelSpec spec;
+        tanara::processing::VoiceModelSpec spec;
         QString state = QStringLiteral("missing");
         qint64 received = 0, total = 0;
         QString errorText;
@@ -202,7 +202,7 @@ private:
     void onFinished(const QString& id, bool ok, const QString& error);
     void onVerified(const QString& id, int result);
     void verifyAllFiles();
-    QString userPath(const tanara::VoiceModelSpec& spec) const;
+    QString userPath(const tanara::processing::VoiceModelSpec& spec) const;
     // Watching the backfill (the core's signals).
     void checkBackfill();
     void onBackfillStarted(int total);
@@ -211,14 +211,14 @@ private:
     void loadSkips();
     void setBackfill(const QString& state, int total, int done, int skipped);
 
-    QPointer<tanara::AppController> m_controller;
+    QPointer<tanara::app::AppController> m_controller;
     bool m_controllerSet = false;
     QString m_demoState;
     QList<QMetaObject::Connection> m_connections;
-    tanara::VoiceModelDownloader* m_downloader = nullptr;
+    tanara::processing::VoiceModelDownloader* m_downloader = nullptr;
 
     QVector<Row> m_rows;
-    QVector<tanara::VoiceModelSpec> m_specOverride;
+    QVector<tanara::processing::VoiceModelSpec> m_specOverride;
     QString m_metaOverride, m_appOverride;
     bool m_dirsOverridden = false;
     std::function<QStringList()> m_getDraft;
@@ -257,7 +257,7 @@ public:
     QString text() const;
     QString detail() const;
     // Test seam (without QML).
-    void setController(tanara::AppController* c);
+    void setController(tanara::app::AppController* c);
 
 signals:
     void personChanged();
@@ -265,7 +265,7 @@ signals:
 
 private:
     void reload();
-    QPointer<tanara::AppController> m_controller;
+    QPointer<tanara::app::AppController> m_controller;
     QString m_person, m_demoState;
     QVariantList m_entries;
     QList<QMetaObject::Connection> m_connections;

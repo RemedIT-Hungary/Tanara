@@ -26,13 +26,13 @@
 #include "SettingsWindowHost.h"
 #include "ShellRecorderHost.h"
 
-#include "tanara/AppController.h"
+#include "tanara/app/AppController.h"
 #include "tanara/app/StartupDiagnostics.h"
 #include "tanara/foundation/i18n/Localization.h"
 #include "tanara/foundation/log/Logging.h"
 #include "tanara/foundation/paths/Paths.h"
-#include "tanara/SettingsManager.h"
-#include "tanara/store/MeetingStore.h"
+#include "tanara/app/SettingsManager.h"
+#include "tanara/library/store/MeetingStore.h"
 #include "tanara/foundation/ProcessLock.h"   // watcherLockPath()
 
 #include "AppContext.h"
@@ -93,7 +93,7 @@ static QString settingsPageArg(const QStringList& args)
 
 // In a process without a main window (standalone recorder, --settings): loads the remembered
 // theme from the shared ui-state.json; --theme / TANARA_THEME override it.
-static void applySavedTheme(AppController& controller, const tanara_qml::QmlOptions& opts)
+static void applySavedTheme(app::AppController& controller, const tanara_qml::QmlOptions& opts)
 {
     if (!opts.theme.isEmpty() || qEnvironmentVariableIsSet("TANARA_THEME"))
         return;
@@ -110,7 +110,7 @@ static void applySavedTheme(AppController& controller, const tanara_qml::QmlOpti
 // --settings mode: only the Settings window (the tray watcher's "Settings..." menu item). It
 // runs this way when there is no main window the request could be handed to; exits when the
 // window closes.
-static int runSettingsMode(QApplication& app, AppController& controller,
+static int runSettingsMode(QApplication& app, app::AppController& controller,
                            const tanara_qml::QmlOptions& opts, const QString& page)
 {
     tanara_qml::applyOptions(opts);
@@ -131,7 +131,7 @@ static int runSettingsMode(QApplication& app, AppController& controller,
     return app.exec();
 }
 
-static int runRecorderMode(QApplication& app, AppController& controller, const QStringList& args)
+static int runRecorderMode(QApplication& app, app::AppController& controller, const QStringList& args)
 {
     const RecorderArgs ra = parseRecorderArgs(args);
     // SINGLETON: if a recorder is already running (standalone or the analyzer's), we hand the
@@ -322,7 +322,7 @@ int main(int argc, char** argv) {
     QApplication::setWindowIcon(tanara_gui::makeTanaraIcon());   // every window + the tray
 
     // UI language (settings.json uiLanguage), BEFORE any widget is constructed.
-    tanara::installAppTranslator(tanara::SettingsManager().settings().uiLanguage);
+    tanara::installAppTranslator(tanara::app::SettingsManager().settings().uiLanguage);
 
     // QML developer modes (screenshot / gallery / demo): WITHOUT AppController; the user's real
     // data (~/.tanara, ~/Tanara) is not touched, and the view models supply sample data.
@@ -356,7 +356,7 @@ int main(int argc, char** argv) {
         && analyzer_singleton::forwardToExisting({QStringLiteral("--settings"), settingsPageArg(cleanArgs)}))
         return 0;
 
-    tanara::AppController controller;
+    tanara::app::AppController controller;
 
     if (settingsMode)
         return runSettingsMode(app, controller, qmlOpts, settingsPageArg(cleanArgs));
@@ -422,7 +422,7 @@ int main(int argc, char** argv) {
     }
 
     controller.refreshDevices();
-    tanara::logStartupDiagnostics(controller);
+    tanara::app::logStartupDiagnostics(controller);
 
     return app.exec();
 }

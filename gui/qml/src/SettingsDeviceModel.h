@@ -9,7 +9,7 @@
 // SettingsViewModel saves. The level comes from the core's level monitoring
 // (AppController::deviceLevelPeak), the scale is the recorder's (RecorderViewModel::levelSegments).
 //
-#include "tanara/Types.h"
+#include "tanara/domain/Types.h"
 
 #include <QAbstractListModel>
 #include <QElapsedTimer>

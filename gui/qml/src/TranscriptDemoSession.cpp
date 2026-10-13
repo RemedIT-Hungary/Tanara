@@ -2,14 +2,14 @@
 
 #include "DemoText.h"
 
-#include "tanara/Types.h"
-#include "tanara/edit/SpeakerEditor.h"
-#include "tanara/edit/SpeakerOverlay.h"
-#include "tanara/edit/TrackActivity.h"
-#include "tanara/edit/UtteranceEmbeddings.h"
-#include "tanara/store/MeetingStore.h"
-#include "tanara/store/PeopleStore.h"
-#include "tanara/store/VoiceprintStore.h"
+#include "tanara/domain/Types.h"
+#include "tanara/editing/session/SpeakerEditor.h"
+#include "tanara/editing/session/SpeakerOverlay.h"
+#include "tanara/processing/analysis/TrackActivity.h"
+#include "tanara/processing/analysis/UtteranceEmbeddings.h"
+#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/store/PeopleStore.h"
+#include "tanara/library/store/VoiceprintStore.h"
 
 #include <QDir>
 #include <QFile>
@@ -45,7 +45,7 @@ struct Cast {
 
 // The fake embedder: returns the voice's unit vector from the slice's midpoint (orthogonal
 // per speaker), as the core's unit tests do.
-class DemoEmbedder : public IUtteranceEmbedder {
+class DemoEmbedder : public processing::IUtteranceEmbedder {
 public:
     // noisy: the voice vector also gets small deterministic noise beside the speaker's axis (so
     // the evidence percentages of the v3 variant are not all 100% / 0%).
@@ -608,10 +608,10 @@ TranscriptDemoSession::TranscriptDemoSession(const QString& variant)
         c.person = demoName(c.person);
     }
 
-    m_store = std::make_unique<MeetingStore>(m_dir.filePath(QStringLiteral("rec")),
+    m_store = std::make_unique<library::MeetingStore>(m_dir.filePath(QStringLiteral("rec")),
                                              m_dir.filePath(QStringLiteral("meta")));
-    m_people = std::make_unique<PeopleStore>(m_dir.filePath(QStringLiteral("meta/people.json")));
-    m_prints = std::make_unique<VoiceprintStore>(m_dir.filePath(QStringLiteral("meta/voiceprints.json")));
+    m_people = std::make_unique<library::PeopleStore>(m_dir.filePath(QStringLiteral("meta/people.json")));
+    m_prints = std::make_unique<library::VoiceprintStore>(m_dir.filePath(QStringLiteral("meta/voiceprints.json")));
 
     Meeting m = m_store->createMeeting(sc.v3 ? demoText("Negyedéves partnertalálkozó", "Quarterly partner review")
                                              : demoText("Termékcsapat heti egyeztetés", "Product team weekly sync"));
@@ -643,7 +643,7 @@ TranscriptDemoSession::TranscriptDemoSession(const QString& variant)
             o[QStringLiteral("text")] = lineText(l.text);
             segs.append(o);
         }
-        writeJson(speakeredit::segmentsPath(m.folder), QJsonDocument(segs));
+        writeJson(editing::speakeredit::segmentsPath(m.folder), QJsonDocument(segs));
         m.hasTranscript = true;
     }
 
@@ -664,11 +664,11 @@ TranscriptDemoSession::TranscriptDemoSession(const QString& variant)
     }
     m_store->saveMeeting(m);
     if (sc.transcript && !sc.cast.isEmpty() && !sc.cast[0].person.isEmpty())
-        speakeredit::recordIdentification(m.folder, sc.cast[0].raw, sc.cast[0].person, 0.82);
+        editing::speakeredit::recordIdentification(m.folder, sc.cast[0].raw, sc.cast[0].person, 0.82);
 
     if (sc.v3) m_people->setDefaultSide(demoName("Fehér Gábor"), QStringLiteral("remote"));
 
-    m_editor = std::make_unique<SpeakerEditor>(m_store.get(), m_people.get(), m_prints.get(), m.id);
+    m_editor = std::make_unique<editing::SpeakerEditor>(m_store.get(), m_people.get(), m_prints.get(), m.id);
     if (sc.v3) {
         m_selfName = demoName("Kovács Lilla");
         m_editor->setUserSpeakerName(m_selfName);
@@ -682,29 +682,29 @@ TranscriptDemoSession::TranscriptDemoSession(const QString& variant)
         // Tag evidence from fictional history: of the 14 meetings tagged #Nordvik, Gábor was in 11
         // (manual tag too), Árpád in 6 (learned only); Eszter's manual tag is
         // #MarketResearch, she was never at a #Nordvik meeting -> contradicts.
-        PersonTagSnapshot snap;
-        QVector<PersonTagRow> rows;
+        library::PersonTagSnapshot snap;
+        QVector<library::PersonTagRow> rows;
         for (int i = 0; i < 14; ++i) {
             QStringList who;
             if (i < 11) who << demoName("Fehér Gábor");
             if (i < 6) who << demoName("Varga Árpád");
-            rows << PersonTagRow{QStringLiteral("demo-n%1").arg(i), QDateTime(), {QStringLiteral("nordvik")}, who};
+            rows << library::PersonTagRow{QStringLiteral("demo-n%1").arg(i), QDateTime(), {QStringLiteral("nordvik")}, who};
         }
         for (int i = 0; i < 3; ++i)
-            rows << PersonTagRow{QStringLiteral("demo-p%1").arg(i), QDateTime(), {QStringLiteral("piac")},
+            rows << library::PersonTagRow{QStringLiteral("demo-p%1").arg(i), QDateTime(), {QStringLiteral("piac")},
                                  {demoName("Molnár Eszter")}};
-        snap.stats = std::make_shared<PersonTagStats>(PersonTagStats::compute(rows, demoName("Kovács Lilla")));
+        snap.stats = std::make_shared<library::PersonTagStats>(library::PersonTagStats::compute(rows, demoName("Kovács Lilla")));
         snap.tagNames = {{QStringLiteral("nordvik"), QStringLiteral("Nordvik")},
                          {QStringLiteral("piac"), demoText("Piackutatás", "Market research")}};
-        snap.selfKey = persontags::personKey(demoName("Kovács Lilla"));
+        snap.selfKey = library::persontags::personKey(demoName("Kovács Lilla"));
         // The manual tags come from the demo's live map (the quick "+ #Tag" writes there), the
         // learned statistics from the fictional history above.
         m_editor->setTagEvidenceProvider([snap, tags](const QString& person, const QStringList& meetingTags,
                                                       const QString& mid) {
-            PersonTagSnapshot live = snap;
+            library::PersonTagSnapshot live = snap;
             live.manual.clear();
             for (auto it = tags->cbegin(); it != tags->cend(); ++it)
-                live.manual.insert(persontags::personKey(it.key()), it.value());
+                live.manual.insert(library::persontags::personKey(it.key()), it.value());
             return live.evidence(person, meetingTags, mid);
         });
         m_tagNames.insert(QStringLiteral("piac"), demoText("Piackutatás", "Market research"));
@@ -770,7 +770,7 @@ bool TranscriptDemoSession::stageV3(const QString& state)
     if (state == QLatin1String("speakerWhy")) {
         // Gábor speaks on two tracks too (manual assignment, several tracks); Árpád has no #Nordvik
         // yet (the quick "+ #Nordvik" shows on the "NOT them?" candidate).
-        for (const EditorSpeaker& sp : m_editor->speakers())
+        for (const editing::EditorSpeaker& sp : m_editor->speakers())
             if (sp.personName == demoName("Fehér Gábor"))
                 m_editor->setTrackAssignment(sp.key, {QStringLiteral("mic"), QStringLiteral("loopback")});
         m_personTags->remove(demoName("Varga Árpád"));
@@ -779,7 +779,7 @@ bool TranscriptDemoSession::stageV3(const QString& state)
     return true;
 }
 
-QVector<PersonInfo> TranscriptDemoSession::people() const
+QVector<editing::PersonInfo> TranscriptDemoSession::people() const
 {
     // Fictional name list for the pickers; the meeting's people with their real voiceprint state.
     struct P { const char* name; bool vp; int meetings; };
@@ -789,10 +789,10 @@ QVector<PersonInfo> TranscriptDemoSession::people() const
         {"Varga Nóra", true, 8}, {"Tóth Bence", true, 6}, {"Szabó Áron", false, 4},
         {"Németh Dávid", true, 5}, {"Horváth Gergő", false, 2}, {"Ördög Ödön", false, 1},
     };
-    QVector<PersonInfo> out;
+    QVector<editing::PersonInfo> out;
     QStringList seen;
     for (const P& p : extra) {
-        PersonInfo i;
+        editing::PersonInfo i;
         i.name = demoName(p.name);
         i.voiceprintCount = m_prints->printCount(i.name);
         i.hasVoiceprint = p.vp || i.voiceprintCount > 0;
@@ -804,14 +804,14 @@ QVector<PersonInfo> TranscriptDemoSession::people() const
     // People added in the demo (people.json) should show up too.
     for (const QString& name : m_people->names()) {
         if (seen.contains(name)) continue;
-        PersonInfo i;
+        editing::PersonInfo i;
         i.name = name;
         i.voiceprintCount = m_prints->printCount(name);
         i.hasVoiceprint = i.voiceprintCount > 0;
         i.meetingCount = 1;
         out.append(i);
     }
-    std::sort(out.begin(), out.end(), [](const PersonInfo& a, const PersonInfo& b) {
+    std::sort(out.begin(), out.end(), [](const editing::PersonInfo& a, const editing::PersonInfo& b) {
         return a.name.localeAwareCompare(b.name) < 0;
     });
     return out;

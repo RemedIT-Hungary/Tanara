@@ -46,7 +46,7 @@
 #include "StatementListModel.h"
 #include "TopicListModel.h"
 
-#include "tanara/Types.h"
+#include "tanara/domain/Types.h"
 #include "tanara/domain/Job.h"
 
 #include <QHash>
@@ -58,8 +58,8 @@
 #include <QtQml/qqmlregistration.h>
 
 namespace tanara {
-class AppController;
-class SpeakerEditor;
+namespace app { class AppController; }
+namespace editing { class SpeakerEditor; }
 }
 
 namespace tanara_qml {
@@ -317,7 +317,7 @@ signals:
     void summaryArrived();
 
 private:
-    tanara::AppController* app() const;
+    tanara::app::AppController* app() const;
     void connectController();
     void reload();
     void reloadJobs();
@@ -333,14 +333,14 @@ private:
     QList<StatementListModel*> statementModels() const;
     QVariantList speakerChips(const QStringList& names) const;
     void applyJob(const tanara::JobProgress& job);
-    void watchEditor(tanara::SpeakerEditor* editor);
+    void watchEditor(tanara::editing::SpeakerEditor* editor);
     int speakerIndexFor(const QString& name) const;
     QVariantList ownerList(const QString& owner) const;
 
     QPointer<QObject> m_injected;
-    QPointer<tanara::AppController> m_connected;
+    QPointer<tanara::app::AppController> m_connected;
     QList<QMetaObject::Connection> m_connections;
-    QPointer<tanara::SpeakerEditor> m_editor;
+    QPointer<tanara::editing::SpeakerEditor> m_editor;
     QMetaObject::Connection m_editorConn;
 
     TopicListModel* m_topics = nullptr;

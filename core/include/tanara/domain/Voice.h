@@ -2,7 +2,7 @@
 //
 // Domain: voiceprints, voice matches and the per-model embedding set.
 // The fusion of an EmbeddingSet (fusion::fuse / averageCosine) is an algorithm and lives in
-// voiceid/EmbeddingSet.h.
+// processing/voiceid/EmbeddingSet.h.
 #include <QMap>
 #include <QMetaType>
 #include <QString>

@@ -22,7 +22,7 @@
 #include <QtQml/qqmlregistration.h>
 
 namespace tanara {
-class AppController;
+namespace app { class AppController; }
 }
 
 namespace tanara_qml {
@@ -84,7 +84,7 @@ signals:
     void changed();
 
 private:
-    tanara::AppController* app() const;
+    tanara::app::AppController* app() const;
     bool demo() const;
     void reloadSuggestions();
 

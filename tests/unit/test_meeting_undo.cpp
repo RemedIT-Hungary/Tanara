@@ -1,4 +1,4 @@
-// The meeting's shared undo stack (edit/MeetingUndo.h) in AppController: the editor, the
+// The meeting's shared undo stack (editing/undo/MeetingUndo.h) in AppController: the editor, the
 // meeting's tag steps and the participant operations in chronological order; another
 // meeting's tag step does not come here (and while it is on top, it skips the tag entry);
 // "Only I spoke" swallows the editor's binding step; permanent deletion of a participant and
@@ -11,17 +11,17 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 
-#include "tanara/AppController.h"
-#include "tanara/SettingsManager.h"
-#include "tanara/edit/MeetingUndo.h"
-#include "tanara/edit/SpeakerEditor.h"
-#include "tanara/store/MeetingStore.h"
-#include "tanara/tags/TagService.h"
+#include "tanara/app/AppController.h"
+#include "tanara/app/SettingsManager.h"
+#include "tanara/editing/undo/MeetingUndo.h"
+#include "tanara/editing/session/SpeakerEditor.h"
+#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/tags/TagService.h"
 
 #include <memory>
 
 using namespace tanara;
-using Source = MeetingUndoService::Source;
+using Source = editing::MeetingUndoService::Source;
 
 namespace {
 
@@ -61,7 +61,7 @@ private:
     QString tagged(const QString& title, const QString& tagId, const QStringList& people);
 
     std::unique_ptr<QTemporaryDir> m_home;
-    std::unique_ptr<AppController> m_app;
+    std::unique_ptr<app::AppController> m_app;
 };
 
 void MeetingUndoTest::initTestCase()
@@ -74,7 +74,7 @@ void MeetingUndoTest::init()
     m_home = std::make_unique<QTemporaryDir>();
     QVERIFY(m_home->isValid());
     qputenv("TANARA_HOME", m_home->path().toUtf8());
-    m_app = std::make_unique<AppController>();
+    m_app = std::make_unique<app::AppController>();
     QVERIFY(m_app->store()->metadataDir().startsWith(m_home->path()));
     m_app->setUserSpeakerName(kSelf);
 }
@@ -126,16 +126,16 @@ void MeetingUndoTest::orderAcrossSources()
 {
     const Meeting m = makeMeeting("Közös verem");
     const Meeting other = makeMeeting("Másik megbeszélés", false);
-    MeetingUndoService* u = m_app->meetingUndo(m.id);
+    editing::MeetingUndoService* u = m_app->meetingUndo(m.id);
     QVERIFY(u);
     QCOMPARE(m_app->meetingUndo(m.id), u);
     QVERIFY(!m_app->meetingUndo(QStringLiteral("nincs-ilyen")));
-    SpeakerEditor* ed = m_app->speakerEditor(m.id);
+    editing::SpeakerEditor* ed = m_app->speakerEditor(m.id);
     QVERIFY(ed);
     QCOMPARE(u->speakerEditor(), ed);
-    TagService* tags = m_app->tags();
+    library::TagService* tags = m_app->tags();
     QVERIFY(!u->canUndo());
-    QSignalSpy changed(u, &MeetingUndoService::changed);
+    QSignalSpy changed(u, &editing::MeetingUndoService::changed);
 
     // 1. a tag on the meeting, 2. a speaker fix, 3. a manual participant, 4. a description.
     const Tag t = tags->addTag(m.id, QStringLiteral("Projekt"));
@@ -157,7 +157,7 @@ void MeetingUndoTest::orderAcrossSources()
     tags->addTag(other.id, QStringLiteral("Más"));
     QCOMPARE(u->count(), 4);
 
-    QSignalSpy undone(u, &MeetingUndoService::undone);
+    QSignalSpy undone(u, &editing::MeetingUndoService::undone);
     QVERIFY(u->undo());
     QVERIFY(m_app->store()->load(m.id).contextNote.isEmpty());
     QCOMPARE(undone.last().at(0).toString(), QStringLiteral("Leírás módosítva"));
@@ -184,10 +184,10 @@ void MeetingUndoTest::orderAcrossSources()
 void MeetingUndoTest::editorUndoRedoAndTagGroups()
 {
     const Meeting m = makeMeeting("Szerkesztő");
-    SpeakerEditor* ed = m_app->speakerEditor(m.id);
-    MeetingUndoService* u = m_app->meetingUndo(m.id);
+    editing::SpeakerEditor* ed = m_app->speakerEditor(m.id);
+    editing::MeetingUndoService* u = m_app->meetingUndo(m.id);
     QVERIFY(ed && u);
-    TagService* tags = m_app->tags();
+    library::TagService* tags = m_app->tags();
 
     QVERIFY(ed->reassignSpeaker(ed->speakers().first().key, QStringLiteral("Varga Árpád")));
     QCOMPARE(u->count(), 1);
@@ -220,7 +220,7 @@ void MeetingUndoTest::editorUndoRedoAndTagGroups()
     // Closing the editor: its editor entries drop out.
     QVERIFY(ed->reassignSpeaker(ed->speakers().first().key, QStringLiteral("Varga Árpád")));
     QCOMPARE(u->count(), 1);
-    QSignalSpy changed(u, &MeetingUndoService::changed);
+    QSignalSpy changed(u, &editing::MeetingUndoService::changed);
     m_app->closeSpeakerEditor(m.id);
     QTRY_COMPARE(u->count(), 0);
 }
@@ -228,8 +228,8 @@ void MeetingUndoTest::editorUndoRedoAndTagGroups()
 void MeetingUndoTest::soloAbsorbsEditorStep()
 {
     const Meeting m = makeMeeting("Csak én");
-    MeetingUndoService* u = m_app->meetingUndo(m.id);
-    SpeakerEditor* ed = m_app->speakerEditor(m.id);
+    editing::MeetingUndoService* u = m_app->meetingUndo(m.id);
+    editing::SpeakerEditor* ed = m_app->speakerEditor(m.id);
     QVERIFY(u && ed);
 
     QVERIFY(m_app->setSoloMeeting(m.id));
@@ -239,7 +239,7 @@ void MeetingUndoTest::soloAbsorbsEditorStep()
     QVERIFY(ed->canUndo());   // the bindings went through the editor...
     QCOMPARE(u->count(), 1);  // ...but in the shared stack it is one step
     QCOMPARE(u->undoText(), QStringLiteral("Csak én beszéltem"));
-    for (const EditorSpeaker& s : ed->speakers())
+    for (const editing::EditorSpeaker& s : ed->speakers())
         if (s.utteranceCount > 0) QCOMPARE(s.personName, kSelf);
 
     QVERIFY(u->undo());
@@ -254,7 +254,7 @@ void MeetingUndoTest::soloAbsorbsEditorStep()
 void MeetingUndoTest::removeParticipantDurableWithUndo()
 {
     const Meeting m = makeMeeting("Törlés");
-    MeetingUndoService* u = m_app->meetingUndo(m.id);
+    editing::MeetingUndoService* u = m_app->meetingUndo(m.id);
     QVERIFY(u);
     const QString cili = m_app->addParticipant(m.id, QStringLiteral("Molnár Eszter"));
     const QString dora = m_app->addParticipant(m.id, QStringLiteral("Szabó Bence"));
@@ -289,7 +289,7 @@ void MeetingUndoTest::removeParticipantDurableWithUndo()
     // Persistent: not there after a restart either.
     QVERIFY(m_app->removeParticipant(m.id, dora));
     m_app.reset();
-    m_app = std::make_unique<AppController>();
+    m_app = std::make_unique<app::AppController>();
     mm = m_app->store()->load(m.id);
     QVERIFY(!hasParticipant(mm, QStringLiteral("Szabó Bence")));
     QVERIFY(hasParticipant(mm, QStringLiteral("Molnár Eszter")));
@@ -298,7 +298,7 @@ void MeetingUndoTest::removeParticipantDurableWithUndo()
 
 void MeetingUndoTest::rejectSuggestedPersonForMeeting()
 {
-    TagService* tags = m_app->tags();
+    library::TagService* tags = m_app->tags();
     const Tag nord = tags->create(QStringLiteral("Nordvik"));
     const QStringList crew{QStringLiteral("Fehér Gábor"), QStringLiteral("Varga Árpád"),
                            QStringLiteral("Molnár Eszter"), QStringLiteral("Szabó Bence"), kSelf};
@@ -308,21 +308,21 @@ void MeetingUndoTest::rejectSuggestedPersonForMeeting()
     tags->refreshPersonStatsNow();
 
     // At most 3 suggestions; the own person and those already participants are left out.
-    QVector<PersonTagStat> sugg = tags->suggestPeopleForMeeting(target);
+    QVector<library::PersonTagStat> sugg = tags->suggestPeopleForMeeting(target);
     QCOMPARE(sugg.size(), 3);
-    for (const PersonTagStat& s : sugg) QVERIFY(s.name != kSelf);
+    for (const library::PersonTagStat& s : sugg) QVERIFY(s.name != kSelf);
     QCOMPARE(tags->suggestPeopleForMeeting(target, {}, 0).size(), 4);
     QCOMPARE(tags->suggestPeopleForMeeting(target, {QStringLiteral("fehér gábor")}, 0).size(), 3);
 
     // x on the suggested person: only for this meeting, persistent, in the shared stack.
-    MeetingUndoService* u = m_app->meetingUndo(target);
+    editing::MeetingUndoService* u = m_app->meetingUndo(target);
     QVERIFY(u);
     const QString gabor = QStringLiteral("Fehér Gábor");
     tags->rejectPersonForMeeting(gabor, target);
     QVERIFY(tags->isPersonRejectedForMeeting(gabor.toUpper(), target));
     QVERIFY(!tags->isPersonRejectedForMeeting(gabor, second));
     QCOMPARE(tags->suggestPeopleForMeeting(target, {}, 0).size(), 3);
-    for (const PersonTagStat& s : tags->suggestPeopleForMeeting(target, {}, 0)) QVERIFY(s.name != gabor);
+    for (const library::PersonTagStat& s : tags->suggestPeopleForMeeting(target, {}, 0)) QVERIFY(s.name != gabor);
     QCOMPARE(tags->suggestPeopleForMeeting(second, {}, 0).size(), 4);
     QCOMPARE(u->count(), 1);
     QCOMPARE(u->undoSource(), Source::Tags);
@@ -338,7 +338,7 @@ void MeetingUndoTest::rejectSuggestedPersonForMeeting()
     }
     QVERIFY(stored);
     {
-        TagService fresh(m_app->store(), path);
+        library::TagService fresh(m_app->store(), path);
         QVERIFY(fresh.isPersonRejectedForMeeting(gabor, target));
     }
 
@@ -368,9 +368,9 @@ void MeetingUndoTest::trackExcludeIncludeUndo()
         m.tracks.append(t);
     }
     m_app->store()->saveMeeting(m);
-    MeetingUndoService* u = m_app->meetingUndo(m.id);
+    editing::MeetingUndoService* u = m_app->meetingUndo(m.id);
     QVERIFY(u);
-    QSignalSpy tracks(m_app.get(), &AppController::tracksChanged);
+    QSignalSpy tracks(m_app.get(), &app::AppController::tracksChanged);
 
     m_app->excludeTrack(m.id, "b");
     QVERIFY(!m_app->store()->load(m.id).tracks.at(1).included());

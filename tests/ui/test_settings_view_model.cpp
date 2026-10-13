@@ -18,16 +18,16 @@
 #include "SettingsWindowHost.h"
 #include "TrackListModel.h"
 
-#include "tanara/AppController.h"
+#include "tanara/app/AppController.h"
 #include "tanara/foundation/paths/Paths.h"
-#include "tanara/SettingsManager.h"
-#include "tanara/audio/DeviceManager.h"
-#include "tanara/audio/TrackCatalog.h"
+#include "tanara/app/SettingsManager.h"
+#include "tanara/recording/audio/DeviceManager.h"
+#include "tanara/library/tracks/TrackCatalog.h"
 #include "tanara/cloud/CloudTypes.h"
-#include "tanara/detect/Autostart.h"
-#include "tanara/detect/IMeetingDetector.h"
-#include "tanara/store/JsonSerialization.h"
-#include "tanara/store/MeetingStore.h"
+#include "tanara/watcher/detect/Autostart.h"
+#include "tanara/watcher/detect/IMeetingDetector.h"
+#include "tanara/library/store/JsonSerialization.h"
+#include "tanara/library/store/MeetingStore.h"
 
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -44,7 +44,7 @@
 #include <memory>
 
 using namespace tanara_qml;
-using tanara::AppController;
+using tanara::app::AppController;
 using tanara::AppSettings;
 
 namespace {
@@ -117,12 +117,12 @@ public:
 };
 
 // ---- fake detector: returns the given signal ----
-class FakeDetector : public tanara::IMeetingDetector {
+class FakeDetector : public tanara::watcher::IMeetingDetector {
 public:
-    tanara::MeetingSignal signal;
+    tanara::watcher::MeetingSignal signal;
     QStringList configured;
     QString id() const override { return QStringLiteral("fake"); }
-    tanara::MeetingSignal poll() override { return signal; }
+    tanara::watcher::MeetingSignal poll() override { return signal; }
     bool isAvailable() const override { return true; }
     void configure(const QStringList& apps, const QString&) override { configured = apps; }
 };
@@ -404,7 +404,7 @@ private slots:
         QCOMPARE(settingsFile().value("audioQuality").toString(), QStringLiteral("medium"));
         QCOMPARE(settingsFile().value("detectorId").toString(), QStringLiteral("linux-capture"));
         // Without a change, saving writes nothing.
-        QSignalSpy changed(m_app->settings(), &tanara::SettingsManager::settingsChanged);
+        QSignalSpy changed(m_app->settings(), &tanara::app::SettingsManager::settingsChanged);
         QVERIFY(vm.save());
         QCOMPARE(changed.size(), 0);
     }
@@ -593,7 +593,7 @@ private slots:
         QCOMPARE(s.sttConfigs.value(QStringLiteral("whisper-compat")).extra.value(QStringLiteral("language")).toString(),
                  QStringLiteral("en"));
         // The key is in the KeyStore, not in the settings file.
-        QCOMPARE(m_app->secret(tanara::keys::SonioxApiKey), QStringLiteral("soniox-kulcs"));
+        QCOMPARE(m_app->secret(tanara::app::keys::SonioxApiKey), QStringLiteral("soniox-kulcs"));
         QFile f(m_app->settings()->settingsFilePath());
         QVERIFY(f.open(QIODevice::ReadOnly));
         QVERIFY(!f.readAll().contains("soniox-kulcs"));
@@ -741,7 +741,7 @@ private slots:
 
         // The test saved nothing.
         QVERIFY(vm.dirty());
-        QVERIFY(m_app->secret(tanara::keys::LlmApiKey).isEmpty());
+        QVERIFY(m_app->secret(tanara::app::keys::LlmApiKey).isEmpty());
         vm.discard();
         QCOMPARE(llm->testState(), QString());
     }
@@ -767,17 +767,17 @@ private slots:
         QCOMPARE(row(vm, 0, "renamed").toBool(), true);
         QCOMPARE(vm.changeCount(), 1);
         // Until saving, core does not know about it.
-        QCOMPARE(tanara::devicenames::displayName(raw), factory);
+        QCOMPARE(tanara::library::devicenames::displayName(raw), factory);
 
         QVERIFY(vm.save());
         QCOMPARE(live().deviceNames.value(raw), QStringLiteral("Saját mikrofonom"));
-        QCOMPARE(tanara::devicenames::displayName(raw), QStringLiteral("Saját mikrofonom"));
+        QCOMPARE(tanara::library::devicenames::displayName(raw), QStringLiteral("Saját mikrofonom"));
         // The tracks' name follows too (Tracks tab).
         tanara::Track t;
         t.id = QStringLiteral("t");
         t.deviceName = raw;
         t.kind = tanara::TrackKind::Other;
-        QCOMPARE(tanara::tracknames::friendlyNames({t}).first(), QStringLiteral("Saját mikrofonom"));
+        QCOMPARE(tanara::library::tracknames::friendlyNames({t}).first(), QStringLiteral("Saját mikrofonom"));
 
         // New window: the saved name shows.
         SettingsViewModel again;
@@ -790,7 +790,7 @@ private slots:
         QCOMPARE(again.changeCount(), 1);
         QVERIFY(again.save());
         QVERIFY(!live().deviceNames.contains(raw));
-        QCOMPARE(tanara::devicenames::displayName(raw), factory);
+        QCOMPARE(tanara::library::devicenames::displayName(raw), factory);
         // The other (still open) view model took it over too.
         QCOMPARE(row(vm, 0, "name").toString(), factory);
     }
@@ -928,7 +928,7 @@ private slots:
     void autostartSwitchNeverTouchesTheRealEntryInASandbox()
     {
         startApp();
-        const QString real = tanara::autostart::watcherEntryPath();
+        const QString real = tanara::watcher::autostart::watcherEntryPath();
         const bool existed = !real.isEmpty() && QFile::exists(real);
         const QDateTime stamp = existed ? QFileInfo(real).lastModified() : QDateTime();
         SettingsViewModel vm;
@@ -1191,8 +1191,8 @@ private slots:
         QCOMPARE(back.size(), 1);
         QVERIFY(vm.focusField().isEmpty());
         QVERIFY(!vm.stt()->highlighted());
-        QVERIFY(m_app->canRun(tanara::WorkflowStep::Transcribe, QString()).blockerKind
-                != tanara::BlockerKind::ProviderConfig);
+        QVERIFY(m_app->canRun(tanara::providers::WorkflowStep::Transcribe, QString()).blockerKind
+                != tanara::providers::BlockerKind::ProviderConfig);
     }
 
     // ---- Tanara Cloud --------------------------------------------------------------------

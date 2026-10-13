@@ -10,8 +10,8 @@
 #include "ReviewQueueModel.h"
 #include "TranscriptEditorViewModel.h"
 #include "TranscriptListModel.h"
-#include "tanara/edit/SpeakerEditor.h"
-#include "tanara/store/JsonSerialization.h"
+#include "tanara/editing/session/SpeakerEditor.h"
+#include "tanara/library/store/JsonSerialization.h"
 
 #include <QGuiApplication>
 #include <QQmlComponent>
@@ -115,7 +115,7 @@ class TestReviewOpeners : public QObject {
     QString current() const { return m_queue->currentUtterance(); }
     QVariantMap cur() const { return m_queue->current(); }
     QString stateOf(const QString& id) const { return m_queue->get(m_queue->indexOf(id)).value(QStringLiteral("state")).toString(); }
-    tanara::EditorUtterance utt(const QString& id) const { return m_vm->utterances().value(m_vm->utteranceIndexOf(id)); }
+    tanara::editing::EditorUtterance utt(const QString& id) const { return m_vm->utterances().value(m_vm->utteranceIndexOf(id)); }
     QString viewMode() const { return m_tab->property("viewMode").toString(); }
     QString playerLog() const { return m_player->property("log").toString(); }
     void clearLog() { m_player->setProperty("log", QString()); }

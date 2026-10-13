@@ -36,7 +36,7 @@ struct Track {
     // imported folder the CLI `align` command sets it (--auto: assumes a common end).
     qint64 startOffsetMs = 0;
     // Share of speech-level frames in the track's covered time (0..1); -1 = not measured yet.
-    // Filled by the speech check after recording / import (edit/TrackSpeech.h).
+    // Filled by the speech check after recording / import (editing/session/TrackSpeech.h).
     double speechRatio = -1.0;
     // Why it was left out of the mixdown: "" = included, "noSpeech" = no speech on it
     // (automatic), "manual" = the user removed it. A left-out track also has active == false.
@@ -67,7 +67,7 @@ struct Meeting {
     // Informational only: not sent to the transcriber or the summarizer.
     QString detectedCallApp;
     // Ids of the meeting's tags, in the order they were applied (the tag set lives in
-    // <metadataDir>/tags.json, see tags/TagService.h). "tags" in meeting.json.
+    // <metadataDir>/tags.json, see library/tags/TagService.h). "tags" in meeting.json.
     QStringList tagIds;
     // Participants (manual + voice-analysis candidates) and the approval. "participants" /
     // "participantApproval" in meeting.json.

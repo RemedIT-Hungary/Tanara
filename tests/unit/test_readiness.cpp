@@ -15,9 +15,9 @@
 #include <QTemporaryDir>
 #include <QStringList>
 
-#include "tanara/Types.h"
-#include "tanara/provider/ProviderRegistry.h"
-#include "tanara/provider/ReadinessModel.h"
+#include "tanara/domain/Types.h"
+#include "tanara/providers/core/ProviderRegistry.h"
+#include "tanara/providers/core/ReadinessModel.h"
 
 using namespace tanara;
 
@@ -62,13 +62,13 @@ Meeting meetingWithActiveTrack()
 }
 
 // A SecretProbe that returns false for EVERY secret (no key is set at all).
-ReadinessModel::SecretProbe noSecrets()
+providers::ReadinessModel::SecretProbe noSecrets()
 {
     return [](const QString&) { return false; };
 }
 
 // A SecretProbe that returns true ONLY for the listed keys.
-ReadinessModel::SecretProbe secretsPresent(QStringList keys)
+providers::ReadinessModel::SecretProbe secretsPresent(QStringList keys)
 {
     return [keys](const QString& k) { return keys.contains(k); };
 }
@@ -97,7 +97,7 @@ private slots:
     // ensure registration before every test (idempotent, see registerBuiltinProviders()).
     void initTestCase()
     {
-        registerBuiltinProviders();
+        providers::registerBuiltinProviders();
     }
 
     // Transcribe blocks if there is NO (active) audio track: the recording has not happened yet.
@@ -106,25 +106,25 @@ private slots:
     {
         // (a) completely empty tracks
         {
-            ReadinessModel model(makeSettings(), secretsPresent({ QStringLiteral("soniox.apiKey") }));
+            providers::ReadinessModel model(makeSettings(), secretsPresent({ QStringLiteral("soniox.apiKey") }));
             Meeting m;
             m.id = QStringLiteral("m-empty");
 
-            const ReadinessResult r = model.check(WorkflowStep::Transcribe, m);
+            const providers::ReadinessResult r = model.check(providers::WorkflowStep::Transcribe, m);
             QVERIFY(!r.runnable);
-            QCOMPARE(r.blockerKind, BlockerKind::MeetingState);
+            QCOMPARE(r.blockerKind, providers::BlockerKind::MeetingState);
             QCOMPARE(r.fixActionHint, QStringLiteral("record"));
         }
 
         // (b) there is a track, but all inactive (judged silent after the recording)
         {
-            ReadinessModel model(makeSettings(), secretsPresent({ QStringLiteral("soniox.apiKey") }));
+            providers::ReadinessModel model(makeSettings(), secretsPresent({ QStringLiteral("soniox.apiKey") }));
             Meeting m = meetingWithActiveTrack();
             m.tracks[0].active = false;
 
-            const ReadinessResult r = model.check(WorkflowStep::Transcribe, m);
+            const providers::ReadinessResult r = model.check(providers::WorkflowStep::Transcribe, m);
             QVERIFY(!r.runnable);
-            QCOMPARE(r.blockerKind, BlockerKind::MeetingState);
+            QCOMPARE(r.blockerKind, providers::BlockerKind::MeetingState);
             QCOMPARE(r.fixActionHint, QStringLiteral("record"));
         }
     }
@@ -133,12 +133,12 @@ private slots:
     // secret (apiKey) is missing. The provider config is the blocker, the missing field is "apiKey".
     void transcribe_blocksWhenSonioxKeyMissing()
     {
-        ReadinessModel model(makeSettings(), noSecrets());   // hasSecret is always false
+        providers::ReadinessModel model(makeSettings(), noSecrets());   // hasSecret is always false
         const Meeting m = meetingWithActiveTrack();          // there is an active track
 
-        const ReadinessResult r = model.check(WorkflowStep::Transcribe, m);
+        const providers::ReadinessResult r = model.check(providers::WorkflowStep::Transcribe, m);
         QVERIFY(!r.runnable);
-        QCOMPARE(r.blockerKind, BlockerKind::ProviderConfig);
+        QCOMPARE(r.blockerKind, providers::BlockerKind::ProviderConfig);
         QCOMPARE(r.providerId, QStringLiteral("soniox"));
         QCOMPARE(r.missingFieldKey, QStringLiteral("apiKey"));
     }
@@ -146,11 +146,11 @@ private slots:
     // Transcribe is RUNNABLE if there is an active track AND the Soniox key is set.
     void transcribe_runnableWithTrackAndKey()
     {
-        ReadinessModel model(makeSettings(),
+        providers::ReadinessModel model(makeSettings(),
                              secretsPresent({ QStringLiteral("soniox.apiKey") }));
         const Meeting m = meetingWithActiveTrack();
 
-        const ReadinessResult r = model.check(WorkflowStep::Transcribe, m);
+        const providers::ReadinessResult r = model.check(providers::WorkflowStep::Transcribe, m);
         QVERIFY(r.runnable);
     }
 
@@ -162,16 +162,16 @@ private slots:
         QTemporaryDir dir;
         QVERIFY(dir.isValid());
 
-        ReadinessModel model(makeSettings(),
+        providers::ReadinessModel model(makeSettings(),
                              secretsPresent({ QStringLiteral("llm.apiKey") }));
 
         Meeting m = meetingWithActiveTrack();
         m.folder        = dir.path();   // empty folder: no transcript file
         m.hasTranscript = false;
 
-        const ReadinessResult r = model.check(WorkflowStep::Summarize, m);
+        const providers::ReadinessResult r = model.check(providers::WorkflowStep::Summarize, m);
         QVERIFY(!r.runnable);
-        QCOMPARE(r.blockerKind, BlockerKind::MeetingState);
+        QCOMPARE(r.blockerKind, providers::BlockerKind::MeetingState);
         QVERIFY(!r.detail.isEmpty());
     }
 
@@ -187,15 +187,15 @@ private slots:
         AppSettings s = makeSettings();
         s.llmConfigs[QStringLiteral("openai-compat")].baseUrl = QString();   // the required field is empty
 
-        ReadinessModel model(s, secretsPresent({ QStringLiteral("llm.apiKey") }));
+        providers::ReadinessModel model(s, secretsPresent({ QStringLiteral("llm.apiKey") }));
 
         Meeting m = meetingWithActiveTrack();
         m.folder        = dir.path();   // there is a transcript.tokens.json
         m.hasTranscript = true;
 
-        const ReadinessResult r = model.check(WorkflowStep::Summarize, m);
+        const providers::ReadinessResult r = model.check(providers::WorkflowStep::Summarize, m);
         QVERIFY(!r.runnable);
-        QCOMPARE(r.blockerKind, BlockerKind::ProviderConfig);
+        QCOMPARE(r.blockerKind, providers::BlockerKind::ProviderConfig);
         QCOMPARE(r.providerId, QStringLiteral("openai-compat"));
         QCOMPARE(r.missingFieldKey, QStringLiteral("baseUrl"));
     }
@@ -205,24 +205,24 @@ private slots:
     // the descriptor's loginSecretKey (tanara.cloud.apiKey).
     void cloud_blocksUntilLoggedIn()
     {
-        registerCloudProviders();
+        providers::registerCloudProviders();
         AppSettings s = makeSettings();
         s.sttProviderId = QStringLiteral("tanara-cloud");
         s.llmProviderId = QStringLiteral("tanara-cloud");
         const Meeting m = meetingWithActiveTrack();
 
-        ReadinessModel out(s, noSecrets());
-        const ReadinessResult r = out.check(WorkflowStep::Transcribe, m);
+        providers::ReadinessModel out(s, noSecrets());
+        const providers::ReadinessResult r = out.check(providers::WorkflowStep::Transcribe, m);
         QVERIFY(!r.runnable);
-        QCOMPARE(r.blockerKind, BlockerKind::Auth);
+        QCOMPARE(r.blockerKind, providers::BlockerKind::Auth);
         QCOMPARE(r.fixActionHint, QStringLiteral("login:tanara-cloud"));
         QCOMPARE(r.detail, QStringLiteral("Jelentkezz be a Tanara Cloudba"));
 
-        ReadinessModel in(s, secretsPresent({ QStringLiteral("tanara.cloud.apiKey") }));
-        QVERIFY(in.check(WorkflowStep::Transcribe, m).runnable);
+        providers::ReadinessModel in(s, secretsPresent({ QStringLiteral("tanara.cloud.apiKey") }));
+        QVERIFY(in.check(providers::WorkflowStep::Transcribe, m).runnable);
         // The old "<id>.token" convention does not count as a sign-in for the cloud.
-        ReadinessModel legacy(s, secretsPresent({ QStringLiteral("tanara-cloud.token") }));
-        QVERIFY(!legacy.check(WorkflowStep::Transcribe, m).runnable);
+        providers::ReadinessModel legacy(s, secretsPresent({ QStringLiteral("tanara-cloud.token") }));
+        QVERIFY(!legacy.check(providers::WorkflowStep::Transcribe, m).runnable);
     }
 };
 

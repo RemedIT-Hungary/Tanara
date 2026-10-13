@@ -4,7 +4,7 @@
 #include "RecorderViewModel.h"
 #include "RecorderWindowHost.h"
 
-#include "tanara/AppController.h"
+#include "tanara/app/AppController.h"
 #include "tanara/foundation/log/Logging.h"
 
 #include <QQuickWindow>
@@ -24,13 +24,13 @@ tanara_qml::RecorderRequest toRecorderRequest(const RecorderArgs& ra)
     return r;
 }
 
-ShellRecorderHost::ShellRecorderHost(tanara::AppController* controller, QObject* parent)
+ShellRecorderHost::ShellRecorderHost(tanara::app::AppController* controller, QObject* parent)
     : QObject(parent), m_controller(controller)
 {
     // Recording ended with a hidden recorder (e.g. stopped from the tray): core restarts level
     // monitoring at the end (the recorder asked for it); if nobody is watching, we release the
     // microphone. Queued, because the restart happens AFTER the signal.
-    connect(m_controller, &tanara::AppController::recordingStateChanged, this,
+    connect(m_controller, &tanara::app::AppController::recordingStateChanged, this,
             [this](tanara::RecordingState st) {
                 if (st == tanara::RecordingState::Idle)
                     QTimer::singleShot(0, this, &ShellRecorderHost::releaseMonitorIfUnused);

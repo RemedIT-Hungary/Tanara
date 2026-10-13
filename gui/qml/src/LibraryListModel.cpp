@@ -4,15 +4,15 @@
 #include "LibraryDemoData.h"
 #include "ShellFormat.h"
 
-#include "tanara/AppController.h"
+#include "tanara/app/AppController.h"
 #include "tanara/foundation/text/Text.h"
-#include "tanara/tags/TagService.h"
+#include "tanara/library/tags/TagService.h"
 
 #include <algorithm>
 
 namespace tanara_qml {
 
-using tanara::LibraryEntry;
+using tanara::library::LibraryEntry;
 using tanara::StepState;
 
 namespace {
@@ -98,51 +98,51 @@ LibraryListModel::LibraryListModel(QObject* parent) : QAbstractListModel(parent)
     attach();
 }
 
-void LibraryListModel::setController(tanara::AppController* controller)
+void LibraryListModel::setController(tanara::app::AppController* controller)
 {
     m_controllerInjected = true;
     m_controller = controller;
     attach();
 }
 
-tanara::MeetingLibrary* LibraryListModel::library() const
+tanara::library::MeetingLibrary* LibraryListModel::library() const
 {
     return m_controller ? m_controller->library() : nullptr;
 }
 
 void LibraryListModel::attach()
 {
-    tanara::MeetingLibrary* lib = library();
+    tanara::library::MeetingLibrary* lib = library();
     if (lib != m_library) {
         if (m_library)
             m_library->disconnect(this);
         m_library = lib;
         if (lib) {
-            connect(lib, &tanara::MeetingLibrary::meetingAdded, this, [this](const QString&) {
+            connect(lib, &tanara::library::MeetingLibrary::meetingAdded, this, [this](const QString&) {
                 scheduleRefresh();
                 emit peopleOptionsChanged();
                 emit tagOptionsChanged();
             });
-            connect(lib, &tanara::MeetingLibrary::meetingRemoved, this, [this](const QString&) {
+            connect(lib, &tanara::library::MeetingLibrary::meetingRemoved, this, [this](const QString&) {
                 scheduleRefresh();
                 emit peopleOptionsChanged();
                 emit tagOptionsChanged();
             });
-            connect(lib, &tanara::MeetingLibrary::meetingChanged, this,
+            connect(lib, &tanara::library::MeetingLibrary::meetingChanged, this,
                     &LibraryListModel::onMeetingChanged);
-            connect(lib, &tanara::MeetingLibrary::reset, this, [this] {
+            connect(lib, &tanara::library::MeetingLibrary::reset, this, [this] {
                 scheduleRefresh();
                 emit peopleOptionsChanged();
                 emit tagOptionsChanged();
             });
             // The pool changed (rename, delete, merge): rows, chips, popover.
-            connect(lib, &tanara::MeetingLibrary::tagsChanged, this, [this] {
+            connect(lib, &tanara::library::MeetingLibrary::tagsChanged, this, [this] {
                 scheduleRefresh();
                 emit tagOptionsChanged();
                 emit tagFilterItemsChanged();
             });
             // After preloading, the text search's hits are complete.
-            connect(lib, &tanara::MeetingLibrary::warmedUp, this, [this] {
+            connect(lib, &tanara::library::MeetingLibrary::warmedUp, this, [this] {
                 if (!m_query.text.trimmed().isEmpty()) scheduleRefresh();
             });
         }
@@ -203,7 +203,7 @@ QVariant LibraryListModel::data(const QModelIndex& index, int role) const
                               : date + QStringLiteral(" · ") + fmt::shortDuration(e.durationMs);
     }
     case SectionRole:
-        return filtered() ? QString() : tanara::MeetingLibrary::sectionTitle(e.section);
+        return filtered() ? QString() : tanara::library::MeetingLibrary::sectionTitle(e.section);
     case TranscriptStateRole: return fmt::stepStateKey(e.state.transcriptState);
     case SummaryStateRole: return summaryKey(e);
     case IdentifyStateRole: return fmt::stepStateKey(e.state.identifyState);
@@ -375,7 +375,7 @@ QVariantList LibraryListModel::tagOptions() const
 QVariantList LibraryListModel::tagOptionsMatching(const QString& text) const
 {
     QVector<tanara::TagUsage> tags;
-    if (tanara::MeetingLibrary* lib = library(); lib && !m_forceEmpty)
+    if (tanara::library::MeetingLibrary* lib = library(); lib && !m_forceEmpty)
         tags = lib->tagOptions();
     else if (!lib && !m_forceEmpty && AppContext::instance()->demo())
         tags = demo::tagOptions();
@@ -397,7 +397,7 @@ QVariantList LibraryListModel::tagOptionsMatching(const QString& text) const
 int LibraryListModel::untaggedCount() const
 {
     if (m_forceEmpty) return 0;
-    if (tanara::MeetingLibrary* lib = library())
+    if (tanara::library::MeetingLibrary* lib = library())
         return lib->untaggedCount();
     if (AppContext::instance()->demo())
         return demo::untaggedCount();
@@ -423,12 +423,12 @@ QStringList LibraryListModel::tagLine(const QStringList& names)
     return out;
 }
 
-tanara::LibraryEntry LibraryListModel::entryFor(const QString& meetingId) const
+tanara::library::LibraryEntry LibraryListModel::entryFor(const QString& meetingId) const
 {
     const int row = indexOfMeeting(meetingId);
     if (row >= 0)
         return m_entries.at(row);
-    if (tanara::MeetingLibrary* lib = library())
+    if (tanara::library::MeetingLibrary* lib = library())
         return lib->entry(meetingId);
     if (AppContext::instance()->demo())
         return demo::entry(meetingId);
@@ -476,14 +476,14 @@ QString LibraryListModel::resultText() const
 
 QVariantList LibraryListModel::peopleOptions() const
 {
-    QVector<tanara::PersonPresence> people;
-    if (tanara::MeetingLibrary* lib = library())
+    QVector<tanara::library::PersonPresence> people;
+    if (tanara::library::MeetingLibrary* lib = library())
         people = lib->people();
     else if (AppContext::instance()->demo() && !m_forceEmpty)
         people = demo::people();
     QVariantList out;
     int i = 0;
-    for (const tanara::PersonPresence& p : std::as_const(people))
+    for (const tanara::library::PersonPresence& p : std::as_const(people))
         out.append(QVariantMap{{QStringLiteral("name"), p.name},
                                {QStringLiteral("count"), p.meetingCount},
                                {QStringLiteral("colorIndex"), i++}});
@@ -522,7 +522,7 @@ QString LibraryListModel::titleOf(const QString& meetingId) const
 
 void LibraryListModel::warmUp()
 {
-    if (tanara::MeetingLibrary* lib = library())
+    if (tanara::library::MeetingLibrary* lib = library())
         if (!lib->isWarm())
             lib->warmUp();
 }
@@ -534,11 +534,11 @@ void LibraryListModel::scheduleRefresh(int delayMs)
         m_refreshTimer.start(delayMs);
 }
 
-tanara::LibraryResult LibraryListModel::runQuery() const
+tanara::library::LibraryResult LibraryListModel::runQuery() const
 {
     if (m_forceEmpty)
         return {};
-    if (tanara::MeetingLibrary* lib = library())
+    if (tanara::library::MeetingLibrary* lib = library())
         return lib->query(m_query);
     if (AppContext::instance()->demo())
         return demo::query(m_query);
@@ -557,7 +557,7 @@ void LibraryListModel::onMeetingChanged(const QString& meetingId)
     // order (which is by start time) -> only that one row is refreshed. In a filtered list
     // membership can change too, so we query again.
     emit tagOptionsChanged();     // the tag counts may have changed
-    tanara::MeetingLibrary* lib = library();
+    tanara::library::MeetingLibrary* lib = library();
     const int row = indexOfMeeting(meetingId);
     if (!lib || filtered() || row < 0 || m_refreshTimer.isActive()) {
         scheduleRefresh();
@@ -574,7 +574,7 @@ void LibraryListModel::onMeetingChanged(const QString& meetingId)
     }
 }
 
-void LibraryListModel::apply(const tanara::LibraryResult& result)
+void LibraryListModel::apply(const tanara::library::LibraryResult& result)
 {
     const QVector<LibraryEntry>& fresh = result.entries;
     const int oldCount = int(m_entries.size());

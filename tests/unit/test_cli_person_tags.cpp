@@ -3,9 +3,9 @@
 #include <QtTest>
 #include <QTemporaryDir>
 
-#include "tanara/AppController.h"
-#include "tanara/store/MeetingStore.h"
-#include "tanara/tags/TagService.h"
+#include "tanara/app/AppController.h"
+#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/tags/TagService.h"
 
 using namespace tanara;
 
@@ -26,7 +26,7 @@ private slots:
         m_home = std::make_unique<QTemporaryDir>();
         QVERIFY(m_home->isValid());
         qputenv("TANARA_HOME", m_home->path().toUtf8());
-        AppController app;
+        app::AppController app;
         app.setUserSpeakerName(kSelf);
         const Tag nord = app.tags()->create(QStringLiteral("Nordvik"));
         for (int i = 1; i <= 3; ++i) {

@@ -8,10 +8,10 @@
 #include "SettingsProviderModel.h"
 #include "SettingsViewModel.h"
 
-#include "tanara/AppController.h"
-#include "tanara/SettingsManager.h"
-#include "tanara/embedding/EmbeddingProviderRegistry.h"
-#include "tanara/tags/TagService.h"
+#include "tanara/app/AppController.h"
+#include "tanara/app/SettingsManager.h"
+#include "tanara/providers/embedding/EmbeddingProviderRegistry.h"
+#include "tanara/library/tags/TagService.h"
 
 #include "../unit/fake_http.h"
 
@@ -22,8 +22,8 @@
 #include <memory>
 
 using namespace tanara_qml;
-using tanara::AppController;
-namespace embid = tanara::embeddingproviders;
+using tanara::app::AppController;
+namespace embid = tanara::providers::embeddingproviders;
 
 class TestSettingsEmbeddingModel : public QObject {
     Q_OBJECT
@@ -274,7 +274,7 @@ private slots:
         SettingsEmbeddingModel* emb = vm.embedding();
         QCOMPARE(emb->rejectedCount(), 0);
 
-        tanara::TagService* svc = m_app->tags();
+        tanara::library::TagService* svc = m_app->tags();
         const tanara::Tag t = svc->create(QStringLiteral("Nordvik"));
         tanara::TagSuggestion sug;
         sug.tagId = t.id;

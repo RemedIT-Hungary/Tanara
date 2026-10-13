@@ -8,7 +8,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 
-#include "tanara/llm/OpenAiCompatibleProvider.h"
+#include "tanara/providers/chat/OpenAiCompatibleProvider.h"
 
 using namespace tanara;
 
@@ -62,9 +62,9 @@ QByteArray completion(const QString& content, const QString& reasoning = QString
         .toJson(QJsonDocument::Compact);
 }
 
-LlmRequest userRequest()
+providers::LlmRequest userRequest()
 {
-    LlmRequest r;
+    providers::LlmRequest r;
     r.messages = {{QStringLiteral("system"), QStringLiteral("S")}, {QStringLiteral("user"), QStringLiteral("U")}};
     r.maxTokens = 123;
     return r;
@@ -102,10 +102,10 @@ QJsonObject LlmReasoningTest::roundTrip(const QString& model, const QString& rea
     cfg.baseUrl = srv.base();
     cfg.model = model;
     cfg.reasoning = reasoning;
-    OpenAiCompatibleProvider p(cfg);
-    LlmJob* job = p.chat(userRequest());
-    QSignalSpy fin(job, &LlmJob::finished);
-    QSignalSpy err(job, &LlmJob::failed);
+    providers::OpenAiCompatibleProvider p(cfg);
+    providers::LlmJob* job = p.chat(userRequest());
+    QSignalSpy fin(job, &providers::LlmJob::finished);
+    QSignalSpy err(job, &providers::LlmJob::failed);
     [&]() { QTRY_VERIFY_WITH_TIMEOUT(fin.count() + err.count() == 1, 5000); }();
     if (text && fin.count()) *text = fin[0][0].toString();
     if (error && err.count()) *error = err[0][0].toString();
@@ -117,8 +117,8 @@ void LlmReasoningTest::switchByModelFamily_data()
     QTest::addColumn<QString>("setting");
     QTest::addColumn<QString>("model");
     QTest::addColumn<int>("expected");
-    const int none = int(ReasoningSwitch::None), effort = int(ReasoningSwitch::Effort),
-              prefill = int(ReasoningSwitch::Prefill);
+    const int none = int(providers::ReasoningSwitch::None), effort = int(providers::ReasoningSwitch::Effort),
+              prefill = int(providers::ReasoningSwitch::Prefill);
     QTest::newRow("gemma auto") << "auto" << "google/gemma-4-12b-qat" << effort;
     QTest::newRow("gemma off") << "off" << "google/gemma-4-12b" << effort;
     QTest::newRow("qwen3.8 auto") << "auto" << "qwen3.8-27b" << prefill;
@@ -137,7 +137,7 @@ void LlmReasoningTest::switchByModelFamily()
     QFETCH(QString, setting);
     QFETCH(QString, model);
     QFETCH(int, expected);
-    QCOMPARE(int(reasoningSwitchFor(setting, model)), expected);
+    QCOMPARE(int(providers::reasoningSwitchFor(setting, model)), expected);
 }
 
 void LlmReasoningTest::requestBodies()
@@ -209,13 +209,13 @@ void LlmReasoningTest::onlyThinkingFails()
 
 void LlmReasoningTest::stripThinkingVariants()
 {
-    QCOMPARE(stripThinking(QStringLiteral("válasz")), QStringLiteral("válasz"));
-    QCOMPARE(stripThinking(QStringLiteral("  <think>x</think>  válasz")), QStringLiteral("válasz"));
-    QCOMPARE(stripThinking(QStringLiteral("<THINK>x</THINK>válasz")), QStringLiteral("válasz"));
-    QCOMPARE(stripThinking(QStringLiteral("</think>\n\nválasz")), QStringLiteral("válasz"));
-    QCOMPARE(stripThinking(QStringLiteral("<think>nincs vége")), QString());
+    QCOMPARE(providers::stripThinking(QStringLiteral("válasz")), QStringLiteral("válasz"));
+    QCOMPARE(providers::stripThinking(QStringLiteral("  <think>x</think>  válasz")), QStringLiteral("válasz"));
+    QCOMPARE(providers::stripThinking(QStringLiteral("<THINK>x</THINK>válasz")), QStringLiteral("válasz"));
+    QCOMPARE(providers::stripThinking(QStringLiteral("</think>\n\nválasz")), QStringLiteral("válasz"));
+    QCOMPARE(providers::stripThinking(QStringLiteral("<think>nincs vége")), QString());
     // Only the LEADING block counts; an in-text tag is part of the reply.
-    QCOMPARE(stripThinking(QStringLiteral("A <think> címke")), QStringLiteral("A <think> címke"));
+    QCOMPARE(providers::stripThinking(QStringLiteral("A <think> címke")), QStringLiteral("A <think> címke"));
 }
 
 #endif // Q_MOC_RUN

@@ -10,12 +10,12 @@
 #include <QTemporaryDir>
 #include <QtEndian>
 
-#include "tanara/AppController.h"
-#include "tanara/SettingsManager.h"
-#include "tanara/audio/TrackCatalog.h"
-#include "tanara/import/AudioImporter.h"
-#include "tanara/jobs/MeetingJobTracker.h"
-#include "tanara/store/MeetingStore.h"
+#include "tanara/app/AppController.h"
+#include "tanara/app/SettingsManager.h"
+#include "tanara/library/tracks/TrackCatalog.h"
+#include "tanara/library/import/AudioImporter.h"
+#include "tanara/library/jobs/MeetingJobTracker.h"
+#include "tanara/library/store/MeetingStore.h"
 
 using namespace tanara;
 
@@ -84,10 +84,10 @@ private:
     QString mono(const QString& name, int seconds, int freq = 440);
     QString stereoLeftOnly(const QString& name, int seconds);
     // Imports to the end; returns the finished meeting (empty id = failed).
-    Meeting importAndWait(AudioImporter& imp, const ImportRequest& req);
+    Meeting importAndWait(library::AudioImporter& imp, const library::ImportRequest& req);
 
     std::unique_ptr<QTemporaryDir> m_dir;
-    std::unique_ptr<MeetingStore> m_store;
+    std::unique_ptr<library::MeetingStore> m_store;
     bool m_ffmpeg = false;
 };
 
@@ -103,7 +103,7 @@ void AudioImportTest::init()
     m_dir = std::make_unique<QTemporaryDir>();
     QVERIFY(m_dir->isValid());
     QVERIFY(QDir().mkpath(m_dir->filePath("src")));
-    m_store = std::make_unique<MeetingStore>(m_dir->filePath("rec"), m_dir->filePath("meta"));
+    m_store = std::make_unique<library::MeetingStore>(m_dir->filePath("rec"), m_dir->filePath("meta"));
 }
 
 void AudioImportTest::cleanup()
@@ -131,10 +131,10 @@ QString AudioImportTest::stereoLeftOnly(const QString& name, int seconds)
     return path;
 }
 
-Meeting AudioImportTest::importAndWait(AudioImporter& imp, const ImportRequest& req)
+Meeting AudioImportTest::importAndWait(library::AudioImporter& imp, const library::ImportRequest& req)
 {
-    QSignalSpy finished(&imp, &AudioImporter::finished);
-    QSignalSpy failed(&imp, &AudioImporter::failed);
+    QSignalSpy finished(&imp, &library::AudioImporter::finished);
+    QSignalSpy failed(&imp, &library::AudioImporter::failed);
     const QString id = imp.start(req);
     if (id.isEmpty()) return {};
     for (int i = 0; i < 600 && finished.isEmpty() && failed.isEmpty(); ++i)
@@ -152,7 +152,7 @@ void AudioImportTest::probeReadsAudioFiles()
     const QString s = stereoLeftOnly("ketto.flac", 1);
     QVERIFY(!m.isEmpty() && !s.isEmpty());
 
-    const ImportFileInfo mi = audioimport::probe(m);
+    const library::ImportFileInfo mi = library::audioimport::probe(m);
     QVERIFY2(mi.ok, qPrintable(mi.error));
     QCOMPARE(mi.channels, 1);
     QCOMPARE(mi.sampleRate, 16000);
@@ -162,23 +162,23 @@ void AudioImportTest::probeReadsAudioFiles()
     QVERIFY(!mi.createdAt.isValid());
     QVERIFY(mi.modifiedAt.isValid());
     QCOMPARE(mi.bestDate(), mi.modifiedAt);
-    QVERIFY(!audioimport::splitByDefault(mi));
+    QVERIFY(!library::audioimport::splitByDefault(mi));
 
-    const ImportFileInfo si = audioimport::probe(s);
+    const library::ImportFileInfo si = library::audioimport::probe(s);
     QVERIFY(si.ok);
     QCOMPARE(si.channels, 2);
     QCOMPARE(si.codec, QStringLiteral("flac"));
-    QVERIFY(!audioimport::splitByDefault(si));   // plain stereo: the user decides
+    QVERIFY(!library::audioimport::splitByDefault(si));   // plain stereo: the user decides
 
     // The same in the background (the UI's path).
-    AudioImporter imp(m_store.get());
-    QSignalSpy probed(&imp, &AudioImporter::probed);
+    library::AudioImporter imp(m_store.get());
+    QSignalSpy probed(&imp, &library::AudioImporter::probed);
     imp.probeAsync(s);
     imp.probeAsync(src("nincs-ilyen.wav"));
     QTRY_COMPARE_WITH_TIMEOUT(probed.size(), 2, 10000);
     int okCount = 0;
     for (const auto& args : probed) {
-        const ImportFileInfo info = args.at(0).value<ImportFileInfo>();
+        const library::ImportFileInfo info = args.at(0).value<library::ImportFileInfo>();
         if (info.ok) { ++okCount; QCOMPARE(info.channels, 2); }
         else QVERIFY(info.error.contains("nincs-ilyen.wav"));
     }
@@ -192,37 +192,37 @@ void AudioImportTest::probeRejectsNonAudio()
     QVERIFY(text.open(QIODevice::WriteOnly));
     text.write("ez nem hang\n");
     text.close();
-    const ImportFileInfo ti = audioimport::probe(text.fileName());
+    const library::ImportFileInfo ti = library::audioimport::probe(text.fileName());
     QVERIFY(!ti.ok);
     QVERIFY(ti.error.contains("jegyzet.txt"));
 
     // A video without audio: a recognizable file, but there is no audio in it.
     const QString silentVideo = src("nema.mkv");
     QVERIFY(ffmpeg({"-f", "lavfi", "-i", "testsrc=duration=1:size=64x64:rate=5", "-c:v", "mjpeg", silentVideo}));
-    const ImportFileInfo vi = audioimport::probe(silentVideo);
+    const library::ImportFileInfo vi = library::audioimport::probe(silentVideo);
     QVERIFY(!vi.ok);
     QVERIFY2(vi.error.contains("nincs hang"), qPrintable(vi.error));
 
-    const ImportFileInfo missing = audioimport::probe(src("nincs.wav"));
+    const library::ImportFileInfo missing = library::audioimport::probe(src("nincs.wav"));
     QVERIFY(!missing.ok);
     QVERIFY(missing.error.contains("nem található"));
 }
 
 void AudioImportTest::planAndDefaults()
 {
-    ImportFileInfo monoInfo;   monoInfo.ok = true;   monoInfo.channels = 1;
-    ImportFileInfo stereoInfo; stereoInfo.ok = true; stereoInfo.channels = 2;
-    ImportFileInfo quadInfo;   quadInfo.ok = true;   quadInfo.channels = 4;
+    library::ImportFileInfo monoInfo;   monoInfo.ok = true;   monoInfo.channels = 1;
+    library::ImportFileInfo stereoInfo; stereoInfo.ok = true; stereoInfo.channels = 2;
+    library::ImportFileInfo quadInfo;   quadInfo.ok = true;   quadInfo.channels = 4;
 
     // One stereo file without splitting: one stereo track named after the file.
-    auto plan = audioimport::planTracks({{"/x/Interjú Kovács.wav", false}}, {stereoInfo});
+    auto plan = library::audioimport::planTracks({{"/x/Interjú Kovács.wav", false}}, {stereoInfo});
     QCOMPARE(plan.size(), 1);
     QCOMPARE(plan[0].name, QStringLiteral("Interjú Kovács"));
     QCOMPARE(plan[0].channels, 2);
     QCOMPARE(plan[0].channel, -1);
 
     // Split: left / right, mono tracks.
-    plan = audioimport::planTracks({{"/x/Interjú Kovács.wav", true}}, {stereoInfo});
+    plan = library::audioimport::planTracks({{"/x/Interjú Kovács.wav", true}}, {stereoInfo});
     QCOMPARE(plan.size(), 2);
     QCOMPARE(plan[0].name, QStringLiteral("Bal csatorna"));
     QCOMPARE(plan[1].name, QStringLiteral("Jobb csatorna"));
@@ -230,41 +230,41 @@ void AudioImportTest::planAndDefaults()
     QCOMPARE(plan[1].channels, 1);
 
     // On a mono file the split has no effect; four channels get a number, with several files the file name.
-    plan = audioimport::planTracks({{"/x/a.wav", true}, {"/x/zoom h6.wav", true}}, {monoInfo, quadInfo});
+    plan = library::audioimport::planTracks({{"/x/a.wav", true}, {"/x/zoom h6.wav", true}}, {monoInfo, quadInfo});
     QCOMPARE(plan.size(), 5);
     QCOMPARE(plan[0].name, QStringLiteral("a"));
     QCOMPARE(plan[1].name, QStringLiteral("zoom h6 – 1. csatorna"));
     QCOMPARE(plan[4].name, QStringLiteral("zoom h6 – 4. csatorna"));
-    QVERIFY(audioimport::splitByDefault(quadInfo));
+    QVERIFY(library::audioimport::splitByDefault(quadInfo));
     quadInfo.hasVideo = true;
-    QVERIFY(!audioimport::splitByDefault(quadInfo));   // a film's 5.1 audio: not split by itself
+    QVERIFY(!library::audioimport::splitByDefault(quadInfo));   // a film's 5.1 audio: not split by itself
 
     // Four channels without splitting are mixed down to stereo.
-    plan = audioimport::planTracks({{"/x/zoom h6.wav", false}}, {quadInfo});
+    plan = library::audioimport::planTracks({{"/x/zoom h6.wav", false}}, {quadInfo});
     QCOMPARE(plan[0].channels, 2);
 
     // The track name stays the full file name even after TrackCatalog's abbreviation.
     for (const QString& file : {QStringLiteral("/x/Kovács - 2. rész.mp3"), QStringLiteral("/x/felvétel (1).wav"),
                                 QStringLiteral("/x/Monitor of valami.wav")}) {
-        const QString name = audioimport::planTracks({{file, false}}, {monoInfo}).first().name;
-        QCOMPARE(tracknames::shortDeviceName(name), name);
+        const QString name = library::audioimport::planTracks({{file, false}}, {monoInfo}).first().name;
+        QCOMPARE(library::tracknames::shortDeviceName(name), name);
         QVERIFY(name.size() >= QFileInfo(file).completeBaseName().size());
     }
 
     // Title: one file gives its name; several give the common beginning (if meaningful), otherwise the first.
-    QCOMPARE(audioimport::defaultTitle({"/x/Interjú Kovács.wav"}), QStringLiteral("Interjú Kovács"));
-    QCOMPARE(audioimport::defaultTitle({"/x/Kutatás 12 - mikrofon.wav", "/y/Kutatás 12 - vonal.wav"}),
+    QCOMPARE(library::audioimport::defaultTitle({"/x/Interjú Kovács.wav"}), QStringLiteral("Interjú Kovács"));
+    QCOMPARE(library::audioimport::defaultTitle({"/x/Kutatás 12 - mikrofon.wav", "/y/Kutatás 12 - vonal.wav"}),
              QStringLiteral("Kutatás 12"));
-    QCOMPARE(audioimport::defaultTitle({"/x/alfa.wav", "/x/beta.wav"}), QStringLiteral("alfa"));
-    QVERIFY(!audioimport::defaultTitle({}).isEmpty());
+    QCOMPARE(library::audioimport::defaultTitle({"/x/alfa.wav", "/x/beta.wav"}), QStringLiteral("alfa"));
+    QVERIFY(!library::audioimport::defaultTitle({}).isEmpty());
 
     // Date: the embedded time beats the modification time; with several files the earliest.
-    ImportFileInfo a, b;
+    library::ImportFileInfo a, b;
     a.modifiedAt = QDateTime(QDate(2025, 3, 2), QTime(10, 0));
     b.modifiedAt = QDateTime(QDate(2025, 5, 1), QTime(9, 0));
     b.createdAt  = QDateTime(QDate(2025, 1, 15), QTime(8, 30));
-    QCOMPARE(audioimport::defaultStart({a, b}), b.createdAt);
-    QCOMPARE(audioimport::defaultStart({a}), a.modifiedAt);
+    QCOMPARE(library::audioimport::defaultStart({a, b}), b.createdAt);
+    QCOMPARE(library::audioimport::defaultStart({a}), a.modifiedAt);
 }
 
 // ---- importing ----
@@ -282,12 +282,12 @@ void AudioImportTest::importsMonoFile()
     }
     const qint64 sizeBefore = QFileInfo(file).size();
 
-    AudioImporter imp(m_store.get());
+    library::AudioImporter imp(m_store.get());
     imp.setOpusBitrateKbps(32);
-    QSignalSpy started(&imp, &AudioImporter::started);
-    QSignalSpy progress(&imp, &AudioImporter::progress);
-    QSignalSpy updated(m_store.get(), &MeetingStore::meetingUpdated);
-    ImportRequest req;
+    QSignalSpy started(&imp, &library::AudioImporter::started);
+    QSignalSpy progress(&imp, &library::AudioImporter::progress);
+    QSignalSpy updated(m_store.get(), &library::MeetingStore::meetingUpdated);
+    library::ImportRequest req;
     req.sources = {{file, false}};
     const Meeting m = importAndWait(imp, req);
     QVERIFY(!m.id.isEmpty());
@@ -320,7 +320,7 @@ void AudioImportTest::importsMonoFile()
     QCOMPARE(t.startOffsetMs, qint64(0));   // imported file: from the start of the meeting
 
     // The track is Opus/ogg, 48 kHz: the same form as the recorded tracks.
-    const ImportFileInfo out = audioimport::probe(QDir(stored.folder).filePath(t.file));
+    const library::ImportFileInfo out = library::audioimport::probe(QDir(stored.folder).filePath(t.file));
     QVERIFY(out.ok);
     QCOMPARE(out.codec, QStringLiteral("opus"));
     QCOMPARE(out.sampleRate, 48000);
@@ -328,9 +328,9 @@ void AudioImportTest::importsMonoFile()
     QVERIFY(peakOf(QDir(stored.folder).filePath(t.file)) > 0.05);
 
     // The Tracks tab's view: the file name is the track name, the file exists.
-    const QVector<TrackView> views = TrackCatalog::tracks(stored);
+    const QVector<library::TrackView> views = library::TrackCatalog::tracks(stored);
     QCOMPARE(views.first().displayName, QStringLiteral("Interjú Kovács"));
-    QCOMPARE(views.first().role, TrackRole::Other);
+    QCOMPARE(views.first().role, library::TrackRole::Other);
     QVERIFY(!views.first().fileMissing);
 
     // Real progress: does not decrease, ends at 100.
@@ -358,10 +358,10 @@ void AudioImportTest::stereoKeptOrSplit()
     if (!m_ffmpeg) QSKIP("ffmpeg / ffprobe nincs telepítve");
     const QString file = stereoLeftOnly("ketmikrofon.wav", 2);
     QVERIFY(!file.isEmpty());
-    AudioImporter imp(m_store.get());
+    library::AudioImporter imp(m_store.get());
 
     // Without splitting: one stereo track; given title and date.
-    ImportRequest whole;
+    library::ImportRequest whole;
     whole.sources = {{file, false}};
     whole.title = QStringLiteral("  Páros interjú ");
     whole.startedAt = QDateTime(QDate(2023, 2, 1), QTime(9, 15));
@@ -371,10 +371,10 @@ void AudioImportTest::stereoKeptOrSplit()
     QCOMPARE(a.startedAt, whole.startedAt);
     QCOMPARE(a.tracks.size(), 1);
     QCOMPARE(a.tracks[0].channels, 2);
-    QCOMPARE(audioimport::probe(QDir(a.folder).filePath(a.tracks[0].file)).channels, 2);
+    QCOMPARE(library::audioimport::probe(QDir(a.folder).filePath(a.tracks[0].file)).channels, 2);
 
     // Split: two mono tracks; the left plays, the right is silent (the channels do not mix).
-    ImportRequest split = whole;
+    library::ImportRequest split = whole;
     split.sources = {{file, true}};
     const Meeting b = importAndWait(imp, split);
     QVERIFY(!b.id.isEmpty());
@@ -386,11 +386,11 @@ void AudioImportTest::stereoKeptOrSplit()
     for (const Track& t : b.tracks) {
         QCOMPARE(t.channels, 1);
         QCOMPARE(t.kind, TrackKind::Other);
-        QCOMPARE(audioimport::probe(QDir(b.folder).filePath(t.file)).channels, 1);
+        QCOMPARE(library::audioimport::probe(QDir(b.folder).filePath(t.file)).channels, 1);
     }
     QVERIFY(peakOf(QDir(b.folder).filePath(b.tracks[0].file)) > 0.2);
     QVERIFY(peakOf(QDir(b.folder).filePath(b.tracks[1].file)) < 0.01);
-    QCOMPARE(tracknames::friendlyNames(b.tracks), QStringList({"Bal csatorna", "Jobb csatorna"}));
+    QCOMPARE(library::tracknames::friendlyNames(b.tracks), QStringList({"Bal csatorna", "Jobb csatorna"}));
     QCOMPARE(m_store->loadAll().size(), 2);
 }
 
@@ -401,10 +401,10 @@ void AudioImportTest::multipleFilesWithOwnTrack()
     const QString theirs = stereoLeftOnly("Kutatás 7 - terem.ogg", 3);
     QVERIFY(!mine.isEmpty() && !theirs.isEmpty());
 
-    AudioImporter imp(m_store.get());
+    library::AudioImporter imp(m_store.get());
     imp.setUserSpeakerName(QStringLiteral("Minta Márta"));
-    QSignalSpy progress(&imp, &AudioImporter::progress);
-    ImportRequest req;
+    QSignalSpy progress(&imp, &library::AudioImporter::progress);
+    library::ImportRequest req;
     req.sources = {{mine, false}, {theirs, true}};
     req.ownTrack = 0;
     const Meeting m = importAndWait(imp, req);
@@ -419,7 +419,7 @@ void AudioImportTest::multipleFilesWithOwnTrack()
     QCOMPARE(m.tracks[0].speakerLabel, QStringLiteral("Minta Márta"));
     QCOMPARE(m.tracks[1].kind, TrackKind::Other);
     QVERIFY(!m.tracks[1].fixedSpeaker);
-    QCOMPARE(tracknames::friendlyNames(m.tracks),
+    QCOMPARE(library::tracknames::friendlyNames(m.tracks),
              QStringList({"Saját mikrofon", "Kutatás 7 – terem – Bal csatorna",
                           "Kutatás 7 – terem – Jobb csatorna"}));
     // Unique track ids and files.
@@ -443,21 +443,21 @@ void AudioImportTest::videoContainerUsesEmbeddedDate()
                     "-f", "lavfi", "-i", "sine=frequency=330:duration=2",
                     "-c:v", "mjpeg", "-c:a", "pcm_s16le", "-shortest",
                     "-metadata", "creation_time=2024-03-05T10:20:30Z", video}));
-    const ImportFileInfo info = audioimport::probe(video);
+    const library::ImportFileInfo info = library::audioimport::probe(video);
     QVERIFY2(info.ok, qPrintable(info.error));
     QVERIFY(info.hasVideo);
     QVERIFY(info.createdAt.isValid());
     QCOMPARE(info.createdAt.toUTC(), QDateTime(QDate(2024, 3, 5), QTime(10, 20, 30), QTimeZone::UTC));
 
-    AudioImporter imp(m_store.get());
-    ImportRequest req;
+    library::AudioImporter imp(m_store.get());
+    library::ImportRequest req;
     req.sources = {{video, false}};
     const Meeting m = importAndWait(imp, req);
     QVERIFY(!m.id.isEmpty());
     QCOMPARE(m.startedAt.toUTC(), info.createdAt.toUTC());   // the embedded time, not the file's
     QCOMPARE(m.tracks.size(), 1);
     // Only the audio went in.
-    const ImportFileInfo out = audioimport::probe(QDir(m.folder).filePath(m.tracks[0].file));
+    const library::ImportFileInfo out = library::audioimport::probe(QDir(m.folder).filePath(m.tracks[0].file));
     QVERIFY(out.ok);
     QVERIFY(!out.hasVideo);
     QCOMPARE(out.codec, QStringLiteral("opus"));
@@ -472,10 +472,10 @@ void AudioImportTest::nonAudioFileFailsCleanly()
     text.write("ez nem hang\n");
     text.close();
 
-    AudioImporter imp(m_store.get());
-    QSignalSpy failed(&imp, &AudioImporter::failed);
-    QSignalSpy finished(&imp, &AudioImporter::finished);
-    ImportRequest req;
+    library::AudioImporter imp(m_store.get());
+    QSignalSpy failed(&imp, &library::AudioImporter::failed);
+    QSignalSpy finished(&imp, &library::AudioImporter::finished);
+    library::ImportRequest req;
     req.sources = {{good, false}, {text.fileName(), false}};
     const QString id = imp.start(req);
     QVERIFY(!id.isEmpty());
@@ -490,7 +490,7 @@ void AudioImportTest::nonAudioFileFailsCleanly()
     QVERIFY(m_store->loadAll().isEmpty());
 
     // An empty request: an error that also arrives in a signal.
-    QVERIFY(!imp.start(ImportRequest{}).isEmpty());
+    QVERIFY(!imp.start(library::ImportRequest{}).isEmpty());
     QTRY_COMPARE_WITH_TIMEOUT(failed.size(), 2, 5000);
     QVERIFY(!imp.busy());
 }
@@ -502,12 +502,12 @@ void AudioImportTest::cancelLeavesNothing()
     const QString big = mono("hosszu.wav", 2400);
     QVERIFY(!big.isEmpty());
 
-    AudioImporter imp(m_store.get());
-    QSignalSpy progress(&imp, &AudioImporter::progress);
-    QSignalSpy cancelled(&imp, &AudioImporter::cancelled);
-    QSignalSpy finished(&imp, &AudioImporter::finished);
-    QSignalSpy failed(&imp, &AudioImporter::failed);
-    ImportRequest req;
+    library::AudioImporter imp(m_store.get());
+    QSignalSpy progress(&imp, &library::AudioImporter::progress);
+    QSignalSpy cancelled(&imp, &library::AudioImporter::cancelled);
+    QSignalSpy finished(&imp, &library::AudioImporter::finished);
+    QSignalSpy failed(&imp, &library::AudioImporter::failed);
+    library::ImportRequest req;
     req.sources = {{big, false}};
     const QString id = imp.start(req);
     // We wait until it really encodes (a real percentage arrives), and cancel there.
@@ -526,7 +526,7 @@ void AudioImportTest::cancelLeavesNothing()
 
     // After the cancel a new one can start at once.
     const QString small = mono("rovid.wav", 1);
-    ImportRequest again;
+    library::ImportRequest again;
     again.sources = {{small, false}};
     QVERIFY(!importAndWait(imp, again).id.isEmpty());
     QCOMPARE(m_store->loadAll().size(), 1);
@@ -538,15 +538,15 @@ void AudioImportTest::controllerRunsImportAsJob()
 {
     if (!m_ffmpeg) QSKIP("ffmpeg / ffprobe nincs telepítve");
     qputenv("TANARA_HOME", m_dir->filePath("home").toUtf8());
-    AppController app;
+    app::AppController app;
     QVERIFY(app.settings()->settings().audioDir.startsWith(m_dir->path()));
     const QString file = stereoLeftOnly("megbeszeles.wav", 2);
 
-    QSignalSpy imported(&app, &AppController::importFinished);
-    QSignalSpy jobFinished(app.jobs(), &MeetingJobTracker::jobFinished);
-    QSignalSpy mixed(&app, &AppController::mixdownUpdated);
-    QSignalSpy added(app.store(), &MeetingStore::meetingUpdated);
-    ImportRequest req;
+    QSignalSpy imported(&app, &app::AppController::importFinished);
+    QSignalSpy jobFinished(app.jobs(), &library::MeetingJobTracker::jobFinished);
+    QSignalSpy mixed(&app, &app::AppController::mixdownUpdated);
+    QSignalSpy added(app.store(), &library::MeetingStore::meetingUpdated);
+    library::ImportRequest req;
     req.sources = {{file, true}};
     const QString id = app.importAudio(req);
     QVERIFY(!id.isEmpty());
@@ -581,7 +581,7 @@ void AudioImportTest::controllerCancelAndManualMixdown()
 {
     if (!m_ffmpeg) QSKIP("ffmpeg / ffprobe nincs telepítve");
     qputenv("TANARA_HOME", m_dir->filePath("home").toUtf8());
-    AppController app;
+    app::AppController app;
     AppSettings s = app.settings()->settings();
     s.mixdownMode = QStringLiteral("manual");
     s.audioQuality = QStringLiteral("low");
@@ -590,9 +590,9 @@ void AudioImportTest::controllerCancelAndManualMixdown()
 
     // Cancel through the job layer.
     const QString big = mono("hosszu.wav", 2400);
-    QSignalSpy jobFinished(app.jobs(), &MeetingJobTracker::jobFinished);
-    QSignalSpy cancelled(&app, &AppController::importCancelled);
-    ImportRequest req;
+    QSignalSpy jobFinished(app.jobs(), &library::MeetingJobTracker::jobFinished);
+    QSignalSpy cancelled(&app, &app::AppController::importCancelled);
+    library::ImportRequest req;
     req.sources = {{big, false}};
     const QString id = app.importAudio(req);
     QTRY_VERIFY_WITH_TIMEOUT(app.jobs()->job(id, JobKind::Import).percent > 0, 20000);
@@ -605,8 +605,8 @@ void AudioImportTest::controllerCancelAndManualMixdown()
     QVERIFY(everythingIn(audioDir).isEmpty());
 
     // A broken file: importFailed, the job ends Failed, no meeting remains.
-    QSignalSpy failed(&app, &AppController::importFailed);
-    ImportRequest bad;
+    QSignalSpy failed(&app, &app::AppController::importFailed);
+    library::ImportRequest bad;
     bad.sources = {{src("nincs-ilyen.wav"), false}};
     const QString badId = app.importAudio(bad);
     QTRY_COMPARE_WITH_TIMEOUT(failed.size(), 1, 10000);
@@ -615,9 +615,9 @@ void AudioImportTest::controllerCancelAndManualMixdown()
     QVERIFY(app.store()->loadAll().isEmpty());
 
     // Manual mixdown mode: no mixing starts after import; the track has the configured quality.
-    QSignalSpy imported(&app, &AppController::importFinished);
-    QSignalSpy mixed(&app, &AppController::mixdownUpdated);
-    ImportRequest ok;
+    QSignalSpy imported(&app, &app::AppController::importFinished);
+    QSignalSpy mixed(&app, &app::AppController::mixdownUpdated);
+    library::ImportRequest ok;
     ok.sources = {{mono("rovid.wav", 2), false}};
     const QString okId = app.importAudio(ok);
     QTRY_COMPARE_WITH_TIMEOUT(imported.size(), 1, 20000);

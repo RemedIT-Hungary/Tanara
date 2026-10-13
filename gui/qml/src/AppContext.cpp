@@ -1,7 +1,7 @@
-#include "tanara/Types.h"
+#include "tanara/domain/Types.h"
 #include "AppContext.h"
 
-#include "tanara/AppController.h"
+#include "tanara/app/AppController.h"
 
 #include <QGuiApplication>
 #include <QJSEngine>
@@ -78,9 +78,9 @@ void AppContext::setDemo(bool demo)
     emit demoChanged();
 }
 
-tanara::AppController* AppContext::controller() const
+tanara::app::AppController* AppContext::controller() const
 {
-    return qobject_cast<tanara::AppController*>(m_controller.data());
+    return qobject_cast<tanara::app::AppController*>(m_controller.data());
 }
 
 QObject* AppContext::controllerObject() const
@@ -88,7 +88,7 @@ QObject* AppContext::controllerObject() const
     return m_controller.data();
 }
 
-void AppContext::setController(tanara::AppController* controller)
+void AppContext::setController(tanara::app::AppController* controller)
 {
     if (controller == m_controller.data())
         return;

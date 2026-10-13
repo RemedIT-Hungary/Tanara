@@ -9,7 +9,7 @@
 #include "QmlApp.h"
 #include "TranscriptEditorViewModel.h"
 #include "TranscriptListModel.h"
-#include "tanara/edit/SpeakerEditor.h"
+#include "tanara/editing/session/SpeakerEditor.h"
 
 #include <QQmlComponent>
 #include <QQmlEngine>

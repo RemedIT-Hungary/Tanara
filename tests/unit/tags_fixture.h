@@ -9,7 +9,7 @@
 #include <QJsonObject>
 #include <QStringList>
 
-#include "tanara/store/MeetingStore.h"
+#include "tanara/library/store/MeetingStore.h"
 
 namespace tagsfixture {
 
@@ -26,7 +26,7 @@ inline void writeSegments(const QString& folder, const QStringList& lines)
     if (f.open(QIODevice::WriteOnly)) f.write(QJsonDocument(arr).toJson());
 }
 
-inline QString addMeeting(tanara::MeetingStore& store, const QString& title, const QDate& day,
+inline QString addMeeting(tanara::library::MeetingStore& store, const QString& title, const QDate& day,
                           const QStringList& people, const QStringList& lines)
 {
     tanara::Meeting m = store.createMeeting(title);
@@ -48,7 +48,7 @@ struct Library {
     QString nordvik1, nordvik2, budget1, budget2, museum1, museum2;
 };
 
-inline Library buildLibrary(tanara::MeetingStore& store)
+inline Library buildLibrary(tanara::library::MeetingStore& store)
 {
     Library l;
     l.nordvik1 = addMeeting(store, "Nordvik ütemterv egyeztetés", QDate(2026, 9, 1),

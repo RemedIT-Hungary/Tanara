@@ -2,18 +2,18 @@
 #include "ReviewCommand.h"
 #include "tanara/foundation/time/TimeFormat.h"
 
-#include "tanara/SettingsManager.h"
-#include "tanara/edit/CandidateRanker.h"
-#include "tanara/edit/ReviewGroups.h"
-#include "tanara/edit/SpeakerAnalysis.h"
-#include "tanara/edit/SpeakerOverlay.h"
-#include "tanara/edit/TrackActivity.h"
-#include "tanara/edit/UtteranceEmbeddings.h"
-#include "tanara/store/MeetingStore.h"
-#include "tanara/store/PeopleStore.h"
-#include "tanara/store/VoiceprintStore.h"
-#include "tanara/voiceid/EmbeddingSet.h"
-#include "tanara/voiceid/VoiceModelRegistry.h"
+#include "tanara/app/SettingsManager.h"
+#include "tanara/editing/review/CandidateRanker.h"
+#include "tanara/editing/review/ReviewGroups.h"
+#include "tanara/editing/review/SpeakerAnalysis.h"
+#include "tanara/editing/session/SpeakerOverlay.h"
+#include "tanara/processing/analysis/TrackActivity.h"
+#include "tanara/processing/analysis/UtteranceEmbeddings.h"
+#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/store/PeopleStore.h"
+#include "tanara/library/store/VoiceprintStore.h"
+#include "tanara/processing/voiceid/EmbeddingSet.h"
+#include "tanara/processing/voiceid/VoiceModelRegistry.h"
 
 #include <QFileInfo>
 #include <QJsonArray>
@@ -38,7 +38,7 @@ QJsonValue jnum(double v) { return std::isnan(v) ? QJsonValue() : QJsonValue(v);
 
 QJsonObject evidenceJson(const Evidence& e)
 {
-    return {{"kind", ranking::evidenceKindName(e.kind)}, {"polarity", ranking::polarityName(e.polarity)},
+    return {{"kind", editing::ranking::evidenceKindName(e.kind)}, {"polarity", editing::ranking::polarityName(e.polarity)},
             {"value", jnum(e.value)}, {"fixTarget", e.fixTarget}};
 }
 
@@ -46,7 +46,7 @@ QString evidenceText(const Evidence& e)
 {
     const QChar sign = e.polarity == Polarity::Support ? QLatin1Char('+')
                      : e.polarity == Polarity::Contradict ? QLatin1Char('-') : QLatin1Char('~');
-    QString s = ranking::evidenceKindName(e.kind) + sign + QLatin1Char(' ') + num(e.value);
+    QString s = editing::ranking::evidenceKindName(e.kind) + sign + QLatin1Char(' ') + num(e.value);
     if (!e.fixTarget.isEmpty()) s += QStringLiteral(" [fix: %1]").arg(e.fixTarget);
     return s;
 }
@@ -61,14 +61,14 @@ QJsonObject candidateJson(const Candidate& c)
 
 // The people's stored voiceprints as fusion vectors (including sibling voiceprints, i.e. the
 // same sample under other models); only those with the requested dimension.
-QHash<QString, QVector<QVector<float>>> fusedPrints(const VoiceprintStore& vp, const QStringList& models, int dim)
+QHash<QString, QVector<QVector<float>>> fusedPrints(const library::VoiceprintStore& vp, const QStringList& models, int dim)
 {
     QHash<QString, QVector<QVector<float>>> out;
     for (const QString& person : vp.people()) {
-        for (const QVector<Voiceprint>& group : VoiceprintStore::siblingGroups(vp.printsFor(person))) {
+        for (const QVector<Voiceprint>& group : library::VoiceprintStore::siblingGroups(vp.printsFor(person))) {
             EmbeddingSet set;
             for (const Voiceprint& p : group) set.insert(p.model, p.embedding);
-            const QVector<float> f = fusion::fuse(set, models);
+            const QVector<float> f = processing::fusion::fuse(set, models);
             if (!f.isEmpty() && f.size() == dim) out[person].append(f);
         }
     }
@@ -95,44 +95,44 @@ int runReviewCommand(const QStringList& args)
     }
     folder = QFileInfo(folder).absoluteFilePath();
 
-    Meeting m = MeetingStore::readMeetingFolder(folder);
+    Meeting m = library::MeetingStore::readMeetingFolder(folder);
     if (m.id.isEmpty()) { err() << "Not a meeting folder (no readable meeting.json): " << folder << "\n"; return 1; }
     m.folder = folder;
-    const QVector<TranscriptLine> lines = speakeredit::loadTranscriptLines(folder);
+    const QVector<TranscriptLine> lines = editing::speakeredit::loadTranscriptLines(folder);
     if (lines.isEmpty()) { err() << "No transcript (transcript.segments.json) in " << folder << "\n"; return 1; }
 
-    ReviewInput in;
+    editing::ReviewInput in;
     in.meeting = m;
     in.lines = lines;
-    in.overlay = speakeredit::loadOverlayFor(folder, lines);
-    const SettingsManager sm;
+    in.overlay = editing::speakeredit::loadOverlayFor(folder, lines);
+    const app::SettingsManager sm;
     in.userName = sm.settings().userSpeakerName;
 
     // Embeddings: from the cache (the requested model, else the default, else whichever exists).
-    const UtteranceEmbeddingCache cache = UtteranceEmbeddingCache::load(folder, in.overlay.transcriptFingerprint);
+    const processing::UtteranceEmbeddingCache cache = processing::UtteranceEmbeddingCache::load(folder, in.overlay.transcriptFingerprint);
     if (models.isEmpty()) {
-        const QString rec = VoiceModelRegistry::recommendedModelId();
-        const QString def = VoiceModelRegistry::defaultModelId();
+        const QString rec = processing::VoiceModelRegistry::recommendedModelId();
+        const QString def = processing::VoiceModelRegistry::defaultModelId();
         if (cache.models.contains(rec)) models << rec;
         else if (cache.models.contains(def) || cache.models.isEmpty()) models << def;
         else models << cache.models.firstKey();
     }
-    models = VoiceModelRegistry::normalizeIds(models);
+    models = processing::VoiceModelRegistry::normalizeIds(models);
     int dim = 0;
     for (const TranscriptLine& l : lines) {
-        const QVector<float> f = fusion::fuse(cache.setFor(l.id, models), models);
+        const QVector<float> f = processing::fusion::fuse(cache.setFor(l.id, models), models);
         if (f.isEmpty()) continue;
         in.embeddings.insert(l.id, f);
         dim = int(f.size());
     }
-    if (dim > 0) in.personPrints = fusedPrints(VoiceprintStore(), models, dim);
-    const PeopleStore people;
+    if (dim > 0) in.personPrints = fusedPrints(library::VoiceprintStore(), models, dim);
+    const library::PeopleStore people;
     const QHash<QString, QString> learned = people.defaultSides();
     for (auto it = learned.cbegin(); it != learned.cend(); ++it)
-        in.sideHints.learnedSides.insert(it.key().toCaseFolded(), sideFromName(it.value()));
+        in.sideHints.learnedSides.insert(it.key().toCaseFolded(), editing::sideFromName(it.value()));
 
     // Track activity: the cache, otherwise computed in memory (nothing is written to the folder).
-    const QString fp = trackactivity::activityFingerprint(m, folder);
+    const QString fp = processing::trackactivity::activityFingerprint(m, folder);
     MeetingActivity act = MeetingActivity::load(folder, fp);
     const bool fromCache = !act.isEmpty();
     bool mic = false, loop = false;
@@ -143,10 +143,10 @@ int runReviewCommand(const QStringList& args)
     if (!fromCache && mic && loop) {
         err() << "Decoding tracks…\n";
         err().flush();
-        act = computeMeetingActivity(m, folder);
+        act = processing::computeMeetingActivity(m, folder);
     }
 
-    const ReviewResult r = analyzeReview(in, act);
+    const editing::ReviewResult r = analyzeReview(in, act);
 
     if (json) {
         QJsonObject root;
@@ -157,7 +157,7 @@ int runReviewCommand(const QStringList& args)
         root["sidesActive"] = r.sides.active;
         root["activityFromCache"] = fromCache;
         QJsonArray groups;
-        for (const ReviewGroup& g : r.groups) {
+        for (const editing::ReviewGroup& g : r.groups) {
             QJsonArray ev;
             for (const Evidence& e : g.evidence) ev.append(evidenceJson(e));
             groups.append(QJsonObject{{"id", g.id}, {"kind", reviewKindName(g.kind)},
@@ -169,15 +169,15 @@ int runReviewCommand(const QStringList& args)
         }
         root["groups"] = groups;
         QJsonArray ignored;
-        for (const LineSide& ls : r.sides.lines)
+        for (const editing::LineSide& ls : r.sides.lines)
             if (ls.ignored) ignored.append(ls.utteranceId);
         root["ignoredLines"] = ignored;
         QJsonArray speakers;
-        for (const ranking::SpeakerProfile& p : r.context.speakers) {
+        for (const editing::ranking::SpeakerProfile& p : r.context.speakers) {
             if (p.key.isEmpty()) continue;
             QJsonArray self, cands;
-            for (const Evidence& e : ranking::selfEvidence(r.context, p.key)) self.append(evidenceJson(e));
-            const QVector<Candidate> cs = ranking::rankForSpeaker(r.context, p.key);
+            for (const Evidence& e : editing::ranking::selfEvidence(r.context, p.key)) self.append(evidenceJson(e));
+            const QVector<Candidate> cs = editing::ranking::rankForSpeaker(r.context, p.key);
             for (int i = 0; i < cs.size() && i < kTopCandidates; ++i) cands.append(candidateJson(cs[i]));
             speakers.append(QJsonObject{{"speakerKey", p.key}, {"person", p.personName}, {"name", p.displayName},
                                         {"side", sideName(p.side)}, {"sideBasis", p.sideBasis},
@@ -197,7 +197,7 @@ int runReviewCommand(const QStringList& args)
           << (r.sides.active && fromCache ? " (activity from cache)" : "") << "\n";
 
     QStringList ignoredIds;
-    for (const LineSide& ls : r.sides.lines)
+    for (const editing::LineSide& ls : r.sides.lines)
         if (ls.ignored) ignoredIds << ls.utteranceId;
     out() << "Not identifiable (ignored by voice analysis): " << ignoredIds.size();
     if (!ignoredIds.isEmpty())
@@ -206,10 +206,10 @@ int runReviewCommand(const QStringList& args)
     out() << "\n";
 
     out() << "\nReview groups: " << r.groups.size() << "\n";
-    for (const ReviewGroup& g : r.groups) {
+    for (const editing::ReviewGroup& g : r.groups) {
         const QString target = !g.proposedSpeakerKey.isEmpty() ? g.proposedSpeakerKey
                              : !g.proposedPersonName.isEmpty() ? QStringLiteral("person '%1'").arg(g.proposedPersonName)
-                             : g.kind == ReviewKind::ShortLines ? QStringLiteral("-") : QStringLiteral("(new participant)");
+                             : g.kind == editing::ReviewKind::ShortLines ? QStringLiteral("-") : QStringLiteral("(new participant)");
         out() << "  " << reviewKindName(g.kind).leftJustified(18) << " " << QString::number(g.utteranceIds.size()).rightJustified(4)
               << " lines  " << (g.currentSpeakerKey.isEmpty() ? QStringLiteral("-") : g.currentSpeakerKey)
               << " -> " << target << "   confirmed basis " << g.confirmedBasis << "\n";
@@ -225,16 +225,16 @@ int runReviewCommand(const QStringList& args)
     }
 
     out() << "\nSpeakers (side, lines, confirmed core, prints | top candidates):\n";
-    for (const ranking::SpeakerProfile& p : r.context.speakers) {
+    for (const editing::ranking::SpeakerProfile& p : r.context.speakers) {
         if (p.key.isEmpty()) continue;
         out() << "  " << p.displayName.leftJustified(20) << " " << sideName(p.side).leftJustified(7) << " "
               << p.sideBasis.leftJustified(11) << " lines " << QString::number(p.lines).rightJustified(4)
               << "  core " << QString::number(p.confirmedLines).rightJustified(3) << "  prints " << p.prints.size()
               << (p.displayName != p.key ? QStringLiteral("   (%1)").arg(p.key) : QString()) << "\n";
         QStringList self;
-        for (const Evidence& e : ranking::selfEvidence(r.context, p.key)) self << evidenceText(e);
+        for (const Evidence& e : editing::ranking::selfEvidence(r.context, p.key)) self << evidenceText(e);
         if (!self.isEmpty()) out() << "      why this speaker: " << self.join(QStringLiteral(", ")) << "\n";
-        const QVector<Candidate> cs = ranking::rankForSpeaker(r.context, p.key);
+        const QVector<Candidate> cs = editing::ranking::rankForSpeaker(r.context, p.key);
         for (int i = 0; i < cs.size() && i < kTopCandidates; ++i) {
             QStringList ev;
             for (const Evidence& e : cs[i].evidence) ev << evidenceText(e);
@@ -256,7 +256,7 @@ QString clock(qint64 ms)
 
 int setIgnored(const QString& folder, const QVector<TranscriptLine>& lines, const QStringList& ids, bool ignored)
 {
-    SpeakerOverlay ov = speakeredit::loadOverlayFor(folder, lines);
+    SpeakerOverlay ov = editing::speakeredit::loadOverlayFor(folder, lines);
     QSet<QString> known;
     for (const TranscriptLine& l : lines) known.insert(l.id);
     for (const QString& id : ids)
@@ -277,8 +277,8 @@ int setIgnored(const QString& folder, const QVector<TranscriptLine>& lines, cons
         if (it->isDefault()) ov.utterances.erase(it);
         ++changed;
     }
-    if (changed > 0 && !speakeredit::saveOverlay(folder, ov)) {
-        err() << "Could not write " << speakeredit::overlayPath(folder) << "\n";
+    if (changed > 0 && !editing::speakeredit::saveOverlay(folder, ov)) {
+        err() << "Could not write " << editing::speakeredit::overlayPath(folder) << "\n";
         return 1;
     }
     out() << (ignored ? "Marked " : "Unmarked ") << changed << " line(s) as not identifiable"
@@ -311,24 +311,24 @@ int runLinesCommand(const QStringList& args)
     if (folder.isEmpty() || (edit && ids.isEmpty())) { err() << usage; return 2; }
     folder = QFileInfo(folder).absoluteFilePath();
 
-    Meeting m = MeetingStore::readMeetingFolder(folder);
+    Meeting m = library::MeetingStore::readMeetingFolder(folder);
     if (m.id.isEmpty()) { err() << "Not a meeting folder (no readable meeting.json): " << folder << "\n"; return 1; }
-    const QVector<TranscriptLine> lines = speakeredit::loadTranscriptLines(folder);
+    const QVector<TranscriptLine> lines = editing::speakeredit::loadTranscriptLines(folder);
     if (lines.isEmpty()) { err() << "No transcript (transcript.segments.json) in " << folder << "\n"; return 1; }
     if (edit) return setIgnored(folder, lines, ids, sub == QLatin1String("ignore"));
 
-    const SpeakerOverlay ov = speakeredit::loadOverlayFor(folder, lines);
+    const SpeakerOverlay ov = editing::speakeredit::loadOverlayFor(folder, lines);
     // The automatic "talked over" flag (overlap with another resolved speaker), as in the editor.
     QVector<QString> keys(lines.size());
-    QVector<speakeredit::TimedLine> timed(lines.size());
+    QVector<editing::speakeredit::TimedLine> timed(lines.size());
     QHash<QString, int> keyIdx;
     for (int i = 0; i < lines.size(); ++i) {
-        keys[i] = speakeredit::resolveSpeakerKey(ov, lines[i]);
+        keys[i] = editing::speakeredit::resolveSpeakerKey(ov, lines[i]);
         auto it = keyIdx.find(keys[i]);
         if (it == keyIdx.end()) it = keyIdx.insert(keys[i], keyIdx.size());
         timed[i] = {lines[i].startMs, lines[i].endMs, it.value()};
     }
-    const QVector<bool> autoNoisy = speakeredit::computeOverlapNoisy(timed);
+    const QVector<bool> autoNoisy = editing::speakeredit::computeOverlapNoisy(timed);
 
     QJsonArray arr;
     int ignoredCount = 0;
@@ -343,7 +343,7 @@ int runLinesCommand(const QStringList& args)
         const bool ignored = has && o->ignored;
         const bool rechecked = has && o->rechecked && !corrected && !confirmed && !ignored;
         ignoredCount += ignored ? 1 : 0;
-        const QString name = speakeredit::speakerDisplayName(ov, m.speakerMap, keys[i]);
+        const QString name = editing::speakeredit::speakerDisplayName(ov, m.speakerMap, keys[i]);
         if (json) {
             arr.append(QJsonObject{{"id", l.id}, {"startMs", double(l.startMs)}, {"endMs", double(l.endMs)},
                                    {"speakerKey", keys[i]}, {"speaker", name}, {"rawLabel", l.rawLabel},

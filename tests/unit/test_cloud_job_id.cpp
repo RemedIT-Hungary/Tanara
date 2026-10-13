@@ -27,11 +27,11 @@
 #include <QStandardPaths>
 #include <QTemporaryDir>
 
-#include "tanara/AppController.h"
-#include "tanara/SettingsManager.h"
+#include "tanara/app/AppController.h"
+#include "tanara/app/SettingsManager.h"
 #include "tanara/cloud/CloudAccount.h"
 #include "tanara/cloud/CloudTypes.h"
-#include "tanara/store/MeetingStore.h"
+#include "tanara/library/store/MeetingStore.h"
 
 #include <memory>
 
@@ -61,7 +61,7 @@ private:
     QString m_base;
     QTemporaryDir m_home;
     QNetworkAccessManager m_nam;
-    std::unique_ptr<AppController> m_app;
+    std::unique_ptr<app::AppController> m_app;
 };
 
 #ifndef Q_MOC_RUN
@@ -99,18 +99,18 @@ void TestCloudJobId::initTestCase()
     qputenv("TANARA_CLOUD_URL", m_base.toUtf8());
     QDir().mkpath(m_home.filePath(".tanara"));
 
-    m_app = std::make_unique<AppController>();
+    m_app = std::make_unique<app::AppController>();
     QVERIFY(m_app->cloudLive());
-    connect(m_app.get(), &AppController::errorOccurred, this, [](const QString& e) { qWarning("errorOccurred: %s", qPrintable(e)); });
+    connect(m_app.get(), &app::AppController::errorOccurred, this, [](const QString& e) { qWarning("errorOccurred: %s", qPrintable(e)); });
 
     AppSettings s = m_app->settings()->settings();
     s.llmProviderId = cloud::ProviderId;
     s.llmConfigs[cloud::ProviderId].type = cloud::ProviderId;
     m_app->settings()->setSettings(s);
-    QVERIFY(m_app->usesCloud(WorkflowStep::Summarize));
+    QVERIFY(m_app->usesCloud(providers::WorkflowStep::Summarize));
 
     mockConfig({ { "auto_approve", true } });
-    QSignalSpy ok(m_app->cloud(), &CloudAccount::deviceFlowSucceeded);
+    QSignalSpy ok(m_app->cloud(), &cloud::CloudAccount::deviceFlowSucceeded);
     m_app->cloud()->startDeviceFlow();
     QVERIFY(ok.wait(10000));
     QVERIFY(m_app->cloud()->isLoggedIn());
@@ -170,10 +170,10 @@ void TestCloudJobId::complex_oneRunOneJobId()
     QVERIFY(!id.isEmpty());
     const int before = llmUsage().size();
 
-    QSignalSpy charged(m_app.get(), &AppController::cloudCharged);
-    QSignalSpy errors(m_app.get(), &AppController::cloudError);
-    QSignalSpy done(m_app.get(), &AppController::summaryReady);
-    auto conn = connect(m_app.get(), &AppController::topicsReady, this,
+    QSignalSpy charged(m_app.get(), &app::AppController::cloudCharged);
+    QSignalSpy errors(m_app.get(), &app::AppController::cloudError);
+    QSignalSpy done(m_app.get(), &app::AppController::summaryReady);
+    auto conn = connect(m_app.get(), &app::AppController::topicsReady, this,
                         [this](const QString& mid, const QVector<SummaryTopic>& topics) {
         m_app->generateComplexSummary(mid, topics);
     });
@@ -212,9 +212,9 @@ void TestCloudJobId::complex_continuationIsNewRun()
 
     // Topic gathering + the first analysis succeed, the second call gets a 500.
     mockConfig({ { "fail_chat_after", 2 } });
-    QSignalSpy errors(m_app.get(), &AppController::cloudError);
+    QSignalSpy errors(m_app.get(), &app::AppController::cloudError);
     QVector<SummaryTopic> topics;
-    auto conn = connect(m_app.get(), &AppController::topicsReady, this,
+    auto conn = connect(m_app.get(), &app::AppController::topicsReady, this,
                         [this, &topics](const QString& mid, const QVector<SummaryTopic>& t) {
         topics = t;
         m_app->generateComplexSummary(mid, t);
@@ -233,8 +233,8 @@ void TestCloudJobId::complex_continuationIsNewRun()
 
     // Resume: the same call as in the GUI.
     mockConfig({ { "fail_chat_after", QJsonValue() } });
-    QSignalSpy charged(m_app.get(), &AppController::cloudCharged);
-    QSignalSpy done(m_app.get(), &AppController::summaryReady);
+    QSignalSpy charged(m_app.get(), &app::AppController::cloudCharged);
+    QSignalSpy done(m_app.get(), &app::AppController::summaryReady);
     m_app->generateComplexSummary(id, topics);
     QVERIFY(done.wait(20000));
 
@@ -257,8 +257,8 @@ void TestCloudJobId::quick_ownJobId()
     QSet<QString> earlier;
     for (const QJsonValue& v : prev) earlier.insert(v.toObject().value("job_id").toString());
 
-    QSignalSpy charged(m_app.get(), &AppController::cloudCharged);
-    QSignalSpy done(m_app.get(), &AppController::summaryReady);
+    QSignalSpy charged(m_app.get(), &app::AppController::cloudCharged);
+    QSignalSpy done(m_app.get(), &app::AppController::summaryReady);
     m_app->summarizeMeeting(id);
     QVERIFY(done.wait(20000));
 
@@ -299,14 +299,14 @@ void TestCloudJobId::quick_multiPartOneRun()
 {
     const QString id = newLongMeeting(QStringLiteral("Hosszú gyors"), 40);
     QVERIFY(!id.isEmpty());
-    const EstimateRequest est = m_app->makeEstimateRequest(id, QStringLiteral("summarize"), QStringLiteral("quick"));
+    const cloud::EstimateRequest est = m_app->makeEstimateRequest(id, QStringLiteral("summarize"), QStringLiteral("quick"));
     QCOMPARE(est.llmCalls.size(), 2);
     QCOMPARE(est.llmCalls[0].count, 3);
     QCOMPARE(est.llmCalls[1].count, 1);
 
     int before = llmUsage().size();
-    QSignalSpy charged(m_app.get(), &AppController::cloudCharged);
-    QSignalSpy done(m_app.get(), &AppController::summaryReady);
+    QSignalSpy charged(m_app.get(), &app::AppController::cloudCharged);
+    QSignalSpy done(m_app.get(), &app::AppController::summaryReady);
     m_app->summarizeMeeting(id);
     QVERIFY(done.wait(20000));
     QJsonArray all = llmUsage();
@@ -320,7 +320,7 @@ void TestCloudJobId::quick_multiPartOneRun()
     QCOMPARE(charged.size(), 1);
     QCOMPARE(charged.first().at(1).toString(), QStringLiteral("summary"));
     QCOMPARE(charged.first().at(3).toInt(), 4);
-    const SummaryDocument doc = m_app->summaryDocument(id);
+    const library::SummaryDocument doc = m_app->summaryDocument(id);
     QCOMPARE(doc.summary.execSummary,
              QStringLiteral("A csapat a MuseumPlus migrációt egyeztette; a szállítás jövő hétre került."));
     // The canned note writes the whole part as one (similarly titled) subject in every part, so
@@ -333,11 +333,11 @@ void TestCloudJobId::quick_multiPartOneRun()
     const QString id2 = newLongMeeting(QStringLiteral("Hosszú gyors — hiba"), 40);
     before = llmUsage().size();
     mockConfig({ { "fail_chat_after", 1 } });
-    QSignalSpy errors(m_app.get(), &AppController::cloudError);
+    QSignalSpy errors(m_app.get(), &app::AppController::cloudError);
     m_app->summarizeMeeting(id2);
     QVERIFY(errors.wait(20000));
     QCOMPARE(errors.first().at(1).toString(), QStringLiteral("summary"));
-    QVERIFY(errors.first().at(3).value<Money>().micros > 0);    // partial charge: not "nothing"
+    QVERIFY(errors.first().at(3).value<cloud::Money>().micros > 0);    // partial charge: not "nothing"
     all = llmUsage();
     QCOMPARE(all.size() - before, 1);
     const QString firstJob = all[before].toObject().value("job_id").toString();

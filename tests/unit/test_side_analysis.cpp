@@ -7,7 +7,7 @@
 #include <cmath>
 #include <limits>
 
-#include "tanara/edit/SideAnalysis.h"
+#include "tanara/editing/review/SideAnalysis.h"
 
 using namespace tanara;
 
@@ -67,9 +67,9 @@ void confirm(SpeakerOverlay& ov, const QString& id, const QString& speaker = {})
     if (!speaker.isEmpty()) { ov.utterances[id].speaker = speaker; ov.utterances[id].corrected = true; }
 }
 
-const PersonSide* person(const SideReport& r, const QString& key)
+const editing::PersonSide* person(const editing::SideReport& r, const QString& key)
 {
-    for (const PersonSide& p : r.persons)
+    for (const editing::PersonSide& p : r.persons)
         if (p.speakerKey == key) return &p;
     return nullptr;
 }
@@ -81,23 +81,23 @@ class SideAnalysisTest : public QObject {
 private slots:
     void localShareFromDb()
     {
-        QCOMPARE(sides::localShareFromDb(20.0f, 0.0f), 1.0f);
-        QCOMPARE(sides::localShareFromDb(0.0f, 20.0f), 0.0f);
-        QVERIFY(std::abs(sides::localShareFromDb(20.0f, 20.0f) - 0.5f) < 1e-6f);
+        QCOMPARE(editing::sides::localShareFromDb(20.0f, 0.0f), 1.0f);
+        QCOMPARE(editing::sides::localShareFromDb(0.0f, 20.0f), 0.0f);
+        QVERIFY(std::abs(editing::sides::localShareFromDb(20.0f, 20.0f) - 0.5f) < 1e-6f);
         // The share of EXCESS power above the floor: 20 dB (99) vs 10 dB (9) -> 0.917.
-        QVERIFY(std::abs(sides::localShareFromDb(20.0f, 10.0f) - 99.0f / 108.0f) < 1e-4f);
-        QVERIFY(std::isnan(sides::localShareFromDb(0.0f, 0.0f)));
+        QVERIFY(std::abs(editing::sides::localShareFromDb(20.0f, 10.0f) - 99.0f / 108.0f) < 1e-4f);
+        QVERIFY(std::isnan(editing::sides::localShareFromDb(0.0f, 0.0f)));
     }
 
     void classifyWithDefaults()
     {
-        const sides::Thresholds th;
-        QCOMPARE(sides::classifyShare(0.95f, th), Side::Local);
-        QCOMPARE(sides::classifyShare(0.70f, th), Side::Local);
-        QCOMPARE(sides::classifyShare(0.50f, th), Side::Mixed);
-        QCOMPARE(sides::classifyShare(0.30f, th), Side::Remote);
-        QCOMPARE(sides::classifyShare(0.02f, th), Side::Remote);
-        QCOMPARE(sides::classifyShare(qQNaN(), th), Side::Unknown);
+        const editing::sides::Thresholds th;
+        QCOMPARE(editing::sides::classifyShare(0.95f, th), editing::Side::Local);
+        QCOMPARE(editing::sides::classifyShare(0.70f, th), editing::Side::Local);
+        QCOMPARE(editing::sides::classifyShare(0.50f, th), editing::Side::Mixed);
+        QCOMPARE(editing::sides::classifyShare(0.30f, th), editing::Side::Remote);
+        QCOMPARE(editing::sides::classifyShare(0.02f, th), editing::Side::Remote);
+        QCOMPARE(editing::sides::classifyShare(qQNaN(), th), editing::Side::Unknown);
     }
 
     void adaptiveThresholdBimodal()
@@ -105,7 +105,7 @@ private slots:
         // A clean bimodal distribution around 0.05 and 0.95: the Mixed band is the middle half between the two centers.
         QVector<float> v;
         for (int i = 0; i < 10; ++i) v << 0.04f + 0.002f * i << 0.94f + 0.002f * i;
-        const sides::Thresholds th = sides::adaptiveThresholds(v);
+        const editing::sides::Thresholds th = editing::sides::adaptiveThresholds(v);
         QVERIFY(th.adaptive);
         QVERIFY(std::abs(th.centerRemote - 0.049f) < 0.01f);
         QVERIFY(std::abs(th.centerLocal - 0.949f) < 0.01f);
@@ -120,38 +120,38 @@ private slots:
         QVector<float> v;
         for (int i = 0; i < 12; ++i) v << 0.33f + 0.004f * i;
         for (int i = 0; i < 8; ++i) v << 0.96f + 0.003f * i;
-        const sides::Thresholds th = sides::adaptiveThresholds(v);
+        const editing::sides::Thresholds th = editing::sides::adaptiveThresholds(v);
         QVERIFY(th.adaptive);
         QVERIFY(th.loRemote > 0.45f && th.loRemote < 0.55f);
         QVERIFY(th.hiLocal > 0.75f && th.hiLocal < 0.85f);
-        QCOMPARE(sides::classifyShare(0.35f, th), Side::Remote);
-        QCOMPARE(sides::classifyShare(0.35f, sides::Thresholds{}), Side::Mixed);
-        QCOMPARE(sides::classifyShare(0.97f, th), Side::Local);
-        QCOMPARE(sides::classifyShare(0.65f, th), Side::Mixed);
+        QCOMPARE(editing::sides::classifyShare(0.35f, th), editing::Side::Remote);
+        QCOMPARE(editing::sides::classifyShare(0.35f, editing::sides::Thresholds{}), editing::Side::Mixed);
+        QCOMPARE(editing::sides::classifyShare(0.97f, th), editing::Side::Local);
+        QCOMPARE(editing::sides::classifyShare(0.65f, th), editing::Side::Mixed);
     }
 
     void adaptiveThresholdFallsBack()
     {
         // Few lines.
-        QVERIFY(!sides::adaptiveThresholds({0.0f, 0.0f, 1.0f, 1.0f, 1.0f}).adaptive);
+        QVERIFY(!editing::sides::adaptiveThresholds({0.0f, 0.0f, 1.0f, 1.0f, 1.0f}).adaptive);
         // Unimodal (everyone remote).
         QVector<float> uni;
         for (int i = 0; i < 30; ++i) uni << 0.01f * (i % 7);
-        const sides::Thresholds u = sides::adaptiveThresholds(uni);
+        const editing::sides::Thresholds u = editing::sides::adaptiveThresholds(uni);
         QVERIFY(!u.adaptive);
-        QCOMPARE(u.loRemote, sides::kDefaultLoRemote);
-        QCOMPARE(u.hiLocal, sides::kDefaultHiLocal);
+        QCOMPARE(u.loRemote, editing::sides::kDefaultLoRemote);
+        QCOMPARE(u.hiLocal, editing::sides::kDefaultHiLocal);
         // One group is too small (2 outliers out of 40).
         QVector<float> small;
         for (int i = 0; i < 38; ++i) small << 0.02f;
         small << 0.98f << 0.99f;
-        QVERIFY(!sides::adaptiveThresholds(small).adaptive);
+        QVERIFY(!editing::sides::adaptiveThresholds(small).adaptive);
         // Two peaks, but both on the local side (0.75 / 0.99): 0.5 is not between them.
         QVector<float> local;
         for (int i = 0; i < 10; ++i) local << 0.75f << 0.99f;
-        QVERIFY(!sides::adaptiveThresholds(local).adaptive);
+        QVERIFY(!editing::sides::adaptiveThresholds(local).adaptive);
         // NaNs do not count.
-        QVERIFY(!sides::adaptiveThresholds(QVector<float>(20, qQNaN())).adaptive);
+        QVERIFY(!editing::sides::adaptiveThresholds(QVector<float>(20, qQNaN())).adaptive);
     }
 
     void singleTrackMeetingIsInactive()
@@ -165,16 +165,16 @@ private slots:
             MeetingActivity only;
             for (const auto& t : s.act.tracks)
                 if (t.kind == keep) only.tracks << t;
-            const SideReport r = analyzeSides(m, s.lines, ov, only, "Ádám");
+            const editing::SideReport r = editing::analyzeSides(m, s.lines, ov, only, "Ádám");
             QVERIFY(!r.active);
             QCOMPARE(r.totals.unknown, 6);
             QVERIFY(r.conflicts.isEmpty());
             QCOMPARE(r.persons.size(), 1);
-            QCOMPARE(r.persons[0].side, Side::Unknown);
+            QCOMPARE(r.persons[0].side, editing::Side::Unknown);
             for (int h : r.histogram) QCOMPARE(h, 0);
         }
         // Empty activity (no track) likewise.
-        const SideReport r = analyzeSides(m, s.lines, ov, MeetingActivity{}, "Ádám");
+        const editing::SideReport r = editing::analyzeSides(m, s.lines, ov, MeetingActivity{}, "Ádám");
         QVERIFY(!r.active);
         QCOMPARE(r.totals.unknown, 6);
     }
@@ -187,29 +187,29 @@ private slots:
                                       "Beszélő 1", "Beszélő 1", "Beszélő 1", "Beszélő 2"});
         Meeting m;
         m.speakerMap["Beszélő 1"] = "Ádám";
-        const SideReport r = analyzeSides(m, s.lines, SpeakerOverlay{}, s.act, "ádám");
+        const editing::SideReport r = editing::analyzeSides(m, s.lines, SpeakerOverlay{}, s.act, "ádám");
         QVERIFY(r.active);
         QCOMPARE(r.totals.local, 5);
         QCOMPARE(r.totals.remote, 3);
-        const SideCounts b1 = r.rawLabels.value("Beszélő 1");
+        const editing::SideCounts b1 = r.rawLabels.value("Beszélő 1");
         QCOMPARE(b1.local, 4);
         QCOMPARE(b1.remote, 3);
-        const PersonSide* p = person(r, "Beszélő 1");
+        const editing::PersonSide* p = person(r, "Beszélő 1");
         QVERIFY(p);
-        QCOMPARE(p->side, Side::Local);
+        QCOMPARE(p->side, editing::Side::Local);
         QCOMPARE(p->basis, QStringLiteral("user-name"));
-        QCOMPARE(p->confidence, sides::kDefaultConfidence);
+        QCOMPARE(p->confidence, editing::sides::kDefaultConfidence);
         QCOMPARE(p->allLines.remote, 3);
         QCOMPARE(r.conflicts.size(), 3);
-        for (const SideConflict& c : r.conflicts) {
+        for (const editing::SideConflict& c : r.conflicts) {
             QCOMPARE(c.speakerKey, QStringLiteral("Beszélő 1"));
-            QCOMPARE(c.lineSide, Side::Remote);
-            QCOMPARE(c.personSide, Side::Local);
+            QCOMPARE(c.lineSide, editing::Side::Remote);
+            QCOMPARE(c.personSide, editing::Side::Local);
             QVERIFY(c.localShare < 0.01f);
         }
         QCOMPARE(r.conflicts[0].utteranceId, QStringLiteral("u5000"));   // in chronological order
         // The anonymous "Speaker 2" has neither a default nor a confirmed line.
-        QCOMPARE(person(r, "Beszélő 2")->side, Side::Unknown);
+        QCOMPARE(person(r, "Beszélő 2")->side, editing::Side::Unknown);
         QCOMPARE(r.histogram[0], 3);
         QCOMPARE(r.histogram[9], 5);
     }
@@ -223,9 +223,9 @@ private slots:
         confirm(ov, "u0");
         confirm(ov, "u2500");
         confirm(ov, "u5000");
-        const SideReport r = analyzeSides(Meeting{}, s.lines, ov, s.act, "Ádám");
-        const PersonSide* p = person(r, "Beszélő 2");
-        QCOMPARE(p->side, Side::Remote);
+        const editing::SideReport r = editing::analyzeSides(Meeting{}, s.lines, ov, s.act, "Ádám");
+        const editing::PersonSide* p = person(r, "Beszélő 2");
+        QCOMPARE(p->side, editing::Side::Remote);
         QCOMPARE(p->basis, QStringLiteral("lines"));
         QCOMPARE(p->remoteLines, 3);
         QCOMPARE(p->confidence, 1.0f);
@@ -242,22 +242,22 @@ private slots:
         m.speakerMap["Beszélő 2"] = "Ádám";
         SpeakerOverlay ov;
         for (const char* id : {"u0", "u2500", "u5000", "u7500"}) confirm(ov, id);
-        SideReport r = analyzeSides(m, s.lines, ov, s.act, "Ádám");
-        const PersonSide* p = person(r, "Beszélő 2");
-        QCOMPARE(p->defaultSide, Side::Local);
-        QCOMPARE(p->side, Side::Remote);
+        editing::SideReport r = editing::analyzeSides(m, s.lines, ov, s.act, "Ádám");
+        const editing::PersonSide* p = person(r, "Beszélő 2");
+        QCOMPARE(p->defaultSide, editing::Side::Local);
+        QCOMPARE(p->side, editing::Side::Remote);
         QCOMPARE(p->basis, QStringLiteral("override"));
         QCOMPARE(p->confidence, 1.0f);
         QCOMPARE(r.conflicts.size(), 1);
-        QCOMPARE(r.conflicts[0].lineSide, Side::Local);
+        QCOMPARE(r.conflicts[0].lineSide, editing::Side::Local);
 
         // Only 2 contradicting confirmed lines: too few to override, so the default stays.
         SpeakerOverlay weak;
         confirm(weak, "u0");
         confirm(weak, "u2500");
-        r = analyzeSides(m, s.lines, weak, s.act, "Ádám");
+        r = editing::analyzeSides(m, s.lines, weak, s.act, "Ádám");
         p = person(r, "Beszélő 2");
-        QCOMPARE(p->side, Side::Local);
+        QCOMPARE(p->side, editing::Side::Local);
         QCOMPARE(p->basis, QStringLiteral("user-name"));
         QCOMPARE(r.conflicts.size(), 4);
 
@@ -265,8 +265,8 @@ private slots:
         SpeakerOverlay noisy = ov;
         noisy.utterances["u0"].noisy = true;
         noisy.utterances["u2500"].noisy = true;
-        r = analyzeSides(m, s.lines, noisy, s.act, "Ádám");
-        QCOMPARE(person(r, "Beszélő 2")->side, Side::Local);
+        r = editing::analyzeSides(m, s.lines, noisy, s.act, "Ádám");
+        QCOMPARE(person(r, "Beszélő 2")->side, editing::Side::Local);
     }
 
     void fixedTrackSpeakerDefault()
@@ -281,9 +281,9 @@ private slots:
         loop.speakerLabel = "Béla";
         m.tracks = {loop};
         m.speakerMap["Távoli 1"] = "Béla";
-        const SideReport r = analyzeSides(m, s.lines, SpeakerOverlay{}, s.act, "Ádám");
-        const PersonSide* p = person(r, "Távoli 1");
-        QCOMPARE(p->side, Side::Remote);
+        const editing::SideReport r = editing::analyzeSides(m, s.lines, SpeakerOverlay{}, s.act, "Ádám");
+        const editing::PersonSide* p = person(r, "Távoli 1");
+        QCOMPARE(p->side, editing::Side::Remote);
         QCOMPARE(p->basis, QStringLiteral("fixed-track"));
         QCOMPARE(r.conflicts.size(), 1);
     }
@@ -297,7 +297,7 @@ private slots:
         // "speaks" and it is never Remote; the loopback is at speech level too, so Mixed (crosstalk
         // this strong looks like overlapping speech).
         Synth s = synth("LRLRRLRRLRLR", {"Beszélő 1"}, 30.0f, 28.0f, 26.0f);
-        const SideReport r = analyzeSides(Meeting{}, s.lines, SpeakerOverlay{}, s.act, "Ádám");
+        const editing::SideReport r = editing::analyzeSides(Meeting{}, s.lines, SpeakerOverlay{}, s.act, "Ádám");
         QVERIFY(r.thresholds.adaptive);
         QCOMPARE(r.legacyTotals.local, 5);
         QCOMPARE(r.legacyTotals.remote, 7);
@@ -305,29 +305,29 @@ private slots:
         QCOMPARE(r.totals.local, 5);
         QCOMPARE(r.totals.remote, 0);
         QCOMPARE(r.totals.mixed, 7);
-        for (const LineSide& l : r.lines)
-            if (l.legacySide == Side::Remote) {
+        for (const editing::LineSide& l : r.lines)
+            if (l.legacySide == editing::Side::Remote) {
                 QVERIFY(l.localShare > 0.35f && l.localShare < 0.45f);
                 QVERIFY(std::abs(l.micDb - 26.0f) < 0.1f);
                 QVERIFY(std::abs(l.loopDb - 28.0f) < 0.1f);
                 QVERIFY(std::abs(l.micRelDb - (-4.0f)) < 0.1f);
-                QCOMPARE(l.side, Side::Mixed);
+                QCOMPARE(l.side, editing::Side::Mixed);
             }
     }
 
     void classifyLevelsRules()
     {
         const float inf = std::numeric_limits<float>::infinity();
-        QCOMPARE(sides::classifyLevels(0.0f, -inf), Side::Local);          // purely local
-        QCOMPARE(sides::classifyLevels(-inf, 0.0f), Side::Remote);         // clean remote
-        QCOMPARE(sides::classifyLevels(-25.0f, 0.0f), Side::Remote);       // quiet mic noise
-        QCOMPARE(sides::classifyLevels(0.0f, -8.0f), Side::Local);         // echo
-        QCOMPARE(sides::classifyLevels(0.0f, -2.0f), Side::Mixed);         // overlapping speech
-        QCOMPARE(sides::classifyLevels(-9.0f, 0.0f), Side::Mixed);         // the mic speaks: never Remote
-        QCOMPARE(sides::classifyLevels(-15.0f, 0.0f), Side::Remote);       // an intermediate mic (crosstalk) + the loopback speaks: remote
-        QCOMPARE(sides::classifyLevels(-inf, -inf), Side::Unknown);        // silence
-        QCOMPARE(sides::classifyLevels(qQNaN(), 0.0f), Side::Unknown);     // no coverage
-        QCOMPARE(sides::classifyLevels(0.0f, -15.0f), Side::Local);        // the loopback is quiet
+        QCOMPARE(editing::sides::classifyLevels(0.0f, -inf), editing::Side::Local);          // purely local
+        QCOMPARE(editing::sides::classifyLevels(-inf, 0.0f), editing::Side::Remote);         // clean remote
+        QCOMPARE(editing::sides::classifyLevels(-25.0f, 0.0f), editing::Side::Remote);       // quiet mic noise
+        QCOMPARE(editing::sides::classifyLevels(0.0f, -8.0f), editing::Side::Local);         // echo
+        QCOMPARE(editing::sides::classifyLevels(0.0f, -2.0f), editing::Side::Mixed);         // overlapping speech
+        QCOMPARE(editing::sides::classifyLevels(-9.0f, 0.0f), editing::Side::Mixed);         // the mic speaks: never Remote
+        QCOMPARE(editing::sides::classifyLevels(-15.0f, 0.0f), editing::Side::Remote);       // an intermediate mic (crosstalk) + the loopback speaks: remote
+        QCOMPARE(editing::sides::classifyLevels(-inf, -inf), editing::Side::Unknown);        // silence
+        QCOMPARE(editing::sides::classifyLevels(qQNaN(), 0.0f), editing::Side::Unknown);     // no coverage
+        QCOMPARE(editing::sides::classifyLevels(0.0f, -15.0f), editing::Side::Local);        // the loopback is quiet
     }
 
     void speechLevelIsActivePercentile()
@@ -338,11 +338,11 @@ private slots:
         t.kind = TrackKind::Mic;
         for (int i = 1; i <= 100; ++i) t.dbAboveFloor << float(i);
         t.dbAboveFloor << 0.0f << 0.0f << qQNaN();
-        const float lvl = sides::speechLevelDb(t);
+        const float lvl = editing::sides::speechLevelDb(t);
         QVERIFY(lvl >= 88.0f && lvl <= 92.0f);
         TrackActivity silent;
         silent.dbAboveFloor = QVector<float>(20, 1.0f);
-        QVERIFY(std::isnan(sides::speechLevelDb(silent)));
+        QVERIFY(std::isnan(editing::sides::speechLevelDb(silent)));
     }
 
     void echoOnLoopbackIsLocal()
@@ -361,13 +361,13 @@ private slots:
         }
         MeetingActivity act;
         act.tracks = {activity("mic", TrackKind::Mic, 26000, mic), activity("loop", TrackKind::Loopback, 26000, loop)};
-        const SideReport r = analyzeSides(Meeting{}, lines, SpeakerOverlay{}, act, {});
+        const editing::SideReport r = editing::analyzeSides(Meeting{}, lines, SpeakerOverlay{}, act, {});
         QVERIFY(r.active);
         QCOMPARE(r.totals.local, 6);
         QCOMPARE(r.totals.remote, 4);
         QCOMPARE(r.legacyTotals.local, 0);   // the old metric's fault
-        for (const LineSide& l : r.lines)
-            if (l.side == Side::Local) QVERIFY(std::abs(l.loopRelDb - (-8.0f)) < 0.1f);
+        for (const editing::LineSide& l : r.lines)
+            if (l.side == editing::Side::Local) QVERIFY(std::abs(l.loopRelDb - (-8.0f)) < 0.1f);
     }
 
     void overlapIsMixed()
@@ -378,10 +378,10 @@ private slots:
         MeetingActivity act;
         act.tracks = {activity("mic", TrackKind::Mic, 8000, {{0, 2000, 30.0f}, {5000, 7000, 30.0f}}),
                       activity("loop", TrackKind::Loopback, 8000, {{2500, 4500, 30.0f}, {5000, 7000, 30.0f}})};
-        const SideReport r = analyzeSides(Meeting{}, lines, SpeakerOverlay{}, act, {});
-        QCOMPARE(r.lines[0].side, Side::Local);
-        QCOMPARE(r.lines[1].side, Side::Remote);
-        QCOMPARE(r.lines[2].side, Side::Mixed);
+        const editing::SideReport r = editing::analyzeSides(Meeting{}, lines, SpeakerOverlay{}, act, {});
+        QCOMPARE(r.lines[0].side, editing::Side::Local);
+        QCOMPARE(r.lines[1].side, editing::Side::Remote);
+        QCOMPARE(r.lines[2].side, editing::Side::Mixed);
     }
 
     void manualTracksDecidePersonSide()
@@ -397,20 +397,20 @@ private slots:
         m.speakerMap["Beszélő 1"] = "Ádám";
         SpeakerOverlay ov;
         ov.speakerTracks["Beszélő 1"] = QStringList{"loop"};
-        SideReport r = analyzeSides(m, s.lines, ov, s.act, "Ádám");
-        const PersonSide* p = person(r, "Beszélő 1");
-        QCOMPARE(p->side, Side::Remote);
+        editing::SideReport r = editing::analyzeSides(m, s.lines, ov, s.act, "Ádám");
+        const editing::PersonSide* p = person(r, "Beszélő 1");
+        QCOMPARE(p->side, editing::Side::Remote);
         QCOMPARE(p->basis, QStringLiteral("manual"));
         QCOMPARE(p->manualTracks, QStringList{"loop"});
         QCOMPARE(r.conflicts.size(), 3);
-        QCOMPARE(sides::learnedDefaults(r).value("Ádám"), Side::Remote);
+        QCOMPARE(editing::sides::learnedDefaults(r).value("Ádám"), editing::Side::Remote);
 
-        SideHints h;
+        editing::SideHints h;
         h.speakerTracks["Beszélő 1"] = QStringList{"mic", "loop"};
         r = analyzeSides(m, s.lines, ov, s.act, "Ádám", h);
-        QCOMPARE(person(r, "Beszélő 1")->side, Side::Mixed);
+        QCOMPARE(person(r, "Beszélő 1")->side, editing::Side::Mixed);
         QVERIFY(r.conflicts.isEmpty());
-        QCOMPARE(sides::sideOfTracks(m, {"nincs"}), Side::Unknown);
+        QCOMPARE(editing::sides::sideOfTracks(m, {"nincs"}), editing::Side::Unknown);
     }
 
     void learnedSideBeatsUserName()
@@ -419,16 +419,16 @@ private slots:
         Synth s = synth("RRL", {"Beszélő 1"});
         Meeting m;
         m.speakerMap["Beszélő 1"] = "Béla";
-        SideHints h;
-        h.learnedSides.insert(QStringLiteral("béla"), Side::Remote);
-        const SideReport r = analyzeSides(m, s.lines, SpeakerOverlay{}, s.act, "Béla", h);
-        const PersonSide* p = person(r, "Beszélő 1");
-        QCOMPARE(p->side, Side::Remote);
+        editing::SideHints h;
+        h.learnedSides.insert(QStringLiteral("béla"), editing::Side::Remote);
+        const editing::SideReport r = analyzeSides(m, s.lines, SpeakerOverlay{}, s.act, "Béla", h);
+        const editing::PersonSide* p = person(r, "Beszélő 1");
+        QCOMPARE(p->side, editing::Side::Remote);
         QCOMPARE(p->basis, QStringLiteral("learned"));
-        QCOMPARE(p->learnedSide, Side::Remote);
+        QCOMPARE(p->learnedSide, editing::Side::Remote);
         QCOMPARE(r.conflicts.size(), 1);
         // The learned default itself does not learn further (only from data / by hand).
-        QVERIFY(sides::learnedDefaults(r).isEmpty());
+        QVERIFY(editing::sides::learnedDefaults(r).isEmpty());
     }
 
     void silenceAndGapsAreUnknown()
@@ -440,11 +440,11 @@ private slots:
         for (qint64 ms = 2500; ms < 4500; ms += 50) mic.dbAboveFloor[ms / 50] = qQNaN();
         MeetingActivity act;
         act.tracks = {mic, activity("loop", TrackKind::Loopback, 8000, {{2500, 4500, 30.0f}})};
-        const SideReport r = analyzeSides(Meeting{}, lines, SpeakerOverlay{}, act, {});
-        QCOMPARE(r.lines[0].side, Side::Unknown);
-        QCOMPARE(r.lines[1].side, Side::Unknown);
+        const editing::SideReport r = editing::analyzeSides(Meeting{}, lines, SpeakerOverlay{}, act, {});
+        QCOMPARE(r.lines[0].side, editing::Side::Unknown);
+        QCOMPARE(r.lines[1].side, editing::Side::Unknown);
         QVERIFY(std::isnan(r.lines[1].micDb));
-        QCOMPARE(r.lines[2].side, Side::Local);
+        QCOMPARE(r.lines[2].side, editing::Side::Local);
         QCOMPARE(r.totals.unknown, 2);
     }
 
@@ -456,9 +456,9 @@ private slots:
         act.tracks = {activity("mic", TrackKind::Mic, 3000, {{0, 2000, 20.0f}}),
                       activity("l1", TrackKind::Loopback, 3000, {{0, 2000, 20.0f}}),
                       activity("l2", TrackKind::Loopback, 3000, {{0, 2000, 20.0f}})};
-        const SideReport r = analyzeSides(Meeting{}, lines, SpeakerOverlay{}, act, {});
+        const editing::SideReport r = editing::analyzeSides(Meeting{}, lines, SpeakerOverlay{}, act, {});
         QVERIFY(std::abs(r.lines[0].localShare - 1.0f / 3.0f) < 1e-3f);
-        QCOMPARE(r.lines[0].side, Side::Mixed);
+        QCOMPARE(r.lines[0].side, editing::Side::Mixed);
     }
 
     void correctedSpeakerIsUsed()
@@ -467,7 +467,7 @@ private slots:
         Synth s = synth("LLLR", {"Beszélő 1"});
         SpeakerOverlay ov;
         confirm(ov, "u7500", "Beszélő 9");
-        const SideReport r = analyzeSides(Meeting{}, s.lines, ov, s.act, {});
+        const editing::SideReport r = editing::analyzeSides(Meeting{}, s.lines, ov, s.act, {});
         QCOMPARE(r.lines[3].speakerKey, QStringLiteral("Beszélő 9"));
         QCOMPARE(r.lines[3].rawLabel, QStringLiteral("Beszélő 1"));
         QVERIFY(r.lines[3].locked);

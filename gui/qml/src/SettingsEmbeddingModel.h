@@ -19,7 +19,7 @@
 //
 #include "SettingsProviderModel.h"
 
-#include "tanara/embedding/EmbeddingPreparer.h"
+#include "tanara/library/index/EmbeddingPreparer.h"
 
 #include <QDateTime>
 #include <QObject>
@@ -29,7 +29,7 @@
 #include <QtQml/qqmlregistration.h>
 
 namespace tanara {
-class AppController;
+namespace app { class AppController; }
 }
 
 namespace tanara_qml {
@@ -119,7 +119,7 @@ public:
     // Demo: the fictional preparation state + the draft for it (called by the vm's loadDemo).
     void loadDemo(const QString& state);
     // The computed (and in-test verified) preparation state.
-    tanara::EmbeddingState prepState() const;
+    tanara::library::EmbeddingState prepState() const;
 
 signals:
     void changed();
@@ -127,7 +127,7 @@ signals:
     void demoStateChanged();
 
 private:
-    tanara::AppController* controller() const;
+    tanara::app::AppController* controller() const;
     static QString modeOf(const QString& providerId);
     static QString providerFor(const QString& mode);
     // The model the core uses ("" = no embedding): the local endpoint's model, for Cloud the
@@ -137,10 +137,10 @@ private:
 
     SettingsViewModel* m_vm = nullptr;
     SettingsProviderModel* m_card = nullptr;
-    QPointer<tanara::EmbeddingPreparer> m_preparer;
+    QPointer<tanara::library::EmbeddingPreparer> m_preparer;
     QMetaObject::Connection m_prepConn, m_rejectConn;
     QString m_demoState;
-    tanara::EmbeddingState m_demo;           // demo state (without a controller)
+    tanara::library::EmbeddingState m_demo;           // demo state (without a controller)
     int m_demoRejected = 0;
 };
 

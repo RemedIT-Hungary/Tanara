@@ -4,9 +4,9 @@
 #include "QmlApp.h"
 #include "SettingsDialogs.h"
 
-#include "tanara/AppController.h"
+#include "tanara/app/AppController.h"
 #include "tanara/foundation/log/Logging.h"
-#include "tanara/SettingsManager.h"
+#include "tanara/app/SettingsManager.h"
 
 #include <QQmlComponent>
 #include <QQmlEngine>
@@ -16,7 +16,7 @@ using namespace tanara;
 
 namespace tanara_qml {
 
-OnboardingWindowHost::OnboardingWindowHost(AppController* controller, SettingsDialogs* dialogs,
+OnboardingWindowHost::OnboardingWindowHost(app::AppController* controller, SettingsDialogs* dialogs,
                                            QObject* parent)
     : QObject(parent), m_controller(controller), m_dialogs(dialogs)
 {

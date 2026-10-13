@@ -22,7 +22,7 @@
 //
 #include "PlayerBackend.h"
 
-#include "tanara/Types.h"
+#include "tanara/domain/Types.h"
 
 #include <QObject>
 #include <QPointer>
@@ -33,7 +33,7 @@
 #include <functional>
 
 namespace tanara {
-class AppController;
+namespace app { class AppController; }
 }
 
 namespace tanara_qml {
@@ -85,7 +85,7 @@ public:
     ~PlayerController() override;
 
     // The controller defaults to the App singleton's; injectable in tests.
-    void setController(tanara::AppController* controller);
+    void setController(tanara::app::AppController* controller);
 
     QString meetingId() const { return m_meetingId; }
     void setMeetingId(const QString& id);
@@ -153,8 +153,8 @@ private:
     void onBackendDuration(qint64 ms);
     void onBackendFinished();
 
-    QPointer<tanara::AppController> m_controller;
-    QPointer<tanara::AppController> m_attached;     // whose signals we are currently bound to
+    QPointer<tanara::app::AppController> m_controller;
+    QPointer<tanara::app::AppController> m_attached;     // whose signals we are currently bound to
     bool m_controllerInjected = false;
     PlayerBackend* m_backend = nullptr;
     QTimer m_tick;

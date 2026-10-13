@@ -7,16 +7,16 @@
 #include <QTemporaryDir>
 #include <QJsonArray>
 
-#include "tanara/AppController.h"
-#include "tanara/SettingsManager.h"
-#include "tanara/embedding/EmbeddingIndex.h"
-#include "tanara/embedding/EmbeddingPreparer.h"
-#include "tanara/embedding/EmbeddingProviderRegistry.h"
+#include "tanara/app/AppController.h"
+#include "tanara/app/SettingsManager.h"
+#include "tanara/library/index/EmbeddingIndex.h"
+#include "tanara/library/index/EmbeddingPreparer.h"
+#include "tanara/providers/embedding/EmbeddingProviderRegistry.h"
 #include "tanara/library/MeetingLibrary.h"
-#include "tanara/store/JsonSerialization.h"
-#include "tanara/store/MeetingStore.h"
-#include "tanara/tags/MeetingProfiles.h"
-#include "tanara/tags/TagService.h"
+#include "tanara/library/store/JsonSerialization.h"
+#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/tags/MeetingProfiles.h"
+#include "tanara/library/tags/TagService.h"
 #include "fake_http.h"
 #include "tags_fixture.h"
 
@@ -63,7 +63,7 @@ private:
     QVector<TagSuggestion> waitReady(QSignalSpy& spy, const QString& meetingId);
     std::unique_ptr<QTemporaryDir> m_home;
     std::unique_ptr<fakehttp::Server> m_http;
-    std::unique_ptr<AppController> m_app;
+    std::unique_ptr<app::AppController> m_app;
     tagsfixture::Library m_lib;
     QString m_llmReply = QStringLiteral("pick: 1\nnew: none");
 };
@@ -84,7 +84,7 @@ void TagsControllerTest::init()
         if (r.path.endsWith("/embeddings")) return { 200, embeddingsReply(r.body) };
         return { 404, "{}" };
     };
-    m_app = std::make_unique<AppController>();
+    m_app = std::make_unique<app::AppController>();
     AppSettings s = m_app->settings()->settings();
     QVERIFY(s.audioDir.startsWith(m_home->path()));
     s.llmProviderId = QStringLiteral("openai-compat");
@@ -113,15 +113,15 @@ QVector<TagSuggestion> TagsControllerTest::waitReady(QSignalSpy& spy, const QStr
 
 void TagsControllerTest::suggestionsComputingThenReady()
 {
-    TagService* tags = m_app->tags();
+    library::TagService* tags = m_app->tags();
     QVERIFY(tags && m_app->profiles() && m_app->embeddings() && m_app->embeddingPreparer());
     const Tag nordvik = tags->addTag(m_lib.nordvik1, QStringLiteral("Nordvik"));
     const Tag log = tags->addTag(m_lib.nordvik1, QStringLiteral("Logisztika"));
 
     QStringList order;
-    connect(m_app.get(), &AppController::tagSuggestionsComputing, this, [&](const QString& id) { if (id == m_lib.nordvik2) order << "computing"; });
-    connect(m_app.get(), &AppController::tagSuggestionsReady, this, [&](const QString& id) { if (id == m_lib.nordvik2) order << "ready"; });
-    QSignalSpy ready(m_app.get(), &AppController::tagSuggestionsReady);
+    connect(m_app.get(), &app::AppController::tagSuggestionsComputing, this, [&](const QString& id) { if (id == m_lib.nordvik2) order << "computing"; });
+    connect(m_app.get(), &app::AppController::tagSuggestionsReady, this, [&](const QString& id) { if (id == m_lib.nordvik2) order << "ready"; });
+    QSignalSpy ready(m_app.get(), &app::AppController::tagSuggestionsReady);
     m_app->requestTagSuggestions(m_lib.nordvik2);
     QVector<TagSuggestion> list = waitReady(ready, m_lib.nordvik2);
     QCOMPARE(order.value(0), QStringLiteral("computing"));
@@ -166,9 +166,9 @@ void TagsControllerTest::suggestionsComputingThenReady()
 
 void TagsControllerTest::asyncCoalesceStaleDropAndCache()
 {
-    TagService* tags = m_app->tags();
+    library::TagService* tags = m_app->tags();
     tags->addTag(m_lib.nordvik1, QStringLiteral("Nordvik"));
-    QSignalSpy ready(m_app.get(), &AppController::tagSuggestionsReady);
+    QSignalSpy ready(m_app.get(), &app::AppController::tagSuggestionsReady);
     auto readyFor = [&](const QString& id) {
         int n = 0;
         for (const QList<QVariant>& a : std::as_const(ready)) if (a.at(0).toString() == id) ++n;
@@ -206,7 +206,7 @@ void TagsControllerTest::asyncCoalesceStaleDropAndCache()
     tags->addTag(m_lib.budget1, QStringLiteral("Belső"));   // cache clear
     bool changed = false;
     // AppController's idle slot (starting the computation) runs before this.
-    const auto conn = connect(m_app->profiles(), &MeetingProfiles::idle, this, [&] {
+    const auto conn = connect(m_app->profiles(), &library::MeetingProfiles::idle, this, [&] {
         if (changed) return;
         changed = true;
         tags->addTag(m_lib.nordvik1, QStringLiteral("Logisztika"));
@@ -223,12 +223,12 @@ void TagsControllerTest::asyncCoalesceStaleDropAndCache()
 
 void TagsControllerTest::cooccurAfterAdd()
 {
-    TagService* tags = m_app->tags();
+    library::TagService* tags = m_app->tags();
     const Tag a = tags->create(QStringLiteral("Partnerek"));
     const Tag b = tags->create(QStringLiteral("Szerződés"));
     for (const QString& id : { m_lib.nordvik1, m_lib.budget1 }) { tags->addTag(id, a.id); tags->addTag(id, b.id); }
-    QSignalSpy computing(m_app.get(), &AppController::tagSuggestionsComputing);
-    QSignalSpy ready(m_app.get(), &AppController::tagSuggestionsReady);
+    QSignalSpy computing(m_app.get(), &app::AppController::tagSuggestionsComputing);
+    QSignalSpy ready(m_app.get(), &app::AppController::tagSuggestionsReady);
     tags->addTag(m_lib.museum1, a.id);
     ready.clear();
     m_app->requestCooccurSuggestions(m_lib.museum1, a.id);
@@ -246,9 +246,9 @@ void TagsControllerTest::cooccurAfterAdd()
 
 void TagsControllerTest::llmSuggestionsManualAndAutomatic()
 {
-    TagService* tags = m_app->tags();
+    library::TagService* tags = m_app->tags();
     // Without a summary there is nothing to request.
-    QSignalSpy ready(m_app.get(), &AppController::tagSuggestionsReady);
+    QSignalSpy ready(m_app.get(), &app::AppController::tagSuggestionsReady);
     m_app->requestLlmTagSuggestions(m_lib.museum2);
     QCOMPARE(ready.count(), 0);
     QCOMPARE(m_http->count("POST", "/chat/completions"), 0);
@@ -299,7 +299,7 @@ void TagsControllerTest::llmSuggestionsManualAndAutomatic()
     QCOMPARE(m_http->count("POST", "/chat/completions"), 2);
 
     // A bad model reply: no pop-up error, the earlier list stays.
-    QSignalSpy errors(m_app.get(), &AppController::errorOccurred);
+    QSignalSpy errors(m_app.get(), &app::AppController::errorOccurred);
     m_http->handler = [](const fakehttp::Request&) -> fakehttp::Reply { return { 500, R"({"error":"x"})" }; };
     const int before = int(m_app->pendingTagSuggestions(m_lib.museum2).size());
     ready.clear();
@@ -310,14 +310,14 @@ void TagsControllerTest::llmSuggestionsManualAndAutomatic()
 
 void TagsControllerTest::embeddingProviderAndModelChange()
 {
-    EmbeddingPreparer* prep = m_app->embeddingPreparer();
+    library::EmbeddingPreparer* prep = m_app->embeddingPreparer();
     QCOMPARE(prep->state().provider, QString());       // default: no embedding
     ProviderConfig cfg;
     cfg.baseUrl = m_http->base();
     cfg.model = QStringLiteral("embed-a");
-    m_app->setEmbeddingProvider(embeddingproviders::LocalId, cfg);
-    QCOMPARE(m_app->settings()->settings().embeddingProviderId, embeddingproviders::LocalId);
-    QTRY_COMPARE_WITH_TIMEOUT(int(prep->state().status), int(EmbeddingState::Done), 10000);
+    m_app->setEmbeddingProvider(providers::embeddingproviders::LocalId, cfg);
+    QCOMPARE(m_app->settings()->settings().embeddingProviderId, providers::embeddingproviders::LocalId);
+    QTRY_COMPARE_WITH_TIMEOUT(int(prep->state().status), int(library::EmbeddingState::Done), 10000);
     QCOMPARE(prep->state().prepared, 6);
     const QString file = QDir(m_app->store()->load(m_lib.budget1).folder).filePath("text.embeddings.bin");
     QVERIFY(QFile::exists(file));
@@ -331,11 +331,11 @@ void TagsControllerTest::embeddingProviderAndModelChange()
     QCOMPARE(m_http->count("POST", "/embeddings"), calls);
 
     // Model change: the index dropped, the preparation from the start.
-    QSignalSpy reset(m_app->embeddings(), &EmbeddingIndex::indexReset);
+    QSignalSpy reset(m_app->embeddings(), &library::EmbeddingIndex::indexReset);
     cfg.model = QStringLiteral("embed-b");
-    m_app->setEmbeddingProvider(embeddingproviders::LocalId, cfg);
+    m_app->setEmbeddingProvider(providers::embeddingproviders::LocalId, cfg);
     QVERIFY(reset.count() >= 1);
-    QTRY_COMPARE_WITH_TIMEOUT(int(prep->state().status), int(EmbeddingState::Done), 10000);
+    QTRY_COMPARE_WITH_TIMEOUT(int(prep->state().status), int(library::EmbeddingState::Done), 10000);
     QCOMPARE(prep->state().model, QStringLiteral("embed-b"));
     QCOMPARE(m_http->count("POST", "/embeddings"), calls + 6);
     QCOMPARE(m_http->lastBody("/embeddings").value("model").toString(), QStringLiteral("embed-b"));
@@ -350,7 +350,7 @@ void TagsControllerTest::embeddingProviderAndModelChange()
     // Switch off: no embedding.
     m_app->setEmbeddingProvider(QString(), {});
     QVERIFY(!m_app->embeddings()->has(m_lib.budget1));
-    QCOMPARE(prep->state().status, EmbeddingState::Idle);
+    QCOMPARE(prep->state().status, library::EmbeddingState::Idle);
 }
 
 void TagsControllerTest::settingsRoundTrip()
@@ -359,19 +359,19 @@ void TagsControllerTest::settingsRoundTrip()
     QVERIFY(s.tagSuggestions);
     QVERIFY(s.llmTagSuggestions);
     QVERIFY(s.embeddingProviderId.isEmpty());
-    QVERIFY(s.embeddingConfigs.contains(embeddingproviders::LocalId));   // prefilled
+    QVERIFY(s.embeddingConfigs.contains(providers::embeddingproviders::LocalId));   // prefilled
     s.tagSuggestions = false;
     s.llmTagSuggestions = false;
-    s.embeddingProviderId = embeddingproviders::CloudId;
-    s.embeddingConfigs[embeddingproviders::CloudId].model = QStringLiteral("x");
+    s.embeddingProviderId = providers::embeddingproviders::CloudId;
+    s.embeddingConfigs[providers::embeddingproviders::CloudId].model = QStringLiteral("x");
     m_app->settings()->setSettings(s);
-    SettingsManager again(m_app->settings()->settings().metadataDir);
+    app::SettingsManager again(m_app->settings()->settings().metadataDir);
     const AppSettings r = again.settings();
     QVERIFY(!r.tagSuggestions);
     QVERIFY(!r.llmTagSuggestions);
-    QCOMPARE(r.embeddingProviderId, embeddingproviders::CloudId);
+    QCOMPARE(r.embeddingProviderId, providers::embeddingproviders::CloudId);
     QCOMPARE(r.embeddingSelected().model, QStringLiteral("x"));
-    QVERIFY(!toJson(r).contains("apiKey"));
+    QVERIFY(!library::toJson(r).contains("apiKey"));
 }
 
 QTEST_GUILESS_MAIN(TagsControllerTest)

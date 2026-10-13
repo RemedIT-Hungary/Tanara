@@ -6,10 +6,10 @@
 #include "ShellActions.h"
 #include "ShellImportModel.h"
 
-#include "tanara/AppController.h"
-#include "tanara/SettingsManager.h"
-#include "tanara/store/MeetingStore.h"
-#include "tanara/tags/TagService.h"
+#include "tanara/app/AppController.h"
+#include "tanara/app/SettingsManager.h"
+#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/tags/TagService.h"
 
 #include "../unit/tags_fixture.h"
 
@@ -38,7 +38,7 @@ class TestShellImportModel : public QObject {
     Q_OBJECT
 
     std::unique_ptr<QTemporaryDir> m_home;
-    std::unique_ptr<tanara::AppController> m_app;
+    std::unique_ptr<tanara::app::AppController> m_app;
     bool m_ffmpeg = false;
 
     QString src(const QString& name) const { return m_home->filePath("src/" + name); }
@@ -124,7 +124,7 @@ private slots:
     void importsThroughTheModel()
     {
         if (!m_ffmpeg) QSKIP("ffmpeg / ffprobe nincs telepítve");
-        m_app = std::make_unique<tanara::AppController>();
+        m_app = std::make_unique<tanara::app::AppController>();
         m_app->setAutoMixdownAfterRecording(false);
         const QString stereo = src("Páros interjú.wav");
         QVERIFY(ffmpeg({"-f", "lavfi", "-i", "aevalsrc=0.5*sin(440*2*PI*t)|0.5*sin(660*2*PI*t):d=2:s=16000", stereo}));
@@ -205,9 +205,9 @@ private slots:
     // Title-based suggestions (recomputed with a delay), accept, dismiss.
     void draftSuggestionsFollowTheTitle()
     {
-        m_app = std::make_unique<tanara::AppController>();
+        m_app = std::make_unique<tanara::app::AppController>();
         const tagsfixture::Library lib = tagsfixture::buildLibrary(*m_app->store());
-        tanara::TagService* svc = m_app->tags();
+        tanara::library::TagService* svc = m_app->tags();
         const tanara::Tag nordvik = svc->addTag(lib.nordvik1, QStringLiteral("Nordvik"));
         svc->addTag(lib.nordvik2, QStringLiteral("Nordvik"));
 
@@ -251,7 +251,7 @@ private slots:
     void cancelKeepsTheForm()
     {
         if (!m_ffmpeg) QSKIP("ffmpeg / ffprobe nincs telepítve");
-        m_app = std::make_unique<tanara::AppController>();
+        m_app = std::make_unique<tanara::app::AppController>();
         const QString big = src("hosszu.wav");
         QVERIFY(ffmpeg({"-f", "lavfi", "-i", "sine=frequency=440:duration=2400:sample_rate=16000", "-ac", "1", big}));
 

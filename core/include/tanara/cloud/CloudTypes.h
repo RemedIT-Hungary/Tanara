@@ -21,7 +21,7 @@
 
 class QNetworkReply;
 
-namespace tanara {
+namespace tanara::cloud {
 
 // ---- money ----------------------------------------------------------------------------
 // Whole millionths of a unit (1 USD = 1,000,000 micros). May be negative (after a refund).
@@ -298,7 +298,6 @@ struct HttpExchange {
 HttpExchange makeHttpExchange(QNetworkReply* reply, const QByteArray& body);
 
 // ---- configuration --------------------------------------------------------------------
-namespace cloud {
 inline const QString ProviderId     = QStringLiteral("tanara-cloud");
 inline const QString ApiKeySecret   = QStringLiteral("tanara.cloud.apiKey");
 inline const QString DefaultBaseUrl = QStringLiteral("https://api.tanara.remedit.hu");
@@ -308,14 +307,12 @@ inline const QString PrivacyUrl     = QStringLiteral("https://app.tanara.remedit
 // Compile switches (CMake: TANARA_BUILD_CLOUD, TANARA_CLOUD_TEASER).
 bool clientCompiled();   // the sign-in cloud client is compiled in
 bool teaserCompiled();   // the "Coming soon" panel is compiled in
-} // namespace cloud
 
-} // namespace tanara
-
-Q_DECLARE_METATYPE(tanara::Money)
-Q_DECLARE_METATYPE(tanara::CloudError)
-Q_DECLARE_METATYPE(tanara::AccountInfo)
-Q_DECLARE_METATYPE(tanara::EstimateResult)
-Q_DECLARE_METATYPE(tanara::ChargeInfo)
-Q_DECLARE_METATYPE(tanara::DeviceCode)
-Q_DECLARE_METATYPE(tanara::TermsStatus)
+} // namespace tanara::cloud
+Q_DECLARE_METATYPE(tanara::cloud::Money)
+Q_DECLARE_METATYPE(tanara::cloud::CloudError)
+Q_DECLARE_METATYPE(tanara::cloud::AccountInfo)
+Q_DECLARE_METATYPE(tanara::cloud::EstimateResult)
+Q_DECLARE_METATYPE(tanara::cloud::ChargeInfo)
+Q_DECLARE_METATYPE(tanara::cloud::DeviceCode)
+Q_DECLARE_METATYPE(tanara::cloud::TermsStatus)

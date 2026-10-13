@@ -3,7 +3,7 @@
 #include "PeopleViewModel.h"
 #include "QmlApp.h"
 
-#include "tanara/AppController.h"
+#include "tanara/app/AppController.h"
 #include "tanara/foundation/log/Logging.h"
 
 #include <QQmlComponent>
@@ -14,7 +14,7 @@ using namespace tanara;
 
 namespace tanara_qml {
 
-PeopleWindowHost::PeopleWindowHost(AppController* controller, QObject* parent)
+PeopleWindowHost::PeopleWindowHost(app::AppController* controller, QObject* parent)
     : QObject(parent), m_controller(controller)
 {
 }

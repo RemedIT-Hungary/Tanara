@@ -18,12 +18,12 @@
 #include <QStandardPaths>
 #include <QTemporaryDir>
 
-#include "tanara/Types.h"
+#include "tanara/domain/Types.h"
 #include "tanara/cloud/CloudAccount.h"
 #include "tanara/cloud/CloudTypes.h"
-#include "tanara/llm/OpenAiCompatibleProvider.h"
-#include "tanara/store/KeyStore.h"
-#include "tanara/stt/SonioxProvider.h"
+#include "tanara/providers/chat/OpenAiCompatibleProvider.h"
+#include "tanara/foundation/KeyStore.h"
+#include "tanara/providers/stt/SonioxProvider.h"
 
 #ifndef TANARA_MOCK_GATEWAY
 #error "TANARA_MOCK_GATEWAY (a mock-gateway.mjs útja) nincs megadva"
@@ -52,14 +52,14 @@ private slots:
 private:
     void mockConfig(const QJsonObject& cfg);
     QJsonObject mockState();
-    ProviderConfig gatewayConfig(const QString& model, QVector<HttpExchange>* log);
+    ProviderConfig gatewayConfig(const QString& model, QVector<cloud::HttpExchange>* log);
 
     QProcess m_mock;
     int m_port = 0;
     QString m_base;
     QTemporaryDir m_dir;
     std::unique_ptr<KeyStore> m_keys;
-    std::unique_ptr<CloudAccount> m_acc;
+    std::unique_ptr<cloud::CloudAccount> m_acc;
     QNetworkAccessManager m_nam;
 };
 
@@ -88,7 +88,7 @@ void TestCloudGateway::initTestCase()
     QVERIFY2(out.contains("mock-gateway 1.2.0"), out.constData());
 
     m_keys = std::make_unique<KeyStore>(m_dir.filePath("secrets.json"));
-    m_acc = std::make_unique<CloudAccount>(m_keys.get(), m_dir.path());
+    m_acc = std::make_unique<cloud::CloudAccount>(m_keys.get(), m_dir.path());
     m_acc->setBaseUrl(m_base + "/v1/");      // the /v1 and the trailing / are trimmed
     QCOMPARE(m_acc->apiBase(), m_base + "/v1");
     m_acc->setLanguage("hu");
@@ -122,7 +122,7 @@ QJsonObject TestCloudGateway::mockState()
 }
 
 // The same gateway config that AppController builds for the "tanara-cloud" provider.
-ProviderConfig TestCloudGateway::gatewayConfig(const QString& model, QVector<HttpExchange>* log)
+ProviderConfig TestCloudGateway::gatewayConfig(const QString& model, QVector<cloud::HttpExchange>* log)
 {
     ProviderConfig cfg;
     cfg.type = cloud::ProviderId;
@@ -131,16 +131,16 @@ ProviderConfig TestCloudGateway::gatewayConfig(const QString& model, QVector<Htt
     cfg.model = model;
     cfg.maxTokens = 4000;
     cfg.extraHeaders = m_acc->requestHeaders(QStringLiteral("job-test-1"), QStringLiteral("quick"));
-    CloudAccount* acc = m_acc.get();
-    cfg.onExchange = [acc, log](const HttpExchange& ex) { acc->observeExchange(ex); log->append(ex); };
+    cloud::CloudAccount* acc = m_acc.get();
+    cfg.onExchange = [acc, log](const cloud::HttpExchange& ex) { acc->observeExchange(ex); log->append(ex); };
     return cfg;
 }
 
 void TestCloudGateway::waitlist_acceptedAndErrors()
 {
-    QSignalSpy ok(m_acc.get(), &CloudAccount::waitlistJoined);
-    QSignalSpy bad(m_acc.get(), &CloudAccount::waitlistFailed);
-    WaitlistSignup s;
+    QSignalSpy ok(m_acc.get(), &cloud::CloudAccount::waitlistJoined);
+    QSignalSpy bad(m_acc.get(), &cloud::CloudAccount::waitlistFailed);
+    cloud::WaitlistSignup s;
     s.email = "anna@example.com"; s.consent = true; s.uiLanguage = "hu"; s.useCase = "meetings"; s.meetingLanguages = { "hu" };
     m_acc->joinWaitlist(s);
     QVERIFY(ok.wait(5000));
@@ -154,23 +154,23 @@ void TestCloudGateway::waitlist_acceptedAndErrors()
     s.email = "spam@mailinator.com";
     m_acc->joinWaitlist(s);
     QVERIFY(bad.wait(5000));
-    CloudError e = bad.takeFirst().first().value<CloudError>();
-    QCOMPARE(e.kind, CloudErrorKind::DisposableEmail);
+    cloud::CloudError e = bad.takeFirst().first().value<cloud::CloudError>();
+    QCOMPARE(e.kind, cloud::CloudErrorKind::DisposableEmail);
     QVERIFY(!e.requestId.isEmpty());
 
     s.email = "anna@example.com"; s.consent = false;   // the server rejects it too (the UI never sends it anyway)
     m_acc->joinWaitlist(s);
     QVERIFY(bad.wait(5000));
-    e = bad.takeFirst().first().value<CloudError>();
-    QCOMPARE(e.kind, CloudErrorKind::Validation);
+    e = bad.takeFirst().first().value<cloud::CloudError>();
+    QCOMPARE(e.kind, cloud::CloudErrorKind::Validation);
     QVERIFY(e.fieldErrors.contains("consent"));
 
     mockConfig({ { "rate_limited", true } });
     s.consent = true;
     m_acc->joinWaitlist(s);
     QVERIFY(bad.wait(5000));
-    e = bad.takeFirst().first().value<CloudError>();
-    QCOMPARE(e.kind, CloudErrorKind::RateLimited);
+    e = bad.takeFirst().first().value<cloud::CloudError>();
+    QCOMPARE(e.kind, cloud::CloudErrorKind::RateLimited);
     QCOMPARE(e.retryAfterSec, 30);
     mockConfig({ { "rate_limited", false } });
 }
@@ -179,13 +179,13 @@ void TestCloudGateway::deviceFlow_login_account_models()
 {
     QVERIFY(!m_acc->isLoggedIn());
     mockConfig({ { "auto_approve", true } });
-    QSignalSpy code(m_acc.get(), &CloudAccount::deviceCodeReady);
-    QSignalSpy success(m_acc.get(), &CloudAccount::deviceFlowSucceeded);
-    QSignalSpy account(m_acc.get(), &CloudAccount::accountUpdated);
-    QSignalSpy models(m_acc.get(), &CloudAccount::modelsUpdated);
+    QSignalSpy code(m_acc.get(), &cloud::CloudAccount::deviceCodeReady);
+    QSignalSpy success(m_acc.get(), &cloud::CloudAccount::deviceFlowSucceeded);
+    QSignalSpy account(m_acc.get(), &cloud::CloudAccount::accountUpdated);
+    QSignalSpy models(m_acc.get(), &cloud::CloudAccount::modelsUpdated);
     m_acc->startDeviceFlow();
     QVERIFY(code.wait(5000));
-    const DeviceCode dc = code.first().first().value<DeviceCode>();
+    const cloud::DeviceCode dc = code.first().first().value<cloud::DeviceCode>();
     QVERIFY(dc.userCode.contains('-'));
     QVERIFY(dc.verificationUriComplete.contains(dc.userCode));
     QVERIFY(success.wait(8000));
@@ -198,7 +198,7 @@ void TestCloudGateway::deviceFlow_login_account_models()
     QCOMPARE(info.value("client_version").toString(), libraryVersion());
 
     QVERIFY(account.count() > 0 || account.wait(5000));
-    const AccountInfo a = m_acc->account();
+    const cloud::AccountInfo a = m_acc->account();
     QCOMPARE(a.email, QStringLiteral("anna@example.com"));
     QCOMPARE(a.balance.micros, 12700000);          // $10 net becomes $12.70 gross
     QCOMPARE(a.vatMode, QStringLiteral("gross"));
@@ -213,7 +213,7 @@ void TestCloudGateway::deviceFlow_login_account_models()
     QVERIFY(findTierModel(m_acc->models(), "llm", "accurate").has_value());
 
     // The account and catalog cache in cloud-state.json survives a restart (offline display).
-    CloudAccount again(m_keys.get(), m_dir.path());
+    cloud::CloudAccount again(m_keys.get(), m_dir.path());
     QCOMPARE(again.account().balance.micros, 12700000);
     QCOMPARE(again.email(), QStringLiteral("anna@example.com"));
     QVERIFY(!again.models().isEmpty());
@@ -224,15 +224,15 @@ void TestCloudGateway::deviceFlow_denied_and_cancel()
 {
     KeyStore keys(m_dir.filePath("secrets-2.json"));
     QTemporaryDir d2;
-    CloudAccount acc(&keys, d2.path());
+    cloud::CloudAccount acc(&keys, d2.path());
     acc.setBaseUrl(m_base);
-    QSignalSpy code(&acc, &CloudAccount::deviceCodeReady);
-    QSignalSpy failed(&acc, &CloudAccount::deviceFlowFailed);
+    QSignalSpy code(&acc, &cloud::CloudAccount::deviceCodeReady);
+    QSignalSpy failed(&acc, &cloud::CloudAccount::deviceFlowFailed);
 
     mockConfig({ { "deny", true } });
     acc.startDeviceFlow();
     QVERIFY(failed.wait(8000));
-    QCOMPARE(failed.takeFirst().first().value<CloudError>().code, QStringLiteral("access_denied"));
+    QCOMPARE(failed.takeFirst().first().value<cloud::CloudError>().code, QStringLiteral("access_denied"));
     mockConfig({ { "deny", false } });
 
     // Cancel: the code cannot be approved, the mock sees it as "cancelled"; no orphan key.
@@ -247,21 +247,21 @@ void TestCloudGateway::deviceFlow_denied_and_cancel()
 
 void TestCloudGateway::estimate_levels()
 {
-    EstimateRequest r;
+    cloud::EstimateRequest r;
     r.task = "both"; r.durationMs = 3735000; r.sttModel = "tanara/stt-accurate"; r.llmModel = "tanara/summary-accurate";
     r.summaryMode = "complex"; r.language = "hu";
     r.llmCalls = { { 1, 48000, 4000 }, { -1, 48000, 4000 }, { 1, 6000, 4000 } };
 
-    EstimateResult got; CloudError err; bool done = false;
+    cloud::EstimateResult got; cloud::CloudError err; bool done = false;
     auto run = [&]() {
         done = false;
-        m_acc->estimate(r, [&](const EstimateResult& e, const CloudError& ce) { got = e; err = ce; done = true; });
+        m_acc->estimate(r, [&](const cloud::EstimateResult& e, const cloud::CloudError& ce) { got = e; err = ce; done = true; });
         QTRY_VERIFY_WITH_TIMEOUT(done, 5000);
     };
     run();
     QVERIFY(!err.isError());
     QVERIFY(got.valid);
-    QCOMPARE(estimateLevel(got), EstimateLevel::Enough);
+    QCOMPARE(estimateLevel(got), cloud::EstimateLevel::Enough);
     QCOMPARE(got.breakdown.size(), 2);
     QVERIFY(got.breakdown[0].exact && !got.breakdown[1].exact);
     QCOMPARE(got.breakdown[0].model, QStringLiteral("tanara/stt-accurate"));   // the requested (virtual) name stays
@@ -272,50 +272,50 @@ void TestCloudGateway::estimate_levels()
     const double between = (got.estimate.micros + got.required.micros) / 2.0 / 1.27 / 1e6;
     mockConfig({ { "balance", between } });
     run();
-    QCOMPARE(estimateLevel(got), EstimateLevel::LittleReserve);
+    QCOMPARE(estimateLevel(got), cloud::EstimateLevel::LittleReserve);
     mockConfig({ { "balance", 0.05 } });
     run();
-    QCOMPARE(estimateLevel(got), EstimateLevel::NotEnough);
+    QCOMPARE(estimateLevel(got), cloud::EstimateLevel::NotEnough);
     mockConfig({ { "balance", 10 } });
 }
 
 void TestCloudGateway::terms_earlyAcceptance()
 {
     mockConfig({ { "terms_pending", true } });
-    QSignalSpy account(m_acc.get(), &CloudAccount::accountUpdated);
+    QSignalSpy account(m_acc.get(), &cloud::CloudAccount::accountUpdated);
     m_acc->refreshAccount();
     QVERIFY(account.wait(5000));
-    TermsStatus t = m_acc->account().terms;
+    cloud::TermsStatus t = m_acc->account().terms;
     QVERIFY(t.needsEarlyAcceptance());
     QVERIFY(!t.needsAcceptance());
     QVERIFY(t.upcomingEffectiveFrom > QDateTime::currentDateTimeUtc());
 
-    QSignalSpy accepted(m_acc.get(), &CloudAccount::termsAccepted);
+    QSignalSpy accepted(m_acc.get(), &cloud::CloudAccount::termsAccepted);
     m_acc->acceptTerms(t.upcomingVersion);
     QVERIFY(accepted.wait(5000));
-    t = accepted.first().first().value<TermsStatus>();
+    t = accepted.first().first().value<cloud::TermsStatus>();
     QCOMPARE(t.acceptedVersion, QStringLiteral("2026-11-01"));
     QVERIFY(!t.needsEarlyAcceptance());
 
     // Unknown version: 400 validation_error (fields.version).
-    QSignalSpy failed(m_acc.get(), &CloudAccount::termsFailed);
+    QSignalSpy failed(m_acc.get(), &cloud::CloudAccount::termsFailed);
     m_acc->acceptTerms("1999-01-01");
     QVERIFY(failed.wait(5000));
-    QVERIFY(failed.first().first().value<CloudError>().fieldErrors.contains("version"));
+    QVERIFY(failed.first().first().value<cloud::CloudError>().fieldErrors.contains("version"));
     mockConfig({ { "terms_pending", false }, { "terms_accepted", "2026-06-01" } });
 }
 
 void TestCloudGateway::topup_unavailable()
 {
-    QSignalSpy failed(m_acc.get(), &CloudAccount::topupFailed);
+    QSignalSpy failed(m_acc.get(), &cloud::CloudAccount::topupFailed);
     m_acc->createTopupLink();
     QVERIFY(failed.wait(5000));
-    const CloudError e = failed.first().first().value<CloudError>();
-    QCOMPARE(e.kind, CloudErrorKind::TopupUnavailable);
+    const cloud::CloudError e = failed.first().first().value<cloud::CloudError>();
+    QCOMPARE(e.kind, cloud::CloudErrorKind::TopupUnavailable);
     QVERIFY(e.contactUrl.endsWith("/contact"));
 
     mockConfig({ { "topup_available", true } });
-    QSignalSpy ok(m_acc.get(), &CloudAccount::topupLinkReady);
+    QSignalSpy ok(m_acc.get(), &cloud::CloudAccount::topupLinkReady);
     m_acc->createTopupLink();
     QVERIFY(ok.wait(5000));
     QVERIFY(ok.first().first().toString().contains("handoff="));
@@ -324,63 +324,63 @@ void TestCloudGateway::topup_unavailable()
 
 void TestCloudGateway::errors_blockingStates()
 {
-    EstimateRequest r;
+    cloud::EstimateRequest r;
     r.task = "transcribe"; r.durationMs = 60000; r.sttModel = "tanara/stt-accurate";
     auto estimateError = [&]() {
-        CloudError err; bool done = false;
-        m_acc->estimate(r, [&](const EstimateResult&, const CloudError& ce) { err = ce; done = true; });
+        cloud::CloudError err; bool done = false;
+        m_acc->estimate(r, [&](const cloud::EstimateResult&, const cloud::CloudError& ce) { err = ce; done = true; });
         QDeadlineTimer dl(5000);
         while (!done && !dl.hasExpired()) QTest::qWait(20);
         return err;
     };
-    struct Case { QJsonObject cfg; CloudErrorKind kind; int status; };
+    struct Case { QJsonObject cfg; cloud::CloudErrorKind kind; int status; };
     const QVector<Case> cases = {
-        { { { "maintenance", true } }, CloudErrorKind::Maintenance, 503 },
-        { { { "upstream_down", true } }, CloudErrorKind::Upstream, 503 },
-        { { { "rate_limited", true } }, CloudErrorKind::RateLimited, 429 },
-        { { { "spend_limit", true } }, CloudErrorKind::SpendLimit, 429 },
-        { { { "internal_error", true } }, CloudErrorKind::Internal, 500 },
-        { { { "terms_required", true } }, CloudErrorKind::TermsRequired, 403 },
-        { { { "suspended", "payment_dispute" } }, CloudErrorKind::Suspended, 403 },
+        { { { "maintenance", true } }, cloud::CloudErrorKind::Maintenance, 503 },
+        { { { "upstream_down", true } }, cloud::CloudErrorKind::Upstream, 503 },
+        { { { "rate_limited", true } }, cloud::CloudErrorKind::RateLimited, 429 },
+        { { { "spend_limit", true } }, cloud::CloudErrorKind::SpendLimit, 429 },
+        { { { "internal_error", true } }, cloud::CloudErrorKind::Internal, 500 },
+        { { { "terms_required", true } }, cloud::CloudErrorKind::TermsRequired, 403 },
+        { { { "suspended", "payment_dispute" } }, cloud::CloudErrorKind::Suspended, 403 },
     };
     for (const Case& c : cases) {
         mockConfig(c.cfg);
-        const CloudError e = estimateError();
+        const cloud::CloudError e = estimateError();
         QCOMPARE(e.kind, c.kind);
         QCOMPARE(e.httpStatus, c.status);
         QVERIFY2(e.requestId.startsWith("req_"), qPrintable(e.code));   // the error id is always there
         QVERIFY(!e.message.isEmpty());
-        if (c.kind == CloudErrorKind::Maintenance) QVERIFY(e.windowStart.isValid() && e.windowEnd.isValid());
-        if (c.kind == CloudErrorKind::SpendLimit) { QCOMPARE(e.limitPeriod, QStringLiteral("daily")); QVERIFY(!e.settingsUrl.isEmpty()); }
-        if (c.kind == CloudErrorKind::TermsRequired) QCOMPARE(e.termsVersion, QStringLiteral("2026-11-01"));
-        if (c.kind == CloudErrorKind::Suspended) QCOMPARE(e.suspensionReason, QStringLiteral("payment_dispute"));
+        if (c.kind == cloud::CloudErrorKind::Maintenance) QVERIFY(e.windowStart.isValid() && e.windowEnd.isValid());
+        if (c.kind == cloud::CloudErrorKind::SpendLimit) { QCOMPARE(e.limitPeriod, QStringLiteral("daily")); QVERIFY(!e.settingsUrl.isEmpty()); }
+        if (c.kind == cloud::CloudErrorKind::TermsRequired) QCOMPARE(e.termsVersion, QStringLiteral("2026-11-01"));
+        if (c.kind == cloud::CloudErrorKind::Suspended) QCOMPARE(e.suspensionReason, QStringLiteral("payment_dispute"));
         QJsonObject off = c.cfg;
         for (auto it = off.begin(); it != off.end(); ++it) it.value() = it.value().isString() ? QJsonValue() : QJsonValue(false);
         mockConfig(off);
     }
     // A suspended account is 403 too, but for payment_dispute the top-up link is allowed (it reaches 409).
     mockConfig({ { "suspended", "payment_dispute" } });
-    QSignalSpy topup(m_acc.get(), &CloudAccount::topupFailed);
+    QSignalSpy topup(m_acc.get(), &cloud::CloudAccount::topupFailed);
     m_acc->createTopupLink();
     QVERIFY(topup.wait(5000));
-    QCOMPARE(topup.first().first().value<CloudError>().kind, CloudErrorKind::TopupUnavailable);
+    QCOMPARE(topup.first().first().value<cloud::CloudError>().kind, cloud::CloudErrorKind::TopupUnavailable);
     mockConfig({ { "suspended", QJsonValue() } });
 }
 
 void TestCloudGateway::minClient_detected()
 {
-    QSignalSpy old(m_acc.get(), &CloudAccount::clientTooOldDetected);
+    QSignalSpy old(m_acc.get(), &cloud::CloudAccount::clientTooOldDetected);
     mockConfig({ { "min_client", "9.9.9" } });
-    QSignalSpy failed(m_acc.get(), &CloudAccount::accountFailed);
+    QSignalSpy failed(m_acc.get(), &cloud::CloudAccount::accountFailed);
     m_acc->refreshAccount();
     QVERIFY(failed.wait(5000));
-    QCOMPARE(failed.first().first().value<CloudError>().kind, CloudErrorKind::ClientTooOld);
+    QCOMPARE(failed.first().first().value<cloud::CloudError>().kind, cloud::CloudErrorKind::ClientTooOld);
     QVERIFY(old.count() == 1);
     QVERIFY(m_acc->clientTooOld());
     QCOMPARE(m_acc->minClient(), QStringLiteral("9.9.9"));
     QVERIFY(m_acc->downloadUrl().endsWith("/download"));
     mockConfig({ { "min_client", "0.1.0" } });
-    QSignalSpy ok(m_acc.get(), &CloudAccount::accountUpdated);
+    QSignalSpy ok(m_acc.get(), &cloud::CloudAccount::accountUpdated);
     m_acc->refreshAccount();
     QVERIFY(ok.wait(5000));
     QVERIFY(!m_acc->clientTooOld());   // the gateway lowered the minimum
@@ -398,31 +398,31 @@ void TestCloudGateway::stt_throughGateway_chargeAndRefund()
     }
     for (const bool refund : { false, true }) {
         mockConfig({ { "refund", refund } });
-        QVector<HttpExchange> log;
-        SonioxProvider p(gatewayConfig(QStringLiteral("tanara/stt-accurate"), &log));
-        SttRequest req;
+        QVector<cloud::HttpExchange> log;
+        providers::SonioxProvider p(gatewayConfig(QStringLiteral("tanara/stt-accurate"), &log));
+        providers::SttRequest req;
         req.audioFilePath = audio;
         req.trackId = "mixdown";
         req.diarization = true;
-        SttJob* job = p.transcribe(req);
-        QSignalSpy fin(job, &SttJob::finished);
-        QSignalSpy fail(job, &SttJob::failed);
+        providers::SttJob* job = p.transcribe(req);
+        QSignalSpy fin(job, &providers::SttJob::finished);
+        QSignalSpy fail(job, &providers::SttJob::failed);
         QTRY_VERIFY_WITH_TIMEOUT(fin.count() + fail.count() > 0, 15000);
         QTest::qWait(300);   // feedback of the cleanup DELETEs
 
         // Every request went with the shared headers, and every response has a request id.
         QVERIFY(!log.isEmpty());
-        for (const HttpExchange& ex : log)
+        for (const cloud::HttpExchange& ex : log)
             QVERIFY2(ex.headers.contains("x-tanara-request-id"), qPrintable(ex.path));
-        const auto create = std::find_if(log.cbegin(), log.cend(), [](const HttpExchange& ex) {
+        const auto create = std::find_if(log.cbegin(), log.cend(), [](const cloud::HttpExchange& ex) {
             return ex.method == "POST" && ex.path.endsWith("/transcriptions"); });
         QVERIFY(create != log.cend());
-        const ChargeInfo ch = chargeInfoFromJson(QJsonDocument::fromJson(create->body).object().value("tanara").toObject());
+        const cloud::ChargeInfo ch = cloud::chargeInfoFromJson(QJsonDocument::fromJson(create->body).object().value("tanara").toObject());
         QVERIFY(ch.valid);
         QVERIFY(ch.charge.micros > 0);
-        QCOMPARE(chargeInfoFromHeaders(create->headers).charge.micros, ch.charge.micros);
+        QCOMPARE(cloud::chargeInfoFromHeaders(create->headers).charge.micros, ch.charge.micros);
         QCOMPARE(ch.jobId, QStringLiteral("job-test-1"));
-        QVERIFY(std::any_of(log.cbegin(), log.cend(), [](const HttpExchange& ex) {
+        QVERIFY(std::any_of(log.cbegin(), log.cend(), [](const cloud::HttpExchange& ex) {
             return ex.method == "DELETE" && ex.path.contains("/transcriptions/"); }));
 
         if (!refund) {
@@ -436,7 +436,7 @@ void TestCloudGateway::stt_throughGateway_chargeAndRefund()
             // client reads the tanara field first).
             int statusIdx = -1, deleteIdx = -1;
             for (int i = 0; i < log.size(); ++i) {
-                const TranscriptionJobInfo j = transcriptionJobInfoFromJson(QJsonDocument::fromJson(log[i].body).object());
+                const cloud::TranscriptionJobInfo j = cloud::transcriptionJobInfoFromJson(QJsonDocument::fromJson(log[i].body).object());
                 if (log[i].method == "GET" && j.status == "error" && statusIdx < 0) {
                     QVERIFY(j.refunded);
                     QCOMPARE(j.refund.micros, ch.charge.micros);
@@ -453,17 +453,17 @@ void TestCloudGateway::stt_throughGateway_chargeAndRefund()
 
 void TestCloudGateway::llm_throughGateway_charge_and402()
 {
-    QVector<HttpExchange> log;
-    OpenAiCompatibleProvider p(gatewayConfig(QStringLiteral("tanara/summary-fast"), &log));
-    LlmRequest req;
+    QVector<cloud::HttpExchange> log;
+    providers::OpenAiCompatibleProvider p(gatewayConfig(QStringLiteral("tanara/summary-fast"), &log));
+    providers::LlmRequest req;
     req.messages = { { "system", "Összefoglaló." }, { "user", "Rövid átirat." } };
     req.maxTokens = 4000;
-    LlmJob* job = p.chat(req);
-    QSignalSpy fin(job, &LlmJob::finished);
+    providers::LlmJob* job = p.chat(req);
+    QSignalSpy fin(job, &providers::LlmJob::finished);
     QVERIFY(fin.wait(5000));
     QCOMPARE(log.size(), 1);
     const QJsonObject usage = QJsonDocument::fromJson(log[0].body).object().value("usage").toObject();
-    const ChargeInfo c = chargeInfoFromJson(usage.value("tanara_charge").toObject());
+    const cloud::ChargeInfo c = cloud::chargeInfoFromJson(usage.value("tanara_charge").toObject());
     QVERIFY(c.valid && c.charge.micros > 0);
     QCOMPARE(c.jobId, QStringLiteral("job-test-1"));
     // The mock's log: the summary mode and the job id in the usage record (grouping).
@@ -474,11 +474,11 @@ void TestCloudGateway::llm_throughGateway_charge_and402()
     // Low balance: 402 hold (prompt + max_tokens cover), nothing is charged.
     mockConfig({ { "balance", 0.00001 } });
     log.clear();
-    LlmJob* job2 = p.chat(req);
-    QSignalSpy failed(job2, &LlmJob::failed);
+    providers::LlmJob* job2 = p.chat(req);
+    QSignalSpy failed(job2, &providers::LlmJob::failed);
     QVERIFY(failed.wait(5000));
-    const CloudError e = parseCloudError(log[0].status, log[0].headers, log[0].body);
-    QCOMPARE(e.kind, CloudErrorKind::InsufficientBalance);
+    const cloud::CloudError e = cloud::parseCloudError(log[0].status, log[0].headers, log[0].body);
+    QCOMPARE(e.kind, cloud::CloudErrorKind::InsufficientBalance);
     QCOMPARE(e.neededBasis, QStringLiteral("hold"));
     QVERIFY(e.needed.micros > e.balance.micros);
     QVERIFY(e.topupUrl.isEmpty());   // P0: no online top-up, so "Write to us"
@@ -489,28 +489,28 @@ void TestCloudGateway::pending_refundAtStartup()
 {
     // A "half-finished" transcription: the client saved the id, then quit.
     mockConfig({ { "refund", true } });
-    QVector<HttpExchange> log;
+    QVector<cloud::HttpExchange> log;
     const QString audio = m_dir.filePath("mixdown.mp3");
-    SonioxProvider p(gatewayConfig(QStringLiteral("tanara/stt-accurate"), &log));
-    SttRequest req; req.audioFilePath = audio; req.trackId = "mixdown";
-    SttJob* job = p.transcribe(req);
-    QTRY_VERIFY_WITH_TIMEOUT(std::any_of(log.cbegin(), log.cend(), [](const HttpExchange& ex) {
+    providers::SonioxProvider p(gatewayConfig(QStringLiteral("tanara/stt-accurate"), &log));
+    providers::SttRequest req; req.audioFilePath = audio; req.trackId = "mixdown";
+    providers::SttJob* job = p.transcribe(req);
+    QTRY_VERIFY_WITH_TIMEOUT(std::any_of(log.cbegin(), log.cend(), [](const cloud::HttpExchange& ex) {
         return ex.method == "POST" && ex.path.endsWith("/transcriptions"); }), 8000);
-    const auto create = std::find_if(log.cbegin(), log.cend(), [](const HttpExchange& ex) {
+    const auto create = std::find_if(log.cbegin(), log.cend(), [](const cloud::HttpExchange& ex) {
         return ex.method == "POST" && ex.path.endsWith("/transcriptions"); });
     const QString trId = QJsonDocument::fromJson(create->body).object().value("id").toString();
     delete job;   // "quit": it no longer polled the status
 
     m_acc->addPendingTranscription(trId, QString());
     QTest::qWait(3000);   // the mock job ends with an error meanwhile
-    QSignalSpy refunded(m_acc.get(), &CloudAccount::previousTranscriptionRefunded);
-    CloudAccount restarted(m_keys.get(), m_dir.path());   // new start: the pending id from cloud-state.json
+    QSignalSpy refunded(m_acc.get(), &cloud::CloudAccount::previousTranscriptionRefunded);
+    cloud::CloudAccount restarted(m_keys.get(), m_dir.path());   // new start: the pending id from cloud-state.json
     restarted.setBaseUrl(m_base);
     QCOMPARE(restarted.pendingTranscriptions(), QStringList{ trId });
-    QSignalSpy refunded2(&restarted, &CloudAccount::previousTranscriptionRefunded);
+    QSignalSpy refunded2(&restarted, &cloud::CloudAccount::previousTranscriptionRefunded);
     restarted.checkPendingTranscriptions();
     QVERIFY(refunded2.wait(5000));
-    QVERIFY(refunded2.first().first().value<Money>().micros > 0);
+    QVERIFY(refunded2.first().first().value<cloud::Money>().micros > 0);
     QTRY_VERIFY_WITH_TIMEOUT(restarted.pendingTranscriptions().isEmpty(), 3000);
     mockConfig({ { "refund", false } });
 }
@@ -519,7 +519,7 @@ void TestCloudGateway::logout_removesKey()
 {
     QVERIFY(m_acc->isLoggedIn());
     const QString key = m_acc->apiKey();
-    QSignalSpy out(m_acc.get(), &CloudAccount::loggedOut);
+    QSignalSpy out(m_acc.get(), &cloud::CloudAccount::loggedOut);
     m_acc->logout();
     QVERIFY(out.wait(5000));
     QVERIFY(!m_acc->isLoggedIn());
@@ -527,10 +527,10 @@ void TestCloudGateway::logout_removesKey()
     QVERIFY(m_acc->email().isEmpty());
     // With the revoked key the gateway gives 401.
     m_keys->set(cloud::ApiKeySecret, key);
-    QSignalSpy failed(m_acc.get(), &CloudAccount::accountFailed);
+    QSignalSpy failed(m_acc.get(), &cloud::CloudAccount::accountFailed);
     m_acc->refreshAccount();
     QVERIFY(failed.wait(5000));
-    QCOMPARE(failed.first().first().value<CloudError>().kind, CloudErrorKind::Unauthorized);
+    QCOMPARE(failed.first().first().value<cloud::CloudError>().kind, cloud::CloudErrorKind::Unauthorized);
     m_keys->remove(cloud::ApiKeySecret);
 }
 

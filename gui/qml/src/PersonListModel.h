@@ -19,7 +19,7 @@
 #include "TranscriptEditorViewModel.h"
 #include "TagBackend.h"
 
-#include "tanara/edit/SpeakerEditTypes.h"
+#include "tanara/editing/session/SpeakerEditTypes.h"
 
 #include <QAbstractListModel>
 #include <QPointer>
@@ -106,8 +106,8 @@ private:
     bool m_hideMeeting = true;
     bool m_excludeMeeting = false;
     bool m_canCreate = false;
-    QVector<tanara::PersonInfo> m_all;
-    QVector<tanara::PersonInfo> m_shown;
+    QVector<tanara::editing::PersonInfo> m_all;
+    QVector<tanara::editing::PersonInfo> m_shown;
     QVector<bool> m_inMeeting;
     QStringList m_hints;
     QStringList m_groups;

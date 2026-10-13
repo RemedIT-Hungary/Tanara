@@ -4,11 +4,11 @@
 
 #include <cmath>
 
-#include "tanara/edit/CandidateRanker.h"
-#include "tanara/edit/ReviewGroups.h"
+#include "tanara/editing/review/CandidateRanker.h"
+#include "tanara/editing/review/ReviewGroups.h"
 
 using namespace tanara;
-using namespace tanara::ranking;
+using namespace tanara::editing::ranking;
 
 namespace {
 
@@ -31,7 +31,7 @@ QVector<double> sumOf(const QVector<QVector<float>>& vs)
     return s;
 }
 
-SpeakerProfile profile(const QString& key, const QString& person, Side side, int lines,
+SpeakerProfile profile(const QString& key, const QString& person, editing::Side side, int lines,
                        const QVector<QVector<float>>& voices, bool core)
 {
     SpeakerProfile p;
@@ -96,7 +96,7 @@ TrackActivity activity(const QString& id, TrackKind kind, qint64 totalMs, const 
 struct LineSpec { QString raw; char side; int voiceAxis; bool confirmed = false; };
 
 struct Scenario {
-    ReviewInput in;
+    editing::ReviewInput in;
     MeetingActivity act;
 };
 
@@ -122,9 +122,9 @@ Scenario build(const QVector<LineSpec>& specs)
     return sc;
 }
 
-const ReviewGroup* group(const QVector<ReviewGroup>& gs, ReviewKind k)
+const editing::ReviewGroup* group(const QVector<editing::ReviewGroup>& gs, editing::ReviewKind k)
 {
-    for (const ReviewGroup& g : gs)
+    for (const editing::ReviewGroup& g : gs)
         if (g.kind == k) return &g;
     return nullptr;
 }
@@ -138,22 +138,22 @@ private slots:
     {
         // The probe's voice is closer to Anna (0.8 vs 0.6), but it played on the loopback and Anna
         // speaks on the microphone, so Anna drops lower (otherSide) but stays on the list.
-        const RankContext ctx = context({profile("A", "Anna", Side::Local, 10, {voice(0), voice(0), voice(0)}, true),
-                                         profile("B", "Béla", Side::Remote, 10, {voice(1), voice(1), voice(1)}, true)});
+        const RankContext ctx = context({profile("A", "Anna", editing::Side::Local, 10, {voice(0), voice(0), voice(0)}, true),
+                                         profile("B", "Béla", editing::Side::Remote, 10, {voice(1), voice(1), voice(1)}, true)});
         const QVector<float> probe = voice(0, 1, 0.8f);
-        QVector<Candidate> cs = rankForLine(ctx, probe, Side::Remote, "A", false);
+        QVector<Candidate> cs = editing::ranking::rankForLine(ctx, probe, editing::Side::Remote, "A", false);
         QCOMPARE(cs.size(), 2);
         QCOMPARE(cs[0].speakerKey, QStringLiteral("B"));
         const Candidate* a = find(cs, "A");
         QVERIFY(a);
         QVERIFY(a->otherSide);
-        QVERIFY(std::abs(a->score - (0.8 - kSidePenalty + kLineWeight * 0.5)) < 1e-6);
-        const QVector<Evidence> why = whyNot(*a);
+        QVERIFY(std::abs(a->score - (0.8 - editing::ranking::kSidePenalty + editing::ranking::kLineWeight * 0.5)) < 1e-6);
+        const QVector<Evidence> why = editing::ranking::whyNot(*a);
         QVERIFY(hasEvidence(why, EvidenceKind::Side, Polarity::Contradict, "tracks"));
         QVERIFY(hasEvidence(find(cs, "B")->evidence, EvidenceKind::Side, Polarity::Support));
 
         // Without track data the voice decides.
-        cs = rankForLine(context(ctx.speakers, /*sidesActive*/ false), probe, Side::Remote, "A", false);
+        cs = editing::ranking::rankForLine(context(ctx.speakers, /*sidesActive*/ false), probe, editing::Side::Remote, "A", false);
         QCOMPARE(cs[0].speakerKey, QStringLiteral("A"));
         QVERIFY(!cs[0].otherSide);
     }
@@ -161,28 +161,28 @@ private slots:
     void weightsTagsAndLines()
     {
         // The same voice: the tag and the line count decide.
-        SpeakerProfile a = profile("A", "Anna", Side::Unknown, 20, {voice(0), voice(0)}, false);
-        SpeakerProfile b = profile("B", "Béla", Side::Unknown, 2, {voice(0), voice(0)}, false);
+        editing::ranking::SpeakerProfile a = profile("A", "Anna", editing::Side::Unknown, 20, {voice(0), voice(0)}, false);
+        editing::ranking::SpeakerProfile b = profile("B", "Béla", editing::Side::Unknown, 2, {voice(0), voice(0)}, false);
         // The tag evidence by PersonTagSnapshot's rule: Anna's manual tag is the meeting's; Béla has
         // a manual tag, the meeting's tags are mature (5 meetings), and he was at none of them.
-        PersonTagSnapshot snap;
-        QVector<PersonTagRow> rows;
+        library::PersonTagSnapshot snap;
+        QVector<library::PersonTagRow> rows;
         for (int i = 0; i < 5; ++i)
-            rows << PersonTagRow{QStringLiteral("m%1").arg(i), QDateTime(), {"projekt-x", "heti"}, {"Cecil"}};
-        snap.stats = std::make_shared<PersonTagStats>(PersonTagStats::compute(rows, QString()));
+            rows << library::PersonTagRow{QStringLiteral("m%1").arg(i), QDateTime(), {"projekt-x", "heti"}, {"Cecil"}};
+        snap.stats = std::make_shared<library::PersonTagStats>(library::PersonTagStats::compute(rows, QString()));
         snap.tagNames = {{"projekt-x", "Projekt X"}, {"heti", "Heti"}, {"marketing", "Marketing"}};
-        snap.manual.insert(persontags::personKey("Anna"), {"projekt-x"});
-        snap.manual.insert(persontags::personKey("Béla"), {"marketing"});
+        snap.manual.insert(library::persontags::personKey("Anna"), {"projekt-x"});
+        snap.manual.insert(library::persontags::personKey("Béla"), {"marketing"});
         a.tagEvidence = snap.evidence("Anna", {"projekt-x", "heti"});
         b.tagEvidence = snap.evidence("Béla", {"projekt-x", "heti"});
-        RankContext ctx = context({a, b});
+        editing::ranking::RankContext ctx = context({a, b});
         ctx.meetingTags = {"projekt-x", "heti"};
-        const QVector<Candidate> cs = rankForLine(ctx, voice(0), Side::Unknown, "", false);
+        const QVector<Candidate> cs = editing::ranking::rankForLine(ctx, voice(0), editing::Side::Unknown, "", false);
         QCOMPARE(cs[0].speakerKey, QStringLiteral("A"));
         const Candidate* ca = find(cs, "A");
         const Candidate* cb = find(cs, "B");
-        QVERIFY(std::abs(ca->score - (1.0 + kTagSupport + kLineWeight)) < 1e-6);
-        QVERIFY(std::abs(cb->score - (1.0 - kTagMismatch + kLineWeight * 0.1)) < 1e-6);
+        QVERIFY(std::abs(ca->score - (1.0 + editing::ranking::kTagSupport + editing::ranking::kLineWeight)) < 1e-6);
+        QVERIFY(std::abs(cb->score - (1.0 - editing::ranking::kTagMismatch + editing::ranking::kLineWeight * 0.1)) < 1e-6);
         QVERIFY(hasEvidence(ca->evidence, EvidenceKind::Tag, Polarity::Support, "tags"));
         QVERIFY(hasEvidence(cb->evidence, EvidenceKind::Tag, Polarity::Contradict, "tags"));
         QVERIFY(hasEvidence(ca->evidence, EvidenceKind::LineCount, Polarity::Support));
@@ -196,49 +196,49 @@ private slots:
         for (const Evidence& e : cb->evidence)
             if (e.kind == EvidenceKind::Tag) QCOMPARE(e.text, QStringLiteral("más címkék"));
         // A young tag (< 5 meetings) does not penalize: no tag evidence.
-        QVector<PersonTagRow> young = rows.mid(0, 2);
-        snap.stats = std::make_shared<PersonTagStats>(PersonTagStats::compute(young, QString()));
+        QVector<library::PersonTagRow> young = rows.mid(0, 2);
+        snap.stats = std::make_shared<library::PersonTagStats>(library::PersonTagStats::compute(young, QString()));
         QVERIFY(snap.evidence("Béla", {"projekt-x", "heti"}).isEmpty());
     }
 
     void leaveOneOutAndPrints()
     {
         // The probe is left out of the current speaker's 3-line sum (it does not measure against itself).
-        SpeakerProfile a = profile("A", "Anna", Side::Unknown, 3, {voice(0), voice(1), voice(1)}, false);
+        editing::ranking::SpeakerProfile a = profile("A", "Anna", editing::Side::Unknown, 3, {voice(0), voice(1), voice(1)}, false);
         const RankContext ctx = context({a});
-        Probe p;
+        editing::ranking::Probe p;
         p.embedding = voice(0);
         p.currentKey = "A";
         p.inCurrentSum = true;
         QString basis;
-        QVERIFY(std::abs(voiceScore(ctx.speakers[0], p, &basis)) < 1e-6);   // only the two voice(1) remain
+        QVERIFY(std::abs(editing::ranking::voiceScore(ctx.speakers[0], p, &basis)) < 1e-6);   // only the two voice(1) remain
         QCOMPARE(basis, QStringLiteral("lines"));
         p.inCurrentSum = false;
-        QVERIFY(voiceScore(ctx.speakers[0], p) > 0.4);
+        QVERIFY(editing::ranking::voiceScore(ctx.speakers[0], p) > 0.4);
         // The voiceprint is a reference too; the better one counts.
-        SpeakerProfile c;
+        editing::ranking::SpeakerProfile c;
         c.personName = "Cecil";
         c.prints = {voice(2)};
         p.embedding = voice(2);
-        QVERIFY(std::abs(voiceScore(c, p, &basis) - 1.0) < 1e-6);
+        QVERIFY(std::abs(editing::ranking::voiceScore(c, p, &basis) - 1.0) < 1e-6);
         QCOMPARE(basis, QStringLiteral("prints"));
     }
 
     void similarityWarning()
     {
-        const RankContext ctx = context({profile("A", "Anna", Side::Unknown, 5, {voice(0), voice(0), voice(0)}, true),
-                                         profile("B", "Béla", Side::Unknown, 5,
+        const RankContext ctx = context({profile("A", "Anna", editing::Side::Unknown, 5, {voice(0), voice(0), voice(0)}, true),
+                                         profile("B", "Béla", editing::Side::Unknown, 5,
                                                  {voice(0, 1, 0.95f), voice(0, 1, 0.95f), voice(0, 1, 0.95f)}, true),
-                                         profile("C", "Cecil", Side::Unknown, 5, {voice(2), voice(2), voice(2)}, true)});
-        const QVector<Evidence> w = similarityWarnings(ctx, "A");
+                                         profile("C", "Cecil", editing::Side::Unknown, 5, {voice(2), voice(2), voice(2)}, true)});
+        const QVector<Evidence> w = editing::ranking::similarityWarnings(ctx, "A");
         QCOMPARE(w.size(), 1);
         QCOMPARE(w[0].fixTarget, QStringLiteral("pair:B"));
         QCOMPARE(w[0].kind, EvidenceKind::Similarity);
-        QVERIFY(similarityWarnings(ctx, "C").isEmpty());
+        QVERIFY(editing::ranking::similarityWarnings(ctx, "C").isEmpty());
         // "Why them?" contains it too.
-        QVERIFY(hasEvidence(selfEvidence(ctx, "A"), EvidenceKind::Similarity, Polarity::Neutral, "pair:B"));
+        QVERIFY(hasEvidence(editing::ranking::selfEvidence(ctx, "A"), EvidenceKind::Similarity, Polarity::Neutral, "pair:B"));
         // "Not them? Actually...": the speaker itself is not on the list, the similar voice first.
-        const QVector<Candidate> cs = rankForSpeaker(ctx, "A");
+        const QVector<Candidate> cs = editing::ranking::rankForSpeaker(ctx, "A");
         QCOMPARE(cs.size(), 2);
         QCOMPARE(cs[0].speakerKey, QStringLiteral("B"));
     }
@@ -252,9 +252,9 @@ private slots:
                              {"B1", 'R', 1}, {"B1", 'L', 0}});
         sc.in.meeting.speakerMap = {{"B1", "Ádám"}, {"B2", "Béla"}};
         sc.in.userName = "Ádám";
-        const ReviewResult r = analyzeReview(sc.in, sc.act);
+        const editing::ReviewResult r = analyzeReview(sc.in, sc.act);
         QVERIFY(r.sides.active);
-        const ReviewGroup* g = group(r.groups, ReviewKind::SideConflict);
+        const editing::ReviewGroup* g = group(r.groups, editing::ReviewKind::SideConflict);
         QVERIFY(g);
         QCOMPARE(g->currentSpeakerKey, QStringLiteral("B1"));
         QCOMPARE(g->proposedSpeakerKey, QStringLiteral("B2"));
@@ -269,8 +269,8 @@ private slots:
         Scenario solo = build({{"B1", 'L', 0}, {"B1", 'L', 0}, {"B1", 'R', 1}, {"B1", 'L', 0}});
         solo.in.meeting.speakerMap = {{"B1", "Ádám"}};
         solo.in.userName = "Ádám";
-        const ReviewResult rs = analyzeReview(solo.in, solo.act);
-        const ReviewGroup* gs = group(rs.groups, ReviewKind::SideConflict);
+        const editing::ReviewResult rs = analyzeReview(solo.in, solo.act);
+        const editing::ReviewGroup* gs = group(rs.groups, editing::ReviewKind::SideConflict);
         QVERIFY(gs);
         QVERIFY(gs->proposedSpeakerKey.isEmpty() && gs->proposedPersonName.isEmpty());
     }
@@ -281,27 +281,27 @@ private slots:
         Scenario sc = build({{"A", 'L', 0, true}, {"A", 'L', 0, true}, {"A", 'L', 0, true}, {"B", 'L', 1, true},
                              {"B", 'L', 1, true}, {"B", 'L', 1, true}, {"A", 'L', 1}, {"A", 'L', 0}, {"A", 'L', 1}});
         sc.act.tracks.removeLast();   // mic only
-        const ReviewResult r = analyzeReview(sc.in, sc.act);
+        const editing::ReviewResult r = analyzeReview(sc.in, sc.act);
         QVERIFY(!r.sides.active);
-        const ReviewGroup* g = group(r.groups, ReviewKind::CoreMismatch);
+        const editing::ReviewGroup* g = group(r.groups, editing::ReviewKind::CoreMismatch);
         QVERIFY(g);
         QCOMPARE(g->currentSpeakerKey, QStringLiteral("A"));
         QCOMPARE(g->proposedSpeakerKey, QStringLiteral("B"));
         QCOMPARE(g->utteranceIds, (QStringList{"u30000", "u40000"}));
         QCOMPARE(g->confirmedBasis, 6);
         QVERIFY(hasEvidence(g->evidence, EvidenceKind::Voice, Polarity::Contradict, "samples"));
-        QVERIFY(!group(r.groups, ReviewKind::SideConflict));
+        QVERIFY(!group(r.groups, editing::ReviewKind::SideConflict));
     }
 
     void shortLinesGroup()
     {
         Scenario sc = build({{"A", 'L', 0}, {"A", '-', -1}, {"B", '-', -1}, {"A", 'L', 0}});
-        const ReviewResult r = analyzeReview(sc.in, sc.act);
-        const ReviewGroup* g = group(r.groups, ReviewKind::ShortLines);
+        const editing::ReviewResult r = analyzeReview(sc.in, sc.act);
+        const editing::ReviewGroup* g = group(r.groups, editing::ReviewKind::ShortLines);
         QVERIFY(g);
         QCOMPARE(g->utteranceIds.size(), 2);
         QVERIFY(g->proposedSpeakerKey.isEmpty());
-        QCOMPARE(r.groups.last().kind, ReviewKind::ShortLines);   // at the end
+        QCOMPARE(r.groups.last().kind, editing::ReviewKind::ShortLines);   // at the end
     }
 
     void contaminatedCore()
@@ -313,12 +313,12 @@ private slots:
         specs << LineSpec{"C", 'L', 2, true} << LineSpec{"C", 'L', 2, true} << LineSpec{"C", 'L', 2, true};
         Scenario sc = build(specs);
         sc.act.tracks.removeLast();
-        ReviewResult r = analyzeReview(sc.in, sc.act);
-        const review::CoreSplit split = review::splitConfirmedCore(sc.in, r.sides, "A");
+        editing::ReviewResult r = analyzeReview(sc.in, sc.act);
+        const editing::review::CoreSplit split = editing::review::splitConfirmedCore(sc.in, r.sides, "A");
         QVERIFY(split.contaminated);
         QCOMPARE(split.minority, (QStringList{"u25000", "u30000", "u35000"}));
-        QVERIFY(split.similarity < review::kContamMaxSimilarity);
-        const ReviewGroup* g = group(r.groups, ReviewKind::ContaminatedCore);
+        QVERIFY(split.similarity < editing::review::kContamMaxSimilarity);
+        const editing::ReviewGroup* g = group(r.groups, editing::ReviewKind::ContaminatedCore);
         QVERIFY(g);
         QCOMPARE(g->currentSpeakerKey, QStringLiteral("A"));
         QCOMPARE(g->proposedSpeakerKey, QStringLiteral("C"));
@@ -329,7 +329,7 @@ private slots:
         specs.resize(8);
         Scenario noC = build(specs);
         r = analyzeReview(noC.in, MeetingActivity{});
-        g = group(r.groups, ReviewKind::ContaminatedCore);
+        g = group(r.groups, editing::ReviewKind::ContaminatedCore);
         QVERIFY(g);
         QVERIFY(g->proposedSpeakerKey.isEmpty() && g->proposedPersonName.isEmpty());
 
@@ -338,8 +338,8 @@ private slots:
         for (int i = 0; i < 8; ++i) clean << LineSpec{"A", 'L', 0, true};
         Scenario cl = build(clean);
         r = analyzeReview(cl.in, MeetingActivity{});
-        QVERIFY(!group(r.groups, ReviewKind::ContaminatedCore));
-        QVERIFY(!review::splitConfirmedCore(cl.in, r.sides, "A").contaminated);
+        QVERIFY(!group(r.groups, editing::ReviewKind::ContaminatedCore));
+        QVERIFY(!editing::review::splitConfirmedCore(cl.in, r.sides, "A").contaminated);
     }
 
     void similarToNewPerson()
@@ -357,8 +357,8 @@ private slots:
         sc.in.overlay.utterances["u25000"].corrected = true;
         sc.in.newPersonKey = "participant:1";
         sc.act.tracks.removeLast();
-        const ReviewResult r = analyzeReview(sc.in, sc.act);
-        const ReviewGroup* g = group(r.groups, ReviewKind::SimilarToNewPerson);
+        const editing::ReviewResult r = analyzeReview(sc.in, sc.act);
+        const editing::ReviewGroup* g = group(r.groups, editing::ReviewKind::SimilarToNewPerson);
         QVERIFY(g);
         QCOMPARE(g->proposedSpeakerKey, QStringLiteral("participant:1"));
         QCOMPARE(g->currentSpeakerKey, QStringLiteral("A"));
@@ -371,13 +371,13 @@ private slots:
         Scenario sc = build({{"A", 'L', 0}, {"A", 'L', 0}, {"A", 'R', 4}});
         sc.in.meeting.speakerMap = {{"A", "Anna"}};
         sc.in.personPrints.insert("Dénes", {voice(4)});
-        sc.in.sideHints.learnedSides.insert("dénes", Side::Remote);
-        const ReviewResult r = analyzeReview(sc.in, sc.act);
+        sc.in.sideHints.learnedSides.insert("dénes", editing::Side::Remote);
+        const editing::ReviewResult r = analyzeReview(sc.in, sc.act);
         bool found = false;
         for (const SpeakerProfile& p : r.context.speakers)
-            if (p.personName == "Dénes") { found = true; QVERIFY(p.key.isEmpty()); QCOMPARE(p.side, Side::Remote); }
+            if (p.personName == "Dénes") { found = true; QVERIFY(p.key.isEmpty()); QCOMPARE(p.side, editing::Side::Remote); }
         QVERIFY(found);
-        const QVector<Candidate> cs = rankForLine(r.context, voice(4), Side::Remote, "A", false);
+        const QVector<Candidate> cs = rankForLine(r.context, voice(4), editing::Side::Remote, "A", false);
         QCOMPARE(cs[0].personName, QStringLiteral("Dénes"));
         QVERIFY(cs[0].speakerKey.isEmpty());
     }
@@ -385,19 +385,19 @@ private slots:
     // G10: a manual track assignment excludes only when all three conditions coincide; otherwise a deduction.
     void sideVeto_onlyWhenAllThreeHold()
     {
-        auto manualProfile = [](const QString& key, const QString& person, Side side, const QVector<QVector<float>>& v) {
-            SpeakerProfile p = profile(key, person, side, 10, v, true);
+        auto manualProfile = [](const QString& key, const QString& person, editing::Side side, const QVector<QVector<float>>& v) {
+            editing::ranking::SpeakerProfile p = profile(key, person, side, 10, v, true);
             p.sideBasis = QStringLiteral("manual");
             p.manualSide = side;
             return p;
         };
-        RankContext ctx = context({manualProfile("A", "Anna", Side::Local, {voice(0), voice(0), voice(0)}),
-                                   manualProfile("B", "Béla", Side::Remote, {voice(1), voice(1), voice(1)})});
+        editing::ranking::RankContext ctx = context({manualProfile("A", "Anna", editing::Side::Local, {voice(0), voice(0), voice(0)}),
+                                   manualProfile("B", "Béla", editing::Side::Remote, {voice(1), voice(1), voice(1)})});
         ctx.vetoActive = true;
         const QVector<float> probe = voice(0, 1, 0.9f);   // Anna's voice, on the call's voice
 
         // 1+2+3: Anna excluded, at the end of the list, without a score, with the exclusion's evidence.
-        QVector<Candidate> cs = rankForLine(ctx, probe, Side::Remote, "", false);
+        QVector<Candidate> cs = editing::ranking::rankForLine(ctx, probe, editing::Side::Remote, "", false);
         QCOMPARE(cs.size(), 2);
         QCOMPARE(cs[0].speakerKey, QStringLiteral("B"));
         QVERIFY(!cs[0].vetoed);
@@ -410,35 +410,35 @@ private slots:
             vetoEv |= e.kind == EvidenceKind::Manual && e.polarity == Polarity::Contradict
                    && e.text == QStringLiteral("kizárva: a sávja szerint nem ő") && e.fixTarget == QStringLiteral("tracks");
         QVERIFY(vetoEv);
-        QVERIFY(!whyNot(cs[1]).isEmpty());
+        QVERIFY(!editing::ranking::whyNot(cs[1]).isEmpty());
 
         // A missing assignment for one named person (vetoActive = false): no exclusion, only a deduction.
         ctx.vetoActive = false;
-        cs = rankForLine(ctx, probe, Side::Remote, "", false);
+        cs = rankForLine(ctx, probe, editing::Side::Remote, "", false);
         const Candidate* a = find(cs, "A");
         QVERIFY(a && !a->vetoed && a->otherSide);
         QVERIFY(a->score > 0.0);
         ctx.vetoActive = true;
 
         // A mixed / unknown line: no exclusion.
-        for (Side s : {Side::Mixed, Side::Unknown}) {
+        for (editing::Side s : {editing::Side::Mixed, editing::Side::Unknown}) {
             cs = rankForLine(ctx, probe, s, "", false);
             for (const Candidate& c : cs) QVERIFY(!c.vetoed);
             QCOMPARE(cs[0].speakerKey, QStringLiteral("A"));
         }
 
         // A multi-track person (microphone + call): never excluded.
-        ctx.speakers[0].manualSide = Side::Mixed;
-        ctx.speakers[0].side = Side::Mixed;
-        cs = rankForLine(ctx, probe, Side::Remote, "", false);
+        ctx.speakers[0].manualSide = editing::Side::Mixed;
+        ctx.speakers[0].side = editing::Side::Mixed;
+        cs = rankForLine(ctx, probe, editing::Side::Remote, "", false);
         QVERIFY(!find(cs, "A")->vetoed);
         QCOMPARE(cs[0].speakerKey, QStringLiteral("A"));
 
         // A candidate without a manual assignment (learned side) is never excluded, only a deduction.
-        ctx.speakers[0].manualSide = Side::Unknown;
-        ctx.speakers[0].side = Side::Local;
+        ctx.speakers[0].manualSide = editing::Side::Unknown;
+        ctx.speakers[0].side = editing::Side::Local;
         ctx.speakers[0].sideBasis = QStringLiteral("learned");
-        cs = rankForLine(ctx, probe, Side::Remote, "", false);
+        cs = rankForLine(ctx, probe, editing::Side::Remote, "", false);
         QVERIFY(!find(cs, "A")->vetoed);
         QVERIFY(find(cs, "A")->otherSide);
     }
@@ -450,15 +450,15 @@ private slots:
         Scenario sc = build({{"B1", 'L', 0}, {"B2", 'R', 1}, {"B1", 'L', 0}, {"B3", 'R', 2}, {"B2", 'R', 1}});
         sc.in.meeting.speakerMap = {{"B1", "Ádám"}, {"B2", "Béla"}};
         sc.in.overlay.speakerTracks.insert("B1", {"mic"});
-        ReviewResult r = analyzeReview(sc.in, sc.act);
+        editing::ReviewResult r = analyzeReview(sc.in, sc.act);
         QVERIFY(!r.context.vetoActive);   // Béla has no assignment
         sc.in.overlay.speakerTracks.insert("B2", {"loop"});
         r = analyzeReview(sc.in, sc.act);
         QVERIFY(r.context.vetoActive);    // B3 is anonymous: does not count
-        QCOMPARE(r.context.profile("B1")->manualSide, Side::Local);
-        QCOMPARE(r.context.profile("B2")->manualSide, Side::Remote);
-        QCOMPARE(r.context.profile("B3")->manualSide, Side::Unknown);
-        const QVector<Candidate> cs = rankForLine(r.context, voice(0), Side::Remote, "B2", false);
+        QCOMPARE(r.context.profile("B1")->manualSide, editing::Side::Local);
+        QCOMPARE(r.context.profile("B2")->manualSide, editing::Side::Remote);
+        QCOMPARE(r.context.profile("B3")->manualSide, editing::Side::Unknown);
+        const QVector<Candidate> cs = rankForLine(r.context, voice(0), editing::Side::Remote, "B2", false);
         QVERIFY(find(cs, "B1")->vetoed);
         QCOMPARE(cs.last().speakerKey, QStringLiteral("B1"));
         // Single-track meeting: no exclusion.
@@ -476,9 +476,9 @@ private slots:
         sc.in.meeting.speakerMap = {{"B1", "Ádám"}, {"B2", "Béla"}};
         sc.in.overlay.speakerTracks.insert("B1", {"mic"});
         sc.in.overlay.speakerTracks.insert("B2", {"loop"});
-        ReviewResult r = analyzeReview(sc.in, sc.act);
+        editing::ReviewResult r = analyzeReview(sc.in, sc.act);
         QVERIFY(r.context.vetoActive);
-        const ReviewGroup* g = group(r.groups, ReviewKind::SideConflict);
+        const editing::ReviewGroup* g = group(r.groups, editing::ReviewKind::SideConflict);
         QVERIFY(g);
         QCOMPARE(g->proposedSpeakerKey, QStringLiteral("B2"));
         QVERIFY(!g->proposeNew);
@@ -488,11 +488,11 @@ private slots:
         solo.in.meeting.speakerMap = {{"B1", "Ádám"}};
         solo.in.overlay.speakerTracks.insert("B1", {"mic"});
         r = analyzeReview(solo.in, solo.act);
-        g = group(r.groups, ReviewKind::SideConflict);
+        g = group(r.groups, editing::ReviewKind::SideConflict);
         QVERIFY(g);
         QVERIFY(g->proposedSpeakerKey.isEmpty() && g->proposedPersonName.isEmpty());
         QVERIFY(g->proposeNew);
-        QCOMPARE(g->proposedSide, Side::Remote);
+        QCOMPARE(g->proposedSide, editing::Side::Remote);
         QVERIFY(g->id.endsWith(QStringLiteral("new:remote")));
         QVERIFY(g->subtitle.contains(QStringLiteral("új távoli beszélő")));
         QCOMPARE(g->utteranceIds.size(), 2);
@@ -501,7 +501,7 @@ private slots:
         solo.in.overlay.speakerTracks.clear();
         solo.in.userName = "Ádám";
         r = analyzeReview(solo.in, solo.act);
-        g = group(r.groups, ReviewKind::SideConflict);
+        g = group(r.groups, editing::ReviewKind::SideConflict);
         QVERIFY(g && !g->proposeNew);
     }
 
@@ -511,25 +511,25 @@ private slots:
         Scenario sc = build({{"A", 'L', 0, true}, {"A", 'L', 0, true}, {"A", 'L', 0, true}, {"B", 'R', 1, true},
                              {"B", 'R', 1, true}, {"B", 'R', 1, true}, {"A", 'L', 1}, {"A", 'L', 0}, {"A", 'L', 1}});
         sc.in.meeting.speakerMap = {{"A", "Anna"}, {"B", "Béla"}};
-        ReviewResult r = analyzeReview(sc.in, sc.act);
-        const ReviewGroup* g = group(r.groups, ReviewKind::CoreMismatch);
+        editing::ReviewResult r = analyzeReview(sc.in, sc.act);
+        const editing::ReviewGroup* g = group(r.groups, editing::ReviewKind::CoreMismatch);
         QVERIFY(g && g->proposedSpeakerKey == QStringLiteral("B"));   // without an assignment: suggests it
         sc.in.overlay.speakerTracks.insert("A", {"mic"});
         sc.in.overlay.speakerTracks.insert("B", {"loop"});
         r = analyzeReview(sc.in, sc.act);
         QVERIFY(r.context.vetoActive);
-        QVERIFY(!group(r.groups, ReviewKind::CoreMismatch));
+        QVERIFY(!group(r.groups, editing::ReviewKind::CoreMismatch));
     }
 
     void twoMeansDeterministic()
     {
         QVector<QVector<float>> v{voice(0), voice(1), voice(0, 5, 0.9f), voice(1, 5, 0.9f)};
-        const QVector<int> l = review::twoMeans(v);
+        const QVector<int> l = editing::review::twoMeans(v);
         QCOMPARE(l.size(), 4);
         QCOMPARE(l[0], l[2]);
         QCOMPARE(l[1], l[3]);
         QVERIFY(l[0] != l[1]);
-        QVERIFY(review::twoMeans({voice(0)}).isEmpty());
+        QVERIFY(editing::review::twoMeans({voice(0)}).isEmpty());
     }
 };
 

@@ -10,7 +10,7 @@
 #include <QtTest>
 #include <QObject>
 
-#include "tanara/detect/detail/PwDumpParser.h"
+#include "tanara/watcher/PipeWireGraph.h"
 
 using namespace tanara;
 
@@ -43,7 +43,7 @@ private slots:
     // An active (running) Zoom microphone capture is a meeting; appId/appName extracted.
     void activeZoomIsMeeting()
     {
-        const MeetingSignal s = detail::parsePwDump(
+        const watcher::MeetingSignal s = watcher::detail::parsePwDump(
             node("running", "zoom", "ZOOM VoiceEngine", "recStream"), kKnown, kSelf);
         QVERIFY(s.active);
         QCOMPARE(s.appId, QStringLiteral("zoom"));
@@ -53,7 +53,7 @@ private slots:
     // The same stream, but idle (not actively capturing the microphone): NOT a meeting.
     void idleStreamIsNotMeeting()
     {
-        const MeetingSignal s = detail::parsePwDump(
+        const watcher::MeetingSignal s = watcher::detail::parsePwDump(
             node("idle", "zoom", "ZOOM VoiceEngine", "recStream"), kKnown, kSelf);
         QVERIFY(!s.active);
     }
@@ -61,7 +61,7 @@ private slots:
     // Self-exclusion: our own 'tanara' recorder's capture is NEVER a meeting.
     void selfCaptureExcluded()
     {
-        const MeetingSignal s = detail::parsePwDump(
+        const watcher::MeetingSignal s = watcher::detail::parsePwDump(
             node("running", "tanara", "tanara", "recStream"), kKnown, kSelf);
         QVERIFY(!s.active);
     }
@@ -69,7 +69,7 @@ private slots:
     // Discord screen sharing / game audio (media.name=game capture): NOT a call.
     void gameCaptureIgnored()
     {
-        const MeetingSignal s = detail::parsePwDump(
+        const watcher::MeetingSignal s = watcher::detail::parsePwDump(
             node("running", "discord", "Discord", "game capture"), kKnown, kSelf);
         QVERIFY(!s.active);
     }
@@ -77,7 +77,7 @@ private slots:
     // An active capture of an unknown (non-call) app that is not on the list: NOT a meeting.
     void unknownAppIgnored()
     {
-        const MeetingSignal s = detail::parsePwDump(
+        const watcher::MeetingSignal s = watcher::detail::parsePwDump(
             node("running", "audacity", "Audacity", "capture"),
             { QStringLiteral("zoom") }, kSelf);
         QVERIFY(!s.active);
@@ -88,7 +88,7 @@ private slots:
     // a meeting, named Vivaldi.
     void browserMeetViaMeetAlias()
     {
-        const MeetingSignal s = detail::parsePwDump(
+        const watcher::MeetingSignal s = watcher::detail::parsePwDump(
             node("running", "vivaldi-bin", "Vivaldi input", "RecordStream"),
             { QStringLiteral("zoom"), QStringLiteral("meet") }, kSelf);
         QVERIFY(s.active);
@@ -99,7 +99,7 @@ private slots:
     // Without "meet" a browser's microphone use is not a call (not on the list).
     void browserWithoutMeetIgnored()
     {
-        const MeetingSignal s = detail::parsePwDump(
+        const watcher::MeetingSignal s = watcher::detail::parsePwDump(
             node("running", "vivaldi-bin", "Vivaldi input", "RecordStream"),
             { QStringLiteral("zoom") }, kSelf);
         QVERIFY(!s.active);
@@ -114,16 +114,16 @@ private slots:
               "props": { "media.class": "Stream/Output/Audio",
                          "application.process.binary": "zoom" } } }
         ])").toUtf8();
-        const MeetingSignal s = detail::parsePwDump(json, kKnown, kSelf);
+        const watcher::MeetingSignal s = watcher::detail::parsePwDump(json, kKnown, kSelf);
         QVERIFY(!s.active);
     }
 
     // Broken / non-array input gives {active:false}, does not throw or crash.
     void garbageInputIsInactive()
     {
-        QVERIFY(!detail::parsePwDump(QByteArray("not json"), kKnown, kSelf).active);
-        QVERIFY(!detail::parsePwDump(QByteArray("{}"), kKnown, kSelf).active);
-        QVERIFY(!detail::parsePwDump(QByteArray(), kKnown, kSelf).active);
+        QVERIFY(!watcher::detail::parsePwDump(QByteArray("not json"), kKnown, kSelf).active);
+        QVERIFY(!watcher::detail::parsePwDump(QByteArray("{}"), kKnown, kSelf).active);
+        QVERIFY(!watcher::detail::parsePwDump(QByteArray(), kKnown, kSelf).active);
     }
 };
 

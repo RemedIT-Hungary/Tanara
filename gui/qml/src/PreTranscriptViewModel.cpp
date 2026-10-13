@@ -6,10 +6,10 @@
 #include "JobSupport.h"
 #include "TagMatching.h"
 
-#include "tanara/AppController.h"
-#include "tanara/SettingsManager.h"
-#include "tanara/jobs/MeetingJobTracker.h"
-#include "tanara/store/MeetingStore.h"
+#include "tanara/app/AppController.h"
+#include "tanara/app/SettingsManager.h"
+#include "tanara/library/jobs/MeetingJobTracker.h"
+#include "tanara/library/store/MeetingStore.h"
 
 #include <QDir>
 #include <QFileInfo>
@@ -54,7 +54,7 @@ PreTranscriptViewModel::PreTranscriptViewModel(QObject* parent)
     reload();
 }
 
-AppController* PreTranscriptViewModel::app() const
+app::AppController* PreTranscriptViewModel::app() const
 {
     return jobsupport::resolveController(m_injected);
 }
@@ -99,7 +99,7 @@ void PreTranscriptViewModel::setDemoState(const QString& state)
 
 void PreTranscriptViewModel::connectController()
 {
-    AppController* c = app();
+    app::AppController* c = app();
     if (c == m_connected)
         return;
     for (const QMetaObject::Connection& conn : std::as_const(m_connections))
@@ -110,29 +110,29 @@ void PreTranscriptViewModel::connectController()
         return;
 
     auto mine = [this](const QString& id) { return !m_meetingId.isEmpty() && id == m_meetingId; };
-    m_connections << connect(c->jobs(), &MeetingJobTracker::stateChanged, this,
+    m_connections << connect(c->jobs(), &library::MeetingJobTracker::stateChanged, this,
                              [this, mine](const QString& id) { if (mine(id)) reload(); });
     // Progress: only the phase list refreshes (no disk read).
-    m_connections << connect(c->jobs(), &MeetingJobTracker::jobProgressChanged, this,
+    m_connections << connect(c->jobs(), &library::MeetingJobTracker::jobProgressChanged, this,
                              [this, mine](const QString& id, const JobProgress& p) {
         if (!mine(id) || p.kind != JobKind::Transcribe || m_state != QLatin1String("running"))
             return;
         applyJob(p);
         emit jobChanged();
     });
-    m_connections << connect(c, &AppController::mixdownProgress, this,
+    m_connections << connect(c, &app::AppController::mixdownProgress, this,
                              [this, mine](const QString& id, int pct) {
         if (!mine(id) || pct == m_mixdownPercent) return;
         m_mixdownPercent = pct;
         emit mixdownPercentChanged();
     });
-    m_connections << connect(c, &AppController::mixdownUpdated, this,
+    m_connections << connect(c, &app::AppController::mixdownUpdated, this,
                              [this, mine](const QString& id, bool) { if (mine(id)) reload(); });
-    m_connections << connect(c, &AppController::tracksChanged, this,
+    m_connections << connect(c, &app::AppController::tracksChanged, this,
                              [this, mine](const QString& id) { if (mine(id)) reload(); });
-    m_connections << connect(c->store(), &MeetingStore::meetingUpdated, this,
+    m_connections << connect(c->store(), &library::MeetingStore::meetingUpdated, this,
                              [this, mine](const QString& id) { if (mine(id)) reload(); });
-    m_connections << connect(c->settings(), &SettingsManager::settingsChanged, this,
+    m_connections << connect(c->settings(), &app::SettingsManager::settingsChanged, this,
                              &PreTranscriptViewModel::reload);
 }
 
@@ -157,7 +157,7 @@ void PreTranscriptViewModel::reload()
     m_cancelling = false;
     m_mixdownCancellable = false;
 
-    AppController* c = app();
+    app::AppController* c = app();
     m_title.clear();
     if (jobsupport::demoMode(c)) {
         loadDemo();
@@ -171,7 +171,7 @@ void PreTranscriptViewModel::reload()
         const JobProgress job = c->jobs()->job(m_meetingId, JobKind::Transcribe);
 
         m_note->reload();
-        m_providerLabel = jobsupport::providerLabel(c, WorkflowStep::Transcribe);
+        m_providerLabel = jobsupport::providerLabel(c, providers::WorkflowStep::Transcribe);
         m_identifyAvailable = c->voiceIdentificationAvailable();
         m_identifyEnabled = m_identifyAvailable && c->identifyAfterTranscription(m_meetingId);
 
@@ -191,10 +191,10 @@ void PreTranscriptViewModel::reload()
         }
 
         // Gating: from the same source of truth as the AppController's guards.
-        const ReadinessResult r = c->canRun(WorkflowStep::Transcribe, m_meetingId);
+        const providers::ReadinessResult r = c->canRun(providers::WorkflowStep::Transcribe, m_meetingId);
         m_canStart = r.runnable;
-        m_blocker = jobsupport::blockerInfo(c, WorkflowStep::Transcribe, r);
-        m_cloudSoon = !r.runnable && r.blockerKind == BlockerKind::ProviderConfig;
+        m_blocker = jobsupport::blockerInfo(c, providers::WorkflowStep::Transcribe, r);
+        m_cloudSoon = !r.runnable && r.blockerKind == providers::BlockerKind::ProviderConfig;
 
         if (job.isValid()) {
             m_state = QStringLiteral("running");
@@ -388,7 +388,7 @@ void PreTranscriptViewModel::loadDemo()
             {QStringLiteral("actionLabel"), tr("Szolgáltató beállítása")},
             {QStringLiteral("actionPage"), QStringLiteral("providers")},
             {QStringLiteral("reason"), tr("A szolgáltató beállítása után indítható.")},
-            {QStringLiteral("kind"), int(BlockerKind::ProviderConfig)},
+            {QStringLiteral("kind"), int(providers::BlockerKind::ProviderConfig)},
         };
         m_cloudSoon = true;
     }
@@ -404,7 +404,7 @@ void PreTranscriptViewModel::setIdentifyEnabled(bool enabled)
     if (enabled == m_identifyEnabled || !m_identifyAvailable)
         return;
     m_identifyEnabled = enabled;
-    AppController* c = app();
+    app::AppController* c = app();
     if (!jobsupport::demoMode(c) && !m_meetingId.isEmpty())
         c->setIdentifyAfterTranscription(m_meetingId, enabled);
     emit changed();
@@ -433,7 +433,7 @@ QString PreTranscriptViewModel::footerLine() const
 
 void PreTranscriptViewModel::startMixdown()
 {
-    AppController* c = app();
+    app::AppController* c = app();
     if (jobsupport::demoMode(c) || m_meetingId.isEmpty())
         return;
     c->regenerateMixdown(m_meetingId);
@@ -441,7 +441,7 @@ void PreTranscriptViewModel::startMixdown()
 
 void PreTranscriptViewModel::clearError()
 {
-    AppController* c = app();
+    app::AppController* c = app();
     if (jobsupport::demoMode(c) || m_meetingId.isEmpty())
         return;
     c->jobs()->clearError(m_meetingId, JobKind::Transcribe);   // → stateChanged → reload()

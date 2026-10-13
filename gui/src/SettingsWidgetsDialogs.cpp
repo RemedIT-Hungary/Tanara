@@ -3,7 +3,7 @@
 #include "PeopleWindowHost.h"
 #include "TagsWindowHost.h"
 
-#include "tanara/AppController.h"
+#include "tanara/app/AppController.h"
 
 #include <QApplication>
 #include <QDesktopServices>
@@ -22,7 +22,7 @@ struct SettingsWidgetsDialogs::Scope {
     SettingsWidgetsDialogs* self;
 };
 
-SettingsWidgetsDialogs::SettingsWidgetsDialogs(tanara::AppController* controller, QObject* parent)
+SettingsWidgetsDialogs::SettingsWidgetsDialogs(tanara::app::AppController* controller, QObject* parent)
     : tanara_qml::SettingsDialogs(parent), m_controller(controller)
 {
     qApp->installEventFilter(this);

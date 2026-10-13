@@ -2,15 +2,15 @@
 #include "VoiceCommands.h"
 
 #include "tanara/foundation/paths/Paths.h"
-#include "tanara/SettingsManager.h"
-#include "tanara/edit/SpeakerAnalysis.h"
-#include "tanara/edit/SpeakerOverlay.h"
-#include "tanara/edit/UtteranceEmbeddings.h"
-#include "tanara/store/MeetingStore.h"
-#include "tanara/voiceid/VoiceEmbedderSet.h"
-#include "tanara/voiceid/VoiceEval.h"
-#include "tanara/voiceid/VoiceModelDownloader.h"
-#include "tanara/voiceid/VoiceModelRegistry.h"
+#include "tanara/app/SettingsManager.h"
+#include "tanara/editing/review/SpeakerAnalysis.h"
+#include "tanara/editing/session/SpeakerOverlay.h"
+#include "tanara/processing/analysis/UtteranceEmbeddings.h"
+#include "tanara/library/store/MeetingStore.h"
+#include "tanara/processing/voiceid/VoiceEmbedderSet.h"
+#include "tanara/processing/voiceid/VoiceEval.h"
+#include "tanara/processing/voiceid/VoiceModelDownloader.h"
+#include "tanara/processing/voiceid/VoiceModelRegistry.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -34,23 +34,23 @@ QString appDir()
     return QCoreApplication::instance() ? QCoreApplication::applicationDirPath() : QString();
 }
 
-QString metaDirOf(const SettingsManager& sm)
+QString metaDirOf(const app::SettingsManager& sm)
 {
     return paths::resolveMetadataDir(sm.settings().metadataDir);
 }
 
 QString pad(const QString& s, int w) { return s.leftJustified(w, QLatin1Char(' ')); }
 
-int listModels(const SettingsManager& sm)
+int listModels(const app::SettingsManager& sm)
 {
     const QString meta = metaDirOf(sm);
     const QStringList enabled = sm.enabledVoiceModels();
     const QStringList head{"ID", "NAME", "ENABLED", "FILE", "DIM", "LICENSE", "SOURCE"};
     QVector<QStringList> rows;
-    for (const VoiceModelSpec& s : VoiceModelRegistry::builtin()) {
-        const QString path = VoiceModelRegistry::resolvePath(s, meta, appDir());
+    for (const processing::VoiceModelSpec& s : processing::VoiceModelRegistry::builtin()) {
+        const QString path = processing::VoiceModelRegistry::resolvePath(s, meta, appDir());
         rows.append({s.id,
-                     s.id == VoiceModelRegistry::recommendedModelId() ? s.displayName + QStringLiteral(" (recommended)")
+                     s.id == processing::VoiceModelRegistry::recommendedModelId() ? s.displayName + QStringLiteral(" (recommended)")
                                                                        : s.displayName,
                      enabled.contains(s.id) ? "yes" : "no",
                      QFileInfo::exists(path) ? QDir::toNativeSeparators(path) : QStringLiteral("-"),
@@ -69,15 +69,15 @@ int listModels(const SettingsManager& sm)
     print(head);
     for (const QStringList& r : rows) print(r);
     for (const QString& id : enabled)
-        if (!VoiceModelRegistry::spec(id))
+        if (!processing::VoiceModelRegistry::spec(id))
             out() << "warning: unknown model id enabled in settings: " << id << "\n";
     out().flush();
     return 0;
 }
 
-int setEnabled(SettingsManager& sm, const QString& id, bool on)
+int setEnabled(app::SettingsManager& sm, const QString& id, bool on)
 {
-    if (!VoiceModelRegistry::spec(id)) {
+    if (!processing::VoiceModelRegistry::spec(id)) {
         err() << "Unknown voice model: " << id << " (see: tanara-cli voice-models)\n";
         err().flush();
         return 1;
@@ -90,7 +90,7 @@ int setEnabled(SettingsManager& sm, const QString& id, bool on)
           << "Enabled models: " << (sm.enabledVoiceModels().isEmpty() ? QStringLiteral("(none)")
                                                                      : sm.enabledVoiceModels().join(", "))
           << "\n";
-    const QString path = VoiceModelRegistry::resolvePath(*VoiceModelRegistry::spec(id), metaDirOf(sm), appDir());
+    const QString path = processing::VoiceModelRegistry::resolvePath(*processing::VoiceModelRegistry::spec(id), metaDirOf(sm), appDir());
     if (on && !QFileInfo::exists(path))
         out() << "Note: the model file is missing (" << QDir::toNativeSeparators(path)
               << "); fetch it with: tanara-cli voice-models fetch " << id << "\n";
@@ -98,9 +98,9 @@ int setEnabled(SettingsManager& sm, const QString& id, bool on)
     return 0;
 }
 
-int fetchModel(const SettingsManager& sm, const QString& id, bool force)
+int fetchModel(const app::SettingsManager& sm, const QString& id, bool force)
 {
-    const auto spec = VoiceModelRegistry::spec(id);
+    const auto spec = processing::VoiceModelRegistry::spec(id);
     if (!spec) {
         err() << "Unknown voice model: " << id << "\n";
         return 1;
@@ -109,7 +109,7 @@ int fetchModel(const SettingsManager& sm, const QString& id, bool force)
         err() << "No download URL for " << id << "\n";
         return 1;
     }
-    const QString target = VoiceModelDownloader::targetPath(*spec, metaDirOf(sm));
+    const QString target = processing::VoiceModelDownloader::targetPath(*spec, metaDirOf(sm));
     out() << "Model:    " << spec->displayName << " (" << spec->id << ")\n"
           << "License:  " << spec->license << "\n"
           << "Source:   " << spec->sourceUrl << "\n"
@@ -118,12 +118,12 @@ int fetchModel(const SettingsManager& sm, const QString& id, bool force)
     out().flush();
 
     // The download goes through the VoiceModelDownloader shared with the GUI (QSaveFile, size check).
-    VoiceModelDownloader dl;
+    processing::VoiceModelDownloader dl;
     QEventLoop loop;
     bool done = false, ok = false;
     QString error;
     int lastPct = -1;
-    QObject::connect(&dl, &VoiceModelDownloader::progress, &loop, [&](const QString&, qint64 got, qint64 total) {
+    QObject::connect(&dl, &processing::VoiceModelDownloader::progress, &loop, [&](const QString&, qint64 got, qint64 total) {
         const int pct = total > 0 ? int(got * 100 / total) : -1;
         if (pct == lastPct) return;
         lastPct = pct;
@@ -131,7 +131,7 @@ int fetchModel(const SettingsManager& sm, const QString& id, bool force)
               << (pct >= 0 ? QStringLiteral(" (%1%)").arg(pct) : QString());
         err().flush();
     });
-    QObject::connect(&dl, &VoiceModelDownloader::finished, &loop, [&](const QString&, bool success, const QString& e) {
+    QObject::connect(&dl, &processing::VoiceModelDownloader::finished, &loop, [&](const QString&, bool success, const QString& e) {
         done = true;
         ok = success;
         error = e;
@@ -140,7 +140,7 @@ int fetchModel(const SettingsManager& sm, const QString& id, bool force)
     if (dl.start(*spec, target, force) && !done) loop.exec();
     if (lastPct >= 0) err() << "\n";
     if (!ok) {
-        if (dl.lastFailure(id) == VoiceModelDownloader::Failure::Exists)
+        if (dl.lastFailure(id) == processing::VoiceModelDownloader::Failure::Exists)
             err() << "The file already exists; use --force to overwrite it.\n";
         else
             err() << "Download failed: " << error << "\n";
@@ -155,46 +155,46 @@ int fetchModel(const SettingsManager& sm, const QString& id, bool force)
 
 // voice-models verify <id>: checks the model file (size match). Exit 0: OK (or nothing to
 // compare against), 1: missing / mismatch / unknown id.
-int verifyModel(const SettingsManager& sm, const QString& id)
+int verifyModel(const app::SettingsManager& sm, const QString& id)
 {
-    const auto spec = VoiceModelRegistry::spec(id);
+    const auto spec = processing::VoiceModelRegistry::spec(id);
     if (!spec) { err() << "Unknown voice model: " << id << "\n"; return 1; }
-    const QString path = VoiceModelRegistry::resolvePath(*spec, metaDirOf(sm), appDir());
+    const QString path = processing::VoiceModelRegistry::resolvePath(*spec, metaDirOf(sm), appDir());
     QString detail;
-    const VoiceModelDownloader::VerifyResult r = VoiceModelDownloader::verifyFile(*spec, path, &detail);
+    const processing::VoiceModelDownloader::VerifyResult r = processing::VoiceModelDownloader::verifyFile(*spec, path, &detail);
     out() << "File:   " << QDir::toNativeSeparators(path) << "\n";
     switch (r) {
-    case VoiceModelDownloader::VerifyResult::Ok:
+    case processing::VoiceModelDownloader::VerifyResult::Ok:
         out() << "Result: OK (" << spec->sizeBytes << " bytes)\n";
         break;
-    case VoiceModelDownloader::VerifyResult::Unverifiable:
+    case processing::VoiceModelDownloader::VerifyResult::Unverifiable:
         out() << "Result: present, not verifiable (" << detail << ")\n";
         break;
-    case VoiceModelDownloader::VerifyResult::Missing:
+    case processing::VoiceModelDownloader::VerifyResult::Missing:
         out() << "Result: MISSING\n";
         break;
-    case VoiceModelDownloader::VerifyResult::SizeMismatch:
+    case processing::VoiceModelDownloader::VerifyResult::SizeMismatch:
         out() << "Result: SIZE MISMATCH (" << detail << ")\n"
               << "Fetch it again with: tanara-cli voice-models fetch " << id << " --force\n";
         break;
     }
     out().flush();
-    return (r == VoiceModelDownloader::VerifyResult::Ok || r == VoiceModelDownloader::VerifyResult::Unverifiable) ? 0 : 1;
+    return (r == processing::VoiceModelDownloader::VerifyResult::Ok || r == processing::VoiceModelDownloader::VerifyResult::Unverifiable) ? 0 : 1;
 }
 
 // voice-models delete <id>: deletes the DOWNLOADED file (<metaDir>/models), not a bundled one.
-int deleteModel(const SettingsManager& sm, const QString& id)
+int deleteModel(const app::SettingsManager& sm, const QString& id)
 {
-    const auto spec = VoiceModelRegistry::spec(id);
+    const auto spec = processing::VoiceModelRegistry::spec(id);
     if (!spec) { err() << "Unknown voice model: " << id << "\n"; return 1; }
     QString error;
-    if (!VoiceModelDownloader::deleteModelFile(*spec, metaDirOf(sm), &error)) {
+    if (!processing::VoiceModelDownloader::deleteModelFile(*spec, metaDirOf(sm), &error)) {
         err() << error << "\n";
         err().flush();
         return 1;
     }
-    out() << "Deleted " << QDir::toNativeSeparators(VoiceModelDownloader::targetPath(*spec, metaDirOf(sm))) << "\n";
-    const QString still = VoiceModelRegistry::resolvePath(*spec, metaDirOf(sm), appDir());
+    out() << "Deleted " << QDir::toNativeSeparators(processing::VoiceModelDownloader::targetPath(*spec, metaDirOf(sm))) << "\n";
+    const QString still = processing::VoiceModelRegistry::resolvePath(*spec, metaDirOf(sm), appDir());
     if (QFileInfo::exists(still))
         out() << "Note: a bundled copy is still used: " << QDir::toNativeSeparators(still) << "\n";
     out().flush();
@@ -203,13 +203,13 @@ int deleteModel(const SettingsManager& sm, const QString& id)
 
 QString fmt(double v) { return std::isnan(v) ? QStringLiteral("   -  ") : QString::number(v, 'f', 3).rightJustified(6); }
 
-void printReport(const VoiceEvalReport& r)
+void printReport(const processing::VoiceEvalReport& r)
 {
     out() << "Models: " << r.models.join(", ") << "   (lines >= " << r.minMs << " ms are embedded)\n";
     out() << "Speakers:\n";
     for (int i = 0; i < r.speakers.size(); ++i)
         out() << "  [" << i << "] " << r.speakers[i].name << "  (" << r.speakers[i].key << ")\n";
-    for (const VoiceEvalSpace& sp : r.spaces) {
+    for (const processing::VoiceEvalSpace& sp : r.spaces) {
         out() << "\n== " << sp.id << " ==\n";
         out() << "  (1) coverage: " << sp.linesCovered << " / " << sp.linesEligible << " eligible lines ("
               << sp.linesTotal << " total)\n";
@@ -224,14 +224,14 @@ void printReport(const VoiceEvalReport& r)
         }
         out() << "  (3) 2-means split per speaker (sub-centroid cosine; lines A/B):\n";
         for (int i = 0; i < r.speakers.size(); ++i) {
-            const VoiceEvalSplit& s = sp.splits.value(i);
+            const processing::VoiceEvalSplit& s = sp.splits.value(i);
             out() << QStringLiteral("    [%1] ").arg(i, 2)
                   << (std::isnan(s.centroidCosine) ? QStringLiteral("  -   (%1 lines)").arg(s.lines)
                                                    : QStringLiteral("%1   %2/%3").arg(fmt(s.centroidCosine))
                                                          .arg(s.sizeA).arg(s.sizeB))
                   << "\n";
         }
-        out() << "  (4) lines closer to another core by >= " << kVoiceEvalMargin << ": " << sp.closerToOther
+        out() << "  (4) lines closer to another core by >= " << processing::kVoiceEvalMargin << ": " << sp.closerToOther
               << " / " << sp.closerChecked << "\n";
     }
     out().flush();
@@ -241,7 +241,7 @@ void printReport(const VoiceEvalReport& r)
 
 int runVoiceModelsCommand(const QStringList& args)
 {
-    SettingsManager sm;
+    app::SettingsManager sm;
     const QString sub = args.value(2);
     if (sub.isEmpty() || sub == "list") return listModels(sm);
     if (sub == "enable" || sub == "disable") {
@@ -267,7 +267,7 @@ int runVoiceEvalCommand(const QStringList& args)
 {
     QString folder;
     QStringList models;
-    qint64 minMs = speakeredit::kMinEmbedMs;
+    qint64 minMs = editing::speakeredit::kMinEmbedMs;
     bool json = false;
     for (int i = 2; i < args.size(); ++i) {
         const QString a = args.at(i);
@@ -283,15 +283,15 @@ int runVoiceEvalCommand(const QStringList& args)
     }
     folder = QFileInfo(folder).absoluteFilePath();
 
-    SettingsManager sm;
+    app::SettingsManager sm;
     const QString meta = metaDirOf(sm);
     if (models.isEmpty()) models = sm.enabledVoiceModels();
-    models = VoiceModelRegistry::normalizeIds(models);
-    QVector<VoiceModelEntry> entries;
+    models = processing::VoiceModelRegistry::normalizeIds(models);
+    QVector<processing::VoiceModelEntry> entries;
     for (const QString& id : models) {
-        const auto spec = VoiceModelRegistry::spec(id);
+        const auto spec = processing::VoiceModelRegistry::spec(id);
         if (!spec) { err() << "Unknown voice model: " << id << "\n"; return 1; }
-        const QString path = VoiceModelRegistry::resolvePath(*spec, meta, appDir());
+        const QString path = processing::VoiceModelRegistry::resolvePath(*spec, meta, appDir());
         if (!QFileInfo::exists(path)) {
             err() << "Model file missing for " << id << ": " << QDir::toNativeSeparators(path) << "\n";
             return 1;
@@ -299,46 +299,46 @@ int runVoiceEvalCommand(const QStringList& args)
         entries.append({*spec, path});
     }
     if (entries.isEmpty()) { err() << "No voice model selected.\n"; return 1; }
-    const VoiceEmbedderSet set(entries);
+    const processing::VoiceEmbedderSet set(entries);
 
     // READ-only: meeting.json, transcript lines, overlay; the cache is neither loaded nor written.
-    Meeting m = MeetingStore::readMeetingFolder(folder);
+    Meeting m = library::MeetingStore::readMeetingFolder(folder);
     if (m.id.isEmpty()) { err() << "Not a meeting folder (no readable meeting.json): " << folder << "\n"; return 1; }
     m.folder = folder;
-    const QVector<TranscriptLine> lines = speakeredit::loadTranscriptLines(folder);
+    const QVector<TranscriptLine> lines = editing::speakeredit::loadTranscriptLines(folder);
     if (lines.isEmpty()) { err() << "No transcript (transcript.segments.json) in " << folder << "\n"; return 1; }
-    const SpeakerOverlay ov = speakeredit::loadOverlayFor(folder, lines);
-    const QString audio = speakeredit::mixdownPath(m);
+    const SpeakerOverlay ov = editing::speakeredit::loadOverlayFor(folder, lines);
+    const QString audio = editing::speakeredit::mixdownPath(m);
     if (!QFileInfo::exists(audio)) { err() << "Mixdown audio missing: " << audio << "\n"; return 1; }
 
     // Speakers (in order of appearance) and the noisy lines, using the editor's rules.
-    QVector<VoiceEvalSpeaker> speakers;
+    QVector<processing::VoiceEvalSpeaker> speakers;
     QHash<QString, int> speakerIdx;
     QVector<int> lineSpeaker;
-    QVector<speakeredit::TimedLine> timed;
+    QVector<editing::speakeredit::TimedLine> timed;
     for (const TranscriptLine& l : lines) {
-        const QString key = speakeredit::resolveSpeakerKey(ov, l);
+        const QString key = editing::speakeredit::resolveSpeakerKey(ov, l);
         auto it = speakerIdx.constFind(key);
         if (it == speakerIdx.constEnd()) {
             it = speakerIdx.insert(key, int(speakers.size()));
-            speakers.append({key, speakeredit::speakerDisplayName(ov, m.speakerMap, key)});
+            speakers.append({key, editing::speakeredit::speakerDisplayName(ov, m.speakerMap, key)});
         }
         lineSpeaker.append(*it);
         timed.append({l.startMs, l.endMs, *it});
     }
-    const QVector<bool> autoNoisy = speakeredit::computeOverlapNoisy(timed);
+    const QVector<bool> autoNoisy = editing::speakeredit::computeOverlapNoisy(timed);
 
     auto embedder = voiceUtteranceEmbedderFactory(set)();
     if (!embedder || !embedder->open(audio)) {
         err() << "Cannot open audio / models: " << (embedder ? embedder->lastError() : QString()) << "\n";
         return 1;
     }
-    QVector<VoiceEvalLine> evalLines;
+    QVector<processing::VoiceEvalLine> evalLines;
     int done = 0, todo = 0;
     for (const TranscriptLine& l : lines) if (l.endMs - l.startMs >= minMs) ++todo;
     for (int i = 0; i < lines.size(); ++i) {
         const TranscriptLine& l = lines[i];
-        VoiceEvalLine el;
+        processing::VoiceEvalLine el;
         el.id = l.id;
         el.durationMs = l.endMs - l.startMs;
         el.speaker = lineSpeaker[i];
@@ -348,9 +348,9 @@ int runVoiceEvalCommand(const QStringList& args)
         if (el.durationMs >= minMs) {
             // The same window as in the editor: at most kMaxEmbedMs from the middle of the line.
             qint64 s = l.startMs, e = l.endMs;
-            if (e - s > speakeredit::kMaxEmbedMs) {
-                s = (l.startMs + l.endMs) / 2 - speakeredit::kMaxEmbedMs / 2;
-                e = s + speakeredit::kMaxEmbedMs;
+            if (e - s > editing::speakeredit::kMaxEmbedMs) {
+                s = (l.startMs + l.endMs) / 2 - editing::speakeredit::kMaxEmbedMs / 2;
+                e = s + editing::speakeredit::kMaxEmbedMs;
             }
             const EmbeddingSet got = embedder->embedAll(s, e, set.modelIds());
             for (auto it = got.cbegin(); it != got.cend(); ++it)
@@ -364,7 +364,7 @@ int runVoiceEvalCommand(const QStringList& args)
     err() << "\n";
     err().flush();
 
-    const VoiceEvalReport report = evaluateVoices(evalLines, speakers, set.modelIds(), minMs);
+    const processing::VoiceEvalReport report = evaluateVoices(evalLines, speakers, set.modelIds(), minMs);
     if (json) {
         QJsonObject root = voiceEvalToJson(report);
         root[QStringLiteral("meetingFolder")] = folder;

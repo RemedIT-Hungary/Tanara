@@ -10,14 +10,14 @@
 #include <QJsonObject>
 
 #include "tanara/foundation/paths/Paths.h"
-#include "tanara/voiceid/VoiceModelRegistry.h"
-#include "tanara/SettingsManager.h"
-#include "tanara/PromptLibrary.h"
-#include "tanara/AppController.h"
-#include "tanara/store/KeyStore.h"
-#include "tanara/store/PeopleStore.h"
-#include "tanara/store/VoiceprintStore.h"
-#include "tanara/store/MeetingStore.h"
+#include "tanara/processing/voiceid/VoiceModelRegistry.h"
+#include "tanara/app/SettingsManager.h"
+#include "tanara/processing/summary/PromptLibrary.h"
+#include "tanara/app/AppController.h"
+#include "tanara/foundation/KeyStore.h"
+#include "tanara/library/store/PeopleStore.h"
+#include "tanara/library/store/VoiceprintStore.h"
+#include "tanara/library/store/MeetingStore.h"
 
 using namespace tanara;
 
@@ -95,8 +95,8 @@ void PathsTest::overrideWinsEverywhere()
     QCOMPARE(paths::defaultAudioDir(), sb + QStringLiteral("/recordings"));
     QCOMPARE(paths::defaultNotesDir(), sb + QStringLiteral("/notes"));
     // The prompt override files too.
-    QVERIFY(promptFilePath(QStringLiteral("simple")).startsWith(sb + QLatin1Char('/')));
-    QVERIFY(promptFilePath(QStringLiteral("simple"), realMeta()).startsWith(sb + QLatin1Char('/')));
+    QVERIFY(processing::promptFilePath(QStringLiteral("simple")).startsWith(sb + QLatin1Char('/')));
+    QVERIFY(processing::promptFilePath(QStringLiteral("simple"), realMeta()).startsWith(sb + QLatin1Char('/')));
 }
 
 void PathsTest::overrideExpandsTildeAndRelative()
@@ -119,22 +119,22 @@ void PathsTest::storesDefaultIntoOverride()
     keys.set(QStringLiteral("k"), QStringLiteral("v"));
     QVERIFY(QFile::exists(sb + QStringLiteral("/secrets.json")));
 
-    PeopleStore people;
+    library::PeopleStore people;
     people.add(QStringLiteral("Teszt Elek"));
     QVERIFY(QFile::exists(sb + QStringLiteral("/people.json")));
 
-    VoiceprintStore prints;
+    library::VoiceprintStore prints;
     Voiceprint vp;
     vp.embedding = {1.0f, 0.0f};
     prints.addPrint(QStringLiteral("Teszt Elek"), vp);
     QVERIFY(QFile::exists(sb + QStringLiteral("/voiceprints.json")));
 
-    SettingsManager sm;   // empty: the default metadata folder
+    app::SettingsManager sm;   // empty: the default metadata folder
     QCOMPARE(sm.settingsFilePath(), sb + QStringLiteral("/settings.json"));
     QCOMPARE(sm.settings().metadataDir, sb);
     QCOMPARE(sm.settings().audioDir, sb + QStringLiteral("/recordings"));
 
-    MeetingStore store(&sm);
+    library::MeetingStore store(&sm);
     QCOMPARE(store.metadataDir(), sb);
     QVERIFY(QFile::exists(sb + QStringLiteral("/index.db")));
 
@@ -158,7 +158,7 @@ void PathsTest::settingsFileCannotRedirectOut()
     f.write(QJsonDocument(o).toJson());
     f.close();
 
-    SettingsManager sm;
+    app::SettingsManager sm;
     QCOMPARE(sm.settings().metadataDir, sb.path());       // the override wins
     QCOMPARE(sm.settings().audioDir, sb.filePath("rec"));  // the explicit audioDir stays
     QVERIFY(!QDir(realMeta()).exists());
@@ -172,7 +172,7 @@ void PathsTest::appControllerStaysInside()
     qputenv("TANARA_CLOUD", "off");
     const QStringList before = listAll(m_fakeHome.path());
     {
-        AppController app;
+        app::AppController app;
         app.setLastUsedDeviceNames({QStringLiteral("Mic")});          // state.json
         app.setSecret(QStringLiteral("soniox.apiKey"), QStringLiteral("x"));   // secrets.json
         const Meeting m = app.store()->createMeeting(QStringLiteral("Próba"));
@@ -196,7 +196,7 @@ void PathsTest::voiceModelResolutionOrder()
 {
     QTemporaryDir meta, app;
     QVERIFY(meta.isValid() && app.isValid());
-    const QString rel = QStringLiteral("models/") + VoiceModelRegistry::defaultModelFileName();
+    const QString rel = QStringLiteral("models/") + processing::VoiceModelRegistry::defaultModelFileName();
     const QString userModel = QDir(meta.path()).filePath(rel);
     const QString appModel = QDir(app.path()).filePath(rel);
     auto touch = [](const QString& f) {
@@ -207,17 +207,17 @@ void PathsTest::voiceModelResolutionOrder()
     };
 
     // 1) neither exists: the expected place (metadata folder), independent of appDir
-    QCOMPARE(VoiceModelRegistry::resolveDefaultModelPath(meta.path(), app.path()), userModel);
-    QCOMPARE(VoiceModelRegistry::resolveDefaultModelPath(meta.path(), QString()), userModel);
+    QCOMPARE(processing::VoiceModelRegistry::resolveDefaultModelPath(meta.path(), app.path()), userModel);
+    QCOMPARE(processing::VoiceModelRegistry::resolveDefaultModelPath(meta.path(), QString()), userModel);
 
     // 2) only next to the app: the bundled model
     touch(appModel);
-    QCOMPARE(VoiceModelRegistry::resolveDefaultModelPath(meta.path(), app.path()), appModel);
-    QCOMPARE(VoiceModelRegistry::resolveDefaultModelPath(meta.path(), QString()), userModel);
+    QCOMPARE(processing::VoiceModelRegistry::resolveDefaultModelPath(meta.path(), app.path()), appModel);
+    QCOMPARE(processing::VoiceModelRegistry::resolveDefaultModelPath(meta.path(), QString()), userModel);
 
     // 3) the user's model takes precedence
     touch(userModel);
-    QCOMPARE(VoiceModelRegistry::resolveDefaultModelPath(meta.path(), app.path()), userModel);
+    QCOMPARE(processing::VoiceModelRegistry::resolveDefaultModelPath(meta.path(), app.path()), userModel);
 }
 
 QTEST_GUILESS_MAIN(PathsTest)

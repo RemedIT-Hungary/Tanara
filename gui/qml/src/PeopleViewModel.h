@@ -40,9 +40,9 @@
 #include <QtQml/qqmlregistration.h>
 
 namespace tanara {
-class AppController;
-class PeopleService;
-class PeopleStats;
+namespace app { class AppController; }
+namespace library { class PeopleService; }
+namespace library { class PeopleStats; }
 }
 
 namespace tanara_qml {
@@ -130,7 +130,7 @@ public:
 
     QObject* controllerObject() const;
     void setControllerObject(QObject* controller);
-    void setController(tanara::AppController* controller);
+    void setController(tanara::app::AppController* controller);
     QString demoState() const { return m_demoState; }
     void setDemoState(const QString& state);
 
@@ -287,11 +287,11 @@ private:
     bool isPlaceholderName(const QString& name) const;
     void decorateSamples();
 
-    QPointer<tanara::AppController> m_controller;
-    QPointer<tanara::AppController> m_attached;
+    QPointer<tanara::app::AppController> m_controller;
+    QPointer<tanara::app::AppController> m_attached;
     bool m_controllerInjected = false;
-    tanara::PeopleService* m_service = nullptr;
-    tanara::PeopleStats* m_stats = nullptr;
+    tanara::library::PeopleService* m_service = nullptr;
+    tanara::library::PeopleStats* m_stats = nullptr;
     QList<QMetaObject::Connection> m_connections;
 
     QString m_demoState;

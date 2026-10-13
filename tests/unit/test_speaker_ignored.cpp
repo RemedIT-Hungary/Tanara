@@ -12,23 +12,23 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 
-#include "tanara/Types.h"
-#include "tanara/edit/ReviewGroups.h"
-#include "tanara/edit/SideAnalysis.h"
-#include "tanara/edit/SpeakerAnalysis.h"
-#include "tanara/edit/SpeakerEditor.h"
-#include "tanara/edit/SpeakerOverlay.h"
-#include "tanara/edit/TrackActivity.h"
-#include "tanara/edit/UtteranceEmbeddings.h"
-#include "tanara/store/MeetingStore.h"
-#include "tanara/store/PeopleStore.h"
-#include "tanara/store/VoiceprintStore.h"
+#include "tanara/domain/Types.h"
+#include "tanara/editing/review/ReviewGroups.h"
+#include "tanara/editing/review/SideAnalysis.h"
+#include "tanara/editing/review/SpeakerAnalysis.h"
+#include "tanara/editing/session/SpeakerEditor.h"
+#include "tanara/editing/session/SpeakerOverlay.h"
+#include "tanara/processing/analysis/TrackActivity.h"
+#include "tanara/processing/analysis/UtteranceEmbeddings.h"
+#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/store/PeopleStore.h"
+#include "tanara/library/store/VoiceprintStore.h"
 
 #include <cmath>
 #include <memory>
 
 using namespace tanara;
-using namespace tanara::speakeredit;
+using namespace tanara::editing::speakeredit;
 
 namespace {
 
@@ -46,7 +46,7 @@ struct L { int speaker; int axis; bool locked = false; bool noisy = false; bool 
 
 struct Lines {
     QVector<QVector<float>> vecs;   // for the pointers' lifetime
-    QVector<AnalysisLine> al;
+    QVector<editing::speakeredit::AnalysisLine> al;
 };
 
 Lines make(const QVector<L>& spec)
@@ -55,7 +55,7 @@ Lines make(const QVector<L>& spec)
     out.vecs.reserve(spec.size());
     for (const L& s : spec) out.vecs.append(voice(s.axis));
     for (int i = 0; i < spec.size(); ++i) {
-        AnalysisLine a;
+        editing::speakeredit::AnalysisLine a;
         a.embedding = &out.vecs[i];
         a.speaker = spec[i].speaker;
         a.durationMs = 4000;
@@ -86,7 +86,7 @@ TrackActivity activity(const QString& id, TrackKind kind, qint64 totalMs,
 struct Spec { QString raw; char side; int axis; bool confirmed = false; bool ignored = false; };
 
 struct Scenario {
-    ReviewInput in;
+    editing::ReviewInput in;
     MeetingActivity act;
 };
 
@@ -115,16 +115,16 @@ Scenario scenario(const QVector<Spec>& specs, bool withSides)
     return sc;
 }
 
-const ReviewGroup* group(const QVector<ReviewGroup>& gs, ReviewKind k)
+const editing::ReviewGroup* group(const QVector<editing::ReviewGroup>& gs, editing::ReviewKind k)
 {
-    for (const ReviewGroup& g : gs)
+    for (const editing::ReviewGroup& g : gs)
         if (g.kind == k) return &g;
     return nullptr;
 }
 
-bool inAnyGroup(const QVector<ReviewGroup>& gs, const QString& id)
+bool inAnyGroup(const QVector<editing::ReviewGroup>& gs, const QString& id)
 {
-    for (const ReviewGroup& g : gs)
+    for (const editing::ReviewGroup& g : gs)
         if (g.utteranceIds.contains(id)) return true;
     return false;
 }
@@ -132,18 +132,18 @@ bool inAnyGroup(const QVector<ReviewGroup>& gs, const QString& id)
 // ---- editor fixture (as in test_speaker_review) ----
 struct Fixture {
     QTemporaryDir dir;
-    std::unique_ptr<MeetingStore> store;
-    std::unique_ptr<PeopleStore> people;
-    std::unique_ptr<VoiceprintStore> prints;
+    std::unique_ptr<library::MeetingStore> store;
+    std::unique_ptr<library::PeopleStore> people;
+    std::unique_ptr<library::VoiceprintStore> prints;
     Meeting meeting;
     QVector<Spec> specs;
     MeetingActivity act;
 
     Fixture(const QVector<Spec>& s, const QMap<QString, QString>& names) : specs(s)
     {
-        store = std::make_unique<MeetingStore>(dir.filePath("rec"), dir.filePath("meta"));
-        people = std::make_unique<PeopleStore>(dir.filePath("meta/people.json"));
-        prints = std::make_unique<VoiceprintStore>(dir.filePath("meta/vp.json"));
+        store = std::make_unique<library::MeetingStore>(dir.filePath("rec"), dir.filePath("meta"));
+        people = std::make_unique<library::PeopleStore>(dir.filePath("meta/people.json"));
+        prints = std::make_unique<library::VoiceprintStore>(dir.filePath("meta/vp.json"));
         meeting = store->createMeeting("Nem azonosítható");
         Track mic; mic.id = "mic"; mic.kind = TrackKind::Mic; mic.file = "track_mic.ogg";
         Track loop; loop.id = "loop"; loop.kind = TrackKind::Loopback; loop.file = "track_loop.ogg";
@@ -156,16 +156,16 @@ struct Fixture {
                                     {"text", QStringLiteral("Sor %1").arg(i)}});
             (specs[i].side == 'L' ? micSpans : loopSpans) << qMakePair(st, en);
         }
-        QFile f(segmentsPath(meeting.folder));
+        QFile f(editing::speakeredit::segmentsPath(meeting.folder));
         if (f.open(QIODevice::WriteOnly)) f.write(QJsonDocument(segs).toJson());
         f.close();
         meeting.hasTranscript = true;
         meeting.speakerMap = names;
         store->saveMeeting(meeting);
 
-        const QVector<TranscriptLine> lines = loadTranscriptLines(meeting.folder);
-        UtteranceEmbeddingCache c;
-        c.fingerprint = transcriptFingerprint(lines);
+        const QVector<TranscriptLine> lines = editing::speakeredit::loadTranscriptLines(meeting.folder);
+        processing::UtteranceEmbeddingCache c;
+        c.fingerprint = editing::speakeredit::transcriptFingerprint(lines);
         SpeakerOverlay ov;
         for (int i = 0; i < specs.size(); ++i) {
             c.set(QStringLiteral("campplus"), lines[i].id, voice(specs[i].axis));
@@ -174,7 +174,7 @@ struct Fixture {
         c.save(meeting.folder);
         if (!ov.utterances.isEmpty()) {
             ov.transcriptFingerprint = c.fingerprint;
-            saveOverlay(meeting.folder, ov);
+            editing::speakeredit::saveOverlay(meeting.folder, ov);
         }
         const qint64 total = specs.size() * 5000 + 1000;
         act.tracks = {activity("mic", TrackKind::Mic, total, micSpans),
@@ -183,9 +183,9 @@ struct Fixture {
 
     QString uid(int i) const { return QStringLiteral("u%1").arg(i * 5000); }
 
-    std::unique_ptr<SpeakerEditor> editor()
+    std::unique_ptr<editing::SpeakerEditor> editor()
     {
-        auto ed = std::make_unique<SpeakerEditor>(store.get(), people.get(), prints.get(), meeting.id);
+        auto ed = std::make_unique<editing::SpeakerEditor>(store.get(), people.get(), prints.get(), meeting.id);
         ed->setUserSpeakerName("Ádám");
         const MeetingActivity a = act;
         ed->setActivityProvider([a](const Meeting&) { return a; });
@@ -193,9 +193,9 @@ struct Fixture {
     }
 };
 
-bool waitReview(SpeakerEditor& ed)
+bool waitReview(editing::SpeakerEditor& ed)
 {
-    QSignalSpy spy(&ed, &SpeakerEditor::reviewGroupsChanged);
+    QSignalSpy spy(&ed, &editing::SpeakerEditor::reviewGroupsChanged);
     return spy.wait(5000);
 }
 
@@ -208,9 +208,9 @@ QVector<Spec> sideScenario()
             {"B1", 'R', 1}, {"B1", 'L', 0}};
 }
 
-const SpeakerSampleStats* statsOf(const QVector<SpeakerSampleStats>& all, const QString& key)
+const editing::SpeakerSampleStats* statsOf(const QVector<editing::SpeakerSampleStats>& all, const QString& key)
 {
-    for (const SpeakerSampleStats& s : all)
+    for (const editing::SpeakerSampleStats& s : all)
         if (s.speakerKey == key) return &s;
     return nullptr;
 }
@@ -232,8 +232,8 @@ private slots:
         u.ignored = true;
         QVERIFY(!u.isDefault());
         QVERIFY(!(u == OverlayUtterance()));
-        QVERIFY(saveOverlay(dir.path(), ov));
-        const SpeakerOverlay back = loadOverlay(dir.path());
+        QVERIFY(editing::speakeredit::saveOverlay(dir.path(), ov));
+        const SpeakerOverlay back = editing::speakeredit::loadOverlay(dir.path());
         QVERIFY(back.utterances.contains("u0"));
         QVERIFY(back.utterances.value("u0").ignored);
         QVERIFY(back.utterances.value("u0").speaker.isEmpty());
@@ -245,15 +245,15 @@ private slots:
         // Speaker 0: 4 lines on voice 0 + 1 line on voice 1; speaker 1: 3 lines on voice 1.
         QVector<L> spec{{0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 1}, {1, 1}, {1, 1}, {1, 1}};
         Lines plain = make(spec);
-        QVERIFY(computeUncertain(plain.al, 2)[4]);                  // control: the odd one out is doubtful
-        QVERIFY(computeFits(plain.al, 2)[0].own < 0.99);            // and pulls the centroid
+        QVERIFY(editing::speakeredit::computeUncertain(plain.al, 2)[4]);                  // control: the odd one out is doubtful
+        QVERIFY(editing::speakeredit::computeFits(plain.al, 2)[0].own < 0.99);            // and pulls the centroid
 
         spec[4].ignored = true;
         Lines ign = make(spec);
         QVERIFY(!ign.al[4].hasEmbedding());
-        const QVector<bool> unc = computeUncertain(ign.al, 2);
+        const QVector<bool> unc = editing::speakeredit::computeUncertain(ign.al, 2);
         QVERIFY(!unc[4]);                                           // never uncertain
-        const QVector<LineFit> fits = computeFits(ign.al, 2);
+        const QVector<editing::speakeredit::LineFit> fits = editing::speakeredit::computeFits(ign.al, 2);
         QVERIFY(std::isnan(fits[4].own) && std::isnan(fits[4].other));
         QCOMPARE(fits[0].own, 1.0);                                 // the centroid is built without it
     }
@@ -262,15 +262,15 @@ private slots:
     {
         // kModeLockedAll also uses the locked NOISY lines; the ignored one is left out from there too.
         QVector<L> spec{{0, 0, true, true}, {0, 0, true, true}, {0, 0, true, true}, {0, 0}, {1, 1}};
-        QVERIFY(hasTrustedCore(make(spec).al, 2));
-        RecheckAnalysis a = computeUncertainRechecked(make(spec).al, 2);
+        QVERIFY(editing::speakeredit::hasTrustedCore(make(spec).al, 2));
+        editing::speakeredit::RecheckAnalysis a = computeUncertainRechecked(make(spec).al, 2);
         QVERIFY(a.trustedCore[0]);
         QCOMPARE(a.coreLines[0], 3);
 
         for (int i = 0; i < 3; ++i) spec[i].ignored = true;
         Lines ign = make(spec);
-        QVERIFY(!hasTrustedCore(ign.al, 2));
-        a = computeUncertainRechecked(ign.al, 2);
+        QVERIFY(!editing::speakeredit::hasTrustedCore(ign.al, 2));
+        a = editing::speakeredit::computeUncertainRechecked(ign.al, 2);
         QVERIFY(!a.trustedCore[0]);
         QCOMPARE(a.coreLines[0], 0);
         for (int i = 0; i < 3; ++i) QVERIFY(!a.lines[i].uncertain);
@@ -280,22 +280,22 @@ private slots:
     {
         // Confirmed cores: 0 on voice 0, 1 on voice 1. Line 6 is on voice 1 under 0.
         QVector<L> spec{{0, 0, true}, {0, 0, true}, {0, 0, true}, {1, 1, true}, {1, 1, true}, {1, 1, true}, {0, 1}};
-        QVERIFY(computeUncertainRechecked(make(spec).al, 2).lines[6].uncertain);
+        QVERIFY(editing::speakeredit::computeUncertainRechecked(make(spec).al, 2).lines[6].uncertain);
         spec[6].ignored = true;
-        QVERIFY(!computeUncertainRechecked(make(spec).al, 2).lines[6].uncertain);
+        QVERIFY(!editing::speakeredit::computeUncertainRechecked(make(spec).al, 2).lines[6].uncertain);
     }
 
     void analysisSuggestAndPairSkipIgnored()
     {
         // Source (0): 3x voice 0 + 2x voice 1; target (1): 2x voice 1.
         QVector<L> spec{{0, 0}, {0, 0}, {0, 0}, {0, 1}, {0, 1}, {1, 1}, {1, 1}};
-        QCOMPARE(suggestSimilar(make(spec).al, 0, 1), (QVector<int>{3, 4}));
+        QCOMPARE(editing::speakeredit::suggestSimilar(make(spec).al, 0, 1), (QVector<int>{3, 4}));
         spec[4].ignored = true;
-        QCOMPARE(suggestSimilar(make(spec).al, 0, 1), (QVector<int>{3}));
+        QCOMPARE(editing::speakeredit::suggestSimilar(make(spec).al, 0, 1), (QVector<int>{3}));
 
         // Pairwise review: line 6 (under 0, on voice 1) is doubtful; ignored: not.
         QVector<L> pair{{0, 0, true}, {0, 0, true}, {0, 0, true}, {1, 1, true}, {1, 1, true}, {1, 1, true}, {0, 1}};
-        QVERIFY(computePairRecheck(make(pair).al, 0, 1).lines[6].flagged);
+        QVERIFY(editing::speakeredit::computePairRecheck(make(pair).al, 0, 1).lines[6].flagged);
         pair[6].ignored = true;
         const PairRecheckAnalysis p = computePairRecheck(make(pair).al, 0, 1);
         QVERIFY(p.valid);
@@ -309,21 +309,21 @@ private slots:
         QVector<Spec> spec{{"B1", 'L', 0, true}, {"B1", 'L', 0, true}, {"B1", 'R', 0, true},
                            {"B1", 'R', 0, true}, {"B1", 'R', 0, true}, {"B1", 'R', 0}};
         Scenario sc = scenario(spec, true);
-        SideReport r = analyzeSides(sc.in.meeting, sc.in.lines, sc.in.overlay, sc.act, QString());
+        editing::SideReport r = editing::analyzeSides(sc.in.meeting, sc.in.lines, sc.in.overlay, sc.act, QString());
         QVERIFY(r.active);
         QCOMPARE(r.persons.size(), 1);
         QCOMPARE(r.persons[0].remoteLines, 3);
-        QVERIFY(r.persons[0].side != Side::Local);
+        QVERIFY(r.persons[0].side != editing::Side::Local);
 
         // The 3 loopback confirmed lines become "cannot be identified", so the person becomes
         // microphone; the non-ignored loopback line is a contradiction, the ignored ones are not.
         for (int i = 2; i <= 4; ++i) spec[i].ignored = true;
         sc = scenario(spec, true);
-        r = analyzeSides(sc.in.meeting, sc.in.lines, sc.in.overlay, sc.act, QString());
+        r = editing::analyzeSides(sc.in.meeting, sc.in.lines, sc.in.overlay, sc.act, QString());
         QCOMPARE(r.persons[0].localLines, 2);
         QCOMPARE(r.persons[0].remoteLines, 0);
         QCOMPARE(r.persons[0].allLines.total(), 3);
-        QCOMPARE(r.persons[0].side, Side::Local);
+        QCOMPARE(r.persons[0].side, editing::Side::Local);
         for (int i = 2; i <= 4; ++i) QVERIFY(r.lines[i].ignored);
         QCOMPARE(r.conflicts.size(), 1);
         QCOMPARE(r.conflicts[0].utteranceId, QStringLiteral("u25000"));
@@ -337,22 +337,22 @@ private slots:
                            {"B", 'L', 1, true}, {"B", 'L', 1, true}, {"B", 'L', 1, true},
                            {"A", 'L', 1}, {"A", 'L', 1}, {"A", '-', -1}};
         Scenario sc = scenario(spec, false);
-        ReviewResult r = analyzeReview(sc.in, sc.act);
-        const ReviewGroup* core = group(r.groups, ReviewKind::CoreMismatch);
+        editing::ReviewResult r = analyzeReview(sc.in, sc.act);
+        const editing::ReviewGroup* core = group(r.groups, editing::ReviewKind::CoreMismatch);
         QVERIFY(core);
         QCOMPARE(core->utteranceIds.size(), 2);
-        QVERIFY(group(r.groups, ReviewKind::ShortLines));
+        QVERIFY(group(r.groups, editing::ReviewKind::ShortLines));
         QCOMPARE(r.context.profile("A")->lines, 6);
 
         spec[6].ignored = true;
         spec[8].ignored = true;
         sc = scenario(spec, false);
         r = analyzeReview(sc.in, sc.act);
-        core = group(r.groups, ReviewKind::CoreMismatch);
+        core = group(r.groups, editing::ReviewKind::CoreMismatch);
         QVERIFY(core);
         QCOMPARE(core->utteranceIds, QStringList{"u35000"});
         QVERIFY(!inAnyGroup(r.groups, "u30000"));
-        QVERIFY(!group(r.groups, ReviewKind::ShortLines));          // the ignored short line neither
+        QVERIFY(!group(r.groups, editing::ReviewKind::ShortLines));          // the ignored short line neither
         QCOMPARE(r.context.profile("A")->lines, 4);                 // nor in the profile's line count
         QCOMPARE(r.context.profile("A")->sumCount, 4);
 
@@ -362,7 +362,7 @@ private slots:
         r = analyzeReview(sc.in, sc.act);
         QCOMPARE(r.context.profile("A")->confirmedLines, 0);
         QVERIFY(r.context.profile("A")->core.isEmpty());
-        QVERIFY(!group(r.groups, ReviewKind::CoreMismatch));
+        QVERIFY(!group(r.groups, editing::ReviewKind::CoreMismatch));
     }
 
     void reviewSideConflictsSkipIgnored()
@@ -370,7 +370,7 @@ private slots:
         Scenario sc = scenario(sideScenario(), true);
         sc.in.userName = "Ádám";
         sc.in.meeting.speakerMap = {{"B1", "Ádám"}, {"B2", "Béla"}};
-        ReviewResult r = analyzeReview(sc.in, sc.act);
+        editing::ReviewResult r = analyzeReview(sc.in, sc.act);
         QVERIFY(r.sideConflicts.contains("u15000"));
         sc.in.overlay.utterances["u15000"].ignored = true;
         r = analyzeReview(sc.in, sc.act);
@@ -386,12 +386,12 @@ private slots:
         auto ed = fx.editor();
         QVERIFY(waitReview(*ed));
         QVERIFY(ed->utterance(fx.uid(3)).uncertain);
-        const QVector<EditorSpeaker> before = ed->speakers();
+        const QVector<editing::EditorSpeaker> before = ed->speakers();
 
-        QSignalSpy changed(ed.get(), &SpeakerEditor::utterancesChanged);
+        QSignalSpy changed(ed.get(), &editing::SpeakerEditor::utterancesChanged);
         QVERIFY(ed->setUtterancesIgnored({fx.uid(3)}, true));
         QVERIFY(!ed->setUtterancesIgnored({fx.uid(3)}, true));     // already that
-        EditorUtterance u = ed->utterance(fx.uid(3));
+        editing::EditorUtterance u = ed->utterance(fx.uid(3));
         QVERIFY(u.ignored);
         QVERIFY(!u.uncertain);
         QVERIFY(u.uncertainReason.isEmpty());
@@ -399,7 +399,7 @@ private slots:
         QVERIFY(!changed.isEmpty());
         QVERIFY(ed->undoText().contains(QStringLiteral("nem azonosítható")));
         // The talk time stays on the name.
-        const QVector<EditorSpeaker> after = ed->speakers();
+        const QVector<editing::EditorSpeaker> after = ed->speakers();
         QCOMPARE(after.size(), before.size());
         for (int i = 0; i < after.size(); ++i) {
             QCOMPARE(after[i].utteranceCount, before[i].utteranceCount);
@@ -409,7 +409,7 @@ private slots:
         QVERIFY(ed->summaryStale().correctedSpeakers == 0);
 
         // Persists.
-        QVERIFY(loadOverlay(fx.meeting.folder).utterances.value(fx.uid(3)).ignored);
+        QVERIFY(editing::speakeredit::loadOverlay(fx.meeting.folder).utterances.value(fx.uid(3)).ignored);
         {
             auto other = fx.editor();
             QVERIFY(other->utterance(fx.uid(3)).ignored);
@@ -418,7 +418,7 @@ private slots:
         const int undoDepth = ed->undoSerials().size();
         ed->undo();
         QVERIFY(!ed->utterance(fx.uid(3)).ignored);
-        QVERIFY(!loadOverlay(fx.meeting.folder).utterances.value(fx.uid(3)).ignored);
+        QVERIFY(!editing::speakeredit::loadOverlay(fx.meeting.folder).utterances.value(fx.uid(3)).ignored);
         ed->redo();
         QVERIFY(ed->utterance(fx.uid(3)).ignored);
         QCOMPARE(ed->undoSerials().size(), undoDepth);
@@ -427,7 +427,7 @@ private slots:
         QVERIFY(ed->setUtterancesIgnored({fx.uid(3)}, false));
         QVERIFY(!ed->utterance(fx.uid(3)).ignored);
         QCOMPARE(ed->undoSerials().size(), undoDepth + 1);
-        QVERIFY(!loadOverlay(fx.meeting.folder).utterances.contains(fx.uid(3)));   // the base state: no entry
+        QVERIFY(!editing::speakeredit::loadOverlay(fx.meeting.folder).utterances.contains(fx.uid(3)));   // the base state: no entry
     }
 
     void editorReviewGroupsSkipIgnored()
@@ -435,14 +435,14 @@ private slots:
         Fixture fx(sideScenario(), {{"B1", "Ádám"}, {"B2", "Béla"}});
         auto ed = fx.editor();
         QVERIFY(waitReview(*ed));
-        const ReviewGroup* side = group(ed->reviewGroups(), ReviewKind::SideConflict);
+        const editing::ReviewGroup* side = group(ed->reviewGroups(), editing::ReviewKind::SideConflict);
         QVERIFY(side);
         QCOMPARE(side->utteranceIds, (QStringList{fx.uid(3), fx.uid(5), fx.uid(8)}));
 
         QVERIFY(ed->setUtterancesIgnored({fx.uid(3), fx.uid(5)}, true));
         QCOMPARE(ed->undoSerials().size(), 1);
         QVERIFY(waitReview(*ed));
-        side = group(ed->reviewGroups(), ReviewKind::SideConflict);
+        side = group(ed->reviewGroups(), editing::ReviewKind::SideConflict);
         QVERIFY(side);
         QCOMPARE(side->utteranceIds, QStringList{fx.uid(8)});
         QVERIFY(!ed->uncertainUtteranceIds().contains(fx.uid(3)));
@@ -450,7 +450,7 @@ private slots:
 
         QVERIFY(ed->setUtterancesIgnored({fx.uid(8)}, true));
         QVERIFY(waitReview(*ed));
-        QVERIFY(!group(ed->reviewGroups(), ReviewKind::SideConflict));
+        QVERIFY(!group(ed->reviewGroups(), editing::ReviewKind::SideConflict));
         for (const QString& id : {fx.uid(3), fx.uid(5), fx.uid(8)})
             QVERIFY(!inAnyGroup(ed->reviewGroups(), id));
 
@@ -475,11 +475,11 @@ private slots:
     {
         Fixture fx(sideScenario(), {{"B1", "Ádám"}, {"B2", "Béla"}});
         auto ed = fx.editor();
-        QSignalSpy undoSpy(ed.get(), &SpeakerEditor::undoStateChanged);
+        QSignalSpy undoSpy(ed.get(), &editing::SpeakerEditor::undoStateChanged);
 
         QVERIFY(ed->moveUtterances({fx.uid(3)}, "B2", /*noisy*/ true));
         QCOMPARE(ed->undoSerials().size(), 1);
-        EditorUtterance u = ed->utterance(fx.uid(3));
+        editing::EditorUtterance u = ed->utterance(fx.uid(3));
         QCOMPARE(u.speakerKey, QStringLiteral("B2"));
         QVERIFY(u.manuallyCorrected);
         QVERIFY(u.noisy);
@@ -511,12 +511,12 @@ private slots:
     {
         Fixture fx(sideScenario(), {{"B1", "Ádám"}, {"B2", "Béla"}});
         auto ed = fx.editor();
-        QSignalSpy spy(ed.get(), &SpeakerEditor::sampleDeviationChanged);
+        QSignalSpy spy(ed.get(), &editing::SpeakerEditor::sampleDeviationChanged);
         QVERIFY(!ed->lastSampleDeviation().isValid());
 
         // A line in Béla's voice to Béla: fits.
         QVERIFY(ed->moveUtterances({fx.uid(3)}, "B2"));
-        SampleDeviation dv = ed->lastSampleDeviation();
+        editing::SampleDeviation dv = ed->lastSampleDeviation();
         QVERIFY(dv.isValid());
         QCOMPARE(dv.utteranceId, fx.uid(3));
         QCOMPARE(dv.speakerKey, QStringLiteral("B2"));
@@ -529,7 +529,7 @@ private slots:
         dv = ed->lastSampleDeviation();
         QVERIFY(dv.isValid());
         QCOMPARE(dv.utteranceId, fx.uid(0));
-        QVERIFY(dv.similarity < kSampleDeviationFit);
+        QVERIFY(dv.similarity < editing::speakeredit::kSampleDeviationFit);
         QVERIFY(dv.deviates);
 
         // Several lines in one decision: the worst comes back.
@@ -558,9 +558,9 @@ private slots:
     {
         Fixture fx(sideScenario(), {{"B1", "Ádám"}, {"B2", "Béla"}});
         auto ed = fx.editor();
-        QVector<SpeakerSampleStats> st = ed->sampleStats();
+        QVector<editing::SpeakerSampleStats> st = ed->sampleStats();
         QCOMPARE(st.size(), 2);
-        const SpeakerSampleStats* bela = statsOf(st, "B2");
+        const editing::SpeakerSampleStats* bela = statsOf(st, "B2");
         QVERIFY(bela);
         QCOMPARE(bela->personName, QStringLiteral("Béla"));
         QCOMPARE(bela->sampleLines, 3);
@@ -568,7 +568,7 @@ private slots:
         QCOMPARE(bela->sessionAdded, 0);
         QCOMPARE(statsOf(st, "B1")->sampleLines, 0);
 
-        QSignalSpy spy(ed.get(), &SpeakerEditor::sampleStatsChanged);
+        QSignalSpy spy(ed.get(), &editing::SpeakerEditor::sampleStatsChanged);
         QVERIFY(ed->moveUtterances({fx.uid(3)}, "B2"));
         QCOMPARE(spy.count(), 1);
         st = ed->sampleStats();
@@ -602,7 +602,7 @@ private slots:
         QCOMPARE(ed->voiceprintMaterial("B2").usableLines, 3);
         QVERIFY(ed->setUtterancesIgnored({fx.uid(1)}, true));
         QCOMPARE(ed->voiceprintMaterial("B2").usableLines, 2);
-        const VoiceprintResult r = ed->createVoiceprintFromLines("B2", {fx.uid(1)});
+        const editing::VoiceprintResult r = ed->createVoiceprintFromLines("B2", {fx.uid(1)});
         QVERIFY(!r.ok);
         QVERIFY(r.error.contains(QStringLiteral("nem azonosítható")));
     }

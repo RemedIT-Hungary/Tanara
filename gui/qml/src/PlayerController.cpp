@@ -3,9 +3,9 @@
 #include "AppContext.h"
 #include "LibraryDemoData.h"
 
-#include "tanara/AppController.h"
-#include "tanara/audio/TrackCatalog.h"
-#include "tanara/store/MeetingStore.h"
+#include "tanara/app/AppController.h"
+#include "tanara/library/tracks/TrackCatalog.h"
+#include "tanara/library/store/MeetingStore.h"
 
 #include <QDir>
 #include <QElapsedTimer>
@@ -122,7 +122,7 @@ PlayerController::TrackSeek PlayerController::resolveTrackSeek(const QVector<tan
                                                                const QString& trackId, qint64 meetingMs)
 {
     TrackSeek out;
-    const QVector<tanara::tracknames::SegmentInfo> seg = tanara::tracknames::segments(tracks);
+    const QVector<tanara::library::tracknames::SegmentInfo> seg = tanara::library::tracknames::segments(tracks);
     int lead = -1;
     for (int i = 0; i < tracks.size() && lead < 0; ++i)
         if (tracks.at(i).id == trackId) lead = seg.value(i).leader >= 0 ? seg.value(i).leader : i;
@@ -176,7 +176,7 @@ PlayerController::~PlayerController()
         m_backend->pause();
 }
 
-void PlayerController::setController(tanara::AppController* controller)
+void PlayerController::setController(tanara::app::AppController* controller)
 {
     m_controllerInjected = true;
     m_controller = controller;
@@ -192,9 +192,9 @@ void PlayerController::attach()
         if (m_controller) {
             // The mixdown became ready / changed, or the tracks changed -> re-resolve the source
             // (during playback a track change does not interrupt the audio).
-            connect(m_controller, &tanara::AppController::mixdownUpdated, this,
+            connect(m_controller, &tanara::app::AppController::mixdownUpdated, this,
                     [this](const QString& id, bool) { if (id == m_meetingId) reload(); });
-            connect(m_controller, &tanara::AppController::tracksChanged, this,
+            connect(m_controller, &tanara::app::AppController::tracksChanged, this,
                     [this](const QString& id) { if (id == m_meetingId && !m_playing) reload(); });
         }
     }

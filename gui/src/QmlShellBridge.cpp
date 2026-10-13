@@ -8,11 +8,11 @@
 #include "ShellRecorderHost.h"
 #include "TagsWindowHost.h"
 
-#include "tanara/AppController.h"
+#include "tanara/app/AppController.h"
 #include "tanara/foundation/log/Logging.h"
-#include "tanara/SettingsManager.h"
+#include "tanara/app/SettingsManager.h"
 #include "tanara/library/MeetingLibrary.h"
-#include "tanara/store/MeetingStore.h"
+#include "tanara/library/store/MeetingStore.h"
 
 #include <QApplication>
 #include <QCoreApplication>
@@ -48,7 +48,7 @@ QString participantsSummary(QStringList named, int unknownCount, int totalDistin
 
 } // namespace
 
-QmlShellBridge::QmlShellBridge(tanara::AppController* controller, QObject* parent)
+QmlShellBridge::QmlShellBridge(tanara::app::AppController* controller, QObject* parent)
     : tanara_qml::ShellBridge(parent), m_controller(controller)
 {
     qApp->installEventFilter(this);
@@ -68,7 +68,7 @@ QmlShellBridge::QmlShellBridge(tanara::AppController* controller, QObject* paren
             [this]() { openSettings(QStringLiteral("recording")); });
     // Recording ended: (a) "Stop and quit" lets the main window close; (b) in background mode
     // (hidden main window) the main window comes back; (c) retry the singleton listening.
-    connect(m_controller, &tanara::AppController::recordingStateChanged, this,
+    connect(m_controller, &tanara::app::AppController::recordingStateChanged, this,
             [this](tanara::RecordingState st) {
                 if (st != tanara::RecordingState::Idle) return;
                 if (m_quitAfterStop) { emit quitRequested(); return; }

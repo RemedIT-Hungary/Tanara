@@ -16,11 +16,11 @@
 #include <QDir>
 #include <QFile>
 
-#include "tanara/Types.h"
-#include "tanara/SettingsManager.h"
-#include "tanara/store/JsonSerialization.h"
-#include "tanara/store/MeetingStore.h"
-#include "tanara/store/KeyStore.h"
+#include "tanara/domain/Types.h"
+#include "tanara/app/SettingsManager.h"
+#include "tanara/library/store/JsonSerialization.h"
+#include "tanara/library/store/MeetingStore.h"
+#include "tanara/foundation/KeyStore.h"
 
 using namespace tanara;
 
@@ -39,7 +39,7 @@ private slots:
         s.cloudLlmTier  = QStringLiteral("accurate");
         s.cloudSttModel = QStringLiteral("soniox/stt-async-v5");
         s.waitlistEmail = QStringLiteral("anna@example.com");
-        const AppSettings r = appSettingsFromJson(toJson(s));
+        const AppSettings r = library::appSettingsFromJson(library::toJson(s));
         QCOMPARE(r.cloudEnabled, true);
         QCOMPARE(r.cloudBaseUrl, s.cloudBaseUrl);
         QCOMPARE(r.cloudSttTier, QStringLiteral("fast"));
@@ -47,7 +47,7 @@ private slots:
         QVERIFY(r.cloudLlmModel.isEmpty());
         QCOMPARE(r.waitlistEmail, s.waitlistEmail);
 
-        const AppSettings old = appSettingsFromJson(QJsonObject{ { QStringLiteral("audioDir"), QStringLiteral("/x") } });
+        const AppSettings old = library::appSettingsFromJson(QJsonObject{ { QStringLiteral("audioDir"), QStringLiteral("/x") } });
         QCOMPARE(old.cloudEnabled, false);                       // before launch: teaser
         QCOMPARE(old.cloudSttTier, QStringLiteral("accurate"));
         QVERIFY(old.waitlistEmail.isEmpty());
@@ -59,8 +59,8 @@ private slots:
         AppSettings s;
         QCOMPARE(s.onboardingDone, false);
         s.onboardingDone = true;
-        QCOMPARE(appSettingsFromJson(toJson(s)).onboardingDone, true);
-        const AppSettings old = appSettingsFromJson(QJsonObject{ { QStringLiteral("audioDir"), QStringLiteral("/x") } });
+        QCOMPARE(library::appSettingsFromJson(library::toJson(s)).onboardingDone, true);
+        const AppSettings old = library::appSettingsFromJson(QJsonObject{ { QStringLiteral("audioDir"), QStringLiteral("/x") } });
         QCOMPARE(old.onboardingDone, false);
     }
 
@@ -78,11 +78,11 @@ private slots:
         zero.id = QStringLiteral("mic");
         m.tracks << t << zero;
 
-        const QJsonObject o = toJson(m);
+        const QJsonObject o = library::toJson(m);
         const QJsonArray tracks = o.value(QStringLiteral("tracks")).toArray();
         QCOMPARE(tracks.at(0).toObject().value(QStringLiteral("startOffsetMs")).toDouble(), 57200.0);
         QVERIFY(!tracks.at(1).toObject().contains(QStringLiteral("startOffsetMs")));
-        const Meeting back = meetingFromJson(o);
+        const Meeting back = library::meetingFromJson(o);
         QCOMPARE(back.tracks.at(0).startOffsetMs, qint64(57200));
         QCOMPARE(back.tracks.at(1).startOffsetMs, qint64(0));
     }
@@ -112,8 +112,8 @@ private slots:
         llm.apiKey  = QStringLiteral("LLM-SECRET-should-not-persist");
         s.llmConfigs.insert(QStringLiteral("openai-compat"), llm);
 
-        const QJsonObject o = toJson(s);
-        const AppSettings r = appSettingsFromJson(o);
+        const QJsonObject o = library::toJson(s);
+        const AppSettings r = library::appSettingsFromJson(o);
 
         QCOMPARE(r.audioDir, s.audioDir);
         QCOMPARE(r.notesDir, s.notesDir);
@@ -157,7 +157,7 @@ private slots:
         s.detectorId          = QStringLiteral("linux-capture");
         s.knownCallApps       = QStringList{QStringLiteral("zoom"), QStringLiteral("jitsi")};
 
-        const AppSettings r = appSettingsFromJson(toJson(s));
+        const AppSettings r = library::appSettingsFromJson(library::toJson(s));
 
         QCOMPARE(r.detectorEnabled, false);
         QCOMPARE(r.detectorIntervalSec, 15);
@@ -170,7 +170,7 @@ private slots:
     void appSettings_detectorDefaultsWhenAbsent()
     {
         const AppSettings d;                          // built-in defaults
-        const AppSettings r = appSettingsFromJson(QJsonObject{});   // empty JSON
+        const AppSettings r = library::appSettingsFromJson(QJsonObject{});   // empty JSON
         QCOMPARE(r.detectorEnabled, d.detectorEnabled);
         QCOMPARE(r.detectorIntervalSec, d.detectorIntervalSec);
         QCOMPARE(r.watcherAutostart, d.watcherAutostart);
@@ -197,7 +197,7 @@ private slots:
         o[QStringLiteral("stt")]             = oldStt;
         o[QStringLiteral("llm")]             = oldLlm;
 
-        const AppSettings r = appSettingsFromJson(o);
+        const AppSettings r = library::appSettingsFromJson(o);
 
         // The type became the id (an empty type falls back to "soniox"/"openai-compat").
         QCOMPARE(r.sttProviderId, QStringLiteral("soniox"));
@@ -231,7 +231,7 @@ private slots:
         o[QStringLiteral("stt")] = oldStt;
         o[QStringLiteral("llm")] = oldLlm;
 
-        const AppSettings r = appSettingsFromJson(o);
+        const AppSettings r = library::appSettingsFromJson(o);
 
         QCOMPARE(r.sttProviderId, QStringLiteral("soniox"));
         QCOMPARE(r.llmProviderId, QStringLiteral("openai-compat"));
@@ -244,7 +244,7 @@ private slots:
     // Default languageHints == ["hu"] + the selected provider config's defaults.
     void defaults_languageHintsHu()
     {
-        const AppSettings d = SettingsManager::defaults(QStringLiteral("/tmp/x"));
+        const AppSettings d = app::SettingsManager::defaults(QStringLiteral("/tmp/x"));
         QCOMPARE(d.languageHints, (QStringList{QStringLiteral("hu")}));
         QVERIFY(!d.userSpeakerName.trimmed().isEmpty());   // the OS account's name (no hard-coded name)
         QCOMPARE(d.sttProviderId, QStringLiteral("soniox"));
@@ -260,7 +260,7 @@ private slots:
         QVERIFY(tmp.isValid());
         const QString meta = tmp.filePath(QStringLiteral("meta"));
 
-        SettingsManager mgr(meta);
+        app::SettingsManager mgr(meta);
         // The constructor writes the default if there is no file.
         QVERIFY(QFile::exists(mgr.settingsFilePath()));
         QCOMPARE(mgr.settings().languageHints, (QStringList{QStringLiteral("hu")}));
@@ -269,7 +269,7 @@ private slots:
         s.userSpeakerName = QStringLiteral("Béla");
         mgr.setSettings(s);
 
-        SettingsManager mgr2(meta);
+        app::SettingsManager mgr2(meta);
         QCOMPARE(mgr2.settings().userSpeakerName, QStringLiteral("Béla"));
     }
 
@@ -309,7 +309,7 @@ private slots:
         f.close();
 
         // Production load.
-        SettingsManager mgr(meta);
+        app::SettingsManager mgr(meta);
         const AppSettings r = mgr.settings();
 
         // type becomes id; the config went into the map with the preserved baseUrl/model.
@@ -365,7 +365,7 @@ private slots:
         f.write(QJsonDocument(root).toJson());
         f.close();
 
-        SettingsManager mgr(meta);
+        app::SettingsManager mgr(meta);
         const AppSettings r = mgr.settings();
 
         // It fell back from the stale id to a sensible, NON-empty selection.
@@ -412,7 +412,7 @@ private slots:
         const QString audio = tmp.filePath(QStringLiteral("recordings"));
         const QString meta  = tmp.filePath(QStringLiteral("meta"));
 
-        MeetingStore store(audio, meta);
+        library::MeetingStore store(audio, meta);
         const Meeting m = store.createMeeting(QStringLiteral("Heti sync"));
 
         QVERIFY(!m.id.isEmpty());
@@ -449,7 +449,7 @@ private slots:
         const QString audio = tmp.filePath(QStringLiteral("recordings"));
         const QString meta  = tmp.filePath(QStringLiteral("meta"));
 
-        MeetingStore store(audio, meta);
+        library::MeetingStore store(audio, meta);
         store.createMeeting(QStringLiteral("A"));
         store.createMeeting(QStringLiteral("B"));
         QCOMPARE(store.loadAll().size(), 2);

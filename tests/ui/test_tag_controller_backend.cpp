@@ -12,11 +12,11 @@
 #include "TagControllerBackend.h"
 #include "TagsViewModel.h"
 
-#include "tanara/AppController.h"
-#include "tanara/tags/MeetingProfiles.h"
-#include "tanara/SettingsManager.h"
-#include "tanara/store/MeetingStore.h"
-#include "tanara/tags/TagService.h"
+#include "tanara/app/AppController.h"
+#include "tanara/library/tags/MeetingProfiles.h"
+#include "tanara/app/SettingsManager.h"
+#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/tags/TagService.h"
 
 #include "../unit/tags_fixture.h"
 
@@ -38,7 +38,7 @@ private slots:
         m_home = std::make_unique<QTemporaryDir>();
         QVERIFY(m_home->isValid());
         qputenv("TANARA_HOME", m_home->path().toUtf8());
-        m_app = std::make_unique<tanara::AppController>();
+        m_app = std::make_unique<tanara::app::AppController>();
         QVERIFY(m_app->settings()->settings().audioDir.startsWith(m_home->path()));
         m_lib = tagsfixture::buildLibrary(*m_app->store());
         m_backend.reset(createTagBackend(m_app.get(), nullptr));
@@ -240,7 +240,7 @@ private slots:
     // A suggestion from the participants' manual tags ("Based on the participants"), before the transcript too.
     void participantTagSuggestionsAndLabel()
     {
-        tanara::TagService* tags = m_app->tags();
+        tanara::library::TagService* tags = m_app->tags();
         const QString nord = tags->create(QStringLiteral("Nordvik")).id;
         tags->setPersonTags(QStringLiteral("Fehér Gábor"), {nord});
         tags->setPersonTags(QStringLiteral("Varga Árpád"), {nord});
@@ -287,7 +287,7 @@ private slots:
 
 private:
     std::unique_ptr<QTemporaryDir> m_home;
-    std::unique_ptr<tanara::AppController> m_app;
+    std::unique_ptr<tanara::app::AppController> m_app;
     std::unique_ptr<TagBackend> m_backend;
     tagsfixture::Library m_lib;
 };

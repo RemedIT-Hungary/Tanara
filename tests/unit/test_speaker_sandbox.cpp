@@ -11,19 +11,19 @@
 #include <QElapsedTimer>
 #include <QSignalSpy>
 
-#include "tanara/edit/SpeakerAnalysis.h"
-#include "tanara/edit/SpeakerEditor.h"
-#include "tanara/edit/SpeakerOverlay.h"
-#include "tanara/edit/UtteranceEmbeddings.h"
-#include "tanara/store/MeetingStore.h"
-#include "tanara/store/PeopleStore.h"
-#include "tanara/store/VoiceprintStore.h"
+#include "tanara/editing/review/SpeakerAnalysis.h"
+#include "tanara/editing/session/SpeakerEditor.h"
+#include "tanara/editing/session/SpeakerOverlay.h"
+#include "tanara/processing/analysis/UtteranceEmbeddings.h"
+#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/store/PeopleStore.h"
+#include "tanara/library/store/VoiceprintStore.h"
 
 #include <algorithm>
 #include <cmath>
 
 using namespace tanara;
-using namespace tanara::speakeredit;
+using namespace tanara::editing::speakeredit;
 
 namespace {
 
@@ -60,23 +60,23 @@ void SpeakerSandboxTest::measure()
     QVERIFY2(!QDir(home).absolutePath().startsWith(QDir::homePath() + QStringLiteral("/.tanara")),
              "a sandbox nem mutathat a valódi ~/.tanara-ra");
 
-    MeetingStore store(rec, home);
+    library::MeetingStore store(rec, home);
     store.rebuildIndexFromDisk();
-    PeopleStore people(QDir(home).filePath(QStringLiteral("people.json")));
-    VoiceprintStore prints(QDir(home).filePath(QStringLiteral("voiceprints.json")));
+    library::PeopleStore people(QDir(home).filePath(QStringLiteral("people.json")));
+    library::VoiceprintStore prints(QDir(home).filePath(QStringLiteral("voiceprints.json")));
 
     int n = 0;
     for (const Meeting& entry : store.loadAll()) {
         const Meeting m = store.load(entry.id);
-        const QVector<TranscriptLine> lines = loadTranscriptLines(m.folder);
+        const QVector<TranscriptLine> lines = editing::speakeredit::loadTranscriptLines(m.folder);
         if (lines.isEmpty()) continue;
         ++n;
         const bool fresh = qEnvironmentVariableIsSet("TANARA_SANDBOX_FRESH");
-        if (fresh) UtteranceEmbeddingCache::remove(m.folder);
+        if (fresh) processing::UtteranceEmbeddingCache::remove(m.folder);
 
-        SpeakerEditor ed(&store, &people, &prints, m.id);
-        ed.setEmbedderFactory(voiceUtteranceEmbedderFactory(model));
-        QSignalSpy done(&ed, &SpeakerEditor::embeddingFinished);
+        editing::SpeakerEditor ed(&store, &people, &prints, m.id);
+        ed.setEmbedderFactory(processing::voiceUtteranceEmbedderFactory(model));
+        QSignalSpy done(&ed, &editing::SpeakerEditor::embeddingFinished);
         QElapsedTimer timer;
         timer.start();
         ed.startEmbedding();
@@ -86,7 +86,7 @@ void SpeakerSandboxTest::measure()
 
         int embeddable = 0;
         for (const TranscriptLine& l : lines)
-            if (l.endMs - l.startMs >= kMinEmbedMs) ++embeddable;
+            if (l.endMs - l.startMs >= editing::speakeredit::kMinEmbedMs) ++embeddable;
         const int unc = ed.uncertainCount();
         qInfo().noquote() << QStringLiteral(
             "MEETING #%1: %2 perc, %3 sor (%4 embeddelhető), %5 beszélő | embedding %6 mp | "
@@ -99,8 +99,8 @@ void SpeakerSandboxTest::measure()
         // ---- the time of one real operation (overlay + meeting.json + transcript.md write), then undo ----
         {
             QString firstLong;
-            for (const EditorUtterance& u : ed.utterances())
-                if (u.endMs - u.startMs >= kReliableMs) { firstLong = u.id; break; }
+            for (const editing::EditorUtterance& u : ed.utterances())
+                if (u.endMs - u.startMs >= editing::speakeredit::kReliableMs) { firstLong = u.id; break; }
             if (!firstLong.isEmpty()) {
                 QElapsedTimer op;
                 op.start();
@@ -111,7 +111,7 @@ void SpeakerSandboxTest::measure()
                 const qint64 undoMs = op.elapsed();
                 QVERIFY(!key.isEmpty());
                 QVERIFY(!ed.canUndo());
-                QVERIFY(!loadOverlay(m.folder).hasEdits());    // the sandbox is back
+                QVERIFY(!editing::speakeredit::loadOverlay(m.folder).hasEdits());    // the sandbox is back
                 qInfo().noquote() << QStringLiteral(
                     "   művelet: 1 sor áthelyezése %1 ms (javaslat: %2 sor), visszavonás %3 ms")
                     .arg(moveMs).arg(suggested).arg(undoMs);
@@ -119,24 +119,24 @@ void SpeakerSandboxTest::measure()
         }
 
         // ---- fit distributions on the raw diarization ----
-        const UtteranceEmbeddingCache cache =
-            UtteranceEmbeddingCache::load(m.folder, transcriptFingerprint(lines));
+        const processing::UtteranceEmbeddingCache cache =
+            processing::UtteranceEmbeddingCache::load(m.folder, editing::speakeredit::transcriptFingerprint(lines));
         const QHash<QString, QVector<float>> vectors = cache.vectors(QStringLiteral("campplus"));
         QStringList raws;
         for (const TranscriptLine& l : lines)
             if (!raws.contains(l.rawLabel)) raws << l.rawLabel;
-        QVector<AnalysisLine> al(lines.size());
+        QVector<editing::speakeredit::AnalysisLine> al(lines.size());
         for (int i = 0; i < lines.size(); ++i) {
             al[i].speaker = raws.indexOf(lines[i].rawLabel);
             al[i].durationMs = lines[i].endMs - lines[i].startMs;
             const auto it = vectors.constFind(lines[i].id);
             if (it != vectors.constEnd() && !it->isEmpty()) al[i].embedding = &it.value();
         }
-        const QVector<LineFit> fits = computeFits(al, raws.size());
+        const QVector<editing::speakeredit::LineFit> fits = editing::speakeredit::computeFits(al, raws.size());
         QVector<double> ownLong, ownShort, gapLong, gapShort;
         for (int i = 0; i < fits.size(); ++i) {
             if (std::isnan(fits[i].own)) continue;
-            const bool rel = al[i].durationMs >= kReliableMs;
+            const bool rel = al[i].durationMs >= editing::speakeredit::kReliableMs;
             (rel ? ownLong : ownShort).append(fits[i].own);
             if (!std::isnan(fits[i].other))
                 (rel ? gapLong : gapShort).append(fits[i].own - fits[i].other);
@@ -149,7 +149,7 @@ void SpeakerSandboxTest::measure()
         if (qEnvironmentVariableIsSet("TANARA_SANDBOX_DIAG")) {
             QVector<int> rel;
             for (int i = 0; i < al.size(); ++i)
-                if (al[i].hasEmbedding() && al[i].durationMs >= kReliableMs) rel.append(i);
+                if (al[i].hasEmbedding() && al[i].durationMs >= editing::speakeredit::kReliableMs) rel.append(i);
             auto cosv = [](const QVector<float>& a, const QVector<float>& b) {
                 double s = 0; for (int k = 0; k < a.size(); ++k) s += double(a[k]) * b[k]; return s;
             };
@@ -178,7 +178,7 @@ void SpeakerSandboxTest::measure()
                         QVector<float> s(cent[c].size(), 0.0f);
                         for (int i : rel) if (asg[i] == c)
                             for (int j = 0; j < s.size(); ++j) s[j] += (*al[i].embedding)[j];
-                        cent[c] = VoiceprintStore::l2normalize(s);
+                        cent[c] = library::VoiceprintStore::l2normalize(s);
                     }
                 }
                 QString table;
@@ -212,18 +212,18 @@ void SpeakerSandboxTest::measure()
             }
             if (yLines.size() < 10 || xCount < 10) continue;
             for (int k : {1, 3}) {
-                QVector<AnalysisLine> sim = al;
+                QVector<editing::speakeredit::AnalysisLine> sim = al;
                 const int target = raws.size();     // the new (manually created) speaker
                 int seeded = 0;
                 for (int i : yLines) {
                     sim[i].speaker = x;
-                    if (seeded < k && sim[i].durationMs >= kReliableMs) {
+                    if (seeded < k && sim[i].durationMs >= editing::speakeredit::kReliableMs) {
                         sim[i].speaker = target;
                         sim[i].locked = true;
                         ++seeded;
                     }
                 }
-                const QVector<int> hits = suggestSimilar(sim, x, target);
+                const QVector<int> hits = editing::speakeredit::suggestSimilar(sim, x, target);
                 int tp = 0, truth = 0;
                 for (int i : yLines) if (sim[i].speaker == x) ++truth;
                 for (int i : hits) if (al[i].speaker == y) ++tp;

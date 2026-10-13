@@ -238,7 +238,7 @@ class TestTranscriptTab : public QObject {
     // The number of a person's voiceprints in the (made-up) meeting's voiceprint store.
     int printCount(const QString& person) const
     {
-        for (const tanara::PersonInfo& p : m_vm->people())
+        for (const tanara::editing::PersonInfo& p : m_vm->people())
             if (p.name == person) return p.voiceprintCount;
         return 0;
     }

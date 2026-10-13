@@ -11,9 +11,9 @@
 #include "LibrarySelectionModel.h"
 #include "QmlApp.h"
 
-#include "tanara/AppController.h"
-#include "tanara/store/MeetingStore.h"
-#include "tanara/tags/TagService.h"
+#include "tanara/app/AppController.h"
+#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/tags/TagService.h"
 
 #include <QQmlComponent>
 #include <QQmlEngine>
@@ -231,7 +231,7 @@ private slots:
         qputenv("TANARA_CLOUD", "off");
         AppContext::instance()->setDemo(false);
         {
-            tanara::AppController app;
+            tanara::app::AppController app;
             QStringList ids;
             for (int i = 0; i < 3; ++i) {
                 tanara::Meeting m = app.store()->createMeeting(QStringLiteral("Megbeszélés %1").arg(i));
@@ -239,7 +239,7 @@ private slots:
                 app.store()->saveMeeting(m);
                 ids << m.id;
             }
-            tanara::TagService* tags = app.tags();
+            tanara::library::TagService* tags = app.tags();
             const tanara::Tag alfa = tags->addTag(ids.at(0), QStringLiteral("Alfa"));
 
             LibraryListModel lib;

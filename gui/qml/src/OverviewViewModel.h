@@ -23,7 +23,7 @@
 #include <QtQml/qqmlregistration.h>
 
 namespace tanara {
-class AppController;
+namespace app { class AppController; }
 }
 
 namespace tanara_qml {
@@ -136,14 +136,14 @@ signals:
     void changed();
 
 private:
-    tanara::AppController* app() const;
+    tanara::app::AppController* app() const;
     void connectController();
     void scheduleReload();
     void reload();
     void loadDemo();
 
     QPointer<QObject> m_injected;
-    QPointer<tanara::AppController> m_connected;
+    QPointer<tanara::app::AppController> m_connected;
     QList<QMetaObject::Connection> m_connections;
     QTimer m_reloadTimer;
 

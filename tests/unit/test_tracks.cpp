@@ -8,10 +8,10 @@
 #include <QtEndian>
 #include <cmath>
 
-#include "tanara/audio/TrackCatalog.h"
-#include "tanara/audio/WaveformService.h"
-#include "tanara/store/MeetingStore.h"
-#include "tanara/store/JsonSerialization.h"
+#include "tanara/library/tracks/TrackCatalog.h"
+#include "tanara/library/tracks/WaveformService.h"
+#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/store/JsonSerialization.h"
 
 using namespace tanara;
 
@@ -84,14 +84,14 @@ private slots:
 private:
     Meeting makeMeeting(const QVector<Track>& tracks, bool createFiles = true);
     std::unique_ptr<QTemporaryDir> m_dir;
-    std::unique_ptr<MeetingStore> m_store;
+    std::unique_ptr<library::MeetingStore> m_store;
 };
 
 void TracksTest::init()
 {
     m_dir = std::make_unique<QTemporaryDir>();
     QVERIFY(m_dir->isValid());
-    m_store = std::make_unique<MeetingStore>(m_dir->filePath("rec"), m_dir->filePath("meta"));
+    m_store = std::make_unique<library::MeetingStore>(m_dir->filePath("rec"), m_dir->filePath("meta"));
 }
 
 void TracksTest::cleanup()
@@ -122,13 +122,13 @@ void TracksTest::friendlyNamesByRole()
         mk("mic", "Trust USB mikrofon", TrackKind::Mic, true, 0.7f),
         mk("kanto", "Monitor of Kanto YU4 - Optikai Digitális sztereó (IEC958)", TrackKind::Loopback, false, 0.0f),
     };
-    QCOMPARE(tracknames::classify(tracks[0], tracks), TrackRole::CallAudio);
-    QCOMPARE(tracknames::classify(tracks[1], tracks), TrackRole::OwnMic);
-    QCOMPARE(tracknames::classify(tracks[2], tracks), TrackRole::SystemAudio);
-    QCOMPARE(tracknames::friendlyNames(tracks),
+    QCOMPARE(library::tracknames::classify(tracks[0], tracks), library::TrackRole::CallAudio);
+    QCOMPARE(library::tracknames::classify(tracks[1], tracks), library::TrackRole::OwnMic);
+    QCOMPARE(library::tracknames::classify(tracks[2], tracks), library::TrackRole::SystemAudio);
+    QCOMPARE(library::tracknames::friendlyNames(tracks),
              QStringList({"Hívás hangja", "Saját mikrofon", "Rendszerhang"}));
-    QVERIFY(tracknames::looksLikeCallDevice("Headset Earphone (Jabra) Hands-Free AG Audio"));
-    QVERIFY(!tracknames::looksLikeCallDevice("Monitor of Kanto YU4 - Optikai Digitális sztereó (IEC958)"));
+    QVERIFY(library::tracknames::looksLikeCallDevice("Headset Earphone (Jabra) Hands-Free AG Audio"));
+    QVERIFY(!library::tracknames::looksLikeCallDevice("Monitor of Kanto YU4 - Optikai Digitális sztereó (IEC958)"));
 }
 
 void TracksTest::callDeviceByLoudnessWhenNameSilent()
@@ -138,19 +138,19 @@ void TracksTest::callDeviceByLoudnessWhenNameSilent()
         mk("a", "Monitor of Beépített hang - Analóg sztereó", TrackKind::Loopback, true, 0.3f),
         mk("b", "Monitor of HDMI kimenet", TrackKind::Loopback, false, 0.0f),
     };
-    QCOMPARE(tracknames::classify(one[0], one), TrackRole::CallAudio);
-    QCOMPARE(tracknames::classify(one[1], one), TrackRole::SystemAudio);
+    QCOMPARE(library::tracknames::classify(one[0], one), library::TrackRole::CallAudio);
+    QCOMPARE(library::tracknames::classify(one[1], one), library::TrackRole::SystemAudio);
     // ... among several active ones the loudest.
     QVector<Track> two{
         mk("a", "Monitor of Beépített hang", TrackKind::Loopback, true, 0.1f),
         mk("b", "Monitor of USB DAC", TrackKind::Loopback, true, 0.6f),
     };
-    QCOMPARE(tracknames::classify(two[0], two), TrackRole::SystemAudio);
-    QCOMPARE(tracknames::classify(two[1], two), TrackRole::CallAudio);
+    QCOMPARE(library::tracknames::classify(two[0], two), library::TrackRole::SystemAudio);
+    QCOMPARE(library::tracknames::classify(two[1], two), library::TrackRole::CallAudio);
     // Line input / unknown: the device name stays.
     QVector<Track> other{mk("aux", "Line In (Scarlett 2i2)", TrackKind::Other)};
-    QCOMPARE(tracknames::classify(other[0], other), TrackRole::Other);
-    QCOMPARE(tracknames::friendlyNames(other), QStringList({"Scarlett 2i2"}));
+    QCOMPARE(library::tracknames::classify(other[0], other), library::TrackRole::Other);
+    QCOMPARE(library::tracknames::friendlyNames(other), QStringList({"Scarlett 2i2"}));
 }
 
 void TracksTest::duplicateRolesDisambiguated()
@@ -162,7 +162,7 @@ void TracksTest::duplicateRolesDisambiguated()
         mk("l2", "Monitor of Kanto YU4 - Optikai", TrackKind::Loopback),
         mk("l3", "Monitor of HDMI", TrackKind::Loopback),
     };
-    const QStringList names = tracknames::friendlyNames(tracks);
+    const QStringList names = library::tracknames::friendlyNames(tracks);
     QCOMPARE(names.at(0), QStringLiteral("Saját mikrofon (Trust USB mikrofon)"));
     QCOMPARE(names.at(1), QStringLiteral("Saját mikrofon (Webcam C920)"));
     QCOMPARE(names.at(2), QStringLiteral("Hívás hangja"));
@@ -171,17 +171,17 @@ void TracksTest::duplicateRolesDisambiguated()
     QCOMPARE(QSet<QString>(names.begin(), names.end()).size(), 5);   // all different
     // The same device name twice: an ordinal tells them apart.
     const QVector<Track> same{mk("a", "USB Mic", TrackKind::Mic), mk("b", "USB Mic", TrackKind::Mic)};
-    const QStringList n2 = tracknames::friendlyNames(same);
+    const QStringList n2 = library::tracknames::friendlyNames(same);
     QVERIFY(n2.at(0) != n2.at(1));
 }
 
 void TracksTest::shortDeviceNames()
 {
-    QCOMPARE(tracknames::shortDeviceName("Monitor of Kanto YU4 - Optikai Digitális sztereó (IEC958)"),
+    QCOMPARE(library::tracknames::shortDeviceName("Monitor of Kanto YU4 - Optikai Digitális sztereó (IEC958)"),
              QStringLiteral("Kanto YU4"));
-    QCOMPARE(tracknames::shortDeviceName("Hangszórók (Realtek(R) Audio)"), QStringLiteral("Hangszórók (Realtek(R) Audio)"));
-    QCOMPARE(tracknames::shortDeviceName("Hangszórók (Realtek Audio)"), QStringLiteral("Realtek Audio"));
-    QCOMPARE(tracknames::shortDeviceName("Trust USB mikrofon"), QStringLiteral("Trust USB mikrofon"));
+    QCOMPARE(library::tracknames::shortDeviceName("Hangszórók (Realtek(R) Audio)"), QStringLiteral("Hangszórók (Realtek(R) Audio)"));
+    QCOMPARE(library::tracknames::shortDeviceName("Hangszórók (Realtek Audio)"), QStringLiteral("Realtek Audio"));
+    QCOMPARE(library::tracknames::shortDeviceName("Trust USB mikrofon"), QStringLiteral("Trust USB mikrofon"));
 }
 
 // ---- catalog operations ----
@@ -205,7 +205,7 @@ void TracksTest::segmentsOfOneDevice()
         mk("hdmi", "Monitor of HDMI", TrackKind::Loopback, true, 0.1f),
         sys2,
     };
-    const QVector<tracknames::SegmentInfo> seg = tracknames::segments(tracks);
+    const QVector<library::tracknames::SegmentInfo> seg = library::tracknames::segments(tracks);
     QCOMPARE(seg.at(0).segment, 0);
     QCOMPARE(seg.at(0).count, 1);
     QCOMPARE(seg.at(2).leader, 2);                     // the earliest segment leads
@@ -220,9 +220,9 @@ void TracksTest::segmentsOfOneDevice()
     // Shared role and name: the segments together are the loudest loopback, so the call audio;
     // the dropped segment too (not "System audio" in the middle of a call).
     for (int i : {1, 2, 4})
-        QCOMPARE(tracknames::classify(tracks[i], tracks), TrackRole::CallAudio);
-    QCOMPARE(tracknames::classify(tracks[3], tracks), TrackRole::SystemAudio);
-    const QStringList names = tracknames::friendlyNames(tracks);
+        QCOMPARE(library::tracknames::classify(tracks[i], tracks), library::TrackRole::CallAudio);
+    QCOMPARE(library::tracknames::classify(tracks[3], tracks), library::TrackRole::SystemAudio);
+    const QStringList names = library::tracknames::friendlyNames(tracks);
     QCOMPARE(names.at(1), QStringLiteral("Hívás hangja"));
     QCOMPARE(names.at(2), QStringLiteral("Hívás hangja"));
     QCOMPARE(names.at(4), QStringLiteral("Hívás hangja"));
@@ -232,9 +232,9 @@ void TracksTest::segmentsOfOneDevice()
     Meeting m;
     m.folder = m_dir->path();
     m.tracks = tracks;
-    const QVector<TrackView> views = TrackCatalog::tracks(m);
+    const QVector<library::TrackView> views = library::TrackCatalog::tracks(m);
     QStringList ids;
-    for (const TrackView& v : views) ids << v.track.id;
+    for (const library::TrackView& v : views) ids << v.track.id;
     QCOMPARE(ids, QStringList({"mic", "sys", "sys-2", "sys-3", "hdmi"}));
     QCOMPARE(views.at(1).segment, 1);
     QCOMPARE(views.at(3).segment, 3);
@@ -243,12 +243,12 @@ void TracksTest::segmentsOfOneDevice()
 
     // Same-named devices at the same time (two identical microphones): separate tracks, not segments.
     QVector<Track> twins{mk("a", "USB Mic", TrackKind::Mic), mk("b", "USB Mic", TrackKind::Mic)};
-    QCOMPARE(tracknames::segments(twins).at(1).leader, 1);
-    QCOMPARE(tracknames::segments(twins).at(1).segment, 0);
+    QCOMPARE(library::tracknames::segments(twins).at(1).leader, 1);
+    QCOMPARE(library::tracknames::segments(twins).at(1).segment, 0);
     // ... but if one started later, two segments of one device.
     twins[1].startOffsetMs = 5000;
-    QCOMPARE(tracknames::segments(twins).at(1).leader, 0);
-    const QStringList tn = tracknames::friendlyNames(twins);
+    QCOMPARE(library::tracknames::segments(twins).at(1).leader, 0);
+    const QStringList tn = library::tracknames::friendlyNames(twins);
     QCOMPARE(tn.at(0), tn.at(1));
 }
 
@@ -258,7 +258,7 @@ void TracksTest::segmentsRenameTogether()
     Track b = mk("sys-2", "Monitor of Speakers", TrackKind::Loopback);
     b.startOffsetMs = 12000;
     const Meeting m = makeMeeting({mk("mic", "Trust USB mikrofon", TrackKind::Mic), a, b});
-    TrackCatalog cat(m_store.get());
+    library::TrackCatalog cat(m_store.get());
     QVERIFY(cat.renameTrack(m.id, "sys-2", "Teams"));
     const Meeting back = m_store->load(m.id);
     QCOMPARE(back.tracks.at(1).customName, QStringLiteral("Teams"));
@@ -266,7 +266,7 @@ void TracksTest::segmentsRenameTogether()
     QCOMPARE(back.tracks.at(0).customName, QString());
     // Back to the friendly name: on both segments.
     QVERIFY(cat.renameTrack(m.id, "sys", QString()));
-    for (const TrackView& v : cat.tracks(m.id)) QVERIFY(!v.renamed);
+    for (const library::TrackView& v : cat.tracks(m.id)) QVERIFY(!v.renamed);
 }
 
 void TracksTest::viewsAndMissingFile()
@@ -274,12 +274,12 @@ void TracksTest::viewsAndMissingFile()
     Meeting m = makeMeeting({mk("comm", "Monitor of Sennheiser - Communication", TrackKind::Loopback),
                              mk("mic", "Trust USB mikrofon", TrackKind::Mic)});
     QFile::remove(QDir(m.folder).filePath("track_mic.wav"));
-    TrackCatalog cat(m_store.get());
-    const QVector<TrackView> v = cat.tracks(m.id);
+    library::TrackCatalog cat(m_store.get());
+    const QVector<library::TrackView> v = cat.tracks(m.id);
     QCOMPARE(v.size(), 2);
     QCOMPARE(v[0].displayName, QStringLiteral("Hívás hangja"));
     QCOMPARE(v[0].rawDeviceName, QStringLiteral("Monitor of Sennheiser - Communication"));
-    QCOMPARE(v[0].role, TrackRole::CallAudio);
+    QCOMPARE(v[0].role, library::TrackRole::CallAudio);
     QVERIFY(!v[0].fileMissing);
     QVERIFY(v[0].fileSize > 0);
     QCOMPARE(v[0].durationMs, qint64(-1));              // no waveform cache yet
@@ -292,17 +292,17 @@ void TracksTest::viewsAndMissingFile()
 void TracksTest::renamePersists()
 {
     const Meeting m = makeMeeting({mk("mic", "Trust USB mikrofon", TrackKind::Mic)});
-    TrackCatalog cat(m_store.get());
-    QSignalSpy changed(&cat, &TrackCatalog::tracksChanged);
+    library::TrackCatalog cat(m_store.get());
+    QSignalSpy changed(&cat, &library::TrackCatalog::tracksChanged);
     QVERIFY(cat.renameTrack(m.id, "mic", "  Tárgyaló   asztali mikrofon "));
     QCOMPARE(changed.count(), 1);
     QVERIFY(!cat.renameTrack(m.id, "mic", "Tárgyaló asztali mikrofon"));   // no change
     QVERIFY(!cat.renameTrack(m.id, "nincs", "x"));
 
     // A new store + catalog (a restart): the name comes from meeting.json.
-    MeetingStore store2(m_dir->filePath("rec"), m_dir->filePath("meta"));
-    TrackCatalog cat2(&store2);
-    TrackView v = cat2.tracks(m.id).first();
+    library::MeetingStore store2(m_dir->filePath("rec"), m_dir->filePath("meta"));
+    library::TrackCatalog cat2(&store2);
+    library::TrackView v = cat2.tracks(m.id).first();
     QCOMPARE(v.displayName, QStringLiteral("Tárgyaló asztali mikrofon"));
     QCOMPARE(v.friendlyName, QStringLiteral("Saját mikrofon"));
     QCOMPARE(v.rawDeviceName, QStringLiteral("Trust USB mikrofon"));     // the raw name stays
@@ -315,7 +315,7 @@ void TracksTest::renamePersists()
     QVERIFY(!v.renamed);
     QCOMPARE(v.displayName, QStringLiteral("Saját mikrofon"));
     // Reading an old JSON (without customName): stays empty, and is not written out when empty.
-    QVERIFY(!toJson(store2.load(m.id).tracks.first()).contains("customName"));
+    QVERIFY(!library::toJson(store2.load(m.id).tracks.first()).contains("customName"));
 }
 
 void TracksTest::relocateCopiesIntoFolder()
@@ -329,14 +329,14 @@ void TracksTest::relocateCopiesIntoFolder()
     QDir().mkpath(m_dir->filePath("valahol"));
     QVERIFY(QFile::rename(orig, outside));
 
-    TrackCatalog cat(m_store.get());
+    library::TrackCatalog cat(m_store.get());
     QVERIFY(cat.tracks(m.id).first().fileMissing);
-    QSignalSpy changed(&cat, &TrackCatalog::tracksChanged);
+    QSignalSpy changed(&cat, &library::TrackCatalog::tracksChanged);
     QString err;
     QVERIFY2(cat.relocateTrack(m.id, "mic", outside, &err), qPrintable(err));
     QCOMPARE(changed.count(), 1);
 
-    const TrackView v = cat.tracks(m.id).first();
+    const library::TrackView v = cat.tracks(m.id).first();
     QVERIFY(!v.fileMissing);
     QCOMPARE(v.track.file, QStringLiteral("track_mic.wav"));     // the original name, in the folder
     QVERIFY(QFile::exists(orig));
@@ -353,8 +353,8 @@ void TracksTest::relocateCopiesIntoFolder()
 void TracksTest::relocateRejectsBadFiles()
 {
     const Meeting m = makeMeeting({mk("mic", "Mic", TrackKind::Mic), mk("sys", "Monitor of X", TrackKind::Loopback)});
-    TrackCatalog cat(m_store.get());
-    QSignalSpy changed(&cat, &TrackCatalog::tracksChanged);
+    library::TrackCatalog cat(m_store.get());
+    QSignalSpy changed(&cat, &library::TrackCatalog::tracksChanged);
     QString err;
     QVERIFY(!cat.relocateTrack(m.id, "mic", m_dir->filePath("nincs.wav"), &err));
     QVERIFY(!err.isEmpty());
@@ -379,14 +379,14 @@ void TracksTest::deleteDroppedTracksAtOnce()
     m_store->saveMeeting(m);
     const QDir folder(m.folder);
     // The waveform cache for one dropped track (it must disappear too).
-    QFile cache(WaveformService::cachePath(folder.filePath("track_d1.wav")));
+    QFile cache(library::WaveformService::cachePath(folder.filePath("track_d1.wav")));
     QVERIFY(cache.open(QIODevice::WriteOnly));
     cache.write("{}");
     cache.close();
 
-    TrackCatalog cat(m_store.get());
+    library::TrackCatalog cat(m_store.get());
     QCOMPARE(cat.droppedTrackCount(m.id), 2);
-    QSignalSpy changed(&cat, &TrackCatalog::tracksChanged);
+    QSignalSpy changed(&cat, &library::TrackCatalog::tracksChanged);
     QCOMPARE(cat.deleteDroppedTracks(m.id), 2);
     QCOMPARE(changed.count(), 1);                              // one operation, one signal
 
@@ -413,10 +413,10 @@ void TracksTest::peaksComputedCachedAndReused()
     const QString path = QDir(m.folder).filePath("track_mic.wav");
     writeWav(path, 30, 0.5);
 
-    QVERIFY(!WaveformService::loadCached(path).isValid());
-    WaveformService svc;
-    QSignalSpy ready(&svc, &WaveformService::peaksReady);
-    QSignalSpy failed(&svc, &WaveformService::peaksFailed);
+    QVERIFY(!library::WaveformService::loadCached(path).isValid());
+    library::WaveformService svc;
+    QSignalSpy ready(&svc, &library::WaveformService::peaksReady);
+    QSignalSpy failed(&svc, &library::WaveformService::peaksFailed);
     QElapsedTimer clock;
     clock.start();
     svc.request(m.id, "mic", path);
@@ -429,9 +429,9 @@ void TracksTest::peaksComputedCachedAndReused()
 
     QCOMPARE(ready.at(0).at(0).toString(), m.id);
     QCOMPARE(ready.at(0).at(1).toString(), QStringLiteral("mic"));
-    const TrackPeaks p = ready.at(0).at(2).value<TrackPeaks>();
+    const library::TrackPeaks p = ready.at(0).at(2).value<library::TrackPeaks>();
     QCOMPARE(p.trackId, QStringLiteral("mic"));
-    QCOMPARE(p.peaks.size(), WaveformService::kBuckets);       // "a few hundred buckets"
+    QCOMPARE(p.peaks.size(), library::WaveformService::kBuckets);       // "a few hundred buckets"
     QVERIFY(qAbs(p.durationMs - 30000) < 100);                 // the decoded, exact length
     // The first half is silence, the second half a sine of ~0.5 amplitude.
     QVERIFY(p.peaks.at(50) < 0.02f);
@@ -440,9 +440,9 @@ void TracksTest::peaksComputedCachedAndReused()
     QVERIFY(qAbs(p.peaks.at(390) - 0.5f) < 0.05f);
 
     // Cache in the meeting's folder; the next request gives the same without computing.
-    QVERIFY(QFile::exists(WaveformService::cachePath(path)));
-    QVERIFY(WaveformService::cachePath(path).startsWith(m.folder));
-    const TrackPeaks cached = WaveformService::loadCached(path);
+    QVERIFY(QFile::exists(library::WaveformService::cachePath(path)));
+    QVERIFY(library::WaveformService::cachePath(path).startsWith(m.folder));
+    const library::TrackPeaks cached = library::WaveformService::loadCached(path);
     QVERIFY(cached.isValid());
     QCOMPARE(cached.peaks, p.peaks);
     QCOMPARE(cached.durationMs, p.durationMs);
@@ -451,10 +451,10 @@ void TracksTest::peaksComputedCachedAndReused()
     QVERIFY(!svc.isPending(path));                             // no ffmpeg started
     QVERIFY(ready.wait(2000));
     QCOMPARE(ready.count(), 2);
-    QCOMPARE(ready.at(1).at(2).value<TrackPeaks>().peaks, p.peaks);
+    QCOMPARE(ready.at(1).at(2).value<library::TrackPeaks>().peaks, p.peaks);
 
     // The catalog knows the track's length from the cache.
-    TrackCatalog cat(m_store.get());
+    library::TrackCatalog cat(m_store.get());
     QCOMPARE(cat.tracks(m.id).first().durationMs, p.durationMs);
 }
 
@@ -464,30 +464,30 @@ void TracksTest::peaksInvalidatedWhenFileChanges()
     const Meeting m = makeMeeting({mk("mic", "Mic", TrackKind::Mic)}, false);
     const QString path = QDir(m.folder).filePath("track_mic.wav");
     writeWav(path, 4, 0.25);
-    WaveformService svc;
-    QSignalSpy ready(&svc, &WaveformService::peaksReady);
+    library::WaveformService svc;
+    QSignalSpy ready(&svc, &library::WaveformService::peaksReady);
     svc.request(m.id, "mic", path);
     QVERIFY(ready.wait(20000));
-    QVERIFY(WaveformService::loadCached(path).isValid());
+    QVERIFY(library::WaveformService::loadCached(path).isValid());
 
     writeWav(path, 6, 0.8);                                    // the file was replaced
-    QVERIFY(!WaveformService::loadCached(path).isValid());     // the cache is stale
+    QVERIFY(!library::WaveformService::loadCached(path).isValid());     // the cache is stale
     svc.request(m.id, "mic", path);
     QVERIFY(ready.wait(20000));
-    const TrackPeaks p = ready.at(1).at(2).value<TrackPeaks>();
+    const library::TrackPeaks p = ready.at(1).at(2).value<library::TrackPeaks>();
     QVERIFY(qAbs(p.durationMs - 6000) < 100);
     QVERIFY(qAbs(p.peaks.last() - 0.8f) < 0.05f);
 
-    WaveformService::removeCache(path);
-    QVERIFY(!QFile::exists(WaveformService::cachePath(path)));
+    library::WaveformService::removeCache(path);
+    QVERIFY(!QFile::exists(library::WaveformService::cachePath(path)));
 }
 
 void TracksTest::peaksFailForBrokenFile()
 {
     if (!haveFfmpeg()) QSKIP("ffmpeg nem található");
-    WaveformService svc;
-    QSignalSpy ready(&svc, &WaveformService::peaksReady);
-    QSignalSpy failed(&svc, &WaveformService::peaksFailed);
+    library::WaveformService svc;
+    QSignalSpy ready(&svc, &library::WaveformService::peaksReady);
+    QSignalSpy failed(&svc, &library::WaveformService::peaksFailed);
     // Missing file.
     svc.request("m1", "t1", m_dir->filePath("nincs.ogg"));
     QVERIFY(failed.wait(2000));
@@ -501,7 +501,7 @@ void TracksTest::peaksFailForBrokenFile()
     QVERIFY(failed.wait(20000));
     QCOMPARE(failed.count(), 2);
     QCOMPARE(ready.count(), 0);
-    QVERIFY(!QFile::exists(WaveformService::cachePath(junk)));
+    QVERIFY(!QFile::exists(library::WaveformService::cachePath(junk)));
 
     // Cancel: no signal, no cache.
     const QString big = m_dir->filePath("nagy.wav");
@@ -517,11 +517,11 @@ void TracksTest::peaksFailForBrokenFile()
 void TracksTest::resample()
 {
     const QVector<float> src{0.1f, 0.9f, 0.2f, 0.3f, 0.0f, 0.5f};
-    QCOMPARE(WaveformService::resample(src, 3), QVector<float>({0.9f, 0.3f, 0.5f}));   // max-hold
-    QCOMPARE(WaveformService::resample(src, 6), src);
-    QCOMPARE(WaveformService::resample(src, 12).size(), 12);
-    QCOMPARE(WaveformService::resample(src, 12).at(2), 0.9f);
-    QVERIFY(WaveformService::resample({}, 10).isEmpty());
+    QCOMPARE(library::WaveformService::resample(src, 3), QVector<float>({0.9f, 0.3f, 0.5f}));   // max-hold
+    QCOMPARE(library::WaveformService::resample(src, 6), src);
+    QCOMPARE(library::WaveformService::resample(src, 12).size(), 12);
+    QCOMPARE(library::WaveformService::resample(src, 12).at(2), 0.9f);
+    QVERIFY(library::WaveformService::resample({}, 10).isEmpty());
 }
 
 QTEST_GUILESS_MAIN(TracksTest)

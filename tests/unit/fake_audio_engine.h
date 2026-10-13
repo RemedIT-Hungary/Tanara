@@ -2,7 +2,7 @@
 // Fake capture engine for the tests (without a real audio device): RecordingSession /
 // AppController can be driven with it (RecordingSession::setEngineFactory,
 // AppController::setRecordingEngineFactory).
-#include "tanara/audio/AudioEngine.h"
+#include "tanara/recording/audio/AudioEngine.h"
 
 #include <QElapsedTimer>
 #include <QStringList>
@@ -20,10 +20,10 @@ namespace tanara {
 // running. Devices in `silentNames` never deliver data (like WASAPI loopback in silence).
 // A device that was `vanish()`ed is "unplugged": it delivers no more data (the real capture
 // thread silently dies then) until the recorder closes its track.
-class FakeEngine : public AudioEngine {
+class FakeEngine : public recording::AudioEngine {
 public:
     struct Slot {
-        std::unique_ptr<RingBuffer> ring;
+        std::unique_ptr<recording::RingBuffer> ring;
         AudioDeviceInfo info;
         bool open = true;
         QElapsedTimer since;
@@ -46,7 +46,7 @@ public:
     void stop() override { for (int i = 0; i < n; ++i) devs[i]->open = false; }
     int addDevice(const AudioDeviceInfo& d) override {
         auto s = std::make_unique<Slot>();
-        s->ring = std::make_unique<RingBuffer>(48000 * 2);
+        s->ring = std::make_unique<recording::RingBuffer>(48000 * 2);
         s->info = d;
         s->since.start();
         devs[n] = std::move(s);
@@ -65,7 +65,7 @@ public:
     }
     bool isOpen(int i) const override { return i >= 0 && i < n && devs[i]->open; }
     int count() const override { return n; }
-    RingBuffer& buffer(int i) override { return *devs[i]->ring; }
+    recording::RingBuffer& buffer(int i) override { return *devs[i]->ring; }
     float rms(int i) const override {
         return (devs[i]->vanished || silentNames.contains(devs[i]->info.name)) ? 0.0f : 0.3f;
     }

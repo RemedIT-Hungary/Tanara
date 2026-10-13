@@ -16,7 +16,7 @@ class QQuickWindow;
 class QWindow;
 
 namespace tanara {
-class AppController;
+namespace app { class AppController; }
 }
 
 namespace tanara_qml {
@@ -26,7 +26,7 @@ class TagsViewModel;
 class TagsWindowHost : public QObject {
     Q_OBJECT
 public:
-    explicit TagsWindowHost(tanara::AppController* controller, QObject* parent = nullptr);
+    explicit TagsWindowHost(tanara::app::AppController* controller, QObject* parent = nullptr);
     ~TagsWindowHost() override;
 
     // Opens / raises the window; tagId: select this tag (empty: the earlier selection stays).
@@ -50,7 +50,7 @@ signals:
 private:
     bool ensureWindow();
 
-    QPointer<tanara::AppController> m_controller;
+    QPointer<tanara::app::AppController> m_controller;
     QQmlEngine* m_engine = nullptr;
     QPointer<QQuickWindow> m_window;
     QPointer<TagsViewModel> m_vm;

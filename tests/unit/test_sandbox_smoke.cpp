@@ -11,14 +11,14 @@
 #include <QtTest>
 #include <QSignalSpy>
 
-#include "tanara/AppController.h"
-#include "tanara/SettingsManager.h"
+#include "tanara/app/AppController.h"
+#include "tanara/app/SettingsManager.h"
 #include "tanara/foundation/paths/Paths.h"
-#include "tanara/audio/TrackCatalog.h"
-#include "tanara/audio/WaveformService.h"
-#include "tanara/jobs/MeetingJobTracker.h"
+#include "tanara/library/tracks/TrackCatalog.h"
+#include "tanara/library/tracks/WaveformService.h"
+#include "tanara/library/jobs/MeetingJobTracker.h"
 #include "tanara/library/MeetingLibrary.h"
-#include "tanara/store/MeetingStore.h"
+#include "tanara/library/store/MeetingStore.h"
 
 using namespace tanara;
 
@@ -33,7 +33,7 @@ private slots:
     void identifyAsync();
 
 private:
-    std::unique_ptr<AppController> m_app;
+    std::unique_ptr<app::AppController> m_app;
 };
 
 void SandboxSmoke::initTestCase()
@@ -44,7 +44,7 @@ void SandboxSmoke::initTestCase()
     QVERIFY2(QFile::exists(QDir(home).filePath("settings.json")), "nincs settings.json a sandboxban");
     qputenv("TANARA_HOME", home.toUtf8());
     qputenv("TANARA_CLOUD", "off");
-    m_app = std::make_unique<AppController>();
+    m_app = std::make_unique<app::AppController>();
     QCOMPARE(m_app->settings()->settings().metadataDir, paths::homeOverride());
     // Safety net: the recordings folder must not be the real ~/Tanara.
     const QString audio = m_app->store()->audioDir();
@@ -61,33 +61,33 @@ void SandboxSmoke::cleanupTestCase()
 
 void SandboxSmoke::libraryListSearchAndPending()
 {
-    MeetingLibrary* lib = m_app->library();
+    library::MeetingLibrary* lib = m_app->library();
     QElapsedTimer clock;
     clock.start();
-    const LibraryResult all = lib->query();
+    const library::LibraryResult all = lib->query();
     const qint64 listMs = clock.restart();
     QVERIFY(all.count() > 0);
     int withTranscript = 0, withSummary = 0, identified = 0;
     QHash<QString, int> sections;
-    for (const LibraryEntry& e : all.entries) {
+    for (const library::LibraryEntry& e : all.entries) {
         if (e.state.transcriptState == StepState::Done) ++withTranscript;
         if (e.state.summaryState == StepState::Done) ++withSummary;
         if (e.state.identifyState == StepState::Done) ++identified;
-        sections[MeetingLibrary::sectionKey(e.section)]++;
+        sections[library::MeetingLibrary::sectionKey(e.section)]++;
     }
     for (int i = 1; i < all.count(); ++i)
         QVERIFY(all.entries[i - 1].startedAt >= all.entries[i].startedAt);   // newest first
 
     // Accent-free, lowercase search for a common word; at the hit the highlighted part is the
     // original text that matches after folding.
-    LibraryQuery q;
+    library::LibraryQuery q;
     q.text = QStringLiteral("koszonom");
-    const LibraryResult cold = lib->query(q);
+    const library::LibraryResult cold = lib->query(q);
     const qint64 coldMs = clock.restart();
-    const LibraryResult warm = lib->query(q);
+    const library::LibraryResult warm = lib->query(q);
     const qint64 warmMs = clock.restart();
     QCOMPARE(warm.count(), cold.count());
-    for (const LibraryEntry& e : warm.entries) {
+    for (const library::LibraryEntry& e : warm.entries) {
         QVERIFY(e.titleMatch.isValid() || e.snippetMatch.isValid());
         if (e.snippetMatch.isValid()) {
             const QString hit = e.snippet.mid(e.snippetMatch.start, e.snippetMatch.length);
@@ -95,11 +95,11 @@ void SandboxSmoke::libraryListSearchAndPending()
             QVERIFY(e.snippetMs >= 0);
         }
     }
-    LibraryQuery noT;
+    library::LibraryQuery noT;
     noT.noTranscript = true;
-    LibraryQuery noS;
+    library::LibraryQuery noS;
     noS.noSummary = true;
-    const QVector<PendingItem> pending = lib->pendingItems();
+    const QVector<library::PendingItem> pending = lib->pendingItems();
     QCOMPARE(pending.size(), lib->query(noT).count());
     qInfo("meetingek: %d (átirat: %d, összefoglaló: %d, azonosítva: %d) | szekciók: ma %d, tegnap %d, e héten %d, korábban %d",
           all.count(), withTranscript, withSummary, identified, sections.value("today"),
@@ -111,11 +111,11 @@ void SandboxSmoke::libraryListSearchAndPending()
 
 void SandboxSmoke::tracksAndWaveforms()
 {
-    const LibraryResult all = m_app->library()->query();
+    const library::LibraryResult all = m_app->library()->query();
     QSet<QString> names;
     int total = 0, missing = 0, dropped = 0;
-    for (const LibraryEntry& e : all.entries)
-        for (const TrackView& v : m_app->tracks()->tracks(e.id)) {
+    for (const library::LibraryEntry& e : all.entries)
+        for (const library::TrackView& v : m_app->tracks()->tracks(e.id)) {
             ++total;
             if (v.fileMissing) ++missing;
             if (!v.track.active) ++dropped;
@@ -127,10 +127,10 @@ void SandboxSmoke::tracksAndWaveforms()
 
     // Waveform for all tracks of the first meeting (+ the mix): asynchronous, then from the cache.
     const QString id = all.entries.last().id;
-    const QVector<TrackView> views = m_app->tracks()->tracks(id);
+    const QVector<library::TrackView> views = m_app->tracks()->tracks(id);
     int expected = views.size() + (m_app->store()->load(id).mixdownFile.isEmpty() ? 0 : 1);
-    QSignalSpy ready(m_app->waveforms(), &WaveformService::peaksReady);
-    QSignalSpy failed(m_app->waveforms(), &WaveformService::peaksFailed);
+    QSignalSpy ready(m_app->waveforms(), &library::WaveformService::peaksReady);
+    QSignalSpy failed(m_app->waveforms(), &library::WaveformService::peaksFailed);
     QElapsedTimer clock;
     clock.start();
     m_app->requestWaveforms(id);
@@ -139,11 +139,11 @@ void SandboxSmoke::tracksAndWaveforms()
     const qint64 computeMs = clock.restart();
     QCOMPARE(failed.count(), 0);
     for (const QList<QVariant>& args : ready) {
-        const TrackPeaks p = args.at(2).value<TrackPeaks>();
-        QVERIFY(p.peaks.size() > 100 && p.peaks.size() <= WaveformService::kBuckets);
+        const library::TrackPeaks p = args.at(2).value<library::TrackPeaks>();
+        QVERIFY(p.peaks.size() > 100 && p.peaks.size() <= library::WaveformService::kBuckets);
         QVERIFY(p.durationMs > 0);
     }
-    for (const TrackView& v : m_app->tracks()->tracks(id))
+    for (const library::TrackView& v : m_app->tracks()->tracks(id))
         QVERIFY(v.durationMs > 0);                       // the length is already there from the cache
     ready.clear();
     m_app->requestWaveforms(id);
@@ -155,8 +155,8 @@ void SandboxSmoke::tracksAndWaveforms()
 void SandboxSmoke::summariesAndTopics()
 {
     int docs = 0, fromMd = 0, topicLists = 0;
-    for (const LibraryEntry& e : m_app->library()->query().entries) {
-        const SummaryDocument doc = m_app->summaryDocument(e.id);
+    for (const library::LibraryEntry& e : m_app->library()->query().entries) {
+        const library::SummaryDocument doc = m_app->summaryDocument(e.id);
         QCOMPARE(doc.exists, e.hasSummary);
         if (doc.exists) {
             ++docs;
@@ -164,7 +164,7 @@ void SandboxSmoke::summariesAndTopics()
             QVERIFY(!doc.summary.execSummary.isEmpty());
             QVERIFY(doc.meta.createdAt.isValid());
             qInfo("összefoglaló: mód=%s, döntés=%d, teendő=%d, résztvevő=%d, téma=%d",
-                  qPrintable(summarystore::modeToString(doc.meta.mode)), int(doc.summary.decisions.size()),
+                  qPrintable(library::summarystore::modeToString(doc.meta.mode)), int(doc.summary.decisions.size()),
                   int(doc.summary.actionItems.size()), int(doc.summary.participants.size()),
                   int(doc.topics.size()));
         }
@@ -194,7 +194,7 @@ void SandboxSmoke::identifyAsync()
     // A meeting with a transcript: after deleting the names the background identification finds
     // them again from the voiceprint DB (local model; skipped if there is no model).
     QString id;
-    for (const LibraryEntry& e : m_app->library()->query().entries)
+    for (const library::LibraryEntry& e : m_app->library()->query().entries)
         if (e.hasTranscript && !m_app->store()->load(e.id).speakerMap.isEmpty()) id = e.id;
     if (id.isEmpty()) QSKIP("nincs nevesített beszélőjű meeting a sandboxban");
     Meeting m = m_app->store()->load(id);
@@ -202,8 +202,8 @@ void SandboxSmoke::identifyAsync()
     m.speakerMap.clear();
     m_app->store()->saveMeeting(m);
 
-    QSignalSpy finished(m_app->jobs(), &MeetingJobTracker::jobFinished);
-    QSignalSpy progress(m_app->jobs(), &MeetingJobTracker::jobProgressChanged);
+    QSignalSpy finished(m_app->jobs(), &library::MeetingJobTracker::jobFinished);
+    QSignalSpy progress(m_app->jobs(), &library::MeetingJobTracker::jobProgressChanged);
     QElapsedTimer clock;
     clock.start();
     if (!m_app->identifyMeetingAsync(id))

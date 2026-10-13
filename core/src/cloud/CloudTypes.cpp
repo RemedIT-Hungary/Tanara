@@ -10,7 +10,7 @@
 #include <cmath>
 #include <cstdlib>
 
-namespace tanara {
+namespace tanara::cloud {
 
 namespace {
 
@@ -563,7 +563,6 @@ QString validateWaitlist(const WaitlistSignup& s)
 
 // ---- compile switches -------------------------------------------------------------
 
-namespace cloud {
 bool clientCompiled()
 {
 #ifdef TANARA_HAVE_CLOUD
@@ -580,6 +579,5 @@ bool teaserCompiled()
     return false;
 #endif
 }
-} // namespace cloud
 
-} // namespace tanara
+} // namespace tanara::cloud

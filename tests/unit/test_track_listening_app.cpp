@@ -12,12 +12,12 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 
-#include "tanara/AppController.h"
-#include "tanara/edit/ParticipantAnalysis.h"
-#include "tanara/edit/SpeakerEditor.h"
-#include "tanara/edit/TrackActivity.h"
-#include "tanara/store/JsonSerialization.h"
-#include "tanara/store/MeetingStore.h"
+#include "tanara/app/AppController.h"
+#include "tanara/processing/analysis/ParticipantAnalysis.h"
+#include "tanara/editing/session/SpeakerEditor.h"
+#include "tanara/processing/analysis/TrackActivity.h"
+#include "tanara/library/store/JsonSerialization.h"
+#include "tanara/library/store/MeetingStore.h"
 
 #include <memory>
 
@@ -58,7 +58,7 @@ private:
 
     bool m_haveFfmpeg = false;
     std::unique_ptr<QTemporaryDir> m_home;
-    std::unique_ptr<AppController> m_app;
+    std::unique_ptr<app::AppController> m_app;
 };
 
 void TrackListeningAppTest::initTestCase()
@@ -72,7 +72,7 @@ void TrackListeningAppTest::init()
     m_home = std::make_unique<QTemporaryDir>();
     QVERIFY(m_home->isValid());
     qputenv("TANARA_HOME", m_home->path().toUtf8());
-    m_app = std::make_unique<AppController>();
+    m_app = std::make_unique<app::AppController>();
     QVERIFY(m_app->store()->metadataDir().startsWith(m_home->path()));
     m_app->setUserSpeakerName(QStringLiteral("Ádám"));
 }
@@ -151,7 +151,7 @@ void TrackListeningAppTest::activityCoversExcludedTrackAndIsCached()
     m.tracks[1].excludedReason = QStringLiteral("manual");
     m_app->store()->saveMeeting(m);
 
-    QSignalSpy ready(m_app.get(), &AppController::trackActivityReady);
+    QSignalSpy ready(m_app.get(), &app::AppController::trackActivityReady);
     MeetingActivity a = m_app->trackActivity(m0.id);
     QVERIFY(a.isEmpty());                       // not there yet: computing in the background
     QVERIFY(m_app->trackActivityComputing(m0.id));
@@ -172,8 +172,8 @@ void TrackListeningAppTest::activityCoversExcludedTrackAndIsCached()
     QVERIFY(QFileInfo::exists(MeetingActivity::viewFilePath(m.folder)));
 
     // A new AppController (a new process): it comes from disk, without computing.
-    m_app = std::make_unique<AppController>();
-    QSignalSpy ready2(m_app.get(), &AppController::trackActivityReady);
+    m_app = std::make_unique<app::AppController>();
+    QSignalSpy ready2(m_app.get(), &app::AppController::trackActivityReady);
     QCOMPARE(m_app->trackActivity(m0.id).tracks.size(), 2);
     QVERIFY(!m_app->trackActivityComputing(m0.id));
     QCOMPARE(ready2.count(), 0);
@@ -189,11 +189,11 @@ void TrackListeningAppTest::participantTracksSerialize()
     p.id = "v1";
     p.personName = "Ádám";
     p.tracks = {"mic", "loop"};
-    const Participant back = participantFromJson(toJson(p));
+    const Participant back = library::participantFromJson(library::toJson(p));
     QCOMPARE(back.tracks, p.tracks);
     Participant none;
     none.id = "v2";
-    QVERIFY(!toJson(none).contains(QStringLiteral("tracks")));   // we do not write it out when empty
+    QVERIFY(!library::toJson(none).contains(QStringLiteral("tracks")));   // we do not write it out when empty
 }
 
 void TrackListeningAppTest::bindingBeforeTranscript()
@@ -206,7 +206,7 @@ void TrackListeningAppTest::bindingBeforeTranscript()
     b = m_app->participantTracks(m0.id, "v2");
     QCOMPARE(b.trackIds, QStringList{"loop"});
 
-    QSignalSpy changed(m_app.get(), &AppController::participantsChanged);
+    QSignalSpy changed(m_app.get(), &app::AppController::participantsChanged);
     // An unknown track id is left out; the binding goes into Participant::tracks.
     QVERIFY(m_app->setParticipantTracks(m0.id, "v2", {"mic", "nincs", "loop"}));
     QCOMPARE(changed.count(), 1);
@@ -231,7 +231,7 @@ void TrackListeningAppTest::bindingAfterTranscriptIsTheEditorAssignment()
 {
     Meeting m = makeMeeting();
     writeTranscript(m);
-    SpeakerEditor* ed = m_app->speakerEditor(m.id);
+    editing::SpeakerEditor* ed = m_app->speakerEditor(m.id);
     QVERIFY(ed && ed->hasTranscript());
 
     // Participant id: its raw speaker (without the "@loopback" suffix) in the editor.
@@ -266,7 +266,7 @@ void TrackListeningAppTest::bindingCopiedToOverlayOnTranscript()
     writeTranscript(m);
     // The transcript-arrival hook is private: re-applying the approval goes the same way.
     QVERIFY(m_app->approveParticipants(m.id, m_app->participants(m.id)));
-    SpeakerEditor* ed = m_app->speakerEditor(m.id);
+    editing::SpeakerEditor* ed = m_app->speakerEditor(m.id);
     QVERIFY(ed);
     QCOMPARE(ed->trackAssignment(QStringLiteral("Beszélő 1")), (QStringList{"mic", "loop"}));
     QCOMPARE(m_app->participantTracks(m.id, "v1").trackIds, (QStringList{"mic", "loop"}));
@@ -291,10 +291,10 @@ void TrackListeningAppTest::manualTracksSteerClusterMatchAndEvidence()
     onLoop.side = "loopback";
     onLoop.windows = {{8000, 12000}};
     cs.clusters = {onMic, onLoop};
-    participants::CandidateContext ctx;
+    processing::participants::CandidateContext ctx;
     // Both clusters resemble Béla best (e.g. echo on the microphone).
     ctx.rank = [](const EmbeddingSet&) { return QVector<VoiceMatch>{{QStringLiteral("Béla"), 0.8}}; };
-    const QVector<Participant> out = participants::buildParticipants(cs, m, ctx);
+    const QVector<Participant> out = processing::participants::buildParticipants(cs, m, ctx);
     QCOMPARE(cs.clusters[0].matchName, QString());              // the microphone cluster is not them
     QCOMPARE(cs.clusters[1].matchName, QStringLiteral("Béla"));
     const Participant* bela = nullptr;

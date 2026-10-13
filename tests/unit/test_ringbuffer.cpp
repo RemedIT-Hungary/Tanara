@@ -1,11 +1,11 @@
-#include "tanara/audio/RingBuffer.h"
+#include "tanara/recording/audio/RingBuffer.h"
 
 #include <QtTest/QtTest>
 
 #include <cstdint>
 #include <vector>
 
-using tanara::RingBuffer;
+using tanara::recording::RingBuffer;
 
 class TestRingBuffer : public QObject {
     Q_OBJECT

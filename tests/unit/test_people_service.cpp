@@ -14,17 +14,17 @@
 #include <QSignalSpy>
 #include <QTemporaryDir>
 
-#include "tanara/AppController.h"
-#include "tanara/SettingsManager.h"
-#include "tanara/edit/PeopleDirectory.h"
-#include "tanara/edit/SpeakerEditor.h"
-#include "tanara/edit/SpeakerOverlay.h"
-#include "tanara/edit/SideAnalysis.h"
-#include "tanara/people/PeopleService.h"
-#include "tanara/people/PeopleStats.h"
-#include "tanara/store/MeetingStore.h"
-#include "tanara/store/PeopleStore.h"
-#include "tanara/store/VoiceprintStore.h"
+#include "tanara/app/AppController.h"
+#include "tanara/app/SettingsManager.h"
+#include "tanara/editing/session/PeopleDirectory.h"
+#include "tanara/editing/session/SpeakerEditor.h"
+#include "tanara/editing/session/SpeakerOverlay.h"
+#include "tanara/editing/review/SideAnalysis.h"
+#include "tanara/library/people/PeopleService.h"
+#include "tanara/library/people/PeopleStats.h"
+#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/store/PeopleStore.h"
+#include "tanara/library/store/VoiceprintStore.h"
 
 #include <memory>
 #include <vector>
@@ -56,7 +56,7 @@ struct Line { qint64 startMs; qint64 durMs; QString raw; };
 
 // The "voice" is known from the raw label: the fake embedder gives a vector for the label of
 // the speaker in the middle of the slice (Speaker 1 is x, Speaker 2 is y, other is z).
-class FakeEmbedder : public IUtteranceEmbedder {
+class FakeEmbedder : public processing::IUtteranceEmbedder {
 public:
     bool open(const QString&) override { return true; }
     QVector<float> embed(qint64, qint64) override { return {1.0f, 0.0f, 0.0f}; }
@@ -119,10 +119,10 @@ private:
     // A transcribed meeting: lines with raw labels, speakerMap, optionally with a summary.
     Meeting addMeeting(const QString& title, const QDateTime& when, const QVector<Line>& lines,
                        const QMap<QString, QString>& speakerMap, bool hasSummary);
-    PeopleService* svc() const { return m_app->peopleService(); }
+    library::PeopleService* svc() const { return m_app->peopleService(); }
 
     std::unique_ptr<QTemporaryDir> m_home;
-    std::unique_ptr<AppController> m_app;
+    std::unique_ptr<app::AppController> m_app;
 };
 
 void PeopleServiceTest::init()
@@ -130,7 +130,7 @@ void PeopleServiceTest::init()
     m_home = std::make_unique<QTemporaryDir>();
     QVERIFY(m_home->isValid());
     qputenv("TANARA_HOME", m_home->path().toUtf8());
-    m_app = std::make_unique<AppController>();
+    m_app = std::make_unique<app::AppController>();
     QVERIFY(m_app->settings()->settings().audioDir.startsWith(m_home->path()));
     m_app->setUserSpeakerName(kSelf);
 }
@@ -198,7 +198,7 @@ void PeopleServiceTest::recordRoundTripKeepsUnknownFields()
         {"name":"Bárány Gergely","aliases":["Gergely"],"note":"PM","color":"blue"},
         {"name":"Tóth Eszter","aliases":[],"note":""}]})");
     {
-        PeopleStore store(path);
+        library::PeopleStore store(path);
         QVERIFY(!store.migrationPending());
         QCOMPARE(store.names(), QStringList({kGergely, kEszter}));
         QCOMPARE(store.aliases(kGergely), QStringList{"Gergely"});
@@ -208,7 +208,7 @@ void PeopleServiceTest::recordRoundTripKeepsUnknownFields()
         QVERIFY(!store.addAlias(kGergely, kGergely));         // its own name is not a nickname
         store.setNote(kEszter, "Pénzügy");
     }
-    PeopleStore fresh(path);
+    library::PeopleStore fresh(path);
     QCOMPARE(fresh.aliases(kGergely), QStringList({"Gergely", "G. Bárány"}));
     QCOMPARE(fresh.details(kEszter).note, QStringLiteral("Pénzügy"));
     QJsonObject root = readJson(path);
@@ -229,12 +229,12 @@ void PeopleServiceTest::recordRoundTripKeepsUnknownFields()
     QCOMPARE(recordOf(root, kEszter).value("color").toString(), QStringLiteral("blue"));
     // Plain rename: the record under the new name, the old name becomes a nickname only on request.
     fresh.rename(kEszter, "Tóth Eszti");
-    QCOMPARE(PeopleStore(path).names(), QStringList{"Tóth Eszti"});
-    QCOMPARE(PeopleStore(path).aliases("Tóth Eszti"), QStringList({"Gergely", "G. Bárány", kGergely}));
+    QCOMPARE(library::PeopleStore(path).names(), QStringList{"Tóth Eszti"});
+    QCOMPARE(library::PeopleStore(path).aliases("Tóth Eszti"), QStringList({"Gergely", "G. Bárány", kGergely}));
     // Delete: the whole record goes away.
     fresh.remove("Tóth Eszti");
-    QVERIFY(PeopleStore(path).names().isEmpty());
-    QVERIFY(PeopleStore(path).details("Tóth Eszti").isEmpty());
+    QVERIFY(library::PeopleStore(path).names().isEmpty());
+    QVERIFY(library::PeopleStore(path).details("Tóth Eszti").isEmpty());
 }
 
 void PeopleServiceTest::corruptPeopleFileIsSetAside()
@@ -242,17 +242,17 @@ void PeopleServiceTest::corruptPeopleFileIsSetAside()
     const QString path = m_home->filePath("d/people.json");
     writeFile(path, R"({"version":2,"people":[{"name":"X","alia)");
     const QByteArray before = readFile(path);
-    PeopleStore store(path);
+    library::PeopleStore store(path);
     QCOMPARE(readFile(path), before);                       // unchanged by loading
     QVERIFY(store.addAlias(kGergely, "Gergő"));
     QCOMPARE(QDir(m_home->filePath("d")).entryList({"people.json.corrupt-*"}, QDir::Files).size(), 1);
-    QCOMPARE(PeopleStore(path).aliases(kGergely), QStringList{"Gergő"});
+    QCOMPARE(library::PeopleStore(path).aliases(kGergely), QStringList{"Gergő"});
 }
 
 void PeopleServiceTest::unlistKeepsDetailsAndAddReattaches()
 {
     const QString path = m_home->filePath("d/people.json");
-    PeopleStore store(path);
+    library::PeopleStore store(path);
     // A name not on the list (e.g. one that only has a voiceprint) can get a nickname too: it
     // becomes an off-list record, and the name list does not grow.
     QVERIFY(store.addAlias(kGergely, "Gergő"));
@@ -269,7 +269,7 @@ void PeopleServiceTest::unlistKeepsDetailsAndAddReattaches()
     store.unlist(kGergely);
     store.unlist(kEszter);
     QVERIFY(store.names().isEmpty());
-    PeopleStore fresh(path);
+    library::PeopleStore fresh(path);
     QCOMPARE(fresh.unlistedNames(), QStringList{kGergely});
     QCOMPARE(fresh.aliases(kGergely), QStringList{"Gergő"});
     QCOMPARE(readJson(path).value("unlisted").toArray().size(), 1);
@@ -282,7 +282,7 @@ void PeopleServiceTest::migrateOldListOnly()
     const QString dir = m_home->filePath("d");
     const QString path = QDir(dir).filePath("people.json");
     writeFile(path, kOldList);
-    PeopleStore store(path);
+    library::PeopleStore store(path);
     QVERIFY(!store.migrationPending());
     QCOMPARE(store.names(), QStringList({kGergo, kGergely, kSelf}));
     // The load itself rewrote the file to the new form.
@@ -307,7 +307,7 @@ void PeopleServiceTest::migrateOldListWithDetails()
     writeFile(path, kOldList);
     writeFile(QDir(dir).filePath("people-details.json"), kOldDetails);
     {
-        PeopleStore store(path);
+        library::PeopleStore store(path);
         QVERIFY(!store.migrationPending());
         QCOMPARE(store.names(), QStringList({kGergo, kGergely, kSelf}));
         QCOMPARE(store.aliases(kGergely), QStringList({"Gergely", "Főnök"}));
@@ -328,7 +328,7 @@ void PeopleServiceTest::migrateOldListWithDetails()
     // A further load no longer writes.
     const QByteArray after = readFile(path);
     const FileStamp stamp = FileStamp::of(path);
-    PeopleStore again(path);
+    library::PeopleStore again(path);
     QCOMPARE(again.aliases(kGergely), QStringList({"Gergely", "Főnök"}));
     QCOMPARE(readFile(path), after);
     QVERIFY(FileStamp::of(path) == stamp);
@@ -341,7 +341,7 @@ void PeopleServiceTest::migrateOrphanDetailsSurfaceWhenNameReturns()
     const QString path = QDir(dir).filePath("people.json");
     writeFile(path, R"({"people":["Bárány G.","Kovács Lilla"]})");
     writeFile(QDir(dir).filePath("people-details.json"), kOldDetails);
-    PeopleStore store(path);
+    library::PeopleStore store(path);
     QCOMPARE(store.names(), QStringList({"Bárány G.", kSelf}));     // the orphan name does not go onto the list
     QCOMPARE(store.unlistedNames(), QStringList{kGergely});
     QVERIFY(store.aliases("Bárány G.").isEmpty());
@@ -354,7 +354,7 @@ void PeopleServiceTest::migrateOrphanDetailsSurfaceWhenNameReturns()
     // can be queried by name (e.g. if the name only has a voiceprint),
     QCOMPARE(store.aliases(kGergely), QStringList({"Gergely", "Főnök"}));
     // and if the person is added back to the list, its record returns with it.
-    PeopleStore other(path);
+    library::PeopleStore other(path);
     other.add(kGergely);
     QCOMPARE(other.names(), QStringList({"Bárány G.", kGergely, kSelf}));
     QCOMPARE(other.details(kGergely).note, QStringLiteral("PM"));
@@ -377,7 +377,7 @@ void PeopleServiceTest::migrateCorruptDetailsIsSetAside()
     const QByteArray broken = R"({"version":1,"people":[{"name":"Bárány Gergely","alia)";
     writeFile(path, kOldList);
     writeFile(QDir(dir).filePath("people-details.json"), broken);
-    PeopleStore store(path);
+    library::PeopleStore store(path);
     // The name list still switches over; a corrupt details file is not deleted, it is set aside.
     QVERIFY(!store.migrationPending());
     QCOMPARE(store.names(), QStringList({kGergo, kGergely, kSelf}));
@@ -388,7 +388,7 @@ void PeopleServiceTest::migrateCorruptDetailsIsSetAside()
     QCOMPARE(readFile(QDir(dir).filePath(aside.first())), broken);
     // A further load does nothing.
     const QByteArray after = readFile(path);
-    PeopleStore again(path);
+    library::PeopleStore again(path);
     QCOMPARE(readFile(path), after);
     QCOMPARE(QDir(dir).entryList(QDir::Files | QDir::Hidden).size(), 2);
 }
@@ -400,7 +400,7 @@ void PeopleServiceTest::alreadyNewFileIsLeftAlone()
     const QByteArray v2 = R"({"version":2,"people":[{"name":"Bárány Gergely","aliases":["Gergő"],"note":""}]})";
     writeFile(path, v2);
     {
-        PeopleStore store(path);
+        library::PeopleStore store(path);
         QVERIFY(!store.migrationPending());
         QCOMPARE(store.aliases(kGergely), QStringList{"Gergő"});
     }
@@ -411,7 +411,7 @@ void PeopleServiceTest::alreadyNewFileIsLeftAlone()
     // delete): it is not merged in again (does not resurrect a nickname deleted since), and is
     // not deleted either; it is set aside.
     writeFile(QDir(dir).filePath("people-details.json"), kOldDetails);
-    PeopleStore store(path);
+    library::PeopleStore store(path);
     QCOMPARE(store.aliases(kGergely), QStringList{"Gergő"});
     QCOMPARE(readFile(path), v2);
     QVERIFY(!QFile::exists(QDir(dir).filePath("people-details.json")));
@@ -439,7 +439,7 @@ void PeopleServiceTest::failedMigrationLeavesOldFilesUntouched()
     if (QFile(QDir(dir).filePath("probe")).open(QIODevice::WriteOnly))
         QSKIP("A mappa írásvédelme nem érvényesül (root?).");
 
-    PeopleStore store(path);
+    library::PeopleStore store(path);
     // The migration did not succeed: both old files are byte-identical, nothing else was created...
     QVERIFY(store.migrationPending());
     QCOMPARE(readFile(path), QByteArray(kOldList));
@@ -461,7 +461,7 @@ void PeopleServiceTest::failedMigrationLeavesOldFilesUntouched()
     store.setNote(kGergo, "másik Gergő");
     QVERIFY(!store.migrationPending());
     QCOMPARE(QDir(dir).entryList(QDir::Files | QDir::Hidden), QStringList{"people.json"});
-    PeopleStore fresh(path);
+    library::PeopleStore fresh(path);
     QCOMPARE(fresh.names(), QStringList({kGergo, kGergely, kSelf, "Új Ember"}));
     QCOMPARE(fresh.aliases(kGergely), QStringList({"Gergely", "Főnök", "Geri"}));
     QCOMPARE(fresh.details(kGergo).note, QStringLiteral("másik Gergő"));
@@ -500,7 +500,7 @@ void PeopleServiceTest::twoProcessesMigrateAtOnce()
         const QJsonObject root = readJson(path);
         QCOMPARE(root.value("version").toInt(), 2);
         QVERIFY(!root.contains("unlisted"));
-        PeopleStore store(path);
+        library::PeopleStore store(path);
         QCOMPARE(store.names().size(), 3 + n);
         for (int i = 0; i < n; ++i) {
             QVERIFY2(store.names().contains(QStringLiteral("Gyerek %1").arg(i)), qPrintable(QString::number(i)));
@@ -526,7 +526,7 @@ void PeopleServiceTest::oldFilesMigrateUnderTheApp()
               R"({"people":[{"name":"Bárány Gergely","prints":[{"id":"p1","embedding":[1,0,0],"dim":3,
                  "sourceMeetingId":"","sourceTrack":"mic","device":"USB","sampleRef":"track_mic.ogg#0-4000",
                  "createdAt":"2026-09-01T10:00:00"}]}]})");
-    m_app = std::make_unique<AppController>();
+    m_app = std::make_unique<app::AppController>();
     QVERIFY(!QFile::exists(metaFile("people-details.json")));
     QCOMPARE(readJson(metaFile("people.json")).value("version").toInt(), 2);
     m_app->setUserSpeakerName(kSelf);
@@ -535,7 +535,7 @@ void PeopleServiceTest::oldFilesMigrateUnderTheApp()
     QCOMPARE(svc()->person(kGergely).aliases, QStringList({"Gergely", "Főnök"}));
     QCOMPARE(svc()->person(kGergely).note, QStringLiteral("PM"));
     // The person picker sees the carried-over nicknames too.
-    const QVector<PersonInfo> hits = filterPeople(m_app->peopleDirectory(), "fonok");
+    const QVector<editing::PersonInfo> hits = filterPeople(m_app->peopleDirectory(), "fonok");
     QCOMPARE(hits.size(), 1);
     QCOMPARE(hits.first().name, kGergely);
 
@@ -554,7 +554,7 @@ void PeopleServiceTest::oldFilesMigrateUnderTheApp()
     QCOMPARE(recordOf(people, kGergely).value("aliases").toArray(), QJsonArray({"Gergely", "Főnök", kGergo}));
     QCOMPARE(recordOf(people, kGergely).value("note").toString(), QStringLiteral("Projektvezető"));
     QCOMPARE(recordOf(people, kGergely).value("color").toString(), QStringLiteral("blue"));
-    QCOMPARE(PeopleStore(metaFile("people.json")).names(), QStringList({kGergely, kSelf, "Tóth Eszti"}));
+    QCOMPARE(library::PeopleStore(metaFile("people.json")).names(), QStringList({kGergely, kSelf, "Tóth Eszti"}));
     QVERIFY(!QFile::exists(metaFile("people-details.json")));
 
     const QJsonObject prints = readJson(metaFile("voiceprints.json"));
@@ -567,7 +567,7 @@ void PeopleServiceTest::oldFilesMigrateUnderTheApp()
             QCOMPARE(v.toObject().keys(), printKeys);
     }
     // Every field of the sample survived the move + rename.
-    const QVector<Voiceprint> moved = VoiceprintStore(metaFile("voiceprints.json")).printsFor("Tóth Eszti");
+    const QVector<Voiceprint> moved = library::VoiceprintStore(metaFile("voiceprints.json")).printsFor("Tóth Eszti");
     QCOMPARE(moved.size(), 1);
     QCOMPARE(moved.first().id, QStringLiteral("p1"));
     QCOMPARE(moved.first().device, QStringLiteral("USB"));
@@ -584,15 +584,15 @@ void PeopleServiceTest::aliasSearchInPersonPicker()
     QVERIFY(svc()->addAlias("Gál Bence", "Gergő bátyja").ok);
     QVERIFY(svc()->addAlias(kGergely, "Főnök").ok);
 
-    const QVector<PersonInfo> all = m_app->peopleDirectory();
+    const QVector<editing::PersonInfo> all = m_app->peopleDirectory();
     // Accent- and case-insensitive, name matches first, nickname-only matches after them.
-    const QVector<PersonInfo> hits = filterPeople(all, "GERGO");
+    const QVector<editing::PersonInfo> hits = filterPeople(all, "GERGO");
     QCOMPARE(hits.size(), 2);
     QCOMPARE(hits[0].name, kGergo);
     QVERIFY(hits[0].matchedAlias.isEmpty());
     QCOMPARE(hits[1].name, QStringLiteral("Gál Bence"));
     QCOMPARE(hits[1].matchedAlias, QStringLiteral("Gergő bátyja"));
-    const QVector<PersonInfo> boss = filterPeople(all, "fonok");
+    const QVector<editing::PersonInfo> boss = filterPeople(all, "fonok");
     QCOMPARE(boss.size(), 1);
     QCOMPARE(boss[0].name, kGergely);
     QVERIFY(filterPeople(all, "nincs ilyen").isEmpty());
@@ -609,15 +609,15 @@ void PeopleServiceTest::statsCountMeetingsTalkTimeAndLastSeen()
                                   {{"Beszélő 2", kGergely}, {"Beszélő 1", kEszter}}, true);
     // Manual fix: the second meeting's first line is really Gergely's (per-line override).
     {
-        SpeakerEditor ed(m_app->store(), nullptr, nullptr, m2.id);
+        editing::SpeakerEditor ed(m_app->store(), nullptr, nullptr, m2.id);
         QVERIFY(ed.moveUtterances({"u0"}, "Beszélő 2"));
     }
-    PeopleStats* stats = m_app->peopleStats();
+    library::PeopleStats* stats = m_app->peopleStats();
     QVERIFY(!stats->ready());
     stats->refreshNow();
     QVERIFY(stats->ready());
 
-    const PersonStats g = stats->stats("bárány gergely");
+    const library::PersonStats g = stats->stats("bárány gergely");
     QCOMPARE(g.meetingCount, 2);
     QCOMPARE(g.talkMs, qint64(4000 + 2000 + 10000 + 3000));
     QCOMPARE(g.lastSeen, d2);
@@ -626,7 +626,7 @@ void PeopleServiceTest::statsCountMeetingsTalkTimeAndLastSeen()
     QCOMPARE(g.meetings[0].talkMs, qint64(13000));
     QCOMPARE(g.meetings[0].speakerKeys, QStringList{"Beszélő 2"});
     QVERIFY(g.meetings[0].hasSummary);
-    const PersonStats e = stats->stats(kEszter);
+    const library::PersonStats e = stats->stats(kEszter);
     QCOMPARE(e.meetingCount, 1);
     QCOMPARE(e.talkMs, qint64(0));              // all its lines went to another
     QCOMPARE(stats->stats("Ismeretlen").meetingCount, 0);
@@ -638,8 +638,8 @@ void PeopleServiceTest::statsRefreshInBackgroundAndCache()
     for (int i = 0; i < 12; ++i)
         addMeeting(QStringLiteral("Megbeszélés %1").arg(i), QDateTime(QDate(2026, 9, 1 + i), QTime(10, 0)),
                    {{0, 5000, "Beszélő 1"}}, {{"Beszélő 1", kGergely}}, false);
-    PeopleStats* stats = m_app->peopleStats();
-    QSignalSpy changed(stats, &PeopleStats::changed);
+    library::PeopleStats* stats = m_app->peopleStats();
+    QSignalSpy changed(stats, &library::PeopleStats::changed);
     stats->refresh();
     QVERIFY(stats->busy());
     QCOMPARE(stats->stats(kGergely).meetingCount, 0);    // the list can show meanwhile: the call does not wait
@@ -676,7 +676,7 @@ void PeopleServiceTest::renameKeepsOldNameAsAliasAndFollowsMeetings()
     m_app->voiceprints()->addPrint(kGergely, print("p1", {1, 0, 0}, m.id));
     QVERIFY(svc()->addAlias(kGergely, "Gergely").ok);
 
-    const PeopleOpResult r = svc()->renamePerson(kGergely, "Bárány Gergő");
+    const library::PeopleOpResult r = svc()->renamePerson(kGergely, "Bárány Gergő");
     QVERIFY2(r.ok, qPrintable(r.error));
     QCOMPARE(r.name, QStringLiteral("Bárány Gergő"));
     QVERIFY(!svc()->exists(kGergely));
@@ -688,8 +688,8 @@ void PeopleServiceTest::renameKeepsOldNameAsAliasAndFollowsMeetings()
 
     // Undo: the old name is back everywhere, without the automatic nickname.
     QVERIFY(svc()->canUndo());
-    QCOMPARE(svc()->undoInfo().kind, PeopleUndoKind::Renamed);
-    const PeopleUndoInfo info = svc()->undo();
+    QCOMPARE(svc()->undoInfo().kind, library::PeopleUndoKind::Renamed);
+    const library::PeopleUndoInfo info = svc()->undo();
     QCOMPARE(info.person, kGergely);
     QVERIFY(svc()->exists(kGergely));
     QVERIFY(!svc()->exists("Bárány Gergő"));
@@ -703,14 +703,14 @@ void PeopleServiceTest::renameToExistingNameIsRefused()
 {
     QVERIFY(svc()->addPerson(kGergely).ok);
     QVERIFY(svc()->addPerson(kGergo).ok);
-    const PeopleOpResult r = svc()->renamePerson(kGergo, "bárány gergely");
+    const library::PeopleOpResult r = svc()->renamePerson(kGergo, "bárány gergely");
     QVERIFY(!r.ok);
     QVERIFY(!r.error.isEmpty());
     QVERIFY(svc()->exists(kGergo));
     QVERIFY(!svc()->renamePerson(kGergo, "  ").ok);
     QVERIFY(!svc()->canUndo());
     // New person with an existing name: returns the existing one.
-    const PeopleOpResult dup = svc()->addPerson("b. gergő");
+    const library::PeopleOpResult dup = svc()->addPerson("b. gergő");
     QVERIFY(!dup.ok);
     QCOMPARE(dup.name, kGergo);
 }
@@ -724,7 +724,7 @@ void PeopleServiceTest::selfRenameChangesSettingAndSelfCannotBeDeleted()
     QVERIFY(svc()->isSelf("Kovács-Nagy Lilla"));
     QCOMPARE(svc()->person("Kovács-Nagy Lilla").aliases, QStringList{kSelf});
 
-    const PeopleOpResult del = svc()->removePerson("Kovács-Nagy Lilla", false);
+    const library::PeopleOpResult del = svc()->removePerson("Kovács-Nagy Lilla", false);
     QVERIFY(!del.ok);
     QVERIFY(svc()->exists("Kovács-Nagy Lilla"));
 
@@ -738,7 +738,7 @@ void PeopleServiceTest::selfRenameChangesSettingAndSelfCannotBeDeleted()
 void PeopleServiceTest::aliasAddRemoveUndo()
 {
     QVERIFY(svc()->addPerson(kGergely).ok);
-    QSignalSpy people(m_app.get(), &AppController::peopleChanged);
+    QSignalSpy people(m_app.get(), &app::AppController::peopleChanged);
     QVERIFY(svc()->addAlias(kGergely, "Gergely").ok);
     QVERIFY(svc()->addAlias(kGergely, "G. Bárány").ok);
     QVERIFY(svc()->addAlias(kGergely, "Geri").ok);
@@ -749,7 +749,7 @@ void PeopleServiceTest::aliasAddRemoveUndo()
 
     QVERIFY(svc()->removeAlias(kGergely, "G. Bárány"));
     QCOMPARE(svc()->person(kGergely).aliases, QStringList({"Gergely", "Geri"}));
-    QCOMPARE(svc()->undoInfo().kind, PeopleUndoKind::AliasRemoved);
+    QCOMPARE(svc()->undoInfo().kind, library::PeopleUndoKind::AliasRemoved);
     QCOMPARE(svc()->undoInfo().detail, QStringLiteral("G. Bárány"));
     svc()->undo();
     QCOMPARE(svc()->person(kGergely).aliases, QStringList({"Gergely", "G. Bárány", "Geri"}));   // into its place
@@ -759,12 +759,12 @@ void PeopleServiceTest::aliasAddRemoveUndo()
 void PeopleServiceTest::noteIsStored()
 {
     QVERIFY(svc()->addPerson(kGergely).ok);
-    QSignalSpy changed(svc(), &PeopleService::changed);
+    QSignalSpy changed(svc(), &library::PeopleService::changed);
     svc()->setNote(kGergely, "Northwind oldali projektvezető.\nGyakran telefonról csatlakozik.");
     QCOMPARE(changed.count(), 1);
     svc()->setNote(kGergely, "Northwind oldali projektvezető.\nGyakran telefonról csatlakozik.");
     QCOMPARE(changed.count(), 1);    // unchanged: no write
-    QCOMPARE(PeopleStore(metaFile("people.json")).details(kGergely).note,
+    QCOMPARE(library::PeopleStore(metaFile("people.json")).details(kGergely).note,
              QStringLiteral("Northwind oldali projektvezető.\nGyakran telefonról csatlakozik."));
 }
 
@@ -774,24 +774,24 @@ void PeopleServiceTest::learnedDefaultSide()
     QVERIFY(svc()->person(kGergely).defaultSide.isEmpty());
     // One analysis: Gergely gets Remote from his confirmed lines, Eszter Local from the default
     // only (that does not learn), an anonymous speaker is left out.
-    SideReport r;
-    PersonSide g; g.speakerKey = "Beszélő 1"; g.personName = kGergely; g.side = Side::Remote; g.basis = "lines";
-    PersonSide e; e.speakerKey = "Beszélő 2"; e.personName = kEszter; e.side = Side::Local; e.basis = "user-name";
-    PersonSide a; a.speakerKey = "Beszélő 3"; a.side = Side::Local; a.basis = "lines";
+    editing::SideReport r;
+    editing::PersonSide g; g.speakerKey = "Beszélő 1"; g.personName = kGergely; g.side = editing::Side::Remote; g.basis = "lines";
+    editing::PersonSide e; e.speakerKey = "Beszélő 2"; e.personName = kEszter; e.side = editing::Side::Local; e.basis = "user-name";
+    editing::PersonSide a; a.speakerKey = "Beszélő 3"; a.side = editing::Side::Local; a.basis = "lines";
     r.persons = {g, e, a};
-    QSignalSpy changed(svc(), &PeopleService::changed);
+    QSignalSpy changed(svc(), &library::PeopleService::changed);
     QCOMPARE(svc()->learnDefaultSides(r), 1);
     QCOMPARE(changed.count(), 1);
     QCOMPARE(svc()->person(kGergely).defaultSide, QStringLiteral("remote"));
     QVERIFY(svc()->person(kEszter).defaultSide.isEmpty());
     QCOMPARE(svc()->learnDefaultSides(r), 0);    // unchanged: no write
     // The record's field in people.json; the other data stays, and it can be deleted.
-    PeopleStore store(metaFile("people.json"));
+    library::PeopleStore store(metaFile("people.json"));
     QCOMPARE(store.defaultSide(kGergely), QStringLiteral("remote"));
     QCOMPARE(store.defaultSides().value(kGergely), QStringLiteral("remote"));
     QVERIFY(store.setDefaultSide(kGergely, QString()));
-    QVERIFY(PeopleStore(metaFile("people.json")).defaultSide(kGergely).isEmpty());
-    QVERIFY(PeopleStore(metaFile("people.json")).names().contains(kGergely));
+    QVERIFY(library::PeopleStore(metaFile("people.json")).defaultSide(kGergely).isEmpty());
+    QVERIFY(library::PeopleStore(metaFile("people.json")).names().contains(kGergely));
 }
 
 // ---- samples ----
@@ -801,15 +801,15 @@ void PeopleServiceTest::sampleRemoveAndUndo()
     const Meeting m = addMeeting("Partnerdemó – adatimport", QDateTime(QDate(2026, 9, 24), QTime(10, 0)),
                                  {{0, 4000, "Beszélő 1"}}, {{"Beszélő 1", kGergely}}, true);
     m_app->voiceprints()->addPrint(kGergely, print("p1", {1, 0, 0}, m.id));
-    QSignalSpy prints(m_app.get(), &AppController::voiceprintsChanged);
+    QSignalSpy prints(m_app.get(), &app::AppController::voiceprintsChanged);
 
-    const PeopleOpResult r = svc()->removeSample("p1");
+    const library::PeopleOpResult r = svc()->removeSample("p1");
     QVERIFY(r.ok);
     QCOMPARE(r.name, kGergely);
     QCOMPARE(prints.count(), 1);
     QCOMPARE(svc()->person(kGergely).sampleCount, 0);
     QVERIFY(svc()->exists(kGergely));                      // the person stays
-    QCOMPARE(svc()->undoInfo().kind, PeopleUndoKind::SampleRemoved);
+    QCOMPARE(svc()->undoInfo().kind, library::PeopleUndoKind::SampleRemoved);
     QCOMPARE(svc()->undoInfo().detail, QStringLiteral("Partnerdemó – adatimport"));
     QVERIFY(!m_app->summaryStale(m.id).stale);             // deleting a sample is not an identity change
 
@@ -830,9 +830,9 @@ void PeopleServiceTest::sampleMoveMarksStaleAndUndoRestores()
     QVERIFY(svc()->addPerson(kGergo).ok);
     m_app->voiceprints()->addPrint(kGergely, print("p1", {1, 0, 0}, m.id));
     m_app->voiceprints()->addPrint(kGergely, print("p2", {0, 1, 0}, other.id));
-    QSignalSpy stale(m_app.get(), &AppController::summaryStaleChanged);
+    QSignalSpy stale(m_app.get(), &app::AppController::summaryStaleChanged);
 
-    const PeopleOpResult r = svc()->moveSample("p1", "b. gergő");
+    const library::PeopleOpResult r = svc()->moveSample("p1", "b. gergő");
     QVERIFY2(r.ok, qPrintable(r.error));
     QCOMPARE(r.name, kGergo);                              // the stored spelling
     QCOMPARE(r.staleSummaries, 1);
@@ -857,12 +857,12 @@ void PeopleServiceTest::newPersonFromSampleAndUndoRemovesPerson()
     m_app->voiceprints()->addPrint(kGergely, print("p1", {1, 0, 0}, m.id));
     m_app->voiceprints()->addPrint(kGergely, print("p2", {0, 1, 0}, m.id));
 
-    const PeopleOpResult r = svc()->moveSample("p2", "Új Ember");
+    const library::PeopleOpResult r = svc()->moveSample("p2", "Új Ember");
     QVERIFY(r.ok);
     QCOMPARE(r.name, QStringLiteral("Új Ember"));
     QCOMPARE(r.staleSummaries, 0);                          // no summary: nothing to mark
     QVERIFY(svc()->exists("Új Ember"));
-    QVERIFY(PeopleStore(metaFile("people.json")).names().contains("Új Ember"));
+    QVERIFY(library::PeopleStore(metaFile("people.json")).names().contains("Új Ember"));
     QCOMPARE(svc()->person("Új Ember").sampleCount, 1);
     QCOMPARE(svc()->person(kGergely).sampleCount, 1);       // the sample left the earlier voiceprint
 
@@ -905,13 +905,13 @@ void PeopleServiceTest::mergeNumbersAliasAndStale()
     svc()->setNote(kGergo, "Telefonról csatlakozik.");
     m_app->peopleStats()->refreshNow();
 
-    const MergePreview preview = svc()->mergePreview(kGergo, kGergely);
+    const library::MergePreview preview = svc()->mergePreview(kGergo, kGergely);
     QCOMPARE(preview.meetingCount, 4);          // union: the shared meeting counts once
     QCOMPARE(preview.sampleCount, 3);
     QCOMPARE(preview.staleSummaries, 2);        // the disappearing name's meetings with a summary
 
-    QSignalSpy stale(m_app.get(), &AppController::summaryStaleChanged);
-    const PeopleOpResult r = svc()->merge(kGergo, kGergely);
+    QSignalSpy stale(m_app.get(), &app::AppController::summaryStaleChanged);
+    const library::PeopleOpResult r = svc()->merge(kGergo, kGergely);
     QVERIFY2(r.ok, qPrintable(r.error));
     // The dialog's numbers = the actual result.
     QCOMPARE(r.meetings, preview.meetingCount);
@@ -920,7 +920,7 @@ void PeopleServiceTest::mergeNumbersAliasAndStale()
     QCOMPARE(stale.count(), 2);
 
     QVERIFY(!svc()->exists(kGergo));
-    const PersonRecord g = svc()->person(kGergely);
+    const library::PersonRecord g = svc()->person(kGergely);
     QCOMPARE(g.sampleCount, 3);
     QCOMPARE(g.aliases, QStringList({"Geri", kGergo}));     // the disappearing name became a nickname
     QCOMPARE(g.note, QStringLiteral("Telefonról csatlakozik."));
@@ -944,7 +944,7 @@ void PeopleServiceTest::mergeWithOpenEditorShowsStale()
                                  {{"Beszélő 1", kGergo}}, true);
     QVERIFY(svc()->addPerson(kGergely).ok);
     // In the main window the transcript editor is open: it must follow without a restart.
-    SpeakerEditor* ed = m_app->speakerEditor(m.id);
+    editing::SpeakerEditor* ed = m_app->speakerEditor(m.id);
     QVERIFY(ed);
     QVERIFY(!ed->summaryStale().stale);
     QVERIFY(svc()->merge(kGergo, kGergely).ok);
@@ -965,13 +965,13 @@ void PeopleServiceTest::deleteNumbersAndStale()
     QVERIFY(svc()->removeAlias(kGergely, "Gergely"));       // let there be one undoable step
     m_app->peopleStats()->refreshNow();
 
-    const DeletePreview preview = svc()->deletePreview(kGergely);
+    const library::DeletePreview preview = svc()->deletePreview(kGergely);
     QCOMPARE(preview.meetingCount, 2);
     QCOMPARE(preview.sampleCount, 1);
     QCOMPARE(preview.staleSummaries, 1);
     QCOMPARE(preview.exampleLabel, QStringLiteral("Beszélő 1"));   // the newest meeting's label
 
-    const PeopleOpResult r = svc()->removePerson(kGergely, false);
+    const library::PeopleOpResult r = svc()->removePerson(kGergely, false);
     QVERIFY2(r.ok, qPrintable(r.error));
     QCOMPARE(r.meetings, 2);
     QCOMPARE(r.samples, 1);
@@ -982,7 +982,7 @@ void PeopleServiceTest::deleteNumbersAndStale()
     QVERIFY(m_app->store()->load(a.id).speakerMap.isEmpty());       // an anonymous speaker stays
     QVERIFY(m_app->summaryStale(a.id).stale);
     QVERIFY(!m_app->summaryStale(b.id).stale);
-    QVERIFY(PeopleStore(metaFile("people.json")).details(kGergely).isEmpty());
+    QVERIFY(library::PeopleStore(metaFile("people.json")).details(kGergely).isEmpty());
     QVERIFY(!svc()->canUndo());                                      // the delete cannot be undone
     QVERIFY(!svc()->removePerson(kGergely, false).ok);
 }
@@ -995,19 +995,19 @@ void PeopleServiceTest::deleteKeepingSamplesAsAnonymous()
     m_app->voiceprints()->addPrint(kGergely, print("a2", {0, 1, 0}, a.id));
     QVERIFY(svc()->addPerson("Névtelen 1").ok);       // taken name: the next free one is needed
 
-    const PeopleOpResult r = svc()->removePerson(kGergely, true);
+    const library::PeopleOpResult r = svc()->removePerson(kGergely, true);
     QVERIFY(r.ok);
     QCOMPARE(r.name, QStringLiteral("Névtelen 2"));
     QVERIFY(!svc()->exists(kGergely));
     QVERIFY(svc()->exists("Névtelen 2"));
     QCOMPARE(svc()->person("Névtelen 2").sampleCount, 2);
-    QVERIFY(PeopleStore(metaFile("people.json")).names().contains("Névtelen 2"));
+    QVERIFY(library::PeopleStore(metaFile("people.json")).names().contains("Névtelen 2"));
     // An anonymous speaker stays on the meeting; the anonymous PERSON does not go onto it.
     QVERIFY(m_app->store()->load(a.id).speakerMap.isEmpty());
 
     // Without samples there is nothing to keep: no anonymous person is created.
     QVERIFY(svc()->addPerson(kEszter).ok);
-    const PeopleOpResult none = svc()->removePerson(kEszter, true);
+    const library::PeopleOpResult none = svc()->removePerson(kEszter, true);
     QVERIFY(none.ok);
     QVERIFY(none.name.isEmpty());
     QVERIFY(!svc()->exists("Névtelen 3"));
@@ -1027,7 +1027,7 @@ void PeopleServiceTest::voiceprintFromManuallyAssignedMeetings()
     m_app->peopleStats()->refreshNow();
 
     // Without a voice model: the plan says it cannot work.
-    VoiceprintPlan plan = svc()->voiceprintPlan(kEszter);
+    library::VoiceprintPlan plan = svc()->voiceprintPlan(kEszter);
     QVERIFY(!plan.modelAvailable);
     QVERIFY(!svc()->createVoiceprintFromMeeting(kEszter, rich.id).ok);
 
@@ -1038,11 +1038,11 @@ void PeopleServiceTest::voiceprintFromManuallyAssignedMeetings()
     QCOMPARE(plan.usableMeetingIds, QStringList{rich.id});
     QCOMPARE(plan.usableMs, qint64(20000));
 
-    QSignalSpy prints(m_app.get(), &AppController::voiceprintsChanged);
-    const VoiceprintResult bad = svc()->createVoiceprintFromMeeting(kEszter, poor.id);
+    QSignalSpy prints(m_app.get(), &app::AppController::voiceprintsChanged);
+    const editing::VoiceprintResult bad = svc()->createVoiceprintFromMeeting(kEszter, poor.id);
     QVERIFY(!bad.ok);
     QVERIFY(!bad.error.isEmpty());
-    const VoiceprintResult ok = svc()->createVoiceprintFromMeeting(kEszter, rich.id);
+    const editing::VoiceprintResult ok = svc()->createVoiceprintFromMeeting(kEszter, rich.id);
     QVERIFY2(ok.ok, qPrintable(ok.error));
     QCOMPARE(ok.usedMs, qint64(20000));
     QCOMPARE(prints.count(), 1);
@@ -1077,13 +1077,13 @@ void PeopleServiceTest::sampleSourceDescription()
     e.sourceTrack.clear(); e.createdAt = "2026-08-28T09:00:00";
     for (const Voiceprint& p : {a, b, c, e}) m_app->voiceprints()->addPrint(kGergely, p);
 
-    const QVector<VoiceSample> samples = svc()->samples(kGergely);
+    const QVector<library::VoiceSample> samples = svc()->samples(kGergely);
     QCOMPARE(samples.size(), 4);
     auto byId = [&](const QString& id) {
-        for (const VoiceSample& s : samples) if (s.id == id) return s;
-        return VoiceSample();
+        for (const library::VoiceSample& s : samples) if (s.id == id) return s;
+        return library::VoiceSample();
     };
-    const VoiceSample sm = byId("s-mic");
+    const library::VoiceSample sm = byId("s-mic");
     QCOMPARE(sm.sourceKind, QStringLiteral("mic"));
     QCOMPARE(sm.deviceLabel, QStringLiteral("Trust USB mikrofon"));
     QCOMPARE(sm.meetingTitle, QStringLiteral("Partnerdemó – adatimport"));
@@ -1096,7 +1096,7 @@ void PeopleServiceTest::sampleSourceDescription()
     QCOMPARE(byId("s-call").endMs, qint64(28000));
     QVERIFY(!byId("s-call").audioExists);
     QCOMPARE(byId("s-mix").sourceKind, QStringLiteral("mix"));
-    const VoiceSample gone = byId("s-gone");
+    const library::VoiceSample gone = byId("s-gone");
     QCOMPARE(gone.sourceKind, QStringLiteral("unknown"));
     QVERIFY(gone.meetingTitle.isEmpty());
     QCOMPARE(gone.recordedAt, QDate(2026, 8, 28));     // without the meeting, the day the sample was made
@@ -1127,9 +1127,9 @@ void PeopleServiceTest::twoProcessesWriteConcurrently()
     QCOMPARE(child.exitCode(), 0);
 
     svc()->reload();
-    const QStringList names = PeopleStore(QDir(meta).filePath("people.json")).names();
-    const QStringList aliases = PeopleStore(QDir(meta).filePath("people.json")).aliases(kGergely);
-    const VoiceprintStore prints(QDir(meta).filePath("voiceprints.json"));
+    const QStringList names = library::PeopleStore(QDir(meta).filePath("people.json")).names();
+    const QStringList aliases = library::PeopleStore(QDir(meta).filePath("people.json")).aliases(kGergely);
+    const library::VoiceprintStore prints(QDir(meta).filePath("voiceprints.json"));
     for (int i = 0; i < n; ++i) {
         QVERIFY2(names.contains(QStringLiteral("Szülő %1").arg(i)), qPrintable(QString::number(i)));
         QVERIFY2(names.contains(QStringLiteral("Gyerek %1").arg(i)), qPrintable(QString::number(i)));
@@ -1150,8 +1150,8 @@ void PeopleServiceTest::twoProcessesWriteConcurrently()
 // stores, as another Tanara process would).
 static int runChild(const QString& meta)
 {
-    PeopleStore people(QDir(meta).filePath("people.json"));
-    VoiceprintStore prints(QDir(meta).filePath("voiceprints.json"));
+    library::PeopleStore people(QDir(meta).filePath("people.json"));
+    library::VoiceprintStore prints(QDir(meta).filePath("voiceprints.json"));
     for (int i = 0; i < 40; ++i) {
         people.add(QStringLiteral("Gyerek %1").arg(i));
         if (!people.addAlias(kGergely, QStringLiteral("gyerek-becenév %1").arg(i))) return 2;
@@ -1164,7 +1164,7 @@ static int runChild(const QString& meta)
 // migration, then writes into it right away.
 static int runMigrateChild(const QString& path, const QString& no)
 {
-    PeopleStore people(path);
+    library::PeopleStore people(path);
     people.add(QStringLiteral("Gyerek %1").arg(no));
     if (!people.addAlias(kGergely, QStringLiteral("gyerek-becenév %1").arg(no))) return 2;
     return people.migrationPending() ? 3 : 0;

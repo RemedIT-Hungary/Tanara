@@ -7,7 +7,7 @@
 #include <QStandardPaths>
 #include <QTemporaryDir>
 
-#include "tanara/audio/MixdownPlan.h"
+#include "tanara/recording/audio/MixdownPlan.h"
 
 using namespace tanara;
 
@@ -73,17 +73,17 @@ private slots:
 
 void MixdownPlanTest::filterNoOffsets()
 {
-    const QStringList f = MixdownPlan::filterArgs({0, 0});
+    const QStringList f = recording::MixdownPlan::filterArgs({0, 0});
     QCOMPARE(f.size(), 2);
     QCOMPARE(f.at(0), QStringLiteral("-filter_complex"));
     QVERIFY(f.at(1).startsWith(QStringLiteral("[0][1]amix=inputs=2:duration=longest:normalize=0,loudnorm")));
     QVERIFY(!f.at(1).contains(QStringLiteral("adelay")));
-    QVERIFY(MixdownPlan::filterArgs({}).isEmpty());
+    QVERIFY(recording::MixdownPlan::filterArgs({}).isEmpty());
 }
 
 void MixdownPlanTest::filterOffsetsGetAdelay()
 {
-    const QStringList f = MixdownPlan::filterArgs({0, 57200, 0, 1500});
+    const QStringList f = recording::MixdownPlan::filterArgs({0, 57200, 0, 1500});
     QCOMPARE(f.at(0), QStringLiteral("-filter_complex"));
     QVERIFY2(f.at(1).startsWith(QStringLiteral(
         "[1]adelay=57200:all=1[d1];[3]adelay=1500:all=1[d3];[0][d1][2][d3]amix=inputs=4:")),
@@ -93,11 +93,11 @@ void MixdownPlanTest::filterOffsetsGetAdelay()
 void MixdownPlanTest::filterSingleInput()
 {
     // An input without an offset: normalization only.
-    QStringList f = MixdownPlan::filterArgs({0});
+    QStringList f = recording::MixdownPlan::filterArgs({0});
     QCOMPARE(f.at(0), QStringLiteral("-af"));
     QVERIFY(f.at(1).startsWith(QStringLiteral("loudnorm")));
     // An offset input: adelay, without amix.
-    f = MixdownPlan::filterArgs({2000});
+    f = recording::MixdownPlan::filterArgs({2000});
     QCOMPARE(f.at(0), QStringLiteral("-filter_complex"));
     QVERIFY2(f.at(1).startsWith(QStringLiteral("[0]adelay=2000:all=1[d0];[d0]loudnorm")), qPrintable(f.at(1)));
     QVERIFY(!f.at(1).contains(QStringLiteral("amix")));
@@ -114,7 +114,7 @@ void MixdownPlanTest::planSkipsDroppedAndReportsMissing()
                 mk("sys", "Monitor of Kanto YU4", TrackKind::Loopback, 3000)};  // no file
     touch(QDir(m.folder).filePath(QStringLiteral("track_mic.ogg")));
     touch(QDir(m.folder).filePath(QStringLiteral("track_old.ogg")));
-    const MixdownPlan plan = MixdownPlan::fromMeeting(m);
+    const recording::MixdownPlan plan = recording::MixdownPlan::fromMeeting(m);
     QCOMPARE(plan.inputs.size(), 1);
     QCOMPARE(plan.inputs.at(0).trackId, QStringLiteral("mic"));
     QCOMPARE(plan.missing.size(), 1);
@@ -125,7 +125,7 @@ void MixdownPlanTest::planSkipsDroppedAndReportsMissing()
     QCOMPARE(args.count(QStringLiteral("-i")), 1);
     QVERIFY(args.contains(QStringLiteral("-af")));
     QCOMPARE(args.last(), QStringLiteral("/x/out.mp3"));
-    QVERIFY(MixdownPlan{}.ffmpegArgs(QStringLiteral("/x/out.mp3")).isEmpty());
+    QVERIFY(recording::MixdownPlan{}.ffmpegArgs(QStringLiteral("/x/out.mp3")).isEmpty());
 }
 
 void MixdownPlanTest::planSegmentsOfOneDevice()
@@ -140,7 +140,7 @@ void MixdownPlanTest::planSegmentsOfOneDevice()
                 mk("sys", "Monitor of Speakers", TrackKind::Loopback, 57200),
                 mk("sys-2", "Monitor of Speakers", TrackKind::Loopback, 300000)};
     for (const Track& t : std::as_const(m.tracks)) touch(QDir(m.folder).filePath(t.file));
-    const MixdownPlan plan = MixdownPlan::fromMeeting(m);
+    const recording::MixdownPlan plan = recording::MixdownPlan::fromMeeting(m);
     QCOMPARE(plan.inputs.size(), 3);
     QCOMPARE(plan.inputs.at(1).offsetMs, qint64(57200));
     QCOMPARE(plan.inputs.at(2).offsetMs, qint64(300000));
@@ -165,7 +165,7 @@ void MixdownPlanTest::ffmpegMixPlacesLateTrack()
     QVERIFY(sine(QDir(m.folder).filePath(QStringLiteral("track_sys.ogg")), 1.0, 660));
     const QString out = QDir(m.folder).filePath(QStringLiteral("mixdown.mp3"));
     QProcess p;
-    p.start(QStringLiteral("ffmpeg"), MixdownPlan::fromMeeting(m).ffmpegArgs(out));
+    p.start(QStringLiteral("ffmpeg"), recording::MixdownPlan::fromMeeting(m).ffmpegArgs(out));
     QVERIFY(p.waitForFinished(60000));
     QCOMPARE(p.exitCode(), 0);
     // A 1 s track starting 2.5 s later pushes the mix's end to 3.5 s.

@@ -5,15 +5,15 @@
 #include "TranscriptDemoSession.h"
 #include "TranscriptEditorViewModel.h"
 #include "AppContext.h"
-#include "tanara/AppController.h"
-#include "tanara/SettingsManager.h"
+#include "tanara/app/AppController.h"
+#include "tanara/app/SettingsManager.h"
 
 #include <QTimer>
 
 #include <algorithm>
 #include <limits>
 
-using tanara::EditorUtterance;
+using tanara::editing::EditorUtterance;
 
 namespace tanara_qml {
 
@@ -39,7 +39,7 @@ void TranscriptEditorViewModel::flushPendingReview()
 // test) only in memory, so a test never touches the user's settings.
 bool TranscriptEditorViewModel::reviewAutoPlay() const
 {
-    const tanara::AppController* c = m_controller ? m_controller.data() : AppContext::instance()->controller();
+    const tanara::app::AppController* c = m_controller ? m_controller.data() : AppContext::instance()->controller();
     if (c && c->settings() && !demo()) return c->settings()->settings().reviewAutoPlay;
     return m_reviewAutoPlay;
 }
@@ -47,7 +47,7 @@ bool TranscriptEditorViewModel::reviewAutoPlay() const
 void TranscriptEditorViewModel::setReviewAutoPlay(bool on)
 {
     if (on == reviewAutoPlay()) return;
-    tanara::AppController* c = m_controller ? m_controller.data() : AppContext::instance()->controller();
+    tanara::app::AppController* c = m_controller ? m_controller.data() : AppContext::instance()->controller();
     if (c && c->settings() && !demo()) {
         tanara::AppSettings s = c->settings()->settings();
         s.reviewAutoPlay = on;

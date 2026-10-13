@@ -5,10 +5,10 @@
 #include "JobSupport.h"
 #include "ShellFormat.h"
 
-#include "tanara/AppController.h"
+#include "tanara/app/AppController.h"
 #include "tanara/library/MeetingLibrary.h"
-#include "tanara/store/MeetingStore.h"
-#include "tanara/tags/TagService.h"
+#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/tags/TagService.h"
 
 namespace tanara_qml {
 
@@ -17,10 +17,10 @@ using namespace tanara;
 namespace {
 
 // The source meeting's tag names (for the card's mini chips), in the meeting's order.
-QStringList tagNamesOf(AppController* c, const QString& meetingId)
+QStringList tagNamesOf(app::AppController* c, const QString& meetingId)
 {
     QStringList out;
-    TagService* tags = c ? c->tags() : nullptr;
+    library::TagService* tags = c ? c->tags() : nullptr;
     if (!tags || meetingId.isEmpty()) return out;
     for (const QString& id : tags->tagsOf(meetingId)) {
         const Tag t = tags->tag(id);
@@ -33,7 +33,7 @@ QStringList tagNamesOf(AppController* c, const QString& meetingId)
 
 MeetingNoteModel::MeetingNoteModel(QObject* parent) : QObject(parent) {}
 
-AppController* MeetingNoteModel::app() const
+app::AppController* MeetingNoteModel::app() const
 {
     return jobsupport::resolveController(m_injected);
 }
@@ -77,7 +77,7 @@ void MeetingNoteModel::commitDraft()
         return;
     }
     // The draft belongs to a meeting that is no longer selected: we save it directly there.
-    AppController* c = app();
+    app::AppController* c = app();
     if (!jobsupport::demoMode(c) && !target.isEmpty())
         c->setMeetingContextNote(target, text);
 }
@@ -87,7 +87,7 @@ void MeetingNoteModel::setNote(const QString& note)
     if (note == m_note)
         return;
     m_note = note;
-    AppController* c = app();
+    app::AppController* c = app();
     if (!jobsupport::demoMode(c) && !m_meetingId.isEmpty())
         c->setMeetingContextNote(m_meetingId, note);   // -> meetingUpdated -> the owner's reload()
     emit noteChanged();
@@ -110,7 +110,7 @@ void MeetingNoteModel::applySuggestion(const QString& suggestion, const QString&
 
 void MeetingNoteModel::reload()
 {
-    AppController* c = app();
+    app::AppController* c = app();
     if (jobsupport::demoMode(c))
         return;   // the owner provides the demo content (setDemoContent)
     const QString oldNote = m_note;
@@ -132,7 +132,7 @@ void MeetingNoteModel::reload()
 
 void MeetingNoteModel::reloadSuggestions()
 {
-    AppController* c = app();
+    app::AppController* c = app();
     if (jobsupport::demoMode(c)) {
         // In the demo too, an already pasted suggestion should disappear (enough for the screenshot states).
         QVariantList keep;
@@ -147,9 +147,9 @@ void MeetingNoteModel::reloadSuggestions()
     }
     QVariantList list;
     if (!m_meetingId.isEmpty() && c->library()) {
-        const QVector<meetingnotes::NoteSuggestion> hits =
+        const QVector<library::meetingnotes::NoteSuggestion> hits =
             c->library()->noteSuggestions(m_meetingId, m_note, 3);
-        for (const meetingnotes::NoteSuggestion& s : hits)
+        for (const library::meetingnotes::NoteSuggestion& s : hits)
             list << QVariantMap{{QStringLiteral("meetingId"), s.meetingId},
                                 {QStringLiteral("title"), s.title},
                                 {QStringLiteral("dateText"), fmt::longDate(s.startedAt)},

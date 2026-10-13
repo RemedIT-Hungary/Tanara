@@ -12,8 +12,8 @@
 // Without a controller or with App.demo, fictional sample data; demoState: "default" (the
 // design sketch: the mixdown is running) | "loading" (computing peaks) | "idle" (all done).
 //
-#include "tanara/audio/TrackCatalog.h"
-#include "tanara/audio/WaveformService.h"
+#include "tanara/library/tracks/TrackCatalog.h"
+#include "tanara/library/tracks/WaveformService.h"
 
 #include <QAbstractListModel>
 #include <QList>
@@ -23,7 +23,7 @@
 #include <QtQml/qqmlregistration.h>
 
 namespace tanara {
-class AppController;
+namespace app { class AppController; }
 }
 
 namespace tanara_qml {
@@ -168,7 +168,7 @@ signals:
 
 private:
     struct Row {
-        tanara::TrackView view;
+        tanara::library::TrackView view;
         QString groupId;
         QList<qreal> peaks;
         QString peaksState = QStringLiteral("none");
@@ -176,18 +176,18 @@ private:
         int colorIndex = 0;
     };
 
-    tanara::AppController* app() const;
+    tanara::app::AppController* app() const;
     void connectController();
     void reload();
     void reloadMixdown();
     void loadDemo();
-    void applyPeaks(const QString& trackId, const tanara::TrackPeaks& peaks, bool failed);
+    void applyPeaks(const QString& trackId, const tanara::library::TrackPeaks& peaks, bool failed);
     static QList<qreal> toList(const QVector<float>& v);
-    static QList<qreal> levelsOf(const tanara::TrackPeaks& peaks);
-    static QString iconFor(tanara::TrackRole role);
+    static QList<qreal> levelsOf(const tanara::library::TrackPeaks& peaks);
+    static QString iconFor(tanara::library::TrackRole role);
 
     QPointer<QObject> m_injected;
-    QPointer<tanara::AppController> m_connected;
+    QPointer<tanara::app::AppController> m_connected;
     QList<QMetaObject::Connection> m_connections;
     QMap<QString, QString> m_deviceNames;   // last seen state of the device renames
 

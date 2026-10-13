@@ -6,13 +6,13 @@
 #include "JobSupport.h"
 #include "TagLearning.h"
 
-#include "tanara/AppController.h"
-#include "tanara/SettingsManager.h"
-#include "tanara/edit/ParticipantAnalysis.h"
-#include "tanara/edit/SpeakerOverlay.h"
-#include "tanara/store/MeetingStore.h"
-#include "tanara/tags/TagService.h"
-#include "tanara/voiceid/VoiceModelRegistry.h"
+#include "tanara/app/AppController.h"
+#include "tanara/app/SettingsManager.h"
+#include "tanara/processing/analysis/ParticipantAnalysis.h"
+#include "tanara/editing/session/SpeakerOverlay.h"
+#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/tags/TagService.h"
+#include "tanara/processing/voiceid/VoiceModelRegistry.h"
 
 #include <QDateTime>
 #include <QRegularExpression>
@@ -62,7 +62,7 @@ int groupOf(ParticipantGroup g)
 // Short model name for the meta line: "CAM++ (3D-Speaker)" -> "CAM++".
 QString shortModelName(const QString& id)
 {
-    const auto spec = VoiceModelRegistry::spec(id);
+    const auto spec = processing::VoiceModelRegistry::spec(id);
     const QString name = spec ? spec->displayName : id;
     return name.section(QLatin1Char(' '), 0, 0);
 }
@@ -99,7 +99,7 @@ ParticipantsViewModel::ParticipantsViewModel(QObject* parent) : QObject(parent)
     reload();
 }
 
-AppController* ParticipantsViewModel::app() const { return jobsupport::resolveController(m_injected); }
+app::AppController* ParticipantsViewModel::app() const { return jobsupport::resolveController(m_injected); }
 
 QObject* ParticipantsViewModel::controllerObject() const { return app(); }
 
@@ -135,7 +135,7 @@ void ParticipantsViewModel::setDemoState(const QString& state)
 
 void ParticipantsViewModel::connectController()
 {
-    AppController* c = app();
+    app::AppController* c = app();
     if (c == m_connected) return;
     for (const auto& conn : std::as_const(m_connections)) disconnect(conn);
     m_connections.clear();
@@ -147,9 +147,9 @@ void ParticipantsViewModel::connectController()
         if (meetingId != m_meetingId || demo()) return;
         load();
     };
-    m_connections << connect(c, &AppController::participantsChanged, this, refreshFor);
-    m_connections << connect(c, &AppController::participantAnalysisStarted, this, refreshFor);
-    m_connections << connect(c, &AppController::participantAnalysisFinished, this, refreshFor);
+    m_connections << connect(c, &app::AppController::participantsChanged, this, refreshFor);
+    m_connections << connect(c, &app::AppController::participantAnalysisStarted, this, refreshFor);
+    m_connections << connect(c, &app::AppController::participantAnalysisFinished, this, refreshFor);
 }
 
 void ParticipantsViewModel::reload()
@@ -162,7 +162,7 @@ void ParticipantsViewModel::reload()
 
 void ParticipantsViewModel::load()
 {
-    AppController* c = app();
+    app::AppController* c = app();
     // The working copy: the current checks / additions / names are kept by id.
     const QVector<Row> previous = m_rows;
 
@@ -188,7 +188,7 @@ void ParticipantsViewModel::load()
     m_hasTranscript = m.hasTranscript;
     m_tagIds = m.tagIds;
 
-    const ParticipantAnalysisFile file = ParticipantAnalysisFile::load(m.folder);
+    const processing::ParticipantAnalysisFile file = processing::ParticipantAnalysisFile::load(m.folder);
     if (!file.isEmpty()) {
         QStringList models;
         for (const QString& id : file.modelIds) models << shortModelName(id);
@@ -200,7 +200,7 @@ void ParticipantsViewModel::load()
     }
 
     if (m_hasTranscript) {
-        for (const TranscriptLine& l : speakeredit::loadTranscriptLines(m.folder))
+        for (const TranscriptLine& l : editing::speakeredit::loadTranscriptLines(m.folder))
             if (!l.rawLabel.isEmpty() && !m_rawLabels.contains(l.rawLabel)) m_rawLabels << l.rawLabel;
     }
 
@@ -211,9 +211,9 @@ void ParticipantsViewModel::load()
         Row r;
         r.id = p.id;
         r.name = p.personName;
-        r.group = groupOf(participants::participantGroup(p));
+        r.group = groupOf(processing::participants::participantGroup(p));
         // An invited but not heard candidate is unchecked by default: there is nobody to bind the name to.
-        r.checked = decided ? p.approved : (r.group != 2 && participants::defaultChecked(p));
+        r.checked = decided ? p.approved : (r.group != 2 && processing::participants::defaultChecked(p));
         r.evidence = p.evidence;
         r.rawIds = p.rawSpeakerIds;
         r.sides = p.sides;
@@ -246,9 +246,9 @@ void ParticipantsViewModel::loadDemo()
     m_pending = !m_running;
     // The model name is of the models really used (without a controller: the recommended default).
     QStringList models;
-    const AppController* c = app();
+    const app::AppController* c = app();
     for (const QString& id : c && !c->activeVoiceModelIds().isEmpty() ? c->activeVoiceModelIds()
-                                                                     : VoiceModelRegistry::defaultEnabledIds())
+                                                                     : processing::VoiceModelRegistry::defaultEnabledIds())
         models << shortModelName(id);
     m_metaText = tr("hanglenyomat-elemzés") + QStringLiteral(" · ") + models.join(QStringLiteral(" + "))
                + QStringLiteral(" · ") + tr("%n perce", "", 3);
@@ -278,7 +278,7 @@ void ParticipantsViewModel::loadDemo()
         r.colorIndex = int(m_rows.size());
         m_rows.append(r);
     };
-    const QString mic = participants::kSideMic, loop = participants::kSideLoopback;
+    const QString mic = processing::participants::kSideMic, loop = processing::participants::kSideLoopback;
     if (m_running) {
         // During the analysis only participants added manually (on the Overview) show.
         row("m-lilla", demoName("Kovács Lilla"), 1, true, {ev(EvidenceKind::Manual, S, tr("kézzel felvéve"))}, {}, {});
@@ -334,13 +334,13 @@ void ParticipantsViewModel::loadDemo()
 void ParticipantsViewModel::loadDemoLearn()
 {
     if (m_demoState == QLatin1String("learnNewPerson")) {
-        setLearn({PersonTagQuestion{QStringLiteral("demo-nordvik"), QStringLiteral("Nordvik"),
+        setLearn({library::PersonTagQuestion{QStringLiteral("demo-nordvik"), QStringLiteral("Nordvik"),
                                     {demoName("Szabó Bence")}, true}});
         return;
     }
-    setLearn({PersonTagQuestion{QStringLiteral("demo-nordvik"), QStringLiteral("Nordvik"),
+    setLearn({library::PersonTagQuestion{QStringLiteral("demo-nordvik"), QStringLiteral("Nordvik"),
                                 {demoName("Fehér Gábor"), demoName("Varga Árpád")}, false},
-              PersonTagQuestion{QStringLiteral("demo-partnerek"), demoText("Partnerek", "Partners"),
+              library::PersonTagQuestion{QStringLiteral("demo-partnerek"), demoText("Partnerek", "Partners"),
                                 {demoName("Fehér Gábor")}, false}});
 }
 
@@ -359,16 +359,16 @@ void ParticipantsViewModel::reloadTagSuggestions()
         m_tagSuggestions.append({demoName("Szabó Bence"), QStringLiteral("Nordvik"), 11, 14});
         return;
     }
-    AppController* c = app();
-    TagService* tags = c ? c->tags() : nullptr;
+    app::AppController* c = app();
+    library::TagService* tags = c ? c->tags() : nullptr;
     if (!tags) return;
     // The first tag that has a suggestion; at most 3 people.
     for (const QString& tagId : std::as_const(m_tagIds)) {
-        const QVector<PersonTagStat> stats = tags->suggestPeopleForTag(tagId, names, 3);
+        const QVector<library::PersonTagStat> stats = tags->suggestPeopleForTag(tagId, names, 3);
         if (stats.isEmpty()) continue;
         const QString tagName = tags->tag(tagId).name;
         m_tagLabel = tr("A #%1 alapján:").arg(tagName);
-        for (const PersonTagStat& st : stats)
+        for (const library::PersonTagStat& st : stats)
             m_tagSuggestions.append({st.name, tagName, st.shared, st.tagTotal});
         break;
     }
@@ -396,7 +396,7 @@ QVariantMap ParticipantsViewModel::rowMap(const Row& r) const
             const int more = int(e.detail.split(QStringLiteral(", "), Qt::SkipEmptyParts).size()) - 1;
             if (more > 0) text += QStringLiteral(" +%1").arg(more);
         } else if (e.kind == EvidenceKind::Side && e.polarity != Polarity::Contradict && !side.isEmpty()) {
-            text = participants::sideLabel(side) + tr("-sáv");
+            text = processing::participants::sideLabel(side) + tr("-sáv");
         }
         evs << QVariantMap{{QStringLiteral("kind"), kindKey(e.kind)},
                            {QStringLiteral("polarity"), polarityKey(e.polarity)},
@@ -412,8 +412,8 @@ QVariantMap ParticipantsViewModel::rowMap(const Row& r) const
     } else {
         QStringList shown;
         for (const QString& raw : r.rawIds) {
-            shown << participants::rawDisplay(raw);
-            if (!r.checked && rawBoundToChecked(participants::rawLabelOf(raw), r.id)) doubt = true;
+            shown << processing::participants::rawDisplay(raw);
+            if (!r.checked && rawBoundToChecked(processing::participants::rawLabelOf(raw), r.id)) doubt = true;
         }
         mapping = shown.join(QStringLiteral(", "));
         if (doubt) mapping += QStringLiteral(" ?");
@@ -469,7 +469,7 @@ bool ParticipantsViewModel::rawBoundToChecked(const QString& rawLabel, const QSt
     for (const Row& r : m_rows) {
         if (r.id == exceptId || !r.checked || r.name.isEmpty()) continue;
         for (const QString& raw : r.rawIds)
-            if (participants::rawLabelOf(raw) == rawLabel) return true;
+            if (processing::participants::rawLabelOf(raw) == rawLabel) return true;
     }
     return false;
 }
@@ -496,11 +496,11 @@ QString ParticipantsViewModel::infoText() const
               int(unbound.size())).arg(unbound.join(QStringLiteral(", ")));
 }
 
-QVector<PersonInfo> ParticipantsViewModel::people() const
+QVector<editing::PersonInfo> ParticipantsViewModel::people() const
 {
     if (demo()) return m_demoPeople;
-    AppController* c = app();
-    return c ? c->peopleDirectory() : QVector<PersonInfo>();
+    app::AppController* c = app();
+    return c ? c->peopleDirectory() : QVector<editing::PersonInfo>();
 }
 
 bool ParticipantsViewModel::isMeetingPerson(const QString& name) const { return indexOfName(name) >= 0; }
@@ -601,7 +601,7 @@ bool ParticipantsViewModel::approve()
         if (m_demoState.startsWith(QLatin1String("learn"))) loadDemoLearn();
         return true;
     }
-    AppController* c = app();
+    app::AppController* c = app();
     if (!c || m_meetingId.isEmpty()) return false;
     QVector<Participant> accepted;
     for (const Row& r : std::as_const(m_rows)) {
@@ -615,8 +615,8 @@ bool ParticipantsViewModel::approve()
     }
     if (!c->approveParticipants(m_meetingId, accepted)) return false;
     // Learning question: once, for the approved names.
-    QVector<PersonTagQuestion> questions;
-    if (TagService* tags = c->tags()) {
+    QVector<library::PersonTagQuestion> questions;
+    if (library::TagService* tags = c->tags()) {
         QStringList names;
         for (const Participant& p : std::as_const(accepted)) names << p.personName;
         questions = tags->learningQuestions(m_meetingId, names);
@@ -626,7 +626,7 @@ bool ParticipantsViewModel::approve()
     return true;
 }
 
-void ParticipantsViewModel::setLearn(const QVector<PersonTagQuestion>& questions)
+void ParticipantsViewModel::setLearn(const QVector<library::PersonTagQuestion>& questions)
 {
     m_learn = questions;
     m_learnPairs = taglearning::pairs(questions);
@@ -636,7 +636,7 @@ void ParticipantsViewModel::setLearn(const QVector<PersonTagQuestion>& questions
 QVariantMap ParticipantsViewModel::learnQuestion() const
 {
     if (m_learn.isEmpty()) return {};
-    const PersonTagQuestion& q = m_learn.first();
+    const library::PersonTagQuestion& q = m_learn.first();
     return {{QStringLiteral("text"), taglearning::questionText(q)},
             {QStringLiteral("tagName"), q.tagName},
             {QStringLiteral("people"), q.people},
@@ -644,17 +644,17 @@ QVariantMap ParticipantsViewModel::learnQuestion() const
             {QStringLiteral("pairs"), m_learnPairs.size() > 1 ? taglearning::pairMaps(m_learnPairs) : QVariantList()}};
 }
 
-QString ParticipantsViewModel::answer(const PersonTagQuestion& q, bool yes)
+QString ParticipantsViewModel::answer(const library::PersonTagQuestion& q, bool yes)
 {
     if (!demo())
-        if (AppController* c = app(); c && c->tags()) c->tags()->answerLearning(q, yes);
+        if (app::AppController* c = app(); c && c->tags()) c->tags()->answerLearning(q, yes);
     return taglearning::answeredText(q, yes);
 }
 
 QString ParticipantsViewModel::answerLearn(bool yes)
 {
     if (m_learn.isEmpty()) return {};
-    const PersonTagQuestion q = m_learn.first();
+    const library::PersonTagQuestion q = m_learn.first();
     setLearn({});
     return answer(q, yes);
 }
@@ -662,12 +662,12 @@ QString ParticipantsViewModel::answerLearn(bool yes)
 QString ParticipantsViewModel::answerLearnPair(int index, bool yes)
 {
     if (index < 0 || index >= m_learnPairs.size()) return {};
-    const PersonTagQuestion pair = m_learnPairs.at(index);
+    const library::PersonTagQuestion pair = m_learnPairs.at(index);
     // The pair leaves the question (and the empty group too).
-    QVector<PersonTagQuestion> rest = m_learn;
-    for (PersonTagQuestion& q : rest)
+    QVector<library::PersonTagQuestion> rest = m_learn;
+    for (library::PersonTagQuestion& q : rest)
         if (q.tagId == pair.tagId && q.newPeople == pair.newPeople) q.people.removeAll(pair.people.value(0));
-    rest.removeIf([](const PersonTagQuestion& q) { return q.people.isEmpty(); });
+    rest.removeIf([](const library::PersonTagQuestion& q) { return q.people.isEmpty(); });
     setLearn(rest);
     return answer(pair, yes);
 }
@@ -680,7 +680,7 @@ void ParticipantsViewModel::dismissLearn()
 bool ParticipantsViewModel::skip()
 {
     if (demo()) return true;
-    AppController* c = app();
+    app::AppController* c = app();
     return c && !m_meetingId.isEmpty() && c->skipApproval(m_meetingId);
 }
 
@@ -694,7 +694,7 @@ bool ParticipantsViewModel::unbind(const QString& participantId)
         emit changed();
         return true;
     }
-    AppController* c = app();
+    app::AppController* c = app();
     if (!c || m_meetingId.isEmpty()) return false;
     // Removed from the working copy too (the reload after participantsChanged would keep it).
     if (const int i = indexOf(participantId); i >= 0) m_rows[i].checked = false;

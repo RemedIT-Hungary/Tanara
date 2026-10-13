@@ -4,10 +4,10 @@
 #include "SettingsViewModel.h"
 #include "ShellFormat.h"
 
-#include "tanara/AppController.h"
-#include "tanara/embedding/EmbeddingIndex.h"
-#include "tanara/embedding/EmbeddingProviderRegistry.h"
-#include "tanara/tags/TagService.h"
+#include "tanara/app/AppController.h"
+#include "tanara/library/index/EmbeddingIndex.h"
+#include "tanara/providers/embedding/EmbeddingProviderRegistry.h"
+#include "tanara/library/tags/TagService.h"
 
 #include <cmath>
 
@@ -39,14 +39,14 @@ SettingsEmbeddingModel::SettingsEmbeddingModel(QObject* parent) : QObject(parent
 {
     m_vm = qobject_cast<SettingsViewModel*>(parent);
     if (m_vm) {
-        m_card = new SettingsProviderModel(m_vm, ProviderKind::Embedding);
+        m_card = new SettingsProviderModel(m_vm, providers::ProviderKind::Embedding);
         // The local endpoint's fields / test also affect the pill and the warning.
         connect(m_card, &SettingsProviderModel::testChanged, this, &SettingsEmbeddingModel::changed);
         connect(m_card, &SettingsProviderModel::valuesChanged, this, &SettingsEmbeddingModel::changed);
     }
 }
 
-AppController* SettingsEmbeddingModel::controller() const
+app::AppController* SettingsEmbeddingModel::controller() const
 {
     return m_vm ? m_vm->controller() : nullptr;
 }
@@ -56,13 +56,13 @@ void SettingsEmbeddingModel::attach()
     disconnect(m_prepConn);
     disconnect(m_rejectConn);
     m_preparer = nullptr;
-    AppController* c = controller();
+    app::AppController* c = controller();
     if (c) {
         m_preparer = c->embeddingPreparer();
         if (m_preparer)
-            m_prepConn = connect(m_preparer, &EmbeddingPreparer::stateChanged, this, &SettingsEmbeddingModel::changed);
+            m_prepConn = connect(m_preparer, &library::EmbeddingPreparer::stateChanged, this, &SettingsEmbeddingModel::changed);
         if (c->tags())
-            m_rejectConn = connect(c->tags(), &TagService::rejectedChanged, this, &SettingsEmbeddingModel::rejectedChanged);
+            m_rejectConn = connect(c->tags(), &library::TagService::rejectedChanged, this, &SettingsEmbeddingModel::rejectedChanged);
     }
     emit changed();
     emit rejectedChanged();
@@ -76,31 +76,31 @@ void SettingsEmbeddingModel::reset()
 
 QString SettingsEmbeddingModel::modeOf(const QString& providerId)
 {
-    if (providerId == embeddingproviders::LocalId) return QStringLiteral("local");
-    if (providerId == embeddingproviders::CloudId) return QStringLiteral("cloud");
+    if (providerId == providers::embeddingproviders::LocalId) return QStringLiteral("local");
+    if (providerId == providers::embeddingproviders::CloudId) return QStringLiteral("cloud");
     return QStringLiteral("none");
 }
 
 QString SettingsEmbeddingModel::providerFor(const QString& mode)
 {
-    if (mode == QLatin1String("local")) return embeddingproviders::LocalId;
-    if (mode == QLatin1String("cloud")) return embeddingproviders::CloudId;
+    if (mode == QLatin1String("local")) return providers::embeddingproviders::LocalId;
+    if (mode == QLatin1String("cloud")) return providers::embeddingproviders::CloudId;
     return QString();
 }
 
 QString SettingsEmbeddingModel::effectiveModel(const AppSettings& s)
 {
     const QString id = s.embeddingProviderId;
-    if (!EmbeddingProviderRegistry::instance().has(id)) return QString();
+    if (!providers::EmbeddingProviderRegistry::instance().has(id)) return QString();
     const QString model = s.embeddingSelected().model.trimmed();
-    if (model.isEmpty() && id == embeddingproviders::CloudId) return QStringLiteral("default");
+    if (model.isEmpty() && id == providers::embeddingproviders::CloudId) return QStringLiteral("default");
     return model;
 }
 
 void SettingsEmbeddingModel::normalize(AppSettings& s) const
 {
     if (!m_card) return;
-    const ProviderDescriptor d = EmbeddingProviderRegistry::instance().descriptor(s.embeddingProviderId);
+    const providers::ProviderDescriptor d = providers::EmbeddingProviderRegistry::instance().descriptor(s.embeddingProviderId);
     if (!d.id.isEmpty()) m_card->fillDefaults(s.embeddingConfigs[s.embeddingProviderId], d);
 }
 
@@ -125,7 +125,7 @@ void SettingsEmbeddingModel::setMode(const QString& mode)
     if (!id.isEmpty()) {
         // The other mode's settings stay in the map; the new one starts with the defaults.
         ProviderConfig cfg = d.embeddingConfigs.value(id);
-        m_card->fillDefaults(cfg, EmbeddingProviderRegistry::instance().descriptor(id));
+        m_card->fillDefaults(cfg, providers::EmbeddingProviderRegistry::instance().descriptor(id));
         d.embeddingConfigs.insert(id, cfg);
     }
     m_card->reset();
@@ -194,7 +194,7 @@ QString SettingsEmbeddingModel::statusText() const
 
 // ---- LIBRARY PREPARATION ----------------------------------------------------------------
 
-EmbeddingState SettingsEmbeddingModel::prepState() const
+library::EmbeddingState SettingsEmbeddingModel::prepState() const
 {
     if (controller() && m_preparer) return m_preparer->state();
     return m_demo;
@@ -210,12 +210,12 @@ QString SettingsEmbeddingModel::prepStatus() const
     if (mode() == QLatin1String("none")) return QString();
     // The selected embedding is not saved yet: the preparation starts after the save.
     if (m_vm && m_vm->base().embeddingProviderId.isEmpty()) return QStringLiteral("pending");
-    const EmbeddingState s = prepState();
+    const library::EmbeddingState s = prepState();
     switch (s.status) {
-    case EmbeddingState::Running: return QStringLiteral("running");
-    case EmbeddingState::Error:   return QStringLiteral("error");
-    case EmbeddingState::Done:    return QStringLiteral("done");
-    case EmbeddingState::Idle:    break;
+    case library::EmbeddingState::Running: return QStringLiteral("running");
+    case library::EmbeddingState::Error:   return QStringLiteral("error");
+    case library::EmbeddingState::Done:    return QStringLiteral("done");
+    case library::EmbeddingState::Idle:    break;
     }
     if (s.total > 0 && s.prepared >= s.total && s.lastRun.isValid()) return QStringLiteral("done");
     return QStringLiteral("idle");
@@ -223,28 +223,28 @@ QString SettingsEmbeddingModel::prepStatus() const
 
 double SettingsEmbeddingModel::progress() const
 {
-    const EmbeddingState s = prepState();
+    const library::EmbeddingState s = prepState();
     return s.total > 0 ? qBound(0.0, double(s.prepared) / double(s.total), 1.0) : 0.0;
 }
 
 QString SettingsEmbeddingModel::countText() const
 {
-    const EmbeddingState s = prepState();
+    const library::EmbeddingState s = prepState();
     return tr("%1 / %2 megbeszélés").arg(s.prepared).arg(s.total);
 }
 
 QString SettingsEmbeddingModel::etaText() const
 {
-    const EmbeddingState s = prepState();
-    if (s.status != EmbeddingState::Running || s.etaSec < 0) return QString();
+    const library::EmbeddingState s = prepState();
+    if (s.status != library::EmbeddingState::Running || s.etaSec < 0) return QString();
     const int minutes = qMax(1, int(std::ceil(s.etaSec / 60.0)));
     return tr("kb. %n perc van hátra", nullptr, minutes);
 }
 
 QString SettingsEmbeddingModel::errorText() const
 {
-    const EmbeddingState s = prepState();
-    if (s.status != EmbeddingState::Error) return QString();
+    const library::EmbeddingState s = prepState();
+    if (s.status != library::EmbeddingState::Error) return QString();
     const QString why = s.error.trimmed().isEmpty() ? tr("ismeretlen hiba") : s.error.trimmed();
     return highVowelNumber(s.total) ? tr("Megállt %1 / %2-nél: %3").arg(s.prepared).arg(s.total).arg(why)
                                     : tr("Megállt %1 / %2-nál: %3").arg(s.prepared).arg(s.total).arg(why);
@@ -252,7 +252,7 @@ QString SettingsEmbeddingModel::errorText() const
 
 QString SettingsEmbeddingModel::doneText() const
 {
-    const EmbeddingState s = prepState();
+    const library::EmbeddingState s = prepState();
     QString text = tr("Naprakész · %n megbeszélés", nullptr, s.total);
     if (s.lastRun.isValid())
         text += QStringLiteral(" · ") + fmt::uiLocale().toString(s.lastRun, QStringLiteral("MMM d. HH:mm"));
@@ -265,7 +265,7 @@ void SettingsEmbeddingModel::startPreparation()
         if (m_preparer) m_preparer->start();
         return;
     }
-    m_demo.status = EmbeddingState::Running;
+    m_demo.status = library::EmbeddingState::Running;
     if (m_demo.prepared >= m_demo.total) m_demo.prepared = 0;
     m_demo.etaSec = (m_demo.total - m_demo.prepared) * kSecondsPerMeeting;
     emit changed();
@@ -277,7 +277,7 @@ void SettingsEmbeddingModel::cancelPreparation()
         if (m_preparer) m_preparer->cancel();
         return;
     }
-    m_demo.status = EmbeddingState::Idle;
+    m_demo.status = library::EmbeddingState::Idle;
     m_demo.etaSec = -1;
     emit changed();
 }
@@ -288,7 +288,7 @@ void SettingsEmbeddingModel::resumePreparation()
         if (m_preparer) m_preparer->resume();
         return;
     }
-    m_demo.status = EmbeddingState::Running;
+    m_demo.status = library::EmbeddingState::Running;
     m_demo.error.clear();
     m_demo.etaSec = (m_demo.total - m_demo.prepared) * kSecondsPerMeeting;
     emit changed();
@@ -296,7 +296,7 @@ void SettingsEmbeddingModel::resumePreparation()
 
 void SettingsEmbeddingModel::reprepare()
 {
-    if (AppController* c = controller()) {
+    if (app::AppController* c = controller()) {
         if (c->embeddings()) c->embeddings()->invalidateAll();
         if (m_preparer) m_preparer->start();
         return;
@@ -317,10 +317,10 @@ bool SettingsEmbeddingModel::restartPending() const
 
 int SettingsEmbeddingModel::estimateMinutes(int meetings) const
 {
-    const EmbeddingState s = prepState();
+    const library::EmbeddingState s = prepState();
     double perMeeting = kSecondsPerMeeting;
     const int left = s.total - s.prepared;
-    if (s.status == EmbeddingState::Running && s.etaSec > 0 && left > 0)
+    if (s.status == library::EmbeddingState::Running && s.etaSec > 0 && left > 0)
         perMeeting = double(s.etaSec) / left;              // the running preparation's measured pace
     return qMax(1, int(std::ceil(meetings * perMeeting / 60.0)));
 }
@@ -369,14 +369,14 @@ void SettingsEmbeddingModel::setLlmTagSuggestions(bool on)
 
 int SettingsEmbeddingModel::rejectedCount() const
 {
-    if (AppController* c = controller())
+    if (app::AppController* c = controller())
         return c->tags() ? c->tags()->rejectedCount() : 0;
     return m_demoRejected;
 }
 
 void SettingsEmbeddingModel::clearRejected()
 {
-    if (AppController* c = controller()) {
+    if (app::AppController* c = controller()) {
         if (c->tags()) c->tags()->clearRejected();   // rejectedChanged → rejectedChanged
         return;
     }
@@ -408,40 +408,40 @@ void SettingsEmbeddingModel::loadDemo(const QString& state)
         AppSettings& draft = m_vm->m_draft;
         for (AppSettings* s : {&base, &draft}) {
             s->embeddingConfigs.clear();
-            s->embeddingProviderId = local ? embeddingproviders::LocalId
-                                   : cloud ? embeddingproviders::CloudId : QString();
+            s->embeddingProviderId = local ? providers::embeddingproviders::LocalId
+                                   : cloud ? providers::embeddingproviders::CloudId : QString();
             ProviderConfig cfg;
-            cfg.type = embeddingproviders::LocalId;
+            cfg.type = providers::embeddingproviders::LocalId;
             cfg.baseUrl = QStringLiteral("http://localhost:1234/v1");
             cfg.model = QStringLiteral("text-embedding-nomic-embed-text-v1.5");
-            s->embeddingConfigs.insert(embeddingproviders::LocalId, cfg);
+            s->embeddingConfigs.insert(providers::embeddingproviders::LocalId, cfg);
             if (cloud) {
                 ProviderConfig c;
-                c.type = embeddingproviders::CloudId;
-                s->embeddingConfigs.insert(embeddingproviders::CloudId, c);
+                c.type = providers::embeddingproviders::CloudId;
+                s->embeddingConfigs.insert(providers::embeddingproviders::CloudId, c);
             }
             s->tagSuggestions = true;
             s->llmTagSuggestions = true;
         }
         // The model was edited, not saved yet.
         if (state == QLatin1String("modelChange"))
-            draft.embeddingConfigs[embeddingproviders::LocalId].model = QStringLiteral("nomic-embed-text-v2-moe");
+            draft.embeddingConfigs[providers::embeddingproviders::LocalId].model = QStringLiteral("nomic-embed-text-v2-moe");
         if (m_card) m_card->reset();
     }
 
     m_demo = {};
-    m_demo.provider = local ? embeddingproviders::LocalId : cloud ? embeddingproviders::CloudId : QString();
+    m_demo.provider = local ? providers::embeddingproviders::LocalId : cloud ? providers::embeddingproviders::CloudId : QString();
     m_demo.total = 40;
     if (state == QLatin1String("localRunning")) {
-        m_demo.status = EmbeddingState::Running;
+        m_demo.status = library::EmbeddingState::Running;
         m_demo.prepared = 23;
         m_demo.etaSec = 230;
     } else if (state == QLatin1String("localError") || state == QLatin1String("modelChange")) {
-        m_demo.status = EmbeddingState::Error;
+        m_demo.status = library::EmbeddingState::Error;
         m_demo.prepared = 31;
         m_demo.error = tr("a végpont nem válaszol. Fut a helyi szerver?");
     } else if (state == QLatin1String("localDone") || cloud) {
-        m_demo.status = EmbeddingState::Done;
+        m_demo.status = library::EmbeddingState::Done;
         m_demo.prepared = 40;
         m_demo.lastRun = QDateTime(QDate(2026, 10, 5), QTime(9, 12));
     } else if (local) {

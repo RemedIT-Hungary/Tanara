@@ -1,6 +1,6 @@
 #include "SettingsPromptHighlighter.h"
 
-#include "tanara/PromptLibrary.h"
+#include "tanara/processing/summary/PromptLibrary.h"
 
 #include <QRegularExpression>
 #include <QSyntaxHighlighter>
@@ -18,7 +18,7 @@ public:
     Highlighter(QTextDocument* doc, SettingsPromptHighlighter* owner)
         : QSyntaxHighlighter(doc), m_owner(owner)
     {
-        for (const tanara::PromptVariable& v : tanara::promptVariables()) m_known << v.token;
+        for (const tanara::processing::PromptVariable& v : tanara::processing::promptVariables()) m_known << v.token;
     }
 
 protected:

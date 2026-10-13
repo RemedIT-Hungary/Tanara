@@ -5,10 +5,10 @@
 // in tests/unit/test_app_jobs.cpp. No real (paid) call is made, and ~/.tanara is not touched.
 //
 // Header-only; the tests use it with their own QTEST_MAIN.
-#include "tanara/AppController.h"
-#include "tanara/SettingsManager.h"
-#include "tanara/jobs/MeetingJobTracker.h"
-#include "tanara/store/MeetingStore.h"
+#include "tanara/app/AppController.h"
+#include "tanara/app/SettingsManager.h"
+#include "tanara/library/jobs/MeetingJobTracker.h"
+#include "tanara/library/store/MeetingStore.h"
 
 #include <QDir>
 #include <QFile>
@@ -134,7 +134,7 @@ inline bool writeWav(const QString& path, int seconds, int rate = 8000)
 struct Sandbox {
     std::unique_ptr<QTemporaryDir> home;
     std::unique_ptr<FakeHttp> http;
-    std::unique_ptr<tanara::AppController> app;
+    std::unique_ptr<tanara::app::AppController> app;
     bool ffmpeg = false;
 
     Sandbox()
@@ -144,7 +144,7 @@ struct Sandbox {
         home = std::make_unique<QTemporaryDir>();
         qputenv("TANARA_HOME", home->path().toUtf8());
         http = std::make_unique<FakeHttp>();
-        app = std::make_unique<tanara::AppController>();
+        app = std::make_unique<tanara::app::AppController>();
         tanara::AppSettings s = app->settings()->settings();
         s.sttProviderId = QStringLiteral("soniox");
         s.sttConfigs[s.sttProviderId].baseUrl = http->base();
@@ -161,7 +161,7 @@ struct Sandbox {
     }
 
     // Sets the Soniox key (which makes transcription startable).
-    void configureStt() { app->setSecret(tanara::keys::SonioxApiKey, QStringLiteral("teszt-kulcs")); }
+    void configureStt() { app->setSecret(tanara::app::keys::SonioxApiKey, QStringLiteral("teszt-kulcs")); }
 
     // A recording with one (or more) WAV tracks; the second track is dropped if dropSecond.
     tanara::Meeting recording(const QString& title, int seconds, bool secondTrack = false,

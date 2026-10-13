@@ -23,7 +23,7 @@
 #include <QVector>
 #include <QDate>
 
-namespace tanara {
+namespace tanara::library {
 
 class MeetingStore;
 class MeetingJobTracker;
@@ -178,12 +178,11 @@ private:
     Impl* d;
 };
 
-} // namespace tanara
-
-Q_DECLARE_METATYPE(tanara::DateSection)
-Q_DECLARE_METATYPE(tanara::LibraryEntry)
-Q_DECLARE_METATYPE(tanara::LibraryQuery)
-Q_DECLARE_METATYPE(tanara::LibraryResult)
-Q_DECLARE_METATYPE(tanara::PersonPresence)
-Q_DECLARE_METATYPE(tanara::PendingKind)
-Q_DECLARE_METATYPE(tanara::PendingItem)
+} // namespace tanara::library
+Q_DECLARE_METATYPE(tanara::library::DateSection)
+Q_DECLARE_METATYPE(tanara::library::LibraryEntry)
+Q_DECLARE_METATYPE(tanara::library::LibraryQuery)
+Q_DECLARE_METATYPE(tanara::library::LibraryResult)
+Q_DECLARE_METATYPE(tanara::library::PersonPresence)
+Q_DECLARE_METATYPE(tanara::library::PendingKind)
+Q_DECLARE_METATYPE(tanara::library::PendingItem)

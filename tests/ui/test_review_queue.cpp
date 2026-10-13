@@ -55,7 +55,7 @@ QString stateAt(const ReviewQueueModel* q, int row)
     return role(q, row, ReviewQueueModel::StateRole).toString();
 }
 
-bool flagged(const EditorUtterance& u)
+bool flagged(const editing::EditorUtterance& u)
 {
     return u.confirmed || u.manuallyCorrected || u.ignored;
 }
@@ -206,10 +206,10 @@ private slots:
         QCOMPARE(q->currentIndex(), 1);
 
         QVector<TranscriptEditorViewModel::ReviewView> views = vm.reviewViews();
-        QVector<EditorUtterance> utts = vm.utterances();
+        QVector<editing::EditorUtterance> utts = vm.utterances();
         // A new doubtful line (outside the work list).
         QString newId;
-        for (EditorUtterance& u : utts) {
+        for (editing::EditorUtterance& u : utts) {
             if (q->indexOf(u.id) >= 0 || flagged(u) || u.uncertain) continue;
             bool inView = false;
             for (const auto& v : views) inView = inView || v.ids.contains(u.id);
@@ -338,9 +338,9 @@ private slots:
         const QString grownKey = *grown.cbegin();
 
         // Two new doubtful lines: one belongs to the speaker that got a sample (consequence), the other does not.
-        QVector<EditorUtterance> utts = vm.utterances();
+        QVector<editing::EditorUtterance> utts = vm.utterances();
         QString causedId, otherId;
-        for (EditorUtterance& u : utts) {
+        for (editing::EditorUtterance& u : utts) {
             if (q->indexOf(u.id) >= 0 || flagged(u) || u.uncertain) continue;
             bool inView = false;
             for (const auto& v : vm.reviewViews()) inView = inView || v.ids.contains(u.id);
@@ -388,11 +388,11 @@ private slots:
         TranscriptEditorViewModel vm;
         QVERIFY(openV3(vm, QString()));
         ReviewQueueModel* q = vm.reviewQueue();
-        QVector<EditorUtterance> utts = vm.utterances();
-        for (EditorUtterance& u : utts) u.uncertain = false;
+        QVector<editing::EditorUtterance> utts = vm.utterances();
+        for (editing::EditorUtterance& u : utts) u.uncertain = false;
         // The 10 lines of the speaker with the most lines, in a made-up track-contradiction group.
         QHash<QString, QStringList> bySpeaker;
-        for (const EditorUtterance& u : std::as_const(utts))
+        for (const editing::EditorUtterance& u : std::as_const(utts))
             if (!flagged(u)) bySpeaker[u.speakerKey] << u.id;
         QString a;
         for (auto it = bySpeaker.cbegin(); it != bySpeaker.cend(); ++it)
@@ -440,10 +440,10 @@ private slots:
         TranscriptEditorViewModel vm;
         QVERIFY(openV3(vm, QString()));
         ReviewQueueModel* q = vm.reviewQueue();
-        QVector<EditorUtterance> utts = vm.utterances();
-        for (EditorUtterance& u : utts) u.uncertain = false;
+        QVector<editing::EditorUtterance> utts = vm.utterances();
+        for (editing::EditorUtterance& u : utts) u.uncertain = false;
         QStringList free;
-        for (const EditorUtterance& u : std::as_const(utts))
+        for (const editing::EditorUtterance& u : std::as_const(utts))
             if (!flagged(u)) free << u.id;
         QVERIFY(free.size() >= 40);
         const QString a = utts[vm.utteranceIndexOf(free[0])].speakerKey;

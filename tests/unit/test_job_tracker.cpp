@@ -4,10 +4,10 @@
 #include <QSignalSpy>
 #include <QTemporaryDir>
 
-#include "tanara/jobs/MeetingJobTracker.h"
-#include "tanara/jobs/JobErrors.h"
-#include "tanara/jobs/JobStats.h"
-#include "tanara/store/MeetingStore.h"
+#include "tanara/library/jobs/MeetingJobTracker.h"
+#include "tanara/library/jobs/JobErrors.h"
+#include "tanara/library/jobs/JobStats.h"
+#include "tanara/library/store/MeetingStore.h"
 #include "tanara/cloud/CloudTypes.h"
 
 using namespace tanara;
@@ -40,7 +40,7 @@ private slots:
 
 private:
     std::unique_ptr<QTemporaryDir> m_dir;
-    std::unique_ptr<MeetingStore> m_store;
+    std::unique_ptr<library::MeetingStore> m_store;
     Meeting newMeeting(const QString& title = QStringLiteral("Teszt")) {
         return m_store->createMeeting(title);
     }
@@ -52,7 +52,7 @@ void JobTrackerTest::init()
 {
     m_dir = std::make_unique<QTemporaryDir>();
     QVERIFY(m_dir->isValid());
-    m_store = std::make_unique<MeetingStore>(m_dir->filePath("rec"), m_dir->filePath("meta"));
+    m_store = std::make_unique<library::MeetingStore>(m_dir->filePath("rec"), m_dir->filePath("meta"));
 }
 
 void JobTrackerTest::cleanup()
@@ -63,7 +63,7 @@ void JobTrackerTest::cleanup()
 
 void JobTrackerTest::emptyMeetingIsNone()
 {
-    MeetingJobTracker t(m_store.get());
+    library::MeetingJobTracker t(m_store.get());
     const Meeting m = newMeeting();
     const MeetingProcessingState s = t.state(m.id);
     QCOMPARE(s.meetingId, m.id);
@@ -74,12 +74,12 @@ void JobTrackerTest::emptyMeetingIsNone()
     QVERIFY(!s.busy());
     QVERIFY(!s.transcriptError.isValid());
     // A state file is created only if there is something to keep.
-    QVERIFY(!QFile::exists(QDir(m.folder).filePath(MeetingJobTracker::stateFileName())));
+    QVERIFY(!QFile::exists(QDir(m.folder).filePath(library::MeetingJobTracker::stateFileName())));
 }
 
 void JobTrackerTest::flagsDeriveDone()
 {
-    MeetingJobTracker t(m_store.get());
+    library::MeetingJobTracker t(m_store.get());
     Meeting m = newMeeting();
     m.hasTranscript = true;
     m.hasSummary = true;
@@ -93,11 +93,11 @@ void JobTrackerTest::flagsDeriveDone()
 
 void JobTrackerTest::runningJobAndStages()
 {
-    MeetingJobTracker t(m_store.get());
+    library::MeetingJobTracker t(m_store.get());
     const Meeting m = newMeeting();
-    QSignalSpy started(&t, &MeetingJobTracker::jobStarted);
-    QSignalSpy progress(&t, &MeetingJobTracker::jobProgressChanged);
-    QSignalSpy changed(&t, &MeetingJobTracker::stateChanged);
+    QSignalSpy started(&t, &library::MeetingJobTracker::jobStarted);
+    QSignalSpy progress(&t, &library::MeetingJobTracker::jobProgressChanged);
+    QSignalSpy changed(&t, &library::MeetingJobTracker::stateChanged);
 
     t.begin(m.id, JobKind::Transcribe, QStringLiteral("Átírás folyamatban"),
             {{QStringLiteral("upload"), QStringLiteral("Feltöltés"), StageState::Waiting, -1, QString()},
@@ -133,7 +133,7 @@ void JobTrackerTest::runningJobAndStages()
     QCOMPARE(jp.etaSeconds(jp.startedAt.addSecs(20)), 100);
     QCOMPARE(jp.etaSeconds(jp.startedAt.addSecs(500)), 0);
 
-    QSignalSpy finished(&t, &MeetingJobTracker::jobFinished);
+    QSignalSpy finished(&t, &library::MeetingJobTracker::jobFinished);
     t.finish(m.id, JobKind::Transcribe);
     QCOMPARE(finished.count(), 1);
     QCOMPARE(finished.at(0).at(2).value<JobOutcome>(), JobOutcome::Done);
@@ -146,8 +146,8 @@ void JobTrackerTest::failurePersistsAcrossRestart()
 {
     const Meeting m = newMeeting();
     {
-        MeetingJobTracker t(m_store.get());
-        QSignalSpy errs(&t, &MeetingJobTracker::errorChanged);
+        library::MeetingJobTracker t(m_store.get());
+        QSignalSpy errs(&t, &library::MeetingJobTracker::errorChanged);
         t.begin(m.id, JobKind::Transcribe, QStringLiteral("Átírás"));
         JobError e;
         e.message = QStringLiteral("A szolgáltató nem fogadta el az API-kulcsot.");
@@ -161,10 +161,10 @@ void JobTrackerTest::failurePersistsAcrossRestart()
         QVERIFY(s.transcriptError.when.isValid());
         QVERIFY(!s.busy());
     }
-    QVERIFY(QFile::exists(QDir(m.folder).filePath(MeetingJobTracker::stateFileName())));
+    QVERIFY(QFile::exists(QDir(m.folder).filePath(library::MeetingJobTracker::stateFileName())));
     // "Restart": a new tracker (and a new store) on the same disk.
-    MeetingStore store2(m_dir->filePath("rec"), m_dir->filePath("meta"));
-    MeetingJobTracker t2(&store2);
+    library::MeetingStore store2(m_dir->filePath("rec"), m_dir->filePath("meta"));
+    library::MeetingJobTracker t2(&store2);
     const MeetingProcessingState s = t2.state(m.id);
     QCOMPARE(s.transcriptState, StepState::Failed);
     QCOMPARE(s.transcriptError.message, QStringLiteral("A szolgáltató nem fogadta el az API-kulcsot."));
@@ -177,7 +177,7 @@ void JobTrackerTest::failurePersistsAcrossRestart()
 
 void JobTrackerTest::failedRetryKeepsDoneButShowsError()
 {
-    MeetingJobTracker t(m_store.get());
+    library::MeetingJobTracker t(m_store.get());
     Meeting m = newMeeting();
     m.hasTranscript = true;
     m_store->saveMeeting(m);
@@ -192,7 +192,7 @@ void JobTrackerTest::failedRetryKeepsDoneButShowsError()
 
 void JobTrackerTest::successAndClearRemoveError()
 {
-    MeetingJobTracker t(m_store.get());
+    library::MeetingJobTracker t(m_store.get());
     const Meeting m = newMeeting();
     JobError e;
     e.kind = JobKind::Transcribe;
@@ -202,7 +202,7 @@ void JobTrackerTest::successAndClearRemoveError()
 
     t.clearError(m.id, JobKind::Transcribe);
     QCOMPARE(t.state(m.id).transcriptState, StepState::None);
-    QVERIFY(!QFile::exists(QDir(m.folder).filePath(MeetingJobTracker::stateFileName())));
+    QVERIFY(!QFile::exists(QDir(m.folder).filePath(library::MeetingJobTracker::stateFileName())));
 
     t.recordError(m.id, e);
     t.begin(m.id, JobKind::Transcribe, QStringLiteral("Átírás"));
@@ -213,9 +213,9 @@ void JobTrackerTest::successAndClearRemoveError()
 
 void JobTrackerTest::cancelLeavesNoError()
 {
-    MeetingJobTracker t(m_store.get());
+    library::MeetingJobTracker t(m_store.get());
     const Meeting m = newMeeting();
-    QSignalSpy finished(&t, &MeetingJobTracker::jobFinished);
+    QSignalSpy finished(&t, &library::MeetingJobTracker::jobFinished);
     t.begin(m.id, JobKind::Transcribe, QStringLiteral("Átírás"));
     t.setCancelling(m.id, JobKind::Transcribe);
     QVERIFY(t.job(m.id, JobKind::Transcribe).cancelling);
@@ -228,7 +228,7 @@ void JobTrackerTest::cancelLeavesNoError()
 
 void JobTrackerTest::summaryKindsShareSlot()
 {
-    MeetingJobTracker t(m_store.get());
+    library::MeetingJobTracker t(m_store.get());
     Meeting m = newMeeting();
     m.hasTranscript = true;
     m_store->saveMeeting(m);
@@ -251,7 +251,7 @@ void JobTrackerTest::topicErrorsPersist()
 {
     const Meeting m = newMeeting();
     {
-        MeetingJobTracker t(m_store.get());
+        library::MeetingJobTracker t(m_store.get());
         JobError e;
         e.message = QStringLiteral("időtúllépés");
         e.detail = QStringLiteral("HTTP 504");
@@ -259,7 +259,7 @@ void JobTrackerTest::topicErrorsPersist()
         t.setTopicError(m.id, QStringLiteral("t2"), e);
         t.clearTopicError(m.id, QStringLiteral("t2"));
     }
-    MeetingJobTracker t2(m_store.get());
+    library::MeetingJobTracker t2(m_store.get());
     const QHash<QString, JobError> errs = t2.topicErrors(m.id);
     QCOMPARE(errs.size(), 1);
     QCOMPARE(errs.value(QStringLiteral("t1")).message, QStringLiteral("időtúllépés"));
@@ -272,7 +272,7 @@ void JobTrackerTest::identifyState()
     m.hasTranscript = true;
     m_store->saveMeeting(m);
     {
-        MeetingJobTracker t(m_store.get());
+        library::MeetingJobTracker t(m_store.get());
         QCOMPARE(t.state(m.id).identifyState, StepState::None);
         t.begin(m.id, JobKind::Identify, QStringLiteral("Résztvevők azonosítása"));
         t.setCounts(m.id, JobKind::Identify, 3, 5);
@@ -284,7 +284,7 @@ void JobTrackerTest::identifyState()
         t.markIdentified(m.id);
         QCOMPARE(t.state(m.id).identifyState, StepState::Done);
     }
-    MeetingJobTracker t2(m_store.get());
+    library::MeetingJobTracker t2(m_store.get());
     QCOMPARE(t2.state(m.id).identifyState, StepState::Done);       // after a restart too
     QVERIFY(t2.identifiedAt(m.id).isValid());
     t2.markIdentified(m.id, false);
@@ -300,7 +300,7 @@ void JobTrackerTest::identifyState()
 
 void JobTrackerTest::mixdownState()
 {
-    MeetingJobTracker t(m_store.get());
+    library::MeetingJobTracker t(m_store.get());
     const Meeting m = newMeeting();
     t.begin(m.id, JobKind::Mixdown, QStringLiteral("Lekeverés"));
     t.setPercent(m.id, JobKind::Mixdown, 37);
@@ -323,7 +323,7 @@ void JobTrackerTest::mixdownState()
 
 void JobTrackerTest::removedMeetingForgotten()
 {
-    MeetingJobTracker t(m_store.get());
+    library::MeetingJobTracker t(m_store.get());
     const Meeting m = newMeeting();
     t.begin(m.id, JobKind::Summarize, QStringLiteral("x"));
     QVERIFY(m_store->deleteMeeting(m.id));
@@ -339,12 +339,12 @@ void JobTrackerTest::removedMeetingForgotten()
 
 void JobTrackerTest::describeHttp401()
 {
-    HttpExchange ex;
+    cloud::HttpExchange ex;
     ex.method = "POST";
     ex.path = QStringLiteral("/v1/files");
     ex.status = 401;
     ex.body = R"({"status_code":401,"error_type":"invalid_api_key","message":"Invalid API key."})";
-    const JobError e = describeJobFailure(JobKind::Transcribe,
+    const JobError e = library::describeJobFailure(JobKind::Transcribe,
                                           QStringLiteral("Feltöltés hiba: Host requires authentication"), &ex);
     QVERIFY(e.isValid());
     QCOMPARE(e.kind, JobKind::Transcribe);
@@ -355,48 +355,48 @@ void JobTrackerTest::describeHttp401()
 
     // OpenAI-compatible body.
     ex.body = R"({"error":{"message":"Incorrect API key provided","type":"invalid_request_error","code":"invalid_api_key"}})";
-    const JobError e2 = describeJobFailure(JobKind::Summarize, QStringLiteral("LLM hiba"), &ex);
+    const JobError e2 = library::describeJobFailure(JobKind::Summarize, QStringLiteral("LLM hiba"), &ex);
     QCOMPARE(e2.detail, QStringLiteral("HTTP 401 · invalid_api_key · Incorrect API key provided"));
     QCOMPARE(e2.fixActionHint, QStringLiteral("settings:llm"));
 }
 
 void JobTrackerTest::describeNetworkAndServerErrors()
 {
-    HttpExchange net;
+    cloud::HttpExchange net;
     net.method = "POST";
     net.status = 0;
     net.networkError = QStringLiteral("Connection refused");
-    const JobError e = describeJobFailure(JobKind::Summarize, QStringLiteral("Hálózati hiba: Connection refused"), &net);
+    const JobError e = library::describeJobFailure(JobKind::Summarize, QStringLiteral("Hálózati hiba: Connection refused"), &net);
     QVERIFY(e.message.contains(QStringLiteral("elérni")));
     QVERIFY(e.detail.contains(QStringLiteral("Connection refused")));
 
-    HttpExchange srv;
+    cloud::HttpExchange srv;
     srv.status = 503;
     srv.body = "upstream down";
-    const JobError e5 = describeJobFailure(JobKind::Transcribe, QStringLiteral("x"), &srv);
+    const JobError e5 = library::describeJobFailure(JobKind::Transcribe, QStringLiteral("x"), &srv);
     QCOMPARE(e5.detail, QStringLiteral("HTTP 503 · upstream down"));
     QVERIFY(e5.fixActionHint.isEmpty());
 
-    HttpExchange rate;
+    cloud::HttpExchange rate;
     rate.status = 429;
-    QCOMPARE(describeJobFailure(JobKind::Transcribe, QStringLiteral("x"), &rate).detail, QStringLiteral("HTTP 429"));
+    QCOMPARE(library::describeJobFailure(JobKind::Transcribe, QStringLiteral("x"), &rate).detail, QStringLiteral("HTTP 429"));
 }
 
 void JobTrackerTest::describeWithoutExchange()
 {
-    const JobError e = describeJobFailure(JobKind::Summarize,
+    const JobError e = library::describeJobFailure(JobKind::Summarize,
                                           QStringLiteral("Nem sikerült JSON-ként értelmezni a választ"), nullptr);
     QCOMPARE(e.message, QStringLiteral("Nem sikerült JSON-ként értelmezni a választ"));
     QVERIFY(e.detail.isEmpty());
-    QVERIFY(describeJobFailure(JobKind::Mixdown, QString(), nullptr).isValid());   // never empty
+    QVERIFY(library::describeJobFailure(JobKind::Mixdown, QString(), nullptr).isValid());   // never empty
 }
 
 void JobTrackerTest::describeCloud()
 {
-    const CloudError ce = parseCloudError(402, {},
+    const cloud::CloudError ce = cloud::parseCloudError(402, {},
         R"({"error":{"code":"insufficient_balance","message":"Nincs elég egyenleg.","request_id":"req_1"}})");
     QVERIFY(ce.isError());
-    const JobError e = describeCloudFailure(JobKind::Transcribe, ce);
+    const JobError e = library::describeCloudFailure(JobKind::Transcribe, ce);
     QCOMPARE(e.message, QStringLiteral("Nincs elég egyenleg."));
     QCOMPARE(e.detail, QStringLiteral("HTTP 402 · insufficient_balance · req_1"));
 }
@@ -407,7 +407,7 @@ void JobTrackerTest::statsEstimateOnlyFromSamples()
 {
     const QString path = m_dir->filePath("meta/job-stats.json");
     {
-        JobStats st(path);
+        library::JobStats st(path);
         QCOMPARE(st.estimateSec(QStringLiteral("transcribe/soniox/x"), 3600), -1);   // no estimate without samples
         st.addSample(QStringLiteral("transcribe/soniox/x"), 60, 600);   // 0.1 ratio
         QCOMPARE(st.estimateSec(QStringLiteral("transcribe/soniox/x"), 3600), 360);
@@ -415,7 +415,7 @@ void JobTrackerTest::statsEstimateOnlyFromSamples()
         st.addSample(QStringLiteral("transcribe/soniox/x"), 5, 2);      // too short a sample: left out
         QCOMPARE(st.sampleCount(QStringLiteral("transcribe/soniox/x")), 1);
     }
-    JobStats st2(path);   // persistent
+    library::JobStats st2(path);   // persistent
     QCOMPARE(st2.estimateSec(QStringLiteral("transcribe/soniox/x"), 1200), 120);
     st2.addSample(QStringLiteral("transcribe/soniox/x"), 120, 600);     // 0.2 gives a moving average of 0.13
     QCOMPARE(st2.estimateSec(QStringLiteral("transcribe/soniox/x"), 1000), 130);

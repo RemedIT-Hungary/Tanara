@@ -1,17 +1,17 @@
 #include "tanara/app/StartupDiagnostics.h"
 
-#include "tanara/AppController.h"
-#include "tanara/SettingsManager.h"
-#include "tanara/Types.h"
-#include "tanara/audio/DeviceManager.h"
+#include "tanara/app/AppController.h"
+#include "tanara/app/SettingsManager.h"
+#include "tanara/domain/Types.h"
+#include "tanara/recording/audio/DeviceManager.h"
 #include "tanara/foundation/Version.h"
 #include "tanara/foundation/log/Logging.h"
-#include "tanara/store/MeetingStore.h"
+#include "tanara/library/store/MeetingStore.h"
 
 #include <QSysInfo>
 #include <QtGlobal>
 
-namespace tanara {
+namespace tanara::app {
 
 namespace {
 
@@ -80,4 +80,4 @@ void logStartupDiagnostics(const AppController& app)
         qCDebug(lcStore).noquote() << QStringLiteral("Meetingek a tárban: %1").arg(st->loadAll().size());
 }
 
-} // namespace tanara
+} // namespace tanara::app

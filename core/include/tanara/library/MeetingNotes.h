@@ -19,9 +19,10 @@
 #include <QStringList>
 #include <QVector>
 
-namespace tanara {
+namespace tanara::providers { struct SttRequest; }
 
-struct SttRequest;
+namespace tanara::library {
+
 
 namespace meetingnotes {
 
@@ -37,7 +38,7 @@ QString sttContextText(const Meeting& m);
 
 // Fills the context envelope from the meeting (general: title, text: note, terms: the fixed
 // speakers of the active tracks).
-void fillSttContext(SttRequest& req, const Meeting& m);
+void fillSttContext(providers::SttRequest& req, const Meeting& m);
 
 // The comparable words of a title: without accents, lowercase, once each; every word containing a
 // number (date, ordinal, time), month and day names (also abbreviated), single-letter words and a few
@@ -82,4 +83,4 @@ QVector<NoteSuggestion> suggestNotes(const QVector<Meeting>& meetings,
                                      const QString& currentNote, int limit = 3);
 
 } // namespace meetingnotes
-} // namespace tanara
+} // namespace tanara::library

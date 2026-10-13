@@ -8,9 +8,9 @@
 #include "LibraryListModel.h"
 #include "LibraryPendingModel.h"
 
-#include "tanara/AppController.h"
-#include "tanara/store/MeetingStore.h"
-#include "tanara/tags/TagService.h"
+#include "tanara/app/AppController.h"
+#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/tags/TagService.h"
 
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -48,7 +48,7 @@ class TestLibraryListModel : public QObject {
         return out;
     }
 
-    tanara::Meeting addMeeting(tanara::AppController& app, const QString& title, bool transcript,
+    tanara::Meeting addMeeting(tanara::app::AppController& app, const QString& title, bool transcript,
                                const QString& said = QString())
     {
         tanara::Meeting m = app.store()->createMeeting(title);
@@ -309,15 +309,15 @@ private slots:
 
     void pendingItemsGroupAndLimit()
     {
-        QVector<tanara::PendingItem> in;
+        QVector<tanara::library::PendingItem> in;
         for (int i = 0; i < 5; ++i) {
-            tanara::PendingItem a;
-            a.kind = tanara::PendingKind::AwaitingTranscription;
+            tanara::library::PendingItem a;
+            a.kind = tanara::library::PendingKind::AwaitingTranscription;
             a.meetingId = QStringLiteral("a%1").arg(i);
             a.title = QStringLiteral("Váró %1").arg(i);
             in << a;
-            tanara::PendingItem f;
-            f.kind = tanara::PendingKind::TranscriptionFailed;
+            tanara::library::PendingItem f;
+            f.kind = tanara::library::PendingKind::TranscriptionFailed;
             f.meetingId = QStringLiteral("f%1").arg(i);
             f.title = QStringLiteral("Bukott %1").arg(i);
             f.error.message = QStringLiteral("Hiba");
@@ -341,7 +341,7 @@ private slots:
         qputenv("TANARA_CLOUD", "off");
         AppContext::instance()->setDemo(false);
         {
-            tanara::AppController app;
+            tanara::app::AppController app;
             QVERIFY(app.store()->audioDir().startsWith(home.path()));
             const tanara::Meeting first = addMeeting(app, QStringLiteral("Első megbeszélés"), true,
                                                      QStringLiteral("Az árajánlatot Ödön küldi el holnap."));
@@ -408,12 +408,12 @@ private slots:
         qputenv("TANARA_CLOUD", "off");
         AppContext::instance()->setDemo(false);
         {
-            tanara::AppController app;
+            tanara::app::AppController app;
             const tanara::Meeting a = addMeeting(app, QStringLiteral("Heti egyeztetés"), true,
                                                  QStringLiteral("A határidőt egy héttel később tartjuk."));
             const tanara::Meeting b = addMeeting(app, QStringLiteral("Ügyfélhívás"), false);
             const tanara::Meeting c = addMeeting(app, QStringLiteral("Tervezés"), false);
-            tanara::TagService* tags = app.tags();
+            tanara::library::TagService* tags = app.tags();
             const tanara::Tag alfa = tags->addTag(a.id, QStringLiteral("Alfa Projekt"));
             tags->addTag(b.id, QStringLiteral("Alfa Projekt"));
             const tanara::Tag beta = tags->addTag(b.id, QStringLiteral("Béta"));
@@ -472,7 +472,7 @@ private slots:
         qputenv("TANARA_CLOUD", "off");
         AppContext::instance()->setDemo(false);
         {
-            tanara::AppController app;
+            tanara::app::AppController app;
             for (int i = 0; i < 300; ++i)
                 addMeeting(app, QStringLiteral("Megbeszélés %1").arg(i), i % 2 == 0,
                            QStringLiteral("A %1. alkalommal a költségvetésről beszéltünk.").arg(i));

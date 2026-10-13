@@ -1,9 +1,9 @@
 #pragma once
 //
 // Domain: per-track audio activity of a meeting (an energy time series per logical track) and the
-// voice clusters of the pre-transcript analysis. Computation: edit/TrackActivity.h,
-// edit/ParticipantAnalysis.h; the activity cache file I/O (MeetingActivity::load / save) is
-// implemented next to the computation (edit/TrackActivity.cpp).
+// voice clusters of the pre-transcript analysis. Computation: processing/analysis/TrackActivity.h,
+// processing/analysis/ParticipantAnalysis.h; the activity cache file I/O (MeetingActivity::load / save) is
+// implemented next to the computation (processing/analysis/TrackActivity.cpp).
 #include "tanara/domain/Audio.h"
 #include "tanara/domain/Voice.h"
 

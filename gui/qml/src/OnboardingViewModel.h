@@ -20,7 +20,7 @@
 // Without a controller (--qml-shot, tests) it provides FICTIONAL data; `demoState`
 // ("welcome" | "you" | "folders" | "providers" | "watcher" | "done") sets the step.
 //
-#include "tanara/Types.h"
+#include "tanara/domain/Types.h"
 
 #include <QObject>
 #include <QPointer>
@@ -30,7 +30,7 @@
 #include <QtQml/qqmlregistration.h>
 
 namespace tanara {
-class AppController;
+namespace app { class AppController; }
 }
 
 namespace tanara_qml {
@@ -89,8 +89,8 @@ public:
 
     QObject* controllerObject() const;
     void setControllerObject(QObject* controller);
-    tanara::AppController* controller() const;
-    void setController(tanara::AppController* controller);
+    tanara::app::AppController* controller() const;
+    void setController(tanara::app::AppController* controller);
     QObject* dialogsObject() const;
     void setDialogsObject(QObject* dialogs);
     QString demoState() const { return m_demoState; }
@@ -190,7 +190,7 @@ private:
     QString defaultFolder(const QString& key) const;
     QString folderPath(const QString& key) const;
 
-    QPointer<tanara::AppController> m_controller;
+    QPointer<tanara::app::AppController> m_controller;
     bool m_controllerSet = false;
     QPointer<SettingsDialogs> m_dialogs;
     QString m_demoState;

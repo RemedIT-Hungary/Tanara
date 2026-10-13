@@ -2,7 +2,7 @@
 // the descriptor's download address is a file:// URL in a temporary folder (QNetworkAccessManager
 // reads a local file), availability overridden. The target folder is temporary too (it does
 // not touch the real ~/.tanara).
-#include "tanara/voiceid/VoiceModelDownloader.h"
+#include "tanara/processing/voiceid/VoiceModelDownloader.h"
 
 #include <QFile>
 #include <QSignalSpy>
@@ -10,8 +10,8 @@
 #include <QUrl>
 #include <QtTest>
 
-using tanara::VoiceModelDownloader;
-using tanara::VoiceModelSpec;
+using tanara::processing::VoiceModelDownloader;
+using tanara::processing::VoiceModelSpec;
 
 class TestVoiceModelDownloader : public QObject {
     Q_OBJECT

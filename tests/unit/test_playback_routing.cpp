@@ -2,7 +2,7 @@
 // JSON, and the device set's keys (hot-plug signal). A pure parser, without I/O.
 #include <QtTest>
 
-#include "tanara/audio/PlaybackRouting.h"
+#include "tanara/watcher/PlaybackRouting.h"
 
 using namespace tanara;
 
@@ -43,10 +43,10 @@ private slots:
 
     void parsesRoutesOncePerAppAndSink()
     {
-        const AudioGraphSnapshot snap = detail::parsePwDumpGraph(kDump);
+        const watcher::AudioGraphSnapshot snap = watcher::detail::parsePwDumpGraph(kDump);
         QCOMPARE(snap.routes.size(), 2);   // the two channel links are one route
         bool teams = false, firefox = false;
-        for (const PlaybackRoute& r : snap.routes) {
+        for (const watcher::PlaybackRoute& r : snap.routes) {
             if (r.appName == QStringLiteral("Microsoft Teams")) {
                 teams = true;
                 QCOMPARE(r.sinkName, QStringLiteral("alsa_output.usb-headset"));
@@ -63,7 +63,7 @@ private slots:
     // miniaudio gives the output's monitor the name "Monitor of <description>".
     void appForOutputMatchesMonitorName()
     {
-        const AudioGraphSnapshot snap = detail::parsePwDumpGraph(kDump);
+        const watcher::AudioGraphSnapshot snap = watcher::detail::parsePwDumpGraph(kDump);
         QCOMPARE(snap.appForOutput(QStringLiteral("Monitor of Sennheiser headset - Kommunikáció")),
                  QStringLiteral("Microsoft Teams"));
         QCOMPARE(snap.appForOutput(QStringLiteral("Monitor of Kanto YU4 - Optikai digitális")),
@@ -74,7 +74,7 @@ private slots:
 
     void outputForAppFindsSink()
     {
-        const AudioGraphSnapshot snap = detail::parsePwDumpGraph(kDump);
+        const watcher::AudioGraphSnapshot snap = watcher::detail::parsePwDumpGraph(kDump);
         QCOMPARE(snap.outputForApp(QStringLiteral("Microsoft Teams")),
                  QStringLiteral("Sennheiser headset - Kommunikáció"));
         QCOMPARE(snap.outputForApp(QStringLiteral("firefox")),
@@ -85,19 +85,19 @@ private slots:
     // The device keys are the outputs and inputs; streams do not count as devices.
     void deviceKeysChangeOnHotplug()
     {
-        const AudioGraphSnapshot a = detail::parsePwDumpGraph(kDump);
+        const watcher::AudioGraphSnapshot a = watcher::detail::parsePwDumpGraph(kDump);
         QCOMPARE(a.deviceKeys.size(), 3);
         QByteArray unplugged(kDump);
         unplugged.replace("\"media.class\": \"Audio/Source\"", "\"media.class\": \"Gone\"");
-        const AudioGraphSnapshot b = detail::parsePwDumpGraph(unplugged);
+        const watcher::AudioGraphSnapshot b = watcher::detail::parsePwDumpGraph(unplugged);
         QCOMPARE(b.deviceKeys.size(), 2);
         QVERIFY(a.deviceKeys != b.deviceKeys);
     }
 
     void garbageGivesEmptySnapshot()
     {
-        QVERIFY(detail::parsePwDumpGraph("nem json").routes.isEmpty());
-        QVERIFY(detail::parsePwDumpGraph("{}").deviceKeys.isEmpty());
+        QVERIFY(watcher::detail::parsePwDumpGraph("nem json").routes.isEmpty());
+        QVERIFY(watcher::detail::parsePwDumpGraph("{}").deviceKeys.isEmpty());
     }
 };
 

@@ -13,10 +13,10 @@
 #include "OnboardingViewModel.h"
 #include "OnboardingWindowHost.h"
 
-#include "tanara/AppController.h"
+#include "tanara/app/AppController.h"
 #include "tanara/foundation/paths/Paths.h"
-#include "tanara/SettingsManager.h"
-#include "tanara/store/JsonSerialization.h"
+#include "tanara/app/SettingsManager.h"
+#include "tanara/library/store/JsonSerialization.h"
 
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -28,7 +28,7 @@
 #include <memory>
 
 using namespace tanara_qml;
-using tanara::AppController;
+using tanara::app::AppController;
 using tanara::AppSettings;
 
 class TestOnboardingViewModel : public QObject {
@@ -204,7 +204,7 @@ private slots:
         QCOMPARE(vm.llmStatus(), QStringLiteral("Összefoglaló: LM Studio · gemma-4-12b"));
         QVERIFY(vm.llmReady());
 
-        m_app->setSecret(tanara::keys::SonioxApiKey, QStringLiteral("teszt-kulcs"));
+        m_app->setSecret(tanara::app::keys::SonioxApiKey, QStringLiteral("teszt-kulcs"));
         vm.refreshReadiness();
         QCOMPARE(vm.sttStatus(), QStringLiteral("Átírás: Soniox"));
         QVERIFY(vm.sttReady());

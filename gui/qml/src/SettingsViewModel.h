@@ -28,8 +28,8 @@
 #include "SettingsProviderModel.h"
 #include "VoiceModelListModel.h"
 
-#include "tanara/Types.h"
-#include "tanara/provider/ReadinessModel.h"
+#include "tanara/domain/Types.h"
+#include "tanara/providers/core/ReadinessModel.h"
 
 #include <QAbstractItemModel>
 #include <QHash>
@@ -46,8 +46,8 @@
 #include <memory>
 
 namespace tanara {
-class AppController;
-class IMeetingDetector;
+namespace app { class AppController; }
+namespace watcher { class IMeetingDetector; }
 }
 
 namespace tanara_qml {
@@ -156,8 +156,8 @@ public:
 
     QObject* controllerObject() const;
     void setControllerObject(QObject* controller);
-    tanara::AppController* controller() const;
-    void setController(tanara::AppController* controller);
+    tanara::app::AppController* controller() const;
+    void setController(tanara::app::AppController* controller);
     QObject* dialogsObject() const;
     void setDialogsObject(QObject* dialogs);
     SettingsDialogs* dialogs() const;
@@ -285,12 +285,12 @@ public:
     // The draft changed: recomputes the counter, errors, warning dot.
     void touch();
     // Whether the step could run with the draft (required fields, sign-in).
-    tanara::ReadinessResult draftReadiness(tanara::WorkflowStep step) const;
+    tanara::providers::ReadinessResult draftReadiness(tanara::providers::WorkflowStep step) const;
     // SettingsDeviceModel keeps the selection here (saving writes it to state.json).
     QStringList& draftSelectedDevices() { return m_draftSelected; }
 
     // For tests: replaces the call detector (the view model owns it).
-    void setDetectorForTest(tanara::IMeetingDetector* detector);
+    void setDetectorForTest(tanara::watcher::IMeetingDetector* detector);
     // For tests: the difference of draft and base on the core settings' JSON form.
     static QJsonObject mergedSettings(const QJsonObject& base, const QJsonObject& draft,
                                       const QJsonObject& onto);
@@ -353,7 +353,7 @@ private:
     void storePromptsInDraft();
     QStringList selectedDevicesForSave() const;
 
-    QPointer<tanara::AppController> m_controller;
+    QPointer<tanara::app::AppController> m_controller;
     bool m_controllerSet = false;
     QPointer<SettingsDialogs> m_dialogs;
     QString m_demoState;
@@ -383,7 +383,7 @@ private:
     bool m_monitoring = false;
     bool m_watching = false;
     QTimer m_detectTimer;
-    std::unique_ptr<tanara::IMeetingDetector> m_detector;
+    std::unique_ptr<tanara::watcher::IMeetingDetector> m_detector;
     bool m_detectorTried = false;
     bool m_detectorAvailable = false;
     bool m_liveActive = false;

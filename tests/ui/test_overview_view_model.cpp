@@ -8,11 +8,11 @@
 #include "ShellMeetingModel.h"
 #include "TrackListModel.h"
 
-#include "tanara/AppController.h"
-#include "tanara/SettingsManager.h"
-#include "tanara/edit/MeetingUndo.h"
-#include "tanara/store/MeetingStore.h"
-#include "tanara/tags/TagService.h"
+#include "tanara/app/AppController.h"
+#include "tanara/app/SettingsManager.h"
+#include "tanara/editing/undo/MeetingUndo.h"
+#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/tags/TagService.h"
 
 #include <QFile>
 #include <QJsonArray>
@@ -30,7 +30,7 @@ class TestOverviewViewModel : public QObject {
     Q_OBJECT
 
     std::unique_ptr<QTemporaryDir> m_home;
-    std::unique_ptr<tanara::AppController> m_app;
+    std::unique_ptr<tanara::app::AppController> m_app;
 
     tanara::Meeting recording(const QString& title)
     {
@@ -91,7 +91,7 @@ private slots:
         QVERIFY(m_home->isValid());
         qputenv("TANARA_HOME", m_home->path().toUtf8());
         AppContext::instance()->setDemo(false);
-        m_app = std::make_unique<tanara::AppController>();
+        m_app = std::make_unique<tanara::app::AppController>();
         QVERIFY(m_app->store()->audioDir().startsWith(m_home->path()));
     }
     void cleanup()
@@ -160,7 +160,7 @@ private slots:
             fresh.setMeetingId(m.id);
             QCOMPARE(fresh.peopleState(), QStringLiteral("empty"));
         }
-        tanara::MeetingUndoService* undo = m_app->meetingUndo(m.id);
+        tanara::editing::MeetingUndoService* undo = m_app->meetingUndo(m.id);
         QVERIFY(undo);
         QCOMPARE(undo->undoText(), QStringLiteral("Résztvevő eltávolítva: Fehér Gábor"));
         QVERIFY(undo->undo());
@@ -263,7 +263,7 @@ private slots:
     // (TagService::rejectPersonForMeeting), undoable from the shared stack.
     void tagSuggestions_limitAndDurableReject()
     {
-        tanara::TagService* tags = m_app->tags();
+        tanara::library::TagService* tags = m_app->tags();
         const tanara::Tag nord = tags->create(QStringLiteral("Nordvik"));
         const QStringList crew{QStringLiteral("Fehér Gábor"), QStringLiteral("Varga Árpád"),
                                QStringLiteral("Molnár Eszter"), QStringLiteral("Szabó Bence")};

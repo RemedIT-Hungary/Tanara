@@ -17,9 +17,9 @@
 #include "TranscriptEditorViewModel.h"
 #include "TranscriptListModel.h"
 
-#include "tanara/AppController.h"
-#include "tanara/edit/SpeakerEditor.h"
-#include "tanara/store/MeetingStore.h"
+#include "tanara/app/AppController.h"
+#include "tanara/editing/session/SpeakerEditor.h"
+#include "tanara/library/store/MeetingStore.h"
 
 #include <QElapsedTimer>
 #include <QQmlComponent>
@@ -81,7 +81,7 @@ void TestTranscriptSandbox::measure()
     qputenv("TANARA_HOME", home.toUtf8());
     qputenv("TANARA_CLOUD", "off");
 
-    AppController controller;
+    app::AppController controller;
     QVERIFY2(QDir(controller.store()->audioDir()).absolutePath().startsWith(QDir(root).absolutePath()),
              "az audio-mappa nem a sandboxban van");
     controller.store()->rebuildIndexFromDisk();     // a fresh sandbox has no index yet

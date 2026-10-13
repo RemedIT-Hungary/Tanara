@@ -8,9 +8,9 @@
 #include "AppContext.h"
 #include "QmlApp.h"
 
-#include "tanara/AppController.h"
+#include "tanara/app/AppController.h"
 #include "tanara/foundation/paths/Paths.h"
-#include "tanara/store/MeetingStore.h"
+#include "tanara/library/store/MeetingStore.h"
 
 #include <QDir>
 #include <QQmlApplicationEngine>
@@ -281,7 +281,7 @@ private slots:
         QVERIFY(QDir().mkpath(outDir));
         qputenv("TANARA_CLOUD", "off");
 
-        tanara::AppController app;
+        tanara::app::AppController app;
         AppContext* ctx = AppContext::instance();
         ctx->setDemo(false);
         ctx->setController(&app);

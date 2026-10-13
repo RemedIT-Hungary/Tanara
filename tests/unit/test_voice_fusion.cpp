@@ -8,9 +8,9 @@
 #include <QStandardPaths>
 #include <QTemporaryDir>
 
-#include "tanara/edit/UtteranceEmbeddings.h"
-#include "tanara/store/VoiceprintStore.h"
-#include "tanara/voiceid/EmbeddingSet.h"
+#include "tanara/processing/analysis/UtteranceEmbeddings.h"
+#include "tanara/library/store/VoiceprintStore.h"
+#include "tanara/processing/voiceid/EmbeddingSet.h"
 
 #include <cmath>
 
@@ -27,7 +27,7 @@ QVector<float> randomVec(QRandomGenerator& rng, int dim)
 
 double cosine(const QVector<float>& a, const QVector<float>& b)
 {
-    return VoiceprintStore::cosineSimilarity(a, b);
+    return library::VoiceprintStore::cosineSimilarity(a, b);
 }
 
 // 16 kHz mono s16 WAV (a noisy, varying-pitch signal: "speech-like" to the model).
@@ -82,7 +82,7 @@ private slots:
             // Closer pairs too (not only ~0 cosines).
             if (round % 2) for (float& v : y["b"]) v = v * 0.2f + 1.0f;
             if (round % 2) for (float& v : x["b"]) v = v * 0.2f + 1.0f;
-            const QVector<float> fx = fusion::fuse(x, ids), fy = fusion::fuse(y, ids);
+            const QVector<float> fx = processing::fusion::fuse(x, ids), fy = processing::fusion::fuse(y, ids);
             QCOMPARE(fx.size(), 192 + 256 + 512);
             const double expected = (cosine(x["a"], y["a"]) + cosine(x["b"], y["b"]) + cosine(x["c"], y["c"])) / 3.0;
             QVERIFY2(std::abs(cosine(fx, fy) - expected) < 1e-5,
@@ -92,7 +92,7 @@ private slots:
             for (float v : fx) norm += double(v) * v;
             QVERIFY(std::abs(norm - 1.0) < 1e-5);
             int used = 0;
-            QVERIFY(std::abs(fusion::averageCosine(x, y, ids, &used) - expected) < 1e-9);
+            QVERIFY(std::abs(processing::fusion::averageCosine(x, y, ids, &used) - expected) < 1e-9);
             QCOMPARE(used, 3);
         }
     }
@@ -101,7 +101,7 @@ private slots:
     {
         EmbeddingSet s;
         s["campplus"] = {3, 4};
-        const QVector<float> f = fusion::fuse(s, {"campplus"});
+        const QVector<float> f = processing::fusion::fuse(s, {"campplus"});
         QCOMPARE(f.size(), 2);
         QVERIFY(std::abs(f[0] - 0.6f) < 1e-6 && std::abs(f[1] - 0.8f) < 1e-6);
     }
@@ -111,10 +111,10 @@ private slots:
         EmbeddingSet s;
         s["a"] = {1, 0};
         s["b"] = {};
-        QVERIFY(fusion::fuse(s, {"a", "b"}).isEmpty());     // an empty vector = none
-        QVERIFY(fusion::fuse(s, {"a", "c"}).isEmpty());     // a missing key
-        QVERIFY(fusion::fuse(s, {}).isEmpty());             // no requested model
-        QVERIFY(!fusion::fuse(s, {"a"}).isEmpty());         // an extra model does not interfere
+        QVERIFY(processing::fusion::fuse(s, {"a", "b"}).isEmpty());     // an empty vector = none
+        QVERIFY(processing::fusion::fuse(s, {"a", "c"}).isEmpty());     // a missing key
+        QVERIFY(processing::fusion::fuse(s, {}).isEmpty());             // no requested model
+        QVERIFY(!processing::fusion::fuse(s, {"a"}).isEmpty());         // an extra model does not interfere
     }
 
     void averageCosine_partialAndNoOverlap()
@@ -123,23 +123,23 @@ private slots:
         a["m1"] = {1, 0}; a["m2"] = {0, 1};
         b["m1"] = {1, 0}; b["m3"] = {1, 0};
         int used = -1;
-        QCOMPARE(fusion::averageCosine(a, b, {"m1", "m2", "m3"}, &used), 1.0);   // only m1 is common
+        QCOMPARE(processing::fusion::averageCosine(a, b, {"m1", "m2", "m3"}, &used), 1.0);   // only m1 is common
         QCOMPARE(used, 1);
         b["m2"] = {1, 0};   // m2: cosine 0
-        QCOMPARE(fusion::averageCosine(a, b, {"m1", "m2", "m3"}, &used), 0.5);
+        QCOMPARE(processing::fusion::averageCosine(a, b, {"m1", "m2", "m3"}, &used), 0.5);
         QCOMPARE(used, 2);
         // No common model: -1.
         EmbeddingSet c;
         c["m9"] = {1, 0};
-        QCOMPARE(fusion::averageCosine(a, c, {"m1", "m2", "m9"}, &used), -1.0);
+        QCOMPARE(processing::fusion::averageCosine(a, c, {"m1", "m2", "m9"}, &used), -1.0);
         QCOMPARE(used, 0);
-        QCOMPARE(fusion::averageCosine(a, b, {}), -1.0);
+        QCOMPARE(processing::fusion::averageCosine(a, b, {}), -1.0);
     }
 
     void cache_v2_roundTripAndApi()
     {
         QTemporaryDir dir;
-        UtteranceEmbeddingCache c;
+        processing::UtteranceEmbeddingCache c;
         c.fingerprint = QStringLiteral("fp1");
         QVERIFY(c.isEmpty());
         c.set("campplus", "u1", {1, 0, 0});
@@ -154,7 +154,7 @@ private slots:
         QVERIFY(c.setFor("u2", {"campplus"}).isEmpty());   // the empty vector does not go into the set
         QVERIFY(c.save(dir.path()));
 
-        const UtteranceEmbeddingCache back = UtteranceEmbeddingCache::load(dir.path(), "fp1");
+        const processing::UtteranceEmbeddingCache back = processing::UtteranceEmbeddingCache::load(dir.path(), "fp1");
         QCOMPARE(back.models.keys(), QStringList({"campplus", "other"}));
         QCOMPARE(back.vectors("campplus").value("u1"), (QVector<float>{1, 0, 0}));
         QVERIFY(back.vectors("campplus").contains("u2"));
@@ -162,16 +162,16 @@ private slots:
         QVERIFY(back.vectors("nincs").isEmpty());
 
         // Another transcript: an empty cache.
-        QVERIFY(UtteranceEmbeddingCache::load(dir.path(), "fp2").isEmpty());
-        UtteranceEmbeddingCache::remove(dir.path());
-        QVERIFY(!QFile::exists(UtteranceEmbeddingCache::filePath(dir.path())));
+        QVERIFY(processing::UtteranceEmbeddingCache::load(dir.path(), "fp2").isEmpty());
+        processing::UtteranceEmbeddingCache::remove(dir.path());
+        QVERIFY(!QFile::exists(processing::UtteranceEmbeddingCache::filePath(dir.path())));
     }
 
     void cache_v1FileDiscarded()
     {
         QTemporaryDir dir;
         {
-            QFile f(UtteranceEmbeddingCache::filePath(dir.path()));
+            QFile f(processing::UtteranceEmbeddingCache::filePath(dir.path()));
             QVERIFY(f.open(QIODevice::WriteOnly));
             QDataStream out(&f);
             out.setVersion(QDataStream::Qt_6_0);
@@ -180,7 +180,7 @@ private slots:
             v1.insert("u1", {1, 0, 0});
             out << quint32(0x54454d42) << quint32(1) << QStringLiteral("fp") << v1;
         }
-        const UtteranceEmbeddingCache c = UtteranceEmbeddingCache::load(dir.path(), "fp");
+        const processing::UtteranceEmbeddingCache c = processing::UtteranceEmbeddingCache::load(dir.path(), "fp");
         QVERIFY(c.isEmpty());
         QCOMPARE(c.fingerprint, QStringLiteral("fp"));
         QCOMPARE(c.missingFor("campplus", {"u1"}), QStringList{"u1"});
@@ -189,7 +189,7 @@ private slots:
     // The base embedAll: the single-model (fake) embedder gives under the default model's key.
     void defaultEmbedAll_mapsToDefaultModel()
     {
-        struct One : IUtteranceEmbedder {
+        struct One : processing::IUtteranceEmbedder {
             bool open(const QString&) override { return true; }
             QVector<float> embed(qint64, qint64) override { return {1, 2}; }
         } one;
@@ -210,8 +210,8 @@ private slots:
         const QString wav = dir.filePath(QStringLiteral("a.wav"));
         QVERIFY(writeWav(wav, 4));
 
-        const EmbedderConfig cfg;
-        auto emb = voiceUtteranceEmbedderFactory(QVector<UtteranceModel>{
+        const processing::EmbedderConfig cfg;
+        auto emb = voiceUtteranceEmbedderFactory(QVector<processing::UtteranceModel>{
             {"a", model, cfg}, {"b", model, cfg}, {"missing", dir.filePath("nincs.onnx"), cfg}})();
         if (!emb->open(wav)) QSKIP(qPrintable(QStringLiteral("Voice-ID nélküli build vagy modellhiba: ") + emb->lastError()));
         const EmbeddingSet s = emb->embedAll(500, 3500, {"a", "b", "missing"});
@@ -224,7 +224,7 @@ private slots:
         QVERIFY(tiny.contains("a") && tiny.value("a").isEmpty());
 
         // The single-model factory gives the same under the default model's key.
-        auto single = voiceUtteranceEmbedderFactory(model)();
+        auto single = processing::voiceUtteranceEmbedderFactory(model)();
         QVERIFY(single->open(wav));
         QVERIFY(cosine(single->embed(500, 3500), s.value("a")) > 0.9999);
         QCOMPARE(single->embedAll(500, 3500, {"campplus"}).keys(), QStringList{"campplus"});

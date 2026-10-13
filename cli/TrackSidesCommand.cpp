@@ -2,11 +2,11 @@
 #include "TrackSidesCommand.h"
 #include "tanara/foundation/time/TimeFormat.h"
 
-#include "tanara/SettingsManager.h"
-#include "tanara/edit/SideAnalysis.h"
-#include "tanara/edit/SpeakerOverlay.h"
-#include "tanara/edit/TrackActivity.h"
-#include "tanara/store/MeetingStore.h"
+#include "tanara/app/SettingsManager.h"
+#include "tanara/editing/review/SideAnalysis.h"
+#include "tanara/editing/session/SpeakerOverlay.h"
+#include "tanara/processing/analysis/TrackActivity.h"
+#include "tanara/library/store/MeetingStore.h"
 
 #include <QFileInfo>
 #include <QHash>
@@ -40,17 +40,17 @@ QString clock(qint64 ms)
 QString num(double v, int prec = 2) { return std::isnan(v) ? QStringLiteral("-") : QString::number(v, 'f', prec); }
 QJsonValue jnum(double v) { return std::isnan(v) ? QJsonValue() : QJsonValue(v); }
 
-QJsonObject countsJson(const SideCounts& c)
+QJsonObject countsJson(const editing::SideCounts& c)
 {
     return {{"local", c.local}, {"remote", c.remote}, {"mixed", c.mixed}, {"unknown", c.unknown}};
 }
 
-QString countsText(const SideCounts& c)
+QString countsText(const editing::SideCounts& c)
 {
     return QStringLiteral("local %1  remote %2  mixed %3  unknown %4").arg(c.local).arg(c.remote).arg(c.mixed).arg(c.unknown);
 }
 
-QJsonObject toJson(const SideReport& r, const MeetingActivity& act, const QString& folder, bool fromCache,
+QJsonObject toJson(const editing::SideReport& r, const MeetingActivity& act, const QString& folder, bool fromCache,
                    qint64 meetingMs, bool legacy)
 {
     QJsonObject root;
@@ -65,8 +65,8 @@ QJsonObject toJson(const SideReport& r, const MeetingActivity& act, const QStrin
                                   {"coveredMs", double(t.coveredMs())},
                                   {"coverage", meetingMs > 0 ? double(t.coveredMs()) / double(meetingMs) : 0.0}});
     root["tracks"] = tracks;
-    root["levels"] = QJsonObject{{"speechDb", double(sides::kSpeechDb)}, {"lowDb", double(sides::kLowDb)},
-                                 {"echoDb", double(sides::kEchoDb)}};
+    root["levels"] = QJsonObject{{"speechDb", double(editing::sides::kSpeechDb)}, {"lowDb", double(editing::sides::kLowDb)},
+                                 {"echoDb", double(editing::sides::kEchoDb)}};
     if (legacy) {
         QJsonArray hist;
         for (int h : r.histogram) hist.append(h);
@@ -83,9 +83,9 @@ QJsonObject toJson(const SideReport& r, const MeetingActivity& act, const QStrin
     for (auto it = r.rawLabels.cbegin(); it != r.rawLabels.cend(); ++it) raw[it.key()] = countsJson(it.value());
     root["rawLabels"] = raw;
     QHash<QString, int> conflictsPer;
-    for (const SideConflict& c : r.conflicts) ++conflictsPer[c.speakerKey];
+    for (const editing::SideConflict& c : r.conflicts) ++conflictsPer[c.speakerKey];
     QJsonArray persons;
-    for (const PersonSide& p : r.persons)
+    for (const editing::PersonSide& p : r.persons)
         persons.append(QJsonObject{{"speakerKey", p.speakerKey}, {"person", p.personName}, {"name", p.displayName},
                                    {"side", sideName(p.side)}, {"defaultSide", sideName(p.defaultSide)},
                                    {"basis", p.basis}, {"confidence", double(p.confidence)},
@@ -97,13 +97,13 @@ QJsonObject toJson(const SideReport& r, const MeetingActivity& act, const QStrin
                                    {"conflicts", conflictsPer.value(p.speakerKey)}});
     root["persons"] = persons;
     QJsonArray conflicts;
-    for (const SideConflict& c : r.conflicts)
+    for (const editing::SideConflict& c : r.conflicts)
         conflicts.append(QJsonObject{{"utteranceId", c.utteranceId}, {"startMs", double(c.startMs)},
                                      {"speakerKey", c.speakerKey}, {"lineSide", sideName(c.lineSide)},
                                      {"personSide", sideName(c.personSide)}, {"localShare", jnum(c.localShare)}});
     root["conflicts"] = conflicts;
     QJsonArray lines;
-    for (const LineSide& l : r.lines) {
+    for (const editing::LineSide& l : r.lines) {
         QJsonObject o{{"id", l.utteranceId}, {"startMs", double(l.startMs)}, {"endMs", double(l.endMs)},
                       {"speakerKey", l.speakerKey}, {"rawLabel", l.rawLabel}, {"side", sideName(l.side)},
                       {"localShare", jnum(l.localShare)}, {"micDb", jnum(l.micDb)},
@@ -116,7 +116,7 @@ QJsonObject toJson(const SideReport& r, const MeetingActivity& act, const QStrin
     return root;
 }
 
-void printText(const SideReport& r, const MeetingActivity& act, bool fromCache, qint64 meetingMs, bool legacy)
+void printText(const editing::SideReport& r, const MeetingActivity& act, bool fromCache, qint64 meetingMs, bool legacy)
 {
     out() << "Tracks (activity " << (fromCache ? "from cache" : "computed") << "):\n";
     for (const TrackActivity& t : act.tracks)
@@ -133,9 +133,9 @@ void printText(const SideReport& r, const MeetingActivity& act, bool fromCache, 
         return;
     }
 
-    out() << "\nSide rule (relative to each track's speech level): mic >= " << num(sides::kSpeechDb, 0)
-          << " dB -> local/mixed; loopback >= " << num(sides::kSpeechDb, 0) << " dB and mic < " << num(sides::kLowDb, 0)
-          << " dB -> remote; both high: loopback <= " << num(sides::kEchoDb, 0) << " dB -> local (echo), else mixed\n";
+    out() << "\nSide rule (relative to each track's speech level): mic >= " << num(editing::sides::kSpeechDb, 0)
+          << " dB -> local/mixed; loopback >= " << num(editing::sides::kSpeechDb, 0) << " dB and mic < " << num(editing::sides::kLowDb, 0)
+          << " dB -> remote; both high: loopback <= " << num(editing::sides::kEchoDb, 0) << " dB -> local (echo), else mixed\n";
     out() << "\nLines: " << countsText(r.totals) << "\n";
     if (legacy) {
         const auto& th = r.thresholds;
@@ -152,7 +152,7 @@ void printText(const SideReport& r, const MeetingActivity& act, bool fromCache, 
                   << QString(qRound(40.0 * r.histogram[i] / maxH), QLatin1Char('#')) << "\n";
         out() << "\nLegacy lines: " << countsText(r.legacyTotals) << "\n";
         int changed = 0;
-        for (const LineSide& l : r.lines) changed += l.side != l.legacySide;
+        for (const editing::LineSide& l : r.lines) changed += l.side != l.legacySide;
         out() << "Lines classified differently (new vs legacy): " << changed << "\n";
     }
 
@@ -161,9 +161,9 @@ void printText(const SideReport& r, const MeetingActivity& act, bool fromCache, 
         out() << "  " << it.key().leftJustified(20) << " " << countsText(it.value()) << "\n";
 
     QHash<QString, int> conflictsPer;
-    for (const SideConflict& c : r.conflicts) ++conflictsPer[c.speakerKey];
+    for (const editing::SideConflict& c : r.conflicts) ++conflictsPer[c.speakerKey];
     out() << "\nSpeakers (confirmed L/R/M | all L/R/M/U):\n";
-    for (const PersonSide& p : r.persons)
+    for (const editing::PersonSide& p : r.persons)
         out() << "  " << p.displayName.leftJustified(20) << " " << sideName(p.side).leftJustified(7)
               << " conf " << num(p.confidence) << "  " << p.basis.leftJustified(11)
               << QStringLiteral(" %1/%2/%3 | %4/%5/%6/%7").arg(p.localLines).arg(p.remoteLines).arg(p.mixedLines)
@@ -173,7 +173,7 @@ void printText(const SideReport& r, const MeetingActivity& act, bool fromCache, 
 
     out() << "\nConflicts: " << r.conflicts.size() << "\n";
     for (int i = 0; i < r.conflicts.size() && i < kMaxListedConflicts; ++i) {
-        const SideConflict& c = r.conflicts[i];
+        const editing::SideConflict& c = r.conflicts[i];
         out() << "  " << clock(c.startMs) << "  " << c.utteranceId.leftJustified(14) << " " << c.speakerKey.leftJustified(20)
               << " line " << sideName(c.lineSide).leftJustified(6) << " speaker " << sideName(c.personSide).leftJustified(6)
               << " share " << num(c.localShare) << "\n";
@@ -188,7 +188,7 @@ void printText(const SideReport& r, const MeetingActivity& act, bool fromCache, 
 int runTrackSidesCommand(const QStringList& args)
 {
     QString folder;
-    int frameMs = trackactivity::kDefaultFrameMs;
+    int frameMs = processing::trackactivity::kDefaultFrameMs;
     bool json = false, noCache = false, writeCache = false, legacy = false;
     for (int i = 2; i < args.size(); ++i) {
         const QString a = args.at(i);
@@ -206,17 +206,17 @@ int runTrackSidesCommand(const QStringList& args)
     }
     folder = QFileInfo(folder).absoluteFilePath();
 
-    Meeting m = MeetingStore::readMeetingFolder(folder);
+    Meeting m = library::MeetingStore::readMeetingFolder(folder);
     if (m.id.isEmpty()) { err() << "Not a meeting folder (no readable meeting.json): " << folder << "\n"; return 1; }
     m.folder = folder;
-    const QVector<TranscriptLine> lines = speakeredit::loadTranscriptLines(folder);
+    const QVector<TranscriptLine> lines = editing::speakeredit::loadTranscriptLines(folder);
     if (lines.isEmpty()) { err() << "No transcript (transcript.segments.json) in " << folder << "\n"; return 1; }
-    const SpeakerOverlay ov = speakeredit::loadOverlayFor(folder, lines);
-    const SettingsManager sm;
+    const SpeakerOverlay ov = editing::speakeredit::loadOverlayFor(folder, lines);
+    const app::SettingsManager sm;
     const QString userName = sm.settings().userSpeakerName;
 
     // Activity: from the cache if the fingerprint matches, otherwise computed (written to the folder only with --write-cache).
-    const QString fp = trackactivity::activityFingerprint(m, folder, frameMs);
+    const QString fp = processing::trackactivity::activityFingerprint(m, folder, frameMs);
     MeetingActivity act;
     bool fromCache = false;
     if (!noCache) {
@@ -226,7 +226,7 @@ int runTrackSidesCommand(const QStringList& args)
     if (!fromCache) {
         err() << "Decoding tracks…\n";
         err().flush();
-        act = computeMeetingActivity(m, folder, QStringLiteral("ffmpeg"), frameMs);
+        act = processing::computeMeetingActivity(m, folder, QStringLiteral("ffmpeg"), frameMs);
         if (writeCache && !act.save(folder))
             err() << "warning: cannot write " << MeetingActivity::filePath(folder) << "\n";
     }
@@ -234,7 +234,7 @@ int runTrackSidesCommand(const QStringList& args)
     qint64 meetingMs = m.durationMs;
     for (const TranscriptLine& l : lines) meetingMs = std::max(meetingMs, l.endMs);
 
-    const SideReport r = analyzeSides(m, lines, ov, act, userName);
+    const editing::SideReport r = editing::analyzeSides(m, lines, ov, act, userName);
     if (json) {
         out() << QJsonDocument(toJson(r, act, folder, fromCache, meetingMs, legacy)).toJson(QJsonDocument::Indented);
         out().flush();

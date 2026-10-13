@@ -9,8 +9,8 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 
-#include "tanara/edit/SpeakerOverlay.h"
-#include "tanara/voiceid/VoiceModelRegistry.h"
+#include "tanara/editing/session/SpeakerOverlay.h"
+#include "tanara/processing/voiceid/VoiceModelRegistry.h"
 
 using namespace tanara;
 
@@ -54,7 +54,7 @@ private slots:
         Run r = cli({"voice-models"});
         QCOMPARE(r.code, 0);
         QVERIFY2(r.out.contains("ID") && r.out.contains("LICENSE"), qPrintable(r.out));
-        for (const VoiceModelSpec& s : VoiceModelRegistry::builtin()) {
+        for (const processing::VoiceModelSpec& s : processing::VoiceModelRegistry::builtin()) {
             QVERIFY(r.out.contains(s.id));
             QVERIFY(r.out.contains(s.license));
         }
@@ -166,12 +166,12 @@ private slots:
             segs.append(QJsonObject{{"startMs", i * 4000}, {"endMs", i * 4000 + 3800},
                                     {"speaker", i % 2 == 0 ? "Beszélő 1" : "Beszélő 2"}, {"text", "x"}});
         writeJson(QDir(folder).filePath("transcript.segments.json"), segs);
-        const auto lines = speakeredit::loadTranscriptLines(folder);
+        const auto lines = editing::speakeredit::loadTranscriptLines(folder);
         QCOMPARE(lines.size(), 6);
         SpeakerOverlay ov;
-        ov.transcriptFingerprint = speakeredit::transcriptFingerprint(lines);
+        ov.transcriptFingerprint = editing::speakeredit::transcriptFingerprint(lines);
         for (const auto& l : lines) ov.utterances[l.id].confirmed = true;
-        QVERIFY(speakeredit::saveOverlay(folder, ov));
+        QVERIFY(editing::speakeredit::saveOverlay(folder, ov));
 
         const QMap<QString, QString> before = snapshot(folder);
         const Run r = cli({"voice-eval", folder, "--json", "--min-ms", "1500"});
@@ -221,7 +221,7 @@ private:
     }
     QString modelFile(const QString& id) const
     {
-        return QDir(m_home->path()).filePath("models/" + VoiceModelRegistry::spec(id)->fileName);
+        return QDir(m_home->path()).filePath("models/" + processing::VoiceModelRegistry::spec(id)->fileName);
     }
     static void touch(const QString& path)
     {

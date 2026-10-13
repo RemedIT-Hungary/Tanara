@@ -8,8 +8,8 @@
 
 #include "TagDemoBackend.h"
 
-#include "tanara/AppController.h"
-#include "tanara/tags/TagService.h"
+#include "tanara/app/AppController.h"
+#include "tanara/library/tags/TagService.h"
 
 #include <QFileInfo>
 #include <QRegularExpression>
@@ -17,8 +17,8 @@
 
 namespace tanara_qml {
 
-using tanara::ImportFileInfo;
-using tanara::ImportSource;
+using tanara::library::ImportFileInfo;
+using tanara::library::ImportSource;
 
 namespace {
 
@@ -52,7 +52,7 @@ ShellImportModel::ShellImportModel(QObject* parent) : QObject(parent)
     attach();
 }
 
-void ShellImportModel::setController(tanara::AppController* controller)
+void ShellImportModel::setController(tanara::app::AppController* controller)
 {
     m_controllerInjected = true;
     m_controller = controller;
@@ -68,12 +68,12 @@ void ShellImportModel::attach()
         if (m_attached->importer()) m_attached->importer()->disconnect(this);
     }
     m_attached = m_controller;
-    tanara::AppController* c = m_controller;
+    tanara::app::AppController* c = m_controller;
     if (!c)
         return;
-    tanara::AudioImporter* imp = c->importer();
-    connect(imp, &tanara::AudioImporter::probed, this, &ShellImportModel::onProbed);
-    connect(imp, &tanara::AudioImporter::progress, this,
+    tanara::library::AudioImporter* imp = c->importer();
+    connect(imp, &tanara::library::AudioImporter::probed, this, &ShellImportModel::onProbed);
+    connect(imp, &tanara::library::AudioImporter::progress, this,
             [this](const QString& id, int percent, int fileIndex, int fileCount) {
         if (id != m_importId) return;
         m_percent = percent;
@@ -81,7 +81,7 @@ void ShellImportModel::attach()
         m_fileTotal = fileCount;
         emit runChanged();
     });
-    connect(c, &tanara::AppController::importFinished, this, [this](const tanara::Meeting& m) {
+    connect(c, &tanara::app::AppController::importFinished, this, [this](const tanara::Meeting& m) {
         if (m.id != m_importId) return;
         applyTags(m.id, m_runningTagIds);
         m_runningTagIds.clear();
@@ -91,7 +91,7 @@ void ShellImportModel::attach()
         reset();   // the next opening starts with an empty form
         emit imported(m.id);
     });
-    connect(c, &tanara::AppController::importFailed, this,
+    connect(c, &tanara::app::AppController::importFailed, this,
             [this](const QString& id, const QString& message, const QString& detail) {
         if (id != m_importId) return;
         m_running = m_cancelling = false;
@@ -100,7 +100,7 @@ void ShellImportModel::attach()
         setError(message, detail);
         emit failed(message);
     });
-    connect(c, &tanara::AppController::importCancelled, this, [this](const QString& id) {
+    connect(c, &tanara::app::AppController::importCancelled, this, [this](const QString& id) {
         if (id != m_importId) return;
         // Cancelled: the form stays, the user can edit and restart.
         m_running = m_cancelling = false;
@@ -173,17 +173,17 @@ QVector<ImportSource> ShellImportModel::sources(QVector<ImportFileInfo>* infos) 
     return out;
 }
 
-QVector<tanara::ImportPlannedTrack> ShellImportModel::plan() const
+QVector<tanara::library::ImportPlannedTrack> ShellImportModel::plan() const
 {
     QVector<ImportFileInfo> infos;
     const QVector<ImportSource> src = sources(&infos);
-    return tanara::audioimport::planTracks(src, infos);
+    return tanara::library::audioimport::planTracks(src, infos);
 }
 
 QStringList ShellImportModel::trackNames() const
 {
     QStringList out;
-    for (const tanara::ImportPlannedTrack& t : plan()) out << t.name;
+    for (const tanara::library::ImportPlannedTrack& t : plan()) out << t.name;
     return out;
 }
 
@@ -255,7 +255,7 @@ void ShellImportModel::onProbed(const ImportFileInfo& info)
         if (r.probed || r.path != info.path) continue;
         r.info = info;
         r.probed = true;
-        r.split = tanara::audioimport::splitByDefault(info);
+        r.split = tanara::library::audioimport::splitByDefault(info);
         any = true;
     }
     if (!any) return;
@@ -288,14 +288,14 @@ void ShellImportModel::refreshDefaults()
         QStringList paths;
         for (const Row& r : m_rows)
             if (!r.probed || r.info.ok) paths << r.path;
-        const QString t = paths.isEmpty() ? QString() : tanara::audioimport::defaultTitle(paths);
+        const QString t = paths.isEmpty() ? QString() : tanara::library::audioimport::defaultTitle(paths);
         if (t != m_title) { m_title = t; emit titleChanged(); }
     }
     if (!m_dateEdited) {
         QVector<ImportFileInfo> infos;
         sources(&infos);
         const QString d = infos.isEmpty() ? QString()
-                        : tanara::audioimport::defaultStart(infos).toString(kDateFormat);
+                        : tanara::library::audioimport::defaultStart(infos).toString(kDateFormat);
         if (d != m_dateText) m_dateText = d;
         emit dateChanged();
     }
@@ -340,7 +340,7 @@ QString ShellImportModel::dateHint() const
     QVector<ImportFileInfo> infos;
     sources(&infos);
     if (infos.isEmpty()) return QString();
-    const QDateTime best = tanara::audioimport::defaultStart(infos);
+    const QDateTime best = tanara::library::audioimport::defaultStart(infos);
     for (const ImportFileInfo& i : infos)
         if (i.createdAt.isValid() && i.createdAt == best)
             return tr("A fájlba írt készítési időből.");
@@ -361,7 +361,7 @@ QString ShellImportModel::progressText() const
 bool ShellImportModel::start()
 {
     if (!m_controller || !canStart()) return false;
-    tanara::ImportRequest req;
+    tanara::library::ImportRequest req;
     req.sources = sources(nullptr);
     req.title = m_title.trimmed();
     req.startedAt = parseDate(m_dateText);
@@ -458,7 +458,7 @@ bool ShellImportModel::addTag(const QString& name)
     if (n.isEmpty()) return false;
     TagRef ref;
     if (m_controller) {
-        tanara::TagService* svc = m_controller->tags();
+        tanara::library::TagService* svc = m_controller->tags();
         if (!svc) return false;
         const tanara::Tag t = svc->create(n);     // for an existing key, the existing tag
         if (!t.isValid()) return false;

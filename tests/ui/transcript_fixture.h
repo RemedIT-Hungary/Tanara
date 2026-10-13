@@ -6,13 +6,13 @@
 // The scenario is the same as in core's tests/unit/test_speaker_editor.cpp: diarization gave
 // two labels ("Speaker 1", "Speaker 2"), but "Speaker 1" is really TWO people (A, C);
 // "Speaker 2" = B, one of whose lines (17th) was wrongly attached (A's voice).
-#include "tanara/Types.h"
-#include "tanara/edit/SpeakerEditor.h"
-#include "tanara/edit/SpeakerOverlay.h"
-#include "tanara/edit/UtteranceEmbeddings.h"
-#include "tanara/store/MeetingStore.h"
-#include "tanara/store/PeopleStore.h"
-#include "tanara/store/VoiceprintStore.h"
+#include "tanara/domain/Types.h"
+#include "tanara/editing/session/SpeakerEditor.h"
+#include "tanara/editing/session/SpeakerOverlay.h"
+#include "tanara/processing/analysis/UtteranceEmbeddings.h"
+#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/store/PeopleStore.h"
+#include "tanara/library/store/VoiceprintStore.h"
 
 #include <QDir>
 #include <QFile>
@@ -57,7 +57,7 @@ inline const QVector<Row>& scenario()
 
 inline QString uid(int row) { return QStringLiteral("u%1").arg(scenario()[row].startMs); }
 
-class FakeEmbedder : public tanara::IUtteranceEmbedder {
+class FakeEmbedder : public tanara::processing::IUtteranceEmbedder {
 public:
     bool open(const QString&) override { return true; }
     QVector<float> embed(qint64 startMs, qint64 endMs) override
@@ -77,17 +77,17 @@ public:
 
 struct Fixture {
     QTemporaryDir dir;
-    std::unique_ptr<tanara::MeetingStore> store;
-    std::unique_ptr<tanara::PeopleStore> people;
-    std::unique_ptr<tanara::VoiceprintStore> prints;
+    std::unique_ptr<tanara::library::MeetingStore> store;
+    std::unique_ptr<tanara::library::PeopleStore> people;
+    std::unique_ptr<tanara::library::VoiceprintStore> prints;
     tanara::Meeting meeting;
 
     Fixture()
     {
-        store = std::make_unique<tanara::MeetingStore>(dir.filePath(QStringLiteral("rec")),
+        store = std::make_unique<tanara::library::MeetingStore>(dir.filePath(QStringLiteral("rec")),
                                                        dir.filePath(QStringLiteral("meta")));
-        people = std::make_unique<tanara::PeopleStore>(dir.filePath(QStringLiteral("meta/people.json")));
-        prints = std::make_unique<tanara::VoiceprintStore>(dir.filePath(QStringLiteral("meta/vp.json")));
+        people = std::make_unique<tanara::library::PeopleStore>(dir.filePath(QStringLiteral("meta/people.json")));
+        prints = std::make_unique<tanara::library::VoiceprintStore>(dir.filePath(QStringLiteral("meta/vp.json")));
         meeting = store->createMeeting(QStringLiteral("Teszt"));
 
         QJsonArray segs;
@@ -103,7 +103,7 @@ struct Fixture {
             segs.append(o);
             ++i;
         }
-        QFile f(tanara::speakeredit::segmentsPath(meeting.folder));
+        QFile f(tanara::editing::speakeredit::segmentsPath(meeting.folder));
         if (f.open(QIODevice::WriteOnly)) f.write(QJsonDocument(segs).toJson());
         f.close();
         meeting.hasTranscript = true;
@@ -117,9 +117,9 @@ struct Fixture {
         store->saveMeeting(meeting);
     }
 
-    std::unique_ptr<tanara::SpeakerEditor> editor(bool withEmbedder = true)
+    std::unique_ptr<tanara::editing::SpeakerEditor> editor(bool withEmbedder = true)
     {
-        auto ed = std::make_unique<tanara::SpeakerEditor>(store.get(), people.get(), prints.get(), meeting.id);
+        auto ed = std::make_unique<tanara::editing::SpeakerEditor>(store.get(), people.get(), prints.get(), meeting.id);
         if (withEmbedder) ed->setEmbedderFactory([] { return std::make_unique<FakeEmbedder>(); });
         return ed;
     }

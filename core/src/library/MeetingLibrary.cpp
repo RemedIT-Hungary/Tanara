@@ -1,7 +1,7 @@
 #include "tanara/library/MeetingLibrary.h"
-#include "tanara/jobs/MeetingJobTracker.h"
-#include "tanara/store/MeetingStore.h"
-#include "tanara/tags/TagService.h"
+#include "tanara/library/jobs/MeetingJobTracker.h"
+#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/tags/TagService.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -14,7 +14,7 @@
 #include <QTimer>
 #include <algorithm>
 
-namespace tanara {
+namespace tanara::library {
 
 // A meeting's transcript text for search: the utterances' text joined with '\n' (NFC), its folded
 // (accent/case-insensitive) counterpart, and per utterance the start position + timestamp + raw speaker
@@ -563,4 +563,4 @@ void MeetingLibrary::warmUp()
     d->warmTimer->start();
 }
 
-} // namespace tanara
+} // namespace tanara::library

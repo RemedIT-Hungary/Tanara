@@ -3,10 +3,10 @@
 #include "AppContext.h"
 #include "JobSupport.h"
 
-#include "tanara/AppController.h"
-#include "tanara/audio/TrackCatalog.h"
-#include "tanara/edit/SideAnalysis.h"
-#include "tanara/store/MeetingStore.h"
+#include "tanara/app/AppController.h"
+#include "tanara/library/tracks/TrackCatalog.h"
+#include "tanara/editing/review/SideAnalysis.h"
+#include "tanara/library/store/MeetingStore.h"
 
 #include <algorithm>
 #include <cmath>
@@ -24,7 +24,7 @@ TrackActivityModel::TrackActivityModel(QObject* parent) : QObject(parent)
     reload();
 }
 
-AppController* TrackActivityModel::app() const { return jobsupport::resolveController(m_injected); }
+app::AppController* TrackActivityModel::app() const { return jobsupport::resolveController(m_injected); }
 QObject* TrackActivityModel::controllerObject() const { return app(); }
 
 void TrackActivityModel::setController(QObject* controller)
@@ -57,7 +57,7 @@ void TrackActivityModel::setDemoState(const QString& state)
 
 void TrackActivityModel::connectController()
 {
-    AppController* c = app();
+    app::AppController* c = app();
     if (c == m_connected)
         return;
     for (const QMetaObject::Connection& conn : std::as_const(m_connections))
@@ -67,10 +67,10 @@ void TrackActivityModel::connectController()
     if (!c)
         return;
     auto mine = [this](const QString& id) { return !m_meetingId.isEmpty() && id == m_meetingId; };
-    m_connections << connect(c, &AppController::trackActivityReady, this,
+    m_connections << connect(c, &app::AppController::trackActivityReady, this,
                              [this, mine](const QString& id) { if (mine(id)) reload(); });
     // New / located / deleted track: the fingerprint changes, the core recomputes.
-    m_connections << connect(c, &AppController::tracksChanged, this,
+    m_connections << connect(c, &app::AppController::tracksChanged, this,
                              [this, mine](const QString& id) { if (mine(id)) reload(); });
 }
 
@@ -82,9 +82,9 @@ TrackActivityModel::Lane TrackActivityModel::laneFrom(const TrackActivity& t)
     lane.frameMs = std::max(1, t.frameMs);
     lane.frames.resize(t.dbAboveFloor.size());
     // Speech: relative to the track's speech level at most 10 dB quieter, and above the noise.
-    const float level = sides::speechLevelDb(t);
+    const float level = editing::sides::speechLevelDb(t);
     const float threshold = std::isnan(level) ? INFINITY
-                                              : std::max(sides::kActiveDb, level + sides::kSpeechDb);
+                                              : std::max(editing::sides::kActiveDb, level + editing::sides::kSpeechDb);
     for (qsizetype i = 0; i < t.dbAboveFloor.size(); ++i) {
         const float d = t.dbAboveFloor.at(i);
         qint8 v = NoData;
@@ -131,7 +131,7 @@ void TrackActivityModel::publish(const QString& state)
 
 void TrackActivityModel::reload()
 {
-    AppController* c = app();
+    app::AppController* c = app();
     if (jobsupport::demoMode(c)) {
         loadDemo();
         return;
@@ -156,7 +156,7 @@ void TrackActivityModel::reload()
         m_durationMs = std::max(m_durationMs, t.endMs());
     }
     // Every segment id to the logical track's leader.
-    const QVector<tracknames::SegmentInfo> seg = tracknames::segments(m.tracks);
+    const QVector<library::tracknames::SegmentInfo> seg = library::tracknames::segments(m.tracks);
     for (int i = 0; i < m.tracks.size(); ++i) {
         const int lead = seg.value(i).leader >= 0 ? seg.value(i).leader : i;
         const auto it = m_laneOf.constFind(m.tracks.at(lead).id);

@@ -14,7 +14,7 @@
 // Without a controller / with App.demo deterministic sample data (for TrackListModel's demo
 // tracks: mic, call, system, mic2); demoState "loading" -> the computing state.
 //
-#include "tanara/edit/TrackActivity.h"
+#include "tanara/processing/analysis/TrackActivity.h"
 
 #include <QHash>
 #include <QObject>
@@ -23,7 +23,7 @@
 #include <QtQml/qqmlregistration.h>
 
 namespace tanara {
-class AppController;
+namespace app { class AppController; }
 }
 
 namespace tanara_qml {
@@ -86,14 +86,14 @@ signals:
     void changed();
 
 private:
-    tanara::AppController* app() const;
+    tanara::app::AppController* app() const;
     void connectController();
     void reload();
     void loadDemo();
     void publish(const QString& state);
 
     QPointer<QObject> m_injected;
-    QPointer<tanara::AppController> m_connected;
+    QPointer<tanara::app::AppController> m_connected;
     QList<QMetaObject::Connection> m_connections;
 
     QString m_meetingId;

@@ -10,13 +10,13 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 
-#include "tanara/AppController.h"
-#include "tanara/SettingsManager.h"
-#include "tanara/edit/SpeakerEditor.h"
-#include "tanara/people/PeopleService.h"
-#include "tanara/store/MeetingStore.h"
-#include "tanara/store/VoiceprintStore.h"
-#include "tanara/voiceid/VoiceModelRegistry.h"
+#include "tanara/app/AppController.h"
+#include "tanara/app/SettingsManager.h"
+#include "tanara/editing/session/SpeakerEditor.h"
+#include "tanara/library/people/PeopleService.h"
+#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/store/VoiceprintStore.h"
+#include "tanara/processing/voiceid/VoiceModelRegistry.h"
 
 #include <atomic>
 #include <memory>
@@ -29,9 +29,9 @@ const QString kCamp = QStringLiteral("campplus");
 const QString kWe = QStringLiteral("wespeaker-resnet34-lm");
 
 // A constant-direction vector per model; callable from a background thread too (atomic counter).
-PcmEmbedderLoader fakeLoader(std::shared_ptr<std::atomic<int>> embeds)
+processing::PcmEmbedderLoader fakeLoader(std::shared_ptr<std::atomic<int>> embeds)
 {
-    return [embeds](const VoiceModelSpec& spec, const QString&, QString*) -> PcmEmbedder {
+    return [embeds](const processing::VoiceModelSpec& spec, const QString&, QString*) -> processing::PcmEmbedder {
         const int dim = spec.dim;
         const int hot = spec.id == kCamp ? 0 : 1;
         return [embeds, dim, hot](const QVector<float>& pcm) {
@@ -75,7 +75,7 @@ private:
 
     bool m_haveFfmpeg = false;
     std::unique_ptr<QTemporaryDir> m_home;
-    std::unique_ptr<AppController> m_app;
+    std::unique_ptr<app::AppController> m_app;
     std::shared_ptr<std::atomic<int>> m_embeds;
 };
 
@@ -93,12 +93,12 @@ void VoiceModelsAppTest::init()
     qputenv("TANARA_HOME", m_home->path().toUtf8());
     // Placeholder model files: the fake loader does not read them, only "does it exist" matters.
     for (const QString& id : {kCamp, kWe}) {
-        const QString f = QDir(m_home->path()).filePath("models/" + VoiceModelRegistry::spec(id)->fileName);
+        const QString f = QDir(m_home->path()).filePath("models/" + processing::VoiceModelRegistry::spec(id)->fileName);
         QDir().mkpath(QFileInfo(f).absolutePath());
         QFile file(f);
         QVERIFY(file.open(QIODevice::WriteOnly));
     }
-    m_app = std::make_unique<AppController>();
+    m_app = std::make_unique<app::AppController>();
     QVERIFY(m_app->store()->metadataDir().startsWith(m_home->path()));
     m_embeds = std::make_shared<std::atomic<int>>(0);
     m_app->setVoiceEmbedderLoader(fakeLoader(m_embeds));
@@ -150,7 +150,7 @@ Meeting VoiceModelsAppTest::makeMeeting(const QString& title)
 void VoiceModelsAppTest::enrolCreatesOnePrintPerModel()
 {
     const Meeting m = makeMeeting("Felvétel");
-    QSignalSpy changed(m_app.get(), &AppController::voiceprintsChanged);
+    QSignalSpy changed(m_app.get(), &app::AppController::voiceprintsChanged);
     m_app->enrollVoiceprintFromSample("Anna", m.id, "mic", 2000, 5000);
     QCOMPARE(changed.count(), 1);
     const QVector<Voiceprint> prints = m_app->voiceprints()->printsFor("Anna");
@@ -162,7 +162,7 @@ void VoiceModelsAppTest::enrolCreatesOnePrintPerModel()
         QCOMPARE(p.sourceRefs, QStringList{p.sampleRef});
         QCOMPARE(p.createdAt, prints.first().createdAt);
         QCOMPARE(p.sourceMeetingId, m.id);
-        QCOMPARE(p.dim, VoiceModelRegistry::spec(p.model)->dim);
+        QCOMPARE(p.dim, processing::VoiceModelRegistry::spec(p.model)->dim);
     }
     QCOMPARE(models, QSet<QString>({kCamp, kWe}));
     QVERIFY(prints[0].id != prints[1].id);
@@ -185,7 +185,7 @@ void VoiceModelsAppTest::enrolCreatesOnePrintPerModel()
     enable({});
     QCOMPARE(m_app->activeVoiceModelIds(), QStringList{kCamp});
     // None usable (the fallback's file is missing too): no voiceprint, no identification.
-    QVERIFY(QFile::remove(QDir(m_home->path()).filePath("models/" + VoiceModelRegistry::spec(kCamp)->fileName)));
+    QVERIFY(QFile::remove(QDir(m_home->path()).filePath("models/" + processing::VoiceModelRegistry::spec(kCamp)->fileName)));
     enable({kWe, "nincs-ilyen"});
     enable({});
     QVERIFY(!m_app->voiceIdentificationAvailable());
@@ -210,11 +210,11 @@ void VoiceModelsAppTest::enrolSpeakerFromTranscript_hasSourceRefs()
 void VoiceModelsAppTest::editorGetsActiveModels()
 {
     const Meeting m = makeMeeting("Szerkesztő");
-    SpeakerEditor* ed = m_app->speakerEditor(m.id);
+    editing::SpeakerEditor* ed = m_app->speakerEditor(m.id);
     QVERIFY(ed);
     QCOMPARE(ed->voiceModelIds(), QStringList({kCamp, kWe}));
     QVERIFY(ed->embeddingsSupported());
-    QSignalSpy models(m_app.get(), &AppController::voiceModelsChanged);
+    QSignalSpy models(m_app.get(), &app::AppController::voiceModelsChanged);
     enable({kCamp});
     QCOMPARE(models.count(), 1);
     QCOMPARE(ed->voiceModelIds(), QStringList({kCamp}));
@@ -255,10 +255,10 @@ void VoiceModelsAppTest::backfillAfterEnablingModel()
     orphan.sourceMeetingId = QStringLiteral("torolt-megbeszeles");
     m_app->voiceprints()->addPrint("Dani", orphan);
 
-    QSignalSpy done(m_app.get(), &AppController::voiceprintBackfillFinished);
-    QSignalSpy changed(m_app.get(), &AppController::voiceprintsChanged);
-    QSignalSpy started(m_app.get(), &AppController::voiceprintBackfillStarted);
-    QSignalSpy progress(m_app.get(), &AppController::voiceprintBackfillProgress);
+    QSignalSpy done(m_app.get(), &app::AppController::voiceprintBackfillFinished);
+    QSignalSpy changed(m_app.get(), &app::AppController::voiceprintsChanged);
+    QSignalSpy started(m_app.get(), &app::AppController::voiceprintBackfillStarted);
+    QSignalSpy progress(m_app.get(), &app::AppController::voiceprintBackfillProgress);
     const int before = m_embeds->load();
     enable({kCamp, kWe});   // expanded: the backfill starts by itself, on a background thread
     QVERIFY(m_app->voiceprintBackfillRunning());
@@ -277,19 +277,19 @@ void VoiceModelsAppTest::backfillAfterEnablingModel()
     QCOMPARE(progress.at(2).at(1).toInt(), 3);
     QCOMPARE(done.first().at(1).toInt(), 2);
     QTRY_VERIFY(!m_app->voiceprintBackfillRunning());
-    const QVector<VoiceprintBackfillSkip> skipped = m_app->backfillSkippedSamples();
+    const QVector<processing::VoiceprintBackfillSkip> skipped = m_app->backfillSkippedSamples();
     QCOMPARE(skipped.size(), 2);
     QCOMPARE(skipped.at(0).person, QStringLiteral("Cili"));
     QCOMPARE(skipped.at(0).model, kWe);
-    QCOMPARE(skipped.at(0).reason, VoiceprintBackfillSkip::Reason::MissingAudio);
+    QCOMPARE(skipped.at(0).reason, processing::VoiceprintBackfillSkip::Reason::MissingAudio);
     QCOMPARE(skipped.at(1).person, QStringLiteral("Dani"));
-    QCOMPARE(skipped.at(1).reason, VoiceprintBackfillSkip::Reason::MissingMeeting);
+    QCOMPARE(skipped.at(1).reason, processing::VoiceprintBackfillSkip::Reason::MissingMeeting);
     QCOMPARE(skipped.at(1).sourceMeetingId, QStringLiteral("torolt-megbeszeles"));
 
     for (const QString& who : {QStringLiteral("Anna"), QStringLiteral("Béla")}) {
         const QVector<Voiceprint> ps = m_app->voiceprints()->printsFor(who);
         QCOMPARE(ps.size(), 2);
-        QCOMPARE(VoiceprintStore::siblingKey(ps[0]), VoiceprintStore::siblingKey(ps[1]));
+        QCOMPARE(library::VoiceprintStore::siblingKey(ps[0]), library::VoiceprintStore::siblingKey(ps[1]));
         QCOMPARE(ps[0].sourceRefs, ps[1].sourceRefs);
         QVERIFY(ps[0].id != ps[1].id);
         QVERIFY(ps[0].model != ps[1].model);
@@ -310,8 +310,8 @@ void VoiceModelsAppTest::backfillAfterEnablingModel()
 // A hand-copied / deleted model file: rescanVoiceModels, deleteVoiceModelFile.
 void VoiceModelsAppTest::rescanAndDeleteModelFile()
 {
-    const QString weFile = QDir(m_home->path()).filePath("models/" + VoiceModelRegistry::spec(kWe)->fileName);
-    QSignalSpy models(m_app.get(), &AppController::voiceModelsChanged);
+    const QString weFile = QDir(m_home->path()).filePath("models/" + processing::VoiceModelRegistry::spec(kWe)->fileName);
+    QSignalSpy models(m_app.get(), &app::AppController::voiceModelsChanged);
     QString error;
     QVERIFY(m_app->deleteVoiceModelFile(kWe, &error));
     QVERIFY(!QFileInfo::exists(weFile));
@@ -333,7 +333,7 @@ void VoiceModelsAppTest::rescanAndDeleteModelFile()
         QVERIFY(f.open(QIODevice::WriteOnly));
     }
     models.clear();
-    QSignalSpy done(m_app.get(), &AppController::voiceprintBackfillFinished);
+    QSignalSpy done(m_app.get(), &app::AppController::voiceprintBackfillFinished);
     m_app->rescanVoiceModels();
     QCOMPARE(models.count(), 1);
     QCOMPARE(m_app->activeVoiceModelIds(), QStringList({kCamp, kWe}));
@@ -346,8 +346,8 @@ void VoiceModelsAppTest::siblingRemoveAndMoveWithUndo()
     m_app->enrollVoiceprintFromSample("Anna", m.id, "mic", 2000, 5000);
     m_app->enrollVoiceprintFromSample("Anna", m.id, "mic", 5000, 7000);
     QCOMPARE(m_app->voiceprints()->printCount("Anna"), 4);
-    PeopleService* svc = m_app->peopleService();
-    const QVector<VoiceSample> samples = svc->samples("Anna");
+    library::PeopleService* svc = m_app->peopleService();
+    const QVector<library::VoiceSample> samples = svc->samples("Anna");
     QCOMPARE(samples.size(), 2);
     QCOMPARE(svc->person("Anna").sampleCount, 2);
 

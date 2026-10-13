@@ -5,14 +5,14 @@
 #include "AppContext.h"
 #include "SettingsDialogs.h"
 
-#include "tanara/AppController.h"
+#include "tanara/app/AppController.h"
 #include "tanara/foundation/i18n/Localization.h"
 #include "tanara/foundation/paths/Paths.h"
-#include "tanara/SettingsManager.h"
-#include "tanara/detect/Autostart.h"
-#include "tanara/provider/ConnectionTester.h"
-#include "tanara/provider/ProviderRegistry.h"
-#include "tanara/provider/ReadinessModel.h"
+#include "tanara/app/SettingsManager.h"
+#include "tanara/watcher/detect/Autostart.h"
+#include "tanara/providers/core/ConnectionTester.h"
+#include "tanara/providers/core/ProviderRegistry.h"
+#include "tanara/providers/core/ReadinessModel.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -45,15 +45,15 @@ bool samePath(const QString& a, const QString& b)
 // transcript, so only the provider setting counts (like the Settings draft validation).
 struct Line { QString text; bool ready = false; };
 
-Line readinessLine(const AppSettings& s, bool stt, const ReadinessModel::SecretProbe& hasSecret)
+Line readinessLine(const AppSettings& s, bool stt, const providers::ReadinessModel::SecretProbe& hasSecret)
 {
     Meeting m;
     Track t;
     t.active = true;
     m.tracks << t;
     m.hasTranscript = true;
-    const ReadinessResult r = ReadinessModel(s, hasSecret).check(stt ? WorkflowStep::Transcribe
-                                                                       : WorkflowStep::Summarize, m);
+    const providers::ReadinessResult r = providers::ReadinessModel(s, hasSecret).check(stt ? providers::WorkflowStep::Transcribe
+                                                                       : providers::WorkflowStep::Summarize, m);
     const QString head = stt ? OnboardingViewModel::tr("Átírás") : OnboardingViewModel::tr("Összefoglaló");
     Line out;
     out.ready = r.runnable;
@@ -61,15 +61,15 @@ Line readinessLine(const AppSettings& s, bool stt, const ReadinessModel::SecretP
         out.text = head + QStringLiteral(": ") + OnboardingViewModel::providerLabel(s, stt);
         return out;
     }
-    if (r.blockerKind == BlockerKind::Auth) {
+    if (r.blockerKind == providers::BlockerKind::Auth) {
         out.text = head + QStringLiteral(": ") + OnboardingViewModel::tr("nincs bejelentkezve");
         return out;
     }
     // A missing secret (API key) or another required field?
     bool secret = false;
-    const ProviderDescriptor d = stt ? SttProviderRegistry::instance().descriptor(r.providerId)
-                                     : LlmProviderRegistry::instance().descriptor(r.providerId);
-    for (const ConfigField& f : d.fields)
+    const providers::ProviderDescriptor d = stt ? providers::SttProviderRegistry::instance().descriptor(r.providerId)
+                                     : providers::LlmProviderRegistry::instance().descriptor(r.providerId);
+    for (const providers::ConfigField& f : d.fields)
         if (f.key == r.missingFieldKey) secret = f.isSecret;
     out.text = head + QStringLiteral(": ")
              + (secret ? OnboardingViewModel::tr("nincs kulcs") : OnboardingViewModel::tr("hiányos beállítás"));
@@ -82,13 +82,13 @@ Line readinessLine(const AppSettings& s, bool stt, const ReadinessModel::SecretP
 
 OnboardingViewModel::OnboardingViewModel(QObject* parent) : QObject(parent)
 {
-    registerBuiltinProviders();   // idempotent; needed for the provider names even without a controller
+    providers::registerBuiltinProviders();   // idempotent; needed for the provider names even without a controller
     m_baseTheme = m_draftTheme = AppContext::instance()->themeMode();
     // App.controller binds in the next event-loop turn, if by then the caller has not given its
     // own and has not asked for a demo state.
     QMetaObject::invokeMethod(this, [this] {
         if (m_controllerSet) return;
-        if (AppController* c = AppContext::instance()->controller())
+        if (app::AppController* c = AppContext::instance()->controller())
             setController(c);
         else
             setDemoState(m_demoState.isEmpty() ? QStringLiteral("welcome") : m_demoState);
@@ -98,15 +98,15 @@ OnboardingViewModel::OnboardingViewModel(QObject* parent) : QObject(parent)
 OnboardingViewModel::~OnboardingViewModel() = default;
 
 QObject* OnboardingViewModel::controllerObject() const { return m_controller; }
-AppController* OnboardingViewModel::controller() const { return m_controller; }
+app::AppController* OnboardingViewModel::controller() const { return m_controller; }
 QObject* OnboardingViewModel::dialogsObject() const { return m_dialogs; }
 
 void OnboardingViewModel::setControllerObject(QObject* controller)
 {
-    setController(qobject_cast<AppController*>(controller));
+    setController(qobject_cast<app::AppController*>(controller));
 }
 
-void OnboardingViewModel::setController(AppController* controller)
+void OnboardingViewModel::setController(app::AppController* controller)
 {
     if (m_controllerSet && m_controller == controller) return;
     m_controller = controller;
@@ -138,12 +138,12 @@ void OnboardingViewModel::attach()
 {
     for (const QMetaObject::Connection& c : std::as_const(m_connections)) disconnect(c);
     m_connections.clear();
-    AppController* c = m_controller;
+    app::AppController* c = m_controller;
     if (!c) {
         loadDemo();
         return;
     }
-    m_connections << connect(c->settings(), &SettingsManager::settingsChanged, this, [this] {
+    m_connections << connect(c->settings(), &app::SettingsManager::settingsChanged, this, [this] {
         if (m_applying || !m_controller) return;
         // Someone else saved (Settings, cloud window): untouched fields follow, the typed draft stays.
         const AppSettings live = m_controller->settings()->settings();
@@ -169,7 +169,7 @@ void OnboardingViewModel::attach()
 
 void OnboardingViewModel::loadFromCore()
 {
-    AppController* c = m_controller;
+    app::AppController* c = m_controller;
     if (!c) return;
     m_base = m_draft = c->settings()->settings();
     m_baseTheme = m_draftTheme = AppContext::instance()->themeMode();
@@ -330,7 +330,7 @@ bool OnboardingViewModel::applyStep(const QString& step)
     const bool themeChanged = you && m_draftTheme != m_baseTheme;
     const bool autostartChanged = watcher && m_draft.watcherAutostart != m_base.watcherAutostart;
 
-    if (AppController* c = m_controller) {
+    if (app::AppController* c = m_controller) {
         m_applying = true;
         AppSettings live = c->settings()->settings();
         const AppSettings before = live;
@@ -346,8 +346,8 @@ bool OnboardingViewModel::applyStep(const QString& step)
         if (nameChanged) c->setUserSpeakerName(newName);
         // Starting the watcher at sign-in: effective immediately (never in a sandbox / test).
         if (autostartChanged)
-            autostart::applyWatcher(m_draft.watcherAutostart,
-                                    autostart::findWatcherExecutable(QCoreApplication::applicationDirPath()));
+            watcher::autostart::applyWatcher(m_draft.watcherAutostart,
+                                    watcher::autostart::findWatcherExecutable(QCoreApplication::applicationDirPath()));
         m_applying = false;
         const AppSettings now = c->settings()->settings();
         if (you) {
@@ -522,19 +522,19 @@ void OnboardingViewModel::browseFolder(const QString& key)
 QString OnboardingViewModel::providerLabel(const AppSettings& s, bool stt)
 {
     const QString id = stt ? s.sttProviderId : s.llmProviderId;
-    const ProviderDescriptor d = stt ? SttProviderRegistry::instance().descriptor(id)
-                                     : LlmProviderRegistry::instance().descriptor(id);
+    const providers::ProviderDescriptor d = stt ? providers::SttProviderRegistry::instance().descriptor(id)
+                                     : providers::LlmProviderRegistry::instance().descriptor(id);
     if (d.id.isEmpty()) return id;
     const ProviderConfig cfg = stt ? s.sttSelected() : s.llmSelected();
     QString label = d.displayName;
     // From the local server's well-known port we show its name (the descriptor's name is
     // generic), the same as in Settings' collapsed provider card.
-    if (d.authMode != AuthMode::Login && isLocalEndpoint(cfg.baseUrl)) {
+    if (d.authMode != providers::AuthMode::Login && providers::isLocalEndpoint(cfg.baseUrl)) {
         const QUrl url(cfg.baseUrl.trimmed());
         if (url.port() == 1234) label = QStringLiteral("LM Studio");
         else if (url.port() == 11434) label = QStringLiteral("Ollama");
     }
-    if (stt || d.authMode == AuthMode::Login) return label;
+    if (stt || d.authMode == providers::AuthMode::Login) return label;
     QString model = cfg.model.trimmed();
     model = model.mid(model.lastIndexOf(QLatin1Char('/')) + 1);
     return model.isEmpty() ? label : label + QStringLiteral(" · ") + model;
@@ -544,9 +544,9 @@ void OnboardingViewModel::refreshReadiness()
 {
     QString stt, llm;
     bool sttOk = false, llmOk = false;
-    if (AppController* c = m_controller) {
+    if (app::AppController* c = m_controller) {
         const AppSettings s = c->settings()->settings();
-        const ReadinessModel::SecretProbe probe = [c](const QString& key) { return c->hasSecret(key); };
+        const providers::ReadinessModel::SecretProbe probe = [c](const QString& key) { return c->hasSecret(key); };
         const Line a = readinessLine(s, true, probe);
         const Line b = readinessLine(s, false, probe);
         stt = a.text;
@@ -594,7 +594,7 @@ QString OnboardingViewModel::autostartNote() const
     note = tr("Ezen a rendszeren az automatikus indítás még nem érhető el; a figyelőt kézzel indíthatod.");
 #endif
     // In a sandbox (TANARA_HOME) and in tests the entry is not written; we say so too.
-    if (m_controller && !autostart::managed() && !autostart::watcherEntryPath().isEmpty())
+    if (m_controller && !watcher::autostart::managed() && !watcher::autostart::watcherEntryPath().isEmpty())
         note += QLatin1Char(' ') + tr("Most nem íródik bejegyzés (elkülönített adatmappával fut a Tanara).");
     return note;
 }

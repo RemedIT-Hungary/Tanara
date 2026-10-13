@@ -22,7 +22,7 @@
 #include <QtQml/qqmlregistration.h>
 
 namespace tanara {
-class AppController;
+namespace app { class AppController; }
 }
 
 namespace tanara_qml {
@@ -48,7 +48,7 @@ public:
     explicit LibrarySelectionModel(QObject* parent = nullptr);
 
     // The controller defaults to the App singleton's; injectable in tests.
-    void setController(tanara::AppController* controller);
+    void setController(tanara::app::AppController* controller);
 
     LibraryListModel* library() const { return m_library; }
     void setLibrary(LibraryListModel* library);
@@ -82,7 +82,7 @@ private:
     QStringList orderedIds() const;    // in list order (what is not visible, last)
 
     QPointer<LibraryListModel> m_library;
-    QPointer<tanara::AppController> m_controller;
+    QPointer<tanara::app::AppController> m_controller;
     bool m_controllerInjected = false;
     QString m_currentId;
     QString m_anchor;

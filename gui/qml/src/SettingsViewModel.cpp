@@ -8,21 +8,21 @@
 #include "SettingsEmbeddingModel.h"
 #include "SettingsProviderModel.h"
 
-#include "tanara/AppController.h"
+#include "tanara/app/AppController.h"
 #include "tanara/foundation/i18n/Localization.h"
 #include "tanara/foundation/paths/Paths.h"
-#include "tanara/PromptLibrary.h"
-#include "tanara/SettingsManager.h"
-#include "tanara/audio/DeviceManager.h"
+#include "tanara/processing/summary/PromptLibrary.h"
+#include "tanara/app/SettingsManager.h"
+#include "tanara/recording/audio/DeviceManager.h"
 #include "tanara/cloud/CloudTypes.h"
-#include "tanara/detect/Autostart.h"
-#include "tanara/detect/DetectorRegistry.h"
-#include "tanara/detect/IMeetingDetector.h"
-#include "tanara/detect/detail/PwDumpParser.h"
-#include "tanara/embedding/EmbeddingProviderRegistry.h"
-#include "tanara/provider/ProviderRegistry.h"
-#include "tanara/store/JsonSerialization.h"
-#include "tanara/store/VoiceprintStore.h"
+#include "tanara/watcher/detect/Autostart.h"
+#include "tanara/watcher/detect/DetectorRegistry.h"
+#include "tanara/watcher/detect/IMeetingDetector.h"
+#include "tanara/watcher/PipeWireGraph.h"
+#include "tanara/providers/embedding/EmbeddingProviderRegistry.h"
+#include "tanara/providers/core/ProviderRegistry.h"
+#include "tanara/library/store/JsonSerialization.h"
+#include "tanara/library/store/VoiceprintStore.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -96,7 +96,7 @@ QString appLabel(const QString& match)
 {
     const QString lower = match.trimmed().toLower();
     if (lower == QLatin1String("meet")) return QStringLiteral("Google Meet");
-    const QString pretty = detail::prettyAppName(lower, QString());
+    const QString pretty = watcher::detail::prettyAppName(lower, QString());
     if (pretty != lower) return pretty;
     QString out = match.trimmed();
     if (!out.isEmpty()) out[0] = out.at(0).toUpper();
@@ -213,10 +213,10 @@ QString SettingsViewModel::formatBytes(qint64 bytes)
 
 SettingsViewModel::SettingsViewModel(QObject* parent) : QObject(parent)
 {
-    registerBuiltinProviders();   // idempotent; needed for the cards even without a controller
+    providers::registerBuiltinProviders();   // idempotent; needed for the cards even without a controller
     m_devices = new SettingsDeviceModel(this);
-    m_stt = new SettingsProviderModel(this, ProviderKind::Stt);
-    m_llm = new SettingsProviderModel(this, ProviderKind::Llm);
+    m_stt = new SettingsProviderModel(this, providers::ProviderKind::Stt);
+    m_llm = new SettingsProviderModel(this, providers::ProviderKind::Llm);
     m_embedding = new SettingsEmbeddingModel(this);
     // Voice models: the enabled list is part of the draft; the download is immediate (not a draft).
     m_voiceModels = new VoiceModelListModel(this);
@@ -239,7 +239,7 @@ SettingsViewModel::SettingsViewModel(QObject* parent) : QObject(parent)
     // own and has not asked for a demo state.
     QMetaObject::invokeMethod(this, [this] {
         if (m_controllerSet) return;
-        if (AppController* c = AppContext::instance()->controller())
+        if (app::AppController* c = AppContext::instance()->controller())
             setController(c);
         else
             setDemoState(m_demoState.isEmpty() ? QStringLiteral("B01") : m_demoState);
@@ -252,15 +252,15 @@ SettingsViewModel::~SettingsViewModel()
 }
 
 QObject* SettingsViewModel::controllerObject() const { return m_controller; }
-AppController* SettingsViewModel::controller() const { return m_controller; }
+app::AppController* SettingsViewModel::controller() const { return m_controller; }
 SettingsDialogs* SettingsViewModel::dialogs() const { return m_dialogs; }
 
 void SettingsViewModel::setControllerObject(QObject* controller)
 {
-    setController(qobject_cast<AppController*>(controller));
+    setController(qobject_cast<app::AppController*>(controller));
 }
 
-void SettingsViewModel::setController(AppController* controller)
+void SettingsViewModel::setController(app::AppController* controller)
 {
     if (m_controllerSet && m_controller == controller) return;
     if (m_controller && m_monitoring) m_controller->releaseLevelMonitoring(this);
@@ -297,23 +297,23 @@ void SettingsViewModel::attach()
     m_embedding->attach();
     m_voiceModels->setController(m_controller);
 
-    AppController* c = m_controller;
+    app::AppController* c = m_controller;
     if (!c) {
         loadDemo();
         return;
     }
-    m_connections << connect(c->settings(), &SettingsManager::settingsChanged, this,
+    m_connections << connect(c->settings(), &app::SettingsManager::settingsChanged, this,
                              &SettingsViewModel::onExternalSettingsChanged);
-    m_connections << connect(c, &AppController::devicesChanged, this, [this] {
+    m_connections << connect(c, &app::AppController::devicesChanged, this, [this] {
         m_devices->rebuild();
         applyDefaultSelection();
     });
-    m_connections << connect(c, &AppController::deviceLevelPeak, this,
+    m_connections << connect(c, &app::AppController::deviceLevelPeak, this,
                              [this](const QString& name, float rms, float peak) {
         if (m_monitoring) m_devices->onLevel(name, rms, qMax(rms, peak));
     });
-    m_connections << connect(c, &AppController::peopleChanged, this, &SettingsViewModel::refreshVoiceprint);
-    m_connections << connect(c, &AppController::voiceprintsChanged, this, &SettingsViewModel::refreshVoiceprint);
+    m_connections << connect(c, &app::AppController::peopleChanged, this, &SettingsViewModel::refreshVoiceprint);
+    m_connections << connect(c, &app::AppController::voiceprintsChanged, this, &SettingsViewModel::refreshVoiceprint);
     loadFromCore();
     if (m_monitoring) c->retainLevelMonitoring(this);
 }
@@ -337,16 +337,16 @@ void SettingsViewModel::normalize(AppSettings& s) const
 {
     // The selected providers' empty fields get the descriptor's defaults (as the old window
     // filled them), so this does not count as a "change".
-    const ProviderDescriptor sd = SttProviderRegistry::instance().descriptor(s.sttProviderId);
+    const providers::ProviderDescriptor sd = providers::SttProviderRegistry::instance().descriptor(s.sttProviderId);
     if (!sd.id.isEmpty()) m_stt->fillDefaults(s.sttConfigs[s.sttProviderId], sd);
-    const ProviderDescriptor ld = LlmProviderRegistry::instance().descriptor(s.llmProviderId);
+    const providers::ProviderDescriptor ld = providers::LlmProviderRegistry::instance().descriptor(s.llmProviderId);
     if (!ld.id.isEmpty()) m_llm->fillDefaults(s.llmConfigs[s.llmProviderId], ld);
     m_embedding->normalize(s);
 }
 
 void SettingsViewModel::loadFromCore()
 {
-    AppController* c = m_controller;
+    app::AppController* c = m_controller;
     if (!c) return;
     m_loading = true;
     m_base = c->settings()->settings();
@@ -355,8 +355,8 @@ void SettingsViewModel::loadFromCore()
 
     m_baseSecrets.clear();
     for (SettingsProviderModel* card : {m_stt, m_llm, m_embedding->card()})
-        for (const ProviderDescriptor& d : card->allDescriptors())
-            for (const ConfigField& f : d.fields)
+        for (const providers::ProviderDescriptor& d : card->allDescriptors())
+            for (const providers::ConfigField& f : d.fields)
                 if (f.isSecret && !f.secretKey.isEmpty())
                     m_baseSecrets.insert(f.secretKey, c->secret(f.secretKey));
     m_draftSecrets = m_baseSecrets;
@@ -367,7 +367,7 @@ void SettingsViewModel::loadFromCore()
     m_promptText.clear();
     m_promptDefault.clear();
     for (const QString& id : kPromptIds) {
-        const QString def = promptDefault(id, m_base.metadataDir);
+        const QString def = processing::promptDefault(id, m_base.metadataDir);
         const QString stored = storedPrompt(m_base, id);
         m_promptDefault.insert(id, def);
         m_promptText.insert(id, stored.isEmpty() ? def : stored);
@@ -418,10 +418,10 @@ void SettingsViewModel::onExternalSettingsChanged()
     storePromptsInDraft();
     AppSettings live = m_controller->settings()->settings();
     normalize(live);
-    const QJsonObject merged = mergedSettings(toJson(m_base), toJson(m_draft), toJson(live));
+    const QJsonObject merged = mergedSettings(library::toJson(m_base), library::toJson(m_draft), library::toJson(live));
     const QString typedName = m_draft.userSpeakerName;
     m_base = live;
-    m_draft = appSettingsFromJson(merged);
+    m_draft = library::appSettingsFromJson(merged);
     if (typedName.trimmed() == m_draft.userSpeakerName) m_draft.userSpeakerName = typedName;
     {
         // The prompts' editor text from the merged draft (an external prompt change shows too).
@@ -464,7 +464,7 @@ void SettingsViewModel::touch()
     storePromptsInDraft();
     AppSettings d = m_draft;
     d.userSpeakerName = d.userSpeakerName.trimmed();
-    int n = countChanges(toJson(m_base), toJson(d));
+    int n = countChanges(library::toJson(m_base), library::toJson(d));
     for (auto it = m_draftSecrets.constBegin(); it != m_draftSecrets.constEnd(); ++it)
         if (m_baseSecrets.value(it.key()) != it.value()) ++n;
     QStringList a = m_baseSelected, b = m_draftSelected;
@@ -502,7 +502,7 @@ void SettingsViewModel::validate()
     }
 }
 
-ReadinessResult SettingsViewModel::draftReadiness(WorkflowStep step) const
+providers::ReadinessResult SettingsViewModel::draftReadiness(providers::WorkflowStep step) const
 {
     // Fictional meeting: has an audio track and a transcript, so only the provider setting matters.
     Meeting m;
@@ -510,7 +510,7 @@ ReadinessResult SettingsViewModel::draftReadiness(WorkflowStep step) const
     t.active = true;
     m.tracks << t;
     m.hasTranscript = true;
-    const ReadinessModel model(m_draft, [this](const QString& key) {
+    const providers::ReadinessModel model(m_draft, [this](const QString& key) {
         if (m_draftSecrets.contains(key)) return !m_draftSecrets.value(key).trimmed().isEmpty();
         if (!m_controller) return false;
         return m_controller->hasSecret(key);
@@ -520,8 +520,8 @@ ReadinessResult SettingsViewModel::draftReadiness(WorkflowStep step) const
 
 void SettingsViewModel::updateServicesWarn()
 {
-    const bool warn = !draftReadiness(WorkflowStep::Transcribe).runnable
-                      || !draftReadiness(WorkflowStep::Summarize).runnable
+    const bool warn = !draftReadiness(providers::WorkflowStep::Transcribe).runnable
+                      || !draftReadiness(providers::WorkflowStep::Summarize).runnable
                       || m_stt->lastTestFailed() || m_llm->lastTestFailed();
     if (warn == m_servicesWarn) return;
     m_servicesWarn = warn;
@@ -605,7 +605,7 @@ void SettingsViewModel::refreshVoiceprint()
         QSet<QString> meetings, samples;
         for (const Voiceprint& p : prints) {
             if (!p.sourceMeetingId.isEmpty()) meetings.insert(p.sourceMeetingId);
-            samples.insert(VoiceprintStore::siblingKey(p));
+            samples.insert(library::VoiceprintStore::siblingKey(p));
         }
         has = !prints.isEmpty();
         if (has)
@@ -984,7 +984,7 @@ void SettingsViewModel::setWatching(bool on)
     emit watchingChanged();
 }
 
-void SettingsViewModel::setDetectorForTest(IMeetingDetector* detector)
+void SettingsViewModel::setDetectorForTest(watcher::IMeetingDetector* detector)
 {
     m_detector.reset(detector);
     m_detectorTried = true;
@@ -995,13 +995,13 @@ void SettingsViewModel::pollDetector()
     if (!m_watching) return;
     if (!m_detector && !m_detectorTried && m_controller) {
         m_detectorTried = true;
-        registerBuiltinDetectors();   // idempotent
+        watcher::registerBuiltinDetectors();   // idempotent
         m_detector.reset(m_draft.detectorId.isEmpty()
-                             ? MeetingDetectorRegistry::instance().createBest()
-                             : MeetingDetectorRegistry::instance().create(m_draft.detectorId));
+                             ? watcher::MeetingDetectorRegistry::instance().createBest()
+                             : watcher::MeetingDetectorRegistry::instance().create(m_draft.detectorId));
     }
     const bool available = m_detector && m_detector->isAvailable();
-    MeetingSignal sig;
+    watcher::MeetingSignal sig;
     if (available) {
         // With the DRAFT's list: an app just added shows immediately if it is in a call.
         m_detector->configure(m_draft.knownCallApps, QStringLiteral("tanara"));
@@ -1163,14 +1163,14 @@ void SettingsViewModel::resetPrompt()
 QVariantList SettingsViewModel::promptVariables() const
 {
     QVariantList out;
-    for (const PromptVariable& v : tanara::promptVariables())
+    for (const processing::PromptVariable& v : tanara::processing::promptVariables())
         out << QVariantMap{{QStringLiteral("token"), v.token}, {QStringLiteral("description"), v.description}};
     return out;
 }
 
-QString SettingsViewModel::schemaSummary() const { return promptOutputFormat(promptId(m_promptIndex)).summary; }
-QString SettingsViewModel::schemaBody() const { return promptOutputFormat(promptId(m_promptIndex)).body; }
-QString SettingsViewModel::schemaKind() const { return promptOutputFormat(promptId(m_promptIndex)).kind; }
+QString SettingsViewModel::schemaSummary() const { return processing::promptOutputFormat(promptId(m_promptIndex)).summary; }
+QString SettingsViewModel::schemaBody() const { return processing::promptOutputFormat(promptId(m_promptIndex)).body; }
+QString SettingsViewModel::schemaKind() const { return processing::promptOutputFormat(promptId(m_promptIndex)).kind; }
 
 // ---- save / discard ------------------------------------------------------------------
 
@@ -1221,17 +1221,17 @@ bool SettingsViewModel::save()
         return true;
     }
 
-    AppController* c = m_controller;
+    app::AppController* c = m_controller;
     m_saving = true;
 
     // 1) settings: only the DIFFERENCE goes onto the core's currently effective state.
     const AppSettings live = c->settings()->settings();
     AppSettings draft = m_draft;
     draft.userSpeakerName = m_base.userSpeakerName;   // the core handles the rename as a separate operation
-    const QJsonObject liveJson = toJson(live);
-    const QJsonObject mergedJson = mergedSettings(toJson(m_base), toJson(draft), liveJson);
+    const QJsonObject liveJson = library::toJson(live);
+    const QJsonObject mergedJson = mergedSettings(library::toJson(m_base), library::toJson(draft), liveJson);
     if (mergedJson != liveJson) {
-        AppSettings merged = appSettingsFromJson(mergedJson);
+        AppSettings merged = library::appSettingsFromJson(mergedJson);
         if (!paths::homeOverride().isEmpty()) merged.metadataDir = live.metadataDir;
         c->settings()->setSettings(merged);
     }
@@ -1250,8 +1250,8 @@ bool SettingsViewModel::save()
     }
     // 5) starting the watcher at sign-in: effective immediately (never in a sandbox / test).
     if (m_base.watcherAutostart != m_draft.watcherAutostart)
-        autostart::applyWatcher(m_draft.watcherAutostart,
-                                autostart::findWatcherExecutable(QCoreApplication::applicationDirPath()));
+        watcher::autostart::applyWatcher(m_draft.watcherAutostart,
+                                watcher::autostart::findWatcherExecutable(QCoreApplication::applicationDirPath()));
     m_saving = false;
 
     loadFromCore();
@@ -1265,8 +1265,8 @@ bool SettingsViewModel::save()
 
     // If the gap is gone, back to the meeting.
     if (!m_focusField.isEmpty()) {
-        const WorkflowStep step = m_focusField == QLatin1String("stt") ? WorkflowStep::Transcribe
-                                                                        : WorkflowStep::Summarize;
+        const providers::WorkflowStep step = m_focusField == QLatin1String("stt") ? providers::WorkflowStep::Transcribe
+                                                                        : providers::WorkflowStep::Summarize;
         if (draftReadiness(step).runnable) {
             m_focusField.clear();
             emit focusChanged();
@@ -1359,7 +1359,7 @@ void SettingsViewModel::loadDemo()
     m_promptText.clear();
     m_promptDefault.clear();
     for (const QString& id : kPromptIds) {
-        const QString def = promptBuiltin(id);
+        const QString def = processing::promptBuiltin(id);
         m_promptDefault.insert(id, def);
         m_promptText.insert(id, def);
     }
@@ -1418,8 +1418,8 @@ void SettingsViewModel::loadDemo()
         m_page = QStringLiteral("services");
         m_llm->setDemoResult(QStringLiteral("ok"), 48, QString(), QString());
         m_llm->setAdvancedOpen(true);
-        llmctx::LlmServerInfo info;   // LM Studio: the model is loaded, on one thread
-        info.kind = llmctx::LlmServerInfo::Kind::LmStudio;
+        providers::llmctx::LlmServerInfo info;   // LM Studio: the model is loaded, on one thread
+        info.kind = providers::llmctx::LlmServerInfo::Kind::LmStudio;
         info.modelListed = true;
         info.modelKey = QStringLiteral("google/gemma-4-12b-qat");
         info.maxContext = 131072;
@@ -1445,7 +1445,7 @@ void SettingsViewModel::loadDemo()
     } else if (st == QLatin1String("B07") || st == QLatin1String("B07notes") || st == QLatin1String("schema")) {
         m_page = QStringLiteral("summary");
         // A prompt extended with an own rule -> "modified".
-        const QString custom = promptBuiltin(QStringLiteral("single"))
+        const QString custom = processing::promptBuiltin(QStringLiteral("single"))
             + QStringLiteral("\nFor each action item, name the owner and the deadline when they were said.\n");
         m_promptText.insert(QStringLiteral("single"), custom);
         m_base.summaryPrompt = m_draft.summaryPrompt = custom;

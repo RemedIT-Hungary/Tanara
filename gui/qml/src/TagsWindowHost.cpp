@@ -3,7 +3,7 @@
 #include "QmlApp.h"
 #include "TagsViewModel.h"
 
-#include "tanara/AppController.h"
+#include "tanara/app/AppController.h"
 #include "tanara/foundation/log/Logging.h"
 
 #include <QQmlComponent>
@@ -14,7 +14,7 @@ using namespace tanara;
 
 namespace tanara_qml {
 
-TagsWindowHost::TagsWindowHost(AppController* controller, QObject* parent)
+TagsWindowHost::TagsWindowHost(app::AppController* controller, QObject* parent)
     : QObject(parent), m_controller(controller)
 {
 }

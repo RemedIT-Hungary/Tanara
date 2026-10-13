@@ -5,7 +5,7 @@
 
 #include <QSet>
 
-using tanara::EditorUtterance;
+using tanara::editing::EditorUtterance;
 
 namespace tanara_qml {
 

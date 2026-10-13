@@ -25,9 +25,10 @@ class QNetworkAccessManager;
 class QNetworkReply;
 class QTimer;
 
-namespace tanara {
+namespace tanara { class KeyStore; }
 
-class KeyStore;
+namespace tanara::cloud {
+
 
 class CloudAccount : public QObject {
     Q_OBJECT
@@ -95,25 +96,25 @@ public:
     void setManualApiKey(const QString& key, const QString& email = QString());
 
 signals:
-    void deviceCodeReady(const tanara::DeviceCode& code);
+    void deviceCodeReady(const tanara::cloud::DeviceCode& code);
     void deviceFlowSucceeded(const QString& email);
-    void deviceFlowFailed(const tanara::CloudError& error);   // access_denied / expired_token / network ...
+    void deviceFlowFailed(const tanara::cloud::CloudError& error);   // access_denied / expired_token / network ...
     void loggedIn();
     void loggedOut();
-    void accountUpdated(const tanara::AccountInfo& account);
-    void accountFailed(const tanara::CloudError& error);
+    void accountUpdated(const tanara::cloud::AccountInfo& account);
+    void accountFailed(const tanara::cloud::CloudError& error);
     void modelsUpdated();
-    void modelsFailed(const tanara::CloudError& error);
-    void balanceChanged(const tanara::Money& balance);
-    void termsAccepted(const tanara::TermsStatus& terms);
-    void termsFailed(const tanara::CloudError& error);
+    void modelsFailed(const tanara::cloud::CloudError& error);
+    void balanceChanged(const tanara::cloud::Money& balance);
+    void termsAccepted(const tanara::cloud::TermsStatus& terms);
+    void termsFailed(const tanara::cloud::CloudError& error);
     void topupLinkReady(const QString& url);
-    void topupFailed(const tanara::CloudError& error);   // TopupUnavailable → contactUrl
+    void topupFailed(const tanara::cloud::CloudError& error);   // TopupUnavailable → contactUrl
     void waitlistJoined(const QString& email);
-    void waitlistFailed(const tanara::CloudError& error);
+    void waitlistFailed(const tanara::cloud::CloudError& error);
     void clientTooOldDetected(const QString& minClient);
     // Startup check: an earlier (interrupted) transcription ended with an error and the charge was written back.
-    void previousTranscriptionRefunded(const tanara::Money& refund, const tanara::Money& balance);
+    void previousTranscriptionRefunded(const tanara::cloud::Money& refund, const tanara::cloud::Money& balance);
 
 private:
     using Done = std::function<void(const HttpExchange&)>;
@@ -151,4 +152,4 @@ private:
     bool       m_deviceActive = false;
 };
 
-} // namespace tanara
+} // namespace tanara::cloud

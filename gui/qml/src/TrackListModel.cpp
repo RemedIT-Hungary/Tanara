@@ -5,10 +5,10 @@
 #include "AppContext.h"
 #include "JobSupport.h"
 
-#include "tanara/AppController.h"
-#include "tanara/SettingsManager.h"
-#include "tanara/jobs/MeetingJobTracker.h"
-#include "tanara/store/MeetingStore.h"
+#include "tanara/app/AppController.h"
+#include "tanara/app/SettingsManager.h"
+#include "tanara/library/jobs/MeetingJobTracker.h"
+#include "tanara/library/store/MeetingStore.h"
 
 #include <QDir>
 #include <QFileInfo>
@@ -51,7 +51,7 @@ TrackListModel::TrackListModel(QObject* parent) : QAbstractListModel(parent)
     reload();
 }
 
-AppController* TrackListModel::app() const { return jobsupport::resolveController(m_injected); }
+app::AppController* TrackListModel::app() const { return jobsupport::resolveController(m_injected); }
 QObject* TrackListModel::controllerObject() const { return app(); }
 bool TrackListModel::demo() const { return jobsupport::demoMode(app()); }
 
@@ -70,7 +70,7 @@ void TrackListModel::setMeetingId(const QString& id)
     if (id == m_meetingId)
         return;
     // The old meeting's pending waveform requests are dropped (no needless background computing).
-    if (AppController* c = app(); c && !m_meetingId.isEmpty() && !jobsupport::demoMode(c))
+    if (app::AppController* c = app(); c && !m_meetingId.isEmpty() && !jobsupport::demoMode(c))
         c->waveforms()->cancel(m_meetingId);
     m_meetingId = id;
     m_waveformsRequested = false;
@@ -95,7 +95,7 @@ void TrackListModel::setDemoState(const QString& state)
 
 void TrackListModel::connectController()
 {
-    AppController* c = app();
+    app::AppController* c = app();
     if (c == m_connected)
         return;
     for (const QMetaObject::Connection& conn : std::as_const(m_connections))
@@ -106,13 +106,13 @@ void TrackListModel::connectController()
         return;
 
     auto mine = [this](const QString& id) { return !m_meetingId.isEmpty() && id == m_meetingId; };
-    m_connections << connect(c, &AppController::tracksChanged, this,
+    m_connections << connect(c, &app::AppController::tracksChanged, this,
                              [this, mine](const QString& id) { if (mine(id)) reload(); });
     // Renaming devices (Settings) also changes the tracks' friendly names.
     if (c->settings()) {
         m_deviceNames = c->settings()->settings().deviceNames;
-        m_connections << connect(c->settings(), &tanara::SettingsManager::settingsChanged, this, [this] {
-            AppController* a = app();
+        m_connections << connect(c->settings(), &tanara::app::SettingsManager::settingsChanged, this, [this] {
+            app::AppController* a = app();
             if (!a || !a->settings()) return;
             const QMap<QString, QString> names = a->settings()->settings().deviceNames;
             if (names == m_deviceNames) return;
@@ -120,7 +120,7 @@ void TrackListModel::connectController()
             reload();
         });
     }
-    m_connections << connect(c, &AppController::mixdownUpdated, this,
+    m_connections << connect(c, &app::AppController::mixdownUpdated, this,
                              [this, mine](const QString& id, bool ok) {
         if (!mine(id)) return;
         if (ok) {                       // new mix -> the old peaks are invalid
@@ -131,21 +131,21 @@ void TrackListModel::connectController()
         if (ok && m_waveformsRequested)
             requestWaveforms();
     });
-    m_connections << connect(c, &AppController::mixdownProgress, this,
+    m_connections << connect(c, &app::AppController::mixdownProgress, this,
                              [this, mine](const QString& id, int pct) {
         if (!mine(id) || pct == m_mixdownPercent) return;
         m_mixdownPercent = pct;
         emit mixdownPercentChanged();
     });
-    m_connections << connect(c->jobs(), &MeetingJobTracker::stateChanged, this,
+    m_connections << connect(c->jobs(), &library::MeetingJobTracker::stateChanged, this,
                              [this, mine](const QString& id) { if (mine(id)) reloadMixdown(); });
-    m_connections << connect(c->waveforms(), &WaveformService::peaksReady, this,
-                             [this, mine](const QString& id, const QString& trackId, const TrackPeaks& p) {
+    m_connections << connect(c->waveforms(), &library::WaveformService::peaksReady, this,
+                             [this, mine](const QString& id, const QString& trackId, const library::TrackPeaks& p) {
         if (mine(id)) applyPeaks(trackId, p, false);
     });
-    m_connections << connect(c->waveforms(), &WaveformService::peaksFailed, this,
+    m_connections << connect(c->waveforms(), &library::WaveformService::peaksFailed, this,
                              [this, mine](const QString& id, const QString& trackId, const QString&) {
-        if (mine(id)) applyPeaks(trackId, TrackPeaks{}, true);
+        if (mine(id)) applyPeaks(trackId, library::TrackPeaks{}, true);
     });
 }
 
@@ -157,13 +157,13 @@ QList<qreal> TrackListModel::toList(const QVector<float>& v)
     return out;
 }
 
-QString TrackListModel::iconFor(TrackRole role)
+QString TrackListModel::iconFor(library::TrackRole role)
 {
     switch (role) {
-    case TrackRole::OwnMic:      return QStringLiteral("mic");
-    case TrackRole::CallAudio:   return QStringLiteral("monitor-speaker");
-    case TrackRole::SystemAudio: return QStringLiteral("speaker");
-    case TrackRole::Other:       break;
+    case library::TrackRole::OwnMic:      return QStringLiteral("mic");
+    case library::TrackRole::CallAudio:   return QStringLiteral("monitor-speaker");
+    case library::TrackRole::SystemAudio: return QStringLiteral("speaker");
+    case library::TrackRole::Other:       break;
     }
     return QStringLiteral("audio-lines");
 }
@@ -280,7 +280,7 @@ int TrackListModel::droppedCount() const
 
 // The drawn levels: the effective (RMS) level if there is one: for a long recording the
 // per-bucket peak is near maximum everywhere, while RMS shows where there is speech and where silence.
-QList<qreal> TrackListModel::levelsOf(const TrackPeaks& peaks)
+QList<qreal> TrackListModel::levelsOf(const library::TrackPeaks& peaks)
 {
     return toList(peaks.rms.size() == peaks.peaks.size() && !peaks.rms.isEmpty() ? peaks.rms : peaks.peaks);
 }
@@ -309,7 +309,7 @@ QString TrackListModel::mixdownDurationText() const
 
 void TrackListModel::reload()
 {
-    AppController* c = app();
+    app::AppController* c = app();
     if (jobsupport::demoMode(c)) {
         loadDemo();
         return;
@@ -322,13 +322,13 @@ void TrackListModel::reload()
         m_meetingDurationMs = m.durationMs;
         if (!m.mixdownFile.isEmpty())
             m_mixdownPath = QDir(m.folder).filePath(m.mixdownFile);
-        const QVector<TrackView> views = TrackCatalog::tracks(m);
+        const QVector<library::TrackView> views = library::TrackCatalog::tracks(m);
         QHash<QString, QString> groupOf;   // segment id -> the logical track's leading id
-        const QVector<tracknames::SegmentInfo> seg = tracknames::segments(m.tracks);
+        const QVector<library::tracknames::SegmentInfo> seg = library::tracknames::segments(m.tracks);
         for (int i = 0; i < m.tracks.size(); ++i)
             groupOf.insert(m.tracks.at(i).id, m.tracks.at(seg.value(i).leader >= 0 ? seg.value(i).leader : i).id);
         int color = 0;
-        for (const TrackView& v : views) {
+        for (const library::TrackView& v : views) {
             Row row;
             row.view = v;
             row.groupId = groupOf.value(v.track.id, v.track.id);
@@ -344,7 +344,7 @@ void TrackListModel::reload()
                 if (row.durationMs < 0) row.durationMs = old->durationMs;
             } else if (!v.fileMissing) {
                 // Valid cache -> available immediately (small file, synchronous read).
-                const TrackPeaks cached = WaveformService::loadCached(v.absolutePath);
+                const library::TrackPeaks cached = library::WaveformService::loadCached(v.absolutePath);
                 if (cached.isValid()) {
                     row.peaks = levelsOf(cached);
                     row.peaksState = QStringLiteral("ready");
@@ -356,7 +356,7 @@ void TrackListModel::reload()
             fresh.append(row);
         }
         if (m_mixdownPeaks.isEmpty() && !m_mixdownPath.isEmpty() && QFileInfo::exists(m_mixdownPath)) {
-            const TrackPeaks cached = WaveformService::loadCached(m_mixdownPath);
+            const library::TrackPeaks cached = library::WaveformService::loadCached(m_mixdownPath);
             if (cached.isValid()) {
                 m_mixdownPeaks = levelsOf(cached);
                 m_mixdownDurationMs = cached.durationMs;
@@ -387,7 +387,7 @@ void TrackListModel::reload()
 
 void TrackListModel::reloadMixdown()
 {
-    AppController* c = app();
+    app::AppController* c = app();
     if (jobsupport::demoMode(c) || m_meetingId.isEmpty())
         return;
     const Meeting m = c->store()->load(m_meetingId);
@@ -414,7 +414,7 @@ void TrackListModel::reloadMixdown()
     emit changed();
 }
 
-void TrackListModel::applyPeaks(const QString& trackId, const TrackPeaks& peaks, bool failed)
+void TrackListModel::applyPeaks(const QString& trackId, const library::TrackPeaks& peaks, bool failed)
 {
     if (trackId == kMixdownId) {
         m_mixdownPeaksLoading = false;
@@ -444,7 +444,7 @@ void TrackListModel::applyPeaks(const QString& trackId, const TrackPeaks& peaks,
 void TrackListModel::requestWaveforms()
 {
     m_waveformsRequested = true;
-    AppController* c = app();
+    app::AppController* c = app();
     if (jobsupport::demoMode(c) || m_meetingId.isEmpty())
         return;
     bool any = false;
@@ -474,7 +474,7 @@ bool TrackListModel::rename(int row, const QString& name)
 {
     if (row < 0 || row >= m_rows.size())
         return false;
-    AppController* c = app();
+    app::AppController* c = app();
     if (jobsupport::demoMode(c)) {
         Row& r = m_rows[row];
         const QString n = name.trimmed();
@@ -490,7 +490,7 @@ void TrackListModel::restore(int row)
 {
     if (row < 0 || row >= m_rows.size())
         return;
-    AppController* c = app();
+    app::AppController* c = app();
     if (jobsupport::demoMode(c)) {
         m_rows[row].view.track.active = true;
         emit dataChanged(index(row), index(row), {ActiveRole});
@@ -504,7 +504,7 @@ void TrackListModel::setIncluded(int row, bool included)
 {
     if (row < 0 || row >= m_rows.size())
         return;
-    AppController* c = app();
+    app::AppController* c = app();
     if (jobsupport::demoMode(c)) {
         tanara::Track& t = m_rows[row].view.track;
         t.excludedReason = included ? QString() : QStringLiteral("manual");
@@ -534,7 +534,7 @@ QString TrackListModel::relocateTrack(const QString& meetingId, const QString& t
 {
     if (filePath.isEmpty())
         return QString();
-    AppController* c = app();
+    app::AppController* c = app();
     if (jobsupport::demoMode(c))
         return QString();
     if (meetingId.isEmpty() || trackId.isEmpty() || meetingId != m_meetingId)
@@ -547,7 +547,7 @@ QString TrackListModel::relocateTrack(const QString& meetingId, const QString& t
 
 int TrackListModel::deleteDropped()
 {
-    AppController* c = app();
+    app::AppController* c = app();
     if (jobsupport::demoMode(c)) {
         int n = 0;
         for (int i = int(m_rows.size()) - 1; i >= 0; --i) {
@@ -565,7 +565,7 @@ int TrackListModel::deleteDropped()
 
 int TrackListModel::deleteDroppedIn(const QString& meetingId)
 {
-    AppController* c = app();
+    app::AppController* c = app();
     if (jobsupport::demoMode(c))
         return deleteDropped();
     // The confirmation was for THIS meeting: if another became selected meanwhile, we do not delete.
@@ -576,7 +576,7 @@ int TrackListModel::deleteDroppedIn(const QString& meetingId)
 
 bool TrackListModel::deleteTrackIn(const QString& meetingId, const QString& trackId)
 {
-    AppController* c = app();
+    app::AppController* c = app();
     if (jobsupport::demoMode(c)) {
         for (int i = 0; i < m_rows.size(); ++i) {
             if (m_rows[i].view.track.id != trackId) continue;
@@ -596,7 +596,7 @@ bool TrackListModel::deleteTrackIn(const QString& meetingId, const QString& trac
 
 void TrackListModel::refreshMixdown()
 {
-    AppController* c = app();
+    app::AppController* c = app();
     if (jobsupport::demoMode(c) || m_meetingId.isEmpty())
         return;
     c->regenerateMixdown(m_meetingId);
@@ -611,7 +611,7 @@ void TrackListModel::loadDemo()
     const bool overview = st.startsWith(QLatin1String("overview"));
     m_meetingDurationMs = (30 * 60 + 34) * 1000;
 
-    auto make = [&](const char* id, TrackRole role, const QString& name, const QString& raw,
+    auto make = [&](const char* id, library::TrackRole role, const QString& name, const QString& raw,
                     const QString& file, bool active, bool missing, int color, qreal level) {
         Row r;
         r.view.track.id = QString::fromLatin1(id);
@@ -634,10 +634,10 @@ void TrackListModel::loadDemo()
         return r;
     };
     QVector<Row> rows;
-    rows << make("mic", TrackRole::OwnMic, tr("Saját mikrofon"),
+    rows << make("mic", library::TrackRole::OwnMic, tr("Saját mikrofon"),
                  QStringLiteral("Jabra Evolve2 65 · alsa_input.usb-GN_Netcom_Jabra_Evolve2_65-00.mono-fallback"),
                  QStringLiteral("track-01.ogg"), true, false, 0, 0.8)
-         << make("call", TrackRole::CallAudio, tr("Hívás hangja"),
+         << make("call", library::TrackRole::CallAudio, tr("Hívás hangja"),
                  QStringLiteral("Microsoft Teams · Monitor of Built-in Audio Analog Stereo"),
                  QStringLiteral("track-02.ogg"), true, false, 1, 0.9);
     rows.last().view.track.startOffsetMs = 2 * 60 * 1000 + 30 * 1000;   // enabled later
@@ -649,7 +649,7 @@ void TrackListModel::loadDemo()
         rows[1].view.track.speechRatio = two ? 0.52 : 0.61;
         rows[1].view.track.startOffsetMs = 0;
         if (!two) {
-            rows << make("system", TrackRole::SystemAudio, tr("Rendszerhang"),
+            rows << make("system", library::TrackRole::SystemAudio, tr("Rendszerhang"),
                          QStringLiteral("Monitor of HDMI / DisplayPort 1 Output"),
                          QStringLiteral("track-03.ogg"), false, false, 2, 0.004);
             rows.last().view.track.kind = tanara::TrackKind::Loopback;
@@ -657,10 +657,10 @@ void TrackListModel::loadDemo()
             rows.last().view.track.excludedReason = QStringLiteral("noSpeech");
         }
     } else if (st != QLatin1String("idle")) {
-        rows << make("system", TrackRole::SystemAudio, tr("Rendszerhang"),
+        rows << make("system", library::TrackRole::SystemAudio, tr("Rendszerhang"),
                      QStringLiteral("Monitor of HDMI / DisplayPort 1 Output"),
                      QStringLiteral("track-03.ogg"), false, false, 2, 0.004)
-             << make("mic2", TrackRole::OwnMic, tr("Második mikrofon"),
+             << make("mic2", library::TrackRole::OwnMic, tr("Második mikrofon"),
                      QStringLiteral("USB PnP Audio Device"),
                      QStringLiteral("track-04.flac"), true, true, 3, 0.0);
     }

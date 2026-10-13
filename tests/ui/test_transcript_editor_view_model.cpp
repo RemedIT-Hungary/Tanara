@@ -58,9 +58,9 @@ int laneOf(const TranscriptEditorViewModel& vm, const QString& key)
 // otherwise the two voices are orthogonal.
 struct PairScene {
     QTemporaryDir dir;
-    std::unique_ptr<MeetingStore> store;
-    std::unique_ptr<PeopleStore> people;
-    std::unique_ptr<VoiceprintStore> prints;
+    std::unique_ptr<library::MeetingStore> store;
+    std::unique_ptr<library::PeopleStore> people;
+    std::unique_ptr<library::VoiceprintStore> prints;
     Meeting meeting;
 
     static QString id(int row) { return QStringLiteral("u%1").arg(row * 5000); }
@@ -72,10 +72,10 @@ struct PairScene {
         const QVector<QPair<QString, char>> rows{
             {kB1, 'a'}, {kB2, 'b'}, {kB1, 'a'}, {kB1, 'b'}, {kB2, 'b'}, {kB1, 'a'},
             {kB1, 'b'}, {kB2, 'b'}, {kB1, 'a'}, {kB2, 'b'}, {kB1, 'b'}, {kB2, 'b'}};
-        store = std::make_unique<MeetingStore>(dir.filePath(QStringLiteral("rec")),
+        store = std::make_unique<library::MeetingStore>(dir.filePath(QStringLiteral("rec")),
                                                dir.filePath(QStringLiteral("meta")));
-        people = std::make_unique<PeopleStore>(dir.filePath(QStringLiteral("meta/people.json")));
-        prints = std::make_unique<VoiceprintStore>(dir.filePath(QStringLiteral("meta/vp.json")));
+        people = std::make_unique<library::PeopleStore>(dir.filePath(QStringLiteral("meta/people.json")));
+        prints = std::make_unique<library::VoiceprintStore>(dir.filePath(QStringLiteral("meta/vp.json")));
         meeting = store->createMeeting(QStringLiteral("Két hasonló hang"));
         QJsonArray segs;
         for (int i = 0; i < rows.size(); ++i)
@@ -83,7 +83,7 @@ struct PairScene {
                                     {QStringLiteral("endMs"), double(i * 5000 + 4000)},
                                     {QStringLiteral("speaker"), rows[i].first},
                                     {QStringLiteral("text"), QStringLiteral("Sor %1").arg(i)}});
-        QFile f(tanara::speakeredit::segmentsPath(meeting.folder));
+        QFile f(tanara::editing::speakeredit::segmentsPath(meeting.folder));
         if (f.open(QIODevice::WriteOnly)) f.write(QJsonDocument(segs).toJson());
         f.close();
         meeting.hasTranscript = true;
@@ -91,16 +91,16 @@ struct PairScene {
         store->saveMeeting(meeting);
         const QVector<float> a{1.0f, 0.0f, 0.0f};
         const QVector<float> b = similar ? QVector<float>{0.85f, 0.5268f, 0.0f} : QVector<float>{0.0f, 1.0f, 0.0f};
-        const QVector<tanara::TranscriptLine> lines = tanara::speakeredit::loadTranscriptLines(meeting.folder);
-        UtteranceEmbeddingCache c;
-        c.fingerprint = tanara::speakeredit::transcriptFingerprint(lines);
+        const QVector<tanara::TranscriptLine> lines = tanara::editing::speakeredit::loadTranscriptLines(meeting.folder);
+        processing::UtteranceEmbeddingCache c;
+        c.fingerprint = tanara::editing::speakeredit::transcriptFingerprint(lines);
         for (int i = 0; i < lines.size(); ++i) c.set(QStringLiteral("campplus"), lines[i].id, rows[i].second == 'a' ? a : b);
         c.save(meeting.folder);
     }
 
-    std::unique_ptr<SpeakerEditor> editor()
+    std::unique_ptr<editing::SpeakerEditor> editor()
     {
-        auto ed = std::make_unique<SpeakerEditor>(store.get(), people.get(), prints.get(), meeting.id);
+        auto ed = std::make_unique<editing::SpeakerEditor>(store.get(), people.get(), prints.get(), meeting.id);
         // The cache is complete: the factory is needed only for the "voice model exists" state (nothing runs).
         ed->setEmbedderFactory([] { return std::make_unique<FakeEmbedder>(); });
         return ed;
@@ -247,7 +247,7 @@ private slots:
         QCOMPARE(resets.count(), 0);
 
         // The fix went to disk (into the overlay), the raw transcript is untouched.
-        QVERIFY(QFile::exists(speakeredit::overlayPath(fx.meeting.folder)));
+        QVERIFY(QFile::exists(editing::speakeredit::overlayPath(fx.meeting.folder)));
     }
 
     void multiSelect_moveIsOneStep()
@@ -1171,9 +1171,9 @@ private slots:
         TranscriptEditorViewModel vm;
         vm.setEditor(ed.get());
         vm.setPeopleProvider([] {
-            QVector<PersonInfo> all;
+            QVector<editing::PersonInfo> all;
             for (const char* n : {"Anna", "Béla", "Ödön", "Őri Áron"}) {
-                PersonInfo p;
+                editing::PersonInfo p;
                 p.name = QString::fromUtf8(n);
                 p.meetingCount = p.name == QLatin1String("Anna") ? 5 : 1;
                 p.hasVoiceprint = p.name == QLatin1String("Anna");

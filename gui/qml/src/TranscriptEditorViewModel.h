@@ -13,9 +13,9 @@
 //
 #include "TranscriptListModel.h"
 
-#include "tanara/edit/SpeakerEditTypes.h"
-#include "tanara/edit/SpeakerEditor.h"
-#include "tanara/tags/PersonTags.h"
+#include "tanara/editing/session/SpeakerEditTypes.h"
+#include "tanara/editing/session/SpeakerEditor.h"
+#include "tanara/library/tags/PersonTags.h"
 
 #include <QColor>
 #include <QHash>
@@ -34,8 +34,8 @@
 #include <memory>
 
 namespace tanara {
-class AppController;
-class SpeakerEditor;
+namespace app { class AppController; }
+namespace editing { class SpeakerEditor; }
 }
 
 namespace tanara_qml {
@@ -272,11 +272,11 @@ public:
 
     // For tests / embedding: sets the editor and the person list directly. The caller keeps
     // ownership of the given editor. nullptr -> empty session.
-    void setEditor(tanara::SpeakerEditor* editor);
-    tanara::SpeakerEditor* editor() const { return m_editor; }
-    void setPeopleProvider(std::function<QVector<tanara::PersonInfo>()> provider);
+    void setEditor(tanara::editing::SpeakerEditor* editor);
+    tanara::editing::SpeakerEditor* editor() const { return m_editor; }
+    void setPeopleProvider(std::function<QVector<tanara::editing::PersonInfo>()> provider);
     // Sets the AppController (defaults to the App singleton's). The meetingId resolves through it.
-    void setController(tanara::AppController* controller);
+    void setController(tanara::app::AppController* controller);
     // Lane visibility (per meeting) is stored in this JSON file; empty -> in memory only.
     void setUiStatePath(const QString& path);
 
@@ -405,7 +405,7 @@ public:
     QString displayName(const QString& key) const { return m_views.value(key).name; }
 
     // ---- read by the list model -------------------------------------------
-    const QVector<tanara::EditorUtterance>& utterances() const { return m_utts; }
+    const QVector<tanara::editing::EditorUtterance>& utterances() const { return m_utts; }
     SpeakerView speakerView(const QString& key) const { return m_views.value(key); }
     bool isSelected(int utterance) const { return m_selected.contains(utterance); }
     bool isSuggested(int utterance) const { return m_suggestionShown && m_suggested.contains(utterance); }
@@ -576,7 +576,7 @@ public:
     Q_INVOKABLE int searchStep(int direction);
 
     // ---- people (read by PersonListModel) ---------------------------------
-    QVector<tanara::PersonInfo> people() const;
+    QVector<tanara::editing::PersonInfo> people() const;
     bool isMeetingPerson(const QString& name) const;
 
     // ---- evidence, candidates, groups, lane assignment -------------------
@@ -752,7 +752,7 @@ signals:
     void notice(const QString& text);
 
 private:
-    void attach(tanara::SpeakerEditor* editor);
+    void attach(tanara::editing::SpeakerEditor* editor);
     void detach();
     void reloadAll();
     void startEmbeddingIfNeeded();
@@ -809,7 +809,7 @@ private:
                        int lastUtterance, bool offerVoiceprint = false, bool newPerson = false);
     void publishWholeSpeakerChange(const QString& fromName, int lines, const QString& targetKey);
     bool canOfferVoiceprint(const QString& speakerKey) const;
-    QString voiceprintMessage(const QString& name, const tanara::VoiceprintResult& result) const;
+    QString voiceprintMessage(const QString& name, const tanara::editing::VoiceprintResult& result) const;
     void clearChange();
     bool loadRailState() const;
     void saveRailState() const;
@@ -826,19 +826,19 @@ private:
     QString m_legacyText;
     QString m_meetingId;
     QString m_demoVariant;
-    QPointer<tanara::AppController> m_controller;
+    QPointer<tanara::app::AppController> m_controller;
     bool m_controllerInjected = false;
-    QPointer<tanara::SpeakerEditor> m_editor;
+    QPointer<tanara::editing::SpeakerEditor> m_editor;
     bool m_editorInjected = false;
     std::unique_ptr<TranscriptDemoSession> m_demoSession;
-    std::function<QVector<tanara::PersonInfo>()> m_peopleProvider;
+    std::function<QVector<tanara::editing::PersonInfo>()> m_peopleProvider;
     QString m_uiStatePath;
     bool m_uiStatePathSet = false;
 
     TranscriptListModel* m_rows = nullptr;
-    QVector<tanara::EditorUtterance> m_utts;
+    QVector<tanara::editing::EditorUtterance> m_utts;
     QHash<QString, int> m_uttIndex;
-    QVector<tanara::EditorSpeaker> m_speakers;
+    QVector<tanara::editing::EditorSpeaker> m_speakers;
     QHash<QString, SpeakerView> m_views;
     QStringList m_laneKeys;             // keys of the visible columns, in order
     QSet<QString> m_collapsed;          // collapsed (rarely speaking) keys
@@ -863,7 +863,7 @@ private:
     int m_suggestionAnchor = -1;
     QString m_suggestionTargetName;
     bool m_suggestionShown = false;
-    tanara::PairRecheckOffer m_pairOffer;
+    tanara::editing::PairRecheckOffer m_pairOffer;
     bool m_demoPairOffer = false;       // the demo state's fictional offer (not the editor's)
 
     struct Change {
@@ -880,7 +880,7 @@ private:
         QString printId;                // the voiceprint made from the lane (for its undo)
         bool newPerson = false;         // the reassignment created a new person
         // New person on a tagged meeting: the learning question and the answer text.
-        QVector<tanara::PersonTagQuestion> tagQuestions;
+        QVector<tanara::library::PersonTagQuestion> tagQuestions;
         QString tagAnswer;
     };
     Change m_change;
@@ -919,7 +919,7 @@ private:
     QString m_newPersonKey;
     bool m_demoTagQuestion = false;     // demo: the new person's tag question (newPersonTag)
     void askNewPersonTag(const QString& name);
-    void answerTagQuestion(const tanara::PersonTagQuestion& q, bool yes);
+    void answerTagQuestion(const tanara::library::PersonTagQuestion& q, bool yes);
     QString m_newPersonGroupId;
     QSet<int> m_similar;
     bool m_similarShown = false;
@@ -954,7 +954,7 @@ private:
     };
     // Keeps the marker of the row just read from the editor (m_utts[i]) at its old value in the
     // frozen window; a turn to doubtful behind it goes into the "doubtful again" list (called by onUtterancesChanged).
-    void sweepFilterIncoming(int i, const tanara::EditorUtterance& before);
+    void sweepFilterIncoming(int i, const tanara::editing::EditorUtterance& before);
     void sweepOnPosition();                 // called by setPlaybackPosition
     void sweepReset();                      // called by reloadAll
     void sweepReleaseOutside();

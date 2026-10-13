@@ -23,7 +23,7 @@ class QQuickWindow;
 class QWindow;
 
 namespace tanara {
-class AppController;
+namespace app { class AppController; }
 }
 
 namespace tanara_qml {
@@ -34,7 +34,7 @@ class SettingsViewModel;
 class SettingsWindowHost : public QObject {
     Q_OBJECT
 public:
-    SettingsWindowHost(tanara::AppController* controller, SettingsDialogs* dialogs,
+    SettingsWindowHost(tanara::app::AppController* controller, SettingsDialogs* dialogs,
                        QObject* parent = nullptr);
     ~SettingsWindowHost() override;
 
@@ -63,7 +63,7 @@ signals:
 private:
     bool ensureWindow();
 
-    QPointer<tanara::AppController> m_controller;
+    QPointer<tanara::app::AppController> m_controller;
     QPointer<SettingsDialogs> m_dialogs;
     QQmlEngine* m_engine = nullptr;
     QPointer<QQuickWindow> m_window;

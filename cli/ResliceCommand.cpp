@@ -1,8 +1,8 @@
 // tanara-cli reslice. All output is English, no tr().
 #include "ResliceCommand.h"
 
-#include "tanara/edit/TranscriptReslice.h"
-#include "tanara/stt/SonioxTiming.h"
+#include "tanara/editing/session/TranscriptReslice.h"
+#include "tanara/processing/stt/SonioxTiming.h"
 
 #include <QFileInfo>
 #include <QJsonArray>
@@ -20,23 +20,23 @@ QTextStream& err() { static QTextStream s(stderr); return s; }
 const QStringList kBuckets{QStringLiteral("0"), QStringLiteral("1-100"), QStringLiteral("101-200"),
                            QStringLiteral("201-300"), QStringLiteral(">300")};
 
-QString verdictName(reslice::Verdict v)
+QString verdictName(editing::reslice::Verdict v)
 {
     switch (v) {
-    case reslice::Verdict::RealWordSpans:    return QStringLiteral("real-word-spans");
-    case reslice::Verdict::AlreadyPadded:    return QStringLiteral("already-padded");
-    case reslice::Verdict::Reslice:          return QStringLiteral("reslice");
+    case editing::reslice::Verdict::RealWordSpans:    return QStringLiteral("real-word-spans");
+    case editing::reslice::Verdict::AlreadyPadded:    return QStringLiteral("already-padded");
+    case editing::reslice::Verdict::Reslice:          return QStringLiteral("reslice");
     default:                                 return QStringLiteral("error");
     }
 }
 
-QJsonObject planJson(const QString& folder, const reslice::Plan& p, bool dryRun)
+QJsonObject planJson(const QString& folder, const editing::reslice::Plan& p, bool dryRun)
 {
     QJsonObject o{{"meetingFolder", folder}, {"verdict", verdictName(p.verdict)}, {"dryRun", dryRun},
                   {"tokens", p.tokenCount}, {"medianTokenWidthMs", double(p.medianWidthMs)},
-                  {"leadMs", double(sonioxtiming::kLeadMs)}, {"tailMs", double(sonioxtiming::kTailMs)}};
+                  {"leadMs", double(processing::sonioxtiming::kLeadMs)}, {"tailMs", double(processing::sonioxtiming::kTailMs)}};
     if (!p.error.isEmpty()) o["error"] = p.error;
-    if (p.verdict != reslice::Verdict::Reslice) return o;
+    if (p.verdict != editing::reslice::Verdict::Reslice) return o;
     QJsonObject hist;
     for (const QString& b : kBuckets) hist[b] = p.shiftHistogram.value(b);
     o["lines"] = QJsonObject{{"old", int(p.oldLines.size())}, {"new", int(p.newLines.size())},
@@ -51,7 +51,7 @@ QJsonObject planJson(const QString& folder, const reslice::Plan& p, bool dryRun)
     return o;
 }
 
-void printPlan(const reslice::Plan& p)
+void printPlan(const editing::reslice::Plan& p)
 {
     out() << "Tokens: " << p.tokenCount << "  median width: " << p.medianWidthMs << " ms\n"
           << "Lines: " << p.oldLines.size() << " -> " << p.newLines.size()
@@ -88,7 +88,7 @@ int runResliceCommand(const QStringList& args)
     if (!QFileInfo(folder).isDir()) { err() << "Not a folder: " << folder << "\n"; return 1; }
     folder = QFileInfo(folder).absoluteFilePath();
 
-    const reslice::Plan p = reslice::plan(folder);
+    const editing::reslice::Plan p = editing::reslice::plan(folder);
     QJsonObject jo = planJson(folder, p, dryRun);
     auto finish = [&](int code) {
         if (json) out() << QJsonDocument(jo).toJson(QJsonDocument::Indented);
@@ -97,17 +97,17 @@ int runResliceCommand(const QStringList& args)
     };
 
     switch (p.verdict) {
-    case reslice::Verdict::Error:
+    case editing::reslice::Verdict::Error:
         if (!json) err() << "Error: " << p.error << "\n";
         return finish(1);
-    case reslice::Verdict::RealWordSpans:
+    case editing::reslice::Verdict::RealWordSpans:
         if (!json) out() << "Median token width " << p.medianWidthMs
                          << " ms: timing looks like real word spans; nothing to do\n";
         return finish(0);
-    case reslice::Verdict::AlreadyPadded:
+    case editing::reslice::Verdict::AlreadyPadded:
         if (!json) out() << "Lines are already padded (timing: emission); nothing to do\n";
         return finish(0);
-    case reslice::Verdict::Reslice:
+    case editing::reslice::Verdict::Reslice:
         break;
     }
 
@@ -116,7 +116,7 @@ int runResliceCommand(const QStringList& args)
         if (!json) out() << "Dry run: nothing written.\n";
         return finish(0);
     }
-    const reslice::ApplyResult r = reslice::apply(folder, p);
+    const editing::reslice::ApplyResult r = editing::reslice::apply(folder, p);
     jo["applied"] = r.ok;
     jo["backups"] = QJsonArray::fromStringList(r.backups);
     jo["written"] = QJsonArray::fromStringList(r.written);

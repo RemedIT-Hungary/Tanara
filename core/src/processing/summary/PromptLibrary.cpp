@@ -1,0 +1,463 @@
+#include "tanara/processing/summary/PromptLibrary.h"
+#include "tanara/foundation/paths/Paths.h"
+#include "tanara/foundation/text/Text.h"
+
+#include <QCoreApplication>
+#include <QDir>
+#include <QFile>
+#include <QHash>
+
+namespace tanara::processing {
+
+// The built-in prompts are in ENGLISH (not user-facing text; measurement showed the English prompt
+// produced the fewest invented items). The output language replaces {{LANGUAGE}} (the English language
+// name, see summaryLanguageName). The texts are raw literals (R"PROMPT(...)PROMPT") so the prompt
+// evaluator (tools/prompt-eval) can read them out unchanged.
+namespace {
+
+// The classification examples: "discussed" != "decided", and the owner is whoever DOES it, not whoever
+// asked: the two most common reliability errors.
+const char* const kClassifyExamples = R"PROMPT(HOW TO CLASSIFY (the examples are in English only to show the logic; they are not from this meeting)
+- "Anna: Let's move the release to Friday. — Ben: OK, Friday then."  →  decision: the release moves to Friday.
+- "Anna: We could also try the new framework. — Ben: Maybe, let's see."  →  open question: whether to try the new framework. NOT a decision.
+- "Ben: We won't need a separate test server after all. — Anna: Agreed."  →  decision: no separate test server is needed.
+- "Anna: Ben, can you send me the price by Monday? — Ben: Sure."  →  action item: send the price to Anna, owner Ben (he does it), due Monday. Anna asked, so Anna is NOT the owner.
+- "Ben: I'll get access once the director signs the request."  →  open question: access depends on the director's approval. NOT a decision that access is granted.)PROMPT";
+
+// The form and rules of the memo notes (TOPICS): the shared part of "notes" and "single".
+const char* const kTopicsFormat = R"PROMPT(TOPICS
+### [mm:ss-mm:ss] short title of the subject
+One or two sentences without a dash: the gist of the subject and where it ended up. [t=mm:ss]
+- one point per line: what was said about it, with the concrete names, numbers, dates and reasons; who proposed, objected or reported something when that matters [t=mm:ss]
+#### Arguments
+- an argument for or against a proposal, and who made it [t=mm:ss]
+#### Unresolved
+- a question about this subject that was left open [t=mm:ss]
+(one ### block per subject, in the order discussed; the times in the ### line are where the subject starts and ends. The "#### Arguments" and "#### Unresolved" parts are optional: write them only when there were real arguments or a real open question, otherwise leave the heading out)
+Every gist sentence and every point ends with a source marker [t=mm:ss]: the time of the transcript paragraph `[mm:ss]` where it was said; up to 3 times in one marker when it draws on several places: [t=12:30, t=14:05]. Copy the time exactly as written; never invent, estimate or round a time; leave the marker out when you cannot tell.)PROMPT";
+
+const char* const kTopicsRules = R"PROMPT(- TOPICS is the memo someone reads to learn what happened: cover every subject up to the last minute, with 2 to 8 points each depending on how much was said.
+- A subject is one theme of the discussion and usually lasts a few minutes, rarely more than 10. Split a long discussion into its parts (for example the goal, the cost, who does what, the schedule) instead of writing one long block, but do not start a new block when the same point merely continues after a short aside. 15 minutes of meeting usually contain 2 to 5 subjects. Write the titles in {{LANGUAGE}}. Each point is a short self-contained sentence with the specifics; do not write vague points such as "they discussed the details".
+- Things merely shown, explained or reported (for example during a demo or a status update) belong in TOPICS, not among the decisions or tasks.
+- The sub-headings "#### Arguments" and "#### Unresolved" stay in English exactly as shown; the text under them is in {{LANGUAGE}}.)PROMPT";
+
+const char* const kInput = R"PROMPT(- The transcript was produced by automatic speech recognition: expect misheard words, broken sentences and filler. Speaker labels are mostly right. A label such as "Beszélő 2" means the speaker was not identified.
+%CONTEXT_RULE%)PROMPT";
+
+// The user's note is trustworthy: a correction given in it ("X is correctly Y") also applies in the output.
+const char* const kContextRule = R"PROMPT(- The context notes come from the user and are reliable: when they correct a name or term ("X is really Y"), use the corrected form everywhere in your output.)PROMPT";
+
+const char* const kWriting = R"PROMPT(- Write fluent, correct {{LANGUAGE}}. Do not copy garbled or misheard words from the transcript: restore the intended word from context (and from the glossary when one is given), or leave the detail out when you cannot tell what was meant. Keep product names and technical terms in their original form.)PROMPT";
+
+// Source markers in the short form (the parser: processing/summary/SummarySources.h). Plain text + marker,
+// because json_schema is unreliable with a local model. %SOURCE_OF% is the per-call source.
+const char* const kSourceMarkers = R"PROMPT(SOURCE MARKERS
+- End every sentence of execSummary, every decision, every open question and every action item "text" with a source marker in square brackets: [t=mm:ss], where mm:ss is %SOURCE_OF%. When a sentence draws on several places, give up to 3 times in one marker: [t=12:30, t=41:05].
+- Put the marker right after the sentence's final punctuation, for example: "The release moves to Friday. [t=12:30]"
+- Copy the time exactly as written in the input; never invent, estimate or round a time. When you cannot tell where a sentence comes from, write it without a marker.
+- In the JSON the markers are the only place for times: do not start a sentence or a list item with a time.)PROMPT";
+
+// A longer meeting: per-part notes (map1 + the memo requirement).
+const char* const kNotes = R"PROMPT(You take notes on ONE PART of a longer meeting, from a speech-to-text transcript. The notes are used twice: they become the detailed memo of the meeting, and a later step builds the executive summary, decisions, open questions and action items from the notes of all parts. So they must be complete, concrete and factual for this part.
+
+INPUT
+- Optional context notes about the whole meeting, the subject the previous part ended with (if any), then one part of the transcript. Each paragraph has the form: `[mm:ss]` **Speaker** text
+%INPUT%
+
+OUTPUT
+Plain text with exactly these four headings, in this order. No text before the first heading and none after the last line, no code fence.
+
+%TOPICS_FORMAT%
+
+DECISIONS
+- [mm:ss] what was explicitly agreed or settled (a decision not to do something also counts)
+
+OPEN
+- [mm:ss] what was proposed, considered or left pending without agreement, or depends on an approval or on missing information
+
+ACTIONS
+- [mm:ss] task — the person who will DO it, exactly as in the speaker labels, or ? when unclear — the deadline, only if one was stated
+
+Under DECISIONS, OPEN and ACTIONS write a single line "- none" when there is nothing.
+
+%EXAMPLES%
+
+RULES
+%TOPICS_RULES%
+- If this part begins by continuing the subject the previous part ended with, the first block covers only those first minutes and has exactly that title; the subjects that follow get their own blocks.
+- Use only what was said in this part. Do not guess. When you are not sure something was agreed, put it under OPEN, not DECISIONS.
+- Skip small talk and digressions.
+%WRITING%
+- Write all notes in {{LANGUAGE}}. The headings TOPICS, DECISIONS, OPEN and ACTIONS stay in English exactly as shown.)PROMPT";
+
+// Combining the part notes ("select, do not copy"; a real decision is an agreement).
+const char* const kMerge = R"PROMPT(You write the final meeting minutes from notes. The notes were taken part by part, in order, from a speech-to-text transcript of one meeting. Each part has the sections TOPICS (the subjects and what was said about them), DECISIONS, OPEN and ACTIONS. The reader also gets the TOPICS notes as the detailed memo of the meeting, so your output is the short form of the same meeting and must agree with the notes. The DECISIONS, OPEN and ACTIONS notes are over-inclusive on purpose: your job is to SELECT and merge, not to copy everything.
+
+OUTPUT
+Return exactly one JSON object with the keys in this order, and nothing else: no code fence, no commentary before or after.
+{
+  "decisions": ["{{LANGUAGE}} sentence. [t=mm:ss]"],
+  "openQuestions": ["{{LANGUAGE}} question or sentence. [t=mm:ss]"],
+  "actionItems": [{"text": "{{LANGUAGE}} task [t=mm:ss]", "owner": "name", "due": ""}],
+  "execSummary": "{{LANGUAGE}} sentence. [t=mm:ss] {{LANGUAGE}} sentence. [t=mm:ss]"
+}
+
+FIELD RULES
+- decisions: keep a DECISIONS note only if it records an agreement between the participants about what will or will not be done. Drop everything else, even if a part listed it as a decision: descriptions of how a product or feature works, things shown in a demo, status remarks, opinions, one person's plan that nobody confirmed. Merge duplicates; when a later part changes an earlier decision keep only the final state. One self-contained sentence each, ending with its source marker. Most meetings have between 0 and 8 real decisions; a longer list means non-decisions slipped in. Use [] when there are none.
+- openQuestions: at most 5: the unsettled matters that affect what happens next (pending approvals, choices not yet made, missing information). Drop minor points and points a later part settled. Use [] when there are none.
+- actionItems: keep an ACTIONS note only if it names a concrete task someone took on or was asked to do; merge duplicates; drop vague or empty ones. "text" is specific, says what is to be done, and is not phrased as a command to the reader. "owner" is the person who will do the task as written in the notes, or "" when the notes say "?". "due" only when the notes state one, otherwise "".
+- execSummary: written last, in {{LANGUAGE}} like the notes: what the meeting was about and what came out of it, written for someone who was not there. Cover the substantial topics of ALL parts in order, including the last parts, and name the concrete things (systems, products, numbers, dates, people). Use 4 to 12 sentences, depending on how much real content there is.
+
+%SOURCE_MARKERS%
+
+QUALITY RULES
+- Use only what is in the notes. Do not add anything, do not turn an OPEN item into a decision, and do not invent owners or deadlines. A wrong decision is worse than a missing one.
+%CONTEXT_RULE%
+- Write fluent, correct {{LANGUAGE}}. Every string value is in {{LANGUAGE}}; the JSON keys stay exactly as shown above.
+- The JSON must be complete and valid: escape double quotes inside strings and use no trailing commas.)PROMPT";
+
+// A one-part (short) meeting: memo notes + the short form in ONE call (en6 + TOPICS).
+const char* const kSingle = R"PROMPT(You write meeting minutes from a speech-to-text transcript in two steps: first the detailed notes of the meeting (the memo), then the short form as one JSON object (executive summary, decisions, open questions, action items). Both describe the same meeting and must agree.
+
+INPUT
+- Optional context notes, then the transcript. Each paragraph has the form: `[mm:ss]` **Speaker** text
+%INPUT%
+
+OUTPUT
+First the heading TOPICS with the notes, then the heading SUMMARY with exactly one JSON object. Nothing before TOPICS, nothing after the JSON, no code fence.
+
+%TOPICS_FORMAT%
+
+SUMMARY
+{
+  "execSummary": "{{LANGUAGE}} sentence. [t=mm:ss] {{LANGUAGE}} sentence. [t=mm:ss]",
+  "decisions": ["{{LANGUAGE}} sentence. [t=mm:ss]"],
+  "openQuestions": ["{{LANGUAGE}} question or sentence. [t=mm:ss]"],
+  "actionItems": [{"text": "{{LANGUAGE}} task [t=mm:ss]", "owner": "name", "due": ""}]
+}
+
+%EXAMPLES%
+
+NOTES RULES
+%TOPICS_RULES%
+- Skip small talk and digressions.
+
+FIELD RULES
+- execSummary: what the meeting was about and what came out of it, written for someone who was not there. Cover every substantial topic in the order it was discussed, up to the end of the meeting, and name the concrete things (systems, products, numbers, dates, people). Use 3 to 10 sentences, depending on how much real content there is.
+- decisions: only what the participants explicitly agreed on or settled, including decisions not to do something. One self-contained sentence each. Use [] when there are none.
+- openQuestions: at most 5: things proposed, considered or left pending without agreement that affect what happens next. Anything you are not sure was agreed goes here, not into decisions. Use [] when there are none.
+- actionItems: only tasks that someone took on or was clearly asked to do. "text" is specific, says what is to be done, and is not phrased as a command to the reader. "owner" is the person who will DO the task, written exactly as in the speaker labels, or "" when it is not clear who does it. "due" is filled only when a time was stated, otherwise "".
+
+%SOURCE_MARKERS%
+
+QUALITY RULES
+- Use only what was said. Do not guess and do not add advice or interpretation. A wrong decision or a wrong owner is worse than a missing one.
+- Length follows content, not duration.
+%WRITING%
+- Write the notes and every JSON string value in {{LANGUAGE}}. The headings TOPICS and SUMMARY and the JSON keys stay exactly as shown above.
+- The JSON must be complete and valid: escape double quotes inside strings and use no trailing commas.)PROMPT";
+
+// Per-topic analysis, pass 1: topic extraction (`## title` + summary; the parser matches on that).
+const char* const kTopic = R"PROMPT(You are an analyst. Identify the SEPARATE TOPICS of the meeting in the speech-to-text transcript (subjects that were actually discussed).
+OUTPUT FORMAT — exactly this and nothing else (no introduction, no JSON, no code fence): each topic starts with a line that begins with `## ` and the short TITLE of the topic, followed by a summary of the topic in 1–2 sentences. Example (in English only to show the form):
+## Delivery deadlines
+The team discussed the Q3 delay and the recovery plan.
+
+## Budget
+They reviewed the budget overrun and the options to cover it.
+
+Rules:
+1. The number of topics follows the content: few topics (even 1) for a casual or thin conversation, more for an information-dense meeting. Do not over-split and do NOT invent topics.
+2. Return only the `## Title` + summary blocks, nothing else.
+3. Write all text in {{LANGUAGE}}.
+%CONTEXT_RULE%)PROMPT";
+
+// Per-topic analysis, pass 2. The parser matches the Hungarian section headings, which is why they stay Hungarian.
+const char* const kAnalysis = R"PROMPT(You are a precise note-taker. From the FULL transcript, analyse ONLY the parts about the given TOPIC.
+OUTPUT FORMAT — markdown, exactly like this (no JSON, no code fence):
+First one paragraph that summarises the topic (without a heading). After it — ONLY when there is real content — these sections may follow:
+## Döntések
+- one decision per line
+## Nyitott kérdések
+- one open question per line
+## Teendők
+- the task — Owner (deadline)
+(Owner and deadline are optional; leave them out when unknown.)
+Rules:
+1. Do NOT invent anything. When the topic has no real decision, open question or task, leave that section out (no empty heading). Focus only on the given topic.
+2. A decision is only what the participants explicitly agreed on. Anything proposed, considered or pending goes under `## Nyitott kérdések`. The owner is the person who will DO the task, not the one who asked for it.
+3. Write all text in {{LANGUAGE}} — but the section headings `## Döntések`, `## Nyitott kérdések` and `## Teendők` stay EXACTLY like this, in Hungarian.
+%CONTEXT_RULE%)PROMPT";
+
+// A NARROW task: ONLY a short executive summary. Merging the action items is NOT done by the LLM (the
+// code deduplicates them from the per-topic analyses), so the output is stable across models.
+const char* const kReduce = R"PROMPT(You are a precise note-taker. From the per-topic analyses, write ONE global executive summary of the whole conversation in 2–4 sentences.
+Return ONLY this paragraph and nothing else: no heading, no list, no tasks, no decisions, no JSON, no code fence, no explanation, no reasoning. Write it in {{LANGUAGE}}.
+%CONTEXT_RULE%)PROMPT";
+
+// Tag suggestion after the summary (LlmTagSuggester). Plain lines, since json_schema is unreliable
+// with a local model. Tag names stay in the user's language (not translated).
+const char* const kTags = R"PROMPT(You help the user tag a meeting. Tags are short free-text labels (a client, a project, a product, a recurring topic) that group related meetings. You get the summary of ONE meeting and a numbered list of the user's existing candidate tags; each candidate shows what its meetings were usually about (people, terms, example titles).
+1. Pick the candidate tags that clearly fit this meeting. Prefer fewer, certain picks over many weak ones; pick none if none fits.
+2. Only if an important, recurring subject of the meeting (a client, a project, a product) has no fitting tag yet, propose at most 2 short new tag names (1–3 words, in the language and spelling used in the meeting, no "#"). Never propose a new name that means the same as a candidate.
+OUTPUT FORMAT — exactly two lines and nothing else (no explanation, no JSON, no code fence):
+pick: <candidate numbers separated by commas, or none>
+new: <new tag names separated by semicolons, or none>
+)PROMPT";
+
+QString compose(const char* tmpl, const char* sourceOf = "")
+{
+    QString s = QString::fromUtf8(tmpl);
+    s.replace(QStringLiteral("%SOURCE_MARKERS%"),
+              QString::fromUtf8(kSourceMarkers).replace(QStringLiteral("%SOURCE_OF%"),
+                                                        QString::fromUtf8(sourceOf)));
+    s.replace(QStringLiteral("%INPUT%"), QString::fromUtf8(kInput));
+    s.replace(QStringLiteral("%TOPICS_FORMAT%"), QString::fromUtf8(kTopicsFormat));
+    s.replace(QStringLiteral("%TOPICS_RULES%"), QString::fromUtf8(kTopicsRules));
+    s.replace(QStringLiteral("%EXAMPLES%"), QString::fromUtf8(kClassifyExamples));
+    s.replace(QStringLiteral("%WRITING%"), QString::fromUtf8(kWriting));
+    s.replace(QStringLiteral("%CONTEXT_RULE%"), QString::fromUtf8(kContextRule));
+    return s + QLatin1Char('\n');
+}
+
+} // namespace
+
+QString promptBuiltin(const QString& id)
+{
+    if (id == QLatin1String("single") || id == QLatin1String("simple"))   // "simple": the old identifier
+        return compose(kSingle, "the time of the transcript paragraph `[mm:ss]` where it was said");
+    if (id == QLatin1String("notes"))    return compose(kNotes);
+    if (id == QLatin1String("merge"))
+        return compose(kMerge, "the time written in the notes it is based on (the [mm:ss] of a DECISIONS, OPEN or ACTIONS line, a [t=mm:ss] marker in TOPICS, or the start time of a ### topic)");
+    if (id == QLatin1String("topic"))    return compose(kTopic);
+    if (id == QLatin1String("analysis")) return compose(kAnalysis);
+    if (id == QLatin1String("reduce"))   return compose(kReduce);
+    if (id == QLatin1String("tags"))     return compose(kTags);
+    return QString();
+}
+
+QString promptFilePath(const QString& id, const QString& metadataDir)
+{
+    const QString dir = paths::resolveMetadataDir(metadataDir);   // TANARA_HOME-tudatos
+    return QDir(dir).filePath(QStringLiteral("prompts/%1.md").arg(id));
+}
+
+namespace {
+QString readPromptFile(const QString& path)
+{
+    QFile f(path);
+    if (f.exists() && f.open(QIODevice::ReadOnly | QIODevice::Text))
+        return QString::fromUtf8(f.readAll()).trimmed();
+    return QString();
+}
+} // namespace
+
+QString promptDefault(const QString& id, const QString& metadataDir)
+{
+    QString text = readPromptFile(promptFilePath(id, metadataDir));
+    // The old file name of the short meeting's single-step prompt is valid too (prompts/simple.md).
+    if (text.isEmpty() && id == QLatin1String("single"))
+        text = readPromptFile(promptFilePath(QStringLiteral("simple"), metadataDir));
+    return text.isEmpty() ? promptBuiltin(id) : text;
+}
+
+QString summaryLanguageName(const QString& language)
+{
+    const QString lang = language.trimmed();
+    if (lang.isEmpty()) return QStringLiteral("Hungarian");
+    // The Hungarian / native / code names of common languages -> the English name (models follow the
+    // English prompt reliably this way). Anything else passes through unchanged.
+    static const QHash<QString, QString> names{
+        {QStringLiteral("magyar"), QStringLiteral("Hungarian")},
+        {QStringLiteral("magyarul"), QStringLiteral("Hungarian")},
+        {QStringLiteral("hungarian"), QStringLiteral("Hungarian")},
+        {QStringLiteral("hu"), QStringLiteral("Hungarian")},
+        {QStringLiteral("angol"), QStringLiteral("English")},
+        {QStringLiteral("angolul"), QStringLiteral("English")},
+        {QStringLiteral("english"), QStringLiteral("English")},
+        {QStringLiteral("en"), QStringLiteral("English")},
+        {QStringLiteral("nemet"), QStringLiteral("German")},
+        {QStringLiteral("nemetul"), QStringLiteral("German")},
+        {QStringLiteral("deutsch"), QStringLiteral("German")},
+        {QStringLiteral("german"), QStringLiteral("German")},
+        {QStringLiteral("de"), QStringLiteral("German")},
+        {QStringLiteral("francia"), QStringLiteral("French")},
+        {QStringLiteral("francais"), QStringLiteral("French")},
+        {QStringLiteral("french"), QStringLiteral("French")},
+        {QStringLiteral("spanyol"), QStringLiteral("Spanish")},
+        {QStringLiteral("espanol"), QStringLiteral("Spanish")},
+        {QStringLiteral("spanish"), QStringLiteral("Spanish")},
+        {QStringLiteral("olasz"), QStringLiteral("Italian")},
+        {QStringLiteral("italiano"), QStringLiteral("Italian")},
+        {QStringLiteral("italian"), QStringLiteral("Italian")},
+        {QStringLiteral("lengyel"), QStringLiteral("Polish")},
+        {QStringLiteral("polski"), QStringLiteral("Polish")},
+        {QStringLiteral("cseh"), QStringLiteral("Czech")},
+        {QStringLiteral("szlovak"), QStringLiteral("Slovak")},
+        {QStringLiteral("roman"), QStringLiteral("Romanian")},
+        {QStringLiteral("horvat"), QStringLiteral("Croatian")},
+        {QStringLiteral("szerb"), QStringLiteral("Serbian")},
+        {QStringLiteral("szloven"), QStringLiteral("Slovenian")},
+        {QStringLiteral("ukran"), QStringLiteral("Ukrainian")},
+        {QStringLiteral("orosz"), QStringLiteral("Russian")},
+        {QStringLiteral("holland"), QStringLiteral("Dutch")},
+        {QStringLiteral("portugal"), QStringLiteral("Portuguese")},
+        {QStringLiteral("sved"), QStringLiteral("Swedish")},
+        {QStringLiteral("finn"), QStringLiteral("Finnish")},
+        {QStringLiteral("torok"), QStringLiteral("Turkish")},
+        {QStringLiteral("japan"), QStringLiteral("Japanese")},
+        {QStringLiteral("kinai"), QStringLiteral("Chinese")},
+    };
+    const QString key = text::foldQuery(lang).trimmed();
+    const auto it = names.constFind(key);
+    return it != names.constEnd() ? it.value() : lang;
+}
+
+QString languageReminder(const QString& language)
+{
+    const QString user = language.trimmed().isEmpty() ? QStringLiteral("magyar") : language.trimmed();
+    const QString name = summaryLanguageName(user);
+    // If the user gave the language in their own language (e.g. the Hungarian word), the native form is
+    // included too, so the model understands it even if the English name could be ambiguous.
+    const QString both = name.compare(user, Qt::CaseInsensitive) == 0
+        ? name : QStringLiteral("%1 (%2)").arg(name, user);
+    return QStringLiteral(
+        "\n\n----\nReminder: write the output in %1, even though the instructions are in English. "
+        "Keep the headings and JSON keys exactly as specified.").arg(both);
+}
+
+QString applySummaryLanguage(QString prompt, const QString& language)
+{
+    QString lang = language.trimmed();
+    if (lang.isEmpty())
+        lang = QStringLiteral("magyar");
+
+    const bool hasEnglishVar = prompt.contains(QStringLiteral("{{LANGUAGE}}"));
+    const bool hasNativeVar  = prompt.contains(QStringLiteral("{{NYELV}}"));
+    if (hasEnglishVar || hasNativeVar) {
+        prompt.replace(QStringLiteral("{{LANGUAGE}}"), summaryLanguageName(lang));
+        prompt.replace(QStringLiteral("{{NYELV}}"), lang);
+        return prompt;
+    }
+
+    // A prompt without placeholders (own/file): for a Hungarian target we do not touch it (backward
+    // compatible), for another target language we append a directive.
+    if (summaryLanguageName(lang) == QLatin1String("Hungarian"))
+        return prompt;
+    return prompt + QStringLiteral(
+        "\nFONTOS: a kimenet szövege KIZÁRÓLAG %1 nyelven íródjon. A strukturális "
+        "szakaszcímek (pl. `## Döntések`, `## Teendők`) változatlanul magyarul maradnak.\n")
+        .arg(lang);
+}
+
+QVector<PromptVariable> promptVariables()
+{
+    return {
+        { QStringLiteral("{{LANGUAGE}}"),
+          QCoreApplication::translate("PromptLibrary", "az összefoglaló nyelve angolul (pl. Hungarian)") },
+        { QStringLiteral("{{NYELV}}"),
+          QCoreApplication::translate("PromptLibrary", "az összefoglaló nyelve, ahogy a beállításban áll") },
+    };
+}
+
+PromptOutputFormat promptOutputFormat(const QString& id)
+{
+    PromptOutputFormat f;
+    if (id == QLatin1String("single") || id == QLatin1String("simple")) {
+        f.kind = QStringLiteral("json");   // notes header + JSON; Settings shows it as JSON
+        f.summary = QStringLiteral("TOPICS (memó) + SUMMARY: execSummary, decisions[], openQuestions[], actionItems[]");
+        f.body = QStringLiteral(
+            "TOPICS\n"
+            "### [mm:ss-mm:ss] <téma címe>\n"
+            "<bevezető: 1–2 mondat> [t=mm:ss]\n"
+            "- <pont> [t=mm:ss]\n"
+            "#### Arguments  (opcionális: elhangzott érvek)\n"
+            "- <érv> [t=mm:ss]\n"
+            "#### Unresolved  (opcionális: nyitott kérdés)\n"
+            "- <kérdés> [t=mm:ss]\n"
+            "\n"
+            "SUMMARY\n"
+            "{\n"
+            "  \"execSummary\": string,\n"
+            "  \"decisions\": [ string, … ],\n"
+            "  \"openQuestions\": [ string, … ],\n"
+            "  \"actionItems\": [\n"
+            "    { \"text\": string, \"owner\": string, \"due\": string }, …\n"
+            "  ]\n"
+            "}\n"
+            "\n"
+            "Forrás-jelölő minden mondat / döntés / nyitott kérdés / teendő / memó-pont végén: [t=mm:ss] (több: [t=mm:ss, t=mm:ss])");
+    } else if (id == QLatin1String("notes")) {
+        f.kind = QStringLiteral("text");
+        f.summary = QStringLiteral("TOPICS, DECISIONS, OPEN, ACTIONS");
+        f.body = QStringLiteral(
+            "TOPICS\n"
+            "### [mm:ss-mm:ss] <téma címe>\n"
+            "<bevezető: 1–2 mondat> [t=mm:ss]\n"
+            "- <pont> [t=mm:ss]\n"
+            "#### Arguments  (opcionális: elhangzott érvek)\n"
+            "- <érv> [t=mm:ss]\n"
+            "#### Unresolved  (opcionális: nyitott kérdés)\n"
+            "- <kérdés> [t=mm:ss]\n"
+            "\n"
+            "DECISIONS\n"
+            "- [mm:ss] <döntés>  |  - none\n"
+            "\n"
+            "OPEN\n"
+            "- [mm:ss] <nyitott kérdés>  |  - none\n"
+            "\n"
+            "ACTIONS\n"
+            "- [mm:ss] <teendő> — <felelős vagy ?> — <határidő>  |  - none");
+    } else if (id == QLatin1String("merge")) {
+        // The executive summary at the END: after the (Hungarian) lists Gemma also writes in the target language.
+        f.kind = QStringLiteral("json");
+        f.summary = QStringLiteral("decisions[], openQuestions[], actionItems[], execSummary");
+        f.body = QStringLiteral(
+            "{\n"
+            "  \"decisions\": [ string, … ],\n"
+            "  \"openQuestions\": [ string, … ],\n"
+            "  \"actionItems\": [\n"
+            "    { \"text\": string, \"owner\": string, \"due\": string }, …\n"
+            "  ],\n"
+            "  \"execSummary\": string\n"
+            "}\n"
+            "\n"
+            "Forrás-jelölő minden mondat / döntés / nyitott kérdés / teendő / memó-pont végén: [t=mm:ss] (több: [t=mm:ss, t=mm:ss])");
+    } else if (id == QLatin1String("topic")) {
+        f.kind = QStringLiteral("markdown");
+        f.summary = QCoreApplication::translate("PromptLibrary", "## Cím + 1–2 mondat, témánként");
+        f.body = QCoreApplication::translate("PromptLibrary",
+            "## <a téma címe>\n"
+            "<1–2 mondatos összegzés>\n"
+            "\n"
+            "## <a következő téma címe>\n"
+            "<1–2 mondatos összegzés>");
+    } else if (id == QLatin1String("analysis")) {
+        f.kind = QStringLiteral("markdown");
+        f.summary = QCoreApplication::translate("PromptLibrary",
+                                                "összegzés, ## Döntések, ## Nyitott kérdések, ## Teendők");
+        f.body = QCoreApplication::translate("PromptLibrary",
+            "<egy bekezdés összegzés a témáról>\n"
+            "\n"
+            "## Döntések\n"
+            "- <egy döntés soronként>\n"
+            "\n"
+            "## Nyitott kérdések\n"
+            "- <egy nyitott kérdés soronként>\n"
+            "\n"
+            "## Teendők\n"
+            "- <a teendő szövege> — <felelős> (<határidő>)");
+    } else if (id == QLatin1String("tags")) {
+        f.kind = QStringLiteral("text");
+        f.summary = QCoreApplication::translate("PromptLibrary", "két sor: pick / new");
+        f.body = QStringLiteral("pick: 3, 7\nnew: <név 1>; <név 2>");
+    } else if (id == QLatin1String("reduce")) {
+        f.kind = QStringLiteral("text");
+        f.summary = QCoreApplication::translate("PromptLibrary", "egy bekezdés");
+        f.body = QCoreApplication::translate("PromptLibrary", "<2–4 mondatos vezetői összefoglaló>");
+    }
+    return f;
+}
+
+
+} // namespace tanara::processing

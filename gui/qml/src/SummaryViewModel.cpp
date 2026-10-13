@@ -7,15 +7,15 @@
 #include "JobSupport.h"
 #include "SummaryProgress.h"
 
-#include "tanara/AppController.h"
-#include "tanara/SettingsManager.h"
+#include "tanara/app/AppController.h"
+#include "tanara/app/SettingsManager.h"
 #include "tanara/cloud/CloudTypes.h"
-#include "tanara/edit/SpeakerEditor.h"
-#include "tanara/jobs/MeetingJobTracker.h"
-#include "tanara/provider/ProviderRegistry.h"
-#include "tanara/store/MeetingStore.h"
-#include "tanara/SummaryService.h"
-#include "tanara/summary/SummaryStore.h"
+#include "tanara/editing/session/SpeakerEditor.h"
+#include "tanara/library/jobs/MeetingJobTracker.h"
+#include "tanara/providers/core/ProviderRegistry.h"
+#include "tanara/library/store/MeetingStore.h"
+#include "tanara/processing/summary/SummaryService.h"
+#include "tanara/library/summary/SummaryStore.h"
 
 #include <QClipboard>
 #include <QDir>
@@ -113,7 +113,7 @@ SummaryViewModel::SummaryViewModel(QObject* parent)
     reload();
 }
 
-AppController* SummaryViewModel::app() const { return jobsupport::resolveController(m_injected); }
+app::AppController* SummaryViewModel::app() const { return jobsupport::resolveController(m_injected); }
 QObject* SummaryViewModel::controllerObject() const { return app(); }
 bool SummaryViewModel::demo() const { return jobsupport::demoMode(app()); }
 
@@ -140,7 +140,7 @@ void SummaryViewModel::setMeetingId(const QString& id)
     // On switching to another meeting the workspace closes; if the new meeting has a topic list
     // but no summary yet, it opens (an interrupted per-topic analysis can resume from where it
     // stands on disk). On the first setting, an externally requested topicsOpen stays.
-    AppController* c = app();
+    app::AppController* c = app();
     if (switching) {
         m_topicsOpen = false;
         m_activeStatementId.clear();
@@ -234,7 +234,7 @@ QString SummaryViewModel::modeLabel() const
 
 void SummaryViewModel::connectController()
 {
-    AppController* c = app();
+    app::AppController* c = app();
     if (c == m_connected)
         return;
     for (const QMetaObject::Connection& conn : std::as_const(m_connections))
@@ -245,13 +245,13 @@ void SummaryViewModel::connectController()
         return;
 
     auto mine = [this](const QString& id) { return !m_meetingId.isEmpty() && id == m_meetingId; };
-    m_connections << connect(c->jobs(), &MeetingJobTracker::stateChanged, this,
+    m_connections << connect(c->jobs(), &library::MeetingJobTracker::stateChanged, this,
                              [this, mine](const QString& id) { if (mine(id)) reload(); });
-    m_connections << connect(c->jobs(), &MeetingJobTracker::jobProgressChanged, this,
+    m_connections << connect(c->jobs(), &library::MeetingJobTracker::jobProgressChanged, this,
                              [this, mine](const QString& id, const JobProgress&) {
         if (mine(id)) reloadJobs();
     });
-    m_connections << connect(c, &AppController::summaryReady, this,
+    m_connections << connect(c, &app::AppController::summaryReady, this,
                              [this, mine](const QString& id, const QString&) {
         if (!mine(id)) return;
         m_topicsOpen = false;          // finished -> we show the summary, the short form
@@ -262,30 +262,30 @@ void SummaryViewModel::connectController()
         reload();
         emit summaryArrived();
     });
-    m_connections << connect(c, &AppController::topicsReady, this,
+    m_connections << connect(c, &app::AppController::topicsReady, this,
                              [this, mine](const QString& id, const QVector<SummaryTopic>&) {
         if (!mine(id)) return;
         m_topicsOpen = true;           // the suggested topics arrived -> editor
         reload();
     });
-    m_connections << connect(c, &AppController::summaryStaleChanged, this,
+    m_connections << connect(c, &app::AppController::summaryStaleChanged, this,
                              [this, mine](const QString& id) { if (mine(id)) reload(); });
-    m_connections << connect(c, &AppController::summaryStatementsChanged, this,
+    m_connections << connect(c, &app::AppController::summaryStatementsChanged, this,
                              [this, mine](const QString& id) { if (mine(id)) reload(); });
-    m_connections << connect(c, &AppController::transcriptReady, this,
+    m_connections << connect(c, &app::AppController::transcriptReady, this,
                              [this, mine](const QString& id, const QString&) { if (mine(id)) reload(); });
-    m_connections << connect(c, &AppController::speakerMapChanged, this,
+    m_connections << connect(c, &app::AppController::speakerMapChanged, this,
                              [this, mine](const QString& id) { if (mine(id)) reloadParticipants(); });
-    m_connections << connect(c->settings(), &SettingsManager::settingsChanged, this,
+    m_connections << connect(c->settings(), &app::SettingsManager::settingsChanged, this,
                              &SummaryViewModel::reload);
     // The note (and the detected call) live in meeting.json: after saving / editing from another view.
-    m_connections << connect(c->store(), &MeetingStore::meetingUpdated, this,
+    m_connections << connect(c->store(), &library::MeetingStore::meetingUpdated, this,
                              [this, mine](const QString& id) { if (mine(id)) m_note->reload(); });
 }
 
 void SummaryViewModel::refresh() { reload(); }
 
-void SummaryViewModel::watchEditor(SpeakerEditor* editor)
+void SummaryViewModel::watchEditor(editing::SpeakerEditor* editor)
 {
     if (editor == m_editor)
         return;
@@ -293,7 +293,7 @@ void SummaryViewModel::watchEditor(SpeakerEditor* editor)
         disconnect(m_editorConn);
     m_editor = editor;
     if (editor)
-        m_editorConn = connect(editor, &SpeakerEditor::speakersChanged, this,
+        m_editorConn = connect(editor, &editing::SpeakerEditor::speakersChanged, this,
                                &SummaryViewModel::reloadParticipants);
 }
 
@@ -336,16 +336,16 @@ QVariantList SummaryViewModel::ownerList(const QString& owner) const
 
 void SummaryViewModel::reloadParticipants()
 {
-    AppController* c = app();
+    app::AppController* c = app();
     if (jobsupport::demoMode(c) || m_meetingId.isEmpty())
         return;
 
     m_speakers.clear();
-    SpeakerEditor* editor = c->speakerEditor(m_meetingId);
+    editing::SpeakerEditor* editor = c->speakerEditor(m_meetingId);
     watchEditor(editor);
     int utterances = 0;
     if (editor) {
-        for (const EditorSpeaker& s : editor->speakers())
+        for (const editing::EditorSpeaker& s : editor->speakers())
             m_speakers.append({s.displayName, s.personName, s.colorIndex, s.talkShare});
         utterances = editor->utteranceCount();
     }
@@ -387,7 +387,7 @@ void SummaryViewModel::reloadParticipants()
 
 void SummaryViewModel::reloadJobs()
 {
-    AppController* c = app();
+    app::AppController* c = app();
     if (jobsupport::demoMode(c) || m_meetingId.isEmpty())
         return;
     int kind = -1;
@@ -464,7 +464,7 @@ void SummaryViewModel::reload()
     applyJob(JobProgress());
     m_transcriptLine.clear();
 
-    AppController* c = app();
+    app::AppController* c = app();
     if (jobsupport::demoMode(c)) {
         watchEditor(nullptr);
         m_valid = true;
@@ -500,11 +500,11 @@ void SummaryViewModel::reload()
     m_note->reload();
 
     // Gating + provider.
-    const ReadinessResult r = c->canRun(WorkflowStep::Summarize, m_meetingId);
+    const providers::ReadinessResult r = c->canRun(providers::WorkflowStep::Summarize, m_meetingId);
     m_canRun = r.runnable;
-    m_blocker = jobsupport::blockerInfo(c, WorkflowStep::Summarize, r);
-    m_providerLabel = jobsupport::providerLabel(c, WorkflowStep::Summarize);
-    m_cloudSoon = !r.runnable && r.blockerKind == BlockerKind::ProviderConfig;
+    m_blocker = jobsupport::blockerInfo(c, providers::WorkflowStep::Summarize, r);
+    m_providerLabel = jobsupport::providerLabel(c, providers::WorkflowStep::Summarize);
+    m_cloudSoon = !r.runnable && r.blockerKind == providers::BlockerKind::ProviderConfig;
 
     // Leftover error (the last summary attempt).
     const MeetingProcessingState ps = c->jobs()->state(m);
@@ -517,15 +517,15 @@ void SummaryViewModel::reload()
         m_fixReloadContext = fix.reloadContext;
         // Notes of the finished parts in the cache: a retry runs only the missing ones.
         m_errorKeptParts = !m.folder.isEmpty()
-            && QFileInfo::exists(QDir(m.folder).filePath(SummaryService::cacheFileName()));
+            && QFileInfo::exists(QDir(m.folder).filePath(processing::SummaryService::cacheFileName()));
     }
 
     // The summary, structured (new: summary.json; old: recovered from summary.md).
-    const SummaryDocument doc = c->summaryDocument(m_meetingId);
+    const library::SummaryDocument doc = c->summaryDocument(m_meetingId);
     m_hasSummary = doc.exists;
     if (doc.exists) {
         m_markdown = doc.markdown;
-        m_mode = summarystore::modeToString(doc.meta.mode);
+        m_mode = library::summarystore::modeToString(doc.meta.mode);
         m_summary = doc.summary;
         m_execSummary = doc.summary.execSummary.trimmed();
         m_summaryParticipants = doc.summary.participants;
@@ -554,7 +554,7 @@ void SummaryViewModel::reload()
         if (doc.meta.providerId == cloud::ProviderId) {
             meta << (m_metaProvider = QStringLiteral("Tanara Cloud"));
         } else if (!doc.meta.providerId.isEmpty()) {
-            const QString name = LlmProviderRegistry::instance().descriptor(doc.meta.providerId).displayName;
+            const QString name = providers::LlmProviderRegistry::instance().descriptor(doc.meta.providerId).displayName;
             meta << (m_metaProvider = name.isEmpty() ? tr("saját kulcs") : tr("%1 · saját kulcs").arg(name));
         }
         m_metaLine = meta.join(QStringLiteral(" · "));
@@ -618,7 +618,7 @@ bool SummaryViewModel::copyToClipboard(const QString& part)
 
 void SummaryViewModel::dismissStale()
 {
-    AppController* c = app();
+    app::AppController* c = app();
     if (jobsupport::demoMode(c)) {
         m_stale = false;
         emit changed();
@@ -630,7 +630,7 @@ void SummaryViewModel::dismissStale()
 
 void SummaryViewModel::clearError()
 {
-    AppController* c = app();
+    app::AppController* c = app();
     if (jobsupport::demoMode(c)) {
         m_errorMessage.clear();
         m_errorDetail.clear();
@@ -954,7 +954,7 @@ QVariantMap SummaryViewModel::memoMapFor(const MemoSection& sec, int index) cons
     if (introRows.isEmpty() && !sec.intro.trimmed().isEmpty())
         introRows << plainRow(sec.intro);
     QVariantList blocks;
-    for (const auto& g : tanara::summarysrc::memoGroups(sec)) {
+    for (const auto& g : tanara::processing::summarysrc::memoGroups(sec)) {
         QVariantList rows;
         for (int i : g.second) {
             if (sec.points.at(i).trimmed().isEmpty())
@@ -1210,23 +1210,23 @@ QString SummaryViewModel::generationLine() const
 
 SummaryViewModel::QuoteLine SummaryViewModel::quoteLine(const QString& utteranceId) const
 {
-    AppController* c = app();
+    app::AppController* c = app();
     if (jobsupport::demoMode(c))
         return m_demoLines.value(utteranceId);
     QuoteLine q;
     if (m_meetingId.isEmpty())
         return q;
-    SpeakerEditor* editor = c->speakerEditor(m_meetingId);
+    editing::SpeakerEditor* editor = c->speakerEditor(m_meetingId);
     if (!editor)
         return q;
     const int idx = editor->indexOf(utteranceId);
     if (idx < 0)
         return q;
-    const EditorUtterance u = editor->utteranceAt(idx);
+    const editing::EditorUtterance u = editor->utteranceAt(idx);
     q.startMs = u.startMs;
     q.endMs = u.endMs;
     q.text = u.text.trimmed();
-    for (const EditorSpeaker& s : editor->speakers()) {
+    for (const editing::EditorSpeaker& s : editor->speakers()) {
         if (s.key == u.speakerKey) {
             q.name = s.displayName;
             q.colorIndex = s.colorIndex;
@@ -1283,7 +1283,7 @@ QVariantMap SummaryViewModel::sourceDetails(const QString& statementId) const
 
 bool SummaryViewModel::flagStatement(const QString& statementId)
 {
-    AppController* c = app();
+    app::AppController* c = app();
     if (!jobsupport::demoMode(c)) {
         if (m_meetingId.isEmpty() || !c->flagStatement(m_meetingId, statementId))
             return false;

@@ -1,5 +1,5 @@
 {
- "_comment": "Module map for tools/check_modules.py. 'modules' = target layout (paths are globs from the repo root; first match wins, so ui-common precedes ui). 'legacy' = transitional map of today's folders: patterns are matched on the path relative to core/include/tanara/ or core/src/, in order, first match wins; the P5 slice deletes it once the folders have moved. tests/** and third_party/** are not checked.",
+ "_comment": "Module map for tools/check_modules.py. 'modules' = the module layout (paths are globs from the repo root; first match wins, so ui-common precedes ui). enforceNamespace: every file of the module must open namespace <namespace> (foundation/domain live in plain `tanara`). tests/** and third_party/** are not checked.",
  "modules": {
   "foundation": {
    "paths": [
@@ -30,7 +30,7 @@
     "foundation"
    ],
    "namespace": "tanara::media",
-   "enforceNamespace": false
+   "enforceNamespace": true
   },
   "providers": {
    "paths": [
@@ -42,7 +42,7 @@
     "domain"
    ],
    "namespace": "tanara::providers",
-   "enforceNamespace": false
+   "enforceNamespace": true
   },
   "watcher": {
    "paths": [
@@ -54,7 +54,7 @@
     "domain"
    ],
    "namespace": "tanara::watcher",
-   "enforceNamespace": false
+   "enforceNamespace": true
   },
   "library": {
    "paths": [
@@ -68,7 +68,7 @@
     "providers"
    ],
    "namespace": "tanara::library",
-   "enforceNamespace": false
+   "enforceNamespace": true
   },
   "recording": {
    "paths": [
@@ -83,7 +83,7 @@
     "library"
    ],
    "namespace": "tanara::recording",
-   "enforceNamespace": false
+   "enforceNamespace": true
   },
   "processing": {
    "paths": [
@@ -98,7 +98,7 @@
     "library"
    ],
    "namespace": "tanara::processing",
-   "enforceNamespace": false
+   "enforceNamespace": true
   },
   "editing": {
    "paths": [
@@ -112,7 +112,7 @@
     "library"
    ],
    "namespace": "tanara::editing",
-   "enforceNamespace": false
+   "enforceNamespace": true
   },
   "cloud": {
    "paths": [
@@ -126,7 +126,7 @@
     "providers"
    ],
    "namespace": "tanara::cloud",
-   "enforceNamespace": false
+   "enforceNamespace": true
   },
   "app": {
    "paths": [
@@ -146,7 +146,7 @@
     "cloud"
    ],
    "namespace": "tanara::app",
-   "enforceNamespace": false
+   "enforceNamespace": true
   },
   "ui-common": {
    "paths": [
@@ -214,160 +214,6 @@
    "enforceNamespace": false
   }
  },
- "legacy": [
-  [
-   "store/KeyStore*",
-   "foundation"
-  ],
-  [
-   "Types.h",
-   "domain"
-  ],
-  [
-   "embedding/EmbeddingIndex*",
-   "library"
-  ],
-  [
-   "embedding/EmbeddingPreparer*",
-   "library"
-  ],
-  [
-   "jobs/MeetingJobTracker*",
-   "library"
-  ],
-  [
-   "jobs/JobErrors*",
-   "library"
-  ],
-  [
-   "jobs/JobStats*",
-   "library"
-  ],
-  [
-   "summary/SummaryStore*",
-   "library"
-  ],
-  [
-   "audio/TrackCatalog*",
-   "library"
-  ],
-  [
-   "audio/WaveformService*",
-   "library"
-  ],
-  [
-   "stt/SonioxTiming*",
-   "processing"
-  ],
-  [
-   "tags/LlmTagSuggester*",
-   "processing"
-  ],
-  [
-   "summary/SummaryPipeline*",
-   "processing"
-  ],
-  [
-   "summary/SummarySources*",
-   "processing"
-  ],
-  [
-   "SummaryService*",
-   "processing"
-  ],
-  [
-   "ComplexSummaryService*",
-   "processing"
-  ],
-  [
-   "PromptLibrary*",
-   "processing"
-  ],
-  [
-   "TranscriptMerger*",
-   "processing"
-  ],
-  [
-   "edit/TrackActivity*",
-   "processing"
-  ],
-  [
-   "edit/UtteranceEmbeddings*",
-   "processing"
-  ],
-  [
-   "edit/ParticipantAnalysis*",
-   "processing"
-  ],
-  [
-   "audio/PlaybackRouting*",
-   "watcher"
-  ],
-  [
-   "AppController*",
-   "app"
-  ],
-  [
-   "SettingsManager*",
-   "app"
-  ],
-  [
-   "provider/**",
-   "providers"
-  ],
-  [
-   "stt/**",
-   "providers"
-  ],
-  [
-   "llm/**",
-   "providers"
-  ],
-  [
-   "embedding/**",
-   "providers"
-  ],
-  [
-   "detect/**",
-   "watcher"
-  ],
-  [
-   "store/**",
-   "library"
-  ],
-  [
-   "library/**",
-   "library"
-  ],
-  [
-   "tags/**",
-   "library"
-  ],
-  [
-   "people/**",
-   "library"
-  ],
-  [
-   "import/**",
-   "library"
-  ],
-  [
-   "voiceid/**",
-   "processing"
-  ],
-  [
-   "audio/**",
-   "recording"
-  ],
-  [
-   "edit/**",
-   "editing"
-  ],
-  [
-   "cloud/**",
-   "cloud"
-  ]
- ],
  "forbiddenIncludes": {
   "ui": [
    "tanara/AppController.h",

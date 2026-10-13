@@ -14,34 +14,35 @@
 #include <QJsonObject>
 #include <functional>
 
-#include "tanara/Types.h"
-#include "tanara/PromptLibrary.h"
-#include "tanara/SummaryService.h"
-#include "tanara/edit/SpeakerOverlay.h"
-#include "tanara/llm/ILlmProvider.h"
-#include "tanara/summary/SummaryPipeline.h"
-#include "tanara/summary/SummarySources.h"
-#include "tanara/summary/SummaryStore.h"
+#include "tanara/domain/Types.h"
+#include "tanara/processing/summary/PromptLibrary.h"
+#include "tanara/processing/summary/SummaryService.h"
+#include "tanara/editing/session/SpeakerOverlay.h"
+#include "tanara/providers/chat/ILlmProvider.h"
+#include "tanara/processing/summary/SummaryPipeline.h"
+#include "tanara/processing/summary/SummarySources.h"
+#include "tanara/library/summary/SummaryStore.h"
 
 using namespace tanara;
+using namespace tanara::processing::summarysrc;
 using namespace tanara::summarysrc;
 
 // ---- scripted fake LLM (as in test_summary) ----
-class FakeJob : public LlmJob {
+class FakeJob : public providers::LlmJob {
     Q_OBJECT
 public:
-    explicit FakeJob(QObject* parent) : LlmJob(parent) {}
+    explicit FakeJob(QObject* parent) : providers::LlmJob(parent) {}
     void cancel() override {}
 };
 
-class FakeProvider : public QObject, public ILlmProvider {
+class FakeProvider : public QObject, public providers::ILlmProvider {
     Q_OBJECT
 public:
-    std::function<QString(int, const LlmRequest&)> script;
-    QVector<LlmRequest> requests;
+    std::function<QString(int, const providers::LlmRequest&)> script;
+    QVector<providers::LlmRequest> requests;
     QString name() const override { return QStringLiteral("fake"); }
     bool supportsStreaming() const override { return false; }
-    LlmJob* chat(const LlmRequest& req) override {
+    providers::LlmJob* chat(const providers::LlmRequest& req) override {
         const int n = int(requests.size());
         requests.append(req);
         auto* job = new FakeJob(this);
@@ -65,7 +66,7 @@ SourceLine line(const QString& id, qint64 start, qint64 end, const QString& key,
 }
 
 // Three utterances: 1:00-1:20 Ádám, 2:00-2:30 Béla, 5:00-5:10 Ádám.
-QVector<SourceLine> threeLines()
+QVector<summarysrc::SourceLine> threeLines()
 {
     return {line(QStringLiteral("u60000"), 60000, 80000, QStringLiteral("Ádám")),
             line(QStringLiteral("u120000"), 120000, 150000, QStringLiteral("Béla")),
@@ -207,21 +208,21 @@ void SummarySourcesTest::badTimesAreStrippedWithoutSource()
         QVERIFY2(mt.refs.isEmpty(), qPrintable(in));
     }
     // Well-formed, but a time outside the transcript: no utterance within the tolerance, so no source.
-    QVERIFY(resolveRefs(extractMarkers(QStringLiteral("x [t=59:00]")).refs, threeLines()).isEmpty());
+    QVERIFY(processing::summarysrc::resolveRefs(processing::summarysrc::extractMarkers(QStringLiteral("x [t=59:00]")).refs, threeLines()).isEmpty());
 }
 
 void SummarySourcesTest::textWithoutMarkersUnchanged()
 {
     const QString t = QStringLiteral("Első bekezdés, 14:00-kor kezdünk.\n\nMásodik [link] bekezdés.");
-    QCOMPARE(stripMarkers(t), t);
-    QVERIFY(extractMarkers(t).refs.isEmpty());
+    QCOMPARE(processing::summarysrc::stripMarkers(t), t);
+    QVERIFY(processing::summarysrc::extractMarkers(t).refs.isEmpty());
 }
 
 // ---- sentences ----
 
 void SummarySourcesTest::sentenceSplit()
 {
-    const QVector<MarkedText> s = splitSentences(QStringLiteral(
+    const QVector<processing::summarysrc::MarkedText> s = processing::summarysrc::splitSentences(QStringLiteral(
         "A pilot két helyszínen indul. [t=01:05] Dr. Kovács jóváhagyta az árat [t=02:10]. "
         "Az ár kb. 100 euró, ill. több? [t=05:00]\n\nÚj bekezdés jelölő nélkül 2026. október 1-jén"));
     QCOMPARE(s.size(), 4);
@@ -240,8 +241,8 @@ void SummarySourcesTest::sentenceSplit()
 
 void SummarySourcesTest::resolveContainsAndTolerance()
 {
-    const QVector<SourceLine> lines = threeLines();
-    auto at = [&](const QString& marker) { return resolveRefs(extractMarkers(marker).refs, lines); };
+    const QVector<summarysrc::SourceLine> lines = threeLines();
+    auto at = [&](const QString& marker) { return processing::summarysrc::resolveRefs(processing::summarysrc::extractMarkers(marker).refs, lines); };
     // Inside the utterance.
     QCOMPARE(at(QStringLiteral("[t=01:10]")).value(0).utteranceIds, QStringList{QStringLiteral("u60000")});
     // 4 s after the end (1:24) is still the first line; 4 s before the next one's start (1:56) is the second.
@@ -260,14 +261,14 @@ void SummarySourcesTest::resolveContainsAndTolerance()
 
 void SummarySourcesTest::resolveRangeAndIdAndDedupe()
 {
-    const QVector<SourceLine> lines = threeLines();
+    const QVector<summarysrc::SourceLine> lines = threeLines();
     // Range: every overlapping line, in chronological order.
-    QVector<SourceSpan> r = resolveRefs(extractMarkers(QStringLiteral("[t=01:10-02:10]")).refs, lines);
+    QVector<SourceSpan> r = processing::summarysrc::resolveRefs(processing::summarysrc::extractMarkers(QStringLiteral("[t=01:10-02:10]")).refs, lines);
     QCOMPARE(r.size(), 2);
     QCOMPARE(r[0].utteranceIds.value(0), QStringLiteral("u60000"));
     QCOMPARE(r[1].utteranceIds.value(0), QStringLiteral("u120000"));
     // Id marker; an unknown id is left out; the same line twice counts once.
-    r = resolveRefs(extractMarkers(QStringLiteral("[u300000] [u999] [t=05:02] [t=02:00]")).refs, lines);
+    r = processing::summarysrc::resolveRefs(processing::summarysrc::extractMarkers(QStringLiteral("[u300000] [u999] [t=05:02] [t=02:00]")).refs, lines);
     QCOMPARE(r.size(), 2);
     QCOMPARE(r[0].utteranceIds.value(0), QStringLiteral("u120000"));
     QCOMPARE(r[1].utteranceIds.value(0), QStringLiteral("u300000"));
@@ -286,7 +287,7 @@ void SummarySourcesTest::attachSourcesBuildsStatements()
     ai.owner = QStringLiteral("Béla");
     ai.due = QStringLiteral("péntek");
     s.actionItems = {ai};
-    attachSources(s, threeLines());
+    processing::summarysrc::attachSources(s, threeLines());
 
     // The stored fields have no markers, so the markdown stays readable.
     QCOMPARE(s.execSummary, QStringLiteral("A pilot két helyszínen indul. Béla szerint az ár magas."));
@@ -323,7 +324,7 @@ void SummarySourcesTest::missingMarkerMeansNoSource()
     Summary s;
     s.execSummary = QStringLiteral("Első mondat forrással. [t=01:00] Második mondat forrás nélkül.");
     s.decisions = {QStringLiteral("Döntés jelölő nélkül")};
-    attachSources(s, threeLines());
+    processing::summarysrc::attachSources(s, threeLines());
     QCOMPARE(s.statements.size(), 3);
     QCOMPARE(s.statements[0].sourceSpans.size(), 1);
     QVERIFY(s.statements[1].sourceSpans.isEmpty());   // "no source", not an error
@@ -331,7 +332,7 @@ void SummarySourcesTest::missingMarkerMeansNoSource()
     // Without lines (e.g. missing transcript lines): the claims exist, there is no source.
     Summary t;
     t.execSummary = QStringLiteral("Mondat. [t=01:00]");
-    attachSources(t, {});
+    processing::summarysrc::attachSources(t, {});
     QCOMPARE(t.statements.size(), 1);
     QVERIFY(t.statements[0].sourceSpans.isEmpty());
     QCOMPARE(t.execSummary, QStringLiteral("Mondat."));
@@ -341,19 +342,19 @@ void SummarySourcesTest::memoSectionTimesAndSpeakers()
 {
     // Notes of two parts: in the first, the first subject has no time (the part's start), the
     // second subject's frame is 2:00-4:00; the second part's subject is 5:00-6:00.
-    summarypipe::TranscriptPart p0;
+    processing::summarypipe::TranscriptPart p0;
     p0.index = 0; p0.startMs = 60000; p0.endMs = 240000;
-    summarypipe::TranscriptPart p1;
+    processing::summarypipe::TranscriptPart p1;
     p1.index = 1; p1.startMs = 300000; p1.endMs = 360000;
-    const summarypipe::PartNotes n0 = summarypipe::parseNotes(QStringLiteral(
+    const processing::summarypipe::PartNotes n0 = processing::summarypipe::parseNotes(QStringLiteral(
         "TOPICS\n### Nyitás\n- Bemutatkozás. [t=01:05]\n### [02:00-04:00] Árazás\n- Az ár 100 euró.\n"
         "DECISIONS\n- none\nOPEN\n- none\nACTIONS\n- none\n"), p0);
-    const summarypipe::PartNotes n1 = summarypipe::parseNotes(QStringLiteral(
+    const processing::summarypipe::PartNotes n1 = processing::summarypipe::parseNotes(QStringLiteral(
         "TOPICS\n### [05:00-06:00] Teendők\n- Ajánlat megy.\n"), p1);
-    summarypipe::MergeResult mr;
+    processing::summarypipe::MergeResult mr;
     mr.ok = true;
     mr.execSummary = QStringLiteral("Összegzés.");
-    const Summary s = summarypipe::buildSummary(mr, {n0, n1}, {QStringLiteral("Ádám"), QStringLiteral("Béla")},
+    const Summary s = processing::summarypipe::buildSummary(mr, {n0, n1}, {QStringLiteral("Ádám"), QStringLiteral("Béla")},
                                                 threeLines());
     QCOMPARE(s.memo.size(), 3);
     QCOMPARE(s.memo[0].startMs, 60000);         // the part's start (not a clear boundary)
@@ -371,9 +372,9 @@ void SummarySourcesTest::memoPointsIntroAndGroups()
     // A subject with an intro, a body point, "#### Arguments" and "#### Open questions"
     // sub-headings (the latter is NOT the OPEN section), the subsection's first line without a
     // bullet; then the real OPEN.
-    summarypipe::TranscriptPart p;
+    processing::summarypipe::TranscriptPart p;
     p.index = 0; p.startMs = 0; p.endMs = 400000;
-    const summarypipe::PartNotes n = summarypipe::parseNotes(QStringLiteral(
+    const processing::summarypipe::PartNotes n = processing::summarypipe::parseNotes(QStringLiteral(
         "TOPICS\n"
         "### [01:00-05:10] Számlázási súgó\n"
         "Lilla a számlázást javasolja. [t=01:05] Béla vállalta.\n"
@@ -393,16 +394,16 @@ void SummarySourcesTest::memoPointsIntroAndGroups()
     QCOMPARE(t.points[2], QStringLiteral("Tördelt pont."));
     QCOMPARE(n.open, QStringList{QStringLiteral("[05:00] Kapacitás?")});
     // The merge input carries the sub-headings and the markers too.
-    const QString merged = summarypipe::renderNotesForMerge({n}, {});
+    const QString merged = processing::summarypipe::renderNotesForMerge({n}, {});
     QVERIFY(merged.contains(QStringLiteral("#### Arguments")));
     QVERIFY(merged.contains(QStringLiteral("#### Unresolved")));
     QVERIFY(merged.contains(QStringLiteral("[t=02:10]")));
 
-    summarypipe::MergeResult mr;
+    processing::summarypipe::MergeResult mr;
     mr.ok = true;
     mr.execSummary = QStringLiteral("Összegzés.");
     mr.openQuestions = {QStringLiteral("Ki adja a kapacitást? [t=05:05]")};
-    const Summary s = summarypipe::buildSummary(mr, {n}, {}, threeLines());
+    const Summary s = processing::summarypipe::buildSummary(mr, {n}, {}, threeLines());
     const MemoSection& m = s.memo.value(0);
     QCOMPARE(m.intro, QStringLiteral("Lilla a számlázást javasolja. Béla vállalta."));
     QCOMPARE(m.points[0], QStringLiteral("A díjbekérők adják a felét."));
@@ -438,20 +439,20 @@ void SummarySourcesTest::memoJoinKeepsGroupsAndDedupesMarkers()
 {
     // A subject continuing across a part boundary: the intros are joined, the subsections stay,
     // a repeat of the same point with another marker is left out.
-    summarypipe::TranscriptPart p0; p0.index = 0; p0.endMs = 15 * 60000;
-    summarypipe::TranscriptPart p1; p1.index = 1; p1.startMs = 15 * 60000; p1.endMs = 30 * 60000;
-    const summarypipe::PartNotes a = summarypipe::parseNotes(QStringLiteral(
+    processing::summarypipe::TranscriptPart p0; p0.index = 0; p0.endMs = 15 * 60000;
+    processing::summarypipe::TranscriptPart p1; p1.index = 1; p1.startMs = 15 * 60000; p1.endMs = 30 * 60000;
+    const processing::summarypipe::PartNotes a = processing::summarypipe::parseNotes(QStringLiteral(
         "TOPICS\n### [10:00-15:00] Raktárrendszer migráció\nA migráció indul. [t=10:00]\n"
         "- az adatok exportja [t=11:00]\n"), p0);
-    const summarypipe::PartNotes b = summarypipe::parseNotes(QStringLiteral(
+    const processing::summarypipe::PartNotes b = processing::summarypipe::parseNotes(QStringLiteral(
         "TOPICS\n### [15:00-20:00] Raktárrendszer migráció\nA teszt jövő héten. [t=15:30]\n"
         "- az adatok exportja [t=15:10]\n#### Unresolved\n- Ki teszteli? [t=19:00]\n"), p1);
-    const QVector<MemoSection> memo = summarypipe::assembleMemo({a, b});
+    const QVector<MemoSection> memo = processing::summarypipe::assembleMemo({a, b});
     QCOMPARE(memo.size(), 1);
     QCOMPARE(memo[0].intro, QStringLiteral("A migráció indul. [t=10:00] A teszt jövő héten. [t=15:30]"));
     QCOMPARE(memo[0].points.size(), 2);
     QCOMPARE(memo[0].pointGroups, QStringList({QString(), QStringLiteral("open")}));
-    const auto groups = memoGroups(memo[0]);
+    const auto groups = processing::summarysrc::memoGroups(memo[0]);
     QCOMPARE(groups.size(), 2);
     QCOMPARE(groups[1].first, QStringLiteral("open"));
     QCOMPARE(groups[1].second, QVector<int>{1});
@@ -459,17 +460,17 @@ void SummarySourcesTest::memoJoinKeepsGroupsAndDedupesMarkers()
 
 void SummarySourcesTest::memoGroupKeys()
 {
-    QCOMPARE(memoGroupKey(QStringLiteral("#### Arguments")), QStringLiteral("arguments"));
-    QCOMPARE(memoGroupKey(QStringLiteral("**Elhangzott érvek:**")), QStringLiteral("arguments"));
-    QCOMPARE(memoGroupKey(QStringLiteral("Unresolved")), QStringLiteral("open"));
-    QCOMPARE(memoGroupKey(QStringLiteral("Nyitott kérdések")), QStringLiteral("open"));
-    QCOMPARE(memoGroupKey(QStringLiteral("Kockázatok:")), QStringLiteral("Kockázatok"));
-    QVERIFY(memoGroupKey(QStringLiteral("  ** ")).isEmpty());
-    QCOMPARE(memoGroupLabel(QStringLiteral("open")), QStringLiteral("Nyitott kérdés"));
-    QCOMPARE(memoGroupLabel(QStringLiteral("Kockázatok")), QStringLiteral("Kockázatok"));
-    QCOMPARE(kindFromString(kindToString(StatementKind::MemoPoint)), StatementKind::MemoPoint);
-    QCOMPARE(kindFromString(kindToString(StatementKind::MemoIntro)), StatementKind::MemoIntro);
-    QCOMPARE(kindFromString(kindToString(StatementKind::OpenQuestion)), StatementKind::OpenQuestion);
+    QCOMPARE(processing::summarysrc::memoGroupKey(QStringLiteral("#### Arguments")), QStringLiteral("arguments"));
+    QCOMPARE(processing::summarysrc::memoGroupKey(QStringLiteral("**Elhangzott érvek:**")), QStringLiteral("arguments"));
+    QCOMPARE(processing::summarysrc::memoGroupKey(QStringLiteral("Unresolved")), QStringLiteral("open"));
+    QCOMPARE(processing::summarysrc::memoGroupKey(QStringLiteral("Nyitott kérdések")), QStringLiteral("open"));
+    QCOMPARE(processing::summarysrc::memoGroupKey(QStringLiteral("Kockázatok:")), QStringLiteral("Kockázatok"));
+    QVERIFY(processing::summarysrc::memoGroupKey(QStringLiteral("  ** ")).isEmpty());
+    QCOMPARE(processing::summarysrc::memoGroupLabel(QStringLiteral("open")), QStringLiteral("Nyitott kérdés"));
+    QCOMPARE(processing::summarysrc::memoGroupLabel(QStringLiteral("Kockázatok")), QStringLiteral("Kockázatok"));
+    QCOMPARE(processing::summarysrc::kindFromString(processing::summarysrc::kindToString(StatementKind::MemoPoint)), StatementKind::MemoPoint);
+    QCOMPARE(processing::summarysrc::kindFromString(processing::summarysrc::kindToString(StatementKind::MemoIntro)), StatementKind::MemoIntro);
+    QCOMPARE(processing::summarysrc::kindFromString(processing::summarysrc::kindToString(StatementKind::OpenQuestion)), StatementKind::OpenQuestion);
 }
 
 // ---- orchestration with a fake LLM ----
@@ -477,7 +478,7 @@ void SummarySourcesTest::memoGroupKeys()
 void SummarySourcesTest::serviceSingleCallWithMarkers()
 {
     FakeProvider llm;
-    llm.script = [](int, const LlmRequest&) {
+    llm.script = [](int, const providers::LlmRequest&) {
         return QStringLiteral(
             "TOPICS\n### [00:00-01:00] Árazás\nAz árról egyeztettek. [t=00:05]\n- Az ár 100 euró. [t=00:31]\n"
             "### [01:00-02:30] Pilot\n- Két helyszín.\n"
@@ -486,10 +487,10 @@ void SummarySourcesTest::serviceSingleCallWithMarkers()
             R"("decisions":["Két helyszín lesz. [t=01:31]"],"openQuestions":[],)"
             R"("actionItems":[{"text":"Ajánlat küldése [t=02:01]","owner":"Ádám","due":""}]})");
     };
-    SummaryService svc(&llm);
-    QSignalSpy ready(&svc, &SummaryService::summaryReady);
-    QSignalSpy failed(&svc, &SummaryService::summaryFailed);
-    SummaryRequest req;
+    processing::SummaryService svc(&llm);
+    QSignalSpy ready(&svc, &processing::SummaryService::summaryReady);
+    QSignalSpy failed(&svc, &processing::SummaryService::summaryFailed);
+    processing::SummaryRequest req;
     req.transcript = transcriptAt({0, 0.5, 1.0, 1.5, 2.0});
     req.language = QStringLiteral("magyar");
     req.model = QStringLiteral("teszt");
@@ -533,7 +534,7 @@ void SummarySourcesTest::serviceMergeWithMarkers()
     QVector<double> mins;
     for (double x = 0; x < 30; x += 0.5) mins << x;
     FakeProvider llm;
-    llm.script = [](int, const LlmRequest& r) {
+    llm.script = [](int, const providers::LlmRequest& r) {
         const QString sys = r.messages.value(0).content;
         if (sys.contains(QStringLiteral("ONE PART"))) {
             const bool second = r.messages.value(1).content.contains(QStringLiteral("PART 2 of 2"));
@@ -547,9 +548,9 @@ void SummarySourcesTest::serviceMergeWithMarkers()
             R"("actionItems":[{"text":"Ajánlat küldése [t=03:00]","owner":"Béla","due":"péntek"}],)"
             R"("execSummary":"Az árazásról és a pilotról volt szó. [t=00:00, t=15:00]"})");
     };
-    SummaryService svc(&llm);
-    QSignalSpy ready(&svc, &SummaryService::summaryReady);
-    SummaryRequest req;
+    processing::SummaryService svc(&llm);
+    QSignalSpy ready(&svc, &processing::SummaryService::summaryReady);
+    processing::SummaryRequest req;
     req.transcript = transcriptAt(mins);
     req.language = QStringLiteral("magyar");
     req.model = QStringLiteral("teszt");
@@ -590,15 +591,15 @@ void SummarySourcesTest::storeRoundTrip()
     m.endMs = 150000;
     m.points = {QStringLiteral("Pont.")};
     s.memo = {m};
-    attachSources(s, threeLines());
+    processing::summarysrc::attachSources(s, threeLines());
     s.statements[0].flagged = true;
 
-    SummaryDocument doc;
+    library::SummaryDocument doc;
     doc.exists = true;
     doc.summary = s;
-    doc.meta.mode = SummaryMode::Quick;
-    QVERIFY(summarystore::save(dir.path(), doc));
-    const SummaryDocument back = summarystore::load(dir.path());
+    doc.meta.mode = library::SummaryMode::Quick;
+    QVERIFY(library::summarystore::save(dir.path(), doc));
+    const library::SummaryDocument back = library::summarystore::load(dir.path());
     QCOMPARE(back.summary.statements.size(), 4);              // s1, s2, t1, m1.1
     const SummaryStatement& b0 = back.summary.statements[0];
     QCOMPARE(b0.id, QStringLiteral("s1"));
@@ -627,15 +628,15 @@ void SummarySourcesTest::oldJsonLoadsWithoutStatements()
                     {"memo", QJsonArray{QJsonObject{{"title", "Tárgy"}, {"startMs", 0}, {"endMs", 60000},
                                                     {"points", QJsonArray{"Pont"}}}}}};
     QJsonObject root{{"version", 2}, {"mode", "quick"}, {"summary", sum}};
-    QVERIFY(writeJson(summarystore::jsonPath(dir.path()), QJsonDocument(root)));
-    const SummaryDocument back = summarystore::load(dir.path());
+    QVERIFY(writeJson(library::summarystore::jsonPath(dir.path()), QJsonDocument(root)));
+    const library::SummaryDocument back = library::summarystore::load(dir.path());
     QVERIFY(back.exists);
     QCOMPARE(back.summary.execSummary, QStringLiteral("Régi összefoglaló."));
     QVERIFY(back.summary.statements.isEmpty());
     QVERIFY(back.summary.sourceSpeakers.isEmpty());
     QVERIFY(back.summary.memo.value(0).speakers.isEmpty());
     // Nothing to mark.
-    QVERIFY(!summarystore::setStatementFlagged(dir.path(), QStringLiteral("s1")));
+    QVERIFY(!library::summarystore::setStatementFlagged(dir.path(), QStringLiteral("s1")));
 }
 
 void SummarySourcesTest::flagStatementKeepsJsonMtime()
@@ -644,12 +645,12 @@ void SummarySourcesTest::flagStatementKeepsJsonMtime()
     QVERIFY(dir.isValid());
     Summary s;
     s.execSummary = QStringLiteral("Első. [t=01:00] Második. [t=02:00]");
-    attachSources(s, threeLines());
-    SummaryDocument doc;
+    processing::summarysrc::attachSources(s, threeLines());
+    library::SummaryDocument doc;
     doc.exists = true;
     doc.summary = s;
-    QVERIFY(summarystore::save(dir.path(), doc));
-    const QString path = summarystore::jsonPath(dir.path());
+    QVERIFY(library::summarystore::save(dir.path(), doc));
+    const QString path = library::summarystore::jsonPath(dir.path());
     {
         // An older modification time (as if summary.md had been hand-edited since).
         QFile f(path);
@@ -657,12 +658,12 @@ void SummarySourcesTest::flagStatementKeepsJsonMtime()
         QVERIFY(f.setFileTime(QDateTime::currentDateTime().addSecs(-3600), QFileDevice::FileModificationTime));
     }
     const QDateTime before = QFileInfo(path).lastModified();
-    QVERIFY(summarystore::setStatementFlagged(dir.path(), QStringLiteral("s2")));
+    QVERIFY(library::summarystore::setStatementFlagged(dir.path(), QStringLiteral("s2")));
     QCOMPARE(QFileInfo(path).lastModified().toSecsSinceEpoch(), before.toSecsSinceEpoch());
-    const SummaryDocument back = summarystore::load(dir.path());
+    const library::SummaryDocument back = library::summarystore::load(dir.path());
     QVERIFY(!back.summary.statements[0].flagged);
     QVERIFY(back.summary.statements[1].flagged);
-    QVERIFY(!summarystore::setStatementFlagged(dir.path(), QStringLiteral("nincs-ilyen")));
+    QVERIFY(!library::summarystore::setStatementFlagged(dir.path(), QStringLiteral("nincs-ilyen")));
 }
 
 void SummarySourcesTest::handEditedMarkdownKeepsMatchingStatements()
@@ -671,22 +672,22 @@ void SummarySourcesTest::handEditedMarkdownKeepsMatchingStatements()
     QVERIFY(dir.isValid());
     Summary s;
     s.execSummary = QStringLiteral("Első mondat. [t=01:00] Második mondat. [t=02:00]");
-    attachSources(s, threeLines());
-    SummaryDocument doc;
+    processing::summarysrc::attachSources(s, threeLines());
+    library::SummaryDocument doc;
     doc.exists = true;
     doc.summary = s;
-    QVERIFY(summarystore::save(dir.path(), doc));
+    QVERIFY(library::summarystore::save(dir.path(), doc));
     {
-        QFile f(summarystore::jsonPath(dir.path()));
+        QFile f(library::summarystore::jsonPath(dir.path()));
         QVERIFY(f.open(QIODevice::ReadWrite));
         QVERIFY(f.setFileTime(QDateTime::currentDateTime().addSecs(-3600), QFileDevice::FileModificationTime));
     }
     // In the hand-edited markdown only the first sentence stayed unchanged.
-    QFile md(summarystore::markdownPath(dir.path()));
+    QFile md(library::summarystore::markdownPath(dir.path()));
     QVERIFY(md.open(QIODevice::WriteOnly));
     md.write(QStringLiteral("## Vezetői összefoglaló\n\nElső mondat. Átírt második.\n").toUtf8());
     md.close();
-    const SummaryDocument back = summarystore::load(dir.path());
+    const library::SummaryDocument back = library::summarystore::load(dir.path());
     QVERIFY(back.fromMarkdown);
     QCOMPARE(back.summary.statements.size(), 1);
     QCOMPARE(back.summary.statements[0].id, QStringLiteral("s1"));
@@ -703,7 +704,7 @@ void SummarySourcesTest::targetedStalenessPure()
     ai.text = QStringLiteral("Ajánlat [t=01:10]");
     ai.owner = QStringLiteral("Fehér Gábor");
     s.actionItems = {ai};
-    attachSources(s, {line(QStringLiteral("u60000"), 60000, 80000, QStringLiteral("Beszélő 1"), QStringLiteral("Fehér Gábor")),
+    processing::summarysrc::attachSources(s, {line(QStringLiteral("u60000"), 60000, 80000, QStringLiteral("Beszélő 1"), QStringLiteral("Fehér Gábor")),
                       line(QStringLiteral("u120000"), 120000, 150000, QStringLiteral("Beszélő 2"), QStringLiteral("Varga Árpád"))});
 
     // Now: the u60000 line became Varga Árpád's (a manual reassignment to Speaker 2).
@@ -712,7 +713,7 @@ void SummarySourcesTest::targetedStalenessPure()
         {QStringLiteral("u120000"), {QStringLiteral("Beszélő 2"), QStringLiteral("Varga Árpád")}}};
     QVector<SummaryStatement> sts = s.statements;
     SummaryStaleInfo info;
-    applyTargetedStaleness(sts, s.sourceSpeakers, now, {QStringLiteral("Beszélő 2")}, info);
+    summarysrc::applyTargetedStaleness(sts, s.sourceSpeakers, now, {QStringLiteral("Beszélő 2")}, info);
     QVERIFY(info.targeted);
     QCOMPARE(info.affectedStatements, 2);     // s1 + d1
     QCOMPARE(info.affectedTodos, 1);          // t1
@@ -752,7 +753,7 @@ void SummarySourcesTest::targetedStalenessFromOverlay()
     seg(60000, 80000, "Beszélő 1");
     seg(120000, 150000, "Beszélő 2");
     seg(300000, 310000, "Beszélő 1");
-    QVERIFY(writeJson(speakeredit::segmentsPath(dir.path()), QJsonDocument(segs)));
+    QVERIFY(writeJson(editing::speakeredit::segmentsPath(dir.path()), QJsonDocument(segs)));
 
     Meeting m;
     m.id = QStringLiteral("m1");
@@ -762,7 +763,7 @@ void SummarySourcesTest::targetedStalenessFromOverlay()
                     {QStringLiteral("Beszélő 2"), QStringLiteral("Varga Árpád")}};
 
     // A summary with the current state (the speaker snapshot from resolvedSourceLines).
-    const QVector<SourceLine> lines = speakeredit::resolvedSourceLines(m);
+    const QVector<summarysrc::SourceLine> lines = editing::speakeredit::resolvedSourceLines(m);
     QCOMPARE(lines.size(), 3);
     QCOMPARE(lines[0].speakerName, QStringLiteral("Fehér Gábor"));
     Summary s;
@@ -771,34 +772,34 @@ void SummarySourcesTest::targetedStalenessFromOverlay()
     ai.text = QStringLiteral("Ajánlat küldése [t=05:01]");
     ai.owner = QStringLiteral("Fehér Gábor");
     s.actionItems = {ai};
-    attachSources(s, lines);
-    SummaryDocument doc;
+    processing::summarysrc::attachSources(s, lines);
+    library::SummaryDocument doc;
     doc.exists = true;
     doc.summary = s;
-    QVERIFY(summarystore::save(dir.path(), doc));
+    QVERIFY(library::summarystore::save(dir.path(), doc));
 
     // Without a fix: targeted, but nothing is affected.
-    SummaryStaleInfo info0 = speakeredit::summaryStale(m);
-    speakeredit::fillTargetedStale(m, info0);
+    SummaryStaleInfo info0 = editing::speakeredit::summaryStale(m);
+    editing::speakeredit::fillTargetedStale(m, info0);
     QVERIFY(!info0.stale);
     QVERIFY(info0.targeted);
     QCOMPARE(info0.affectedStatements + info0.affectedTodos, 0);
 
     // A fake overlay change: the 5:00 line was assigned to Varga Árpád (Speaker 2).
     SpeakerOverlay ov;
-    ov.transcriptFingerprint = speakeredit::transcriptFingerprint(speakeredit::loadTranscriptLines(dir.path()));
+    ov.transcriptFingerprint = editing::speakeredit::transcriptFingerprint(editing::speakeredit::loadTranscriptLines(dir.path()));
     OverlayUtterance ou;
     ou.speaker = QStringLiteral("Beszélő 2");
     ou.corrected = true;
     ov.utterances.insert(QStringLiteral("u300000"), ou);
     ov.changedSinceSummary = {QStringLiteral("Beszélő 1"), QStringLiteral("Beszélő 2")};
-    QVERIFY(speakeredit::saveOverlay(dir.path(), ov));
+    QVERIFY(editing::speakeredit::saveOverlay(dir.path(), ov));
 
-    SummaryStaleInfo info = speakeredit::summaryStale(m);
+    SummaryStaleInfo info = editing::speakeredit::summaryStale(m);
     QVERIFY(info.stale);
     QCOMPARE(info.correctedSpeakers, 2);
     QVector<SummaryStatement> sts;
-    speakeredit::fillTargetedStale(m, info, &sts);
+    editing::speakeredit::fillTargetedStale(m, info, &sts);
     QVERIFY(info.targeted);
     QCOMPARE(info.affectedStatements, 1);
     QCOMPARE(info.affectedTodos, 1);
@@ -810,9 +811,9 @@ void SummarySourcesTest::targetedStalenessFromOverlay()
     QCOMPARE(sts[2].ownerStaleBecause, QStringLiteral("Fehér Gábor → Varga Árpád?"));
 
     // "Fine as is": the flag disappears, the targeted list empties.
-    QVERIFY(speakeredit::clearSummaryStale(dir.path()));
-    SummaryStaleInfo after = speakeredit::summaryStale(m);
-    speakeredit::fillTargetedStale(m, after, &sts);
+    QVERIFY(editing::speakeredit::clearSummaryStale(dir.path()));
+    SummaryStaleInfo after = editing::speakeredit::summaryStale(m);
+    editing::speakeredit::fillTargetedStale(m, after, &sts);
     QVERIFY(!after.stale);
     QCOMPARE(after.affectedStatements + after.affectedTodos, 0);
     QVERIFY(sts[0].staleBecause.isEmpty());
@@ -821,7 +822,7 @@ void SummarySourcesTest::targetedStalenessFromOverlay()
     Meeting none = m;
     none.hasSummary = false;
     SummaryStaleInfo ni;
-    speakeredit::fillTargetedStale(none, ni, &sts);
+    editing::speakeredit::fillTargetedStale(none, ni, &sts);
     QVERIFY(!ni.targeted);
     QVERIFY(sts.isEmpty());
 }
@@ -842,20 +843,20 @@ void SummarySourcesTest::memoStatementsRoundTrip()
                 QStringLiteral("Ki dönt? [t=05:03]")};
     m.pointGroups = {QString(), QStringLiteral("arguments"), QStringLiteral("open")};
     s.memo = {m};
-    attachSources(s, threeLines());
+    processing::summarysrc::attachSources(s, threeLines());
     s.statements.last().flagged = true;
-    SummaryDocument doc;
+    library::SummaryDocument doc;
     doc.exists = true;
     doc.summary = s;
-    doc.meta.mode = SummaryMode::Quick;
-    QVERIFY(summarystore::save(dir.path(), doc));
+    doc.meta.mode = library::SummaryMode::Quick;
+    QVERIFY(library::summarystore::save(dir.path(), doc));
 
-    QFile f(summarystore::jsonPath(dir.path()));
+    QFile f(library::summarystore::jsonPath(dir.path()));
     QVERIFY(f.open(QIODevice::ReadOnly));
     const QJsonObject root = QJsonDocument::fromJson(f.readAll()).object();
     QCOMPARE(root.value(QStringLiteral("version")).toInt(), 4);
 
-    const SummaryDocument back = summarystore::load(dir.path());
+    const library::SummaryDocument back = library::summarystore::load(dir.path());
     QCOMPARE(back.summary.statements.size(), 6);              // s1, q1, i1.1, m1.1–m1.3
     QStringList ids;
     for (const SummaryStatement& st : back.summary.statements) ids << st.id;
@@ -871,10 +872,10 @@ void SummarySourcesTest::memoStatementsRoundTrip()
     QCOMPARE(bm.points, QStringList({QStringLiteral("Az ár 100 euró."), QStringLiteral("Drága."),
                                      QStringLiteral("Ki dönt?")}));
     QCOMPARE(bm.pointGroups, m.pointGroups);
-    QVERIFY(summarystore::setStatementFlagged(dir.path(), QStringLiteral("q1")));
+    QVERIFY(library::summarystore::setStatementFlagged(dir.path(), QStringLiteral("q1")));
 
     // Read back from summary.md the memo is the same too (hand edit / old path).
-    const SummaryDocument md = summarystore::parseMarkdown(back.summary.renderMarkdown());
+    const library::SummaryDocument md = library::summarystore::parseMarkdown(back.summary.renderMarkdown());
     QCOMPARE(md.summary.memo.size(), 1);
     QCOMPARE(md.summary.memo[0].intro, bm.intro);
     QCOMPARE(md.summary.memo[0].points, bm.points);
@@ -890,13 +891,13 @@ void SummarySourcesTest::targetedStalenessCoversMemoAndQuestions()
     m.title = QStringLiteral("Árazás");
     m.points = {QStringLiteral("Béla szerint drága. [t=02:10]"), QStringLiteral("Ádám bemutatta. [t=01:05]")};
     s.memo = {m};
-    attachSources(s, threeLines());
+    processing::summarysrc::attachSources(s, threeLines());
     // Béla's line (u120000) was fixed to Csaba.
     QHash<QString, SourceSpeaker> now;
     for (auto it = s.sourceSpeakers.cbegin(); it != s.sourceSpeakers.cend(); ++it) now.insert(it.key(), it.value());
     now[QStringLiteral("u120000")] = SourceSpeaker{QStringLiteral("Csaba"), QStringLiteral("Csaba")};
     SummaryStaleInfo info;
-    applyTargetedStaleness(s.statements, s.sourceSpeakers, now, {QStringLiteral("Béla")}, info);
+    summarysrc::applyTargetedStaleness(s.statements, s.sourceSpeakers, now, {QStringLiteral("Béla")}, info);
     QVERIFY(info.targeted);
     QCOMPARE(info.affectedStatementIds, QStringList({QStringLiteral("q1"), QStringLiteral("m1.1")}));
     QCOMPARE(info.affectedStatements, 2);
@@ -911,26 +912,26 @@ void SummarySourcesTest::targetedStalenessCoversMemoAndQuestions()
 void SummarySourcesTest::promptTemplatesAskForMarkers()
 {
     for (const char* id : {"single", "merge"}) {
-        const QString p = promptBuiltin(QString::fromLatin1(id));
+        const QString p = processing::promptBuiltin(QString::fromLatin1(id));
         QVERIFY2(p.contains(QStringLiteral("SOURCE MARKERS")), id);
         QVERIFY2(p.contains(QStringLiteral("[t=mm:ss]")), id);
         QVERIFY2(!p.contains(QLatin1Char('%')), id);        // every %...% placeholder resolved
     }
-    QVERIFY(promptBuiltin(QStringLiteral("merge")).contains(QStringLiteral("the time written in the notes")));
-    QVERIFY(promptBuiltin(QStringLiteral("single")).contains(QStringLiteral("transcript paragraph")));
+    QVERIFY(processing::promptBuiltin(QStringLiteral("merge")).contains(QStringLiteral("the time written in the notes")));
+    QVERIFY(processing::promptBuiltin(QStringLiteral("single")).contains(QStringLiteral("transcript paragraph")));
     // The note prompt (and the single-pass one's TOPICS part) asks for a marker on the memo
     // points and the intro too, and describes the subsections; the short form asks for the open questions too.
     for (const char* id : {"notes", "single"}) {
-        const QString p = promptBuiltin(QString::fromLatin1(id));
+        const QString p = processing::promptBuiltin(QString::fromLatin1(id));
         QVERIFY2(p.contains(QStringLiteral("Every gist sentence and every point ends with a source marker")), id);
         QVERIFY2(p.contains(QStringLiteral("#### Arguments")), id);
         QVERIFY2(p.contains(QStringLiteral("#### Unresolved")), id);
     }
-    QVERIFY(!promptBuiltin(QStringLiteral("notes")).contains(QStringLiteral("SOURCE MARKERS")));
-    QVERIFY(promptBuiltin(QStringLiteral("merge")).contains(QStringLiteral("every open question")));
-    QVERIFY(promptBuiltin(QStringLiteral("merge")).contains(QStringLiteral("a [t=mm:ss] marker in TOPICS")));
+    QVERIFY(!processing::promptBuiltin(QStringLiteral("notes")).contains(QStringLiteral("SOURCE MARKERS")));
+    QVERIFY(processing::promptBuiltin(QStringLiteral("merge")).contains(QStringLiteral("every open question")));
+    QVERIFY(processing::promptBuiltin(QStringLiteral("merge")).contains(QStringLiteral("a [t=mm:ss] marker in TOPICS")));
     // The Settings output schema shows the marker too.
-    QVERIFY(promptOutputFormat(QStringLiteral("merge")).body.contains(QStringLiteral("[t=mm:ss]")));
+    QVERIFY(processing::promptOutputFormat(QStringLiteral("merge")).body.contains(QStringLiteral("[t=mm:ss]")));
 }
 
 QTEST_GUILESS_MAIN(SummarySourcesTest)

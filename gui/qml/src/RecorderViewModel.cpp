@@ -5,14 +5,14 @@
 #include "AppContext.h"
 #include "TagDemoBackend.h"
 
-#include "tanara/AppController.h"
+#include "tanara/app/AppController.h"
 #include "tanara/foundation/paths/Paths.h"
-#include "tanara/SettingsManager.h"
-#include "tanara/audio/DeviceManager.h"
-#include "tanara/audio/PlaybackRouting.h"
-#include "tanara/audio/TrackCatalog.h"
+#include "tanara/app/SettingsManager.h"
+#include "tanara/recording/audio/DeviceManager.h"
+#include "tanara/watcher/PlaybackRouting.h"
+#include "tanara/library/tracks/TrackCatalog.h"
 #include "tanara/library/MeetingNotes.h"
-#include "tanara/tags/TagService.h"
+#include "tanara/library/tags/TagService.h"
 
 #include <QDateTime>
 #include <QDir>
@@ -34,7 +34,7 @@ constexpr qint64 kSignalHoldMs = 1500;     // the last sound still counts as sig
 constexpr qint64 kPeakHoldMs   = 1500;     // peak-hold time
 constexpr int    kSegments     = 14;
 
-QString recorderIniPath(AppController* c)
+QString recorderIniPath(app::AppController* c)
 {
     const QString dir = paths::resolveMetadataDir(
         c && c->settings() ? c->settings()->settings().metadataDir : QString());
@@ -112,7 +112,7 @@ RecorderViewModel::RecorderViewModel(QObject* parent) : QObject(parent)
     // own (setController) and has not asked for a demo state.
     QMetaObject::invokeMethod(this, [this] {
         if (m_controllerSet) return;
-        if (AppController* c = AppContext::instance()->controller())
+        if (app::AppController* c = AppContext::instance()->controller())
             setController(c);
         else if (m_demoState.isEmpty() && AppContext::instance()->demo())
             setDemoState(QStringLiteral("R01"));
@@ -127,14 +127,14 @@ RecorderViewModel::~RecorderViewModel()
 }
 
 QObject* RecorderViewModel::controllerObject() const { return m_controller; }
-AppController* RecorderViewModel::controller() const { return m_controller; }
+app::AppController* RecorderViewModel::controller() const { return m_controller; }
 
 void RecorderViewModel::setControllerObject(QObject* controller)
 {
-    setController(qobject_cast<AppController*>(controller));
+    setController(qobject_cast<app::AppController*>(controller));
 }
 
-void RecorderViewModel::setController(AppController* controller)
+void RecorderViewModel::setController(app::AppController* controller)
 {
     m_controllerSet = true;
     if (m_controller == controller) return;
@@ -148,13 +148,13 @@ void RecorderViewModel::setController(AppController* controller)
     emit controllerChanged();
 }
 
-void RecorderViewModel::attachTagsOnly(AppController* controller)
+void RecorderViewModel::attachTagsOnly(app::AppController* controller)
 {
     m_controllerSet = true;
     disconnect(m_tagConn);
     m_tagCtl = controller;
     if (controller && controller->tags())
-        m_tagConn = connect(controller->tags(), &TagService::tagsChanged, this, &RecorderViewModel::refreshTagNames);
+        m_tagConn = connect(controller->tags(), &library::TagService::tagsChanged, this, &RecorderViewModel::refreshTagNames);
 }
 
 QString RecorderViewModel::automaticTitle(const QString& appName, const QDateTime& when)
@@ -232,7 +232,7 @@ QString RecorderViewModel::iconFor(const Row& r) const
                                    QStringLiteral("fejhallgat"), QStringLiteral("fülhallgat"),
                                    QStringLiteral("earbud"), QStringLiteral("airpods")};
     for (const QString& k : heads) if (n.contains(k)) return QStringLiteral("headphones");
-    return tracknames::looksLikeCallDevice(r.info.name) ? QStringLiteral("headphones")
+    return library::tracknames::looksLikeCallDevice(r.info.name) ? QStringLiteral("headphones")
                                                         : QStringLiteral("speaker");
 }
 
@@ -254,33 +254,33 @@ QVector<AudioDeviceInfo> RecorderViewModel::selectedDevices() const
 
 void RecorderViewModel::attach()
 {
-    AppController* c = m_controller;
+    app::AppController* c = m_controller;
     {
         QSettings ini(recorderIniPath(c), QSettings::IniFormat);
         m_knownDevices = ini.value(QStringLiteral("devices/known")).toStringList();
     }
-    connect(c, &AppController::devicesChanged, this, &RecorderViewModel::rebuildDevices);
+    connect(c, &app::AppController::devicesChanged, this, &RecorderViewModel::rebuildDevices);
     // A device renamed in Settings is refreshed here immediately too (devicenames).
     if (c->settings())
-        connect(c->settings(), &SettingsManager::settingsChanged, this, [this] {
+        connect(c->settings(), &app::SettingsManager::settingsChanged, this, [this] {
             for (int i = 0; i < m_rows.size(); ++i) {
-                const QString name = devicenames::displayName(m_rows.at(i).info.name);
+                const QString name = library::devicenames::displayName(m_rows.at(i).info.name);
                 if (name == m_rows.at(i).friendly) continue;
                 m_rows[i].friendly = name;
                 const QModelIndex idx = m_model.index(i);
                 emit m_model.dataChanged(idx, idx, {RecorderDeviceModel::NameRole});
             }
         });
-    connect(c, &AppController::deviceLevelPeak, this, &RecorderViewModel::onLevel);
-    connect(c, &AppController::recordingStateChanged, this, &RecorderViewModel::onRecordingState);
-    connect(c, &AppController::elapsedChanged, this, [this](qint64 ms) {
+    connect(c, &app::AppController::deviceLevelPeak, this, &RecorderViewModel::onLevel);
+    connect(c, &app::AppController::recordingStateChanged, this, &RecorderViewModel::onRecordingState);
+    connect(c, &app::AppController::elapsedChanged, this, [this](qint64 ms) {
         // Signaling once per second is enough (the display is HH:MM:SS).
         if (ms / 1000 == m_elapsedMs / 1000 && m_elapsedMs != 0) { m_elapsedMs = ms; return; }
         m_elapsedMs = ms;
         emit elapsedChanged();
     });
-    connect(c, &AppController::recordingFinished, this, &RecorderViewModel::onFinished);
-    connect(c, &AppController::recordingTrackAdded, this, [this](const QString& name) {
+    connect(c, &app::AppController::recordingFinished, this, &RecorderViewModel::onFinished);
+    connect(c, &app::AppController::recordingTrackAdded, this, [this](const QString& name) {
         const int i = rowOf(name);
         if (i < 0) return;
         m_rows[i].recorded = true;
@@ -290,7 +290,7 @@ void RecorderViewModel::attach()
         refreshRow(i, false);
         emit countsChanged();
     });
-    connect(c, &AppController::recordingTrackClosed, this, [this](const QString& name) {
+    connect(c, &app::AppController::recordingTrackClosed, this, [this](const QString& name) {
         const int i = rowOf(name);
         // Disconnected device, or the user switched it off (the latter can be switched on again).
         const bool unplugged = !m_controller
@@ -316,22 +316,22 @@ void RecorderViewModel::attach()
             emit errorChanged();
         }
     });
-    connect(c, &AppController::recordingDeviceReturned, this, [this](const QString& name) {
+    connect(c, &app::AppController::recordingDeviceReturned, this, [this](const QString& name) {
         // A device unplugged and plugged back in is recorded again by the system on its own (new segment).
         const int row = rowOf(name);
         const QString shown = (row >= 0 && !m_rows[row].friendly.isEmpty()) ? m_rows[row].friendly : name;
         m_errorText = tr("A(z) %1 eszköz visszatért, a rögzítése folytatódik (új szakasz).").arg(shown);
         emit errorChanged();
     });
-    connect(c, &AppController::callEnded, this, [this](const QString& app) {
+    connect(c, &app::AppController::callEnded, this, [this](const QString& app) {
         raiseAsk(app.isEmpty()
             ? tr("Úgy tűnik, a hívás véget ért. Magamtól nem állítom le.")
             : tr("Úgy tűnik, véget ért: %1. Magamtól nem állítom le.").arg(app));
     });
-    connect(c, &AppController::silenceDetected, this, [this](int minutes) {
+    connect(c, &app::AppController::silenceDetected, this, [this](int minutes) {
         raiseAsk(tr("Minden sávon %n perce csend van. Magamtól nem állítom le.", nullptr, minutes));
     });
-    connect(c, &AppController::errorOccurred, this, [this](const QString& e) {
+    connect(c, &app::AppController::errorOccurred, this, [this](const QString& e) {
         // We show only errors that concern the recorder: those arriving during start / stop.
         if (m_state == QLatin1String("done")) return;
         m_errorText = e;
@@ -340,10 +340,10 @@ void RecorderViewModel::attach()
 
     // Playback routes + hot-plug: where available (Linux/PipeWire), the graph change signals it;
     // elsewhere we re-enumerate devices on a timer.
-    if (PlaybackRouteMonitor::available()) {
-        m_routes = new PlaybackRouteMonitor(this);
-        connect(m_routes, &PlaybackRouteMonitor::routesChanged, this, &RecorderViewModel::updateRoutes);
-        connect(m_routes, &PlaybackRouteMonitor::deviceSetChanged, this, [this] {
+    if (watcher::PlaybackRouteMonitor::available()) {
+        m_routes = new watcher::PlaybackRouteMonitor(this);
+        connect(m_routes, &watcher::PlaybackRouteMonitor::routesChanged, this, &RecorderViewModel::updateRoutes);
+        connect(m_routes, &watcher::PlaybackRouteMonitor::deviceSetChanged, this, [this] {
             if (m_controller) m_controller->refreshDevices();
         });
         m_routes->start(2000);
@@ -414,7 +414,7 @@ void RecorderViewModel::rebuildDevices()
         else r.silentSince = now;
         r.selected = wantSelected(d);
         r.info = d;
-        r.friendly = devicenames::displayName(d.name);   // the user's name, otherwise the abbreviated one
+        r.friendly = library::devicenames::displayName(d.name);   // the user's name, otherwise the abbreviated one
         r.group = d.kind == TrackKind::Mic ? 0 : d.kind == TrackKind::Loopback ? 1 : 2;
         r.recorded = recNames.contains(d.name);
         r.disconnected = false;
@@ -426,7 +426,7 @@ void RecorderViewModel::rebuildDevices()
         if (old >= 0) r = m_rows.at(old);
         else {
             r.info.name = name;
-            r.friendly = devicenames::displayName(name);
+            r.friendly = library::devicenames::displayName(name);
             r.info.kind = name.contains(QStringLiteral("monitor"), Qt::CaseInsensitive)
                               ? TrackKind::Loopback : TrackKind::Mic;
             r.group = r.info.kind == TrackKind::Mic ? 0 : 1;
@@ -466,7 +466,7 @@ void RecorderViewModel::rebuildDevices()
 void RecorderViewModel::updateRoutes()
 {
     if (!m_routes) return;
-    const AudioGraphSnapshot snap = m_routes->snapshot();
+    const watcher::AudioGraphSnapshot snap = m_routes->snapshot();
     for (int i = 0; i < m_rows.size(); ++i) {
         Row& r = m_rows[i];
         const QString app = r.group == 1 ? snap.appForOutput(r.info.name) : QString();
@@ -569,7 +569,7 @@ void RecorderViewModel::applyRequest(const QString& title, const QString& appNam
     // ..."): that is not a note but the detected app, so it goes into a separate field.
     QString detectedApp = appName.trimmed();
     QString autoApp;
-    if (tanara::meetingnotes::parseAutoCallNote(context, &autoApp)) {
+    if (tanara::library::meetingnotes::parseAutoCallNote(context, &autoApp)) {
         if (detectedApp.isEmpty()) detectedApp = autoApp;
     } else if (!context.trimmed().isEmpty()) {
         m_context = context.trimmed();
@@ -744,7 +744,7 @@ bool RecorderViewModel::addTag(const QString& name)
     if (n.isEmpty() || !tagsEditable()) return false;
     TagRef ref;
     if (m_tagCtl) {
-        TagService* svc = m_tagCtl->tags();
+        library::TagService* svc = m_tagCtl->tags();
         if (!svc) return false;
         const Tag t = svc->create(n);          // for an existing key, the existing tag
         if (!t.isValid()) return false;

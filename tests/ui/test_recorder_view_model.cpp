@@ -11,10 +11,10 @@
 #include "RecorderViewModel.h"
 #include "RecorderWindowHost.h"
 
-#include "tanara/AppController.h"
-#include "tanara/audio/DeviceManager.h"
-#include "tanara/store/MeetingStore.h"
-#include "tanara/tags/TagService.h"
+#include "tanara/app/AppController.h"
+#include "tanara/recording/audio/DeviceManager.h"
+#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/tags/TagService.h"
 
 #include <QAbstractItemModel>
 #include <QDir>
@@ -211,8 +211,8 @@ private slots:
         const QByteArray oldHome = qgetenv("TANARA_HOME");
         qputenv("TANARA_HOME", home.path().toUtf8());
         {
-            tanara::AppController c;
-            tanara::TagService* svc = c.tags();
+            tanara::app::AppController c;
+            tanara::library::TagService* svc = c.tags();
             QVERIFY(svc);
             const tanara::Tag existing = svc->create(QStringLiteral("Nordvik"));
 
@@ -332,7 +332,7 @@ private slots:
         QTemporaryDir home;
         qputenv("TANARA_HOME", home.path().toUtf8());   // the user's ~/.tanara is untouched
         {
-            tanara::AppController c;
+            tanara::app::AppController c;
             c.setAutoMixdownAfterRecording(false);       // like the standalone recorder process
             RecorderViewModel vm;
             vm.setController(&c);
@@ -342,7 +342,7 @@ private slots:
 
             // 1) Levels for EVERY device before recording, >= 20 Hz.
             QHash<QString, int> seen;
-            auto conn = connect(&c, &tanara::AppController::deviceLevelPeak, this,
+            auto conn = connect(&c, &tanara::app::AppController::deviceLevelPeak, this,
                                 [&seen](const QString& n, float, float) { ++seen[n]; });
             QTest::qWait(1000);
             QCOMPARE(seen.size(), vm.deviceCount());
@@ -376,7 +376,7 @@ private slots:
             QTest::qWait(1500);
 
             // 5) Stop: first "stopping", and "done" only after the files are closed.
-            QSignalSpy finished(&c, &tanara::AppController::recordingFinished);
+            QSignalSpy finished(&c, &tanara::app::AppController::recordingFinished);
             vm.stop();
             QCOMPARE(vm.state(), QStringLiteral("stopping"));
             QTRY_COMPARE_WITH_TIMEOUT(vm.state(), QStringLiteral("done"), 20000);

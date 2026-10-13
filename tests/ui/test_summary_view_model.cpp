@@ -6,7 +6,7 @@
 #include "SummaryViewModel.h"
 #include "TopicListModel.h"
 
-#include "tanara/edit/SpeakerEditor.h"
+#include "tanara/editing/session/SpeakerEditor.h"
 
 #include <QAbstractItemModelTester>
 #include <QSignalSpy>
@@ -420,7 +420,7 @@ private slots:
         QVERIFY(!vm.stale());
 
         // A speaker fix after the summary makes it stale, with a real count; "Fine as is" releases it.
-        SpeakerEditor* editor = sb.app->speakerEditor(m.id);
+        editing::SpeakerEditor* editor = sb.app->speakerEditor(m.id);
         QVERIFY(editor);
         QVERIFY(editor->reassignSpeaker(QStringLiteral("Beszélő 2"), QStringLiteral("Minta Márta")));
         QTRY_VERIFY_WITH_TIMEOUT(vm.stale(), 5000);
@@ -491,7 +491,7 @@ private slots:
             return {200, jobtest::chat(QStringLiteral(
                 "{\"topics\":[{\"title\":\"Árazás\",\"summary\":\"Csomagok\"},{\"title\":\"Pilot\",\"summary\":\"Helyszínek\"}]}"))};
         };
-        QSignalSpy topicsReady(sb.app.get(), &AppController::topicsReady);
+        QSignalSpy topicsReady(sb.app.get(), &app::AppController::topicsReady);
         sb.app->extractMeetingTopics(m.id);
         QVERIFY(vm->jobRunning());
         QCOMPARE(vm->jobKind(), int(JobKind::ExtractTopics));
@@ -527,7 +527,7 @@ private slots:
             return {200, jobtest::chat(QStringLiteral(
                 "Részletes elemzés %1.\n\n## Döntések\n- Döntés %1\n\n## Teendők\n- Teendő %1 — Beszélő 1 (péntek)\n").arg(call))};
         };
-        QSignalSpy queueDone(sb.app.get(), &AppController::topicAnalysisQueueFinished);
+        QSignalSpy queueDone(sb.app.get(), &app::AppController::topicAnalysisQueueFinished);
         sb.app->generateComplexSummary(m.id, sb.app->meetingTopics(m.id));
         QCOMPARE(topicState(topics, 0), QStringLiteral("running"));
         QCOMPARE(topicState(topics, 1), QStringLiteral("queued"));
@@ -820,7 +820,7 @@ private slots:
         QVERIFY(!vm.flagStatement(QStringLiteral("nincs-ilyen")));
 
         // Speaker fix: the claims pointing to "Speaker 2"'s lines and the action item's owner are affected.
-        SpeakerEditor* editor = sb.app->speakerEditor(m.id);
+        editing::SpeakerEditor* editor = sb.app->speakerEditor(m.id);
         QVERIFY(editor->reassignSpeaker(QStringLiteral("Beszélő 2"), QStringLiteral("Minta Márta")));
         QTRY_VERIFY_WITH_TIMEOUT(vm.stale(), 5000);
         QVERIFY(vm.staleTargeted());

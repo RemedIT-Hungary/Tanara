@@ -3,13 +3,13 @@
 #include "TagControllerBackend.h"
 #include "TagDemoBackend.h"
 
-#include "tanara/AppController.h"
+#include "tanara/app/AppController.h"
 
 namespace tanara_qml {
 
 TagBackend* createControllerTagBackend(QObject* controller, QObject* parent)
 {
-    auto* app = qobject_cast<tanara::AppController*>(controller);
+    auto* app = qobject_cast<tanara::app::AppController*>(controller);
     return app ? new TagControllerBackend(app, parent) : nullptr;
 }
 

@@ -14,7 +14,7 @@
 #include <QtQml/qqmlregistration.h>
 
 namespace tanara {
-class AppController;
+namespace app { class AppController; }
 }
 
 namespace tanara_qml {
@@ -30,11 +30,11 @@ class LibraryPendingModel : public QObject {
 public:
     explicit LibraryPendingModel(QObject* parent = nullptr);
 
-    void setController(tanara::AppController* controller);
+    void setController(tanara::app::AppController* controller);
     QVariantList items() const { return m_items; }
 
     // Assembling the list from the core's items (static: testable).
-    static QVariantList build(const QVector<tanara::PendingItem>& pending);
+    static QVariantList build(const QVector<tanara::library::PendingItem>& pending);
 
 signals:
     void itemsChanged();
@@ -43,8 +43,8 @@ private:
     void attach();
     void reload();
 
-    QPointer<tanara::AppController> m_controller;
-    QPointer<tanara::MeetingLibrary> m_library;
+    QPointer<tanara::app::AppController> m_controller;
+    QPointer<tanara::library::MeetingLibrary> m_library;
     bool m_controllerInjected = false;
     QVariantList m_items;
     QTimer m_reloadTimer;

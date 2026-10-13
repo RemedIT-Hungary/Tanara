@@ -8,12 +8,12 @@
 
 #include <memory>
 
-#include "tanara/detect/DetectorRegistry.h"
-#include "tanara/detect/IMeetingDetector.h"
-#include "tanara/detect/detail/WinCaptureRules.h"
+#include "tanara/watcher/detect/DetectorRegistry.h"
+#include "tanara/watcher/detect/IMeetingDetector.h"
+#include "tanara/watcher/detect/detail/WinCaptureRules.h"
 
 using namespace tanara;
-namespace win = tanara::detail::win;
+namespace win = tanara::watcher::detail::win;
 
 namespace {
 const QStringList kDefaults = {
@@ -128,13 +128,13 @@ private slots:
     {
 #if defined(Q_OS_WIN)
         registerBuiltinDetectors();
-        auto& reg = MeetingDetectorRegistry::instance();
+        auto& reg = watcher::MeetingDetectorRegistry::instance();
         QVERIFY(reg.has(QStringLiteral("windows-wasapi")));
-        const DetectorDescriptor desc = reg.descriptor(QStringLiteral("windows-wasapi"));
+        const watcher::DetectorDescriptor desc = reg.descriptor(QStringLiteral("windows-wasapi"));
         QCOMPARE(desc.platform, QStringLiteral("windows"));
         QVERIFY(desc.derivesAppName);
 
-        std::unique_ptr<IMeetingDetector> d(reg.create(QStringLiteral("windows-wasapi")));
+        std::unique_ptr<watcher::IMeetingDetector> d(reg.create(QStringLiteral("windows-wasapi")));
         QVERIFY(d != nullptr);
         QCOMPARE(d->id(), QStringLiteral("windows-wasapi"));
         QVERIFY(d->isAvailable());
@@ -142,7 +142,7 @@ private slots:
         d->configure({QStringLiteral("test_windows_detector")}, QStringLiteral("tanara"));
         QElapsedTimer t;
         t.start();
-        const MeetingSignal sig = d->poll();
+        const watcher::MeetingSignal sig = d->poll();
         qInfo() << "poll:" << t.elapsed() << "ms, active =" << sig.active << sig.sourceRef;
         QVERIFY(!sig.active || !sig.sourceRef.contains(QStringLiteral("test_windows_detector")));
         d->poll();   // works with the cached enumerator too

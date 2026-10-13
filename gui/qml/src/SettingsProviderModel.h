@@ -17,10 +17,10 @@
 // "Test connection" and "Fetch": tanara::ConnectionTester with the DRAFT's address and key
 // (can be tried before saving). Changing any field makes the previous test's result stale.
 //
-#include "tanara/Types.h"
-#include "tanara/provider/ConnectionTester.h"
-#include "tanara/llm/LlmServer.h"
-#include "tanara/provider/ProviderDescriptor.h"
+#include "tanara/domain/Types.h"
+#include "tanara/providers/core/ConnectionTester.h"
+#include "tanara/providers/chat/LlmServer.h"
+#include "tanara/providers/core/ProviderDescriptor.h"
 
 #include <QObject>
 #include <QString>
@@ -87,7 +87,7 @@ class SettingsProviderModel : public QObject {
     Q_PROPERTY(QString summaryText READ summaryText NOTIFY valuesChanged)
 
 public:
-    SettingsProviderModel(SettingsViewModel* vm, tanara::ProviderKind kind);
+    SettingsProviderModel(SettingsViewModel* vm, tanara::providers::ProviderKind kind);
 
     QString kindName() const;
     QVariantList providers() const;
@@ -135,11 +135,11 @@ public:
     Q_INVOKABLE void fetchModels();
 
     // ---- a SettingsViewModelnek ----
-    tanara::ProviderDescriptor descriptor() const;
-    tanara::ProviderDescriptor descriptor(const QString& id) const;
-    QVector<tanara::ProviderDescriptor> allDescriptors() const;
+    tanara::providers::ProviderDescriptor descriptor() const;
+    tanara::providers::ProviderDescriptor descriptor(const QString& id) const;
+    QVector<tanara::providers::ProviderDescriptor> allDescriptors() const;
     // Fills the missing (empty) fields with the descriptor's defaults.
-    void fillDefaults(tanara::ProviderConfig& cfg, const tanara::ProviderDescriptor& d) const;
+    void fillDefaults(tanara::ProviderConfig& cfg, const tanara::providers::ProviderDescriptor& d) const;
     // The draft's runtime config for the selected provider (with the key).
     tanara::ProviderConfig runtimeConfig() const;
     // Field errors for the pre-save validation: key -> text.
@@ -152,9 +152,9 @@ public:
     void setDemoResult(const QString& state, int latencyMs, const QString& message,
                        const QString& code);
     // Demo: fixed server data (with a loaded LM Studio instance).
-    void setDemoServerInfo(const tanara::llmctx::LlmServerInfo& info) { setServerInfo(info); }
-    void setTester(tanara::ConnectionTester* tester);   // for tests (e.g. a short timeout)
-    tanara::ConnectionTester* tester() const { return m_tester; }
+    void setDemoServerInfo(const tanara::providers::llmctx::LlmServerInfo& info) { setServerInfo(info); }
+    void setTester(tanara::providers::ConnectionTester* tester);   // for tests (e.g. a short timeout)
+    tanara::providers::ConnectionTester* tester() const { return m_tester; }
 
 signals:
     void providersChanged();
@@ -174,25 +174,25 @@ private:
     QMap<QString, tanara::ProviderConfig>& configs() const;
     QString& selectedId() const;
     void invalidateTest();
-    void onFinished(int id, const tanara::ConnectionTestResult& result);
+    void onFinished(int id, const tanara::providers::ConnectionTestResult& result);
 
     SettingsViewModel* m_vm;
-    tanara::ProviderKind m_kind;
-    tanara::ConnectionTester* m_tester = nullptr;
+    tanara::providers::ProviderKind m_kind;
+    tanara::providers::ConnectionTester* m_tester = nullptr;
     bool m_advancedOpen = false;
     bool m_expanded = true;
     int m_revision = 0;
     QString m_testState;
-    tanara::ConnectionTestResult m_result;
+    tanara::providers::ConnectionTestResult m_result;
     int m_testId = 0;
     int m_fetchId = 0;
     QString m_fetchError;
     // withWarnings: warnings go into the line too (for the connection test they show in
     // warningText, so we do not repeat them there).
-    void setServerInfo(const tanara::llmctx::LlmServerInfo& info, bool withWarnings = true);
+    void setServerInfo(const tanara::providers::llmctx::LlmServerInfo& info, bool withWarnings = true);
     void clearServerInfo();
-    tanara::LlmServerProbe* m_serverProbe = nullptr;
-    tanara::llmctx::LlmServerInfo m_server;
+    tanara::providers::LlmServerProbe* m_serverProbe = nullptr;
+    tanara::providers::llmctx::LlmServerInfo m_server;
     QString m_serverText;
     QStringList m_models;          // the fetched model list (for the selected provider)
     QString m_modelsFor;           // which provider + address the list belongs to

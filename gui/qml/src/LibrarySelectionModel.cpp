@@ -5,8 +5,8 @@
 #include "LibraryListModel.h"
 #include "ShellFormat.h"
 
-#include "tanara/AppController.h"
-#include "tanara/tags/TagService.h"
+#include "tanara/app/AppController.h"
+#include "tanara/library/tags/TagService.h"
 
 #include <QVariantMap>
 
@@ -29,7 +29,7 @@ LibrarySelectionModel::LibrarySelectionModel(QObject* parent) : QObject(parent)
     });
 }
 
-void LibrarySelectionModel::setController(tanara::AppController* controller)
+void LibrarySelectionModel::setController(tanara::app::AppController* controller)
 {
     m_controllerInjected = true;
     m_controller = controller;
@@ -158,7 +158,7 @@ void LibrarySelectionModel::rebuild()
     QStringList alive;
     if (m_library) {
         for (const QString& id : std::as_const(m_ids)) {
-            const tanara::LibraryEntry e = m_library->entryFor(id);
+            const tanara::library::LibraryEntry e = m_library->entryFor(id);
             if (e.id.isEmpty()) continue;    // deleted meanwhile
             alive << id;
             QStringList hashed;
@@ -215,7 +215,7 @@ void LibrarySelectionModel::addTagToAll(const QString& nameOrId)
     const QString key = nameOrId.trimmed();
     if (key.isEmpty() || m_ids.isEmpty()) return;
     if (m_controller) {
-        tanara::TagService* tags = m_controller->tags();
+        tanara::library::TagService* tags = m_controller->tags();
         if (!tags) return;
         // Creating and attaching together are one undoable step.
         tanara::Tag t = tags->tag(key);
@@ -238,7 +238,7 @@ void LibrarySelectionModel::removeTagFromAll(const QString& tagId)
 {
     if (tagId.isEmpty() || m_ids.isEmpty()) return;
     if (m_controller) {
-        tanara::TagService* tags = m_controller->tags();
+        tanara::library::TagService* tags = m_controller->tags();
         if (!tags) return;
         tags->beginGroup(tr("Címke levétele %n megbeszélésről", nullptr, count()));
         tags->bulkRemove(m_ids, tagId);

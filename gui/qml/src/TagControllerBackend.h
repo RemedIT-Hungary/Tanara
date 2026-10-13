@@ -28,15 +28,15 @@
 #include <QSet>
 
 namespace tanara {
-class AppController;
-class TagService;
+namespace app { class AppController; }
+namespace library { class TagService; }
 } // namespace tanara
 
 namespace tanara_qml {
 
 class TagControllerBackend : public TagBackend {
 public:
-    TagControllerBackend(tanara::AppController* controller, QObject* parent = nullptr);
+    TagControllerBackend(tanara::app::AppController* controller, QObject* parent = nullptr);
 
     QVector<TagItem> tags() const override;
     QVector<TagItem> recent(int limit) const override;
@@ -76,9 +76,9 @@ public:
     static TagSuggestionItem toItem(const tanara::TagSuggestion& s);
 
 private:
-    tanara::TagService* service() const;
+    tanara::library::TagService* service() const;
 
-    QPointer<tanara::AppController> m_controller;
+    QPointer<tanara::app::AppController> m_controller;
     QSet<QString> m_computing;   // meetingIds for which no Ready has come after the Computing
     QHash<QString, QVector<tanara::TagSuggestion>> m_lists;   // meetingId -> last fresh list
 };

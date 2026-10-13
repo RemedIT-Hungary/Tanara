@@ -8,8 +8,8 @@
 
 #include <atomic>
 
-#include "tanara/store/MeetingStore.h"
-#include "tanara/tags/MeetingProfiles.h"
+#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/tags/MeetingProfiles.h"
 #include "tags_fixture.h"
 
 using namespace tanara;
@@ -30,9 +30,9 @@ private slots:
     void parallelReadsWhileRebuilding();
 
 private:
-    void buildAll(MeetingProfiles& p);
+    void buildAll(library::MeetingProfiles& p);
     std::unique_ptr<QTemporaryDir> m_dir;
-    std::unique_ptr<MeetingStore> m_store;
+    std::unique_ptr<library::MeetingStore> m_store;
     tagsfixture::Library m_lib;
 };
 
@@ -40,7 +40,7 @@ void TagsProfilesTest::init()
 {
     m_dir = std::make_unique<QTemporaryDir>();
     QVERIFY(m_dir->isValid());
-    m_store = std::make_unique<MeetingStore>(m_dir->filePath("rec"), m_dir->filePath("meta"));
+    m_store = std::make_unique<library::MeetingStore>(m_dir->filePath("rec"), m_dir->filePath("meta"));
     m_lib = tagsfixture::buildLibrary(*m_store);
 }
 
@@ -50,9 +50,9 @@ void TagsProfilesTest::cleanup()
     m_dir.reset();
 }
 
-void TagsProfilesTest::buildAll(MeetingProfiles& p)
+void TagsProfilesTest::buildAll(library::MeetingProfiles& p)
 {
-    QSignalSpy idle(&p, &MeetingProfiles::idle);
+    QSignalSpy idle(&p, &library::MeetingProfiles::idle);
     p.ensureBuilt();
     if (!p.isIdle()) QVERIFY(idle.wait(10000));
     QVERIFY(p.isIdle());
@@ -60,17 +60,17 @@ void TagsProfilesTest::buildAll(MeetingProfiles& p)
 
 void TagsProfilesTest::suffixStripping()
 {
-    QCOMPARE(tagtext::stem(QStringLiteral("projektben")), QStringLiteral("projekt"));
-    QCOMPARE(tagtext::stem(QStringLiteral("nordviknak")), QStringLiteral("nordvik"));
-    QCOMPARE(tagtext::stem(QStringLiteral("utemtervet")), QStringLiteral("utemterv"));
-    QCOMPARE(tagtext::stem(QStringLiteral("raktarbol")), QStringLiteral("raktar"));   // folded from "-bol"
-    QCOMPARE(tagtext::stem(QStringLiteral("hazban")), QStringLiteral("hazban"));     // the stem < 4 would remain
-    QCOMPARE(tagtext::stem(QStringLiteral("kamionokat")), QStringLiteral("kamiono")); // once, the longest
+    QCOMPARE(library::tagtext::stem(QStringLiteral("projektben")), QStringLiteral("projekt"));
+    QCOMPARE(library::tagtext::stem(QStringLiteral("nordviknak")), QStringLiteral("nordvik"));
+    QCOMPARE(library::tagtext::stem(QStringLiteral("utemtervet")), QStringLiteral("utemterv"));
+    QCOMPARE(library::tagtext::stem(QStringLiteral("raktarbol")), QStringLiteral("raktar"));   // folded from "-bol"
+    QCOMPARE(library::tagtext::stem(QStringLiteral("hazban")), QStringLiteral("hazban"));     // the stem < 4 would remain
+    QCOMPARE(library::tagtext::stem(QStringLiteral("kamionokat")), QStringLiteral("kamiono")); // once, the longest
 }
 
 void TagsProfilesTest::termsSkipNoise()
 {
-    const auto t = tagtext::terms(QStringLiteral("Szóval hogy a 2026-os Nordvik raktárban 12 raklap van, ugye?"));
+    const auto t = library::tagtext::terms(QStringLiteral("Szóval hogy a 2026-os Nordvik raktárban 12 raklap van, ugye?"));
     QStringList stems;
     for (const auto& p : t) stems << p.first;
     QVERIFY(stems.contains(QStringLiteral("nordvi")) || stems.contains(QStringLiteral("nordvik")));
@@ -85,7 +85,7 @@ void TagsProfilesTest::termsSkipNoise()
 
 void TagsProfilesTest::similarityOrdering()
 {
-    MeetingProfiles p(m_store.get());
+    library::MeetingProfiles p(m_store.get());
     buildAll(p);
     QVERIFY(p.isBuilt(m_lib.nordvik1));
 
@@ -116,7 +116,7 @@ void TagsProfilesTest::similarityOrdering()
 
 void TagsProfilesTest::participantRarity()
 {
-    MeetingProfiles p(m_store.get());
+    library::MeetingProfiles p(m_store.get());
     QVERIFY(p.participantWeight("Ádám") < 0.01);             // on 6/6 meetings
     QVERIFY(qAbs(p.participantWeight("Kovács Anna") - (1.0 - (2.0 / 6.0) / 0.6)) < 1e-9);
     QVERIFY(p.participantWeight("Fehér Bence") > p.participantWeight("Kovács Anna"));
@@ -124,7 +124,7 @@ void TagsProfilesTest::participantRarity()
 
 void TagsProfilesTest::mishearingMerge()
 {
-    MeetingProfiles p(m_store.get());
+    library::MeetingProfiles p(m_store.get());
     buildAll(p);
     // "RemedIT" (museum1) and the misheard "Remedi" (museum2) are one phrase: shared, shown in
     // the most frequent original spelling.
@@ -139,12 +139,12 @@ void TagsProfilesTest::profileCacheAndRebuild()
     const Meeting m = m_store->load(m_lib.budget1);
     const QString cache = QDir(m.folder).filePath("profile.json");
     {
-        MeetingProfiles p(m_store.get());
+        library::MeetingProfiles p(m_store.get());
         buildAll(p);
         QVERIFY(QFile::exists(cache));
     }
     // New instance: built from the cache (the same result).
-    MeetingProfiles p(m_store.get());
+    library::MeetingProfiles p(m_store.get());
     buildAll(p);
     QCOMPARE(p.similar(m_lib.budget1).first().meetingId, m_lib.budget2);
 
@@ -152,7 +152,7 @@ void TagsProfilesTest::profileCacheAndRebuild()
     QTest::qWait(20);   // different modification time
     tagsfixture::writeSegments(m.folder, { "A MuseumPlus gyűjteményi rekordok leltári mezői.",
                                            "A MuseumPlus adatbázis migrációja." });
-    QSignalSpy ready(&p, &MeetingProfiles::profileReady);
+    QSignalSpy ready(&p, &library::MeetingProfiles::profileReady);
     p.ensureBuilt();
     QTRY_VERIFY(p.isIdle());
     QVERIFY(ready.count() >= 1);
@@ -161,7 +161,7 @@ void TagsProfilesTest::profileCacheAndRebuild()
 
 void TagsProfilesTest::draftByTitle()
 {
-    MeetingProfiles p(m_store.get());
+    library::MeetingProfiles p(m_store.get());
     buildAll(p);
     const QVector<SimilarHit> hits = p.similarToDraft(QStringLiteral("Nordvik heti egyeztetés"), {});
     QVERIFY(!hits.isEmpty());
@@ -172,7 +172,7 @@ void TagsProfilesTest::parallelReadsWhileRebuilding()
 {
     // Thread-safety smoke test: four threads read continuously while the main thread has the
     // rows (meeting.json change) and profiles (transcript change) rebuilt.
-    MeetingProfiles p(m_store.get());
+    library::MeetingProfiles p(m_store.get());
     buildAll(p);
     std::atomic<bool> stop{false};
     std::atomic<int> reads{0};

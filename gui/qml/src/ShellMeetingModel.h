@@ -21,7 +21,7 @@
 #include <QtQml/qqmlregistration.h>
 
 namespace tanara {
-class AppController;
+namespace app { class AppController; }
 }
 
 namespace tanara_qml {
@@ -59,7 +59,7 @@ class ShellMeetingModel : public QObject {
 public:
     explicit ShellMeetingModel(QObject* parent = nullptr);
 
-    void setController(tanara::AppController* controller);
+    void setController(tanara::app::AppController* controller);
 
     QString meetingId() const { return m_meetingId; }
     void setMeetingId(const QString& id);
@@ -94,8 +94,8 @@ private:
     void onMeetingTouched(const QString& id);
     void syncTags();
 
-    QPointer<tanara::AppController> m_controller;
-    QPointer<tanara::AppController> m_attached;
+    QPointer<tanara::app::AppController> m_controller;
+    QPointer<tanara::app::AppController> m_attached;
     bool m_controllerInjected = false;
 
     QString m_meetingId;

@@ -32,7 +32,7 @@ enum class JobKind {
     Identify,        // identifying participants by voice (after the transcript)
     Import,          // importing audio files into a new meeting: the task runs under the id of the FUTURE meeting
                      // (the meeting is created only on success)
-    Export,          // packing the meeting into an archive (*.tanara.zip, store/MeetingArchive.h)
+    Export,          // packing the meeting into an archive (*.tanara.zip, library/store/MeetingArchive.h)
 };
 
 enum class StageState { Waiting, Running, Done, Failed, Skipped };

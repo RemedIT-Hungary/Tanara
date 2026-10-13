@@ -1,6 +1,6 @@
 #include <QtTest>
-#include "tanara/TranscriptMerger.h"
-#include "tanara/Types.h"
+#include "tanara/processing/summary/TranscriptMerger.h"
+#include "tanara/domain/Types.h"
 
 using namespace tanara;
 
@@ -49,7 +49,7 @@ QVector<TrackTranscript> MergerTest::makeTwoTracks() {
 }
 
 void MergerTest::merges_orders_and_labels() {
-    const MergedTranscript m = mergeTranscripts(makeTwoTracks());
+    const MergedTranscript m = processing::mergeTranscripts(makeTwoTracks());
 
     QCOMPARE(m.tokens.size(), 3);
 
@@ -68,7 +68,7 @@ void MergerTest::merges_orders_and_labels() {
 }
 
 void MergerTest::renderMarkdown_containsSpeakers() {
-    const MergedTranscript m = mergeTranscripts(makeTwoTracks());
+    const MergedTranscript m = processing::mergeTranscripts(makeTwoTracks());
     const QString md = m.renderMarkdown();
 
     QVERIFY(md.contains(QStringLiteral("Ádám")));

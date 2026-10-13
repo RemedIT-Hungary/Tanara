@@ -2,7 +2,7 @@
 
 #include "TranscriptEditorViewModel.h"
 
-#include "tanara/edit/PeopleDirectory.h"
+#include "tanara/editing/session/PeopleDirectory.h"
 
 #include <QTimer>
 
@@ -131,18 +131,18 @@ void CandidateListModel::refresh()
         } else {
             sideCtx = m_editor->speakerSideName(m_speakerKey);
         }
-        const QString needle = foldForSearch(m_query.trimmed());
+        const QString needle = text::foldForSearch(m_query.trimmed());
         QHash<QString, int> meetings;
         QHash<QString, QStringList> aliases;   // nicknames for the search (by name)
-        for (const PersonInfo& p : m_editor->people()) {
+        for (const editing::PersonInfo& p : m_editor->people()) {
             meetings.insert(p.name.toCaseFolded(), p.meetingCount);
-            if (!p.aliases.isEmpty()) aliases.insert(foldForSearch(p.name), p.aliases);
+            if (!p.aliases.isEmpty()) aliases.insert(text::foldForSearch(p.name), p.aliases);
         }
         // The search matches the name or the nickname; the matched nickname goes into the subtext ("Dompa" · ...).
         auto matchedAlias = [&](const QString& name, const QString& personName) -> QString {
-            for (const QString& key : {foldForSearch(name), foldForSearch(personName)})
+            for (const QString& key : {text::foldForSearch(name), text::foldForSearch(personName)})
                 for (const QString& a : aliases.value(key))
-                    if (foldForSearch(a).contains(needle)) return a;
+                    if (text::foldForSearch(a).contains(needle)) return a;
             return {};
         };
 
@@ -162,7 +162,7 @@ void CandidateListModel::refresh()
             }
             if (it.name.isEmpty()) continue;
             QString aliasHit;
-            if (!needle.isEmpty() && !foldForSearch(it.name).contains(needle)) {
+            if (!needle.isEmpty() && !text::foldForSearch(it.name).contains(needle)) {
                 aliasHit = matchedAlias(it.name, c.personName);
                 if (aliasHit.isEmpty()) continue;
             }

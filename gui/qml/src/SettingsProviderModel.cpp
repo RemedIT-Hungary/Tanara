@@ -2,9 +2,9 @@
 
 #include "SettingsViewModel.h"
 
-#include "tanara/AppController.h"
-#include "tanara/embedding/EmbeddingProviderRegistry.h"
-#include "tanara/provider/ProviderRegistry.h"
+#include "tanara/app/AppController.h"
+#include "tanara/providers/embedding/EmbeddingProviderRegistry.h"
+#include "tanara/providers/core/ProviderRegistry.h"
 
 #include <QLocale>
 #include <QUrl>
@@ -24,7 +24,7 @@ bool isWellKnownKey(const QString& key)
         || key == QLatin1String("temperature") || key == QLatin1String("maxTokens");
 }
 
-QVariant configValue(const ProviderConfig& cfg, const ConfigField& f)
+QVariant configValue(const ProviderConfig& cfg, const providers::ConfigField& f)
 {
     if (f.key == QLatin1String("baseUrl")) return cfg.baseUrl;
     if (f.key == QLatin1String("model")) return cfg.model;
@@ -33,7 +33,7 @@ QVariant configValue(const ProviderConfig& cfg, const ConfigField& f)
     return cfg.extra.value(f.key);
 }
 
-void setConfigValue(ProviderConfig& cfg, const ConfigField& f, const QVariant& v)
+void setConfigValue(ProviderConfig& cfg, const providers::ConfigField& f, const QVariant& v)
 {
     // The text goes into the draft RAW (while typing, the trimmed value would be written back
     // into the field); spaces are trimmed by the save and the runtime config (trimConfigs / runtimeConfig).
@@ -41,31 +41,31 @@ void setConfigValue(ProviderConfig& cfg, const ConfigField& f, const QVariant& v
     else if (f.key == QLatin1String("model")) cfg.model = v.toString();
     else if (f.key == QLatin1String("temperature")) cfg.temperature = v.toDouble();
     else if (f.key == QLatin1String("maxTokens")) cfg.maxTokens = v.toInt();
-    else if (f.type == ConfigFieldType::Number) cfg.extra.insert(f.key, v.toDouble());
+    else if (f.type == providers::ConfigFieldType::Number) cfg.extra.insert(f.key, v.toDouble());
     else cfg.extra.insert(f.key, v.toString());
 }
 
-QString typeName(ConfigFieldType t)
+QString typeName(providers::ConfigFieldType t)
 {
     switch (t) {
-    case ConfigFieldType::Secret: return QStringLiteral("secret");
-    case ConfigFieldType::Number: return QStringLiteral("number");
-    case ConfigFieldType::Combo:  return QStringLiteral("combo");
-    case ConfigFieldType::Url:    return QStringLiteral("url");
-    case ConfigFieldType::Text:   break;
+    case providers::ConfigFieldType::Secret: return QStringLiteral("secret");
+    case providers::ConfigFieldType::Number: return QStringLiteral("number");
+    case providers::ConfigFieldType::Combo:  return QStringLiteral("combo");
+    case providers::ConfigFieldType::Url:    return QStringLiteral("url");
+    case providers::ConfigFieldType::Text:   break;
     }
     return QStringLiteral("text");
 }
 
 } // namespace
 
-SettingsProviderModel::SettingsProviderModel(SettingsViewModel* vm, ProviderKind kind)
+SettingsProviderModel::SettingsProviderModel(SettingsViewModel* vm, providers::ProviderKind kind)
     : QObject(vm), m_vm(vm), m_kind(kind)
 {
-    setTester(new ConnectionTester(this));
+    setTester(new providers::ConnectionTester(this));
 }
 
-void SettingsProviderModel::setTester(ConnectionTester* tester)
+void SettingsProviderModel::setTester(providers::ConnectionTester* tester)
 {
     if (m_tester == tester) return;
     if (m_tester) {
@@ -76,49 +76,49 @@ void SettingsProviderModel::setTester(ConnectionTester* tester)
     m_tester = tester;
     m_testId = m_fetchId = 0;
     if (m_tester)
-        connect(m_tester, &ConnectionTester::finished, this, &SettingsProviderModel::onFinished);
+        connect(m_tester, &providers::ConnectionTester::finished, this, &SettingsProviderModel::onFinished);
 }
 
 QString SettingsProviderModel::kindName() const
 {
-    return m_kind == ProviderKind::Stt ? QStringLiteral("stt")
-         : m_kind == ProviderKind::Embedding ? QStringLiteral("embedding") : QStringLiteral("llm");
+    return m_kind == providers::ProviderKind::Stt ? QStringLiteral("stt")
+         : m_kind == providers::ProviderKind::Embedding ? QStringLiteral("embedding") : QStringLiteral("llm");
 }
 
 QMap<QString, ProviderConfig>& SettingsProviderModel::configs() const
 {
-    return m_kind == ProviderKind::Stt ? m_vm->draft().sttConfigs
-         : m_kind == ProviderKind::Embedding ? m_vm->draft().embeddingConfigs : m_vm->draft().llmConfigs;
+    return m_kind == providers::ProviderKind::Stt ? m_vm->draft().sttConfigs
+         : m_kind == providers::ProviderKind::Embedding ? m_vm->draft().embeddingConfigs : m_vm->draft().llmConfigs;
 }
 
 QString& SettingsProviderModel::selectedId() const
 {
-    return m_kind == ProviderKind::Stt ? m_vm->draft().sttProviderId
-         : m_kind == ProviderKind::Embedding ? m_vm->draft().embeddingProviderId : m_vm->draft().llmProviderId;
+    return m_kind == providers::ProviderKind::Stt ? m_vm->draft().sttProviderId
+         : m_kind == providers::ProviderKind::Embedding ? m_vm->draft().embeddingProviderId : m_vm->draft().llmProviderId;
 }
 
-QVector<ProviderDescriptor> SettingsProviderModel::allDescriptors() const
+QVector<providers::ProviderDescriptor> SettingsProviderModel::allDescriptors() const
 {
-    QVector<ProviderDescriptor> all = m_kind == ProviderKind::Stt ? SttProviderRegistry::instance().all()
-        : m_kind == ProviderKind::Embedding ? EmbeddingProviderRegistry::instance().all()
-                                            : LlmProviderRegistry::instance().all();
+    QVector<providers::ProviderDescriptor> all = m_kind == providers::ProviderKind::Stt ? providers::SttProviderRegistry::instance().all()
+        : m_kind == providers::ProviderKind::Embedding ? providers::EmbeddingProviderRegistry::instance().all()
+                                            : providers::LlmProviderRegistry::instance().all();
     // The registry's hash order is not stable: own-key ones by name, the sign-in one last.
-    std::sort(all.begin(), all.end(), [](const ProviderDescriptor& a, const ProviderDescriptor& b) {
-        const bool la = a.authMode == AuthMode::Login, lb = b.authMode == AuthMode::Login;
+    std::sort(all.begin(), all.end(), [](const providers::ProviderDescriptor& a, const providers::ProviderDescriptor& b) {
+        const bool la = a.authMode == providers::AuthMode::Login, lb = b.authMode == providers::AuthMode::Login;
         if (la != lb) return lb;
         return a.displayName.localeAwareCompare(b.displayName) < 0;
     });
     return all;
 }
 
-ProviderDescriptor SettingsProviderModel::descriptor(const QString& id) const
+providers::ProviderDescriptor SettingsProviderModel::descriptor(const QString& id) const
 {
-    if (m_kind == ProviderKind::Embedding) return EmbeddingProviderRegistry::instance().descriptor(id);
-    return m_kind == ProviderKind::Stt ? SttProviderRegistry::instance().descriptor(id)
-                                       : LlmProviderRegistry::instance().descriptor(id);
+    if (m_kind == providers::ProviderKind::Embedding) return providers::EmbeddingProviderRegistry::instance().descriptor(id);
+    return m_kind == providers::ProviderKind::Stt ? providers::SttProviderRegistry::instance().descriptor(id)
+                                       : providers::LlmProviderRegistry::instance().descriptor(id);
 }
 
-ProviderDescriptor SettingsProviderModel::descriptor() const
+providers::ProviderDescriptor SettingsProviderModel::descriptor() const
 {
     return descriptor(providerId());
 }
@@ -130,25 +130,25 @@ QString SettingsProviderModel::providerId() const
 
 QString SettingsProviderModel::providerLabel() const
 {
-    const ProviderDescriptor d = descriptor();
+    const providers::ProviderDescriptor d = descriptor();
     return d.displayName.isEmpty() ? providerId() : d.displayName;
 }
 
 bool SettingsProviderModel::loginProvider() const
 {
-    return descriptor().authMode == AuthMode::Login;
+    return descriptor().authMode == providers::AuthMode::Login;
 }
 
 QVariantList SettingsProviderModel::providers() const
 {
     QVariantList out;
     const QString current = providerId();
-    for (const ProviderDescriptor& d : allDescriptors()) {
+    for (const providers::ProviderDescriptor& d : allDescriptors()) {
         // The sign-in (Tanara Cloud) provider is chosen with the mode selector above; it is listed
         // here only if it is the selected one (preserving a mixed setting).
-        if (d.authMode == AuthMode::Login && d.id != current) continue;
+        if (d.authMode == providers::AuthMode::Login && d.id != current) continue;
         QString tag;
-        if (m_kind == ProviderKind::Stt && d.supportsDiarization && d.authMode != AuthMode::Login)
+        if (m_kind == providers::ProviderKind::Stt && d.supportsDiarization && d.authMode != providers::AuthMode::Login)
             tag = tr("beszélőket elkülönít");
         out << QVariantMap{{QStringLiteral("value"), d.id},
                            {QStringLiteral("label"), d.displayName},
@@ -157,18 +157,18 @@ QVariantList SettingsProviderModel::providers() const
     return out;
 }
 
-void SettingsProviderModel::fillDefaults(ProviderConfig& cfg, const ProviderDescriptor& d) const
+void SettingsProviderModel::fillDefaults(ProviderConfig& cfg, const providers::ProviderDescriptor& d) const
 {
     cfg.type = d.id;
-    for (const ConfigField& f : d.fields) {
+    for (const providers::ConfigField& f : d.fields) {
         if (f.isSecret || f.defaultValue.isEmpty()) continue;
         const QVariant v = configValue(cfg, f);
         // For number fields 0 also means "not set" (because of old, partially filled configs).
         const bool zeroIsValid = f.minValue != f.maxValue && f.minValue <= 0.0;   // e.g. temperature 0
-        const bool empty = f.type == ConfigFieldType::Number ? (v.toDouble() == 0.0 && !zeroIsValid)
+        const bool empty = f.type == providers::ConfigFieldType::Number ? (v.toDouble() == 0.0 && !zeroIsValid)
                                                              : v.toString().trimmed().isEmpty();
         if (!empty) continue;
-        if (f.type == ConfigFieldType::Number)
+        if (f.type == providers::ConfigFieldType::Number)
             setConfigValue(cfg, f, f.defaultValue.toDouble());
         else
             setConfigValue(cfg, f, f.defaultValue);
@@ -178,7 +178,7 @@ void SettingsProviderModel::fillDefaults(ProviderConfig& cfg, const ProviderDesc
 void SettingsProviderModel::setProviderId(const QString& id)
 {
     if (id.isEmpty() || id == selectedId()) return;
-    const ProviderDescriptor d = descriptor(id);
+    const providers::ProviderDescriptor d = descriptor(id);
     if (d.id.isEmpty()) return;   // unregistered provider
     selectedId() = id;
     // The other provider's settings stay in the map; the new one starts with the defaults.
@@ -200,8 +200,8 @@ void SettingsProviderModel::setProviderId(const QString& id)
 QVariantList SettingsProviderModel::fieldList(bool advanced) const
 {
     QVariantList out;
-    const ProviderDescriptor d = descriptor();
-    for (const ConfigField& f : d.fields) {
+    const providers::ProviderDescriptor d = descriptor();
+    for (const providers::ConfigField& f : d.fields) {
         if (f.advanced != advanced) continue;
         QVariantMap m;
         m[QStringLiteral("key")] = f.key;
@@ -225,11 +225,11 @@ QString SettingsProviderModel::fieldError(const QString& key) const
 
 QString SettingsProviderModel::placeholder(const QString& key) const
 {
-    const ProviderDescriptor d = descriptor();
-    for (const ConfigField& f : d.fields) {
+    const providers::ProviderDescriptor d = descriptor();
+    for (const providers::ConfigField& f : d.fields) {
         if (f.key != key) continue;
         if (!f.isSecret) return f.defaultValue;
-        const bool local = isLocalEndpoint(configs().value(d.id).baseUrl);
+        const bool local = providers::isLocalEndpoint(configs().value(d.id).baseUrl);
         return !f.required && local ? tr("nem kell (helyi végpont)")
              : f.required ? tr("illeszd be a kulcsot") : tr("nem kötelező");
     }
@@ -238,11 +238,11 @@ QString SettingsProviderModel::placeholder(const QString& key) const
 
 QStringList SettingsProviderModel::options(const QString& key) const
 {
-    const ProviderDescriptor d = descriptor();
+    const providers::ProviderDescriptor d = descriptor();
     QStringList out;
-    for (const ConfigField& f : d.fields) {
+    for (const providers::ConfigField& f : d.fields) {
         if (f.key != key) continue;
-        for (const ConfigOption& o : f.options) out << o.value;
+        for (const providers::ConfigOption& o : f.options) out << o.value;
         if (f.dynamicOptions && m_modelsFor == d.id)
             for (const QString& id : m_models)
                 if (!out.contains(id)) out << id;
@@ -252,8 +252,8 @@ QStringList SettingsProviderModel::options(const QString& key) const
 
 QVariant SettingsProviderModel::value(const QString& key) const
 {
-    const ProviderDescriptor d = descriptor();
-    for (const ConfigField& f : d.fields) {
+    const providers::ProviderDescriptor d = descriptor();
+    for (const providers::ConfigField& f : d.fields) {
         if (f.key != key) continue;
         if (f.isSecret) return m_vm->draftSecret(f.secretKey);
         return configValue(configs().value(d.id), f);
@@ -263,8 +263,8 @@ QVariant SettingsProviderModel::value(const QString& key) const
 
 void SettingsProviderModel::setValue(const QString& key, const QVariant& value)
 {
-    const ProviderDescriptor d = descriptor();
-    for (const ConfigField& f : d.fields) {
+    const providers::ProviderDescriptor d = descriptor();
+    for (const providers::ConfigField& f : d.fields) {
         if (f.key != key) continue;
         if (f.isSecret) {
             const QString v = value.toString();
@@ -287,7 +287,7 @@ void SettingsProviderModel::setValue(const QString& key, const QVariant& value)
 
 bool SettingsProviderModel::reasoningAvailable() const
 {
-    return m_kind == ProviderKind::Llm && !loginProvider();
+    return m_kind == providers::ProviderKind::Llm && !loginProvider();
 }
 
 QString SettingsProviderModel::reasoning() const
@@ -300,7 +300,7 @@ void SettingsProviderModel::setReasoning(const QString& mode)
 {
     if (!reasoningAvailable()) return;
     const QString m = mode == QLatin1String("off") || mode == QLatin1String("on") ? mode : QStringLiteral("auto");
-    const ProviderDescriptor d = descriptor();
+    const providers::ProviderDescriptor d = descriptor();
     ProviderConfig cfg = configs().value(d.id);
     if (cfg.reasoning == m) return;
     cfg.type = d.id;
@@ -319,7 +319,7 @@ void SettingsProviderModel::setContextLength(int tokens)
 {
     if (!reasoningAvailable()) return;
     const int v = qMax(0, tokens);
-    const ProviderDescriptor d = descriptor();
+    const providers::ProviderDescriptor d = descriptor();
     ProviderConfig cfg = configs().value(d.id);
     if (cfg.contextLength == v) return;
     cfg.type = d.id;
@@ -335,7 +335,7 @@ QVariantList SettingsProviderModel::contextOptions() const
     out << QVariantMap{{QStringLiteral("value"), QStringLiteral("0")},
                        {QStringLiteral("label"), tr("Automatikus (a feladathoz igazítva)")}};
     QList<int> steps;
-    for (int s : llmctx::contextSteps())
+    for (int s : providers::llmctx::contextSteps())
         if (s <= 131072) steps << s;
     const int cur = contextLength();
     if (cur > 0 && !steps.contains(cur)) { steps << cur; std::sort(steps.begin(), steps.end()); }
@@ -353,11 +353,11 @@ int SettingsProviderModel::serverLoadedContext() const
     return m_server.loaded() ? m_server.instances.first().contextLength : -1;
 }
 
-void SettingsProviderModel::setServerInfo(const llmctx::LlmServerInfo& info, bool withWarnings)
+void SettingsProviderModel::setServerInfo(const providers::llmctx::LlmServerInfo& info, bool withWarnings)
 {
     m_server = info;
     QString text, warning;
-    describeLlmServer(info, &text, &warning);
+    providers::describeLlmServer(info, &text, &warning);
     m_serverText = !withWarnings || warning.isEmpty() ? text : text + QLatin1Char(' ') + warning;
     emit serverInfoChanged();
     bumpValues();   // the step list adapts to the model's maximum
@@ -376,9 +376,9 @@ void SettingsProviderModel::refreshServerInfo()
 {
     if (!reasoningAvailable() || !m_vm->controller()) return;
     if (!m_serverProbe) {
-        m_serverProbe = new LlmServerProbe(this);
-        connect(m_serverProbe, &LlmServerProbe::finished, this,
-                [this](const llmctx::LlmServerInfo& info) { setServerInfo(info); });
+        m_serverProbe = new providers::LlmServerProbe(this);
+        connect(m_serverProbe, &providers::LlmServerProbe::finished, this,
+                [this](const providers::llmctx::LlmServerInfo& info) { setServerInfo(info); });
     }
     m_serverProbe->probe(runtimeConfig());
 }
@@ -394,13 +394,13 @@ void SettingsProviderModel::setAdvancedOpen(bool open)
 QHash<QString, QString> SettingsProviderModel::fieldErrors() const
 {
     QHash<QString, QString> out;
-    const ProviderDescriptor d = descriptor();
+    const providers::ProviderDescriptor d = descriptor();
     const ProviderConfig cfg = configs().value(d.id);
-    for (const ConfigField& f : d.fields) {
+    for (const providers::ConfigField& f : d.fields) {
         if (f.isSecret) continue;   // a missing key is not an obstacle to saving (the dot signals it)
         const QVariant v = configValue(cfg, f);
         const QString text = v.toString().trimmed();
-        if (f.type == ConfigFieldType::Url) {
+        if (f.type == providers::ConfigFieldType::Url) {
             if (text.isEmpty()) {
                 if (f.required) out.insert(f.key, tr("A cím kötelező."));
                 continue;
@@ -409,10 +409,10 @@ QHash<QString, QString> SettingsProviderModel::fieldErrors() const
             const bool http = url.scheme() == QLatin1String("http") || url.scheme() == QLatin1String("https");
             if (!url.isValid() || !http || url.host().isEmpty())
                 out.insert(f.key, tr("http:// vagy https:// kezdetű címet adj meg."));
-        } else if (f.type == ConfigFieldType::Number) {
+        } else if (f.type == providers::ConfigFieldType::Number) {
             // A stored out-of-range value stays until the user touches it.
-            const QMap<QString, ProviderConfig>& baseConfigs = m_kind == ProviderKind::Stt ? m_vm->base().sttConfigs
-                : m_kind == ProviderKind::Embedding ? m_vm->base().embeddingConfigs : m_vm->base().llmConfigs;
+            const QMap<QString, ProviderConfig>& baseConfigs = m_kind == providers::ProviderKind::Stt ? m_vm->base().sttConfigs
+                : m_kind == providers::ProviderKind::Embedding ? m_vm->base().embeddingConfigs : m_vm->base().llmConfigs;
             const bool untouched = baseConfigs.contains(d.id) && configValue(baseConfigs.value(d.id), f) == v;
             if (!untouched && f.minValue != f.maxValue && f.key != QLatin1String("temperature")
                 && (v.toDouble() < f.minValue || v.toDouble() > f.maxValue))
@@ -428,10 +428,10 @@ QHash<QString, QString> SettingsProviderModel::fieldErrors() const
 
 ProviderConfig SettingsProviderModel::runtimeConfig() const
 {
-    const ProviderDescriptor d = descriptor();
+    const providers::ProviderDescriptor d = descriptor();
     ProviderConfig cfg = configs().value(d.id);
-    for (const ConfigField& f : d.fields)
-        if (f.isSecret && f.type == ConfigFieldType::Secret)
+    for (const providers::ConfigField& f : d.fields)
+        if (f.isSecret && f.type == providers::ConfigFieldType::Secret)
             cfg.apiKey = m_vm->draftSecret(f.secretKey).trimmed();
     cfg.baseUrl = cfg.baseUrl.trimmed();
     cfg.model = cfg.model.trimmed();
@@ -440,8 +440,8 @@ ProviderConfig SettingsProviderModel::runtimeConfig() const
 
 bool SettingsProviderModel::testable() const
 {
-    const ProviderDescriptor d = descriptor();
-    return d.authMode != AuthMode::Login && d.probe.isValid();
+    const providers::ProviderDescriptor d = descriptor();
+    return d.authMode != providers::AuthMode::Login && d.probe.isValid();
 }
 
 QString SettingsProviderModel::statusText() const
@@ -452,10 +452,10 @@ QString SettingsProviderModel::statusText() const
                                         : tr("Kapcsolódva");
     if (m_testState == QLatin1String("failed")) {
         switch (m_result.status) {
-        case ConnectionTestResult::Status::AuthFailed: return tr("A kulcs nem jó");
-        case ConnectionTestResult::Status::BadConfig:  return tr("Hibás cím");
-        case ConnectionTestResult::Status::NotAnApi:   return tr("Nem API-cím");
-        case ConnectionTestResult::Status::ServerError: return tr("A szolgáltató hibát jelzett");
+        case providers::ConnectionTestResult::Status::AuthFailed: return tr("A kulcs nem jó");
+        case providers::ConnectionTestResult::Status::BadConfig:  return tr("Hibás cím");
+        case providers::ConnectionTestResult::Status::NotAnApi:   return tr("Nem API-cím");
+        case providers::ConnectionTestResult::Status::ServerError: return tr("A szolgáltató hibát jelzett");
         default: return tr("Nem érhető el");
         }
     }
@@ -469,10 +469,10 @@ bool SettingsProviderModel::highlighted() const
 
 bool SettingsProviderModel::configured() const
 {
-    if (m_kind == ProviderKind::Embedding)
+    if (m_kind == providers::ProviderKind::Embedding)
         return !descriptor().id.isEmpty() && fieldErrors().isEmpty();
-    return m_vm->draftReadiness(m_kind == ProviderKind::Stt ? WorkflowStep::Transcribe
-                                                            : WorkflowStep::Summarize).runnable;
+    return m_vm->draftReadiness(m_kind == providers::ProviderKind::Stt ? providers::WorkflowStep::Transcribe
+                                                            : providers::WorkflowStep::Summarize).runnable;
 }
 
 void SettingsProviderModel::setExpanded(bool expanded)
@@ -490,17 +490,17 @@ void SettingsProviderModel::notifyFocusChanged()
 
 QString SettingsProviderModel::summaryText() const
 {
-    const ProviderDescriptor d = descriptor();
+    const providers::ProviderDescriptor d = descriptor();
     if (d.id.isEmpty()) return QString();
     const ProviderConfig cfg = configs().value(d.id);
     QString label = d.displayName;
     // From the local server's well-known port we show its name (the descriptor's name is generic).
     const QUrl url(cfg.baseUrl.trimmed());
-    if (d.authMode != AuthMode::Login && isLocalEndpoint(cfg.baseUrl)) {
+    if (d.authMode != providers::AuthMode::Login && providers::isLocalEndpoint(cfg.baseUrl)) {
         if (url.port() == 1234) label = QStringLiteral("LM Studio");
         else if (url.port() == 11434) label = QStringLiteral("Ollama");
     }
-    if (m_kind == ProviderKind::Stt || d.authMode == AuthMode::Login) return label;
+    if (m_kind == providers::ProviderKind::Stt || d.authMode == providers::AuthMode::Login) return label;
     QString model = cfg.model.trimmed();
     model = model.mid(model.lastIndexOf(QLatin1Char('/')) + 1);
     return model.isEmpty() ? label : label + QStringLiteral(" · ") + model;
@@ -532,9 +532,9 @@ void SettingsProviderModel::test()
     emit testChanged();
     if (!m_vm->controller()) {
         // Demo: no network; a fictional but realistic result.
-        ConnectionTestResult r;
-        r.status = ConnectionTestResult::Status::Ok;
-        r.latencyMs = m_kind == ProviderKind::Stt ? 210 : 48;
+        providers::ConnectionTestResult r;
+        r.status = providers::ConnectionTestResult::Status::Ok;
+        r.latencyMs = m_kind == providers::ProviderKind::Stt ? 210 : 48;
         m_result = r;
         m_testState = QStringLiteral("ok");
         emit testChanged();
@@ -548,7 +548,7 @@ void SettingsProviderModel::fetchModels()
     if (!testable() || m_fetchId) return;
     m_fetchError.clear();
     if (!m_vm->controller()) {
-        m_models = m_kind == ProviderKind::Embedding
+        m_models = m_kind == providers::ProviderKind::Embedding
             ? QStringList{QStringLiteral("text-embedding-nomic-embed-text-v1.5"),
                           QStringLiteral("nomic-embed-text-v2-moe"), QStringLiteral("text-embedding-bge-m3")}
             : QStringList{QStringLiteral("google/gemma-4-12b-qat"), QStringLiteral("qwen/qwen3-coder-30b")};
@@ -561,7 +561,7 @@ void SettingsProviderModel::fetchModels()
     emit fetchChanged();
 }
 
-void SettingsProviderModel::onFinished(int id, const ConnectionTestResult& result)
+void SettingsProviderModel::onFinished(int id, const providers::ConnectionTestResult& result)
 {
     if (id == m_fetchId) {
         m_fetchId = 0;
@@ -581,7 +581,7 @@ void SettingsProviderModel::onFinished(int id, const ConnectionTestResult& resul
     m_result = result;
     m_testState = result.ok() ? QStringLiteral("ok") : QStringLiteral("failed");
     if (!result.ok()) setExpanded(true);
-    if (result.ok() && m_kind == ProviderKind::Llm) setServerInfo(result.server, /*withWarnings*/ false);
+    if (result.ok() && m_kind == providers::ProviderKind::Llm) setServerInfo(result.server, /*withWarnings*/ false);
     // A successful probe's model list also updates the "Fetch" result (same request).
     if (result.ok() && !result.models.isEmpty()) {
         m_models = result.models;
@@ -599,8 +599,8 @@ void SettingsProviderModel::setDemoResult(const QString& state, int latencyMs,
     m_result.latencyMs = latencyMs;
     m_result.message = message;
     m_result.code = code;
-    m_result.status = state == QLatin1String("ok") ? ConnectionTestResult::Status::Ok
-                                                   : ConnectionTestResult::Status::Unreachable;
+    m_result.status = state == QLatin1String("ok") ? providers::ConnectionTestResult::Status::Ok
+                                                   : providers::ConnectionTestResult::Status::Unreachable;
     m_testState = state;
     if (state == QLatin1String("failed")) setExpanded(true);
     emit testChanged();

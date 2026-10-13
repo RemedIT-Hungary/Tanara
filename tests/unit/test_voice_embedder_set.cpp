@@ -6,11 +6,11 @@
 #include <QtTest>
 #include <QTemporaryDir>
 
-#include "tanara/edit/UtteranceEmbeddings.h"
-#include "tanara/voiceid/VoiceEmbedder.h"
-#include "tanara/voiceid/VoiceEmbedderSet.h"
-#include "tanara/voiceid/VoiceEval.h"
-#include "tanara/voiceid/VoiceModelRegistry.h"
+#include "tanara/processing/analysis/UtteranceEmbeddings.h"
+#include "tanara/processing/voiceid/VoiceEmbedder.h"
+#include "tanara/processing/voiceid/VoiceEmbedderSet.h"
+#include "tanara/processing/voiceid/VoiceEval.h"
+#include "tanara/processing/voiceid/VoiceModelRegistry.h"
 
 #include <cmath>
 #include <memory>
@@ -29,9 +29,9 @@ void touch(const QString& path)
 
 // Fake loader: one constant-direction vector per model (scaled by the PCM length; the
 // L2-normalized direction is the same). The model with id "bad" cannot be loaded. calls: the number of loads.
-PcmEmbedderLoader fakeLoader(std::shared_ptr<int> calls)
+processing::PcmEmbedderLoader fakeLoader(std::shared_ptr<int> calls)
 {
-    return [calls](const VoiceModelSpec& spec, const QString&, QString* error) -> PcmEmbedder {
+    return [calls](const processing::VoiceModelSpec& spec, const QString&, QString* error) -> processing::PcmEmbedder {
         ++*calls;
         if (spec.id == QLatin1String("bad")) {
             if (error) *error = QStringLiteral("nem tölthető");
@@ -48,9 +48,9 @@ PcmEmbedderLoader fakeLoader(std::shared_ptr<int> calls)
     };
 }
 
-VoiceModelSpec fakeSpec(const QString& id, int dim)
+processing::VoiceModelSpec fakeSpec(const QString& id, int dim)
 {
-    VoiceModelSpec s;
+    processing::VoiceModelSpec s;
     s.id = id;
     s.dim = dim;
     return s;
@@ -68,13 +68,13 @@ class VoiceEmbedderSetTest : public QObject {
 private slots:
     void registry_specsAndLicenses()
     {
-        const auto camp = VoiceModelRegistry::spec(QStringLiteral("campplus"));
+        const auto camp = processing::VoiceModelRegistry::spec(QStringLiteral("campplus"));
         QVERIFY(camp);
         QCOMPARE(camp->license, QStringLiteral("Apache-2.0"));
         QVERIFY(camp->downloadUrl.startsWith(QStringLiteral(
             "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/")));
 
-        const auto we = VoiceModelRegistry::spec(QStringLiteral("wespeaker-resnet34-lm"));
+        const auto we = processing::VoiceModelRegistry::spec(QStringLiteral("wespeaker-resnet34-lm"));
         QVERIFY(we);
         QCOMPARE(we->fileName, QStringLiteral("wespeaker_en_voxceleb_resnet34_LM.onnx"));
         QCOMPARE(we->dim, 256);
@@ -88,7 +88,7 @@ private slots:
         QVERIFY(we->features.subtractMean);
         QCOMPARE(we->features.numMelBins, 80);
 
-        const auto eres = VoiceModelRegistry::spec(QStringLiteral("eres2netv2"));
+        const auto eres = processing::VoiceModelRegistry::spec(QStringLiteral("eres2netv2"));
         QVERIFY(eres);
         QCOMPARE(eres->dim, 192);
         QCOMPARE(eres->sizeBytes, qint64(71441526));
@@ -101,57 +101,57 @@ private slots:
     void registry_activeIsEnabledAndAvailable()
     {
         QTemporaryDir meta;
-        const auto we = *VoiceModelRegistry::spec(QStringLiteral("wespeaker-resnet34-lm"));
-        const auto camp = *VoiceModelRegistry::spec(QStringLiteral("campplus"));
+        const auto we = *processing::VoiceModelRegistry::spec(QStringLiteral("wespeaker-resnet34-lm"));
+        const auto camp = *processing::VoiceModelRegistry::spec(QStringLiteral("campplus"));
         const QStringList enabled{"wespeaker-resnet34-lm", "campplus", "nincs-ilyen"};
-        QVERIFY(VoiceModelRegistry::active(enabled, meta.path(), QString()).isEmpty());
+        QVERIFY(processing::VoiceModelRegistry::active(enabled, meta.path(), QString()).isEmpty());
         touch(QDir(meta.path()).filePath("models/" + we.fileName));
-        QCOMPARE(VoiceModelRegistry::active(enabled, meta.path(), QString()).size(), 1);
+        QCOMPARE(processing::VoiceModelRegistry::active(enabled, meta.path(), QString()).size(), 1);
         touch(QDir(meta.path()).filePath("models/" + camp.fileName));
         // eres2netv2's file exists but it is not switched on, so it is left out.
         touch(QDir(meta.path()).filePath("models/3dspeaker_speech_eres2netv2_sv_zh-cn_16k-common.onnx"));
-        const auto act = VoiceModelRegistry::active(enabled, meta.path(), QString());
+        const auto act = processing::VoiceModelRegistry::active(enabled, meta.path(), QString());
         QCOMPARE(act.size(), 2);
         QCOMPARE(act[0].id, QStringLiteral("campplus"));           // alphabetical order
         QCOMPARE(act[1].id, QStringLiteral("wespeaker-resnet34-lm"));
 
-        const VoiceEmbedderSet set = VoiceEmbedderSet::fromSettings(enabled, meta.path(), QString());
+        const processing::VoiceEmbedderSet set = processing::VoiceEmbedderSet::fromSettings(enabled, meta.path(), QString());
         QCOMPARE(set.modelIds(), QStringList({"campplus", "wespeaker-resnet34-lm"}));
         QVERIFY(!set.isEmpty());
         // Fallback: enabled and available is empty, but campplus exists, so it runs alone.
-        QVERIFY(!VoiceEmbedderSet::fromSettings({}, meta.path(), QString()).isEmpty());
-        QCOMPARE(VoiceEmbedderSet::fromSettings({}, meta.path(), QString()).modelIds(), QStringList{"campplus"});
-        QVERIFY(VoiceEmbedderSet::fromSettings({}, QString("/nincs/ilyen"), QString()).isEmpty());
+        QVERIFY(!processing::VoiceEmbedderSet::fromSettings({}, meta.path(), QString()).isEmpty());
+        QCOMPARE(processing::VoiceEmbedderSet::fromSettings({}, meta.path(), QString()).modelIds(), QStringList{"campplus"});
+        QVERIFY(processing::VoiceEmbedderSet::fromSettings({}, QString("/nincs/ilyen"), QString()).isEmpty());
     }
 
     void registry_defaultIsWespeakerAndCampplusIsFallback()
     {
-        QCOMPARE(VoiceModelRegistry::defaultEnabledIds(), QStringList{"wespeaker-resnet34-lm"});
-        QCOMPARE(VoiceModelRegistry::recommendedModelId(), QStringLiteral("wespeaker-resnet34-lm"));
-        QCOMPARE(VoiceModelRegistry::defaultModelId(), QStringLiteral("campplus"));   // old paths
+        QCOMPARE(processing::VoiceModelRegistry::defaultEnabledIds(), QStringList{"wespeaker-resnet34-lm"});
+        QCOMPARE(processing::VoiceModelRegistry::recommendedModelId(), QStringLiteral("wespeaker-resnet34-lm"));
+        QCOMPARE(processing::VoiceModelRegistry::defaultModelId(), QStringLiteral("campplus"));   // old paths
         QTemporaryDir meta;
-        const QStringList enabled = VoiceModelRegistry::defaultEnabledIds();
+        const QStringList enabled = processing::VoiceModelRegistry::defaultEnabledIds();
         // Nothing is downloaded: no model, no fallback.
-        QVERIFY(VoiceModelRegistry::active(enabled, meta.path(), QString()).isEmpty());
-        QVERIFY(!VoiceModelRegistry::isFallbackActive(enabled, meta.path(), QString()));
+        QVERIFY(processing::VoiceModelRegistry::active(enabled, meta.path(), QString()).isEmpty());
+        QVERIFY(!processing::VoiceModelRegistry::isFallbackActive(enabled, meta.path(), QString()));
         // Only the campplus file exists: ["campplus"] as a fallback.
-        touch(QDir(meta.path()).filePath("models/" + VoiceModelRegistry::spec("campplus")->fileName));
-        const auto fb = VoiceModelRegistry::active(enabled, meta.path(), QString());
+        touch(QDir(meta.path()).filePath("models/" + processing::VoiceModelRegistry::spec("campplus")->fileName));
+        const auto fb = processing::VoiceModelRegistry::active(enabled, meta.path(), QString());
         QCOMPARE(fb.size(), 1);
         QCOMPARE(fb[0].id, QStringLiteral("campplus"));
-        QVERIFY(VoiceModelRegistry::isFallbackActive(enabled, meta.path(), QString()));
+        QVERIFY(processing::VoiceModelRegistry::isFallbackActive(enabled, meta.path(), QString()));
         // WeSpeaker arrives: it runs alone, the fallback switches off.
-        touch(QDir(meta.path()).filePath("models/" + VoiceModelRegistry::spec("wespeaker-resnet34-lm")->fileName));
-        const auto ok = VoiceModelRegistry::active(enabled, meta.path(), QString());
+        touch(QDir(meta.path()).filePath("models/" + processing::VoiceModelRegistry::spec("wespeaker-resnet34-lm")->fileName));
+        const auto ok = processing::VoiceModelRegistry::active(enabled, meta.path(), QString());
         QCOMPARE(ok.size(), 1);
         QCOMPARE(ok[0].id, QStringLiteral("wespeaker-resnet34-lm"));
-        QVERIFY(!VoiceModelRegistry::isFallbackActive(enabled, meta.path(), QString()));
+        QVERIFY(!processing::VoiceModelRegistry::isFallbackActive(enabled, meta.path(), QString()));
     }
 
     void set_lazyLoadAndEmbed()
     {
         auto calls = std::make_shared<int>(0);
-        VoiceEmbedderSet set({{fakeSpec("zeta", 4), "/x/z"}, {fakeSpec("alpha", 3), "/x/a"},
+        processing::VoiceEmbedderSet set({{fakeSpec("zeta", 4), "/x/z"}, {fakeSpec("alpha", 3), "/x/a"},
                               {fakeSpec("bad", 3), "/x/b"}},
                              fakeLoader(calls));
         QCOMPARE(set.modelIds(), QStringList({"alpha", "bad", "zeta"}));
@@ -177,7 +177,7 @@ private slots:
         QVERIFY(set.embedPcm(QVector<float>(100, 0.1f)).isEmpty());
 
         // The fresh copy is unloaded (its own instance for the background thread).
-        const VoiceEmbedderSet copy = set.freshCopy();
+        const processing::VoiceEmbedderSet copy = set.freshCopy();
         QCOMPARE(copy.modelIds(), set.modelIds());
         copy.embedPcm(pcm);
         QCOMPARE(*calls, 6);
@@ -186,12 +186,12 @@ private slots:
     void set_onlyBadModels_notUsable()
     {
         auto calls = std::make_shared<int>(0);
-        VoiceEmbedderSet set({{fakeSpec("bad", 3), "/x/b"}}, fakeLoader(calls));
+        processing::VoiceEmbedderSet set({{fakeSpec("bad", 3), "/x/b"}}, fakeLoader(calls));
         QVERIFY(!set.isEmpty());
         QVERIFY(!set.ensureLoaded());
         QVERIFY(set.embedPcm(QVector<float>(16000, 0.1f)).isEmpty());
         // The real loader on a missing file: cannot be loaded, with an error message.
-        VoiceEmbedderSet real({{fakeSpec("campplus", 192), "/nincs/ilyen/modell.onnx"}});
+        processing::VoiceEmbedderSet real({{fakeSpec("campplus", 192), "/nincs/ilyen/modell.onnx"}});
         QVERIFY(!real.ensureLoaded());
         QVERIFY(!real.lastError().isEmpty());
     }
@@ -207,23 +207,23 @@ private slots:
         QVERIFY(p.waitForFinished(30000));
         QVERIFY(QFileInfo::exists(wav));
         auto calls = std::make_shared<int>(0);
-        const VoiceEmbedderSet set({{fakeSpec("alpha", 3), "/x/a"}, {fakeSpec("beta", 5), "/x/b"}},
+        const processing::VoiceEmbedderSet set({{fakeSpec("alpha", 3), "/x/a"}, {fakeSpec("beta", 5), "/x/b"}},
                                    fakeLoader(calls));
-        const UtteranceEmbedderFactory f = voiceUtteranceEmbedderFactory(set);
+        const processing::UtteranceEmbedderFactory f = voiceUtteranceEmbedderFactory(set);
         QVERIFY(f);
         auto e = f();
         QVERIFY(e->open(wav));
         const EmbeddingSet got = e->embedAll(0, 2000, {"beta", "alpha", "gamma"});
         QCOMPARE(got.keys(), QStringList({"alpha", "beta"}));
         QCOMPARE(got.value("beta").size(), 5);
-        QVERIFY(!voiceUtteranceEmbedderFactory(VoiceEmbedderSet()));   // an empty set gives an empty factory
+        QVERIFY(!voiceUtteranceEmbedderFactory(processing::VoiceEmbedderSet()));   // an empty set gives an empty factory
     }
 
     void realOnnx_campplusDimAndWarning()
     {
         if (!QFileInfo::exists(realModelPath())) QSKIP("a CAM++ modell nincs meg (~/.tanara/models)");
-        const auto camp = *VoiceModelRegistry::spec(QStringLiteral("campplus"));
-        VoiceEmbedder ok(realModelPath(), camp.features, camp.dim);
+        const auto camp = *processing::VoiceModelRegistry::spec(QStringLiteral("campplus"));
+        processing::VoiceEmbedder ok(realModelPath(), camp.features, camp.dim);
         if (!ok.isValid() && ok.lastError().contains(QStringLiteral("TANARA_BUILD_VOICEID")))
             QSKIP("a build nem tartalmaz voice-ID-t");
         QVERIFY2(ok.isValid(), qPrintable(ok.lastError()));
@@ -235,14 +235,14 @@ private slots:
 
         // A wrong expected dimension: a warning (at load or at the first inference).
         QTest::ignoreMessage(QtWarningMsg, QRegularExpression(QStringLiteral("dimenzi")));
-        VoiceEmbedder wrong(realModelPath(), camp.features, 256);
+        processing::VoiceEmbedder wrong(realModelPath(), camp.features, 256);
         QVERIFY(wrong.isValid());
         QCOMPARE(wrong.embedPcm(pcm).size(), 192);
 
         // The hamming window (WeSpeaker setting) runs too, gives another vector.
-        EmbedderConfig ham = camp.features;
+        processing::EmbedderConfig ham = camp.features;
         ham.windowType = QStringLiteral("hamming");
-        VoiceEmbedder h(realModelPath(), ham, 192);
+        processing::VoiceEmbedder h(realModelPath(), ham, 192);
         const QVector<float> hv = h.embedPcm(pcm);
         QCOMPARE(hv.size(), 192);
         QVERIFY(hv != v);
@@ -256,9 +256,9 @@ private slots:
             const float n = std::sqrt(x * x + y * y);
             return EmbeddingSet{{"m1", {x / n, y / n}}, {"m2", {x / n, y / n, 0}}};
         };
-        QVector<VoiceEvalLine> lines;
+        QVector<processing::VoiceEvalLine> lines;
         auto add = [&](int spk, bool locked, float x, float y, qint64 dur = 4000) {
-            VoiceEvalLine l;
+            processing::VoiceEvalLine l;
             l.id = QStringLiteral("u%1").arg(lines.size());
             l.durationMs = dur;
             l.speaker = spk;
@@ -270,12 +270,12 @@ private slots:
         add(0, false, 0, 1);              // B's voice on A
         for (int i = 0; i < 3; ++i) add(1, true, 0.05f * i, 1);
         add(1, false, 0, 1, 800);         // too short: no vector
-        const QVector<VoiceEvalSpeaker> spk{{"Beszélő 1", "Anna"}, {"Beszélő 2", "Béla"}};
+        const QVector<processing::VoiceEvalSpeaker> spk{{"Beszélő 1", "Anna"}, {"Beszélő 2", "Béla"}};
 
-        const VoiceEvalReport r = evaluateVoices(lines, spk, {"m1", "m2"}, 1500);
+        const processing::VoiceEvalReport r = evaluateVoices(lines, spk, {"m1", "m2"}, 1500);
         QCOMPARE(r.spaces.size(), 3);
         QCOMPARE(r.spaces[2].id, QStringLiteral("fused"));
-        for (const VoiceEvalSpace& sp : r.spaces) {
+        for (const processing::VoiceEvalSpace& sp : r.spaces) {
             QCOMPARE(sp.linesTotal, 9);
             QCOMPARE(sp.linesEligible, 8);
             QCOMPARE(sp.linesCovered, 8);
@@ -297,8 +297,8 @@ private slots:
         QCOMPARE(j.value("speakers").toArray().at(1).toObject().value("name").toString(), QStringLiteral("Béla"));
 
         // One model: no fusion space; a speaker without a core gives NaN in the matrix.
-        for (VoiceEvalLine& l : lines) l.locked = l.speaker == 0 && l.locked;
-        const VoiceEvalReport one = evaluateVoices(lines, spk, {"m1"}, 1500);
+        for (processing::VoiceEvalLine& l : lines) l.locked = l.speaker == 0 && l.locked;
+        const processing::VoiceEvalReport one = evaluateVoices(lines, spk, {"m1"}, 1500);
         QCOMPARE(one.spaces.size(), 1);
         QCOMPARE(one.spaces[0].coreLines, QVector<int>({4, 0}));
         QVERIFY(std::isnan(one.spaces[0].coreCosine[0][1]));

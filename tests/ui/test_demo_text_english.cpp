@@ -8,7 +8,7 @@
 #include "OverviewViewModel.h"
 #include "TranscriptDemoSession.h"
 
-#include "tanara/edit/SpeakerEditor.h"
+#include "tanara/editing/session/SpeakerEditor.h"
 
 #include <QRegularExpression>
 #include <QtTest>
@@ -33,10 +33,10 @@ struct Shape {
 Shape shapeOf(const TranscriptDemoSession& s)
 {
     Shape out;
-    tanara::SpeakerEditor* ed = s.editor();
+    tanara::editing::SpeakerEditor* ed = s.editor();
     out.lines = ed->utteranceCount();
     for (int i = 0; i < out.lines; ++i) {
-        const tanara::EditorUtterance u = ed->utteranceAt(i);
+        const tanara::editing::EditorUtterance u = ed->utteranceAt(i);
         out.starts << u.startMs;
         if (!out.rawOrder.contains(u.rawLabel)) out.rawOrder << u.rawLabel;
     }
@@ -119,7 +119,7 @@ private slots:
             const QString t = en.editor()->utteranceAt(i).text;
             QVERIFY2(!hasHungarianAccent(t), qPrintable(QStringLiteral("%1: %2").arg(i).arg(t)));
         }
-        for (const tanara::EditorSpeaker& sp : en.editor()->speakers())
+        for (const tanara::editing::EditorSpeaker& sp : en.editor()->speakers())
             QVERIFY2(!hasHungarianAccent(sp.displayName), qPrintable(sp.displayName));
     }
 

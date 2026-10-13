@@ -29,7 +29,7 @@
 //   lines <meeting-folder> [--json] | lines ignore|unignore <meeting-folder> <id...>
 //                                                      lines with markers; "ignored" marking (ReviewCommand.cpp)
 //   reslice <meeting-folder> [--dry-run] [--json]   re-pad Soniox lines, carrying ids over (ResliceCommand.cpp)
-#include "tanara/AppController.h"
+#include "tanara/app/AppController.h"
 #include "tanara/app/StartupDiagnostics.h"
 #include "CloudCommands.h"
 #include "ParticipantsCommand.h"
@@ -40,16 +40,16 @@
 #include "VoiceCommands.h"
 #include "tanara/cloud/CloudAccount.h"
 #include "tanara/foundation/log/Logging.h"
-#include "tanara/SettingsManager.h"
-#include "tanara/audio/DeviceManager.h"
-#include "tanara/import/AudioImporter.h"
-#include "tanara/store/MeetingArchive.h"
-#include "tanara/store/MeetingStore.h"
-#include "tanara/store/VoiceprintStore.h"
-#include "tanara/tags/TagService.h"
-#include "tanara/voiceid/VoiceEmbedder.h"
-#include "tanara/detect/DetectorRegistry.h"
-#include "tanara/detect/IMeetingDetector.h"
+#include "tanara/app/SettingsManager.h"
+#include "tanara/recording/audio/DeviceManager.h"
+#include "tanara/library/import/AudioImporter.h"
+#include "tanara/library/store/MeetingArchive.h"
+#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/store/VoiceprintStore.h"
+#include "tanara/library/tags/TagService.h"
+#include "tanara/processing/voiceid/VoiceEmbedder.h"
+#include "tanara/watcher/detect/DetectorRegistry.h"
+#include "tanara/watcher/detect/IMeetingDetector.h"
 
 #include <QCoreApplication>
 #include <QTextStream>
@@ -80,7 +80,7 @@ static QString kindStr(TrackKind k) {
                  default: return QStringLiteral("other"); }
 }
 
-static int cmdDevices(AppController& app) {
+static int cmdDevices(app::AppController& app) {
     app.refreshDevices();
     const auto devs = app.devices()->captureDevices();
     out << QStringLiteral("Recordable devices (%1):").arg(devs.size()) << "\n";
@@ -91,7 +91,7 @@ static int cmdDevices(AppController& app) {
     return 0;
 }
 
-static int cmdList(AppController& app) {
+static int cmdList(app::AppController& app) {
     const auto ms = app.store()->loadAll();
     out << QStringLiteral("Meetings (%1):").arg(ms.size()) << "\n";
     for (const auto& m : ms)
@@ -135,12 +135,12 @@ int main(int argc, char** argv) {
     if (cmd == "lines")        return tanara::cli::runLinesCommand(args);
     if (cmd == "reslice")      return tanara::cli::runResliceCommand(args);
 
-    AppController app;
+    app::AppController app;
 
     // Detailed startup diagnostics only in debug builds (keeps normal command output clean).
     if (tanara::currentLogLevel() == tanara::LogLevel::Debug) {
         app.refreshDevices();
-        tanara::logStartupDiagnostics(app);
+        tanara::app::logStartupDiagnostics(app);
     }
 
     if (cmd == "devices") return cmdDevices(app);
@@ -210,7 +210,7 @@ int main(int argc, char** argv) {
         app.store()->saveMeeting(m);
         out << "Offsets saved; regenerating the mixdown...\n"; out.flush();
         int rc = 1;
-        QObject::connect(&app, &AppController::mixdownUpdated, &qapp, [&](const QString& mid, bool ok) {
+        QObject::connect(&app, &app::AppController::mixdownUpdated, &qapp, [&](const QString& mid, bool ok) {
             if (mid != id) return;
             out << (ok ? "Mixdown regenerated. Re-run the transcription to apply the new alignment.\n"
                        : "Mixdown failed.\n");
@@ -237,7 +237,7 @@ int main(int argc, char** argv) {
     }
 
     if (cmd == "export") {
-        // Packs a meeting into a *.tanara.zip archive (see store/MeetingArchive.h). With no target it
+        // Packs a meeting into a *.tanara.zip archive (see library/store/MeetingArchive.h). With no target it
         // goes to the working directory; for a folder target, into it, using the suggested file name.
         const QString id = args.value(2);
         if (id.isEmpty()) { err << "Usage: export <id> [<archive.zip>]\n"; return 2; }
@@ -246,7 +246,7 @@ int main(int argc, char** argv) {
         QString target = args.value(3);
         if (target.isEmpty() || QFileInfo(target).isDir())
             target = QDir(target.isEmpty() ? QDir::currentPath() : target)
-                         .filePath(MeetingArchive::suggestedFileName(m));
+                         .filePath(library::MeetingArchive::suggestedFileName(m));
         target = QFileInfo(target).absoluteFilePath();
         out << QStringLiteral("Exporting: \"%1\" → %2").arg(m.title, target) << "\n";
         out.flush();
@@ -290,12 +290,12 @@ int main(int argc, char** argv) {
     if (cmd == "detect") {
         // Smoke test: the watcher ENGINE without a separate process or tray. A single poll, or a
         // timed one with --watch (using the settings interval or --interval N seconds).
-        registerBuiltinDetectors();
+        watcher::registerBuiltinDetectors();
         const AppSettings s = app.settings()->settings();
-        std::unique_ptr<IMeetingDetector> det(
+        std::unique_ptr<watcher::IMeetingDetector> det(
             s.detectorId.isEmpty()
-                ? MeetingDetectorRegistry::instance().createBest()
-                : MeetingDetectorRegistry::instance().create(s.detectorId));
+                ? watcher::MeetingDetectorRegistry::instance().createBest()
+                : watcher::MeetingDetectorRegistry::instance().create(s.detectorId));
         if (!det) {
             err << QStringLiteral("No meeting detector available on this platform (pw-dump?).") << "\n";
             err.flush();
@@ -319,7 +319,7 @@ int main(int argc, char** argv) {
         out.flush();
 
         auto pollOnce = [&det]() {
-            const MeetingSignal sig = det->poll();
+            const watcher::MeetingSignal sig = det->poll();
             if (sig.active)
                 out << QStringLiteral("  ● MEETING: %1  [appId=%2, window=\"%3\", source=%4]")
                            .arg(sig.appName, sig.appId, sig.windowTitle, sig.sourceRef)
@@ -363,7 +363,7 @@ int main(int argc, char** argv) {
         for (const auto& dvc : sel) out << "  • " << dvc.name << "\n";
         out.flush();
 
-        QObject::connect(&app, &AppController::recordingFinished, &qapp, [&](Meeting m) {
+        QObject::connect(&app, &app::AppController::recordingFinished, &qapp, [&](Meeting m) {
             out << QStringLiteral("DONE. Folder: %1").arg(m.folder) << "\n";
             for (const auto& t : m.tracks)
                 out << QStringLiteral("  track: %1  (%2)").arg(t.file, t.speakerLabel) << "\n";
@@ -371,10 +371,10 @@ int main(int argc, char** argv) {
             out.flush();
             qapp.quit();
         });
-        QObject::connect(&app, &AppController::errorOccurred, &qapp, [&](QString e) {
+        QObject::connect(&app, &app::AppController::errorOccurred, &qapp, [&](QString e) {
             err << QStringLiteral("ERROR: %1").arg(e) << "\n"; err.flush(); qapp.exit(1);
         });
-        QObject::connect(&app, &AppController::elapsedChanged, &qapp, [&](qint64 ms) {
+        QObject::connect(&app, &app::AppController::elapsedChanged, &qapp, [&](qint64 ms) {
             out << "\r  " << (ms / 1000) << " s..."; out.flush();
         });
 
@@ -397,7 +397,7 @@ int main(int argc, char** argv) {
     if (cmd == "import") {
         // Audio file(s) -> new meeting, one track per file (--split-channels: one per channel).
         // Prints the meeting id at the end; transcription does not start.
-        ImportRequest req;
+        library::ImportRequest req;
         bool split = false;
         int ownTrack = 0;   // 1-based; 0 = none
         for (int i = 2; i < args.size(); ++i) {
@@ -422,14 +422,14 @@ int main(int argc, char** argv) {
             return 1;
         }
         // Pre-check: every file must contain audio (with a clear error message).
-        QVector<ImportFileInfo> infos;
-        for (ImportSource& s : req.sources) {
-            const ImportFileInfo info = audioimport::probe(s.path);
+        QVector<library::ImportFileInfo> infos;
+        for (library::ImportSource& s : req.sources) {
+            const library::ImportFileInfo info = library::audioimport::probe(s.path);
             if (!info.ok) { err << QStringLiteral("ERROR: %1").arg(info.error) << "\n"; err.flush(); return 1; }
             s.splitChannels = split && info.channels >= 2;
             infos.append(info);
         }
-        const QVector<ImportPlannedTrack> plan = audioimport::planTracks(req.sources, infos);
+        const QVector<library::ImportPlannedTrack> plan = library::audioimport::planTracks(req.sources, infos);
         if (ownTrack < 0 || ownTrack > plan.size()) {
             err << QStringLiteral("--own-track must be between 1 and %1.").arg(plan.size()) << "\n";
             return 1;
@@ -437,8 +437,8 @@ int main(int argc, char** argv) {
         req.ownTrack = ownTrack - 1;
         if (req.title.trimmed().isEmpty()) {
             QStringList paths;
-            for (const ImportSource& s : req.sources) paths << s.path;
-            req.title = audioimport::defaultTitle(paths);
+            for (const library::ImportSource& s : req.sources) paths << s.path;
+            req.title = library::audioimport::defaultTitle(paths);
         }
         out << plural(int(plan.size()), "Importing: \"%1\" — %n track", "Importing: \"%1\" — %n tracks").arg(req.title) << "\n";
         for (int i = 0; i < plan.size(); ++i)
@@ -449,10 +449,10 @@ int main(int argc, char** argv) {
         // This process exits after the import: the mixdown is not started (it would be cut off);
         // the analyzer builds it when needed (transcription generates a missing mix first).
         app.setAutoMixdownAfterRecording(false);
-        QObject::connect(app.importer(), &AudioImporter::progress, &qapp, [&](QString, int pct, int, int) {
+        QObject::connect(app.importer(), &library::AudioImporter::progress, &qapp, [&](QString, int pct, int, int) {
             if (pct >= 0) { out << "\r  " << pct << "%"; out.flush(); }
         });
-        QObject::connect(&app, &AppController::importFinished, &qapp, [&](Meeting m) {
+        QObject::connect(&app, &app::AppController::importFinished, &qapp, [&](Meeting m) {
             out << "\r" << QStringLiteral("DONE. Folder: %1").arg(m.folder) << "\n";
             for (const auto& t : m.tracks)
                 out << QStringLiteral("  track: %1  (%2)").arg(t.file, t.deviceName) << "\n";
@@ -460,7 +460,7 @@ int main(int argc, char** argv) {
             out.flush();
             qapp.quit();
         });
-        QObject::connect(&app, &AppController::importFailed, &qapp, [&](QString, QString message, QString detail) {
+        QObject::connect(&app, &app::AppController::importFailed, &qapp, [&](QString, QString message, QString detail) {
             err << "\n" << QStringLiteral("ERROR: %1").arg(message) << "\n";
             if (!detail.isEmpty()) err << "  " << detail << "\n";
             err.flush(); qapp.exit(1);
@@ -475,10 +475,10 @@ int main(int argc, char** argv) {
         const QString id = args.value(2);
         if (id.isEmpty()) { err << QStringLiteral("Missing meetingId.") << "\n"; return 1; }
         const bool complex = cmd == "summarize" && args.contains(QStringLiteral("--complex"));
-        const WorkflowStep step = cmd == "transcribe" ? WorkflowStep::Transcribe : WorkflowStep::Summarize;
+        const providers::WorkflowStep step = cmd == "transcribe" ? providers::WorkflowStep::Transcribe : providers::WorkflowStep::Summarize;
         // Tanara Cloud: estimate + confirmation; without --yes it asks first.
         if (app.usesCloud(step)) {
-            const ReadinessResult r = app.canRun(step, id);
+            const providers::ReadinessResult r = app.canRun(step, id);
             if (!r.runnable) { err << QStringLiteral("Cannot start: %1").arg(r.detail) << "\n"; return 1; }
             bool enough = false;
             if (!printCloudEstimate(app, id, cmd == "transcribe" ? QStringLiteral("transcribe") : QStringLiteral("summarize"),
@@ -494,9 +494,9 @@ int main(int argc, char** argv) {
             }
         }
         const QString lang = QStringLiteral("en");
-        QObject::connect(&app, &AppController::cloudCharged, &qapp,
-                         [&](QString, QString kind, Money total, int calls, Money balance, QString vatMode) {
-            const QString sum = formatMoney(total, MoneyStyle::Charge, lang), bal = formatMoney(balance, MoneyStyle::Balance, lang);
+        QObject::connect(&app, &app::AppController::cloudCharged, &qapp,
+                         [&](QString, QString kind, cloud::Money total, int calls, cloud::Money balance, QString vatMode) {
+            const QString sum = formatMoney(total, cloud::MoneyStyle::Charge, lang), bal = formatMoney(balance, cloud::MoneyStyle::Balance, lang);
             if (kind == QLatin1String("transcribe"))
                 out << QStringLiteral("This transcription cost %1. Balance: %2.").arg(sum, bal);
             else if (kind == QLatin1String("complex"))
@@ -505,24 +505,24 @@ int main(int argc, char** argv) {
                 out << QStringLiteral("Collecting the topics cost %1. Balance: %2.").arg(sum, bal);
             else
                 out << QStringLiteral("This summary cost %1. Balance: %2.").arg(sum, bal);
-            out << " (" << vatLabel(vatMode) << ")\n"; out.flush();
+            out << " (" << cloud::vatLabel(vatMode) << ")\n"; out.flush();
         });
-        QObject::connect(&app, &AppController::cloudRefunded, &qapp, [&](QString, Money refund, Money, QString rid) {
+        QObject::connect(&app, &app::AppController::cloudRefunded, &qapp, [&](QString, cloud::Money refund, cloud::Money, QString rid) {
             err << QStringLiteral("The transcription failed on the provider side. We refunded the %1 charge.")
-                       .arg(formatMoney(refund, MoneyStyle::Charge, lang)) << "\n"
+                       .arg(formatMoney(refund, cloud::MoneyStyle::Charge, lang)) << "\n"
                 << QStringLiteral("Error ID: %1").arg(rid) << "\n";
             err.flush(); qapp.exit(3); });
-        QObject::connect(&app, &AppController::cloudError, &qapp, [&](QString, QString, CloudError e, Money charged) {
+        QObject::connect(&app, &app::AppController::cloudError, &qapp, [&](QString, QString, cloud::CloudError e, cloud::Money charged) {
             err << describeCloudError(e, charged, lang) << "\n"; err.flush(); qapp.exit(2); });
-        QObject::connect(&app, &AppController::transcriptReady, &qapp, [&](QString, QString p) {
+        QObject::connect(&app, &app::AppController::transcriptReady, &qapp, [&](QString, QString p) {
             out << QStringLiteral("Transcript done: %1").arg(p) << "\n"; out.flush(); qapp.quit(); });
-        QObject::connect(&app, &AppController::summaryReady, &qapp, [&](QString, QString p) {
+        QObject::connect(&app, &app::AppController::summaryReady, &qapp, [&](QString, QString p) {
             out << QStringLiteral("Summary done: %1").arg(p) << "\n"; out.flush(); qapp.quit(); });
         // Complex: pass 1 (topics) -> analysis of every topic + reduce, no editing.
-        QObject::connect(&app, &AppController::topicsReady, &qapp, [&](QString mid, QVector<SummaryTopic> topics) {
+        QObject::connect(&app, &app::AppController::topicsReady, &qapp, [&](QString mid, QVector<SummaryTopic> topics) {
             out << plural(int(topics.size()), "%n topic — starting the analysis…", "%n topics — starting the analysis…") << "\n"; out.flush();
             app.generateComplexSummary(mid, topics); });
-        QObject::connect(&app, &AppController::errorOccurred, &qapp, [&](QString e) {
+        QObject::connect(&app, &app::AppController::errorOccurred, &qapp, [&](QString e) {
             err << QStringLiteral("ERROR: %1").arg(e) << "\n"; err.flush(); qapp.exit(1); });
         if (cmd == "transcribe") app.transcribeMeeting(id);
         else if (complex) app.extractMeetingTopics(id);
@@ -532,7 +532,7 @@ int main(int argc, char** argv) {
 
     if (cmd == "tags") {
         if (const int rc = tanara::cli::runTagPeopleCommand(app, args); rc >= 0) return rc;
-        TagService* tags = app.tags();
+        library::TagService* tags = app.tags();
         const QString sub = args.value(2), id = args.value(3), name = args.value(4);
         auto usage = [&]() {
             err << QStringLiteral("Usage: tags list [<meetingId>] | tags add|remove <meetingId> <name> | tags suggest <meetingId> [--llm] | tags people <tag> | tags person <name> | tags set-person <name> <tag,...>") << "\n";
@@ -540,7 +540,7 @@ int main(int argc, char** argv) {
         };
         if (sub == "list") {
             if (id.isEmpty()) {
-                const auto all = tags->all(TagService::Sort::MostUsed);
+                const auto all = tags->all(library::TagService::Sort::MostUsed);
                 out << QStringLiteral("Tags (%1):").arg(all.size()) << "\n";
                 for (const TagUsage& u : all)
                     out << "  #" << u.tag.name << "  " << u.meetingCount << "  " << u.tag.id << "\n";
@@ -567,7 +567,7 @@ int main(int argc, char** argv) {
         }
         if (sub == "suggest" && !id.isEmpty()) {
             const bool llm = args.contains(QStringLiteral("--llm"));
-            QObject::connect(&app, &AppController::tagSuggestionsReady, &qapp,
+            QObject::connect(&app, &app::AppController::tagSuggestionsReady, &qapp,
                              [&](const QString& mid, const QVector<TagSuggestion>& list) {
                 if (mid != id) return;
                 out << QStringLiteral("Suggestions (%1):").arg(list.size()) << "\n";
@@ -596,7 +596,7 @@ int main(int argc, char** argv) {
         if (id.isEmpty() || raw.isEmpty()) {
             err << QStringLiteral("Usage: rename <meetingId> <rawLabel> <name>") << "\n"; return 1;
         }
-        QObject::connect(&app, &AppController::errorOccurred, &qapp, [&](QString e) {
+        QObject::connect(&app, &app::AppController::errorOccurred, &qapp, [&](QString e) {
             err << QStringLiteral("ERROR: %1").arg(e) << "\n"; err.flush();
         });
         app.renameSpeaker(id, raw, name);   // synchronous
@@ -657,11 +657,11 @@ int main(int argc, char** argv) {
         const QString model = args.value(2), path = args.value(3);
         const qint64 s = args.value(4).toLongLong();
         const qint64 e = args.value(5).toLongLong();
-        EmbedderConfig cfg;
+        processing::EmbedderConfig cfg;
         if (args.size() > 6) cfg.waveScale = args.value(6).toFloat();
         if (args.size() > 7) cfg.subtractMean = args.value(7).toInt() != 0;
         if (args.size() > 8) cfg.snipEdges = args.value(8).toInt() != 0;
-        VoiceEmbedder emb(model, cfg);
+        processing::VoiceEmbedder emb(model, cfg);
         if (!emb.isValid()) { err << QStringLiteral("ERROR: %1").arg(emb.lastError()) << "\n"; err.flush(); return 1; }
         const QVector<float> v = emb.embedFile(path, s, e);
         if (v.isEmpty()) { err << QStringLiteral("ERROR: %1").arg(emb.lastError()) << "\n"; err.flush(); return 1; }

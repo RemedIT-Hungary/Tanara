@@ -7,7 +7,7 @@
 #include "PreTranscriptViewModel.h"
 #include "SummaryViewModel.h"
 
-#include "tanara/summary/SummaryStore.h"
+#include "tanara/library/summary/SummaryStore.h"
 
 #include <QSignalSpy>
 #include <QtTest>
@@ -190,7 +190,7 @@ private slots:
         sb.app->summarizeMeeting(m.id);
         QVERIFY(arrived.wait(15000));
         QVERIFY(QString::fromUtf8(sent).contains(QStringLiteral("Nordwig")));
-        const SummaryDocument doc = sb.app->summaryDocument(m.id);
+        const library::SummaryDocument doc = sb.app->summaryDocument(m.id);
         QVERIFY(doc.meta.contextNoteKnown);
         QCOMPARE(doc.meta.contextNote, QStringLiteral("A „Nordwig” helyesen: Nordvik."));
         QCOMPARE(vm.view(), QStringLiteral("summary"));
@@ -208,9 +208,9 @@ private slots:
         QVERIFY(!vm.noteChangedSinceSummary());
 
         // Old summary (summary.json does not know what it was made with): no indicator.
-        SummaryDocument old = doc;
+        library::SummaryDocument old = doc;
         old.meta.contextNoteKnown = false;
-        QVERIFY(summarystore::save(sb.app->store()->load(m.id).folder, old));
+        QVERIFY(library::summarystore::save(sb.app->store()->load(m.id).folder, old));
         vm.refresh();
         vm.note()->setNote(QStringLiteral("Egészen más."));
         QVERIFY(!vm.noteChangedSinceSummary());

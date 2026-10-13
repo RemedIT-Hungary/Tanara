@@ -4,12 +4,12 @@
 #include "LibraryDemoData.h"
 #include "ShellFormat.h"
 
-#include "tanara/AppController.h"
+#include "tanara/app/AppController.h"
 
 namespace tanara_qml {
 
-using tanara::PendingItem;
-using tanara::PendingKind;
+using tanara::library::PendingItem;
+using tanara::library::PendingKind;
 
 LibraryPendingModel::LibraryPendingModel(QObject* parent) : QObject(parent)
 {
@@ -28,7 +28,7 @@ LibraryPendingModel::LibraryPendingModel(QObject* parent) : QObject(parent)
     attach();
 }
 
-void LibraryPendingModel::setController(tanara::AppController* controller)
+void LibraryPendingModel::setController(tanara::app::AppController* controller)
 {
     m_controllerInjected = true;
     m_controller = controller;
@@ -37,15 +37,15 @@ void LibraryPendingModel::setController(tanara::AppController* controller)
 
 void LibraryPendingModel::attach()
 {
-    tanara::MeetingLibrary* lib = m_controller ? m_controller->library() : nullptr;
+    tanara::library::MeetingLibrary* lib = m_controller ? m_controller->library() : nullptr;
     if (lib != m_library) {
         if (m_library)
             m_library->disconnect(this);
         m_library = lib;
         if (lib) {
             const auto later = [this] { m_reloadTimer.start(); };
-            connect(lib, &tanara::MeetingLibrary::pendingItemsChanged, this, later);
-            connect(lib, &tanara::MeetingLibrary::reset, this, later);
+            connect(lib, &tanara::library::MeetingLibrary::pendingItemsChanged, this, later);
+            connect(lib, &tanara::library::MeetingLibrary::reset, this, later);
         }
     }
     reload();

@@ -5,10 +5,10 @@
 // lives in the composition layer, not in foundation logging.
 // The detailed dump appears at DEBUG level; the header at INFO.
 
-namespace tanara {
+namespace tanara::app {
 
 class AppController;
 
 void logStartupDiagnostics(const AppController& app);
 
-} // namespace tanara
+} // namespace tanara::app

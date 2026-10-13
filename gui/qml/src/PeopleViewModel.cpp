@@ -8,12 +8,12 @@
 #include "TagBackend.h"
 #include "TagsViewModel.h"
 
-#include "tanara/AppController.h"
-#include "tanara/edit/PeopleDirectory.h"
-#include "tanara/people/PeopleService.h"
-#include "tanara/people/PeopleStats.h"
-#include "tanara/store/VoiceprintStore.h"
-#include "tanara/voiceid/VoiceModelRegistry.h"
+#include "tanara/app/AppController.h"
+#include "tanara/editing/session/PeopleDirectory.h"
+#include "tanara/library/people/PeopleService.h"
+#include "tanara/library/people/PeopleStats.h"
+#include "tanara/library/store/VoiceprintStore.h"
+#include "tanara/processing/voiceid/VoiceModelRegistry.h"
 
 #include <QCollator>
 #include <QCoreApplication>
@@ -102,7 +102,7 @@ QString sampleIcon(const QString& kind)
 // matches the original character by character; if not (rare, decomposed accents), no highlight.
 bool matchRange(const QString& name, const QString& foldedNeedle, int* pos, int* len)
 {
-    const QString folded = foldForSearch(name);
+    const QString folded = text::foldForSearch(name);
     const int at = folded.indexOf(foldedNeedle);
     if (at < 0) return false;
     *pos = at;
@@ -138,10 +138,10 @@ QObject* PeopleViewModel::controllerObject() const { return m_controller; }
 
 void PeopleViewModel::setControllerObject(QObject* controller)
 {
-    setController(qobject_cast<AppController*>(controller));
+    setController(qobject_cast<app::AppController*>(controller));
 }
 
-void PeopleViewModel::setController(AppController* controller)
+void PeopleViewModel::setController(app::AppController* controller)
 {
     m_controllerInjected = true;
     if (m_controller == controller && m_attached == controller) return;
@@ -161,19 +161,19 @@ void PeopleViewModel::attach()
     m_selected.clear();
     m_planFor.clear();
     if (m_service) {
-        AppController* c = m_controller;
+        app::AppController* c = m_controller;
         auto dirty = [this] { m_planFor.clear(); scheduleRebuild(); };
-        m_connections << connect(m_service, &PeopleService::changed, this, &PeopleViewModel::scheduleRebuild);
-        m_connections << connect(m_service, &PeopleService::undoChanged, this, &PeopleViewModel::undoChanged);
-        m_connections << connect(m_stats, &PeopleStats::changed, this, dirty);
-        m_connections << connect(c, &AppController::peopleChanged, this, &PeopleViewModel::scheduleRebuild);
-        m_connections << connect(c, &AppController::voiceprintsChanged, this, dirty);
+        m_connections << connect(m_service, &library::PeopleService::changed, this, &PeopleViewModel::scheduleRebuild);
+        m_connections << connect(m_service, &library::PeopleService::undoChanged, this, &PeopleViewModel::undoChanged);
+        m_connections << connect(m_stats, &library::PeopleStats::changed, this, dirty);
+        m_connections << connect(c, &app::AppController::peopleChanged, this, &PeopleViewModel::scheduleRebuild);
+        m_connections << connect(c, &app::AppController::voiceprintsChanged, this, dirty);
         // There is no signal for the start of the backfill: we check on a model change (where it starts) and at the end.
-        m_connections << connect(c, &AppController::voiceModelsChanged, this, [this, dirty] {
+        m_connections << connect(c, &app::AppController::voiceModelsChanged, this, [this, dirty] {
             dirty();
             QTimer::singleShot(0, this, &PeopleViewModel::refreshBackfill);
         });
-        m_connections << connect(c, &AppController::voiceprintBackfillFinished, this, [this, dirty] {
+        m_connections << connect(c, &app::AppController::voiceprintBackfillFinished, this, [this, dirty] {
             dirty();
             refreshBackfill();
         });
@@ -285,9 +285,9 @@ void PeopleViewModel::rebuild()
         m_service->reload();
         m_statsReady = m_stats && m_stats->ready();
         m_persons.clear();
-        const QVector<PersonRecord> records = m_service->persons();
+        const QVector<library::PersonRecord> records = m_service->persons();
         m_persons.reserve(records.size());
-        for (const PersonRecord& r : records) {
+        for (const library::PersonRecord& r : records) {
             Person p;
             p.name = r.name;
             p.isSelf = r.isSelf;
@@ -297,7 +297,7 @@ void PeopleViewModel::rebuild()
             p.defaultSide = r.defaultSide;
             p.defaultSideManual = r.defaultSideManual;
             if (m_statsReady) {
-                const PersonStats s = m_stats->stats(r.name);
+                const library::PersonStats s = m_stats->stats(r.name);
                 p.meetingCount = s.meetingCount;
                 p.talkMs = s.talkMs;
                 p.lastSeen = s.lastSeen;
@@ -343,7 +343,7 @@ QString PeopleViewModel::rowMeta(const Person& p, const QString& aliasHit) const
 
 void PeopleViewModel::rebuildList()
 {
-    const QString needle = foldForSearch(m_query.trimmed());
+    const QString needle = text::foldForSearch(m_query.trimmed());
     struct Shown { const Person* p; int pos = 0; int len = 0; QString aliasHit; QString tagHit; };
     QVector<Shown> shown;
     // Also matches a tag ("nordvik" or "#nordvik"): among the person's manual tags.
@@ -357,10 +357,10 @@ void PeopleViewModel::rebuildList()
         if (!needle.isEmpty() && !matchRange(p.name, needle, &s.pos, &s.len)) {
             // Not in the name: the first matching nickname.
             for (const QString& a : p.aliases)
-                if (foldForSearch(a).contains(needle)) { s.aliasHit = a; break; }
+                if (text::foldForSearch(a).contains(needle)) { s.aliasHit = a; break; }
             if (s.aliasHit.isEmpty() && !tagNames.isEmpty() && !p.isSelf) {
                 for (const QString& id : m_tagBackend->tagsOfPerson(p.name))
-                    if (foldForSearch(tagNames.value(id)).contains(tagNeedle)) { s.tagHit = tagNames.value(id); break; }
+                    if (text::foldForSearch(tagNames.value(id)).contains(tagNeedle)) { s.tagHit = tagNames.value(id); break; }
             }
             if (s.aliasHit.isEmpty() && s.tagHit.isEmpty()) continue;
         }
@@ -440,7 +440,7 @@ void PeopleViewModel::refreshDetail()
     QSet<QString> sources;
 
     if (p && m_service) {
-        for (const VoiceSample& s : m_service->samples(p->name)) {
+        for (const library::VoiceSample& s : m_service->samples(p->name)) {
             QString label = s.deviceLabel;
             if (label.isEmpty())
                 label = s.sourceKind == QStringLiteral("mix") ? tr("A megbeszélés lekevert hangja")
@@ -463,7 +463,7 @@ void PeopleViewModel::refreshDetail()
             });
         }
         if (m_statsReady && m_stats) {
-            for (const PersonMeetingStat& m : m_stats->stats(p->name).meetings)
+            for (const library::PersonMeetingStat& m : m_stats->stats(p->name).meetings)
                 m_meetings.append(QVariantMap{
                     {QStringLiteral("title"), m.title},
                     {QStringLiteral("date"), m.startedAt.toString(QStringLiteral("yyyy-MM-dd"))},
@@ -515,13 +515,13 @@ void PeopleViewModel::decorateSamples()
     else if (m_demo && modelDemoState(m_demoState)) active = {QStringLiteral("campplus"), QStringLiteral("eres2netv2")};
     if (active.isEmpty()) return;
     QHash<QString, QString> display;
-    for (const VoiceModelSpec& spec : VoiceModelRegistry::builtin()) display.insert(spec.id, spec.displayName);
+    for (const processing::VoiceModelSpec& spec : processing::VoiceModelRegistry::builtin()) display.insert(spec.id, spec.displayName);
     auto label = [&](const QStringList& ids) {
         QStringList out;
         for (const QString& id : ids) out << display.value(id, id);
         return out.join(QStringLiteral(", "));
     };
-    VoiceprintStore* prints = m_controller ? m_controller->voiceprints() : nullptr;
+    library::VoiceprintStore* prints = m_controller ? m_controller->voiceprints() : nullptr;
     for (int i = 0; i < m_samples.size(); ++i) {
         QVariantMap sample = m_samples[i].toMap();
         QStringList have;
@@ -697,7 +697,7 @@ void PeopleViewModel::refreshPlan()
     // selection shows first, the plan afterwards.
     QTimer::singleShot(0, this, [this, generation, name] {
         if (generation != m_planGeneration || !m_service) return;
-        const VoiceprintPlan plan = m_service->voiceprintPlan(name);
+        const library::VoiceprintPlan plan = m_service->voiceprintPlan(name);
         const int usable = plan.usableMeetingIds.size();
         m_planFor = name;
         m_planMeetingIds = plan.usableMeetingIds;
@@ -765,7 +765,7 @@ void PeopleViewModel::runNextVoiceprint()
         return;
     }
     const QString meetingId = m_createQueue.takeFirst();
-    const VoiceprintResult r = m_service->createVoiceprintFromMeeting(m_creatingFor, meetingId);
+    const editing::VoiceprintResult r = m_service->createVoiceprintFromMeeting(m_creatingFor, meetingId);
     if (r.ok) ++m_createOk;
     else {
         ++m_createFailed;
@@ -856,7 +856,7 @@ bool PeopleViewModel::canUndo() const
 QString PeopleViewModel::addPerson(const QString& name)
 {
     if (!m_service) return QString();
-    const PeopleOpResult r = m_service->addPerson(name);
+    const library::PeopleOpResult r = m_service->addPerson(name);
     rebuild();
     // For an existing name too, the person gets selected (the caller shows the error).
     if (!r.name.isEmpty()) selectPerson(r.name);
@@ -867,7 +867,7 @@ QString PeopleViewModel::rename(const QString& newName)
 {
     if (!m_service || m_selected.isEmpty()) return QString();
     const QString old = m_selected;
-    const PeopleOpResult r = m_service->renamePerson(old, newName);
+    const library::PeopleOpResult r = m_service->renamePerson(old, newName);
     if (!r.ok) return r.error;
     m_selected = r.name;
     rebuild();
@@ -882,7 +882,7 @@ QString PeopleViewModel::rename(const QString& newName)
 QString PeopleViewModel::addAlias(const QString& alias)
 {
     if (!m_service || m_selected.isEmpty()) return QString();
-    const PeopleOpResult r = m_service->addAlias(m_selected, alias);
+    const library::PeopleOpResult r = m_service->addAlias(m_selected, alias);
     rebuild();
     return r.ok ? QString() : r.error;
 }
@@ -939,7 +939,7 @@ void PeopleViewModel::setNote(const QString& note)
 void PeopleViewModel::removeSample(const QString& sampleId)
 {
     if (!m_service) return;
-    const PeopleOpResult r = m_service->removeSample(sampleId);
+    const library::PeopleOpResult r = m_service->removeSample(sampleId);
     rebuild();
     if (!r.ok) {
         emit toast(r.error, false);
@@ -954,7 +954,7 @@ QString PeopleViewModel::moveSample(const QString& sampleId, const QString& toNa
 {
     if (!m_service) return QString();
     const bool existed = m_service->exists(toName);
-    const PeopleOpResult r = m_service->moveSample(sampleId, toName);
+    const library::PeopleOpResult r = m_service->moveSample(sampleId, toName);
     if (!r.ok) return r.error;
     rebuild();
     m_undoOrder << kPeopleUndo;
@@ -966,15 +966,15 @@ QString PeopleViewModel::moveSample(const QString& sampleId, const QString& toNa
 QVariantList PeopleViewModel::personChoices(const QString& query) const
 {
     QVariantList out;
-    const QString needle = foldForSearch(query.trimmed());
+    const QString needle = text::foldForSearch(query.trimmed());
     struct Choice { const Person* p; QString aliasHit; };
     QVector<Choice> list;
     for (const Person& p : m_persons) {
         if (p.name == m_selected) continue;
         QString aliasHit;
-        if (!needle.isEmpty() && !foldForSearch(p.name).contains(needle)) {
+        if (!needle.isEmpty() && !text::foldForSearch(p.name).contains(needle)) {
             for (const QString& a : p.aliases)
-                if (foldForSearch(a).contains(needle)) { aliasHit = a; break; }
+                if (text::foldForSearch(a).contains(needle)) { aliasHit = a; break; }
             if (aliasHit.isEmpty()) continue;
         }
         list.append({&p, aliasHit});
@@ -995,13 +995,13 @@ QVariantList PeopleViewModel::mergeCandidates(const QString& query) const
 {
     struct Candidate { const Person* p; int percent; QString aliasHit; };
     QVector<Candidate> list;
-    const QString needle = foldForSearch(query.trimmed());
+    const QString needle = text::foldForSearch(query.trimmed());
     for (const Person& p : m_persons) {
         if (p.name == m_selected) continue;
         QString aliasHit;
-        if (!needle.isEmpty() && !foldForSearch(p.name).contains(needle)) {
+        if (!needle.isEmpty() && !text::foldForSearch(p.name).contains(needle)) {
             for (const QString& a : p.aliases)
-                if (foldForSearch(a).contains(needle)) { aliasHit = a; break; }
+                if (text::foldForSearch(a).contains(needle)) { aliasHit = a; break; }
             if (aliasHit.isEmpty()) continue;
         }
         int percent = -1;
@@ -1041,7 +1041,7 @@ QString PeopleViewModel::mergeResultText(const QString& other, bool keepSelected
     const QString survivor = keepSelected ? m_selected : o->name;
     int meetingsN = 0, samplesN = 0, stale = 0;
     if (m_service) {
-        const MergePreview p = m_service->mergePreview(loser, survivor);
+        const library::MergePreview p = m_service->mergePreview(loser, survivor);
         meetingsN = p.meetingCount;
         samplesN = p.sampleCount;
         stale = p.staleSummaries;
@@ -1075,7 +1075,7 @@ QString PeopleViewModel::merge(const QString& other, bool keepSelected)
     if (!m_service || m_selected.isEmpty()) return QString();
     const QString loser = keepSelected ? other : m_selected;
     const QString survivor = keepSelected ? m_selected : other;
-    const PeopleOpResult r = m_service->merge(loser, survivor);
+    const library::PeopleOpResult r = m_service->merge(loser, survivor);
     if (!r.ok) return r.error;
     m_selected = r.name;
     rebuild();
@@ -1091,7 +1091,7 @@ bool PeopleViewModel::deleteHasSamples() const { return m_detail.sampleCount > 0
 QString PeopleViewModel::deleteText(bool keepSamples) const
 {
     if (m_selected.isEmpty()) return QString();
-    DeletePreview p;
+    library::DeletePreview p;
     if (m_service) {
         p = m_service->deletePreview(m_selected);
     } else {
@@ -1123,7 +1123,7 @@ QString PeopleViewModel::deletePerson(bool keepSamples)
 {
     if (!m_service || m_selected.isEmpty()) return QString();
     const QString name = m_selected;
-    const PeopleOpResult r = m_service->removePerson(name, keepSamples);
+    const library::PeopleOpResult r = m_service->removePerson(name, keepSamples);
     if (!r.ok) return r.error;
     rebuild();
     if (!r.name.isEmpty()) {
@@ -1153,16 +1153,16 @@ void PeopleViewModel::undo()
         m_undoOrder.removeLast();
     }
     if (!m_service || !m_service->canUndo()) return;
-    const PeopleUndoInfo info = m_service->undo();
+    const library::PeopleUndoInfo info = m_service->undo();
     rebuild();
     if (!info.person.isEmpty()) selectPerson(info.person);
     QString text;
     switch (info.kind) {
-    case PeopleUndoKind::SampleRemoved: text = tr("A minta visszakerült."); break;
-    case PeopleUndoKind::SampleMoved: text = tr("A minta visszakerült a korábbi helyére."); break;
-    case PeopleUndoKind::AliasRemoved: text = tr("Becenév visszaállítva: %1").arg(info.detail); break;
-    case PeopleUndoKind::Renamed: text = tr("Az átnevezés visszavonva."); break;
-    case PeopleUndoKind::None: return;
+    case library::PeopleUndoKind::SampleRemoved: text = tr("A minta visszakerült."); break;
+    case library::PeopleUndoKind::SampleMoved: text = tr("A minta visszakerült a korábbi helyére."); break;
+    case library::PeopleUndoKind::AliasRemoved: text = tr("Becenév visszaállítva: %1").arg(info.detail); break;
+    case library::PeopleUndoKind::Renamed: text = tr("Az átnevezés visszavonva."); break;
+    case library::PeopleUndoKind::None: return;
     }
     emit toast(text, false);
 }

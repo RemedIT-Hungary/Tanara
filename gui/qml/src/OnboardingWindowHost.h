@@ -20,7 +20,7 @@ class QQuickWindow;
 class QWindow;
 
 namespace tanara {
-class AppController;
+namespace app { class AppController; }
 }
 
 namespace tanara_qml {
@@ -31,7 +31,7 @@ class SettingsDialogs;
 class OnboardingWindowHost : public QObject {
     Q_OBJECT
 public:
-    OnboardingWindowHost(tanara::AppController* controller, SettingsDialogs* dialogs,
+    OnboardingWindowHost(tanara::app::AppController* controller, SettingsDialogs* dialogs,
                          QObject* parent = nullptr);
     ~OnboardingWindowHost() override;
 
@@ -63,7 +63,7 @@ private:
     bool ensureWindow();
     void centerOverParent();
 
-    QPointer<tanara::AppController> m_controller;
+    QPointer<tanara::app::AppController> m_controller;
     QPointer<SettingsDialogs> m_dialogs;
     QQmlEngine* m_engine = nullptr;
     QPointer<QQuickWindow> m_window;

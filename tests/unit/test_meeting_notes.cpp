@@ -9,16 +9,16 @@
 #include <QJsonObject>
 #include <QTemporaryDir>
 
-#include "tanara/PromptLibrary.h"
+#include "tanara/processing/summary/PromptLibrary.h"
 #include "tanara/library/MeetingLibrary.h"
 #include "tanara/library/MeetingNotes.h"
-#include "tanara/store/JsonSerialization.h"
-#include "tanara/store/MeetingStore.h"
-#include "tanara/stt/ISttProvider.h"
-#include "tanara/summary/SummaryStore.h"
+#include "tanara/library/store/JsonSerialization.h"
+#include "tanara/library/store/MeetingStore.h"
+#include "tanara/providers/stt/ISttProvider.h"
+#include "tanara/library/summary/SummaryStore.h"
 
 using namespace tanara;
-using namespace tanara::meetingnotes;
+using namespace tanara::library::meetingnotes;
 
 namespace {
 
@@ -41,36 +41,36 @@ class MeetingNotesTest : public QObject {
 private slots:
     void titleWordsFoldAndIgnoreDatesNumbers()
     {
-        QCOMPARE(titleWords(QStringLiteral("Nordvik HETI meeting · 2026. szept. 29. 14:02")),
+        QCOMPARE(library::meetingnotes::titleWords(QStringLiteral("Nordvik HETI meeting · 2026. szept. 29. 14:02")),
                  (QStringList{"nordvik", "heti", "meeting"}));
         // Accent- and case-insensitive; a word containing a number (ordinal, version) is left out.
-        QCOMPARE(titleWords(QStringLiteral("Örvényes ÜGYFÉL-egyeztetés #12 v2")),
+        QCOMPARE(library::meetingnotes::titleWords(QStringLiteral("Örvényes ÜGYFÉL-egyeztetés #12 v2")),
                  (QStringList{"orvenyes", "ugyfel", "egyeztetes"}));
-        QCOMPARE(titleWords(QStringLiteral("Weekly sync – Monday, Oct 6")),
+        QCOMPARE(library::meetingnotes::titleWords(QStringLiteral("Weekly sync – Monday, Oct 6")),
                  (QStringList{"weekly", "sync"}));
-        QVERIFY(titleWords(QStringLiteral("2026-10-03 14:00")).isEmpty());
+        QVERIFY(library::meetingnotes::titleWords(QStringLiteral("2026-10-03 14:00")).isEmpty());
     }
 
     void titleSimilarityRules()
     {
         // A recurring meeting: the date / ordinal does not matter.
-        QVERIFY(titlesSimilar(QStringLiteral("Nordvik heti meeting"),
+        QVERIFY(library::meetingnotes::titlesSimilar(QStringLiteral("Nordvik heti meeting"),
                               QStringLiteral("Nordvik heti meeting 2026. okt. 6.")));
-        QVERIFY(titlesSimilar(QStringLiteral("Nordvik heti meeting #14"),
+        QVERIFY(library::meetingnotes::titlesSimilar(QStringLiteral("Nordvik heti meeting #14"),
                               QStringLiteral("nordvik HETI Meeting #13")));
         // A title written without accents is related too.
-        QVERIFY(titlesSimilar(QStringLiteral("Qvarkó ütemezés"), QStringLiteral("Qvarko utemezes")));
+        QVERIFY(library::meetingnotes::titlesSimilar(QStringLiteral("Qvarkó ütemezés"), QStringLiteral("Qvarko utemezes")));
         // A title with one more word is still related (3/4 shared), one shared word between two different topics is not.
-        QVERIFY(titlesSimilar(QStringLiteral("Nordvik heti meeting"),
+        QVERIFY(library::meetingnotes::titlesSimilar(QStringLiteral("Nordvik heti meeting"),
                               QStringLiteral("Nordvik heti meeting demó")));
-        QVERIFY(!titlesSimilar(QStringLiteral("Nordvik bevezetés"), QStringLiteral("Nordvik árazás")));
+        QVERIFY(!library::meetingnotes::titlesSimilar(QStringLiteral("Nordvik bevezetés"), QStringLiteral("Nordvik árazás")));
         // Only weak words in common: another project's weekly meeting is not related.
-        QVERIFY(!titlesSimilar(QStringLiteral("Nordvik heti meeting"),
+        QVERIFY(!library::meetingnotes::titlesSimilar(QStringLiteral("Nordvik heti meeting"),
                                QStringLiteral("Lantos heti meeting")));
         // Automatic call names ("Teams call ...") do not make anything related.
-        QVERIFY(!titlesSimilar(QStringLiteral("Teams-hívás · okt. 3. 14:02"),
+        QVERIFY(!library::meetingnotes::titlesSimilar(QStringLiteral("Teams-hívás · okt. 3. 14:02"),
                                QStringLiteral("Teams-hívás · szept. 30. 9:15")));
-        QCOMPARE(titleSimilarity({}, {QStringLiteral("nordvik")}), 0.0);
+        QCOMPARE(library::meetingnotes::titleSimilarity({}, {QStringLiteral("nordvik")}), 0.0);
     }
 
     void suggestionsOrderAndExclusions()
@@ -86,8 +86,8 @@ private slots:
             meeting("g", "Nordvik heti meeting", day(27), "Automatikusan észlelt hívás: Zoom"),
             meeting("h", "Nordvik heti meeting", day(2), "Még régebbi."),
         };
-        const QVector<NoteSuggestion> s =
-            suggestNotes(all, "self", "Nordvik heti meeting", "Mostani megjegyzés", 3);
+        const QVector<library::meetingnotes::NoteSuggestion> s =
+            library::meetingnotes::suggestNotes(all, "self", "Nordvik heti meeting", "Mostani megjegyzés", 3);
         QCOMPARE(s.size(), 3);
         // Newest first; identical text only once (with the newest source); the own one, empty, the
         // same as the current one, the automatic one and the unrelated one are left out.
@@ -97,27 +97,27 @@ private slots:
         QCOMPARE(s.at(0).note, QStringLiteral("A „Nordwig” helyesen: Nordvik."));
 
         // No comparable word in the title: no suggestion.
-        QVERIFY(suggestNotes(all, "self", "Teams-hívás · okt. 3.", QString()).isEmpty());
-        QVERIFY(suggestNotes(all, "self", "Nordvik heti meeting", QString(), 0).isEmpty());
+        QVERIFY(library::meetingnotes::suggestNotes(all, "self", "Teams-hívás · okt. 3.", QString()).isEmpty());
+        QVERIFY(library::meetingnotes::suggestNotes(all, "self", "Nordvik heti meeting", QString(), 0).isEmpty());
     }
 
     void autoCallNoteRecognised()
     {
         QString app;
-        QVERIFY(parseAutoCallNote(QStringLiteral("Automatikusan észlelt hívás: Microsoft Teams"), &app));
+        QVERIFY(library::meetingnotes::parseAutoCallNote(QStringLiteral("Automatikusan észlelt hívás: Microsoft Teams"), &app));
         QCOMPARE(app, QStringLiteral("Microsoft Teams"));
-        QVERIFY(parseAutoCallNote(QStringLiteral("  Automatically detected call: Zoom  "), &app));
+        QVERIFY(library::meetingnotes::parseAutoCallNote(QStringLiteral("  Automatically detected call: Zoom  "), &app));
         QCOMPARE(app, QStringLiteral("Zoom"));
         // The user's own text is not that.
-        QVERIFY(!parseAutoCallNote(QStringLiteral("Automatikusan észlelt hívás: Teams\nA „Nordwig” helyesen: Nordvik.")));
-        QVERIFY(!parseAutoCallNote(QStringLiteral("Teams-hívás a Nordvikkal")));
-        QVERIFY(!parseAutoCallNote(QStringLiteral("Automatikusan észlelt hívás:")));
+        QVERIFY(!library::meetingnotes::parseAutoCallNote(QStringLiteral("Automatikusan észlelt hívás: Teams\nA „Nordwig” helyesen: Nordvik.")));
+        QVERIFY(!library::meetingnotes::parseAutoCallNote(QStringLiteral("Teams-hívás a Nordvikkal")));
+        QVERIFY(!library::meetingnotes::parseAutoCallNote(QStringLiteral("Automatikusan észlelt hívás:")));
     }
 
     void legacyNoteInterpretedOnLoadAndRewritten()
     {
         QTemporaryDir dir;
-        MeetingStore store(dir.filePath("rec"), dir.filePath("meta"));
+        library::MeetingStore store(dir.filePath("rec"), dir.filePath("meta"));
         Meeting m = store.createMeeting(QStringLiteral("Teams-hívás · okt. 3. 14:02"));
         m.contextNote = QStringLiteral("Automatikusan észlelt hívás: Microsoft Teams");
         store.saveMeeting(m);
@@ -149,13 +149,13 @@ private slots:
         Meeting u;
         u.contextNote = QStringLiteral("Automatically detected call: Zoom");
         u.detectedCallApp = QStringLiteral("Slack");
-        QVERIFY(interpretLegacyNote(u));
+        QVERIFY(library::meetingnotes::interpretLegacyNote(u));
         QVERIFY(u.contextNote.isEmpty());
         QCOMPARE(u.detectedCallApp, QStringLiteral("Slack"));   // the existing field wins
         Meeting own;
         own.contextNote = QStringLiteral("A „pixel tár” helyesen: PixelTár.");
-        QVERIFY(!interpretLegacyNote(own));
-        QCOMPARE(meetingFromJson(toJson(own)).contextNote, own.contextNote);
+        QVERIFY(!library::meetingnotes::interpretLegacyNote(own));
+        QCOMPARE(library::meetingFromJson(library::toJson(own)).contextNote, own.contextNote);
     }
 
     void sttContextCarriesNoteNotDetectedCall()
@@ -168,8 +168,8 @@ private slots:
         Track off; off.speakerLabel = QStringLiteral("Eldobott"); off.active = false;
         m.tracks = {mic, off};
 
-        SttRequest req;
-        fillSttContext(req, m);
+        providers::SttRequest req;
+        library::meetingnotes::fillSttContext(req, m);
         QCOMPARE(req.context, QStringLiteral("A „Nordwig” helyesen: Nordvik."));
         QCOMPARE(req.contextGeneral.value(QStringLiteral("Megbeszélés")), QStringLiteral("Nordvik heti meeting"));
         QCOMPARE(req.contextTerms, QStringList{QStringLiteral("Kovács Anna")});
@@ -179,29 +179,29 @@ private slots:
 
         // The automatic sentence (if it somehow stayed in the field) never goes to the transcriber.
         m.contextNote = QStringLiteral("Automatikusan észlelt hívás: Microsoft Teams");
-        fillSttContext(req, m);
+        library::meetingnotes::fillSttContext(req, m);
         QVERIFY(req.context.isEmpty());
         // Not even when loaded from an old meeting.json.
-        Meeting legacy = meetingFromJson(toJson(m));
-        QVERIFY(sttContextText(legacy).isEmpty());
+        Meeting legacy = library::meetingFromJson(library::toJson(m));
+        QVERIFY(library::meetingnotes::sttContextText(legacy).isEmpty());
     }
 
     void summaryMetaRemembersNote()
     {
-        SummaryDocument doc;
+        library::SummaryDocument doc;
         doc.exists = true;
         doc.meta.contextNote = QStringLiteral("A „Nordwig” helyesen: Nordvik.");
         doc.meta.contextNoteKnown = true;
-        SummaryDocument back = summarystore::fromJson(summarystore::toJson(doc));
+        library::SummaryDocument back = library::summarystore::fromJson(library::summarystore::toJson(doc));
         QVERIFY(back.meta.contextNoteKnown);
         QCOMPARE(back.meta.contextNote, doc.meta.contextNote);
         // Old summary.json: no key, so unknown (no "changed since" indicator).
-        QJsonObject o = summarystore::toJson(doc);
+        QJsonObject o = library::summarystore::toJson(doc);
         o.remove(QStringLiteral("contextNote"));
-        QVERIFY(!summarystore::fromJson(o).meta.contextNoteKnown);
+        QVERIFY(!library::summarystore::fromJson(o).meta.contextNoteKnown);
         // A summary made with an empty note: known, empty.
         doc.meta.contextNote.clear();
-        back = summarystore::fromJson(summarystore::toJson(doc));
+        back = library::summarystore::fromJson(library::summarystore::toJson(doc));
         QVERIFY(back.meta.contextNoteKnown);
         QVERIFY(back.meta.contextNote.isEmpty());
     }
@@ -210,7 +210,7 @@ private slots:
     {
         for (const QString& id : {QStringLiteral("single"), QStringLiteral("notes"), QStringLiteral("merge"),
                                   QStringLiteral("topic"), QStringLiteral("analysis"), QStringLiteral("reduce")}) {
-            const QString p = promptBuiltin(id);
+            const QString p = processing::promptBuiltin(id);
             QVERIFY2(p.contains(QStringLiteral("use the corrected form")), qPrintable(id));
             QVERIFY2(!p.contains(QLatin1Char('%')), qPrintable(id));   // no placeholder remained
         }
@@ -219,7 +219,7 @@ private slots:
     void librarySuggestionsCachedAndCheap()
     {
         QTemporaryDir dir;
-        MeetingStore store(dir.filePath("rec"), dir.filePath("meta"));
+        library::MeetingStore store(dir.filePath("rec"), dir.filePath("meta"));
         auto add = [&](const QString& title, int dayOfMonth, const QString& note) {
             Meeting m = store.createMeeting(title);
             m.startedAt = day(dayOfMonth);
@@ -236,8 +236,8 @@ private slots:
                 1 + i % 28, i % 3 ? QStringLiteral("Megjegyzés %1").arg(i) : QString());
         const Meeting self = add(QStringLiteral("Nordvik heti meeting 2026. szept. 29."), 29, QString());
 
-        MeetingLibrary lib(&store);
-        QVector<NoteSuggestion> s = lib.noteSuggestions(self.id, QString());
+        library::MeetingLibrary lib(&store);
+        QVector<library::meetingnotes::NoteSuggestion> s = lib.noteSuggestions(self.id, QString());
         QCOMPARE(s.size(), 2);
         QCOMPARE(s.at(0).meetingId, newer.id);
         QCOMPARE(s.at(1).meetingId, older.id);

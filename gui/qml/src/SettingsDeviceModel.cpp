@@ -5,9 +5,9 @@
 #include "RecorderViewModel.h"
 #include "SettingsViewModel.h"
 
-#include "tanara/AppController.h"
-#include "tanara/audio/DeviceManager.h"
-#include "tanara/audio/TrackCatalog.h"
+#include "tanara/app/AppController.h"
+#include "tanara/recording/audio/DeviceManager.h"
+#include "tanara/library/tracks/TrackCatalog.h"
 
 #include <algorithm>
 
@@ -51,8 +51,8 @@ QVariant SettingsDeviceModel::data(const QModelIndex& index, int role) const
     switch (role) {
     case KeyRole:
     case RawNameRole:     return r.info.name;
-    case NameRole:        return devicenames::displayName(r.info.name, names);
-    case DefaultNameRole: return devicenames::displayName(r.info.name, {});
+    case NameRole:        return library::devicenames::displayName(r.info.name, names);
+    case DefaultNameRole: return library::devicenames::displayName(r.info.name, {});
     case RenamedRole:     return names.contains(r.info.name);
     case GroupRole:       return r.group;
     case GroupFirstRole:  return i == 0 || m_rows.at(i - 1).group != r.group;
@@ -80,7 +80,7 @@ QStringList SettingsDeviceModel::presentNames() const
 
 void SettingsDeviceModel::rebuild()
 {
-    AppController* c = m_vm->controller();
+    app::AppController* c = m_vm->controller();
     if (!c) {
         loadDemo();
         return;
@@ -145,7 +145,7 @@ void SettingsDeviceModel::rename(int row, const QString& name)
     const QString n = name.simplified();
     QMap<QString, QString>& names = m_vm->draft().deviceNames;
     // Empty, or just the factory short name -> no own name.
-    if (n.isEmpty() || n == devicenames::displayName(raw, {}))
+    if (n.isEmpty() || n == library::devicenames::displayName(raw, {}))
         names.remove(raw);
     else
         names.insert(raw, n);

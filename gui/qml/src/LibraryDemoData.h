@@ -15,7 +15,7 @@
 namespace tanara_qml::demo {
 
 struct DemoMeeting {
-    tanara::LibraryEntry entry;    // title, time, length, states, participants
+    tanara::library::LibraryEntry entry;    // title, time, length, states, participants
     QString text;                  // one sentence of "transcript" for the search snippet
     int speakers = 0;              // number of speakers (after the transcript)
     int tracks = 0;                // number of audio tracks
@@ -28,9 +28,9 @@ const QVector<DemoMeeting>& meetings();
 const DemoMeeting* find(const QString& meetingId);
 
 // The same contract as MeetingLibrary::query / people / pendingItems.
-tanara::LibraryResult query(const tanara::LibraryQuery& q);
-QVector<tanara::PersonPresence> people();
-QVector<tanara::PendingItem> pendingItems();
+tanara::library::LibraryResult query(const tanara::library::LibraryQuery& q);
+QVector<tanara::library::PersonPresence> people();
+QVector<tanara::library::PendingItem> pendingItems();
 
 // ---- tags (fictional pool; the bulk-tagging demo may modify it in memory) ----
 struct DemoTag {
@@ -47,7 +47,7 @@ void resetTags();                                   // back to the initial state
 // The same contract as MeetingLibrary::tagOptions / untaggedCount / entry.
 QVector<tanara::TagUsage> tagOptions();
 int untaggedCount();
-tanara::LibraryEntry entry(const QString& meetingId);
+tanara::library::LibraryEntry entry(const QString& meetingId);
 
 // Signals a change in the demo's tags (the library model refreshes on it).
 class DemoTagNotifier : public QObject {

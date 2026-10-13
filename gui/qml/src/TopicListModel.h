@@ -12,7 +12,7 @@
 // SummaryViewModel owns it (from QML: summaryVm.topics); without a controller it works with
 // fictional sample data, and editing then happens in memory only.
 //
-#include "tanara/Types.h"
+#include "tanara/domain/Types.h"
 #include "tanara/domain/Job.h"
 
 #include <QAbstractListModel>
@@ -21,7 +21,7 @@
 #include <QtQml/qqmlregistration.h>
 
 namespace tanara {
-class AppController;
+namespace app { class AppController; }
 }
 
 namespace tanara_qml {
@@ -72,7 +72,7 @@ public:
     bool busy() const;
 
     // Sets the source: real (controller + meeting) or demo (controller == nullptr).
-    void bind(tanara::AppController* controller, const QString& meetingId);
+    void bind(tanara::app::AppController* controller, const QString& meetingId);
     void loadDemo();
     void clear();
 
@@ -108,7 +108,7 @@ private:
     void persist();              // saves the current order (setMeetingTopics)
     QVector<tanara::SummaryTopic> topicList() const;
 
-    QPointer<tanara::AppController> m_controller;
+    QPointer<tanara::app::AppController> m_controller;
     QList<QMetaObject::Connection> m_connections;
     QString m_meetingId;
     QVector<Item> m_items;

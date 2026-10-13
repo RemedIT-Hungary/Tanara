@@ -10,9 +10,9 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 
-#include "tanara/TranscriptMerger.h"
-#include "tanara/edit/SpeakerOverlay.h"
-#include "tanara/edit/UtteranceEmbeddings.h"
+#include "tanara/processing/summary/TranscriptMerger.h"
+#include "tanara/editing/session/SpeakerOverlay.h"
+#include "tanara/processing/analysis/UtteranceEmbeddings.h"
 
 using namespace tanara;
 
@@ -69,7 +69,7 @@ void writeMeeting(const QString& folder, const QVector<Tok>& toks)
                 tt.tokens.append(TranscriptToken{QString::fromUtf8(t.text), QString::fromLatin1(t.speaker), t.s, t.e, 0.9, tt.trackId});
         tracks.append(tt);
     }
-    MergedTranscript mt = mergeTranscripts(tracks);
+    MergedTranscript mt = processing::mergeTranscripts(tracks);
     mt.language = "hu";
     QJsonArray arr;
     for (const TranscriptToken& t : mt.tokens)
@@ -133,13 +133,13 @@ private slots:
         writeMeeting(folder, kSoniox);
 
         // Old ids: u1000, u3000, u6000, u9000, u12000 (A), u12000-2 (B).
-        const QVector<TranscriptLine> old = speakeredit::loadTranscriptLines(folder);
+        const QVector<TranscriptLine> old = editing::speakeredit::loadTranscriptLines(folder);
         QCOMPARE(old.size(), 6);
         QCOMPARE(old.at(4).id, QStringLiteral("u12000"));
         QCOMPARE(old.at(5).id, QStringLiteral("u12000-2"));
 
         SpeakerOverlay ov;
-        ov.transcriptFingerprint = speakeredit::transcriptFingerprint(old);
+        ov.transcriptFingerprint = editing::speakeredit::transcriptFingerprint(old);
         ov.utterances["u1000"].confirmed = true;
         ov.utterances["u9000"].speaker = "A";
         ov.utterances["u9000"].corrected = true;
@@ -147,7 +147,7 @@ private slots:
         ov.utterances["u6000"].rechecked = true;
         ov.utterances["u6000"].recheckHint = "B";
         ov.speakerTracks["A"] = QStringList{"t1"};
-        QVERIFY(speakeredit::saveOverlay(folder, ov));
+        QVERIFY(editing::speakeredit::saveOverlay(folder, ov));
 
         writeJson(QDir(folder).filePath("summary.json"), QJsonObject{
             {"version", 4}, {"mode", "quick"},
@@ -160,7 +160,7 @@ private slots:
                         QJsonObject{{"startMs", 12000}, {"endMs", 12060}, {"utteranceIds", QJsonArray{"u12000-2"}}}}}}}},
                 {"sourceSpeakers", QJsonObject{{"u1000", QJsonObject{{"key", "A"}, {"name", "Anna"}}},
                                                {"u12000-2", QJsonObject{{"key", "B"}, {"name", "Béla"}}}}}}}});
-        writeBytes(UtteranceEmbeddingCache::filePath(folder), "stale-cache");
+        writeBytes(processing::UtteranceEmbeddingCache::filePath(folder), "stale-cache");
 
         // 1) --dry-run: nothing changes, the numbers are in the JSON.
         const auto before = snapshot(folder);
@@ -195,9 +195,9 @@ private slots:
                                 "transcript.speakers.json.bak", "summary.json.bak", "transcript.md.bak"})
             QVERIFY2(QFile::exists(QDir(folder).filePath(bak)), bak);
         QCOMPARE(snapshot(folder).value("transcript.segments.json.bak"), before.value("transcript.segments.json"));
-        QVERIFY(!QFile::exists(UtteranceEmbeddingCache::filePath(folder)));
+        QVERIFY(!QFile::exists(processing::UtteranceEmbeddingCache::filePath(folder)));
 
-        const QVector<TranscriptLine> now = speakeredit::loadTranscriptLines(folder);
+        const QVector<TranscriptLine> now = editing::speakeredit::loadTranscriptLines(folder);
         QStringList ids;
         for (const TranscriptLine& l : now) ids << l.id;
         QCOMPARE(ids, (QStringList{"u700", "u2700", "u5700", "u8700", "u11700", "u11700-2"}));
@@ -206,7 +206,7 @@ private slots:
         QCOMPARE(now.at(0).text, old.at(0).text);
 
         // The overlay, validated against the new transcript, keeps the fixes too.
-        const SpeakerOverlay nov = speakeredit::loadOverlayFor(folder, now);
+        const SpeakerOverlay nov = editing::speakeredit::loadOverlayFor(folder, now);
         QCOMPARE(nov.utterances.size(), 4);
         QVERIFY(nov.utterances.value("u700").confirmed);
         QCOMPARE(nov.utterances.value("u8700").speaker, QStringLiteral("A"));
@@ -215,7 +215,7 @@ private slots:
         QVERIFY(nov.utterances.value("u5700").rechecked);
         QCOMPARE(nov.utterances.value("u5700").recheckHint, QStringLiteral("B"));
         QCOMPARE(nov.speakerTracks.value("A"), QStringList{"t1"});
-        QCOMPARE(speakeredit::resolveSpeakerKey(nov, now.at(3)), QStringLiteral("A"));
+        QCOMPARE(editing::speakeredit::resolveSpeakerKey(nov, now.at(3)), QStringLiteral("A"));
 
         const QJsonObject sum = readObject(QDir(folder).filePath("summary.json")).value("summary").toObject();
         const QJsonArray spans = sum.value("statements").toArray().at(0).toObject().value("sourceSpans").toArray();
@@ -277,7 +277,7 @@ private slots:
         toks.append({" az?", "A", "t1", 14740, 14800});
         toks.append({" Igen.", "B", "t2", 16000, 16060});
         writeMeeting(folder, toks);
-        const QVector<TranscriptLine> old = speakeredit::loadTranscriptLines(folder);
+        const QVector<TranscriptLine> old = editing::speakeredit::loadTranscriptLines(folder);
         QCOMPARE(old.size(), 3);
 
         Run r = cli({"reslice", folder, "--json"});
@@ -286,7 +286,7 @@ private slots:
         QCOMPARE(j.value("lines").toObject().value("old").toInt(), 3);
         QCOMPARE(j.value("lines").toObject().value("new").toInt(), 3);
         QCOMPARE(j.value("lines").toObject().value("mergedLines").toInt(), 0);
-        const QVector<TranscriptLine> now = speakeredit::loadTranscriptLines(folder);
+        const QVector<TranscriptLine> now = editing::speakeredit::loadTranscriptLines(folder);
         QCOMPARE(now.size(), 3);
         QCOMPARE(now.at(0).startMs, 0);                  // does not go below 0
         QCOMPARE(now.at(0).endMs, 13160);                // +100

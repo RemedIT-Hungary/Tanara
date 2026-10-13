@@ -13,14 +13,14 @@
 #include <QSqlDatabase>
 #include <QSqlQuery>
 
-#include "tanara/SettingsManager.h"
-#include "tanara/audio/TrackCatalog.h"
+#include "tanara/app/SettingsManager.h"
+#include "tanara/library/tracks/TrackCatalog.h"
 #include "tanara/foundation/ProcessLock.h"
-#include "tanara/store/KeyStore.h"
-#include "tanara/store/MeetingStore.h"
-#include "tanara/store/PeopleStore.h"
+#include "tanara/foundation/KeyStore.h"
+#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/store/PeopleStore.h"
 #include "tanara/foundation/SharedFile.h"
-#include "tanara/store/VoiceprintStore.h"
+#include "tanara/library/store/VoiceprintStore.h"
 
 using namespace tanara;
 
@@ -110,7 +110,7 @@ QString DataSafetyTest::orphanFolder(const QString& name)
 
 void DataSafetyTest::orphanRecoverySkipsLiveLockFolder()
 {
-    MeetingStore store(m_audio, m_meta);
+    library::MeetingStore store(m_audio, m_meta);
     const QString live = orphanFolder("2026-01-05_1000_Elo-felvetel");
     const QString crashed = orphanFolder("2026-01-04_0900_Osszeomlott");
 
@@ -141,7 +141,7 @@ void DataSafetyTest::orphanRecoverySkipsLiveLockFolder()
 
 void DataSafetyTest::orphanRecoverySkipsFreshTracks()
 {
-    MeetingStore store(m_audio, m_meta);
+    library::MeetingStore store(m_audio, m_meta);
     const QString folder = QDir(m_audio).filePath("2026-01-05_1000_Most-irjak");
     writeFile(QDir(folder).filePath("track_mic.ogg"), "regi");
     backdate(QDir(folder).filePath("track_mic.ogg"), 3600);
@@ -160,12 +160,12 @@ void DataSafetyTest::orphanRecoverySkipsFreshTracks()
 
 void DataSafetyTest::indexNeverListsFolderTwice()
 {
-    MeetingStore analyzer(m_audio, m_meta);
+    library::MeetingStore analyzer(m_audio, m_meta);
     Meeting a = analyzer.createMeeting("Helyreállított");
 
     // Another process (the recorder) writes meeting.json with a NEW id into the same folder.
     {
-        MeetingStore recorder(m_audio, m_meta);
+        library::MeetingStore recorder(m_audio, m_meta);
         Meeting b = a;
         b.id = "felvevo-id";
         b.title = "A valódi felvétel";
@@ -201,7 +201,7 @@ void DataSafetyTest::indexNeverListsFolderTwice()
 
 void DataSafetyTest::deleteKeepsFolderOfAnotherMeeting()
 {
-    MeetingStore store(m_audio, m_meta);
+    library::MeetingStore store(m_audio, m_meta);
     Meeting a = store.createMeeting("Helyreállított");
     writeFile(QDir(a.folder).filePath("track_mic.ogg"), "felvetel");
 
@@ -225,7 +225,7 @@ void DataSafetyTest::deleteKeepsFolderOfAnotherMeeting()
     QSqlDatabase::removeDatabase("teszt-masik-sor");
 
     // Deleting the "(recovered)" entry must NOT take the other meeting's folder.
-    QSignalSpy removed(&store, &MeetingStore::meetingRemoved);
+    QSignalSpy removed(&store, &library::MeetingStore::meetingRemoved);
     QVERIFY(store.deleteMeeting(a.id));
     QCOMPARE(removed.count(), 1);
     QVERIFY(QDir(a.folder).exists());
@@ -242,7 +242,7 @@ void DataSafetyTest::deleteKeepsFolderOfAnotherMeeting()
 
 void DataSafetyTest::deleteKeepsLiveRecordingFolder()
 {
-    MeetingStore store(m_audio, m_meta);
+    library::MeetingStore store(m_audio, m_meta);
     const Meeting a = store.createMeeting("Felvétel alatt");
     writeFile(QDir(a.folder).filePath("track_mic.ogg"), "epp-irodik");
     RecordingLock lock(QDir(m_meta).filePath("recording.lock"));
@@ -256,7 +256,7 @@ void DataSafetyTest::deleteKeepsLiveRecordingFolder()
 
 void DataSafetyTest::meetingJsonWrittenAtomically()
 {
-    MeetingStore store(m_audio, m_meta);
+    library::MeetingStore store(m_audio, m_meta);
     Meeting m = store.createMeeting("Atomikus");
     m.speakerMap.insert("Beszélő 1", "Ödön");
     m.hasTranscript = true;
@@ -283,12 +283,12 @@ void DataSafetyTest::corruptSettingsAreNotOverwritten()
     const QByteArray broken = R"({"audioDir": "/mnt/felvetelek/tanara", "userSpeakerName": "Ádá)";
     writeFile(path, broken);
 
-    SettingsManager sm(m_meta);
+    app::SettingsManager sm(m_meta);
     QVERIFY(sm.loadFailed());
     QCOMPARE(sm.settings().sttProviderId, QStringLiteral("soniox"));   // defaults in memory
     QCOMPARE(readFile(path), broken);                                  // the file is UNTOUCHED
     // Another process (recorder / watcher) loading does not overwrite it either.
-    { SettingsManager other(m_meta); QVERIFY(other.loadFailed()); }
+    { app::SettingsManager other(m_meta); QVERIFY(other.loadFailed()); }
     QCOMPARE(readFile(path), broken);
     QCOMPARE(QDir(m_meta).entryList({"settings.json*"}, QDir::Files).size(), 1);
 
@@ -300,7 +300,7 @@ void DataSafetyTest::corruptSettingsAreNotOverwritten()
     const QStringList aside = QDir(m_meta).entryList({"settings.json.corrupt-*"}, QDir::Files);
     QCOMPARE(aside.size(), 1);
     QCOMPARE(readFile(QDir(m_meta).filePath(aside.first())), broken);
-    SettingsManager again(m_meta);
+    app::SettingsManager again(m_meta);
     QVERIFY(!again.loadFailed());
     QCOMPARE(again.settings().userSpeakerName, QStringLiteral("Lilla"));
     // The next save sets nothing aside anymore.
@@ -311,7 +311,7 @@ void DataSafetyTest::corruptSettingsAreNotOverwritten()
 void DataSafetyTest::healthySettingsRoundTrip()
 {
     // No file: it is created with the defaults (first launch), as before.
-    SettingsManager first(m_meta);
+    app::SettingsManager first(m_meta);
     QVERIFY(!first.loadFailed());
     const QString path = QDir(m_meta).filePath("settings.json");
     QVERIFY(QFile::exists(path));
@@ -321,7 +321,7 @@ void DataSafetyTest::healthySettingsRoundTrip()
     first.setSettings(s);
     // Only settings.json remains (no temporary / set-aside file), and it can be read back.
     QCOMPARE(QDir(m_meta).entryList({"settings.json*"}, QDir::Files | QDir::Hidden), QStringList{"settings.json"});
-    SettingsManager second(m_meta);
+    app::SettingsManager second(m_meta);
     QCOMPARE(second.settings().userSpeakerName, QStringLiteral("Ödön"));
     QCOMPARE(second.settings().languageHints, QStringList({"hu", "en"}));
 }
@@ -347,17 +347,17 @@ void DataSafetyTest::peopleFromTwoProcessesMerge()
 {
     const QString path = QDir(m_meta).filePath("people.json");
     // Two "processes": both load at startup, then modify alternately.
-    PeopleStore analyzer(path);
-    PeopleStore recorder(path);
+    library::PeopleStore analyzer(path);
+    library::PeopleStore recorder(path);
     analyzer.add("Bence");
     recorder.add("Lilla");          // before the fix this dropped Bence
     analyzer.add("Zsófi");          // ...and this dropped Lilla
-    QCOMPARE(PeopleStore(path).names(), QStringList({"Bence", "Lilla", "Zsófi"}));
+    QCOMPARE(library::PeopleStore(path).names(), QStringList({"Bence", "Lilla", "Zsófi"}));
 
     // Delete / rename builds on the other process's fresh state, and does not resurrect a deleted name.
     recorder.remove("Bence");
     analyzer.rename("Lilla", "Kovács Lilla");
-    QCOMPARE(PeopleStore(path).names(), QStringList({"Kovács Lilla", "Zsófi"}));
+    QCOMPARE(library::PeopleStore(path).names(), QStringList({"Kovács Lilla", "Zsófi"}));
     QCOMPARE(analyzer.names(), QStringList({"Kovács Lilla", "Zsófi"}));
     // Two records in the file, and no lock file remains.
     QCOMPARE(QJsonDocument::fromJson(readFile(path)).object().value("people").toArray().size(), 2);
@@ -367,13 +367,13 @@ void DataSafetyTest::peopleFromTwoProcessesMerge()
 void DataSafetyTest::voiceprintsFromTwoProcessesMerge()
 {
     const QString path = QDir(m_meta).filePath("voiceprints.json");
-    VoiceprintStore analyzer(path);
-    VoiceprintStore recorder(path);
+    library::VoiceprintStore analyzer(path);
+    library::VoiceprintStore recorder(path);
     analyzer.addPrint("Bence", print(1, 0));
     recorder.addPrint("Lilla", print(0, 1));        // before the fix this dropped Bence's voiceprint
     analyzer.addPrint("Bence", print(0.9f, 0.1f));  // ...and this dropped Lilla's
     {
-        VoiceprintStore fresh(path);
+        library::VoiceprintStore fresh(path);
         QCOMPARE(fresh.people(), QStringList({"Bence", "Lilla"}));
         QCOMPARE(fresh.printCount("Bence"), 2);
         QCOMPARE(fresh.printCount("Lilla"), 1);
@@ -381,7 +381,7 @@ void DataSafetyTest::voiceprintsFromTwoProcessesMerge()
     // The other process's delete stays: the next write does not resurrect it.
     recorder.removePerson("Bence");
     analyzer.addPrint("Zsófi", print(0.5f, 0.5f));
-    VoiceprintStore fresh(path);
+    library::VoiceprintStore fresh(path);
     QCOMPARE(fresh.people(), QStringList({"Lilla", "Zsófi"}));
     QCOMPARE(fresh.totalPrintCount(), 2);
     QCOMPARE(analyzer.totalPrintCount(), 2);
@@ -393,14 +393,14 @@ void DataSafetyTest::corruptVoiceprintsAreSetAside()
     const QString path = QDir(m_meta).filePath("voiceprints.json");
     const QByteArray broken = R"({"people":[{"name":"Ödön","prints":[{"id":"a","embedding":[0.1,0.)";
     writeFile(path, broken);
-    VoiceprintStore store(path);
+    library::VoiceprintStore store(path);
     QCOMPARE(store.totalPrintCount(), 0);
     QCOMPARE(readFile(path), broken);            // not touched on load
     store.addPrint("Lilla", print(0, 1));
     const QStringList aside = QDir(m_meta).entryList({"voiceprints.json.corrupt-*"}, QDir::Files);
     QCOMPARE(aside.size(), 1);                   // the corrupt file stayed (can be saved by hand)
     QCOMPARE(readFile(QDir(m_meta).filePath(aside.first())), broken);
-    QCOMPARE(VoiceprintStore(path).people(), QStringList{"Lilla"});
+    QCOMPARE(library::VoiceprintStore(path).people(), QStringList{"Lilla"});
 }
 
 void DataSafetyTest::replaceFileKeepsOldOnFailure()
@@ -430,7 +430,7 @@ void DataSafetyTest::replaceFileKeepsOldOnFailure()
 
 void DataSafetyTest::relocateRejectsMixdownAndNonAudio()
 {
-    MeetingStore store(m_audio, m_meta);
+    library::MeetingStore store(m_audio, m_meta);
     Meeting m = store.createMeeting("Sávok");
     Track mic; mic.id = "mic"; mic.kind = TrackKind::Mic; mic.file = "track_mic.ogg"; mic.active = true;
     Track sys; sys.id = "sys"; sys.kind = TrackKind::Loopback; sys.file = "track_sys.ogg"; sys.active = true;
@@ -445,8 +445,8 @@ void DataSafetyTest::relocateRejectsMixdownAndNonAudio()
     writeFile(folder.filePath("regi-mic.ogg"), "mic");
     writeFile(m_dir->filePath("kulso/jegyzet.txt"), "nem hang");
 
-    TrackCatalog cat(&store);
-    QSignalSpy changed(&cat, &TrackCatalog::tracksChanged);
+    library::TrackCatalog cat(&store);
+    QSignalSpy changed(&cat, &library::TrackCatalog::tracksChanged);
     QString err;
     QVERIFY(!cat.relocateTrack(m.id, "mic", folder.filePath("mixdown.mp3"), &err));      // the mixdown
     QVERIFY(err.contains("lekeverés"));
@@ -469,7 +469,7 @@ void DataSafetyTest::relocateRejectsMixdownAndNonAudio()
 void DataSafetyTest::deletingTracksNeverDeletesMixdown()
 {
     // An old meeting.json (made before the fix): a dropped track points to the mixdown file.
-    MeetingStore store(m_audio, m_meta);
+    library::MeetingStore store(m_audio, m_meta);
     Meeting m = store.createMeeting("Régi hiba");
     Track mic; mic.id = "mic"; mic.kind = TrackKind::Mic; mic.file = "track_mic.ogg"; mic.active = true;
     Track bad; bad.id = "sys"; bad.kind = TrackKind::Loopback; bad.file = "mixdown.mp3"; bad.active = false;
@@ -482,7 +482,7 @@ void DataSafetyTest::deletingTracksNeverDeletesMixdown()
     writeFile(folder.filePath("track_d.ogg"), "d");
     writeFile(folder.filePath("mixdown.mp3"), "KEVEREK");
 
-    TrackCatalog cat(&store);
+    library::TrackCatalog cat(&store);
     QCOMPARE(cat.deleteDroppedTracks(m.id), 2);
     QCOMPARE(store.load(m.id).tracks.size(), 1);
     QVERIFY(!folder.exists("track_d.ogg"));                                   // the real dropped track was deleted

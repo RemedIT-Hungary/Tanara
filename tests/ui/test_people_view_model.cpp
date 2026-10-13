@@ -17,15 +17,15 @@
 #include "PeopleWindowHost.h"
 #include "QmlApp.h"
 
-#include "tanara/AppController.h"
-#include "tanara/SettingsManager.h"
-#include "tanara/edit/UtteranceEmbeddings.h"
-#include "tanara/people/PeopleService.h"
-#include "tanara/people/PeopleStats.h"
-#include "tanara/store/MeetingStore.h"
-#include "tanara/store/PeopleStore.h"
-#include "tanara/store/VoiceprintStore.h"
-#include "tanara/tags/TagService.h"
+#include "tanara/app/AppController.h"
+#include "tanara/app/SettingsManager.h"
+#include "tanara/processing/analysis/UtteranceEmbeddings.h"
+#include "tanara/library/people/PeopleService.h"
+#include "tanara/library/people/PeopleStats.h"
+#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/store/PeopleStore.h"
+#include "tanara/library/store/VoiceprintStore.h"
+#include "tanara/library/tags/TagService.h"
 
 #include <QElapsedTimer>
 #include <QJsonArray>
@@ -53,7 +53,7 @@ const QString kEszter = QStringLiteral("Tóth Eszter");
 
 struct Line { qint64 startMs; qint64 durMs; QString raw; };
 
-class FakeEmbedder : public IUtteranceEmbedder {
+class FakeEmbedder : public processing::IUtteranceEmbedder {
 public:
     bool open(const QString&) override { return true; }
     QVector<float> embed(qint64, qint64) override { return {1.0f, 0.0f, 0.0f}; }
@@ -84,14 +84,14 @@ class TestPeopleViewModel : public QObject {
     Q_OBJECT
 
     std::unique_ptr<QTemporaryDir> m_home;
-    std::unique_ptr<AppController> m_app;
+    std::unique_ptr<app::AppController> m_app;
 
     void startApp()
     {
         m_home = std::make_unique<QTemporaryDir>();
         QVERIFY(m_home->isValid());
         qputenv("TANARA_HOME", m_home->path().toUtf8());
-        m_app = std::make_unique<AppController>();
+        m_app = std::make_unique<app::AppController>();
         QVERIFY(m_app->settings()->settings().audioDir.startsWith(m_home->path()));
         m_app->setUserSpeakerName(kSelf);
     }
@@ -315,7 +315,7 @@ private slots:
         startApp();
         Meeting a, b;
         scenario(&a, &b);
-        TagService* tags = m_app->tags();
+        library::TagService* tags = m_app->tags();
         QVERIFY(tags);
         const QString nordvik = tags->addTag(a.id, QStringLiteral("Nordvik")).id;
         tags->addTag(b.id, nordvik);
@@ -832,7 +832,7 @@ private slots:
         startApp();
         scenario();
         // A second store on the same people.json (the path of learning: SpeakerEditor / PeopleService).
-        PeopleStore learner(QDir(m_app->settings()->settings().metadataDir).filePath(QStringLiteral("people.json")));
+        library::PeopleStore learner(QDir(m_app->settings()->settings().metadataDir).filePath(QStringLiteral("people.json")));
         PeopleViewModel vm;
         vm.setController(m_app.get());
         vm.setSelectedName(kGergely);
@@ -844,7 +844,7 @@ private slots:
         vm.setDefaultSide(QStringLiteral("remote"));
         QCOMPARE(vm.defaultSide(), QStringLiteral("remote"));
         QCOMPARE(vm.defaultSideNote(), QStringLiteral("kézzel beállítva"));
-        PersonRecord r = m_app->peopleService()->person(kGergely);
+        library::PersonRecord r = m_app->peopleService()->person(kGergely);
         QCOMPARE(r.defaultSide, QStringLiteral("remote"));
         QVERIFY(r.defaultSideManual);
         QVERIFY(!learner.setDefaultSide(kGergely, QStringLiteral("local")));   // learned entry

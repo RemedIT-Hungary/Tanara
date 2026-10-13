@@ -13,7 +13,7 @@
 
 class QWindow;
 
-namespace tanara { class AppController; }
+namespace tanara { namespace app { class AppController; } }
 namespace tanara_qml { class PeopleWindowHost; class TagsWindowHost; }
 
 namespace tanara_gui {
@@ -22,7 +22,7 @@ namespace tanara_gui {
 class SettingsWidgetsDialogs : public tanara_qml::SettingsDialogs {
     Q_OBJECT
 public:
-    explicit SettingsWidgetsDialogs(tanara::AppController* controller, QObject* parent = nullptr);
+    explicit SettingsWidgetsDialogs(tanara::app::AppController* controller, QObject* parent = nullptr);
     ~SettingsWidgetsDialogs() override;
 
     // Someone else opens the People window (the main window's bridge, to keep one instance).
@@ -55,7 +55,7 @@ protected:
 private:
     struct Scope;
 
-    tanara::AppController* m_controller = nullptr;
+    tanara::app::AppController* m_controller = nullptr;
     QPointer<QWindow> m_owner;
     int m_active = 0;                 // running modal calls (can nest)
     tanara_qml::PeopleWindowHost* m_people = nullptr;

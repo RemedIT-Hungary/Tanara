@@ -19,12 +19,12 @@
 
 #include <cstring>
 
-#include "tanara/AppController.h"
-#include "tanara/jobs/MeetingJobTracker.h"
-#include "tanara/store/JsonSerialization.h"
-#include "tanara/store/MeetingArchive.h"
-#include "tanara/store/MeetingStore.h"
-#include "tanara/tags/TagService.h"
+#include "tanara/app/AppController.h"
+#include "tanara/library/jobs/MeetingJobTracker.h"
+#include "tanara/library/store/JsonSerialization.h"
+#include "tanara/library/store/MeetingArchive.h"
+#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/tags/TagService.h"
 
 using namespace tanara;
 
@@ -146,20 +146,20 @@ private slots:
 
 private:
     // A made-up meeting in the source store, with every kind of file.
-    Meeting makeFixture(MeetingStore& store, const QString& title = QStringLiteral("Ügyfél-egyeztetés"));
+    Meeting makeFixture(library::MeetingStore& store, const QString& title = QStringLiteral("Ügyfél-egyeztetés"));
     QString recDir(const char* name) const { return m_dir->filePath(QString::fromLatin1(name)); }
 
     std::unique_ptr<QTemporaryDir> m_dir;
-    std::unique_ptr<MeetingStore> m_src;
-    std::unique_ptr<MeetingStore> m_dst;
+    std::unique_ptr<library::MeetingStore> m_src;
+    std::unique_ptr<library::MeetingStore> m_dst;
 };
 
 void MeetingArchiveTest::init()
 {
     m_dir = std::make_unique<QTemporaryDir>();
     QVERIFY(m_dir->isValid());
-    m_src = std::make_unique<MeetingStore>(recDir("src-rec"), recDir("src-meta"));
-    m_dst = std::make_unique<MeetingStore>(recDir("dst-rec"), recDir("dst-meta"));
+    m_src = std::make_unique<library::MeetingStore>(recDir("src-rec"), recDir("src-meta"));
+    m_dst = std::make_unique<library::MeetingStore>(recDir("dst-rec"), recDir("dst-meta"));
 }
 
 void MeetingArchiveTest::cleanup()
@@ -169,7 +169,7 @@ void MeetingArchiveTest::cleanup()
     m_dir.reset();
 }
 
-Meeting MeetingArchiveTest::makeFixture(MeetingStore& store, const QString& title)
+Meeting MeetingArchiveTest::makeFixture(library::MeetingStore& store, const QString& title)
 {
     Meeting m = store.createMeeting(title);
     const QDir dir(m.folder);
@@ -211,12 +211,12 @@ Meeting MeetingArchiveTest::makeFixture(MeetingStore& store, const QString& titl
 void MeetingArchiveTest::exportContainsManifestAndSkipsDerivedFiles()
 {
     const Meeting m = makeFixture(*m_src);
-    const QString zip = m_dir->filePath(MeetingArchive::suggestedFileName(m));
+    const QString zip = m_dir->filePath(library::MeetingArchive::suggestedFileName(m));
     QVERIFY(zip.endsWith(QStringLiteral(".tanara.zip")));
     QList<int> pcts;
     QString err;
     Tag ta{QStringLiteral("tag-a"), QStringLiteral("Ügyfél"), {}};
-    QVERIFY2(MeetingArchive::exportMeeting(m, zip, &err, [&](int p) { pcts << p; }, {ta}), qPrintable(err));
+    QVERIFY2(library::MeetingArchive::exportMeeting(m, zip, &err, [&](int p) { pcts << p; }, {ta}), qPrintable(err));
     QVERIFY(!QFile::exists(zip + QStringLiteral(".part")));
     QVERIFY(!pcts.isEmpty());
     QCOMPARE(pcts.last(), 100);
@@ -256,11 +256,11 @@ void MeetingArchiveTest::exportImportRoundTrip()
     const Meeting m = makeFixture(*m_src);
     const QString zip = m_dir->filePath(QStringLiteral("ki.tanara.zip"));
     QString err;
-    QVERIFY2(MeetingArchive::exportMeeting(m, zip, &err), qPrintable(err));
+    QVERIFY2(library::MeetingArchive::exportMeeting(m, zip, &err), qPrintable(err));
 
     QVERIFY(QDir().mkpath(m_dst->audioDir()));
-    ArchiveManifest man;
-    const QString extracted = MeetingArchive::importArchive(zip, m_dst->audioDir(), &err, {}, &man);
+    library::ArchiveManifest man;
+    const QString extracted = library::MeetingArchive::importArchive(zip, m_dst->audioDir(), &err, {}, &man);
     QVERIFY2(!extracted.isEmpty(), qPrintable(err));
     QCOMPARE(man.version, 1);
     QCOMPARE(man.meetingId, m.id);
@@ -302,7 +302,7 @@ void MeetingArchiveTest::exportRefusesMissingFolder()
     m.id = QStringLiteral("nincs");
     m.folder = m_dir->filePath(QStringLiteral("nemletezik"));
     QString err;
-    QVERIFY(!MeetingArchive::exportMeeting(m, m_dir->filePath("x.tanara.zip"), &err));
+    QVERIFY(!library::MeetingArchive::exportMeeting(m, m_dir->filePath("x.tanara.zip"), &err));
     QVERIFY(!err.isEmpty());
     QVERIFY(!QFile::exists(m_dir->filePath("x.tanara.zip")));
 }
@@ -313,7 +313,7 @@ void MeetingArchiveTest::exportCancelRemovesPartialFile()
     const QString zip = m_dir->filePath(QStringLiteral("megszakitott.tanara.zip"));
     std::atomic<bool> cancel{false};
     QString err;
-    QVERIFY(!MeetingArchive::exportMeeting(m, zip, &err, [&](int p) { if (p > 0) cancel = true; }, {}, &cancel));
+    QVERIFY(!library::MeetingArchive::exportMeeting(m, zip, &err, [&](int p) { if (p > 0) cancel = true; }, {}, &cancel));
     QCOMPARE(err, QStringLiteral("Megszakítva."));
     QVERIFY(!QFile::exists(zip));
     QVERIFY(!QFile::exists(zip + QStringLiteral(".part")));
@@ -324,7 +324,7 @@ void MeetingArchiveTest::importRefusesMissingManifest()
     const QString zip = m_dir->filePath(QStringLiteral("nincs-manifeszt.zip"));
     writeZip(zip, {{"2026-01-01_1000_x/meeting.json", "{}"}});
     QString err;
-    QVERIFY(MeetingArchive::importArchive(zip, m_dir->path(), &err).isEmpty());
+    QVERIFY(library::MeetingArchive::importArchive(zip, m_dir->path(), &err).isEmpty());
     QVERIFY2(err.contains(QStringLiteral("tanara-archive.json")), qPrintable(err));
     QVERIFY(QDir(m_dir->path()).entryList({QStringLiteral(".import-*")}, QDir::Dirs | QDir::Hidden).isEmpty());
 }
@@ -334,7 +334,7 @@ void MeetingArchiveTest::importRefusesWrongVersion()
     const QString zip = m_dir->filePath(QStringLiteral("v2.zip"));
     writeZip(zip, {{"tanara-archive.json", manifest(2)}, {"2026-01-01_1000_x/meeting.json", "{}"}});
     QString err;
-    QVERIFY(MeetingArchive::importArchive(zip, m_dir->path(), &err).isEmpty());
+    QVERIFY(library::MeetingArchive::importArchive(zip, m_dir->path(), &err).isEmpty());
     QVERIFY2(err.contains(QStringLiteral("(2)")), qPrintable(err));
 }
 
@@ -348,7 +348,7 @@ void MeetingArchiveTest::importRefusesPathTraversal()
     const QString root = m_dir->filePath(QStringLiteral("rec"));
     QVERIFY(QDir().mkpath(root));
     QString err;
-    QVERIFY(MeetingArchive::importArchive(zip, root, &err).isEmpty());
+    QVERIFY(library::MeetingArchive::importArchive(zip, root, &err).isEmpty());
     QVERIFY2(err.contains(QStringLiteral("evil")), qPrintable(err));
     QVERIFY(!QFile::exists(m_dir->filePath(QStringLiteral("evil"))));
     QVERIFY(QDir(root).entryList(QDir::AllEntries | QDir::Hidden | QDir::NoDotAndDotDot).isEmpty());
@@ -356,11 +356,11 @@ void MeetingArchiveTest::importRefusesPathTraversal()
     const QString zip2 = m_dir->filePath(QStringLiteral("gonosz2.zip"));
     writeZip(zip2, {{"tanara-archive.json", manifest()}, {"XX/evil/meeting.json", "{}"}});
     patchZipNames(zip2, "XX/evil/", "../evil/");
-    QVERIFY(MeetingArchive::importArchive(zip2, root, &err).isEmpty());
+    QVERIFY(library::MeetingArchive::importArchive(zip2, root, &err).isEmpty());
     const QString zip3 = m_dir->filePath(QStringLiteral("gonosz3.zip"));
     writeZip(zip3, {{"tanara-archive.json", manifest()}, {"Xtmp/abs/meeting.json", "{}"}});
     patchZipNames(zip3, "Xtmp/abs/", "/tmp/abs/");
-    QVERIFY(MeetingArchive::importArchive(zip3, root, &err).isEmpty());
+    QVERIFY(library::MeetingArchive::importArchive(zip3, root, &err).isEmpty());
     QVERIFY(QDir(root).entryList(QDir::AllEntries | QDir::Hidden | QDir::NoDotAndDotDot).isEmpty());
 }
 
@@ -371,12 +371,12 @@ void MeetingArchiveTest::importRefusesTwoTopLevelDirs()
                    {"a/meeting.json", "{}"},
                    {"b/meeting.json", "{}"}});
     QString err;
-    QVERIFY(MeetingArchive::importArchive(zip, m_dir->path(), &err).isEmpty());
+    QVERIFY(library::MeetingArchive::importArchive(zip, m_dir->path(), &err).isEmpty());
     QVERIFY(!err.isEmpty());
 
     const QString empty = m_dir->filePath(QStringLiteral("ures.zip"));
     writeZip(empty, {{"tanara-archive.json", manifest()}, {"a/notes.txt", "x"}});
-    QVERIFY(MeetingArchive::importArchive(empty, m_dir->path(), &err).isEmpty());
+    QVERIFY(library::MeetingArchive::importArchive(empty, m_dir->path(), &err).isEmpty());
     QVERIFY2(err.contains(QStringLiteral("meeting.json")), qPrintable(err));
 }
 
@@ -385,12 +385,12 @@ void MeetingArchiveTest::importRefusesExistingFolderName()
     const Meeting m = makeFixture(*m_src);
     const QString zip = m_dir->filePath(QStringLiteral("ki.tanara.zip"));
     QString err;
-    QVERIFY(MeetingArchive::exportMeeting(m, zip, &err));
+    QVERIFY(library::MeetingArchive::exportMeeting(m, zip, &err));
     // The target already has a folder of that name (with other content).
     const QString clash = QDir(m_dst->audioDir()).filePath(QFileInfo(m.folder).fileName());
     writeFile(QDir(clash).filePath("track_mic.ogg"), "masik");
 
-    const QString extracted = MeetingArchive::importArchive(zip, m_dst->audioDir(), &err);
+    const QString extracted = library::MeetingArchive::importArchive(zip, m_dst->audioDir(), &err);
     QVERIFY(!extracted.isEmpty());
     const Meeting none = m_dst->adoptMeetingFolder(extracted, &err);
     QVERIFY(none.id.isEmpty());
@@ -406,14 +406,14 @@ void MeetingArchiveTest::importRefusesExistingMeetingId()
     const Meeting m = makeFixture(*m_src);
     const QString zip = m_dir->filePath(QStringLiteral("ki.tanara.zip"));
     QString err;
-    QVERIFY(MeetingArchive::exportMeeting(m, zip, &err));
+    QVERIFY(library::MeetingArchive::exportMeeting(m, zip, &err));
     const QString other = QDir(m_src->audioDir()).filePath(QStringLiteral("atnevezett"));
     QVERIFY(QDir().rename(m.folder, other));
     Meeting moved = m;
     moved.folder = other;
     m_src->saveMeeting(moved);
 
-    const QString extracted = MeetingArchive::importArchive(zip, m_src->audioDir(), &err);
+    const QString extracted = library::MeetingArchive::importArchive(zip, m_src->audioDir(), &err);
     QVERIFY(!extracted.isEmpty());
     QVERIFY(m_src->adoptMeetingFolder(extracted, &err).id.isEmpty());
     QVERIFY2(err.contains(QStringLiteral("már szerepel")), qPrintable(err));
@@ -437,7 +437,7 @@ void MeetingArchiveTest::adoptInPlace()
 {
     const Meeting m = makeFixture(*m_src);
     // Without an index (e.g. a hand-copied folder): a new store on the same folder.
-    MeetingStore fresh(m_src->audioDir(), recDir("fresh-meta"));
+    library::MeetingStore fresh(m_src->audioDir(), recDir("fresh-meta"));
     QString err;
     const Meeting a = fresh.adoptMeetingFolder(m.folder, &err);
     QVERIFY2(!a.id.isEmpty(), qPrintable(err));
@@ -498,7 +498,7 @@ void MeetingArchiveTest::controllerExportImportWithTags()
     QString exportedTitle;
     {
         qputenv("TANARA_HOME", m_dir->filePath("home-a").toUtf8());
-        AppController app;
+        app::AppController app;
         Meeting m = app.store()->createMeeting(QStringLiteral("Partnertalálkozó"));
         writeFile(QDir(m.folder).filePath("track_mic.ogg"), QByteArray(256 * 1024, 'm'));
         Track t;
@@ -511,8 +511,8 @@ void MeetingArchiveTest::controllerExportImportWithTags()
         meetingId = m.id;
         exportedTitle = m.title;
 
-        QSignalSpy finished(&app, &AppController::archiveFinished);
-        QSignalSpy progress(&app, &AppController::archiveProgress);
+        QSignalSpy finished(&app, &app::AppController::archiveFinished);
+        QSignalSpy progress(&app, &app::AppController::archiveProgress);
         const QString op = app.exportMeetingArchive(meetingId, zip);
         QCOMPARE(op, QStringLiteral("export:") + meetingId);
         QVERIFY(app.archiveBusy());
@@ -529,9 +529,9 @@ void MeetingArchiveTest::controllerExportImportWithTags()
     {
         // Another "machine": there is already a "nordvik" tag here (with another id), so it maps to that.
         qputenv("TANARA_HOME", m_dir->filePath("home-b").toUtf8());
-        AppController app;
+        app::AppController app;
         const Tag local = app.tags()->create(QStringLiteral("nordvik"));
-        QSignalSpy finished(&app, &AppController::archiveFinished);
+        QSignalSpy finished(&app, &app::AppController::archiveFinished);
         const QString op = app.importMeetingArchive(zip);
         QVERIFY(op.startsWith(QStringLiteral("import:")));
         QTRY_COMPARE_WITH_TIMEOUT(finished.size(), 1, 20000);

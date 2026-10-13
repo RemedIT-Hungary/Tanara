@@ -22,7 +22,7 @@ class QWindow;
 class QWidget;
 
 namespace tanara {
-class AppController;
+namespace app { class AppController; }
 }
 
 namespace tanara_qml {
@@ -40,7 +40,7 @@ class SettingsWidgetsDialogs;
 class QmlShellBridge : public tanara_qml::ShellBridge {
     Q_OBJECT
 public:
-    explicit QmlShellBridge(tanara::AppController* controller, QObject* parent = nullptr);
+    explicit QmlShellBridge(tanara::app::AppController* controller, QObject* parent = nullptr);
     ~QmlShellBridge() override;
 
     // The QML main window: the Widgets windows become its children (as the window manager sees
@@ -100,7 +100,7 @@ private:
 
     void maybeOpenOnboarding();
 
-    tanara::AppController* m_controller = nullptr;
+    tanara::app::AppController* m_controller = nullptr;
     QPointer<QWindow> m_window;
 
     ShellRecorderHost* m_recorder = nullptr;   // the recorder binding

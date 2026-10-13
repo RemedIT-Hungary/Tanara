@@ -23,7 +23,7 @@
 #include <QtQml/qqmlregistration.h>
 
 namespace tanara {
-class AppController;
+namespace app { class AppController; }
 }
 
 namespace tanara_qml {
@@ -68,7 +68,7 @@ private:
         QString icon;
     };
 
-    tanara::AppController* app() const;
+    tanara::app::AppController* app() const;
     void connectController();
     void reload();
     bool setTracks(const QString& id, const QStringList& trackIds);
@@ -76,7 +76,7 @@ private:
     QStringList binding(const QString& id, bool* manual) const;
 
     QPointer<QObject> m_injected;
-    QPointer<tanara::AppController> m_connected;
+    QPointer<tanara::app::AppController> m_connected;
     QList<QMetaObject::Connection> m_connections;
 
     QString m_meetingId;

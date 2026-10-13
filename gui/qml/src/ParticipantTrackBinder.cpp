@@ -3,9 +3,9 @@
 #include "AppContext.h"
 #include "JobSupport.h"
 
-#include "tanara/AppController.h"
-#include "tanara/audio/TrackCatalog.h"
-#include "tanara/store/MeetingStore.h"
+#include "tanara/app/AppController.h"
+#include "tanara/library/tracks/TrackCatalog.h"
+#include "tanara/library/store/MeetingStore.h"
 
 #include <algorithm>
 
@@ -15,10 +15,10 @@ using namespace tanara;
 
 namespace {
 
-QString iconOf(const TrackView& v)
+QString iconOf(const library::TrackView& v)
 {
-    if (v.role == TrackRole::OwnMic || v.track.kind == TrackKind::Mic) return QStringLiteral("mic");
-    if (v.role == TrackRole::CallAudio || v.track.kind == TrackKind::Loopback) return QStringLiteral("phone");
+    if (v.role == library::TrackRole::OwnMic || v.track.kind == TrackKind::Mic) return QStringLiteral("mic");
+    if (v.role == library::TrackRole::CallAudio || v.track.kind == TrackKind::Loopback) return QStringLiteral("phone");
     return QStringLiteral("audio-lines");
 }
 
@@ -33,7 +33,7 @@ ParticipantTrackBinder::ParticipantTrackBinder(QObject* parent) : QObject(parent
     reload();
 }
 
-AppController* ParticipantTrackBinder::app() const { return jobsupport::resolveController(m_injected); }
+app::AppController* ParticipantTrackBinder::app() const { return jobsupport::resolveController(m_injected); }
 QObject* ParticipantTrackBinder::controllerObject() const { return app(); }
 
 void ParticipantTrackBinder::setController(QObject* controller)
@@ -62,7 +62,7 @@ bool ParticipantTrackBinder::available() const
 
 void ParticipantTrackBinder::connectController()
 {
-    AppController* c = app();
+    app::AppController* c = app();
     if (c == m_connected)
         return;
     for (const QMetaObject::Connection& conn : std::as_const(m_connections))
@@ -72,18 +72,18 @@ void ParticipantTrackBinder::connectController()
     if (!c)
         return;
     auto mine = [this](const QString& id) { return !m_meetingId.isEmpty() && id == m_meetingId; };
-    m_connections << connect(c, &AppController::tracksChanged, this,
+    m_connections << connect(c, &app::AppController::tracksChanged, this,
                              [this, mine](const QString& id) { if (mine(id)) reload(); });
-    m_connections << connect(c, &AppController::participantsChanged, this,
+    m_connections << connect(c, &app::AppController::participantsChanged, this,
                              [this, mine](const QString& id) { if (mine(id)) reload(); });
-    m_connections << connect(c, &AppController::speakerMapChanged, this,
+    m_connections << connect(c, &app::AppController::speakerMapChanged, this,
                              [this, mine](const QString& id) { if (mine(id)) reload(); });
 }
 
 void ParticipantTrackBinder::reload()
 {
     m_tracks.clear();
-    AppController* c = app();
+    app::AppController* c = app();
     if (jobsupport::demoMode(c)) {
         m_tracks = {{QStringLiteral("mic"), tr("Saját mikrofon"), QStringLiteral("mic")},
                     {QStringLiteral("call"), tr("Hívás hangja"), QStringLiteral("phone")}};
@@ -92,7 +92,7 @@ void ParticipantTrackBinder::reload()
     } else if (!m_meetingId.isEmpty() && c->store()) {
         const Meeting m = c->store()->load(m_meetingId);
         // The selectable tracks: the logical tracks included in the mixdown (once per segment).
-        for (const TrackView& v : TrackCatalog::tracks(m)) {
+        for (const library::TrackView& v : library::TrackCatalog::tracks(m)) {
             if (v.segment > 1 || !v.track.included() || v.fileMissing) continue;
             m_tracks.append({v.track.id, v.displayName, iconOf(v)});
         }
@@ -103,7 +103,7 @@ void ParticipantTrackBinder::reload()
 
 QStringList ParticipantTrackBinder::binding(const QString& id, bool* manual) const
 {
-    AppController* c = app();
+    app::AppController* c = app();
     if (jobsupport::demoMode(c)) {
         const QStringList m = m_demoManual.value(id);
         *manual = !m.isEmpty();
@@ -139,7 +139,7 @@ QVariantList ParticipantTrackBinder::chips(const QString& id) const
 
 bool ParticipantTrackBinder::setTracks(const QString& id, const QStringList& trackIds)
 {
-    AppController* c = app();
+    app::AppController* c = app();
     if (jobsupport::demoMode(c)) {
         if (trackIds.isEmpty()) m_demoManual.remove(id);
         else m_demoManual.insert(id, trackIds);

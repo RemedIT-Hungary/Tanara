@@ -1,7 +1,7 @@
 #include <QtTest>
 #include <QTemporaryDir>
-#include "tanara/store/VoiceprintStore.h"
-#include "tanara/Types.h"
+#include "tanara/library/store/VoiceprintStore.h"
+#include "tanara/domain/Types.h"
 
 #include <cmath>
 
@@ -42,21 +42,21 @@ void VoiceprintTest::cosine_basic() {
     const QVector<float> a{1, 0, 0};
     const QVector<float> b{1, 0, 0};
     const QVector<float> c{0, 1, 0};
-    QVERIFY(qFuzzyCompare(VoiceprintStore::cosineSimilarity(a, b) + 1.0, 2.0)); // ~1.0
-    QVERIFY(qAbs(VoiceprintStore::cosineSimilarity(a, c)) < 1e-6);             // orthogonal
+    QVERIFY(qFuzzyCompare(library::VoiceprintStore::cosineSimilarity(a, b) + 1.0, 2.0)); // ~1.0
+    QVERIFY(qAbs(library::VoiceprintStore::cosineSimilarity(a, c)) < 1e-6);             // orthogonal
     // different dimension gives 0
-    QCOMPARE(VoiceprintStore::cosineSimilarity(a, QVector<float>{1, 0}), 0.0);
+    QCOMPARE(library::VoiceprintStore::cosineSimilarity(a, QVector<float>{1, 0}), 0.0);
 }
 
 void VoiceprintTest::l2normalize_unit() {
-    const QVector<float> n = VoiceprintStore::l2normalize(QVector<float>{3, 4});
+    const QVector<float> n = library::VoiceprintStore::l2normalize(QVector<float>{3, 4});
     double len = std::sqrt(double(n[0]) * n[0] + double(n[1]) * n[1]);
     QVERIFY(qAbs(len - 1.0) < 1e-6);
 }
 
 void VoiceprintTest::addAndMatch() {
     QTemporaryDir dir;
-    VoiceprintStore store(dir.filePath(QStringLiteral("vp.json")));
+    library::VoiceprintStore store(dir.filePath(QStringLiteral("vp.json")));
     store.addPrint(QStringLiteral("Béla"), vp({1, 0, 0}));
     store.addPrint(QStringLiteral("Dompa"), vp({0, 1, 0}));
 
@@ -73,7 +73,7 @@ void VoiceprintTest::addAndMatch() {
 
 void VoiceprintTest::multiplePrintsTakesMax() {
     QTemporaryDir dir;
-    VoiceprintStore store(dir.filePath(QStringLiteral("vp.json")));
+    library::VoiceprintStore store(dir.filePath(QStringLiteral("vp.json")));
     // Béla with two microphones: a "bad" and a "good" voiceprint.
     store.addPrint(QStringLiteral("Béla"), vp({0, 0, 1}));
     store.addPrint(QStringLiteral("Béla"), vp({1, 0, 0}));
@@ -89,7 +89,7 @@ void VoiceprintTest::roundTripPersist() {
     QTemporaryDir dir;
     const QString path = dir.filePath(QStringLiteral("vp.json"));
     {
-        VoiceprintStore store(path);
+        library::VoiceprintStore store(path);
         Voiceprint p = vp({0.6f, 0.8f, 0.0f});
         p.sourceMeetingId = QStringLiteral("m1");
         p.sourceTrack = QStringLiteral("loopback");
@@ -97,7 +97,7 @@ void VoiceprintTest::roundTripPersist() {
         store.addPrint(QStringLiteral("Béla"), p);
     }
     // A new store on the same file.
-    VoiceprintStore reloaded(path);
+    library::VoiceprintStore reloaded(path);
     QCOMPARE(reloaded.people(), QStringList{QStringLiteral("Béla")});
     const QVector<Voiceprint> prints = reloaded.printsFor(QStringLiteral("Béla"));
     QCOMPARE(prints.size(), 1);
@@ -111,7 +111,7 @@ void VoiceprintTest::roundTripPersist() {
 
 void VoiceprintTest::renameMergeRemove() {
     QTemporaryDir dir;
-    VoiceprintStore store(dir.filePath(QStringLiteral("vp.json")));
+    library::VoiceprintStore store(dir.filePath(QStringLiteral("vp.json")));
     store.addPrint(QStringLiteral("Távoli 1"), vp({1, 0, 0}));
     store.addPrint(QStringLiteral("Béla"), vp({0, 1, 0}));
 
@@ -141,14 +141,14 @@ void VoiceprintTest::modelField_defaultAndPersist() {
         QVERIFY(f.open(QIODevice::WriteOnly));
         f.write(R"({"people":[{"name":"Béla","prints":[{"id":"p1","embedding":[1,0,0],"dim":3}]}]})");
     }
-    VoiceprintStore store(path);
+    library::VoiceprintStore store(path);
     QCOMPARE(store.printsFor(QStringLiteral("Béla")).first().model, QStringLiteral("campplus"));
     Voiceprint p = mp(QStringLiteral("other"), {0, 1, 0, 0});
     store.addPrint(QStringLiteral("Béla"), p);
     Voiceprint empty = mp(QString(), {0, 0, 1});
     store.addPrint(QStringLiteral("Béla"), empty);   // an empty model gives the default model
 
-    VoiceprintStore reloaded(path);
+    library::VoiceprintStore reloaded(path);
     const QVector<Voiceprint> prints = reloaded.printsFor(QStringLiteral("Béla"));
     QCOMPARE(prints.size(), 3);
     QCOMPARE(prints[0].model, QStringLiteral("campplus"));
@@ -161,7 +161,7 @@ void VoiceprintTest::modelField_defaultAndPersist() {
 
 void VoiceprintTest::multiModel_maxPerModelThenMean() {
     QTemporaryDir dir;
-    VoiceprintStore store(dir.filePath(QStringLiteral("vp.json")));
+    library::VoiceprintStore store(dir.filePath(QStringLiteral("vp.json")));
     // Anna: two voiceprints in m1 (the better counts), one in m2.
     store.addPrint(QStringLiteral("Anna"), mp("m1", {0, 1}));
     store.addPrint(QStringLiteral("Anna"), mp("m1", {1, 0}));
@@ -195,7 +195,7 @@ void VoiceprintTest::multiModel_maxPerModelThenMean() {
 
 void VoiceprintTest::multiModel_noCommonModel() {
     QTemporaryDir dir;
-    VoiceprintStore store(dir.filePath(QStringLiteral("vp.json")));
+    library::VoiceprintStore store(dir.filePath(QStringLiteral("vp.json")));
     store.addPrint(QStringLiteral("Anna"), mp("m1", {1, 0}));
     EmbeddingSet q;
     q["m2"] = {1, 0};
@@ -208,7 +208,7 @@ void VoiceprintTest::multiModel_noCommonModel() {
 
 void VoiceprintTest::printsMissingModel_listsSampleRefs() {
     QTemporaryDir dir;
-    VoiceprintStore store(dir.filePath(QStringLiteral("vp.json")));
+    library::VoiceprintStore store(dir.filePath(QStringLiteral("vp.json")));
     store.addPrint(QStringLiteral("Anna"), mp("campplus", {1, 0}, QStringLiteral("m/b.ogg#10-20")));
     store.addPrint(QStringLiteral("Anna"), mp("other", {1, 0}, QStringLiteral("m/b.ogg#10-20")));
     store.addPrint(QStringLiteral("Anna"), mp("campplus", {0, 1}, QStringLiteral("m/a.ogg#0-5")));
@@ -223,7 +223,7 @@ void VoiceprintTest::printsMissingModel_listsSampleRefs() {
 
 void VoiceprintTest::siblingGroups_andSamplesMissingModel() {
     QTemporaryDir dir;
-    VoiceprintStore store(dir.filePath(QStringLiteral("vp.json")));
+    library::VoiceprintStore store(dir.filePath(QStringLiteral("vp.json")));
     auto withMeta = [](Voiceprint p, const QString& meeting, const QString& created) {
         p.sourceMeetingId = meeting;
         p.createdAt = created;
@@ -238,7 +238,7 @@ void VoiceprintTest::siblingGroups_andSamplesMissingModel() {
     store.addPrint("Anna", withMeta(mp("campplus", {0.6f, 0.8f}, ref), "m1", "t1"));
     store.addPrint("Anna", mp("campplus", {0, 1}));   // without a sampleRef: its own group
 
-    const auto groups = VoiceprintStore::siblingGroups(store.printsFor("Anna"));
+    const auto groups = library::VoiceprintStore::siblingGroups(store.printsFor("Anna"));
     QCOMPARE(groups.size(), 4);
     QCOMPARE(groups[0].size(), 2);
     QCOMPARE(groups[0][0].model, QStringLiteral("campplus"));
@@ -264,13 +264,13 @@ void VoiceprintTest::sourceRefs_persist() {
     QTemporaryDir dir;
     const QString path = dir.filePath(QStringLiteral("vp.json"));
     {
-        VoiceprintStore store(path);
+        library::VoiceprintStore store(path);
         Voiceprint p = mp("campplus", {1, 0}, QStringLiteral("mixdown.mp3#0-9000"));
         p.sourceRefs = {QStringLiteral("mixdown.mp3#0-9000"), QStringLiteral("mixdown.mp3#12000-15000")};
         store.addPrint("Anna", p);
         store.addPrint("Béla", mp("campplus", {0, 1}, QStringLiteral("x.ogg#1-2")));
     }
-    VoiceprintStore again(path);
+    library::VoiceprintStore again(path);
     QCOMPARE(again.printsFor("Anna").first().sourceRefs,
              QStringList({QStringLiteral("mixdown.mp3#0-9000"), QStringLiteral("mixdown.mp3#12000-15000")}));
     QVERIFY(again.printsFor("Béla").first().sourceRefs.isEmpty());

@@ -10,7 +10,7 @@
 // Without a controller (--qml-shot / --demo / --gallery, tests) it works with FICTIONAL
 // devices and levels; `demoState` ("R01" ... "R10") sets the design states.
 //
-#include "tanara/Types.h"
+#include "tanara/domain/Types.h"
 
 #include <QAbstractListModel>
 #include <QElapsedTimer>
@@ -25,8 +25,8 @@
 #include <QtQml/qqmlregistration.h>
 
 namespace tanara {
-class AppController;
-class PlaybackRouteMonitor;
+namespace app { class AppController; }
+namespace watcher { class PlaybackRouteMonitor; }
 }
 
 namespace tanara_qml {
@@ -129,8 +129,8 @@ public:
 
     QObject* controllerObject() const;
     void setControllerObject(QObject* controller);
-    tanara::AppController* controller() const;
-    void setController(tanara::AppController* controller);
+    tanara::app::AppController* controller() const;
+    void setController(tanara::app::AppController* controller);
 
     // The automatic name: "<App> call · Oct 3, 2:02 PM", without an app "Meeting · ...".
     static QString automaticTitle(const QString& appName, const QDateTime& when);
@@ -153,7 +153,7 @@ public:
     Q_INVOKABLE bool openTagInput();
     // Wires only the tags to the core (WITHOUT device enumeration or level monitoring), for
     // tests where touching audio devices is forbidden. The full wiring is setController.
-    void attachTagsOnly(tanara::AppController* controller);
+    void attachTagsOnly(tanara::app::AppController* controller);
 
 public slots:
     void start();              // Ctrl+R
@@ -226,11 +226,11 @@ private:
 
     RecorderDeviceModel m_model{this};
     QVector<Row> m_rows;
-    QPointer<tanara::AppController> m_controller;
-    QPointer<tanara::AppController> m_tagCtl;    // the core of the tags (= m_controller, or attachTagsOnly)
+    QPointer<tanara::app::AppController> m_controller;
+    QPointer<tanara::app::AppController> m_tagCtl;    // the core of the tags (= m_controller, or attachTagsOnly)
     QMetaObject::Connection m_tagConn;
     bool m_controllerSet = false;
-    tanara::PlaybackRouteMonitor* m_routes = nullptr;
+    tanara::watcher::PlaybackRouteMonitor* m_routes = nullptr;
     QTimer m_tick;
     QTimer m_fallbackScan;               // where there is no route watcher: timed re-enumeration
     QElapsedTimer m_clock;

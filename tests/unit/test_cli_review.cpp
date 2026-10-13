@@ -7,8 +7,8 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 
-#include "tanara/edit/SpeakerOverlay.h"
-#include "tanara/edit/UtteranceEmbeddings.h"
+#include "tanara/editing/session/SpeakerOverlay.h"
+#include "tanara/processing/analysis/UtteranceEmbeddings.h"
 
 using namespace tanara;
 
@@ -77,10 +77,10 @@ private slots:
             segs.append(QJsonObject{{"startMs", i * 5000}, {"endMs", i * 5000 + (spec[i].second < 0 ? 800 : 4000)},
                                     {"speaker", spec[i].first}, {"text", "titkos szöveg"}});
         writeJson(QDir(folder).filePath("transcript.segments.json"), segs);
-        const QVector<TranscriptLine> lines = speakeredit::loadTranscriptLines(folder);
+        const QVector<TranscriptLine> lines = editing::speakeredit::loadTranscriptLines(folder);
         QCOMPARE(lines.size(), spec.size());
-        UtteranceEmbeddingCache c;
-        c.fingerprint = speakeredit::transcriptFingerprint(lines);
+        processing::UtteranceEmbeddingCache c;
+        c.fingerprint = editing::speakeredit::transcriptFingerprint(lines);
         SpeakerOverlay ov;
         ov.transcriptFingerprint = c.fingerprint;
         for (int i = 0; i < spec.size(); ++i) {
@@ -88,7 +88,7 @@ private slots:
             if (i < 6) ov.utterances[lines[i].id].confirmed = true;
         }
         QVERIFY(c.save(folder));
-        QVERIFY(speakeredit::saveOverlay(folder, ov));
+        QVERIFY(editing::speakeredit::saveOverlay(folder, ov));
 
         const QMap<QString, QString> before = snapshot(folder);
         Run r = cli({"review", folder, "--json"});
@@ -126,7 +126,7 @@ private slots:
         r = cli({"lines", "ignore", folder, lines[6].id});
         QVERIFY2(r.code == 0, qPrintable(r.err));
         QVERIFY(r.out.contains("Marked 1 line(s)"));
-        QVERIFY(speakeredit::loadOverlay(folder).utterances.value(lines[6].id).ignored);
+        QVERIFY(editing::speakeredit::loadOverlay(folder).utterances.value(lines[6].id).ignored);
 
         r = cli({"review", folder, "--json"});
         QVERIFY2(r.code == 0, qPrintable(r.err));
@@ -159,8 +159,8 @@ private slots:
 
         r = cli({"lines", "unignore", folder, lines[6].id});
         QCOMPARE(r.code, 0);
-        QVERIFY(!speakeredit::loadOverlay(folder).utterances.value(lines[6].id).ignored);
-        QVERIFY(speakeredit::loadOverlay(folder).utterances.value(lines[0].id).confirmed);
+        QVERIFY(!editing::speakeredit::loadOverlay(folder).utterances.value(lines[6].id).ignored);
+        QVERIFY(editing::speakeredit::loadOverlay(folder).utterances.value(lines[0].id).confirmed);
     }
 
 private:

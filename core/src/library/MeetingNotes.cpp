@@ -1,14 +1,14 @@
 #include "tanara/library/MeetingNotes.h"
 
 #include "tanara/foundation/text/Text.h"
-#include "tanara/stt/ISttProvider.h"
+#include "tanara/providers/stt/ISttProvider.h"
 
 #include <QRegularExpression>
 #include <QSet>
 
 #include <algorithm>
 
-namespace tanara {
+namespace tanara::library {
 namespace meetingnotes {
 
 namespace {
@@ -101,7 +101,7 @@ QString sttContextText(const Meeting& m)
     return parseAutoCallNote(note) ? QString() : note;
 }
 
-void fillSttContext(SttRequest& req, const Meeting& m)
+void fillSttContext(providers::SttRequest& req, const Meeting& m)
 {
     req.contextGeneral.clear();
     if (!m.title.trimmed().isEmpty())
@@ -208,4 +208,4 @@ QVector<NoteSuggestion> suggestNotes(const QVector<Meeting>& meetings,
 }
 
 } // namespace meetingnotes
-} // namespace tanara
+} // namespace tanara::library

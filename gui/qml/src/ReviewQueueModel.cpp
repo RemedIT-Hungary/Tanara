@@ -1,11 +1,11 @@
 #include "ReviewQueueModel.h"
 
-#include "tanara/edit/SpeakerAnalysis.h"
+#include "tanara/editing/review/SpeakerAnalysis.h"
 
 #include <algorithm>
 #include <cmath>
 
-using tanara::EditorUtterance;
+using tanara::editing::EditorUtterance;
 
 namespace tanara_qml {
 
@@ -589,7 +589,7 @@ QStringList ReviewQueueModel::confirmableIds() const
     for (const Item& it : m_items) {
         if (it.state != AlreadyDecided) continue;
         const EditorUtterance* u = utt(it.id);
-        if (u && !u->ignored && u->endMs - u->startMs >= tanara::speakeredit::kMinEmbedMs) out << it.id;
+        if (u && !u->ignored && u->endMs - u->startMs >= tanara::editing::speakeredit::kMinEmbedMs) out << it.id;
     }
     return out;
 }
@@ -899,7 +899,7 @@ QVariantList ReviewQueueModel::openers() const
             ++pending;
             // Sample estimate (the core's sample rule): a long enough, not noisy row.
             const EditorUtterance* u = utt(id);
-            if (u && !u->noisy && u->endMs - u->startMs >= tanara::speakeredit::kMinEmbedMs) ++samples;
+            if (u && !u->noisy && u->endMs - u->startMs >= tanara::editing::speakeredit::kMinEmbedMs) ++samples;
         }
         const int n = int(o.ids.size());
         QStringList spot;

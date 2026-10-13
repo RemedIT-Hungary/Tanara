@@ -4,7 +4,7 @@
 #include <QtTest>
 
 #include "tanara/foundation/text/Text.h"
-#include "tanara/tags/TagNames.h"
+#include "tanara/library/tags/TagNames.h"
 
 using namespace tanara;
 
@@ -74,9 +74,9 @@ private slots:
         QCOMPARE(text::normalizeName(QStringLiteral("  Museum \t  Plus ")), QStringLiteral("Museum Plus"));
         QCOMPARE(text::normalizeName(QStringLiteral("Ödön")), QStringLiteral("Ödön"));
         QCOMPARE(text::normalizeName(QStringLiteral("#tag")), QStringLiteral("#tag"));
-        QCOMPARE(normalizeTagName(QStringLiteral(" # #  Museum   Plus ")), QStringLiteral("Museum Plus"));
-        QCOMPARE(tagKey(QStringLiteral("Museum Plus")), tagKey(QStringLiteral("MuseumPlus")));
-        QCOMPARE(tagKey(QStringLiteral("Ügyfél-találkozó")), QStringLiteral("ugyfeltalalkozo"));
+        QCOMPARE(library::normalizeTagName(QStringLiteral(" # #  Museum   Plus ")), QStringLiteral("Museum Plus"));
+        QCOMPARE(library::tagKey(QStringLiteral("Museum Plus")), library::tagKey(QStringLiteral("MuseumPlus")));
+        QCOMPARE(library::tagKey(QStringLiteral("Ügyfél-találkozó")), QStringLiteral("ugyfeltalalkozo"));
     }
 };
 

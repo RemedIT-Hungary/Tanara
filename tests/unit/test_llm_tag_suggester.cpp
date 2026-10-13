@@ -6,11 +6,11 @@
 #include <QTemporaryDir>
 #include <QJsonArray>
 
-#include "tanara/PromptLibrary.h"
-#include "tanara/llm/OpenAiCompatibleProvider.h"
-#include "tanara/store/MeetingStore.h"
-#include "tanara/tags/LlmTagSuggester.h"
-#include "tanara/tags/TagService.h"
+#include "tanara/processing/summary/PromptLibrary.h"
+#include "tanara/providers/chat/OpenAiCompatibleProvider.h"
+#include "tanara/library/store/MeetingStore.h"
+#include "tanara/processing/analysis/LlmTagSuggester.h"
+#include "tanara/library/tags/TagService.h"
 #include "fake_http.h"
 #include "tags_fixture.h"
 
@@ -30,8 +30,8 @@ private slots:
 
 private:
     std::unique_ptr<QTemporaryDir> m_dir;
-    std::unique_ptr<MeetingStore> m_store;
-    std::unique_ptr<TagService> m_tags;
+    std::unique_ptr<library::MeetingStore> m_store;
+    std::unique_ptr<library::TagService> m_tags;
     tagsfixture::Library m_lib;
     Tag m_nordvik, m_museum, m_belso;
 };
@@ -40,9 +40,9 @@ void LlmTagSuggesterTest::init()
 {
     m_dir = std::make_unique<QTemporaryDir>();
     QVERIFY(m_dir->isValid());
-    m_store = std::make_unique<MeetingStore>(m_dir->filePath("rec"), m_dir->filePath("meta"));
+    m_store = std::make_unique<library::MeetingStore>(m_dir->filePath("rec"), m_dir->filePath("meta"));
     m_lib = tagsfixture::buildLibrary(*m_store);
-    m_tags = std::make_unique<TagService>(m_store.get(), m_dir->filePath("meta/tags.json"));
+    m_tags = std::make_unique<library::TagService>(m_store.get(), m_dir->filePath("meta/tags.json"));
     m_nordvik = m_tags->addTag(m_lib.nordvik1, QStringLiteral("Nordvik"));
     m_tags->addTag(m_lib.nordvik2, m_nordvik.id);
     m_museum = m_tags->addTag(m_lib.museum1, QStringLiteral("MuseumPlus"));
@@ -58,60 +58,60 @@ void LlmTagSuggesterTest::cleanup()
 
 void LlmTagSuggesterTest::promptExists()
 {
-    const QString p = promptBuiltin(QStringLiteral("tags"));
+    const QString p = processing::promptBuiltin(QStringLiteral("tags"));
     QVERIFY(p.contains(QStringLiteral("pick:")));
     QVERIFY(p.contains(QStringLiteral("new:")));
     QVERIFY(!p.contains(QStringLiteral("json_schema")));
-    QCOMPARE(promptOutputFormat(QStringLiteral("tags")).kind, QStringLiteral("text"));
+    QCOMPARE(processing::promptOutputFormat(QStringLiteral("tags")).kind, QStringLiteral("text"));
 }
 
 void LlmTagSuggesterTest::candidatesAndMessage()
 {
-    LlmTagSuggester s(m_tags.get());
+    processing::LlmTagSuggester s(m_tags.get());
     TagSuggestion sug;
     sug.tagId = m_museum.id;
     sug.name = m_museum.name;
-    const QVector<LlmTagCandidate> c = s.candidates({ sug });
+    const QVector<processing::LlmTagCandidate> c = s.candidates({ sug });
     QCOMPARE(c.size(), 3);
     QCOMPARE(c.first().tagId, m_museum.id);          // the suggestion first
     QCOMPARE(c.at(1).tagId, m_nordvik.id);           // then the most frequent
     QVERIFY(c.at(1).profileLine.contains(QStringLiteral("Kovács Anna")));
     QVERIFY(c.at(1).profileLine.contains(QStringLiteral("Nordvik ütemterv egyeztetés")));
 
-    const QString msg = LlmTagSuggester::buildUserMessage(QStringLiteral("A Nordvik raktár ütemterve."), c);
+    const QString msg = processing::LlmTagSuggester::buildUserMessage(QStringLiteral("A Nordvik raktár ütemterve."), c);
     QVERIFY(msg.startsWith(QStringLiteral("MEETING SUMMARY\nA Nordvik raktár ütemterve.")));
     QVERIFY(msg.contains(QStringLiteral("1. MuseumPlus")));
     QVERIFY(msg.contains(QStringLiteral("2. Nordvik — ")));
     QVERIFY(msg.contains(QStringLiteral("3. Belső")));
     QVERIFY(msg.contains(QStringLiteral("pick:")));
-    QVERIFY(LlmTagSuggester::buildUserMessage("x", {}).contains(QStringLiteral("(none yet)")));
+    QVERIFY(processing::LlmTagSuggester::buildUserMessage("x", {}).contains(QStringLiteral("(none yet)")));
 }
 
 void LlmTagSuggesterTest::lenientParsing()
 {
-    auto p = LlmTagSuggester::parse(QStringLiteral("pick: 3, 7\nnew: Raktárköltözés; Q4 audit"));
+    auto p = processing::LlmTagSuggester::parse(QStringLiteral("pick: 3, 7\nnew: Raktárköltözés; Q4 audit"));
     QCOMPARE(p.picks, (QVector<int>{3, 7}));
     QCOMPARE(p.newNames, (QStringList{"Raktárköltözés", "Q4 audit"}));
 
-    p = LlmTagSuggester::parse(QStringLiteral("Sure!\n**Pick:** 2 and 2, 5.\n- **New:** \"#Raktár\", none\n"));
+    p = processing::LlmTagSuggester::parse(QStringLiteral("Sure!\n**Pick:** 2 and 2, 5.\n- **New:** \"#Raktár\", none\n"));
     QCOMPARE(p.picks, (QVector<int>{2, 5}));
     QCOMPARE(p.newNames, QStringList{"Raktár"});
 
-    p = LlmTagSuggester::parse(QStringLiteral("PICK = none\nNEW: none"));
+    p = processing::LlmTagSuggester::parse(QStringLiteral("PICK = none\nNEW: none"));
     QVERIFY(p.picks.isEmpty());
     QVERIFY(p.newNames.isEmpty());
 
-    p = LlmTagSuggester::parse(QStringLiteral("new: Alfa; alfa; Béta;  "));
+    p = processing::LlmTagSuggester::parse(QStringLiteral("new: Alfa; alfa; Béta;  "));
     QCOMPARE(p.newNames, (QStringList{"Alfa", "Béta"}));
-    QVERIFY(LlmTagSuggester::parse(QStringLiteral("Nincs megfelelő címke.")).picks.isEmpty());
+    QVERIFY(processing::LlmTagSuggester::parse(QStringLiteral("Nincs megfelelő címke.")).picks.isEmpty());
 }
 
 void LlmTagSuggesterTest::toSuggestions()
 {
-    LlmTagSuggester s(m_tags.get());
-    const QVector<LlmTagCandidate> c = s.candidates({});   // Nordvik, MuseumPlus/Internal (by frequency)
+    processing::LlmTagSuggester s(m_tags.get());
+    const QVector<processing::LlmTagCandidate> c = s.candidates({});   // Nordvik, MuseumPlus/Internal (by frequency)
     QCOMPARE(c.first().tagId, m_nordvik.id);
-    LlmTagSuggester::Parsed p;
+    processing::LlmTagSuggester::Parsed p;
     p.picks = { 1, 2, 99 };
     p.newNames = { QStringLiteral("Nordvk"), QStringLiteral("Raktárköltözés"), QStringLiteral("Audit"),
                    QStringLiteral("Harmadik") };
@@ -153,10 +153,10 @@ void LlmTagSuggesterTest::fullRunAgainstFakeServer()
     ProviderConfig cfg;
     cfg.baseUrl = http.base();
     cfg.model = QStringLiteral("google/gemma-4-12b");
-    OpenAiCompatibleProvider provider(cfg);
-    LlmTagSuggester s(m_tags.get());
-    QSignalSpy done(&s, &LlmTagSuggester::finished);
-    s.start(&provider, cfg.model, promptBuiltin(QStringLiteral("tags")), m_lib.museum2,
+    providers::OpenAiCompatibleProvider provider(cfg);
+    processing::LlmTagSuggester s(m_tags.get());
+    QSignalSpy done(&s, &processing::LlmTagSuggester::finished);
+    s.start(&provider, cfg.model, processing::promptBuiltin(QStringLiteral("tags")), m_lib.museum2,
             QStringLiteral("A raktár költözéséről volt szó."), {});
     QVERIFY(s.isRunning());
     QVERIFY(done.wait(5000));

@@ -12,9 +12,9 @@
 
 #include <memory>
 
-#include "tanara/AppController.h"
-#include "tanara/SettingsManager.h"
-#include "tanara/audio/DeviceManager.h"
+#include "tanara/app/AppController.h"
+#include "tanara/app/SettingsManager.h"
+#include "tanara/recording/audio/DeviceManager.h"
 
 #include "fake_audio_engine.h"
 
@@ -69,7 +69,7 @@ void DeviceUnplugTest::unplugDuringRecordingClosesOnlyThatTrack()
     QVERIFY(home.isValid());
     qputenv("TANARA_HOME", home.path().toUtf8());
 
-    auto app = std::make_unique<AppController>();
+    auto app = std::make_unique<app::AppController>();
     QVERIFY(app->settings()->settings().audioDir.startsWith(home.path()));
     app->setAutoMixdownAfterRecording(false);
 
@@ -91,10 +91,10 @@ void DeviceUnplugTest::unplugDuringRecordingClosesOnlyThatTrack()
     feeder.setInterval(5);
     QObject::connect(&feeder, &QTimer::timeout, [&engine, &alive] { if (engine && alive && *alive) engine->feed(); });
 
-    QSignalSpy closed(app.get(), &AppController::recordingTrackClosed);
-    QSignalSpy finished(app.get(), &AppController::recordingFinished);
+    QSignalSpy closed(app.get(), &app::AppController::recordingTrackClosed);
+    QSignalSpy finished(app.get(), &app::AppController::recordingFinished);
     QStringList errors;
-    connect(app.get(), &AppController::errorOccurred, this, [&errors](const QString& e) { errors << e; });
+    connect(app.get(), &app::AppController::errorOccurred, this, [&errors](const QString& e) { errors << e; });
 
     app->startRecording(QStringLiteral("Kihúzás"), {mic, headset, mon});
     QCOMPARE(app->recordingState(), RecordingState::Recording);
@@ -131,8 +131,8 @@ void DeviceUnplugTest::unplugDuringRecordingClosesOnlyThatTrack()
     // Plug back in: the device is in the enumeration again. One sighting is not enough
     // (stability); after the second (timed) enumeration we record it again by ourselves: a new
     // track, with an offset.
-    QSignalSpy added(app.get(), &AppController::recordingTrackAdded);
-    QSignalSpy returned(app.get(), &AppController::recordingDeviceReturned);
+    QSignalSpy added(app.get(), &app::AppController::recordingTrackAdded);
+    QSignalSpy returned(app.get(), &app::AppController::recordingDeviceReturned);
     engine->revive(headset.name);
     app->devices()->setDeviceListOverride(QVector<AudioDeviceInfo>{mic, headset, mon});
     app->refreshDevices();

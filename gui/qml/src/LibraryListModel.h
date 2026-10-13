@@ -23,7 +23,7 @@
 #include <QtQml/qqmlregistration.h>
 
 namespace tanara {
-class AppController;
+namespace app { class AppController; }
 }
 
 namespace tanara_qml {
@@ -85,7 +85,7 @@ public:
     explicit LibraryListModel(QObject* parent = nullptr);
 
     // The controller defaults to the App singleton's; injectable in tests.
-    void setController(tanara::AppController* controller);
+    void setController(tanara::app::AppController* controller);
 
     int rowCount(const QModelIndex& parent = {}) const override;
     QVariant data(const QModelIndex& index, int role) const override;
@@ -116,7 +116,7 @@ public:
 
     // A meeting's entry regardless of filtering (the bulk selection's panel works from this):
     // with a controller from the MeetingLibrary, in the demo from the sample library.
-    tanara::LibraryEntry entryFor(const QString& meetingId) const;
+    tanara::library::LibraryEntry entryFor(const QString& meetingId) const;
     // The row's third line: as many "#Name" as fit in ~24 characters, then "+N".
     static QStringList tagLine(const QStringList& names);
     bool forceEmpty() const { return m_forceEmpty; }
@@ -154,15 +154,15 @@ private:
     void attach();
     void scheduleRefresh(int delayMs = 0);
     void onMeetingChanged(const QString& meetingId);
-    void apply(const tanara::LibraryResult& result);
-    tanara::LibraryResult runQuery() const;
-    tanara::MeetingLibrary* library() const;
+    void apply(const tanara::library::LibraryResult& result);
+    tanara::library::LibraryResult runQuery() const;
+    tanara::library::MeetingLibrary* library() const;
 
-    QPointer<tanara::AppController> m_controller;
-    QPointer<tanara::MeetingLibrary> m_library;     // the one we are currently bound to
+    QPointer<tanara::app::AppController> m_controller;
+    QPointer<tanara::library::MeetingLibrary> m_library;     // the one we are currently bound to
     bool m_controllerInjected = false;
-    tanara::LibraryQuery m_query;
-    QVector<tanara::LibraryEntry> m_entries;
+    tanara::library::LibraryQuery m_query;
+    QVector<tanara::library::LibraryEntry> m_entries;
     int m_total = 0;
     bool m_forceEmpty = false;
     QTimer m_refreshTimer;

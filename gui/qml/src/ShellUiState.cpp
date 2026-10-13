@@ -2,9 +2,9 @@
 
 #include "AppContext.h"
 
-#include "tanara/AppController.h"
+#include "tanara/app/AppController.h"
 #include "tanara/foundation/paths/Paths.h"
-#include "tanara/SettingsManager.h"
+#include "tanara/app/SettingsManager.h"
 
 #include <QDir>
 #include <QFile>
@@ -22,7 +22,7 @@ ShellUiState::ShellUiState(QObject* parent) : QObject(parent)
     connect(&m_saveTimer, &QTimer::timeout, this, &ShellUiState::flush);
 
     // Disk state exists only with a real controller (the demo / screenshot writes nowhere).
-    if (tanara::AppController* c = AppContext::instance()->controller()) {
+    if (tanara::app::AppController* c = AppContext::instance()->controller()) {
         if (c->settings())
             setFilePath(tanara::paths::metadataFile(QStringLiteral("ui-state.json"),
                                                     c->settings()->settings().metadataDir));

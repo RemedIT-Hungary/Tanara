@@ -16,8 +16,8 @@
 #include "TrackActivityItem.h"
 #include "TrackActivityModel.h"
 
-#include "tanara/AppController.h"
-#include "tanara/store/MeetingStore.h"
+#include "tanara/app/AppController.h"
+#include "tanara/library/store/MeetingStore.h"
 
 #include <QQmlApplicationEngine>
 #include <QQmlComponent>
@@ -212,7 +212,7 @@ private slots:
             return FakeBackend::last = new FakeBackend(parent);
         });
         {
-            tanara::AppController app;
+            tanara::app::AppController app;
             tanara::Meeting m = app.store()->createMeeting(QStringLiteral("Sávok"));
             for (const char* f : {"a.ogg", "b.ogg", "l.ogg"}) {
                 QFile file(QDir(m.folder).filePath(QLatin1String(f)));

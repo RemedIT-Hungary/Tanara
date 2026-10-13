@@ -6,9 +6,9 @@
 #include "ShellFormat.h"
 #include "SummaryProgress.h"
 
-#include "tanara/AppController.h"
-#include "tanara/jobs/MeetingJobTracker.h"
-#include "tanara/store/MeetingStore.h"
+#include "tanara/app/AppController.h"
+#include "tanara/library/jobs/MeetingJobTracker.h"
+#include "tanara/library/store/MeetingStore.h"
 
 #include <QDir>
 #include <QFile>
@@ -111,7 +111,7 @@ ShellMeetingModel::ShellMeetingModel(QObject* parent)
     attach();
 }
 
-void ShellMeetingModel::setController(tanara::AppController* controller)
+void ShellMeetingModel::setController(tanara::app::AppController* controller)
 {
     m_controllerInjected = true;
     m_controller = controller;
@@ -127,35 +127,35 @@ void ShellMeetingModel::attach()
             if (m_attached->jobs()) m_attached->jobs()->disconnect(this);
         }
         m_attached = m_controller;
-        if (tanara::AppController* c = m_controller) {
-            if (tanara::MeetingStore* store = c->store()) {
-                connect(store, &tanara::MeetingStore::meetingUpdated, this,
+        if (tanara::app::AppController* c = m_controller) {
+            if (tanara::library::MeetingStore* store = c->store()) {
+                connect(store, &tanara::library::MeetingStore::meetingUpdated, this,
                         &ShellMeetingModel::onMeetingTouched);
-                connect(store, &tanara::MeetingStore::meetingRemoved, this,
+                connect(store, &tanara::library::MeetingStore::meetingRemoved, this,
                         &ShellMeetingModel::onMeetingTouched);
             }
-            connect(c, &tanara::AppController::speakerMapChanged, this,
+            connect(c, &tanara::app::AppController::speakerMapChanged, this,
                     &ShellMeetingModel::onMeetingTouched);
-            connect(c, &tanara::AppController::summaryStaleChanged, this,
+            connect(c, &tanara::app::AppController::summaryStaleChanged, this,
                     &ShellMeetingModel::onMeetingTouched);
-            connect(c, &tanara::AppController::tracksChanged, this,
+            connect(c, &tanara::app::AppController::tracksChanged, this,
                     &ShellMeetingModel::onMeetingTouched);
-            connect(c, &tanara::AppController::transcriptReady, this,
+            connect(c, &tanara::app::AppController::transcriptReady, this,
                     [this](const QString& id, const QString&) {
                 // New transcript -> new suggestions (the controller drops the old profile first).
                 if (id == m_meetingId) m_tagsRequestedFor.clear();
                 onMeetingTouched(id);
             });
-            connect(c, &tanara::AppController::summaryReady, this,
+            connect(c, &tanara::app::AppController::summaryReady, this,
                     [this](const QString& id, const QString&) { onMeetingTouched(id); });
-            if (tanara::MeetingJobTracker* jobs = c->jobs()) {
-                connect(jobs, &tanara::MeetingJobTracker::stateChanged, this,
+            if (tanara::library::MeetingJobTracker* jobs = c->jobs()) {
+                connect(jobs, &tanara::library::MeetingJobTracker::stateChanged, this,
                         [this](const QString& id) {
                     if (id != m_meetingId) return;
                     // The state (e.g. the stale marker) and the running tasks may have changed too.
                     reload();
                 });
-                connect(jobs, &tanara::MeetingJobTracker::jobProgressChanged, this,
+                connect(jobs, &tanara::library::MeetingJobTracker::jobProgressChanged, this,
                         [this](const QString& id, const tanara::JobProgress&) {
                     if (id == m_meetingId) reloadTasks();
                 });
@@ -226,7 +226,7 @@ void ShellMeetingModel::reload()
             meta = metaLine(m.startedAt, m.durationMs, tail);
             stale = m.hasSummary && m_controller->summaryStale(m).stale;
             hasSummary = m.hasSummary;
-            provider = jobsupport::providerLabel(m_controller, tanara::WorkflowStep::Summarize);
+            provider = jobsupport::providerLabel(m_controller, tanara::providers::WorkflowStep::Summarize);
         }
     } else if (!m_meetingId.isEmpty() && !m_controller && AppContext::instance()->demo()) {
         if (const demo::DemoMeeting* d = demo::find(m_meetingId)) {

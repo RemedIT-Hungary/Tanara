@@ -6,13 +6,13 @@
 #include "JobSupport.h"
 #include "ShellMeetingModel.h"
 
-#include "tanara/AppController.h"
-#include "tanara/SettingsManager.h"
-#include "tanara/edit/SpeakerEditor.h"
-#include "tanara/jobs/MeetingJobTracker.h"
-#include "tanara/store/MeetingStore.h"
-#include "tanara/summary/SummaryStore.h"
-#include "tanara/tags/TagService.h"
+#include "tanara/app/AppController.h"
+#include "tanara/app/SettingsManager.h"
+#include "tanara/editing/session/SpeakerEditor.h"
+#include "tanara/library/jobs/MeetingJobTracker.h"
+#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/summary/SummaryStore.h"
+#include "tanara/library/tags/TagService.h"
 
 #include <QFileInfo>
 #include <QLocale>
@@ -150,7 +150,7 @@ OverviewViewModel::OverviewViewModel(QObject* parent) : QObject(parent)
     reload();
 }
 
-AppController* OverviewViewModel::app() const { return jobsupport::resolveController(m_injected); }
+app::AppController* OverviewViewModel::app() const { return jobsupport::resolveController(m_injected); }
 QObject* OverviewViewModel::controllerObject() const { return app(); }
 
 void OverviewViewModel::setController(QObject* controller)
@@ -189,7 +189,7 @@ void OverviewViewModel::scheduleReload()
 
 void OverviewViewModel::connectController()
 {
-    AppController* c = app();
+    app::AppController* c = app();
     if (c == m_connected)
         return;
     for (const QMetaObject::Connection& conn : std::as_const(m_connections))
@@ -201,29 +201,29 @@ void OverviewViewModel::connectController()
     auto mine = [this](const QString& id) {
         if (id == m_meetingId) scheduleReload();
     };
-    m_connections << connect(c, &AppController::participantsChanged, this, mine)
-                  << connect(c, &AppController::participantAnalysisStarted, this, mine)
-                  << connect(c, &AppController::participantAnalysisFinished, this, mine)
-                  << connect(c, &AppController::participantAnalysisProgress, this,
+    m_connections << connect(c, &app::AppController::participantsChanged, this, mine)
+                  << connect(c, &app::AppController::participantAnalysisStarted, this, mine)
+                  << connect(c, &app::AppController::participantAnalysisFinished, this, mine)
+                  << connect(c, &app::AppController::participantAnalysisProgress, this,
                              [this](const QString& id, int done, int total, int percent) {
                                  if (id != m_meetingId) return;
                                  m_analysisProgress = {done, total, percent};
                                  scheduleReload();
                              })
-                  << connect(c, &AppController::tracksChanged, this, mine)
-                  << connect(c, &AppController::speakerMapChanged, this, mine)
-                  << connect(c, &AppController::mixdownUpdated, this,
+                  << connect(c, &app::AppController::tracksChanged, this, mine)
+                  << connect(c, &app::AppController::speakerMapChanged, this, mine)
+                  << connect(c, &app::AppController::mixdownUpdated, this,
                              [mine](const QString& id, bool) { mine(id); })
-                  << connect(c, &AppController::transcriptReady, this,
+                  << connect(c, &app::AppController::transcriptReady, this,
                              [mine](const QString& id, const QString&) { mine(id); })
-                  << connect(c, &AppController::summaryReady, this,
+                  << connect(c, &app::AppController::summaryReady, this,
                              [mine](const QString& id, const QString&) { mine(id); })
-                  << connect(c, &AppController::summaryStaleChanged, this, mine);
-    if (MeetingStore* store = c->store())
-        m_connections << connect(store, &MeetingStore::meetingUpdated, this, mine);
-    if (MeetingJobTracker* jobs = c->jobs()) {
-        m_connections << connect(jobs, &MeetingJobTracker::stateChanged, this, mine)
-                      << connect(jobs, &MeetingJobTracker::jobProgressChanged, this,
+                  << connect(c, &app::AppController::summaryStaleChanged, this, mine);
+    if (library::MeetingStore* store = c->store())
+        m_connections << connect(store, &library::MeetingStore::meetingUpdated, this, mine);
+    if (library::MeetingJobTracker* jobs = c->jobs()) {
+        m_connections << connect(jobs, &library::MeetingJobTracker::stateChanged, this, mine)
+                      << connect(jobs, &library::MeetingJobTracker::jobProgressChanged, this,
                                  [mine](const QString& id, const JobProgress&) { mine(id); });
     }
 }
@@ -250,7 +250,7 @@ QString OverviewViewModel::addParticipant(const QString& name)
     const QString n = name.trimmed();
     if (n.isEmpty())
         return {};
-    AppController* c = app();
+    app::AppController* c = app();
     if (jobsupport::demoMode(c)) {
         QVariantList rows = m_participants;
         const QString id = QStringLiteral("demo-") + QString::number(rows.size() + 1);
@@ -268,7 +268,7 @@ QString OverviewViewModel::addParticipant(const QString& name)
 
 void OverviewViewModel::removeParticipant(const QString& id)
 {
-    AppController* c = app();
+    app::AppController* c = app();
     if (jobsupport::demoMode(c)) {
         // In the demo (screenshot) in place: the row disappears.
         QVariantList rows;
@@ -284,7 +284,7 @@ void OverviewViewModel::removeParticipant(const QString& id)
         // The suggestion's lasting rejection for this meeting (a shared-undo step; the stack must
         // be created first, since it does not take tag steps from before the attachment).
         c->meetingUndo(m_meetingId);
-        if (TagService* tags = c->tags())
+        if (library::TagService* tags = c->tags())
             tags->rejectPersonForMeeting(id.mid(8), m_meetingId);
     } else {
         c->removeParticipant(m_meetingId, id);
@@ -294,7 +294,7 @@ void OverviewViewModel::removeParticipant(const QString& id)
 
 bool OverviewViewModel::setSolo()
 {
-    AppController* c = app();
+    app::AppController* c = app();
     if (jobsupport::demoMode(c))
         return true;
     const bool ok = c->setSoloMeeting(m_meetingId);
@@ -304,7 +304,7 @@ bool OverviewViewModel::setSolo()
 
 bool OverviewViewModel::reanalyze()
 {
-    AppController* c = app();
+    app::AppController* c = app();
     if (jobsupport::demoMode(c))
         return true;
     if (m_meetingId.isEmpty())
@@ -339,7 +339,7 @@ bool OverviewViewModel::nameSpeakerInDemo(const QString& speakerKey, const QStri
 
 void OverviewViewModel::setContextNote(const QString& note)
 {
-    AppController* c = app();
+    app::AppController* c = app();
     if (jobsupport::demoMode(c)) {
         if (note != m_contextNote) { m_contextNote = note; emit changed(); }
         return;
@@ -351,7 +351,7 @@ void OverviewViewModel::setContextNote(const QString& note)
 void OverviewViewModel::reload()
 {
     m_reloadTimer.stop();
-    AppController* c = app();
+    app::AppController* c = app();
     if (jobsupport::demoMode(c)) {
         loadDemo();
         return;
@@ -387,19 +387,19 @@ void OverviewViewModel::reload()
     m_candidateCount = int(std::count_if(parts.cbegin(), parts.cend(), [](const Participant& p) {
         return p.source != ParticipantSource::Manual;
     }));
-    SpeakerEditor* ed = m.hasTranscript ? c->speakerEditor(m.id) : nullptr;
-    const QVector<EditorSpeaker> speakers = ed ? ed->speakers() : QVector<EditorSpeaker>();
+    editing::SpeakerEditor* ed = m.hasTranscript ? c->speakerEditor(m.id) : nullptr;
+    const QVector<editing::EditorSpeaker> speakers = ed ? ed->speakers() : QVector<editing::EditorSpeaker>();
 
     QVariantList rows;
     QStringList names;
     QVariantList anonymous;
     if (!speakers.isEmpty()) {
         // After the transcript: the speakers (with color, share), with the participant's evidence.
-        QVector<EditorSpeaker> sorted = speakers;
+        QVector<editing::EditorSpeaker> sorted = speakers;
         std::sort(sorted.begin(), sorted.end(),
-                  [](const EditorSpeaker& a, const EditorSpeaker& b) { return a.colorIndex < b.colorIndex; });
+                  [](const editing::EditorSpeaker& a, const editing::EditorSpeaker& b) { return a.colorIndex < b.colorIndex; });
         bool anyNamed = false;
-        for (const EditorSpeaker& s : sorted) {
+        for (const editing::EditorSpeaker& s : sorted) {
             if (s.utteranceCount == 0 && !s.added) continue;
             const Participant* match = nullptr;
             for (const Participant& p : parts) {
@@ -458,10 +458,10 @@ void OverviewViewModel::reload()
     // Tag-based suggestion: people learned from the meeting's tags who are not here yet. The
     // core filters out those already here, the own person and those rejected for this meeting
     // (rejectPersonForMeeting); at most 3.
-    if (TagService* tags = c->tags(); tags && !m.id.isEmpty() && m_peopleState != QLatin1String("nobody")) {
+    if (library::TagService* tags = c->tags(); tags && !m.id.isEmpty() && m_peopleState != QLatin1String("nobody")) {
         int added = 0;
-        const QVector<PersonTagStat> stats = tags->suggestPeopleForMeeting(m.id, names, kMaxSuggestedPeople);
-        for (const PersonTagStat& st : stats) {
+        const QVector<library::PersonTagStat> stats = tags->suggestPeopleForMeeting(m.id, names, kMaxSuggestedPeople);
+        for (const library::PersonTagStat& st : stats) {
             if (std::any_of(names.cbegin(), names.cend(), [&](const QString& n) { return sameName(n, st.name); }))
                 continue;
             const QString tagName = tags->tag(st.tagId).name;
@@ -565,7 +565,7 @@ void OverviewViewModel::reload()
         const QVariantMap d = ShellMeetingModel::describeJob(*transcribeJob);
         const int pct = d.value(QStringLiteral("percent")).toInt();
         QStringList sub;
-        const QString provider = jobsupport::providerLabel(c, WorkflowStep::Transcribe).section(QStringLiteral(" · "), 0, 0);
+        const QString provider = jobsupport::providerLabel(c, providers::WorkflowStep::Transcribe).section(QStringLiteral(" · "), 0, 0);
         if (!provider.isEmpty()) sub << provider;
         if (pct >= 0) sub << QStringLiteral("%1%").arg(pct);
         const int eta = transcribeJob->etaSeconds();
@@ -585,7 +585,7 @@ void OverviewViewModel::reload()
     }
     QDateTime summaryAt;
     if (m.hasSummary)
-        summaryAt = QFileInfo(summarystore::markdownPath(m.folder)).lastModified();
+        summaryAt = QFileInfo(library::summarystore::markdownPath(m.folder)).lastModified();
     if (summaryJob) {
         const int pct = ShellMeetingModel::describeJob(*summaryJob).value(QStringLiteral("percent")).toInt();
         steps << step(QStringLiteral("summary"), tr("Összefoglaló"), pct >= 0 ? QStringLiteral("%1%").arg(pct) : tr("fut"),
@@ -609,14 +609,14 @@ void OverviewViewModel::reload()
     if (m.hasTranscript && ed) {
         qint64 speech = 0;
         int corrected = 0;
-        for (const EditorUtterance& u : ed->utterances()) {
+        for (const editing::EditorUtterance& u : ed->utterances()) {
             speech += qMax<qint64>(0, u.endMs - u.startMs);
             if (u.manuallyCorrected) ++corrected;
         }
         const int anon = int(std::count_if(speakers.cbegin(), speakers.cend(),
-                                           [](const EditorSpeaker& s) { return s.anonymous && s.utteranceCount > 0; }));
+                                           [](const editing::EditorSpeaker& s) { return s.anonymous && s.utteranceCount > 0; }));
         const int active = int(std::count_if(speakers.cbegin(), speakers.cend(),
-                                             [](const EditorSpeaker& s) { return s.utteranceCount > 0; }));
+                                             [](const editing::EditorSpeaker& s) { return s.utteranceCount > 0; }));
         stats << stat(tr("HOSSZ"), durationText, tr("felvétel"))
               << stat(tr("BESZÉD"), QStringLiteral("%1:%2").arg(speech / 3600000)
                                         .arg(int((speech / 60000) % 60), 2, 10, QLatin1Char('0')),

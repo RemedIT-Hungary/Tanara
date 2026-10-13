@@ -8,7 +8,7 @@
 // So the main window can be driven without a display (QT_QPA_PLATFORM=offscreen) and without
 // touching the user's desktop (mouse, focus). In normal use, without the switch, it does nothing.
 #include "AppContext.h"
-#include "tanara/AppController.h"
+#include "tanara/app/AppController.h"
 
 #include <QAbstractButton>
 #include <QApplication>

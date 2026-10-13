@@ -17,8 +17,8 @@ class QSystemTrayIcon;
 class QTimer;
 
 namespace tanara {
-class SettingsManager;
-class IMeetingDetector;
+namespace app { class SettingsManager; }
+namespace watcher { class IMeetingDetector; }
 }
 
 namespace tanara_watcher {
@@ -67,8 +67,8 @@ private:
     void reloadSettingsIfChanged();
     void applySettings();
 
-    tanara::SettingsManager*  m_settings = nullptr;
-    tanara::IMeetingDetector* m_detector = nullptr;   // owned (deleted in the dtor)
+    tanara::app::SettingsManager*  m_settings = nullptr;
+    tanara::watcher::IMeetingDetector* m_detector = nullptr;   // owned (deleted in the dtor)
     QSystemTrayIcon* m_tray = nullptr;
     QTimer*          m_timer = nullptr;
     QTimer*          m_stateTimer = nullptr;   // 1 s: elapsed time + watches the lock

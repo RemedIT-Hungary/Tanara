@@ -1,8 +1,8 @@
 #include "TagControllerBackend.h"
 
-#include "tanara/AppController.h"
-#include "tanara/tags/PersonTags.h"
-#include "tanara/tags/TagService.h"
+#include "tanara/app/AppController.h"
+#include "tanara/library/tags/PersonTags.h"
+#include "tanara/library/tags/TagService.h"
 
 #include <QHash>
 
@@ -63,7 +63,7 @@ tanara::TagSource sourceOf(TagAddSource s)
     return tanara::TagSource::Manual;
 }
 
-PersonTagItem toItem(const tanara::PersonTagStat& s)
+PersonTagItem toItem(const tanara::library::PersonTagStat& s)
 {
     return {s.name, s.tagId, s.shared, s.tagTotal, s.personTotal, s.manual, s.rejected};
 }
@@ -82,32 +82,32 @@ bool subsetOf(const QVector<tanara::TagSuggestion>& list, const QVector<tanara::
 
 } // namespace
 
-TagControllerBackend::TagControllerBackend(tanara::AppController* controller, QObject* parent)
+TagControllerBackend::TagControllerBackend(tanara::app::AppController* controller, QObject* parent)
     : TagBackend(parent), m_controller(controller)
 {
     if (!controller) return;
-    connect(controller, &tanara::AppController::tagSuggestionsComputing, this, [this](const QString& id) {
+    connect(controller, &tanara::app::AppController::tagSuggestionsComputing, this, [this](const QString& id) {
         m_computing.insert(id);
         emit suggestionsChanged(id);
     });
-    connect(controller, &tanara::AppController::tagSuggestionsReady, this,
+    connect(controller, &tanara::app::AppController::tagSuggestionsReady, this,
             [this](const QString& id, const QVector<tanara::TagSuggestion>& list) {
         const bool fresh = m_computing.remove(id);
         if (fresh || !m_lists.contains(id) || !subsetOf(list, m_lists.value(id))) m_lists.insert(id, list);
         emit suggestionsChanged(id);
     });
-    if (tanara::TagService* s = service()) {
-        connect(s, &tanara::TagService::tagsChanged, this, &TagBackend::tagsChanged);
-        connect(s, &tanara::TagService::meetingTagsChanged, this, &TagBackend::meetingTagsChanged);
-        connect(s, &tanara::TagService::undoChanged, this, &TagBackend::undoChanged);
-        connect(s, &tanara::TagService::personTagsChanged, this, &TagBackend::personTagsChanged);
+    if (tanara::library::TagService* s = service()) {
+        connect(s, &tanara::library::TagService::tagsChanged, this, &TagBackend::tagsChanged);
+        connect(s, &tanara::library::TagService::meetingTagsChanged, this, &TagBackend::meetingTagsChanged);
+        connect(s, &tanara::library::TagService::undoChanged, this, &TagBackend::undoChanged);
+        connect(s, &tanara::library::TagService::personTagsChanged, this, &TagBackend::personTagsChanged);
         // A person-level rejection lives in the rejected list: for the view this is a person change too.
-        connect(s, &tanara::TagService::rejectedChanged, this, [this] { emit personTagsChanged(QString()); });
-        connect(s, &tanara::TagService::personStatsChanged, this, &TagBackend::personStatsChanged);
+        connect(s, &tanara::library::TagService::rejectedChanged, this, [this] { emit personTagsChanged(QString()); });
+        connect(s, &tanara::library::TagService::personStatsChanged, this, &TagBackend::personStatsChanged);
     }
 }
 
-tanara::TagService* TagControllerBackend::service() const
+tanara::library::TagService* TagControllerBackend::service() const
 {
     return m_controller ? m_controller->tags() : nullptr;
 }
@@ -128,14 +128,14 @@ TagSuggestionItem TagControllerBackend::toItem(const tanara::TagSuggestion& s)
 QVector<TagItem> TagControllerBackend::tags() const
 {
     QVector<TagItem> out;
-    if (tanara::TagService* s = service())
+    if (tanara::library::TagService* s = service())
         for (const tanara::TagUsage& u : s->all()) out.push_back(tanara_qml::toItem(u));
     return out;
 }
 
 QVector<TagItem> TagControllerBackend::recent(int limit) const
 {
-    tanara::TagService* s = service();
+    tanara::library::TagService* s = service();
     if (!s) return {};
     QHash<QString, tanara::TagUsage> usage;
     for (const tanara::TagUsage& u : s->all()) usage.insert(u.tag.id, u);
@@ -149,20 +149,20 @@ QVector<TagItem> TagControllerBackend::recent(int limit) const
 
 QStringList TagControllerBackend::tagsOf(const QString& meetingId) const
 {
-    tanara::TagService* s = service();
+    tanara::library::TagService* s = service();
     return s && !meetingId.isEmpty() ? s->tagsOf(meetingId) : QStringList();
 }
 
 QString TagControllerBackend::addTag(const QString& meetingId, const QString& nameOrId, TagAddSource source)
 {
-    tanara::TagService* s = service();
+    tanara::library::TagService* s = service();
     if (!s || meetingId.isEmpty()) return {};
     return s->addTag(meetingId, nameOrId, sourceOf(source)).id;
 }
 
 void TagControllerBackend::removeTag(const QString& meetingId, const QString& tagId)
 {
-    if (tanara::TagService* s = service(); s && !meetingId.isEmpty()) s->removeTag(meetingId, tagId);
+    if (tanara::library::TagService* s = service(); s && !meetingId.isEmpty()) s->removeTag(meetingId, tagId);
 }
 
 TagSuggestionState TagControllerBackend::suggestions(const QString& meetingId) const
@@ -170,7 +170,7 @@ TagSuggestionState TagControllerBackend::suggestions(const QString& meetingId) c
     TagSuggestionState state;
     if (!m_controller || meetingId.isEmpty()) return state;
     state.computing = m_computing.contains(meetingId);
-    tanara::TagService* svc = service();
+    tanara::library::TagService* svc = service();
     const auto it = m_lists.constFind(meetingId);
     QVector<tanara::TagSuggestion> list = it != m_lists.constEnd() ? *it : m_controller->pendingTagSuggestions(meetingId);
     list.erase(std::remove_if(list.begin(), list.end(), [&](const tanara::TagSuggestion& sg) {
@@ -208,7 +208,7 @@ void TagControllerBackend::requestCooccur(const QString& meetingId, const QStrin
 
 void TagControllerBackend::reject(const QString& meetingId, const TagSuggestionItem& suggestion)
 {
-    tanara::TagService* s = service();
+    tanara::library::TagService* s = service();
     if (!s || meetingId.isEmpty()) return;
     tanara::TagSuggestion sg;
     sg.tagId = suggestion.isNew ? QString() : suggestion.tagId;
@@ -221,14 +221,14 @@ void TagControllerBackend::reject(const QString& meetingId, const TagSuggestionI
 
 bool TagControllerBackend::isRejected(const QString& meetingId, const QString& tagIdOrName) const
 {
-    tanara::TagService* s = service();
+    tanara::library::TagService* s = service();
     return s && s->isRejected(meetingId, tagIdOrName);
 }
 
 TagProfileItem TagControllerBackend::profile(const QString& tagId) const
 {
     TagProfileItem out;
-    tanara::TagService* s = service();
+    tanara::library::TagService* s = service();
     if (!s || tagId.isEmpty()) return out;
     const tanara::TagProfile p = s->profile(tagId);
     out.tagId = p.tagId.isEmpty() ? tagId : p.tagId;
@@ -242,109 +242,109 @@ TagProfileItem TagControllerBackend::profile(const QString& tagId) const
 
 bool TagControllerBackend::rename(const QString& tagId, const QString& name)
 {
-    tanara::TagService* s = service();
+    tanara::library::TagService* s = service();
     return s && s->rename(tagId, name);
 }
 
 void TagControllerBackend::merge(const QString& fromId, const QString& keepId)
 {
-    if (tanara::TagService* s = service()) s->merge(fromId, keepId);
+    if (tanara::library::TagService* s = service()) s->merge(fromId, keepId);
 }
 
 void TagControllerBackend::remove(const QString& tagId)
 {
-    if (tanara::TagService* s = service()) s->remove(tagId);
+    if (tanara::library::TagService* s = service()) s->remove(tagId);
 }
 
 void TagControllerBackend::beginGroup(const QString& label)
 {
-    if (tanara::TagService* s = service()) s->beginGroup(label);
+    if (tanara::library::TagService* s = service()) s->beginGroup(label);
 }
 
 void TagControllerBackend::endGroup()
 {
-    if (tanara::TagService* s = service()) s->endGroup();
+    if (tanara::library::TagService* s = service()) s->endGroup();
 }
 
 bool TagControllerBackend::canUndo() const
 {
-    tanara::TagService* s = service();
+    tanara::library::TagService* s = service();
     return s && s->canUndo();
 }
 
 QString TagControllerBackend::undoLabel() const
 {
-    tanara::TagService* s = service();
+    tanara::library::TagService* s = service();
     return s ? s->undoLabel() : QString();
 }
 
 void TagControllerBackend::undo()
 {
-    if (tanara::TagService* s = service()) s->undo();
+    if (tanara::library::TagService* s = service()) s->undo();
 }
 
 // ---- people ----
 
 QString TagControllerBackend::selfName() const
 {
-    tanara::TagService* s = service();
+    tanara::library::TagService* s = service();
     return s ? s->selfName() : QString();
 }
 
 QStringList TagControllerBackend::tagsOfPerson(const QString& name) const
 {
-    tanara::TagService* s = service();
+    tanara::library::TagService* s = service();
     return s ? s->tagsOfPerson(name) : QStringList();
 }
 
 QString TagControllerBackend::addPersonTag(const QString& name, const QString& nameOrId)
 {
-    tanara::TagService* s = service();
+    tanara::library::TagService* s = service();
     return s ? s->addPersonTag(name, nameOrId).id : QString();
 }
 
 void TagControllerBackend::removePersonTag(const QString& name, const QString& tagId)
 {
-    if (tanara::TagService* s = service()) s->removePersonTag(name, tagId);
+    if (tanara::library::TagService* s = service()) s->removePersonTag(name, tagId);
 }
 
 void TagControllerBackend::rejectPersonTag(const QString& name, const QString& tagId)
 {
-    if (tanara::TagService* s = service()) s->rejectPersonTag(name, tagId);
+    if (tanara::library::TagService* s = service()) s->rejectPersonTag(name, tagId);
 }
 
 QStringList TagControllerBackend::peopleWith(const QString& tagId) const
 {
-    tanara::TagService* s = service();
+    tanara::library::TagService* s = service();
     return s ? s->peopleWith(tagId) : QStringList();
 }
 
 QVector<PersonTagItem> TagControllerBackend::peopleStats(const QString& tagId) const
 {
     QVector<PersonTagItem> out;
-    if (tanara::TagService* s = service())
-        for (const tanara::PersonTagStat& st : s->peopleStats(tagId)) out.push_back(tanara_qml::toItem(st));
+    if (tanara::library::TagService* s = service())
+        for (const tanara::library::PersonTagStat& st : s->peopleStats(tagId)) out.push_back(tanara_qml::toItem(st));
     return out;
 }
 
 QVector<PersonTagItem> TagControllerBackend::suggestTagsForPerson(const QString& name) const
 {
     QVector<PersonTagItem> out;
-    if (tanara::TagService* s = service())
-        for (const tanara::PersonTagStat& st : s->suggestTagsForPerson(name, 0)) out.push_back(tanara_qml::toItem(st));
+    if (tanara::library::TagService* s = service())
+        for (const tanara::library::PersonTagStat& st : s->suggestTagsForPerson(name, 0)) out.push_back(tanara_qml::toItem(st));
     return out;
 }
 
 int TagControllerBackend::personMeetingCount(const QString& name) const
 {
-    tanara::TagService* s = service();
+    tanara::library::TagService* s = service();
     return s ? s->personStats()->personTotal(name) : 0;
 }
 
 bool TagControllerBackend::personStatsBusy() const
 {
     // The old snapshot stays valid during a recompute: "computing" only until the first result.
-    tanara::TagService* s = service();
+    tanara::library::TagService* s = service();
     return s && s->personStatsBusy() && s->personStats()->meetingCount() == 0;
 }
 

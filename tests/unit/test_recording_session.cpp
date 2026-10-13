@@ -15,9 +15,9 @@
 #include <cmath>
 #include <memory>
 
-#include "tanara/audio/AudioEngine.h"
-#include "tanara/audio/RecordingSession.h"
-#include "tanara/audio/TrackTiming.h"
+#include "tanara/recording/audio/AudioEngine.h"
+#include "tanara/recording/audio/RecordingSession.h"
+#include "tanara/recording/audio/TrackTiming.h"
 
 #include "fake_audio_engine.h"
 
@@ -64,7 +64,7 @@ private slots:
 
 void RecordingSessionTest::fileRangeMapping()
 {
-    using tracktiming::meetingToFileRange;
+    using tanara::tracktiming::meetingToFileRange;
     // A track starting together: unchanged.
     auto r = meetingToFileRange(0, 1000, 4000);
     QVERIFY(r.valid());
@@ -83,25 +83,25 @@ void RecordingSessionTest::fileRangeMapping()
     // Empty / reversed request.
     QVERIFY(!meetingToFileRange(0, 5000, 5000).valid());
     Track t; t.startOffsetMs = 2000;
-    QCOMPARE(tracktiming::fileRange(t, 2500, 3000).startMs, qint64(500));
+    QCOMPARE(tanara::tracktiming::fileRange(t, 2500, 3000).startMs, qint64(500));
 }
 
 void RecordingSessionTest::framesOwedHelper()
 {
     using namespace tracktiming;
-    QCOMPARE(expectedFrames(1000, 48000), qint64(48000));
-    QCOMPARE(expectedFrames(-5, 48000), qint64(0));
-    QCOMPARE(framesOwed(48000, 48000, 960), qint64(0));
-    QCOMPARE(framesOwed(48000, 47500, 960), qint64(0));        // within the tolerance: nothing
-    QCOMPARE(framesOwed(48000, 40000, 960), qint64(8000));     // gap: all to be filled
-    QCOMPARE(framesOwed(48000, 50000, 960), qint64(0));        // a device running ahead: never negative
+    QCOMPARE(recording::tracktiming::expectedFrames(1000, 48000), qint64(48000));
+    QCOMPARE(recording::tracktiming::expectedFrames(-5, 48000), qint64(0));
+    QCOMPARE(recording::tracktiming::framesOwed(48000, 48000, 960), qint64(0));
+    QCOMPARE(recording::tracktiming::framesOwed(48000, 47500, 960), qint64(0));        // within the tolerance: nothing
+    QCOMPARE(recording::tracktiming::framesOwed(48000, 40000, 960), qint64(8000));     // gap: all to be filled
+    QCOMPARE(recording::tracktiming::framesOwed(48000, 50000, 960), qint64(0));        // a device running ahead: never negative
     // Filling only if the device has been silent since kGapIdleMs.
-    QCOMPARE(silenceToInsert(2000, kGapIdleMs - 1, 0, 48000), qint64(0));
-    QCOMPARE(silenceToInsert(2000, kGapIdleMs, 0, 48000), qint64(96000));
-    QCOMPARE(silenceToInsert(2000, 500, 96000 - 100, 48000), qint64(0));   // a 2 ms gap < tolerance
+    QCOMPARE(recording::tracktiming::silenceToInsert(2000, recording::tracktiming::kGapIdleMs - 1, 0, 48000), qint64(0));
+    QCOMPARE(recording::tracktiming::silenceToInsert(2000, recording::tracktiming::kGapIdleMs, 0, 48000), qint64(96000));
+    QCOMPARE(recording::tracktiming::silenceToInsert(2000, 500, 96000 - 100, 48000), qint64(0));   // a 2 ms gap < tolerance
     // Loopback fills on every platform (because of the interrupted monitor stream), the microphone does not.
-    QVERIFY(fillsCaptureGaps(TrackKind::Loopback));
-    QVERIFY(!fillsCaptureGaps(TrackKind::Mic));
+    QVERIFY(recording::tracktiming::fillsCaptureGaps(TrackKind::Loopback));
+    QVERIFY(!recording::tracktiming::fillsCaptureGaps(TrackKind::Mic));
 }
 
 void RecordingSessionTest::lateAndToggledTracksGetOffsets()
@@ -110,10 +110,10 @@ void RecordingSessionTest::lateAndToggledTracksGetOffsets()
     QTemporaryDir dir;
     FakeEngine* engine = nullptr;
     std::shared_ptr<std::atomic<bool>> alive;
-    RecordingSession rec(dir.path(), QStringLiteral("Szakaszok"));
+    recording::RecordingSession rec(dir.path(), QStringLiteral("Szakaszok"));
     rec.setEngineFactory([&engine, &alive] { auto e = std::make_unique<FakeEngine>(); engine = e.get();
         alive = engine->alive; return e; });
-    QSignalSpy finished(&rec, &RecordingSession::finished);
+    QSignalSpy finished(&rec, &recording::RecordingSession::finished);
     QTimer feeder;
     feeder.setInterval(5);
     QObject::connect(&feeder, &QTimer::timeout, [&engine, &alive] { if (engine && alive && *alive) engine->feed(); });
@@ -170,7 +170,7 @@ void RecordingSessionTest::silentLoopbackGapsAreFilled()
     QTemporaryDir dir;
     FakeEngine* engine = nullptr;
     std::shared_ptr<std::atomic<bool>> alive;
-    RecordingSession rec(dir.path(), QStringLiteral("Néma loopback"));
+    recording::RecordingSession rec(dir.path(), QStringLiteral("Néma loopback"));
     rec.setFillCaptureGaps(true);   // explicitly on (it is the default for loopback anyway)
     rec.setEngineFactory([&engine, &alive] {
         auto e = std::make_unique<FakeEngine>();
@@ -179,7 +179,7 @@ void RecordingSessionTest::silentLoopbackGapsAreFilled()
         alive = engine->alive;
         return e;
     });
-    QSignalSpy finished(&rec, &RecordingSession::finished);
+    QSignalSpy finished(&rec, &recording::RecordingSession::finished);
     QTimer feeder;
     feeder.setInterval(5);
     QObject::connect(&feeder, &QTimer::timeout, [&engine, &alive] { if (engine && alive && *alive) engine->feed(); });
@@ -213,12 +213,12 @@ void RecordingSessionTest::unpluggedDeviceClosesOnlyItsTrack()
     QTemporaryDir dir;
     FakeEngine* engine = nullptr;
     std::shared_ptr<std::atomic<bool>> alive;
-    RecordingSession rec(dir.path(), QStringLiteral("Kihúzás"));
+    recording::RecordingSession rec(dir.path(), QStringLiteral("Kihúzás"));
     rec.setEngineFactory([&engine, &alive] { auto e = std::make_unique<FakeEngine>(); engine = e.get();
         alive = engine->alive; return e; });
-    QSignalSpy finished(&rec, &RecordingSession::finished);
-    QSignalSpy closed(&rec, &RecordingSession::trackClosed);
-    QSignalSpy elapsed(&rec, &RecordingSession::elapsedChanged);
+    QSignalSpy finished(&rec, &recording::RecordingSession::finished);
+    QSignalSpy closed(&rec, &recording::RecordingSession::trackClosed);
+    QSignalSpy elapsed(&rec, &recording::RecordingSession::elapsedChanged);
     QTimer feeder;
     feeder.setInterval(5);
     QObject::connect(&feeder, &QTimer::timeout, [&engine, &alive] { if (engine && alive && *alive) engine->feed(); });

@@ -10,11 +10,11 @@
 #include <QtTest>
 #include <QObject>
 
-#include "tanara/Types.h"
-#include "tanara/provider/ProviderDescriptor.h"
-#include "tanara/provider/ProviderRegistry.h"
-#include "tanara/stt/ISttProvider.h"
-#include "tanara/llm/ILlmProvider.h"
+#include "tanara/domain/Types.h"
+#include "tanara/providers/core/ProviderDescriptor.h"
+#include "tanara/providers/core/ProviderRegistry.h"
+#include "tanara/providers/stt/ISttProvider.h"
+#include "tanara/providers/chat/ILlmProvider.h"
 
 using namespace tanara;
 
@@ -26,16 +26,16 @@ private slots:
     // correctly named instance, parented to the given QObject.
     void builtins_registerSonioxStt()
     {
-        registerBuiltinProviders();
+        providers::registerBuiltinProviders();
 
-        auto& reg = SttProviderRegistry::instance();
+        auto& reg = providers::SttProviderRegistry::instance();
         QVERIFY(reg.has(QStringLiteral("soniox")));
 
         QObject parent;
         ProviderConfig cfg;
         cfg.type = QStringLiteral("soniox");
 
-        ISttProvider* p = reg.create(QStringLiteral("soniox"), cfg, &parent);
+        providers::ISttProvider* p = reg.create(QStringLiteral("soniox"), cfg, &parent);
         QVERIFY(p != nullptr);
         QCOMPARE(p->name(), QStringLiteral("soniox"));
     }
@@ -43,13 +43,13 @@ private slots:
     // Soniox's descriptor declares a secret field with the "soniox.apiKey" KeyStore key.
     void builtins_sonioxDescriptorHasApiKeySecret()
     {
-        registerBuiltinProviders();
+        providers::registerBuiltinProviders();
 
-        const ProviderDescriptor desc =
-            SttProviderRegistry::instance().descriptor(QStringLiteral("soniox"));
+        const providers::ProviderDescriptor desc =
+            providers::SttProviderRegistry::instance().descriptor(QStringLiteral("soniox"));
 
         bool foundSecret = false;
-        for (const ConfigField& f : desc.fields) {
+        for (const providers::ConfigField& f : desc.fields) {
             if (f.isSecret && f.secretKey == QStringLiteral("soniox.apiKey")) {
                 foundSecret = true;
                 break;
@@ -61,13 +61,13 @@ private slots:
     // For an unknown id create() returns nullptr (does not throw or crash).
     void create_unknownIdReturnsNull()
     {
-        registerBuiltinProviders();
+        providers::registerBuiltinProviders();
 
         QObject parent;
         ProviderConfig cfg;
 
-        ISttProvider* p =
-            SttProviderRegistry::instance().create(QStringLiteral("nonexistent"), cfg, &parent);
+        providers::ISttProvider* p =
+            providers::SttProviderRegistry::instance().create(QStringLiteral("nonexistent"), cfg, &parent);
         QVERIFY(p == nullptr);
     }
 
@@ -75,16 +75,16 @@ private slots:
     // a non-null instance, parented to the given QObject.
     void builtins_registerOpenAiCompatLlm()
     {
-        registerBuiltinProviders();
+        providers::registerBuiltinProviders();
 
-        auto& reg = LlmProviderRegistry::instance();
+        auto& reg = providers::LlmProviderRegistry::instance();
         QVERIFY(reg.has(QStringLiteral("openai-compat")));
 
         QObject parent;
         ProviderConfig cfg;
         cfg.type = QStringLiteral("openai-compat");
 
-        ILlmProvider* p = reg.create(QStringLiteral("openai-compat"), cfg, &parent);
+        providers::ILlmProvider* p = reg.create(QStringLiteral("openai-compat"), cfg, &parent);
         QVERIFY(p != nullptr);
     }
 
@@ -93,13 +93,13 @@ private slots:
     // unchanged). See the Soniox symmetry above.
     void builtins_openAiCompatDescriptorHasApiKeySecret()
     {
-        registerBuiltinProviders();
+        providers::registerBuiltinProviders();
 
-        const ProviderDescriptor desc =
-            LlmProviderRegistry::instance().descriptor(QStringLiteral("openai-compat"));
+        const providers::ProviderDescriptor desc =
+            providers::LlmProviderRegistry::instance().descriptor(QStringLiteral("openai-compat"));
 
         bool foundSecret = false;
-        for (const ConfigField& f : desc.fields) {
+        for (const providers::ConfigField& f : desc.fields) {
             if (f.isSecret && f.secretKey == QStringLiteral("llm.apiKey")) {
                 foundSecret = true;
                 break;

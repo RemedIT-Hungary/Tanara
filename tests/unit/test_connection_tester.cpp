@@ -9,8 +9,8 @@
 #include <QTcpServer>
 #include <QTcpSocket>
 
-#include "tanara/provider/ConnectionTester.h"
-#include "tanara/provider/ProviderRegistry.h"
+#include "tanara/providers/core/ConnectionTester.h"
+#include "tanara/providers/core/ProviderRegistry.h"
 
 #include <functional>
 #include <memory>
@@ -71,9 +71,9 @@ private:
     QTcpServer m_srv;
 };
 
-ProviderDescriptor probeDescriptor()
+providers::ProviderDescriptor probeDescriptor()
 {
-    ProviderDescriptor d;
+    providers::ProviderDescriptor d;
     d.id = QStringLiteral("teszt");
     d.probe = {QStringLiteral("/models"), true};
     return d;
@@ -85,16 +85,16 @@ class TestConnectionTester : public QObject {
     Q_OBJECT
 
     // Running a probe and waiting for the result.
-    static ConnectionTestResult run(const ProviderDescriptor& d, const ProviderConfig& cfg, int timeoutMs = 3000)
+    static providers::ConnectionTestResult run(const providers::ProviderDescriptor& d, const ProviderConfig& cfg, int timeoutMs = 3000)
     {
-        ConnectionTester tester;
+        providers::ConnectionTester tester;
         tester.setTimeoutMs(timeoutMs);
-        QSignalSpy spy(&tester, &ConnectionTester::finished);
+        QSignalSpy spy(&tester, &providers::ConnectionTester::finished);
         const int id = tester.test(d, cfg);
         if (spy.isEmpty()) spy.wait(timeoutMs + 3000);
         if (spy.isEmpty()) return {};
         if (spy.first().at(0).toInt() != id) return {};
-        return spy.first().at(1).value<ConnectionTestResult>();
+        return spy.first().at(1).value<providers::ConnectionTestResult>();
     }
 
 private slots:
@@ -108,7 +108,7 @@ private slots:
         cfg.baseUrl = http.base() + QStringLiteral("/");     // the trailing slash does not matter
         cfg.model = QStringLiteral("alfa");
         cfg.apiKey = QStringLiteral("titok");
-        const ConnectionTestResult r = run(probeDescriptor(), cfg);
+        const providers::ConnectionTestResult r = run(probeDescriptor(), cfg);
         QVERIFY(r.ok());
         QCOMPARE(r.httpStatus, 200);
         QVERIFY(r.latencyMs >= 0);
@@ -131,7 +131,7 @@ private slots:
         ProviderConfig cfg;
         cfg.baseUrl = http.base();
         cfg.model = QStringLiteral("nincs-ilyen");
-        const ConnectionTestResult r = run(probeDescriptor(), cfg);
+        const providers::ConnectionTestResult r = run(probeDescriptor(), cfg);
         QVERIFY(r.ok());                                   // the connection is alive
         QCOMPARE(r.models.size(), 2);
         QVERIFY(r.warning.contains(QStringLiteral("nincs-ilyen")));   // but the model is not in the list
@@ -145,16 +145,16 @@ private slots:
         ProviderConfig cfg;
         cfg.baseUrl = http.base();
         cfg.apiKey = QStringLiteral("rossz");
-        ConnectionTestResult r = run(probeDescriptor(), cfg);
-        QCOMPARE(r.status, ConnectionTestResult::Status::AuthFailed);
+        providers::ConnectionTestResult r = run(probeDescriptor(), cfg);
+        QCOMPARE(r.status, providers::ConnectionTestResult::Status::AuthFailed);
         QCOMPARE(r.code, QStringLiteral("HTTP 401"));
         QVERIFY(r.message.contains(QStringLiteral("kulcs")));
         QVERIFY(r.latencyMs >= 0);                         // a reply came, just a rejecting one
 
         // Without a key the advice differs: the endpoint asks for a key.
         cfg.apiKey.clear();
-        const ConnectionTestResult r2 = run(probeDescriptor(), cfg);
-        QCOMPARE(r2.status, ConnectionTestResult::Status::AuthFailed);
+        const providers::ConnectionTestResult r2 = run(probeDescriptor(), cfg);
+        QCOMPARE(r2.status, providers::ConnectionTestResult::Status::AuthFailed);
         QVERIFY(r2.message != r.message);
     }
 
@@ -164,14 +164,14 @@ private slots:
         http.handler = [](const FakeRequest&) { return FakeReply{404, "not found"}; };
         ProviderConfig cfg;
         cfg.baseUrl = http.base();
-        ConnectionTestResult r = run(probeDescriptor(), cfg);
-        QCOMPARE(r.status, ConnectionTestResult::Status::NotAnApi);
+        providers::ConnectionTestResult r = run(probeDescriptor(), cfg);
+        QCOMPARE(r.status, providers::ConnectionTestResult::Status::NotAnApi);
         QCOMPARE(r.code, QStringLiteral("HTTP 404"));
 
         // 200, but not a model list (e.g. a web page): we do not count it as success.
         http.handler = [](const FakeRequest&) { return FakeReply{200, "<html>hello</html>"}; };
         r = run(probeDescriptor(), cfg);
-        QCOMPARE(r.status, ConnectionTestResult::Status::NotAnApi);
+        QCOMPARE(r.status, providers::ConnectionTestResult::Status::NotAnApi);
         QCOMPARE(r.code, QStringLiteral("EBADRESPONSE"));
         QVERIFY(!r.ok());
     }
@@ -182,12 +182,12 @@ private slots:
         ProviderConfig cfg;
         cfg.baseUrl = http.base();
         http.handler = [](const FakeRequest&) { return FakeReply{500, "{}"}; };
-        ConnectionTestResult r = run(probeDescriptor(), cfg);
-        QCOMPARE(r.status, ConnectionTestResult::Status::ServerError);
+        providers::ConnectionTestResult r = run(probeDescriptor(), cfg);
+        QCOMPARE(r.status, providers::ConnectionTestResult::Status::ServerError);
         QCOMPARE(r.code, QStringLiteral("HTTP 500"));
         http.handler = [](const FakeRequest&) { return FakeReply{429, "{}"}; };
         r = run(probeDescriptor(), cfg);
-        QCOMPARE(r.status, ConnectionTestResult::Status::ServerError);
+        QCOMPARE(r.status, providers::ConnectionTestResult::Status::ServerError);
         QCOMPARE(r.code, QStringLiteral("HTTP 429"));
     }
 
@@ -205,11 +205,11 @@ private slots:
         // On Windows a closed port is retried even after RST (~2 s per attempt), so a 3 s probe time
         // would end in ETIMEDOUT; the app's default (8 s) is plenty.
 #if defined(Q_OS_WIN)
-        const ConnectionTestResult r = run(probeDescriptor(), cfg, 8000);
+        const providers::ConnectionTestResult r = run(probeDescriptor(), cfg, 8000);
 #else
-        const ConnectionTestResult r = run(probeDescriptor(), cfg);
+        const providers::ConnectionTestResult r = run(probeDescriptor(), cfg);
 #endif
-        QCOMPARE(r.status, ConnectionTestResult::Status::Unreachable);
+        QCOMPARE(r.status, providers::ConnectionTestResult::Status::Unreachable);
         QCOMPARE(r.code, QStringLiteral("ECONNREFUSED"));
         QCOMPARE(r.httpStatus, 0);
         QCOMPARE(r.latencyMs, qint64(-1));
@@ -219,20 +219,20 @@ private slots:
     void badConfigNeverSendsARequest()
     {
         ProviderConfig cfg;
-        ConnectionTestResult r = run(probeDescriptor(), cfg);            // empty address
-        QCOMPARE(r.status, ConnectionTestResult::Status::BadConfig);
+        providers::ConnectionTestResult r = run(probeDescriptor(), cfg);            // empty address
+        QCOMPARE(r.status, providers::ConnectionTestResult::Status::BadConfig);
         QCOMPARE(r.code, QStringLiteral("EINVAL"));
         cfg.baseUrl = QStringLiteral("ftp://example.invalid/v1");        // not http(s)
         r = run(probeDescriptor(), cfg);
-        QCOMPARE(r.status, ConnectionTestResult::Status::BadConfig);
+        QCOMPARE(r.status, providers::ConnectionTestResult::Status::BadConfig);
         cfg.baseUrl = QStringLiteral("localhost:1234/v1");               // without a scheme
         r = run(probeDescriptor(), cfg);
-        QCOMPARE(r.status, ConnectionTestResult::Status::BadConfig);
+        QCOMPARE(r.status, providers::ConnectionTestResult::Status::BadConfig);
 
         // Without a probe descriptor the provider cannot be tested.
         cfg.baseUrl = QStringLiteral("http://127.0.0.1:9/v1");
-        r = run(ProviderDescriptor{}, cfg);
-        QCOMPARE(r.status, ConnectionTestResult::Status::BadConfig);
+        r = run(providers::ProviderDescriptor{}, cfg);
+        QCOMPARE(r.status, providers::ConnectionTestResult::Status::BadConfig);
         QCOMPARE(r.code, QStringLiteral("ENOSYS"));
     }
 
@@ -240,8 +240,8 @@ private slots:
     {
         FakeHttp http;
         http.handler = [](const FakeRequest&) { return FakeReply{200, "{\"data\":[]}"}; };
-        ConnectionTester tester;
-        QSignalSpy spy(&tester, &ConnectionTester::finished);
+        providers::ConnectionTester tester;
+        QSignalSpy spy(&tester, &providers::ConnectionTester::finished);
         ProviderConfig cfg;
         cfg.baseUrl = http.base();
         const int id = tester.test(probeDescriptor(), cfg);
@@ -254,52 +254,52 @@ private slots:
 
     void localEndpoints()
     {
-        QVERIFY(isLocalEndpoint(QStringLiteral("http://localhost:1234/v1")));
-        QVERIFY(isLocalEndpoint(QStringLiteral("http://127.0.0.1:8000/v1")));
-        QVERIFY(isLocalEndpoint(QStringLiteral("http://[::1]:8000/v1")));
-        QVERIFY(isLocalEndpoint(QStringLiteral("http://192.168.1.20:1234/v1")));
-        QVERIFY(isLocalEndpoint(QStringLiteral("http://10.0.0.5/v1")));
-        QVERIFY(isLocalEndpoint(QStringLiteral("http://nas.local:1234")));
-        QVERIFY(!isLocalEndpoint(QStringLiteral("https://api.soniox.com/v1")));
-        QVERIFY(!isLocalEndpoint(QStringLiteral("https://api.openai.com/v1")));
-        QVERIFY(!isLocalEndpoint(QStringLiteral("http://172.32.0.1/v1")));   // outside 172.16/12
-        QVERIFY(!isLocalEndpoint(QString()));
+        QVERIFY(providers::isLocalEndpoint(QStringLiteral("http://localhost:1234/v1")));
+        QVERIFY(providers::isLocalEndpoint(QStringLiteral("http://127.0.0.1:8000/v1")));
+        QVERIFY(providers::isLocalEndpoint(QStringLiteral("http://[::1]:8000/v1")));
+        QVERIFY(providers::isLocalEndpoint(QStringLiteral("http://192.168.1.20:1234/v1")));
+        QVERIFY(providers::isLocalEndpoint(QStringLiteral("http://10.0.0.5/v1")));
+        QVERIFY(providers::isLocalEndpoint(QStringLiteral("http://nas.local:1234")));
+        QVERIFY(!providers::isLocalEndpoint(QStringLiteral("https://api.soniox.com/v1")));
+        QVERIFY(!providers::isLocalEndpoint(QStringLiteral("https://api.openai.com/v1")));
+        QVERIFY(!providers::isLocalEndpoint(QStringLiteral("http://172.32.0.1/v1")));   // outside 172.16/12
+        QVERIFY(!providers::isLocalEndpoint(QString()));
     }
 
     void builtinProvidersDeclareAProbe()
     {
-        registerBuiltinProviders();
+        providers::registerBuiltinProviders();
         // Every built-in (own-key) provider says what can be asked of it for free.
-        for (const ProviderDescriptor& d : SttProviderRegistry::instance().all()) {
-            if (d.authMode == AuthMode::Login) continue;
+        for (const providers::ProviderDescriptor& d : providers::SttProviderRegistry::instance().all()) {
+            if (d.authMode == providers::AuthMode::Login) continue;
             QVERIFY2(d.probe.isValid(), qPrintable(d.id));
             QVERIFY2(d.probe.path.startsWith(QLatin1Char('/')), qPrintable(d.id));
         }
-        for (const ProviderDescriptor& d : LlmProviderRegistry::instance().all()) {
-            if (d.authMode == AuthMode::Login) continue;
+        for (const providers::ProviderDescriptor& d : providers::LlmProviderRegistry::instance().all()) {
+            if (d.authMode == providers::AuthMode::Login) continue;
             QVERIFY2(d.probe.isValid(), qPrintable(d.id));
         }
         // The "Advanced" fields come from the descriptor.
-        const ProviderDescriptor llm = LlmProviderRegistry::instance().descriptor(QStringLiteral("openai-compat"));
+        const providers::ProviderDescriptor llm = providers::LlmProviderRegistry::instance().descriptor(QStringLiteral("openai-compat"));
         int advanced = 0;
-        for (const ConfigField& f : llm.fields)
+        for (const providers::ConfigField& f : llm.fields)
             if (f.advanced) ++advanced;
         QCOMPARE(advanced, 2);   // temperature + max tokens
     }
 
     void describeHttpClassification()
     {
-        ConnectionTestResult r;
-        ConnectionTester::describeHttp(204, false, false, &r);
+        providers::ConnectionTestResult r;
+        providers::ConnectionTester::describeHttp(204, false, false, &r);
         QVERIFY(r.ok());
         QVERIFY(r.code.isEmpty());
-        ConnectionTester::describeHttp(403, true, false, &r);
-        QCOMPARE(r.status, ConnectionTestResult::Status::AuthFailed);
-        ConnectionTester::describeHttp(503, false, true, &r);
-        QCOMPARE(r.status, ConnectionTestResult::Status::ServerError);
+        providers::ConnectionTester::describeHttp(403, true, false, &r);
+        QCOMPARE(r.status, providers::ConnectionTestResult::Status::AuthFailed);
+        providers::ConnectionTester::describeHttp(503, false, true, &r);
+        QCOMPARE(r.status, providers::ConnectionTestResult::Status::ServerError);
         QVERIFY(r.message.contains(QStringLiteral("helyi szerver")));
-        ConnectionTester::describeHttp(418, false, false, &r);
-        QCOMPARE(r.status, ConnectionTestResult::Status::ServerError);
+        providers::ConnectionTester::describeHttp(418, false, false, &r);
+        QCOMPARE(r.status, providers::ConnectionTestResult::Status::ServerError);
         QCOMPARE(r.code, QStringLiteral("HTTP 418"));
     }
 };

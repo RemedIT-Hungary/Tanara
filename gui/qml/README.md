@@ -811,7 +811,7 @@ pane's width is draggable (names are not elided in normal widths).
 | `PeopleViewModel` (+ `PeopleListModel`) | list (filter, sort, sections, match parts), the selected person's detail, operations, toast texts; fictional people without a controller (`demoState`) |
 | `PeopleWindowHost` | C++ host with its own engine: `open(person)`, `closed()` |
 
-Core behind it (`core/include/tanara/people/`, `store/PeopleStore.h`):
+Core behind it (`core/include/tanara/people/`, `library/store/PeopleStore.h`):
 
 - **Storage.** `people.json` holds one record per person (`{"version": 2, "people": [{"name",
   "aliases", "note"}], "unlisted": [...]}`, `PeopleStore`; keyed by name like `voiceprints.json`,

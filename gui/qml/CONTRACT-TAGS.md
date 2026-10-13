@@ -31,7 +31,7 @@ view, Tags window and Settings.
 
 | Slice | Owns |
 |---|---|
-| **core** (wave 1) | `core/include/tanara/tags/**`, `core/src/tags/**`, `core/include/tanara/embedding/**`, `core/src/embedding/**`, additive changes in `Types.h`, `AppController`, `MeetingStore`, `MeetingLibrary`, `SettingsManager`, `ProviderRegistry`/`ProviderDescriptor`, `ReadinessModel`, `PromptLibrary`, `SummaryService` (post-summary hook), `tests/unit/test_tags*.cpp`, `test_embedding*.cpp`, `test_library.cpp` additions |
+| **core** (wave 1) | `core/include/tanara/tags/**`, `core/src/tags/**`, `core/include/tanara/embedding/**`, `core/src/embedding/**`, additive changes in `domain/Types.h`, `AppController`, `MeetingStore`, `MeetingLibrary`, `SettingsManager`, `ProviderRegistry`/`ProviderDescriptor`, `ReadinessModel`, `PromptLibrary`, `SummaryService` (post-summary hook), `tests/unit/test_tags*.cpp`, `test_embedding*.cpp`, `test_library.cpp` additions |
 | **controls** (wave 1) | `gui/qml/Tag*.qml`, `gui/qml/Tags*.qml`, `gui/qml/src/Tag*`, `gui/qml/src/Tags*`, a "Címkék" section in `Gallery.qml`, `Theme.radiusTag`, `tests/ui/test_tag*.cpp`, `tests/ui/test_tags*.cpp` |
 | wave 2 (later) | `MeetingHeader.qml`, `LibrarySidebar.qml`, `LibraryItem.qml`, `LibraryListModel`, `ShellActions`, `ShellBridge`, `Main.qml`, `PreTranscriptView.qml`, `ShellImportDialog.qml`, `Recorder*.qml`/`RecorderViewModel`, `Settings*`, `gui/src/**`, plus wiring inside the controls' view-models |
 
@@ -72,14 +72,14 @@ struct TagProfile {                // derived, read-only
 };
 ```
 
-`Meeting` (Types.h) gets `QStringList tagIds;` persisted in `meeting.json` as `"tags": [...]`.
+`Meeting` (domain/Types.h) gets `QStringList tagIds;` persisted in `meeting.json` as `"tags": [...]`.
 `LibraryEntry` gets `QStringList tagIds, tagNames;` and `bool tagMatch` + `QString tagMatchName`
 (search hit in a tag). `LibraryQuery` gets `QStringList tags; bool tagsAll = false; bool untagged = false;`
 (tags = ids; `tagsAll` = AND, else OR) and `isEmpty()` accounts for them. Search text also
 matches tag names (accent/case-insensitive, `textfold`). `MeetingLibrary::tagOptions()` returns
 `QVector<TagUsage>` for the filter popover and `untaggedCount()`.
 
-### Name normalisation (`tags/TagNames.h`, free functions)
+### Name normalisation (`library/tags/TagNames.h`, free functions)
 
 `QString normalizeTagName(const QString&)` — NFC, trimmed, inner whitespace collapsed, for
 display; `QString tagKey(const QString&)` — folded (`textfold::fold`), lower-case, spaces and
@@ -120,7 +120,7 @@ Undo: `TagService` exposes `QString beginGroup(const QString& label)` / `endGrou
 `bool canUndo() const`, `QString undoLabel() const`, `void undo()`: every mutating call is
 recorded; a group is one step. Keep it simple (a stack of inverse operations, capped at 50).
 
-### Similarity (`tags/MeetingProfiles.h`)
+### Similarity (`library/tags/MeetingProfiles.h`)
 
 `MeetingProfiles` (QObject, owned by the controller) builds and caches one **profile** per
 meeting from `meeting.json` + the transcript lines (`loadTranscriptLines(folder)`), stored as
@@ -174,7 +174,7 @@ class IEmbeddingProvider { virtual QString name() const = 0; virtual EmbeddingJo
   `<metadataDir>/embedding-state.json`. The GUI may keep working meanwhile; a meeting that
   gets a transcript later is embedded in the background when a provider is configured.
 
-### `TagSuggester` (`tags/TagSuggester.h`)
+### `TagSuggester` (`library/tags/TagSuggester.h`)
 
 `QVector<TagSuggestion> suggest(const QString& meetingId)`: neighbours = `MeetingProfiles::similar`
 fused with `EmbeddingIndex::similar` by **reciprocal rank fusion** (k = 60) when the index has
@@ -186,7 +186,7 @@ reasons merged from the voting neighbours, `similarMeetings` = up to 3 voters.
 tags that appear with it in ≥ 50 % of its meetings (≥ 2 meetings), `source = Cooccur`, label
 "<Tag> mellé gyakran".
 
-LLM step (`tags/LlmTagSuggester.h`): after a summary finishes and `llmTagSuggestions` is on,
+LLM step (`processing/analysis/LlmTagSuggester.h`): after a summary finishes and `llmTagSuggestions` is on,
 `AppController` runs one chat call with a new `PromptLibrary` prompt `"tags"` (English, like the
 others): the summary text + a numbered list of candidate tags (the `suggest()` result plus the
 top-20 most used tags, each with its one-line profile: top participants, top terms, 2 example

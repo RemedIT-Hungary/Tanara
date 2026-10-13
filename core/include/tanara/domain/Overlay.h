@@ -2,7 +2,7 @@
 //
 // Domain: the DATA of a meeting's manual speaker-correction layer (<meeting folder>/transcript.speakers.json)
 // and the transcript lines it refers to. The operations (load / save / resolution) are in the editor
-// (edit/SpeakerOverlay.h).
+// (editing/session/SpeakerOverlay.h).
 #include <QHash>
 #include <QMap>
 #include <QString>

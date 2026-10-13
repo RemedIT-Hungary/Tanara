@@ -5,8 +5,8 @@
 #include "AppContext.h"
 #include "TranscriptEditorViewModel.h"
 
-#include "tanara/AppController.h"
-#include "tanara/edit/PeopleDirectory.h"
+#include "tanara/app/AppController.h"
+#include "tanara/editing/session/PeopleDirectory.h"
 
 #include <algorithm>
 
@@ -36,7 +36,7 @@ QVariant PersonListModel::data(const QModelIndex& index, int role) const
 {
     const int row = index.row();
     if (row < 0 || row >= m_shown.size()) return {};
-    const PersonInfo& p = m_shown[row];
+    const editing::PersonInfo& p = m_shown[row];
     switch (role) {
     case NameRole: return p.name;
     case HasVoiceprintRole: return p.hasVoiceprint;
@@ -107,14 +107,14 @@ void PersonListModel::setParticipants(ParticipantsViewModel* participants)
 namespace {
 
 // The name list of the Tags window's demo (without a controller; the design packages' fictional names).
-QVector<PersonInfo> demoPeople()
+QVector<editing::PersonInfo> demoPeople()
 {
     const QList<std::pair<const char*, int>> rows{
         {"Bárány Gergely", 23}, {"Dénes Zsófia", 17}, {"Fehér Gábor", 16}, {"Gál Bence", 12},
         {"Kovács Lilla", 41}, {"Molnár Eszter", 0}, {"Szabó Bence", 8}, {"Tóth Eszter", 3}, {"Varga Árpád", 12}};
-    QVector<PersonInfo> out;
+    QVector<editing::PersonInfo> out;
     for (const auto& [name, n] : rows) {
-        PersonInfo p;
+        editing::PersonInfo p;
         p.name = demoName(name);
         p.meetingCount = n;
         p.hasVoiceprint = n > 2;
@@ -184,7 +184,7 @@ void PersonListModel::refresh()
     else if (m_editor) m_all = m_editor->people();
     else if (!m_tagId.isEmpty()) {
         // Standalone (Tags window): the full name list.
-        tanara::AppController* app = AppContext::instance()->controller();
+        tanara::app::AppController* app = AppContext::instance()->controller();
         m_all = app ? app->peopleDirectory() : demoPeople();
     } else m_all.clear();
     refilter();
@@ -199,11 +199,11 @@ void PersonListModel::refilter()
 {
     TagBackend* tags = tagBackend();
     const QString needle = m_query.trimmed();
-    QVector<PersonInfo> shown;
+    QVector<editing::PersonInfo> shown;
     if (needle.isEmpty()) {
         shown = m_all;
         // The frequent ones first, alphabetical within (the list arrives sorted by name).
-        std::stable_sort(shown.begin(), shown.end(), [](const PersonInfo& a, const PersonInfo& b) {
+        std::stable_sort(shown.begin(), shown.end(), [](const editing::PersonInfo& a, const editing::PersonInfo& b) {
             return a.meetingCount > b.meetingCount;
         });
     } else {
@@ -211,28 +211,28 @@ void PersonListModel::refilter()
     }
 
     // The people of the reference tags (the meeting's, or the tagId's): manual + learned >= threshold.
-    QHash<QString, TagLink> links;   // foldForSearch(name) -> best relation
+    QHash<QString, TagLink> links;   // text::foldForSearch(name) -> best relation
     QHash<QString, QString> tagNames;
     if (tags) {
         for (const TagItem& t : tags->tags()) tagNames.insert(t.id, t.name);
         for (const QString& t : contextTagIds()) {
             for (const PersonTagItem& st : tags->peopleStats(t)) {
                 const TagLink link{tagNames.value(t), st.shared, st.tagTotal, st.manual};
-                const QString key = foldForSearch(st.name);
+                const QString key = text::foldForSearch(st.name);
                 if (!links.contains(key) || link.better(links.value(key))) links.insert(key, link);
             }
         }
     }
-    const QString selfKey = tags ? foldForSearch(tags->selfName()) : QString();
+    const QString selfKey = tags ? text::foldForSearch(tags->selfName()) : QString();
 
-    const QString folded = foldForSearch(needle);
+    const QString folded = text::foldForSearch(needle);
     bool exact = false;
-    struct Row { PersonInfo p; bool here; QString group; QString hint; TagLink link; };
+    struct Row { editing::PersonInfo p; bool here; QString group; QString hint; TagLink link; };
     QVector<Row> meeting, tagged, other;
-    for (const PersonInfo& p : std::as_const(shown)) {
-        if (!folded.isEmpty() && foldForSearch(p.name) == folded) exact = true;
+    for (const editing::PersonInfo& p : std::as_const(shown)) {
+        if (!folded.isEmpty() && text::foldForSearch(p.name) == folded) exact = true;
         if (!m_exclude.isEmpty() && p.name.compare(m_exclude, Qt::CaseInsensitive) == 0) continue;
-        const QString key = foldForSearch(p.name);
+        const QString key = text::foldForSearch(p.name);
         // Tag mode: those who have it manually, and the own person, are left out.
         if (!m_tagId.isEmpty() && ((links.contains(key) && links.value(key).manual) || key == selfKey)) continue;
         const bool here = m_participants ? m_participants->isMeetingPerson(p.name)
@@ -261,7 +261,7 @@ void PersonListModel::refilter()
         other.prepend(r);
     }
 
-    QVector<PersonInfo> out;
+    QVector<editing::PersonInfo> out;
     QVector<bool> inMeeting;
     QStringList hints, groups;
     for (const QVector<Row>* part : {&meeting, &tagged, &other})

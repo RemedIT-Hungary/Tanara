@@ -6,7 +6,7 @@
 // Béla's voice (P: Béla's voice with noise, it also resembles Anna a little). They pull Anna's
 // centroid away, so the regular verdict does not flag them. If we confirm 3 of Anna's real
 // lines, the recheck finds exactly these 3 lines doubtful, with Béla as the suggestion.
-#include "tanara/voiceid/VoiceModelRegistry.h"
+#include "tanara/processing/voiceid/VoiceModelRegistry.h"
 
 #include <QtTest>
 #include <QSignalSpy>
@@ -15,20 +15,20 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 
-#include "tanara/Types.h"
-#include "tanara/edit/SpeakerAnalysis.h"
-#include "tanara/edit/SpeakerEditor.h"
-#include "tanara/edit/SpeakerOverlay.h"
-#include "tanara/edit/UtteranceEmbeddings.h"
-#include "tanara/store/MeetingStore.h"
-#include "tanara/store/PeopleStore.h"
-#include "tanara/store/VoiceprintStore.h"
+#include "tanara/domain/Types.h"
+#include "tanara/editing/review/SpeakerAnalysis.h"
+#include "tanara/editing/session/SpeakerEditor.h"
+#include "tanara/editing/session/SpeakerOverlay.h"
+#include "tanara/processing/analysis/UtteranceEmbeddings.h"
+#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/store/PeopleStore.h"
+#include "tanara/library/store/VoiceprintStore.h"
 
 #include <cmath>
 #include <memory>
 
 using namespace tanara;
-using namespace tanara::speakeredit;
+using namespace tanara::editing::speakeredit;
 
 namespace {
 
@@ -82,7 +82,7 @@ const QVector<float>& voiceVec(char v)
     }
 }
 
-class NullEmbedder : public IUtteranceEmbedder {
+class NullEmbedder : public processing::IUtteranceEmbedder {
 public:
     bool open(const QString&) override { return false; }
     QVector<float> embed(qint64, qint64) override { return {}; }
@@ -90,17 +90,17 @@ public:
 
 struct Fixture {
     QTemporaryDir dir;
-    std::unique_ptr<MeetingStore> store;
-    std::unique_ptr<PeopleStore> people;
-    std::unique_ptr<VoiceprintStore> prints;
+    std::unique_ptr<library::MeetingStore> store;
+    std::unique_ptr<library::PeopleStore> people;
+    std::unique_ptr<library::VoiceprintStore> prints;
     Meeting meeting;
 
     explicit Fixture(bool withCache = true)
     {
-        store = std::make_unique<MeetingStore>(dir.filePath(QStringLiteral("rec")),
+        store = std::make_unique<library::MeetingStore>(dir.filePath(QStringLiteral("rec")),
                                                dir.filePath(QStringLiteral("meta")));
-        people = std::make_unique<PeopleStore>(dir.filePath(QStringLiteral("meta/people.json")));
-        prints = std::make_unique<VoiceprintStore>(dir.filePath(QStringLiteral("meta/vp.json")));
+        people = std::make_unique<library::PeopleStore>(dir.filePath(QStringLiteral("meta/people.json")));
+        prints = std::make_unique<library::VoiceprintStore>(dir.filePath(QStringLiteral("meta/vp.json")));
         meeting = store->createMeeting(QStringLiteral("Újraellenőrzés"));
         QJsonArray segs;
         int i = 0;
@@ -108,7 +108,7 @@ struct Fixture {
             segs.append(QJsonObject{{"startMs", double(r.startMs)}, {"endMs", double(r.startMs + r.durMs)},
                                     {"speaker", r.raw}, {"text", QStringLiteral("Sor %1").arg(i++)}});
         }
-        QFile f(segmentsPath(meeting.folder));
+        QFile f(editing::speakeredit::segmentsPath(meeting.folder));
         if (f.open(QIODevice::WriteOnly)) f.write(QJsonDocument(segs).toJson());
         f.close();
         meeting.hasTranscript = true;
@@ -119,24 +119,24 @@ struct Fixture {
 
     void writeCache()
     {
-        const QVector<TranscriptLine> lines = loadTranscriptLines(meeting.folder);
-        UtteranceEmbeddingCache c;
-        c.fingerprint = transcriptFingerprint(lines);
+        const QVector<TranscriptLine> lines = editing::speakeredit::loadTranscriptLines(meeting.folder);
+        processing::UtteranceEmbeddingCache c;
+        c.fingerprint = editing::speakeredit::transcriptFingerprint(lines);
         for (int i = 0; i < scenario().size(); ++i)
             if (scenario()[i].voice != '-') c.set(QStringLiteral("campplus"), lines[i].id, voiceVec(scenario()[i].voice));
         QVERIFY(c.save(meeting.folder));
     }
 
-    std::unique_ptr<SpeakerEditor> editor(bool withFactory = false)
+    std::unique_ptr<editing::SpeakerEditor> editor(bool withFactory = false)
     {
-        auto ed = std::make_unique<SpeakerEditor>(store.get(), people.get(), prints.get(), meeting.id);
+        auto ed = std::make_unique<editing::SpeakerEditor>(store.get(), people.get(), prints.get(), meeting.id);
         if (withFactory) ed->setEmbedderFactory([] { return std::make_unique<NullEmbedder>(); });
         return ed;
     }
 
     QJsonObject overlayUtterance(const QString& id) const
     {
-        QFile f(overlayPath(meeting.folder));
+        QFile f(editing::speakeredit::overlayPath(meeting.folder));
         if (!f.open(QIODevice::ReadOnly)) return {};
         return QJsonDocument::fromJson(f.readAll()).object()
             .value(QStringLiteral("utterances")).toObject().value(id).toObject();
@@ -146,11 +146,11 @@ struct Fixture {
 // For the pure functions: the scenario's analysis lines (Anna = 0, Béla = 1).
 struct PureLines {
     QVector<QVector<float>> vecs;
-    QVector<AnalysisLine> lines;
+    QVector<editing::speakeredit::AnalysisLine> lines;
     void add(const QVector<float>& v, int speaker, qint64 dur = 4000, bool locked = false, bool noisy = false)
     {
         vecs.append(v);
-        AnalysisLine l;
+        editing::speakeredit::AnalysisLine l;
         l.speaker = speaker;
         l.durationMs = dur;
         l.locked = locked;
@@ -158,7 +158,7 @@ struct PureLines {
         lines.append(l);
     }
     // The vectors' address in the final storage (it no longer moves after append).
-    QVector<AnalysisLine> build()
+    QVector<editing::speakeredit::AnalysisLine> build()
     {
         for (int i = 0; i < lines.size(); ++i) lines[i].embedding = &vecs[i];
         return lines;
@@ -231,46 +231,46 @@ const QVector<float>& pairVec(char v)
 
 struct PairFixture {
     QTemporaryDir dir;
-    std::unique_ptr<MeetingStore> store;
-    std::unique_ptr<PeopleStore> people;
-    std::unique_ptr<VoiceprintStore> prints;
+    std::unique_ptr<library::MeetingStore> store;
+    std::unique_ptr<library::PeopleStore> people;
+    std::unique_ptr<library::VoiceprintStore> prints;
     Meeting meeting;
 
     PairFixture()
     {
-        store = std::make_unique<MeetingStore>(dir.filePath(QStringLiteral("rec")),
+        store = std::make_unique<library::MeetingStore>(dir.filePath(QStringLiteral("rec")),
                                                dir.filePath(QStringLiteral("meta")));
-        people = std::make_unique<PeopleStore>(dir.filePath(QStringLiteral("meta/people.json")));
-        prints = std::make_unique<VoiceprintStore>(dir.filePath(QStringLiteral("meta/vp.json")));
+        people = std::make_unique<library::PeopleStore>(dir.filePath(QStringLiteral("meta/people.json")));
+        prints = std::make_unique<library::VoiceprintStore>(dir.filePath(QStringLiteral("meta/vp.json")));
         meeting = store->createMeeting(QStringLiteral("Páros átnézés"));
         QJsonArray segs;
         for (int i = 0; i < pairScenario().size(); ++i)
             segs.append(QJsonObject{{"startMs", double(i * 5000)}, {"endMs", double(i * 5000 + 4000)},
                                     {"speaker", pairScenario()[i].raw},
                                     {"text", QStringLiteral("Sor %1").arg(i)}});
-        QFile f(segmentsPath(meeting.folder));
+        QFile f(editing::speakeredit::segmentsPath(meeting.folder));
         if (f.open(QIODevice::WriteOnly)) f.write(QJsonDocument(segs).toJson());
         f.close();
         meeting.hasTranscript = true;
         meeting.speakerMap = {{kB1, QStringLiteral("Anna")}, {kB2, QStringLiteral("Béla")},
                               {kB3, QStringLiteral("Csaba")}};
         store->saveMeeting(meeting);
-        const QVector<TranscriptLine> lines = loadTranscriptLines(meeting.folder);
-        UtteranceEmbeddingCache c;
-        c.fingerprint = transcriptFingerprint(lines);
+        const QVector<TranscriptLine> lines = editing::speakeredit::loadTranscriptLines(meeting.folder);
+        processing::UtteranceEmbeddingCache c;
+        c.fingerprint = editing::speakeredit::transcriptFingerprint(lines);
         for (int i = 0; i < lines.size(); ++i)
             c.set(QStringLiteral("campplus"), lines[i].id, pairVec(pairScenario()[i].voice));
         c.save(meeting.folder);
     }
 
-    std::unique_ptr<SpeakerEditor> editor()
+    std::unique_ptr<editing::SpeakerEditor> editor()
     {
-        return std::make_unique<SpeakerEditor>(store.get(), people.get(), prints.get(), meeting.id);
+        return std::make_unique<editing::SpeakerEditor>(store.get(), people.get(), prints.get(), meeting.id);
     }
 
     QJsonObject overlayUtterance(const QString& id) const
     {
-        QFile f(overlayPath(meeting.folder));
+        QFile f(editing::speakeredit::overlayPath(meeting.folder));
         if (!f.open(QIODevice::ReadOnly)) return {};
         return QJsonDocument::fromJson(f.readAll()).object()
             .value(QStringLiteral("utterances")).toObject().value(id).toObject();
@@ -290,10 +290,10 @@ PureLines similarPair(int lockedAnna = 3, int lockedBela = 3)
 }
 
 // Voiceprint prior per speaker index (for the pure functions).
-QVector<SpeakerPrior> priorFor(int speakerCount, int speaker, const QVector<QVector<float>>& prior,
+QVector<editing::speakeredit::SpeakerPrior> priorFor(int speakerCount, int speaker, const QVector<QVector<float>>& prior,
                                const QVector<QVector<float>>& local = {}, const QVector<int>& replaced = {})
 {
-    QVector<SpeakerPrior> out(speakerCount);
+    QVector<editing::speakeredit::SpeakerPrior> out(speakerCount);
     out[speaker].vectors = prior;
     out[speaker].localVectors = local;
     out[speaker].replacedLines = replaced;
@@ -330,9 +330,9 @@ private slots:
     void pure_pollutedCentroidHidesMislabeledLines()
     {
         PureLines p = pollutedSpeaker(/*lockAnna*/ true);
-        const QVector<AnalysisLine> al = p.build();
+        const QVector<editing::speakeredit::AnalysisLine> al = p.build();
         // The regular verdict: Anna's (pulled) centroid hides the 3 wrong lines.
-        const QVector<bool> plain = computeUncertain(al, 2);
+        const QVector<bool> plain = editing::speakeredit::computeUncertain(al, 2);
         QCOMPARE(int(std::count(plain.cbegin(), plain.cend(), true)), 0);
 
         const RecheckAnalysis r = computeUncertainRechecked(al, 2);
@@ -340,7 +340,7 @@ private slots:
         for (int i = 4; i <= 6; ++i) {
             QVERIFY2(r.lines[i].uncertain, qPrintable(QString::number(i)));
             QCOMPARE(r.lines[i].otherSpeaker, 1);
-            QVERIFY(r.lines[i].other - r.lines[i].own >= kUncertainMargin);
+            QVERIFY(r.lines[i].other - r.lines[i].own >= editing::speakeredit::kUncertainMargin);
         }
         QVERIFY(!r.lines[3].uncertain);                 // Anna's unconfirmed line is fine
         for (int i = 7; i <= 10; ++i) QVERIFY(!r.lines[i].uncertain);
@@ -348,15 +348,15 @@ private slots:
         QCOMPARE(r.coreLines, (QVector<int>{3, 0}));
         QCOMPARE(r.coreSpeakers(), 1);
         QCOMPARE(r.coreLineTotal(), 3);
-        QVERIFY(hasTrustedCore(al, 2));
+        QVERIFY(editing::speakeredit::hasTrustedCore(al, 2));
     }
 
     void pure_withoutEnoughLockedLines_noCore()
     {
         PureLines p = pollutedSpeaker(/*lockAnna*/ false);
         p.lines[0].locked = p.lines[1].locked = true;    // only 2 confirmed lines
-        const QVector<AnalysisLine> al = p.build();
-        QVERIFY(!hasTrustedCore(al, 2));
+        const QVector<editing::speakeredit::AnalysisLine> al = p.build();
+        QVERIFY(!editing::speakeredit::hasTrustedCore(al, 2));
         const RecheckAnalysis r = computeUncertainRechecked(al, 2);
         QCOMPARE(r.coreSpeakers(), 0);
         QCOMPARE(r.flagged(), 0);                       // with the regular centroids the same as today
@@ -366,16 +366,16 @@ private slots:
     {
         // Base: the contaminated speaker; then 3 NOISY Béla-voiced lines under Anna too (interjections).
         PureLines base = pollutedSpeaker(true);
-        const QVector<AnalysisLine> al0 = base.build();
-        const QVector<LineFit> fits0 = computeFits(al0, 2);
+        const QVector<editing::speakeredit::AnalysisLine> al0 = base.build();
+        const QVector<editing::speakeredit::LineFit> fits0 = editing::speakeredit::computeFits(al0, 2);
 
         PureLines p = pollutedSpeaker(true);
         for (int i = 0; i < 3; ++i) p.add(kB, 0, 4000, /*locked*/ false, /*noisy*/ true);   // 11–13
         p.add(kB, 0, 4000, /* 14 confirmed, noisy */ true, /* 14 confirmed, noisy */ true);                                // 14 confirmed, noisy
-        const QVector<AnalysisLine> al = p.build();
+        const QVector<editing::speakeredit::AnalysisLine> al = p.build();
 
         // The regular centroid does not use them either (Anna has enough clean lines).
-        const QVector<LineFit> fits = computeFits(al, 2);
+        const QVector<editing::speakeredit::LineFit> fits = editing::speakeredit::computeFits(al, 2);
         for (int i = 0; i <= 10; ++i) {
             QVERIFY(std::abs(fits[i].own - fits0[i].own) < 1e-9
                     || (std::isnan(fits[i].own) && std::isnan(fits0[i].own)));
@@ -393,8 +393,8 @@ private slots:
         PureLines p = pollutedSpeaker(false);
         p.lines[0].locked = p.lines[1].locked = true;               // 2 clean confirmed
         p.add(kA, 0, 4000, /* + 1 noisy confirmed */ true, /* + 1 noisy confirmed */ true);        // + 1 noisy confirmed
-        const QVector<AnalysisLine> al = p.build();
-        QVERIFY(hasTrustedCore(al, 2));
+        const QVector<editing::speakeredit::AnalysisLine> al = p.build();
+        QVERIFY(editing::speakeredit::hasTrustedCore(al, 2));
         const RecheckAnalysis r = computeUncertainRechecked(al, 2);
         QCOMPARE(r.coreLines.value(0), 3);                          // the noisy one counts too
 
@@ -408,7 +408,7 @@ private slots:
 
     void pure_overlapDetection()
     {
-        const QVector<TimedLine> tl{
+        const QVector<editing::speakeredit::TimedLine> tl{
             {0, 4000, 0},           // 0: 1000 ms overlap, so noisy (>= 1000 ms)
             {3000, 4000, 1},        // 1: fully overlapped, so noisy
             {5000, 15000, 0},       // 2: 500 ms / 10 s: clean
@@ -420,7 +420,7 @@ private slots:
             {60000, 61000, 0},      // 8: 400 ms / 1000 ms = 40%, so noisy (ratio rule)
             {60600, 64000, 1},      // 9: 400 ms / 3400 ms, about 12%: clean
         };
-        const QVector<bool> noisy = computeOverlapNoisy(tl);
+        const QVector<bool> noisy = editing::speakeredit::computeOverlapNoisy(tl);
         QCOMPARE(noisy, (QVector<bool>{true, true, false, true, false, true, false, false, true, false}));
     }
 
@@ -429,13 +429,13 @@ private slots:
     void pure_pair_similarVoices_guardBlocksSuggestion_pairFlags()
     {
         PureLines p = similarPair();
-        const QVector<AnalysisLine> al = p.build();
+        const QVector<editing::speakeredit::AnalysisLine> al = p.build();
         // The "similar lines" suggestion is silent because of the similar voice, and now says so.
         const SuggestOutcome sg = suggestSimilarDetailed(al, /*source*/ 0, /*target*/ 1);
         QVERIFY(sg.lines.isEmpty());
         QVERIFY(sg.blockedBySimilarity);
-        QVERIFY(sg.centroidSimilarity > kSuggestMaxCentroidSimilarity);
-        QVERIFY(suggestSimilar(al, 0, 1).isEmpty());
+        QVERIFY(sg.centroidSimilarity > editing::speakeredit::kSuggestMaxCentroidSimilarity);
+        QVERIFY(editing::speakeredit::suggestSimilar(al, 0, 1).isEmpty());
 
         // The pairwise review: no guard, the wrong lines come up in both directions.
         const PairRecheckAnalysis r = computePairRecheck(al, 0, 1);
@@ -478,7 +478,7 @@ private slots:
         QVERIFY(!r.lines[18].flagged);
         QVERIFY(!r.lines[19].flagged);
         // The global recheck (0.10 threshold) does not flag the m line.
-        QVERIFY(!computeUncertainRechecked(p.build(), 2).lines[14].uncertain);
+        QVERIFY(!editing::speakeredit::computeUncertainRechecked(p.build(), 2).lines[14].uncertain);
     }
 
     void pure_pair_fallbackWhenFewLockedLines()
@@ -507,8 +507,8 @@ private slots:
         QCOMPARE(r2.refLinesA, 2);
         QCOMPARE(r2.flagged(), 0);
         // The same speaker twice / an invalid index: nothing.
-        QVERIFY(!computePairRecheck(p.build(), 1, 1).valid);
-        QVERIFY(!computePairRecheck(p.build(), 0, -1).valid);
+        QVERIFY(!editing::speakeredit::computePairRecheck(p.build(), 1, 1).valid);
+        QVERIFY(!editing::speakeredit::computePairRecheck(p.build(), 0, -1).valid);
     }
 
     // ---- pairwise review (SpeakerEditor) ----
@@ -521,14 +521,14 @@ private slots:
 
         // First the global recheck: for Anna 3, 7, 15 (Béla), 13 (unknown voice), for Béla 17 (Anna),
         // for Csaba 12 (Anna). The m line (10) stays below the global threshold.
-        const SpeakerEditor::RecheckResult g = ed->recheckFromConfirmed();
+        const editing::SpeakerEditor::RecheckResult g = ed->recheckFromConfirmed();
         QCOMPARE(g.flagged, 6);
         QVERIFY(ed->utterance(pid(13)).rechecked);
         QVERIFY(!ed->utterance(pid(10)).rechecked);
         QCOMPARE(ed->utterance(pid(12)).likelySpeakerKey, kB1);
 
-        QSignalSpy undoSpy(ed.get(), &SpeakerEditor::undoStateChanged);
-        const SpeakerEditor::PairRecheckResult r = ed->recheckPair(kB1, kB2);
+        QSignalSpy undoSpy(ed.get(), &editing::SpeakerEditor::undoStateChanged);
+        const editing::SpeakerEditor::PairRecheckResult r = ed->recheckPair(kB1, kB2);
         QVERIFY(r.ran);
         QVERIFY(r.blocker.isEmpty());
         QCOMPARE(r.flagged, 5);
@@ -540,7 +540,7 @@ private slots:
         QVERIFY(undoSpy.count() > 0);
 
         for (int row : {3, 7, 10, 15}) {
-            const EditorUtterance u = ed->utterance(pid(row));
+            const editing::EditorUtterance u = ed->utterance(pid(row));
             QVERIFY2(u.rechecked && u.uncertain, qPrintable(QString::number(row)));
             QCOMPARE(u.likelySpeakerKey, kB2);
         }
@@ -590,7 +590,7 @@ private slots:
         QVERIFY(!ed->pairRecheckBlocker(kB1, QStringLiteral("nincs ilyen")).isEmpty());
         // It runs without confirmation too (with all clean lines; the fallback signals this).
         QVERIFY(ed->pairRecheckBlocker(kB1, kB2).isEmpty());
-        const SpeakerEditor::PairRecheckResult r = ed->recheckPair(kB1, kB2);
+        const editing::SpeakerEditor::PairRecheckResult r = ed->recheckPair(kB1, kB2);
         QVERIFY(r.ran);
         QVERIFY(r.fallbackA && r.fallbackB);
         QCOMPARE(r.refLinesA, 8);
@@ -613,15 +613,15 @@ private slots:
         ed->undo();
 
         QVERIFY(ed->confirmUtterances(pids({0, 2, 5, 1, 4, 8})));
-        QSignalSpy spy(ed.get(), &SpeakerEditor::suggestionChanged);
+        QSignalSpy spy(ed.get(), &editing::SpeakerEditor::suggestionChanged);
         QVERIFY(ed->moveUtterances({pid(3)}, kB2));
         QVERIFY(!ed->hasSuggestion());
         QVERIFY(ed->hasPairOffer());
         QVERIFY(spy.count() > 0);
-        const PairRecheckOffer o = ed->pairOffer();
+        const editing::PairRecheckOffer o = ed->pairOffer();
         QCOMPARE(o.sourceSpeakerKey, kB1);
         QCOMPARE(o.targetSpeakerKey, kB2);
-        QVERIFY(o.centroidSimilarity > kSuggestMaxCentroidSimilarity);
+        QVERIFY(o.centroidSimilarity > editing::speakeredit::kSuggestMaxCentroidSimilarity);
 
         // The next edit drops it; after "Not now" this pair does not come up again.
         QVERIFY(ed->confirmUtterances({pid(13)}));
@@ -654,13 +654,13 @@ private slots:
         Fixture fx;
         auto ed = fx.editor();
         QStringList noisy;
-        for (const EditorUtterance& u : ed->utterances())
+        for (const editing::EditorUtterance& u : ed->utterances())
             if (u.noisy) noisy << u.id;
         // In the scenario exactly the interjection and the line under it.
         QCOMPARE(noisy, uids({11, 12}));
         QVERIFY(ed->utterance(uid(11)).noisyOverlap);
         // The automatic flag does not persist.
-        QVERIFY(!QFile::exists(overlayPath(fx.meeting.folder)));
+        QVERIFY(!QFile::exists(editing::speakeredit::overlayPath(fx.meeting.folder)));
     }
 
     void editor_recheckFlagsExactlyTheMislabeledLines()
@@ -676,10 +676,10 @@ private slots:
         QVERIFY(ed->canRecheck());
         QVERIFY(ed->recheckBlocker().isEmpty());
 
-        QSignalSpy finished(ed.get(), &SpeakerEditor::recheckFinished);
-        QSignalSpy count(ed.get(), &SpeakerEditor::uncertainCountChanged);
-        QSignalSpy changed(ed.get(), &SpeakerEditor::utterancesChanged);
-        const SpeakerEditor::RecheckResult r = ed->recheckFromConfirmed();
+        QSignalSpy finished(ed.get(), &editing::SpeakerEditor::recheckFinished);
+        QSignalSpy count(ed.get(), &editing::SpeakerEditor::uncertainCountChanged);
+        QSignalSpy changed(ed.get(), &editing::SpeakerEditor::utterancesChanged);
+        const editing::SpeakerEditor::RecheckResult r = ed->recheckFromConfirmed();
         QVERIFY(r.ran);
         QCOMPARE(r.flagged, 3);
         QCOMPARE(r.speakersWithConfirmedCore, 1);
@@ -690,7 +690,7 @@ private slots:
 
         QCOMPARE(ed->uncertainUtteranceIds(), uids({3, 6, 9}));
         for (int row : {3, 6, 9}) {
-            const EditorUtterance u = ed->utterance(uid(row));
+            const editing::EditorUtterance u = ed->utterance(uid(row));
             QVERIFY(u.uncertain);
             QVERIFY(u.rechecked);
             QCOMPARE(u.likelySpeakerKey, kB2);
@@ -756,7 +756,7 @@ private slots:
         // We confirm one of the doubtful lines as Anna's: the core now contains the P voice too, so
         // the other two are not doubtful, so the next recheck releases them.
         QVERIFY(ed->confirmUtterances({uid(3)}));
-        const SpeakerEditor::RecheckResult r = ed->recheckFromConfirmed();
+        const editing::SpeakerEditor::RecheckResult r = ed->recheckFromConfirmed();
         QCOMPARE(r.flagged, 0);
         QCOMPARE(r.confirmedLines, 4);
         QCOMPARE(ed->uncertainCount(), 0);
@@ -798,7 +798,7 @@ private slots:
         auto ed = fx.editor();
         // "Fine as is, but do not use it as a sample".
         QVERIFY(ed->confirmUtterances({uid(4)}, /*asNoisy*/ true));
-        EditorUtterance u = ed->utterance(uid(4));
+        editing::EditorUtterance u = ed->utterance(uid(4));
         QVERIFY(u.confirmed);
         QVERIFY(u.noisy);
         QVERIFY(!u.noisyOverlap);
@@ -835,7 +835,7 @@ private slots:
         for (int i = 0; i < 3; ++i) p.add(u, 0, 1500, /*locked*/ true);   // 0–2 (4,5 mp)
         p.add(kA, 0);                                                      // 3
         for (int i = 0; i < 3; ++i) p.add(kB, 1, 4000, true);             // 4-6 Béla
-        const QVector<AnalysisLine> al = p.build();
+        const QVector<editing::speakeredit::AnalysisLine> al = p.build();
 
         const RecheckAnalysis plain = computeUncertainRechecked(al, 2);
         const RecheckAnalysis withPrior = computeUncertainRechecked(al, 2, priorFor(2, 0, {kA, kA}));
@@ -872,10 +872,10 @@ private slots:
         for (int i = 0; i < 3; ++i) p.add(kA, 0, 4000, true);    // 0–2 (12 mp)
         p.add(x, 0);                                               // 3
         for (int i = 0; i < 3; ++i) p.add(kB, 1, 4000, true);    // 4–6
-        const QVector<AnalysisLine> al = p.build();
+        const QVector<editing::speakeredit::AnalysisLine> al = p.build();
         const QVector<QVector<float>> five{kB, kB, kB, kB, kB};
 
-        QVERIFY(computeUncertainRechecked(al, 2).lines[3].uncertain);
+        QVERIFY(editing::speakeredit::computeUncertainRechecked(al, 2).lines[3].uncertain);
         const RecheckAnalysis capped = computeUncertainRechecked(al, 2, priorFor(2, 0, five));
         QVERIFY(capped.refs[0].priorCapped);
         QVERIFY(capped.lines[3].uncertain);
@@ -900,14 +900,14 @@ private slots:
     {
         // No confirmed line: until now the contaminated regular centroid hid the wrong lines.
         PureLines p = pollutedSpeaker(/*lockAnna*/ false);
-        const QVector<AnalysisLine> al = p.build();
-        QCOMPARE(computeUncertainRechecked(al, 2).flagged(), 0);
-        QCOMPARE(computeUncertainRechecked(al, 2).refs[0].kind, ReferenceKind::Fallback);
+        const QVector<editing::speakeredit::AnalysisLine> al = p.build();
+        QCOMPARE(editing::speakeredit::computeUncertainRechecked(al, 2).flagged(), 0);
+        QCOMPARE(editing::speakeredit::computeUncertainRechecked(al, 2).refs[0].kind, ReferenceKind::Fallback);
 
         // Anna has an earlier voiceprint, which gives her reference (no local core).
-        const QVector<SpeakerPrior> pr = priorFor(2, 0, {kA});
+        const QVector<editing::speakeredit::SpeakerPrior> pr = priorFor(2, 0, {kA});
         const RecheckAnalysis r = computeUncertainRechecked(al, 2, pr);
-        QVERIFY(!hasTrustedCore(al, 2, pr));            // an earlier voiceprint alone is not a local core
+        QVERIFY(!editing::speakeredit::hasTrustedCore(al, 2, pr));            // an earlier voiceprint alone is not a local core
         QCOMPARE(r.refs[0].kind, ReferenceKind::Prior);
         QCOMPARE(r.refs[0].lines, 0);
         QCOMPARE(r.refs[0].priorPrints, 1);
@@ -921,8 +921,8 @@ private slots:
         }
 
         // A voiceprint made HERE alone is a local core.
-        const QVector<SpeakerPrior> lp = priorFor(2, 0, {}, {kA});
-        QVERIFY(hasTrustedCore(al, 2, lp));
+        const QVector<editing::speakeredit::SpeakerPrior> lp = priorFor(2, 0, {}, {kA});
+        QVERIFY(editing::speakeredit::hasTrustedCore(al, 2, lp));
         const RecheckAnalysis l = computeUncertainRechecked(al, 2, lp);
         QCOMPARE(l.trustedCore, (QVector<bool>{true, false}));
         QCOMPARE(l.refs[0].kind, ReferenceKind::Local);
@@ -935,7 +935,7 @@ private slots:
     {
         // The sample line (0) of the voiceprint made here is itself confirmed: it counts only once (the voiceprint).
         PureLines p = pollutedSpeaker(/*lockAnna*/ true);
-        const QVector<AnalysisLine> al = p.build();
+        const QVector<editing::speakeredit::AnalysisLine> al = p.build();
         const RecheckAnalysis r = computeUncertainRechecked(al, 2, priorFor(2, 0, {}, {kA}, {0}));
         QCOMPARE(r.refs[0].lines, 2);
         QCOMPARE(r.refs[0].localPrints, 1);
@@ -954,8 +954,8 @@ private slots:
         // Béla has no confirmed line: until now the fallback (all his lines); with an earlier
         // voiceprint that gives his reference.
         PureLines p = similarPair(/*lockedAnna*/ 3, /*lockedBela*/ 0);
-        const QVector<AnalysisLine> al = p.build();
-        QVERIFY(computePairRecheck(al, 0, 1).fallbackB);
+        const QVector<editing::speakeredit::AnalysisLine> al = p.build();
+        QVERIFY(editing::speakeredit::computePairRecheck(al, 0, 1).fallbackB);
         const PairRecheckAnalysis r = computePairRecheck(al, 0, 1, priorFor(2, 1, {pb}));
         QVERIFY(r.valid);
         QVERIFY(!r.fallbackB);
@@ -993,18 +993,18 @@ private slots:
         QVERIFY(ed->canRecheck());
 
         QVERIFY(ed->confirmUtterances(uids({0, 2, 5})));
-        const SpeakerEditor::RecheckResult r = ed->recheckFromConfirmed();
+        const editing::SpeakerEditor::RecheckResult r = ed->recheckFromConfirmed();
         QVERIFY(r.ran);
         QCOMPARE(r.flagged, 3);
         QCOMPARE(ed->uncertainUtteranceIds(), uids({3, 6, 9}));
         QCOMPARE(ed->utterance(uid(3)).likelySpeakerKey, kB2);
         QCOMPARE(r.references.size(), 2);
-        const SpeakerEditor::SpeakerReference& anna = r.references[0];
+        const editing::SpeakerEditor::SpeakerReference& anna = r.references[0];
         QCOMPARE(anna.speakerKey, kB1);
         QCOMPARE(anna.lines, 2);                        // line 0 counts in the voiceprint
         QCOMPARE(anna.localPrints, 1);
         QCOMPARE(anna.priorPrints, 0);
-        const SpeakerEditor::SpeakerReference& bela = r.references[1];
+        const editing::SpeakerEditor::SpeakerReference& bela = r.references[1];
         QVERIFY(bela.priorOnly);
         QCOMPARE(bela.priorPrints, 1);
         QCOMPARE(r.confirmedLines, 2);
@@ -1013,7 +1013,7 @@ private slots:
         // The basis of the feedback: confirmed lines, stored samples (of which made here), model.
         QCOMPARE(r.localPrints, 1);
         QCOMPARE(r.priorPrints, 1);
-        const QString model = VoiceModelRegistry::spec(VoiceModelRegistry::defaultModelId())->displayName;
+        const QString model = processing::VoiceModelRegistry::spec(processing::VoiceModelRegistry::defaultModelId())->displayName;
         QCOMPARE(r.models, QStringList{model});
         QCOMPARE(r.basisSummary(),
                  QStringLiteral("Alapja: 2 megerősített sor · 2 tárolt minta (ebből 1 erről a megbeszélésről) · modell: %1.")
@@ -1023,18 +1023,18 @@ private slots:
     // The text of the "two very similar voices" warning (decimal separator, the strongest pair).
     void recheck_similarVoicesNote()
     {
-        QVERIFY(SpeakerEditor::similarVoicesNote({}).isEmpty());
-        SpeakerEditor::SimilarVoices a;
+        QVERIFY(editing::SpeakerEditor::similarVoicesNote({}).isEmpty());
+        editing::SpeakerEditor::SimilarVoices a;
         a.nameA = QStringLiteral("Fehér Gábor");
         a.nameB = QStringLiteral("Varga Árpád");
         a.similarity = 0.9234;
-        QCOMPARE(SpeakerEditor::similarVoicesNote({a}),
+        QCOMPARE(editing::SpeakerEditor::similarVoicesNote({a}),
                  QStringLiteral("Figyelem: Fehér Gábor és Varga Árpád hangja nagyon hasonló (0,92), "
                                 "kettejük sorait érdemes átnézni."));
-        SpeakerEditor::SimilarVoices b = a;
+        editing::SpeakerEditor::SimilarVoices b = a;
         b.similarity = 0.91;
-        QVERIFY(SpeakerEditor::similarVoicesNote({a, b}).endsWith(QStringLiteral("(További 1 hasonló pár.)")));
-        SpeakerEditor::RecheckResult none;
+        QVERIFY(editing::SpeakerEditor::similarVoicesNote({a, b}).endsWith(QStringLiteral("(További 1 hasonló pár.)")));
+        editing::SpeakerEditor::RecheckResult none;
         QVERIFY(none.basisSummary().isEmpty());     // did not run
     }
 
@@ -1043,7 +1043,7 @@ private slots:
         Fixture fx;
         auto ed = fx.editor();
         QVERIFY(ed->confirmUtterances(uids({0, 2, 5})));
-        const SpeakerEditor::RecheckResult r = ed->recheckFromConfirmed();
+        const editing::SpeakerEditor::RecheckResult r = ed->recheckFromConfirmed();
         QCOMPARE(r.references.size(), 1);
         QCOMPARE(r.references[0].lines, 3);
         QVERIFY(r.referenceSummary().isEmpty());
@@ -1058,7 +1058,7 @@ private slots:
         fx.prints->addPrint(QStringLiteral("Béla"), makePrint(pb, QStringLiteral("masik-megbeszeles")));
         auto ed = fx.editor();
         QVERIFY(ed->confirmUtterances(pids({0, 2, 5, 1})));     // Béla has only 1 confirmed line
-        const SpeakerEditor::PairRecheckResult r = ed->recheckPair(kB1, kB2);
+        const editing::SpeakerEditor::PairRecheckResult r = ed->recheckPair(kB1, kB2);
         QVERIFY(r.ran);
         QVERIFY(!r.fallbackB);
         QVERIFY(r.refB.priorOnly);
@@ -1074,7 +1074,7 @@ private slots:
         Fixture fx;
         auto ed = fx.editor();
         // Of Béla's 6 long lines the 11th is noisy (overlap), so 5 are usable.
-        const VoiceprintMaterial before = ed->voiceprintMaterial(kB2);
+        const editing::VoiceprintMaterial before = ed->voiceprintMaterial(kB2);
         QCOMPARE(before.usableLines, 5);
         QVERIFY(ed->setUtterancesNoisy({uid(13)}, true));
         QCOMPARE(ed->voiceprintMaterial(kB2).usableLines, 4);

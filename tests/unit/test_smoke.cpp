@@ -1,5 +1,5 @@
 #include <QtTest>
-#include "tanara/Types.h"
+#include "tanara/domain/Types.h"
 
 class SmokeTest : public QObject {
     Q_OBJECT

@@ -18,16 +18,16 @@
 #include <functional>
 #include <cmath>
 
-#include "tanara/AppController.h"
-#include "tanara/SettingsManager.h"
-#include "tanara/audio/TrackCatalog.h"
-#include "tanara/jobs/MeetingJobTracker.h"
+#include "tanara/app/AppController.h"
+#include "tanara/app/SettingsManager.h"
+#include "tanara/library/tracks/TrackCatalog.h"
+#include "tanara/library/jobs/MeetingJobTracker.h"
 #include "tanara/library/MeetingLibrary.h"
-#include "tanara/store/MeetingStore.h"
-#include "tanara/edit/SpeakerEditor.h"
-#include "tanara/edit/SpeakerOverlay.h"
-#include "tanara/jobs/JobErrors.h"
-#include "tanara/llm/LlmServer.h"
+#include "tanara/library/store/MeetingStore.h"
+#include "tanara/editing/session/SpeakerEditor.h"
+#include "tanara/editing/session/SpeakerOverlay.h"
+#include "tanara/library/jobs/JobErrors.h"
+#include "tanara/providers/chat/LlmServer.h"
 
 using namespace tanara;
 
@@ -164,7 +164,7 @@ private slots:
     void summarizeLongMeetingInParts();
     void summarizePartFailureResumes();
     void summarizeCancelBetweenParts();
-    // LLM context (see llm/LlmContext.h, llm/LlmServer.h).
+    // LLM context (see providers/chat/LlmContext.h, providers/chat/LlmServer.h).
     void summarizeAdaptsToSmallContext();
     void summarizeContextTooSmall();
     void summarizeLoadsModelOnLmStudio();
@@ -196,7 +196,7 @@ private:
 
     std::unique_ptr<QTemporaryDir> m_home;
     std::unique_ptr<FakeHttp> m_http;
-    std::unique_ptr<AppController> m_app;
+    std::unique_ptr<app::AppController> m_app;
     QStringList m_errors;   // the old errorOccurred channel
     bool m_ffmpeg = false;
 };
@@ -215,7 +215,7 @@ void AppJobsTest::init()
     QVERIFY(m_home->isValid());
     qputenv("TANARA_HOME", m_home->path().toUtf8());
     m_http = std::make_unique<FakeHttp>();
-    LlmServerProbe::invalidateCache();   // the port may be reused: old server data must not linger
+    providers::LlmServerProbe::invalidateCache();   // the port may be reused: old server data must not linger
     newApp();
 }
 
@@ -230,8 +230,8 @@ void AppJobsTest::newApp()
 {
     m_app.reset();
     m_errors.clear();
-    m_app = std::make_unique<AppController>();
-    connect(m_app.get(), &AppController::errorOccurred, this, [this](const QString& e) { m_errors << e; });
+    m_app = std::make_unique<app::AppController>();
+    connect(m_app.get(), &app::AppController::errorOccurred, this, [this](const QString& e) { m_errors << e; });
     AppSettings s = m_app->settings()->settings();
     QVERIFY(s.audioDir.startsWith(m_home->path()));   // TANARA_HOME: the recordings are in the sandbox too
     s.sttProviderId = QStringLiteral("soniox");
@@ -240,7 +240,7 @@ void AppJobsTest::newApp()
     s.llmConfigs[s.llmProviderId].baseUrl = m_http->base();
     s.llmConfigs[s.llmProviderId].model = QStringLiteral("teszt-modell");
     m_app->settings()->setSettings(s);
-    m_app->setSecret(keys::SonioxApiKey, QStringLiteral("teszt-kulcs"));
+    m_app->setSecret(app::keys::SonioxApiKey, QStringLiteral("teszt-kulcs"));
 }
 
 Meeting AppJobsTest::recording(const QString& title, int seconds)
@@ -285,12 +285,12 @@ void AppJobsTest::transcribeReportsStagesAndFinishes()
     if (!m_ffmpeg) QSKIP("ffmpeg nem található");
     m_http->handler = [](const FakeRequest& r) { return sonioxOk(r); };
     const Meeting m = recording("Heti egyeztetés", 3);
-    MeetingJobTracker* jobs = m_app->jobs();
+    library::MeetingJobTracker* jobs = m_app->jobs();
 
     // Records every progress snapshot: stage to the sequence of states reached.
     QHash<QString, QVector<StageState>> seen;
     int uploadPercentMax = -1;
-    connect(jobs, &MeetingJobTracker::jobProgressChanged, this, [&](const QString&, const JobProgress& p) {
+    connect(jobs, &library::MeetingJobTracker::jobProgressChanged, this, [&](const QString&, const JobProgress& p) {
         if (p.kind != JobKind::Transcribe) return;
         for (const JobStage& st : p.stages) {
             QVector<StageState>& v = seen[st.id];
@@ -301,9 +301,9 @@ void AppJobsTest::transcribeReportsStagesAndFinishes()
                 QCOMPARE(st.percent, -1);   // the provider gives no percentage, so we do not invent one
         }
     });
-    QSignalSpy finished(jobs, &MeetingJobTracker::jobFinished);
-    QSignalSpy ready(m_app.get(), &AppController::transcriptReady);
-    QSignalSpy legacy(m_app.get(), &AppController::jobProgress);
+    QSignalSpy finished(jobs, &library::MeetingJobTracker::jobFinished);
+    QSignalSpy ready(m_app.get(), &app::AppController::transcriptReady);
+    QSignalSpy legacy(m_app.get(), &app::AppController::jobProgress);
 
     m_app->transcribeMeeting(m.id);
     // Visible at once: running, cancellable, with a stage list (the mix is needed, so it is first).
@@ -369,7 +369,7 @@ void AppJobsTest::transcribeReportsStagesAndFinishes()
     QTRY_COMPARE(m_http->count("DELETE", "/"), 2);            // provider-side cleanup
 
     // Library search sees the new transcript too.
-    LibraryQuery q;
+    library::LibraryQuery q;
     q.text = "kezdjuk";
     QCOMPARE(m_app->library()->query(q).count(), 1);
     QVERIFY(m_app->library()->pendingItems().isEmpty());
@@ -385,8 +385,8 @@ void AppJobsTest::transcribeFailureKeptAfterRestart()
     };
     const Meeting m = recording("Bukó átírás", 2);
     const Meeting other = recording("Másik meeting", 2);
-    QSignalSpy finished(m_app->jobs(), &MeetingJobTracker::jobFinished);
-    QSignalSpy errChanged(m_app->jobs(), &MeetingJobTracker::errorChanged);
+    QSignalSpy finished(m_app->jobs(), &library::MeetingJobTracker::jobFinished);
+    QSignalSpy errChanged(m_app->jobs(), &library::MeetingJobTracker::errorChanged);
     m_app->transcribeMeeting(m.id);
     QTRY_COMPARE_WITH_TIMEOUT(finished.count(), 1, 30000);
     QCOMPARE(finished.at(0).at(2).value<JobOutcome>(), JobOutcome::Failed);
@@ -406,11 +406,11 @@ void AppJobsTest::transcribeFailureKeptAfterRestart()
     QVERIFY(!m_app->store()->load(m.id).hasTranscript);
 
     // "These are waiting for you": the failed and the not yet transcribed meeting.
-    QVector<PendingItem> pending = m_app->library()->pendingItems();
+    QVector<library::PendingItem> pending = m_app->library()->pendingItems();
     QCOMPARE(pending.size(), 2);
     int failedCount = 0;
-    for (const PendingItem& p : pending)
-        if (p.kind == PendingKind::TranscriptionFailed) { ++failedCount; QCOMPARE(p.meetingId, m.id); }
+    for (const library::PendingItem& p : pending)
+        if (p.kind == library::PendingKind::TranscriptionFailed) { ++failedCount; QCOMPARE(p.meetingId, m.id); }
     QCOMPARE(failedCount, 1);
 
     // Visible after a restart too.
@@ -421,7 +421,7 @@ void AppJobsTest::transcribeFailureKeptAfterRestart()
 
     // Retry with a good key: success, so the error disappears.
     m_http->handler = [](const FakeRequest& r) { return sonioxOk(r); };
-    QSignalSpy ready(m_app.get(), &AppController::transcriptReady);
+    QSignalSpy ready(m_app.get(), &app::AppController::transcriptReady);
     m_app->transcribeMeeting(m.id);
     QCOMPARE(m_app->jobs()->job(m.id, JobKind::Transcribe).stages.first().id, QStringLiteral("upload"));   // the mix already exists
     QVERIFY(ready.wait(30000));
@@ -429,7 +429,7 @@ void AppJobsTest::transcribeFailureKeptAfterRestart()
     st = m_app->processingState(m.id);
     QCOMPARE(st.transcriptState, StepState::Done);
     QVERIFY(!st.transcriptError.isValid());
-    QVERIFY(!QDir(m.folder).exists(MeetingJobTracker::stateFileName()));
+    QVERIFY(!QDir(m.folder).exists(library::MeetingJobTracker::stateFileName()));
 }
 
 void AppJobsTest::cancelTranscriptionAtProvider()
@@ -445,17 +445,17 @@ void AppJobsTest::cancelTranscriptionAtProvider()
 
     // There is a manual per-line fix (overlay) too, which must survive the cancel as well.
     {
-        SpeakerEditor* ed = m_app->speakerEditor(m.id);
+        editing::SpeakerEditor* ed = m_app->speakerEditor(m.id);
         QVERIFY(ed);
         QCOMPARE(ed->utteranceCount(), 2);
         QVERIFY(!ed->moveUtterancesToPerson({ed->utteranceAt(1).id}, "Kovács Lilla").isEmpty());
         m_app->closeSpeakerEditor(m.id);
     }
     QCOMPARE(m_app->retranscribeImpact(m.id).correctedUtterances, 1);
-    QVERIFY(QFile::exists(speakeredit::overlayPath(m.folder)));
+    QVERIFY(QFile::exists(editing::speakeredit::overlayPath(m.folder)));
 
-    MeetingJobTracker* jobs = m_app->jobs();
-    QSignalSpy finished(jobs, &MeetingJobTracker::jobFinished);
+    library::MeetingJobTracker* jobs = m_app->jobs();
+    QSignalSpy finished(jobs, &library::MeetingJobTracker::jobFinished);
     m_app->retranscribeMeeting(m.id);
     // We wait until it runs at the provider (the mixdown and the upload are done).
     QTRY_VERIFY_WITH_TIMEOUT(jobs->job(m.id, JobKind::Transcribe).isValid()
@@ -492,7 +492,7 @@ void AppJobsTest::cancelTranscriptionAtProvider()
     QTRY_COMPARE(m_http->count("DELETE", "/transcriptions/t1"), 1);
     QTRY_COMPARE(m_http->count("DELETE", "/files/f1"), 1);
     // No late result arrives.
-    QSignalSpy ready(m_app.get(), &AppController::transcriptReady);
+    QSignalSpy ready(m_app.get(), &app::AppController::transcriptReady);
     QTest::qWait(300);
     QCOMPARE(ready.count(), 0);
 }
@@ -509,8 +509,8 @@ void AppJobsTest::cancelDuringMixdownKeepsOldMixdown()
     m.mixdownDirty = true;
     m_app->store()->saveMeeting(m);
 
-    QSignalSpy finished(m_app->jobs(), &MeetingJobTracker::jobFinished);
-    QSignalSpy mixDone(m_app.get(), &AppController::mixdownUpdated);
+    QSignalSpy finished(m_app->jobs(), &library::MeetingJobTracker::jobFinished);
+    QSignalSpy mixDone(m_app.get(), &app::AppController::mixdownUpdated);
     m_app->transcribeMeeting(m.id);
     QVERIFY(m_app->processingState(m.id).mixdownRunning);
     QVERIFY(m_app->cancelJob(m.id, JobKind::Transcribe));
@@ -537,9 +537,9 @@ void AppJobsTest::standaloneMixdownCancel()
 {
     if (!m_ffmpeg) QSKIP("ffmpeg nem található");
     const Meeting m = recording("Keverés", 900);
-    MeetingJobTracker* jobs = m_app->jobs();
-    QSignalSpy mixDone(m_app.get(), &AppController::mixdownUpdated);
-    QSignalSpy finished(jobs, &MeetingJobTracker::jobFinished);
+    library::MeetingJobTracker* jobs = m_app->jobs();
+    QSignalSpy mixDone(m_app.get(), &app::AppController::mixdownUpdated);
+    QSignalSpy finished(jobs, &library::MeetingJobTracker::jobFinished);
     m_app->regenerateMixdown(m.id);
     QVERIFY(jobs->isRunning(m.id, JobKind::Mixdown));
     m_app->regenerateMixdown(m.id);                           // already running: no-op
@@ -573,8 +573,8 @@ void AppJobsTest::summarizePersistsStructureAndMeta()
     };
     const Meeting m = transcribed("Árajánlat");
     QVERIFY(!m_app->summaryDocument(m.id).exists);
-    QSignalSpy ready(m_app.get(), &AppController::summaryReady);
-    QSignalSpy finished(m_app->jobs(), &MeetingJobTracker::jobFinished);
+    QSignalSpy ready(m_app.get(), &app::AppController::summaryReady);
+    QSignalSpy finished(m_app->jobs(), &library::MeetingJobTracker::jobFinished);
     m_app->summarizeMeeting(m.id);
     QVERIFY(m_app->jobs()->isRunning(m.id, JobKind::Summarize));
     QCOMPARE(m_app->processingState(m.id).summaryState, StepState::Running);
@@ -587,7 +587,7 @@ void AppJobsTest::summarizePersistsStructureAndMeta()
     // The structure is persisted (summary.json) + the markdown exists too.
     QVERIFY(QDir(m.folder).exists("summary.json"));
     QVERIFY(QDir(m.folder).exists("summary.md"));
-    const SummaryDocument doc = m_app->summaryDocument(m.id);
+    const library::SummaryDocument doc = m_app->summaryDocument(m.id);
     QVERIFY(doc.exists);
     QVERIFY(!doc.fromMarkdown);
     QCOMPARE(doc.summary.execSummary, QStringLiteral("Rövid egyeztetés az árajánlatról."));
@@ -601,7 +601,7 @@ void AppJobsTest::summarizePersistsStructureAndMeta()
     QCOMPARE(m_http->count("POST", "/chat/completions"), 1);
     QVERIFY(!QDir(m.folder).exists("summary.notes.json"));
     // Metadata: when, which provider/model, in what mode.
-    QCOMPARE(doc.meta.mode, SummaryMode::Quick);
+    QCOMPARE(doc.meta.mode, library::SummaryMode::Quick);
     QCOMPARE(doc.meta.providerId, QStringLiteral("openai-compat"));
     QCOMPARE(doc.meta.model, QStringLiteral("teszt-modell"));
     QVERIFY(qAbs(doc.meta.createdAt.secsTo(QDateTime::currentDateTime())) < 30);
@@ -618,8 +618,8 @@ void AppJobsTest::summarizeCancelAndFailure()
         if (!r.path.endsWith("/chat/completions")) return {404, "{}"};   // no native API
         FakeReply h; h.hold = true; return h;
     };
-    QSignalSpy finished(m_app->jobs(), &MeetingJobTracker::jobFinished);
-    QSignalSpy ready(m_app.get(), &AppController::summaryReady);
+    QSignalSpy finished(m_app->jobs(), &library::MeetingJobTracker::jobFinished);
+    QSignalSpy ready(m_app.get(), &app::AppController::summaryReady);
     m_app->summarizeMeeting(m.id);
     QTRY_COMPARE(m_http->count("POST", "/chat/completions"), 1);
     QVERIFY(m_app->cancelJob(m.id, JobKind::Summarize));
@@ -701,16 +701,16 @@ void AppJobsTest::summarizeLongMeetingInParts()
         return {200, chat(k > 0 ? partNotes(k) : QString::fromUtf8(kMergeOk))};
     };
     const Meeting m = transcribedLong("Hosszú megbeszélés", 40);   // 3 parts: 3 notes + 1 summary
-    MeetingJobTracker* jobs = m_app->jobs();
+    library::MeetingJobTracker* jobs = m_app->jobs();
     QStringList trail;   // stage states + chunk progress, as the UI sees it
-    connect(jobs, &MeetingJobTracker::jobProgressChanged, this, [&](const QString&, const JobProgress& p) {
+    connect(jobs, &library::MeetingJobTracker::jobProgressChanged, this, [&](const QString&, const JobProgress& p) {
         if (p.kind != JobKind::Summarize) return;
         QString line;
         for (const JobStage& st : p.stages) line += st.id + ":" + QString::number(int(st.state)) + " ";
         line += QStringLiteral("%1/%2").arg(p.done).arg(p.total);
         if (trail.isEmpty() || trail.last() != line) trail << line;
     });
-    QSignalSpy ready(m_app.get(), &AppController::summaryReady);
+    QSignalSpy ready(m_app.get(), &app::AppController::summaryReady);
     m_app->summarizeMeeting(m.id);
     JobProgress jp = jobs->job(m.id, JobKind::Summarize);
     QStringList ids;
@@ -726,7 +726,7 @@ void AppJobsTest::summarizeLongMeetingInParts()
     QVERIFY2(trail.contains("notes:1 merge:0 2/3"), qPrintable(trail.join(" | ")));
     QVERIFY2(trail.contains("notes:2 merge:1 3/3"), qPrintable(trail.join(" | ")));
 
-    const SummaryDocument doc = m_app->summaryDocument(m.id);
+    const library::SummaryDocument doc = m_app->summaryDocument(m.id);
     QCOMPARE(doc.summary.execSummary, QStringLiteral("Hosszú megbeszélés összegzése."));
     QCOMPARE(doc.summary.openQuestions, QStringList({"Nyitott ügy 3"}));
     QCOMPARE(doc.summary.memo.size(), 3);
@@ -753,8 +753,8 @@ void AppJobsTest::summarizePartFailureResumes()
         return {200, chat(k > 0 ? partNotes(k) : QString::fromUtf8(kMergeOk))};
     };
     const Meeting m = transcribedLong("Elbukó rész", 40);
-    QSignalSpy finished(m_app->jobs(), &MeetingJobTracker::jobFinished);
-    QSignalSpy ready(m_app.get(), &AppController::summaryReady);
+    QSignalSpy finished(m_app->jobs(), &library::MeetingJobTracker::jobFinished);
+    QSignalSpy ready(m_app.get(), &app::AppController::summaryReady);
     m_app->summarizeMeeting(m.id);
     QTRY_COMPARE(finished.count(), 1);
     QCOMPARE(finished.at(0).at(2).value<JobOutcome>(), JobOutcome::Failed);
@@ -881,8 +881,8 @@ void AppJobsTest::summarizeAdaptsToSmallContext()
     const Meeting m = transcribedDense("Kis kontextus", 40);   // 3 parts, ~17 thousand characters
     auto srv = std::make_shared<SmallContextServer>();
     m_http->handler = [srv](const FakeRequest& r) { return (*srv)(r); };
-    QSignalSpy ready(m_app.get(), &AppController::summaryReady);
-    QSignalSpy progress(m_app->jobs(), &MeetingJobTracker::jobProgressChanged);
+    QSignalSpy ready(m_app.get(), &app::AppController::summaryReady);
+    QSignalSpy progress(m_app->jobs(), &library::MeetingJobTracker::jobProgressChanged);
     m_app->summarizeMeeting(m.id);
     QVERIFY(ready.wait(20000));
     QVERIFY2(m_errors.isEmpty(), qPrintable(m_errors.join("; ")));
@@ -912,14 +912,14 @@ void AppJobsTest::summarizeContextTooSmall()
     auto srv = std::make_shared<SmallContextServer>();
     srv->allowUser = 1500;
     m_http->handler = [srv](const FakeRequest& r) { return (*srv)(r); };
-    QSignalSpy finished(m_app->jobs(), &MeetingJobTracker::jobFinished);
+    QSignalSpy finished(m_app->jobs(), &library::MeetingJobTracker::jobFinished);
     m_app->summarizeMeeting(m.id);
     QTRY_COMPARE_WITH_TIMEOUT(finished.count(), 1, 15000);
     QCOMPARE(finished.at(0).at(2).value<JobOutcome>(), JobOutcome::Failed);
     QCOMPARE(srv->notesCalls, 1);
     const JobError e = m_app->processingState(m.id).summaryError;
     QVERIFY2(e.fixActionHint.startsWith(QStringLiteral("settings:llm-context:")), qPrintable(e.fixActionHint));
-    QVERIFY(contextFixTokens(e.fixActionHint) >= 8192);
+    QVERIFY(library::contextFixTokens(e.fixActionHint) >= 8192);
     QVERIFY2(e.message.contains(QStringLiteral("kontextussal")), qPrintable(e.message));
     QVERIFY(!e.message.contains(QLatin1Char('{')));
     QVERIFY(!e.detail.contains(QLatin1Char('{')));
@@ -937,8 +937,8 @@ void AppJobsTest::summarizeLoadsModelOnLmStudio()
     lm->chatReply = QStringLiteral(R"({"execSummary":"Rövid.","decisions":[],"actionItems":[]})");
     m_http->handler = [lm](const FakeRequest& r) { return (*lm)(r); };
     const Meeting m = transcribed("LM Studio");
-    QSignalSpy ready(m_app.get(), &AppController::summaryReady);
-    QSignalSpy progress(m_app->jobs(), &MeetingJobTracker::jobProgressChanged);
+    QSignalSpy ready(m_app.get(), &app::AppController::summaryReady);
+    QSignalSpy progress(m_app->jobs(), &library::MeetingJobTracker::jobProgressChanged);
     m_app->summarizeMeeting(m.id);
     QVERIFY(ready.wait(10000));
     QVERIFY2(m_errors.isEmpty(), qPrintable(m_errors.join("; ")));
@@ -980,7 +980,7 @@ void AppJobsTest::summarizeLoadRefusedAndCancelDuringLoad()
     lm->refuseLoad = true;
     m_http->handler = [lm](const FakeRequest& r) { return (*lm)(r); };
     const Meeting m = transcribed("Nem fér");
-    QSignalSpy finished(m_app->jobs(), &MeetingJobTracker::jobFinished);
+    QSignalSpy finished(m_app->jobs(), &library::MeetingJobTracker::jobFinished);
     m_app->summarizeMeeting(m.id);
     QTRY_COMPARE_WITH_TIMEOUT(finished.count(), 1, 10000);
     QCOMPARE(finished.at(0).at(2).value<JobOutcome>(), JobOutcome::Failed);
@@ -1017,7 +1017,7 @@ void AppJobsTest::summarizeCancelBetweenParts()
         return {200, chat(k > 0 ? partNotes(k) : QString::fromUtf8(kMergeOk))};
     };
     const Meeting m = transcribedLong("Megszakított hosszú", 40);
-    QSignalSpy finished(m_app->jobs(), &MeetingJobTracker::jobFinished);
+    QSignalSpy finished(m_app->jobs(), &library::MeetingJobTracker::jobFinished);
     m_app->summarizeMeeting(m.id);
     QTRY_COMPARE(m_http->count("POST", "/chat/completions"), 2);
     QTRY_COMPARE(m_app->jobs()->job(m.id, JobKind::Summarize).done, 1);
@@ -1036,7 +1036,7 @@ void AppJobsTest::estimateDescribesQuickSummaryCalls()
 {
     // Short meeting: one call.
     const Meeting shortM = transcribed("Rövid");
-    EstimateRequest r = m_app->makeEstimateRequest(shortM.id, "summarize", "quick");
+    cloud::EstimateRequest r = m_app->makeEstimateRequest(shortM.id, "summarize", "quick");
     QCOMPARE(r.llmCalls.size(), 1);
     QCOMPARE(r.llmCalls[0].count, 1);
     QVERIFY(r.llmCalls[0].inputChars > r.transcriptChars);
@@ -1055,7 +1055,7 @@ void AppJobsTest::estimateDescribesQuickSummaryCalls()
 void AppJobsTest::topicsEditReorderAndStatuses()
 {
     const Meeting m = transcribed("Témák");
-    QSignalSpy topicsChanged(m_app.get(), &AppController::topicsChanged);
+    QSignalSpy topicsChanged(m_app.get(), &app::AppController::topicsChanged);
 
     // Add: the new topics get ids, the one with an empty title is left out.
     QVector<SummaryTopic> saved = m_app->setMeetingTopics(m.id, {
@@ -1091,9 +1091,9 @@ void AppJobsTest::topicsEditReorderAndStatuses()
         if (call == 2) return {500, R"({"error":{"message":"overloaded","code":"overloaded"}})"};
         return {200, chat(QStringLiteral("Részletes elemzés %1.\n\n## Döntések\n- Döntés %1\n\n## Teendők\n- Teendő %1 — Ödön (péntek)\n").arg(call))};
     };
-    QSignalSpy queueDone(m_app.get(), &AppController::topicAnalysisQueueFinished);
-    QSignalSpy statusChanged(m_app.get(), &AppController::topicStatusChanged);
-    QSignalSpy finished(m_app->jobs(), &MeetingJobTracker::jobFinished);
+    QSignalSpy queueDone(m_app.get(), &app::AppController::topicAnalysisQueueFinished);
+    QSignalSpy statusChanged(m_app.get(), &app::AppController::topicStatusChanged);
+    QSignalSpy finished(m_app->jobs(), &library::MeetingJobTracker::jobFinished);
     m_app->generateComplexSummary(m.id, onDisk);
     // Right after starting: the first runs, the others queue; chunk progress on the job.
     sts = m_app->topicStatuses(m.id);
@@ -1132,7 +1132,7 @@ void AppJobsTest::topicsEditReorderAndStatuses()
 
     // Re-running the failed topic: done; then the closing summary.
     call = 10;
-    QSignalSpy oneReady(m_app.get(), &AppController::topicAnalysisReady);
+    QSignalSpy oneReady(m_app.get(), &app::AppController::topicAnalysisReady);
     m_app->analyzeTopic(m.id, onDisk[1]);
     QCOMPARE(m_app->topicStatuses(m.id)[1].state, TopicState::Running);
     QVERIFY(oneReady.wait(10000));
@@ -1142,13 +1142,13 @@ void AppJobsTest::topicsEditReorderAndStatuses()
     QVERIFY(!m_app->processingState(m.id).summaryError.isValid());
 
     m_http->handler = [](const FakeRequest&) -> FakeReply { return {200, chat(QStringLiteral("A megbeszélés röviden: minden rendben."))}; };
-    QSignalSpy summaryReady(m_app.get(), &AppController::summaryReady);
+    QSignalSpy summaryReady(m_app.get(), &app::AppController::summaryReady);
     m_app->finalizeComplexSummary(m.id);
     QVERIFY(m_app->jobs()->isRunning(m.id, JobKind::Summarize));
     QVERIFY(summaryReady.wait(10000));
-    const SummaryDocument doc = m_app->summaryDocument(m.id);
+    const library::SummaryDocument doc = m_app->summaryDocument(m.id);
     QVERIFY(doc.exists);
-    QCOMPARE(doc.meta.mode, SummaryMode::Topics);
+    QCOMPARE(doc.meta.mode, library::SummaryMode::Topics);
     QCOMPARE(doc.meta.model, QStringLiteral("teszt-modell"));
     QCOMPARE(doc.summary.execSummary, QStringLiteral("A megbeszélés röviden: minden rendben."));
     QCOMPARE(doc.topics.size(), 3);
@@ -1179,9 +1179,9 @@ void AppJobsTest::cancelTopicQueue()
         if (++call == 1) return {200, chat(QStringLiteral("Elemzés.\n\n## Döntések\n- d\n"))};
         FakeReply h; h.hold = true; return h;
     };
-    QSignalSpy oneReady(m_app.get(), &AppController::topicAnalysisReady);
-    QSignalSpy finished(m_app->jobs(), &MeetingJobTracker::jobFinished);
-    QSignalSpy summaryReady(m_app.get(), &AppController::summaryReady);
+    QSignalSpy oneReady(m_app.get(), &app::AppController::topicAnalysisReady);
+    QSignalSpy finished(m_app->jobs(), &library::MeetingJobTracker::jobFinished);
+    QSignalSpy summaryReady(m_app.get(), &app::AppController::summaryReady);
     m_app->generateComplexSummary(m.id, topics);
     QVERIFY(oneReady.wait(10000));
     QTRY_COMPARE(m_http->count("POST", "/chat/completions"), 2);
@@ -1214,7 +1214,7 @@ void AppJobsTest::cancelTopicQueue()
     QCOMPARE(m_app->jobs()->job(m.id, JobKind::AnalyzeTopics).total, 2);
     QVERIFY(summaryReady.wait(15000));                        // analyses + automatic summary
     QCOMPARE(m_app->topicAnalyses(m.id).size(), 3);
-    QCOMPARE(m_app->summaryDocument(m.id).meta.mode, SummaryMode::Topics);
+    QCOMPARE(m_app->summaryDocument(m.id).meta.mode, library::SummaryMode::Topics);
 }
 
 void AppJobsTest::renamedDuringTranscriptionSurvives()
@@ -1222,7 +1222,7 @@ void AppJobsTest::renamedDuringTranscriptionSurvives()
     if (!m_ffmpeg) QSKIP("ffmpeg nem található");
     m_http->handler = [](const FakeRequest& r) { return sonioxOk(r); };
     const Meeting m = recording("Eredeti cím", 2);
-    QSignalSpy ready(m_app.get(), &AppController::transcriptReady);
+    QSignalSpy ready(m_app.get(), &app::AppController::transcriptReady);
     m_app->transcribeMeeting(m.id);
     // The app stays usable meanwhile: the user renames the meeting while the transcription runs.
     QTRY_VERIFY_WITH_TIMEOUT(m_http->count("POST", "/files") == 1, 30000);
@@ -1245,17 +1245,17 @@ void AppJobsTest::identifyRunsAsLastStage()
 
     m_http->handler = [](const FakeRequest& r) { return sonioxOk(r); };
     const Meeting m = recording("Azonosítással", 5);
-    MeetingJobTracker* jobs = m_app->jobs();
+    library::MeetingJobTracker* jobs = m_app->jobs();
     QVector<StageState> identify;
     QStringList details;
-    connect(jobs, &MeetingJobTracker::jobProgressChanged, this, [&](const QString&, const JobProgress& p) {
+    connect(jobs, &library::MeetingJobTracker::jobProgressChanged, this, [&](const QString&, const JobProgress& p) {
         if (const JobStage* st = p.stage("identify")) {
             if (identify.isEmpty() || identify.last() != st->state) identify.append(st->state);
             if (!st->detail.isEmpty() && !details.contains(st->detail)) details << st->detail;
         }
     });
-    QSignalSpy ready(m_app.get(), &AppController::transcriptReady);
-    QSignalSpy finished(jobs, &MeetingJobTracker::jobFinished);
+    QSignalSpy ready(m_app.get(), &app::AppController::transcriptReady);
+    QSignalSpy finished(jobs, &library::MeetingJobTracker::jobFinished);
     m_app->transcribeMeeting(m.id);
     if (!jobs->job(m.id, JobKind::Transcribe).stage("identify"))
         QSKIP("a build nem tartalmaz voice-ID-t");
@@ -1295,12 +1295,12 @@ void AppJobsTest::retranscribeSuccessClearsNamesAndCorrections()
     Meeting m = transcribed("Sikeres újra-átírás");
     m.speakerMap.insert("Beszélő 1", "Ödön");
     m_app->store()->saveMeeting(m);
-    SpeakerEditor* ed = m_app->speakerEditor(m.id);
+    editing::SpeakerEditor* ed = m_app->speakerEditor(m.id);
     QVERIFY(ed);
     QVERIFY(!ed->moveUtterancesToPerson({ed->utteranceAt(1).id}, "Kovács Lilla").isEmpty());
     QCOMPARE(m_app->retranscribeImpact(m.id).correctedUtterances, 1);
 
-    QSignalSpy ready(m_app.get(), &AppController::transcriptReady);
+    QSignalSpy ready(m_app.get(), &app::AppController::transcriptReady);
     m_app->retranscribeMeeting(m.id, /*keepBackup*/ true);
     // While it runs, the old names and fixes live (they were not deleted in advance).
     QCOMPARE(m_app->store()->load(m.id).speakerMap.value("Beszélő 1"), QStringLiteral("Ödön"));
@@ -1310,7 +1310,7 @@ void AppJobsTest::retranscribeSuccessClearsNamesAndCorrections()
 
     // Success: with the new transcript the names AND the per-line fixes were deleted too.
     QVERIFY(m_app->store()->load(m.id).speakerMap.isEmpty());
-    const RetranscribeImpact impact = m_app->retranscribeImpact(m.id);
+    const editing::RetranscribeImpact impact = m_app->retranscribeImpact(m.id);
     QCOMPARE(impact.correctedUtterances, 0);
     QCOMPARE(impact.namedSpeakers, 0);
     QCOMPARE(impact.addedParticipants, 0);
@@ -1338,7 +1338,7 @@ void AppJobsTest::manualParticipantSurvivesTranscription()
     QVERIFY(!cili.isEmpty());
     QVERIFY(m_app->unheardParticipants(m.id).isEmpty());   // no "not heard" without a transcript
 
-    QSignalSpy ready(m_app.get(), &AppController::transcriptReady);
+    QSignalSpy ready(m_app.get(), &app::AppController::transcriptReady);
     m_app->transcribeMeeting(m.id);
     QVERIFY(ready.wait(30000));
     QTRY_VERIFY(!m_app->jobs()->isBusy(m.id));
@@ -1378,7 +1378,7 @@ void AppJobsTest::staleSummaryShowsInStateAndPending()
     const QString json = QStringLiteral(R"({"execSummary":"Rövid.","decisions":[],"actionItems":[],"participants":[]})");
     m_http->handler = [json](const FakeRequest&) -> FakeReply { return {200, chat(json)}; };
     const Meeting m = transcribed("Elavuló összefoglaló");
-    QSignalSpy ready(m_app.get(), &AppController::summaryReady);
+    QSignalSpy ready(m_app.get(), &app::AppController::summaryReady);
     m_app->summarizeMeeting(m.id);
     QVERIFY(ready.wait(10000));
     MeetingProcessingState st = m_app->processingState(m.id);
@@ -1387,9 +1387,9 @@ void AppJobsTest::staleSummaryShowsInStateAndPending()
     QVERIFY(m_app->library()->pendingItems().isEmpty());
 
     // A speaker change after the summary makes it stale: state, library entry, "waiting for you".
-    QSignalSpy stateChanged(m_app->jobs(), &MeetingJobTracker::stateChanged);
-    QSignalSpy pendingChanged(m_app->library(), &MeetingLibrary::pendingItemsChanged);
-    QSignalSpy entryChanged(m_app->library(), &MeetingLibrary::meetingChanged);
+    QSignalSpy stateChanged(m_app->jobs(), &library::MeetingJobTracker::stateChanged);
+    QSignalSpy pendingChanged(m_app->library(), &library::MeetingLibrary::pendingItemsChanged);
+    QSignalSpy entryChanged(m_app->library(), &library::MeetingLibrary::meetingChanged);
     m_app->renameSpeaker(m.id, "Beszélő 1", "Ödön", /*enroll*/ false);
     QVERIFY(stateChanged.count() >= 1);
     QVERIFY(pendingChanged.count() >= 1);
@@ -1399,9 +1399,9 @@ void AppJobsTest::staleSummaryShowsInStateAndPending()
     QVERIFY(st.summaryStale);
     QCOMPARE(st.staleCorrectedSpeakers, 1);
     QVERIFY(m_app->library()->entry(m.id).state.summaryStale);
-    QVector<PendingItem> pending = m_app->library()->pendingItems();
+    QVector<library::PendingItem> pending = m_app->library()->pendingItems();
     QCOMPARE(pending.size(), 1);
-    QCOMPARE(pending[0].kind, PendingKind::StaleSummary);
+    QCOMPARE(pending[0].kind, library::PendingKind::StaleSummary);
     QCOMPARE(pending[0].meetingId, m.id);
     QCOMPARE(pending[0].correctedSpeakers, 1);
 
@@ -1437,14 +1437,14 @@ void AppJobsTest::retryAfterFailedRetranscribeClearsNames()
     Meeting m = transcribed("Újrapróbált újra-átírás");
     m.speakerMap.insert("Beszélő 1", "Ödön");
     m_app->store()->saveMeeting(m);
-    MeetingJobTracker* jobs = m_app->jobs();
+    library::MeetingJobTracker* jobs = m_app->jobs();
 
     // 1) The re-transcription fails at the provider: the old transcript stays with its names.
     m_http->handler = [](const FakeRequest& r) -> FakeReply {
         if (r.method == "POST" && r.path.endsWith("/files")) return {500, R"({"message":"hiba"})"};
         return {200, "{}"};
     };
-    QSignalSpy finished(jobs, &MeetingJobTracker::jobFinished);
+    QSignalSpy finished(jobs, &library::MeetingJobTracker::jobFinished);
     m_app->retranscribeMeeting(m.id);
     QTRY_COMPARE_WITH_TIMEOUT(finished.count(), 1, 30000);
     QCOMPARE(finished.at(0).at(2).value<JobOutcome>(), JobOutcome::Failed);
@@ -1453,7 +1453,7 @@ void AppJobsTest::retryAfterFailedRetranscribeClearsNames()
     // 2) Retry with a PLAIN transcription (the error card's "Retry" button): the new diarization's
     //    "Speaker 1" may be a different person, so the old name must NOT stay on it.
     m_http->handler = [](const FakeRequest& r) { return sonioxOk(r); };
-    QSignalSpy ready(m_app.get(), &AppController::transcriptReady);
+    QSignalSpy ready(m_app.get(), &app::AppController::transcriptReady);
     m_app->transcribeMeeting(m.id);
     QVERIFY(ready.wait(30000));
     QTRY_VERIFY(!jobs->isBusy(m.id));
@@ -1476,7 +1476,7 @@ void AppJobsTest::emptySttResultKeepsOldTranscript()
     m.speakerMap.insert("Beszélő 1", "Ödön");
     m_app->store()->saveMeeting(m);
     {
-        SpeakerEditor* ed = m_app->speakerEditor(m.id);
+        editing::SpeakerEditor* ed = m_app->speakerEditor(m.id);
         QVERIFY(ed);
         QVERIFY(!ed->moveUtterancesToPerson({ed->utteranceAt(1).id}, "Kovács Lilla").isEmpty());
         m_app->closeSpeakerEditor(m.id);
@@ -1485,12 +1485,12 @@ void AppJobsTest::emptySttResultKeepsOldTranscript()
     const QString segmentsPath = QDir(m.folder).filePath("transcript.segments.json");
     const QByteArray tokensBefore = fileBytes(tokensPath);
     const QByteArray segmentsBefore = fileBytes(segmentsPath);
-    const QByteArray overlayBefore = fileBytes(speakeredit::overlayPath(m.folder));
+    const QByteArray overlayBefore = fileBytes(editing::speakeredit::overlayPath(m.folder));
     QVERIFY(!tokensBefore.isEmpty() && !overlayBefore.isEmpty());
 
-    MeetingJobTracker* jobs = m_app->jobs();
-    QSignalSpy finished(jobs, &MeetingJobTracker::jobFinished);
-    QSignalSpy ready(m_app.get(), &AppController::transcriptReady);
+    library::MeetingJobTracker* jobs = m_app->jobs();
+    QSignalSpy finished(jobs, &library::MeetingJobTracker::jobFinished);
+    QSignalSpy ready(m_app.get(), &app::AppController::transcriptReady);
     m_app->retranscribeMeeting(m.id);
     QTRY_COMPARE_WITH_TIMEOUT(finished.count(), 1, 30000);
     QCOMPARE(finished.at(0).at(2).value<JobOutcome>(), JobOutcome::Failed);
@@ -1503,7 +1503,7 @@ void AppJobsTest::emptySttResultKeepsOldTranscript()
     QCOMPARE(m_errors.size(), 1);
     QCOMPARE(fileBytes(tokensPath), tokensBefore);
     QCOMPARE(fileBytes(segmentsPath), segmentsBefore);
-    QCOMPARE(fileBytes(speakeredit::overlayPath(m.folder)), overlayBefore);
+    QCOMPARE(fileBytes(editing::speakeredit::overlayPath(m.folder)), overlayBefore);
     const Meeting after = m_app->store()->load(m.id);
     QVERIFY(after.hasTranscript);
     QCOMPARE(after.speakerMap.value("Beszélő 1"), QStringLiteral("Ödön"));
@@ -1540,7 +1540,7 @@ void AppJobsTest::missingTrackKeepsExistingMixdown()
     QVERIFY(!sysName.isEmpty());
 
     // Manual remix: it does not start, the error names the track, the old mix stays.
-    QSignalSpy mixDone(m_app.get(), &AppController::mixdownUpdated);
+    QSignalSpy mixDone(m_app.get(), &app::AppController::mixdownUpdated);
     m_app->regenerateMixdown(m.id);
     QCOMPARE(mixDone.count(), 1);
     QCOMPARE(mixDone.at(0).at(1).toBool(), false);
@@ -1551,7 +1551,7 @@ void AppJobsTest::missingTrackKeepsExistingMixdown()
 
     // Automatic remix before transcription: the same, the transcription does not start, nothing
     // goes to the provider, the persistent error names the track.
-    QSignalSpy finished(m_app->jobs(), &MeetingJobTracker::jobFinished);
+    QSignalSpy finished(m_app->jobs(), &library::MeetingJobTracker::jobFinished);
     m_app->transcribeMeeting(m.id);
     QCOMPARE(finished.count(), 1);
     QCOMPARE(finished.at(0).at(2).value<JobOutcome>(), JobOutcome::Failed);
@@ -1589,8 +1589,8 @@ void AppJobsTest::identifyResultsDroppedWhenTranscriptChanges()
     m.mixdownFile = "mixdown.mp3";
     m.mixdownDirty = false;
     m_app->store()->saveMeeting(m);
-    MeetingJobTracker* jobs = m_app->jobs();
-    QSignalSpy finished(jobs, &MeetingJobTracker::jobFinished);
+    library::MeetingJobTracker* jobs = m_app->jobs();
+    QSignalSpy finished(jobs, &library::MeetingJobTracker::jobFinished);
 
     // Control: with an unchanged transcript the standalone identification ends cleanly.
     QVERIFY(m_app->identifyMeetingAsync(m.id));

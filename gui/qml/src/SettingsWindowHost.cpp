@@ -5,10 +5,10 @@
 #include "SettingsViewModel.h"
 #include "ShellUiState.h"
 
-#include "tanara/AppController.h"
+#include "tanara/app/AppController.h"
 #include "tanara/foundation/log/Logging.h"
 #include "tanara/foundation/paths/Paths.h"
-#include "tanara/SettingsManager.h"
+#include "tanara/app/SettingsManager.h"
 
 #include <QDir>
 #include <QQmlComponent>
@@ -19,7 +19,7 @@ using namespace tanara;
 
 namespace tanara_qml {
 
-SettingsWindowHost::SettingsWindowHost(AppController* controller, SettingsDialogs* dialogs,
+SettingsWindowHost::SettingsWindowHost(app::AppController* controller, SettingsDialogs* dialogs,
                                        QObject* parent)
     : QObject(parent), m_controller(controller), m_dialogs(dialogs)
 {

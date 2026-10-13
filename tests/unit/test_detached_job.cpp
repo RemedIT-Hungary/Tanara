@@ -11,7 +11,7 @@
 #include <thread>
 #include <vector>
 
-#include "tanara/audio/DetachedJob.h"
+#include "tanara/recording/audio/DetachedJob.h"
 
 using namespace tanara;
 using namespace std::chrono_literals;
@@ -51,7 +51,7 @@ void DetachedJobTest::quickJobIsAwaited()
 {
     auto token = std::make_shared<int>(42);
     std::atomic<bool> ran{false};
-    DetachedJob job([token, &ran] { ran = true; });
+    recording::DetachedJob job([token, &ran] { ran = true; });
     QVERIFY(job.waitFor(2000ms));
     QVERIFY(job.finished());
     QVERIFY(ran.load());
@@ -65,7 +65,7 @@ void DetachedJobTest::stuckJobReturnsWithinTimeout()
     QElapsedTimer t;
     t.start();
     {
-        DetachedJob job([dev] { dev->stopAndUninit(); });
+        recording::DetachedJob job([dev] { dev->stopAndUninit(); });
         QVERIFY(!job.waitFor(200ms));            // we do not wait forever
         QVERIFY(!job.finished());
     }                                            // the job's destruction does not block either
@@ -81,7 +81,7 @@ void DetachedJobTest::stuckJobsShareOneDeadline()
 {
     // Several stuck devices together also pay the deadline only once (parallel teardown).
     std::vector<std::shared_ptr<StuckDevice>> devs;
-    std::vector<DetachedJob> jobs;
+    std::vector<recording::DetachedJob> jobs;
     for (int i = 0; i < 4; ++i) {
         devs.push_back(std::make_shared<StuckDevice>());
         auto d = devs.back();
@@ -89,9 +89,9 @@ void DetachedJobTest::stuckJobsShareOneDeadline()
     }
     QElapsedTimer t;
     t.start();
-    const auto deadline = DetachedJob::Clock::now() + 200ms;
+    const auto deadline = recording::DetachedJob::Clock::now() + 200ms;
     int timedOut = 0;
-    for (const DetachedJob& j : jobs)
+    for (const recording::DetachedJob& j : jobs)
         if (!j.waitUntil(deadline)) ++timedOut;
     QCOMPARE(timedOut, 4);
     QVERIFY2(t.elapsed() < 600, qPrintable(QString::number(t.elapsed())));

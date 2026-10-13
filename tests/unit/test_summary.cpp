@@ -8,14 +8,14 @@
 #include <QFile>
 #include <functional>
 
-#include "tanara/Types.h"
-#include "tanara/PromptLibrary.h"
-#include "tanara/SummaryService.h"
-#include "tanara/summary/SummaryPipeline.h"
-#include "tanara/llm/ILlmProvider.h"
+#include "tanara/domain/Types.h"
+#include "tanara/processing/summary/PromptLibrary.h"
+#include "tanara/processing/summary/SummaryService.h"
+#include "tanara/processing/summary/SummaryPipeline.h"
+#include "tanara/providers/chat/ILlmProvider.h"
 
 using namespace tanara;
-using namespace tanara::summarypipe;
+using namespace tanara::processing::summarypipe;
 
 // ---- scripted fake LLM ----
 // It logs every chat() and asks the `script` function for a reply (by the request's sequence
@@ -25,10 +25,10 @@ struct Answer {
     QString text;
 };
 
-class ScriptedJob : public LlmJob {
+class ScriptedJob : public providers::LlmJob {
     Q_OBJECT
 public:
-    explicit ScriptedJob(QObject* parent) : LlmJob(parent) {}
+    explicit ScriptedJob(QObject* parent) : providers::LlmJob(parent) {}
     void cancel() override {
         cancelled = true;
         // Like the real provider: a canceled request ends with failed.
@@ -37,16 +37,16 @@ public:
     bool cancelled = false;
 };
 
-class ScriptedProvider : public QObject, public ILlmProvider {
+class ScriptedProvider : public QObject, public providers::ILlmProvider {
     Q_OBJECT
 public:
-    std::function<Answer(int, const LlmRequest&)> script;
-    QVector<LlmRequest> requests;
+    std::function<Answer(int, const providers::LlmRequest&)> script;
+    QVector<providers::LlmRequest> requests;
     QVector<QPointer<ScriptedJob>> jobs;
 
     QString name() const override { return QStringLiteral("scripted"); }
     bool supportsStreaming() const override { return false; }
-    LlmJob* chat(const LlmRequest& req) override {
+    providers::LlmJob* chat(const providers::LlmRequest& req) override {
         const int n = int(requests.size());
         requests.append(req);
         auto* job = new ScriptedJob(this);
@@ -115,19 +115,19 @@ const char* kMergeJson =
     R"({"execSummary":"Összegzés.","decisions":["Döntés A"],"openQuestions":["Kérdés A"],)"
     R"("actionItems":[{"text":"Ajánlat küldése","owner":"Béla","due":"péntek"}]})";
 
-bool isNotes(const LlmRequest& r) { return r.messages.value(0).content.contains(QStringLiteral("ONE PART")); }
-bool isMerge(const LlmRequest& r) { return r.messages.value(0).content.contains(QStringLiteral("SELECT and merge")); }
-bool isSingle(const LlmRequest& r) { return r.messages.value(0).content.contains(QStringLiteral("in two steps")); }
+bool isNotes(const providers::LlmRequest& r) { return r.messages.value(0).content.contains(QStringLiteral("ONE PART")); }
+bool isMerge(const providers::LlmRequest& r) { return r.messages.value(0).content.contains(QStringLiteral("SELECT and merge")); }
+bool isSingle(const providers::LlmRequest& r) { return r.messages.value(0).content.contains(QStringLiteral("in two steps")); }
 
-int partOf(const LlmRequest& r)
+int partOf(const providers::LlmRequest& r)
 {
     static const QRegularExpression re(QStringLiteral("^PART (\\d+) of (\\d+)"), QRegularExpression::MultilineOption);
     return re.match(r.messages.value(1).content).captured(1).toInt();
 }
 
-SummaryRequest request(const MergedTranscript& t, const QString& cache = QString())
+processing::SummaryRequest request(const MergedTranscript& t, const QString& cache = QString())
 {
-    SummaryRequest r;
+    processing::SummaryRequest r;
     r.transcript = t;
     r.language = QStringLiteral("magyar");
     r.model = QStringLiteral("teszt");
@@ -178,7 +178,7 @@ private slots:
 
 void SummaryTest::splitShortMeetingIsOnePart()
 {
-    const QVector<TranscriptPart> parts = splitTranscript(transcriptMinutes(20).segments());
+    const QVector<processing::summarypipe::TranscriptPart> parts = processing::summarypipe::splitTranscript(transcriptMinutes(20).segments());
     QCOMPARE(parts.size(), 1);
     QCOMPARE(parts[0].startMs, 0);
     QVERIFY(parts[0].markdown.startsWith(QStringLiteral("`[00:00]` **Ádám**")));
@@ -188,7 +188,7 @@ void SummaryTest::splitShortMeetingIsOnePart()
 void SummaryTest::splitAtExactBoundary()
 {
     // The paragraph starting at 15:00 is already the start of part 2 (a part closes after >= 15 minutes).
-    const QVector<TranscriptPart> parts = splitTranscript(transcriptMinutes(40).segments());
+    const QVector<processing::summarypipe::TranscriptPart> parts = processing::summarypipe::splitTranscript(transcriptMinutes(40).segments());
     QCOMPARE(parts.size(), 3);
     QCOMPARE(parts[1].startMs, 15 * 60000);
     QCOMPARE(parts[2].startMs, 30 * 60000);
@@ -201,7 +201,7 @@ void SummaryTest::splitAtExactBoundary()
 void SummaryTest::splitLongMeeting()
 {
     // 100 minutes: 6 full parts + a 10-minute (>= 7.5) final part.
-    const QVector<TranscriptPart> parts = splitTranscript(transcriptMinutes(100).segments());
+    const QVector<processing::summarypipe::TranscriptPart> parts = processing::summarypipe::splitTranscript(transcriptMinutes(100).segments());
     QCOMPARE(parts.size(), 7);
     QCOMPARE(parts.last().startMs, 90 * 60000);
     // Every paragraph went into exactly one part.
@@ -213,9 +213,9 @@ void SummaryTest::splitLongMeeting()
 void SummaryTest::splitMergesTinyTail()
 {
     // 22 minutes: the 7-minute final part (< 7.5) merges into the first, so one part.
-    QCOMPARE(splitTranscript(transcriptMinutes(22).segments()).size(), 1);
+    QCOMPARE(processing::summarypipe::splitTranscript(transcriptMinutes(22).segments()).size(), 1);
     // 24 minutes: the 9-minute final part stays.
-    QCOMPARE(splitTranscript(transcriptMinutes(24).segments()).size(), 2);
+    QCOMPARE(processing::summarypipe::splitTranscript(transcriptMinutes(24).segments()).size(), 2);
     // A long but almost empty final part (a single short sentence after 10 minutes) merges.
     MergedTranscript t = transcriptMinutes(15);
     TranscriptToken late;
@@ -224,21 +224,21 @@ void SummaryTest::splitMergesTinyTail()
     late.startMs = 27 * 60000;
     late.endMs = late.startMs + 2000;
     t.tokens.append(late);
-    const QVector<TranscriptPart> parts = splitTranscript(t.segments());
+    const QVector<processing::summarypipe::TranscriptPart> parts = processing::summarypipe::splitTranscript(t.segments());
     QCOMPARE(parts.size(), 1);
     QVERIFY(parts[0].markdown.contains(QStringLiteral("Köszönöm")));
 }
 
 void SummaryTest::splitEmpty()
 {
-    QVERIFY(splitTranscript({}).isEmpty());
+    QVERIFY(processing::summarypipe::splitTranscript({}).isEmpty());
 }
 
 // ---- note ----
 
 void SummaryTest::parseNotesStandard()
 {
-    TranscriptPart part;
+    processing::summarypipe::TranscriptPart part;
     part.startMs = 15 * 60000;
     part.endMs = 30 * 60000;
     const PartNotes n = parseNotes(notesFor(1), part);
@@ -254,7 +254,7 @@ void SummaryTest::parseNotesStandard()
 
 void SummaryTest::parseNotesTolerant()
 {
-    TranscriptPart part;
+    processing::summarypipe::TranscriptPart part;
     part.endMs = 15 * 60000;
     // Prose before it, a code fence, bold / Hungarian / colon headers, a numbered title, a title
     // with a trailing time frame, a wrapped point, the "None." marker.
@@ -290,18 +290,18 @@ void SummaryTest::parseNotesTolerant()
 
 void SummaryTest::parseNotesWithoutHeadings()
 {
-    TranscriptPart part;
+    processing::summarypipe::TranscriptPart part;
     part.endMs = 60000;
     const PartNotes n = parseNotes(QStringLiteral("- Első pont.\n- Második pont.\n"), part);
     QCOMPARE(n.topics.size(), 1);
     QCOMPARE(n.topics[0].points.size(), 2);
     QVERIFY(n.topics[0].title.isEmpty());
-    QVERIFY(parseNotes(QStringLiteral("   \n"), part).isEmpty());
+    QVERIFY(processing::summarypipe::parseNotes(QStringLiteral("   \n"), part).isEmpty());
 }
 
 void SummaryTest::parseNotesFillsTimes()
 {
-    TranscriptPart part;
+    processing::summarypipe::TranscriptPart part;
     part.startMs = 60000;
     part.endMs = 600000;
     // An overhanging time is clamped to the part's frame; a missing one comes from the neighbors.
@@ -318,15 +318,15 @@ void SummaryTest::parseNotesFillsTimes()
 
 void SummaryTest::memoJoinsContinuingSubject()
 {
-    TranscriptPart p0; p0.index = 0; p0.endMs = 15 * 60000;
-    TranscriptPart p1; p1.index = 1; p1.startMs = 15 * 60000; p1.endMs = 30 * 60000;
+    processing::summarypipe::TranscriptPart p0; p0.index = 0; p0.endMs = 15 * 60000;
+    processing::summarypipe::TranscriptPart p1; p1.index = 1; p1.startMs = 15 * 60000; p1.endMs = 30 * 60000;
     const PartNotes a = parseNotes(QStringLiteral(
         "TOPICS\n### [00:00-05:00] Bevezetés\n- köszöntés\n"
         "### [05:00-15:00] Raktárrendszer migráció\n- a régi rendszer leáll\n- az adatok exportja\n"), p0);
     const PartNotes b = parseNotes(QStringLiteral(
         "TOPICS\n### [15:00-20:00] Raktárrendszer migráció\n- az adatok exportja\n- tesztelés jövő héten\n"
         "### [20:00-30:00] Költségek\n- 2 millió\n"), p1);
-    const QVector<MemoSection> memo = assembleMemo({a, b});
+    const QVector<MemoSection> memo = processing::summarypipe::assembleMemo({a, b});
     QCOMPARE(memo.size(), 3);                                   // no duplicate section
     QCOMPARE(memo[1].title, QStringLiteral("Raktárrendszer migráció"));
     QCOMPARE(memo[1].startMs, 5 * 60000);
@@ -340,17 +340,17 @@ void SummaryTest::memoJoinsContinuingSubject()
     // title joins the previous one; a completely different subject stays separate.
     const PartNotes c = parseNotes(QStringLiteral("TOPICS\n### Költségek és keretek\n- 3 millió\n"), p1);
     const PartNotes d = parseNotes(QStringLiteral("- árva pont\n"), p1);
-    const QVector<MemoSection> memo2 = assembleMemo({a, b, c, d});
+    const QVector<MemoSection> memo2 = processing::summarypipe::assembleMemo({a, b, c, d});
     QCOMPARE(memo2.size(), 3);
     QCOMPARE(memo2[2].points, QStringList({QStringLiteral("2 millió"), QStringLiteral("3 millió"),
                                            QStringLiteral("árva pont")}));
 
     // If the model puts whole parts under the same title, the section does not grow above 20
     // minutes: it continues with the same title and a separate time frame.
-    TranscriptPart p2; p2.index = 2; p2.startMs = 30 * 60000; p2.endMs = 45 * 60000;
+    processing::summarypipe::TranscriptPart p2; p2.index = 2; p2.startMs = 30 * 60000; p2.endMs = 45 * 60000;
     const QString whole = QStringLiteral("TOPICS\n### Eszköz bevezetése\n- pont %1\n");
-    const QVector<MemoSection> memo3 = assembleMemo({parseNotes(whole.arg(1), p0), parseNotes(whole.arg(2), p1),
-                                                     parseNotes(whole.arg(3), p2)});
+    const QVector<MemoSection> memo3 = processing::summarypipe::assembleMemo({processing::summarypipe::parseNotes(whole.arg(1), p0), processing::summarypipe::parseNotes(whole.arg(2), p1),
+                                                     processing::summarypipe::parseNotes(whole.arg(3), p2)});
     QCOMPARE(memo3.size(), 3);
     QCOMPARE(memo3[0].endMs, 15 * 60000);
     QCOMPARE(memo3[1].title, QStringLiteral("Eszköz bevezetése"));
@@ -415,13 +415,13 @@ void SummaryTest::mergeJsonVariants()
 
 void SummaryTest::mergeJsonUnusable()
 {
-    MergeResult r = parseMergeJson(QString());
+    processing::summarypipe::MergeResult r = processing::summarypipe::parseMergeJson(QString());
     QVERIFY(!r.ok);
     QVERIFY(r.error.contains(QStringLiteral("üres")));
-    r = parseMergeJson(QStringLiteral("Sajnos nem tudok segíteni."));
+    r = processing::summarypipe::parseMergeJson(QStringLiteral("Sajnos nem tudok segíteni."));
     QVERIFY(!r.ok);
     QVERIFY2(r.error.contains(QStringLiteral("nincs JSON")), qPrintable(r.error));
-    r = parseMergeJson(QStringLiteral(R"({"foo": 1})"));
+    r = processing::summarypipe::parseMergeJson(QStringLiteral(R"({"foo": 1})"));
     QVERIFY(!r.ok);
     QVERIFY2(r.error.contains(QStringLiteral("execSummary")), qPrintable(r.error));
 }
@@ -436,18 +436,18 @@ void SummaryTest::mergeJsonCapsOpenQuestions()
 
 void SummaryTest::singleSplitsNotesAndJson()
 {
-    TranscriptPart part;
+    processing::summarypipe::TranscriptPart part;
     part.endMs = 20 * 60000;
     const QString raw = QStringLiteral("TOPICS\n### [00:00-10:00] Árazás\n- Az ár 100 euró.\n\nSUMMARY\n")
                         + QString::fromUtf8(kMergeJson);
-    SingleResult r = parseSingle(raw, part);
+    processing::summarypipe::SingleResult r = parseSingle(raw, part);
     QVERIFY(r.merge.ok);
     QCOMPARE(r.notes.topics.size(), 1);
     QCOMPARE(r.notes.topics[0].title, QStringLiteral("Árazás"));
     QCOMPARE(r.merge.execSummary, QStringLiteral("Összegzés."));
 
     // An old JSON-only prompt (own override): no note, but the summary exists.
-    r = parseSingle(QString::fromUtf8(kMergeJson), part);
+    r = processing::summarypipe::parseSingle(QString::fromUtf8(kMergeJson), part);
     QVERIFY(r.merge.ok);
     QVERIFY(r.notes.isEmpty());
     // Prose without a header before the JSON does not become a memo.
@@ -458,17 +458,17 @@ void SummaryTest::singleSplitsNotesAndJson()
 
 void SummaryTest::languageNamesAndReminder()
 {
-    QCOMPARE(summaryLanguageName(QStringLiteral("magyar")), QStringLiteral("Hungarian"));
-    QCOMPARE(summaryLanguageName(QStringLiteral("  Német ")), QStringLiteral("German"));
-    QCOMPARE(summaryLanguageName(QString()), QStringLiteral("Hungarian"));
-    QCOMPARE(summaryLanguageName(QStringLiteral("eszperantó")), QStringLiteral("eszperantó"));
-    QVERIFY(languageReminder(QStringLiteral("magyar")).contains(QStringLiteral("Hungarian (magyar)")));
-    QVERIFY(languageReminder(QStringLiteral("English")).contains(QStringLiteral("in English,")));
+    QCOMPARE(processing::summaryLanguageName(QStringLiteral("magyar")), QStringLiteral("Hungarian"));
+    QCOMPARE(processing::summaryLanguageName(QStringLiteral("  Német ")), QStringLiteral("German"));
+    QCOMPARE(processing::summaryLanguageName(QString()), QStringLiteral("Hungarian"));
+    QCOMPARE(processing::summaryLanguageName(QStringLiteral("eszperantó")), QStringLiteral("eszperantó"));
+    QVERIFY(processing::languageReminder(QStringLiteral("magyar")).contains(QStringLiteral("Hungarian (magyar)")));
+    QVERIFY(processing::languageReminder(QStringLiteral("English")).contains(QStringLiteral("in English,")));
     // The built-in prompts get an English language name, the old {{NYELV}} gets the setting's text.
-    const QString p = applySummaryLanguage(promptBuiltin(QStringLiteral("notes")), QStringLiteral("magyar"));
+    const QString p = processing::applySummaryLanguage(processing::promptBuiltin(QStringLiteral("notes")), QStringLiteral("magyar"));
     QVERIFY(p.contains(QStringLiteral("Write all notes in Hungarian.")));
     QVERIFY(!p.contains(QStringLiteral("{{")));
-    QCOMPARE(applySummaryLanguage(QStringLiteral("Írj {{NYELV}} nyelven."), QStringLiteral("német")),
+    QCOMPARE(processing::applySummaryLanguage(QStringLiteral("Írj {{NYELV}} nyelven."), QStringLiteral("német")),
              QStringLiteral("Írj német nyelven."));
 }
 
@@ -477,19 +477,19 @@ void SummaryTest::languageNamesAndReminder()
 void SummaryTest::onePartIsOneCall()
 {
     ScriptedProvider llm;
-    llm.script = [](int, const LlmRequest&) {
+    llm.script = [](int, const providers::LlmRequest&) {
         return Answer{Answer::Text, QStringLiteral("TOPICS\n### [00:00-05:00] Árazás\n- Az ár 100 euró.\n"
                                                    "### [05:00-12:00] Pilot\n- Két helyszín.\nSUMMARY\n")
                                     + QString::fromUtf8(kMergeJson)};
     };
-    SummaryService svc(&llm);
-    QSignalSpy ready(&svc, &SummaryService::summaryReady);
-    QSignalSpy failed(&svc, &SummaryService::summaryFailed);
-    QSignalSpy progress(&svc, &SummaryService::progress);
-    SummaryRequest req = request(transcriptMinutes(12));
+    processing::SummaryService svc(&llm);
+    QSignalSpy ready(&svc, &processing::SummaryService::summaryReady);
+    QSignalSpy failed(&svc, &processing::SummaryService::summaryFailed);
+    QSignalSpy progress(&svc, &processing::SummaryService::progress);
+    processing::SummaryRequest req = request(transcriptMinutes(12));
     req.contextNotes = QStringLiteral("Heti egyeztetés");
-    QVERIFY(SummaryService::plan(req).singleCall);
-    QCOMPARE(SummaryService::plan(req).llmCalls, 1);
+    QVERIFY(processing::SummaryService::plan(req).singleCall);
+    QCOMPARE(processing::SummaryService::plan(req).llmCalls, 1);
     svc.summarize(req);
     QVERIFY(ready.wait(2000));
     QCOMPARE(failed.count(), 0);
@@ -515,7 +515,7 @@ void SummaryTest::manyPartsNotesThenMerge()
     QTemporaryDir dir;
     const QString cache = dir.filePath(QStringLiteral("summary.notes.json"));
     ScriptedProvider llm;
-    llm.script = [](int, const LlmRequest& r) {
+    llm.script = [](int, const providers::LlmRequest& r) {
         if (isNotes(r)) {
             const int k = partOf(r) - 1;
             // Part 2 continues with part 1's subject (the prompt gets the title).
@@ -523,11 +523,11 @@ void SummaryTest::manyPartsNotesThenMerge()
         }
         return Answer{Answer::Text, QString::fromUtf8(kMergeJson)};
     };
-    SummaryService svc(&llm);
-    QSignalSpy ready(&svc, &SummaryService::summaryReady);
-    QSignalSpy progress(&svc, &SummaryService::progress);
-    const SummaryRequest req = request(transcriptMinutes(45), cache);
-    const SummaryPlan plan = SummaryService::plan(req);
+    processing::SummaryService svc(&llm);
+    QSignalSpy ready(&svc, &processing::SummaryService::summaryReady);
+    QSignalSpy progress(&svc, &processing::SummaryService::progress);
+    const processing::SummaryRequest req = request(transcriptMinutes(45), cache);
+    const processing::SummaryPlan plan = processing::SummaryService::plan(req);
     QCOMPARE(plan.parts, 3);
     QVERIFY(!plan.singleCall);
     QCOMPARE(plan.llmCalls, 4);
@@ -569,7 +569,7 @@ void SummaryTest::failingPartFailsCleanlyAndResumes()
     const QString cache = dir.filePath(QStringLiteral("summary.notes.json"));
     ScriptedProvider llm;
     bool breakPart2 = true;
-    llm.script = [&breakPart2](int, const LlmRequest& r) {
+    llm.script = [&breakPart2](int, const providers::LlmRequest& r) {
         if (isNotes(r)) {
             const int k = partOf(r);
             if (k == 2 && breakPart2) return Answer{Answer::Fail, QStringLiteral("LLM hiba (HTTP 500): model crashed")};
@@ -577,11 +577,11 @@ void SummaryTest::failingPartFailsCleanlyAndResumes()
         }
         return Answer{Answer::Text, QString::fromUtf8(kMergeJson)};
     };
-    const SummaryRequest req = request(transcriptMinutes(45), cache);
+    const processing::SummaryRequest req = request(transcriptMinutes(45), cache);
     {
-        SummaryService svc(&llm);
-        QSignalSpy ready(&svc, &SummaryService::summaryReady);
-        QSignalSpy failed(&svc, &SummaryService::summaryFailed);
+        processing::SummaryService svc(&llm);
+        QSignalSpy ready(&svc, &processing::SummaryService::summaryReady);
+        QSignalSpy failed(&svc, &processing::SummaryService::summaryFailed);
         svc.summarize(req);
         QVERIFY(failed.wait(2000));
         QTest::qWait(50);
@@ -591,15 +591,15 @@ void SummaryTest::failingPartFailsCleanlyAndResumes()
         QCOMPARE(llm.requests.size(), 2);                         // the 3rd part did not start
     }
     QVERIFY(QFile::exists(cache));                               // part 1's note stayed
-    const SummaryPlan plan = SummaryService::plan(req);
+    const processing::SummaryPlan plan = processing::SummaryService::plan(req);
     QCOMPARE(plan.cachedParts, 1);
     QCOMPARE(plan.llmCalls, 3);
 
     // Retry: part 1 does not run again.
     breakPart2 = false;
     llm.requests.clear();
-    SummaryService svc(&llm);
-    QSignalSpy ready(&svc, &SummaryService::summaryReady);
+    processing::SummaryService svc(&llm);
+    QSignalSpy ready(&svc, &processing::SummaryService::summaryReady);
     svc.summarize(req);
     QVERIFY(ready.wait(2000));
     QCOMPARE(llm.requests.size(), 3);
@@ -611,19 +611,19 @@ void SummaryTest::failingPartFailsCleanlyAndResumes()
     QVERIFY(!QFile::exists(cache));
 
     // Another model means another key: the cache is not valid.
-    SummaryRequest other = req;
+    processing::SummaryRequest other = req;
     other.model = QStringLiteral("masik");
-    QCOMPARE(SummaryService::plan(other).cachedParts, 0);
+    QCOMPARE(processing::SummaryService::plan(other).cachedParts, 0);
 }
 
 void SummaryTest::emptyNotesFail()
 {
     ScriptedProvider llm;
-    llm.script = [](int, const LlmRequest& r) {
+    llm.script = [](int, const providers::LlmRequest& r) {
         return Answer{Answer::Text, isNotes(r) ? QStringLiteral("  \n") : QString::fromUtf8(kMergeJson)};
     };
-    SummaryService svc(&llm);
-    QSignalSpy failed(&svc, &SummaryService::summaryFailed);
+    processing::SummaryService svc(&llm);
+    QSignalSpy failed(&svc, &processing::SummaryService::summaryFailed);
     svc.summarize(request(transcriptMinutes(45)));
     QVERIFY(failed.wait(2000));
     QVERIFY2(failed[0][0].toString().contains(QStringLiteral("1/3. rész")), qPrintable(failed[0][0].toString()));
@@ -635,25 +635,25 @@ void SummaryTest::badMergeKeepsNotesAndRetriesMergeOnly()
     const QString cache = dir.filePath(QStringLiteral("summary.notes.json"));
     ScriptedProvider llm;
     QString mergeAnswer = QStringLiteral("Bocsánat, ezt nem tudom JSON-ban megadni.");
-    llm.script = [&mergeAnswer](int, const LlmRequest& r) {
+    llm.script = [&mergeAnswer](int, const providers::LlmRequest& r) {
         if (isNotes(r)) return Answer{Answer::Text, notesFor(partOf(r) - 1)};
         return Answer{Answer::Text, mergeAnswer};
     };
-    const SummaryRequest req = request(transcriptMinutes(45), cache);
+    const processing::SummaryRequest req = request(transcriptMinutes(45), cache);
     {
-        SummaryService svc(&llm);
-        QSignalSpy failed(&svc, &SummaryService::summaryFailed);
+        processing::SummaryService svc(&llm);
+        QSignalSpy failed(&svc, &processing::SummaryService::summaryFailed);
         svc.summarize(req);
         QVERIFY(failed.wait(2000));
         const QString e = failed[0][0].toString();
         QVERIFY2(e.contains(QStringLiteral("nincs JSON")), qPrintable(e));
         QVERIFY2(e.contains(QStringLiteral("csak az összegzés")), qPrintable(e));
     }
-    QCOMPARE(SummaryService::plan(req).llmCalls, 1);
+    QCOMPARE(processing::SummaryService::plan(req).llmCalls, 1);
     mergeAnswer = QString::fromUtf8(kMergeJson);
     llm.requests.clear();
-    SummaryService svc(&llm);
-    QSignalSpy ready(&svc, &SummaryService::summaryReady);
+    processing::SummaryService svc(&llm);
+    QSignalSpy ready(&svc, &processing::SummaryService::summaryReady);
     svc.summarize(req);
     QVERIFY(ready.wait(2000));
     QCOMPARE(llm.requests.size(), 1);
@@ -665,27 +665,27 @@ void SummaryTest::badSingleJsonKeepsNotes()
     QTemporaryDir dir;
     const QString cache = dir.filePath(QStringLiteral("summary.notes.json"));
     ScriptedProvider llm;
-    llm.script = [](int n, const LlmRequest& r) {
+    llm.script = [](int n, const providers::LlmRequest& r) {
         if (n == 0 && isSingle(r))
             return Answer{Answer::Text, QStringLiteral("TOPICS\n### Árazás\n- 100 euró.\nSUMMARY\nA JSON sajnos elmaradt.")};
         return Answer{Answer::Text, QString::fromUtf8(kMergeJson)};
     };
-    const SummaryRequest req = request(transcriptMinutes(10), cache);
+    const processing::SummaryRequest req = request(transcriptMinutes(10), cache);
     {
-        SummaryService svc(&llm);
-        QSignalSpy failed(&svc, &SummaryService::summaryFailed);
+        processing::SummaryService svc(&llm);
+        QSignalSpy failed(&svc, &processing::SummaryService::summaryFailed);
         svc.summarize(req);
         QVERIFY(failed.wait(2000));
         QVERIFY(failed[0][0].toString().contains(QStringLiteral("A jegyzet megmaradt")));
     }
     QVERIFY(QFile::exists(cache));
-    const SummaryPlan plan = SummaryService::plan(req);
+    const processing::SummaryPlan plan = processing::SummaryService::plan(req);
     QVERIFY(!plan.singleCall);
     QCOMPARE(plan.llmCalls, 1);
     // Retry: only the summary, from the remaining note; the memo exists too.
     llm.requests.clear();
-    SummaryService svc(&llm);
-    QSignalSpy ready(&svc, &SummaryService::summaryReady);
+    processing::SummaryService svc(&llm);
+    QSignalSpy ready(&svc, &processing::SummaryService::summaryReady);
     svc.summarize(req);
     QVERIFY(ready.wait(2000));
     QCOMPARE(llm.requests.size(), 1);
@@ -695,12 +695,12 @@ void SummaryTest::badSingleJsonKeepsNotes()
     QCOMPARE(s.memo[0].title, QStringLiteral("Árazás"));
 
     // A truncated but repairable JSON with a single bad field does not take everything.
-    llm.script = [](int, const LlmRequest&) {
+    llm.script = [](int, const providers::LlmRequest&) {
         return Answer{Answer::Text, QStringLiteral("TOPICS\n### Árazás\n- 100 euró.\nSUMMARY\n"
                                                    "{\"execSummary\": \"Rövid.\", \"decisions\": [\"A\", ")};
     };
-    SummaryService svc2(&llm);
-    QSignalSpy ready2(&svc2, &SummaryService::summaryReady);
+    processing::SummaryService svc2(&llm);
+    QSignalSpy ready2(&svc2, &processing::SummaryService::summaryReady);
     svc2.summarize(req);
     QVERIFY(ready2.wait(2000));
     QCOMPARE(qvariant_cast<Summary>(ready2[0][0]).decisions, QStringList({QStringLiteral("A")}));
@@ -711,13 +711,13 @@ void SummaryTest::cancelMidRun()
     QTemporaryDir dir;
     const QString cache = dir.filePath(QStringLiteral("summary.notes.json"));
     ScriptedProvider llm;
-    llm.script = [](int, const LlmRequest& r) {
+    llm.script = [](int, const providers::LlmRequest& r) {
         if (isNotes(r) && partOf(r) == 2) return Answer{Answer::Hold, QString()};
         return Answer{Answer::Text, isNotes(r) ? notesFor(partOf(r) - 1) : QString::fromUtf8(kMergeJson)};
     };
-    SummaryService svc(&llm);
-    QSignalSpy ready(&svc, &SummaryService::summaryReady);
-    QSignalSpy failed(&svc, &SummaryService::summaryFailed);
+    processing::SummaryService svc(&llm);
+    QSignalSpy ready(&svc, &processing::SummaryService::summaryReady);
+    QSignalSpy failed(&svc, &processing::SummaryService::summaryFailed);
     svc.summarize(request(transcriptMinutes(45), cache));
     QTRY_COMPARE(llm.requests.size(), 2);
     svc.cancel();

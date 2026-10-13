@@ -10,9 +10,9 @@
 
 #include "tanara/library/MeetingLibrary.h"
 #include "tanara/foundation/text/Text.h"
-#include "tanara/jobs/MeetingJobTracker.h"
-#include "tanara/store/MeetingStore.h"
-#include "tanara/tags/TagService.h"
+#include "tanara/library/jobs/MeetingJobTracker.h"
+#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/tags/TagService.h"
 
 using namespace tanara;
 
@@ -49,7 +49,7 @@ private:
     void writeSegments(const Meeting& m, const QVector<Seg>& segs);
 
     std::unique_ptr<QTemporaryDir> m_dir;
-    std::unique_ptr<MeetingStore> m_store;
+    std::unique_ptr<library::MeetingStore> m_store;
     const QDateTime m_now{QDate(2026, 10, 1), QTime(15, 0)};   // Thursday
 };
 
@@ -57,7 +57,7 @@ void LibraryTest::init()
 {
     m_dir = std::make_unique<QTemporaryDir>();
     QVERIFY(m_dir->isValid());
-    m_store = std::make_unique<MeetingStore>(m_dir->filePath("rec"), m_dir->filePath("meta"));
+    m_store = std::make_unique<library::MeetingStore>(m_dir->filePath("rec"), m_dir->filePath("meta"));
 }
 
 void LibraryTest::cleanup()
@@ -162,18 +162,18 @@ void LibraryTest::snippetAroundMatch()
 void LibraryTest::sections()
 {
     const QDate today(2026, 10, 1);   // Thursday
-    auto sec = [&](const QDate& d) { return MeetingLibrary::sectionFor(QDateTime(d, QTime(10, 0)), today); };
-    QCOMPARE(sec(QDate(2026, 10, 1)), DateSection::Today);
-    QCOMPARE(sec(QDate(2026, 9, 30)), DateSection::Yesterday);
-    QCOMPARE(sec(QDate(2026, 9, 29)), DateSection::ThisWeek);   // Tuesday
-    QCOMPARE(sec(QDate(2026, 9, 28)), DateSection::ThisWeek);   // Monday
-    QCOMPARE(sec(QDate(2026, 9, 27)), DateSection::Earlier);    // the previous Sunday
-    QCOMPARE(sec(QDate(2025, 1, 1)), DateSection::Earlier);
+    auto sec = [&](const QDate& d) { return library::MeetingLibrary::sectionFor(QDateTime(d, QTime(10, 0)), today); };
+    QCOMPARE(sec(QDate(2026, 10, 1)), library::DateSection::Today);
+    QCOMPARE(sec(QDate(2026, 9, 30)), library::DateSection::Yesterday);
+    QCOMPARE(sec(QDate(2026, 9, 29)), library::DateSection::ThisWeek);   // Tuesday
+    QCOMPARE(sec(QDate(2026, 9, 28)), library::DateSection::ThisWeek);   // Monday
+    QCOMPARE(sec(QDate(2026, 9, 27)), library::DateSection::Earlier);    // the previous Sunday
+    QCOMPARE(sec(QDate(2025, 1, 1)), library::DateSection::Earlier);
     // On Monday "yesterday" (Sunday) stays yesterday, and "this week" is empty.
-    QCOMPARE(MeetingLibrary::sectionFor(QDateTime(QDate(2026, 9, 27), QTime(9, 0)), QDate(2026, 9, 28)),
-             DateSection::Yesterday);
-    QCOMPARE(MeetingLibrary::sectionKey(DateSection::ThisWeek), QStringLiteral("thisWeek"));
-    QCOMPARE(MeetingLibrary::sectionTitle(DateSection::Today), QStringLiteral("Ma"));
+    QCOMPARE(library::MeetingLibrary::sectionFor(QDateTime(QDate(2026, 9, 27), QTime(9, 0)), QDate(2026, 9, 28)),
+             library::DateSection::Yesterday);
+    QCOMPARE(library::MeetingLibrary::sectionKey(library::DateSection::ThisWeek), QStringLiteral("thisWeek"));
+    QCOMPARE(library::MeetingLibrary::sectionTitle(library::DateSection::Today), QStringLiteral("Ma"));
 }
 
 void LibraryTest::listNewestFirstWithSections()
@@ -182,17 +182,17 @@ void LibraryTest::listNewestFirstWithSections()
     add("Mai", QDateTime(QDate(2026, 10, 1), QTime(9, 0)));
     add("Tegnapi", QDateTime(QDate(2026, 9, 30), QTime(9, 0)));
     add("Keddi", QDateTime(QDate(2026, 9, 29), QTime(9, 0)));
-    MeetingLibrary lib(m_store.get());
-    const LibraryResult r = lib.query({}, m_now);
+    library::MeetingLibrary lib(m_store.get());
+    const library::LibraryResult r = lib.query({}, m_now);
     QCOMPARE(r.count(), 4);
     QCOMPARE(r.totalMeetings, 4);
     QStringList titles;
-    for (const LibraryEntry& e : r.entries) titles << e.title;
+    for (const library::LibraryEntry& e : r.entries) titles << e.title;
     QCOMPARE(titles, QStringList({"Mai", "Tegnapi", "Keddi", "Régi"}));
-    QCOMPARE(r.entries.at(0).section, DateSection::Today);
-    QCOMPARE(r.entries.at(1).section, DateSection::Yesterday);
-    QCOMPARE(r.entries.at(2).section, DateSection::ThisWeek);
-    QCOMPARE(r.entries.at(3).section, DateSection::Earlier);
+    QCOMPARE(r.entries.at(0).section, library::DateSection::Today);
+    QCOMPARE(r.entries.at(1).section, library::DateSection::Yesterday);
+    QCOMPARE(r.entries.at(2).section, library::DateSection::ThisWeek);
+    QCOMPARE(r.entries.at(3).section, library::DateSection::Earlier);
     QCOMPARE(r.entries.at(0).durationMs, qint64(30 * 60 * 1000));
     QVERIFY(!r.entries.at(0).titleMatch.isValid());
     QVERIFY(r.entries.at(0).snippet.isEmpty());
@@ -202,13 +202,13 @@ void LibraryTest::searchTitleAccentInsensitive()
 {
     add("Ödön heti egyeztetése", m_now.addDays(-1));
     add("Tervezés", m_now.addDays(-2));
-    MeetingLibrary lib(m_store.get());
-    LibraryQuery q;
+    library::MeetingLibrary lib(m_store.get());
+    library::LibraryQuery q;
     q.text = "odon";
-    const LibraryResult r = lib.query(q, m_now);
+    const library::LibraryResult r = lib.query(q, m_now);
     QCOMPARE(r.count(), 1);
     QCOMPARE(r.totalMeetings, 2);
-    const LibraryEntry& e = r.entries.first();
+    const library::LibraryEntry& e = r.entries.first();
     QVERIFY(e.titleMatch.isValid());
     QCOMPARE(e.title.mid(e.titleMatch.start, e.titleMatch.length), QStringLiteral("Ödön"));
     QVERIFY(e.snippet.isEmpty());    // no hit in the transcript
@@ -224,12 +224,12 @@ void LibraryTest::searchTranscriptSnippet()
          {90000, "Beszélő 1", "Rendben, köszönöm."}},
         false, {{"Beszélő 2", "Kovács Lilla"}});
     add("Másik", m_now.addDays(-4), {{0, "Beszélő 1", "Semmi érdekes."}});
-    MeetingLibrary lib(m_store.get());
-    LibraryQuery q;
+    library::MeetingLibrary lib(m_store.get());
+    library::LibraryQuery q;
     q.text = "odon kuldi";
-    const LibraryResult r = lib.query(q, m_now);
+    const library::LibraryResult r = lib.query(q, m_now);
     QCOMPARE(r.count(), 1);
-    const LibraryEntry& e = r.entries.first();
+    const library::LibraryEntry& e = r.entries.first();
     QCOMPARE(e.title, QStringLiteral("Projekt indító"));
     QVERIFY(!e.titleMatch.isValid());
     QVERIFY(e.snippetMatch.isValid());
@@ -242,10 +242,10 @@ void LibraryTest::searchTranscriptSnippet()
 void LibraryTest::searchNoHit()
 {
     add("Valami", m_now, {{0, "Beszélő 1", "Szöveg."}});
-    MeetingLibrary lib(m_store.get());
-    LibraryQuery q;
+    library::MeetingLibrary lib(m_store.get());
+    library::LibraryQuery q;
     q.text = "nincsilyen";
-    const LibraryResult r = lib.query(q, m_now);
+    const library::LibraryResult r = lib.query(q, m_now);
     QCOMPARE(r.count(), 0);
     QCOMPARE(r.totalMeetings, 1);
 }
@@ -255,13 +255,13 @@ void LibraryTest::filters()
     add("Nincs átirat", m_now.addDays(-1));
     add("Csak átirat", m_now.addDays(-2), {{0, "Beszélő 1", "Hello."}}, false, {{"Beszélő 1", "Ödön"}});
     add("Minden megvan", m_now.addDays(-3), {{0, "Beszélő 1", "Hello."}}, true, {{"Beszélő 1", "Lilla"}});
-    MeetingLibrary lib(m_store.get());
+    library::MeetingLibrary lib(m_store.get());
 
-    LibraryQuery q;
+    library::LibraryQuery q;
     QVERIFY(q.isEmpty());
     q.noTranscript = true;
     QVERIFY(!q.isEmpty());
-    LibraryResult r = lib.query(q, m_now);
+    library::LibraryResult r = lib.query(q, m_now);
     QCOMPARE(r.count(), 1);
     QCOMPARE(r.entries.first().title, QStringLiteral("Nincs átirat"));
 
@@ -295,8 +295,8 @@ void LibraryTest::people()
 {
     add("A", m_now, {{0, "Beszélő 1", "x"}}, false, {{"Beszélő 1", "Lilla"}});
     add("B", m_now.addDays(-1), {{0, "Beszélő 1", "x"}}, false, {{"Beszélő 1", "Lilla"}, {"Beszélő 2", "Ödön"}});
-    MeetingLibrary lib(m_store.get());
-    const QVector<PersonPresence> p = lib.people();
+    library::MeetingLibrary lib(m_store.get());
+    const QVector<library::PersonPresence> p = lib.people();
     QCOMPARE(p.size(), 3);
     QCOMPARE(p.at(0).meetingCount, 2);                  // two each for the own person and Lilla, 1 for Ödön
     QCOMPARE(p.at(2).name, QStringLiteral("Ödön"));
@@ -310,9 +310,9 @@ void LibraryTest::pendingItems()
     const Meeting running = add("Épp fut", m_now.addDays(-3));
     add("Kész", m_now.addDays(-4), {{0, "Beszélő 1", "x"}});
 
-    MeetingJobTracker tracker(m_store.get());
-    MeetingLibrary lib(m_store.get(), &tracker);
-    QSignalSpy pendingSpy(&lib, &MeetingLibrary::pendingItemsChanged);
+    library::MeetingJobTracker tracker(m_store.get());
+    library::MeetingLibrary lib(m_store.get(), &tracker);
+    QSignalSpy pendingSpy(&lib, &library::MeetingLibrary::pendingItemsChanged);
 
     JobError e;
     e.kind = JobKind::Transcribe;
@@ -322,12 +322,12 @@ void LibraryTest::pendingItems()
     tracker.begin(running.id, JobKind::Transcribe, "Átírás");
     QVERIFY(pendingSpy.count() >= 2);
 
-    const QVector<PendingItem> items = lib.pendingItems();
+    const QVector<library::PendingItem> items = lib.pendingItems();
     QCOMPARE(items.size(), 2);                           // the running and the finished one are not "waiting for you"
     QCOMPARE(items.at(0).meetingId, waiting.id);
-    QCOMPARE(items.at(0).kind, PendingKind::AwaitingTranscription);
+    QCOMPARE(items.at(0).kind, library::PendingKind::AwaitingTranscription);
     QCOMPARE(items.at(1).meetingId, failed.id);
-    QCOMPARE(items.at(1).kind, PendingKind::TranscriptionFailed);
+    QCOMPARE(items.at(1).kind, library::PendingKind::TranscriptionFailed);
     QCOMPARE(items.at(1).error.detail, QStringLiteral("HTTP 401 · invalid_api_key"));
     QCOMPARE(lib.pendingItems(1).size(), 1);
 
@@ -341,11 +341,11 @@ void LibraryTest::pendingItems()
 
 void LibraryTest::incrementalSignals()
 {
-    MeetingLibrary lib(m_store.get());
+    library::MeetingLibrary lib(m_store.get());
     QCOMPARE(lib.query({}, m_now).count(), 0);           // loaded (empty)
-    QSignalSpy added(&lib, &MeetingLibrary::meetingAdded);
-    QSignalSpy changed(&lib, &MeetingLibrary::meetingChanged);
-    QSignalSpy removed(&lib, &MeetingLibrary::meetingRemoved);
+    QSignalSpy added(&lib, &library::MeetingLibrary::meetingAdded);
+    QSignalSpy changed(&lib, &library::MeetingLibrary::meetingChanged);
+    QSignalSpy removed(&lib, &library::MeetingLibrary::meetingRemoved);
 
     Meeting m = m_store->createMeeting("Új");
     QCOMPARE(added.count(), 1);                          // one new meeting: exactly one "added"
@@ -362,7 +362,7 @@ void LibraryTest::incrementalSignals()
     Meeting old = m_store->createMeeting("Régebbi");
     old.startedAt = m.startedAt.addDays(-10);
     m_store->saveMeeting(old);
-    const LibraryResult r = lib.query({}, QDateTime::currentDateTime());
+    const library::LibraryResult r = lib.query({}, QDateTime::currentDateTime());
     QCOMPARE(r.entries.at(0).id, m.id);
     QCOMPARE(r.entries.at(1).id, old.id);
 
@@ -375,8 +375,8 @@ void LibraryTest::incrementalSignals()
 void LibraryTest::transcriptChangeInvalidatesCache()
 {
     Meeting m = add("Változó", m_now, {{0, "Beszélő 1", "Az első változat szövege."}});
-    MeetingLibrary lib(m_store.get());
-    LibraryQuery q;
+    library::MeetingLibrary lib(m_store.get());
+    library::LibraryQuery q;
     q.text = "masodik";
     QCOMPARE(lib.query(q, m_now).count(), 0);
     q.text = "elso";
@@ -416,15 +416,15 @@ void LibraryTest::manyMeetingsStayResponsive()
         const Meeting m = add(QStringLiteral("Meeting %1").arg(i), m_now.addDays(-i), s);
         if (i == 137) needleId = m.id;
     }
-    MeetingLibrary lib(m_store.get());
+    library::MeetingLibrary lib(m_store.get());
     QElapsedTimer clock;
     clock.start();
     QCOMPARE(lib.query({}, m_now).count(), 300);
     const qint64 listMs = clock.restart();
 
-    LibraryQuery q;
+    library::LibraryQuery q;
     q.text = "tuzoltofecskendo";
-    LibraryResult r = lib.query(q, m_now);                // first search: loads the transcripts
+    library::LibraryResult r = lib.query(q, m_now);                // first search: loads the transcripts
     const qint64 coldMs = clock.restart();
     QCOMPARE(r.count(), 1);
     QCOMPARE(r.entries.first().id, needleId);
@@ -446,9 +446,9 @@ void LibraryTest::warmUpLoadsInBackground()
 {
     for (int i = 0; i < 40; ++i)
         add(QStringLiteral("M%1").arg(i), m_now.addDays(-i), {{0, "Beszélő 1", QStringLiteral("szöveg %1").arg(i)}});
-    MeetingLibrary lib(m_store.get());
+    library::MeetingLibrary lib(m_store.get());
     QVERIFY(!lib.isWarm());
-    QSignalSpy warmed(&lib, &MeetingLibrary::warmedUp);
+    QSignalSpy warmed(&lib, &library::MeetingLibrary::warmedUp);
     lib.warmUp();
     QVERIFY(!lib.isWarm() || warmed.count() == 0);       // does not load in the call (does not block)
     QVERIFY(warmed.wait(5000));
@@ -462,24 +462,24 @@ void LibraryTest::tagsInEntriesAndFilter()
     const Meeting a = add("Nordvik heti", m_now.addDays(-1));
     const Meeting b = add("Partner-egyeztetés", m_now.addDays(-2));
     const Meeting c = add("Címke nélkül", m_now.addDays(-3));
-    TagService tags(m_store.get(), m_dir->filePath("meta/tags.json"));
-    MeetingLibrary lib(m_store.get());
+    library::TagService tags(m_store.get(), m_dir->filePath("meta/tags.json"));
+    library::MeetingLibrary lib(m_store.get());
     lib.setTagService(&tags);
     const Tag nord = tags.addTag(a.id, QStringLiteral("Nordvik"));
     const Tag part = tags.addTag(a.id, QStringLiteral("Partnerek"));
     tags.addTag(b.id, part.id);
 
-    LibraryEntry e = lib.entry(a.id, m_now);
+    library::LibraryEntry e = lib.entry(a.id, m_now);
     QCOMPARE(e.tagIds, (QStringList{nord.id, part.id}));
     QCOMPARE(e.tagNames, (QStringList{"Nordvik", "Partnerek"}));
     QVERIFY(lib.entry(c.id, m_now).tagIds.isEmpty());
 
-    LibraryQuery q;
+    library::LibraryQuery q;
     q.tags = {nord.id, part.id};                       // Any (OR)
     QVERIFY(!q.isEmpty());
     QCOMPARE(lib.query(q, m_now).count(), 2);
     q.tagsAll = true;                                  // All (AND)
-    LibraryResult r = lib.query(q, m_now);
+    library::LibraryResult r = lib.query(q, m_now);
     QCOMPARE(r.count(), 1);
     QCOMPARE(r.entries.first().id, a.id);
     q = {};
@@ -491,7 +491,7 @@ void LibraryTest::tagsInEntriesAndFilter()
     q.tags = {nord.id};                                // untagged OR Nordvik
     QCOMPARE(lib.query(q, m_now).count(), 2);
     // A deleted tag: removed from the entry, not counted in the filter.
-    QSignalSpy tc(&lib, &MeetingLibrary::tagsChanged);
+    QSignalSpy tc(&lib, &library::MeetingLibrary::tagsChanged);
     tags.remove(nord.id);
     QVERIFY(tc.count() >= 1);
     QCOMPARE(lib.entry(a.id, m_now).tagNames, QStringList{"Partnerek"});
@@ -501,14 +501,14 @@ void LibraryTest::searchInTagNames()
 {
     const Meeting a = add("Heti egyeztetés", m_now.addDays(-1), {{0, "Beszélő 1", "A raktárról beszéltünk."}});
     add("Másik", m_now.addDays(-2), {{0, "Beszélő 1", "Semmi köze."}});
-    TagService tags(m_store.get(), m_dir->filePath("meta/tags.json"));
-    MeetingLibrary lib(m_store.get());
+    library::TagService tags(m_store.get(), m_dir->filePath("meta/tags.json"));
+    library::MeetingLibrary lib(m_store.get());
     lib.setTagService(&tags);
     tags.addTag(a.id, QStringLiteral("Ügyfél-Nordvik"));
 
-    LibraryQuery q;
+    library::LibraryQuery q;
     q.text = QStringLiteral("ugyfel");                 // accent- and case-insensitive
-    LibraryResult r = lib.query(q, m_now);
+    library::LibraryResult r = lib.query(q, m_now);
     QCOMPARE(r.count(), 1);
     QVERIFY(r.entries.first().tagMatch);
     QCOMPARE(r.entries.first().tagMatchName, QStringLiteral("Ügyfél-Nordvik"));
@@ -525,8 +525,8 @@ void LibraryTest::tagOptionsAndUntagged()
     const Meeting a = add("A", m_now.addDays(-1));
     const Meeting b = add("B", m_now.addDays(-5));
     add("C", m_now.addDays(-6));
-    TagService tags(m_store.get(), m_dir->filePath("meta/tags.json"));
-    MeetingLibrary lib(m_store.get());
+    library::TagService tags(m_store.get(), m_dir->filePath("meta/tags.json"));
+    library::MeetingLibrary lib(m_store.get());
     QVERIFY(lib.tagOptions().isEmpty());               // no tags without TagService
     lib.setTagService(&tags);
     const Tag x = tags.addTag(a.id, QStringLiteral("Zebra"));

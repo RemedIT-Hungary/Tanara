@@ -8,14 +8,14 @@
 
 #include <cmath>
 
-#include "tanara/edit/TrackActivity.h"
+#include "tanara/processing/analysis/TrackActivity.h"
 
 using namespace tanara;
-using namespace tanara::trackactivity;
+using namespace tanara::processing::trackactivity;
 
 namespace {
 
-constexpr int kSr = kSampleRate;
+constexpr int kSr = processing::trackactivity::kSampleRate;
 
 // A sine of ms length (amplitude 0..1) or silence (amp == 0).
 QVector<qint16> tone(int ms, double amp, double hz = 440.0)
@@ -90,14 +90,14 @@ private slots:
     void frameDbLevels()
     {
         // The RMS of a 0.5-amplitude sine is 0.5/sqrt(2), about -9.03 dBFS; silence is clipped to kMinDb.
-        const QVector<float> db = frameDb(cat({tone(100, 0.5), tone(100, 0.0), tone(20, 0.5)}), 50);
+        const QVector<float> db = processing::trackactivity::frameDb(cat({tone(100, 0.5), tone(100, 0.0), tone(20, 0.5)}), 50);
         QCOMPARE(db.size(), 5);   // 2 + 2 + a short (20 ms) last frame
         QVERIFY(std::abs(db[0] - (-9.03f)) < 0.1f);
         QVERIFY(std::abs(db[1] - (-9.03f)) < 0.1f);
-        QCOMPARE(db[2], kMinDb);
-        QCOMPARE(db[3], kMinDb);
+        QCOMPARE(db[2], processing::trackactivity::kMinDb);
+        QCOMPARE(db[3], processing::trackactivity::kMinDb);
         QVERIFY(db[4] > -12.0f);
-        QVERIFY(frameDb({}, 50).isEmpty());
+        QVERIFY(processing::trackactivity::frameDb({}, 50).isEmpty());
     }
 
     void floorIsLowPercentile()
@@ -105,8 +105,8 @@ private slots:
         QVector<float> db;
         for (int i = 0; i < 100; ++i) db << float(-60 + (i % 10 == 0 ? 0 : 40));   // 10% quiet, 90% loud
         db << std::numeric_limits<float>::quiet_NaN();
-        QCOMPARE(estimateFloor(db), -60.0f);
-        QCOMPARE(estimateFloor({}), kMinDb);
+        QCOMPARE(processing::trackactivity::estimateFloor(db), -60.0f);
+        QCOMPARE(processing::trackactivity::estimateFloor({}), processing::trackactivity::kMinDb);
     }
 
     void windowEnergyAveragesLinearPower()
@@ -143,7 +143,7 @@ private slots:
         files["track_loop.wav"] = cat({tone(1000, 0.0), tone(1000, 0.2)});
         files["track_off.wav"] = tone(1000, 0.5);
         QStringList calls;
-        const MeetingActivity a = computeMeetingActivity(m, dir.path(), "ffmpeg", 50, fakeDecoder(files, &calls));
+        const MeetingActivity a = processing::computeMeetingActivity(m, dir.path(), "ffmpeg", 50, fakeDecoder(files, &calls));
 
         QVERIFY(!calls.contains("track_off.wav"));
         QVERIFY(!calls.contains("track_gone.wav"));
@@ -159,7 +159,7 @@ private slots:
         QCOMPARE(mic.dbAboveFloor[0], 0.0f);                // silence = the floor
         QVERIFY(mic.dbAboveFloor[15] > 70.0f);              // -9 dBFS above the -90 floor
         QVERIFY(mic.dbAboveFloor[45] > 70.0f);              // the start of the 2nd segment (2250 ms)
-        QCOMPARE(mic.floorDb, kMinDb);
+        QCOMPARE(mic.floorDb, processing::trackactivity::kMinDb);
         QVERIFY(!windowEnergyDb(mic, 1100, 1900));
         QVERIFY(*windowEnergyDb(mic, 2000, 2400) > 70.0f);
 
@@ -169,7 +169,7 @@ private slots:
         QVERIFY(!windowEnergyDb(loop, 0, 400));
         QVERIFY(*windowEnergyDb(loop, 500, 1400) < 0.01f);       // file time 0..900: silence
         QVERIFY(*windowEnergyDb(loop, 1600, 2400) > 60.0f);      // file time 1100..1900: audio
-        QCOMPARE(a.fingerprint, activityFingerprint(m, dir.path(), 50));
+        QCOMPARE(a.fingerprint, processing::trackactivity::activityFingerprint(m, dir.path(), 50));
     }
 
     void cacheRoundTripAndFingerprint()
@@ -180,7 +180,7 @@ private slots:
         touch(QDir(dir.path()).filePath("track_mic.wav"));
         touch(QDir(dir.path()).filePath("track_loop.wav"));
         QHash<QString, QVector<qint16>> files{{"track_mic.wav", tone(300, 0.3)}, {"track_loop.wav", tone(300, 0.0)}};
-        MeetingActivity a = computeMeetingActivity(m, dir.path(), "ffmpeg", 50, fakeDecoder(files));
+        MeetingActivity a = processing::computeMeetingActivity(m, dir.path(), "ffmpeg", 50, fakeDecoder(files));
         a.tracks[0].dbAboveFloor[2] = std::numeric_limits<float>::quiet_NaN();
         QVERIFY(a.save(dir.path()));
         QVERIFY(QFileInfo::exists(MeetingActivity::filePath(dir.path())));
@@ -196,13 +196,13 @@ private slots:
 
         // Another fingerprint gives empty; a changed file / another frameMs / another offset gives another fingerprint.
         QVERIFY(MeetingActivity::load(dir.path(), "masik").isEmpty());
-        const QString fp = activityFingerprint(m, dir.path(), 50);
-        QVERIFY(fp != activityFingerprint(m, dir.path(), 40));
+        const QString fp = processing::trackactivity::activityFingerprint(m, dir.path(), 50);
+        QVERIFY(fp != processing::trackactivity::activityFingerprint(m, dir.path(), 40));
         Meeting shifted = m;
         shifted.tracks[1].startOffsetMs = 300;
-        QVERIFY(fp != activityFingerprint(shifted, dir.path(), 50));
+        QVERIFY(fp != processing::trackactivity::activityFingerprint(shifted, dir.path(), 50));
         touch(QDir(dir.path()).filePath("track_mic.wav"), "longer content");
-        QVERIFY(fp != activityFingerprint(m, dir.path(), 50));
+        QVERIFY(fp != processing::trackactivity::activityFingerprint(m, dir.path(), 50));
 
         // A corrupt file gives empty (recompute), not a crash.
         touch(MeetingActivity::filePath(dir.path()), "TACT garbage");
@@ -224,7 +224,7 @@ private slots:
         Meeting m;
         m.tracks = {mk("mic", "Mic", TrackKind::Mic)};
         m.tracks[0].file = "track_mic.ogg";
-        const MeetingActivity a = computeMeetingActivity(m, dir.path());
+        const MeetingActivity a = processing::computeMeetingActivity(m, dir.path());
         QCOMPARE(a.tracks.size(), 1);
         const TrackActivity& t = a.tracks[0];
         QVERIFY(std::abs(t.dbAboveFloor.size() - 60) <= 2);

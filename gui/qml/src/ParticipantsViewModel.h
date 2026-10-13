@@ -23,9 +23,9 @@
 // doubts | invitedNotHeard | addPerson | running | noTranscriptYet | learnQuestion (question
 // after approval, several pairs) | learnNewPerson (new person).
 //
-#include "tanara/Types.h"
-#include "tanara/edit/SpeakerEditTypes.h"
-#include "tanara/tags/PersonTags.h"
+#include "tanara/domain/Types.h"
+#include "tanara/editing/session/SpeakerEditTypes.h"
+#include "tanara/library/tags/PersonTags.h"
 
 #include <QObject>
 #include <QPointer>
@@ -37,7 +37,7 @@
 #include <QtQml/qqmlregistration.h>
 
 namespace tanara {
-class AppController;
+namespace app { class AppController; }
 }
 
 namespace tanara_qml {
@@ -101,7 +101,7 @@ public:
 
     // For the person picker (PersonListModel.participants): known people, and whether someone
     // is already in the dialog.
-    QVector<tanara::PersonInfo> people() const;
+    QVector<tanara::editing::PersonInfo> people() const;
     bool isMeetingPerson(const QString& name) const;
 
     // Re-read from the controller; the working copy (checks, additions, names) is discarded.
@@ -154,7 +154,7 @@ private:
         int colorIndex = 0;
     };
 
-    tanara::AppController* app() const;
+    tanara::app::AppController* app() const;
     void connectController();
     void load();
     void loadDemo();
@@ -167,7 +167,7 @@ private:
     QString nextAddedId();
 
     QPointer<QObject> m_injected;
-    QPointer<tanara::AppController> m_connected;
+    QPointer<tanara::app::AppController> m_connected;
     QList<QMetaObject::Connection> m_connections;
 
     QString m_meetingId;
@@ -186,11 +186,11 @@ private:
     QString m_tagLabel;
     QVector<TagSuggestion> m_tagSuggestions;
     QString m_demoInfo;                 // the demo footer line (if not computable)
-    void setLearn(const QVector<tanara::PersonTagQuestion>& questions);
-    QString answer(const tanara::PersonTagQuestion& q, bool yes);
-    QVector<tanara::PersonTagQuestion> m_learn;   // the question: the first; the others in "One by one..."
-    QVector<tanara::PersonTagQuestion> m_learnPairs;
-    QVector<tanara::PersonInfo> m_demoPeople;
+    void setLearn(const QVector<tanara::library::PersonTagQuestion>& questions);
+    QString answer(const tanara::library::PersonTagQuestion& q, bool yes);
+    QVector<tanara::library::PersonTagQuestion> m_learn;   // the question: the first; the others in "One by one..."
+    QVector<tanara::library::PersonTagQuestion> m_learnPairs;
+    QVector<tanara::editing::PersonInfo> m_demoPeople;
 };
 
 } // namespace tanara_qml

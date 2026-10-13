@@ -10,16 +10,16 @@
 #include "ShellMeetingModel.h"
 #include "ShellUiState.h"
 
-#include "tanara/AppController.h"
-#include "tanara/SettingsManager.h"
+#include "tanara/app/AppController.h"
+#include "tanara/app/SettingsManager.h"
 #include "tanara/cloud/CloudTypes.h"
-#include "tanara/edit/SpeakerEditor.h"
-#include "tanara/edit/SpeakerOverlay.h"
-#include "tanara/edit/UtteranceEmbeddings.h"
-#include "tanara/jobs/MeetingJobTracker.h"
-#include "tanara/store/MeetingArchive.h"
-#include "tanara/store/MeetingStore.h"
-#include "tanara/tags/TagService.h"
+#include "tanara/editing/session/SpeakerEditor.h"
+#include "tanara/editing/session/SpeakerOverlay.h"
+#include "tanara/processing/analysis/UtteranceEmbeddings.h"
+#include "tanara/library/jobs/MeetingJobTracker.h"
+#include "tanara/library/store/MeetingArchive.h"
+#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/tags/TagService.h"
 
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -88,7 +88,7 @@ class TestShellActions : public QObject {
     Q_OBJECT
 
     std::unique_ptr<QTemporaryDir> m_home;
-    std::unique_ptr<tanara::AppController> m_app;
+    std::unique_ptr<tanara::app::AppController> m_app;
     std::unique_ptr<FakeBridge> m_bridge;
     std::unique_ptr<ShellActions> m_shell;
     QStringList m_toasts;
@@ -147,12 +147,12 @@ class TestShellActions : public QObject {
         for (const L& r : rows)
             segs.append(QJsonObject{{"startMs", r.start * 1000}, {"endMs", r.start * 1000 + 4000},
                                     {"speaker", QString::fromUtf8(r.raw)}, {"text", QStringLiteral("Kitalált sor.")}});
-        QFile seg(tanara::speakeredit::segmentsPath(m.folder));
+        QFile seg(tanara::editing::speakeredit::segmentsPath(m.folder));
         if (seg.open(QIODevice::WriteOnly)) seg.write(QJsonDocument(segs).toJson());
         seg.close();
-        const QVector<tanara::TranscriptLine> lines = tanara::speakeredit::loadTranscriptLines(m.folder);
-        tanara::UtteranceEmbeddingCache cache;
-        cache.fingerprint = tanara::speakeredit::transcriptFingerprint(lines);
+        const QVector<tanara::TranscriptLine> lines = tanara::editing::speakeredit::loadTranscriptLines(m.folder);
+        tanara::processing::UtteranceEmbeddingCache cache;
+        cache.fingerprint = tanara::editing::speakeredit::transcriptFingerprint(lines);
         for (int i = 0; i < rows.size(); ++i)
             cache.set(QStringLiteral("campplus"), lines[i].id, rows[i].voice == 'A' ? QVector<float>{1, 0, 0}
                                             : rows[i].voice == 'B' ? QVector<float>{0, 1, 0}
@@ -174,7 +174,7 @@ class TestShellActions : public QObject {
         s.llmConfigs[s.llmProviderId].model = QStringLiteral("teszt-modell");
         m_app->settings()->setSettings(s);
         if (withSttKey)
-            m_app->setSecret(tanara::keys::SonioxApiKey, QStringLiteral("teszt-kulcs"));
+            m_app->setSecret(tanara::app::keys::SonioxApiKey, QStringLiteral("teszt-kulcs"));
     }
 
 private slots:
@@ -186,7 +186,7 @@ private slots:
         QVERIFY(m_home->isValid());
         qputenv("TANARA_HOME", m_home->path().toUtf8());
         AppContext::instance()->setDemo(false);
-        m_app = std::make_unique<tanara::AppController>();
+        m_app = std::make_unique<tanara::app::AppController>();
         QVERIFY(m_app->store()->audioDir().startsWith(m_home->path()));
         m_bridge = std::make_unique<FakeBridge>();
         m_shell = std::make_unique<ShellActions>();
@@ -335,12 +335,12 @@ private slots:
     {
         const tanara::Meeting a = recording(QStringLiteral("Archív próba"));
         QSignalSpy toasts(m_shell.get(), &ShellActions::toastRequested);
-        QSignalSpy finished(m_app.get(), &tanara::AppController::archiveFinished);
+        QSignalSpy finished(m_app.get(), &tanara::app::AppController::archiveFinished);
 
         // Backing out of the save window: nothing starts. The suggested name is "<folder name>.tanara.zip".
         m_shell->exportArchive(a.id);
         QCOMPARE(m_bridge->calls, QStringList{QStringLiteral("save")});
-        QVERIFY(m_bridge->lastProposed.endsWith(tanara::MeetingArchive::suggestedFileName(a)));
+        QVERIFY(m_bridge->lastProposed.endsWith(tanara::library::MeetingArchive::suggestedFileName(a)));
         QVERIFY(m_bridge->lastFilter.contains(QStringLiteral("*.tanara.zip")));
         QVERIFY(!m_app->archiveBusy());
 
@@ -471,13 +471,13 @@ private slots:
         const tanara::Meeting a = transcribed(QStringLiteral("Nordvik egyeztetés"));
         const tanara::Meeting b = transcribed(QStringLiteral("Nordvik egyeztetés 2"));
         const tanara::Meeting plain = recording(QStringLiteral("Átirat nélkül"));
-        tanara::TagService* tags = m_app->tags();
+        tanara::library::TagService* tags = m_app->tags();
         tags->addTag(a.id, QStringLiteral("Nordvik"));
 
         ShellMeetingModel model;
         model.setController(m_app.get());
         QVERIFY(model.tags());
-        QSignalSpy computing(m_app.get(), &tanara::AppController::tagSuggestionsComputing);
+        QSignalSpy computing(m_app.get(), &tanara::app::AppController::tagSuggestionsComputing);
 
         // Showing a transcribed meeting: the tag row is bound to the meeting + a suggestion request.
         model.setMeetingId(a.id);
@@ -513,7 +513,7 @@ private slots:
     {
         configureProviders(/*withSttKey*/ false);
         const tanara::Meeting m = recording(QStringLiteral("Kulcs nélkül"));
-        QSignalSpy started(m_app->jobs(), &tanara::MeetingJobTracker::jobStarted);
+        QSignalSpy started(m_app->jobs(), &tanara::library::MeetingJobTracker::jobStarted);
         QSignalSpy revisions(m_shell.get(), &ShellActions::readinessRevisionChanged);
 
         // A missing API key: Settings on the "External services" page.
@@ -534,7 +534,7 @@ private slots:
 
         // Starts with a configured provider (own key: no estimate window).
         m_bridge->calls.clear();
-        m_app->setSecret(tanara::keys::SonioxApiKey, QStringLiteral("teszt-kulcs"));
+        m_app->setSecret(tanara::app::keys::SonioxApiKey, QStringLiteral("teszt-kulcs"));
         m_shell->startTranscription(m.id);
         QCOMPARE(started.count(), 1);
         QCOMPARE(started.at(0).at(0).toString(), m.id);
@@ -548,7 +548,7 @@ private slots:
     {
         configureProviders(true);
         const tanara::Meeting noTranscript = recording(QStringLiteral("Átirat nélkül"));
-        QSignalSpy started(m_app->jobs(), &tanara::MeetingJobTracker::jobStarted);
+        QSignalSpy started(m_app->jobs(), &tanara::library::MeetingJobTracker::jobStarted);
 
         m_shell->startQuickSummary(noTranscript.id);
         m_shell->startTopicExtraction(noTranscript.id);
@@ -584,7 +584,7 @@ private slots:
         m_app.reset();
         qputenv("TANARA_CLOUD", "live");
         qputenv("TANARA_CLOUD_URL", "http://127.0.0.1:9");
-        m_app = std::make_unique<tanara::AppController>();
+        m_app = std::make_unique<tanara::app::AppController>();
         qputenv("TANARA_CLOUD", "off");
         qunsetenv("TANARA_CLOUD_URL");
         if (!m_app->cloudLive())
@@ -597,8 +597,8 @@ private slots:
         s.sttConfigs[tanara::cloud::ProviderId].type = tanara::cloud::ProviderId;
         m_app->settings()->setSettings(s);
         const tanara::Meeting m = recording(QStringLiteral("Cloud"));
-        QVERIFY(m_app->usesCloud(tanara::WorkflowStep::Transcribe));
-        QSignalSpy started(m_app->jobs(), &tanara::MeetingJobTracker::jobStarted);
+        QVERIFY(m_app->usesCloud(tanara::providers::WorkflowStep::Transcribe));
+        QSignalSpy started(m_app->jobs(), &tanara::library::MeetingJobTracker::jobStarted);
 
         m_shell->startTranscription(m.id);
         QCOMPARE(started.count(), 0);
@@ -617,7 +617,7 @@ private slots:
         configureProviders(true);
         const tanara::Meeting m = transcribed(QStringLiteral("Újra-átírandó"));
         QSignalSpy asked(m_shell.get(), &ShellActions::retranscribeDialogRequested);
-        QSignalSpy started(m_app->jobs(), &tanara::MeetingJobTracker::jobStarted);
+        QSignalSpy started(m_app->jobs(), &tanara::library::MeetingJobTracker::jobStarted);
 
         m_shell->retranscribe(m.id);
         QCOMPARE(asked.count(), 1);
@@ -640,7 +640,7 @@ private slots:
         configureProviders(true);
         const tanara::Meeting a = recording(QStringLiteral("Hibázott"));
         const tanara::Meeting b = transcribed(QStringLiteral("Másik"));
-        QSignalSpy started(m_app->jobs(), &tanara::MeetingJobTracker::jobStarted);
+        QSignalSpy started(m_app->jobs(), &tanara::library::MeetingJobTracker::jobStarted);
         QSignalSpy asked(m_shell.get(), &ShellActions::retranscribeDialogRequested);
 
         // Meanwhile another meeting was selected: nothing starts, a notice appears.
@@ -687,7 +687,7 @@ private slots:
     void identifyWithEveryoneNamedOffersRecheck()
     {
         const tanara::Meeting m = namedWithVoices(QStringLiteral("Mindenki megvan"));
-        tanara::SpeakerEditor* ed = m_app->speakerEditor(m.id);
+        tanara::editing::SpeakerEditor* ed = m_app->speakerEditor(m.id);
         QVERIFY(ed);
         QStringList shown;
         bool answer = true;

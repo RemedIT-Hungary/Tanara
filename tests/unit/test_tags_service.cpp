@@ -8,9 +8,9 @@
 #include <QJsonObject>
 #include <QJsonArray>
 
-#include "tanara/store/MeetingStore.h"
-#include "tanara/tags/TagNames.h"
-#include "tanara/tags/TagService.h"
+#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/tags/TagNames.h"
+#include "tanara/library/tags/TagService.h"
 
 using namespace tanara;
 
@@ -36,17 +36,17 @@ private slots:
 
 private:
     QString addMeeting(const QString& title, const QDateTime& when, const QStringList& speakers = {});
-    std::unique_ptr<TagService> makeService();
+    std::unique_ptr<library::TagService> makeService();
 
     std::unique_ptr<QTemporaryDir> m_dir;
-    std::unique_ptr<MeetingStore> m_store;
+    std::unique_ptr<library::MeetingStore> m_store;
 };
 
 void TagsServiceTest::init()
 {
     m_dir = std::make_unique<QTemporaryDir>();
     QVERIFY(m_dir->isValid());
-    m_store = std::make_unique<MeetingStore>(m_dir->filePath("rec"), m_dir->filePath("meta"));
+    m_store = std::make_unique<library::MeetingStore>(m_dir->filePath("rec"), m_dir->filePath("meta"));
 }
 
 void TagsServiceTest::cleanup()
@@ -66,30 +66,30 @@ QString TagsServiceTest::addMeeting(const QString& title, const QDateTime& when,
     return m.id;
 }
 
-std::unique_ptr<TagService> TagsServiceTest::makeService()
+std::unique_ptr<library::TagService> TagsServiceTest::makeService()
 {
-    return std::make_unique<TagService>(m_store.get(), m_dir->filePath("meta/tags.json"));
+    return std::make_unique<library::TagService>(m_store.get(), m_dir->filePath("meta/tags.json"));
 }
 
 void TagsServiceTest::names()
 {
-    QCOMPARE(normalizeTagName(QStringLiteral("  #Museum   Plus ")), QStringLiteral("Museum Plus"));
-    QCOMPARE(tagKey(QStringLiteral("Museum Plus")), tagKey(QStringLiteral("museumplus")));
-    QCOMPARE(tagKey(QStringLiteral("MÉM-MDK")), QStringLiteral("memmdk"));
-    QVERIFY(nearDuplicate(QStringLiteral("Museum Plus"), QStringLiteral("MuseumPlus")));
-    QVERIFY(nearDuplicate(QStringLiteral("Nordvik"), QStringLiteral("Nordvk")));        // 6+ letters: 1 difference
-    QVERIFY(nearDuplicate(QStringLiteral("Nordvik"), QStringLiteral("Nordvki")));       // letter swap
-    QVERIFY(!nearDuplicate(QStringLiteral("Nordvik"), QStringLiteral("Nordak")));       // 2 differences
-    QVERIFY(!nearDuplicate(QStringLiteral("Alfa"), QStringLiteral("Alfi")));           // short key
-    QVERIFY(nearDuplicate(QStringLiteral("Partnerprogram"), QStringLiteral("Partnerprogrm1")));   // 10+: 2
-    QVERIFY(!nearDuplicate(QStringLiteral("Partnerprogram"), QStringLiteral("Partnerpgrm123")));
-    QCOMPARE(damerauLevenshtein(QStringLiteral("abcd"), QStringLiteral("abdc")), 1);
+    QCOMPARE(library::normalizeTagName(QStringLiteral("  #Museum   Plus ")), QStringLiteral("Museum Plus"));
+    QCOMPARE(library::tagKey(QStringLiteral("Museum Plus")), library::tagKey(QStringLiteral("museumplus")));
+    QCOMPARE(library::tagKey(QStringLiteral("MÉM-MDK")), QStringLiteral("memmdk"));
+    QVERIFY(library::nearDuplicate(QStringLiteral("Museum Plus"), QStringLiteral("MuseumPlus")));
+    QVERIFY(library::nearDuplicate(QStringLiteral("Nordvik"), QStringLiteral("Nordvk")));        // 6+ letters: 1 difference
+    QVERIFY(library::nearDuplicate(QStringLiteral("Nordvik"), QStringLiteral("Nordvki")));       // letter swap
+    QVERIFY(!library::nearDuplicate(QStringLiteral("Nordvik"), QStringLiteral("Nordak")));       // 2 differences
+    QVERIFY(!library::nearDuplicate(QStringLiteral("Alfa"), QStringLiteral("Alfi")));           // short key
+    QVERIFY(library::nearDuplicate(QStringLiteral("Partnerprogram"), QStringLiteral("Partnerprogrm1")));   // 10+: 2
+    QVERIFY(!library::nearDuplicate(QStringLiteral("Partnerprogram"), QStringLiteral("Partnerpgrm123")));
+    QCOMPARE(library::damerauLevenshtein(QStringLiteral("abcd"), QStringLiteral("abdc")), 1);
 }
 
 void TagsServiceTest::createAndKeyEquality()
 {
     auto svc = makeService();
-    QSignalSpy changed(svc.get(), &TagService::tagsChanged);
+    QSignalSpy changed(svc.get(), &library::TagService::tagsChanged);
     const Tag a = svc->create(QStringLiteral("Museum Plus"));
     QVERIFY(a.isValid());
     QVERIFY(!a.id.contains(QLatin1Char('{')));
@@ -154,7 +154,7 @@ void TagsServiceTest::meetingTags()
 {
     const QString mid = addMeeting("Ügyfél-hívás", QDateTime::currentDateTime());
     auto svc = makeService();
-    QSignalSpy mt(svc.get(), &TagService::meetingTagsChanged);
+    QSignalSpy mt(svc.get(), &library::TagService::meetingTagsChanged);
     const Tag a = svc->addTag(mid, QStringLiteral("Nordvik"));
     const Tag b = svc->addTag(mid, QStringLiteral("Partnerek"));
     QCOMPARE(svc->tagsOf(mid), (QStringList{a.id, b.id}));
@@ -211,7 +211,7 @@ void TagsServiceTest::inputRowsRecentAndMatches()
     rows = svc->inputRows(QStringLiteral("Zöldfa"));
     QCOMPARE(rows.size(), 1);
     QCOMPARE(rows.first().kind, TagInputRow::New);
-    QCOMPARE(TagService::preferredRow(rows), 0);
+    QCOMPARE(library::TagService::preferredRow(rows), 0);
 }
 
 void TagsServiceTest::inputRowsNearDuplicate()
@@ -229,7 +229,7 @@ void TagsServiceTest::inputRowsNearDuplicate()
     QCOMPARE(rows.at(0).tag.id, mp.id);
     QCOMPARE(rows.at(1).kind, TagInputRow::ForceNew);
     QCOMPARE(rows.at(1).tag.name, QStringLiteral("Museum Plsu"));
-    QCOMPARE(TagService::preferredRow(rows), 0);
+    QCOMPARE(library::TagService::preferredRow(rows), 0);
 }
 
 void TagsServiceTest::mergeRetagsAndOffersKept()
@@ -330,7 +330,7 @@ void TagsServiceTest::rejected()
     const QString m2 = addMeeting("B", QDateTime::currentDateTime());
     {
         auto svc = makeService();
-        QSignalSpy rc(svc.get(), &TagService::rejectedChanged);
+        QSignalSpy rc(svc.get(), &library::TagService::rejectedChanged);
         const Tag a = svc->create(QStringLiteral("Nordvik"));
         svc->reject(m1, TagSuggestion{a.id, a.name});
         TagSuggestion llmNew;
@@ -377,11 +377,11 @@ void TagsServiceTest::usageAndProfile()
     const Tag p = svc->addTag(m2, QStringLiteral("Partnerek"));
     svc->addTag(m3, QStringLiteral("Belső"));
 
-    const QVector<TagUsage> most = svc->all(TagService::Sort::MostUsed);
+    const QVector<TagUsage> most = svc->all(library::TagService::Sort::MostUsed);
     QCOMPARE(most.first().tag.id, n.id);
     QCOMPARE(most.first().meetingCount, 2);
     QCOMPARE(most.first().firstUsedAt.date(), QDate(2026, 8, 1));
-    const QVector<TagUsage> alpha = svc->all(TagService::Sort::Alpha);
+    const QVector<TagUsage> alpha = svc->all(library::TagService::Sort::Alpha);
     QCOMPARE(alpha.first().tag.name, QStringLiteral("Belső"));
 
     const TagProfile prof = svc->profile(n.id);

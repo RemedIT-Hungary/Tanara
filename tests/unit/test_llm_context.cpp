@@ -11,14 +11,14 @@
 #include <QJsonObject>
 #include <functional>
 
-#include "tanara/jobs/JobErrors.h"
+#include "tanara/library/jobs/JobErrors.h"
 #include "tanara/cloud/CloudTypes.h"
-#include "tanara/llm/LlmContext.h"
-#include "tanara/llm/LlmServer.h"
-#include "tanara/provider/ConnectionTester.h"
+#include "tanara/providers/chat/LlmContext.h"
+#include "tanara/providers/chat/LlmServer.h"
+#include "tanara/providers/core/ConnectionTester.h"
 
 using namespace tanara;
-using namespace tanara::llmctx;
+using namespace tanara::providers::llmctx;
 
 #ifndef Q_MOC_RUN
 namespace {
@@ -131,7 +131,7 @@ ProviderConfig cfgFor(const FakeHttp& srv, const QString& model = QStringLiteral
 class LlmContextTest : public QObject {
     Q_OBJECT
 private slots:
-    void init() { LlmServerProbe::invalidateCache(); }
+    void init() { providers::LlmServerProbe::invalidateCache(); }
 
     void estimateAndSteps();
     void overflowShapes_data();
@@ -155,26 +155,26 @@ private slots:
 
 void LlmContextTest::estimateAndSteps()
 {
-    QCOMPARE(estimateTokens(0), 0);
-    QCOMPARE(estimateTokens(2500), 1000);           // 2.5 characters / token (Hungarian transcript)
-    QCOMPARE(estimateTokens(2501), 1001);
+    QCOMPARE(providers::llmctx::estimateTokens(0), 0);
+    QCOMPARE(providers::llmctx::estimateTokens(2500), 1000);           // 2.5 characters / token (Hungarian transcript)
+    QCOMPARE(providers::llmctx::estimateTokens(2501), 1001);
     // Input + template, with a 10% margin, + the output budget.
-    QCOMPARE(callContextNeed(2500, 3000), int(std::ceil((1000 + 256) * 1.1)) + 3000);
-    QCOMPARE(contextStepFor(5000), 8192);
-    QCOMPARE(contextStepFor(9000), 16384);
-    QCOMPARE(contextStepFor(17000), 20480);
-    QCOMPARE(contextStepFor(30000), 32768);
-    QCOMPARE(contextStepFor(30000, 20000), 20000);   // not above the model's maximum
-    QCOMPARE(contextStepFor(300000), 300032);        // above every step: rounded to 1024
+    QCOMPARE(providers::llmctx::callContextNeed(2500, 3000), int(std::ceil((1000 + 256) * 1.1)) + 3000);
+    QCOMPARE(providers::llmctx::contextStepFor(5000), 8192);
+    QCOMPARE(providers::llmctx::contextStepFor(9000), 16384);
+    QCOMPARE(providers::llmctx::contextStepFor(17000), 20480);
+    QCOMPARE(providers::llmctx::contextStepFor(30000), 32768);
+    QCOMPARE(providers::llmctx::contextStepFor(30000, 20000), 20000);   // not above the model's maximum
+    QCOMPARE(providers::llmctx::contextStepFor(300000), 300032);        // above every step: rounded to 1024
     // The budget backwards: this many characters fit in a part next to the prompt + output.
-    const int budget = partBudgetChars(16384, 4000, 3000);
+    const int budget = providers::llmctx::partBudgetChars(16384, 4000, 3000);
     QVERIFY(budget > 0);
-    QVERIFY(callContextNeed(4000 + budget, 3000) <= 16384);
-    QVERIFY(callContextNeed(4000 + budget + 100, 3000) > 16384 - 100);
-    QCOMPARE(partBudgetChars(4096, 4000, 3000), -1);   // too little even for the smallest part
-    QVERIFY(typicalSummaryPartNeed() > 8192 && typicalSummaryPartNeed() < 16384);
-    QCOMPARE(nativeApiRoot(QStringLiteral("http://localhost:1234/v1/")), QStringLiteral("http://localhost:1234"));
-    QCOMPARE(nativeApiRoot(QStringLiteral("http://host:8080")), QStringLiteral("http://host:8080"));
+    QVERIFY(providers::llmctx::callContextNeed(4000 + budget, 3000) <= 16384);
+    QVERIFY(providers::llmctx::callContextNeed(4000 + budget + 100, 3000) > 16384 - 100);
+    QCOMPARE(providers::llmctx::partBudgetChars(4096, 4000, 3000), -1);   // too little even for the smallest part
+    QVERIFY(providers::llmctx::typicalSummaryPartNeed() > 8192 && providers::llmctx::typicalSummaryPartNeed() < 16384);
+    QCOMPARE(providers::llmctx::nativeApiRoot(QStringLiteral("http://localhost:1234/v1/")), QStringLiteral("http://localhost:1234"));
+    QCOMPARE(providers::llmctx::nativeApiRoot(QStringLiteral("http://host:8080")), QStringLiteral("http://host:8080"));
 }
 
 void LlmContextTest::overflowShapes_data()
@@ -224,11 +224,11 @@ void LlmContextTest::classifiedMessage()
     // The incident through the provider-error path: a human message with the two numbers, no raw
     // JSON, the technical line is different (not the same text twice).
     for (const char* body : {kLmStudioIncident, kLlamaCpp}) {
-        HttpExchange ex;
+        cloud::HttpExchange ex;
         ex.status = 400;
         ex.body = body;
         const QString raw = QStringLiteral("LLM hiba (HTTP 400): Engine protocol predict request returned 400: {…}");
-        ContextFailureHint hint;
+        library::ContextFailureHint hint;
         hint.lmStudio = true;
         hint.recommendedContext = 12000;
         const JobError e = describeJobFailure(JobKind::Summarize, raw, &ex, &hint);
@@ -241,45 +241,45 @@ void LlmContextTest::classifiedMessage()
         QVERIFY(e.detail.startsWith(QStringLiteral("HTTP 400 · exceed_context_size_error")));
         QVERIFY(!e.detail.contains(QStringLiteral("Engine protocol")));
         QCOMPARE(e.fixActionHint, QStringLiteral("llm:reload-context:16384"));
-        QVERIFY(isReloadContextHint(e.fixActionHint));
-        QCOMPARE(contextFixTokens(e.fixActionHint), 16384);
+        QVERIFY(library::isReloadContextHint(e.fixActionHint));
+        QCOMPARE(library::contextFixTokens(e.fixActionHint), 16384);
     }
     // Another server (no native API): the minimum in the text, the hint leads to Settings.
-    HttpExchange ex;
+    cloud::HttpExchange ex;
     ex.status = 400;
     ex.body = kOpenAi;
-    ContextFailureHint hint;
+    library::ContextFailureHint hint;
     hint.recommendedContext = 30000;
     const JobError e = describeJobFailure(JobKind::AnalyzeTopics, QStringLiteral("x"), &ex, &hint);
     QCOMPARE(e.fixActionHint, QStringLiteral("settings:llm-context:32768"));
-    QVERIFY(!isReloadContextHint(e.fixActionHint));
+    QVERIFY(!library::isReloadContextHint(e.fixActionHint));
     QVERIFY(e.detail.contains(QStringLiteral("context_length_exceeded")));
     // If the estimate is not larger than the loaded one, we suggest the next step.
     hint.recommendedContext = 4000;
     QCOMPARE(describeJobFailure(JobKind::Summarize, QString(), &ex, &hint).fixActionHint,
              QStringLiteral("settings:llm-context:16384"));
     // We do not classify transcription errors here.
-    QVERIFY(describeJobFailure(JobKind::Transcribe, QString(), &ex).fixActionHint != QStringLiteral("settings:llm-context"));
+    QVERIFY(library::describeJobFailure(JobKind::Transcribe, QString(), &ex).fixActionHint != QStringLiteral("settings:llm-context"));
 }
 
 void LlmContextTest::cloudOverflowHasNoReload()
 {
-    CloudError ce;
-    ce.kind = CloudErrorKind::Internal;
+    cloud::CloudError ce;
+    ce.kind = cloud::CloudErrorKind::Internal;
     ce.httpStatus = 400;
     ce.code = QStringLiteral("context_length_exceeded");
     ce.message = QStringLiteral("A kérés túl hosszú.");
     ce.requestId = QStringLiteral("req_1");
-    const JobError e = describeCloudFailure(JobKind::Summarize, ce);
+    const JobError e = library::describeCloudFailure(JobKind::Summarize, ce);
     QCOMPARE(e.fixActionHint, QStringLiteral("cloud"));
     QVERIFY(e.detail.contains(QStringLiteral("req_1")));
-    QVERIFY(!isReloadContextHint(e.fixActionHint));
+    QVERIFY(!library::isReloadContextHint(e.fixActionHint));
 }
 
 void LlmContextTest::probeParsing()
 {
     // Loaded (the real server's shape).
-    LlmServerInfo i = parseLmStudioModels(modelsJson("qwen3.8-27b", 20480, 1), "qwen3.8-27b");
+    providers::llmctx::LlmServerInfo i = providers::llmctx::parseLmStudioModels(modelsJson("qwen3.8-27b", 20480, 1), "qwen3.8-27b");
     QVERIFY(i.isLmStudio());
     QVERIFY(i.modelListed);
     QCOMPARE(i.modelKey, QStringLiteral("qwen3.8-27b"));
@@ -290,11 +290,11 @@ void LlmContextTest::probeParsing()
     QVERIFY(i.otherLoaded.isEmpty());   // the embedding model does not count
 
     // Not loaded.
-    i = parseLmStudioModels(modelsJson("qwen3.8-27b", 0, 0), "qwen3.8-27b");
+    i = providers::llmctx::parseLmStudioModels(modelsJson("qwen3.8-27b", 0, 0), "qwen3.8-27b");
     QVERIFY(i.isLmStudio() && i.modelListed && !i.loaded());
 
     // Another model occupies the server.
-    i = parseLmStudioModels(modelsJson("qwen3.8-27b", 0, 0, "racka-4b@q8_0"), "qwen3.8-27b");
+    i = providers::llmctx::parseLmStudioModels(modelsJson("qwen3.8-27b", 0, 0, "racka-4b@q8_0"), "qwen3.8-27b");
     QVERIFY(!i.loaded());
     QCOMPARE(i.otherLoaded, QStringList{QStringLiteral("racka-4b@q8_0")});
 
@@ -314,14 +314,14 @@ void LlmContextTest::decisionTable()
 {
     using A = PreloadDecision::Action;
     const auto info = [](int ctx, int parallel) {
-        return parseLmStudioModels(modelsJson("m", ctx, parallel), "m");
+        return providers::llmctx::parseLmStudioModels(modelsJson("m", ctx, parallel), "m");
     };
     // Already fine: no load.
-    PreloadDecision d = decidePreload(info(20480, 1), 15000, 0);
+    providers::llmctx::PreloadDecision d = decidePreload(info(20480, 1), 15000, 0);
     QCOMPARE(d.action, A::None);
     QCOMPARE(d.contextLength, 20480);
     // Small context: reload with the smallest sufficient step.
-    d = decidePreload(info(4096, 1), 15000, 0);
+    d = providers::llmctx::decidePreload(info(4096, 1), 15000, 0);
     QCOMPARE(d.action, A::Reload);
     QCOMPARE(d.contextLength, 16384);
     QCOMPARE(d.unloadIds, QStringList{QStringLiteral("m")});
@@ -352,14 +352,14 @@ void LlmContextTest::decisionTable()
     QCOMPARE(d.action, A::Reload);
     QCOMPARE(d.contextLength, 32768);
     // We do not ask above the model's maximum.
-    LlmServerInfo small = info(0, 0);
+    providers::llmctx::LlmServerInfo small = info(0, 0);
     small.maxContext = 12000;
     d = decidePreload(small, 30000, 0);
     QCOMPARE(d.contextLength, 12000);
     QVERIFY(d.contextInsufficient);
     // Not LM Studio / unknown model: nothing to do.
-    QCOMPARE(decidePreload(LlmServerInfo{}, 9000, 0).action, A::Skip);
-    QCOMPARE(decidePreload(parseLmStudioModels(modelsJson("m", 4096, 1), "x"), 9000, 0).action, A::Skip);
+    QCOMPARE(providers::llmctx::decidePreload(providers::llmctx::LlmServerInfo{}, 9000, 0).action, A::Skip);
+    QCOMPARE(decidePreload(providers::llmctx::parseLmStudioModels(modelsJson("m", 4096, 1), "x"), 9000, 0).action, A::Skip);
 }
 
 void LlmContextTest::preparerAlreadyFine()
@@ -369,10 +369,10 @@ void LlmContextTest::preparerAlreadyFine()
         if (r.path == "/api/v1/models") return {200, modelsJson("qwen3.8-27b", 20480, 1)};
         return {500, "{}"};
     };
-    LlmModelPreparer p(cfgFor(srv));
-    QSignalSpy ready(&p, &LlmModelPreparer::ready);
-    QSignalSpy failed(&p, &LlmModelPreparer::failed);
-    QSignalSpy loading(&p, &LlmModelPreparer::loadingStarted);
+    providers::LlmModelPreparer p(cfgFor(srv));
+    QSignalSpy ready(&p, &providers::LlmModelPreparer::ready);
+    QSignalSpy failed(&p, &providers::LlmModelPreparer::failed);
+    QSignalSpy loading(&p, &providers::LlmModelPreparer::loadingStarted);
     p.start(15000);
     QTRY_COMPARE(ready.count(), 1);
     QCOMPARE(failed.count(), 0);
@@ -392,9 +392,9 @@ void LlmContextTest::preparerReloadsSmallContext()
             return {200, R"({"type":"llm","instance_id":"qwen3.8-27b","status":"loaded","load_config":{"context_length":16384}})"};
         return {404, "{}"};
     };
-    LlmModelPreparer p(cfgFor(srv));
-    QSignalSpy ready(&p, &LlmModelPreparer::ready);
-    QSignalSpy loading(&p, &LlmModelPreparer::loadingStarted);
+    providers::LlmModelPreparer p(cfgFor(srv));
+    QSignalSpy ready(&p, &providers::LlmModelPreparer::ready);
+    QSignalSpy loading(&p, &providers::LlmModelPreparer::loadingStarted);
     p.start(12000);
     QTRY_COMPARE(ready.count(), 1);
     QCOMPARE(loading.count(), 1);
@@ -423,8 +423,8 @@ void LlmContextTest::preparerReloadsParallel()
         if (r.path.endsWith("/load")) return {200, R"({"instance_id":"qwen3.8-27b","status":"loaded"})"};
         return {404, "{}"};
     };
-    LlmModelPreparer p(cfgFor(srv));
-    QSignalSpy ready(&p, &LlmModelPreparer::ready);
+    providers::LlmModelPreparer p(cfgFor(srv));
+    QSignalSpy ready(&p, &providers::LlmModelPreparer::ready);
     p.start(6000);
     QTRY_COMPARE(ready.count(), 1);
     QCOMPARE(srv.count("POST", "/unload"), 1);
@@ -442,8 +442,8 @@ void LlmContextTest::preparerLoadsWhenNotLoaded()
         if (r.path.endsWith("/load")) return {200, R"({"instance_id":"qwen3.8-27b","load_config":{"context_length":20480}})"};
         return {500, "{}"};
     };
-    LlmModelPreparer p(cfgFor(srv));
-    QSignalSpy ready(&p, &LlmModelPreparer::ready);
+    providers::LlmModelPreparer p(cfgFor(srv));
+    QSignalSpy ready(&p, &providers::LlmModelPreparer::ready);
     p.start(17000);
     QTRY_COMPARE(ready.count(), 1);
     QCOMPARE(srv.count("POST", "/unload"), 0);   // we do not touch the other model
@@ -461,9 +461,9 @@ void LlmContextTest::preparerLoadRefusedOnce()
             return {500, R"({"error":{"type":"insufficient_resources","message":"Model loading was stopped due to insufficient system resources."}})"};
         return {500, "{}"};
     };
-    LlmModelPreparer p(cfgFor(srv));
-    QSignalSpy ready(&p, &LlmModelPreparer::ready);
-    QSignalSpy failed(&p, &LlmModelPreparer::failed);
+    providers::LlmModelPreparer p(cfgFor(srv));
+    QSignalSpy ready(&p, &providers::LlmModelPreparer::ready);
+    QSignalSpy failed(&p, &providers::LlmModelPreparer::failed);
     p.start(60000);
     QTRY_COMPARE(failed.count(), 1);
     QTest::qWait(100);
@@ -488,9 +488,9 @@ void LlmContextTest::preparerBusyDoesNotUnload()
         if (r.path == "/api/v1/models") return {200, modelsJson("qwen3.8-27b", 4096, 1)};
         return {200, "{}"};
     };
-    LlmModelPreparer p(cfgFor(srv));
+    providers::LlmModelPreparer p(cfgFor(srv));
     p.setBusyCheck([] { return true; });   // Tanara is running another request right now
-    QSignalSpy failed(&p, &LlmModelPreparer::failed);
+    QSignalSpy failed(&p, &providers::LlmModelPreparer::failed);
     p.start(12000);
     QTRY_COMPARE(failed.count(), 1);
     QCOMPARE(srv.count("POST", "/api/v1/models/"), 0);
@@ -504,10 +504,10 @@ void LlmContextTest::preparerCancelDuringLoad()
         if (r.path == "/api/v1/models") return {200, modelsJson("qwen3.8-27b", 0, 0)};
         FakeReply h; h.hold = true; return h;   // the load "takes a while"
     };
-    LlmModelPreparer p(cfgFor(srv));
-    QSignalSpy ready(&p, &LlmModelPreparer::ready);
-    QSignalSpy failed(&p, &LlmModelPreparer::failed);
-    QSignalSpy loading(&p, &LlmModelPreparer::loadingStarted);
+    providers::LlmModelPreparer p(cfgFor(srv));
+    QSignalSpy ready(&p, &providers::LlmModelPreparer::ready);
+    QSignalSpy failed(&p, &providers::LlmModelPreparer::failed);
+    QSignalSpy loading(&p, &providers::LlmModelPreparer::loadingStarted);
     p.start(9000);
     QTRY_COMPARE(srv.count("POST", "/load"), 1);
     QCOMPARE(loading.count(), 1);
@@ -523,16 +523,16 @@ void LlmContextTest::preparerSkipsWithoutNativeApi()
     srv.handler = [](const FakeRequest&) -> FakeReply {
         return {404, R"({"error":"Unexpected endpoint or method."})"};
     };
-    LlmModelPreparer p(cfgFor(srv));
-    QSignalSpy ready(&p, &LlmModelPreparer::ready);
+    providers::LlmModelPreparer p(cfgFor(srv));
+    QSignalSpy ready(&p, &providers::LlmModelPreparer::ready);
     p.start(60000);
     QTRY_COMPARE(ready.count(), 1);
     QVERIFY(!p.serverInfo().isLmStudio());
     QCOMPARE(p.loadedContext(), -1);
     QCOMPARE(srv.count("POST", ""), 0);
     // A failed probe is cached too: within a short time we do not ask again.
-    LlmModelPreparer p2(cfgFor(srv));
-    QSignalSpy ready2(&p2, &LlmModelPreparer::ready);
+    providers::LlmModelPreparer p2(cfgFor(srv));
+    QSignalSpy ready2(&p2, &providers::LlmModelPreparer::ready);
     p2.start(60000);
     QTRY_COMPARE(ready2.count(), 1);
     QCOMPARE(srv.log.size(), 1);
@@ -542,16 +542,16 @@ void LlmContextTest::connectionTestReportsServer()
 {
     // A clean descriptor: parallel > 1 and little context gives a warning.
     QString text, warning;
-    describeLlmServer(parseLmStudioModels(modelsJson("m", 4096, 4), "m"), &text, &warning);
+    providers::describeLlmServer(providers::llmctx::parseLmStudioModels(modelsJson("m", 4096, 4), "m"), &text, &warning);
     QVERIFY2(text.contains(QStringLiteral("LM Studio")), qPrintable(text));
     QVERIFY2(warning.contains(QStringLiteral("4 párhuzamos")), qPrintable(warning));
     QVERIFY2(warning.contains(QStringLiteral("kevés")), qPrintable(warning));
     text.clear(); warning.clear();
-    describeLlmServer(parseLmStudioModels(modelsJson("m", 20480, 1), "m"), &text, &warning);
+    providers::describeLlmServer(providers::llmctx::parseLmStudioModels(modelsJson("m", 20480, 1), "m"), &text, &warning);
     QVERIFY(warning.isEmpty());
     QVERIFY(text.contains(QStringLiteral("párhuzamos kérések: 1")));
     text.clear();
-    describeLlmServer(LlmServerInfo{}, &text, &warning);
+    providers::describeLlmServer(providers::llmctx::LlmServerInfo{}, &text, &warning);
     QVERIFY(text.isEmpty());
 
     // "Test connection" also asks the native API after a successful /models.
@@ -561,16 +561,16 @@ void LlmContextTest::connectionTestReportsServer()
         if (r.path == "/api/v1/models") return {200, modelsJson("qwen3.8-27b", 4096, 4)};
         return {404, "{}"};
     };
-    ProviderDescriptor d;
+    providers::ProviderDescriptor d;
     d.id = QStringLiteral("openai-compat");
-    d.kind = ProviderKind::Llm;
-    d.authMode = AuthMode::None;
+    d.kind = providers::ProviderKind::Llm;
+    d.authMode = providers::AuthMode::None;
     d.probe = {QStringLiteral("/models"), true};
-    ConnectionTester tester;
-    QSignalSpy done(&tester, &ConnectionTester::finished);
+    providers::ConnectionTester tester;
+    QSignalSpy done(&tester, &providers::ConnectionTester::finished);
     tester.test(d, cfgFor(srv));
     QTRY_COMPARE(done.count(), 1);
-    const ConnectionTestResult r = done.at(0).at(1).value<ConnectionTestResult>();
+    const providers::ConnectionTestResult r = done.at(0).at(1).value<providers::ConnectionTestResult>();
     QVERIFY(r.ok());
     QVERIFY(r.server.isLmStudio());
     QCOMPARE(r.server.instances.value(0).parallel, 4);

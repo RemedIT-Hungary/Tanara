@@ -3,7 +3,7 @@
 #include "JobTestSupport.h"
 #include "PreTranscriptViewModel.h"
 
-#include "tanara/tags/TagService.h"
+#include "tanara/library/tags/TagService.h"
 
 #include "../unit/tags_fixture.h"
 
@@ -182,7 +182,7 @@ private slots:
 
         // Retry with a working provider: the transcript is made, the error disappears.
         sb.http->handler = [](const jobtest::FakeRequest& r) { return jobtest::sonioxOk(r); };
-        QSignalSpy ready(sb.app.get(), &AppController::transcriptReady);
+        QSignalSpy ready(sb.app.get(), &app::AppController::transcriptReady);
         sb.app->transcribeMeeting(m.id);
         QCOMPARE(vm.state(), QStringLiteral("running"));
         QVERIFY(ready.wait(30000));
@@ -215,7 +215,7 @@ private slots:
     {
         jobtest::Sandbox sb;
         const tagsfixture::Library lib = tagsfixture::buildLibrary(*sb.app->store());
-        TagService* tags = sb.app->tags();
+        library::TagService* tags = sb.app->tags();
         const Tag nordvik = tags->addTag(lib.nordvik1, QStringLiteral("Nordvik"));
         tags->addTag(lib.nordvik2, nordvik.id);
         sb.app->setMeetingContextNote(lib.nordvik1, QStringLiteral("Résztvevők: Kovács Anna."));

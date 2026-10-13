@@ -3,7 +3,7 @@
 #include "DemoText.h"
 
 #include "tanara/foundation/text/Text.h"
-#include "tanara/tags/TagNames.h"
+#include "tanara/library/tags/TagNames.h"
 
 #include <QHash>
 
@@ -131,14 +131,14 @@ QVector<DemoMeeting> build(bool en)
     const QDate today = now().date();
     for (const Row& r : kRows) {
         DemoMeeting d;
-        tanara::LibraryEntry& e = d.entry;
+        tanara::library::LibraryEntry& e = d.entry;
         e.id = QString::fromLatin1(r.id);
         e.title = QString::fromUtf8(en ? r.titleEn : r.title);
         e.startedAt = QDateTime::fromString(QString::fromLatin1(r.date), Qt::ISODate);
         e.durationMs = (qint64(r.minutes) * 60 + r.seconds) * 1000;
         e.hasTranscript = r.transcript == StepState::Done;
         e.hasSummary = r.summary == StepState::Done;
-        e.section = tanara::MeetingLibrary::sectionFor(e.startedAt, today);
+        e.section = tanara::library::MeetingLibrary::sectionFor(e.startedAt, today);
         e.participants = demotext::names(QString::fromUtf8(r.people).split(QLatin1Char(','), Qt::SkipEmptyParts));
         e.state.meetingId = e.id;
         e.state.transcriptState = r.transcript;
@@ -193,7 +193,7 @@ TagState& tagState()
     return st;
 }
 
-void fillTags(tanara::LibraryEntry& e)
+void fillTags(tanara::library::LibraryEntry& e)
 {
     e.tagIds.clear();
     e.tagNames.clear();
@@ -229,14 +229,14 @@ const DemoMeeting* find(const QString& meetingId)
     return nullptr;
 }
 
-tanara::LibraryResult query(const tanara::LibraryQuery& q)
+tanara::library::LibraryResult query(const tanara::library::LibraryQuery& q)
 {
     namespace tf = tanara::text;
-    tanara::LibraryResult res;
+    tanara::library::LibraryResult res;
     res.totalMeetings = int(meetings().size());
     const QString needle = tf::foldQuery(q.text);
     for (const DemoMeeting& d : meetings()) {
-        tanara::LibraryEntry e = d.entry;
+        tanara::library::LibraryEntry e = d.entry;
         fillTags(e);
         if (q.noTranscript && e.hasTranscript) continue;
         if (q.noSummary && e.hasSummary) continue;
@@ -278,7 +278,7 @@ tanara::LibraryResult query(const tanara::LibraryQuery& q)
     return res;
 }
 
-QVector<tanara::PersonPresence> people()
+QVector<tanara::library::PersonPresence> people()
 {
     QHash<QString, int> counts;
     QStringList order;
@@ -287,32 +287,32 @@ QVector<tanara::PersonPresence> people()
             if (!counts.contains(p)) order << p;
             ++counts[p];
         }
-    QVector<tanara::PersonPresence> out;
+    QVector<tanara::library::PersonPresence> out;
     for (const QString& p : std::as_const(order))
         out.append({p, counts.value(p)});
-    std::stable_sort(out.begin(), out.end(), [](const tanara::PersonPresence& a,
-                                                const tanara::PersonPresence& b) {
+    std::stable_sort(out.begin(), out.end(), [](const tanara::library::PersonPresence& a,
+                                                const tanara::library::PersonPresence& b) {
         return a.meetingCount > b.meetingCount;
     });
     return out;
 }
 
-QVector<tanara::PendingItem> pendingItems()
+QVector<tanara::library::PendingItem> pendingItems()
 {
-    QVector<tanara::PendingItem> out;
+    QVector<tanara::library::PendingItem> out;
     for (const DemoMeeting& d : meetings()) {
-        const tanara::LibraryEntry& e = d.entry;
-        tanara::PendingItem it;
+        const tanara::library::LibraryEntry& e = d.entry;
+        tanara::library::PendingItem it;
         it.meetingId = e.id;
         it.title = e.title;
         it.startedAt = e.startedAt;
         it.durationMs = e.durationMs;
         if (e.hasTranscript) {
             if (!e.state.summaryStale) continue;
-            it.kind = tanara::PendingKind::StaleSummary;
+            it.kind = tanara::library::PendingKind::StaleSummary;
             it.correctedSpeakers = e.state.staleCorrectedSpeakers;
         } else if (e.state.transcriptState == StepState::Failed) {
-            it.kind = tanara::PendingKind::TranscriptionFailed;
+            it.kind = tanara::library::PendingKind::TranscriptionFailed;
             it.error = e.state.transcriptError;
         }
         out.append(it);
@@ -334,16 +334,16 @@ QString tagName(const QString& tagId)
 
 QString tagIdByName(const QString& name)
 {
-    const QString key = tanara::tagKey(name);
+    const QString key = tanara::library::tagKey(name);
     if (key.isEmpty()) return {};
     for (const DemoTag& t : std::as_const(tagState().catalog))
-        if (tanara::tagKey(t.name) == key) return t.id;
+        if (tanara::library::tagKey(t.name) == key) return t.id;
     return {};
 }
 
 QString createTag(const QString& name)
 {
-    const QString display = tanara::normalizeTagName(name);
+    const QString display = tanara::library::normalizeTagName(name);
     if (display.isEmpty()) return {};
     if (const QString id = tagIdByName(display); !id.isEmpty()) return id;
     TagState& st = tagState();
@@ -398,18 +398,18 @@ int untaggedCount()
 {
     int n = 0;
     for (const DemoMeeting& d : meetings()) {
-        tanara::LibraryEntry e = d.entry;
+        tanara::library::LibraryEntry e = d.entry;
         fillTags(e);
         if (e.tagIds.isEmpty()) ++n;
     }
     return n;
 }
 
-tanara::LibraryEntry entry(const QString& meetingId)
+tanara::library::LibraryEntry entry(const QString& meetingId)
 {
     const DemoMeeting* d = find(meetingId);
     if (!d) return {};
-    tanara::LibraryEntry e = d->entry;
+    tanara::library::LibraryEntry e = d->entry;
     fillTags(e);
     return e;
 }

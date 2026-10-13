@@ -10,8 +10,8 @@
 
 #include <memory>
 
-#include "tanara/detect/DetectorRegistry.h"
-#include "tanara/detect/IMeetingDetector.h"
+#include "tanara/watcher/detect/DetectorRegistry.h"
+#include "tanara/watcher/detect/IMeetingDetector.h"
 
 using namespace tanara;
 
@@ -22,19 +22,19 @@ private slots:
     // registerBuiltinDetectors() is idempotent: repeated calls do not duplicate or crash.
     void registerIsIdempotent()
     {
-        registerBuiltinDetectors();
-        const int n1 = MeetingDetectorRegistry::instance().all().size();
-        registerBuiltinDetectors();
-        const int n2 = MeetingDetectorRegistry::instance().all().size();
+        watcher::registerBuiltinDetectors();
+        const int n1 = watcher::MeetingDetectorRegistry::instance().all().size();
+        watcher::registerBuiltinDetectors();
+        const int n2 = watcher::MeetingDetectorRegistry::instance().all().size();
         QCOMPARE(n1, n2);
     }
 
     // For an unknown id create() returns nullptr (does not throw or crash).
     void createUnknownReturnsNull()
     {
-        registerBuiltinDetectors();
-        std::unique_ptr<IMeetingDetector> d(
-            MeetingDetectorRegistry::instance().create(QStringLiteral("nonexistent")));
+        watcher::registerBuiltinDetectors();
+        std::unique_ptr<watcher::IMeetingDetector> d(
+            watcher::MeetingDetectorRegistry::instance().create(QStringLiteral("nonexistent")));
         QVERIFY(d == nullptr);
     }
 
@@ -43,16 +43,16 @@ private slots:
     // correctly named instance, parented to the given QObject.
     void linuxCaptureRegistered()
     {
-        registerBuiltinDetectors();
-        auto& reg = MeetingDetectorRegistry::instance();
+        watcher::registerBuiltinDetectors();
+        auto& reg = watcher::MeetingDetectorRegistry::instance();
         QVERIFY(reg.has(QStringLiteral("linux-capture")));
         QVERIFY(!reg.all().isEmpty());
 
-        std::unique_ptr<IMeetingDetector> d(reg.create(QStringLiteral("linux-capture")));
+        std::unique_ptr<watcher::IMeetingDetector> d(reg.create(QStringLiteral("linux-capture")));
         QVERIFY(d != nullptr);
         QCOMPARE(d->id(), QStringLiteral("linux-capture"));
 
-        const DetectorDescriptor desc = reg.descriptor(QStringLiteral("linux-capture"));
+        const watcher::DetectorDescriptor desc = reg.descriptor(QStringLiteral("linux-capture"));
         QCOMPARE(desc.platform, QStringLiteral("linux"));
         QVERIFY(desc.derivesAppName);
     }

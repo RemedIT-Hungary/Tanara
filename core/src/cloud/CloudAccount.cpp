@@ -1,6 +1,6 @@
 #include "tanara/cloud/CloudAccount.h"
-#include "tanara/store/KeyStore.h"
-#include "tanara/Types.h"
+#include "tanara/foundation/KeyStore.h"
+#include "tanara/domain/Types.h"
 #include "tanara/foundation/Version.h"
 
 #include <QDir>
@@ -17,7 +17,7 @@
 #include <QTimer>
 #include <QUrl>
 
-namespace tanara {
+namespace tanara::cloud {
 
 Q_LOGGING_CATEGORY(lcCloud, "tanara.cloud")
 
@@ -422,4 +422,4 @@ void CloudAccount::saveState() const
     f.commit();
 }
 
-} // namespace tanara
+} // namespace tanara::cloud

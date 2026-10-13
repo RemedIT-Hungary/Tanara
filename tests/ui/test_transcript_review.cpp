@@ -4,7 +4,7 @@
 // contaminated core + splitting, candidates with evidence, "Why not X?", manual track
 // assignment, new person + similar lines. Runs without a display; it touches no user data.
 #include "CandidateListModel.h"
-#include "tanara/edit/PeopleDirectory.h"
+#include "tanara/editing/session/PeopleDirectory.h"
 #include "TranscriptEditorViewModel.h"
 #include "TranscriptListModel.h"
 
@@ -149,10 +149,10 @@ private slots:
         QCOMPARE(cands.rowForKey(1), 0);
         // The search finds by nickname too (matching the other person lists), the hit is in the substring.
         vm.setPeopleProvider([] {
-            PersonInfo p;
+            editing::PersonInfo p;
             p.name = QStringLiteral("Fehér Gábor");
             p.aliases = QStringList{QStringLiteral("Gabi")};
-            return QVector<PersonInfo>{p};
+            return QVector<editing::PersonInfo>{p};
         });
         cands.setQuery(QStringLiteral("gabi"));
         QVERIFY(cands.count() >= 1);

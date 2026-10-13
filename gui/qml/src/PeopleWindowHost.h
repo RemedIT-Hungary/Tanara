@@ -18,7 +18,7 @@ class QQuickWindow;
 class QWindow;
 
 namespace tanara {
-class AppController;
+namespace app { class AppController; }
 }
 
 namespace tanara_qml {
@@ -28,7 +28,7 @@ class PeopleViewModel;
 class PeopleWindowHost : public QObject {
     Q_OBJECT
 public:
-    explicit PeopleWindowHost(tanara::AppController* controller, QObject* parent = nullptr);
+    explicit PeopleWindowHost(tanara::app::AppController* controller, QObject* parent = nullptr);
     ~PeopleWindowHost() override;
 
     // Opens / raises the window; person: select this person (empty: the earlier selection
@@ -49,7 +49,7 @@ signals:
 private:
     bool ensureWindow();
 
-    QPointer<tanara::AppController> m_controller;
+    QPointer<tanara::app::AppController> m_controller;
     QQmlEngine* m_engine = nullptr;
     QPointer<QQuickWindow> m_window;
     QPointer<PeopleViewModel> m_vm;

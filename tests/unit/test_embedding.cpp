@@ -6,13 +6,13 @@
 #include <QTemporaryDir>
 #include <QJsonArray>
 
-#include "tanara/edit/SpeakerOverlay.h"
-#include "tanara/embedding/EmbeddingIndex.h"
-#include "tanara/embedding/EmbeddingPreparer.h"
-#include "tanara/embedding/EmbeddingProviderRegistry.h"
-#include "tanara/embedding/OpenAiCompatibleEmbeddingProvider.h"
-#include "tanara/provider/ProviderRegistry.h"
-#include "tanara/store/MeetingStore.h"
+#include "tanara/editing/session/SpeakerOverlay.h"
+#include "tanara/library/index/EmbeddingIndex.h"
+#include "tanara/library/index/EmbeddingPreparer.h"
+#include "tanara/providers/embedding/EmbeddingProviderRegistry.h"
+#include "tanara/providers/embedding/OpenAiCompatibleEmbeddingProvider.h"
+#include "tanara/providers/core/ProviderRegistry.h"
+#include "tanara/library/store/MeetingStore.h"
 #include "fake_http.h"
 #include "tags_fixture.h"
 
@@ -55,9 +55,9 @@ private slots:
     void modelChangeInvalidates();
 
 private:
-    EmbeddingPreparer::ProviderFactory factory();
+    library::EmbeddingPreparer::ProviderFactory factory();
     std::unique_ptr<QTemporaryDir> m_dir;
-    std::unique_ptr<MeetingStore> m_store;
+    std::unique_ptr<library::MeetingStore> m_store;
     std::unique_ptr<fakehttp::Server> m_http;
 };
 
@@ -65,7 +65,7 @@ void EmbeddingTest::init()
 {
     m_dir = std::make_unique<QTemporaryDir>();
     QVERIFY(m_dir->isValid());
-    m_store = std::make_unique<MeetingStore>(m_dir->filePath("rec"), m_dir->filePath("meta"));
+    m_store = std::make_unique<library::MeetingStore>(m_dir->filePath("rec"), m_dir->filePath("meta"));
     m_http = std::make_unique<fakehttp::Server>();
     m_http->handler = [](const fakehttp::Request& r) -> fakehttp::Reply {
         if (r.path.endsWith("/embeddings")) return { 200, embeddingsReply(r.body) };
@@ -80,38 +80,38 @@ void EmbeddingTest::cleanup()
     m_dir.reset();
 }
 
-EmbeddingPreparer::ProviderFactory EmbeddingTest::factory()
+library::EmbeddingPreparer::ProviderFactory EmbeddingTest::factory()
 {
     const QString base = m_http->base();
-    return [base](QObject* parent) -> IEmbeddingProvider* {
+    return [base](QObject* parent) -> providers::IEmbeddingProvider* {
         ProviderConfig cfg;
         cfg.baseUrl = base;
         cfg.model = QStringLiteral("teszt-embed");
-        return new OpenAiCompatibleEmbeddingProvider(cfg, parent);
+        return new providers::OpenAiCompatibleEmbeddingProvider(cfg, parent);
     };
 }
 
 void EmbeddingTest::registryDescriptors()
 {
-    registerBuiltinProviders();
-    const auto& reg = EmbeddingProviderRegistry::instance();
-    QVERIFY(reg.has(embeddingproviders::LocalId));
-    QVERIFY(reg.has(embeddingproviders::CloudId));
-    const ProviderDescriptor local = reg.descriptor(embeddingproviders::LocalId);
-    QCOMPARE(local.kind, ProviderKind::Embedding);
+    providers::registerBuiltinProviders();
+    const auto& reg = providers::EmbeddingProviderRegistry::instance();
+    QVERIFY(reg.has(providers::embeddingproviders::LocalId));
+    QVERIFY(reg.has(providers::embeddingproviders::CloudId));
+    const providers::ProviderDescriptor local = reg.descriptor(providers::embeddingproviders::LocalId);
+    QCOMPARE(local.kind, providers::ProviderKind::Embedding);
     QCOMPARE(local.probe.path, QStringLiteral("/models"));
     QVERIFY(local.probe.listsModels);
     bool url = false, model = false;
-    for (const ConfigField& f : local.fields) {
-        if (f.key == "baseUrl") url = f.type == ConfigFieldType::Url;
-        if (f.key == "model") model = f.type == ConfigFieldType::Combo && f.dynamicOptions;
+    for (const providers::ConfigField& f : local.fields) {
+        if (f.key == "baseUrl") url = f.type == providers::ConfigFieldType::Url;
+        if (f.key == "model") model = f.type == providers::ConfigFieldType::Combo && f.dynamicOptions;
     }
     QVERIFY(url && model);
-    const ProviderDescriptor cloud = reg.descriptor(embeddingproviders::CloudId);
-    QCOMPARE(cloud.authMode, AuthMode::Login);
+    const providers::ProviderDescriptor cloud = reg.descriptor(providers::embeddingproviders::CloudId);
+    QCOMPARE(cloud.authMode, providers::AuthMode::Login);
     QVERIFY(cloud.fields.isEmpty());
     std::unique_ptr<QObject> holder(new QObject);
-    QVERIFY(reg.create(embeddingproviders::LocalId, ProviderConfig{}, holder.get()));
+    QVERIFY(reg.create(providers::embeddingproviders::LocalId, ProviderConfig{}, holder.get()));
 }
 
 void EmbeddingTest::providerBatchesAndOrder()
@@ -120,11 +120,11 @@ void EmbeddingTest::providerBatchesAndOrder()
     cfg.baseUrl = m_http->base() + "/";
     cfg.model = QStringLiteral("teszt-embed");
     cfg.apiKey = QStringLiteral("titok");
-    OpenAiCompatibleEmbeddingProvider p(cfg);
+    providers::OpenAiCompatibleEmbeddingProvider p(cfg);
     QStringList texts;
     for (int i = 0; i < 20; ++i) texts << QString(i + 1, QLatin1Char('a' + (i % 26)));
-    EmbeddingJob* job = p.embed({ texts, QString() });
-    QSignalSpy done(job, &EmbeddingJob::finished);
+    providers::EmbeddingJob* job = p.embed({ texts, QString() });
+    QSignalSpy done(job, &providers::EmbeddingJob::finished);
     QVERIFY(done.wait(5000));
     QCOMPARE(m_http->count("POST", "/v1/embeddings"), 2);   // 16 + 4
     QCOMPARE(m_http->log.first().body.contains("\"model\":\"teszt-embed\""), true);
@@ -139,25 +139,25 @@ void EmbeddingTest::providerErrors()
     ProviderConfig cfg;
     cfg.baseUrl = m_http->base();
     cfg.model = QStringLiteral("teszt-embed");
-    OpenAiCompatibleEmbeddingProvider p(cfg);
+    providers::OpenAiCompatibleEmbeddingProvider p(cfg);
     m_http->handler = [](const fakehttp::Request&) -> fakehttp::Reply {
         return { 401, R"({"error":{"code":"auth_required","message":"Jelentkezz be a Tanara Cloudba.","request_id":"r1"}})" };
     };
-    EmbeddingJob* job = p.embed({ { "x" }, QString() });
-    QSignalSpy failed(job, &EmbeddingJob::failed);
+    providers::EmbeddingJob* job = p.embed({ { "x" }, QString() });
+    QSignalSpy failed(job, &providers::EmbeddingJob::failed);
     QVERIFY(failed.wait(5000));
     QVERIFY(failed.first().first().toString().contains("Jelentkezz be"));
     QCOMPARE(job->errorStatus(), 401);
 
     m_http->handler = [](const fakehttp::Request&) -> fakehttp::Reply { return { 200, R"({"data":[]})" }; };
-    EmbeddingJob* job2 = p.embed({ { "x", "y" }, QString() });
-    QSignalSpy failed2(job2, &EmbeddingJob::failed);
+    providers::EmbeddingJob* job2 = p.embed({ { "x", "y" }, QString() });
+    QSignalSpy failed2(job2, &providers::EmbeddingJob::failed);
     QVERIFY(failed2.wait(5000));
 
     // Without a title no request goes out.
-    OpenAiCompatibleEmbeddingProvider none(ProviderConfig{});
-    EmbeddingJob* job3 = none.embed({ { "x" }, QString() });
-    QSignalSpy failed3(job3, &EmbeddingJob::failed);
+    providers::OpenAiCompatibleEmbeddingProvider none(ProviderConfig{});
+    providers::EmbeddingJob* job3 = none.embed({ { "x" }, QString() });
+    QSignalSpy failed3(job3, &providers::EmbeddingJob::failed);
     QVERIFY(failed3.wait(2000));
 }
 
@@ -172,7 +172,7 @@ void EmbeddingTest::chunking()
     }
     TranscriptLine empty; empty.text = "   ";
     lines.insert(3, empty);
-    const QVector<EmbeddingChunk> chunks = EmbeddingIndex::chunkTranscript(lines, 1500);
+    const QVector<library::EmbeddingChunk> chunks = library::EmbeddingIndex::chunkTranscript(lines, 1500);
     QCOMPARE(chunks.size(), 4);                      // 3 utterances (1202 chars) / chunk
     QCOMPARE(chunks.first().startMs, 0);
     QCOMPARE(chunks.first().endMs, 2900);
@@ -180,23 +180,23 @@ void EmbeddingTest::chunking()
     QCOMPARE(chunks.last().endMs, 9900);
     // A single over-long utterance is one chunk by itself.
     TranscriptLine big; big.text = QString(4000, QLatin1Char('y'));
-    QCOMPARE(EmbeddingIndex::chunkTranscript({ big }, 1500).size(), 1);
+    QCOMPARE(library::EmbeddingIndex::chunkTranscript({ big }, 1500).size(), 1);
 }
 
 void EmbeddingTest::indexFileRoundTrip()
 {
     const QString path = m_dir->filePath("x.bin");
-    QVector<EmbeddingChunk> in(2);
+    QVector<library::EmbeddingChunk> in(2);
     in[0].startMs = 5; in[0].endMs = 10; in[0].vector = { 1.5f, -2.0f, 0.25f };
     in[1].startMs = 11; in[1].endMs = 20; in[1].vector = { 0.0f, 1.0f, 3.0f };
-    QVERIFY(EmbeddingIndex::writeFile(path, QStringLiteral("bge-m3 ő"), in));
+    QVERIFY(library::EmbeddingIndex::writeFile(path, QStringLiteral("bge-m3 ő"), in));
     QFile f(path);
     QVERIFY(f.open(QIODevice::ReadOnly));
     QCOMPARE(f.read(6), QByteArray("TNEMB1"));
     f.close();
     QString model;
-    QVector<EmbeddingChunk> out;
-    QVERIFY(EmbeddingIndex::readFile(path, &model, &out));
+    QVector<library::EmbeddingChunk> out;
+    QVERIFY(library::EmbeddingIndex::readFile(path, &model, &out));
     QCOMPARE(model, QStringLiteral("bge-m3 ő"));
     QCOMPARE(out.size(), 2);
     QCOMPARE(out.at(1).startMs, 11);
@@ -204,16 +204,16 @@ void EmbeddingTest::indexFileRoundTrip()
     QCOMPARE(out.at(0).vector, in.at(0).vector);
     // Vectors of different length / a corrupt file: rejected.
     in[1].vector = { 1.0f };
-    QVERIFY(!EmbeddingIndex::writeFile(m_dir->filePath("y.bin"), "m", in));
+    QVERIFY(!library::EmbeddingIndex::writeFile(m_dir->filePath("y.bin"), "m", in));
     QFile bad(m_dir->filePath("bad.bin"));
     QVERIFY(bad.open(QIODevice::WriteOnly));
     bad.write("TNEMB1garbage");
     bad.close();
-    QVERIFY(!EmbeddingIndex::readFile(m_dir->filePath("bad.bin"), &model, &out));
+    QVERIFY(!library::EmbeddingIndex::readFile(m_dir->filePath("bad.bin"), &model, &out));
     // Mean: normalized.
-    QVector<EmbeddingChunk> c(2);
+    QVector<library::EmbeddingChunk> c(2);
     c[0].vector = { 2.0f, 0.0f }; c[1].vector = { 0.0f, 5.0f };
-    const QVector<float> mean = EmbeddingIndex::meanVector(c);
+    const QVector<float> mean = library::EmbeddingIndex::meanVector(c);
     QVERIFY(qAbs(mean.at(0) - mean.at(1)) < 1e-6);
     QVERIFY(qAbs(double(mean.at(0)) * mean.at(0) + double(mean.at(1)) * mean.at(1) - 1.0) < 1e-6);
 }
@@ -222,22 +222,22 @@ void EmbeddingTest::preparerProgressAndDone()
 {
     const tagsfixture::Library lib = tagsfixture::buildLibrary(*m_store);
     tagsfixture::addMeeting(*m_store, "Átirat nélkül", QDate(2026, 9, 20), {}, {});
-    EmbeddingIndex index(m_store.get());
-    EmbeddingPreparer prep(m_store.get(), &index, m_dir->filePath("meta/embedding-state.json"));
-    QSignalSpy changed(&prep, &EmbeddingPreparer::stateChanged);
+    library::EmbeddingIndex index(m_store.get());
+    library::EmbeddingPreparer prep(m_store.get(), &index, m_dir->filePath("meta/embedding-state.json"));
+    QSignalSpy changed(&prep, &library::EmbeddingPreparer::stateChanged);
     QVERIFY(!prep.isConfigured());
     prep.start();                                    // without a provider: does not start
-    QCOMPARE(prep.state().status, EmbeddingState::Idle);
+    QCOMPARE(prep.state().status, library::EmbeddingState::Idle);
 
-    prep.setProvider(embeddingproviders::LocalId, QStringLiteral("teszt-embed"), factory());
+    prep.setProvider(providers::embeddingproviders::LocalId, QStringLiteral("teszt-embed"), factory());
     QCOMPARE(prep.state().total, 6);
     QCOMPARE(prep.state().prepared, 0);
     QVector<int> progress;
-    connect(&prep, &EmbeddingPreparer::stateChanged, this, [&]() {
-        if (prep.state().status == EmbeddingState::Running) progress << prep.state().prepared;
+    connect(&prep, &library::EmbeddingPreparer::stateChanged, this, [&]() {
+        if (prep.state().status == library::EmbeddingState::Running) progress << prep.state().prepared;
     });
     prep.start();
-    QTRY_COMPARE_WITH_TIMEOUT(int(prep.state().status), int(EmbeddingState::Done), 10000);
+    QTRY_COMPARE_WITH_TIMEOUT(int(prep.state().status), int(library::EmbeddingState::Done), 10000);
     QCOMPARE(prep.state().prepared, 6);
     QVERIFY(prep.state().lastRun.isValid());
     QVERIFY(progress.contains(3));                   // per-step progress
@@ -252,28 +252,28 @@ void EmbeddingTest::preparerProgressAndDone()
     // Restart: nothing to do, no request goes out.
     const int before = m_http->count("POST", "/embeddings");
     prep.start();
-    QTRY_COMPARE(int(prep.state().status), int(EmbeddingState::Done));
+    QTRY_COMPARE(int(prep.state().status), int(library::EmbeddingState::Done));
     QCOMPARE(m_http->count("POST", "/embeddings"), before);
 }
 
 void EmbeddingTest::preparerErrorAndResume()
 {
     tagsfixture::buildLibrary(*m_store);
-    EmbeddingIndex index(m_store.get());
-    EmbeddingPreparer prep(m_store.get(), &index, m_dir->filePath("meta/embedding-state.json"));
-    prep.setProvider(embeddingproviders::LocalId, QStringLiteral("teszt-embed"), factory());
+    library::EmbeddingIndex index(m_store.get());
+    library::EmbeddingPreparer prep(m_store.get(), &index, m_dir->filePath("meta/embedding-state.json"));
+    prep.setProvider(providers::embeddingproviders::LocalId, QStringLiteral("teszt-embed"), factory());
     int calls = 0;
     m_http->handler = [&calls](const fakehttp::Request& r) -> fakehttp::Reply {
         if (++calls == 3) return { 500, R"({"error":{"message":"A modell nincs betöltve."}})" };
         return { 200, embeddingsReply(r.body) };
     };
     prep.start();
-    QTRY_COMPARE_WITH_TIMEOUT(int(prep.state().status), int(EmbeddingState::Error), 10000);
+    QTRY_COMPARE_WITH_TIMEOUT(int(prep.state().status), int(library::EmbeddingState::Error), 10000);
     QCOMPARE(prep.state().prepared, 2);
     QVERIFY(prep.state().error.contains("nincs betöltve"));
     QVERIFY(!prep.state().lastRun.isValid());
     prep.resume();
-    QTRY_COMPARE_WITH_TIMEOUT(int(prep.state().status), int(EmbeddingState::Done), 10000);
+    QTRY_COMPARE_WITH_TIMEOUT(int(prep.state().status), int(library::EmbeddingState::Done), 10000);
     QCOMPARE(prep.state().prepared, 6);
     QCOMPARE(calls, 7);                              // the two finished ones did not run again
 }
@@ -281,9 +281,9 @@ void EmbeddingTest::preparerErrorAndResume()
 void EmbeddingTest::preparerCancelAndResume()
 {
     tagsfixture::buildLibrary(*m_store);
-    EmbeddingIndex index(m_store.get());
-    EmbeddingPreparer prep(m_store.get(), &index, QString());
-    prep.setProvider(embeddingproviders::LocalId, QStringLiteral("teszt-embed"), factory());
+    library::EmbeddingIndex index(m_store.get());
+    library::EmbeddingPreparer prep(m_store.get(), &index, QString());
+    prep.setProvider(providers::embeddingproviders::LocalId, QStringLiteral("teszt-embed"), factory());
     bool hold = true;
     m_http->handler = [&hold](const fakehttp::Request& r) -> fakehttp::Reply {
         if (hold) return { 200, "{}", true };
@@ -292,27 +292,27 @@ void EmbeddingTest::preparerCancelAndResume()
     prep.start();
     QTRY_VERIFY(m_http->count("POST", "/embeddings") >= 1);
     prep.cancel();
-    QCOMPARE(prep.state().status, EmbeddingState::Idle);
+    QCOMPARE(prep.state().status, library::EmbeddingState::Idle);
     QCOMPARE(prep.state().prepared, 0);
     hold = false;
     prep.resume();
-    QTRY_COMPARE_WITH_TIMEOUT(int(prep.state().status), int(EmbeddingState::Done), 10000);
+    QTRY_COMPARE_WITH_TIMEOUT(int(prep.state().status), int(library::EmbeddingState::Done), 10000);
     QCOMPARE(prep.state().prepared, 6);
 }
 
 void EmbeddingTest::modelChangeInvalidates()
 {
     const tagsfixture::Library lib = tagsfixture::buildLibrary(*m_store);
-    EmbeddingIndex index(m_store.get());
-    QSignalSpy reset(&index, &EmbeddingIndex::indexReset);
-    EmbeddingPreparer prep(m_store.get(), &index, m_dir->filePath("meta/embedding-state.json"));
-    prep.setProvider(embeddingproviders::LocalId, QStringLiteral("teszt-embed"), factory());
+    library::EmbeddingIndex index(m_store.get());
+    QSignalSpy reset(&index, &library::EmbeddingIndex::indexReset);
+    library::EmbeddingPreparer prep(m_store.get(), &index, m_dir->filePath("meta/embedding-state.json"));
+    prep.setProvider(providers::embeddingproviders::LocalId, QStringLiteral("teszt-embed"), factory());
     prep.start();
-    QTRY_COMPARE_WITH_TIMEOUT(int(prep.state().status), int(EmbeddingState::Done), 10000);
+    QTRY_COMPARE_WITH_TIMEOUT(int(prep.state().status), int(library::EmbeddingState::Done), 10000);
     QVERIFY(index.has(lib.budget1));
 
     // Another model: the old index is not valid (the file's model differs), "up to date" is cleared.
-    prep.setProvider(embeddingproviders::LocalId, QStringLiteral("masik-embed"), factory());
+    prep.setProvider(providers::embeddingproviders::LocalId, QStringLiteral("masik-embed"), factory());
     QVERIFY(!index.has(lib.budget1));
     QCOMPARE(prep.state().prepared, 0);
     QVERIFY(!prep.state().lastRun.isValid());
@@ -322,7 +322,7 @@ void EmbeddingTest::modelChangeInvalidates()
     QVERIFY(reset.count() >= 2);
     // A new transcript makes the index stale.
     prep.start();
-    QTRY_COMPARE_WITH_TIMEOUT(int(prep.state().status), int(EmbeddingState::Done), 10000);
+    QTRY_COMPARE_WITH_TIMEOUT(int(prep.state().status), int(library::EmbeddingState::Done), 10000);
     QVERIFY(index.has(lib.budget1));
     QTest::qWait(20);
     tagsfixture::writeSegments(m_store->load(lib.budget1).folder, { "Új átirat a költségvetésről." });

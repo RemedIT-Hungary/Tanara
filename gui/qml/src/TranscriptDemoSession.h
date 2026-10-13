@@ -16,8 +16,8 @@
 //              call tracks with fictional activity, #Nordvik tag, rows for "To review" groups
 //   "none"     no transcript
 //
-#include "tanara/Types.h"
-#include "tanara/edit/SpeakerEditTypes.h"
+#include "tanara/domain/Types.h"
+#include "tanara/editing/session/SpeakerEditTypes.h"
 
 #include <QHash>
 #include <QString>
@@ -26,10 +26,10 @@
 #include <memory>
 
 namespace tanara {
-class MeetingStore;
-class PeopleStore;
-class VoiceprintStore;
-class SpeakerEditor;
+namespace library { class MeetingStore; }
+namespace library { class PeopleStore; }
+namespace library { class VoiceprintStore; }
+namespace editing { class SpeakerEditor; }
 }
 
 namespace tanara_qml {
@@ -39,9 +39,9 @@ public:
     explicit TranscriptDemoSession(const QString& variant);
     ~TranscriptDemoSession();
 
-    tanara::SpeakerEditor* editor() const { return m_editor.get(); }
+    tanara::editing::SpeakerEditor* editor() const { return m_editor.get(); }
     // The person pickers' list (fictional names; the meeting's participants are in it too).
-    QVector<tanara::PersonInfo> people() const;
+    QVector<tanara::editing::PersonInfo> people() const;
     // For the "suggestion" state: this row (raw "Remote 1", by voice Fehér Ádám) must be moved
     // to Fehér Ádám. Empty if the variant has none.
     QString suggestionSeedUtteranceId() const { return m_seedId; }
@@ -62,10 +62,10 @@ public:
 
 private:
     QTemporaryDir m_dir;
-    std::unique_ptr<tanara::MeetingStore> m_store;
-    std::unique_ptr<tanara::PeopleStore> m_people;
-    std::unique_ptr<tanara::VoiceprintStore> m_prints;
-    std::unique_ptr<tanara::SpeakerEditor> m_editor;
+    std::unique_ptr<tanara::library::MeetingStore> m_store;
+    std::unique_ptr<tanara::library::PeopleStore> m_people;
+    std::unique_ptr<tanara::library::VoiceprintStore> m_prints;
+    std::unique_ptr<tanara::editing::SpeakerEditor> m_editor;
     QString m_seedId;
     QString m_seedTarget;
     QHash<QString, QString> m_tagNames;

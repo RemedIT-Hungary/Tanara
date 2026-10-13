@@ -9,7 +9,7 @@
 // be used without linking Widgets. Without a bridge (demo, screenshot) ShellActions skips
 // these actions.
 //
-#include "tanara/provider/ReadinessModel.h"
+#include "tanara/providers/core/ReadinessModel.h"
 
 #include <QObject>
 #include <QString>

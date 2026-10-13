@@ -176,13 +176,13 @@ public:
     // start() with explicit input (test / embedding): the snapshot and opening suggestions come
     // from these groups / rows (row flags live from the VM).
     void startFrom(const QVector<TranscriptEditorViewModel::ReviewView>& views,
-                   const QVector<tanara::EditorUtterance>& utterances);
+                   const QVector<tanara::editing::EditorUtterance>& utterances);
     // Result of the background analysis (after the VM's rebuildReview): only the incoming set,
     // suggestion updates and the alreadyDecided state change; never the order.
     void syncFromReview();
     // The same with explicit input (test / embedding).
     void syncFromReview(const QVector<TranscriptEditorViewModel::ReviewView>& views,
-                        const QVector<tanara::EditorUtterance>& utterances);
+                        const QVector<tanara::editing::EditorUtterance>& utterances);
     // After the VM's decision calls / undo: the affected rows' state (the order does not change).
     // A decision on the cursor's row -> the cursor goes to the next open row; an undone decision
     // -> the cursor goes to the restored row.
@@ -251,8 +251,8 @@ private:
     };
 
     QHash<QString, Doubt> computeDoubt(const QVector<TranscriptEditorViewModel::ReviewView>& views,
-                                       const QVector<tanara::EditorUtterance>& utts) const;
-    const tanara::EditorUtterance* utt(const QString& id) const;
+                                       const QVector<tanara::editing::EditorUtterance>& utts) const;
+    const tanara::editing::EditorUtterance* utt(const QString& id) const;
     State stateOf(const Item& it) const;
     QString sigOf(const QString& id) const;
     Item makeItem(const QString& id, const Doubt& d, bool admitted) const;

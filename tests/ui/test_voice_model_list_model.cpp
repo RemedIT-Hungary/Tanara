@@ -9,12 +9,12 @@
 #include "SettingsViewModel.h"
 #include "VoiceModelListModel.h"
 
-#include "tanara/AppController.h"
-#include "tanara/SettingsManager.h"
-#include "tanara/store/MeetingStore.h"
-#include "tanara/store/VoiceprintStore.h"
-#include "tanara/voiceid/VoiceModelDownloader.h"
-#include "tanara/voiceid/VoiceModelRegistry.h"
+#include "tanara/app/AppController.h"
+#include "tanara/app/SettingsManager.h"
+#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/store/VoiceprintStore.h"
+#include "tanara/processing/voiceid/VoiceModelDownloader.h"
+#include "tanara/processing/voiceid/VoiceModelRegistry.h"
 
 #include <QQmlComponent>
 #include <QQmlEngine>
@@ -28,10 +28,10 @@
 #include <memory>
 
 using namespace tanara_qml;
-using tanara::AppController;
-using tanara::VoiceModelDownloader;
-using tanara::VoiceModelRegistry;
-using tanara::VoiceModelSpec;
+using tanara::app::AppController;
+using tanara::processing::VoiceModelDownloader;
+using tanara::processing::VoiceModelRegistry;
+using tanara::processing::VoiceModelSpec;
 
 namespace {
 
@@ -39,9 +39,9 @@ const QString kCamp = QStringLiteral("campplus");
 const QString kWe = QStringLiteral("wespeaker-resnet34-lm");
 const QString kEres = QStringLiteral("eres2netv2");
 
-tanara::PcmEmbedderLoader fakeLoader()
+tanara::processing::PcmEmbedderLoader fakeLoader()
 {
-    return [](const VoiceModelSpec& spec, const QString&, QString*) -> tanara::PcmEmbedder {
+    return [](const VoiceModelSpec& spec, const QString&, QString*) -> tanara::processing::PcmEmbedder {
         const int dim = spec.dim;
         return [dim](const QVector<float>&) { return QVector<float>(dim, 0.5f); };
     };

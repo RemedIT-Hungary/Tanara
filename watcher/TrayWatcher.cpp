@@ -1,14 +1,14 @@
 #include "TrayWatcher.h"
 #include "RecorderTrayIcon.h"   // tanara_gui::makeTrayIcon (header-only, from gui/common via tanara_shell_common)
 
-#include "tanara/SettingsManager.h"
+#include "tanara/app/SettingsManager.h"
 #include "tanara/foundation/paths/Paths.h"
-#include "tanara/detect/Autostart.h"
-#include "tanara/detect/DetectorRegistry.h"
-#include "tanara/detect/IMeetingDetector.h"
+#include "tanara/watcher/detect/Autostart.h"
+#include "tanara/watcher/detect/DetectorRegistry.h"
+#include "tanara/watcher/detect/IMeetingDetector.h"
 #include "tanara/foundation/ProcessLock.h"
-#include "tanara/audio/PlaybackRouting.h"
-#include "tanara/audio/TrackCatalog.h"
+#include "tanara/watcher/PlaybackRouting.h"
+#include "tanara/library/tracks/TrackCatalog.h"
 
 #include <QSystemTrayIcon>
 #include <QMenu>
@@ -38,7 +38,7 @@ namespace tanara_watcher {
 
 TrayWatcher::TrayWatcher(QObject* parent)
     : QObject(parent)
-    , m_settings(new tanara::SettingsManager(QString(), this))
+    , m_settings(new tanara::app::SettingsManager(QString(), this))
     , m_timer(new QTimer(this))
     , m_stateTimer(new QTimer(this))
 {
@@ -51,14 +51,14 @@ TrayWatcher::~TrayWatcher()
 
 bool TrayWatcher::start()
 {
-    tanara::registerBuiltinDetectors();   // idempotent
+    tanara::watcher::registerBuiltinDetectors();   // idempotent
 
     const tanara::AppSettings s = m_settings->settings();
 
     // Detector: the settings detectorId, or the first available one. None: nothing to watch.
     m_detector = s.detectorId.isEmpty()
-        ? tanara::MeetingDetectorRegistry::instance().createBest()
-        : tanara::MeetingDetectorRegistry::instance().create(s.detectorId);
+        ? tanara::watcher::MeetingDetectorRegistry::instance().createBest()
+        : tanara::watcher::MeetingDetectorRegistry::instance().create(s.detectorId);
     if (!m_detector)
         return false;
     m_detector->configure(s.knownCallApps, QStringLiteral("tanara"));
@@ -141,7 +141,7 @@ void TrayWatcher::poll()
     if (!s.detectorEnabled || !m_detector)
         return;
 
-    const tanara::MeetingSignal sig = m_detector->poll();
+    const tanara::watcher::MeetingSignal sig = m_detector->poll();
     const bool recording = tanara::RecordingLock::read(lockPath()).active;
     m_callActive = sig.active;
 
@@ -203,7 +203,7 @@ void TrayWatcher::applySettings()
 
 QString TrayWatcher::configuredUiLanguage()
 {
-    return tanara::SettingsManager().settings().uiLanguage;
+    return tanara::app::SettingsManager().settings().uiLanguage;
 }
 
 QString TrayWatcher::formatElapsed(qint64 seconds)
@@ -364,12 +364,12 @@ void TrayWatcher::showCallNotification(const QString& appName)
 {
     // Which output is the call app playing to right now? (Linux/PipeWire; empty elsewhere, so omitted.)
     // The output name is the user-given name (Settings > Recording), if any.
-    const QString rawOutput = tanara::queryAudioGraph().outputForApp(appName);
+    const QString rawOutput = tanara::watcher::queryAudioGraph().outputForApp(appName);
     // The recorder sees the output through its monitor ("Monitor of <description>"): the rename lives under that key.
     const QString monitorKey = QStringLiteral("Monitor of ") + rawOutput;
     const QString output = rawOutput.isEmpty() ? QString()
-        : tanara::devicenames::hasOverride(monitorKey) ? tanara::devicenames::displayName(monitorKey)
-                                                       : tanara::devicenames::displayName(rawOutput);
+        : tanara::library::devicenames::hasOverride(monitorKey) ? tanara::library::devicenames::displayName(monitorKey)
+                                                       : tanara::library::devicenames::displayName(rawOutput);
     const QString title = tr("Hívást észleltem: %1").arg(appName);
     const QString body = callNotificationBody(appName, output);
 
@@ -441,7 +441,7 @@ void TrayWatcher::applyAutostart(bool on) const
 {
     // The rule lives in ONE place (tanara/detect/Autostart.h): with TANARA_HOME (sandbox / test)
     // it NEVER touches the real autostart entry. Linux: .desktop, Windows: Run key.
-    tanara::autostart::applyWatcher(on, QCoreApplication::applicationFilePath());
+    tanara::watcher::autostart::applyWatcher(on, QCoreApplication::applicationFilePath());
 }
 
 } // namespace tanara_watcher

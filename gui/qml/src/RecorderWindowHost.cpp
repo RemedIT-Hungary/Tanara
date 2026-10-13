@@ -3,10 +3,10 @@
 #include "QmlApp.h"
 #include "RecorderViewModel.h"
 
-#include "tanara/AppController.h"
+#include "tanara/app/AppController.h"
 #include "tanara/foundation/log/Logging.h"
 #include "tanara/foundation/paths/Paths.h"
-#include "tanara/SettingsManager.h"
+#include "tanara/app/SettingsManager.h"
 #include "tanara/foundation/ProcessLock.h"
 
 #include <QDir>
@@ -21,7 +21,7 @@ using namespace tanara;
 
 namespace tanara_qml {
 
-RecorderWindowHost::RecorderWindowHost(AppController* controller, QQmlEngine* engine, QObject* parent)
+RecorderWindowHost::RecorderWindowHost(app::AppController* controller, QQmlEngine* engine, QObject* parent)
     : QObject(parent), m_controller(controller), m_engine(engine)
 {
     if (!m_engine) {

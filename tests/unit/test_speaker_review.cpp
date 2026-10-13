@@ -10,20 +10,20 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 
-#include "tanara/Types.h"
-#include "tanara/edit/SpeakerEditor.h"
-#include "tanara/edit/SpeakerOverlay.h"
-#include "tanara/edit/TrackActivity.h"
-#include "tanara/edit/UtteranceEmbeddings.h"
-#include "tanara/store/MeetingStore.h"
-#include "tanara/store/PeopleStore.h"
-#include "tanara/store/VoiceprintStore.h"
+#include "tanara/domain/Types.h"
+#include "tanara/editing/session/SpeakerEditor.h"
+#include "tanara/editing/session/SpeakerOverlay.h"
+#include "tanara/processing/analysis/TrackActivity.h"
+#include "tanara/processing/analysis/UtteranceEmbeddings.h"
+#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/store/PeopleStore.h"
+#include "tanara/library/store/VoiceprintStore.h"
 
 #include <cmath>
 #include <memory>
 
 using namespace tanara;
-using namespace tanara::speakeredit;
+using namespace tanara::editing::speakeredit;
 
 namespace {
 
@@ -41,18 +41,18 @@ struct Spec { QString raw; char side; int axis; bool confirmed = false; };
 
 struct Fixture {
     QTemporaryDir dir;
-    std::unique_ptr<MeetingStore> store;
-    std::unique_ptr<PeopleStore> people;
-    std::unique_ptr<VoiceprintStore> prints;
+    std::unique_ptr<library::MeetingStore> store;
+    std::unique_ptr<library::PeopleStore> people;
+    std::unique_ptr<library::VoiceprintStore> prints;
     Meeting meeting;
     QVector<Spec> specs;
     MeetingActivity act;
 
     Fixture(const QVector<Spec>& s, const QMap<QString, QString>& names) : specs(s)
     {
-        store = std::make_unique<MeetingStore>(dir.filePath("rec"), dir.filePath("meta"));
-        people = std::make_unique<PeopleStore>(dir.filePath("meta/people.json"));
-        prints = std::make_unique<VoiceprintStore>(dir.filePath("meta/vp.json"));
+        store = std::make_unique<library::MeetingStore>(dir.filePath("rec"), dir.filePath("meta"));
+        people = std::make_unique<library::PeopleStore>(dir.filePath("meta/people.json"));
+        prints = std::make_unique<library::VoiceprintStore>(dir.filePath("meta/vp.json"));
         meeting = store->createMeeting("Átnézendő");
         Track mic; mic.id = "mic"; mic.kind = TrackKind::Mic; mic.file = "track_mic.ogg";
         Track loop; loop.id = "loop"; loop.kind = TrackKind::Loopback; loop.file = "track_loop.ogg";
@@ -65,16 +65,16 @@ struct Fixture {
                                     {"text", QStringLiteral("Sor %1").arg(i)}});
             (specs[i].side == 'L' ? micSpans : loopSpans) << qMakePair(st, en);
         }
-        QFile f(segmentsPath(meeting.folder));
+        QFile f(editing::speakeredit::segmentsPath(meeting.folder));
         if (f.open(QIODevice::WriteOnly)) f.write(QJsonDocument(segs).toJson());
         f.close();
         meeting.hasTranscript = true;
         meeting.speakerMap = names;
         store->saveMeeting(meeting);
 
-        const QVector<TranscriptLine> lines = loadTranscriptLines(meeting.folder);
-        UtteranceEmbeddingCache c;
-        c.fingerprint = transcriptFingerprint(lines);
+        const QVector<TranscriptLine> lines = editing::speakeredit::loadTranscriptLines(meeting.folder);
+        processing::UtteranceEmbeddingCache c;
+        c.fingerprint = editing::speakeredit::transcriptFingerprint(lines);
         SpeakerOverlay ov;
         for (int i = 0; i < specs.size(); ++i) {
             c.set(QStringLiteral("campplus"), lines[i].id, voice(specs[i].axis));
@@ -83,7 +83,7 @@ struct Fixture {
         c.save(meeting.folder);
         if (!ov.utterances.isEmpty()) {
             ov.transcriptFingerprint = c.fingerprint;
-            saveOverlay(meeting.folder, ov);
+            editing::speakeredit::saveOverlay(meeting.folder, ov);
         }
 
         const qint64 total = specs.size() * 5000 + 1000;
@@ -102,9 +102,9 @@ struct Fixture {
 
     QString uid(int i) const { return QStringLiteral("u%1").arg(i * 5000); }
 
-    std::unique_ptr<SpeakerEditor> editor()
+    std::unique_ptr<editing::SpeakerEditor> editor()
     {
-        auto ed = std::make_unique<SpeakerEditor>(store.get(), people.get(), prints.get(), meeting.id);
+        auto ed = std::make_unique<editing::SpeakerEditor>(store.get(), people.get(), prints.get(), meeting.id);
         ed->setUserSpeakerName("Ádám");
         const MeetingActivity a = act;
         ed->setActivityProvider([a](const Meeting&) { return a; });
@@ -112,15 +112,15 @@ struct Fixture {
     }
 };
 
-bool waitReview(SpeakerEditor& ed)
+bool waitReview(editing::SpeakerEditor& ed)
 {
-    QSignalSpy spy(&ed, &SpeakerEditor::reviewGroupsChanged);
+    QSignalSpy spy(&ed, &editing::SpeakerEditor::reviewGroupsChanged);
     return spy.wait(5000);
 }
 
-const ReviewGroup* group(const QVector<ReviewGroup>& gs, ReviewKind k)
+const editing::ReviewGroup* group(const QVector<editing::ReviewGroup>& gs, editing::ReviewKind k)
 {
-    for (const ReviewGroup& g : gs)
+    for (const editing::ReviewGroup& g : gs)
         if (g.kind == k) return &g;
     return nullptr;
 }
@@ -150,7 +150,7 @@ private slots:
         QVERIFY(!ed->setTrackAssignment("ismeretlen", {"mic"}));
         QVERIFY(ed->canUndo());
         // Persistent.
-        QCOMPARE(loadOverlay(fx.meeting.folder).speakerTracks.value("B1"), QStringList{"mic"});
+        QCOMPARE(editing::speakeredit::loadOverlay(fx.meeting.folder).speakerTracks.value("B1"), QStringList{"mic"});
         ed->undo();
         QVERIFY(ed->trackAssignment("B1").isEmpty());
         ed->redo();
@@ -165,8 +165,8 @@ private slots:
         auto ed = fx.editor();
         QVERIFY(waitReview(*ed));
         QVERIFY(ed->sideReport().active);
-        const QVector<ReviewGroup> groups = ed->reviewGroups();
-        const ReviewGroup* g = group(groups, ReviewKind::SideConflict);
+        const QVector<editing::ReviewGroup> groups = ed->reviewGroups();
+        const editing::ReviewGroup* g = group(groups, editing::ReviewKind::SideConflict);
         QVERIFY(g);
         QCOMPARE(g->utteranceIds, (QStringList{fx.uid(3), fx.uid(5), fx.uid(8)}));
         QCOMPARE(g->proposedSpeakerKey, QStringLiteral("B2"));
@@ -192,7 +192,7 @@ private slots:
         const int undoDepth = ed->canUndo() ? 1 : 0;
         QVERIFY(ed->applyReviewGroup(g->id));
         for (int i : {3, 5, 8}) QCOMPARE(ed->utterance(fx.uid(i)).speakerKey, QStringLiteral("B2"));
-        QVERIFY(group(ed->reviewGroups(), ReviewKind::SideConflict) == nullptr);
+        QVERIFY(group(ed->reviewGroups(), editing::ReviewKind::SideConflict) == nullptr);
         QVERIFY(!ed->applyReviewGroup(g->id));   // no such one anymore
         // One step back: all three are back.
         ed->undo();
@@ -200,7 +200,7 @@ private slots:
         QCOMPARE(ed->canUndo() ? 1 : 0, undoDepth);
         // After the recompute the group comes back.
         QVERIFY(waitReview(*ed));
-        QVERIFY(group(ed->reviewGroups(), ReviewKind::SideConflict));
+        QVERIFY(group(ed->reviewGroups(), editing::ReviewKind::SideConflict));
     }
 
     void manualAssignmentRemovesConflict()
@@ -209,15 +209,15 @@ private slots:
         Fixture fx(sideScenario(), {{"B1", "Ádám"}, {"B2", "Béla"}});
         auto ed = fx.editor();
         QVERIFY(waitReview(*ed));
-        QVERIFY(group(ed->reviewGroups(), ReviewKind::SideConflict));
+        QVERIFY(group(ed->reviewGroups(), editing::ReviewKind::SideConflict));
         QVERIFY(ed->setTrackAssignment("B1", {"mic", "loop"}));
         QVERIFY(waitReview(*ed));
-        QVERIFY(!group(ed->reviewGroups(), ReviewKind::SideConflict));
+        QVERIFY(!group(ed->reviewGroups(), editing::ReviewKind::SideConflict));
         QVERIFY(ed->utterance(fx.uid(3)).uncertainReason != "side");
         // Undo: back.
         ed->undo();
         QVERIFY(waitReview(*ed));
-        QVERIFY(group(ed->reviewGroups(), ReviewKind::SideConflict));
+        QVERIFY(group(ed->reviewGroups(), editing::ReviewKind::SideConflict));
     }
 
     void splitContaminatedCore()
@@ -229,7 +229,7 @@ private slots:
         Fixture fx(specs, {{"A", "Anna"}, {"C", "Cecil"}});
         auto ed = fx.editor();
         QVERIFY(waitReview(*ed));
-        const ReviewGroup* g = group(ed->reviewGroups(), ReviewKind::ContaminatedCore);
+        const editing::ReviewGroup* g = group(ed->reviewGroups(), editing::ReviewKind::ContaminatedCore);
         QVERIFY(g);
         QCOMPARE(g->proposedSpeakerKey, QStringLiteral("C"));
         QVERIFY(!ed->splitSpeaker("C"));     // C's core is uniform
@@ -249,7 +249,7 @@ private slots:
         const QString key = ed->moveUtterancesToNewParticipant({fx.uid(4), fx.uid(5)});
         QVERIFY(!key.isEmpty());
         QVERIFY(waitReview(*ed));
-        const ReviewGroup* g = group(ed->reviewGroups(), ReviewKind::SimilarToNewPerson);
+        const editing::ReviewGroup* g = group(ed->reviewGroups(), editing::ReviewKind::SimilarToNewPerson);
         QVERIFY(g);
         QCOMPARE(g->proposedSpeakerKey, key);
         QCOMPARE(g->utteranceIds, (QStringList{fx.uid(1), fx.uid(3)}));
@@ -271,13 +271,13 @@ private slots:
         auto ed = fx.editor();
         // The contradiction only with the strict guards: Anna has a manual tag, the meeting's tag
         // matured (5 meetings) and Anna was at none of them.
-        PersonTagSnapshot snap;
-        QVector<PersonTagRow> rows;
+        library::PersonTagSnapshot snap;
+        QVector<library::PersonTagRow> rows;
         for (int i = 0; i < 5; ++i)
-            rows << PersonTagRow{QStringLiteral("m%1").arg(i), QDateTime(), {"t-projekt"}, {QStringLiteral("Béla")}};
-        snap.stats = std::make_shared<PersonTagStats>(PersonTagStats::compute(rows, QString()));
+            rows << library::PersonTagRow{QStringLiteral("m%1").arg(i), QDateTime(), {"t-projekt"}, {QStringLiteral("Béla")}};
+        snap.stats = std::make_shared<library::PersonTagStats>(library::PersonTagStats::compute(rows, QString()));
         snap.tagNames = {{"t-projekt", "Projekt"}, {"t-marketing", "Marketing"}};
-        snap.manual.insert(persontags::personKey("Anna"), {"t-marketing"});
+        snap.manual.insert(library::persontags::personKey("Anna"), {"t-marketing"});
         ed->setTagEvidenceProvider([snap](const QString& p, const QStringList& tags, const QString& mid) {
             return snap.evidence(p, tags, mid);
         });

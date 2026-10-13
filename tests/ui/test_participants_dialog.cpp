@@ -9,9 +9,9 @@
 #include "QmlApp.h"
 #include "ShellActions.h"
 
-#include "tanara/AppController.h"
-#include "tanara/store/MeetingStore.h"
-#include "tanara/tags/TagService.h"
+#include "tanara/app/AppController.h"
+#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/tags/TagService.h"
 
 #include <QQmlComponent>
 #include <QQmlEngine>
@@ -119,7 +119,7 @@ class TestParticipantsDialog : public QObject {
     Q_OBJECT
 
     std::unique_ptr<QTemporaryDir> m_home;
-    std::unique_ptr<AppController> m_app;
+    std::unique_ptr<app::AppController> m_app;
     QString m_meetingId;
 
     // Lilla (mic + call audio): certain; Gábor (call audio only): doubtful, checked; Bence (call
@@ -187,7 +187,7 @@ private slots:
         m_home = std::make_unique<QTemporaryDir>();
         QVERIFY(m_home->isValid());
         qputenv("TANARA_HOME", m_home->path().toUtf8());
-        m_app = std::make_unique<AppController>();
+        m_app = std::make_unique<app::AppController>();
         QVERIFY(m_app->store()->metadataDir().startsWith(m_home->path()));
         m_app->setUserSpeakerName(QStringLiteral("Kovács Lilla"));
     }
@@ -348,7 +348,7 @@ private slots:
     // is a new person; "Yes" is one undoable step; no question on a repeated approval.
     void learnQuestionAfterApproval()
     {
-        TagService* tags = m_app->tags();
+        library::TagService* tags = m_app->tags();
         const QString nord = tags->create(QStringLiteral("Nordvik")).id;
         Meeting before = m_app->store()->createMeeting(QStringLiteral("Előző egyeztetés"));
         before.speakerMap.insert(QStringLiteral("Beszélő 2"), QStringLiteral("Fehér Gábor"));

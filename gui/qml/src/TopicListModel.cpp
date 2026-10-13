@@ -2,7 +2,7 @@
 
 #include "JobSupport.h"
 
-#include "tanara/AppController.h"
+#include "tanara/app/AppController.h"
 
 #include <QHash>
 #include <QUuid>
@@ -149,7 +149,7 @@ void TopicListModel::clear()
     emit countsChanged();
 }
 
-void TopicListModel::bind(AppController* controller, const QString& meetingId)
+void TopicListModel::bind(app::AppController* controller, const QString& meetingId)
 {
     if (controller != m_controller) {
         for (const QMetaObject::Connection& c : std::as_const(m_connections))
@@ -158,13 +158,13 @@ void TopicListModel::bind(AppController* controller, const QString& meetingId)
         m_controller = controller;
         if (controller) {
             auto mine = [this](const QString& id) { return !m_meetingId.isEmpty() && id == m_meetingId; };
-            m_connections << connect(controller, &AppController::topicsChanged, this,
+            m_connections << connect(controller, &app::AppController::topicsChanged, this,
                                      [this, mine](const QString& id) { if (mine(id)) sync(); });
-            m_connections << connect(controller, &AppController::topicStatusChanged, this,
+            m_connections << connect(controller, &app::AppController::topicStatusChanged, this,
                                      [this, mine](const QString& id, const QString&) { if (mine(id)) sync(); });
-            m_connections << connect(controller, &AppController::topicAnalysisReady, this,
+            m_connections << connect(controller, &app::AppController::topicAnalysisReady, this,
                                      [this, mine](const QString& id, const TopicAnalysis&) { if (mine(id)) sync(); });
-            m_connections << connect(controller, &AppController::topicAnalysisFailed, this,
+            m_connections << connect(controller, &app::AppController::topicAnalysisFailed, this,
                                      [this, mine](const QString& id, const QString&, const QString&) { if (mine(id)) sync(); });
         }
     }

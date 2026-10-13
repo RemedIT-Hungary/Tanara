@@ -1,8 +1,8 @@
 #include "TagPeopleCommands.h"
 
-#include "tanara/AppController.h"
-#include "tanara/people/PeopleService.h"
-#include "tanara/tags/TagService.h"
+#include "tanara/app/AppController.h"
+#include "tanara/library/people/PeopleService.h"
+#include "tanara/library/tags/TagService.h"
 
 #include <QTextStream>
 
@@ -22,24 +22,24 @@ QTextStream& err()
     return s;
 }
 
-Tag resolveTag(const TagService& tags, const QString& nameOrId)
+Tag resolveTag(const library::TagService& tags, const QString& nameOrId)
 {
     const Tag t = tags.tag(nameOrId);
     return t.isValid() ? t : tags.byName(nameOrId);
 }
 
 // The stored spelling if the person is known (otherwise the input).
-QString canonicalPerson(AppController& app, const QString& name)
+QString canonicalPerson(app::AppController& app, const QString& name)
 {
-    if (PeopleService* ps = app.peopleService()) {
+    if (library::PeopleService* ps = app.peopleService()) {
         ps->reload();
-        const PersonRecord r = ps->person(name);
+        const library::PersonRecord r = ps->person(name);
         if (ps->exists(name) && !r.name.isEmpty()) return r.name;
     }
     return name.trimmed();
 }
 
-QString counts(const PersonTagStat& s)
+QString counts(const library::PersonTagStat& s)
 {
     return QStringLiteral("%1 / %2").arg(s.shared).arg(s.tagTotal);
 }
@@ -52,12 +52,12 @@ int usage()
 
 } // namespace
 
-int runTagPeopleCommand(AppController& app, const QStringList& args)
+int runTagPeopleCommand(app::AppController& app, const QStringList& args)
 {
     const QString sub = args.value(2);
     if (sub != QLatin1String("people") && sub != QLatin1String("person") && sub != QLatin1String("set-person"))
         return -1;
-    TagService* tags = app.tags();
+    library::TagService* tags = app.tags();
     if (!tags) return 1;
 
     if (sub == QLatin1String("people")) {
@@ -65,10 +65,10 @@ int runTagPeopleCommand(AppController& app, const QStringList& args)
         const Tag t = resolveTag(*tags, args.value(3));
         if (!t.isValid()) { err() << "ERROR: no such tag." << Qt::endl; return 1; }
         tags->refreshPersonStatsNow();
-        const QVector<PersonTagStat> list = tags->peopleStats(t.id, 0);
+        const QVector<library::PersonTagStat> list = tags->peopleStats(t.id, 0);
         out() << QStringLiteral("#%1 — %2 meetings, %3 people").arg(t.name).arg(tags->meetingCount(t.id)).arg(list.size())
               << Qt::endl;
-        for (const PersonTagStat& s : list) {
+        for (const library::PersonTagStat& s : list) {
             QStringList flags;
             if (s.manual) flags << QStringLiteral("tagged");
             else flags << QStringLiteral("learned");
@@ -76,10 +76,10 @@ int runTagPeopleCommand(AppController& app, const QStringList& args)
             out() << QStringLiteral("  %1  %2  [%3]").arg(s.name, counts(s), flags.join(QStringLiteral(", ")))
                   << Qt::endl;
         }
-        const QVector<PersonTagStat> sugg = tags->suggestPeopleForTag(t.id);
+        const QVector<library::PersonTagStat> sugg = tags->suggestPeopleForTag(t.id);
         if (!sugg.isEmpty()) {
             QStringList names;
-            for (const PersonTagStat& s : sugg) names << QStringLiteral("+%1 (%2)").arg(s.name, counts(s));
+            for (const library::PersonTagStat& s : sugg) names << QStringLiteral("+%1 (%2)").arg(s.name, counts(s));
             out() << "Suggested: " << names.join(QStringLiteral(", ")) << Qt::endl;
         }
         return 0;
@@ -95,9 +95,9 @@ int runTagPeopleCommand(AppController& app, const QStringList& args)
     if (sub == QLatin1String("person")) {
         tags->refreshPersonStatsNow();
         const auto st = tags->personStats();
-        const QVector<PersonTagStat> list = tags->personTagStats(name);
+        const QVector<library::PersonTagStat> list = tags->personTagStats(name);
         out() << QStringLiteral("%1 — %2 meetings").arg(name).arg(st->personTotal(name)) << Qt::endl;
-        for (const PersonTagStat& s : list) {
+        for (const library::PersonTagStat& s : list) {
             QStringList flags;
             if (s.manual) flags << QStringLiteral("tagged");
             if (s.rejected) flags << QStringLiteral("rejected");
@@ -105,10 +105,10 @@ int runTagPeopleCommand(AppController& app, const QStringList& args)
             if (!flags.isEmpty()) out() << QStringLiteral("  [%1]").arg(flags.join(QStringLiteral(", ")));
             out() << Qt::endl;
         }
-        const QVector<PersonTagStat> sugg = tags->suggestTagsForPerson(name);
+        const QVector<library::PersonTagStat> sugg = tags->suggestTagsForPerson(name);
         if (!sugg.isEmpty()) {
             QStringList names;
-            for (const PersonTagStat& s : sugg)
+            for (const library::PersonTagStat& s : sugg)
                 names << QStringLiteral("+#%1 (%2)").arg(tags->tag(s.tagId).name, counts(s));
             out() << "Suggested: " << names.join(QStringLiteral(", ")) << Qt::endl;
         }

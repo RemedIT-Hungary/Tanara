@@ -9,8 +9,8 @@
 #include "LibraryDemoData.h"
 #include "PlayerController.h"
 
-#include "tanara/AppController.h"
-#include "tanara/store/MeetingStore.h"
+#include "tanara/app/AppController.h"
+#include "tanara/library/store/MeetingStore.h"
 
 #include <QSignalSpy>
 #include <QTemporaryDir>
@@ -271,7 +271,7 @@ private slots:
         qputenv("TANARA_CLOUD", "off");
         AppContext::instance()->setDemo(false);
         {
-            tanara::AppController app;
+            tanara::app::AppController app;
             tanara::Meeting m = app.store()->createMeeting(QStringLiteral("Hangos megbeszélés"));
             auto write = [&m](const QString& name, int bytes) {
                 QFile f(QDir(m.folder).filePath(name));
