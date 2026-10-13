@@ -66,17 +66,14 @@ constexpr qint64 kGapToleranceMs = 20;
 qint64 silenceToInsert(qint64 elapsedSinceOpenMs, qint64 idleMs, qint64 deliveredFrames,
                        int sampleRate);
 
-// Kell-e az adott fajtájú sávnál a réseket pótolni ezen a platformon. Csak Windowson, csak
-// loopback sávnál (a Linux PipeWire/PulseAudio monitor csendben is folyamatosan ad mintát,
-// a mikrofon pedig mindig).
+// Kell-e az adott fajtájú sávnál a réseket pótolni. Loopback sávnál minden platformon: a
+// Windows-loopback csendben nem ad mintát; a Linux PipeWire/PulseAudio monitor csendben is ad,
+// DE ha a figyelt kimenet folyama megszakad (a hívás-alkalmazás eszközt vált, újracsatlakozik),
+// percekig semmit nem küld — a 2026-10-07-i felvételen így hiányzott 57 s a hívás-sáv közepéből,
+// a fájl rövidebb lett, és az átirat a felétől elcsúszott. A mikrofon mindig ad mintát.
 constexpr bool fillsCaptureGaps(TrackKind kind)
 {
-#if defined(_WIN32)
     return kind == TrackKind::Loopback;
-#else
-    (void)kind;
-    return false;
-#endif
 }
 
 } // namespace tanara::tracktiming

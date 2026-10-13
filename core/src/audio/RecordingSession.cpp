@@ -155,7 +155,7 @@ private:
         qint64 openedAtMs = 0;     // a sáv megnyitása a felvétel órája szerint
         qint64 lastDataMs = 0;     // mikor jött utoljára adat az eszköztől (felvétel-óra)
         qint64 framesWritten = 0;  // a fájlba írt keretek (valódi hang + pótolt csend)
-        bool fillGaps = false;     // a néma szakaszok csenddel pótlandók (Windows loopback)
+        bool fillGaps = false;     // a néma szakaszok csenddel pótlandók (loopback sáv, minden platformon)
         bool closed = false;
         bool ok = false;           // az encoder hibátlanul lezárta a fájlt
         std::vector<int16_t> scratch;

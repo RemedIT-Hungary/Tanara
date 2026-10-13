@@ -101,12 +101,8 @@ void RecordingSessionTest::framesOwedHelper()
     QCOMPARE(silenceToInsert(2000, kGapIdleMs - 1, 0, 48000), qint64(0));
     QCOMPARE(silenceToInsert(2000, kGapIdleMs, 0, 48000), qint64(96000));
     QCOMPARE(silenceToInsert(2000, 500, 96000 - 100, 48000), qint64(0));   // 2 ms hiány < tűrés
-    // Csak Windows-loopback pótol alapból.
-#if defined(_WIN32)
+    // A loopback minden platformon pótol (a megszakadó monitor-folyam miatt), a mikrofon nem.
     QVERIFY(fillsCaptureGaps(TrackKind::Loopback));
-#else
-    QVERIFY(!fillsCaptureGaps(TrackKind::Loopback));
-#endif
     QVERIFY(!fillsCaptureGaps(TrackKind::Mic));
 }
 
@@ -177,7 +173,7 @@ void RecordingSessionTest::silentLoopbackGapsAreFilled()
     FakeEngine* engine = nullptr;
     std::shared_ptr<std::atomic<bool>> alive;
     RecordingSession rec(dir.path(), QStringLiteral("Néma loopback"));
-    rec.setFillCaptureGaps(true);   // Linuxon alapból ki — itt a Windows-ág logikáját mérjük
+    rec.setFillCaptureGaps(true);   // kifejezetten be (az alap is ez loopbacknál)
     rec.setEngineFactory([&engine, &alive] {
         auto e = std::make_unique<FakeEngine>();
         e->silentNames << QStringLiteral("Speakers (loopback)");

@@ -172,6 +172,11 @@ int main(int argc, char** argv) {
             }
         }
         if (!autoMode && manual.isEmpty()) { err << "Usage: align <id> (--auto | --track <trackId>=<ms> ...)\n"; return 2; }
+        if (autoMode)
+            out << "Note: --auto assumes every track ENDED together and puts the whole length difference\n"
+                   "      at the START. A track with a gap in the middle (a loopback stream that stopped\n"
+                   "      for a while) or one that ended early gets a WRONG offset: check the alignment\n"
+                   "      by listening, and use --track <id>=<ms> (or repair the track file) if needed.\n";
         auto probe = [](const QString& path) -> qint64 {
             QProcess p;
             p.start(QStringLiteral("ffprobe"), {QStringLiteral("-v"), QStringLiteral("error"),
