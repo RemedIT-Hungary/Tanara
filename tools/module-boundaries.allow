@@ -4,8 +4,6 @@
 # Format: <file> -> <include or token>   # <cycle/reason> -> P<slice>
 
 # ---- P0 (2 lines) ----
-watcher/TrayWatcher.cpp -> RecorderTrayIcon.h   # watcher/CMakeLists gui/src include path -> P0
-watcher/main.cpp -> RecorderTrayIcon.h   # watcher/CMakeLists gui/src include path -> P0
 
 # ---- P4 (20 lines) ----
 core/include/tanara/Types.h -> tanara/edit/Evidence.h   # Types.h pulls an editing header -> P4
