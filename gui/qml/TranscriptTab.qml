@@ -45,7 +45,8 @@ import QtQuick.Templates as T
 //                S6 (söprés-mód): "sweepStop" (megálló + döntés-sáv) | "sweepContinuous" (folyamatos
 //                mód, utólagos ablak) | "sweepSectionDone" (szakasz-összesítő, „N sor újra kétes”)
 //                S4 (fókusz-nézet): "reviewFocus" | "reviewFocusDecided" | "reviewFocusIncoming" |
-//                "reviewFocusSummary" | "reviewFocusAlreadyDecided" (lásd TranscriptEditorViewModelQueue.cpp)
+//                "reviewFocusSummary" | "reviewFocusAlreadyDecided" | S7: "reviewFocusSkipped"
+//                (lásd TranscriptEditorViewModelQueue.cpp)
 //                S5: "reviewFocusOpener" | "reviewFocusOpenerDoubt" (nyitó-javaslat) | "reviewFocusOffer" |
 //                "reviewFocusOfferList" (mintázat-ajánlat; a lista kinyitva)
 //
@@ -113,7 +114,7 @@ Item {
                                          "imentWarning", "imentLog", "shiftPreview", "ignoredRows", "sampleFilter",
                                          "sweepStop", "sweepContinuous", "sweepSectionDone",
                                          "reviewFocus", "reviewFocusDecided", "reviewFocusIncoming",
-                                         "reviewFocusSummary", "reviewFocusAlreadyDecided",
+                                         "reviewFocusSummary", "reviewFocusAlreadyDecided", "reviewFocusSkipped",
                                          "reviewFocusOpener", "reviewFocusOpenerDoubt", "reviewFocusOffer",
                                          "reviewFocusOfferList"]
     readonly property bool v3Demo: v3DemoStates.indexOf(demoState) >= 0
@@ -1174,15 +1175,22 @@ Item {
                     }
                 }
 
-                // Lebegő címke húzás és rámutatás közben: „→ Név" (Shift: „→ Név · nem minta”,
-                // szaggatott keretben).
+                // Lebegő címke húzás és rámutatás közben: [→] Név (áthelyezés) vagy [✓] Név · marad
+                // (a sor saját oszlopa) — ugyanazok az ikonok, mint a fókusz-kártya gombjain (S7).
+                // Shift: „… · nem minta”, szaggatott keretben.
                 Rectangle {
                     id: dragChip
                     objectName: "dragChip"
                     visible: root.previewLane >= 0 && (root.dragActive || root.hoverRow >= 0)
                     readonly property bool nonSample: root.shiftHeld
+                    readonly property bool keep: {
+                        const row = root.dragActive ? root.dragFromRow : root.hoverRow
+                        const it = row >= 0 ? list.itemAtIndex(row) : null
+                        return !!it && it.lane === root.previewLane
+                    }
+                    readonly property color ink: nonSample ? Theme.accent : Theme.textOnAccent
                     z: 3
-                    width: dragLabel.implicitWidth + 18
+                    width: dragRow.implicitWidth + 16
                     height: dragLabel.implicitHeight + 6
                     radius: 10
                     color: nonSample ? Theme.raised : Theme.accent
@@ -1193,15 +1201,28 @@ Item {
                         color: Theme.accent
                         lineWidth: 1.5
                     }
-                    TLabel {
-                        id: dragLabel
-                        objectName: "dragChipLabel"
+                    Row {
+                        id: dragRow
                         anchors.centerIn: parent
-                        text: root.previewLane >= 0 && root.previewLane < root.laneCount
-                              ? "→ " + editorVm.lanes[root.previewLane].name + (dragChip.nonSample ? root.nonSampleSuffix : "") : ""
-                        color: dragChip.nonSample ? Theme.accent : Theme.textOnAccent
-                        font.pixelSize: Theme.fontCaption
-                        font.weight: Theme.weightSemiBold
+                        spacing: 4
+                        TIcon {
+                            anchors.verticalCenter: parent.verticalCenter
+                            name: dragChip.keep ? "check" : "arrow-right"
+                            size: 12
+                            strokeWidth: 2.4
+                            color: dragChip.ink
+                        }
+                        TLabel {
+                            id: dragLabel
+                            objectName: "dragChipLabel"
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: root.previewLane >= 0 && root.previewLane < root.laneCount
+                                  ? editorVm.lanes[root.previewLane].name + (dragChip.keep ? qsTr(" · marad") : "")
+                                    + (dragChip.nonSample ? root.nonSampleSuffix : "") : ""
+                            color: dragChip.ink
+                            font.pixelSize: Theme.fontCaption
+                            font.weight: Theme.weightSemiBold
+                        }
                     }
                 }
             }

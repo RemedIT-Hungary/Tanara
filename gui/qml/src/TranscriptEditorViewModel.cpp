@@ -2715,6 +2715,11 @@ void TranscriptEditorViewModel::beginDecision(const QStringList& ids)
 {
     m_tracking = true;
     m_trackIds = QSet<QString>(ids.cbegin(), ids.cend());
+    m_trackKeys.clear();
+    for (const QString& id : ids) {
+        const int i = m_uttIndex.value(id, -1);
+        if (i >= 0) m_trackKeys.insert(id, m_utts[i].speakerKey);
+    }
     m_sideChanged.clear();
 }
 
@@ -2724,6 +2729,18 @@ void TranscriptEditorViewModel::endDecision(const QString& text, const QStringLi
     if (!m_editor) return;
     Decision d;
     d.text = text;
+    // S7: a döntés igéje (az Imént sor ikonja): áthelyezés / marad / nem azonosítható.
+    if (kind == QLatin1String("ignored")) {
+        d.verb = QStringLiteral("ignore");
+    } else if (kind == QLatin1String("sample") || kind == QLatin1String("noSample")) {
+        bool moved = false;
+        for (auto it = m_trackKeys.cbegin(); it != m_trackKeys.cend() && !moved; ++it) {
+            const int i = m_uttIndex.value(it.key(), -1);
+            moved = i >= 0 && m_utts[i].speakerKey != it.value();
+        }
+        d.verb = moved ? QStringLiteral("move") : QStringLiteral("keep");
+    }
+    m_trackKeys.clear();
     const QVector<quint64> serials = m_editor->undoSerials();
     d.serial = serials.isEmpty() ? 0 : serials.last();
     int first = -1;
@@ -2781,18 +2798,18 @@ void TranscriptEditorViewModel::pruneDecisions()
 }
 
 static QVariantMap decisionMap(const QString& text, const QString& time, const QString& id,
-                               const QVariantList& chips, bool undone)
+                               const QVariantList& chips, bool undone, const QString& verb)
 {
     return {{QStringLiteral("text"), text}, {QStringLiteral("time"), time},
             {QStringLiteral("utteranceId"), id}, {QStringLiteral("chips"), chips},
-            {QStringLiteral("undone"), undone}};
+            {QStringLiteral("undone"), undone}, {QStringLiteral("verb"), verb}};
 }
 
 QVariantMap TranscriptEditorViewModel::lastDecision() const
 {
     if (m_decisions.isEmpty()) return {};
     const Decision& d = m_decisions.last();
-    return decisionMap(d.text, d.time, d.utteranceId, d.chips, d.undone);
+    return decisionMap(d.text, d.time, d.utteranceId, d.chips, d.undone, d.verb);
 }
 
 QVariantList TranscriptEditorViewModel::decisionLog() const
@@ -2800,7 +2817,7 @@ QVariantList TranscriptEditorViewModel::decisionLog() const
     QVariantList out;
     for (int i = int(m_decisions.size()) - 2; i >= 0 && out.size() < kDecisionLogSize; --i) {
         const Decision& d = m_decisions[i];
-        out << decisionMap(d.text, d.time, d.utteranceId, d.chips, d.undone);
+        out << decisionMap(d.text, d.time, d.utteranceId, d.chips, d.undone, d.verb);
     }
     return out;
 }

@@ -1,19 +1,23 @@
 import QtQuick
 import QtQuick.Layouts
 
-// A fókusz-kártya fölötti / alatti halvány kontextus-sor (az átirat sora, nem csak a kétes):
-// idő · beszélő · szöveg (egy sor, elide) · jelölő · a `,` / `.` billentyű-tipp a szomszéd soron.
-// A hely akkor is megmarad, ha nincs ott sor (a kártya nem ugrál). Kattintás: meghallgatás.
-//   line: TranscriptEditorViewModel.contextLines() egy eleme (üres map: nincs sor)
+// A fókusz-kártya fölötti / alatti halvány kontextus-sor (az átirat sora, idő szerint — nem csak
+// a kétesek): ▷ · idő · beszélő · szöveg (egy sor, elide) · időugrás („+6 s”: a csend a sor és a
+// kártya felőli szomszédja között). A hely akkor is megmarad, ha nincs ott sor (a kártya nem
+// ugrál). Kattintás: meghallgatás (a kártyához legközelebbi két sor: `,` / `.`).
+//   line:  TranscriptEditorViewModel.contextLines() egy eleme (üres map: nincs sor)
+//   gapMs: az időugrás ms-ban (< 0: nincs jelzés)
 Item {
     id: root
 
     property var line: ({})
+    property int gapMs: -1
     property bool playingNow: false
     signal playRequested()
 
     readonly property bool valid: (line.utteranceId || "") !== ""
     readonly property int offset: line.offset || 0
+    readonly property string gapText: gapMs < 0 ? "" : qsTr("+%1 s").arg(Math.round(gapMs / 1000))
 
     implicitHeight: 30
     height: 30
@@ -21,28 +25,34 @@ Item {
     Rectangle {
         anchors.fill: parent
         radius: Theme.radiusControl
-        color: root.playingNow ? Theme.accentSoft
+        color: root.playingNow ? Theme.sunken
              : rowHover.hovered && root.valid ? Theme.alpha(Theme.stateLayer, Theme.hoverOpacity) : "transparent"
     }
     HoverHandler { id: rowHover; cursorShape: root.valid ? Qt.PointingHandCursor : Qt.ArrowCursor }
     TapHandler { enabled: root.valid; onTapped: root.playRequested() }
+    TToolTip {
+        visible: rowHover.hovered && root.valid && Math.abs(root.offset) === 1
+        text: root.offset < 0 ? qsTr("Meghallgatás (,)") : qsTr("Meghallgatás (.)")
+        delay: 500
+    }
 
     RowLayout {
         visible: root.valid
-        anchors { fill: parent; leftMargin: 8; rightMargin: 10 }
+        anchors { fill: parent; leftMargin: 14; rightMargin: 14 }
         spacing: 10
-        opacity: root.playingNow ? 1 : 0.62
+        opacity: root.playingNow ? 1 : 0.7
         TIcon {
             name: root.playingNow ? "volume-2" : "play"
             size: 13
-            color: root.playingNow ? Theme.accent : Theme.textMuted
+            color: root.playingNow ? Theme.text : Theme.textMuted
+            Layout.preferredWidth: 18
         }
         TLabel {
             text: root.line.timeLabel || ""
             mono: true
             muted: true
             font.pixelSize: Theme.fontCaption
-            Layout.preferredWidth: 44
+            Layout.preferredWidth: 54
         }
         TLabel {
             text: root.line.speakerName || ""
@@ -50,38 +60,30 @@ Item {
             font.pixelSize: Theme.fontSmall
             font.weight: Theme.weightSemiBold
             elide: Text.ElideRight
-            Layout.preferredWidth: 120
+            Layout.preferredWidth: 160
         }
         TLabel {
             text: root.line.text || ""
+            muted: true
             font.pixelSize: Theme.fontSmall
             elide: Text.ElideRight
             maximumLineCount: 1
             Layout.fillWidth: true
         }
-        TPill {
-            readonly property string kind: root.line.decidedKind || ""
-            visible: kind !== "" || root.line.uncertain === true
-            text: kind === "ignored" ? qsTr("? nem azonosítható")
-                : kind === "corrected" ? qsTr("javítva")
-                : kind === "confirmed" ? qsTr("megerősítve") : qsTr("kétes")
-            tone: kind === "" ? "warn" : kind === "ignored" ? "neutral" : "success"
-        }
         Rectangle {
-            Layout.preferredWidth: 18
+            objectName: "reviewFocusContextGap"
+            visible: root.gapText !== ""
+            Layout.preferredWidth: gapLabel.implicitWidth + 12
             Layout.preferredHeight: 18
             radius: 4
             color: Theme.sunken
-            border.width: 1
-            border.color: Theme.border
-            visible: Math.abs(root.offset) === 1
             TLabel {
+                id: gapLabel
                 anchors.centerIn: parent
-                text: root.offset < 0 ? "," : "."
+                text: root.gapText
                 mono: true
                 muted: true
                 font.pixelSize: Theme.fontMicro
-                font.weight: Theme.weightSemiBold
             }
         }
     }

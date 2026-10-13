@@ -183,7 +183,7 @@ QString ReviewQueueModel::sigOf(const QString& id) const
 
 bool ReviewQueueModel::isOpen(const Item& it) const
 {
-    return it.state == Pending || (it.state == AlreadyDecided && !it.skipped);
+    return it.state == Pending;
 }
 
 int ReviewQueueModel::decidedCount() const
@@ -441,7 +441,6 @@ void ReviewQueueModel::startNextRound(bool includeIncoming, bool includeLater)
         if (it.state == Pending || (includeLater && it.state == Later)) {
             Item c = it;
             c.later = false;
-            c.skipped = false;
             c.suggestionUpdated = false;
             carry.insert(c.id, c);
             ids << c.id;
@@ -562,6 +561,39 @@ bool ReviewQueueModel::advance()
     return m_current >= 0;
 }
 
+bool ReviewQueueModel::retreat()
+{
+    const int n = int(m_items.size());
+    if (n == 0) return false;
+    const int from = m_current >= 0 ? m_current : n;
+    for (int step = 1; step <= n; ++step) {
+        const int k = ((from - step) % n + n) % n;
+        if (k == m_current) break;
+        if (isOpen(m_items[k])) {
+            setCurrent(k);
+            return true;
+        }
+    }
+    return false;
+}
+
+int ReviewQueueModel::nextOpenIndex() const
+{
+    const int k = nextOpen(m_current + 1);
+    return k == m_current ? -1 : k;
+}
+
+QStringList ReviewQueueModel::confirmableIds() const
+{
+    QStringList out;
+    for (const Item& it : m_items) {
+        if (it.state != AlreadyDecided) continue;
+        const EditorUtterance* u = utt(it.id);
+        if (u && !u->ignored && u->endMs - u->startMs >= tanara::speakeredit::kMinEmbedMs) out << it.id;
+    }
+    return out;
+}
+
 bool ReviewQueueModel::jumpTo(int index)
 {
     if (index < 0 || index >= m_items.size()) return false;
@@ -575,12 +607,8 @@ bool ReviewQueueModel::later()
     const int cur = m_current;
     Item& it = m_items[cur];
     if (it.state == AlreadyDecided) {
-        it.skipped = true;
-        emitRow(cur);
-        m_log.append({it.id, QString()});
-        setCurrent(nextOpen(cur + 1), true);
-        emit countsChanged();
-        emit patternChanged();
+        // A magától eldőlt sor nem nyitott: tovább a következő nyitottra (a sor a helyén marad).
+        setCurrent(nextOpen(cur + 1), true);    // nincs több nyitott: -1 (kör vége)
         return true;
     }
     if (it.state != Pending) return next();
@@ -673,7 +701,6 @@ void ReviewQueueModel::syncFromReview(const QVector<TranscriptEditorViewModel::R
         }
         const State s = stateOf(it);
         if (s != it.state) {
-            if (s == Pending) it.skipped = false;   // újra kétes: újra nyitott
             it.state = s;
             changed = true;
         }
@@ -698,7 +725,7 @@ void ReviewQueueModel::refreshUtterances(const QVector<int>& utteranceIndices)
 {
     if (!m_active || m_items.isEmpty()) return;
     bool counts = false, pattern = false, advanceCursor = false;
-    int undoneRow = -1;
+    int undoneRow = -1, undoneOpenRow = -1, undoneCount = 0;
     for (int ui : utteranceIndices) {
         if (ui < 0 || ui >= m_vm->utterances().size()) continue;
         const QString id = m_vm->utterances()[ui].id;
@@ -723,7 +750,6 @@ void ReviewQueueModel::refreshUtterances(const QVector<int>& utteranceIndices)
                 m_log.append({id, moved ? patternKey(it, u.speakerKey) : QString()});
                 it.suggestionUpdated = false;
                 it.later = false;
-                it.skipped = false;
                 pattern = true;
                 if (r == m_current) advanceCursor = true;
             } else if (isDecidedState(old)) {
@@ -732,6 +758,8 @@ void ReviewQueueModel::refreshUtterances(const QVector<int>& utteranceIndices)
                             m_log.end());
                 pattern = true;
                 undoneRow = undoneRow < 0 ? r : std::min(undoneRow, r);
+                ++undoneCount;
+                if (s == Pending) undoneOpenRow = undoneOpenRow < 0 ? r : std::min(undoneOpenRow, r);
             }
         }
         if (s != old) {
@@ -741,7 +769,10 @@ void ReviewQueueModel::refreshUtterances(const QVector<int>& utteranceIndices)
         emitRow(r);
     }
     updateIncoming();
-    if (undoneRow >= 0) setCurrent(undoneRow);
+    // Visszavonás: a kurzor a visszaállt nyitott sorra; egy magától eldőlt sorra csak akkor, ha
+    // egyetlen sor állt vissza (a „Mind megerősítem” visszavonása nem rángatja a kurzort).
+    if (undoneOpenRow >= 0) setCurrent(undoneOpenRow);
+    else if (undoneRow >= 0 && undoneCount == 1) setCurrent(undoneRow);
     else if (advanceCursor) setCurrent(nextOpen(m_current + 1));
     if (counts) emit countsChanged();
     if (pattern) emit patternChanged();
@@ -790,6 +821,7 @@ QVariantMap ReviewQueueModel::roundSummary() const
         {QStringLiteral("ignored"), ignoredCount()},
         {QStringLiteral("later"), laterCount()},
         {QStringLiteral("alreadyDecided"), alreadyDecidedCount()},
+        {QStringLiteral("confirmable"), confirmableCount()},
         {QStringLiteral("open"), openCount()},
         {QStringLiteral("sampleDelta"), delta},
         {QStringLiteral("incoming"), incomingCount()},

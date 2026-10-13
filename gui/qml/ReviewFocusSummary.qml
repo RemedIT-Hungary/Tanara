@@ -12,10 +12,13 @@ Rectangle {
     signal nextClicked()
     signal laterClicked()
     signal doneClicked()
+    signal confirmSettledClicked()
 
     readonly property int incoming: summary.incoming || 0
     readonly property int later: summary.later || 0
     readonly property int caused: summary.incomingCausedByDecisions || 0
+    readonly property int settled: summary.alreadyDecided || 0
+    readonly property int confirmable: summary.confirmable || 0
     readonly property var samples: (summary.sampleDelta || []).filter(s => (s.delta || 0) > 0)
 
     objectName: "reviewFocusSummary"
@@ -49,6 +52,31 @@ Rectangle {
             textFormat: Text.StyledText
             text: qsTr("Kész: <b>%1 eldöntve</b>, %2 nem azonosítható, %3 később.")
                       .arg(root.summary.decided || 0).arg(root.summary.ignored || 0).arg(root.later)
+        }
+        // A magától eldőlt sorok (S7): ugyanaz a „Mind megerősítem”, mint a fejlécben.
+        RowLayout {
+            objectName: "reviewSummarySettled"
+            Layout.fillWidth: true
+            visible: root.settled > 0
+            spacing: 10
+            TIcon { name: "check"; size: 16; strokeWidth: 2.2; color: Theme.success }
+            TLabel {
+                Layout.fillWidth: true
+                wrapMode: Text.WordWrap
+                font.pixelSize: Theme.fontSmall
+                text: root.confirmable > 0
+                      ? qsTr("%n sor magától eldőlt (a háttér-elemzés szerint már nem kétes).", "", root.settled)
+                        + " " + qsTr("Megerősítve %n lesz minta.", "", root.confirmable)
+                      : qsTr("%n sor magától eldőlt; mind rövid, nem lenne minta.", "", root.settled)
+            }
+            ReviewFocusKeyButton {
+                objectName: "reviewSummaryConfirmSettled"
+                keyText: "Ctrl+Enter"
+                text: qsTr("Mind megerősítem")
+                enabled: root.confirmable > 0
+                toolTipText: qsTr("Egy lépésben, visszavonható (Ctrl+Z)")
+                onClicked: root.confirmSettledClicked()
+            }
         }
         // Minta-hozzájárulás beszélőnként (a kör eleje óta).
         Flow {

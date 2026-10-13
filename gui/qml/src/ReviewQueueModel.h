@@ -52,8 +52,12 @@ class ReviewQueueModel : public QAbstractListModel {
     Q_PROPERTY(int ignoredCount READ ignoredCount NOTIFY countsChanged)
     Q_PROPERTY(int laterCount READ laterCount NOTIFY countsChanged)
     Q_PROPERTY(int alreadyDecidedCount READ alreadyDecidedCount NOTIFY countsChanged)
-    // Nyitott sorok: pending + az át nem ugrott alreadyDecided.
+    // Nyitott sorok: csak a pending (S7: a magától eldőlt — alreadyDecided — sorokat a kurzor
+    // átugorja, azok nem nyitottak).
     Q_PROPERTY(int openCount READ openCount NOTIFY countsChanged)
+    // S7 „Mind megerősítem”: a magától eldőlt sorok közül a legalább kMinEmbedMs hosszúak (ezek
+    // lennének minta; a rövideket a gomb nem bántja).
+    Q_PROPERTY(int confirmableCount READ confirmableCount NOTIFY countsChanged)
     // A kör kész: van munkalista, és nincs nyitott sora (a later sorok nem nyitottak).
     Q_PROPERTY(bool roundComplete READ roundComplete NOTIFY countsChanged)
     // A beérkező halmaz („+N új vár"): kétes sorok, amelyek nincsenek a munkalistán; időrendben.
@@ -112,6 +116,7 @@ public:
     int laterCount() const;
     int alreadyDecidedCount() const;
     int openCount() const;
+    int confirmableCount() const { return int(confirmableIds().size()); }
     bool roundComplete() const { return m_active && openCount() == 0; }
     int incomingCount() const { return int(m_incoming.size()); }
     QStringList incomingIds() const { return m_incoming; }
@@ -132,18 +137,24 @@ public:
     Q_INVOKABLE bool next();            // a következő sorra (bármilyen állapotú); a végén nem fordul
     Q_INVOKABLE bool previous();        // az előző sorra (döntöttre is; ott újra dönthető); -1-ről az utolsóra
     Q_INVOKABLE bool advance();         // a következő NYITOTT sorra (körbefordul); nincs: -1 (kör vége)
+    Q_INVOKABLE bool retreat();         // S7 (Shift+B): az előző NYITOTT sorra (körbefordul); nincs: false
+    // S7: a kurzor utáni következő nyitott sor indexe (körbefordul; a kurzor sora nem); -1: nincs.
+    Q_INVOKABLE int nextOpenIndex() const;
     Q_INVOKABLE bool jumpTo(int index);
     // „Később": a kurzor (pending) sora a lista VÉGÉRE, `later` állapottal; a kurzor a következő
-    // nyitott sorra. alreadyDecided soron: átugrás (a sor a helyén marad, többé nem nyitott);
+    // nyitott sorra. alreadyDecided soron: tovább a következő nyitottra (a sor a helyén marad);
     // döntött / later soron: next().
     Q_INVOKABLE bool later();
     // S5 „Egyenként": a megadott (nyitott) sorok a kurzor helyére, időrendben; a kurzor az elsőre.
     Q_INVOKABLE int bringToFront(const QStringList& utteranceIds);
     Q_INVOKABLE int indexOf(const QString& utteranceId) const { return m_pos.value(utteranceId, -1); }
     Q_INVOKABLE QVariantMap get(int index) const;
+    // S7: a magától eldőlt, legalább kMinEmbedMs hosszú sorok (listasorrendben) — a „Mind
+    // megerősítem” ezeket erősíti meg (TranscriptEditorViewModel::confirmSettled).
+    Q_INVOKABLE QStringList confirmableIds() const;
 
     // ---- összesítők ----
-    // Kör-zárás: { round, total, decided, ignored, later, alreadyDecided, open,
+    // Kör-zárás: { round, total, decided, ignored, later, alreadyDecided, confirmable, open,
     //   sampleDelta: [{ key, name, colorIndex, delta }] (a kör eleje óta, csökkenő),
     //   incoming, incomingIds, incomingInReviewed (a kör sorainak időszakán belül),
     //   incomingCausedByDecisions, causedIds }.
@@ -222,7 +233,6 @@ private:
         QString likelyNewSide;
         bool suggestionUpdated = false;
         bool later = false;
-        bool skipped = false;       // alreadyDecided, átugorva
         bool admitted = false;
         bool consequence = false;
         int round = 1;

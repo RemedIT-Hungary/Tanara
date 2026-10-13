@@ -268,15 +268,29 @@ private slots:
         QCOMPARE(q->currentIndex(), 1);
         QCOMPARE(q->incomingCount(), 0);
 
-        // alreadyDecided: a kurzor rááll, a Később átugorja (a helyén marad, többé nem nyitott).
+        // alreadyDecided (S7): nem nyitott — a kurzor átugorja; ha rááll, a Később tovább lép (a
+        // sor a helyén marad).
         const int open = q->openCount();
+        QVERIFY(q->jumpTo(2));
+        QVERIFY(q->advance());
+        QVERIFY(q->currentIndex() != 3);
+        QCOMPARE(q->nextOpenIndex() == 3, false);
+        QCOMPARE(q->confirmableIds().contains(alreadyId), vm.utterances()[vm.utteranceIndexOf(alreadyId)].endMs
+                     - vm.utterances()[vm.utteranceIndexOf(alreadyId)].startMs >= 1500);
+        QVERIFY(q->jumpTo(4));
+        QVERIFY(q->retreat());
+        QVERIFY(q->currentIndex() != 3);
         QVERIFY(q->jumpTo(3));
         QVERIFY(q->later());
         QCOMPARE(idsOf(q).at(3), alreadyId);
         QCOMPARE(stateAt(q, 3), QStringLiteral("alreadyDecided"));
-        QCOMPARE(q->openCount(), open - 1);
+        QCOMPARE(q->openCount(), open);
         QCOMPARE(q->currentIndex(), 4);
-        // „Enter megerősíti": a megerősítés decided-dé teszi.
+        // Döntés a magától eldőlt sor előtt: a kurzor átugorja.
+        QVERIFY(q->jumpTo(2));
+        QVERIFY(vm.confirmUtterance(order[2]));
+        QCOMPARE(q->currentIndex(), 4);
+        // „Enter: a név marad": a megerősítés decided-dé teszi.
         QVERIFY(q->jumpTo(3));
         QVERIFY(vm.confirmUtterance(alreadyId));
         QCOMPARE(stateAt(q, 3), QStringLiteral("decided"));

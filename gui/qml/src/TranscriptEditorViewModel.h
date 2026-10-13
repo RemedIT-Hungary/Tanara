@@ -179,7 +179,9 @@ class TranscriptEditorViewModel : public QObject, public QQmlParserStatus {
     // ---- S2: az Átnézendő-újratervezés közös alapja ----
     // Az „Imént" sor: az utolsó döntés { text, time ("12:58"; üres, ha nincs sor), utteranceId,
     // chips: [{ kind: "sample" | "noSample" | "ignored" | "unignored" | "changed", text }], undone
-    // (igaz: ez egy visszavonás visszajelzése) } — üres map: még nem volt döntés.
+    // (igaz: ez egy visszavonás visszajelzése), verb (S7, az ikonhoz: "move" — a sor(ok) másik
+    // beszélőhöz került(ek) · "keep" — a név maradt (Jó így / megerősítés) · "ignore" — nem
+    // azonosítható · "" — egyéb) } — üres map: még nem volt döntés.
     Q_PROPERTY(QVariantMap lastDecision READ lastDecision NOTIFY decisionsChanged)
     // Az előző döntések (legfeljebb 5, a legfrissebb elöl), a lastDecision elemeivel.
     Q_PROPERTY(QVariantList decisionLog READ decisionLog NOTIFY decisionsChanged)
@@ -645,6 +647,10 @@ public:
     // speakerKey, speakerName, colorIndex, timeLabel, startMs, endMs, text, uncertain,
     // decidedKind ("corrected" | "confirmed" | "ignored" | "") }]. Ismeretlen sor: üres lista.
     Q_INVOKABLE QVariantList contextLines(const QString& utteranceId, int before, int after) const;
+    // S7 „Mind megerősítem”: a munkalista magától eldőlt (alreadyDecided) sorai közül a legalább
+    // kMinEmbedMs hosszúak megerősítése EGY visszavonási lépésben (a rövidek nem lennének minta,
+    // azokat nem bántja). Az „Imént” sor: „N sor megerősítve”. Vissza: a megerősített sorok száma.
+    Q_INVOKABLE int confirmSettled();
 
     // ---- demó-állapotok (képernyőképhez) ---------------------------------
     // "selection" | "suggestion" | "suggestionShown" | "filter" | "search" | "searchEmpty" |
@@ -783,6 +789,7 @@ private:
         QVariantList chips;
         quint64 serial = 0;         // a szerkesztő undo-lépése (0: visszajelzés, nem vonható vissza)
         bool undone = false;
+        QString verb;               // S7: "move" | "keep" | "ignore" | "" (az Imént sor ikonja)
     };
     // Egy döntés előtt / után: a mellékhatás (más sorok javaslata) számolásához.
     void beginDecision(const QStringList& ids);
@@ -794,6 +801,7 @@ private:
     QVector<Decision> m_decisions;      // időrendben (a legfrissebb a végén)
     bool m_tracking = false;
     QSet<QString> m_trackIds;           // a döntött sorok
+    QHash<QString, QString> m_trackKeys;    // S7: a döntött sorok beszélője a döntés előtt
     QSet<QString> m_sideChanged;        // más sorok, amelyeknek a javaslata / kétessége változott
     QVariantMap m_sampleDeviation;
     QVariantList m_sampleStats;

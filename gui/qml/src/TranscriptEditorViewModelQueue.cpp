@@ -85,6 +85,21 @@ QVariantList TranscriptEditorViewModel::contextLines(const QString& utteranceId,
     return out;
 }
 
+// S7 „Mind megerősítem”: a magától eldőlt sorok (≥ kMinEmbedMs) egy lépésben.
+int TranscriptEditorViewModel::confirmSettled()
+{
+    if (!m_editor || !m_queue || !m_queue->active()) return 0;
+    const QStringList ids = m_queue->confirmableIds();
+    if (ids.isEmpty()) return 0;
+    beginDecision(ids);
+    if (!m_editor->confirmUtterances(ids, false)) {
+        m_tracking = false;
+        return 0;
+    }
+    endDecision(tr("%n sor megerősítve", nullptr, int(ids.size())), ids, QStringLiteral("sample"));
+    return int(ids.size());
+}
+
 // ---- S5: nyitó-javaslat, mintázat-ajánlat -----------------------------------------------
 
 namespace {
@@ -161,7 +176,11 @@ bool TranscriptEditorViewModel::moveUtterancesToSpeaker(const QStringList& utter
 // "reviewFocusIncoming"       a munkalista az utolsó 3 kétes sor nélkül indul; a háttér-elemzés
 //                             ezeket „+3 új vár"-ként hozza; két sor eldöntve
 // "reviewFocusSummary"        mint a reviewFocusIncoming, majd minden sor eldöntve → kör-zárás
-// "reviewFocusAlreadyDecided" a kurzor sora a háttérben már nem kétes („már eldőlt")
+// "reviewFocusAlreadyDecided" a kurzor sora a háttérben már nem kétes (S7: a kártya normálisan
+//                             mutatja, Enter = a név marad; a kurzor csak ↑ / ← / ↓-vel lép rá)
+// "reviewFocusSkipped"        S7: a munkalista 2.–7. nyitott sora a háttérben „magától eldőlt”
+//                             (✓ a csíkon, „6 magától eldőlt · Mind megerősítem” a fejlécben);
+//                             a kurzor egy javaslattal bíró nyitott soron
 //
 // S5 — a nyitó-javaslat és a mintázat-ajánlat (a többi állapotban a nyitók kikapcsolva, hogy a
 // fókusz-kártya látsszon):
@@ -284,6 +303,15 @@ void TranscriptEditorViewModel::tryQueueDemo()
             m_queue->syncFromReview(views, utts);   // a 2. sor a háttérben „eldőlt"
             m_queue->jumpTo(m_queue->indexOf(ids[1]));
         }
+    } else if (state == QLatin1String("reviewFocusSkipped")) {
+        const QStringList ids = pendingIds();
+        QSet<QString> drop;
+        for (int i = 1; i < std::min<int>(7, int(ids.size()) - 1); ++i) drop.insert(ids[i]);
+        QVector<ReviewView> views;
+        QVector<EditorUtterance> utts;
+        withoutIds(drop, views, utts);
+        m_queue->syncFromReview(views, utts);   // a sorok a háttérben „magától eldőltek"
+        jumpToSuggestion();
     } else if (state == QLatin1String("reviewFocusOffer") || state == QLatin1String("reviewFocusOfferList")) {
         // A leggyakoribb (ok, jelenlegi, javasolt) hármas sorai; 4 a javaslatra → mintázat.
         QHash<QString, QStringList> byTriple;

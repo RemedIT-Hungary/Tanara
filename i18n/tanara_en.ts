@@ -3429,40 +3429,8 @@
 <context>
     <name>ReviewFocusCard</name>
     <message>
-        <source>Megerősítem</source>
-        <translation>Confirm</translation>
-    </message>
-    <message>
-        <source>%1 mondta</source>
-        <translation>%1 said it</translation>
-    </message>
-    <message>
-        <source>Új beszélő (hívás hangja)</source>
-        <translation>New speaker (call audio)</translation>
-    </message>
-    <message>
-        <source>Új beszélő (mikrofon)</source>
-        <translation>New speaker (microphone)</translation>
-    </message>
-    <message>
-        <source>Jó így</source>
-        <translation>Looks right</translation>
-    </message>
-    <message>
         <source>Lejátszás / szünet (Szóköz) · újra az elejéről: R</source>
         <translation>Play / pause (Space) · from the start: R</translation>
-    </message>
-    <message>
-        <source>%1 nevén</source>
-        <translation>under %1</translation>
-    </message>
-    <message>
-        <source>Hangra kétes sor</source>
-        <translation>Uncertain by voice</translation>
-    </message>
-    <message>
-        <source>már eldőlt · Enter: megerősítem · →: tovább</source>
-        <translation>already decided · Enter: confirm · →: next</translation>
     </message>
     <message>
         <source>javaslat frissült</source>
@@ -3485,10 +3453,6 @@
         <translation>sample</translation>
     </message>
     <message>
-        <source>eldöntve: jó így · %1</source>
-        <translation>decided: looks right · %1</translation>
-    </message>
-    <message>
         <source>◇ később hagyva</source>
         <translation>◇ left for later</translation>
     </message>
@@ -3501,12 +3465,56 @@
         <translation>new</translation>
     </message>
     <message>
-        <source>A sor a háttérben már eldőlt: megerősítem így</source>
-        <translation>This line was already decided in the background: confirm it as is</translation>
+        <source>Új beszélő</source>
+        <translation>New speaker</translation>
     </message>
     <message>
-        <source>Az alapértelmezés: a javaslat, vagy ha nincs, „Jó így” · Shift: nem minta</source>
-        <translation>The default: the suggestion, or “Looks right” if there is none · Shift: not a sample</translation>
+        <source>marad · (= J)</source>
+        <translation>stays · (= J)</translation>
+    </message>
+    <message>
+        <source>javaslat · hívás hangja</source>
+        <translation>suggestion · call audio</translation>
+    </message>
+    <message>
+        <source>javaslat · mikrofon</source>
+        <translation>suggestion · microphone</translation>
+    </message>
+    <message>
+        <source>javaslat · %1</source>
+        <translation>suggestion · %1</translation>
+    </message>
+    <message>
+        <source>javaslat</source>
+        <translation>suggestion</translation>
+    </message>
+    <message>
+        <source>javasolt</source>
+        <translation>suggested</translation>
+    </message>
+    <message>
+        <source>hangra kétes</source>
+        <translation>uncertain by voice</translation>
+    </message>
+    <message>
+        <source>✓ magától eldőlt</source>
+        <translation>✓ settled on its own</translation>
+    </message>
+    <message>
+        <source>eldöntve: marad · %1</source>
+        <translation>decided: stays · %1</translation>
+    </message>
+    <message>
+        <source>A sor ide kerül: %1 · Shift: nem minta</source>
+        <translation>The line goes to: %1 · Shift: not a sample</translation>
+    </message>
+    <message>
+        <source>A név marad: %1 (nincs jobb jelölt) · Shift: nem minta</source>
+        <translation>The name stays: %1 (no better candidate) · Shift: not a sample</translation>
+    </message>
+    <message>
+        <source>marad</source>
+        <translation>stays</translation>
     </message>
     <message>
         <source>A mostani név marad (%1) · Shift: nem minta</source>
@@ -3521,6 +3529,14 @@
         <translation>Unidentifiable</translation>
     </message>
     <message>
+        <source>újra számít a hangja</source>
+        <translation>its voice counts again</translation>
+    </message>
+    <message>
+        <source>a név marad, nem minta</source>
+        <translation>name stays, not a sample</translation>
+    </message>
+    <message>
         <source>A név marad, de a hang-elemzés teljesen kihagyja: nem minta, nem bizonyíték</source>
         <translation>The name stays, but voice analysis ignores the line completely: not a sample, not evidence</translation>
     </message>
@@ -3529,44 +3545,48 @@
         <translation>Other…</translation>
     </message>
     <message>
+        <source>személyválasztó</source>
+        <translation>person picker</translation>
+    </message>
+    <message>
         <source>A sor panelje: személyválasztó, új beszélő</source>
         <translation>The line panel: person picker, new speaker</translation>
     </message>
     <message>
-        <source>Tovább</source>
-        <translation>Next</translation>
+        <source>a lista végére</source>
+        <translation>to the end of the list</translation>
+    </message>
+    <message>
+        <source>= ugyanez, de nem minta</source>
+        <translation>= the same, but not a sample</translation>
+    </message>
+    <message>
+        <source>Új beszélő…</source>
+        <translation>New speaker…</translation>
+    </message>
+    <message>
+        <source>A sor egy új, névtelen beszélőhöz (+)</source>
+        <translation>Move the line to a new, unnamed speaker (+)</translation>
     </message>
     <message>
         <source>Később</source>
         <translation>Later</translation>
     </message>
     <message>
-        <source>Átugrom; a sor a helyén marad</source>
-        <translation>Skip; the line stays where it is</translation>
-    </message>
-    <message>
         <source>Nem döntés: a sor a kör végére kerül (◇)</source>
         <translation>Not a decision: the line moves to the end of the round (◇)</translation>
-    </message>
-    <message>
-        <source>= nem minta</source>
-        <translation>= not a sample</translation>
-    </message>
-    <message>
-        <source>● javasolt</source>
-        <translation>● suggested</translation>
     </message>
     <message>
         <source>most</source>
         <translation>now</translation>
     </message>
     <message>
-        <source>%1: jó így</source>
-        <translation>%1: looks right</translation>
-    </message>
-    <message>
         <source>→ %1</source>
         <translation>→ %1</translation>
+    </message>
+    <message>
+        <source>%1: marad</source>
+        <translation>%1: stays</translation>
     </message>
     <message>
         <source> · nem minta</source>
@@ -3576,20 +3596,16 @@
 <context>
     <name>ReviewFocusContextRow</name>
     <message>
-        <source>? nem azonosítható</source>
-        <translation>? unidentifiable</translation>
+        <source>+%1 s</source>
+        <translation>+%1 s</translation>
     </message>
     <message>
-        <source>javítva</source>
-        <translation>corrected</translation>
+        <source>Meghallgatás (,)</source>
+        <translation>Listen (,)</translation>
     </message>
     <message>
-        <source>megerősítve</source>
-        <translation>confirmed</translation>
-    </message>
-    <message>
-        <source>kétes</source>
-        <translation>uncertain</translation>
+        <source>Meghallgatás (.)</source>
+        <translation>Listen (.)</translation>
     </message>
 </context>
 <context>
@@ -3801,6 +3817,35 @@
         <source>Kész: &lt;b&gt;%1 eldöntve&lt;/b&gt;, %2 nem azonosítható, %3 később.</source>
         <translation>Done: &lt;b&gt;%1 decided&lt;/b&gt;, %2 unidentifiable, %3 later.</translation>
     </message>
+    <message numerus="yes">
+        <source>%n sor magától eldőlt (a háttér-elemzés szerint már nem kétes).</source>
+        <translation>
+            <numerusform>%n line settled on its own (the background analysis no longer finds it uncertain).</numerusform>
+            <numerusform>%n lines settled on their own (the background analysis no longer finds them uncertain).</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>Megerősítve %n lesz minta.</source>
+        <translation>
+            <numerusform>Once confirmed, %n becomes a sample.</numerusform>
+            <numerusform>Once confirmed, %n become samples.</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>%n sor magától eldőlt; mind rövid, nem lenne minta.</source>
+        <translation>
+            <numerusform>%n line settled on its own; it is short and would not be a sample.</numerusform>
+            <numerusform>%n lines settled on their own; all are short and would not be samples.</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Mind megerősítem</source>
+        <translation>Confirm all</translation>
+    </message>
+    <message>
+        <source>Egy lépésben, visszavonható (Ctrl+Z)</source>
+        <translation>In one step, can be undone (Ctrl+Z)</translation>
+    </message>
     <message>
         <source>%1 +%2 minta</source>
         <translation>%1 +%2 samples</translation>
@@ -3858,6 +3903,28 @@
         <source>elemzés fut…</source>
         <translation>analysis running…</translation>
     </message>
+    <message numerus="yes">
+        <source>%n magától eldőlt</source>
+        <translation>
+            <numerusform>%n settled on its own</numerusform>
+            <numerusform>%n settled on their own</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Mind megerősítem</source>
+        <translation>Confirm all</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n sor megerősítése egy lépésben (minta lesz); a rövid (1,5 mp alatti) sorokhoz nem nyúl</source>
+        <translation>
+            <numerusform>Confirm %n line in one step (it becomes a sample); short lines (under 1.5 s) are left alone</numerusform>
+            <numerusform>Confirm %n lines in one step (they become samples); short lines (under 1.5 s) are left alone</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>A magától eldőlt sorok mind rövidek (1,5 mp alatt): nem lennének minta</source>
+        <translation>The lines settled on their own are all short (under 1.5 s): they would not be samples</translation>
+    </message>
     <message>
         <source>haladás</source>
         <translation>progress</translation>
@@ -3910,8 +3977,20 @@
 <context>
     <name>ReviewFocusWorklist</name>
     <message>
+        <source>%1 · következő kétes %2</source>
+        <translation>%1 · next uncertain %2</translation>
+    </message>
+    <message>
+        <source>%1 · nincs több kétes</source>
+        <translation>%1 · no more uncertain lines</translation>
+    </message>
+    <message>
         <source>Munkalista</source>
         <translation>Worklist</translation>
+    </message>
+    <message>
+        <source>↑ / ↓ tételek · B következő kétes</source>
+        <translation>↑ / ↓ items · B next uncertain</translation>
     </message>
     <message>
         <source>eldöntve</source>
@@ -3928,6 +4007,10 @@
     <message>
         <source>nem azon.</source>
         <translation>unident.</translation>
+    </message>
+    <message>
+        <source>magától eldőlt</source>
+        <translation>settled on its own</translation>
     </message>
 </context>
 <context>
@@ -7734,6 +7817,10 @@
     <message>
         <source>A „nem azonosítható” sorok a hang-elemzésből kimaradnak; itt csak a lista nézetét állítod</source>
         <translation>“Unidentifiable” lines are left out of the voice analysis; here you only change the list view</translation>
+    </message>
+    <message>
+        <source> · marad</source>
+        <translation> · stays</translation>
     </message>
     <message>
         <source>Fagyasztott ablak</source>
@@ -13832,6 +13919,13 @@
         <translation>
             <numerusform>Split: %n line moved to %1</numerusform>
             <numerusform>Split: %n lines moved to %1</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>%n sor megerősítve</source>
+        <translation>
+            <numerusform>%n line confirmed</numerusform>
+            <numerusform>%n lines confirmed</numerusform>
         </translation>
     </message>
     <message>

@@ -198,12 +198,20 @@ Rectangle {
                 anchors { fill: parent; leftMargin: 24; rightMargin: 12 }
                 spacing: 8
 
+                // A döntés igéje ugyanazzal az ikonnal, mint a fókusz-kártya gombjain (S7):
+                // → áthelyezés · ✓ marad · ⊘ nem azonosítható.
                 TIcon {
+                    objectName: "imentIcon"
+                    readonly property string verb: root.last.undone === true ? "" : (root.last.verb || "")
                     Layout.alignment: Qt.AlignVCenter
                     name: root.vm.changeVoiceprintCreated ? "fingerprint" : root.newPerson ? "user-plus"
-                        : root.last.undone === true ? "undo-2" : "circle-check"
+                        : root.last.undone === true ? "undo-2"
+                        : verb === "move" ? "arrow-right" : verb === "keep" ? "check" : verb === "ignore" ? "ban"
+                        : "circle-check"
                     size: 15
-                    color: root.newPerson ? Theme.success : Theme.textMuted
+                    strokeWidth: verb !== "" ? 2.2 : 1.75
+                    color: root.newPerson ? Theme.success : verb === "move" ? Theme.accent
+                         : verb === "keep" ? Theme.success : Theme.textMuted
                 }
                 TLabel {
                     Layout.alignment: Qt.AlignVCenter
@@ -646,9 +654,18 @@ Rectangle {
                         muted: true
                         font.pixelSize: Theme.fontCaption
                     }
+                    TIcon {
+                        readonly property string verb: entry.modelData.undone === true ? "" : (entry.modelData.verb || "")
+                        anchors.verticalCenter: parent.verticalCenter
+                        name: entry.modelData.undone === true ? "undo-2"
+                            : verb === "move" ? "arrow-right" : verb === "keep" ? "check" : verb === "ignore" ? "ban" : "circle-check"
+                        size: 13
+                        strokeWidth: 2.2
+                        color: verb === "move" ? Theme.accent : verb === "keep" ? Theme.success : Theme.textMuted
+                    }
                     TLabel {
                         anchors.verticalCenter: parent.verticalCenter
-                        width: Math.min(implicitWidth, logPopup.width - 16 - 52 - 160)
+                        width: Math.min(implicitWidth, logPopup.width - 16 - 52 - 160 - 21)
                         text: entry.modelData.text
                         elide: Text.ElideRight
                         muted: entry.modelData.undone === true

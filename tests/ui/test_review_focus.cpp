@@ -231,12 +231,12 @@ private slots:
         openReview();
         const int count = m_queue->count();
 
-        // Enter: a javaslat („X mondta”).
+        // Enter: a javaslat (a gombon a javasolt NÉV).
         QVERIFY(jumpToSuggestion());
         QString id = current();
         const int at = m_queue->indexOf(id);
         const QString likely = cur().value(QStringLiteral("likelyKey")).toString();
-        QVERIFY(visual("reviewFocusEnter")->property("text").toString().endsWith(QStringLiteral(" mondta")));
+        QCOMPARE(visual("reviewFocusEnter")->property("text").toString(), cur().value(QStringLiteral("likelyName")).toString());
         key(Qt::Key_Return);
         QCOMPARE(utt(id).speakerKey, likely);
         QVERIFY(utt(id).manuallyCorrected);
@@ -401,7 +401,8 @@ private slots:
     void cardY_sameInEveryFocusState()
     {
         qreal first = -1;
-        for (const char* state : {"reviewFocus", "reviewFocusDecided", "reviewFocusIncoming", "reviewFocusAlreadyDecided"}) {
+        for (const char* state : {"reviewFocus", "reviewFocusDecided", "reviewFocusIncoming", "reviewFocusAlreadyDecided",
+                                  "reviewFocusSkipped"}) {
             loadDemo(state);
             QTRY_VERIFY(card() && card()->isVisible());
             const qreal y = cardY();
@@ -411,17 +412,249 @@ private slots:
         }
     }
 
-    // „Már eldőlt” sor: jelzés a kártyán; Enter = megerősítem; → = átugrik.
-    void alreadyDecided_enterConfirms()
+    // Magától eldőlt sor, ha a kurzor visszalép rá: a kártya normálisan mutatja (✓ jel), az Enter
+    // a mostani nevet írja („marad”), a J halvány; Enter = megerősítés, a kurzor a következő NYITOTTRA.
+    void alreadyDecided_enterKeeps()
     {
         loadDemo("reviewFocusAlreadyDecided");
         QTRY_COMPARE(cur().value(QStringLiteral("state")).toString(), QStringLiteral("alreadyDecided"));
-        QVERIFY(visual("reviewFocusAlreadyDecided"));
-        QCOMPARE(visual("reviewFocusEnter")->property("text").toString(), QStringLiteral("Megerősítem"));
+        QVERIFY(visual("reviewFocusSettled"));
+        QCOMPARE(visual("reviewFocusEnter")->property("text").toString(), cur().value(QStringLiteral("speakerName")).toString());
+        QCOMPARE(visual("reviewFocusEnter")->property("iconName").toString(), QStringLiteral("check"));
+        QVERIFY(visual("reviewFocusConfirm")->property("dimmed").toBool());
         const QString id = current();
         key(Qt::Key_Return);
         QVERIFY(utt(id).confirmed);
         QVERIFY(current() != id);
+        QCOMPARE(cur().value(QStringLiteral("state")).toString(), QStringLiteral("pending"));
+    }
+
+    // S7: a magától eldőlt sorokat a kurzor átugorja; ↑ visszalép rájuk; „Mind megerősítem”
+    // (Ctrl+Enter / a fejléc gombja) EGY visszavonási lépésben megerősíti a ≥ 1,5 s hosszúakat.
+    void settled_skippedAndConfirmAll_oneUndoStep()
+    {
+        loadDemo("reviewFocusSkipped");
+        QTRY_VERIFY(card() && card()->isVisible());
+        QStringList settled;
+        int firstSettled = -1, lastSettled = -1;
+        for (int i = 0; i < m_queue->count(); ++i) {
+            if (m_queue->get(i).value(QStringLiteral("state")).toString() != QLatin1String("alreadyDecided")) continue;
+            settled << m_queue->get(i).value(QStringLiteral("utteranceId")).toString();
+            if (firstSettled < 0) firstSettled = i;
+            lastSettled = i;
+        }
+        QVERIFY(settled.size() >= 3);
+        QCOMPARE(m_queue->alreadyDecidedCount(), int(settled.size()));
+        QVERIFY(m_queue->openCount() < m_queue->count() - int(settled.size()) + 1);
+        QVERIFY(visual("reviewFocusSettledBar"));
+        QVERIFY(visual("reviewFocusSettledCount")->property("text").toString().startsWith(QString::number(settled.size())));
+
+        // (A demó a háttér-elemzés eredményét állítja be; egy döntés után a valódi elemzés
+        // visszaállítaná — ezért előbb a léptetés, a döntés utoljára. A döntés utáni átugrást a
+        // test_review_queue méri.)
+        // B a következő nyitottra lép (a magától eldőlteken át).
+        QVERIFY(firstSettled > 0);
+        m_queue->jumpTo(firstSettled - 1);
+        pump();
+        QCOMPARE(cur().value(QStringLiteral("state")).toString(), QStringLiteral("pending"));
+        key(Qt::Key_B);
+        QVERIFY(m_queue->currentIndex() > lastSettled || m_queue->currentIndex() < firstSettled);
+        QCOMPARE(cur().value(QStringLiteral("state")).toString(), QStringLiteral("pending"));
+        // Shift+B vissza az előző nyitottra (ismét átugorva őket).
+        key(Qt::Key_B, Qt::ShiftModifier);
+        QCOMPARE(m_queue->currentIndex(), firstSettled - 1);
+        // ↑ / ↓: a csík tételei, bármilyen állapotúak (a magától eldőltre is).
+        m_queue->jumpTo(firstSettled - 1);
+        pump();
+        key(Qt::Key_Down);
+        QCOMPARE(m_queue->currentIndex(), firstSettled);
+        QCOMPARE(cur().value(QStringLiteral("state")).toString(), QStringLiteral("alreadyDecided"));
+        key(Qt::Key_Up);
+        QCOMPARE(m_queue->currentIndex(), firstSettled - 1);
+        key(Qt::Key_Down);
+        QCOMPARE(m_queue->currentIndex(), firstSettled);
+
+        // Mind megerősítem (Ctrl+Enter): a hosszúak megerősítve, a rövidek nem; egy lépés.
+        QStringList longOnes, shortOnes;
+        for (const QString& id : std::as_const(settled))
+            (utt(id).endMs - utt(id).startMs >= 1500 ? longOnes : shortOnes) << id;
+        QVERIFY(!longOnes.isEmpty());
+        QCOMPARE(m_queue->confirmableCount(), int(longOnes.size()));
+        key(Qt::Key_Return, Qt::ControlModifier);
+        for (const QString& id : std::as_const(longOnes)) {
+            QVERIFY(utt(id).confirmed);
+            QVERIFY(!utt(id).noisy);
+            QCOMPARE(stateOf(id), QStringLiteral("decided"));
+        }
+        for (const QString& id : std::as_const(shortOnes)) QVERIFY(!utt(id).confirmed);
+        QCOMPARE(m_vm->lastDecision().value(QStringLiteral("text")).toString(),
+                 QStringLiteral("%1 sor megerősítve").arg(longOnes.size()));
+        QCOMPARE(m_vm->lastDecision().value(QStringLiteral("verb")).toString(), QStringLiteral("keep"));
+        // (A megerősítés után a háttér-elemzés újabb sorokat dönthet el magától; a mostaniak már nincsenek köztük.)
+        for (const QString& id : std::as_const(longOnes)) QVERIFY(!m_queue->confirmableIds().contains(id));
+
+        // Egy Ctrl+Z mindet visszaveszi.
+        key(Qt::Key_Z, Qt::ControlModifier);
+        for (const QString& id : std::as_const(longOnes)) {
+            QVERIFY(!utt(id).confirmed);
+            QVERIFY(stateOf(id) != QLatin1String("decided"));
+        }
+        QVERIFY(!m_vm->canUndo() || m_vm->lastDecision().value(QStringLiteral("undone")).toBool());
+
+        // A fejléc gombja ugyanezt teszi.
+        loadDemo("reviewFocusSkipped");
+        QTRY_VERIFY(visual("reviewFocusConfirmSettled"));
+        const QStringList ids = m_queue->confirmableIds();
+        QVERIFY(!ids.isEmpty());
+        click(visual("reviewFocusConfirmSettled"));
+        for (const QString& id : ids) QVERIFY(utt(id).confirmed);
+    }
+
+    // S7: a gomb-feliratok a három állapotban (van javaslat / nincs javaslat / új beszélő): a
+    // nevek a gombokon, a művelet ikonja; a J halvány, ha nincs javaslat; a gombok helye fix.
+    void buttons_namesInThreeStates()
+    {
+        loadDemo("reviewFocus");
+        QTRY_VERIFY(card() && card()->isVisible());
+        QQuickItem* enter = visual("reviewFocusEnter");
+        QQuickItem* keep = visual("reviewFocusConfirm");
+        QVERIFY(enter && keep);
+        auto geometry = [&] {
+            QList<QRectF> out;
+            for (const char* n : {"reviewFocusEnter", "reviewFocusConfirm", "reviewFocusIgnore", "reviewFocusOther", "reviewFocusLater"}) {
+                QQuickItem* b = visual(n);
+                out << QRectF(b->mapToScene(QPointF(0, 0)), QSizeF(b->width(), b->height()));
+            }
+            return out;
+        };
+        // A) van javaslat (a demó a kurzort egy javaslattal bíró sorra teszi).
+        QVERIFY(card()->property("hasSuggestion").toBool());
+        QCOMPARE(enter->property("text").toString(), cur().value(QStringLiteral("likelyName")).toString());
+        QCOMPARE(enter->property("iconName").toString(), QStringLiteral("arrow-right"));
+        QVERIFY(enter->property("subText").toString().startsWith(QStringLiteral("javaslat")));
+        QCOMPARE(keep->property("text").toString(), cur().value(QStringLiteral("speakerName")).toString());
+        QCOMPARE(keep->property("subText").toString(), QStringLiteral("marad"));
+        QCOMPARE(keep->property("iconName").toString(), QStringLiteral("check"));
+        QVERIFY(!keep->property("dimmed").toBool());
+        QCOMPARE(visual("reviewFocusIgnore")->property("text").toString(), QStringLiteral("Nem azonosítható"));
+        QCOMPARE(visual("reviewFocusOther")->property("text").toString(), QStringLiteral("Más…"));
+        QCOMPARE(visual("reviewFocusLater")->property("text").toString(), QStringLiteral("Később"));
+        const QList<QRectF> geo = geometry();
+
+        // B) nincs javaslat: az Enter a mostani nevet írja („marad”), a J halvány.
+        QVariantMap item = cur();
+        item.insert(QStringLiteral("likelyKey"), QString());
+        item.insert(QStringLiteral("likelyName"), QString());
+        item.insert(QStringLiteral("likelyNewSide"), QString());
+        card()->setProperty("item", item);
+        pump();
+        QCOMPARE(enter->property("text").toString(), item.value(QStringLiteral("speakerName")).toString());
+        QCOMPARE(enter->property("iconName").toString(), QStringLiteral("check"));
+        QVERIFY(enter->property("subText").toString().startsWith(QStringLiteral("marad")));
+        QVERIFY(keep->property("dimmed").toBool());
+        QCOMPARE(geometry(), geo);
+
+        // C) új beszélő a javaslat: „Új beszélő” + a felhasználó-plusz ikon; a „+” chip javasolt.
+        item.insert(QStringLiteral("likelyNewSide"), QStringLiteral("remote"));
+        card()->setProperty("item", item);
+        pump();
+        QCOMPARE(enter->property("text").toString(), QStringLiteral("Új beszélő"));
+        QCOMPARE(enter->property("iconName").toString(), QStringLiteral("user-plus"));
+        QVERIFY(!keep->property("dimmed").toBool());
+        QVERIFY(visual("reviewFocusLaneNew")->property("suggested").toBool());
+        // Hosszú név: elide-olódik, a gombok nem mozdulnak.
+        item.insert(QStringLiteral("likelyNewSide"), QString());
+        item.insert(QStringLiteral("likelyName"), QStringLiteral("Nagyon Hosszú Nevű Személy Akinek A Neve Nem Fér Ki"));
+        item.insert(QStringLiteral("likelyKey"), QStringLiteral("x-external"));
+        card()->setProperty("item", item);
+        pump();
+        QCOMPARE(geometry(), geo);
+    }
+
+    // S7: a számsor teljes nevekkel; a „most” és a „javasolt” jel; a chipek helye nem változik
+    // soronként (a sor nem rendeződik át).
+    void numberRow_nowAndSuggested()
+    {
+        loadDemo("reviewFocus");
+        QTRY_VERIFY(card() && card()->isVisible());
+        QVERIFY(card()->property("hasSuggestion").toBool());
+        const QList<QQuickItem*> chips = visuals("reviewFocusLane");
+        QVERIFY(chips.size() >= 2);
+        const QString nowKey = cur().value(QStringLiteral("speakerKey")).toString();
+        const QString sugKey = cur().value(QStringLiteral("likelyKey")).toString();
+        const QVariantList lanes = m_vm->lanes();
+        auto positions = [&] {
+            QList<QPointF> out;
+            for (QQuickItem* c : visuals("reviewFocusLane")) out << c->mapToScene(QPointF(0, 0));
+            return out;
+        };
+        const QList<QPointF> pos = positions();
+        int nows = 0, sugs = 0;
+        const QList<QQuickItem*> marks = visuals("reviewFocusLaneMark");
+        const QList<QQuickItem*> names = visuals("reviewFocusLaneName");
+        QCOMPARE(marks.size(), chips.size());
+        for (int i = 0; i < chips.size(); ++i) {
+            const QString key = lanes[i].toMap().value(QStringLiteral("key")).toString();
+            QCOMPARE(names[i]->property("text").toString(), lanes[i].toMap().value(QStringLiteral("name")).toString());
+            const QString mark = marks[i]->property("text").toString();
+            if (key == nowKey) { QCOMPARE(mark, QStringLiteral("most")); ++nows; }
+            else if (key == sugKey) { QCOMPARE(mark, QStringLiteral("javasolt")); ++sugs; }
+            else QVERIFY(mark.isEmpty());
+            QVERIFY(chips[i]->property("current").toBool() == (key == nowKey));
+            QVERIFY(chips[i]->property("suggested").toBool() == (key == sugKey));
+        }
+        QCOMPARE(nows, 1);
+        QCOMPARE(sugs, laneOf(sugKey) >= 0 && laneOf(sugKey) < 9 ? 1 : 0);
+        // A következő sorra lépve a chipek helye ugyanaz.
+        key(Qt::Key_Down);
+        QCOMPARE(positions(), pos);
+        key(Qt::Key_Down);
+        QCOMPARE(positions(), pos);
+    }
+
+    // S7: 3 + 3 kontextus-sor (az átirat szomszédai), címke nélkül, soronként az időugrással.
+    void context_threeAndThreeWithGaps()
+    {
+        loadDemo("reviewFocus");
+        QTRY_VERIFY(card() && card()->isVisible());
+        const qreal y = cardY();
+        const QVariantList ctx = m_vm->contextLines(current(), 3, 3);
+        int above = 0, below = 0, gaps = 0;
+        for (QQuickItem* row : visuals("reviewFocusContext")) {
+            const qreal ry = row->mapToScene(QPointF(0, 0)).y();
+            (ry < y ? above : below)++;
+            if (!row->property("valid").toBool()) continue;
+            const QString gap = row->property("gapText").toString();
+            QVERIFY2(gap.startsWith(QLatin1Char('+')) && gap.endsWith(QStringLiteral(" s")), qPrintable(gap));
+            ++gaps;
+        }
+        QCOMPARE(above, 3);
+        QCOMPARE(below, 3);
+        QCOMPARE(gaps, int(ctx.size()));
+        // Az előző sor időugrása = a csend a kártya soráig.
+        for (const QVariant& v : ctx) {
+            const QVariantMap m = v.toMap();
+            if (m.value(QStringLiteral("offset")).toInt() != -1) continue;
+            const int expect = std::max(0, cur().value(QStringLiteral("startMs")).toInt() - m.value(QStringLiteral("endMs")).toInt());
+            QVariant gap;
+            QVERIFY(QMetaObject::invokeMethod(view(), "gapFor", Q_RETURN_ARG(QVariant, gap), Q_ARG(QVariant, -1)));
+            QCOMPARE(gap.toInt(), expect);
+        }
+        // Nincs „Előtte / Utána” címke.
+        QVERIFY(visuals("reviewFocusContextLabel").isEmpty());
+    }
+
+    // S7: a csík fölött a kurzor helye és a következő kétes sor ideje.
+    void worklist_positionCaption()
+    {
+        loadDemo("reviewFocus");
+        QTRY_VERIFY(card() && card()->isVisible());
+        const QString text = visual("reviewFocusPosition")->property("text").toString();
+        QVERIFY2(text.startsWith(QStringLiteral("%1 / %2").arg(m_queue->currentIndex() + 1).arg(m_queue->count())), qPrintable(text));
+        const int next = m_queue->nextOpenIndex();
+        if (next >= 0)
+            QVERIFY2(text.endsWith(QStringLiteral("következő kétes %1").arg(m_queue->get(next).value(QStringLiteral("timeLabel")).toString())),
+                     qPrintable(text));
     }
 
     // Kör-zárás: összesítő; Következő kör (beérkezők + később) · Később hagyottak · Kész (Javítás).

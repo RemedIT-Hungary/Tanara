@@ -4,9 +4,10 @@ import QtQuick.Templates as T
 
 // Az „Átnézendő” nézet, „A” koncepció (Fókusz-sor; koncepció-dokumentum 2. fejezet): egyszerre
 // egy kétes sor a RÖGZÍTETT helyű fókusz-kártyán (ReviewFocusCard), automatikusan megszólal, és
-// egy billentyűvel eldől. Fölötte és alatta 2–2 halvány kontextus-sor (az átirat sorai), alul az
-// időrendi munkalista-csík, felül a haladás („N / M”), a kör száma, a „+K új vár” számláló és az
-// auto-lejátszás kapcsolója. A munkalista a ReviewQueueModel (vm.reviewQueue) fagyasztott
+// egy billentyűvel eldől. Fölötte és alatta 3–3 halvány kontextus-sor (az átirat sorai idő szerint,
+// címke nélkül, soronként az időugrással), alul az időrendi munkalista-csík (a kurzor), felül a
+// haladás („N / M”), a kör száma, a magától eldőlt sorok számlálója („Mind megerősítem”), a
+// „+K új vár” számláló és az auto-lejátszás kapcsolója. A munkalista a ReviewQueueModel (vm.reviewQueue) fagyasztott
 // pillanatképe: a háttér-elemzés sosem rendezi át, csak a „+K új vár” számláló nő.
 //
 // A kártya helye (y) és mérete sosem változik: ami alá kerül (szennyezett mag sávja, az S5
@@ -14,12 +15,16 @@ import QtQuick.Templates as T
 // a nézet saját görgetéssel fér el.
 //
 // Billentyűk (fizikai hely szerint, TranscriptKeys; a TranscriptTab hívja a handleKey()-t):
-//   Enter alapértelmezés (javaslat, különben Jó így; „már eldőlt” soron: megerősítem) · J Jó így ·
-//   1–9 a sín n. beszélője · Shift+… nem minta · 0 nem azonosítható · M Más… (a sor panelje) ·
-//   → Később · ← előző sor · ↓ / ↑ következő / előző sor · Szóköz lejátszás / szünet ·
+//   Enter alapértelmezés (a javasolt név; ha nincs javaslat: a név marad) · J a név marad ·
+//   1–9 a sín n. beszélője · + új beszélő · Shift+… nem minta · 0 nem azonosítható · M Más… (a
+//   sor panelje) · → Később · ← / ↑ előző tétel · ↓ következő tétel (bármilyen állapotú) ·
+//   B / Shift+B (a Tab) következő / előző NYITOTT · Ctrl+Enter Mind megerősítem (a magától
+//   eldőlt sorok, egy lépés) · Szóköz lejátszás / szünet ·
 //   R újra az elejéről · , / . az előző / következő kontextus-sor · Esc a Javítás nézet ugyanazon
 //   a soron · Ctrl+Z (a Tab Shortcutja) visszavonás: a fókusz a visszavont sorra ugrik.
-//   Kör-zárásnál: Enter következő kör · → később hagyottak · K kész.
+//   Kör-zárásnál: Enter következő kör · → később hagyottak · K kész · Ctrl+Enter Mind megerősítem.
+// A magától eldőlt (alreadyDecided) sorokat a kurzor átugorja (S7): nem nyitottak; ↑ / ← / ↓ a
+// csíkon rájuk is lép, ott a kártya normálisan mutatja (Enter = a név marad).
 //   Nyitó-javaslatnál (S5): Enter Mind az N → Y (✗ szúrópróba után: Egyenként) · Shift+Enter nem
 //   minta · E Egyenként · → Később · 1–3 szúrópróba lejátszása · Shift+1–3 ✓ / ✗ váltás · Szóköz
 //   szünet · Esc Javítás. Mintázat-ajánlatnál (a fókusz-kártya billentyűi közben is élnek):
@@ -91,7 +96,8 @@ Item {
     readonly property int topPad: 12
     readonly property int ctxHeight: 30
     readonly property int ctxGap: 4
-    readonly property int cardY: topPad + 2 * ctxHeight + 2 * ctxGap + 4
+    readonly property int ctxCount: 3                // kontextus-sor a kártya fölött és alatt
+    readonly property int cardY: topPad + ctxCount * ctxHeight + ctxCount * ctxGap + 4
     readonly property real cardWidth: Math.max(320, Math.min(flick.width - 48, 1040))
 
     // A haladás: a kör sorai közül a már nem nyitottak (a „később” sorok nem számítanak késznek).
@@ -129,7 +135,17 @@ Item {
         onTriggered: root.ensureStarted()
     }
     function refreshContext() {
-        root.contextLines = currentUtterance !== "" ? vm.contextLines(currentUtterance, 2, 2) : []
+        root.contextLines = currentUtterance !== "" ? vm.contextLines(currentUtterance, ctxCount, ctxCount) : []
+    }
+    // Időugrás (ms) a sor és a kártya felőli szomszédja között (fölötte: a következő sorig, alatta:
+    // az előző sortól); -1: nincs sor.
+    function gapFor(offset) {
+        const line = contextAt(offset)
+        if (line.utteranceId === undefined) return -1
+        const near = offset < 0 ? (offset === -1 ? { startMs: cardStartMs } : contextAt(offset + 1))
+                                : (offset === 1 ? { endMs: cardEndMs } : contextAt(offset - 1))
+        if (offset < 0) return near.startMs === undefined ? -1 : Math.max(0, near.startMs - line.endMs)
+        return near.endMs === undefined ? -1 : Math.max(0, line.startMs - near.endMs)
     }
     function refreshSummary() {
         root.summary = root.summaryShown ? queue.roundSummary() : ({})
@@ -219,6 +235,17 @@ Item {
         if (key === (queue.current.speakerKey || "")) return confirmCurrent(noisy)
         return decide(id => vm.moveUtteranceToSpeaker(id, key, noisy === true))
     }
+    // „+”: a sor egy új, névtelen beszélőhöz.
+    function moveToNew(noisy) {
+        if (currentUtterance === "") return false
+        return decide(id => vm.moveUtteranceToNewParticipant(id, noisy === true))
+    }
+    // „Mind megerősítem” (Ctrl+Enter): a magától eldőlt sorok (≥ 1,5 s) egy visszavonási lépésben.
+    function confirmSettled() {
+        const n = vm.confirmSettled()
+        tab.forceActiveFocus()
+        return n > 0
+    }
     function later() {
         const ok = queue.later()
         tab.forceActiveFocus()
@@ -230,14 +257,14 @@ Item {
         tab.openLinePopoverFor(currentUtterance, card.otherAnchor)
         return true
     }
-    // B / Shift+B, a térkép-dokk sor-léptetője: következő nyitott / előző sor.
+    // B / Shift+B, a térkép-dokk sor-léptetője: következő / előző NYITOTT sor.
     // A nézetbe lépéskor (még nincs munkalista) a kurzor az első nyitott soron marad.
     function step(direction) {
         if (!queue.active) {
             ensureStarted()
             return queue.currentIndex >= 0
         }
-        return direction < 0 ? queue.previous() : queue.advance()
+        return direction < 0 ? queue.retreat() : queue.advance()
     }
     // Esc / „Kész”: vissza a Javítás nézetbe, ugyanazon a soron.
     function openFix() {
@@ -409,6 +436,12 @@ Item {
     // A TranscriptTab Keys.onPressed-je hívja (k = TranscriptKeys.decode(event)); igaz: kezelve.
     function handleKey(k, event) {
         if (!queue.active) return false
+        // Ctrl+Enter: Mind megerősítem (fókuszban és a kör-zárásnál).
+        if (k.name === "Enter" && k.ctrl && !k.alt && !k.meta && !k.shift
+                && (root.phase === "focus" || root.phase === "summary")) {
+            confirmSettled()
+            return true
+        }
         if (root.phase === "summary") {
             if (k.plain && !k.shift && k.name === "Enter") { if ((summary.incoming || 0) + (summary.later || 0) > 0) nextRound(); return true }
             if (k.plain && !k.shift && k.name === "Right") { if ((summary.later || 0) > 0) laterRound(); return true }
@@ -439,6 +472,8 @@ Item {
             if (event.key === Qt.Key_N && !k.shift) { offerNo(); return true }
             if (event.key === Qt.Key_L && !k.shift) { toggleOfferList(); return true }
         }
+        // „+” (a számsor „Új beszélő…” chipje; a magyar kiosztáson a Shift+3 a számsoré marad).
+        if (k.name === "" && event.key === Qt.Key_Plus) { moveToNew(false); return true }
         switch (k.name) {
         case "Enter": acceptDefault(k.shift); return true
         case "J": confirmCurrent(k.shift); return true
@@ -535,6 +570,43 @@ Item {
                 }
             }
             Item { Layout.fillWidth: true }
+            // A magától eldőlt sorok (a kurzor átugorja): „N magától eldőlt · Mind megerősítem”.
+            Row {
+                objectName: "reviewFocusSettledBar"
+                visible: root.queue.alreadyDecidedCount > 0
+                spacing: 8
+                Row {
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 5
+                    TIcon {
+                        anchors.verticalCenter: parent.verticalCenter
+                        name: "check"
+                        size: 14
+                        strokeWidth: 2.2
+                        color: Theme.success
+                    }
+                    TLabel {
+                        objectName: "reviewFocusSettledCount"
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: qsTr("%n magától eldőlt", "", root.queue.alreadyDecidedCount)
+                        font.pixelSize: Theme.fontSmall
+                    }
+                }
+                ReviewFocusKeyButton {
+                    objectName: "reviewFocusConfirmSettled"
+                    anchors.verticalCenter: parent.verticalCenter
+                    implicitHeight: 28
+                    keyText: "Ctrl+Enter"
+                    text: qsTr("Mind megerősítem")
+                    font.pixelSize: Theme.fontSmall
+                    enabled: root.queue.confirmableCount > 0
+                    toolTipText: root.queue.confirmableCount > 0
+                                 ? qsTr("%n sor megerősítése egy lépésben (minta lesz); a rövid (1,5 mp alatti) sorokhoz nem nyúl", "", root.queue.confirmableCount)
+                                 : qsTr("A magától eldőlt sorok mind rövidek (1,5 mp alatt): nem lennének minta")
+                    onClicked: root.confirmSettled()
+                }
+                TDivider { vertical: true; height: 20; anchors.verticalCenter: parent.verticalCenter }
+            }
             TLabel { text: qsTr("haladás"); muted: true; font.pixelSize: Theme.fontCaption }
             TProgressBar {
                 objectName: "reviewFocusProgressBar"
@@ -644,12 +716,13 @@ Item {
                 width: root.cardWidth
                 spacing: root.ctxGap
                 Repeater {
-                    model: [-2, -1]
+                    model: [-3, -2, -1]
                     delegate: ReviewFocusContextRow {
                         required property int modelData
                         objectName: "reviewFocusContext"
                         width: upper.width
                         line: root.contextAt(modelData)
+                        gapMs: { void root.contextLines; return root.gapFor(modelData) }
                         playingNow: root.playerPlaying && line.startMs !== undefined
                                     && root.positionMs >= line.startMs && root.positionMs < line.endMs
                         onPlayRequested: root.playContext(modelData)
@@ -675,6 +748,7 @@ Item {
                 onOtherClicked: root.fixCurrent()
                 onLaterClicked: root.later()
                 onLaneClicked: lane => root.moveToLane(lane, root.tab.shiftHeld)
+                onNewSpeakerClicked: root.moveToNew(root.tab.shiftHeld)
                 onPlayClicked: {
                     root.togglePlay()
                     root.tab.forceActiveFocus()
@@ -719,12 +793,13 @@ Item {
                     visible: active && !!item
                 }
                 Repeater {
-                    model: offerSlot.visible ? [] : [1, 2]
+                    model: offerSlot.visible ? [] : [1, 2, 3]
                     delegate: ReviewFocusContextRow {
                         required property int modelData
                         objectName: "reviewFocusContext"
                         width: lower.width
                         line: root.contextAt(modelData)
+                        gapMs: { void root.contextLines; return root.gapFor(modelData) }
                         playingNow: root.playerPlaying && line.startMs !== undefined
                                     && root.positionMs >= line.startMs && root.positionMs < line.endMs
                         onPlayRequested: root.playContext(modelData)
@@ -742,6 +817,7 @@ Item {
                 onNextClicked: root.nextRound()
                 onLaterClicked: root.laterRound()
                 onDoneClicked: root.openFix()
+                onConfirmSettledClicked: root.confirmSettled()
             }
         }
     }

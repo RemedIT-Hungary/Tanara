@@ -2307,7 +2307,7 @@ private slots:
                                   "contaminatedCore", "speakerWhy", "newPersonSimilar", "newPersonTag",
                                   "imentWarning", "imentLog", "shiftPreview", "ignoredRows", "sampleFilter",
                                   "reviewFocus", "reviewFocusDecided", "reviewFocusIncoming", "reviewFocusSummary",
-                                  "reviewFocusAlreadyDecided"})
+                                  "reviewFocusAlreadyDecided", "reviewFocusSkipped"})
             QTest::addRow("v3-%s", state) << QString() << QString::fromLatin1(state);
     }
     void statesLoadWithoutWarnings()
