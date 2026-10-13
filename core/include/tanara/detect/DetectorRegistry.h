@@ -1,13 +1,11 @@
 #pragma once
 //
-// Meeting-detektor registry. A figyelő ezen keresztül old fel és hoz létre
-// detektort id alapján — nincs hardkódolt `new LinuxCaptureDetector`. Új platform:
-// 1 descriptor + 1 factory + 1 registerDetector() hívás (a platform #if alatt).
-// A ProviderRegistry mintáját tükrözi. Headless (core); NEM linkel Qt Widgetset.
+// Meeting-detector registry. The watcher resolves and creates a detector by id through it; there is no
+// hard-coded `new LinuxCaptureDetector`. A new platform: 1 descriptor + 1 factory + 1 registerDetector()
+// call (under the platform #if). It mirrors the ProviderRegistry pattern. Headless (core); does NOT link Qt Widgets.
 //
-// A detektorok NEM QObject-ek (szinkron poll) → a factory parent nélküli, és a
-// create()/createBest() a hívó tulajdonába adja a példányt (unique_ptr ajánlott).
-//
+// Detectors are NOT QObjects (synchronous poll), so the factory has no parent and create()/createBest()
+// hand ownership of the instance to the caller (a unique_ptr is recommended).
 #include "tanara/detect/DetectorDescriptor.h"
 
 #include <QHash>
@@ -30,20 +28,20 @@ public:
     void registerDetector(const DetectorDescriptor& desc, Factory factory);
     QVector<DetectorDescriptor> all() const;
     bool has(const QString& id) const;
-    DetectorDescriptor descriptor(const QString& id) const;   // üres descriptor, ha ismeretlen
-    IMeetingDetector* create(const QString& id) const;        // nullptr, ha ismeretlen; a hívó törli
+    DetectorDescriptor descriptor(const QString& id) const;   // an empty descriptor if unknown
+    IMeetingDetector* create(const QString& id) const;        // nullptr if unknown; the caller deletes
 
-    // Az első ELÉRHETŐ (isAvailable()) detektor létrehozása — a figyelő ezt hívja,
-    // ha a settings nem rögzít konkrét detectorId-t. nullptr, ha egy sem elérhető.
+    // Creates the first AVAILABLE (isAvailable()) detector; the watcher calls this if the settings do not
+    // pin a concrete detectorId. nullptr if none is available.
     IMeetingDetector* createBest() const;
 
 private:
     QHash<QString, QPair<DetectorDescriptor, Factory>> m_map;
 };
 
-// A beépített (platform-specifikus) detektorok egyszeri, EXPLICIT regisztrációja.
-// NEM static-init-időben. Idempotens: többszöri hívás biztonságos. A figyelő és a
-// felvevő --record mód hívja; az AppController NEM (a frugális határ megőrzése).
+// One-time, EXPLICIT registration of the built-in (platform-specific) detectors. NOT at static-init
+// time. Idempotent: calling it repeatedly is safe. The watcher and the recorder's --record mode call it;
+// AppController does NOT (to preserve the lean boundary).
 void registerBuiltinDetectors();
 
 } // namespace tanara

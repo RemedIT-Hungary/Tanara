@@ -16,10 +16,10 @@ constexpr int kMaxEntries = 200;
 struct MeetingUndoService::Impl {
     struct Entry {
         Source  source = Source::Participants;
-        quint64 serial = 0;              // a forrás lépés-sorszáma (saját lépésnél: saját számláló)
+        quint64 serial = 0;              // the source step's serial (for an own step: our own counter)
         QString text;
-        std::function<void()> undo;      // csak saját lépésnél
-        quint64 linkedEditor = 0;        // az elnyelt szerkesztő-lépés sorszáma (0: nincs)
+        std::function<void()> undo;      // only for an own step
+        quint64 linkedEditor = 0;        // serial of the absorbed editor step (0: none)
     };
 
     MeetingUndoService* q = nullptr;
@@ -27,9 +27,9 @@ struct MeetingUndoService::Impl {
     QPointer<SpeakerEditor> editor;
     QPointer<TagService> tags;
     QVector<QMetaObject::Connection> editorConns, tagConns;
-    QVector<Entry> entries;              // időrendben (a legfrissebb a végén)
-    QSet<quint64> ignoredEditor;         // a csatoláskor már meglévő szerkesztő-lépések
-    QSet<quint64> ignoredTags;           // a csatoláskor meglévő / nem ide tartozó címke-lépések
+    QVector<Entry> entries;              // in time order (the most recent last)
+    QSet<quint64> ignoredEditor;         // editor steps that already existed at attach time
+    QSet<quint64> ignoredTags;           // tag steps that existed at attach time / do not belong here
     quint64 nextOwn = 0;
 
     QVector<quint64> serialsOf(Source s) const {
@@ -44,7 +44,7 @@ struct MeetingUndoService::Impl {
         }
         return s == Source::Speakers ? ignoredEditor.contains(serial) : ignoredTags.contains(serial);
     }
-    // A forrás vermének és a bejegyzéseknek az összefésülése. true, ha változott.
+    // Merging the source's stack and the entries. true if changed.
     bool reconcile(Source s) {
         const QVector<quint64> serials = serialsOf(s);
         const QSet<quint64> present(serials.cbegin(), serials.cend());
@@ -80,8 +80,8 @@ struct MeetingUndoService::Impl {
     void reconcileAndNotify(Source s) {
         if (reconcile(s)) emit q->changed();
     }
-    // A legfrissebb visszavonható bejegyzés indexe (-1: nincs). A címke-lépés csak akkor, ha a
-    // TagService tetején van; a szerkesztő-lépés csak akkor, ha a szerkesztő tetején van.
+    // Index of the most recent undoable entry (-1: none). A tag step only if it is on top of TagService; an
+    // editor step only if it is on top of the editor.
     int latestUsable() const {
         const QVector<quint64> ed = serialsOf(Source::Speakers);
         const QVector<quint64> tg = serialsOf(Source::Tags);
@@ -104,7 +104,7 @@ struct MeetingUndoService::Impl {
                 entries.removeAt(i);
                 changed = true;
             } else if (entries.at(i).linkedEditor) {
-                entries[i].linkedEditor = 0;   // a szerkesztő-része már nem vonható vissza
+                entries[i].linkedEditor = 0;   // its editor part can no longer be undone
             }
         }
         if (changed) emit q->changed();
@@ -169,7 +169,7 @@ void MeetingUndoService::attachTagService(TagService* tags)
 
 void MeetingUndoService::pushStep(const QString& text, std::function<void()> undo, quint64 absorbEditorSerial)
 {
-    // A szerkesztő jele (undoStateChanged) a művelet közben már bejegyezhette a lépését.
+    // The editor's signal (undoStateChanged) may already have registered its step during the operation.
     d->reconcile(Source::Speakers);
     Impl::Entry e;
     e.source = Source::Participants;

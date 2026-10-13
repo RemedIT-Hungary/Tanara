@@ -1,20 +1,19 @@
 #pragma once
 //
-// SpeakerEditor — EGY megnyitott meeting beszélő-szerkesztő munkamenete (K4 átirat-szerkesztő
-// backendje). UI-független QObject: feloldott olvasó-modell (megszólalások + beszélők),
-// műveletek (mind PONTOSAN egy visszavonási lépés, azonnal perzisztálva), undo/redo,
-// hang-alapú bizonytalanság + „hasonló sorok" javaslat, kézi hanglenyomat, és az
-// összefoglaló elavult-jelzője.
+// SpeakerEditor: the speaker-editor session of ONE open meeting (backend of the transcript
+// editor). UI-independent QObject: a resolved read model (utterances + speakers),
+// operations (each EXACTLY one undo step, persisted immediately), undo/redo,
+// voice-based uncertainty + a "similar lines" suggestion, a manual voiceprint, and the
+// summary's stale flag.
 //
-// Elvek (a termékgazdával egyeztetve):
-//  - Az átsorolás egész megszólalásra szól; soron belüli vágás nincs.
-//  - A nyers diarizáció érintetlen; a javítás overlay (transcript.speakers.json).
-//  - A kézi átsorolás NEM tanít hanglenyomatot — az csak kifejezett műveletre készül.
-//  - A beszélő-változás az összefoglalót elavultnak jelöli; magától sosem generálódik újra.
+// Principles:
+//  - Reassignment applies to a whole utterance; there is no cutting within a line.
+//  - The raw diarization is untouched; corrections live in an overlay (transcript.speakers.json).
+//  - Manual reassignment does NOT train a voiceprint; that happens only on an explicit action.
+//  - A speaker change marks the summary stale; it never regenerates by itself.
 //
-// Példányt jellemzően az AppController::speakerEditor(meetingId) ad; tesztben közvetlenül,
-// explicit store-okkal is létrehozható.
-//
+// An instance is normally provided by AppController::speakerEditor(meetingId); tests can
+// also create one directly with explicit stores.
 #include "tanara/edit/CandidateRanker.h"
 #include "tanara/edit/ReviewGroups.h"
 #include "tanara/edit/SpeakerEditTypes.h"
@@ -36,345 +35,344 @@ class VoiceprintStore;
 class SpeakerEditor : public QObject {
     Q_OBJECT
 public:
-    // people / voiceprints lehet nullptr (ekkor a személy-lista / lenyomat-műveletek kimaradnak).
+    // people / voiceprints may be nullptr (the person-list / voiceprint operations are then skipped).
     SpeakerEditor(MeetingStore* store, PeopleStore* people, VoiceprintStore* voiceprints,
                   const QString& meetingId, QObject* parent = nullptr);
     ~SpeakerEditor() override;
 
     QString meetingId() const;
-    bool hasTranscript() const;     // van-e transcript.segments.json (különben minden üres)
+    bool hasTranscript() const;     // whether transcript.segments.json exists (otherwise everything is empty)
 
-    // A felhasználó saját neve (EditorSpeaker::isSelf jelöléséhez).
+    // The user's own name (to mark EditorSpeaker::isSelf).
     void setUserSpeakerName(const QString& name);
-    // A megszólalás-embedder gyára. Nélküle nincs bizonytalanság / javaslat / kézi lenyomat —
-    // minden más működik (kíméletes leépülés modell vagy hang hiányában).
+    // Factory of the utterance embedder. Without it there is no uncertainty / suggestion /
+    // manual voiceprint; everything else works (graceful degradation without a model or audio).
     void setEmbedderFactory(UtteranceEmbedderFactory factory);
-    // A használt beszélő-modellek (engedélyezett ÉS elérhető VoiceModelRegistry id-k; az
-    // AppController adja). Alap: {"campplus"}. Az elemzés soronként a modellek fúziós vektorával
-    // dolgozik (fusion::fuse); amelyik sorhoz nincs minden modellre vektor, az kimarad. A kézi
-    // lenyomat modellenként külön Voiceprint-et ad. Változáskor a bizonytalan-jelzők frissülnek;
-    // a hiányzó vektorokat a következő startEmbedding() számolja ki.
+    // The speaker models in use (enabled AND available VoiceModelRegistry ids; provided by
+    // AppController). Default: {"campplus"}. The analysis works per line with the models'
+    // fused vector (fusion::fuse); a line lacking a vector for some model is skipped. A manual
+    // voiceprint yields a separate Voiceprint per model. On change the uncertainty flags
+    // refresh; missing vectors are computed by the next startEmbedding().
     void setVoiceModelIds(const QStringList& ids);
     QStringList voiceModelIds() const;
 
-    // ---- olvasó-modell ----------------------------------------------------
+    // ---- read model ----------------------------------------------------
     int utteranceCount() const;
-    QVector<EditorUtterance> utterances() const;            // időrendben
+    QVector<EditorUtterance> utterances() const;            // in time order
     EditorUtterance utteranceAt(int index) const;
-    EditorUtterance utterance(const QString& id) const;     // ismeretlen id → index == -1
+    EditorUtterance utterance(const QString& id) const;     // unknown id -> index == -1
     int indexOf(const QString& id) const;
 
-    // A meeting beszélői colorIndex szerint (első megjelenés sorrendje; a kézzel felvettek
-    // a végén). Az üres, eltávolított vagy összevont nyers címkék nem szerepelnek.
+    // The meeting's speakers by colorIndex (order of first appearance; manually added ones
+    // last). Empty, removed or merged raw labels are not listed.
     QVector<EditorSpeaker> speakers() const;
     EditorSpeaker speaker(const QString& key) const;
-    // Egy személy becenevei (a személy-tárból) — a választók becenévre is találnak.
-    QStringList personAliases(const QString& personName) const;        // ismeretlen kulcs → üres key
+    // A person's nicknames (from the person store), so the pickers match nicknames too.
+    QStringList personAliases(const QString& personName) const;        // unknown key = empty key
 
     int uncertainCount() const;
     QStringList uncertainUtteranceIds() const;
 
-    // ---- műveletek (mindegyik egy undo-lépés; false / üres = nem történt semmi) ----
-    // Sorok áthelyezése a meeting egy meglévő beszélőjéhez. A már ott lévő sorok kimaradnak.
-    // noisy: „→ Y, nem minta" — a sor egyben „egymásra beszéltek" jelzést kap (nem hangminta),
-    // UGYANABBAN a lépésben; ilyenkor „hasonló sorok" javaslat és eltérő-minta jelzés sincs.
-    // noisy=false: a sor zajos-jelzése érintetlen (a régi viselkedés), és mintának számít →
-    // lastSampleDeviation() frissül. Az áthelyezés a „nem azonosítható" jelzést is törli.
+    // ---- operations (each is one undo step; false / empty = nothing happened) ----
+    // Moves lines to an existing speaker of the meeting. Lines already there are skipped.
+    // noisy: "-> Y, not a sample": the line also gets the "talked over each other" flag (not a
+    // voice sample) in the SAME step; then there is no "similar lines" suggestion or
+    // deviating-sample flag either. noisy=false: the line's noisy flag is untouched (the old
+    // behavior) and it counts as a sample -> lastSampleDeviation() updates. The move also clears
+    // the "unidentifiable" flag.
     bool moveUtterances(const QStringList& utteranceIds, const QString& speakerKey, bool noisy = false);
-    // …egy személyhez név szerint: ha már beszélője a meetingnek, hozzá; különben új
-    // résztvevő jön létre (ismert VAGY vadonatúj személy — utóbbi a névlistába is bekerül).
-    // Vissza: a cél-beszélő kulcsa. noisy: mint fent.
+    // ...to a person by name: if already a speaker of the meeting, to that one; otherwise a new
+    // participant is created (a known OR brand-new person; the latter also enters the name list).
+    // Returns the target speaker's key. noisy: as above.
     QString moveUtterancesToPerson(const QStringList& utteranceIds, const QString& personName,
                                    bool noisy = false);
-    // …egy új NÉVTELEN résztvevőhöz („Új beszélő N"). Vissza: az új beszélő kulcsa. noisy: mint fent.
+    // ...to a new ANONYMOUS participant ("New speaker N"). Returns the new speaker's key. noisy: as above.
     QString moveUtterancesToNewParticipant(const QStringList& utteranceIds, bool noisy = false);
 
-    // A teljes beszélő másik személyhez kerül (minden sora). Ha a személy már beszélője a
-    // meetingnek, a kettő összevonódik. fixVoiceprints: „téves felismerés" — a meeting
-    // mintái kikerülnek a KORÁBBI személy hanglenyomatából és a választotthoz adódnak
-    // (az undo ezt is visszacsinálja).
+    // The whole speaker goes to another person (all its lines). If the person is already a
+    // speaker of the meeting, the two merge. fixVoiceprints: "wrong recognition": the meeting's
+    // samples leave the PREVIOUS person's voiceprint and are added to the chosen one
+    // (undo reverts this too).
     bool reassignSpeaker(const QString& speakerKey, const QString& personName,
                          bool fixVoiceprints = false);
-    // A beszélő visszaállítása névtelenre. fixVoiceprints: a meeting mintái kikerülnek a
-    // korábbi személy lenyomatából.
+    // Resets the speaker to anonymous. fixVoiceprints: the meeting's samples leave the
+    // previous person's voiceprint.
     bool revertSpeakerToAnonymous(const QString& speakerKey, bool fixVoiceprints = false);
-    // Több kötés EGY visszavonási lépésben (a „Ki volt ott?" jóváhagyása, „Csak én beszéltem",
-    // „Ő nem volt ott"). Egész nyers beszélőnél: személyhez kötés (ha a személy már beszélő,
-    // összevonás) vagy névtelenre állítás; sorlistánál a sorok a személyhez (szükség esetén új
-    // résztvevőhöz) kerülnek. A nem látható / változatlan kötés kimarad. false: nem változott semmi.
+    // Several bindings in ONE undo step (approving "Who was there?", "Only I spoke",
+    // "They were not there"). For a whole raw speaker: bind to a person (merge if the person is
+    // already a speaker) or set anonymous; for a line list the lines go to the person (to a new
+    // participant if needed). An invisible / unchanged binding is skipped. false: nothing changed.
     bool applyBindings(const QVector<SpeakerBinding>& bindings, const QString& undoText);
-    // fromKey minden sora intoKey-hez kerül; fromKey megszűnik.
+    // All lines of fromKey go to intoKey; fromKey ceases to exist.
     bool mergeSpeakers(const QString& fromKey, const QString& intoKey);
 
-    // Résztvevő felvétele (még sor nélkül). Üres név → névtelen. Ha a személy már beszélő,
-    // annak a kulcsát adja vissza (lépés nélkül).
+    // Adds a participant (no lines yet). Empty name = anonymous. If the person is already a
+    // speaker, returns that key (no step).
     QString addParticipant(const QString& personName = QString());
-    // Üres beszélő (0 sor) eltávolítása. Nem üresnél false.
+    // Removes an empty speaker (0 lines). false for a non-empty one.
     bool removeParticipant(const QString& speakerKey);
 
-    // „Jó így": a sorok megerősítése (többé nem bizonytalanok). asNoisy: „Jó így, de ne
-    // használd mintának" — a sor egyben „egymásra beszéltek" jelzést is kap (nem hangminta).
-    // A megerősítés a „nem azonosítható" jelzést is törli. asNoisy=false → lastSampleDeviation() frissül.
+    // "Fine as is": confirms the lines (no longer uncertain). asNoisy: "Fine, but do not
+    // use as a sample": the line also gets the "talked over each other" flag (not a voice sample).
+    // Confirming also clears the "unidentifiable" flag. asNoisy=false -> lastSampleDeviation() updates.
     bool confirmUtterances(const QStringList& utteranceIds, bool asNoisy = false);
-    // Az „egymásra beszéltek" jelzés kézi beállítása (true: ne legyen hangminta; false:
-    // mintának használható, akkor is, ha az átfedés-szabály zajosnak tartaná).
+    // Manually sets the "talked over each other" flag (true: no voice sample; false: usable as
+    // a sample even if the overlap rule would call it noisy).
     bool setUtterancesNoisy(const QStringList& utteranceIds, bool noisy);
-    // „Nem azonosítható" (ignored=true) / annak visszavonása (false): EGY undo-lépés. A sor neve
-    // (és a javított / megerősített jelzője) marad; az újraellenőrzés jelzése törlődik. Az ignored
-    // sor a hang-elemzés minden ágából kimarad (bizonytalanság, újraellenőrzés, páros átnézés,
-    // „hasonló sorok", Átnézendő csoportok, sáv-oldal tanulás, jelölt-profilok, hanglenyomat), és
-    // sosem bizonytalan; a beszédidőben és az átiratban a nevén számít. false: nem változott semmi.
+    // "Unidentifiable" (ignored=true) / its undo (false): ONE undo step. The line's name (and its
+    // corrected / confirmed flag) stays; the recheck flag is cleared. An ignored line is left out of
+    // every branch of the voice analysis (uncertainty, recheck, pair review, "similar lines", review
+    // groups, side learning, candidate profiles, voiceprint) and is never uncertain; it still counts
+    // under its name in speaking time and the transcript. false: nothing changed.
     bool setUtterancesIgnored(const QStringList& utteranceIds, bool ignored);
 
-    // ---- minta-tanítás átláthatósága (Átnézendő közös alap) ----------------
-    // Az utolsó mintát adó döntés (confirmUtterances asNoisy=false, moveUtterances* noisy=false)
-    // eredménye: a döntött sorok közül a cél-beszélő magjától legtávolabbi (lásd SampleDeviation;
-    // küszöb: speakeredit::kSampleDeviationFit). Érvénytelen (isValid()==false), ha nem volt mérhető
-    // (nincs beágyazás, a beszélőnek nincs elég más sora), vagy azóta más szerkesztés / visszavonás
-    // történt. Változáskor sampleDeviationChanged.
+    // ---- transparency of sample training (shared base of "To review") ----------------
+    // Result of the last sample-giving decision (confirmUtterances asNoisy=false, moveUtterances*
+    // noisy=false): of the decided lines, the one farthest from the target speaker's core (see
+    // SampleDeviation; threshold: speakeredit::kSampleDeviationFit). Invalid (isValid()==false) if
+    // it could not be measured (no embedding, the speaker has too few other lines), or another
+    // edit / undo happened since. Emits sampleDeviationChanged on change.
     SampleDeviation lastSampleDeviation() const;
-    // Minta-mérő: a látható beszélők (speakers() sorrendjében) minta-sorai (lásd SpeakerSampleStats).
-    // Változáskor sampleStatsChanged.
+    // Sample meter: the sample lines of the visible speakers (in speakers() order; see SpeakerSampleStats).
+    // Emits sampleStatsChanged on change.
     QVector<SpeakerSampleStats> sampleStats() const;
 
-    // ---- újraellenőrzés a megerősített sorok alapján ----------------------
-    // A megerősített / javított sorokból épített „megbízható" hang-centroidokhoz méri a többi
-    // sort (SpeakerAnalysis: computeUncertainRechecked). A kétségesnek talált sorok
-    // bizonytalanok maradnak (az overlay-ben perzisztálva), amíg javítás vagy „Jó így" nem
-    // jön; egy újabb újraellenőrzés lecseréli a halmazt. Egy undo-lépés (ha változott valami).
-    // Az elnevezett beszélőknél a személy tárolt hanglenyomatai is beszállnak a referenciába
-    // (SpeakerAnalysis: SpeakerPrior): az ebben a megbeszélésben készültek helyi bizonyítékként,
-    // a korábbiak kisebb, vágott súllyal (a megerősített sorok mindig dominálnak).
-    // Egy beszélő referenciájának összetétele (a visszajelzés szövegéhez).
+    // ---- recheck based on confirmed lines ----------------------
+    // Measures the other lines against the "reliable" voice centroids built from the confirmed /
+    // corrected lines (SpeakerAnalysis: computeUncertainRechecked). Lines found doubtful stay
+    // uncertain (persisted in the overlay) until a correction or "Fine as is" comes; a newer
+    // recheck replaces the set. One undo step (if anything changed).
+    // For named speakers the person's stored voiceprints join the reference (SpeakerAnalysis:
+    // SpeakerPrior): those made in this meeting as local evidence, earlier ones with a smaller,
+    // capped weight (confirmed lines always dominate).
+    // Composition of one speaker's reference (for the feedback text).
     struct SpeakerReference {
         QString speakerKey;
-        QString name;               // megjelenített név
-        int  lines = 0;             // megerősített / javított sorok (fallbacknél: az összes sora)
-        int  localPrints = 0;       // ebben a megbeszélésben készült lenyomatok
-        int  priorPrints = 0;       // korábbi (más megbeszélésből való) lenyomatok
-        bool priorOnly = false;     // nincs helyi mag: csak a korábbi lenyomatok
-        bool fallback = false;      // se mag, se lenyomat: a beszélő összes sora
-        bool priorCapped = false;   // a korábbi lenyomatok súlyát a plafon vágta
+        QString name;               // displayed name
+        int  lines = 0;             // confirmed / corrected lines (for a fallback: all its lines)
+        int  localPrints = 0;       // voiceprints made in this meeting
+        int  priorPrints = 0;       // earlier voiceprints (from other meetings)
+        bool priorOnly = false;     // no local core: only earlier voiceprints
+        bool fallback = false;      // neither core nor voiceprint: all of the speaker's lines
+        bool priorCapped = false;   // the weight of earlier voiceprints was cut by the cap
         bool usesPrints() const { return localPrints + priorPrints > 0; }
     };
-    // „Referencia: Dompa 3 sor + 1 itteni lenyomat + 2 korábbi lenyomat, Gábor 5 sor" — csak a
-    // magos / lenyomatos beszélők; üres, ha egyik referencia sem használt lenyomatot (akkor
-    // nincs újdonság a megszokotthoz képest).
+    // "Reference: Alice 3 lines + 1 voiceprint from here + 2 earlier voiceprints, Bob 5 lines": only
+    // speakers with a core / voiceprints; empty if no reference used a voiceprint (then there is
+    // nothing new compared to the usual).
     static QString referenceSummary(const QVector<SpeakerReference>& refs);
-    // Két nagyon hasonló hangú beszélő (a megerősített magjaik cosine-ja ≥ ranking::kSimilarWarn) —
-    // ugyanaz az érték, amit a „Miért ő?" „Figyelem:" sora mutat (ranking::similarityWarnings).
+    // Two speakers with very similar voices (cosine of their confirmed cores >= ranking::kSimilarWarn);
+    // the same value shown by the "Why them?" "Warning:" line (ranking::similarityWarnings).
     struct SimilarVoices {
         QString keyA, nameA;
         QString keyB, nameB;
         double  similarity = 0.0;
     };
     struct RecheckResult {
-        int flagged = 0;                    // ennyi sort jelölt kétségesnek
-        int speakersWithConfirmedCore = 0;  // ennyi beszélőnél épült centroid a zárolt soraiból
-        int confirmedLines = 0;             // ennyi zárolt sor alkotta ezeket a magokat
-        bool ran = false;                   // lefutott-e (canRecheck volt-e)
-        QVector<SpeakerReference> references;   // beszélőnként a referencia (a magos / lenyomatosak)
-        // A visszajelzéshez: mire támaszkodott az újraellenőrzés.
-        int localPrints = 0;                // a referenciába beszállt tárolt minták: erről a megbeszélésről
-        int priorPrints = 0;                //   … és korábbiak (más megbeszélésből)
-        QStringList models;                 // a használt hangmodellek megjelenítendő neve (ábécérendben id szerint)
-        QVector<SimilarVoices> similar;     // nagyon hasonló hangú beszélőpárok (csökkenő hasonlóság)
+        int flagged = 0;                    // this many lines flagged doubtful
+        int speakersWithConfirmedCore = 0;  // for this many speakers a centroid was built from their locked lines
+        int confirmedLines = 0;             // this many locked lines formed those cores
+        bool ran = false;                   // whether it ran (whether canRecheck held)
+        QVector<SpeakerReference> references;   // per-speaker reference (those with a core / voiceprints)
+        // For feedback: what the recheck relied on.
+        int localPrints = 0;                // stored samples in the reference: from this meeting
+        int priorPrints = 0;                //   ... and earlier ones (from other meetings)
+        QStringList models;                 // display names of the voice models in use (alphabetical by id)
+        QVector<SimilarVoices> similar;     // speaker pairs with very similar voices (descending similarity)
         int storedPrints() const { return localPrints + priorPrints; }
         QString referenceSummary() const { return SpeakerEditor::referenceSummary(references); }
-        // „Alapja: 23 megerősített sor · 5 tárolt minta (ebből 2 erről a megbeszélésről) · modell: CAM++."
+        // "Based on: 23 confirmed lines, 5 stored samples (2 from this meeting), model: CAM++."
         QString basisSummary() const { return SpeakerEditor::recheckBasisSummary(*this); }
-        // „Figyelem: Fehér Gábor és Varga Árpád hangja nagyon hasonló (0,92) …" — üres, ha nincs ilyen pár.
+        // "Warning: Gabor White and Arpad Varga sound very similar (0.92) ..."; empty if there is no such pair.
         QString similarityNote() const { return SpeakerEditor::similarVoicesNote(similar); }
     };
     static QString recheckBasisSummary(const RecheckResult& r);
     static QString similarVoicesNote(const QVector<SimilarVoices>& similar);
     RecheckResult recheckFromConfirmed();
-    // Futtatható-e: van embedding, nem fut a hang-elemzés, és legalább egy beszélőnek van
-    // legalább kMinSpeakerLines megerősített / javított (embeddelt) sora.
+    // Whether it can run: an embedding exists, the voice analysis is not running, and at least one
+    // speaker has at least kMinSpeakerLines confirmed / corrected (embedded) lines.
     bool canRecheck() const;
-    // Ha nem futtatható: miért (magyar mondat a felhasználónak); különben üres.
+    // If it cannot run: why (a sentence for the user); otherwise empty.
     QString recheckBlocker() const;
 
-    // ---- páronkénti átnézés („Átnézés A és B között") ---------------------
-    // Csak A és B sorai, csak kettejük hangja alapján (SpeakerAnalysis: computePairRecheck):
-    // a referencia a megerősített / javított sorokból (+ a tárolt lenyomatokból, lásd fent)
-    // épül; ha kevés a sor és lenyomat sincs, a beszélő összes tiszta sorából — ezt a
-    // fallbackA/B jelzi. A kétesnek talált sorok bizonytalanok lesznek, a
-    // javaslat (recheckHint) a másik beszélő; ugyanaz a perzisztencia, mint az
-    // újraellenőrzésé (javítás / „Jó így" törli). Az A-n és B-n lévő sorok korábbi
-    // újraellenőrzés-jelzéseit ez lecseréli; más beszélőkéit nem érinti. Egy undo-lépés (ha
-    // változott valami).
+    // ---- pairwise review ("Review between A and B") ---------------------
+    // Only A's and B's lines, based only on their two voices (SpeakerAnalysis: computePairRecheck):
+    // the reference is built from the confirmed / corrected lines (+ the stored voiceprints, see
+    // above); with few lines and no voiceprint, from all the speaker's clean lines; fallbackA/B
+    // signals this. Lines found doubtful become uncertain, the suggestion (recheckHint) is the
+    // other speaker; same persistence as the recheck (a correction / "Fine as is" clears it). It
+    // replaces the earlier recheck flags of lines on A and B; other speakers' are untouched. One
+    // undo step (if anything changed).
     struct PairRecheckResult {
         int    flagged = 0;
         int    refLinesA = 0;
         int    refLinesB = 0;
         bool   fallbackA = false;
         bool   fallbackB = false;
-        double centroidSimilarity = qQNaN();    // a két referencia hangjának cosine-ja
-        SpeakerReference refA;                  // a két referencia összetétele
+        double centroidSimilarity = qQNaN();    // cosine of the two references' voices
+        SpeakerReference refA;                  // composition of the two references
         SpeakerReference refB;
         bool   ran = false;
-        QString blocker;                        // ha nem futott: miért (magyar mondat)
+        QString blocker;                        // if it did not run: why (a user-facing sentence)
         QString referenceSummary() const { return SpeakerEditor::referenceSummary({refA, refB}); }
     };
     PairRecheckResult recheckPair(const QString& speakerKeyA, const QString& speakerKeyB);
-    // Ha most nem futtatható: miért; különben üres.
+    // If it cannot run now: why; otherwise empty.
     QString pairRecheckBlocker(const QString& speakerKeyA, const QString& speakerKeyB) const;
 
-    // Az ajánlat (lásd PairRecheckOffer). A suggestionChanged jellel együtt változik, és a
-    // következő szerkesztés / visszavonás eldobja.
+    // The offer (see PairRecheckOffer). Changes together with the suggestionChanged signal and
+    // is dropped by the next edit / undo.
     bool hasPairOffer() const;
     PairRecheckOffer pairOffer() const;
-    // „Most nem": ezt a párt ebben a munkamenetben nem ajánlja fel újra.
+    // "Not now": this pair is not offered again in this session.
     void declinePairOffer();
     void dismissPairOffer();
 
-    // ---- javaslat („Még N sor hasonlít erre a hangra") --------------------
+    // ---- suggestion ("N more lines sound like this voice") --------------------
     bool hasSuggestion() const;
     SpeakerSuggestion suggestion() const;
-    bool acceptSuggestion();        // tömeges áthelyezés, egy undo-lépés
+    bool acceptSuggestion();        // bulk move, one undo step
     void dismissSuggestion();
 
-    // ---- undo / redo (a megnyitott munkamenetre, memóriában) --------------
+    // ---- undo / redo (for the open session, in memory) --------------------
     bool canUndo() const;
     bool canRedo() const;
-    QString undoText() const;       // a legfelső lépés rövid leírása
+    QString undoText() const;       // short description of the top step
     QString redoText() const;
-    // A közös visszavonás (edit/MeetingUndo.h) adapteréhez: a visszavonható lépések sorszámai
-    // alulról felfelé. Egy lépés sorszáma a folyamat életére egyedi, és redo után ugyanaz.
+    // For the adapter of the shared undo (edit/MeetingUndo.h): the sequence numbers of the undoable
+    // steps, bottom to top. A step's number is unique for the process life and the same after redo.
     QVector<quint64> undoSerials() const;
 
-    // ---- megszólalás-embeddingek (háttérszál) -----------------------------
-    bool embeddingsSupported() const;   // van gyár (a modell/hang megléte futáskor derül ki)
-    bool embeddingsComplete() const;    // minden elég hosszú sorra megvan (vagy megpróbáltuk)
+    // ---- utterance embeddings (background thread) -----------------------------
+    bool embeddingsSupported() const;   // a factory exists (whether the model/audio exists is known at run time)
+    bool embeddingsComplete() const;    // available for every sufficiently long line (or attempted)
     bool isEmbeddingRunning() const;
-    QString embeddingError() const;     // az utolsó futás hibája (üres = nincs)
+    QString embeddingError() const;     // error of the last run (empty = none)
 
-    // ---- kézi hanglenyomat ------------------------------------------------
+    // ---- manual voiceprint ------------------------------------------------
     VoiceprintMaterial voiceprintMaterial(const QString& speakerKey) const;
-    // Lenyomat a beszélő ITTENI soraiból (hosszabb sorok, ~15–20 mp). Kevés anyagnál nem
-    // készít gyenge lenyomatot: ok=false + missingMs. Nem undo-lépés (a printId-vel törölhető).
+    // A voiceprint from the speaker's lines HERE (longer lines, ~15-20 s). With too little
+    // material it does not make a weak voiceprint: ok=false + missingMs. Not an undo step (deletable by printId).
     VoiceprintResult createVoiceprint(const QString& speakerKey);
-    // Lenyomat KIFEJEZETTEN megadott sorokból (a sor felugrójának „minta ebből a sorból”
-    // gombja): a sor a beszélőé, nem bizonytalan, nem „egymásra beszéltek”, legalább 3 mp.
-    // Egyetlen hosszú, tiszta sor is elég (a 15 mp-es minimum itt nem él). Nem undo-lépés.
+    // A voiceprint from EXPLICITLY given lines (the line popup's "sample from this line"
+    // button): the line belongs to the speaker, is not uncertain, not "talked over each other",
+    // at least 3 s. A single long, clean line is enough (the 15 s minimum does not apply). Not an undo step.
     VoiceprintResult createVoiceprintFromLines(const QString& speakerKey, const QStringList& utteranceIds);
-    // A kézi készítés visszavonása: PONTOSAN ez a lenyomat törlődik (a createVoiceprint
-    // printId-je). false, ha már nincs ilyen. Ez sem undo-lépés.
+    // Undo of the manual creation: EXACTLY this voiceprint is deleted (the printId of
+    // createVoiceprint). false if it no longer exists. Not an undo step either.
     bool removeVoiceprint(const QString& printId);
 
-    // ---- kézi sáv-beosztás („Melyik sávon beszél?", v3 E3) ------------------
-    // A beszélő sávjai (Track::id); üres = nincs megkötés. A személy oldalának egyetlen igazsága,
-    // ha meg van adva (SideAnalysis); a megerősített sorokból tanult people.json-alapértéket is
-    // ez adja.
+    // ---- manual track assignment ("Which track do they speak on?") ------------------
+    // The speaker's tracks (Track::id); empty = no constraint. When given, the single truth for the
+    // person's side (SideAnalysis); it also provides the people.json default learned from confirmed lines.
     QStringList trackAssignment(const QString& speakerKey) const;
-    // Egy undo-lépés. A meeting sávjai közt nem szereplő id-k kimaradnak; üres lista = a
-    // megkötés törlése. false: nem változott / ismeretlen beszélő.
+    // One undo step. Ids not among the meeting's tracks are dropped; an empty list = clears the
+    // constraint. false: nothing changed / unknown speaker.
     bool setTrackAssignment(const QString& speakerKey, const QStringList& trackIds);
 
-    // ---- bizonyíték, jelöltek, Átnézendő csoportok (v3 E1–E4) ----------------
-    // A sáv-aktivitás forrása (a háttérszálon hívódik!). Alap: a tracks.activity.bin cache; ha
-    // nincs, és van mic- és loopback-sáv is, kiszámolja (ffmpeg) és elmenti.
+    // ---- evidence, candidates, "To review" groups ----------------
+    // Source of the track activity (called on a background thread!). Default: the tracks.activity.bin
+    // cache; if absent and there are both a mic and a loopback track, computes it (ffmpeg) and saves it.
     using ActivityProvider = std::function<MeetingActivity(const Meeting&)>;
     void setActivityProvider(ActivityProvider provider);
-    // A személy KÉZI címkéi (TagService::tagsOfPerson) — csak a gyors „+ #Címke" ajánlathoz;
-    // a jelölt-rangsor bizonyítékát a setTagEvidenceProvider adja. A fő szálon hívódik.
+    // The person's MANUAL tags (TagService::tagsOfPerson), only for the quick "+ #Tag" offer;
+    // the candidate ranking's evidence comes from setTagEvidenceProvider. Called on the main thread.
     using PersonTagsFn = std::function<QStringList(const QString& personName)>;
     void setPersonTagsProvider(PersonTagsFn fn);
-    // A megbeszélés címkéi (Meeting::tagIds, betöltéskor) és egy személy címkéi a fenti
-    // forrásból (üres, ha nincs forrás) — a gyors „+ #Címke" ajánlathoz.
+    // The meeting's tags (Meeting::tagIds, at load) and a person's tags from the source above
+    // (empty if no source), for the quick "+ #Tag" offer.
     QStringList meetingTagIds() const;
     QStringList personTagIds(const QString& personName) const;
-    // A személy címkéi változtak (pl. gyors „+ #Címke"): a jelöltek / bizonyítékok újraszámolása.
+    // The person's tags changed (e.g. quick "+ #Tag"): recompute the candidates / evidence.
     void notifyPersonTagsChanged();
-    // A címke-bizonyíték (kézi címke + tanult kapcsolat; PersonTagSnapshot::evidence). A fő
-    // szálon hívódik, elemzésenként személyenként egyszer.
+    // The tag evidence (manual tag + learned association; PersonTagSnapshot::evidence). Called
+    // on the main thread, once per person per analysis.
     void setTagEvidenceProvider(TagEvidenceFn fn);
 
-    // A legutóbbi háttér-elemzés csoportjai (reviewGroupsChanged jelzi, ha frissült). Minden
-    // szerkesztés / visszavonás / embedding-futás után magától újraszámolódik.
+    // The groups of the latest background analysis (reviewGroupsChanged signals a refresh). Recomputed
+    // by itself after every edit / undo / embedding run.
     QVector<ReviewGroup> reviewGroups() const;
     bool isReviewRunning() const;
-    // A csoport javaslatának végrehajtása EGY undo-lépésben (ContaminatedCore: szétválasztás).
-    // ShortLines (csak tájékoztató) / ismeretlen id → false.
+    // Carries out the group's suggestion in ONE undo step (ContaminatedCore: split).
+    // ShortLines (informational only) / unknown id -> false.
     bool applyReviewGroup(const QString& groupId);
-    // A beszélő megerősített magjának szétválasztása (ContaminatedCore): a kisebb fél a legjobb
-    // jelölthöz, vagy új névtelen résztvevőhöz kerül. Egy undo-lépés; false, ha a mag nem szennyezett.
+    // Splits the speaker's confirmed core (ContaminatedCore): the smaller half goes to the best
+    // candidate, or to a new anonymous participant. One undo step; false if the core is not contaminated.
     bool splitSpeaker(const QString& speakerKey);
 
-    // Jelöltek egy sorra (a mostani beszélő is szerepel) / egy egész beszélőre (ő maga nem),
-    // pontszám szerint. A legutóbbi elemzés kontextusán számol.
+    // Candidates for one line (the current speaker is included) / for a whole speaker (not itself),
+    // by score. Computed on the latest analysis context.
     QVector<Candidate> lineCandidates(const QString& utteranceId) const;
     QVector<Candidate> speakerCandidates(const QString& speakerKey) const;
-    // „Miért nem X?": a sor mostani beszélője ellen szóló bizonyítékok (fix-linkkel).
+    // "Why not X?": evidence against the line's current speaker (with a fix link).
     QVector<Evidence> whyNot(const QString& utteranceId) const;
-    // „Miért ő?": a beszélő mellett / ellen szóló bizonyítékok.
+    // "Why them?": evidence for / against the speaker.
     QVector<Evidence> speakerEvidence(const QString& speakerKey) const;
-    // A legutóbbi elemzés nagyon hasonló hangú beszélőpárjai (csökkenő hasonlóság szerint).
+    // The latest analysis's pairs of speakers with very similar voices (descending similarity).
     QVector<SimilarVoices> similarVoices() const;
-    // A legutóbbi sáv-oldal elemzés (inaktív, amíg nem futott / nincs két oldal).
+    // The latest side analysis (inactive until it has run / there are no two sides).
     SideReport sideReport() const;
 
-    // ---- összefoglaló-elavultság / újra-átírás ----------------------------
+    // ---- summary staleness / re-transcription ----------------------------
     SummaryStaleInfo summaryStale() const;
     RetranscribeImpact retranscribeImpact() const;
 
-    // A javítások (overlay, meeting.json) azonnal lemezre kerülnek; a transcript.md
-    // újragenerálása viszont rövid késleltetéssel, kötegelve fut (a meeting hosszával nő).
-    // Ez most azonnal kiírja, ha van függő frissítés (kilépés, export, teszt). A destruktor
-    // is meghívja.
+    // Corrections (overlay, meeting.json) go to disk immediately; regenerating transcript.md,
+    // however, runs batched with a short delay (growing with the meeting's length).
+    // This writes it out at once if an update is pending (exit, export, test). The destructor
+    // calls it too.
     void flushPendingWrites();
 
 public slots:
     void undo();
     void redo();
 
-    // Embeddingek számítása a háttérben (a cache-ből hiányzókra). embeddingProgress /
-    // embeddingFinished jelek; a végén a bizonytalan-jelzők frissülnek.
+    // Computes embeddings in the background (for those missing from the cache). embeddingProgress /
+    // embeddingFinished signals; at the end the uncertainty flags refresh.
     void startEmbedding();
     void cancelEmbedding();
 
-    // „Rendben így": az elavult-jelző elengedése újragenerálás nélkül.
+    // "Fine as is": dismisses the stale flag without regenerating.
     void dismissSummaryStale();
-    // Az összefoglaló (újra)elkészült → az elavult-jelző törlődik. (Az AppController hívja.)
+    // The summary was (re)made, so the stale flag is cleared. (Called by AppController.)
     void notifySummaryRegenerated();
 
-    // Külső változás (régi UI átnevezés, auto-azonosítás, személy-átnevezés): a speakerMap
-    // és az overlay újraolvasása a lemezről. Az undo-verem megmarad, ha az overlay nem változott.
+    // External change (old UI rename, auto-identification, person rename): rereads the speakerMap
+    // and the overlay from disk. The undo stack stays if the overlay did not change.
     void refreshFromDisk();
-    // Új átirat készült: teljes újratöltés, az undo-verem és a javaslat eldobva (reloaded jel).
+    // A new transcript was made: full reload, the undo stack and the suggestion dropped (reloaded signal).
     void reloadTranscript();
 
-    // Az Átnézendő csoportok újraszámolása a háttérben (reviewGroupsChanged a végén).
+    // Recomputes the "To review" groups in the background (reviewGroupsChanged at the end).
     void refreshReviewGroups();
 
 signals:
-    // A felsorolt megszólalások adata változott (beszélő / jelzők / bizonytalanság) —
-    // a lista-modell ezekre ad dataChanged-et.
+    // The data of the listed utterances changed (speaker / flags / uncertainty); the list model
+    // emits dataChanged for them.
     void utterancesChanged(QStringList utteranceIds);
-    // A beszélő-lista vagy annak adatai (név, számlálók, lenyomat-jelző) változtak.
+    // The speaker list or its data (name, counters, voiceprint flag) changed.
     void speakersChanged();
     void uncertainCountChanged(int count);
     void undoStateChanged();
-    // Javaslat érkezett vagy megszűnt (hasSuggestion() / suggestion()).
+    // A suggestion arrived or disappeared (hasSuggestion() / suggestion()).
     void suggestionChanged();
     void embeddingRunningChanged(bool running);
     void embeddingProgress(int done, int total);
     void embeddingFinished(bool complete);
     void summaryStaleChanged(bool stale, int correctedSpeakers);
-    // Minden megváltozott (új átirat / külső overlay-változás) → modell-reset.
+    // Everything changed (new transcript / external overlay change): model reset.
     void reloaded();
-    // Lefutott egy újraellenőrzés (a nézet ilyenkor a „Bizonytalan" szűrőre válthat).
+    // A recheck ran (the view may switch to the "Uncertain" filter).
     void recheckFinished(int flagged, int speakersWithConfirmedCore, int confirmedLines);
-    // Elkészült egy háttér-elemzés: reviewGroups(), a jelöltek és a sáv-oldal frissült.
+    // A background analysis finished: reviewGroups(), the candidates and the side analysis refreshed.
     void reviewGroupsChanged();
     void reviewRunningChanged(bool running);
-    // lastSampleDeviation() változott (új jelzés, vagy a régi érvényét vesztette).
+    // lastSampleDeviation() changed (a new flag, or the old one lost its validity).
     void sampleDeviationChanged();
-    // sampleStats() változott.
+    // sampleStats() changed.
     void sampleStatsChanged();
 
-    // Mellékhatások a többi komponens felé (az AppController a saját jeleire fordítja).
+    // Side effects toward the other components (AppController translates them into its own signals).
     void speakerMapChanged(QString meetingId);
     void peopleChanged();
     void voiceprintsChanged();

@@ -9,14 +9,14 @@
 
 namespace tanara {
 
-// A beépített promptok ANGOLUL (nem felhasználói szöveg; a mérés szerint az angol prompt adta
-// a legkevesebb kitalált elemet). A kimenet nyelve a {{LANGUAGE}} helyére kerül (angol
-// nyelvnév, lásd summaryLanguageName). A szövegek nyers literálok (R"PROMPT(…)PROMPT"), hogy
-// a prompt-kiértékelő (tools/prompt-eval) változtatás nélkül ki tudja olvasni őket.
+// The built-in prompts are in ENGLISH (not user-facing text; measurement showed the English prompt
+// produced the fewest invented items). The output language replaces {{LANGUAGE}} (the English language
+// name, see summaryLanguageName). The texts are raw literals (R"PROMPT(...)PROMPT") so the prompt
+// evaluator (tools/prompt-eval) can read them out unchanged.
 namespace {
 
-// Az osztályozási példák (en6): a „megbeszélték” ≠ „eldöntötték”, és a felelős az, aki
-// MEGCSINÁLJA, nem aki kérte — ez a két leggyakoribb megbízhatósági hiba.
+// The classification examples: "discussed" != "decided", and the owner is whoever DOES it, not whoever
+// asked: the two most common reliability errors.
 const char* const kClassifyExamples = R"PROMPT(HOW TO CLASSIFY (the examples are in English only to show the logic; they are not from this meeting)
 - "Anna: Let's move the release to Friday. — Ben: OK, Friday then."  →  decision: the release moves to Friday.
 - "Anna: We could also try the new framework. — Ben: Maybe, let's see."  →  open question: whether to try the new framework. NOT a decision.
@@ -24,7 +24,7 @@ const char* const kClassifyExamples = R"PROMPT(HOW TO CLASSIFY (the examples are
 - "Anna: Ben, can you send me the price by Monday? — Ben: Sure."  →  action item: send the price to Anna, owner Ben (he does it), due Monday. Anna asked, so Anna is NOT the owner.
 - "Ben: I'll get access once the director signs the request."  →  open question: access depends on the director's approval. NOT a decision that access is granted.)PROMPT";
 
-// A memó-jegyzet (TOPICS) formája és szabályai — a „notes” és a „single” közös része.
+// The form and rules of the memo notes (TOPICS): the shared part of "notes" and "single".
 const char* const kTopicsFormat = R"PROMPT(TOPICS
 ### [mm:ss-mm:ss] short title of the subject
 One or two sentences without a dash: the gist of the subject and where it ended up. [t=mm:ss]
@@ -44,20 +44,20 @@ const char* const kTopicsRules = R"PROMPT(- TOPICS is the memo someone reads to 
 const char* const kInput = R"PROMPT(- The transcript was produced by automatic speech recognition: expect misheard words, broken sentences and filler. Speaker labels are mostly right. A label such as "Beszélő 2" means the speaker was not identified.
 %CONTEXT_RULE%)PROMPT";
 
-// A felhasználó megjegyzése megbízható: a benne adott javítás („X helyesen: Y”) a kimenetben is érvényes.
+// The user's note is trustworthy: a correction given in it ("X is correctly Y") also applies in the output.
 const char* const kContextRule = R"PROMPT(- The context notes come from the user and are reliable: when they correct a name or term ("X is really Y"), use the corrected form everywhere in your output.)PROMPT";
 
 const char* const kWriting = R"PROMPT(- Write fluent, correct {{LANGUAGE}}. Do not copy garbled or misheard words from the transcript: restore the intended word from context (and from the glossary when one is given), or leave the detail out when you cannot tell what was meant. Keep product names and technical terms in their original form.)PROMPT";
 
-// Forrás-jelölők a rövid formában (a parser: summary/SummarySources.h). Sima szöveg + jelölő,
-// mert a json_schema helyi modellel megbízhatatlan. %SOURCE_OF% a hívásonkénti forrás.
+// Source markers in the short form (the parser: summary/SummarySources.h). Plain text + marker,
+// because json_schema is unreliable with a local model. %SOURCE_OF% is the per-call source.
 const char* const kSourceMarkers = R"PROMPT(SOURCE MARKERS
 - End every sentence of execSummary, every decision, every open question and every action item "text" with a source marker in square brackets: [t=mm:ss], where mm:ss is %SOURCE_OF%. When a sentence draws on several places, give up to 3 times in one marker: [t=12:30, t=41:05].
 - Put the marker right after the sentence's final punctuation, for example: "The release moves to Friday. [t=12:30]"
 - Copy the time exactly as written in the input; never invent, estimate or round a time. When you cannot tell where a sentence comes from, write it without a marker.
 - In the JSON the markers are the only place for times: do not start a sentence or a list item with a time.)PROMPT";
 
-// Hosszabb megbeszélés: részenkénti jegyzet (map1 + a memó-követelmény).
+// A longer meeting: per-part notes (map1 + the memo requirement).
 const char* const kNotes = R"PROMPT(You take notes on ONE PART of a longer meeting, from a speech-to-text transcript. The notes are used twice: they become the detailed memo of the meeting, and a later step builds the executive summary, decisions, open questions and action items from the notes of all parts. So they must be complete, concrete and factual for this part.
 
 INPUT
@@ -90,7 +90,7 @@ RULES
 %WRITING%
 - Write all notes in {{LANGUAGE}}. The headings TOPICS, DECISIONS, OPEN and ACTIONS stay in English exactly as shown.)PROMPT";
 
-// A részjegyzetek összegzése (red2: „válogass, ne másolj”; a valódi döntés megállapodás).
+// Combining the part notes ("select, do not copy"; a real decision is an agreement).
 const char* const kMerge = R"PROMPT(You write the final meeting minutes from notes. The notes were taken part by part, in order, from a speech-to-text transcript of one meeting. Each part has the sections TOPICS (the subjects and what was said about them), DECISIONS, OPEN and ACTIONS. The reader also gets the TOPICS notes as the detailed memo of the meeting, so your output is the short form of the same meeting and must agree with the notes. The DECISIONS, OPEN and ACTIONS notes are over-inclusive on purpose: your job is to SELECT and merge, not to copy everything.
 
 OUTPUT
@@ -116,7 +116,7 @@ QUALITY RULES
 - Write fluent, correct {{LANGUAGE}}. Every string value is in {{LANGUAGE}}; the JSON keys stay exactly as shown above.
 - The JSON must be complete and valid: escape double quotes inside strings and use no trailing commas.)PROMPT";
 
-// Egy részből álló (rövid) megbeszélés: memó-jegyzet + a rövid forma EGY hívásban (en6 + TOPICS).
+// A one-part (short) meeting: memo notes + the short form in ONE call (en6 + TOPICS).
 const char* const kSingle = R"PROMPT(You write meeting minutes from a speech-to-text transcript in two steps: first the detailed notes of the meeting (the memo), then the short form as one JSON object (executive summary, decisions, open questions, action items). Both describe the same meeting and must agree.
 
 INPUT
@@ -157,7 +157,7 @@ QUALITY RULES
 - Write the notes and every JSON string value in {{LANGUAGE}}. The headings TOPICS and SUMMARY and the JSON keys stay exactly as shown above.
 - The JSON must be complete and valid: escape double quotes inside strings and use no trailing commas.)PROMPT";
 
-// Témánkénti elemzés, 1. kör: téma-kinyerés (`## cím` + összegzés — a parser erre illeszt).
+// Per-topic analysis, pass 1: topic extraction (`## title` + summary; the parser matches on that).
 const char* const kTopic = R"PROMPT(You are an analyst. Identify the SEPARATE TOPICS of the meeting in the speech-to-text transcript (subjects that were actually discussed).
 OUTPUT FORMAT — exactly this and nothing else (no introduction, no JSON, no code fence): each topic starts with a line that begins with `## ` and the short TITLE of the topic, followed by a summary of the topic in 1–2 sentences. Example (in English only to show the form):
 ## Delivery deadlines
@@ -172,7 +172,7 @@ Rules:
 3. Write all text in {{LANGUAGE}}.
 %CONTEXT_RULE%)PROMPT";
 
-// Témánkénti elemzés, 2. kör. A magyar szakaszcímekre illeszt a parser — ezért maradnak magyarul.
+// Per-topic analysis, pass 2. The parser matches the Hungarian section headings, which is why they stay Hungarian.
 const char* const kAnalysis = R"PROMPT(You are a precise note-taker. From the FULL transcript, analyse ONLY the parts about the given TOPIC.
 OUTPUT FORMAT — markdown, exactly like this (no JSON, no code fence):
 First one paragraph that summarises the topic (without a heading). After it — ONLY when there is real content — these sections may follow:
@@ -189,14 +189,14 @@ Rules:
 3. Write all text in {{LANGUAGE}} — but the section headings `## Döntések`, `## Nyitott kérdések` and `## Teendők` stay EXACTLY like this, in Hungarian.
 %CONTEXT_RULE%)PROMPT";
 
-// SZŰK feladat: KIZÁRÓLAG egy rövid vezetői összefoglaló — a teendők összevonását NEM az LLM
-// végzi (azt a kód deduplikálja a per-téma elemzésekből), így a kimenet modellfüggetlenül stabil.
+// A NARROW task: ONLY a short executive summary. Merging the action items is NOT done by the LLM (the
+// code deduplicates them from the per-topic analyses), so the output is stable across models.
 const char* const kReduce = R"PROMPT(You are a precise note-taker. From the per-topic analyses, write ONE global executive summary of the whole conversation in 2–4 sentences.
 Return ONLY this paragraph and nothing else: no heading, no list, no tasks, no decisions, no JSON, no code fence, no explanation, no reasoning. Write it in {{LANGUAGE}}.
 %CONTEXT_RULE%)PROMPT";
 
-// Címkejavaslat az összefoglaló után (LlmTagSuggester). Sima sorok — a json_schema lokális
-// modellel megbízhatatlan. A címkenevek a felhasználó nyelvén maradnak (nem fordítjuk).
+// Tag suggestion after the summary (LlmTagSuggester). Plain lines, since json_schema is unreliable
+// with a local model. Tag names stay in the user's language (not translated).
 const char* const kTags = R"PROMPT(You help the user tag a meeting. Tags are short free-text labels (a client, a project, a product, a recurring topic) that group related meetings. You get the summary of ONE meeting and a numbered list of the user's existing candidate tags; each candidate shows what its meetings were usually about (people, terms, example titles).
 1. Pick the candidate tags that clearly fit this meeting. Prefer fewer, certain picks over many weak ones; pick none if none fits.
 2. Only if an important, recurring subject of the meeting (a client, a project, a product) has no fitting tag yet, propose at most 2 short new tag names (1–3 words, in the language and spelling used in the meeting, no "#"). Never propose a new name that means the same as a candidate.
@@ -224,7 +224,7 @@ QString compose(const char* tmpl, const char* sourceOf = "")
 
 QString promptBuiltin(const QString& id)
 {
-    if (id == QLatin1String("single") || id == QLatin1String("simple"))   // "simple": a régi azonosító
+    if (id == QLatin1String("single") || id == QLatin1String("simple"))   // "simple": the old identifier
         return compose(kSingle, "the time of the transcript paragraph `[mm:ss]` where it was said");
     if (id == QLatin1String("notes"))    return compose(kNotes);
     if (id == QLatin1String("merge"))
@@ -255,7 +255,7 @@ QString readPromptFile(const QString& path)
 QString promptDefault(const QString& id, const QString& metadataDir)
 {
     QString text = readPromptFile(promptFilePath(id, metadataDir));
-    // A rövid megbeszélés egylépéses promptjának régi fájlneve is érvényes (prompts/simple.md).
+    // The old file name of the short meeting's single-step prompt is valid too (prompts/simple.md).
     if (text.isEmpty() && id == QLatin1String("single"))
         text = readPromptFile(promptFilePath(QStringLiteral("simple"), metadataDir));
     return text.isEmpty() ? promptBuiltin(id) : text;
@@ -265,8 +265,8 @@ QString summaryLanguageName(const QString& language)
 {
     const QString lang = language.trimmed();
     if (lang.isEmpty()) return QStringLiteral("Hungarian");
-    // A gyakori nyelvek magyar / natív / kódnevei → angol név (az angol promptot így követik
-    // a modellek megbízhatóan). Minden más változatlanul megy tovább.
+    // The Hungarian / native / code names of common languages -> the English name (models follow the
+    // English prompt reliably this way). Anything else passes through unchanged.
     static const QHash<QString, QString> names{
         {QStringLiteral("magyar"), QStringLiteral("Hungarian")},
         {QStringLiteral("magyarul"), QStringLiteral("Hungarian")},
@@ -317,8 +317,8 @@ QString languageReminder(const QString& language)
 {
     const QString user = language.trimmed().isEmpty() ? QStringLiteral("magyar") : language.trimmed();
     const QString name = summaryLanguageName(user);
-    // Ha a felhasználó a saját nyelvén adta meg (pl. „magyar”), a natív alak is szerepel —
-    // a modell így akkor is érti, ha az angol név félreérthető volna.
+    // If the user gave the language in their own language (e.g. the Hungarian word), the native form is
+    // included too, so the model understands it even if the English name could be ambiguous.
     const QString both = name.compare(user, Qt::CaseInsensitive) == 0
         ? name : QStringLiteral("%1 (%2)").arg(name, user);
     return QStringLiteral(
@@ -340,8 +340,8 @@ QString applySummaryLanguage(QString prompt, const QString& language)
         return prompt;
     }
 
-    // Placeholder nélküli (saját/fájl) prompt: magyar célnyelvnél nem nyúlunk hozzá
-    // (visszafelé kompatibilis), más célnyelvnél direktívát fűzünk a végére.
+    // A prompt without placeholders (own/file): for a Hungarian target we do not touch it (backward
+    // compatible), for another target language we append a directive.
     if (summaryLanguageName(lang) == QLatin1String("Hungarian"))
         return prompt;
     return prompt + QStringLiteral(
@@ -364,7 +364,7 @@ PromptOutputFormat promptOutputFormat(const QString& id)
 {
     PromptOutputFormat f;
     if (id == QLatin1String("single") || id == QLatin1String("simple")) {
-        f.kind = QStringLiteral("json");   // jegyzet-fej + JSON; a Beállítások JSON-ként mutatja
+        f.kind = QStringLiteral("json");   // notes header + JSON; Settings shows it as JSON
         f.summary = QStringLiteral("TOPICS (memó) + SUMMARY: execSummary, decisions[], openQuestions[], actionItems[]");
         f.body = QStringLiteral(
             "TOPICS\n"
@@ -409,7 +409,7 @@ PromptOutputFormat promptOutputFormat(const QString& id)
             "ACTIONS\n"
             "- [mm:ss] <teendő> — <felelős vagy ?> — <határidő>  |  - none");
     } else if (id == QLatin1String("merge")) {
-        // A vezetői összefoglaló a VÉGÉN: a (magyar) listák után a Gemma is a célnyelven írja.
+        // The executive summary at the END: after the (Hungarian) lists Gemma also writes in the target language.
         f.kind = QStringLiteral("json");
         f.summary = QStringLiteral("decisions[], openQuestions[], actionItems[], execSummary");
         f.body = QStringLiteral(

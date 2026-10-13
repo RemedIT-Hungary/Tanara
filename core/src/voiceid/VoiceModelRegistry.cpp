@@ -9,27 +9,27 @@ namespace tanara {
 
 QVector<VoiceModelSpec> VoiceModelRegistry::builtin()
 {
-    // A letöltés a sherpa-onnx "speaker-recongition-models" (sic) release-éből: ott a modellek
-    // egyetlen ONNX-fájlként, [B,T,80] fbank bemenettel érhetők el. Méret: a release asset-ek.
+    // The download is from the sherpa-onnx "speaker-recongition-models" (sic) release: the models are
+    // available there as a single ONNX file with [B,T,80] fbank input. Size: the release assets.
     const QString sherpa = QStringLiteral(
         "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/");
 
-    // CAM++ (3D-Speaker). Licenc: a ModelScope API "License" mezője (Apache License 2.0).
+    // CAM++ (3D-Speaker). License: the ModelScope API "License" field (Apache License 2.0).
     VoiceModelSpec campplus;
     campplus.id = defaultModelId();
     campplus.displayName = QStringLiteral("CAM++ (3D-Speaker)");
     campplus.fileName = QStringLiteral("campplus_sv_zh_en_16k.onnx");
-    campplus.features = EmbedderConfig();   // a VoiceEmbedder alapértelmezése erre a modellre hangolt
+    campplus.features = EmbedderConfig();   // VoiceEmbedder's defaults are tuned for this model
     campplus.dim = 192;
     campplus.license = QStringLiteral("Apache-2.0");
     campplus.sourceUrl = QStringLiteral(
         "https://modelscope.cn/models/iic/speech_campplus_sv_zh_en_16k-common_advanced");
     campplus.downloadUrl = sherpa + QStringLiteral("3dspeaker_speech_campplus_sv_zh_en_16k-common_advanced.onnx");
-    // A meglévő campplus_sv_zh_en_16k.onnx bájtra ugyanekkora, mint ez a release asset.
+    // The existing campplus_sv_zh_en_16k.onnx is byte-for-byte the same size as this release asset.
     campplus.sizeBytes = 28281164;
 
-    // ERes2NetV2 (3D-Speaker): ugyanaz a front-end, mint a CAM++-é (3D-Speaker Kaldi.fbank, 80 bin,
-    // dither 0, mean-normalizálás). Licenc: ModelScope API (Apache License 2.0).
+    // ERes2NetV2 (3D-Speaker): the same front end as CAM++'s (3D-Speaker Kaldi.fbank, 80 bins, dither 0,
+    // mean normalization). License: ModelScope API (Apache License 2.0).
     VoiceModelSpec eres;
     eres.id = QStringLiteral("eres2netv2");
     eres.displayName = QStringLiteral("ERes2NetV2 (3D-Speaker)");
@@ -41,19 +41,19 @@ QVector<VoiceModelSpec> VoiceModelRegistry::builtin()
     eres.downloadUrl = sherpa + eres.fileName;
     eres.sizeBytes = 71441526;
 
-    // WeSpeaker ResNet34-LM (VoxCeleb). Licenc: a HF modellkártya cardData-ja (cc-by-4.0).
-    // Front-end — a tanítás igazsága a wespeaker/bin/infer_onnx.py compute_fbank():
-    //   waveform * (1 << 15)                         → waveScale 32768 (int16-skála)
+    // WeSpeaker ResNet34-LM (VoxCeleb). License: the HF model card's cardData (cc-by-4.0).
+    // Front end: the ground truth of training is compute_fbank() in wespeaker/bin/infer_onnx.py:
+    //   waveform * (1 << 15)                         -> waveScale 32768 (int16 scale)
     //   kaldi.fbank(num_mel_bins=80, frame_length=25, frame_shift=10, dither=0.0,
     //               sample_frequency=16000, window_type='hamming', use_energy=False)
-    //                                                → numMelBins 80, dither 0, windowType "hamming";
-    //     a többi a torchaudio-kaldi alapértéke (snip_edges=True, low_freq 20, high_freq 0 = Nyquist,
-    //     preemph 0.97, remove_dc_offset) — ezek a kaldi-native-fbank alapértékei is; az
-    //     energy_floor csak use_energy mellett számít.
-    //   mat - mean(mat, dim=0)  ("CMN, without CVN")  → subtractMean true.
-    // A sherpa-onnx (features.h alap: povey ablak, snip_edges=false; wespeaker-modellen
-    // normalize_samples=0 → ×32768, feature_normalize_type üres → nincs CMN) ettől eltér; mi a
-    // tanítási pipeline-t követjük.
+    //                                                -> numMelBins 80, dither 0, windowType "hamming";
+    //     the rest are torchaudio-kaldi defaults (snip_edges=True, low_freq 20, high_freq 0 = Nyquist,
+    //     preemph 0.97, remove_dc_offset), which are also kaldi-native-fbank's defaults; energy_floor
+    //     matters only with use_energy.
+    //   mat - mean(mat, dim=0)  ("CMN, without CVN")  -> subtractMean true.
+    // sherpa-onnx (features.h default: povey window, snip_edges=false; on the wespeaker model
+    // normalize_samples=0 -> x32768, feature_normalize_type empty -> no CMN) differs from this; we follow
+    // the training pipeline.
     VoiceModelSpec wespeaker;
     wespeaker.id = QStringLiteral("wespeaker-resnet34-lm");
     wespeaker.displayName = QStringLiteral("WeSpeaker ResNet34-LM (VoxCeleb)");
@@ -120,8 +120,8 @@ QVector<VoiceModelSpec> VoiceModelRegistry::active(const QStringList& enabledIds
                                                    const QString& appDir)
 {
     QVector<VoiceModelSpec> out = enabledAvailable(enabledIds, metaDir, appDir);
-    // Tartalék, amíg a WeSpeaker nincs letöltve: nincs használható engedélyezett modell, de a
-    // CAM++ megvan (a Windows-csomagban benne van) → az fut.
+    // Fallback until WeSpeaker is downloaded: there is no usable enabled model, but CAM++ is present (it
+    // is in the Windows package), so that one runs.
     if (out.isEmpty()) {
         const auto cam = spec(defaultModelId());
         if (cam && QFileInfo::exists(resolvePath(*cam, metaDir, appDir))) out.append(*cam);

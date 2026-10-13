@@ -1,10 +1,9 @@
 #pragma once
 //
-// VoiceModelRegistry — a beépített beszélő-embedding modellek leírói (id, fájlnév, fbank-
-// paraméterek, licenc, forrás) és a modellfájl feloldása. Egyetlen feloldási szabály:
-// <metaDir>/models/<fileName>, különben <appDir>/models/<fileName>.
-// Az engedélyezett modellek listája a settings.json "voiceModels" kulcsa (SettingsManager).
-//
+// VoiceModelRegistry: descriptors of the built-in speaker-embedding models (id, file name, fbank
+// parameters, license, source) and the resolution of the model file. A single resolution rule:
+// <metaDir>/models/<fileName>, otherwise <appDir>/models/<fileName>.
+// The list of enabled models is the "voiceModels" key of settings.json (SettingsManager).
 #include "tanara/voiceid/VoiceEmbedder.h"
 
 #include <QString>
@@ -16,49 +15,49 @@
 namespace tanara {
 
 struct VoiceModelSpec {
-    QString id;               // stabil azonosító, pl. "campplus" (kisbetű, kötőjel)
+    QString id;               // stable id, e.g. "campplus" (lowercase, hyphen)
     QString displayName;      // "CAM++ (3D-Speaker)"
-    QString fileName;         // ONNX fájlnév a models/ mappában
-    EmbedderConfig features;  // fbank paraméterek ehhez a modellhez
-    int     dim = 0;          // várt dimenzió (0 = ismeretlen az első inferenciáig)
+    QString fileName;         // ONNX file name in the models/ folder
+    EmbedderConfig features;  // fbank parameters for this model
+    int     dim = 0;          // expected dimension (0 = unknown until the first inference)
     QString license;          // "Apache-2.0" stb.
-    QString sourceUrl;        // a modell (és licence) leírólapja
-    QString downloadUrl;      // közvetlen ONNX-letöltés (sherpa-onnx release asset)
-    qint64  sizeBytes = 0;    // a letöltött fájl várt mérete (0 = ismeretlen)
+    QString sourceUrl;        // the model's (and its license's) description page
+    QString downloadUrl;      // direct ONNX download (a sherpa-onnx release asset)
+    qint64  sizeBytes = 0;    // expected size of the downloaded file (0 = unknown)
 };
 
 class VoiceModelRegistry {
 public:
-    // A „régi” egymodelles utak modell-id-ja (a modell-mező nélküli lenyomatok és cache-ek ehhez
-    // tartoznak: "campplus"). NEM az ajánlott modell — ahhoz lásd: recommendedModelId().
+    // Model id of the "old" single-model paths (voiceprints and caches without a model field belong to this:
+    // "campplus"). NOT the recommended model; for that see recommendedModelId().
     static QString defaultModelId() { return QStringLiteral("campplus"); }
-    // Az ajánlott (és alapból bekapcsolt) modell: WeSpeaker ResNet34-LM. Négy valódi megbeszélésen
-    // ez választotta szét legjobban a beszélőket.
+    // The recommended (and by default enabled) model: WeSpeaker ResNet34-LM. On four real meetings it
+    // separated the speakers best.
     static QString recommendedModelId() { return QStringLiteral("wespeaker-resnet34-lm"); }
-    // Az alapértelmezett engedélyezett lista (ha a settings.json-ban nincs "voiceModels" kulcs).
+    // The default enabled list (if settings.json has no "voiceModels" key).
     static QStringList defaultEnabledIds() { return {recommendedModelId()}; }
 
-    // Beépített leírók, id szerint ábécérendben: "campplus", "eres2netv2", "wespeaker-resnet34-lm".
+    // Built-in descriptors, alphabetical by id: "campplus", "eres2netv2", "wespeaker-resnet34-lm".
     static QVector<VoiceModelSpec> builtin();
     static std::optional<VoiceModelSpec> spec(const QString& id);
 
-    // <metaDir>/models/<fileName>, ha létezik; különben <appDir>/models/<fileName>, ha létezik;
-    // különben az első (a „várt hely”, hibaüzenethez / letöltési célnak). appDir üres is lehet.
+    // <metaDir>/models/<fileName> if it exists; otherwise <appDir>/models/<fileName> if it exists;
+    // otherwise the first (the "expected location", for an error message / download target). appDir may be empty.
     static QString resolvePath(const VoiceModelSpec& spec, const QString& metaDir, const QString& appDir);
-    // A beépített modellek közül azok, amelyeknek a fájlja megvan.
+    // Of the built-in models, those whose file exists.
     static QVector<VoiceModelSpec> available(const QString& metaDir, const QString& appDir);
 
-    // A használható modellek: engedélyezett ∩ elérhető (fájl megvan), id szerint ábécérendben.
-    // Az ismeretlen / hiányzó fájlú engedélyezett id-k kimaradnak.
-    // Tartalék, amíg a WeSpeaker nincs letöltve: ha az engedélyezett ∩ elérhető üres, de a
-    // "campplus" elérhető (pl. a csomagban van), az egyedül ["campplus"] lesz.
+    // The usable models: enabled intersect available (file exists), alphabetical by id.
+    // Enabled ids that are unknown / have a missing file are dropped.
+    // Fallback until WeSpeaker is downloaded: if enabled intersect available is empty but "campplus" is
+    // available (e.g. it is bundled), it alone becomes ["campplus"].
     static QVector<VoiceModelSpec> active(const QStringList& enabledIds, const QString& metaDir,
                                           const QString& appDir);
-    // Igaz pontosan akkor, ha az active() a CAM++ tartalékra váltott (a felület ezt jelzi).
+    // True exactly when active() switched to the CAM++ fallback (the UI signals this).
     static bool isFallbackActive(const QStringList& enabledIds, const QString& metaDir,
                                  const QString& appDir);
 
-    // Id-lista determinisztikus alakja: trimmelt, üresek nélkül, egyedi, ábécérendben.
+    // Deterministic form of an id list: trimmed, without empties, unique, alphabetical.
     static QStringList normalizeIds(const QStringList& ids);
 };
 

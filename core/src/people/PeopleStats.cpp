@@ -65,11 +65,11 @@ MeetingPeople scanMeetingPeople(const Meeting& m)
         ov = lines.isEmpty() ? speakeredit::loadOverlay(m.folder)
                              : speakeredit::loadOverlayFor(m.folder, lines);
 
-    // Jelenlét: ugyanaz a szabály, mint a személyválasztó számlálójánál (listPeople):
-    // speakerMap-érték, fix beszélőjű sáv neve, kézzel felvett (nevesített) résztvevő.
+    // Presence: the same rule as the person picker's counter (listPeople): a speakerMap value, the name
+    // of a fixed-speaker track, a manually added (named) participant.
     for (auto it = m.speakerMap.constBegin(); it != m.speakerMap.constEnd(); ++it)
         addKey(ensure(it.value()), it.key());
-    QHash<QString, QString> fixedLabels;   // kisbetűsített sáv-címke → címke
+    QHash<QString, QString> fixedLabels;   // lowercased track label -> label
     for (const Track& t : m.tracks) {
         if (!t.fixedSpeaker || t.speakerLabel.trimmed().isEmpty()) continue;
         fixedLabels.insert(fold(t.speakerLabel), t.speakerLabel.trimmed());
@@ -78,12 +78,12 @@ MeetingPeople scanMeetingPeople(const Meeting& m)
     for (const OverlayParticipant& p : ov.participants)
         addKey(ensure(p.person), p.key);
 
-    // Beszédidő: a sorok FELOLDOTT beszélője szerint (felülírás → összevonás → speakerMap).
+    // Speaking time: by the lines' RESOLVED speaker (override -> merge -> speakerMap).
     for (const TranscriptLine& l : lines) {
         const QString key = speakeredit::resolveSpeakerKey(ov, l);
         QString person = speakeredit::speakerPerson(ov, m.speakerMap, key);
         if (person.isEmpty()) {
-            // Régi, sávonkénti átirat: a nyers címke maga a (fix) beszélő neve.
+            // Old, per-track transcript: the raw label itself is the (fixed) speaker's name.
             const auto fixed = fixedLabels.constFind(fold(key));
             if (fixed != fixedLabels.constEnd()) person = fixed.value();
             else if (m.speakerMap.value(key) == key) person = key;
@@ -143,7 +143,7 @@ PeopleStats::Result PeopleStats::compute(const QVector<Job>& jobs, const QHash<Q
         r.ids << job.id;
         const Stamp stamp = stampOf(job.folder);
         const auto it = known.constFind(job.id);
-        if (it != known.constEnd() && it.value() == stamp) continue;   // nem változott
+        if (it != known.constEnd() && it.value() == stamp) continue;   // unchanged
         Scanned s;
         s.id = job.id;
         s.stamp = stamp;
@@ -152,7 +152,7 @@ PeopleStats::Result PeopleStats::compute(const QVector<Job>& jobs, const QHash<Q
             const QJsonDocument doc = QJsonDocument::fromJson(f.readAll());
             if (doc.isObject()) {
                 Meeting m = meetingFromJson(doc.object());
-                m.folder = job.folder;   // az index mappája az érvényes (áthelyezett könyvtár)
+                m.folder = job.folder;   // the index's folder is the valid one (a moved library)
                 if (m.id.isEmpty()) m.id = job.id;
                 s.people = scanMeetingPeople(m);
                 s.people.meetingId = job.id;
@@ -191,7 +191,7 @@ void PeopleStats::refresh()
     const QHash<QString, Stamp> known = m_stamps;
     const int generation = m_generation;
     const auto alive = m_alive;
-    // A szál csak a saját másolataival dolgozik; az eredményt a fő szál veszi át.
+    // The thread works only with its own copies; the main thread takes over the result.
     QThreadPool::globalInstance()->start([this, list, known, generation, alive] {
         Result r = compute(list, known);
         r.generation = generation;
@@ -199,7 +199,7 @@ void PeopleStats::refresh()
             QMetaObject::invokeMethod(app, [this, r, alive] {
                 if (!alive->load()) return;
                 m_running = false;
-                // Közben szinkron frissítés futott: ez az eredmény régebbi állapotot tükrözhet.
+                // A synchronous refresh ran meanwhile: this result may reflect an older state.
                 if (r.generation == m_generation) apply(r);
                 else m_again = true;
                 emit busyChanged();
@@ -221,7 +221,7 @@ void PeopleStats::apply(const Result& result)
 {
     tanara::PerfScope perfScope("PeopleStats::apply", 20);
     bool any = !m_ready;
-    // A megszűnt megbeszélések ki a gyorsítótárból.
+    // Vanished meetings out of the cache.
     const QSet<QString> ids(result.ids.cbegin(), result.ids.cend());
     for (auto it = m_cache.begin(); it != m_cache.end();) {
         if (ids.contains(it.key())) { ++it; continue; }

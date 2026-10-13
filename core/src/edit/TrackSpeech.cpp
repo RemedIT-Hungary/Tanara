@@ -40,7 +40,7 @@ SpeechCheckResult applySpeechRatios(Meeting& m, const MeetingActivity& activity)
     QHash<QString, double> ratioByLeader;
     for (const TrackActivity& ta : activity.tracks) ratioByLeader.insert(ta.trackId, speechRatio(ta));
 
-    // Sávonként a logikai sáv (vezető szakasz) aránya.
+    // Per track the logical track's (leading span's) ratio.
     const QVector<tracknames::SegmentInfo> seg = tracknames::segments(m.tracks);
     QVector<double> ratio(m.tracks.size(), -1.0);
     for (int i = 0; i < m.tracks.size(); ++i) {
@@ -48,7 +48,7 @@ SpeechCheckResult applySpeechRatios(Meeting& m, const MeetingActivity& activity)
         ratio[i] = ratioByLeader.value(m.tracks.at(lead).id, -1.0);
     }
 
-    // Kiesne-e minden bevont sáv? Akkor senki sem esik ki.
+    // Would every included track drop out? Then nobody drops out.
     bool anySpeech = false;
     for (int i = 0; i < m.tracks.size(); ++i) {
         const Track& t = m.tracks.at(i);

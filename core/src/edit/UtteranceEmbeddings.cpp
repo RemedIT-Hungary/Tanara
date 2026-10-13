@@ -18,12 +18,11 @@ namespace tanara {
 namespace {
 
 constexpr quint32 kCacheMagic = 0x54454d42;   // "TEMB"
-constexpr quint32 kCacheVersion = 2;   // v2: modellenkénti vektorok (v1 → eldobva)
+constexpr quint32 kCacheVersion = 2;   // v2: per-model vectors (v1 dropped)
 constexpr int kSampleRate = 16000;
 
-// Egy meeting hangjára több modell: a teljes hang 16 kHz mono s16-ként a memóriában
-// (~115 MB / óra, EGY ffmpeg-futás), a megszólalások ebből szeletelődnek, és minden betöltött
-// modell ugyanebből a szeletből számol.
+// Several models over a meeting's audio: the whole audio as 16 kHz mono s16 in memory (~115 MB / hour,
+// ONE ffmpeg run), the utterances are sliced from it, and every loaded model computes from the same slice.
 class VoiceUtteranceEmbedder final : public IUtteranceEmbedder {
 public:
     VoiceUtteranceEmbedder(VoiceEmbedderSet set, const QString& ffmpegPath)
@@ -48,7 +47,7 @@ public:
             m_error = QStringLiteral("Az ffmpeg nem indítható.");
             return false;
         }
-        // Folyamatosan olvassuk a kimenetet (egy órás hang ~115 MB — ne a pipe-pufferben álljon).
+        // We read the output continuously (an hour of audio is ~115 MB: it must not sit in the pipe buffer).
         while (proc.state() != QProcess::NotRunning) {
             proc.waitForReadyRead(200);
             m_pcm += proc.readAllStandardOutput();
@@ -77,7 +76,7 @@ public:
     QString lastError() const override { return m_error; }
 
 private:
-    // A modellek betöltése (egyszer). Legalább egynek sikerülnie kell.
+    // Loading the models (once). At least one must succeed.
     bool loadModels()
     {
         if (m_set.ensureLoaded()) return true;
@@ -85,7 +84,7 @@ private:
         return false;
     }
 
-    // A [startMs,endMs] szelet float PCM-ként; fél mp alatt üres (nincs értelmes embedding).
+    // The [startMs,endMs] slice as float PCM; under half a second it is empty (no meaningful embedding).
     QVector<float> slice(qint64 startMs, qint64 endMs) const
     {
         const qint64 total = m_pcm.size() / qint64(sizeof(qint16));
@@ -99,7 +98,7 @@ private:
         return pcm;
     }
 
-    VoiceEmbedderSet m_set;   // modellenként lustán betöltve (a háttérszál saját példánya)
+    VoiceEmbedderSet m_set;   // loaded lazily per model (the background thread's own instance)
     QString m_ffmpeg;
     QString m_error;
     QByteArray m_pcm;   // s16le mono 16 kHz
@@ -210,7 +209,7 @@ UtteranceEmbeddingCache UtteranceEmbeddingCache::load(const QString& meetingFold
     QString fp;
     in >> magic >> version >> fp;
     if (magic != kCacheMagic || version != kCacheVersion || fp != fingerprint)
-        return cache;   // más átirat / régi (v1) vagy ismeretlen formátum → üres cache (újraszámoljuk)
+        return cache;   // another transcript / old (v1) or unknown format -> an empty cache (we recompute)
     QMap<QString, QHash<QString, QVector<float>>> models;
     in >> models;
     if (in.status() == QDataStream::Ok)

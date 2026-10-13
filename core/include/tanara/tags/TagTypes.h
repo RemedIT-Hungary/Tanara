@@ -1,12 +1,11 @@
 #pragma once
 //
-// Címkék — közös érték-típusok (a TagService, a javaslók és a UI közti szerződés).
+// Tags: shared value types (the contract between TagService, the suggesters and the UI).
 //
-// A címke jelentését nem a neve adja, hanem az, hogy mely megbeszélésekre került rá: a
-// javaslatok (hasonló megbeszélések, együtt járó címkék, nyelvi modell) ebből dolgoznak.
-// A meetingenkénti hozzárendelés a meeting.json-ban él (Meeting::tagIds), a címkekészlet a
-// <metadataDir>/tags.json-ban (TagService).
-//
+// A tag's meaning comes not from its name but from which meetings it was applied to: the
+// suggestions (similar meetings, co-occurring tags, the language model) work from that.
+// The per-meeting assignment lives in meeting.json (Meeting::tagIds), the tag set in
+// <metadataDir>/tags.json (TagService).
 #include <QDateTime>
 #include <QMetaType>
 #include <QPair>
@@ -17,8 +16,8 @@
 namespace tanara {
 
 struct Tag {
-    QString   id;          // QUuid kapcsos zárójelek nélkül; üres = nincs ilyen címke
-    QString   name;        // megjelenített név (normalizeTagName)
+    QString   id;          // QUuid without braces; empty = no such tag
+    QString   name;        // display name (normalizeTagName)
     QDateTime createdAt;
     bool isValid() const { return !id.isEmpty(); }
 };
@@ -26,16 +25,16 @@ struct Tag {
 struct TagUsage {
     Tag       tag;
     int       meetingCount = 0;
-    QDateTime firstUsedAt;   // a legkorábbi megbeszélése
-    QDateTime lastUsedAt;    // a legutóbbi megbeszélése, ill. a legutóbbi felrakás ideje
+    QDateTime firstUsedAt;   // its earliest meeting
+    QDateTime lastUsedAt;    // its latest meeting, or the latest time it was applied
 };
 
-// Honnan került fel a címke (a TagService naplózza; a viselkedést nem befolyásolja).
+// Where the tag was applied from (TagService logs it; it does not affect behavior).
 enum class TagSource { Manual, Suggestion, Llm, Bulk };
-// Melyik javasló adta a javaslatot (People: a résztvevők kézi címkéi alapján).
+// Which suggester gave the suggestion (People: based on the participants' manual tags).
 enum class SuggestionSource { Similar, Cooccur, Llm, People };
-// Egy indoklás-sor fajtája („Közös résztvevő” / „Közös kifejezések” / „Hasonló cím” /
-// „Résztvevők címkéje”: a címkét viselő résztvevők nevei).
+// Kind of a reason row ("Shared participant" / "Shared phrases" / "Similar title" /
+// "Participants' tag": the names of the participants carrying the tag).
 enum class ReasonKind { Participant, Terms, Title, PeopleTags };
 
 struct SuggestionReason {
@@ -51,46 +50,46 @@ struct MeetingRef {
 };
 
 struct TagSuggestion {
-    QString tagId;                   // üres, ha isNew
+    QString tagId;                   // empty if isNew
     QString name;
-    bool    isNew = false;           // a nyelvi modell által kitalált név, még nincs a készletben
+    bool    isNew = false;           // a name invented by the language model, not in the set yet
     SuggestionSource source = SuggestionSource::Similar;
-    double  score = 0.0;             // 0..1, csak a sorrendhez
+    double  score = 0.0;             // 0..1, only for ordering
     QVector<SuggestionReason> reasons;
-    QVector<MeetingRef> similarMeetings;   // „Hasonló megbeszélés” linkek
-    QString baseTagId;               // Cooccur: a címke, amely mellé gyakran („<Tag> mellé gyakran”)
+    QVector<MeetingRef> similarMeetings;   // "Similar meeting" links
+    QString baseTagId;               // Cooccur: the tag it often goes with ("often with <Tag>")
 };
 
-// Amit a rendszer egy címkéről a használatából megtanult (levezetett, csak olvasható).
+// What the system learned about a tag from its use (derived, read-only).
 struct TagProfile {
     QString tagId;
     int     meetingCount = 0;
-    QVector<QPair<QString, int>> topParticipants;   // név, a címke hány megbeszélésén
-    QStringList topTerms;                           // legfeljebb 12
-    QVector<QPair<QString, int>> cooccurring;       // tagId, hányszor együtt
-    QVector<MeetingRef> meetings;                   // legújabb elöl
+    QVector<QPair<QString, int>> topParticipants;   // name, in how many of the tag's meetings
+    QStringList topTerms;                           // at most 12
+    QVector<QPair<QString, int>> cooccurring;       // tagId, how many times together
+    QVector<MeetingRef> meetings;                   // newest first
 };
 
-// Egy hasonló megbeszélés (MeetingProfiles::similar / EmbeddingIndex::similar).
+// A similar meeting (MeetingProfiles::similar / EmbeddingIndex::similar).
 struct SimilarHit {
     QString meetingId;
     double  score = 0.0;
     QVector<SuggestionReason> reasons;
 };
 
-// A címke-beviteli mező felugró listájának egy sora (TagService::inputRows).
+// One row of the tag input field's popup list (TagService::inputRows).
 struct TagInputRow {
     enum Kind {
-        Recent,         // üres mező: legutóbb használt
-        Match,          // gépelés: találat a készletből
-        New,            // „+ Új címke: „…””
-        NearDuplicate,  // „HASONLÓ MÁR VAN”: a meglévő, nagyon hasonló nevű címke
-        ForceNew,       // „Mégis új: „…””
+        Recent,         // empty field: recently used
+        Match,          // typing: a match from the set
+        New,            // "+ New tag: ..."
+        NearDuplicate,  // "SIMILAR EXISTS": the existing, very similarly named tag
+        ForceNew,       // "New anyway: ..."
     };
     Kind    kind = Match;
-    Tag     tag;               // New / ForceNew: üres id, name = a (normalizált) begépelt név
+    Tag     tag;               // New / ForceNew: empty id, name = the (normalized) typed name
     int     meetingCount = 0;
-    int     matchStart = -1;   // a találat helye a tag.name-ben (kiemeléshez); -1 = nincs
+    int     matchStart = -1;   // position of the match in tag.name (for highlighting); -1 = none
     int     matchLen = 0;
 };
 

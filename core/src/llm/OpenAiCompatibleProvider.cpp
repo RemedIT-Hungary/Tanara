@@ -17,7 +17,7 @@ namespace tanara {
 
 namespace {
 
-// baseUrl + "/chat/completions" képzése úgy, hogy a dupla / elkerüljük.
+// Building baseUrl + "/chat/completions" while avoiding a double slash.
 QUrl chatCompletionsUrl(const QString& baseUrl)
 {
     QString b = baseUrl;
@@ -44,8 +44,8 @@ ReasoningSwitch reasoningSwitchFor(const QString& setting, const QString& model)
 {
     if (setting.trimmed().compare(QLatin1String("on"), Qt::CaseInsensitive) == 0)
         return ReasoningSwitch::None;
-    // "auto" / "off" / ismeretlen érték → kikapcsolás; a módszert a modellcsalád dönti el.
-    // Qwen 3.x (és a QwQ) a reasoning_effort-ot figyelmen kívül hagyja → előtöltés kell.
+    // "auto" / "off" / an unknown value -> off; the model family decides the method.
+    // Qwen 3.x (and QwQ) ignore reasoning_effort, so a prefill is needed.
     static const QRegularExpression qwen(QStringLiteral("qwen-?(\\d+)"),
                                          QRegularExpression::CaseInsensitiveOption);
     const QString m = model.toLower();
@@ -54,7 +54,7 @@ ReasoningSwitch reasoningSwitchFor(const QString& setting, const QString& model)
     const QRegularExpressionMatch qm = qwen.match(m);
     if (qm.hasMatch() && qm.captured(1).toInt() >= 3)
         return ReasoningSwitch::Prefill;
-    return ReasoningSwitch::Effort;   // Gemma és minden más: a nem ismerő szerver figyelmen kívül hagyja
+    return ReasoningSwitch::Effort;   // Gemma and everything else: a server that does not know it ignores it
 }
 
 QJsonObject buildChatCompletionBody(const ProviderConfig& cfg, const LlmRequest& req)
@@ -73,8 +73,8 @@ QJsonObject buildChatCompletionBody(const ProviderConfig& cfg, const LlmRequest&
         body.insert(QStringLiteral("reasoning_effort"), QStringLiteral("none"));
         break;
     case ReasoningSwitch::Prefill:
-        // Az üres gondolkodás-blokk után a modell rögtön a választ írja (csak ha a felhasználó
-        // üzenete az utolsó — egy meglévő asszisztens-előtöltést nem írunk felül).
+        // After the empty thinking block the model writes the answer right away (only if the user's message
+        // is the last one; we do not overwrite an existing assistant prefill).
         if (!msgs.isEmpty() && msgs.last().role == QLatin1String("user"))
             msgs.append({QStringLiteral("assistant"), QStringLiteral("<think>\n\n</think>\n\n")});
         break;
@@ -90,10 +90,10 @@ QString stripThinking(const QString& content)
     while (i < s.size() && s.at(i).isSpace()) ++i;
     if (s.mid(i, 7).compare(QLatin1String("<think>"), Qt::CaseInsensitive) == 0) {
         const int end = s.indexOf(QLatin1String("</think>"), i, Qt::CaseInsensitive);
-        if (end < 0) return QString();          // csak gondolkodás, válasz nincs
+        if (end < 0) return QString();          // only thinking, no answer
         return s.mid(end + 8).trimmed();
     }
-    // Előtöltés után a modell néha a záró címkével folytat.
+    // After a prefill the model sometimes continues with the closing tag.
     if (s.mid(i, 8).compare(QLatin1String("</think>"), Qt::CaseInsensitive) == 0)
         return s.mid(i + 8).trimmed();
     return s;
@@ -125,7 +125,7 @@ void OpenAiCompatibleJob::start()
         const QByteArray auth = QByteArrayLiteral("Bearer ") + m_cfg.apiKey.toUtf8();
         request.setRawHeader(QByteArrayLiteral("Authorization"), auth);
     }
-    // Gateway-mód (Tanara Cloud): additív X-Tanara-* / Accept-Language fejlécek.
+    // Gateway mode (Tanara Cloud): additive X-Tanara-* / Accept-Language headers.
     for (const auto& h : m_cfg.extraHeaders)
         request.setRawHeader(h.first, h.second);
 
@@ -153,8 +153,8 @@ void OpenAiCompatibleJob::onFinished()
     }
     reply->deleteLater();
 
-    const QByteArray data = reply->readAll();   // a hibatörzset is kiolvassuk
-    if (m_cfg.onExchange)                        // gateway-hook: terhelés / strukturált hiba
+    const QByteArray data = reply->readAll();   // we also read the error body
+    if (m_cfg.onExchange)                        // gateway hook: charge / structured error
         m_cfg.onExchange(makeHttpExchange(reply, data));
     if (reply->error() != QNetworkReply::NoError) {
         QString apiMsg;
@@ -190,16 +190,16 @@ void OpenAiCompatibleJob::onFinished()
     const QJsonObject first = choices.at(0).toObject();
     const QJsonObject message = first.value(QStringLiteral("message")).toObject();
     const QString rawContent = message.value(QStringLiteral("content")).toString();
-    // A gondolkodás SOHA nem kerül a válaszba: a reasoning_content-et nem használjuk, a
-    // tartalom elejére szivárgott <think>…</think> blokkot levesszük.
+    // Thinking NEVER goes into the answer: we do not use reasoning_content, and a <think>...</think> block
+    // that leaked to the start of the content is stripped.
     const QString content = stripThinking(rawContent);
     const QString finish = first.value(QStringLiteral("finish_reason")).toString();
     const QJsonObject usage = root.value(QStringLiteral("usage")).toObject();
     const int thinking = message.value(QStringLiteral("reasoning_content")).toString().size()
                        + message.value(QStringLiteral("reasoning")).toString().size()
                        + (rawContent.size() - content.size());
-    // Debug-életjel (--debug mellett látszik): a válasz-metaadatok azonnal megmutatják, ha
-    // a modell csonkolt (finish=length) vagy gondolkodott.
+    // Debug heartbeat (visible with --debug): the response metadata immediately shows whether the model
+    // truncated (finish=length) or thought.
     qInfo().noquote().nospace()
         << "[LLM] model=" << (m_req.model.isEmpty() ? m_cfg.model : m_req.model)
         << " finish=" << finish
@@ -215,7 +215,7 @@ void OpenAiCompatibleJob::onFinished()
             : tr("Üres LLM-válasz (finish=%1).").arg(finish));
         return;
     }
-    // --debug mellett a NYERS válasz (első ~4000 karakter) is a logba kerül.
+    // With --debug the RAW response (first ~4000 characters) also goes into the log.
     qDebug().noquote().nospace()
         << "[LLM] nyers válasz (első 4000ch):\n" << content.left(4000);
     emit finished(content);
@@ -245,8 +245,8 @@ bool OpenAiCompatibleProvider::supportsStreaming() const
 LlmJob* OpenAiCompatibleProvider::chat(const LlmRequest& req)
 {
     auto* job = new OpenAiCompatibleJob(m_nam, m_cfg, req, this);
-    // A kérés indítását az event-loopba toljuk, hogy a hívó még a finished/failed
-    // előtt össze tudja kötni a signalokat (gyors/cache-elt válasz esetén is).
+    // We push the start of the request into the event loop so the caller can connect the signals
+    // before finished/failed (even for a fast / cached response).
     QTimer::singleShot(0, job, [job]() { job->start(); });
     return job;
 }

@@ -1,26 +1,25 @@
 #pragma once
 //
-// RecordingLock — „folyik-e épp felvétel" jelző fájl (~/.tanara/recording.lock).
-// A felvevő (tanara --record) felveszi induláskor, elengedi leálláskor; a figyelő
-// olvassa, hogy ne ajánljon fel rögzítést, ha már megy egy. Headless (core).
+// RecordingLock: a "is a recording going on" marker file (~/.tanara/recording.lock).
+// The recorder (tanara --record) takes it at startup and releases it at shutdown; the watcher
+// reads it so it does not offer to record if one is already running. Headless (core).
 //
-// A lock a felvevő PID-jét + a meeting-mappát tárolja (JSON). Elavult (crash utáni)
-// lock felismerése a PID életének ellenőrzésével (POSIX kill(pid,0) / Win OpenProcess):
-// ha a PID már nem él, a lock inaktívnak számít.
-//
+// The lock stores the recorder's PID + the meeting folder (JSON). A stale (post-crash) lock is
+// detected by checking whether the PID is alive (POSIX kill(pid,0) / Win OpenProcess): if the PID no
+// longer lives, the lock counts as inactive.
 #include <QString>
 
 namespace tanara {
 
-// ---- példány-hatókör (sandbox-elszigetelés) ------------------------------------------
-// TANARA_HOME mellett egy „másik Tanara” fut (teszt / sandbox): a saját metaadat-mappájával,
-// saját lock-fájlokkal ÉS saját felvevő-singleton névvel. Így egy sandbox-példány soha nem
-// kap kérést a felhasználó valódi felvevőjétől, nem továbbít neki, és nem blokkolja azt.
+// ---- instance scope (sandbox isolation) ------------------------------------------
+// With TANARA_HOME "another Tanara" runs (test / sandbox): with its own metadata folder, its own lock
+// files AND its own recorder singleton name. So a sandbox instance never receives a request from the
+// user's real recorder, never forwards to it, and never blocks it.
 //
-// A hatókör-utótag: üres, ha nincs TANARA_HOME (a valódi példány neve változatlan);
-// különben "-<a feloldott mappa SHA-1-ének első 12 hex jegye>". Lokális socket / IPC nevekhez.
+// The scope suffix: empty if there is no TANARA_HOME (the real instance's name is unchanged);
+// otherwise "-<first 12 hex digits of the SHA-1 of the resolved folder>". For local socket / IPC names.
 QString instanceScopeSuffix();
-// A lock-fájlok a (feloldott) metaadat-mappában élnek → TANARA_HOME mellett a sandboxban.
+// The lock files live in the (resolved) metadata folder, so with TANARA_HOME in the sandbox.
 QString recordingLockPath(const QString& configuredMetadataDir = QString());
 QString watcherLockPath();
 
@@ -28,23 +27,23 @@ class RecordingLock {
 public:
     explicit RecordingLock(const QString& lockPath);
 
-    // Felvétel indításakor: kiírja a saját PID-et + a meeting-mappát. true, ha sikerült.
+    // At recording start: writes its own PID + the meeting folder. true on success.
     bool acquire(const QString& meetingFolder);
-    // Felvétel végén: törli a lockot (csak ha a miénk — idegen PID lockját nem bántjuk).
+    // At recording end: deletes the lock (only if ours; a foreign PID's lock is not touched).
     void release();
 
     struct Info {
-        bool    active = false;      // van ÉLŐ felvevő (a PID létezik)
+        bool    active = false;      // there is a LIVE recorder (the PID exists)
         qint64  pid = 0;
         QString meetingFolder;
         QString startedAt;           // ISO-8601
     };
-    // A figyelő ezt hívja: fut-e élő felvétel? Elavult (halott PID) lock → {active:false}.
+    // The watcher calls this: is a live recording running? A stale (dead PID) lock -> {active:false}.
     static Info read(const QString& lockPath);
 
 private:
     QString m_path;
-    bool    m_owned = false;         // mi vettük-e fel (a release csak ekkor töröl)
+    bool    m_owned = false;         // whether we took it (release deletes only then)
 };
 
 } // namespace tanara

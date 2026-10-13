@@ -19,10 +19,10 @@ namespace tanara {
 
 namespace {
 constexpr int kPollIntervalMs = 2000;
-// Token-időzítés: a Soniox a token KIADÁSÁNAK pillanatát adja (~60 ms széles, a szó vége
-// felé; mérve: „R" 127410–127470, „ok" 127530–127590), nem a hang kezdetét. A tokenek
-// érintetlenek maradnak; az eredmény emissionTiming jelzőt kap, és a merger a kész sorokat
-// párnázza (sonioxtiming::padUtterances, a konstansok és a mérés: tanara/stt/SonioxTiming.h).
+// Token timing: Soniox gives the moment the token was EMITTED (~60 ms wide, toward the end of the
+// word; measured: "R" 127410-127470, "ok" 127530-127590), not the start of the sound. The tokens stay
+// untouched; the result gets an emissionTiming flag, and the merger pads the finished lines
+// (sonioxtiming::padUtterances; the constants and the measurement: tanara/stt/SonioxTiming.h).
 
 QString defaultModel(const ProviderConfig& cfg) {
     return cfg.model.isEmpty() ? QStringLiteral("stt-async-v5") : cfg.model;
@@ -47,7 +47,7 @@ SonioxProvider::SonioxProvider(ProviderConfig cfg, QObject* parent)
 
 SttJob* SonioxProvider::transcribe(const SttRequest& req) {
     auto* job = new SonioxJob(m_cfg, req);
-    // Aszinkron indítás, hogy a hívó előbb rákösse a finished/failed jeleket.
+    // Asynchronous start, so the caller connects the finished/failed signals first.
     QTimer::singleShot(0, job, &SonioxJob::start);
     return job;
 }
@@ -70,7 +70,7 @@ QNetworkRequest SonioxJob::makeRequest(const QString& path) const {
     QNetworkRequest r{QUrl(m_cfg.baseUrl + path)};
     r.setRawHeader("Authorization",
                    QByteArrayLiteral("Bearer ") + m_cfg.apiKey.toUtf8());
-    // Gateway-mód (Tanara Cloud): additív X-Tanara-* / Accept-Language fejlécek.
+    // Gateway mode (Tanara Cloud): additive X-Tanara-* / Accept-Language headers.
     for (const auto& h : m_cfg.extraHeaders)
         r.setRawHeader(h.first, h.second);
     return r;
@@ -93,8 +93,8 @@ void SonioxJob::fail(const QString& error) {
         return;
     m_finished = true;
     abortInFlight();
-    // Hibás/megszakított job után is takarítunk: a már feltöltött fájl / létrehozott
-    // transcription ne maradjon a Sonioxnál a 30 napos evictionig (tárolási kvóta + adat).
+    // We clean up after a failed/cancelled job too: the already uploaded file / created transcription
+    // must not stay at Soniox until the 30-day eviction (storage quota + data).
     cleanup();
     setState(JobState::Failed);
     emit failed(error);
@@ -118,7 +118,7 @@ void SonioxJob::cancel() {
 }
 
 namespace {
-// Eltelt idő „m:ss" formában a UI-progresshez.
+// Elapsed time in "m:ss" form for the UI progress.
 QString formatElapsed(qint64 ms) {
     const qint64 s = ms / 1000;
     return QStringLiteral("%1:%2").arg(s / 60).arg(s % 60, 2, 10, QLatin1Char('0'));
@@ -128,7 +128,7 @@ QString formatElapsed(qint64 ms) {
 void SonioxJob::start() {
     if (m_finished)
         return;
-    m_clock.start();   // az eltelt idő a job teljes hosszát méri (feltöltés → poll → letöltés)
+    m_clock.start();   // the elapsed time measures the job's full length (upload -> poll -> download)
     uploadFile();
 }
 
@@ -153,21 +153,21 @@ void SonioxJob::uploadFile() {
     filePart.setHeader(QNetworkRequest::ContentDispositionHeader,
                        QStringLiteral("form-data; name=\"file\"; filename=\"%1\"")
                            .arg(fi.fileName()));
-    file->setParent(multi);     // a multipart birtokolja a fájlt
+    file->setParent(multi);     // the multipart owns the file
     filePart.setBodyDevice(file);
     multi->append(filePart);
 
     QNetworkRequest req = makeRequest(QStringLiteral("/files"));
     QNetworkReply* reply = m_nam->post(req, multi);
-    multi->setParent(reply);    // a reply birtokolja a multipartot
+    multi->setParent(reply);    // the reply owns the multipart
     m_reply = reply;
-    // Valós feltöltés-haladás a strukturált folyamat-jelzéshez (M04 „Feltöltés” szakasz).
+    // Real upload progress for the structured process signal (the "Upload" stage).
     connect(reply, &QNetworkReply::uploadProgress, this, [this](qint64 sent, qint64 total) {
         if (total > 0) emit uploadProgress(sent, total);
     });
 
     connect(reply, &QNetworkReply::finished, this, [this, reply]() {
-        if (m_reply != reply) {          // megszakítva / lecserélve
+        if (m_reply != reply) {          // cancelled / replaced
             reply->deleteLater();
             return;
         }
@@ -208,10 +208,9 @@ void SonioxJob::createTranscription() {
         hints.append(h);
     payload.insert(QStringLiteral("language_hints"), hints);
     payload.insert(QStringLiteral("enable_speaker_diarization"), m_req.diarization);
-    // Context-envelope → a Soniox stt-async-v5 strukturált „context" objektuma
-    // (general/text/terms). Ezzel jobban dönt a kétes részeknél (nevek, szakszavak,
-    // téma). Csak a kitöltött szekciókat küldjük; üres objektumot nem.
-    // Limit: ~8000 token (~10000 karakter) az egész objektumra (a Soniox hibát ad túl).
+    // Context envelope -> Soniox stt-async-v5's structured "context" object (general/text/terms). With it
+    // the STT decides better in doubtful parts (names, jargon, topic). We send only the filled sections;
+    // never an empty object. Limit: ~8000 tokens (~10000 characters) for the whole object (Soniox errors beyond it).
     {
         QJsonObject context;
         if (!m_req.contextGeneral.isEmpty()) {
@@ -284,7 +283,7 @@ void SonioxJob::onPollTick() {
 void SonioxJob::pollStatus() {
     if (m_finished)
         return;
-    if (m_reply)        // előző poll még fut, várjuk meg
+    if (m_reply)        // the previous poll is still running, we wait for it
         return;
 
     QNetworkRequest req =
@@ -322,9 +321,8 @@ void SonioxJob::pollStatus() {
                 msg = tr("ismeretlen Soniox hiba");
             fail(msg);
         } else {
-            // queued / processing / running stb. — maradunk a poll-ban. Minden sikeres
-            // poll egy „életjel" → az eltelt idő + a számláló láthatóan mozog, így a UI
-            // nem tűnik befagyottnak, és látszik, hogy a kapcsolat él.
+            // queued / processing / running etc.: we stay in the poll. Every successful poll is a "heartbeat",
+            // so the elapsed time + the counter visibly move, the UI does not look frozen, and it shows the connection is alive.
             ++m_pollCount;
             setState(JobState::Processing);
             emit progress(60, tr("Feldolgozás (%1)… %2 · %3. életjel")
@@ -382,20 +380,20 @@ void SonioxJob::fetchTranscript() {
             tok.confidence = t.value(QStringLiteral("confidence")).toDouble();
             tok.trackId = m_req.trackId;
             if (m_req.diarization) {
-                // diarizáció be: a Soniox speaker mezőjét használjuk
+                // diarization on: we use Soniox's speaker field
                 const QJsonValue sp = t.value(QStringLiteral("speaker"));
                 tok.speaker = sp.isString() ? sp.toString()
                                             : QString::number(sp.toInt());
             } else {
-                // per-sáv = egy ismert beszélő
+                // per track = one known speaker
                 tok.speaker = m_req.speakerLabel;
             }
             tt.tokens.append(tok);
         }
-        // Kiadási pillanat, nem hang-tartomány: a sorok párnázását a merger végzi.
+        // Emission moment, not an audio range: the merger does the line padding.
         tt.emissionTiming = true;
 
-        // Best-effort takarítás a háttérben, majd kész jelzés.
+        // Best-effort cleanup in the background, then the done signal.
         cleanup();
 
         m_finished = true;
@@ -411,7 +409,7 @@ void SonioxJob::cleanup() {
         if (path.isEmpty())
             return;
         QNetworkReply* r = m_nam->deleteResource(makeRequest(path));
-        // hibát figyelmen kívül hagyjuk, csak takarítunk (a gateway-hook megkapja a választ)
+        // we ignore the error and only clean up (the gateway hook gets the response)
         connect(r, &QNetworkReply::finished, r, [r, hook = m_cfg.onExchange]() {
             if (hook) hook(makeHttpExchange(r, r->readAll()));
             r->deleteLater();

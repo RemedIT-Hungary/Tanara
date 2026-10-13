@@ -1,16 +1,15 @@
 #pragma once
 //
-// DeviceMonitor — élő szintfigyelés a NEM rögzített eszközökön: megnyitja a megadott
-// capture-eszközöket, és ~30 Hz-cel kiadja eszközönként az aktuális RMS-t és csúcsot,
-// hogy a UI VU-sávval mutathassa, melyik eszközön van épp hang.
-// Felvétel előtt minden eszközt figyel; felvétel alatt (ha az AppController kéri) csak a
-// sávra nem kerülő eszközöket — a rögzítetteket a RecordingSession birtokolja és méri.
+// DeviceMonitor: live level monitoring on the NOT recorded devices: it opens the given capture
+// devices and emits the current RMS and peak per device at ~30 Hz, so the UI can show with a VU bar
+// which device has sound right now.
+// Before recording it watches every device; during recording (if AppController asks) only the devices
+// not on a track, since the recorded ones are owned and measured by the RecordingSession.
 //
-// Az eszközök megnyitása, mérése és lezárása a saját háttérszálán fut: a start() / stop()
-// azonnal visszatér, a szintek a megnyitás után jönnek. Az active() a kérést tükrözi (az
-// indítás alatt is igaz; sikertelen megnyitás után hamis), a deviceNames() a megnyitás után
-// telik meg. A stop() után a már elküldött, elavult szintek nem jutnak ki.
-//
+// Opening, measuring and closing the devices runs on its own background thread: start() / stop()
+// return at once, levels come after the open. active() mirrors the request (true during startup too;
+// false after a failed open), deviceNames() fills after the open. After stop() stale levels already
+// sent do not get out.
 #include "tanara/Types.h"
 #include <QObject>
 #include <QStringList>
@@ -26,7 +25,7 @@ public:
     ~DeviceMonitor() override;
 
     bool active() const;
-    // A ténylegesen megnyitott eszközök nevei (a meg nem nyíltak kimaradnak; indítás alatt üres).
+    // Names of the devices actually opened (those that did not open are left out; empty during startup).
     QStringList deviceNames() const;
 
 public slots:
@@ -34,13 +33,13 @@ public slots:
     void stop();
 
 signals:
-    // deviceName a stabil kulcs (a UI eszerint párosítja a sorokat); rms 0..1.
+    // deviceName is the stable key (the UI matches rows by it); rms 0..1.
     void level(const QString& deviceName, float rms);
-    // Ugyanez csúccsal: peak = az előző jel óta mért legnagyobb minta (0..1).
+    // The same with peak: peak = the largest sample since the previous signal (0..1).
     void levelPeak(const QString& deviceName, float rms, float peak);
 
 public:
-    // Belső: a háttérszál visszajelzései (a fő szálon futnak).
+    // Internal: feedback from the background thread (runs on the main thread).
     bool d_isCurrent(quint64 gen) const;
     void d_started(quint64 gen, bool ok, const QStringList& names);
 

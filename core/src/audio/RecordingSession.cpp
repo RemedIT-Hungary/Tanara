@@ -29,7 +29,7 @@ namespace tanara {
 
 namespace {
 
-// Slug: ékezetek/szóközök → kötőjeles, lowercase, ASCII-biztos fájlnévrész.
+// Slug: accents/spaces -> hyphenated, lowercase, an ASCII-safe file-name part.
 QString slugify(const QString& in) {
     QString s = in.normalized(QString::NormalizationForm_KD);
     static const QRegularExpression nonWord(QStringLiteral("[^A-Za-z0-9]+"));
@@ -41,19 +41,19 @@ QString slugify(const QString& in) {
     return s;
 }
 
-// Egy sáv lemez-oldali metaadata (a QProcess NEM itt él — azt a worker birtokolja
-// a saját szálán, hogy semmilyen cross-thread QProcess hozzáférés ne legyen).
+// A track's on-disk metadata (the QProcess does NOT live here: the worker owns it on its own
+// thread, so there is no cross-thread QProcess access).
 struct TrackMeta {
     int engineIndex = 0;
-    QString fileName;          // pl. "track_mic.ogg" (relatív)
+    QString fileName;          // e.g. "track_mic.ogg" (relative)
     QString slug;
     int channels = 1;
     TrackKind kind = TrackKind::Mic;
     QString deviceName;
     AudioDeviceInfo device;
-    bool closed = false;       // menet közben lezárva (leválasztott / kikapcsolt eszköz)
-    // A sáv megnyitásának ideje a felvétel 0-pontjától (ms) → Track::startOffsetMs. A fájl a
-    // megnyitástól tartó hangot tartalmazza, csend-kitöltés NÉLKÜL.
+    bool closed = false;       // closed mid-run (a detached / switched-off device)
+    // The time the track was opened, from the recording's zero point (ms) -> Track::startOffsetMs. The
+    // file holds audio from the open on, WITHOUT silence padding.
     qint64 startOffsetMs = 0;
 };
 
@@ -61,15 +61,15 @@ constexpr int kSampleRate = 48000;
 
 } // namespace
 
-// A drain worker külön QThread-en él. MINDEN ffmpeg QProcess-t Ő hoz létre, Ő ír
-// rá és Ő zárja le — ugyanazon a szálon, így nincs "QSocketNotifier from another
-// thread" probléma és nincs adatvesztés-kockázat. A sávokról SAJÁT másolatot tart
-// (EncTrack), a fő szál listájához nem nyúl.
+// The drain worker lives on a separate QThread. It creates EVERY ffmpeg QProcess, writes to it and
+// closes it, all on the same thread, so there is no "QSocketNotifier from another thread" problem
+// and no risk of data loss. It keeps ITS OWN copy of the tracks (EncTrack) and never touches the
+// main thread's list.
 //
-// Időzítés: a `clock` a felvétel 0-pontja (a capture indítása előtt indul). Egy sáv fájlja
-// a megnyitásától kezdődik; a megnyitás ideje a TrackMeta::startOffsetMs (metaadat), a fájl
-// elejére NEM kerül csend. Ahol a platform csendben nem ad mintát (Windows WASAPI loopback,
-// lásd tracktiming::fillsCaptureGaps), a worker a hiányt a fali órához mérve csenddel pótolja.
+// Timing: `clock` is the recording's zero point (it starts before capture starts). A track's file
+// starts at its open; the open time is TrackMeta::startOffsetMs (metadata), and NO silence goes at the
+// start of the file. Where the platform silently delivers no samples (Windows WASAPI loopback, see
+// tracktiming::fillsCaptureGaps), the worker fills the shortfall with silence measured against the wall clock.
 class DrainWorker : public QObject {
     Q_OBJECT
 public:
@@ -82,8 +82,8 @@ public:
         for (EncTrack& t : tracks_) delete t.proc;
     }
 
-    // A worker szálán futnak (BlockingQueuedConnection-nel hívva). Létrehozza+indítja az
-    // encodereket; true ha minden elindult. Sikertelenségnél visszatakarít.
+    // Run on the worker's thread (called with BlockingQueuedConnection). Creates + starts the encoders;
+    // true if all started. On failure it cleans up.
     bool startEncoders(const std::vector<TrackMeta>& metas) {
         for (const TrackMeta& m : metas) {
             if (!openEncoder(m)) {
@@ -100,11 +100,11 @@ public:
         return true;
     }
 
-    // Felvétel közben hozzáadott sáv: az encoder üresen indul, a fájl a megnyitástól tart
-    // (az eltolás metaadat: TrackMeta::startOffsetMs).
+    // A track added during recording: the encoder starts empty, the file runs from the open (the offset
+    // is metadata: TrackMeta::startOffsetMs).
     bool addEncoder(const TrackMeta& meta) { return openEncoder(meta); }
 
-    // Egy sáv lezárása menet közben: maradék kiírása, encoder lezárása (megvárva).
+    // Closing a track mid-run: write out the remainder, close the encoder (waiting for it).
     void closeEncoder(int index) {
         if (index < 0 || index >= static_cast<int>(tracks_.size())) return;
         drainTrack(tracks_[static_cast<size_t>(index)]);
@@ -112,8 +112,8 @@ public:
     }
 
 public slots:
-    // Stopkor: utolsó ürítés + encoderek lezárása, megvárva az ffmpeg-ek befejezését —
-    // mind a worker szálon. A végén finalized(): innentől minden sávfájl a lemezen van.
+    // At stop: a last drain + closing the encoders, waiting for the ffmpegs to finish, all on the worker
+    // thread. At the end finalized(): from then on every track file is on disk.
     void finalize() {
         if (finalized_) return;
         finalized_ = true;
@@ -152,17 +152,17 @@ private:
         QString fileName;
         int channels = 1;
         QProcess* proc = nullptr;
-        qint64 openedAtMs = 0;     // a sáv megnyitása a felvétel órája szerint
-        qint64 lastDataMs = 0;     // mikor jött utoljára adat az eszköztől (felvétel-óra)
-        qint64 framesWritten = 0;  // a fájlba írt keretek (valódi hang + pótolt csend)
-        bool fillGaps = false;     // a néma szakaszok csenddel pótlandók (loopback sáv, minden platformon)
+        qint64 openedAtMs = 0;     // the track's open per the recording clock
+        qint64 lastDataMs = 0;     // when data last came from the device (recording clock)
+        qint64 framesWritten = 0;  // frames written to the file (real audio + filled silence)
+        bool fillGaps = false;     // silent gaps must be filled with silence (loopback track, on every platform)
         bool closed = false;
-        bool ok = false;           // az encoder hibátlanul lezárta a fájlt
+        bool ok = false;           // the encoder closed the file without error
         std::vector<int16_t> scratch;
     };
 
     bool openEncoder(const TrackMeta& t) {
-        auto* proc = new QProcess(this);          // a worker szálon él
+        auto* proc = new QProcess(this);          // lives on the worker thread
         const QString outPath = QDir(folder_).absoluteFilePath(t.fileName);
         const QStringList args{
             QStringLiteral("-hide_banner"), QStringLiteral("-loglevel"), QStringLiteral("error"),
@@ -195,8 +195,8 @@ private:
         t.framesWritten += bytes / (qint64(sizeof(int16_t)) * t.channels);
     }
 
-    // A néma (adatot nem adó) eszköz hiányzó kereteinek pótlása csenddel — lásd
-    // tracktiming::silenceToInsert. Csak fillGaps-es sávnál.
+    // Filling a silent (data-less) device's missing frames with silence: see tracktiming::silenceToInsert.
+    // Only for a fillGaps track.
     void fillGap(EncTrack& t) {
         if (!t.fillGaps) return;
         const qint64 now = clock_.elapsed();
@@ -229,10 +229,10 @@ private:
         else fillGap(t);
     }
 
-    // Lezárja a sáv encoderét és megvárja; t.ok = a fájl hibátlanul elkészült.
+    // Closes the track's encoder and waits; t.ok = the file was made without error.
     void finishTrack(EncTrack& t) {
         if (t.closed || !t.proc) return;
-        fillGap(t);   // a sáv végi néma szakasz (fillGaps-es sávnál)
+        fillGap(t);   // the silent stretch at the track's end (for a fillGaps track)
         t.closed = true;
         t.proc->closeWriteChannel();
         if (!t.proc->waitForFinished(30000)) { t.proc->kill(); t.proc->waitForFinished(2000); }
@@ -243,9 +243,9 @@ private:
 
     AudioEngine* engine_ = nullptr;
     QString folder_;
-    int opusKbps_ = 64;          // per-sáv Opus bitráta (a hangminőség-beállításból)
-    QElapsedTimer clock_;        // a felvétel 0-pontja (a session órájának másolata)
-    std::optional<bool> fillGaps_;   // teszt-felülírás; üres → platform szerint
+    int opusKbps_ = 64;          // per-track Opus bitrate (from the audio quality setting)
+    QElapsedTimer clock_;        // the recording's zero point (a copy of the session's clock)
+    std::optional<bool> fillGaps_;   // test override; empty = per platform
     std::vector<EncTrack> tracks_;
     QTimer* timer_ = nullptr;
     QElapsedTimer meter_;
@@ -256,23 +256,23 @@ struct RecordingSession::Impl {
     QString audioDir;
     QString title;
     QString userSpeakerName;
-    int opusKbps = 64;           // per-sáv Opus bitráta (hangminőség-beállítás)
+    int opusKbps = 64;           // per-track Opus bitrate (audio quality setting)
 
     QString folder;
     QString id;
     QDateTime startedAt;
-    // A felvétel órája: a capture indítása ELŐTT indul, ez a megbeszélés 0-pontja. Ehhez mért
-    // minden sáv-eltolás (startOffsetMs) és a megbeszélés hossza.
+    // The recording clock: it starts BEFORE capture starts and is the meeting's zero point. Every track
+    // offset (startOffsetMs) and the meeting's length are measured against it.
     QElapsedTimer wall;
     qint64 durationMs = 0;
-    RecordingSession::EngineFactory engineFactory;   // üres → valódi AudioEngine
-    std::optional<bool> fillGaps;                    // üres → platform szerint
+    RecordingSession::EngineFactory engineFactory;   // empty = the real AudioEngine
+    std::optional<bool> fillGaps;                    // empty = per platform
 
     RecordingState state = RecordingState::Idle;
 
     std::unique_ptr<AudioEngine> engine;
     std::vector<TrackMeta> tracks;
-    QVector<float> trackPeak;   // sávonkénti csúcs-RMS a felvétel alatt
+    QVector<float> trackPeak;   // per-track peak RMS during recording
     QStringList usedSlugs;
 
     QThread* workerThread = nullptr;
@@ -283,11 +283,11 @@ struct RecordingSession::Impl {
             workerThread->quit();
             workerThread->wait(3000);
         }
-        delete worker; worker = nullptr;          // a dtor törli a QProcess-eket
+        delete worker; worker = nullptr;          // the destructor deletes the QProcesses
         delete workerThread; workerThread = nullptr;
     }
 
-    // Egy (elindult) motor-eszközből sáv-metaadat; a slug egyedi a meetingen belül.
+    // Track metadata from a (started) engine device; the slug is unique within the meeting.
     TrackMeta makeTrack(int engineIndex) {
         const AudioDeviceInfo info = engine->deviceInfo(engineIndex);
         TrackMeta t;
@@ -319,7 +319,7 @@ RecordingSession::RecordingSession(QString audioDir, QString title,
 
 RecordingSession::~RecordingSession() {
     if (impl_->state != RecordingState::Idle && impl_->worker) {
-        // Megszakított / még lezáratlan felvétel: a sávfájlokat itt is tisztán lezárjuk.
+        // An aborted / not yet finalized recording: the track files are closed cleanly here too.
         QMetaObject::invokeMethod(impl_->worker, "finalize", Qt::BlockingQueuedConnection);
         if (impl_->engine) impl_->engine->stop();
         impl_->teardownWorker();
@@ -353,7 +353,7 @@ void RecordingSession::start(const QVector<AudioDeviceInfo>& devices) {
         return;
     }
 
-    // 1) Meeting-mappa.
+    // 1) Meeting folder.
     impl_->startedAt = QDateTime::currentDateTime();
     const QString stamp = impl_->startedAt.toString(QStringLiteral("yyyy-MM-dd_HHmm"));
     const QString dirName = stamp + QStringLiteral("_") + slugify(impl_->title);
@@ -365,7 +365,7 @@ void RecordingSession::start(const QVector<AudioDeviceInfo>& devices) {
     impl_->folder = base.absoluteFilePath(dirName);
     impl_->id = QUuid::createUuid().toString(QUuid::WithoutBraces);
 
-    // 2) AudioEngine. Az óra a capture előtt indul: a kezdő sávok fájljai ettől tartanak.
+    // 2) AudioEngine. The clock starts before capture: the initial tracks' files run from this.
     impl_->engine = impl_->engineFactory ? impl_->engineFactory() : std::make_unique<AudioEngine>();
     impl_->wall.start();
     if (!impl_->engine || !impl_->engine->start(devices)) {
@@ -374,13 +374,13 @@ void RecordingSession::start(const QVector<AudioDeviceInfo>& devices) {
         return;
     }
 
-    // 3) Sáv-metaadatok (QProcess NÉLKÜL — azt a worker hozza létre a saját szálán).
+    // 3) Track metadata (WITHOUT the QProcess; the worker creates that on its own thread).
     const int n = impl_->engine->count();
     impl_->usedSlugs.clear();
     for (int i = 0; i < n; ++i)
         impl_->tracks.push_back(impl_->makeTrack(i));
 
-    // 4) Worker szál — Ő hozza létre+indítja az encodereket (a saját szálán).
+    // 4) Worker thread: it creates + starts the encoders (on its own thread).
     impl_->trackPeak = QVector<float>(static_cast<int>(impl_->tracks.size()), 0.0f);
     impl_->workerThread = new QThread(this);
     impl_->worker = new DrainWorker(impl_->engine.get(), impl_->folder, impl_->opusKbps,
@@ -422,9 +422,9 @@ bool RecordingSession::addDevice(const AudioDeviceInfo& device) {
     if (impl_->state != RecordingState::Recording || !impl_->engine || !impl_->worker)
         return false;
     for (const TrackMeta& t : impl_->tracks)
-        if (!t.closed && t.deviceName == device.name) return false;   // már sávon van
+        if (!t.closed && t.deviceName == device.name) return false;   // already on a track
 
-    // A sáv a megnyitás pillanatától szól: ez az eltolása a felvétel 0-pontjához képest.
+    // The track sounds from the moment it opens: this is its offset relative to the recording's zero point.
     const qint64 offsetMs = impl_->wall.elapsed();
     const int engineIndex = impl_->engine->addDevice(device);
     if (engineIndex < 0) return false;
@@ -453,8 +453,8 @@ void RecordingSession::closeTrack(const QString& deviceName) {
         TrackMeta& t = impl_->tracks[i];
         if (t.closed || t.deviceName != deviceName) continue;
         t.closed = true;
-        // Előbb a capture áll le (több adat nem jön), utána a worker kiírja a maradékot és
-        // lezárja a fájlt — a saját szálán, a fő szál nem vár rá.
+        // Capture stops first (no more data comes), then the worker writes out the remainder and closes
+        // the file, on its own thread; the main thread does not wait for it.
         impl_->engine->closeDevice(t.engineIndex);
         DrainWorker* w = impl_->worker;
         const int idx = static_cast<int>(i);
@@ -473,9 +473,9 @@ void RecordingSession::stop() {
     emit stateChanged(impl_->state);
     impl_->durationMs = impl_->wall.elapsed();
 
-    // Encoding: a worker utolsó ürítés + ffmpeg-ek lezárása/várása — a worker szálán, a fő
-    // szál NEM vár (a UI él). A capture-t csak a lezárás UTÁN állítjuk le (onFinalized),
-    // mert a worker még olvassa a motor körpuffereit.
+    // Encoding: the worker's last drain + closing/waiting for the ffmpegs, on the worker thread; the main
+    // thread does NOT wait (the UI lives). We stop capture only AFTER the shutdown (onFinalized), because
+    // the worker still reads the engine's ring buffers.
     impl_->state = RecordingState::Encoding;
     emit stateChanged(impl_->state);
     QMetaObject::invokeMethod(impl_->worker, "finalize", Qt::QueuedConnection);
@@ -491,32 +491,30 @@ void RecordingSession::onFinalized(const QStringList& failedFiles) {
         qWarning().noquote() << "RecordingSession: hibásan lezárt sávfájl(ok):"
                              << failedFiles.join(QStringLiteral(", "));
 
-    // Minden sáv aktív marad: a csendes sávot a felvétel UTÁNI beszéd-ellenőrzés veszi ki a
-    // lekeverésből (Track::speechRatio / excludedReason, edit/TrackSpeech.h — az AppController
-    // a lekeverés előtt futtatja). A csúcsszintet tájékoztatásul megőrizzük.
+    // Every track stays active: a silent track is removed from the mixdown by the speech check AFTER
+    // recording (Track::speechRatio / excludedReason, edit/TrackSpeech.h; AppController runs it before the
+    // mixdown). We keep the peak level for information.
     const int nTr = static_cast<int>(impl_->tracks.size());
     auto peakOf = [&](int i) { return (i < impl_->trackPeak.size()) ? impl_->trackPeak[i] : 0.0f; };
 
-    // Mixdown SZÁNDÉKOSAN nem itt készül. Korábban a fő szálon, szinkron
-    // `QProcess::waitForFinished()`-sel futott — egy 1,5 órás meetingnél ez 15-20 mp-re
-    // BEFAGYASZTOTTA a UI-t. A mixdown viszont KIZÁRÓLAG hallgatásra kell (az STT a nyers
-    // per-sáv .ogg-kból megy), ezért leválasztottuk: `mixdownFile` üresen marad, és a
-    // lekeverést az AppController gyártja le később aszinkron (auto módban azonnal, kézi
-    // módban a review-panel gombjáról) — lásd AppController::regenerateMixdown().
+    // The mixdown is INTENTIONALLY not made here. It used to run on the main thread with a synchronous
+    // `QProcess::waitForFinished()`, which FROZE the UI for 15-20 s on a 1.5-hour meeting. The mixdown is
+    // needed ONLY for listening (the STT works from the raw per-track .ogg files), so it was decoupled:
+    // `mixdownFile` stays empty, and AppController makes the mix later, asynchronously (immediately in auto
+    // mode, from the review panel's button in manual mode); see AppController::regenerateMixdown().
 
-    // Meeting összeállítása.
+    // Assembling the meeting.
     Meeting m;
     m.id = impl_->id;
     m.title = impl_->title;
     m.folder = impl_->folder;
     m.startedAt = impl_->startedAt;
     m.durationMs = durationMs;
-    m.mixdownFile = QString();   // még nincs lekeverés — az AppController készíti
+    m.mixdownFile = QString();   // no mixdown yet: AppController makes it
 
-    // FONTOS: a felhasználót NEM hangerő/pozíció alapján nevezzük el — a beszélő
-    // azonosítása a VOICE-ID (fingerprint) feladata (autoIdentifyMeeting). Itt a
-    // mic-sávok semleges „Mikrofon N" címkét kapnak; a valódi neveket a lenyomat-DB
-    // adja (vagy a felhasználó egyszeri kézi átnevezése, ami betanítja).
+    // IMPORTANT: we do NOT name the user by loudness/position: speaker identification is the job of
+    // VOICE ID (fingerprint) (autoIdentifyMeeting). Here the mic tracks get a neutral "Microphone N" label;
+    // the real names come from the voiceprint DB (or the user's one-time manual rename, which trains it).
     int micNo = 1;
     for (int i = 0; i < nTr; ++i) {
         const auto& t = impl_->tracks[i];
@@ -538,7 +536,7 @@ void RecordingSession::onFinalized(const QStringList& failedFiles) {
         m.tracks.push_back(tr);
     }
 
-    // Ami biztosan nincs a lemezen (az encoder el sem készítette), az ne legyen sáv.
+    // Whatever is surely not on disk (the encoder never made it) must not become a track.
     const QString folder = impl_->folder;
     m.tracks.erase(std::remove_if(m.tracks.begin(), m.tracks.end(), [&folder](const Track& t) {
         return !QFileInfo::exists(QDir(folder).absoluteFilePath(t.file));

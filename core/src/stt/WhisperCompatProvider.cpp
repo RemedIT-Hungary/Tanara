@@ -20,7 +20,7 @@ namespace tanara {
 
 namespace {
 
-// Hosszú felvétel átírása lokális gépen percekig tarthat — bőséges keret.
+// Transcribing a long recording on a local machine can take minutes: a generous limit.
 constexpr int kTransferTimeoutMs = 30 * 60 * 1000;
 
 QString defaultBaseUrl(const ProviderConfig& cfg)
@@ -37,9 +37,8 @@ QString defaultModel(const ProviderConfig& cfg)
     return cfg.model.isEmpty() ? QStringLiteral("whisper-1") : cfg.model;
 }
 
-// A whisper "prompt" mezője a dekódolást torzítja a megadott szavak felé — a
-// context-envelope-ból a terms + a szabad leírás megy bele (rövidre vágva; a
-// whisper amúgy is csak az utolsó ~224 tokent nézi).
+// Whisper's "prompt" field biases decoding toward the given words: from the context envelope the
+// terms + the free description go in (cut short; whisper looks at only the last ~224 tokens anyway).
 QString promptFromContext(const SttRequest& req)
 {
     QStringList parts;
@@ -76,7 +75,7 @@ WhisperCompatProvider::WhisperCompatProvider(ProviderConfig cfg, QObject* parent
 SttJob* WhisperCompatProvider::transcribe(const SttRequest& req)
 {
     auto* job = new WhisperCompatJob(m_cfg, req);
-    // Aszinkron indítás, hogy a hívó előbb rákösse a finished/failed jeleket.
+    // Asynchronous start, so the caller connects the finished/failed signals first.
     QTimer::singleShot(0, job, &WhisperCompatJob::start);
     return job;
 }
@@ -146,7 +145,7 @@ void WhisperCompatJob::start()
     filePart.setHeader(QNetworkRequest::ContentTypeHeader,
                        QMimeDatabase().mimeTypeForFile(m_req.audioFilePath).name());
     filePart.setBodyDevice(file);
-    file->setParent(multi);   // a multipart élettartamához kötve
+    file->setParent(multi);   // bound to the multipart's lifetime
     multi->append(filePart);
 
     multi->append(textPart(QStringLiteral("model"), m_cfg.model));
@@ -154,7 +153,7 @@ void WhisperCompatJob::start()
     multi->append(textPart(QStringLiteral("timestamp_granularities[]"), QStringLiteral("word")));
     multi->append(textPart(QStringLiteral("timestamp_granularities[]"), QStringLiteral("segment")));
 
-    // Nyelv: a config "language" mezője (ISO-639-1, pl. "en"); üres → a szerver detektál.
+    // Language: the config's "language" field (ISO-639-1, e.g. "en"); empty = the server detects.
     const QString lang = m_cfg.extra.value(QStringLiteral("language")).toString().trimmed();
     if (!lang.isEmpty())
         multi->append(textPart(QStringLiteral("language"), lang));
@@ -222,8 +221,8 @@ void WhisperCompatJob::parseResponse(const QByteArray& body)
     result.speakerLabel = m_req.speakerLabel;
     result.language     = obj.value(QStringLiteral("language")).toString();
 
-    // Nincs diarizáció: minden token az "1" beszélő → a hívó „Beszélő 1"-re fordítja,
-    // a nevet a voice-ID / kézi átnevezés adja.
+    // No diarization: every token is speaker "1"; the caller translates it to "Speaker 1", and the name
+    // comes from voice ID / manual rename.
     const QString speaker = QStringLiteral("1");
 
     auto wordToken = [&](const QJsonObject& w) {
@@ -231,14 +230,14 @@ void WhisperCompatJob::parseResponse(const QByteArray& body)
         tok.text    = w.value(QStringLiteral("word")).toString();
         tok.startMs = qint64(w.value(QStringLiteral("start")).toDouble() * 1000.0);
         tok.endMs   = qint64(w.value(QStringLiteral("end")).toDouble() * 1000.0);
-        // faster-whisper: nincs confidence; whisper.cpp: "probability" (0..1).
+        // faster-whisper: no confidence; whisper.cpp: "probability" (0..1).
         tok.confidence = w.value(QStringLiteral("probability")).toDouble(1.0);
         tok.speaker    = speaker;
         tok.trackId    = m_req.trackId;
         return tok;
     };
 
-    // 1) OpenAI / faster-whisper alak: top-level "words".
+    // 1) OpenAI / faster-whisper shape: top-level "words".
     const QJsonArray words = obj.value(QStringLiteral("words")).toArray();
     for (const QJsonValue& v : words) {
         const TranscriptToken tok = wordToken(v.toObject());
@@ -248,7 +247,7 @@ void WhisperCompatJob::parseResponse(const QByteArray& body)
 
     const QJsonArray segments = obj.value(QStringLiteral("segments")).toArray();
 
-    // 2) whisper.cpp alak: a szavak a szegmenseken BELÜL vannak ("segments[].words").
+    // 2) whisper.cpp shape: the words are WITHIN the segments ("segments[].words").
     if (result.tokens.isEmpty()) {
         for (const QJsonValue& sv : segments)
             for (const QJsonValue& wv : sv.toObject().value(QStringLiteral("words")).toArray()) {
@@ -258,8 +257,8 @@ void WhisperCompatJob::parseResponse(const QByteArray& body)
             }
     }
 
-    // 3) Fallback: szó-szintű időbélyeg nélkül szegmensenként egy token — a kattintható
-    // átirat szegmens-felbontással működik tovább.
+    // 3) Fallback: without word-level timestamps one token per segment; the clickable transcript keeps
+    // working at segment resolution.
     if (result.tokens.isEmpty()) {
         for (const QJsonValue& v : segments) {
             const QJsonObject s = v.toObject();

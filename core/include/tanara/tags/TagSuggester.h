@@ -1,21 +1,19 @@
 #pragma once
 //
-// TagSuggester — címkejavaslatok a hasonló megbeszélésekből és az együtt járó címkékből.
+// TagSuggester: tag suggestions from similar meetings and co-occurring tags.
 //
-//  - suggest(): a szomszédok (MeetingProfiles::similar, és ha a meetingnek van beágyazása,
-//    EmbeddingIndex::similar, kölcsönös rang-fúzióval — RRF, k = 60) címkéi szavaznak a
-//    szomszéd pontszámával. Egy címke szavazata log(2 + globális arány × 10)-zel osztva, hogy a
-//    mindenhol ott lévő címkék ne nyerjenek. A meetingen lévő és az elutasított címkék
-//    kimaradnak; a legjobb szavazat 15 %-a alatti is; legfeljebb 6.
-//  - cooccur(): a frissen felrakott címkével a megbeszéléseinek legalább felén (≥ 2) együtt
-//    szereplő címkék.
-//  - suggestForDraft(): még nem létező megbeszéléshez (import, felvétel előtt) cím alapján.
+//  - suggest(): the tags of the neighbors (MeetingProfiles::similar, and if the meeting has an
+//    embedding, EmbeddingIndex::similar, merged by reciprocal rank fusion, RRF, k = 60) vote with
+//    the neighbor's score. A tag's vote is divided by log(2 + global ratio * 10), so tags that are
+//    everywhere do not win. Tags already on the meeting and rejected ones are dropped; so are
+//    those below 15% of the best vote; at most 6.
+//  - cooccur(): tags that appear together with the freshly applied tag in at least half (>= 2) of its meetings.
+//  - suggestForDraft(): for a not-yet-existing meeting (import, before recording), by title.
 //
-// Szálkezelés: a TagService a fő szálé, ezért a javaslathoz szükséges címke-adatokból a fő
-// szálon egy kis pillanatkép (TagSnapshot) készül; a suggestFrom ezt, valamint a szálbiztos
-// MeetingProfiles / EmbeddingIndex olvasóit használja, így háttérszálon is futtatható. A
-// TagService-t közvetlenül olvasó metódusok (suggest, cooccur, suggestForDraft) a fő szálé.
-//
+// Threading: TagService belongs to the main thread, so a small snapshot (TagSnapshot) of the tag data
+// needed for a suggestion is made on the main thread; suggestFrom uses it plus the thread-safe
+// readers of MeetingProfiles / EmbeddingIndex, so it can run on a background thread. The methods
+// reading TagService directly (suggest, cooccur, suggestForDraft) belong to the main thread.
 #include "tanara/tags/TagTypes.h"
 
 #include <QHash>
@@ -27,14 +25,14 @@ class TagService;
 class MeetingProfiles;
 class EmbeddingIndex;
 
-// A címke-adatok másolata egy meeting javaslatához (érték-típus, szálak között átadható).
+// A copy of the tag data for one meeting's suggestion (a value type, passable between threads).
 struct TagSnapshot {
-    QString meetingId;                              // üres: tervezet (még nem létező meeting)
-    QHash<QString, QStringList> tagsByMeeting;      // címkézett meetingek → címkéik
-    QHash<QString, Tag> tags;                       // id → címke
-    QHash<QString, int> counts;                     // id → meetingek száma
-    QSet<QString> rejected;                         // a meetingen elutasított címke-azonosítók
-    QHash<QString, MeetingRef> refs;                // a címkézett meetingek hivatkozásai
+    QString meetingId;                              // empty: a draft (a not-yet-existing meeting)
+    QHash<QString, QStringList> tagsByMeeting;      // tagged meetings -> their tags
+    QHash<QString, Tag> tags;                       // id -> tag
+    QHash<QString, int> counts;                     // id -> number of meetings
+    QSet<QString> rejected;                         // tag ids rejected on the meeting
+    QHash<QString, MeetingRef> refs;                // references of the tagged meetings
     int totalMeetings = 0;
 };
 
@@ -47,15 +45,15 @@ public:
     TagSuggester(TagService* tags, MeetingProfiles* profiles, EmbeddingIndex* index = nullptr);
 
     QVector<TagSuggestion> suggest(const QString& meetingId) const;
-    // A pillanatkép elkészítése (fő szál; a meeting számától függően ~ezredmásodpercek).
+    // Builds the snapshot (main thread; ~milliseconds depending on the meeting count).
     static TagSnapshot snapshot(const TagService& tags, const QString& meetingId);
-    // A suggest() szálbiztos magja: bármelyik szálról hívható.
+    // The thread-safe core of suggest(): callable from any thread.
     static QVector<TagSuggestion> suggestFrom(const TagSnapshot& snap, const MeetingProfiles* profiles,
                                               const EmbeddingIndex* index = nullptr);
     QVector<TagSuggestion> cooccur(const QString& meetingId, const QString& justAddedTagId) const;
     QVector<TagSuggestion> suggestForDraft(const QString& title, const QStringList& participants = {}) const;
 
-    // A szomszédok összefésülése kölcsönös rang-fúzióval (tiszta függvény, tesztelhető).
+    // Merging the neighbors by reciprocal rank fusion (pure function, testable).
     static QVector<SimilarHit> fuseRrf(const QVector<SimilarHit>& a, const QVector<SimilarHit>& b, int k = kRrfK);
 
 private:

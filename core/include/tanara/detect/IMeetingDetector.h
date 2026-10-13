@@ -1,47 +1,46 @@
 #pragma once
 //
-// IMeetingDetector — egy meeting/hívás detektálásának headless portja.
-// A megbízható jel NEM a futó processz, hanem hogy egy hívás-app ÉPP fogja a
-// mikrofont (aktív capture-stream). A futó app/ablak-cím MÁSODLAGOS: csak a
-// meeting nevéhez/kontextusához. Platformonként külön backend (Linux: pw-dump;
-// Windows: WASAPI; macOS: CoreAudio). Headless (core); NEM linkel Qt Widgetset.
+// IMeetingDetector: the headless port of meeting/call detection.
+// The reliable signal is NOT a running process but that a call app is CURRENTLY holding the
+// microphone (an active capture stream). The running app / window title is SECONDARY: only for the
+// meeting's name/context. A separate backend per platform (Linux: pw-dump;
+// Windows: WASAPI; macOS: CoreAudio). Headless (core); does NOT link Qt Widgets.
 //
-// Poll-alapú (NEM async job): a poll() olcsó és szinkron; a hívó (a figyelő) egy
-// QTimer-rel pörgeti a kívánt intervallummal.
-//
+// Poll-based (NOT an async job): poll() is cheap and synchronous; the caller (the watcher)
+// drives it with a QTimer at the desired interval.
 #include <QString>
 #include <QStringList>
 
 namespace tanara {
 
-// Egy detektálási pillanatkép. active=false → nincs (felismert) meeting.
+// One detection snapshot. active=false = no (recognized) meeting.
 struct MeetingSignal {
-    bool    active = false;   // ismert hívás-app aktívan fogja a mikrofont (nem a miénk)
-    QString appId;            // normalizált kulcs, pl. "zoom", "teams", "discord"
-    QString appName;          // ember-olvasható név a meeting-címhez, pl. "Zoom"
-    QString windowTitle;      // best-effort ablak-cím (másodlagos → meeting-név/kontextus)
-    QString sourceRef;        // diagnosztika: melyik stream/session illeszkedett
+    bool    active = false;   // a known call app is actively holding the microphone (not ours)
+    QString appId;            // normalized key, e.g. "zoom", "teams", "discord"
+    QString appName;          // human-readable name for the meeting title, e.g. "Zoom"
+    QString windowTitle;      // best-effort window title (secondary: meeting name/context)
+    QString sourceRef;        // diagnostics: which stream/session matched
 };
 
 class IMeetingDetector {
 public:
     virtual ~IMeetingDetector() = default;
 
-    // Stabil azonosító (pl. "linux-capture", "windows-wasapi", "macos-coreaudio").
+    // Stable id (e.g. "linux-capture", "windows-wasapi", "macos-coreaudio").
     virtual QString id() const = 0;
 
-    // Szinkron, olcsó (jellemzően pár ms). Nincs meeting → {active:false}.
-    // KÖTELEZŐ: a saját binárisunk ('tanara') capture-jét (felvétel közben) SOHA
-    // ne vegye meetingnek (ön-kizárás), különben a felvevő önmagát detektálná.
+    // Synchronous, cheap (typically a few ms). No meeting -> {active:false}.
+    // MANDATORY: our own binary's ('tanara') capture (while recording) must NEVER be taken as a
+    // meeting (self-exclusion), otherwise the recorder would detect itself.
     virtual MeetingSignal poll() = 0;
 
-    // Futtatható-e ez a detektor ezen a hoston most (a szükséges eszköz elérhető,
-    // az endpoint felderíthető). A registry a createBest()-hez ezt használja.
+    // Whether this detector can run on this host now (the needed tool is available, the endpoint can be
+    // discovered). The registry uses this for createBest().
     virtual bool isAvailable() const = 0;
 
-    // Opcionális testreszabás (a figyelő a settingsből hívja): mely appok számítanak
-    // hívás-appnak, és mi a saját binárisunk (ön-kizáráshoz). Default: no-op — a
-    // platform-detektorok felülírják, ha támogatják. Beépített defaultokkal működnek e nélkül is.
+    // Optional customization (the watcher calls it from the settings): which apps count as call apps,
+    // and what our own binary is (for self-exclusion). Default: a no-op; the platform detectors override it
+    // if they support it. They also work without it, with built-in defaults.
     virtual void configure(const QStringList& knownCallApps, const QString& selfBinary)
     {
         Q_UNUSED(knownCallApps);

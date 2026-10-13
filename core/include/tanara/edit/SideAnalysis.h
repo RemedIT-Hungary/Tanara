@@ -1,36 +1,35 @@
 #pragma once
 //
-// Sáv-oldal ellenőrzés: melyik OLDALON (helyi mikrofon / távoli loopback) szólt egy átirat-sor,
-// és ellentmond-e ez a sor beszélőjének. Tiszta függvények az adaton (a sáv-aktivitás:
-// TrackActivity.h; az átirat és az overlay: SpeakerOverlay.h) — I/O nincs, unit-tesztelhető.
+// Track-side check: on which SIDE (local microphone / remote loopback) a transcript line was
+// spoken, and whether that contradicts the line's speaker. Pure functions over data (track
+// activity: TrackActivity.h; transcript and overlay: SpeakerOverlay.h); no I/O, unit-testable.
 //
-// A felvétel sávonként külön fájl: a mikrofon-sáv(ok)on a helyi, a loopback-sáv(ok)on a távoli
-// résztvevők hangja szól. Ha egy sor alatt csak a mikrofonon van jel, a sort helyi beszélő
-// mondta; ha csak a loopbackon, távoli. A Soniox-diarizáció és a hangmodellek ezt nem látják,
-// a sáv-energia viszont triviálisan szétválasztja.
+// The recording is one file per track: the mic track(s) carry the local, the loopback track(s)
+// the remote participants' voices. If under a line only the microphone has signal, a local
+// speaker said it; if only the loopback, a remote one. Soniox diarization and the voice models
+// do not see this, while track energy separates it trivially.
 //
-// Az oldal (v3) BESZÉDSZINT-normalizált: sávonként a beszédszint az aktív (kActiveDb feletti)
-// keretek 90. percentilise (= 0 dB), a sor szintje sávfajtánként a legerősebb sáv ehhez mért
-// értéke. A felhasználó hangja a loopbackon visszhangként visszajön (~8 dB-lel a valódi távoli
-// beszéd alatt) — a puszta teljesítmény-arány ezt távolinak látta. Az új döntés (classifyLevels):
-//   * mic beszédszinten (≥ kSpeechDb)                       → Local vagy Mixed, SOHA Remote;
-//   * mindkettő beszédszinten: a loopback ≥ kEchoDb-lel a saját szintje alatt → Local (visszhang),
-//     különben Mixed (egymásra beszélés);
-//   * loopback beszédszinten, a mic a beszédszint alatt (zaj / áthallás) → Remote;
-//   * egyik sem (pl. a mic a kettő között: hangszóró-áthallás) → Unknown.
-// Unknown akkor is, ha valamelyik sávfajta nem fedi le a sort. Egysávos meeting (csak mic vagy
-// csak loopback, pl. import) → minden Unknown, nincs konfliktus (a funkció csendben inaktív).
+// The side is SPEECH-LEVEL-normalized: per track, the speech level is the 90th percentile of the
+// active (above kActiveDb) frames (= 0 dB); a line's level per track kind is the strongest
+// track's value relative to it. The user's voice returns on the loopback as an echo (~8 dB below
+// real remote speech); a plain power ratio saw that as remote. The decision (classifyLevels):
+//   * mic at speech level (>= kSpeechDb)                    -> Local or Mixed, NEVER Remote;
+//   * both at speech level: loopback >= kEchoDb below its own level -> Local (echo),
+//     otherwise Mixed (talking over each other);
+//   * loopback at speech level, mic below speech level (noise / bleed) -> Remote;
+//   * neither (e.g. mic in between: speaker bleed)           -> Unknown.
+// Unknown also if one track kind does not cover the line. A single-track meeting (mic only or
+// loopback only, e.g. an import) -> everything Unknown, no conflict (the feature is silently inactive).
 //
-// A régi (teljesítmény-arány) besorolás diagnosztikának megmarad (LineSide::legacySide):
-// localShare = P_mic / (P_mic + P_loop): a zajpadló FELETTI lineáris teljesítmény
-// (10^(dB/10) − 1, a windowEnergyDb-ből) sávfajtánként összegezve. Oldal a küszöbökkel:
-// >= hiLocal → Local, <= loRemote → Remote, köztük Mixed.
+// The old (power-ratio) classification is kept for diagnostics (LineSide::legacySide):
+// localShare = P_mic / (P_mic + P_loop): the linear power ABOVE the noise floor
+// (10^(dB/10) - 1, from windowEnergyDb) summed per track kind. Side by thresholds:
+// >= hiLocal -> Local, <= loRemote -> Remote, in between Mixed.
 //
-// Személy oldala (elsőbbségi sorrendben): kézi sáv-beosztás (SpeakerOverlay::speakerTracks) >
-// a megerősített sorokból következtetett > a people.json-ban tanult alapérték > saját név = Local
-// (ill. sávhoz kötött beszélő). A következtetett az alapértéket csak egyértelmű többséggel írja
-// felül (kOverrideMinLines / kOverrideMajority).
-//
+// A person's side (in order of precedence): manual track assignment (SpeakerOverlay::speakerTracks) >
+// inferred from the confirmed lines > the default learned in people.json > own name = Local
+// (or the speaker bound to a track). The inferred side overrides the default only with a clear
+// majority (kOverrideMinLines / kOverrideMajority).
 #include "tanara/Types.h"
 #include "tanara/edit/SpeakerOverlay.h"
 #include "tanara/edit/TrackActivity.h"
@@ -46,67 +45,67 @@ namespace tanara {
 enum class Side { Local, Remote, Mixed, Unknown };
 
 QString sideName(Side s);   // "local" | "remote" | "mixed" | "unknown"
-Side sideFromName(const QString& name);   // ismeretlen → Unknown
+Side sideFromName(const QString& name);   // unknown -> Unknown
 
 namespace sides {
 
-// Egy oldal akkor „szól”, ha az ablak átlagos energiája ennyivel a zajpadló felett van (dB).
+// A side is "sounding" if the window's mean energy is this far above the noise floor (dB).
 inline constexpr float kActiveDb = 3.0f;
-// Alap küszöbök (egycsúcsú eloszlásnál).
+// Base thresholds (for a unimodal distribution).
 inline constexpr float kDefaultLoRemote = 0.3f;
 inline constexpr float kDefaultHiLocal = 0.7f;
-// Adaptív küszöb: a localShare-ek 1D 2-közepe akkor számít kétcsúcsúnak, ha legalább
-// kAdaptiveMinLines sor van, mindkét csoportban legalább max(kAdaptiveMinCluster, 5%) sor,
-// a két közép között legalább kAdaptiveMinGap a távolság, és a 0.5 közéjük esik.
+// Adaptive threshold: the 1D 2-means of the localShare values counts as bimodal if there are at
+// least kAdaptiveMinLines lines, at least max(kAdaptiveMinCluster, 5%) lines in each group, the two
+// centers are at least kAdaptiveMinGap apart, and 0.5 falls between them.
 inline constexpr int kAdaptiveMinLines = 6;
 inline constexpr int kAdaptiveMinCluster = 3;
 inline constexpr double kAdaptiveMinClusterShare = 0.05;
 inline constexpr float kAdaptiveMinGap = 0.35f;
-// Személy oldala a megerősített sorokból: legalább ennyi Local+Remote sor és ekkora többség.
+// A person's side from confirmed lines: at least this many Local+Remote lines and this majority.
 inline constexpr int kPersonMinLines = 2;
 inline constexpr float kPersonMajority = 0.75f;
-// Az alapértelmezést (saját név / sávhoz kötött beszélő) csak egyértelmű ellenbizonyíték írja felül.
+// The default (own name / track-bound speaker) is overridden only by clear counter-evidence.
 inline constexpr int kOverrideMinLines = 3;
 inline constexpr float kOverrideMajority = 0.8f;
-// Alapértelmezésből (adat nélkül) jött oldal bizonyossága.
+// Confidence of a side that came from the default (without data).
 inline constexpr float kDefaultConfidence = 0.5f;
 
-// ---- beszédszint-normalizált besorolás (v3) ----
-// A sáv beszédszintje: az aktív (>= kActiveDb) keretek ennyiedik percentilise.
+// ---- speech-level-normalized classification ----
+// The track's speech level: this percentile of the active (>= kActiveDb) frames.
 inline constexpr double kSpeechPercentile = 0.90;
-// „Beszédszinten": a sor szintje legfeljebb ennyivel a sáv beszédszintje alatt (dB).
+// "At speech level": the line's level is at most this far below the track's speech level (dB).
 inline constexpr float kSpeechDb = -10.0f;
-// „Alacsony": ennél mélyebben a beszédszint alatt (vagy kActiveDb alatt).
+// "Low": deeper below the speech level than this (or below kActiveDb).
 inline constexpr float kLowDb = -20.0f;
-// Mindkettő beszédszinten: ha a loopback legalább ennyivel a saját szintje alatt van → visszhang.
+// Both at speech level: if the loopback is at least this far below its own level -> echo.
 inline constexpr float kEchoDb = -5.0f;
 
 struct Thresholds {
     float loRemote = kDefaultLoRemote;
     float hiLocal = kDefaultHiLocal;
-    bool adaptive = false;          // a kétcsúcsú eloszlásból számolt
-    float centerRemote = qQNaN();   // a 2-közép két középértéke (adaptívnál)
+    bool adaptive = false;          // computed from the bimodal distribution
+    float centerRemote = qQNaN();   // the two centers of the 2-means (for adaptive)
     float centerLocal = qQNaN();
 };
 
-// Az adaptív küszöb. Kétcsúcsú eloszlásnál (lásd fent) a Mixed-sáv a két közép közti szakasz
-// KÖZÉPSŐ FELE: m = (cR+cL)/2, w = (cL−cR)/4 → loRemote = m−w, hiLocal = m+w. Így mic-áthallásnál
-// (a távoli sorok is mutatnak némi mic-energiát, a távoli csúcs pl. 0.35-nél ül) a határ a két
-// csúcs közé tolódik. A 2-közép 1D-ben egzakt: a rendezett sor legjobb kettévágása (min. SSE).
-// Egyébként az alap 0.3 / 0.7.
+// The adaptive threshold. For a bimodal distribution (see above) the Mixed band is the MIDDLE
+// HALF of the span between the two centers: m = (cR+cL)/2, w = (cL-cR)/4 -> loRemote = m-w,
+// hiLocal = m+w. So with mic bleed (remote lines also show some mic energy, the remote peak
+// sits at e.g. 0.35) the boundary moves between the two peaks. The 2-means is exact in 1D: the
+// best split of the sorted sequence (min SSE). Otherwise the base 0.3 / 0.7.
 Thresholds adaptiveThresholds(const QVector<float>& shares);
 
 Side classifyShare(float localShare, const Thresholds& th);
 
-// localShare a két oldal zajpadló feletti dB-jéből (több sáv → a hívó összegzi a teljesítményt).
+// localShare from the two sides' dB above the noise floor (with several tracks the caller sums the power).
 float localShareFromDb(float micDb, float loopDb);
 
-// A sáv beszédszintje (padló feletti dB): az aktív keretek kSpeechPercentile percentilise.
-// NaN, ha nincs aktív keret.
+// The track's speech level (dB above the floor): the kSpeechPercentile percentile of the active
+// frames. NaN if there is no active frame.
 float speechLevelDb(const TrackActivity& t);
 
-// A v3 döntés a két oldal beszédszinthez mért értékéből (dB, <= 0 jellemzően). -inf = az oldal
-// csendes (kActiveDb alatt); NaN = nincs adat (a sávfajta nem fedi le a sort) → Unknown.
+// The decision from the two sides' values relative to speech level (dB, typically <= 0). -inf = the
+// side is silent (below kActiveDb); NaN = no data (the track kind does not cover the line) -> Unknown.
 Side classifyLevels(float micRelDb, float loopRelDb);
 
 } // namespace sides
@@ -115,21 +114,21 @@ struct LineSide {
     QString utteranceId;
     qint64  startMs = 0;
     qint64  endMs = 0;
-    QString speakerKey;     // a feloldott beszélő-kulcs
-    QString rawLabel;       // a nyers diarizációs címke
-    float   localShare = qQNaN();   // NaN = nincs adat
-    Side    side = Side::Unknown;   // a v3 (beszédszint-normalizált) besorolás
-    Side    legacySide = Side::Unknown;   // a régi, teljesítmény-arány szerinti (diagnosztika)
-    float   micDb = qQNaN();        // a mic-sávok együttes energiája a zajpadló felett (NaN = nincs lefedés)
+    QString speakerKey;     // the resolved speaker key
+    QString rawLabel;       // the raw diarization label
+    float   localShare = qQNaN();   // NaN = no data
+    Side    side = Side::Unknown;   // the speech-level-normalized classification
+    Side    legacySide = Side::Unknown;   // the old power-ratio classification (diagnostics)
+    float   micDb = qQNaN();        // combined energy of the mic tracks above the noise floor (NaN = no coverage)
     float   loopDb = qQNaN();
-    // A sávfajta legerősebb sávjának szintje a saját beszédszintjéhez mérve (dB); -inf = csend,
-    // NaN = nincs lefedés.
+    // Level of the track kind's strongest track relative to its own speech level (dB); -inf = silence,
+    // NaN = no coverage.
     float   micRelDb = qQNaN();
     float   loopRelDb = qQNaN();
-    bool    locked = false;         // megerősített / kézzel javított
-    bool    noisy = false;          // „egymásra beszéltek” (overlay vagy átfedés-szabály)
-    // „Nem azonosítható” (OverlayUtterance::ignored): a sor oldala besorolódik (tájékoztató), de a
-    // személy oldal-tanulásába (allLines, megerősített számlálók) és az ellentmondások közé nem kerül.
+    bool    locked = false;         // confirmed / manually corrected
+    bool    noisy = false;          // "talked over each other" (overlay or overlap rule)
+    // "Unidentifiable" (OverlayUtterance::ignored): the line's side is classified (informational), but
+    // it does not enter the person's side learning (allLines, confirmed counters) or the conflicts.
     bool    ignored = false;
 };
 
@@ -141,17 +140,17 @@ struct SideCounts {
 
 struct PersonSide {
     QString speakerKey;
-    QString personName;         // a kötött személy (üres = névtelen)
+    QString personName;         // the bound person (empty = anonymous)
     QString displayName;
     Side    side = Side::Unknown;
-    // A megerősített/javított, nem zajos sorok oldalai (ebből az ítélet).
+    // Sides of the confirmed/corrected, non-noisy lines (the verdict comes from these).
     int localLines = 0, remoteLines = 0, mixedLines = 0;
-    SideCounts allLines;        // a beszélő összes sora (tájékoztató; a „nem azonosítható” sorok nélkül)
-    float   confidence = 0.0f;  // 0..1: a többség aránya, ill. kDefaultConfidence alapértelmezésnél
-    Side    defaultSide = Side::Unknown;   // tanult alapérték / saját név / sávhoz kötött beszélő alapján
-    Side    learnedSide = Side::Unknown;   // a people.json-ban tanult alapérték (SideHints)
-    QStringList manualTracks;   // a kézi sáv-beosztás (üres = nincs megkötés)
-    Side    manualSide = Side::Unknown;    // a kézi beosztás sávjainak oldala
+    SideCounts allLines;        // all the speaker's lines (informational; without "unidentifiable" lines)
+    float   confidence = 0.0f;  // 0..1: the majority's share, or kDefaultConfidence for a default
+    Side    defaultSide = Side::Unknown;   // from the learned default / own name / track-bound speaker
+    Side    learnedSide = Side::Unknown;   // the default learned in people.json (SideHints)
+    QStringList manualTracks;   // the manual track assignment (empty = no constraint)
+    Side    manualSide = Side::Unknown;    // side of the manual assignment's tracks
     // "manual" | "lines" | "learned" | "user-name" | "fixed-track" | "override" | "none"
     QString basis;
 };
@@ -166,65 +165,66 @@ struct SideConflict {
 };
 
 struct SideReport {
-    bool active = false;                 // van mic ÉS loopback aktivitás (különben minden Unknown)
-    sides::Thresholds thresholds;        // a régi besorolás küszöbei (legacySide)
-    QMap<QString, float> speechLevels;   // sáv-id → beszédszint (padló feletti dB; NaN = nincs)
-    SideCounts legacyTotals;             // a régi besorolás összesítője
-    QVector<LineSide> lines;             // a bemenet sorrendjében
-    QVector<PersonSide> persons;         // az első megjelenés sorrendjében
-    QVector<SideConflict> conflicts;     // időrendben
-    QMap<QString, SideCounts> rawLabels; // NYERS diarizációs címkénként
+    bool active = false;                 // there is mic AND loopback activity (otherwise everything is Unknown)
+    sides::Thresholds thresholds;        // thresholds of the old classification (legacySide)
+    QMap<QString, float> speechLevels;   // track id -> speech level (dB above the floor; NaN = none)
+    SideCounts legacyTotals;             // totals of the old classification
+    QVector<LineSide> lines;             // in input order
+    QVector<PersonSide> persons;         // in order of first appearance
+    QVector<SideConflict> conflicts;     // in time order
+    QMap<QString, SideCounts> rawLabels; // per RAW diarization label
     SideCounts totals;
-    QVector<int> histogram;              // localShare 10 vödörben (a NaN-ok nélkül)
+    QVector<int> histogram;              // localShare in 10 buckets (without NaNs)
 };
 
-// Külső tudás a személyek oldaláról.
+// External knowledge about the people's sides.
 struct SideHints {
-    // Kézi sáv-beosztás: beszélő-kulcs → sáv-id-k (SpeakerOverlay::speakerTracks). Ha üres,
-    // az overlay-é számít.
+    // Manual track assignment: speaker key -> track ids (SpeakerOverlay::speakerTracks). If empty,
+    // the overlay's applies.
     QHash<QString, QStringList> speakerTracks;
-    // A people.json-ban tanult alapérték: személynév (toCaseFolded) → oldal.
+    // The default learned in people.json: person name (toCaseFolded) -> side.
     QHash<QString, Side> learnedSides;
 };
 
-// A teljes elemzés. userName: a felhasználó saját neve (SettingsManager); az ehhez kötött beszélő
-// és a Track.fixedSpeaker sáv speakerLabel-jével egyező beszélő alapból a sáv oldalán áll (mic →
-// Local, loopback → Remote). A tanult alapérték ezt megelőzi; az alapértéket a megerősített sorok
-// egyértelmű ellentmondása felülírja (naplózva); a kézi sáv-beosztás mindent felülír.
+// The full analysis. userName: the user's own name (SettingsManager); the speaker bound to it and
+// the speaker matching a Track.fixedSpeaker track's speakerLabel stand by default on that track's
+// side (mic -> Local, loopback -> Remote). A learned default takes precedence over this; the
+// default is overridden by clear contradiction from the confirmed lines (logged); the manual
+// track assignment overrides everything.
 SideReport analyzeSides(const Meeting& m, const QVector<TranscriptLine>& lines,
                         const SpeakerOverlay& ov, const MeetingActivity& activity,
                         const QString& userName, const SideHints& hints = {});
 
 namespace sides {
-// A sáv-ok oldala a meeting sávjai szerint (mic → Local, loopback → Remote; vegyes → Mixed;
-// ismeretlen id-k → Unknown).
+// Side of the tracks per the meeting's tracks (mic -> Local, loopback -> Remote; mixed -> Mixed;
+// unknown ids -> Unknown).
 Side sideOfTracks(const Meeting& m, const QStringList& trackIds);
-// Mit tanulhat a people.json egy elemzésből: az elnevezett személyek, akiknek az oldala
-// adatból (megerősített sorok) vagy kézi beosztásból jött, és Local / Remote.
-// Kulcs: a személy neve (ahogy a speakerMap-ben áll).
+// What people.json can learn from an analysis: the named people whose side came from data
+// (confirmed lines) or a manual assignment, and are Local / Remote.
+// Key: the person's name (as in the speakerMap).
 QHash<QString, Side> learnedDefaults(const SideReport& r);
 
-// ---- sáv-kizárás (G10) ----
-// A kézi sáv-beosztás KIZÁR (a személy nem lehet jelölt a sorra), ha együtt:
-//   1. a meeting minden ELNEVEZETT beszélőjének van kézi sáv-beosztása (a névtelenek nem
-//      számítanak) — ez a vetoActive;
-//   2. a sor oldala egyértelmű (Local / Remote; a Mixed és az Unknown nem zár ki);
-//   3. a személy kézi sávjai közt nincs a sor oldalán lévő (manualSide a sor oldalával ellentétes;
-//      a több oldalon is beosztott — Mixed — sosem kizárt).
-// Minden más oldal-forrás csak pontszám-levonás (CandidateRanker kSidePenalty).
+// ---- track veto ----
+// The manual track assignment EXCLUDES (the person cannot be a candidate for the line) when all hold:
+//   1. every NAMED speaker of the meeting has a manual track assignment (anonymous ones do not
+//      count); this is vetoActive;
+//   2. the line's side is unambiguous (Local / Remote; Mixed and Unknown do not exclude);
+//   3. none of the person's manual tracks is on the line's side (manualSide is opposite the
+//      line's side; one assigned on several sides, Mixed, is never excluded).
+// Every other side source is only a score deduction (CandidateRanker kSidePenalty).
 
-// Az 1. feltétel a meeting beszélőire: a SideReport elnevezett személyei és az overlay sor nélküli,
-// elnevezett résztvevői mind kézi beosztással bírnak (a beosztás sávjai ismert oldalúak), és van
-// legalább egy ilyen. Inaktív sáv-elemzésnél (egysávos meeting) false.
+// Condition 1 for the meeting's speakers: the SideReport's named people and the overlay's named
+// participants without lines all have a manual assignment (its tracks have a known side), and
+// there is at least one such. False for an inactive track analysis (single-track meeting).
 bool allNamedSpeakersBound(const Meeting& m, const SideReport& r, const SpeakerOverlay& ov,
                            const SideHints& hints = {});
-// Az 1. feltétel a jóváhagyás résztvevőire: a bejelölt (acceptedIds), elnevezett résztvevők mind
-// kézi sávval (Participant::tracks, ismert oldalú sávok), és van legalább egy ilyen.
+// Condition 1 for the approval's participants: the checked (acceptedIds), named participants all
+// have manual tracks (Participant::tracks, tracks with a known side), and there is at least one such.
 bool allNamedParticipantsBound(const Meeting& m, const QVector<Participant>& all, const QStringList& acceptedIds);
-// A 2. + 3. feltétel (a vetoActive-val együtt): kizárja-e a sor oldala a személyt.
+// Conditions 2 + 3 (together with vetoActive): whether the line's side excludes the person.
 bool vetoes(bool vetoActive, Side personManualSide, Side lineSide);
-// A sorok oldala (a v3, beszédszint-normalizált besorolás) csak a sáv-aktivitásból — ugyanaz, mint
-// az analyzeSides LineSide::side mezője. Egysávos aktivitásnál minden Unknown.
+// Sides of the lines (the speech-level-normalized classification) from track activity only; the
+// same as the LineSide::side field of analyzeSides. With single-track activity everything is Unknown.
 QVector<Side> classifyLineSides(const MeetingActivity& activity, const QVector<TranscriptLine>& lines);
 } // namespace sides
 

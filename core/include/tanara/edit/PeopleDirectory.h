@@ -1,8 +1,7 @@
 #pragma once
 //
-// Személyek a választó panelekhez (K5): név + van-e hanglenyomata + hány meetingen
-// szerepel, és az ékezet-/kisbetű-független névkeresés („odon" illik az „Ödön"-re).
-//
+// People for the picker panels: name + whether there is a voiceprint + in how many meetings they
+// appear, and accent-/case-insensitive name search ("odon" matches "Odon" with accents).
 #include "tanara/edit/SpeakerEditTypes.h"
 
 #include <QString>
@@ -14,22 +13,22 @@ class MeetingStore;
 class PeopleStore;
 class VoiceprintStore;
 
-// Kereséshez hajtogatott alak: kisbetűs, ékezetek nélkül (ő→o, ű→u, é→e …).
+// Folded form for searching: lowercase, without accents (o-double-acute -> o, u-double-acute -> u,
+// e-acute -> e ...).
 QString foldForSearch(const QString& text);
 
-// Igaz, ha a `needle` (ékezet- és kisbetű-függetlenül) részsztringje a `text`-nek.
-// Üres needle mindenre illik.
+// True if `needle` is a substring of `text` (accent- and case-insensitively). An empty needle matches everything.
 bool matchesSearch(const QString& text, const QString& needle);
 
-// Az ismert személyek (people.json ∪ hanglenyomat-DB), név szerint rendezve.
-// meetingCount: speakerMap-érték, mic-sáv fix neve vagy kézzel felvett résztvevő alapján.
-// A becenevek a people.json rekordjaiból jönnek (annak is, akinek csak lenyomata van).
+// The known people (people.json union the voiceprint DB), sorted by name.
+// meetingCount: by a speakerMap value, the mic track's fixed name or a manually added participant.
+// The nicknames come from the people.json records (also for someone who has only a voiceprint).
 QVector<PersonInfo> listPeople(const PeopleStore* people, const VoiceprintStore* voiceprints,
                                MeetingStore* store);
 
-// A lista szűrése a keresőmező szövegére; az elöl egyezők (névkezdet / szókezdet) előre.
-// A becenevekben is keres: aki csak a becenevével egyezik, a névre egyezők után jön, és a
-// matchedAlias mezője megmondja, melyik beceneve talált.
+// Filtering the list by the search field's text; those matching first (name start / word start) come first.
+// It also searches the nicknames: someone matching only by nickname comes after the name matches, and
+// their matchedAlias field tells which nickname matched.
 QVector<PersonInfo> filterPeople(const QVector<PersonInfo>& all, const QString& needle);
 
 } // namespace tanara

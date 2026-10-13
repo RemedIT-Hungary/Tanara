@@ -1,36 +1,34 @@
 #pragma once
 //
-// TagService — a címkekészlet és a meetingenkénti címkék kezelése (UI-független).
+// TagService: manages the tag set and the per-meeting tags (UI-independent).
 //
-// Tárolás:
-//  - a készlet: <metadataDir>/tags.json
+// Storage:
+//  - the set: <metadataDir>/tags.json
 //      { "version": 1,
-//        "tags":     [ {"id", "name", "createdAt", "lastUsedAt"?, "aliases"?: [...]}, … ],
-//        "rejected": [ {"meetingId", "tagId"?, "name"?}, … ] }
-//    A "rejected" személy-szintű elemei: {"person", "tagId", "meetingId"?} — meetingId nélkül
-//    tartós (személy, címke) elutasítás, meetingId-vel csak arra a megbeszélésre szól.
-//    {"person", "meetingId"} címke nélkül: a személy javaslata arra a megbeszélésre elutasítva
-//    (a résztvevő-javaslat ×-e, rejectPersonForMeeting).
-//    atomikusan írva, folyamatközi zár alatt (a felvevő-folyamat is írhatja; lásd
-//    store/SharedFile.h). Az "aliases" az összevont címkék régi nevei: begépelve a megtartott
-//    címkét kínálja a mező.
-//  - a hozzárendelés: meeting.json "tags" (Meeting::tagIds), a MeetingStore::saveMeeting-en át.
+//        "tags":     [ {"id", "name", "createdAt", "lastUsedAt"?, "aliases"?: [...]}, ... ],
+//        "rejected": [ {"meetingId", "tagId"?, "name"?}, ... ] }
+//    The person-level items of "rejected": {"person", "tagId", "meetingId"?}: without meetingId a
+//    lasting (person, tag) rejection, with a meetingId only for that meeting.
+//    {"person", "meetingId"} without a tag: the person's suggestion rejected for that meeting
+//    (the x of the participant suggestion, rejectPersonForMeeting).
+//    written atomically, under an inter-process lock (the recorder process may write it too; see
+//    store/SharedFile.h). "aliases" are the old names of merged tags: typing one offers the kept tag.
+//  - the assignment: "tags" in meeting.json (Meeting::tagIds), via MeetingStore::saveMeeting.
 //
-// Visszavonás: minden módosító hívás egy lépés (a csoport — beginGroup/endGroup — együtt egy
-// lépés). A lépés az érintett állapot „előtte” pillanatképe (készlet + elutasítások + az
-// érintett meetingek címkéi); az undo() ezt állítja vissza. Legfeljebb 50 lépés.
+// Undo: every modifying call is one step (a group, beginGroup/endGroup, is one step together). A
+// step is the "before" snapshot of the affected state (set + rejections + the affected meetings'
+// tags); undo() restores it. At most 50 steps.
 //
-// A megbeszélések címkéit (és címét, dátumát, résztvevőit) a store-ból lustán, meetingenként
-// gyorsítótárazza; a store jelei frissítik.
+// The meetings' tags (and title, date, participants) are cached lazily from the store, per
+// meeting; the store's signals refresh them.
 //
-// Címkék a személyeken (lásd tags/PersonTags.h): a kézi címkék a people.json rekordjaiban
-// (PeopleStore::setTags), a címkekészlet közös. A személy-címke műveletek ugyanebben a
-// visszavonási veremben vannak (a lépés az érintett személyek címkéit is menti). A címke
-// törlése / összevonása a személyekre is átvezetődik (egy lépésben). A tanult kapcsolat
-// statisztikája a sor-gyorsítótárból számolódik: az ensurePersonStats() után háttérszálon
-// (a régi pillanatkép marad érvényben, amíg az új kész; personStatsChanged), előtte az első
-// olvasás szinkron (tesztek, CLI). A saját személy minden szabályból kimarad.
-//
+// Tags on people (see tags/PersonTags.h): manual tags live in the people.json records
+// (PeopleStore::setTags), the tag set is shared. Person-tag operations are in the same undo
+// stack (a step also saves the affected people's tags). Deleting / merging a tag carries through
+// to the people (in one step). The learned association's statistics are computed from the row
+// cache: after ensurePersonStats() on a background thread (the old snapshot stays valid until the
+// new one is ready; personStatsChanged), before that the first read is synchronous (tests, CLI).
+// The own person is left out of every rule.
 #include "tanara/tags/PersonTags.h"
 #include "tanara/tags/TagTypes.h"
 
@@ -52,167 +50,165 @@ class TagService : public QObject {
 public:
     enum class Sort { LastUsed, Alpha, MostUsed };
 
-    // tagsFile: a tags.json útja (jellemzően <metadataDir>/tags.json).
+    // tagsFile: path of tags.json (typically <metadataDir>/tags.json).
     TagService(MeetingStore* store, const QString& tagsFile, QObject* parent = nullptr);
     ~TagService() override;
 
-    // A címke-profil jellemző kifejezéseihez (nélküle a topTerms üres).
+    // For the tag profile's characteristic phrases (without it topTerms is empty).
     void setProfiles(MeetingProfiles* profiles);
 
-    // ---- készlet ----
+    // ---- set ----
     QVector<TagUsage> all(Sort sort = Sort::LastUsed) const;
-    Tag tag(const QString& id) const;                          // üres id, ha ismeretlen
-    Tag byName(const QString& name) const;                     // tagKey-egyezés (régi név is)
-    QVector<Tag> similarNames(const QString& name, int limit = 3) const;   // nearDuplicate, a pontos kulcs nélkül
+    Tag tag(const QString& id) const;                          // empty id if unknown
+    Tag byName(const QString& name) const;                     // tagKey match (old name too)
+    QVector<Tag> similarNames(const QString& name, int limit = 3) const;   // nearDuplicate, without the exact key
     QVector<TagInputRow> inputRows(const QString& typed, int limit = 5) const;
-    // Az alapból kijelölt sor indexe a sorokban (HASONLÓ MÁR VAN → a meglévő; különben az első).
+    // Index of the preselected row in the rows (SIMILAR EXISTS -> the existing one; otherwise the first).
     static int preferredRow(const QVector<TagInputRow>& rows);
     int meetingCount(const QString& tagId) const;
     int totalMeetings() const;
 
-    Tag  create(const QString& name);                          // létező kulcsnál a meglévő
-    bool rename(const QString& id, const QString& name);       // false: a kulcs másé / üres név
+    Tag  create(const QString& name);                          // for an existing key, the existing one
+    bool rename(const QString& id, const QString& name);       // false: the key belongs to another / empty name
     void merge(const QString& fromId, const QString& keepId);
     void remove(const QString& id);
 
-    // ---- meetingek ----
-    QStringList tagsOf(const QString& meetingId) const;        // a meeting sorrendjében
+    // ---- meetings ----
+    QStringList tagsOf(const QString& meetingId) const;        // in the meeting's order
     Tag  addTag(const QString& meetingId, const QString& nameOrId, TagSource source = TagSource::Manual);
     void removeTag(const QString& meetingId, const QString& id);
     void setTags(const QString& meetingId, const QStringList& ids, TagSource source = TagSource::Manual);
     void bulkAdd(const QStringList& meetingIds, const QString& id);
     void bulkRemove(const QStringList& meetingIds, const QString& id);
     QVector<Tag> recent(int limit = 5) const;
-    QStringList meetingsWith(const QString& tagId) const;      // legújabb elöl
-    MeetingRef meetingRef(const QString& meetingId) const;     // cím + dátum a gyorsítótárból
-    // Minden címkézett meeting címkéi (meetingId → tagsOf) — a javaslat-pillanatképhez.
+    QStringList meetingsWith(const QString& tagId) const;      // newest first
+    MeetingRef meetingRef(const QString& meetingId) const;     // title + date from the cache
+    // The tags of every tagged meeting (meetingId -> tagsOf), for the suggestion snapshot.
     QHash<QString, QStringList> taggedMeetings() const;
 
-    // ---- levezetett ----
+    // ---- derived ----
     TagProfile profile(const QString& id) const;
-    QVector<QPair<QString, int>> cooccurring(const QString& id) const;   // gyakoriság szerint
-    // A profil egysoros szöveges kivonata (az LLM-javaslat jelöltlistájához).
+    QVector<QPair<QString, int>> cooccurring(const QString& id) const;   // by frequency
+    // One-line text digest of the profile (for the LLM suggestion's candidate list).
     QString profileLine(const QString& id) const;
 
-    // ---- személyek: kézi címkék ----
-    // A kézi címkék tára (people.json). Nélküle a kézi címke-műveletek hatástalanok, a tanult
-    // statisztika működik.
+    // ---- people: manual tags ----
+    // The store of manual tags (people.json). Without it the manual tag operations have no effect; the
+    // learned statistics work.
     void setPeopleStore(PeopleStore* people);
-    // A saját személy neve (minden hívásnál lekérdezve; üres = nincs).
+    // The own person's name (queried on every call; empty = none).
     void setSelfNameProvider(std::function<QString()> provider);
     QString selfName() const;
     bool isSelf(const QString& name) const;
 
-    QStringList tagsOfPerson(const QString& name) const;       // csak létező címkék, sorrendben
-    // false: üres / saját név, vagy nincs PeopleStore. Ismeretlen azonosítók kimaradnak.
+    QStringList tagsOfPerson(const QString& name) const;       // only existing tags, in order
+    // false: empty / own name, or no PeopleStore. Unknown ids are dropped.
     bool setPersonTags(const QString& name, const QStringList& ids);
-    Tag  addPersonTag(const QString& name, const QString& nameOrId);   // nem létező név → új címke
+    Tag  addPersonTag(const QString& name, const QString& nameOrId);   // a non-existent name -> a new tag
     void removePersonTag(const QString& name, const QString& id);
-    QStringList peopleWith(const QString& tagId) const;        // kézi; név szerint rendezve
+    QStringList peopleWith(const QString& tagId) const;        // manual; sorted by name
 
-    // ---- személyek: tanult kapcsolat + javaslatok ----
-    // Háttér-mód bekapcsolása és a statisztika előre számolása (az alkalmazás indításkor hívja).
+    // ---- people: learned association + suggestions ----
+    // Turns background mode on and precomputes the statistics (the app calls it at startup).
     void ensurePersonStats();
     bool personStatsBusy() const;
-    // Újraszámolás kérése (pl. a saját név változott); a sor-változásokat magától követi.
+    // Requests a recompute (e.g. the own name changed); it follows row changes by itself.
     void invalidatePersonStats();
-    // Számolás MOST, a hívó szálán (CLI, tesztek; a sorokat is betölti). personStatsChanged.
+    // Compute NOW, on the caller's thread (CLI, tests; it loads the rows too). personStatsChanged.
     void refreshPersonStatsNow();
-    // A tanult kapcsolat aktuális pillanatképe (sosem null).
+    // The current snapshot of the learned association (never null).
     std::shared_ptr<const PersonTagStats> personStats() const;
-    // A bizonyítékhoz kell minden — szálak között átadható.
+    // Everything the evidence needs, passable between threads.
     PersonTagSnapshot personTagSnapshot() const;
-    // A címke személyei (Címkék ablak › Személyek): kézi + tanult ≥ küszöb; kézi előbb, aztán
-    // a közös megbeszélések száma, döntetlennél a legutóbbi közös megbeszélés. A saját személy
-    // kimarad. limit ≤ 0: mind.
+    // The tag's people (Tags window > People): manual + learned >= threshold; manual first, then by
+    // number of shared meetings, ties by the latest shared meeting. The own person is left out.
+    // limit <= 0: all.
     QVector<PersonTagStat> peopleStats(const QString& tagId, int limit = 50) const;
-    // A személy címkéi számokkal: kézi (0 közössel is) + minden c ≥ 1 címke; kézi előbb.
+    // The person's tags with numbers: manual (even with 0 shared) + every c >= 1 tag; manual first.
     QVector<PersonTagStat> personTagStats(const QString& name) const;
-    // 3.1: „Ráteszem” — tanult ≥ küszöb, nincs rajta kézzel, nincs elutasítva, nincs kizárva.
+    // 3.1: "Put it on them": learned >= threshold, not manually on them, not rejected, not excluded.
     QVector<PersonTagStat> suggestPeopleForTag(const QString& tagId, const QStringList& excludeNames = {},
                                                int limit = persontags::kMaxSuggestions) const;
-    // 3.2: „Ezeken szokott ott lenni” (c ≥ 2 és (≥ 30 % a címkéé vagy ≥ 50 % a személyé)).
+    // 3.2: "Usually at these" (c >= 2 and (>= 30% of the tag's or >= 50% of the person's)).
     QVector<PersonTagStat> suggestTagsForPerson(const QString& name, int limit = persontags::kMaxSuggestions) const;
-    // 3.3: megbeszélés-címke a résztvevők kézi címkéiből: t, ha ≥ 2 résztvevőn rajta van, vagy
-    // egyetlen nem-saját résztvevő van és rajta van; a meetingen lévő és ott elutasított kimarad.
-    // source = People, indoklás ReasonKind::PeopleTags (a címkét viselő résztvevők nevei).
+    // 3.3: a meeting tag from the participants' manual tags: t, if it is on >= 2 participants, or there is
+    // a single non-own participant and it is on them; tags on the meeting and rejected there are dropped.
+    // source = People, reason ReasonKind::PeopleTags (the names of the participants carrying the tag).
     QVector<TagSuggestion> suggestTagsForPeople(const QStringList& names, const QString& meetingId) const;
-    // Ugyanez a meeting nevesített résztvevőivel: a beszélő-térkép és a saját sáv
-    // (MeetingLibrary::participantsOf), valamint a kézi, naptári és jóváhagyott résztvevők —
-    // így átírás előtt is.
+    // The same with the meeting's named participants: the speaker map and the own track
+    // (MeetingLibrary::participantsOf), plus manual, calendar and approved participants,
+    // so also before transcription.
     QVector<TagSuggestion> suggestMeetingTagsFromParticipants(const QString& meetingId) const;
-    // A címke mint azonosítási bizonyíték (lásd PersonTagSnapshot::evidence; meetingId: a saját
-    // sora kimarad a számokból).
+    // The tag as identification evidence (see PersonTagSnapshot::evidence; meetingId: its own row
+    // is left out of the numbers).
     TagEvidence tagEvidence(const QString& personName, const QStringList& meetingTagIds,
                             const QString& meetingId = QString()) const;
 
-    // (személy, címke) elutasítás; meetingId üres = tartós, különben csak arra a megbeszélésre.
+    // (person, tag) rejection; empty meetingId = lasting, otherwise only for that meeting.
     void rejectPersonTag(const QString& name, const QString& tagId, const QString& meetingId = QString());
     bool isRejectedForPerson(const QString& name, const QString& tagId, const QString& meetingId = QString()) const;
 
-    // ---- személy-javaslat egy megbeszélésre (Áttekintés › Résztvevők, A6) ----
-    // A megbeszélés címkéin tanult személyek (suggestPeopleForTag a címkék sorrendjében), akik
-    // még nincsenek a résztvevők közt (excludeNames), és erre a megbeszélésre nincsenek
-    // elutasítva (sem rejectPersonForMeeting, sem a (személy, címke, meeting) elutasítás). Egy
-    // személy egyszer (az első címkéjével). A saját személy kimarad. limit ≤ 0: mind.
+    // ---- person suggestion for a meeting (Overview > Participants) ----
+    // The people learned from the meeting's tags (suggestPeopleForTag in tag order) who are not
+    // among the participants yet (excludeNames) and are not rejected for this meeting (neither
+    // rejectPersonForMeeting nor the (person, tag, meeting) rejection). A person once (with their
+    // first tag). The own person is left out. limit <= 0: all.
     QVector<PersonTagStat> suggestPeopleForMeeting(const QString& meetingId, const QStringList& excludeNames = {},
                                                    int limit = persontags::kMaxSuggestions) const;
-    // A javasolt személy × gombja: TARTÓS, csak erre a megbeszélésre szóló elutasítás (tags.json
-    // rejected[] {"person", "meetingId"} címke nélkül). Egy visszavonási lépés. A meeting
-    // törlésével az elutasítás is törlődik.
+    // The suggested person's x button: a LASTING rejection for this meeting only (tags.json rejected[]
+    // {"person", "meetingId"} without a tag). One undo step. Deleting the meeting deletes the rejection too.
     void rejectPersonForMeeting(const QString& name, const QString& meetingId);
     bool isPersonRejectedForMeeting(const QString& name, const QString& meetingId) const;
 
-    // Személy-műveletek átvezetése (az AppController globális átnevezése / törlése hívja; a
-    // people.json rekordot a PeopleStore viszi): az elutasítások a személlyel mennek
-    // (összevonásnál unió), a visszavonási verem személy-pillanatképei követik a nevet.
+    // Carrying person operations through (called by AppController's global rename / delete; the
+    // people.json record is moved by PeopleStore): rejections go with the person (a union on merge),
+    // the undo stack's person snapshots follow the name.
     void renamePersonRefs(const QString& oldName, const QString& newName);
     void forgetPerson(const QString& name);
 
-    // ---- tanulási kérdés (UX-terv 5.) ----
-    // A jóváhagyás / új személy utáni kérdések (PersonTagSnapshot::learningQuestions; a
-    // tartósan elutasított pár és a már feltett kérdés kimarad). A kérdést a felület egyszer
-    // teszi fel: utána markLearningAsked (a futás idejére megjegyezve; a ki nem válaszolt
-    // kérdés nem elutasítás).
+    // ---- learning question (UX plan rule 5) ----
+    // The questions after an approval / new person (PersonTagSnapshot::learningQuestions; a lastingly
+    // rejected pair and an already asked question are dropped). The UI asks the question once:
+    // then markLearningAsked (remembered for the run; an unanswered question is not a rejection).
     QVector<PersonTagQuestion> learningQuestions(const QString& meetingId, const QStringList& names) const;
     void markLearningAsked(const QString& meetingId, const QVector<PersonTagQuestion>& questions);
-    // „Igen”: a címke minden személyre (kézi címke); „Nem”: tartós (személy, címke) elutasítás.
-    // Mindkettő EGY visszavonási lépés.
+    // "Yes": the tag on every person (manual tag); "No": a lasting (person, tag) rejection.
+    // Both are ONE undo step.
     void answerLearning(const PersonTagQuestion& question, bool accept);
 
-    // ---- elutasított javaslatok ----
+    // ---- rejected suggestions ----
     void reject(const QString& meetingId, const TagSuggestion& suggestion);
     bool isRejected(const QString& meetingId, const QString& tagIdOrName) const;
     int  rejectedCount() const;
     void clearRejected();
 
-    // ---- visszavonás ----
+    // ---- undo ----
     QString beginGroup(const QString& label);
-    // Ugyanez egy megbeszélés közös visszavonási vermének (edit/MeetingUndo.h) jelölésével: a
-    // csoport lépése a meetinghez tartozik akkor is, ha nem a meeting címkéit érinti (pl. egy
-    // résztvevő személy-címkéje az Áttekintésből). A meeting címkéit érintő és a meetingre szóló
-    // elutasító lépések maguktól is a meetinghez tartoznak.
+    // The same, with the mark of a meeting's shared undo stack (edit/MeetingUndo.h): the group's step
+    // belongs to the meeting even if it does not touch the meeting's tags (e.g. a participant's person
+    // tag from the Overview). Steps touching the meeting's tags and rejecting for the meeting belong
+    // to the meeting by themselves.
     QString beginGroup(const QString& label, const QString& meetingId);
     void    endGroup();
     bool    canUndo() const;
     QString undoLabel() const;
     void    undo();
-    // A közös visszavonás (MeetingUndoService) adapteréhez: a verem lépéseinek sorszámai
-    // (alulról felfelé; egy lépés sorszáma a folyamat életére egyedi), és hogy egy lépés mely
-    // megbeszélésekhez tartozik (üres: egyikhez sem / ismeretlen sorszám).
+    // For the shared undo (MeetingUndoService) adapter: the sequence numbers of the stack's steps
+    // (bottom to top; a step's number is unique for the process life), and which meetings a step
+    // belongs to (empty: none / unknown number).
     QVector<quint64> undoSerials() const;
     QStringList undoMeetingIds(quint64 serial) const;
 
-    // A tags.json újraolvasása (ha a lemezen változott) és a meeting-gyorsítótár eldobása.
+    // Rereads tags.json (if it changed on disk) and drops the meeting cache.
     void reload();
 
 signals:
-    void tagsChanged();                       // a készlet (név, darabszám) változott
+    void tagsChanged();                       // the set (name, count) changed
     void meetingTagsChanged(QString meetingId);
     void rejectedChanged();
     void undoChanged();
-    void personTagsChanged(QString name);     // egy személy kézi címkéi változtak (üres: több is)
-    void personStatsChanged();                // a tanult kapcsolat statisztikája frissült
+    void personTagsChanged(QString name);     // a person's manual tags changed (empty: several)
+    void personStatsChanged();                // the learned association's statistics refreshed
 
 private:
     struct Impl;

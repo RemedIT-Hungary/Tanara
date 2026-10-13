@@ -1,68 +1,67 @@
 #pragma once
 //
-// Tanara — a beépített LLM-promptok EGY helye + fájl-override.
+// Tanara: the ONE place for the built-in LLM prompts + file override.
 //
-// Prompt-azonosítók:
-//   gyors összefoglaló (SummaryService): "notes" (részenkénti jegyzet) | "merge" (a
-//     részjegyzetek összegzése) | "single" (egy részből álló megbeszélés: jegyzet + összegzés
-//     egy hívásban; a régi "simple" azonosító ennek álneve),
-//   témánkénti elemzés: "topic" (téma-kinyerés) | "analysis" (témánkénti elemzés) |
-//     "reduce" (záró vezetői összefoglaló),
-//   címkejavaslat az összefoglaló után: "tags" (LlmTagSuggester; sima „pick: / new:” sorok).
-// A beépített promptok angolok; a kimenet nyelvét a {{LANGUAGE}} (angol nyelvnév) ill. a
-// régi {{NYELV}} (a beállítás szövege) változó adja.
+// Prompt ids:
+//   quick summary (SummaryService): "notes" (per-part notes) | "merge" (combining the
+//     part notes) | "single" (a meeting with one part: notes + summary in one call; the old
+//     "simple" id is an alias of it),
+//   per-topic analysis: "topic" (topic extraction) | "analysis" (per-topic analysis) |
+//     "reduce" (final executive summary),
+//   tag suggestion after the summary: "tags" (LlmTagSuggester; plain "pick: / new:" lines).
+// The built-in prompts are English; the output language comes from the {{LANGUAGE}} variable
+// (English language name) or the legacy {{NYELV}} (the setting's text).
 //
-// Feloldási sorrend egy promptra:
-//   1. a Beállításokban tárolt user-override (az AppController kezeli, nem itt),
-//   2. <metadataDir>/prompts/<id>.md — kézzel hangolható, ÚJRAFORDÍTÁS NÉLKÜL,
-//   3. a kódba égetett beépített default (promptBuiltin).
-//
+// Resolution order for a prompt:
+//   1. the user override stored in Settings (handled by AppController, not here),
+//   2. <metadataDir>/prompts/<id>.md: tunable by hand, WITHOUT REBUILDING,
+//   3. the built-in default compiled into the code (promptBuiltin).
 #include <QString>
 #include <QStringList>
 #include <QVector>
 
 namespace tanara {
 
-// A kódba égetett default a megadott id-hoz (ismeretlen id → üres string).
+// The compiled-in default for the given id (unknown id = empty string).
 QString promptBuiltin(const QString& id);
 
-// A fájl-override útja: <metadataDir>/prompts/<id>.md ("~"-t kifejti;
-// metadataDir üres → ~/.tanara).
+// Path of the file override: <metadataDir>/prompts/<id>.md (expands "~";
+// empty metadataDir = ~/.tanara).
 QString promptFilePath(const QString& id, const QString& metadataDir = QString());
 
-// Fájl-override, ha létezik és nem üres, különben a beépített default.
+// The file override if it exists and is non-empty, otherwise the built-in default.
 QString promptDefault(const QString& id, const QString& metadataDir = QString());
 
-// Az összefoglaló CÉLNYELVÉNEK alkalmazása egy rendszer-promptra:
-//  - a {{LANGUAGE}} placeholdert az angol nyelvnévre (summaryLanguageName), a {{NYELV}}-et a
-//    beállítás szövegére cseréli,
-//  - placeholder nélküli (saját) promptnál nem-magyar célnyelv esetén direktívát fűz hozzá.
-// language üres → "magyar". A ## Döntések / ## Teendők szakaszcímek magyarok maradnak.
+// Applies the summary's TARGET LANGUAGE to a system prompt:
+//  - replaces {{LANGUAGE}} with the English language name (summaryLanguageName) and {{NYELV}}
+//    with the setting's text,
+//  - for a custom prompt without placeholders and a non-Hungarian target, appends a directive.
+// Empty language = "magyar". The Hungarian section headings (decisions / action items) stay Hungarian.
 QString applySummaryLanguage(QString prompt, const QString& language);
 
-// A célnyelv (a felhasználó szabad szövege, pl. "magyar", "német") angol neve az angol
-// promptokhoz: a gyakori nyelveket leképezi (magyar → Hungarian), minden mást változatlanul ad.
-// Üres → "Hungarian".
+// English name of the target language (the user's free text, e.g. the Hungarian or German word) for the
+// English prompts: maps common languages (e.g. the Hungarian word for Hungarian -> "Hungarian"), returns anything else unchanged.
+// Empty = "Hungarian".
 QString summaryLanguageName(const QString& language);
 
-// Rövid nyelvi emlékeztető, amit az átirat / jegyzet UTÁN fűzünk a felhasználói üzenethez
-// (a modell ezt olvassa utoljára — a Gemma angol prompttal hajlamos angolul válaszolni).
+// Short language reminder appended to the user message AFTER the transcript / notes
+// (the model reads it last; Gemma tends to answer in English with an English prompt).
 QString languageReminder(const QString& language);
 
-// A promptokban a KÓD által behelyettesített változók (a Beállítások jelmagyarázata és a
-// szerkesztő kiemelése ebből dolgozik — csak az szerepel itt, amit tényleg cserélünk).
+// Variables substituted by the CODE in the prompts (the Settings legend and the editor
+// highlighting use this; list only what is actually replaced).
 struct PromptVariable {
     QString token;         // pl. "{{NYELV}}"
-    QString description;   // mire cserélődik (a UI nyelvén)
+    QString description;   // what it is replaced with (in the UI language)
 };
 QVector<PromptVariable> promptVariables();
 
-// Egy prompt KIMENETÉNEK alakja, ahogy a feldolgozó kód várja (nem szerkeszthető; a
-// Beállítások „Kimeneti séma” ablaka mutatja). id: simple | topic | analysis | reduce.
+// Shape of a prompt's OUTPUT as the processing code expects it (not editable; shown in the
+// Settings "Output schema" dialog). id: simple | topic | analysis | reduce.
 struct PromptOutputFormat {
     QString kind;          // "json" | "markdown" | "text"
     QString summary;       // egysoros: „execSummary, decisions[], actionItems[], participants[]”
-    QString body;          // a teljes leírás (séma / minta), egyenközű betűvel megjelenítve
+    QString body;          // the full description (schema / sample), shown in a monospace font
 };
 PromptOutputFormat promptOutputFormat(const QString& id);
 

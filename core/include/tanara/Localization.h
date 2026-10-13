@@ -1,20 +1,19 @@
 #pragma once
 //
-// Tanara — UI-nyelv feloldása + QTranslator telepítése.
-// A FORRÁSNYELV MAGYAR: "hu" esetén nincs betöltendő fordítás. Más nyelvhez a
-// futtatható targetbe ágyazott :/i18n/tanara_<lang>.qm töltődik (qt_add_translations).
-//
+// UI language resolution + QTranslator installation.
+// The SOURCE LANGUAGE IS HUNGARIAN: for "hu" no translation is loaded. For other languages
+// :/i18n/tanara_<lang>.qm, embedded in the executable target (qt_add_translations), is loaded.
 #include <QString>
 
 namespace tanara {
 
-// A settings.json `uiLanguage` mezője ("auto"|"hu"|"en") alapján telepíti a fordítót
-// a QCoreApplication-re. "auto" → a rendszer-locale dönt (nem-magyar → "en").
-// A Q(Core)Application megkonstruálása UTÁN, az első UI-elem/kimenet ELŐTT hívd.
-// metadataDir üres → ~/.tanara (a SettingsManager defaultja).
+// Installs the translator on the QCoreApplication based on the `uiLanguage` field of
+// settings.json ("auto"|"hu"|"en"). "auto" = the system locale decides (non-Hungarian = "en").
+// Call it AFTER constructing the Q(Core)Application and BEFORE the first UI element/output.
+// Empty metadataDir = ~/.tanara (the SettingsManager default).
 void installAppTranslator(const QString& metadataDir = QString());
 
-// Az utolsó installAppTranslator() által ténylegesen beállított nyelv ("hu"/"en").
+// The language actually set by the last installAppTranslator() ("hu"/"en").
 QString activeUiLanguage();
 
 } // namespace tanara

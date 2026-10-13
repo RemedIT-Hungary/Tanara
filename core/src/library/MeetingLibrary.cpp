@@ -16,9 +16,9 @@
 
 namespace tanara {
 
-// Egy meeting átirat-szövege a kereséshez: a megszólalások szövege '\n'-nel összefűzve
-// (NFC), a hajtogatott (ékezet/kisbetű-független) párja, és megszólalásonként a kezdő-
-// pozíció + időbélyeg + nyers beszélő-címke (a találat → megszólalás visszakereséséhez).
+// A meeting's transcript text for search: the utterances' text joined with '\n' (NFC), its folded
+// (accent/case-insensitive) counterpart, and per utterance the start position + timestamp + raw speaker
+// label (to map a hit back to an utterance).
 struct MeetingLibrary::TextDoc {
     qint64  mtimeMs = -1;
     qint64  size = -1;
@@ -34,11 +34,11 @@ struct MeetingLibrary::Impl {
     MeetingJobTracker* tracker = nullptr;
     TagService*        tags = nullptr;
     bool               loaded = false;
-    QVector<Meeting>   meetings;            // startedAt szerint csökkenő
-    QHash<QString, int> index;              // id → pozíció a meetings-ben
-    QHash<QString, QString> foldedTitle;    // id → hajtogatott cím
-    QHash<QString, QStringList> titleWords; // id → a cím összehasonlítható szavai (javaslatokhoz)
-    QHash<QString, TextDoc> texts;          // id → átirat-szöveg (lusta)
+    QVector<Meeting>   meetings;            // descending by startedAt
+    QHash<QString, int> index;              // id -> position in meetings
+    QHash<QString, QString> foldedTitle;    // id -> folded title
+    QHash<QString, QStringList> titleWords; // id -> the title's comparable words (for suggestions)
+    QHash<QString, TextDoc> texts;          // id -> transcript text (lazy)
     QTimer* warmTimer = nullptr;
 
     void reindex() {
@@ -63,8 +63,8 @@ MeetingLibrary::MeetingLibrary(MeetingStore* store, MeetingJobTracker* tracker, 
             emit pendingItemsChanged();
         });
         connect(store, &MeetingStore::meetingAdded, this, [this](const QString& id) {
-            // A store a createMeeting-nél előbb meetingUpdated-et ad (saveMeeting) — ha onnan
-            // már felvettük, itt nincs teendő.
+            // On createMeeting the store first emits meetingUpdated (saveMeeting): if we already picked it up
+            // from there, there is nothing to do here.
             if (d->loaded && d->index.contains(id)) return;
             reloadMeeting(id);
             emit meetingAdded(id);
@@ -99,11 +99,11 @@ void MeetingLibrary::ensureLoaded() const
 {
     if (d->loaded || !d->store) return;
     d->meetings.clear();
-    const QVector<Meeting> rows = d->store->loadAll();   // az indexből, legújabb elöl
+    const QVector<Meeting> rows = d->store->loadAll();   // from the index, newest first
     d->meetings.reserve(rows.size());
     for (const Meeting& row : rows) {
-        // A teljes meeting (speakerMap, sávok) a lemezről; ha a meeting.json nem olvasható,
-        // az index-sor is megteszi (cím, dátum, flagek).
+        // The full meeting (speakerMap, tracks) from disk; if meeting.json is unreadable, the index row will
+        // do (title, date, flags).
         Meeting full = d->store->load(row.id);
         if (full.id.isEmpty()) full = row;
         if (full.folder.isEmpty()) full.folder = row.folder;
@@ -128,8 +128,8 @@ void MeetingLibrary::reloadMeeting(const QString& id)
     d->foldedTitle.remove(id);
     d->titleWords.remove(id);
 
-    // Az átirat-szöveg csak akkor érvénytelen, ha a fájl tényleg változott (egy átnevezés vagy
-    // beszélő-hozzárendelés nem olvastatja újra a teljes átiratot).
+    // The transcript text becomes invalid only if the file really changed (a rename or speaker
+    // assignment does not make it reread the whole transcript).
     const auto tit = d->texts.constFind(id);
     if (tit != d->texts.constEnd()) {
         const QFileInfo fi(Impl::segmentsPath(full));
@@ -146,7 +146,7 @@ void MeetingLibrary::reloadMeeting(const QString& id)
         if (sameOrder) return;
         d->meetings.removeAt(i);
     }
-    // Rendezett beszúrás (legújabb elöl).
+    // Sorted insertion (newest first).
     const auto pos = std::lower_bound(d->meetings.begin(), d->meetings.end(), full,
         [](const Meeting& a, const Meeting& b) { return a.startedAt > b.startedAt; });
     d->meetings.insert(pos, full);
@@ -212,8 +212,8 @@ QStringList MeetingLibrary::participantsOf(const Meeting& m)
         const QString n = raw.trimmed();
         if (!n.isEmpty() && !out.contains(n)) out << n;
     };
-    // A saját (mikrofon-) sáv fix beszélője — a felvevő maga is részt vett. A generikus
-    // címkék („Mikrofon 2”, „Rendszer”) nem személyek.
+    // The own (microphone) track's fixed speaker: the recorder took part too. Generic labels ("Microphone 2",
+    // "System") are not people.
     for (const Track& t : m.tracks) {
         if (t.kind != TrackKind::Mic || !t.active) continue;
         if (t.speakerLabel.startsWith(QStringLiteral("Mikrofon"))) continue;
@@ -228,7 +228,7 @@ DateSection MeetingLibrary::sectionFor(const QDateTime& startedAt, const QDate& 
 {
     const QDate d = startedAt.date();
     if (!d.isValid()) return DateSection::Earlier;
-    if (d >= today) return DateSection::Today;                  // (jövőbeli óra-eltérés is ide)
+    if (d >= today) return DateSection::Today;                  // (a future clock skew goes here too)
     if (d == today.addDays(-1)) return DateSection::Yesterday;
     const QDate monday = today.addDays(-(today.dayOfWeek() - 1));
     if (d >= monday) return DateSection::ThisWeek;
@@ -301,7 +301,7 @@ LibraryResult MeetingLibrary::query(const LibraryQuery& q, const QDateTime& now)
         if (!f.isEmpty()) wantPeople << f;
     }
 
-    // Címke-szűrő: csak a létező címkék számítanak.
+    // Tag filter: only existing tags count.
     QStringList wantTags;
     for (const QString& id : q.tags)
         if (!id.isEmpty() && (!d->tags || d->tags->tag(id).isValid())) wantTags << id;
@@ -339,19 +339,19 @@ LibraryResult MeetingLibrary::query(const LibraryQuery& q, const QDateTime& now)
             continue;
         }
 
-        // Cím-találat (a hajtogatott címet meetingenként gyorsítótárazzuk).
+        // Title match (we cache the folded title per meeting).
         const QString nfcTitle = textfold::normalize(m.title);
         auto ft = d->foldedTitle.constFind(m.id);
         if (ft == d->foldedTitle.constEnd())
             ft = d->foldedTitle.insert(m.id, textfold::fold(nfcTitle));
         const textfold::Range titleHit = textfold::find(*ft, fq);
 
-        // Átirat-találat.
+        // Transcript match.
         textfold::Range textHit;
         const TextDoc* doc = m.hasTranscript ? textDoc(m) : nullptr;
         if (doc) textHit = textfold::find(doc->folded, fq);
 
-        // Címke-találat (ékezet- és kisbetű-függetlenül a címke nevében).
+        // Tag match (accent- and case-insensitively in the tag's name).
         QString tagHit;
         if (d->tags) {
             for (const QString& id : m.tagIds) {
@@ -367,11 +367,11 @@ LibraryResult MeetingLibrary::query(const LibraryQuery& q, const QDateTime& now)
         LibraryEntry e = makeEntry(m, today);
         e.tagMatch = !tagHit.isEmpty();
         e.tagMatchName = tagHit;
-        e.title = nfcTitle;               // a titleMatch pozíciói erre a (NFC) alakra érvényesek
+        e.title = nfcTitle;               // the titleMatch positions are valid for this (NFC) form
         e.titleMatch = titleHit;
         if (textHit.isValid()) {
             e.snippet = textfold::snippet(doc->text, textHit, &e.snippetMatch);
-            // Melyik megszólalásba esik a találat (az utolsó, amelyik nem később kezdődik).
+            // Which utterance the match falls into (the last one that does not start later).
             const auto up = std::upper_bound(doc->segStart.constBegin(), doc->segStart.constEnd(),
                                              textHit.start);
             const int seg = int(up - doc->segStart.constBegin()) - 1;
@@ -415,7 +415,7 @@ QVector<meetingnotes::NoteSuggestion> MeetingLibrary::noteSuggestions(const QStr
     const int self = d->index.value(meetingId, -1);
     if (self < 0)
         return {};
-    // Csak a megjegyzéssel bíró meetingek jelöltek; a cím-szavak meetingenként gyorsítótárazva.
+    // Only meetings with a note are candidates; the title words are cached per meeting.
     QVector<meetingnotes::NoteCandidate> candidates;
     for (const Meeting& m : std::as_const(d->meetings)) {
         if (m.id == meetingId || m.contextNote.trimmed().isEmpty())
@@ -477,7 +477,7 @@ QVector<TagUsage> MeetingLibrary::tagOptions() const
         }
     for (TagUsage& u : out) u = byId.value(u.tag.id);
     std::stable_sort(out.begin(), out.end(), [](const TagUsage& a, const TagUsage& b) {
-        return a.meetingCount > b.meetingCount;   // azonos számnál marad az ABC
+        return a.meetingCount > b.meetingCount;   // on an equal count the alphabetical order stays
     });
     return out;
 }
@@ -507,8 +507,8 @@ QVector<PendingItem> MeetingLibrary::pendingItems(int limit) const
         it.startedAt = m.startedAt;
         it.durationMs = m.durationMs;
         if (m.hasTranscript) {
-            // Kész átirat: csak akkor „vár rád”, ha az összefoglalója elavult (és épp nem
-            // frissül). Az elavultságot a tracker szondája adja (beszélő-szerkesztő réteg).
+            // A finished transcript: "waiting for you" only if its summary is stale (and not refreshing right
+            // now). Staleness comes from the tracker's probe (the speaker-editor layer).
             if (!d->tracker || !m.hasSummary) continue;
             const MeetingProcessingState st = d->tracker->state(m);
             if (!st.summaryStale) continue;
@@ -519,7 +519,7 @@ QVector<PendingItem> MeetingLibrary::pendingItems(int limit) const
         }
         if (d->tracker) {
             const MeetingProcessingState st = d->tracker->state(m);
-            if (st.transcriptState == StepState::Running) continue;   // már dolgozunk rajta
+            if (st.transcriptState == StepState::Running) continue;   // we are already working on it
             if (st.transcriptState == StepState::Failed) {
                 it.kind = PendingKind::TranscriptionFailed;
                 it.error = st.transcriptError;
@@ -541,11 +541,11 @@ bool MeetingLibrary::isWarm() const
 void MeetingLibrary::warmUp()
 {
     ensureLoaded();
-    if (d->warmTimer) return;   // már fut
+    if (d->warmTimer) return;   // already running
     d->warmTimer = new QTimer(this);
     d->warmTimer->setInterval(0);
     connect(d->warmTimer, &QTimer::timeout, this, [this]() {
-        // Szeletenként ~8 ms munka, hogy a UI-szál közben lélegezzen.
+        // ~8 ms of work per slice so the UI thread can breathe meanwhile.
         QElapsedTimer clock;
         clock.start();
         bool pending = false;

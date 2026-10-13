@@ -1,15 +1,14 @@
 #pragma once
 //
-// SpeakerOverlay — a meeting kézi beszélő-javításainak PERZISZTENS rétege
-// (<meeting-mappa>/transcript.speakers.json). A nyers diarizáció (transcript.tokens.json /
-// transcript.segments.json) érintetlen marad; a javítások erre rétegződnek, ezért
-// visszavonhatók és túlélik a résztvevő-azonosítás újrafuttatását. Újra-átíráskor
-// eldobjuk (a megszólalások határai megváltoznak).
+// SpeakerOverlay: the PERSISTENT layer of a meeting's manual speaker corrections
+// (<meeting folder>/transcript.speakers.json). The raw diarization (transcript.tokens.json /
+// transcript.segments.json) stays untouched; corrections layer on top, so they are undoable and
+// survive rerunning participant identification. Dropped on re-transcription (the utterance
+// boundaries change).
 //
-// A megjelenített név feloldási sorrendje:
-//   soronkénti felülírás → (összevont nyers címke átirányítása) → Meeting.speakerMap → nyers címke.
-// A Meeting.speakerMap szemantikája változatlan (a CLI ezt olvassa/írja).
-//
+// Resolution order of the displayed name:
+//   per-line override -> (redirect of a merged raw label) -> Meeting.speakerMap -> raw label.
+// The semantics of Meeting.speakerMap are unchanged (the CLI reads/writes it).
 #include "tanara/Types.h"
 #include "tanara/edit/SpeakerEditTypes.h"
 #include "tanara/summary/SummarySources.h"
@@ -24,40 +23,40 @@
 
 namespace tanara {
 
-// A transcript.segments.json egy sora + a hozzá képzett stabil azonosító.
+// One line of transcript.segments.json + the stable id derived for it.
 struct TranscriptLine {
-    QString id;         // "u<startMs>" (ütközésnél "-2", "-3" … utótag a fájl sorrendjében)
+    QString id;         // "u<startMs>" (on collision a "-2", "-3" ... suffix in file order)
     qint64  startMs = 0;
     qint64  endMs = 0;
-    QString rawLabel;   // nyers diarizációs címke
+    QString rawLabel;   // raw diarization label
     QString text;
 };
 
-// Kézzel felvett résztvevő (akit a diarizáció nem különített el).
+// A manually added participant (one the diarization did not separate).
 struct OverlayParticipant {
     QString key;        // "participant:N"
-    QString person;     // kötött személy neve; üres = névtelen
-    QString label;      // névtelen címke („Új beszélő 1")
+    QString person;     // bound person's name; empty = anonymous
+    QString label;      // anonymous label ("New speaker 1")
     int     colorIndex = 0;
 };
 
-// Egy megszólalás felülírása / jelzői.
+// Override / flags of one utterance.
 struct OverlayUtterance {
-    QString speaker;            // felülírt beszélő-kulcs; üres = nincs felülírás
-    bool    corrected = false;  // kézzel átsorolt
-    bool    confirmed = false;  // „Jó így"
-    // „Egymásra beszéltek" kézi felülírása: true = ne legyen hangminta („Jó így, de ne
-    // használd mintának"), false = mintának használható (az automatikus jelzés ellenére);
-    // nincs érték = az átfedésből számolt automatikus jelzés érvényes (az nem perzisztál).
+    QString speaker;            // overridden speaker key; empty = no override
+    bool    corrected = false;  // reassigned by hand
+    bool    confirmed = false;  // "Fine as is"
+    // Manual override of "talked over each other": true = not a voice sample ("Fine, but do not
+    // use as a sample"), false = usable as a sample (despite the automatic flag); no value = the
+    // automatic flag computed from overlap applies (it is not persisted).
     std::optional<bool> noisy;
-    // Az újraellenőrzés kétségesnek találta: bizonytalan marad, amíg javítás / megerősítés
-    // nem jön (vagy egy újabb újraellenőrzés fel nem oldja).
+    // The recheck found it doubtful: it stays uncertain until a correction / confirmation comes
+    // (or a newer recheck clears it).
     bool    rechecked = false;
-    QString recheckHint;        // a hangra jobban illő beszélő kulcsa (javaslat); lehet üres
-    // „Nem azonosítható": a sor neve marad (beszédidő, átirat, összefoglaló), de a hang-alapú
-    // elemzés TELJESEN figyelmen kívül hagyja — nem minta, nem bizonyíték (centroid, mag,
-    // 2-közép, oldal-tanulás, jelölt-profil, hanglenyomat), sosem bizonytalan, és nem kerül
-    // Átnézendő csoportba. Erősebb a noisy-nál (azt a zárolt mag még használhatja).
+    QString recheckHint;        // key of the speaker that fits the voice better (suggestion); may be empty
+    // "Unidentifiable": the line keeps its name (speaking time, transcript, summary), but the
+    // voice-based analysis IGNORES it completely: not a sample, not evidence (centroid, core,
+    // 2-means, side learning, candidate profile, voiceprint), never uncertain, and not put in a
+    // "To review" group. Stronger than noisy (a locked core may still use a noisy line).
     bool    ignored = false;
     bool isDefault() const {
         return speaker.isEmpty() && !corrected && !confirmed && !noisy.has_value() && !rechecked
@@ -76,21 +75,21 @@ struct OverlayIdentification {
 };
 
 struct SpeakerOverlay {
-    QString transcriptFingerprint;                  // melyik átirathoz tartozik (lásd lent)
+    QString transcriptFingerprint;                  // which transcript it belongs to (see below)
     QVector<OverlayParticipant> participants;
-    int nextParticipant = 1;                        // a következő "participant:N" sorszáma
-    int nextAnonymous = 1;                          // a következő „Új beszélő N" sorszáma
-    QMap<QString, QString> merged;                  // összevont nyers címke → cél beszélő-kulcs
-    // Kézi sáv-beosztás („Melyik sávon beszél?"): beszélő-kulcs → sáv-id-k. Hiányzó / üres =
-    // nincs megkötés. A személy oldalának egyetlen igazsága, ha meg van adva (SideAnalysis).
+    int nextParticipant = 1;                        // number of the next "participant:N"
+    int nextAnonymous = 1;                          // number of the next "New speaker N"
+    QMap<QString, QString> merged;                  // merged raw label -> target speaker key
+    // Manual track assignment ("Which track do they speak on?"): speaker key -> track ids. Missing /
+    // empty = no constraint. The single truth for the person's side when given (SideAnalysis).
     QHash<QString, QStringList> speakerTracks;
-    QStringList removedRaw;                         // eltávolított (üres) nyers beszélő-oszlopok
-    QMap<QString, OverlayUtterance> utterances;     // megszólalás-id → felülírás
-    QMap<QString, OverlayIdentification> identified;// nyers címke → hang-azonosítás eredménye
-    QStringList changedSinceSummary;                // az összefoglaló óta javított beszélők kulcsai
-    int summaryEpoch = 0;                           // nő, ha az összefoglaló újragenerálódik / elfogadják
+    QStringList removedRaw;                         // removed (empty) raw speaker columns
+    QMap<QString, OverlayUtterance> utterances;     // utterance id -> override
+    QMap<QString, OverlayIdentification> identified;// raw label -> result of the voice identification
+    QStringList changedSinceSummary;                // keys of the speakers corrected since the summary
+    int summaryEpoch = 0;                           // grows when the summary is regenerated / accepted
 
-    // Van-e sor-/beszélő-szintű javítás (az azonosítás és az elavult-jelző nem számít).
+    // Whether there is a line-/speaker-level correction (identification and the stale flag do not count).
     bool hasEdits() const {
         return !participants.isEmpty() || !merged.isEmpty() || !removedRaw.isEmpty()
             || !utterances.isEmpty() || !speakerTracks.isEmpty();
@@ -105,81 +104,80 @@ struct SpeakerOverlay {
 
 namespace speakeredit {
 
-// ---- fájlok ---------------------------------------------------------------
+// ---- files ---------------------------------------------------------------
 QString overlayPath(const QString& meetingFolder);      // transcript.speakers.json
 QString segmentsPath(const QString& meetingFolder);     // transcript.segments.json
-QString mixdownPath(const Meeting& m);                  // a voice-ID hangforrása (lehet, hogy nem létezik)
+QString mixdownPath(const Meeting& m);                  // the voice-ID audio source (may not exist)
 
-// A transcript.segments.json sorai stabil azonosítóval. Üres, ha nincs átirat.
+// The lines of transcript.segments.json with stable ids. Empty if there is no transcript.
 QVector<TranscriptLine> loadTranscriptLines(const QString& meetingFolder);
-// Az átirat ujjlenyomata (sorok kezdete/vége/címkéje) — ebből derül ki, ha az overlay
-// egy korábbi átirathoz tartozik.
+// Fingerprint of the transcript (line starts/ends/labels); shows if the overlay belongs to an
+// earlier transcript.
 QString transcriptFingerprint(const QVector<TranscriptLine>& lines);
 
-// Az overlay nyersen, ahogy a lemezen van (hiányzó fájl → üres overlay; a régi meetingek
-// így változatlanul betöltődnek).
+// The overlay raw, as on disk (a missing file = an empty overlay; old meetings load
+// unchanged that way).
 SpeakerOverlay loadOverlay(const QString& meetingFolder);
-// Ugyanez, de az aktuális átirathoz VALIDÁLVA: ha az ujjlenyomat nem egyezik, a
-// sor-/beszélő-szintű javítások eldobódnak (az azonosítás + elavult-jelző megmarad).
+// The same, but VALIDATED against the current transcript: if the fingerprint does not match,
+// the line-/speaker-level corrections are dropped (identification + stale flag stay).
 SpeakerOverlay loadOverlayFor(const QString& meetingFolder, const QVector<TranscriptLine>& lines);
-// Mentés (QSaveFile). Teljesen üres overlay → a fájl törlődik.
+// Save (QSaveFile). A completely empty overlay deletes the file.
 bool saveOverlay(const QString& meetingFolder, const SpeakerOverlay& overlay);
 
-// ---- feloldás -------------------------------------------------------------
+// ---- resolution -------------------------------------------------------------
 bool isParticipantKey(const QString& key);
-// Egy sor feloldott beszélő-kulcsa: felülírás → összevonás-átirányítás → nyers címke.
+// A line's resolved speaker key: override -> merge redirect -> raw label.
 QString resolveSpeakerKey(const SpeakerOverlay& ov, const TranscriptLine& line);
-// A beszélő személye (üres = névtelen) és megjelenített neve.
+// The speaker's person (empty = anonymous) and displayed name.
 QString speakerPerson(const SpeakerOverlay& ov, const QMap<QString, QString>& speakerMap,
                       const QString& key);
 QString speakerDisplayName(const SpeakerOverlay& ov, const QMap<QString, QString>& speakerMap,
                            const QString& key);
 
-// A tokenek beszélőjét a FELOLDOTT névre írja (overlay + speakerMap). Az
-// AppController ezt hívja mindenhol, ahol a neveket az átiratra kell tenni
-// (transcript.md, összefoglaló-bemenet). Overlay nélkül = a régi speakerMap-alkalmazás.
+// Writes the RESOLVED name onto the tokens' speaker (overlay + speakerMap). AppController
+// calls this wherever names must go onto the transcript (transcript.md, summary input).
+// Without an overlay = the old speakerMap application.
 void applyResolvedSpeakers(MergedTranscript& mt, const Meeting& m);
-// A transcript.md újragenerálása a feloldott nevekkel (a transcript.tokens.json-ból).
+// Regenerates transcript.md with the resolved names (from transcript.tokens.json).
 bool regenerateTranscriptMarkdown(const Meeting& m);
 
-// ---- összefoglaló-elavultság ---------------------------------------------
+// ---- summary staleness ---------------------------------------------
 SummaryStaleInfo summaryStale(const Meeting& m);
-// Beszélő-változás az overlay-en KÍVÜLRŐL (régi UI átnevezés, auto-azonosítás): ha van
-// összefoglaló, elavultnak jelöli. true, ha változott az állapot.
+// A speaker change from OUTSIDE the overlay (old UI rename, auto-identification): if there is a
+// summary, marks it stale. true if the state changed.
 bool markSummaryStale(const Meeting& m, const QStringList& speakerKeys);
-// Ugyanez, de megmondja, mely kulcsok kerültek ÚJONNAN a listára (a visszavonáshoz).
+// The same, but tells which keys were NEWLY added to the list (for undo).
 QStringList markSummaryStaleKeys(const Meeting& m, const QStringList& speakerKeys);
-// Egy markSummaryStaleKeys visszavonása: a megadott kulcsok lekerülnek az elavult-listáról.
-// true, ha változott az állapot.
+// Undo of one markSummaryStaleKeys: the given keys leave the stale list. true if the state changed.
 bool unmarkSummaryStale(const QString& meetingFolder, const QStringList& speakerKeys);
-// Összefoglaló (újra)generálva VAGY a felhasználó elfogadta („Rendben így").
+// Summary (re)generated OR accepted by the user ("Fine as is").
 bool clearSummaryStale(const QString& meetingFolder);
 
-// Az átirat megszólalásai a MOSTANI feloldott beszélővel (kulcs + megjelenített név) — az
-// összefoglaló forrás-hivatkozásaihoz (a készítéskor pillanatkép, később az összevetés).
-// Üres, ha nincs transcript.segments.json.
+// The transcript's utterances with their CURRENT resolved speaker (key + displayed name), for the
+// summary's source references (a snapshot at creation, compared later). Empty if there is no
+// transcript.segments.json.
 QVector<summarysrc::SourceLine> resolvedSourceLines(const Meeting& m);
-// A célzott elavulás kitöltése az info-ban (a summary.json állításai + a forrás-sorok
-// beszélője akkor vs. most + az overlay javított kulcsai). Az info.stale / correctedSpeakers
-// értékét nem bántja. statements != nullptr: az állítások a staleBecause mezőkkel.
+// Fills the targeted staleness in the info (the summary.json statements + the source lines'
+// speaker then vs. now + the overlay's corrected keys). Does not touch info.stale /
+// correctedSpeakers. statements != nullptr: the statements with their staleBecause fields.
 void fillTargetedStale(const Meeting& m, SummaryStaleInfo& info,
                        QVector<SummaryStatement>* statements = nullptr);
 
-// ---- az AppController horgai ---------------------------------------------
-// A hang-azonosítás pontszámának rögzítése (nyers címke → személy, cosine).
+// ---- AppController hooks ---------------------------------------------
+// Records the voice-identification score (raw label -> person, cosine).
 void recordIdentification(const QString& meetingFolder, const QString& rawLabel,
                           const QString& person, double score);
-// Globális személy-átnevezés / -törlés átvezetése a kézzel felvett résztvevőkön.
+// Carries a global person rename / delete through the manually added participants.
 bool renamePersonInOverlay(const QString& meetingFolder, const QString& oldName,
                            const QString& newName);
 bool removePersonFromOverlay(const QString& meetingFolder, const QString& name);
 
-// ---- újra-átírás ----------------------------------------------------------
+// ---- re-transcription ----------------------------------------------------------
 RetranscribeImpact retranscribeImpact(const Meeting& m);
-// A jelenlegi átirat-fájlok (md, tokens, segments, speakers + a speakerMap) másolata a
-// meeting-mappa "transcript-backup-<időbélyeg>" almappájába. Vissza: a mappa útja (üres = hiba).
+// Copies the current transcript files (md, tokens, segments, speakers + the speakerMap) into
+// the meeting folder's "transcript-backup-<timestamp>" subfolder. Returns the folder path (empty = error).
 QString backupTranscript(const Meeting& m);
-// Új átirat készült: az overlay sor-szintű javításai + a megszólalás-embedding cache törlése.
+// A new transcript was made: deletes the overlay's line-level corrections + the utterance-embedding cache.
 void discardForNewTranscript(const QString& meetingFolder);
 
 } // namespace speakeredit

@@ -34,17 +34,17 @@ Q_LOGGING_CATEGORY(lcPerf,  "tanara.perf")
 
 namespace {
 
-constexpr qint64 kMaxLogBytes = 5 * 1024 * 1024;   // 5 MB → forgatás
+constexpr qint64 kMaxLogBytes = 5 * 1024 * 1024;   // 5 MB -> rotation
 
 QMutex      g_mutex;
 LogOptions  g_opts;
-QFile*      g_logFile = nullptr;   // teljes log (a szint szerint szűrve)
-QFile*      g_errFile = nullptr;   // csak warning+ (a „main error log")
+QFile*      g_logFile = nullptr;   // the full log (filtered by level)
+QFile*      g_errFile = nullptr;   // warning+ only (the "main error log")
 bool        g_installed = false;
 
 QString defaultLogDir()
 {
-    // <metaadat-mappa>/logs — ~/.tanara vagy TANARA_HOME (tanara/Paths.h).
+    // <metadata folder>/logs: ~/.tanara or TANARA_HOME (tanara/Paths.h).
     return paths::metadataFile(QStringLiteral("logs"));
 }
 
@@ -65,7 +65,7 @@ QString formatLine(QtMsgType type, const QMessageLogContext& ctx, const QString&
     const QString ts  = QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd HH:mm:ss.zzz"));
     const QString cat = QString::fromUtf8(ctx.category ? ctx.category : "default");
     QString line = QStringLiteral("%1 [%2] %3: %4").arg(ts, QString::fromLatin1(levelTag(type)), cat, msg);
-    // Forrás-hely csak debug szinten (különben zajos és kódútfüggő).
+    // Source location only at debug level (otherwise noisy and code-path-dependent).
     if (g_opts.level == LogLevel::Debug && ctx.file && *ctx.file)
         line += QStringLiteral(" (%1:%2)").arg(QString::fromUtf8(ctx.file)).arg(ctx.line);
     return line;
@@ -92,7 +92,7 @@ void messageHandler(QtMsgType type, const QMessageLogContext& ctx, const QString
     }
     writeTo(g_logFile, u8);
 
-    // A „main error log" — warning és súlyosabb MINDIG ide kerül (debug nélkül is).
+    // The "main error log": warning and worse ALWAYS go here (even without debug).
     if (type == QtWarningMsg || type == QtCriticalMsg || type == QtFatalMsg)
         writeTo(g_errFile, u8);
 
@@ -172,7 +172,7 @@ LogOptions parseLogOptions(const QStringList& args)
         if (ok) o.level = l;
     }
 
-    for (int i = 1; i < args.size(); ++i) {   // [0] = programnév
+    for (int i = 1; i < args.size(); ++i) {   // [0] = program name
         const QString a = args.at(i);
         if (a == QLatin1String("--debug") || a == QLatin1String("-d")) {
             o.level = LogLevel::Debug;
@@ -202,7 +202,7 @@ LogOptions parseLogOptions(const QStringList& args)
 QStringList stripLogArgs(const QStringList& args)
 {
     QStringList out;
-    if (!args.isEmpty()) out << args.first();   // programnév marad
+    if (!args.isEmpty()) out << args.first();   // the program name stays
     for (int i = 1; i < args.size(); ++i) {
         const QString a = args.at(i);
         if (a == QLatin1String("--debug") || a == QLatin1String("-d") ||
@@ -215,7 +215,7 @@ QStringList stripLogArgs(const QStringList& args)
         }
         if (a == QLatin1String("--log-level") || a == QLatin1String("--log-dir") ||
             a == QLatin1String("--log-rules")) {
-            ++i;   // az értékét is kihagyjuk
+            ++i;   // we skip its value too
             continue;
         }
         out << a;
@@ -227,13 +227,13 @@ void initLogging(const LogOptions& opts)
 {
     g_opts = opts;
 
-    // Szűrőszabályok. A warning+critical alapból ON marad (sosem tiltjuk) → „error
-    // log debug nélkül is". A szint csak az info/debug zajt kapcsolja.
+    // Filter rules. Warning+critical stay ON by default (never disabled), so "an error log even without
+    // debug". The level only toggles the info/debug noise.
     const bool info  = int(opts.level) >= int(LogLevel::Info);
     const bool debug = int(opts.level) >= int(LogLevel::Debug);
 
     QString rules;
-    rules += QStringLiteral("qt.multimedia.ffmpeg.info=false\n");   // ffmpeg info-banner némítás
+    rules += QStringLiteral("qt.multimedia.ffmpeg.info=false\n");   // mute the ffmpeg info banner
     rules += QStringLiteral("tanara.*.info=%1\n").arg(info  ? QStringLiteral("true") : QStringLiteral("false"));
     rules += QStringLiteral("tanara.*.debug=%1\n").arg(debug ? QStringLiteral("true") : QStringLiteral("false"));
     rules += QStringLiteral("default.debug=%1\n").arg(debug ? QStringLiteral("true") : QStringLiteral("false"));
@@ -243,7 +243,7 @@ void initLogging(const LogOptions& opts)
 
     QMutexLocker lock(&g_mutex);
 
-    // Korábbi fájlok zárása (idempotens újrahívásnál).
+    // Closing earlier files (for an idempotent repeated call).
     if (g_logFile) { g_logFile->close(); delete g_logFile; g_logFile = nullptr; }
     if (g_errFile) { g_errFile->close(); delete g_errFile; g_errFile = nullptr; }
 
@@ -273,7 +273,7 @@ LogLevel currentLogLevel()
 
 void logStartupDiagnostics(const AppController& app)
 {
-    // Fejléc — INFO szinten mindig.
+    // Header: always at INFO level.
     qCInfo(lcApp).noquote() << QStringLiteral("Tanara %1 indul (loglevel=%2)")
                                    .arg(libraryVersion(), logLevelName(g_opts.level));
     qCInfo(lcApp).noquote() << QStringLiteral("Platform: %1 | Qt %2")
@@ -282,7 +282,7 @@ void logStartupDiagnostics(const AppController& app)
     if (!lf.isEmpty())
         qCInfo(lcApp).noquote() << QStringLiteral("Logfájl: %1 (hibák: tanara-error.log)").arg(lf);
 
-    // Részletes dump — DEBUG szinten.
+    // Detailed dump: at DEBUG level.
     const SettingsManager* sm = app.settings();
     const AppSettings s = sm->settings();
     qCDebug(lcApp).noquote() << QStringLiteral("settings.json: %1").arg(sm->settingsFilePath());
@@ -298,7 +298,7 @@ void logStartupDiagnostics(const AppController& app)
                                     .arg(opusBitrateKbps(s.audioQuality))
                                     .arg(s.mixdownMode);
 
-    // Provider-kiválasztás — API-kulcsot SOHA nem logolunk, csak a meglétét.
+    // Provider selection: we NEVER log the API key, only its presence.
     const ProviderConfig stt = s.sttSelected();
     qCDebug(lcStt).noquote() << QStringLiteral("STT: provider=%1 baseUrl=%2 model=%3 apiKey=%4")
                                     .arg(s.sttProviderId, stt.baseUrl, stt.model,
@@ -311,7 +311,7 @@ void logStartupDiagnostics(const AppController& app)
                                     .arg(app.hasSecret(keys::LlmApiKey) ? QStringLiteral("megadva")
                                                                         : QStringLiteral("nincs (LM Studio: opcionális)"));
 
-    // Látott audio-eszközök (a refreshDevices() után érdemes hívni).
+    // Audio devices seen (worth calling after refreshDevices()).
     if (auto* dm = app.devices()) {
         const auto devs = dm->captureDevices();
         qCDebug(lcAudio).noquote() << QStringLiteral("Audio capture eszközök (%1):").arg(devs.size());

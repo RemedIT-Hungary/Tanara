@@ -1,17 +1,16 @@
 #pragma once
 //
-// EmbeddingIndex — a megbeszélések szöveg-beágyazásai (a „rokon téma” hasonlósághoz).
+// EmbeddingIndex: the meetings' text embeddings (for the "related topic" similarity).
 //
-// Meetingenként egy fájl a meeting mappájában: text.embeddings.bin
-//   fejléc: "TNEMB1" (6 bájt), majd QDataStream (Qt 6.0, little-endian, float32):
-//           modellnév (QString), dim (qint32), darabszám (qint32)
-//   darabonként: startMs (qint64), endMs (qint64), dim × float32
-// Darabolás: megszólalás-határra igazított, ~1500 karakteres ablakok (chunkTranscript).
-// A meeting vektora a darabok normalizált átlaga; a hasonlóság ezek koszinusza.
+// One file per meeting in the meeting folder: text.embeddings.bin
+//   header: "TNEMB1" (6 bytes), then QDataStream (Qt 6.0, little-endian, float32):
+//           model name (QString), dim (qint32), chunk count (qint32)
+//   per chunk: startMs (qint64), endMs (qint64), dim x float32
+// Chunking: windows of ~1500 characters aligned to utterance boundaries (chunkTranscript).
+// The meeting's vector is the normalized mean of the chunks; similarity is their cosine.
 //
-// Egy index akkor érvényes, ha a modellje az aktuális modell, és nem régebbi az átiratnál
-// (transcript.segments.json). A vektorok lustán, meetingenként töltődnek a memóriába.
-//
+// An index is valid if its model is the current model and it is not older than the transcript
+// (transcript.segments.json). The vectors load into memory lazily, per meeting.
 #include "tanara/tags/TagTypes.h"
 
 #include <QHash>
@@ -28,7 +27,7 @@ struct TranscriptLine;
 struct EmbeddingChunk {
     qint64 startMs = 0;
     qint64 endMs = 0;
-    QString text;                 // csak a beágyazás kérésekor (a fájlba nem kerül)
+    QString text;                 // only when embedding is requested (does not go into the file)
     QVector<float> vector;
 };
 
@@ -41,35 +40,35 @@ public:
     explicit EmbeddingIndex(MeetingStore* store, QObject* parent = nullptr);
     ~EmbeddingIndex() override;
 
-    // A „Miért?” indoklás közös kifejezéseihez (nélküle az indoklás üres).
+    // For the shared phrases of the "Why?" explanation (without it the explanation is empty).
     void setProfiles(MeetingProfiles* profiles);
 
-    // Az aktuális modell (üres → nincs beágyazás: has() mindig hamis).
+    // The current model (empty = no embedding: has() is always false).
     void setModel(const QString& model);
     QString model() const;
 
-    // A mappát az indexből (MeetingStore) keresik ki: csak a tulajdonos (fő) szálról.
+    // The folder is looked up from the index (MeetingStore): only from the owner (main) thread.
     bool has(const QString& meetingId) const;
     QVector<SimilarHit> similar(const QString& meetingId, int limit = 8) const;
-    // Szálbiztos változatok ismert mappákkal (id → mappa, pl. MeetingProfiles::folders()):
-    // háttérszálról is hívhatók; a memóriabeli gyorsítótárat mutex védi.
+    // Thread-safe variants with known folders (id -> folder, e.g. MeetingProfiles::folders()):
+    // callable from a background thread too; the in-memory cache is protected by a mutex.
     bool has(const QString& meetingId, const QString& folder) const;
     QVector<SimilarHit> similar(const QString& meetingId, const QHash<QString, QString>& folders,
                                 int limit = 8) const;
 
-    // Egy meeting indexének kiírása (a darabok vektorokkal) → indexChanged.
+    // Writes a meeting's index (the chunks with vectors) -> indexChanged.
     bool store(const QString& meetingId, const QString& model, const QVector<EmbeddingChunk>& chunks);
-    // Minden index eldobása (modellváltás): a fájlok törlődnek, a memória ürül → indexReset.
+    // Drops every index (model change): files are deleted, memory is freed -> indexReset.
     void invalidateAll();
-    // Egy meeting indexének eldobása (pl. új átirat).
+    // Drops one meeting's index (e.g. a new transcript).
     void invalidate(const QString& meetingId);
 
-    // ---- tiszta segédek (tesztelhetők) ----
+    // ---- pure helpers (testable) ----
     static QVector<EmbeddingChunk> chunkTranscript(const QVector<TranscriptLine>& lines,
                                                    int maxChars = kChunkChars);
     static bool writeFile(const QString& path, const QString& model, const QVector<EmbeddingChunk>& chunks);
     static bool readFile(const QString& path, QString* model, QVector<EmbeddingChunk>* chunks);
-    // A darabok normalizált átlaga (üres, ha nincs darab).
+    // The normalized mean of the chunks (empty if there are no chunks).
     static QVector<float> meanVector(const QVector<EmbeddingChunk>& chunks);
 
 signals:
@@ -79,7 +78,7 @@ signals:
 private:
     struct Entry { qint64 fileMtime = -1; QString model; QVector<float> mean; };
     QString folderOf(const QString& meetingId) const;
-    // A meeting átlag-vektora, ha az indexe érvényes és az aktuális modellé; különben üres.
+    // The meeting's mean vector if its index is valid and of the current model; otherwise empty.
     QVector<float> meanFor(const QString& meetingId, const QString& folder) const;
 
     MeetingStore* m_store = nullptr;

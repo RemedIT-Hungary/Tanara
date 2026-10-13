@@ -1,13 +1,12 @@
 #pragma once
 //
-// OpenAI-kompatibilis Whisper STT provider (POST {baseUrl}/audio/transcriptions).
-// Elsődleges cél a LOKÁLIS whisper-szerverek (faster-whisper-server, speaches) —
-// az api.openai.com is működik API-kulccsal, de ott 25 MB a fájllimit.
+// OpenAI-compatible Whisper STT provider (POST {baseUrl}/audio/transcriptions).
+// Primarily meant for LOCAL whisper servers (faster-whisper-server, speaches); api.openai.com
+// works too with an API key, but there the file limit is 25 MB.
 //
-// Egykörös folyamat: multipart upload → verbose_json válasz (words/segments).
-// NINCS diarizáció: minden token az "1" beszélőt kapja („Beszélő 1"); a nyelvet a
-// szerver detektálja, ha a config "language" mezője üres.
-//
+// A single-pass flow: multipart upload -> verbose_json response (words/segments).
+// NO diarization: every token gets speaker "1" ("Speaker 1"); the language is detected by the server if
+// the config's "language" field is empty.
 #include "tanara/stt/ISttProvider.h"
 #include "tanara/Types.h"
 
@@ -26,7 +25,7 @@ public:
     WhisperCompatJob(ProviderConfig cfg, SttRequest req, QObject* parent = nullptr);
     ~WhisperCompatJob() override;
 
-    void start();              // a provider hívja meg a visszaadás után
+    void start();              // the provider calls it after handing the job back
     void cancel() override;
 
 private:

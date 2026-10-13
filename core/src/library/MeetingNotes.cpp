@@ -13,7 +13,7 @@ namespace meetingnotes {
 
 namespace {
 
-// A figyelő régi mondata (magyar és angol forma), bármilyen app-névvel.
+// The watcher's old sentence (Hungarian and English forms), with any app name.
 const QRegularExpression& autoCallRe()
 {
     static const QRegularExpression re(
@@ -22,24 +22,24 @@ const QRegularExpression& autoCallRe()
     return re;
 }
 
-// Hónap- és napnevek (hajtogatva, rövidítve is), névelők, kötőszavak: a címből kimaradnak.
+// Month and day names (folded, also abbreviated), articles, conjunctions: dropped from the title.
 const QSet<QString>& ignoredWords()
 {
     static const QSet<QString> words = [] {
         QSet<QString> s;
         for (const char* w : {
-                 // hónapok — magyar, angol, rövidítések
+                 // months: Hungarian, English, abbreviations
                  "januar", "februar", "marcius", "aprilis", "majus", "junius", "julius",
                  "augusztus", "szeptember", "oktober", "november", "december",
                  "jan", "febr", "feb", "marc", "mar", "apr", "maj", "jun", "jul", "aug",
                  "szept", "sep", "sept", "okt", "oct", "nov", "dec",
                  "january", "february", "march", "april", "may", "june", "july", "august",
                  "october",
-                 // napok
+                 // days
                  "hetfo", "kedd", "szerda", "csutortok", "pentek", "szombat", "vasarnap",
                  "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday",
                  "mon", "tue", "wed", "thu", "fri", "sat", "sun",
-                 // névelők, kötőszavak
+                 // articles, conjunctions
                  "az", "es", "egy", "meg", "vagy", "the", "and", "of", "to", "for", "with",
                  "on", "in", "at", "an", "or" })
             s.insert(QString::fromLatin1(w));
@@ -48,8 +48,8 @@ const QSet<QString>& ignoredWords()
     return words;
 }
 
-// Gyenge szavak: gyakoriak a címekben, de egyedül nem tesznek két megbeszélést rokonná
-// (az automatikus „Teams-hívás · …” nevek is csak ezekből állnak).
+// Weak words: common in titles, but alone they do not make two meetings related (the automatic
+// "Teams call ..." names consist only of these).
 const QSet<QString>& weakWords()
 {
     static const QSet<QString> words = [] {
@@ -125,7 +125,7 @@ QStringList titleWords(const QString& title)
         if (w.size() < 2)
             continue;
         if (std::any_of(w.cbegin(), w.cend(), [](QChar c) { return c.isDigit(); }))
-            continue;   // dátum, sorszám, időpont, verziószám
+            continue;   // a date, ordinal, time, version number
         if (ignoredWords().contains(w) || out.contains(w))
             continue;
         out << w;
@@ -178,7 +178,7 @@ QVector<NoteSuggestion> suggestNotes(const QVector<NoteCandidate>& candidates,
             continue;
         hits.append({c.meetingId, c.title, c.startedAt, note, score});
     }
-    // Legújabb elöl (azonos időnél a hasonlóbb).
+    // Newest first (on equal time the more similar one).
     std::stable_sort(hits.begin(), hits.end(), [](const NoteSuggestion& x, const NoteSuggestion& y) {
         if (x.startedAt != y.startedAt) return x.startedAt > y.startedAt;
         return x.score > y.score;

@@ -24,14 +24,14 @@
 
 namespace tanara {
 
-// ---- szövegfeldolgozás -------------------------------------------------------------------
+// ---- text processing -------------------------------------------------------------------
 
 namespace tagtext {
 
 namespace {
 
-// A levágható toldalékok hajtogatott alakban (a -ből/-ről/-höz/-ön/-ök/-öt/-ünk alakok a
-// hajtogatás után egybeesnek a párjukkal). Hosszabb elöl, hogy a leghosszabb illeszkedjen.
+// Suffixes that may be stripped, in folded form (the Hungarian elative/delative/allative/superessive/
+// plural/possessive forms coincide with their counterparts after folding). Longer first so the longest match wins.
 const QStringList& suffixes()
 {
     static const QStringList list = [] {
@@ -56,7 +56,7 @@ const QSet<QString>& stopWords()
     static const QSet<QString> words = [] {
         QSet<QString> s;
         for (const char* w : {
-                 // magyar névelők, kötőszók, névmások, határozószók, töltelékszavak
+                 // Hungarian articles, conjunctions, pronouns, adverbs, filler words
                  "a", "az", "egy", "es", "is", "de", "hogy", "nem", "sem", "se", "meg", "mar", "csak",
                  "van", "vannak", "volt", "voltak", "lesz", "lenne", "lett", "lehet", "kell", "kellene",
                  "igen", "akkor", "most", "itt", "ott", "mert", "vagy", "mint", "majd", "nagyon",
@@ -90,7 +90,7 @@ const QSet<QString>& stopWords()
                  "nagyjabol", "kozul", "fele", "fel", "le", "ki", "be", "el", "ra", "at", "ossze",
                  "vissza", "tovabb", "mostanaban", "jelenleg", "holnap", "tegnap", "ma", "most",
                  "het", "heten", "hetre", "napot", "napon", "ora", "oraban", "perc", "percet",
-                 // angol
+                 // English
                  "the", "and", "that", "this", "with", "for", "you", "are", "have", "has", "had", "was",
                  "were", "not", "but", "what", "all", "can", "will", "just", "yeah", "yes", "okay",
                  "so", "then", "there", "here", "they", "them", "their", "from", "about", "would",
@@ -135,7 +135,7 @@ QVector<QPair<QString, QString>> terms(const QString& text)
 
 } // namespace tagtext
 
-// ---- háttérszál: kifejezés-számlálás + profile.json ----------------------------------------
+// ---- background thread: phrase counting + profile.json ----------------------------------------
 
 namespace {
 
@@ -145,7 +145,7 @@ constexpr double kWeightTerms = 0.40;
 constexpr double kWeightTitle = 0.15;
 const QString kProfileFile = QStringLiteral("profile.json");
 
-// Egy meeting nyers kifejezés-számai: tő → (előfordulás, leggyakoribb szóalak).
+// A meeting's raw phrase counts: stem -> (occurrences, most frequent word form).
 struct RawTerms {
     QHash<QString, int> tf;
     QHash<QString, QString> surface;
@@ -169,7 +169,7 @@ RawTerms countTerms(const QString& folder)
         QString best;
         int bestN = -1;
         for (auto f = it->constBegin(); f != it->constEnd(); ++f) {
-            // Gyakoribb nyer; egyenlőnél a nagybetűs (tulajdonnév), aztán a rövidebb.
+            // The more frequent wins; on a tie the capitalized one (a proper noun), then the shorter.
             const bool better = f.value() > bestN
                 || (f.value() == bestN && f.key().at(0).isUpper() && !best.at(0).isUpper())
                 || (f.value() == bestN && f.key().at(0).isUpper() == best.at(0).isUpper() && f.key().size() < best.size());
@@ -216,13 +216,13 @@ void writeProfileFile(const QString& folder, const FileStamp& stamp, const RawTe
     }
 }
 
-// Union-find a félrehallás-összevonáshoz.
+// Union-find for the mishearing merge.
 struct UnionFind {
     QHash<QString, QString> parent;
     QString find(const QString& x) {
         QString r = x;
         while (parent.contains(r) && parent.value(r) != r) r = parent.value(r);
-        QString c = x;   // útvonal-tömörítés
+        QString c = x;   // path compression
         while (parent.contains(c) && parent.value(c) != r) { const QString n = parent.value(c); parent[c] = r; c = n; }
         return r;
     }
@@ -254,17 +254,17 @@ public:
     std::atomic<bool> stop{false};
 };
 
-// Szálbiztonság (lásd a fejlécet):
-//  - A közös állapotot (sorok, kész profilok, a statisztika-pillanatkép) a `mutex` védi; a
-//    zárat csak másolásra / beillesztésre tartjuk (a QHash implicit megosztott, a másolat
-//    O(1)), lemez-I/O és számolás sosem fut alatta.
-//  - A könyvtár-szintű statisztika megváltoztathatatlan pillanatkép (Stats): az olvasó
-//    (bármelyik szálon) egy shared_ptr-t kap, és zár nélkül dolgozik rajta. Ha elavult (a
-//    `gen` azóta nőtt), az olvasó újraszámolja; egyszerre egy számítás fut (`computeMutex`).
-//    A fő szál nem vár egy másik szálon futó számításra: addig a korábbi pillanatképet kapja.
-//  - Lemez-I/O (meeting.json, profile.json, átirat) a „tanara-profiles” szálon fut; a fő
-//    szál csak az index-lekérdezést (MeetingStore::loadAll / folderOf, SQLite) végzi, mert az
-//    adatbázis-kapcsolat a fő szálhoz kötött.
+// Thread safety (see the header):
+//  - The shared state (rows, finished profiles, the statistics snapshot) is protected by `mutex`; the
+//    lock is held only for copying / inserting (QHash is implicitly shared, a copy is O(1)); disk I/O
+//    and computation never run under it.
+//  - The library-level statistics is an immutable snapshot (Stats): a reader (on any thread) gets a
+//    shared_ptr and works on it without a lock. If it is stale (`gen` has grown since), the reader
+//    recomputes; one computation runs at a time (`computeMutex`). The main thread does not wait for a
+//    computation running on another thread: meanwhile it gets the earlier snapshot.
+//  - Disk I/O (meeting.json, profile.json, transcript) runs on the "tanara-profiles" thread; the main
+//    thread only does the index query (MeetingStore::loadAll / folderOf, SQLite), because the database
+//    connection is bound to the main thread.
 struct MeetingProfiles::Impl {
     MeetingProfiles* q = nullptr;
     MeetingStore* store = nullptr;
@@ -283,33 +283,33 @@ struct MeetingProfiles::Impl {
         FileStamp stamp;
         RawTerms  raw;
     };
-    // A könyvtár-szintű statisztika egy adott állapotra (gen) — megváltoztathatatlan.
+    // The library-level statistics for a given state (gen): immutable.
     struct Stats {
         quint64 gen = 0;
         QHash<QString, Row> rows;
-        QHash<QString, QString> canon;                 // nyers tő → összevont tő
-        QHash<QString, QString> display;               // összevont tő → megjelenített alak
-        QHash<QString, QHash<QString, double>> vec;    // meetingId → (tő → súly), ≤ 60
+        QHash<QString, QString> canon;                 // raw stem -> merged stem
+        QHash<QString, QString> display;               // merged stem -> displayed form
+        QHash<QString, QHash<QString, double>> vec;    // meetingId -> (stem -> weight), <= 60
         QHash<QString, double> norm;
-        QHash<QString, double> personWeight;           // név → ritkasági súly
+        QHash<QString, double> personWeight;           // name -> rarity weight
     };
     enum class RowsState { NotLoaded, Loading, Loaded };
 
-    // ---- közös állapot (mutex) ----
+    // ---- shared state (mutex) ----
     mutable QMutex mutex;
     RowsState rowsState = RowsState::NotLoaded;
     QHash<QString, Row> rows;
     QHash<QString, Built> built;
     QSet<QString> removedWhileLoading;
-    quint64 gen = 1;                                   // minden változás növeli
-    mutable std::shared_ptr<const Stats> stats;        // a legutóbbi pillanatkép
+    quint64 gen = 1;                                   // every change increments it
+    mutable std::shared_ptr<const Stats> stats;        // the latest snapshot
     mutable QMutex computeMutex;
 
-    // ---- csak a tulajdonos szálon ----
+    // ---- owner thread only ----
     int pendingSyncs = 0;
     std::atomic<bool> syncQueued{false};
-    // Háttér-mód (az első ensureBuilt után): a fő szál sosem tölt be sorokat és sosem számol
-    // statisztikát, az elavult pillanatképet a háttérszál frissíti.
+    // Background mode (after the first ensureBuilt): the main thread never loads rows and never computes
+    // statistics; the background thread refreshes the stale snapshot.
     std::atomic<bool> background{false};
     mutable std::atomic<bool> recomputeQueued{false};
 
@@ -325,9 +325,9 @@ struct MeetingProfiles::Impl {
     }
     bool onOwnerThread() const { return QThread::currentThread() == q->thread(); }
 
-    // Régi, szinkron út: ha még senki nem kérte a háttér-építést (ensureBuilt), a tulajdonos
-    // szálon az első olvasás tölti be a sorokat. Az alkalmazás az indításkor ensureBuilt-et
-    // hív, így ott ez nem fut; a tesztekben és a CLI-ben kényelmes.
+    // The old, synchronous path: if nobody has requested the background build (ensureBuilt) yet, the first
+    // read on the owner thread loads the rows. The app calls ensureBuilt at startup, so this does not run
+    // there; convenient in tests and the CLI.
     void ensureRowsSync() const {
         if (!store || background || !onOwnerThread()) return;
         {
@@ -345,8 +345,8 @@ struct MeetingProfiles::Impl {
         ++self->gen;
     }
 
-    // Egy meeting sorának frissítése a háttérszálon (meeting.json); a fő szál csak a mappát
-    // keresi ki (ha a sor még nem ismert).
+    // Refreshing a meeting's row on the background thread (meeting.json); the main thread only looks up
+    // the folder (if the row is not known yet).
     void reloadRow(const QString& id) {
         QString folder;
         {
@@ -368,7 +368,7 @@ struct MeetingProfiles::Impl {
                 if (mm.folder.isEmpty()) mm.folder = folder;
                 const Row row = rowOf(mm);
                 const auto old = rows.constFind(id);
-                if (old != rows.constEnd() && *old == row) return;   // nincs érdemi változás
+                if (old != rows.constEnd() && *old == row) return;   // no substantive change
                 rows.insert(id, row);
             }
             ++gen;
@@ -383,8 +383,8 @@ struct MeetingProfiles::Impl {
         ++gen;
     }
 
-    // A háttérszál egy köre: (ha kell) a sorok betöltése, az elavult profilok építése, végül
-    // a statisztika előmelegítése.
+    // One round of the background thread: (if needed) loading the rows, building the stale profiles,
+    // finally warming up the statistics.
     void syncJob(bool loadRows, const QVector<Meeting>& index) {
         syncQueued = false;
         if (worker->stop) return;
@@ -398,7 +398,7 @@ struct MeetingProfiles::Impl {
             QMutexLocker lock(&mutex);
             for (const QString& id : std::as_const(removedWhileLoading)) fresh.remove(id);
             removedWhileLoading.clear();
-            // Közben beérkezett sor-frissítések (reloadRow) a betöltés után futnak — sorrendben.
+            // Row refreshes (reloadRow) that arrived meanwhile run after the load, in order.
             rows = fresh;
             rowsState = RowsState::Loaded;
             ++gen;
@@ -436,17 +436,17 @@ struct MeetingProfiles::Impl {
                 QMetaObject::invokeMethod(q, [this, id]() { emit q->profileReady(id); }, Qt::QueuedConnection);
         }
         if (worker->stop) return;
-        (void)snapshot();   // előmelegítés: a fő szál olvasói már kész statisztikát kapnak
+        (void)snapshot();   // warm-up: readers on the main thread already get finished statistics
     }
 
-    // A statisztika aktuális pillanatképe (sosem null).
+    // The statistics' current snapshot (never null).
     std::shared_ptr<const Stats> snapshot() const {
         {
             QMutexLocker lock(&mutex);
             if (stats && stats->gen == gen) return stats;
         }
         if (onOwnerThread() && background) {
-            // A fő szál nem számol: a háttérszál frissít, addig a korábbi pillanatkép él.
+            // The main thread does not compute: the background thread refreshes, meanwhile the earlier snapshot lives.
             if (!recomputeQueued.exchange(true))
                 QMetaObject::invokeMethod(worker, [this]() {
                     recomputeQueued = false;
@@ -457,7 +457,7 @@ struct MeetingProfiles::Impl {
         }
         if (onOwnerThread()) {
             if (!computeMutex.tryLock()) {
-                // Másik szál épp számol: a fő szál nem vár, a korábbi pillanatkép is megfelel.
+                // Another thread is computing right now: the main thread does not wait, the earlier snapshot is fine too.
                 QMutexLocker lock(&mutex);
                 return stats ? stats : std::make_shared<const Stats>();
             }
@@ -489,7 +489,7 @@ struct MeetingProfiles::Impl {
     static void computeStats(Stats& s, const QHash<QString, Built>& built) {
         const QHash<QString, Row>& rows = s.rows;
 
-        // Résztvevők ritkasága: aki a megbeszélések > 60 %-án ott van, ~0.
+        // Rarity of participants: someone present in > 60% of meetings gets ~0.
         const int nAll = int(rows.size());
         QHash<QString, int> pdf;
         for (const Row& r : rows)
@@ -499,9 +499,9 @@ struct MeetingProfiles::Impl {
             s.personWeight.insert(it.key(), std::max(0.0, 1.0 - share / 0.6));
         }
 
-        // Kifejezések: nyers df + összesített előfordulás.
+        // Phrases: raw df + total occurrences.
         QHash<QString, int> rawDf, rawTotal;
-        QHash<QString, QHash<QString, int>> surfaces;   // nyers tő → (alak → db)
+        QHash<QString, QHash<QString, int>> surfaces;   // raw stem -> (form -> count)
         int n = 0;
         for (auto it = built.constBegin(); it != built.constEnd(); ++it) {
             if (!rows.contains(it.key()) || it->raw.tf.isEmpty()) continue;
@@ -514,10 +514,9 @@ struct MeetingProfiles::Impl {
         }
         if (n == 0) return;
 
-        // Félrehallás-összevonás: a ritka tövek közül az egy betűben eltérők (a hosszabbik
-        // legalább 6, a rövidebb legalább 5 betű). A jelöltpárokat törlés-szomszédsággal
-        // keressük (minden tő + egy-egy betűje nélküli alakjai), így nem kell minden párt
-        // összevetni.
+        // Mishearing merge: among the rare stems those differing by one letter (the longer at least 6, the
+        // shorter at least 5 letters). We find candidate pairs through deletion neighborhoods (every stem + its
+        // forms without one letter each), so not every pair needs comparing.
         const int rareDf = std::max(2, int(std::ceil(n * 0.1)));
         QHash<QString, QStringList> buckets;
         for (auto it = rawDf.constBegin(); it != rawDf.constEnd(); ++it) {
@@ -537,7 +536,7 @@ struct MeetingProfiles::Impl {
                     if (damerauLevenshtein(a, b, 1) <= 1) uf.unite(a, b);
                 }
         }
-        // Csoportonként a leggyakoribb tő lesz a közös.
+        // Per group the most frequent stem becomes the shared one.
         QHash<QString, QString> groupBest;
         const QStringList members = uf.parent.keys();
         for (const QString& key : members) {
@@ -554,7 +553,7 @@ struct MeetingProfiles::Impl {
             s.canon.insert(w, uf.parent.contains(w) ? groupBest.value(uf.find(w)) : w);
         }
 
-        // Megjelenített alak: az összevont csoport leggyakoribb eredeti írásmódja.
+        // Displayed form: the most frequent original spelling of the merged group.
         QHash<QString, QHash<QString, int>> canonForms;
         for (auto it = surfaces.constBegin(); it != surfaces.constEnd(); ++it)
             for (auto f = it->constBegin(); f != it->constEnd(); ++f)
@@ -566,7 +565,7 @@ struct MeetingProfiles::Impl {
             s.display.insert(it.key(), best);
         }
 
-        // Összevont df, majd meetingenként tf × log(N / df), a legerősebb 60.
+        // Merged df, then per meeting tf * log(N / df), the strongest 60.
         QHash<QString, QHash<QString, int>> ctf;
         QHash<QString, int> df;
         for (auto it = built.constBegin(); it != built.constEnd(); ++it) {
@@ -700,7 +699,7 @@ MeetingProfiles::~MeetingProfiles()
 void MeetingProfiles::ensureBuilt()
 {
     d->background = true;
-    // Egy várakozó kör elég: ami addig változik, azt az is látja.
+    // One waiting round is enough: whatever changes until then it sees too.
     if (d->syncQueued.exchange(true)) return;
     bool loadRows = false;
     QVector<Meeting> index;
@@ -713,7 +712,7 @@ void MeetingProfiles::ensureBuilt()
     }
     if (loadRows) {
         PerfScope perf("MeetingProfiles::ensureBuilt: index (fő szál)", 5);
-        index = d->store->loadAll();   // csak az index (SQLite), fájl-olvasás nélkül
+        index = d->store->loadAll();   // only the index (SQLite), without reading files
     }
     ++d->pendingSyncs;
     QMetaObject::invokeMethod(d->worker, [this, loadRows, index]() {
@@ -793,7 +792,7 @@ QStringList MeetingProfiles::topTerms(const QStringList& meetingIds, int limit) 
     }
     QVector<QPair<double, QString>> list;
     for (auto it = sum.constBegin(); it != sum.constEnd(); ++it)
-        list.append({ it.value() * in.value(it.key()), it.key() });   // a több meetingben közös előre
+        list.append({ it.value() * in.value(it.key()), it.key() });   // the ones shared by several meetings first
     std::sort(list.begin(), list.end(), [](const auto& a, const auto& b) {
         if (a.first != b.first) return a.first > b.first;
         return a.second < b.second;

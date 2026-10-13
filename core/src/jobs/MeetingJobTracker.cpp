@@ -11,7 +11,7 @@ namespace tanara {
 
 namespace {
 
-// A megmaradó hibák „helyei” a processing.json-ban.
+// The "slots" of remembered errors in processing.json.
 QString errorSlot(JobKind kind)
 {
     switch (kind) {
@@ -21,8 +21,8 @@ QString errorSlot(JobKind kind)
     case JobKind::AnalyzeTopics: return QStringLiteral("summarize");
     case JobKind::Mixdown:       return QStringLiteral("mixdown");
     case JobKind::Identify:      return QString();
-    case JobKind::Import:        return QString();   // nincs meeting, amin megmaradhatna
-    case JobKind::Export:        return QString();   // a hibát a héj toastja mondja el
+    case JobKind::Import:        return QString();   // no meeting it could be remembered on
+    case JobKind::Export:        return QString();   // the shell's toast tells the error
     }
     return QString();
 }
@@ -84,11 +84,11 @@ bool isSummaryKind(JobKind k)
 
 } // namespace
 
-// A meeting lemezen megmaradó feldolgozási állapota (processing.json).
+// A meeting's processing state remembered on disk (processing.json).
 struct MeetingJobTracker::Persisted {
-    QString folder;                       // üres → csak memóriában él (ismeretlen meeting)
-    QHash<QString, JobError> errors;      // hibahely → hiba
-    QHash<QString, JobError> topics;      // topicId → hiba
+    QString folder;                       // empty = lives only in memory (unknown meeting)
+    QHash<QString, JobError> errors;      // error slot -> error
+    QHash<QString, JobError> topics;      // topicId -> error
     QDateTime identifiedAt;
 
     bool isEmpty() const { return errors.isEmpty() && topics.isEmpty() && !identifiedAt.isValid(); }
@@ -103,7 +103,7 @@ MeetingJobTracker::MeetingJobTracker(MeetingStore* store, QObject* parent)
     qRegisterMetaType<tanara::JobError>();
     qRegisterMetaType<tanara::MeetingProcessingState>();
     if (m_store) {
-        // Törölt meeting: a gyorsítótár és az esetleg még nyilvántartott feladatok eldobása.
+        // A deleted meeting: drop the cache and any still-registered tasks.
         connect(m_store, &MeetingStore::meetingRemoved, this, [this](const QString& id) {
             delete m_persisted.take(id);
             for (int i = m_jobs.size() - 1; i >= 0; --i)
@@ -127,7 +127,7 @@ MeetingJobTracker::Persisted& MeetingJobTracker::persisted(const QString& meetin
 {
     auto it = m_persisted.find(meetingId);
     if (it != m_persisted.end()) {
-        // Korábban mappa nélkül (ismeretlenként) került be, de most már tudjuk a mappát.
+        // It earlier came in without a folder (as unknown), but now we know the folder.
         if ((*it)->folder.isEmpty() && !folderHint.isEmpty())
             (*it)->folder = folderHint;
         return **it;
@@ -165,7 +165,7 @@ void MeetingJobTracker::savePersisted(const QString& meetingId) const
     if (p.folder.isEmpty() || !QDir(p.folder).exists())
         return;
     const QString path = QDir(p.folder).filePath(stateFileName());
-    if (p.isEmpty()) {            // nincs mit őrizni → ne maradjon üres fájl a mappában
+    if (p.isEmpty()) {            // nothing to keep, so no empty file stays in the folder
         QFile::remove(path);
         return;
     }
@@ -188,7 +188,7 @@ void MeetingJobTracker::savePersisted(const QString& meetingId) const
     }
 }
 
-// ---- lekérdezés ------------------------------------------------------------------------
+// ---- query ------------------------------------------------------------------------
 
 JobProgress* MeetingJobTracker::find(const QString& meetingId, JobKind kind)
 {
@@ -248,7 +248,7 @@ MeetingProcessingState MeetingJobTracker::state(const QString& meetingId) const
         return state(m);
     }
     Meeting m = m_store->load(meetingId);
-    if (m.id.isEmpty()) m.id = meetingId;   // ismeretlen → üres állapot (csak a futó feladatok)
+    if (m.id.isEmpty()) m.id = meetingId;   // unknown = an empty state (only the running tasks)
     return state(m);
 }
 
@@ -295,15 +295,15 @@ MeetingProcessingState MeetingJobTracker::state(const Meeting& m) const
             s.staleCorrectedSpeakers = corrected;
         }
     }
-    // Azonosítás: fut → Running; lefutott (jelölés a lemezen) → Done; régi meetingnél a jelölés
-    // hiányzik, ott a nevesített beszélő a jel, hogy megtörtént.
+    // Identification: running -> Running; ran (a marker on disk) -> Done; for an old meeting the marker is
+    // missing, there a named speaker is the sign that it happened.
     s.identifyState = identifying ? StepState::Running
                     : (m.hasTranscript && (p.identifiedAt.isValid() || !m.speakerMap.isEmpty()))
                           ? StepState::Done : StepState::None;
     return s;
 }
 
-// ---- hibák -----------------------------------------------------------------------------
+// ---- errors -----------------------------------------------------------------------
 
 void MeetingJobTracker::clearError(const QString& meetingId, JobKind kind)
 {
@@ -354,7 +354,7 @@ void MeetingJobTracker::markIdentified(const QString& meetingId, bool identified
     emit stateChanged(meetingId);
 }
 
-// ---- vezénylő API ----------------------------------------------------------------------
+// ---- orchestration API ----------------------------------------------------------------------
 
 void MeetingJobTracker::begin(const QString& meetingId, JobKind kind, const QString& title,
                               const QVector<JobStage>& stages, bool cancellable)
@@ -389,7 +389,7 @@ void MeetingJobTracker::setStage(const QString& meetingId, JobKind kind, const Q
         s.percent = (state == StageState::Running) ? percent : -1;
         if (!detail.isEmpty()) s.detail = detail;
         emit jobProgressChanged(meetingId, *j);
-        // A szakasz-váltás a levezetett állapotot is érintheti (lekeverés / azonosítás fut-e).
+        // A stage change may also affect the derived state (whether a mixdown / identification is running).
         if (stateFlip) emit stateChanged(meetingId);
         return;
     }
@@ -487,7 +487,7 @@ void MeetingJobTracker::closeJob(const QString& meetingId, JobKind kind, JobOutc
 
 void MeetingJobTracker::finish(const QString& meetingId, JobKind kind)
 {
-    // Siker → az ehhez a lépéshez tartozó korábbi hiba érvényét veszti.
+    // Success: the earlier error belonging to this step loses its validity.
     const QString slot = errorSlot(kind);
     if (!slot.isEmpty() && persisted(meetingId).errors.remove(slot) > 0) {
         savePersisted(meetingId);

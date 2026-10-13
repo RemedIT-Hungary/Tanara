@@ -1,36 +1,35 @@
 #pragma once
 //
-// Bizonyíték-modell (v3 design, 13. döntés): minden javaslat megmutatja, MIÉRT (hang %, sáv-oldal,
-// címke, sorok száma itt, hasonló hang…), és minden ok megmondja, HOL javítható (fixTarget).
-// Sima, header-only adat — a jelölt-rangsor (CandidateRanker.h), az Átnézendő csoportok
-// (ReviewGroups.h) és a résztvevő-jóváhagyás is ezt használja.
-//
+// Evidence model: every suggestion shows WHY (voice %, track side, tag, number of lines here, a similar
+// voice...), and every reason tells WHERE it can be fixed (fixTarget).
+// Plain, header-only data; the candidate ranking (CandidateRanker.h), the "To review" groups
+// (ReviewGroups.h) and the participant approval use it too.
 #include <QMetaType>
 #include <QString>
 #include <QVector>
 
 namespace tanara {
 
-enum class EvidenceKind { Voice, Side, Tag, LineCount, Similarity, Calendar /*később*/, Manual };
+enum class EvidenceKind { Voice, Side, Tag, LineCount, Similarity, Calendar /* later */, Manual };
 enum class Polarity { Support, Contradict, Neutral };
 
 struct Evidence {
     EvidenceKind kind = EvidenceKind::Voice;
     Polarity polarity = Polarity::Neutral;
     double value = 0.0;
-    QString text;       // magyar, rövid, pl. "hang 82%"
+    QString text;       // Hungarian, short, e.g. "voice 82%"
     QString detail;
     QString fixTarget;  // "tracks" | "samples" | "tags" | "pair:<key>" | ""
 };
 
 struct Candidate {
-    QString speakerKey;         // a meeting beszélője; üres = a meetingen kívüli ismert személy
+    QString speakerKey;         // the meeting's speaker; empty = a known person outside the meeting
     QString personName;
     double score = 0.0;
     QVector<Evidence> evidence;
-    bool otherSide = false;     // a jelölt a másik sávon beszél (lejjebb sorolva, nem eltüntetve)
-    // A kézi sáv-beosztás kizárja (G10, SideAnalysis.h sides::vetoes): pontszám nélkül (0), a lista
-    // VÉGÉN; sosem javaslat, de kézzel választható. Mindig otherSide is.
+    bool otherSide = false;     // the candidate speaks on the other track (ranked lower, not removed)
+    // Excluded by the manual track assignment (SideAnalysis.h sides::vetoes): without a score (0), at the END
+    // of the list; never a suggestion, but selectable by hand. Always otherSide too.
     bool vetoed = false;
     int linesHere = 0;
 };

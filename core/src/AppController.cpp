@@ -52,9 +52,9 @@
 #include "tanara/embedding/EmbeddingPreparer.h"
 #include "tanara/embedding/EmbeddingProviderRegistry.h"
 #include "tanara/embedding/IEmbeddingProvider.h"
-#include "tanara/edit/MeetingUndo.h"              // G4
-#include "tanara/store/JsonSerialization.h"       // G4
-#include "tanara/voiceid/VoiceModelDownloader.h"  // G4
+#include "tanara/edit/MeetingUndo.h"
+#include "tanara/store/JsonSerialization.h"
+#include "tanara/voiceid/VoiceModelDownloader.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -90,8 +90,8 @@ QString expandTilde(QString p) {
     return p;
 }
 
-// Mindig LF sorvég (QIODevice::Text NÉLKÜL): Windowson a Text mód CRLF-et írna, a
-// visszaolvasás (SummaryStore, átirat) viszont nyersen olvas → \r kerülne a szövegbe.
+// Always LF line endings (WITHOUT QIODevice::Text): on Windows the Text mode would write CRLF, but
+// the readback (SummaryStore, transcript) reads raw, so a \r would end up in the text.
 bool writeTextFile(const QString& path, const QString& text) {
     QSaveFile f(path);
     if (!f.open(QIODevice::WriteOnly)) return false;
@@ -113,7 +113,7 @@ void writeTokensJson(const QString& path, const MergedTranscript& mt) {
     }
     QJsonObject root;
     root["language"] = mt.language;
-    if (mt.emissionTiming) root["timing"] = QStringLiteral("emission");   // a sorok párnázandók (Soniox)
+    if (mt.emissionTiming) root["timing"] = QStringLiteral("emission");   // the lines need padding (Soniox)
     root["tokens"] = arr;
     QSaveFile f(path);
     if (f.open(QIODevice::WriteOnly)) {
@@ -136,8 +136,8 @@ void writeSegmentsJson(const QString& path, const QVector<Utterance>& segs) {
     if (f.open(QIODevice::WriteOnly)) { f.write(QJsonDocument(arr).toJson(QJsonDocument::Indented)); f.commit(); }
 }
 
-// A nevek ráírása az átiratra: speakeredit::applyResolvedSpeakers(mt, meeting) — a
-// speakerMap MELLETT a kézi sor-javításokat (transcript.speakers.json) is alkalmazza.
+// Putting the names onto the transcript: speakeredit::applyResolvedSpeakers(mt, meeting) applies the
+// manual line corrections (transcript.speakers.json) in addition to the speakerMap.
 
 MergedTranscript readTokensJson(const QString& path) {
     MergedTranscript mt;
@@ -160,7 +160,7 @@ MergedTranscript readTokensJson(const QString& path) {
     return mt;
 }
 
-// A komplex összefoglaló 1. körének SZERKESZTHETŐ téma-listája (summary.topics.json).
+// The EDITABLE topic list of the complex summary's pass 1 (summary.topics.json).
 void writeTopicsJson(const QString& path, const QVector<SummaryTopic>& topics) {
     QJsonArray arr;
     for (const auto& t : topics) {
@@ -193,8 +193,8 @@ QVector<SummaryTopic> readTopicsJson(const QString& path) {
     return topics;
 }
 
-// A komplex összefoglaló 2. körének KÉSZ elemzései (summary.analyses.json) — témánként
-// AZONNAL perzisztálva, hogy megszakítás/hiba után ne vesszen el a már kifizetett munka.
+// The FINISHED analyses of the complex summary's pass 2 (summary.analyses.json), persisted per topic
+// IMMEDIATELY, so work already paid for is not lost after a cancel/error.
 void writeAnalysesJson(const QString& path, const QVector<TopicAnalysis>& analyses) {
     QJsonArray arr;
     for (const auto& a : analyses) {
@@ -243,7 +243,7 @@ QVector<TopicAnalysis> readAnalysesJson(const QString& path) {
     return analyses;
 }
 
-// Egy kész elemzés beírása/felülírása a summary.analyses.json-ba (topicId szerint).
+// Writing/overwriting a finished analysis into summary.analyses.json (by topicId).
 void upsertAnalysisJson(const QString& path, const TopicAnalysis& a) {
     QVector<TopicAnalysis> all = readAnalysesJson(path);
     bool replaced = false;
@@ -253,7 +253,7 @@ void upsertAnalysisJson(const QString& path, const TopicAnalysis& a) {
     writeAnalysesJson(path, all);
 }
 
-// A témák nyitott kérdéseinek uniója (sorrendben, ismétlés nélkül, legfeljebb 5).
+// The union of the topics' open questions (in order, without repeats, at most 5).
 QStringList openQuestionsOf(const QVector<TopicAnalysis>& topics) {
     QStringList out;
     for (const TopicAnalysis& a : topics)
@@ -262,9 +262,9 @@ QStringList openQuestionsOf(const QVector<TopicAnalysis>& topics) {
     return out;
 }
 
-// A komplex összefoglaló markdown-ja: globális fej (vezetői összefoglaló + összevont
-// teendők) + témánkénti szekciók (összegző + döntések + teendők). A Summary::renderMarkdown
-// stílusát követi (`- [ ]` teendő-checklisták).
+// The complex summary's markdown: a global head (executive summary + merged action items) +
+// per-topic sections (summary + decisions + action items). It follows Summary::renderMarkdown's style
+// (`- [ ]` action-item checklists).
 QString renderComplexMarkdown(const QString& execSummary, const QVector<ActionItem>& items,
                               const QVector<TopicAnalysis>& topics) {
     auto renderItem = [](const ActionItem& ai) {
@@ -292,41 +292,41 @@ QString renderComplexMarkdown(const QString& execSummary, const QVector<ActionIt
         int n = 1;
         for (const TopicAnalysis& t : topics) {
             md += QStringLiteral("### %1. %2\n\n").arg(n++).arg(t.title);
-            md += t.renderMarkdown();   // detail + döntések + teendők (Types/SummaryService)
+            md += t.renderMarkdown();   // detail + decisions + action items (Types/SummaryService)
         }
     }
     return md;
 }
 
-// Melyik sávból vegyünk hangot egy nyers beszélő-címkéhez:
-//  - pontos egyezés egy sáv fix beszélőjével (mic) → az a sáv;
-//  - egyébként (diarizált "Távoli N") → a loopback sáv;
-//  - végső fallback: az első sáv.
+// Which track to take audio from for a raw speaker label:
+//  - an exact match with a track's fixed speaker (mic) -> that track;
+//  - otherwise (a diarized "Remote N") -> the loopback track;
+//  - last fallback: the first track.
 const Track* resolveTrackForLabel(const Meeting& m, const MergedTranscript& mt,
                                   const QString& rawLabel) {
-    // 1) Elsődlegesen a címke tokenjeinek trackId-je alapján (a diarizált mic/loopback
-    //    beszélők — „Mikrofon N" / „Távoli N" — így a HELYES sávra oldódnak fel).
+    // 1) Primarily by the trackId of the label's tokens (diarized mic/loopback speakers, "Microphone N" /
+    //    "Remote N", thus resolve to the RIGHT track).
     QString tid;
     for (const TranscriptToken& t : mt.tokens)
         if (t.speaker == rawLabel && !t.trackId.isEmpty()) { tid = t.trackId; break; }
     if (!tid.isEmpty())
         for (const Track& t : m.tracks)
             if (t.id == tid) return &t;
-    // 2) Fallback: pontos sáv-beszélőnév egyezés (fix mic-név).
+    // 2) Fallback: an exact track speaker name match (the fixed mic name).
     for (const Track& t : m.tracks)
         if (t.speakerLabel == rawLabel) return &t;
-    // 3) Fallback: az első loopback sáv.
+    // 3) Fallback: the first loopback track.
     for (const Track& t : m.tracks)
         if (t.kind == TrackKind::Loopback) return &t;
     return m.tracks.isEmpty() ? nullptr : &m.tracks.first();
 }
 
-// Egy beszélő reprezentatív embeddingje (minden használt modellel): a leghosszabb utterance-eiből
-// ~3–12 s hangot gyűjt a megadott sávból, és EGY összefűzött PCM-ből modellenként egy vektort
-// számol. Üres = nincs elég hang/hiba. Az utterance-ek megbeszélés-időben vannak; offsetMs a
-// hangfájl kezdete a megbeszélésben (sávfájlnál Track::startOffsetMs, a lekeverésnél 0) — a fájl
-// előtti rész kimarad. refs (opcionális): a felhasznált szakaszok "fileRel#start-end" alakban
-// (megbeszélés-idő) — a lenyomat sourceRefs-e.
+// A speaker's representative embedding (with every model in use): from their longest utterances it
+// collects ~3-12 s of audio from the given track, and computes one vector per model from ONE concatenated
+// PCM. Empty = not enough audio / an error. The utterances are in meeting time; offsetMs is the audio
+// file's start in the meeting (Track::startOffsetMs for a track file, 0 for the mixdown); the part before
+// the file is dropped. refs (optional): the spans used in "fileRel#start-end" form (meeting time), the
+// voiceprint's sourceRefs.
 EmbeddingSet embeddingForLabel(const VoiceEmbedderSet& set, const QString& audioPath, qint64 offsetMs,
                                const MergedTranscript& mt, const QString& rawLabel,
                                const QString& fileRel = QString(), QStringList* refs = nullptr) {
@@ -342,7 +342,7 @@ EmbeddingSet embeddingForLabel(const VoiceEmbedderSet& set, const QString& audio
     for (const Utterance& u : utts) {
         if (accMs >= 3000 || pcm.size() > 16000 * 12) break;
         const tracktiming::FileRange r = tracktiming::meetingToFileRange(offsetMs, u.startMs, u.endMs);
-        if (!r.valid()) continue;   // a sáv ekkor még nem szólt
+        if (!r.valid()) continue;   // the track was not sounding yet at this time
         const QVector<float> part = VoiceEmbedder::decodePcm16kMono(path, r.startMs, r.endMs);
         if (part.isEmpty()) continue;
         pcm += part;
@@ -354,7 +354,7 @@ EmbeddingSet embeddingForLabel(const VoiceEmbedderSet& set, const QString& audio
     return set.embedPcm(pcm);
 }
 
-// Egy minta-hivatkozás ("fájl#startMs-endMs", megbeszélés-idő) felbontása; false, ha nincs tartomány.
+// Parsing a sample reference ("file#startMs-endMs", meeting time); false if there is no range.
 bool parseRangeRef(const QString& ref, QString* file, qint64* startMs, qint64* endMs) {
     const int hash = ref.lastIndexOf(QLatin1Char('#'));
     if (hash <= 0) return false;
@@ -368,11 +368,11 @@ bool parseRangeRef(const QString& ref, QString* file, qint64* startMs, qint64* e
     return ok1 && ok2 && *endMs > *startMs;
 }
 
-// Egy lenyomat EGY modellel, újra a hangjából (lusta pótlás). A szakaszok (sourceRefs, ennek
-// híján a sampleRef) PCM-jét összefűzi és egyben ágyazza be — ugyanígy készül az enrollSpeaker
-// lenyomata is (embeddingForLabel); a szerkesztő súlyozott soronkénti átlagától ez kissé eltér,
-// de modellenként önkonzisztens. A szakaszok megbeszélés-időben vannak: a sávfájlnál a sáv
-// eltolását levonjuk. missingAudio: a hivatkozott fájl hiányzik.
+// One voiceprint with ONE model, recomputed from its audio (lazy backfill). It concatenates the PCM of
+// the spans (sourceRefs, failing that the sampleRef) and embeds it as a whole, the same way
+// enrollSpeaker's voiceprint is made (embeddingForLabel); this differs slightly from the editor's
+// weighted per-line average, but is self-consistent per model. The spans are in meeting time: for a track
+// file the track's offset is subtracted. missingAudio: the referenced file is missing.
 QVector<float> embedPrintSource(const VoiceEmbedderSet& set, const QString& modelId, const Meeting& m,
                                 const Voiceprint& vp, bool* missingAudio) {
     *missingAudio = false;
@@ -395,8 +395,8 @@ QVector<float> embedPrintSource(const VoiceEmbedderSet& set, const QString& mode
     return set.embedPcmWith(pcm, {modelId}).value(modelId);
 }
 
-// Lenyomatok egy mintából: modellenként egy (azonos sampleRef / forrás / createdAt / sourceRefs,
-// saját id és model). A sablon embedding-, id- és model-mezője nem számít.
+// Voiceprints from one sample: one per model (same sampleRef / source / createdAt / sourceRefs, own id
+// and model). The template's embedding, id and model fields do not count.
 QVector<Voiceprint> printsFromSet(const EmbeddingSet& set, const Voiceprint& tmpl) {
     QVector<Voiceprint> out;
     for (auto it = set.cbegin(); it != set.cend(); ++it) {
@@ -411,10 +411,10 @@ QVector<Voiceprint> printsFromSet(const EmbeddingSet& set, const Voiceprint& tmp
     return out;
 }
 
-// A lenyomathoz eltárolt, visszahallgatható reprezentatív szegmens hivatkozása:
-// "track_fájl#startMs-endMs" (a leghosszabb utterance). Az idők MEGBESZÉLÉS-időben vannak
-// (mint az átiratban); sávfájlnál a lejátszó a sáv eltolásával vált fájl-időre (PeopleService). Lejátszáshoz a People-panel
-// a sourceMeetingId-ből oldja fel a mappát.
+// The reference of the playable representative segment stored with the voiceprint:
+// "track_file#startMs-endMs" (the longest utterance). The times are in MEETING time (as in the
+// transcript); for a track file the player converts to file time with the track's offset (PeopleService).
+// For playback the People panel resolves the folder from sourceMeetingId.
 QString representativeSampleRef(const MergedTranscript& mt, const QString& rawLabel,
                                 const QString& fileRel) {
     qint64 bestS = -1, bestE = -1, bestDur = -1;
@@ -427,11 +427,11 @@ QString representativeSampleRef(const MergedTranscript& mt, const QString& rawLa
     return QStringLiteral("%1#%2-%3").arg(fileRel).arg(bestS).arg(bestE);
 }
 
-// A voice-ID hangforrása: MOST a mixdown (a leirat is abból készül, így a diarizált
-// „Beszélő N" címkék időablakai közvetlenül a mixre illeszkednek). Ha nincs mixdown
-// (régi, per-sáv meeting), back-compat: a címke feloldott sávjára esünk vissza.
+// The voice-ID audio source: NOW the mixdown (the transcript is made from it too, so the diarized
+// "Speaker N" labels' time windows fit the mix directly). If there is no mixdown (an old, per-track
+// meeting), for back-compat we fall back to the label's resolved track.
 struct VoiceSource { QString absPath; QString fileRel; QString trackId; QString device;
-                     qint64 offsetMs = 0; };   // a fájl kezdete a megbeszélésben
+                     qint64 offsetMs = 0; };   // the file's start in the meeting
 VoiceSource resolveVoiceSource(const Meeting& m, const MergedTranscript& mt,
                                const QString& rawLabel) {
     const QString mixRel = m.mixdownFile.isEmpty() ? QStringLiteral("mixdown.mp3")
@@ -444,9 +444,9 @@ VoiceSource resolveVoiceSource(const Meeting& m, const MergedTranscript& mt,
     return {};
 }
 
-using participants::clusterEmbeddings;   // agglomeratív klaszterezés (edit/ParticipantAnalysis.h)
+using participants::clusterEmbeddings;   // agglomerative clustering (edit/ParticipantAnalysis.h)
 
-// Cosine-küszöb az auto-azonosításhoz (a validáció: azonos 0.77, kereszt ≤0.35).
+// Cosine threshold for auto-identification (validation: same 0.77, cross <= 0.35).
 constexpr double kVoiceMatchThreshold = 0.5;
 
 QStringList loadLastDevices(const QString& path) {
@@ -485,12 +485,12 @@ QString slugify(const QString& s) {
     return out.isEmpty() ? QStringLiteral("meeting") : out;
 }
 
-// Egy szolgáltató-hívás utolsó SIKERTELEN HTTP-váltása (a megmaradó hiba technikai sorához).
+// The last FAILED HTTP exchange of a provider call (for the remembered error's technical line).
 struct FailureSink { bool has = false; HttpExchange ex; };
 using FailureSinkPtr = std::shared_ptr<FailureSink>;
 
-// A config válasz-hookját kiegészíti: a meglévő (cloud) hook mellett a nem-2xx válaszokat és
-// a hálózati hibákat a sinkbe is elteszi. A takarító DELETE-ek hibája nem számít.
+// Extends the config's response hook: besides the existing (cloud) hook, non-2xx responses and network
+// errors are also stored in the sink. The failure of cleanup DELETEs does not count.
 void captureFailures(ProviderConfig& cfg, const FailureSinkPtr& sink) {
     const auto prev = cfg.onExchange;
     cfg.onExchange = [prev, sink](const HttpExchange& ex) {
@@ -507,52 +507,51 @@ struct AppController::Impl {
     DeviceManager*   devices  = nullptr;
     MeetingStore*    store    = nullptr;
     RecordingSession* session = nullptr;
-    RecordingSession::EngineFactory recordingEngineFactory;   // teszt-varrat; üres → valódi
+    RecordingSession::EngineFactory recordingEngineFactory;   // test seam; empty = the real one
     DeviceMonitor*   monitor = nullptr;
     KeyStore         keyStore;
     std::unique_ptr<PeopleStore> people;
     PeopleStats*   peopleStats = nullptr;
     PeopleService* peopleService = nullptr;
     std::unique_ptr<VoiceprintStore> voiceprints;
-    QString          voiceModelPath;    // az alapmodell várt helye (diagnosztika)
-    QString          appDir;            // a csomagolt modellek helye (<appDir>/models)
-    // A használt beszélő-modellek (engedélyezett ∩ elérhető) — a fő szál készlete, lustán tölt.
+    QString          voiceModelPath;    // expected location of the base model (diagnostics)
+    QString          appDir;            // location of the packaged models (<appDir>/models)
+    // The speaker models in use (enabled intersect available): the main thread's set, loads lazily.
     VoiceEmbedderSet voiceSet;
-    QStringList      voiceModelIds;     // a voiceSet id-i (ábécérendben)
-    PcmEmbedderLoader voiceLoader;      // teszt-varrat; üres → valódi VoiceEmbedder
-    // Lusta lenyomat-pótlás (backfillVoiceprints): 1 szálas pool, egyszerre egy futás.
+    QStringList      voiceModelIds;     // ids of voiceSet (alphabetical)
+    PcmEmbedderLoader voiceLoader;      // test seam; empty = the real VoiceEmbedder
+    // Lazy voiceprint backfill (backfillVoiceprints): a 1-thread pool, one run at a time.
     QThreadPool      backfillPool;
     bool             backfillRunning = false;
     bool             backfillAgain = false;
     std::shared_ptr<std::atomic<bool>> backfillCancel = std::make_shared<std::atomic<bool>>(false);
-    QSet<QString>    backfillLogged;    // a hiányzó hang miatt már naplózott lenyomatok
-    // Sáv-beszédarány és átirat előtti hangelemzés (háttérszál; a GUI-szál nem vár).
+    QSet<QString>    backfillLogged;    // voiceprints already logged because of missing audio
+    // Per-track speech share and pre-transcript voice analysis (background thread; the GUI thread does not wait).
     QThreadPool      analysisPool;
-    QSet<QString>    speechCheckRunning;  // meetingId-k, amelyeken épp mérünk
-    QSet<QString>    speechChecked;       // ebben a folyamatban már mérve (hibánál se ismételjük)
-    QHash<QString, MeetingActivity> activityView;   // a beszéd-csík aktivitása (minden sáv), lenyomattal
-    QSet<QString>    activityViewRunning; // meetingId-k, amelyeken épp számoljuk
-    QHash<QString, std::shared_ptr<std::atomic<bool>>> analysisRuns;   // meetingId → megszakítás
+    QSet<QString>    speechCheckRunning;  // meetingIds being measured now
+    QSet<QString>    speechChecked;       // already measured in this process (not repeated even on error)
+    QHash<QString, MeetingActivity> activityView;   // activity for the speech strip (every track), with a fingerprint
+    QSet<QString>    activityViewRunning; // meetingIds being computed now
+    QHash<QString, std::shared_ptr<std::atomic<bool>>> analysisRuns;   // meetingId -> cancel flag
     std::shared_ptr<std::atomic<bool>> analysisShutdown = std::make_shared<std::atomic<bool>>(false);
-    std::function<QStringList(const QString&)> personTags;   // D-szelet varrata (személy címkéi)
+    std::function<QStringList(const QString&)> personTags;   // test seam (a person's tags)
     participants::CandidateContext candidateContext() const;
     bool             voiceModelsApplied = false;
-    // A szerkesztő modell-listája: a használt modellek; ha egy sem használható (nincs modellfájl),
-    // a bekapcsoltak — a meeting cache-ében korábban számolt vektorokkal az elemzés így is megy.
+    // The editor's model list: the models in use; if none is usable (no model file), the enabled ones:
+    // with vectors computed earlier in the meeting's cache the analysis works anyway.
     QStringList editorModelIds(const SettingsManager* st) const {
         return voiceModelIds.isEmpty() ? st->enabledVoiceModels() : voiceModelIds;
     }
     int              backfillAdded = 0;
-    // ---- G4: közös visszavonás + pótlás-jelentés ----
-    QHash<QString, QPointer<MeetingUndoService>> undoServices;   // meetingId → közös verem
-    QHash<QString, int> undoScopeDepth;                           // ParticipantUndoScope egymásba ágyazás
-    QVector<VoiceprintBackfillSkip> backfillSkipped;              // a legutóbbi pótlás kimaradt mintái
+    // ---- shared undo + backfill report ----
+    QHash<QString, QPointer<MeetingUndoService>> undoServices;   // meetingId -> shared stack
+    QHash<QString, int> undoScopeDepth;                           // nesting of ParticipantUndoScope
+    QVector<VoiceprintBackfillSkip> backfillSkipped;              // samples skipped by the latest backfill
     int              backfillDone = 0;
     int              backfillTotal = 0;
     void noteBackfillSkip(const QString& person, const QString& model, const Voiceprint& vp,
                           VoiceprintBackfillSkip::Reason reason);
-    // ---- /G4 ----
-    // Egy pótlandó lenyomat: a testvér-csoport képviselője + a hiányzó modell + a forrás-meeting.
+    // A voiceprint to backfill: the sibling group's representative + the missing model + the source meeting.
     struct BackfillJob { QString person; QString model; Voiceprint print; Meeting meeting; };
     void finishBackfillJob(const BackfillJob& job, const QVector<float>& vec, bool missingAudio);
     void finishBackfill();
@@ -564,152 +563,152 @@ struct AppController::Impl {
     QStringList      lastDevices;
     QString          currentFolder;
 
-    // Szintfigyelés + felvétel közbeni sáv-kezelés (a lebegő felvevőhöz).
-    bool        monitorWanted = false;          // a UI kérte a szintfigyelést
-    bool        monitorLegacy = false;          // start/stopLevelMonitoring (a felvevő) kérése
-    QHash<QObject*, QMetaObject::Connection> monitorHolders;   // retainLevelMonitoring fogyasztói (Beállítások)
-    QStringList monitorNames;                   // a figyelő aktuális eszköz-halmaza
-    QStringList recNames;                       // a felvétel sávjai (index → eszköznév)
-    QStringList recClosed;                      // menet közben leválasztott eszközök
-    QStringList recOff;                         // menet közben a felhasználó kikapcsolta
-    QHash<QString, int> recMissing;             // hány egymást követő felsorolásból hiányzott
-    QHash<QString, int> recReturning;           // leválasztott eszköz: hány egymást követő felsorolásban van újra jelen
-    bool        autoMixdown = true;             // felvétel utáni automatikus lekeverés
+    // Level monitoring + track handling during recording (for the floating recorder).
+    bool        monitorWanted = false;          // the UI requested level monitoring
+    bool        monitorLegacy = false;          // the start/stopLevelMonitoring (recorder) request
+    QHash<QObject*, QMetaObject::Connection> monitorHolders;   // consumers of retainLevelMonitoring (Settings)
+    QStringList monitorNames;                   // the monitor's current device set
+    QStringList recNames;                       // the recording's tracks (index -> device name)
+    QStringList recClosed;                      // devices detached mid-run
+    QStringList recOff;                         // switched off by the user mid-run
+    QHash<QString, int> recMissing;             // in how many consecutive enumerations it was missing
+    QHash<QString, int> recReturning;           // detached device: in how many consecutive enumerations it is present again
+    bool        autoMixdown = true;             // automatic mixdown after recording
     QHash<QString, MergedTranscript> mergedCache;
 
-    // Hívás-vég figyelés felvétel közben (lásd startCallEndMonitor).
+    // Call-end watching during recording (see startCallEndMonitor).
     std::unique_ptr<IMeetingDetector> callDetector;
     QTimer* callTimer = nullptr;
-    bool    callSeenActive = false;   // láttunk-e aktív hívást a felvétel alatt
-    int     callInactivePolls = 0;    // egymást követő inaktív pollok az aktív után
+    bool    callSeenActive = false;   // whether we saw an active call during the recording
+    int     callInactivePolls = 0;    // consecutive inactive polls after the active one
     QString callAppName;
 
-    // Csend-figyelés felvétel közben (silenceAskMinutes).
+    // Silence watch during recording (silenceAskMinutes).
     QTimer* silenceTimer = nullptr;
-    qint64  lastLoudMs = 0;        // utolsó „hangos” RMS időbélyege (monotonic)
-    bool    silenceAsked = false;  // már kérdeztünk erre a csend-szakaszra
+    qint64  lastLoudMs = 0;        // timestamp of the last "loud" RMS (monotonic)
+    bool    silenceAsked = false;  // we already asked for this silent stretch
 
-    // Téma-elemzés job-sor (komplex 2. kör): egyszerre EGY LLM-hívás fut (lokális modell,
-    // parallel=1), a többi téma sorban áll. Témánként külön (újra)indítható.
+    // Topic-analysis job queue (complex pass 2): ONE LLM call runs at a time (local model, parallel=1),
+    // the other topics wait in line. Each topic can be (re)started separately.
     struct TopicJob { QString meetingId; SummaryTopic topic; };
     QVector<TopicJob> topicJobQueue;
     bool    topicJobActive = false;
-    QString activeTopicMeetingId;   // az épp futó job címzése (dedup + életciklus-jelek)
+    QString activeTopicMeetingId;   // addressee of the running job (dedup + lifecycle signals)
     QString activeTopicId;
-    QSet<QString> reduceWhenDone;             // meetingId-k, ahol a sor végén auto-reduce jön
-    QHash<QString, QPair<int,int>> jobCounts; // meetingId → (ok, fail) az aktuális batch-ben
+    QSet<QString> reduceWhenDone;             // meetingIds where an auto-reduce follows at the end of the queue
+    QHash<QString, QPair<int,int>> jobCounts; // meetingId -> (ok, fail) in the current batch
 
-    // Átirat-szerkesztő munkamenetek (meetingenként egy; lásd speakerEditor()).
+    // Transcript-editor sessions (one per meeting; see speakerEditor()).
     QHash<QString, QPointer<SpeakerEditor>> speakerEditors;
-    bool editorEmitting = false;   // a szerkesztő saját speakerMap-jele megy ki (ne töltsön vissza)
+    bool editorEmitting = false;   // the editor's own speakerMap signal is going out (do not reload)
 
     // Tanara Cloud.
     CloudAccount* cloud = nullptr;
     bool cloudLive = false;
     bool cloudTeaser = false;
-    // Meetingenként a nyitott komplex összefoglaló cloud-futása (témagyűjtés → téma-elemzések
-    // → reduce): EGY X-Tanara-Job-Id, a hívásonkénti terhelések összesítve (K-07 „12 rész”).
-    // Lezáráskor (kész / hiba / megszakítás) kikerül innen; a folytatás így új futás.
+    // Per meeting the cloud run of the open complex summary (topic gathering -> topic analyses -> reduce):
+    // ONE X-Tanara-Job-Id, the per-call charges summed up (the "12 parts" case).
+    // On completion (done / error / cancel) it is removed from here; a continuation is thus a new run.
     QHash<QString, CloudRunPtr> complexRuns;
 
-    // ---- strukturált réteg (újratervezett főablak) ----------------------------------
+    // ---- structured layer (redesigned main window) ----------------------------------
     AppController*     q = nullptr;
     MeetingJobTracker* jobs = nullptr;
     MeetingLibrary*    library = nullptr;
     TrackCatalog*      tracks = nullptr;
     WaveformService*   waveforms = nullptr;
     AudioImporter*     importer = nullptr;
-    std::unique_ptr<JobStats> jobStats;      // korábbi futások sebessége (becsléshez)
+    std::unique_ptr<JobStats> jobStats;      // speed of earlier runs (for estimates)
 
-    // ---- címkék ----
+    // ---- tags ----
     TagService*        tags = nullptr;
     MeetingProfiles*   profiles = nullptr;
     EmbeddingIndex*    embeddings = nullptr;
     EmbeddingPreparer* embeddingPreparer = nullptr;
     LlmTagSuggester*   llmTags = nullptr;
-    QString            llmTagsMeetingId;         // a futó LLM-javaslat meetingje
+    QString            llmTagsMeetingId;         // the meeting of the running LLM suggestion
     QPointer<QObject>  llmTagsProvider;
     CloudRunPtr        llmTagsRun;
-    QHash<QString, QVector<TagSuggestion>> similarCache;    // meetingId → a hasonlóság-alapú lista
-    QHash<QString, QVector<TagSuggestion>> pendingTags;     // meetingId → az utoljára kiadott lista
-    QSet<QString>      tagRequests;              // a profilok elkészültére váró kérések
-    // A hasonlóság-alapú lista háttérszálon készül. Meetingenként legfeljebb egy fut; a közben
-    // érkező kérés ennek az eredményét kapja. A tagDataGen minden gyorsítótár-ürítéskor nő: a
-    // régebbi állapotból számolt eredmény eldobódik, és (ha még várnak rá) újraszámolódik.
+    QHash<QString, QVector<TagSuggestion>> similarCache;    // meetingId -> the similarity-based list
+    QHash<QString, QVector<TagSuggestion>> pendingTags;     // meetingId -> the last list published
+    QSet<QString>      tagRequests;              // requests waiting for the profiles to be ready
+    // The similarity-based list is made on a background thread. At most one runs per meeting; a request
+    // arriving meanwhile gets its result. tagDataGen grows on every cache clear: a result computed from an
+    // older state is dropped and (if still awaited) recomputed.
     struct TagRun {
         bool running = false;
-        bool publish = false;    // requestTagSuggestions várja
-        bool llm = false;        // requestLlmTagSuggestions várja (a jelöltlistához)
+        bool publish = false;    // requestTagSuggestions is waiting for it
+        bool llm = false;        // requestLlmTagSuggestions is waiting for it (for the candidate list)
     };
     QHash<QString, TagRun> tagRuns;
     quint64            tagDataGen = 0;
-    QThreadPool        tagPool;                  // 1 szál; a ~AppController bevárja
-    QString            embeddingKey;             // provider|baseUrl|model — a modellváltás felismeréséhez
-    QStringList        recordingTagIds;          // a felvétel közben megadott címkék
+    QThreadPool        tagPool;                  // 1 thread; ~AppController waits for it
+    QString            embeddingKey;             // provider|baseUrl|model, to detect a model change
+    QStringList        recordingTagIds;          // tags given during recording
 
-    // Futó átírás: megszakításhoz a job / a lekeverés-lánc kapcsolata.
+    // A running transcription: the connection of the job / the mixdown chain, for cancelling.
     struct TranscribeRun {
         QPointer<SttJob> job;
         std::shared_ptr<QMetaObject::Connection> mixConn;
-        bool mixPhase = false;         // még a lekeverésre várunk
-        bool ownsMixdown = false;      // a keverést ez az átírás indította
+        bool mixPhase = false;         // still waiting for the mixdown
+        bool ownsMixdown = false;      // this transcription started the mixdown
         bool cancelRequested = false;
     };
     QHash<QString, TranscribeRun> transcribeRuns;
-    QSet<QString> clearSpeakersOnTranscript;   // újra-átírás: a régi nevek az új átirattal törlődnek
-    // Azok a meetingek, amelyeknél a felhasználó KIKAPCSOLTA az átírás utáni automatikus
-    // hang-azonosítást (M03 kapcsoló). Folyamat-szintű (nem perzisztált) választás.
+    QSet<QString> clearSpeakersOnTranscript;   // re-transcription: the old names are cleared with the new transcript
+    // Meetings where the user TURNED OFF the automatic voice identification after transcription (the
+    // toggle). A process-wide (not persisted) choice.
     QSet<QString> skipIdentifyAfterTranscribe;
 
-    QHash<QString, QPointer<QProcess>> mixdownProcs;   // meetingId → futó ffmpeg
+    QHash<QString, QPointer<QProcess>> mixdownProcs;   // meetingId -> running ffmpeg
     QSet<QString> mixdownCancelled;
-    QHash<QString, QString> mixdownFailReason;   // az utolsó el sem indított keverés oka (hiányzó sáv)
-    // Meetingenként az átirat „nemzedéke”: minden új átirat-kiírás lépteti. A háttérben futó
-    // azonosítás ebből (és a tokens-fájl állapotából) látja, hogy közben új átirat érkezett.
+    QHash<QString, QString> mixdownFailReason;   // the reason of the last mix that did not even start (missing track)
+    // Per meeting the transcript's "generation": every new transcript write increments it. The background
+    // identification uses it (and the tokens file's state) to see that a new transcript arrived meanwhile.
     QHash<QString, int> transcriptGen;
 
-    // Futó LLM-hívás (összefoglaló / témagyűjtés / összegzés / aktív téma-elemzés).
+    // A running LLM call (summary / topic gathering / combining / the active topic analysis).
     struct LlmRun {
         QPointer<QObject> svc; QPointer<QObject> provider; CloudRunPtr cloudRun;
-        QPointer<LlmModelPreparer> preparer;   // a modell előkészítése (LM Studio), amíg tart
+        QPointer<LlmModelPreparer> preparer;   // the model preparation (LM Studio) while it lasts
     };
-    QHash<QString, LlmRun> llmRuns;            // llmKey(meetingId, kind) → futás
+    QHash<QString, LlmRun> llmRuns;            // llmKey(meetingId, kind) -> run
     LlmRun activeTopicRun;
-    QHash<QString, int> topicBatchTotal;       // meetingId → az aktuális kötegbe sorolt témák száma
+    QHash<QString, int> topicBatchTotal;       // meetingId -> number of topics queued into the current batch
 
-    // ---- LLM-kontextus (lásd llm/LlmContext.h, llm/LlmServer.h) ----
-    // Egy futás kontextus-ismerete a hibák besorolásához: a becsült igény, és amit a szerver-
-    // próba / a betöltés mondott.
+    // ---- LLM context (see llm/LlmContext.h, llm/LlmServer.h) ----
+    // A run's context knowledge for classifying errors: the estimated need, and what the server probe / the
+    // load said.
     struct LlmContextState { int need = 0; bool lmStudio = false; int loadedContext = -1; };
     using LlmContextPtr = std::shared_ptr<LlmContextState>;
-    // A felhasználó által kért minimum („Betöltés nagyobb kontextussal”) — a következő
-    // előkészítés EGYSZER felhasználja. Kulcs: szerver-gyökér|modell.
+    // The minimum requested by the user ("Load with a larger context"): the next preparation uses it ONCE.
+    // Key: server root|model.
     QHash<QString, int> contextFloor;
-    // Natív API nélküli szervernél a hibaüzenetből megtudott kontextus — a következő
-    // összefoglaló már ehhez igazítja a részeket (csak memóriában).
+    // For a server without a native API, the context learned from the error message: the next summary
+    // already adapts the parts to it (in memory only).
     QHash<QString, int> learnedContext;
     static QString serverKey(const ProviderConfig& cfg) {
         return llmctx::nativeApiRoot(cfg.baseUrl) + QLatin1Char('|') + cfg.model.trimmed();
     }
-    // A Tanara épp egy MÁSIK LLM-kérést is futtat (ilyenkor modellt nem veszünk ki).
+    // Tanara is currently running ANOTHER LLM request too (then we do not unload the model).
     bool otherLlmBusy() const { return llmRuns.size() + (topicJobActive ? 1 : 0) > 1; }
-    // A modell előkészítése egy LLM-feladat előtt. Cloudnál (és ha nincs mit tenni) a `go`
-    // azonnal fut; LM Studiónál szükség esetén betöltés / újratöltés a feladat „model”
-    // szakaszaként. A visszaadott előkészítőt a hívó a futáshoz köti (megszakításhoz).
+    // Preparing the model before an LLM task. For Cloud (and if there is nothing to do) `go` runs at once;
+    // for LM Studio, if needed, a load / reload as the task's "model" stage. The caller binds the returned
+    // preparer to the run (for cancelling).
     LlmModelPreparer* prepareLlm(const QString& meetingId, JobKind kind, const ProviderConfig& cfg,
                                  bool cloud, const LlmContextPtr& ctx, std::function<void()> go,
                                  std::function<void(const JobError&)> onFail);
 
-    // Futó (háttérszálas) azonosítás.
+    // A running (background-thread) identification.
     struct IdentifyRun { QThread* thread = nullptr; std::shared_ptr<std::atomic<bool>> cancel; bool asStage = false; };
-    // Az átirat állapota egy azonosítás indulásakor (lásd startIdentify): ha a végére más,
-    // az eredmény a RÉGI átirat címkéire vonatkozik → eldobjuk.
+    // The transcript's state at the start of an identification (see startIdentify): if it differs at the
+    // end, the result refers to the labels of the OLD transcript, so we drop it.
     QString transcriptStamp(const QString& meetingId, const QString& folder) const {
         const FileStamp fs = FileStamp::of(QDir(folder).filePath(QStringLiteral("transcript.tokens.json")));
         return QStringLiteral("%1/%2/%3").arg(transcriptGen.value(meetingId)).arg(fs.mtimeMs).arg(fs.size);
     }
     QHash<QString, IdentifyRun> identifyRuns;
-    // Archívum-művelet (export / import) — egyszerre egy, háttérszálon.
+    // An archive operation (export / import): one at a time, on a background thread.
     QThread* archiveThread = nullptr;
     std::shared_ptr<std::atomic<bool>> archiveCancel;
     QString archiveOp;          // "export:<meetingId>" | "import:<uuid>"
@@ -735,12 +734,12 @@ struct AppController::Impl {
                               const QStringList& identifiedLabels);
 };
 
-// ==== G4: a résztvevő-műveletek közös visszavonási lépése ===================================
-// RAII: a művelet ELŐTT pillanatképet vesz a meeting „résztvevő-állapotáról” (résztvevők,
-// jóváhagyás, leírás, sávok bevonása), UTÁNA — ha változott — egy lépést tesz a meeting közös
-// vermébe (MeetingUndoService), amely ezt az állapotot állítja vissza. A művelet közben
-// keletkezett szerkesztő-lépést (kötések) a lépés elnyeli. Egymásba ágyazva csak a legkülső
-// rögzít (pl. removeParticipant → unbindParticipant).
+// ==== the shared undo step of the participant operations ===================================
+// RAII: BEFORE the operation it takes a snapshot of the meeting's "participant state" (participants,
+// approval, description, track inclusion), and AFTER it, if changed, pushes one step onto the meeting's
+// shared stack (MeetingUndoService) that restores this state. An editor step created during the operation
+// (bindings) is absorbed by the step. When nested, only the outermost records (e.g. removeParticipant ->
+// unbindParticipant).
 namespace {
 QJsonObject participantUndoState(const Meeting& m)
 {
@@ -796,7 +795,7 @@ struct AppController::ParticipantUndoScope {
         undo->pushStep(text, [self, snap]() { if (self) restore(self, snap); },
                        top != editorTopBefore ? top : 0);
     }
-    // A pillanatkép visszaírása (a meeting többi része — cím, címkék, átirat — érintetlen).
+    // Writing the snapshot back (the rest of the meeting: title, tags, transcript, is untouched).
     static void restore(AppController* app, const Meeting& snap)
     {
         Meeting m = app->d->store->load(snap.id);
@@ -823,19 +822,18 @@ struct AppController::ParticipantUndoScope {
         }
     }
 };
-// ==== /G4 ===================================================================================
 
-// Egy cloud feldolgozás-futás állapota. A providerek válasz-hookja (onExchange) tölti.
+// State of a cloud processing run. Filled by the providers' response hook (onExchange).
 struct AppController::CloudRun {
     QString meetingId;
     QString kind;            // transcribe | summary | topics | complex
-    QString jobId;           // X-Tanara-Job-Id — futásonként új véletlen érték
+    QString jobId;           // X-Tanara-Job-Id: a new random value per run
     qint64  chargedMicros = 0;
     QString currency;
-    int     calls = 0;       // sikeres terhelő hívások
-    Money   balance;         // az utolsó ismert egyenleg (terhelés / visszaírás után)
+    int     calls = 0;       // successful charging calls
+    Money   balance;         // the last known balance (after a charge / write-back)
     QString vatMode;
-    CloudError lastError;    // az utolsó nem-2xx (nem-DELETE) válasz
+    CloudError lastError;    // the last non-2xx (non-DELETE) response
     bool    refunded = false;
     Money   refund;
     QString fileId, transcriptionId;
@@ -858,12 +856,12 @@ bool AppController::Impl::voiceModelUsable() const
 #ifdef TANARA_HAVE_VOICEID
     return true;
 #else
-    return bool(voiceLoader);   // a build nem tartalmaz voice-ID-t; csak a teszt-betöltővel
+    return bool(voiceLoader);   // the build has no voice ID; only with the test loader
 #endif
 }
 
-// A futó ffmpeg valós százaléka a strukturált állapotba: önálló keverésnél a Mixdown feladat,
-// átírás részeként az átírás-feladat „mixdown” szakasza.
+// The running ffmpeg's real percentage into the structured state: for a standalone mix the Mixdown
+// task, as part of a transcription the transcription task's "mixdown" stage.
 void AppController::Impl::reportMixdownPercent(const QString& meetingId, int pct)
 {
     if (jobs->isRunning(meetingId, JobKind::Mixdown))
@@ -881,16 +879,16 @@ void AppController::Impl::updateTopicCounts(const QString& meetingId)
                     topicBatchTotal.value(meetingId));
 }
 
-// Futó LLM-hívás megszakítása: a service jeleit leválasztjuk, a providert (vele a jobot és a
-// hálózati kérést) töröljük — a szolgáltató felé a kapcsolat bomlik, eredmény nem érkezik.
+// Cancelling a running LLM call: we detach the service's signals, delete the provider (with it the job
+// and the network request); the connection to the provider breaks, no result arrives.
 void AppController::Impl::abortLlmRun(const LlmRun& run)
 {
     if (run.preparer) {
-        run.preparer->cancel();   // a lekérdezés / betöltés-kérés eldobva (jel nem jön)
+        run.preparer->cancel();   // the query / load request is dropped (no signal comes)
         run.preparer->deleteLater();
     }
     if (auto* summary = qobject_cast<SummaryService*>(run.svc.data()))
-        summary->cancel();   // a futó hívás megszakad, a következő nem indul (a részjegyzetek maradnak)
+        summary->cancel();   // the running call is cancelled, the next one does not start (the part notes stay)
     if (run.svc) {
         run.svc->disconnect(q);
         run.svc->deleteLater();
@@ -919,13 +917,13 @@ LlmModelPreparer* AppController::Impl::prepareLlm(const QString& meetingId, JobK
                                                   const LlmContextPtr& ctx, std::function<void()> go,
                                                   std::function<void(const JobError&)> onFail)
 {
-    // A Tanara Cloud mögött nincs natív API: se próba, se betöltés.
+    // Behind Tanara Cloud there is no native API: neither a probe nor a load.
     if (cloud) { go(); return nullptr; }
     auto* prep = new LlmModelPreparer(cfg, q);
     prep->setBusyCheck([this] { return otherLlmBusy(); });
     const int floor = contextFloor.take(serverKey(cfg));
     QObject::connect(prep, &LlmModelPreparer::loadingStarted, prep, [this, prep, meetingId, kind](int ctxLen) {
-        // Látható első szakasz: „Modell betöltése” (megszakítható, mint a feladat többi része).
+        // Visible first stage: "Loading the model" (cancellable like the rest of the task).
         QVector<JobStage> stages = jobs->job(meetingId, kind).stages;
         const QStringList others = prep->serverInfo().otherLoaded;
         QString detail = AppController::tr("%1 tokenes kontextus, egy szálon").arg(QStringLiteral("%L1").arg(ctxLen));
@@ -956,9 +954,9 @@ LlmModelPreparer* AppController::Impl::prepareLlm(const QString& meetingId, JobK
     return prep;
 }
 
-// A háttérszálon számolt beszélő-embeddingek párosítása a lenyomat-DB ellen + mentés (fő
-// szál). Ugyanaz a szabály, mint az autoIdentifyMeeting-ben: csak a még névtelen címkék,
-// küszöb felett; a transcript.md a nevekkel újragenerálódik; speakerMapChanged jel.
+// Matching the speaker embeddings computed on a background thread against the voiceprint DB + saving
+// (main thread). The same rule as in autoIdentifyMeeting: only the still anonymous labels, above the
+// threshold; transcript.md is regenerated with the names; speakerMapChanged signal.
 void AppController::Impl::applyIdentification(
     const QString& meetingId, const QVector<QPair<QString, EmbeddingSet>>& embeddings)
 {
@@ -975,9 +973,10 @@ void AppController::Impl::applyIdentification(
                          identified);
 }
 
-// AZ azonosítás-szabály EGY helyen (a szinkron autoIdentifyMeeting és az aszinkron út közös):
-// a beszélő embeddingje a lenyomat-DB ellen; küszöb felett a név a speakerMap-be kerül, a
-// személy a névlistába, a pontszám az overlay-be (a szerkesztő „hang alapján felismerve (82%)”).
+// THE identification rule in ONE place (shared by the synchronous autoIdentifyMeeting and the
+// asynchronous path): the speaker's embedding against the voiceprint DB; above the threshold the name goes
+// into the speakerMap, the person into the name list, the score into the overlay (the editor's
+// "recognized by voice (82%)").
 bool AppController::Impl::matchSpeaker(Meeting& m, const QString& rawLabel,
                                        const EmbeddingSet& embedding)
 {
@@ -990,8 +989,8 @@ bool AppController::Impl::matchSpeaker(Meeting& m, const QString& rawLabel,
     return true;
 }
 
-// Az azonosítás eredményének mentése: meeting.json, transcript.md a feloldott nevekkel, az
-// összefoglaló elavultnak jelölése (ha van), és a jelek.
+// Saving the identification result: meeting.json, transcript.md with the resolved names, marking the
+// summary stale (if there is one), and the signals.
 void AppController::Impl::commitIdentification(const Meeting& m, MergedTranscript merged,
                                                const QStringList& identifiedLabels)
 {
@@ -1013,7 +1012,7 @@ AppController::AppController(QObject* parent)
     d->settings = new SettingsManager(QString(), this);
     const AppSettings s = d->settings->settings();
 
-    // Tanara Cloud mód: TANARA_CLOUD=live|teaser|off felülírja a settings.cloudEnabled-et.
+    // Tanara Cloud mode: TANARA_CLOUD=live|teaser|off overrides settings.cloudEnabled.
     {
         const QString mode = qEnvironmentVariable("TANARA_CLOUD").trimmed().toLower();
         const bool off = mode == QLatin1String("off");
@@ -1021,7 +1020,7 @@ AppController::AppController(QObject* parent)
         d->cloudLive   = !off && cloud::clientCompiled() && wantLive;
         d->cloudTeaser = !off && !d->cloudLive && cloud::teaserCompiled();
         if (d->cloudLive)
-            registerCloudProviders();   // feature-flag: enélkül a „tanara-cloud” id nem is létezik
+            registerCloudProviders();   // feature flag: without it the "tanara-cloud" id does not even exist
     }
     d->audioDir = expandTilde(s.audioDir);
     d->metaDir  = paths::resolveMetadataDir(s.metadataDir);   // TANARA_HOME-tudatos
@@ -1039,10 +1038,10 @@ AppController::AppController(QObject* parent)
     }
     d->devices = new DeviceManager(this);
     d->store   = new MeetingStore(d->audioDir, d->metaDir, this);
-    // Crash után árván maradt felvételek (sávok meeting.json nélkül) visszahozása a listába.
+    // Bringing orphaned recordings left after a crash (tracks without meeting.json) back into the list.
     d->store->recoverOrphanRecordings();
-    // Megszakadt archívum-import (pl. kilépés kicsomagolás közben) ideiglenes mappái. Csak a
-    // régebbiek: egy épp futó (pl. CLI-s) import mappáját nem bántjuk.
+    // Temporary folders of an interrupted archive import (e.g. quitting during unpacking). Only older ones:
+    // the folder of a currently running (e.g. CLI) import is left alone.
     {
         const QDir root(d->store->audioDir());
         const QDateTime cutoff = QDateTime::currentDateTime().addSecs(-6 * 3600);
@@ -1051,14 +1050,14 @@ AppController::AppController(QObject* parent)
             if (fi.lastModified() < cutoff) QDir(fi.absoluteFilePath()).removeRecursively();
     }
 
-    // Strukturált réteg: feldolgozási állapot, könyvtár-lekérdezések, sávok, hullámforma.
+    // Structured layer: processing state, library queries, tracks, waveform.
     d->jobs      = new MeetingJobTracker(d->store, this);
     d->library   = new MeetingLibrary(d->store, d->jobs, this);
     d->tracks    = new TrackCatalog(d->store, this);
     d->waveforms = new WaveformService(this);
     d->importer  = new AudioImporter(d->store, this);
-    // Importálás → strukturált feladat a LEENDŐ meeting azonosítóján (a könyvtárban még
-    // nincs ilyen meeting; a héj az activeJobs()-ból / a jelekből mutatja).
+    // Import -> a structured task under the FUTURE meeting's id (there is no such meeting in the library
+    // yet; the shell shows it from activeJobs() / the signals).
     connect(d->importer, &AudioImporter::started, this, [this](const QString& id, const QString& title) {
         d->jobs->begin(id, JobKind::Import, tr("Importálás"));
         d->jobs->setMessage(id, JobKind::Import, title);
@@ -1072,8 +1071,8 @@ AppController::AppController(QObject* parent)
     connect(d->importer, &AudioImporter::finished, this, [this](const QString& id, const Meeting& m) {
         d->jobs->finish(id, JobKind::Import);
         emit importFinished(m);
-        // Lekeverés: pontosan úgy, mint egy felvétel végén (lásd a RecordingSession::finished ágat):
-        // előtte a sávok beszéd-ellenőrzése (a beszéd nélküli sáv kimarad a keverékből).
+        // Mixdown: exactly as at the end of a recording (see the RecordingSession::finished branch): first the
+        // tracks' speech check (a speechless track is left out of the mix).
         if (d->autoMixdown) {
             const bool mix = d->settings->settings().mixdownMode != QStringLiteral("manual");
             if (trackspeech::needsSpeechCheck(m)) startSpeechCheck(m.id, mix);
@@ -1095,8 +1094,8 @@ AppController::AppController(QObject* parent)
     });
     d->jobStats  = std::make_unique<JobStats>(QDir(d->metaDir).filePath(QStringLiteral("job-stats.json")));
     connect(d->tracks, &TrackCatalog::tracksChanged, this, &AppController::tracksChanged);
-    // Az összefoglaló elavultsága (beszélő-szerkesztő réteg) a levezetett állapot része: a
-    // könyvtár-ikon „elavult” állapota és az „Ezek várnak rád” lista ebből frissül.
+    // The summary's staleness (speaker-editor layer) is part of the derived state: the library icon's
+    // "stale" state and the "Waiting for you" list refresh from it.
     d->jobs->setSummaryStaleProbe([this](const Meeting& m) {
         const SummaryStaleInfo info = summaryStale(m);
         return info.stale ? info.correctedSpeakers : -1;
@@ -1113,8 +1112,8 @@ AppController::AppController(QObject* parent)
 
     d->people = std::make_unique<PeopleStore>(QDir(d->metaDir).filePath(QStringLiteral("people.json")));
 
-    // Voice-ID: lenyomat-DB + a modell helye: <metaDir>/models/..., ha nincs, akkor az
-    // alkalmazás mellé csomagolt <appDir>/models/... (Windows-zip / telepítő).
+    // Voice ID: the voiceprint DB + the model's location: <metaDir>/models/..., if absent, the
+    // <appDir>/models/... packaged next to the application (Windows zip / installer).
     d->voiceprints = std::make_unique<VoiceprintStore>(
         QDir(d->metaDir).filePath(QStringLiteral("voiceprints.json")));
     d->appDir = QCoreApplication::instance() ? QCoreApplication::applicationDirPath() : QString();
@@ -1124,24 +1123,24 @@ AppController::AppController(QObject* parent)
     d->analysisPool.setMaxThreadCount(2);
     d->analysisPool.setObjectName(QStringLiteral("tanara-participant-analysis"));
 
-    // Személyek ablak: háttérben számolt statisztika, és a műveletek (összevonás,
-    // minta-áthelyezés …). A becenevek / megjegyzés a people.json rekordjaiban élnek.
+    // People window: statistics computed in the background, and the operations (merge, moving a sample ...).
+    // Nicknames / the note live in the people.json records.
     d->peopleStats = new PeopleStats(d->store, this);
     d->peopleService = new PeopleService(this, d->store, d->people.get(), d->voiceprints.get(),
                                          d->peopleStats, this);
-    // Ami a résztvevőket vagy a beszédidőt érinti, az a statisztikát is (összevontan frissül).
+    // Whatever affects participants or speaking time affects the statistics too (refreshed coalesced).
     connect(this, &AppController::speakerMapChanged, d->peopleStats, &PeopleStats::scheduleRefresh);
     connect(this, &AppController::transcriptReady, d->peopleStats, &PeopleStats::scheduleRefresh);
     connect(d->store, &MeetingStore::meetingAdded, d->peopleStats, &PeopleStats::scheduleRefresh);
     connect(d->store, &MeetingStore::meetingUpdated, d->peopleStats, &PeopleStats::scheduleRefresh);
     connect(d->store, &MeetingStore::meetingRemoved, d->peopleStats, &PeopleStats::scheduleRefresh);
 
-    // Címkék: készlet + meetingenkénti címkék, klasszikus hasonlóság (háttérszálon épülő
-    // profilok), beágyazások és a könyvtár előkészítése, LLM-javaslat az összefoglaló után.
+    // Tags: the set + per-meeting tags, classic similarity (profiles built on a background thread),
+    // embeddings and library preparation, an LLM suggestion after the summary.
     d->tags = new TagService(d->store, QDir(d->metaDir).filePath(QStringLiteral("tags.json")), this);
     d->profiles = new MeetingProfiles(d->store, this);
     d->tags->setProfiles(d->profiles);
-    // Címkék a személyeken: a kézi címkék a people.json-ban; a saját személy kimarad.
+    // Tags on people: manual tags in people.json; the own person is left out.
     d->tags->setPeopleStore(d->people.get());
     d->tags->setSelfNameProvider([this]() {
         return d->settings ? d->settings->settings().userSpeakerName : QString();
@@ -1160,24 +1159,24 @@ AppController::AppController(QObject* parent)
         d->tagRequests.clear();
         for (const QString& id : waiting) startTagSuggestionJob(id);
     });
-    // A profilok sorai (meeting.json-ok) és kifejezései háttérszálon, már induláskor épülnek;
-    // ettől kezdve a fő szál olvasói (címke-profil, tervezet-javaslat) sosem töltenek és
-    // számolnak szinkron, a kész pillanatképet kapják.
+    // The profiles' rows (meeting.json files) and phrases are built on a background thread already at
+    // startup; from then on the main thread's readers (tag profile, draft suggestion) never load or compute
+    // synchronously, they get the finished snapshot.
     d->profiles->ensureBuilt();
-    // A személy ↔ címke statisztika is háttérszálon (a fő szál a kész pillanatképet olvassa).
+    // The person <-> tag statistics also on a background thread (the main thread reads the finished snapshot).
     d->tags->ensurePersonStats();
-    // A hasonlóság-alapú lista addig érvényes, amíg a címkék, az átiratok és az index nem változnak.
+    // The similarity-based list stays valid until the tags, transcripts and the index change.
     auto dropTagCache = [this]() { invalidateTagSuggestions(); };
     connect(d->tags, &TagService::tagsChanged, this, dropTagCache);
     connect(d->embeddings, &EmbeddingIndex::indexChanged, this, dropTagCache);
     connect(d->embeddings, &EmbeddingIndex::indexReset, this, dropTagCache);
-    // Felrakott / elutasított javaslat: a kiadott lista szűrve újra kimegy (újraszámolás nélkül).
+    // An applied / rejected suggestion: the published list goes out again filtered (without recomputation).
     connect(d->tags, &TagService::meetingTagsChanged, this, [this](const QString& id) {
         invalidateTagSuggestions();
         if (d->pendingTags.contains(id)) publishTagSuggestions(id, d->pendingTags.value(id));
     });
-    // A résztvevők (kézi / jóváhagyott) és a személyek címkéi változtak: a „résztvevők alapján”
-    // javaslat újra kimegy (a kiadott lista a hasonlóság-alapú részt megtartja).
+    // The participants (manual / approved) and the people's tags changed: the "by participants" suggestion
+    // goes out again (the published list keeps the similarity-based part).
     connect(this, &AppController::participantsChanged, this, [this](const QString& id) {
         if (d->pendingTags.contains(id)) publishTagSuggestions(id, d->pendingTags.value(id));
     });
@@ -1196,11 +1195,11 @@ AppController::AppController(QObject* parent)
     connect(this, &AppController::transcriptReady, this, [this](const QString& meetingId) {
         invalidateTagSuggestions();
         d->profiles->invalidate(meetingId);
-        d->embeddingPreparer->enqueue(meetingId);   // csak ha van beágyazó provider
+        d->embeddingPreparer->enqueue(meetingId);   // only if there is an embedding provider
     });
     connect(this, &AppController::summaryReady, this, [this](const QString& meetingId) {
-        // Csak ha már van címkekészlet: üres készletnél a felhasználó még nem címkéz, egy
-        // minden összefoglaló utáni modell-hívás (új név-ötletekkel) tolakodó és fölösleges.
+        // Only if a tag set already exists: with an empty set the user is not tagging yet, and a model call
+        // after every summary (with new-name ideas) would be intrusive and superfluous.
         const AppSettings st = d->settings->settings();
         if (st.tagSuggestions && st.llmTagSuggestions && !d->tags->all().isEmpty())
             requestLlmTagSuggestions(meetingId);
@@ -1212,7 +1211,7 @@ AppController::AppController(QObject* parent)
         finishCloudRun(d->llmTagsRun);
         d->llmTagsRun.reset();
         d->llmTagsMeetingId.clear();
-        // Üres LLM-válasz: a korábbi javaslatok maradnak.
+        // An empty LLM response: the earlier suggestions stay.
         publishTagSuggestions(meetingId, list.isEmpty() ? d->pendingTags.value(meetingId) : list);
     });
     connect(d->llmTags, &LlmTagSuggester::failed, this, [this](const QString& meetingId, const QString& error) {
@@ -1220,22 +1219,22 @@ AppController::AppController(QObject* parent)
         d->llmTagsProvider = nullptr;
         d->llmTagsRun.reset();
         d->llmTagsMeetingId.clear();
-        // A javaslat nem akadály: hibánál nincs felugró üzenet, csak napló; a korábbi lista marad.
+        // A suggestion is not an obstacle: on error there is no popup, only a log entry; the earlier list stays.
         qWarning().noquote() << "[tags] LLM-javaslat sikertelen:" << meetingId << error;
         publishTagSuggestions(meetingId, d->pendingTags.value(meetingId));
     });
     connect(d->settings, &SettingsManager::settingsChanged, this, [this]() { applyEmbeddingSettings(true); });
     applyEmbeddingSettings(false);
 
-    // Beszélő-modellek: a beállítás szerinti készlet most, változáskor újra (bővülésnél pótlás).
-    // Az induló pótlás az eseményhurok első körében (a GUI / a CLI hosszú parancsai alatt fut;
-    // eseményhurok nélküli rövid CLI-parancsnál el sem indul).
+    // Speaker models: the set per the settings now, again on change (backfill when it grows).
+    // The startup backfill runs in the first event-loop turn (under the GUI / the CLI's long commands; for a
+    // short CLI command without an event loop it does not even start).
     applyVoiceModels();
     connect(d->settings, &SettingsManager::settingsChanged, this, [this]() { applyVoiceModels(); });
     QTimer::singleShot(0, this, [this]() { backfillVoiceprints(); });
 
-    // Átirat-szerkesztő: az új összefoglaló törli az elavult-jelzőt; az új átirat eldobja a
-    // kézi sor-javításokat (a megszólalások határai megváltoztak).
+    // Transcript editor: a new summary clears the stale flag; a new transcript drops the manual line
+    // corrections (the utterance boundaries changed).
     connect(this, &AppController::summaryReady, this, [this](const QString& meetingId) {
         if (SpeakerEditor* ed = d->speakerEditors.value(meetingId)) {
             ed->notifySummaryRegenerated();
@@ -1255,20 +1254,20 @@ AppController::AppController(QObject* parent)
 
 AppController::~AppController()
 {
-    // A lenyomat-pótlás: a sorban álló feladat elmarad, a futó a következő lenyomatnál kilép.
+    // The voiceprint backfill: a queued task is skipped, the running one exits at the next voiceprint.
     d->backfillCancel->store(true);
     d->backfillPool.clear();
     d->backfillPool.waitForDone();
-    // A sáv-mérés / hangelemzés: a sorban állók elmaradnak, a futó a következő ablaknál kilép.
+    // The track measurement / voice analysis: the queued ones are skipped, the running one exits at the next window.
     d->analysisShutdown->store(true);
     for (const auto& c : std::as_const(d->analysisRuns)) c->store(true);
     d->analysisPool.clear();
     d->analysisPool.waitForDone();
-    // A futó címkejavaslat a profilokat / az indexet olvassa: azok előtt kell végeznie.
+    // A running tag suggestion reads the profiles / the index: it must finish before them.
     d->tagPool.clear();
     d->tagPool.waitForDone();
-    // A háttérszálas azonosítások leállítása és bevárása (a szál a d-re hivatkozó
-    // eredményt már nem adja át: a QPointer addigra null).
+    // Stopping and awaiting the background-thread identifications (the thread no longer hands over a result
+    // referring to d: the QPointer is null by then).
     for (auto it = d->identifyRuns.begin(); it != d->identifyRuns.end(); ++it) {
         it->cancel->store(true);
         if (it->thread) {
@@ -1312,7 +1311,7 @@ UtteranceEmbedderFactory AppController::utteranceEmbedderFactory() const
 void AppController::setVoiceEmbedderLoader(PcmEmbedderLoader loader)
 {
     d->voiceLoader = std::move(loader);
-    d->voiceModelsApplied = false;   // a készlet a betöltővel együtt újraépül (pótlás nélkül)
+    d->voiceModelsApplied = false;   // the set is rebuilt together with the loader (without backfill)
     d->voiceModelIds.clear();
     applyVoiceModels();
 }
@@ -1322,7 +1321,7 @@ void AppController::applyVoiceModels()
     const QStringList enabled = d->settings->enabledVoiceModels();
     VoiceEmbedderSet set = VoiceEmbedderSet::fromSettings(enabled, d->metaDir, d->appDir, d->voiceLoader);
     const QStringList ids = set.modelIds();
-    if (d->voiceModelsApplied && ids == d->voiceModelIds) return;   // más beállítás változott
+    if (d->voiceModelsApplied && ids == d->voiceModelIds) return;   // another setting changed
     bool grew = false;
     for (const QString& id : ids)
         if (!d->voiceModelIds.contains(id)) grew = true;
@@ -1335,7 +1334,7 @@ void AppController::applyVoiceModels()
             qCInfo(lcVoice).noquote() << "Hangmodell bekapcsolva, de nem használható (ismeretlen id vagy"
                                          " hiányzó fájl):" << id;
     qCInfo(lcVoice).noquote() << "Használt hangmodellek:" << (ids.isEmpty() ? QStringLiteral("-") : ids.join(QStringLiteral(", ")));
-    // A nyitott szerkesztők az új modell-listával és gyárral dolgoznak tovább.
+    // The open editors continue with the new model list and factory.
     for (const QPointer<SpeakerEditor>& ed : std::as_const(d->speakerEditors)) {
         if (!ed) continue;
         ed->setEmbedderFactory(utteranceEmbedderFactory());
@@ -1352,24 +1351,24 @@ void AppController::backfillVoiceprints()
     if (!d->voiceprints) return;
     if (d->backfillRunning) { d->backfillAgain = true; return; }
     if (!d->voiceModelUsable()) { emit voiceprintBackfillFinished(0, 0); return; }
-    d->backfillSkipped.clear();   // G4: új futás → új jelentés
+    d->backfillSkipped.clear();   // a new run = a new report
 
-    // A feladatlista a fő szálon készül (a DB-t csak a fő szál éri el); a háttérszál csak dekódol
-    // és beágyaz. A meetingeket egyszer töltjük.
+    // The task list is made on the main thread (only the main thread reaches the DB); the background thread
+    // only decodes and embeds. We load each meeting once.
     d->voiceprints->refresh();
     QVector<Impl::BackfillJob> jobs;
     QHash<QString, Meeting> meetings;
     for (const QString& person : d->voiceprints->people()) {
         for (const QString& model : std::as_const(d->voiceModelIds)) {
-            // Testvér-pontos lista (a printsMissingModel sampleRef-szintű: két meeting azonos
-            // nevű keverékének azonos szakaszát összemosná).
+            // A sibling-exact list (printsMissingModel works at sampleRef level: it would mix up the same span of two
+            // meetings' identically named mixes).
             for (const Voiceprint& vp : d->voiceprints->samplesMissingModel(person, model)) {
                 auto it = meetings.constFind(vp.sourceMeetingId);
                 if (it == meetings.constEnd())
                     it = meetings.insert(vp.sourceMeetingId,
                                          vp.sourceMeetingId.isEmpty() ? Meeting() : d->store->load(vp.sourceMeetingId));
                 if (it->id.isEmpty()) {
-                    d->noteBackfillSkip(person, model, vp, VoiceprintBackfillSkip::Reason::MissingMeeting);   // G4
+                    d->noteBackfillSkip(person, model, vp, VoiceprintBackfillSkip::Reason::MissingMeeting);
                     const QString key = vp.id + QLatin1Char('|') + model;
                     if (!d->backfillLogged.contains(key)) {
                         d->backfillLogged.insert(key);
@@ -1386,7 +1385,7 @@ void AppController::backfillVoiceprints()
 
     d->backfillRunning = true;
     d->backfillAdded = 0;
-    d->backfillDone = 0;                       // G4: k / N haladás
+    d->backfillDone = 0;                       // k / N progress
     d->backfillTotal = int(jobs.size());
     emit voiceprintBackfillStarted(d->backfillTotal);
     qCInfo(lcVoice).noquote() << "Lenyomat-pótlás indul:" << jobs.size() << "lenyomat";
@@ -1394,7 +1393,7 @@ void AppController::backfillVoiceprints()
     const auto cancel = d->backfillCancel;
     QPointer<AppController> self(this);
     d->backfillPool.start([self, jobs, proto, cancel]() {
-        const VoiceEmbedderSet emb = proto.freshCopy();   // a szál saját modell-példányai
+        const VoiceEmbedderSet emb = proto.freshCopy();   // the thread's own model instances
         for (const Impl::BackfillJob& job : jobs) {
             if (cancel->load()) break;
             bool missing = false;
@@ -1409,18 +1408,18 @@ void AppController::backfillVoiceprints()
     });
 }
 
-// Egy pótolt vektor a DB-be (fő szál). Közben a DB változhatott (törölt / áthelyezett minta,
-// másik folyamat pótolta): csak akkor kerül be, ha a csoportból még mindig hiányzik a modell.
+// One backfilled vector into the DB (main thread). The DB may have changed meanwhile (a deleted / moved
+// sample, another process backfilled): it goes in only if the model is still missing from the group.
 void AppController::Impl::finishBackfillJob(const BackfillJob& job, const QVector<float>& vec,
                                             bool missingAudio)
 {
     const QString key = job.print.id + QLatin1Char('|') + job.model;
-    ++backfillDone;                            // G4
+    ++backfillDone;
     emit q->voiceprintBackfillProgress(backfillDone, backfillTotal);
     if (vec.isEmpty()) {
         noteBackfillSkip(job.person, job.model, job.print,
                          missingAudio ? VoiceprintBackfillSkip::Reason::MissingAudio
-                                      : VoiceprintBackfillSkip::Reason::Failed);   // G4
+                                      : VoiceprintBackfillSkip::Reason::Failed);
         if (!backfillLogged.contains(key)) {
             backfillLogged.insert(key);
             qCInfo(lcVoice).noquote() << (missingAudio ? "Lenyomat-pótlás: hiányzó hang, kihagyva:"
@@ -1436,7 +1435,7 @@ void AppController::Impl::finishBackfillJob(const BackfillJob& job, const QVecto
         if (VoiceprintStore::siblingKey(p) == sib) { stillMissing = true; break; }
     if (!stillMissing) return;
     Voiceprint vp = job.print;
-    vp.id.clear();   // addPrint generál
+    vp.id.clear();   // addPrint generates one
     vp.model = job.model;
     vp.embedding = vec;
     vp.dim = vec.size();
@@ -1493,8 +1492,8 @@ void AppController::renameSpeaker(const QString& meetingId, const QString& rawLa
     }
     d->store->saveMeeting(m);
 
-    // transcript.md újragenerálása a TELJES leképezéssel (a nyers tokenekből).
-    // A segments.json NYERS marad, hogy a UI bármikor újra tudjon címkézni.
+    // Regenerating transcript.md with the FULL mapping (from the raw tokens).
+    // segments.json STAYS RAW so the UI can relabel any time.
     MergedTranscript merged =
         readTokensJson(QDir(m.folder).filePath(QStringLiteral("transcript.tokens.json")));
     if (!merged.tokens.isEmpty()) {
@@ -1504,7 +1503,7 @@ void AppController::renameSpeaker(const QString& meetingId, const QString& rawLa
     if (speakeredit::markSummaryStale(m, {rawLabel})) emit summaryStaleChanged(meetingId);
     emit speakerMapChanged(meetingId);
 
-    // A kézi címkézés „tanítja" a voice-ID-t: lenyomatot rögzítünk a név alá.
+    // Manual labeling "teaches" voice ID: we record a voiceprint under the name.
     if (enroll && !name.isEmpty() && name != rawLabel)
         enrollSpeaker(meetingId, rawLabel, name);
 }
@@ -1514,7 +1513,7 @@ void AppController::enrollSpeaker(const QString& meetingId, const QString& rawLa
     if (nm.isEmpty()) return;
     const Meeting m = d->store->load(meetingId);
     if (m.id.isEmpty()) return;
-    // Nincs modell → csendben kihagyjuk (a kézi címkézés így is működik).
+    // No model: silently skipped (manual labeling works anyway).
     if (!d->voiceModelUsable() || !d->voiceSet.ensureLoaded()) return;
 
     const MergedTranscript merged =
@@ -1549,23 +1548,23 @@ void AppController::autoIdentifyMeeting(const QString& meetingId,
         readTokensJson(QDir(m.folder).filePath(QStringLiteral("transcript.tokens.json")));
     if (merged.tokens.isEmpty()) return;
 
-    // Distinct nyers beszélő-címkék.
+    // Distinct raw speaker labels.
     QStringList labels;
     for (const TranscriptToken& t : merged.tokens)
         if (!t.speaker.isEmpty() && !labels.contains(t.speaker))
             labels << t.speaker;
 
-    // MINDEN nevesítetlen beszélőt (mic + loopback) a voiceprint-DB ellen párosítunk.
-    // Nincs hangerő/pozíció-alapú feltételezés és nincs auto-enroll: a NÉV a fingerprint
-    // (vagy a felhasználó egyszeri kézi átnevezése) alapján kerül a beszélőre.
+    // We match EVERY unnamed speaker (mic + loopback) against the voiceprint DB. There is no
+    // loudness/position-based assumption and no auto-enroll: the NAME goes onto the speaker by fingerprint
+    // (or the user's one-time manual rename).
     bool mapChanged = false;
-    QStringList identified;   // most nevet kapott nyers címkék
+    QStringList identified;   // raw labels that got a name now
     int progressDone = 0;
     for (const QString& label : labels) {
         if (onProgress && !onProgress(++progressDone, labels.size()))
-            break;   // a felhasználó megszakította → a már megtalált matchek mentődnek
+            break;   // the user cancelled: the matches already found are saved
         if (m.speakerMap.contains(label))
-            continue;   // már nevesített (kézzel vagy korábbi match)
+            continue;   // already named (by hand or an earlier match)
         const VoiceSource src = resolveVoiceSource(m, merged, label);
         if (src.absPath.isEmpty()) continue;
         const EmbeddingSet e = embeddingForLabel(d->voiceSet, src.absPath, src.offsetMs, merged, label);
@@ -1601,16 +1600,15 @@ QVector<ParticipantGuess> AppController::identifyParticipants(
     const Meeting m = d->store->load(meetingId);
     if (m.id.isEmpty()) return out;
     if (!d->voiceModelUsable() || !d->voiceSet.ensureLoaded()) return out;
-    // A klaszterezés a fúziós vektoron fut (a betölthető modellek mindegyikével); az ablak
-    // csak akkor számít, ha minden modell adott rá vektort.
+    // Clustering runs on the fused vector (with every loadable model); a window counts only if every model gave a vector for it.
     const QStringList modelIds = d->voiceSet.loadedModelIds();
 
-    constexpr qint64 kWinMs = 3000;          // ablak-hossz
-    constexpr int    kTargetWindows = 50;    // ablakok száma/sáv (felső korlát)
-    constexpr double kMergeThreshold = 0.55; // klaszter-összevonás cosine-küszöbe
-    constexpr float  kSilenceRms = 0.004f;   // ennél halkabb ablak = csend (kihagy)
+    constexpr qint64 kWinMs = 3000;          // window length
+    constexpr int    kTargetWindows = 50;    // number of windows per track (upper limit)
+    constexpr double kMergeThreshold = 0.55; // cosine threshold for cluster merging
+    constexpr float  kSilenceRms = 0.004f;   // a window quieter than this = silence (skipped)
 
-    // Progress: az összes feldolgozandó ablak (aktív sávok × ablak/sáv) — a callbackhez.
+    // Progress: all windows to process (active tracks x windows per track), for the callback.
     int progressTotal = 0, progressDone = 0;
     if (m.durationMs >= kWinMs) {
         const qint64 step0 = std::max<qint64>(kWinMs, m.durationMs / kTargetWindows);
@@ -1628,14 +1626,14 @@ QVector<ParticipantGuess> AppController::identifyParticipants(
         const QString path = QDir(m.folder).filePath(t.file);
         const qint64 step = std::max<qint64>(kWinMs, D / kTargetWindows);
 
-        QVector<QVector<float>> embs;      // fúziós vektorok
-        QVector<EmbeddingSet> sets;        // ugyanezek modellenként (a lenyomat-párosításhoz)
+        QVector<QVector<float>> embs;      // fused vectors
+        QVector<EmbeddingSet> sets;        // the same per model (for voiceprint matching)
         QVector<qint64> winStart;
         for (qint64 s = 0; s + kWinMs <= D; s += step) {
             if (onProgress && !onProgress(++progressDone, progressTotal))
-                return out;   // a felhasználó megszakította
-            // Az ablak megbeszélés-időben van; a később kezdődő / korábban véget érő sáv fájlján
-            // kívül eső ablak üres (kihagyva).
+                return out;   // the user cancelled
+            // The window is in meeting time; a window outside the file of a track that starts later / ends earlier
+            // is empty (skipped).
             const tracktiming::FileRange fr = tracktiming::fileRange(t, s, s + kWinMs);
             if (!fr.valid()) continue;
             QVector<float> pcm = VoiceEmbedder::decodePcm16kMono(path, fr.startMs, fr.endMs);
@@ -1643,7 +1641,7 @@ QVector<ParticipantGuess> AppController::identifyParticipants(
             double sum = 0.0;
             for (float x : pcm) sum += static_cast<double>(x) * x;
             const double rms = std::sqrt(sum / static_cast<double>(pcm.size()));
-            if (rms < kSilenceRms) continue;          // csend → kihagy
+            if (rms < kSilenceRms) continue;          // silence -> skipped
             const EmbeddingSet set = d->voiceSet.embedPcmWith(pcm, modelIds);
             const QVector<float> e = fusion::fuse(set, modelIds);
             if (!e.isEmpty()) { embs.append(e); sets.append(set); winStart.append(s); }
@@ -1656,7 +1654,7 @@ QVector<ParticipantGuess> AppController::identifyParticipants(
 
         for (auto it = groups.constBegin(); it != groups.constEnd(); ++it) {
             const QVector<int>& idxs = it.value();
-            // Zaj-szűrés: 1-ablakos klasztert eldobunk, ha van más is (átfedés/kattanás).
+            // Noise filter: a 1-window cluster is dropped if there is another (overlap/click).
             if (idxs.size() < 2 && groups.size() > 1) continue;
 
             QVector<float> cent(embs[idxs[0]].size(), 0.0f);
@@ -1665,7 +1663,7 @@ QVector<ParticipantGuess> AppController::identifyParticipants(
             for (int k = 0; k < cent.size(); ++k) cent[k] /= idxs.size();
             cent = VoiceprintStore::l2normalize(cent);
 
-            // Modellenkénti centroid a párosításhoz (a lenyomatok modellenként tároltak).
+            // Per-model centroid for matching (voiceprints are stored per model).
             EmbeddingSet centSet;
             for (const QString& id : modelIds) {
                 QVector<float> c;
@@ -1677,7 +1675,7 @@ QVector<ParticipantGuess> AppController::identifyParticipants(
                 centSet.insert(id, VoiceprintStore::l2normalize(c));
             }
             const VoiceMatch mt = d->voiceprints->bestMatch(centSet, modelIds);
-            // Reprezentatív ablak = a centroidhoz legközelebbi (medoid).
+            // Representative window = the nearest to the centroid (medoid).
             qint64 repStart = winStart[idxs[0]]; double bestSim = -2.0;
             for (int i : idxs) {
                 const double s = VoiceprintStore::cosineSimilarity(cent, embs[i]);
@@ -1694,7 +1692,7 @@ QVector<ParticipantGuess> AppController::identifyParticipants(
             out.append(g);
         }
     }
-    // Legtöbb ablak elöl (a domináns beszélők előre).
+    // The most windows first (dominant speakers first).
     std::sort(out.begin(), out.end(),
               [](const ParticipantGuess& a, const ParticipantGuess& b) { return a.windows > b.windows; });
     return out;
@@ -1711,7 +1709,7 @@ void AppController::enrollVoiceprintFromSample(const QString& name, const QStrin
     for (const Track& t : m.tracks) if (t.id == trackId) { track = &t; break; }
     if (!track) return;
     const QString path = QDir(m.folder).filePath(track->file);
-    // startMs/endMs megbeszélés-időben (mint a sampleRef) → a sávfájl ideje.
+    // startMs/endMs in meeting time (like the sampleRef) -> the track file's time.
     const tracktiming::FileRange fr = tracktiming::fileRange(*track, startMs, endMs);
     if (!fr.valid()) return;
     const EmbeddingSet set =
@@ -1734,25 +1732,24 @@ void AppController::enrollVoiceprintFromSample(const QString& name, const QStrin
 void AppController::renamePerson(const QString& oldName, const QString& newName) {
     const QString o = oldName.trimmed(), n = newName.trimmed();
     if (o.isEmpty() || n.isEmpty() || o == n) return;
-    if (d->tags) d->tags->renamePersonRefs(o, n);   // elutasítások + visszavonás (a rename ELŐTT)
-    if (d->people) d->people->rename(o, n);   // a teljes rekord megy (becenevek, megjegyzés, címkék)
+    if (d->tags) d->tags->renamePersonRefs(o, n);   // rejections + undo (BEFORE the rename)
+    if (d->people) d->people->rename(o, n);   // the whole record goes (nicknames, note, tags)
     if (d->voiceprints) { d->voiceprints->renamePerson(o, n); emit voiceprintsChanged(); }
 
     const QVector<Meeting> all = d->store->loadAll();
     for (const Meeting& idx : all) {
         Meeting m = d->store->load(idx.id);
         bool changed = false;
-        // 1) Meglévő leképezés-ÉRTÉKEK átírása (diarizált → név).
+        // 1) Rewriting the existing mapping VALUES (diarized -> name).
         for (auto it = m.speakerMap.begin(); it != m.speakerMap.end(); ++it)
             if (it.value() == o) { it.value() = n; changed = true; }
-        // 2) Befagyott sáv-beszélő (mic) átnevezése: a track.speakerLabel frissítése,
-        //    és — mivel a nyers tokenek továbbra is "o"-t mondanak — egy o→n leképezés,
-        //    hogy a már elkészült átirat is a friss nevet mutassa.
+        // 2) Renaming the frozen track speaker (mic): updating track.speakerLabel, and, since the raw tokens
+        //    still say "o", an o -> n mapping so the already finished transcript shows the fresh name too.
         bool micHadOld = false;
         for (Track& tr : m.tracks)
             if (tr.speakerLabel == o) { tr.speakerLabel = n; micHadOld = true; }
         if (micHadOld) { m.speakerMap.insert(o, n); changed = true; }
-        // 3) A kézzel felvett résztvevők (transcript.speakers.json) személyneve.
+        // 3) The person name of manually added participants (transcript.speakers.json).
         if (speakeredit::renamePersonInOverlay(m.folder, o, n)) changed = true;
 
         if (!changed) continue;
@@ -1800,15 +1797,15 @@ void AppController::renameMeeting(const QString& meetingId, const QString& newTi
     Meeting m = d->store->load(meetingId);
     if (m.id.isEmpty()) { emit errorOccurred(tr("Ismeretlen meeting: %1").arg(meetingId)); return; }
     m.title = t;
-    d->store->saveMeeting(m);   // meeting.json + index frissül → meetingUpdated jel
+    d->store->saveMeeting(m);   // meeting.json + the index refresh -> meetingUpdated signal
 }
 
 void AppController::setMeetingContextNote(const QString& meetingId, const QString& note) {
-    ParticipantUndoScope undoScope(this, meetingId, tr("Leírás módosítva"));   // G4
+    ParticipantUndoScope undoScope(this, meetingId, tr("Leírás módosítva"));
     Meeting m = d->store->load(meetingId);
     if (m.id.isEmpty()) return;
     const QString n = note.trimmed();
-    if (m.contextNote == n) return;   // nincs változás
+    if (m.contextNote == n) return;   // no change
     m.contextNote = n;
     d->store->saveMeeting(m);
 }
@@ -1824,14 +1821,14 @@ void AppController::setMeetingDetectedCall(const QString& meetingId, const QStri
 
 void AppController::deleteMeeting(const QString& meetingId) {
     if (meetingId.isEmpty()) return;
-    // Futó feladatok leállítása, mielőtt a mappa eltűnik alóluk.
+    // Stopping the running tasks before the folder disappears under them.
     cancelAllJobs(meetingId);
     if (const auto it = d->analysisRuns.constFind(meetingId); it != d->analysisRuns.constEnd())
-        it.value()->store(true);   // a hangelemzés eredménye a törölt meetingre már nem kerül
+        it.value()->store(true);   // the voice analysis's result no longer goes to the deleted meeting
     d->waveforms->cancel(meetingId);
-    closeSpeakerEditor(meetingId);   // a nyitott beszélő-szerkesztő ne írjon a törölt mappába
+    closeSpeakerEditor(meetingId);   // the open speaker editor must not write into the deleted folder
     d->mergedCache.remove(meetingId);
-    d->store->deleteMeeting(meetingId);   // meetingRemoved jel a store-ból
+    d->store->deleteMeeting(meetingId);   // the meetingRemoved signal from the store
 }
 
 void AppController::restoreTrack(const QString& meetingId, const QString& trackId) {
@@ -1845,7 +1842,7 @@ void AppController::restoreTrack(const QString& meetingId, const QString& trackI
             changed = true;
         }
     if (!changed) return;
-    m.mixdownDirty = true;   // megváltozott az aktív sáv-halmaz → a mixdown elavult
+    m.mixdownDirty = true;   // the active track set changed, so the mixdown is stale
     d->store->saveMeeting(m);
     emit tracksChanged(meetingId);
 }
@@ -1857,15 +1854,15 @@ void AppController::deleteTrack(const QString& meetingId, const QString& trackId
     bool removed = false;
     for (const Track& t : m.tracks) {
         if (t.id == trackId) {
-            // A hangfájl FIZIKAI törlése (explicit user-művelet) — kivéve, ha a fájl a
-            // LEKEVERÉS (régi meeting.json-ban sávként szerepelhet), vagy más sáv is erre a
-            // fájlra hivatkozik: ilyenkor csak a sáv-bejegyzés törlődik.
+            // PHYSICAL deletion of the audio file (an explicit user action), unless the file is the MIXDOWN (in an
+            // old meeting.json it may be listed as a track), or another track also refers to this file: then only the
+            // track entry is deleted.
             bool shared = t.file.isEmpty() || (!m.mixdownFile.isEmpty() && t.file == m.mixdownFile);
             for (const Track& o : m.tracks)
                 if (o.id != trackId && o.file == t.file) shared = true;
             if (!shared) {
                 QFile::remove(QDir(m.folder).filePath(t.file));
-                WaveformService::removeCache(QDir(m.folder).filePath(t.file));   // a hullámforma-cache is
+                WaveformService::removeCache(QDir(m.folder).filePath(t.file));   // the waveform cache too
             }
             removed = true;
         } else {
@@ -1874,13 +1871,13 @@ void AppController::deleteTrack(const QString& meetingId, const QString& trackId
     }
     if (!removed) return;
     m.tracks = kept;
-    m.mixdownDirty = true;   // megváltozott az aktív sáv-halmaz → a mixdown elavult
+    m.mixdownDirty = true;   // the active track set changed, so the mixdown is stale
     d->store->saveMeeting(m);
     emit tracksChanged(meetingId);
 }
 
 void AppController::regenerateMixdown(const QString& meetingId) {
-    // Fut már egy keverés ezen a meetingen → no-op (a futó eredménye mindenkinek jó lesz).
+    // A mix is already running on this meeting: a no-op (the running one's result will do for everyone).
     if (d->mixdownProcs.contains(meetingId)) return;
 
     Meeting m = d->store->load(meetingId);
@@ -1890,12 +1887,12 @@ void AppController::regenerateMixdown(const QString& meetingId) {
     const QString outRel = QStringLiteral("mixdown.mp3");
     const QString outPath = QDir(m.folder).filePath(outRel);
 
-    // Csak az aktív, lemezen meglévő sávok kerülnek a keverékbe, a később kezdődők a helyükre
-    // tolva (startOffsetMs → adelay). A szűrőgráf: MixdownPlan.
+    // Only the active tracks that exist on disk go into the mix, those starting later shifted into place
+    // (startOffsetMs -> adelay). The filter graph: MixdownPlan.
     const MixdownPlan plan = MixdownPlan::fromMeeting(m);
     const QStringList& missing = plan.missing;
-    // Hiányzó aktív sáv mellett a MEGLÉVŐ (teljes) keveréket nem cseréljük le egy
-    // részlegesre — sem kézi újrakeverésnél, sem az átírás előtti automatikusnál.
+    // With an active track missing we do not replace the EXISTING (complete) mix with a partial one, neither
+    // for a manual remix nor for the automatic one before transcription.
     const bool haveMixdown = QFileInfo(outPath).isFile()
         || (!m.mixdownFile.isEmpty() && QFileInfo(QDir(m.folder).filePath(m.mixdownFile)).isFile());
     if (!missing.isEmpty() && haveMixdown) {
@@ -1913,25 +1910,25 @@ void AppController::regenerateMixdown(const QString& meetingId) {
         return;
     }
 
-    // Félkész fájlba keverünk, és csak SIKER után cseréljük le a régit — megszakítás vagy
-    // hiba esetén a korábbi (még lejátszható) keverék érintetlen marad.
+    // We mix into a half-made file and replace the old one only after SUCCESS: on cancel or error the
+    // earlier (still playable) mix stays untouched.
     const QString partPath = QDir(m.folder).filePath(QStringLiteral("mixdown.part.mp3"));
 
     const QStringList args = plan.ffmpegArgs(partPath);
-    const qint64 totalMs = m.durationMs;   // a százalék nevezője
+    const qint64 totalMs = m.durationMs;   // the denominator of the percentage
 
-    // Aszinkron QProcess — NEM blokkolja a UI-t (egy 90 perces keverés is futhat), és nem
-    // blokkolja új felvétel indítását sem (külön child-process + külön capture-engine).
+    // An asynchronous QProcess: it does NOT block the UI (even a 90-minute mix may run), nor does it block
+    // starting a new recording (a separate child process + a separate capture engine).
     auto* proc = new QProcess(this);
     proc->setProgram(QStringLiteral("ffmpeg"));
     proc->setArguments(args);
     d->mixdownProcs.insert(meetingId, proc);
-    // Strukturált állapot: önálló keverés → saját (megszakítható) feladat; az átírás részeként
-    // futó keverés az átírás-feladat „mixdown” szakaszát mozgatja (lásd reportMixdownPercent).
+    // Structured state: a standalone mix is its own (cancellable) task; a mix running as part of a
+    // transcription moves the transcription task's "mixdown" stage (see reportMixdownPercent).
     if (!d->transcribeInMixPhase(meetingId))
         d->jobs->begin(meetingId, JobKind::Mixdown, tr("Lekeverés"));
 
-    // stdout-parse: out_time_us=<mikroszekundum> → százalék a felvétel hosszához mérve.
+    // Parsing stdout: out_time_us=<microseconds> -> a percentage relative to the recording's length.
     connect(proc, &QProcess::readyReadStandardOutput, this,
             [this, proc, meetingId, totalMs]() {
         if (totalMs <= 0) return;
@@ -1944,7 +1941,7 @@ void AppController::regenerateMixdown(const QString& meetingId) {
             const QByteArray val = line.mid(eq + 1).trimmed();
             qint64 outMs = -1;
             if (key == "out_time_us")      outMs = val.toLongLong() / 1000;
-            else if (key == "out_time_ms") outMs = val.toLongLong() / 1000;  // (ffmpeg: valójában µs)
+            else if (key == "out_time_ms") outMs = val.toLongLong() / 1000;  // (ffmpeg: actually microseconds)
             if (outMs >= 0) {
                 const qint64 p = outMs * 100 / totalMs;
                 lastPct = static_cast<int>(p < 0 ? 0 : (p > 99 ? 99 : p));
@@ -1955,18 +1952,18 @@ void AppController::regenerateMixdown(const QString& meetingId) {
             d->reportMixdownPercent(meetingId, lastPct);
         }
     });
-    // A lezárás EGY helyen (normál kilépés, hiba, megszakítás, el sem indult ffmpeg).
+    // The closing in ONE place (normal exit, error, cancel, an ffmpeg that did not even start).
     auto done = [this, proc, meetingId, outRel, outPath, partPath](bool exitedOk) {
-        if (d->mixdownProcs.value(meetingId) != proc) return;   // már lezártuk
+        if (d->mixdownProcs.value(meetingId) != proc) return;   // we already closed it
         d->mixdownProcs.remove(meetingId);
         const bool cancelled = d->mixdownCancelled.remove(meetingId);
         bool ok = exitedOk && !cancelled;
-        // Csere úgy, hogy a régi keverék hibánál megmarad (nem „töröld, aztán nevezd át”).
+        // Replacing so the old mix survives a failure (not "delete, then rename").
         if (ok)
             ok = replaceFile(partPath, outPath);
-        if (!ok) QFile::remove(partPath);   // félkész fájl ne maradjon a mappában
+        if (!ok) QFile::remove(partPath);   // no half-made file stays in the folder
         if (ok) {
-            // Friss meeting (közben módosulhatott) → mixdownFile + dirty törlése.
+            // A fresh meeting (it may have changed meanwhile) -> set mixdownFile + clear dirty.
             Meeting mm = d->store->load(meetingId);
             if (!mm.id.isEmpty()) {
                 mm.mixdownFile  = outRel;
@@ -1988,22 +1985,22 @@ void AppController::regenerateMixdown(const QString& meetingId) {
             }
         }
         emit mixdownUpdated(meetingId, ok);
-        emit tracksChanged(meetingId);   // a nézet frissüljön (gomb-állapot, mixdownFile)
+        emit tracksChanged(meetingId);   // the view should refresh (button state, mixdownFile)
         proc->deleteLater();
-        // Az átirat előtti hangelemzés a nyers sávokból fut, a lekeveréstől független; itt csak
-        // azért próbálkozunk, mert a keverés sávváltozás (kizárt sáv) után is futhat.
+        // The pre-transcript voice analysis works from the raw tracks, independent of the mixdown; we try here
+        // only because a mix can also run after a track change (an excluded track).
         if (ok) maybeAnalyzeParticipants(meetingId);
     };
     connect(proc, &QProcess::finished, this, [done](int code, QProcess::ExitStatus status) {
         done(status == QProcess::NormalExit && code == 0);
     });
     connect(proc, &QProcess::errorOccurred, this, [done](QProcess::ProcessError err) {
-        if (err == QProcess::FailedToStart) done(false);   // (ilyenkor nincs finished jel)
+        if (err == QProcess::FailedToStart) done(false);   // (no finished signal then)
     });
 
-    // A haladást a mixdownProgress (0..100) jelzi a nem-modális UI-nak — NEM a jobProgress
-    // (az a globális busy-jelzőt kapcsolná be, ami egy háttér-lekeverés alatt feleslegesen
-    // letiltaná az akció-gombokat). Indító 0%:
+    // Progress is signaled by mixdownProgress (0..100) to the non-modal UI, NOT jobProgress (that would turn
+    // on the global busy flag, which would needlessly disable the action buttons during a background
+    // mixdown). Starting 0%:
     emit mixdownProgress(meetingId, 0);
     d->reportMixdownPercent(meetingId, 0);
     proc->start();
@@ -2021,10 +2018,10 @@ void AppController::setUserSpeakerName(const QString& name) {
     }
     s.userSpeakerName = n;
     d->settings->setSettings(s);
-    // A névváltás propagálódjon MINDEN meetingre: a mic-sáv befagyott beszélőneve,
-    // a leképezések és a voiceprintek is átíródnak (renamePerson ezt mind kezeli).
+    // The name change should propagate to EVERY meeting: the mic track's frozen speaker name, the mappings
+    // and the voiceprints are rewritten too (renamePerson handles all of this).
     if (!old.isEmpty())
-        renamePerson(old, n);                 // emit peopleChanged + speakerMapChanged-eket bentről
+        renamePerson(old, n);                 // emits peopleChanged + speakerMapChanged from inside
     else {
         if (d->people) d->people->add(n);
         emit peopleChanged();
@@ -2038,13 +2035,13 @@ void AppController::startLevelMonitoring() {
 
 void AppController::stopLevelMonitoring() {
     d->monitorLegacy = false;
-    if (!d->monitorHolders.isEmpty()) return;   // egy másik fogyasztó (retain) még kéri
+    if (!d->monitorHolders.isEmpty()) return;   // another consumer (retain) still requests it
     endLevelMonitoring();
 }
 
 void AppController::retainLevelMonitoring(QObject* owner) {
     if (!owner || d->monitorHolders.contains(owner)) return;
-    // Ha a fogyasztó megszűnik, a kérése is: a mikrofon ne maradjon nyitva utána.
+    // When the consumer goes away, its request goes too: the microphone must not stay open afterwards.
     d->monitorHolders.insert(owner, connect(owner, &QObject::destroyed, this,
                                             [this, owner] { releaseLevelMonitoring(owner); }));
     if (!(d->monitorWanted && d->monitor && d->monitor->active()))
@@ -2080,7 +2077,7 @@ void AppController::restartLevelMonitor(bool force) {
     QVector<AudioDeviceInfo> list;
     QStringList names;
     for (const AudioDeviceInfo& dev : d->devices->captureDevices()) {
-        // Felvétel alatt a sávon lévő eszközöket a RecordingSession birtokolja és méri.
+        // During recording the devices on a track are owned and measured by the RecordingSession.
         if (recording && d->recNames.contains(dev.name) && !d->recClosed.contains(dev.name)
             && !d->recOff.contains(dev.name))
             continue;
@@ -2092,7 +2089,7 @@ void AppController::restartLevelMonitor(bool force) {
     perfTimer.start();
     const QStringList before = d->monitorNames;
     d->monitorNames = names;
-    d->monitor->start(list);   // üres listára leáll; a megnyitás a monitor háttérszálán fut
+    d->monitor->start(list);   // for an empty list it stops; the open runs on the monitor's background thread
     qCDebug(lcPerf).noquote() << QStringLiteral("szintmérő újraindítás kérve (%1 → %2 eszköz, force=%3): %4 ms a fő szálon")
                                  .arg(before.size()).arg(names.size()).arg(force).arg(perfTimer.elapsed());
 }
@@ -2100,9 +2097,9 @@ void AppController::restartLevelMonitor(bool force) {
 void AppController::handleDeviceSetChange() {
     const QVector<AudioDeviceInfo> present = d->devices->captureDevices();
     if (d->state == RecordingState::Recording && d->session && !present.isEmpty()) {
-        // Hot-plug felvétel közben: a felsorolásból KÉTSZER egymás után hiányzó rögzített
-        // eszköz sávját biztonságosan lezárjuk (egyetlen átmeneti hiány ne zárjon sávot; az
-        // üres lista — elérhetetlen hangrendszer — pedig semmit nem zár le).
+        // Hot-plug during recording: the track of a recorded device missing from the enumeration TWICE in a row
+        // is safely closed (a single transient absence must not close a track; and an empty list, an unreachable
+        // audio system, closes nothing).
         bool recheck = false;
         const QStringList rec = d->recNames;
         for (const QString& name : rec) {
@@ -2119,10 +2116,10 @@ void AppController::handleDeviceSetChange() {
                 recheck = true;
             }
         }
-        // Visszadugott eszköz: amit a leválasztás zárt le (nem a felhasználó kapcsolta ki), és a
-        // felsorolásban KÉTSZER egymás után újra jelen van (stabilnak néz ki), azt magától újra
-        // rögzítjük — új szakasz indul, a felvétel eddigi része érintetlen. A felhasználó jogos
-        // elvárása, hogy egy rövid USB-kiesés után ne kelljen kézzel visszakapcsolnia.
+        // A re-plugged device: one that the detach closed (not switched off by the user) and that is present again
+        // in the enumeration TWICE in a row (looks stable), is recorded again by itself: a new span starts, the
+        // recording so far stays untouched. The user rightly expects not to have to switch it back on by hand
+        // after a short USB dropout.
         const QStringList closedNow = d->recClosed;
         for (const QString& name : closedNow) {
             const AudioDeviceInfo* dev = nullptr;
@@ -2162,7 +2159,7 @@ bool AppController::addRecordingDevice(const AudioDeviceInfo& device) {
 bool AppController::stopRecordingDevice(const QString& deviceName) {
     if (d->state != RecordingState::Recording || !d->session) return false;
     const QStringList open = recordingDeviceNames();
-    if (!open.contains(deviceName) || open.size() < 2) return false;   // az utolsó nyitott sáv marad
+    if (!open.contains(deviceName) || open.size() < 2) return false;   // the last open track stays
     if (!d->recOff.contains(deviceName)) d->recOff << deviceName;
     d->session->closeTrack(deviceName);   // → trackClosed → recordingTrackClosed
     return true;
@@ -2178,10 +2175,9 @@ void AppController::startRecording(const QString& title, const QVector<AudioDevi
         emit errorOccurred(tr("Már folyik felvétel."));
         return;
     }
-    // A monitor felszabadítja az eszközöket a felvétel előtt (a kérés — monitorWanted —
-    // megmarad: a felvétel alatt a sávra nem kerülő eszközökön újraindul). A lezárás a monitor
-    // háttérszálán, aszinkron fut: rövid ideig a felvétellel párhuzamosan is nyitva lehet egy
-    // eszköz (megosztott módban ez nem akadály).
+    // The monitor releases the devices before recording (the request, monitorWanted, stays: during recording it
+    // restarts on the devices not on a track). The shutdown runs asynchronously on the monitor's background
+    // thread: for a short time a device may be open in parallel with the recording (in shared mode that is no obstacle).
     d->monitorNames.clear();
     if (d->monitor) d->monitor->stop();
     d->recNames.clear();
@@ -2192,19 +2188,19 @@ void AppController::startRecording(const QString& title, const QVector<AudioDevi
     QVector<AudioDeviceInfo> use = devices;
     if (use.isEmpty()) {
         d->devices->refresh();
-        use = d->devices->autoRecordDevices();   // line-in/AUX kihagyva az auto-halmazból
+        use = d->devices->autoRecordDevices();   // line-in/AUX left out of the auto set
     }
     if (use.isEmpty()) {
         emit errorOccurred(tr("Nincs felvehető hangeszköz."));
         return;
     }
 
-    // Megjegyezzük a használt eszközöket (induláskor előpipáláshoz).
+    // We remember the devices used (to pre-check at startup).
     QStringList usedNames;
     for (const auto& dvc : use) usedNames << dvc.name;
     setLastUsedDeviceNames(usedNames);
 
-    d->recordingTagIds.clear();   // az előző felvétel címkéi nem öröklődnek
+    d->recordingTagIds.clear();   // the previous recording's tags are not inherited
     const AppSettings s = d->settings->settings();
     auto* sess = new RecordingSession(d->audioDir, title, s.userSpeakerName,
                                       opusBitrateKbps(s.audioQuality), this);
@@ -2213,16 +2209,16 @@ void AppController::startRecording(const QString& title, const QVector<AudioDevi
 
     connect(sess, &RecordingSession::stateChanged, this, [this, sess](RecordingState st) {
         d->state = st;
-        // A meeting-mappa a start()-ban már létrejött → a felvétel ELEJÉN elérhető
-        // (nem csak a finished-nél). Kell a --record lockhoz + a currentMeetingFolder()-höz.
+        // The meeting folder already exists in start(), so it is available at the START of the recording (not
+        // only at finished). Needed for the --record lock and currentMeetingFolder().
         if (st == RecordingState::Recording) {
             d->currentFolder = sess->folder();
             d->recNames.clear();
             for (const AudioDeviceInfo& dev : sess->trackDevices()) d->recNames << dev.name;
             startCallEndMonitor();
-            restartLevelMonitor(/*force*/ true);   // csak ha a UI kérte (monitorWanted)
+            restartLevelMonitor(/*force*/ true);   // only if the UI requested it (monitorWanted)
         } else if (st == RecordingState::Stopping) {
-            // A lezárás alatt a figyelő is leáll; a felvétel végén (ha kell) újraindul.
+            // During the shutdown the monitor also stops; at the recording's end (if needed) it restarts.
             d->monitorNames.clear();
             if (d->monitor) d->monitor->stop();
         } else if (st == RecordingState::Idle) {
@@ -2236,8 +2232,8 @@ void AppController::startRecording(const QString& title, const QVector<AudioDevi
     });
     connect(sess, &RecordingSession::trackAdded, this, [this](int, const QString& name) {
         d->recNames << name;
-        d->recClosed.removeAll(name);   // visszadugott, újra felvett eszköz
-        d->recOff.removeAll(name);      // újra bekapcsolt eszköz: új szakasz
+        d->recClosed.removeAll(name);   // a re-plugged, re-recorded device
+        d->recOff.removeAll(name);      // a re-enabled device: a new span
         if (!d->lastDevices.contains(name)) {
             QStringList names = d->lastDevices;
             names << name;
@@ -2247,13 +2243,13 @@ void AppController::startRecording(const QString& title, const QVector<AudioDevi
         emit recordingTrackAdded(name);
     });
     connect(sess, &RecordingSession::trackClosed, this, [this](int, const QString& name) {
-        // A felhasználó kapcsolta ki → nem „leválasztott”; a figyelő újra méri a szintjét.
+        // Switched off by the user, so not "detached"; the monitor measures its level again.
         if (!d->recOff.contains(name) && !d->recClosed.contains(name)) d->recClosed << name;
         restartLevelMonitor(/*force*/ false);
         emit recordingTrackClosed(name);
     });
-    // Csend-figyelés: bármely sáv beszéd-szintű RMS-e „hangos” → időbélyeg frissül,
-    // és a csend-kérdés újra-élesedik. Küszöb a RecordingSession kSilencePeak-jével összhangban.
+    // Silence watch: if any track's RMS at speech level is "loud", the timestamp refreshes and the silence
+    // question re-arms. The threshold is in line with RecordingSession's kSilencePeak.
     connect(sess, &RecordingSession::levelMeterUpdated, this, [this](int, float rms) {
         if (rms >= 0.008f) {
             d->lastLoudMs = QDateTime::currentMSecsSinceEpoch();
@@ -2294,7 +2290,7 @@ void AppController::startRecording(const QString& title, const QVector<AudioDevi
     connect(sess, &RecordingSession::finished, this, [this](Meeting m) {
         stopCallEndMonitor();
         d->currentFolder = m.folder;
-        // A felvétel közben megadott címkék (a meeting csak most kerül a tárba).
+        // The tags given during recording (the meeting enters the store only now).
         for (const QString& id : std::as_const(d->recordingTagIds))
             if (d->tags->tag(id).isValid() && !m.tagIds.contains(id)) m.tagIds << id;
         d->recordingTagIds.clear();
@@ -2307,21 +2303,21 @@ void AppController::startRecording(const QString& title, const QVector<AudioDevi
         emit recordingFinished(m);
         emit recordingStateChanged(d->state);
         restartLevelMonitor(/*force*/ true);
-        // Lekeverés (mixdown) leválasztva a stop()-ról: itt indítjuk ASZINKRON, csak ha a
-        // beállítás "auto". Nem blokkol → azonnal indítható új felvétel. Kézi módban a
-        // felhasználó a review-panel „Lekeverés" gombjával indítja. (A mixdown csak
-        // hallgatásra kell; az átíráshoz a per-sáv .ogg-k elegendők.)
-        // Az önálló felvevő-folyamatban (setAutoMixdownAfterRecording(false)) nem indul: az a
-        // folyamat kilép a felvétel után, a lekeverést az elemző készíti el, amikor kell.
-        // Előtte a sávok beszéd-ellenőrzése (háttérszálon): a beszéd nélküli sáv kimarad a
-        // keverékből (Track::excludedReason "noSpeech"); a mérés végén indul a lekeverés.
+        // The mixdown is decoupled from stop(): we start it here ASYNCHRONOUSLY, only if the setting is "auto".
+        // It does not block, so a new recording can start at once. In manual mode the user starts it with the
+        // review panel's "Mix" button. (The mixdown is needed only for listening; for transcription the per-track
+        // .ogg files suffice.)
+        // In the standalone recorder process (setAutoMixdownAfterRecording(false)) it does not start: that process
+        // exits after recording, and the analyzer makes the mix when needed.
+        // Before it, the tracks' speech check (on a background thread): a speechless track is left out of the mix
+        // (Track::excludedReason "noSpeech"); the mix starts at the end of the measurement.
         if (d->autoMixdown) {
             const bool mix = d->settings->settings().mixdownMode != QStringLiteral("manual")
                 && m.mixdownFile.isEmpty();
             if (trackspeech::needsSpeechCheck(m)) startSpeechCheck(m.id, mix);
             else if (mix) regenerateMixdown(m.id);
-            // Az átirat előtti hangelemzés a nyers sávokból, rögtön a felvétel után (ha a
-            // beszéd-mérés még hátravan, annak a vége indítja).
+            // The pre-transcript voice analysis from the raw tracks, right after the recording (if the speech
+            // measurement is still pending, its end starts it).
             maybeAnalyzeParticipants(m.id);
         }
     });
@@ -2329,9 +2325,9 @@ void AppController::startRecording(const QString& title, const QVector<AudioDevi
     sess->start(use);
 }
 
-// ---- hívás-vég figyelés felvétel közben ---------------------------------------------
-// Ugyanaz a detektor-mag, amit a tanara-watcher használ. A saját capture-t a detektor a
-// selfBinary alapján kizárja. Csak JELEZ (callEnded) — a leállításról a user dönt.
+// ---- call-end watching during recording ---------------------------------------------
+// The same detector core the tanara-watcher uses. The detector excludes our own capture by selfBinary.
+// It only SIGNALS (callEnded); the user decides about stopping.
 void AppController::startCallEndMonitor()
 {
     stopCallEndMonitor();
@@ -2377,11 +2373,11 @@ void AppController::pollCallEnd()
         return;
     }
     if (!d->callSeenActive)
-        return;   // még nem is láttunk hívást (kézi felvétel hívás nélkül) — nincs mit jelezni
-    // Debounce: 2 egymást követő inaktív poll (egy pillanatnyi mikrofon-elengedés ne kérdezzen).
+        return;   // we have not even seen a call yet (a manual recording without a call): nothing to signal
+    // Debounce: 2 consecutive inactive polls (a momentary microphone release must not ask).
     if (++d->callInactivePolls >= 2) {
         const QString app = d->callAppName;
-        d->callSeenActive = false;   // újra-élesedik, ha később megint aktív lesz a hívás
+        d->callSeenActive = false;   // it re-arms if the call becomes active again later
         d->callInactivePolls = 0;
         qCInfo(lcApp).noquote() << "Hívás véget ért felvétel közben:" << app;
         emit callEnded(app);
@@ -2406,7 +2402,7 @@ ReadinessResult AppController::canRun(WorkflowStep step, const QString& meetingI
     if (!r.runnable || !usesCloud(step))
         return r;
 
-    // Tanara Cloud-specifikus akadályok (pontosan egy CTA a folyamat-sávban).
+    // Tanara Cloud-specific obstacles (exactly one CTA in the task strip).
     if (d->cloud->clientTooOld()) {
         ReadinessResult c;
         c.blockerKind   = BlockerKind::Cloud;
@@ -2447,8 +2443,8 @@ QString AppController::cloudModelFor(WorkflowStep step) const
     const AppSettings s = d->settings->settings();
     const bool stt = step == WorkflowStep::Transcribe;
     const QString expert = stt ? s.cloudSttModel : s.cloudLlmModel;
-    // Az Expert-modell csak akkor érvényes, ha még a katalógusban van (kivezetett modell →
-    // vissza a tier virtuális modelljére; a UI jelzi).
+    // The Expert model is valid only if it is still in the catalog (a retired model goes back to the tier's
+    // virtual model; the UI signals it).
     if (!expert.isEmpty()) {
         const QVector<CloudModel> cat = d->cloud->models();
         if (cat.isEmpty() || findModel(cat, expert).has_value())
@@ -2459,11 +2455,11 @@ QString AppController::cloudModelFor(WorkflowStep step) const
 }
 
 namespace {
-// A cloud LLM-hívások max_tokens-e: a fedezet-szabály (prompt + max_tokens áron) miatt
-// mérsékelt érték — a JSON-összefoglaló és a téma-elemzés bőven belefér.
+// max_tokens of cloud LLM calls: a moderate value because of the coverage rule (priced at prompt +
+// max_tokens); the JSON summary and the topic analysis fit well within it.
 constexpr int kCloudMaxTokens = 4000;
-constexpr int kReduceInputChars = 6000;   // a reduce bemenete: a téma-elemzések kivonata (becslés)
-constexpr int kNotesCharsPerPart = 3000;  // egy részjegyzet hossza az összegzés bemenetében (becslés)
+constexpr int kReduceInputChars = 6000;   // the reduce's input: a digest of the topic analyses (estimate)
+constexpr int kNotesCharsPerPart = 3000;  // length of one part note in the merge's input (estimate)
 }
 
 EstimateRequest AppController::makeEstimateRequest(const QString& meetingId, const QString& task,
@@ -2481,7 +2477,7 @@ EstimateRequest AppController::makeEstimateRequest(const QString& meetingId, con
     if (task != QLatin1String("transcribe")) {
         r.llmModel = cloudModelFor(WorkflowStep::Summarize);
         r.summaryMode = summaryMode.isEmpty() ? QStringLiteral("quick") : summaryMode;
-        // A tényleges bemenet: rendszer-prompt + kontextus + átirat (markdown).
+        // The actual input: system prompt + context + transcript (markdown).
         MergedTranscript merged = d->mergedCache.value(meetingId);
         if (merged.tokens.isEmpty() && !m.folder.isEmpty())
             merged = readTokensJson(QDir(m.folder).filePath(QStringLiteral("transcript.tokens.json")));
@@ -2492,8 +2488,8 @@ EstimateRequest AppController::makeEstimateRequest(const QString& meetingId, con
             if (r.summaryMode == QLatin1String("complex")) {
                 const int topicIn    = transcript + resolvedPrompt(s, s.topicExtractionPrompt, "topic").size();
                 const int analysisIn = transcript + resolvedPrompt(s, s.topicAnalysisPrompt, "analysis").size() + 200;
-                // A témaszám a kinyerés előtt ismeretlen (null → a gateway statisztikája);
-                // ha már van szerkesztett téma-lista, csak a még elemzetleneket kérjük.
+                // The topic count is unknown before extraction (null -> the gateway's statistics); if an edited topic
+                // list already exists, we request only the not-yet-analyzed ones.
                 const QVector<SummaryTopic> topics =
                     readTopicsJson(QDir(m.folder).filePath(QStringLiteral("summary.topics.json")));
                 if (topics.isEmpty()) {
@@ -2509,8 +2505,8 @@ EstimateRequest AppController::makeEstimateRequest(const QString& meetingId, con
                 }
                 r.llmCalls.append({ 1, kReduceInputChars, kCloudMaxTokens });
             } else {
-                // Gyors összefoglaló: 1 rész → egy hívás; n rész → a még kész jegyzet nélküli
-                // részek jegyzet-hívásai + egy összegző hívás (lásd SummaryService::plan).
+                // Quick summary: 1 part -> one call; n parts -> the note calls of the parts without a finished note + one
+                // merge call (see SummaryService::plan).
                 const SummaryRequest req = summaryRequestFor(s, merged, m, r.llmModel, kCloudMaxTokens);
                 const SummaryPlan plan = SummaryService::plan(req);
                 const int ctx = int(m.contextNote.size()) + 200;
@@ -2563,7 +2559,7 @@ ProviderConfig AppController::cloudConfig(WorkflowStep step, const CloudRunPtr& 
         if (!rid.isEmpty()) run->lastRequestId = rid;
         const bool ok = ex.status >= 200 && ex.status < 300;
         if (!ok) {
-            if (ex.method != "DELETE")   // a takarító DELETE-ek hibája nem írja felül a valódi hibát
+            if (ex.method != "DELETE")   // the failure of cleanup DELETEs must not overwrite the real error
                 run->lastError = parseCloudError(ex.status, ex.headers, ex.body, ex.networkError);
             return;
         }
@@ -2576,7 +2572,7 @@ ProviderConfig AppController::cloudConfig(WorkflowStep step, const CloudRunPtr& 
             ChargeInfo c = chargeInfoFromJson(o.value(QStringLiteral("tanara")).toObject());
             if (!c.valid) c = chargeInfoFromHeaders(ex.headers);
             run->addCharge(c);
-            // A folyamatban lévő átírás azonosítója (indításkori visszaírás-ellenőrzéshez).
+            // The id of the transcription in progress (for the startup write-back check).
             if (acc) acc->addPendingTranscription(run->transcriptionId, run->fileId);
         } else if (ex.method == "POST" && ex.path.endsWith(QLatin1String("/chat/completions"))) {
             ChargeInfo c = chargeInfoFromJson(o.value(QStringLiteral("usage")).toObject()
@@ -2584,8 +2580,8 @@ ProviderConfig AppController::cloudConfig(WorkflowStep step, const CloudRunPtr& 
             if (!c.valid) c = chargeInfoFromHeaders(ex.headers);
             run->addCharge(c);
         } else if (ex.method == "GET" && statusPath.match(ex.path).hasMatch()) {
-            // A visszaírás abban a válaszban látszik, amelyik először ad status: error-t —
-            // a provider a DELETE-et CSAK ez után küldi (a tanara-mezőt előbb kiolvassuk).
+            // The write-back shows in the response that first gives status: error; the provider sends the DELETE
+            // ONLY after that (we read out the tanara field first).
             const TranscriptionJobInfo j = transcriptionJobInfoFromJson(o);
             if (j.refunded) {
                 run->refunded = true;
@@ -2605,7 +2601,7 @@ ProviderConfig AppController::llmConfigFor(CloudRunPtr& run, const QString& meet
 {
     if (!usesCloud(WorkflowStep::Summarize)) {
         ProviderConfig cfg = d->settings->settings().llmSelected();
-        cfg.apiKey = d->keyStore.get(keys::LlmApiKey);   // LM Studio: lehet üres
+        cfg.apiKey = d->keyStore.get(keys::LlmApiKey);   // LM Studio: may be empty
         return cfg;
     }
     if (!run) run = newCloudRun(meetingId, kind);
@@ -2620,7 +2616,7 @@ void AppController::finishCloudRun(const CloudRunPtr& run)
     if (run->calls > 0)
         emit cloudCharged(run->meetingId, run->kind, run->charged(), run->calls, run->balance, run->vatMode);
     if (run->balance.isValid() || run->calls > 0)
-        d->cloud->refreshAccount();   // low_balance / hours_left / notices frissítése
+        d->cloud->refreshAccount();   // refreshing low_balance / hours_left / notices
 }
 
 void AppController::failCloudRun(const CloudRunPtr& run, const QString& fallbackMessage)
@@ -2645,7 +2641,7 @@ void AppController::failCloudRun(const CloudRunPtr& run, const QString& fallback
 void AppController::transcribeMeeting(const QString& meetingId)
 {
     if (d->jobs->isRunning(meetingId, JobKind::Transcribe))
-        return;   // már fut ezen a meetingen (dupla kattintás / két nézet)
+        return;   // already running on this meeting (a double click / two views)
 
     Meeting m = d->store->load(meetingId);
     if (m.id.isEmpty()) {
@@ -2653,7 +2649,7 @@ void AppController::transcribeMeeting(const QString& meetingId)
         emit errorOccurred(tr("Ismeretlen meeting: %1").arg(meetingId));
         return;
     }
-    // A hangelemzés az átírással párhuzamosan fut (ha még nem futott le ezeken a sávokon).
+    // The voice analysis runs in parallel with transcription (if it has not run on these tracks yet).
     maybeAnalyzeParticipants(meetingId);
 
     ReadinessResult res = canRun(WorkflowStep::Transcribe, meetingId);
@@ -2663,21 +2659,21 @@ void AppController::transcribeMeeting(const QString& meetingId)
         return;
     }
 
-    // Egy önállóan futó azonosítás a MOSTANI átirat címkéire vonatkozik: leállítjuk, hogy a
-    // nevei ne kerüljenek rá a hamarosan érkező ÚJ átiratra (az eredményét a befejezésekor
-    // az átirat-változás ellenőrzése is eldobja — lásd startIdentify).
+    // A standalone identification refers to the labels of the CURRENT transcript: we stop it so its names
+    // do not land on the NEW transcript about to arrive (its result is dropped at completion by the
+    // transcript-change check too; see startIdentify).
     cancelJob(meetingId, JobKind::Identify);
 
-    // A leirat a MIXDOWNból készül (egyetlen hangfolyam → nincs sávonkénti átfedés-
-    // összefésülés/duplikáció, ~N× helyett 1× Soniox-költség). Ha a mixdown hiányzik vagy
-    // elavult, előbb legyártjuk, és a mixdownUpdated jelre indítjuk az átírást.
+    // The transcript is made from the MIXDOWN (a single audio stream: no per-track overlap
+    // merging/duplication, 1x Soniox cost instead of ~Nx). If the mixdown is missing or stale, we make it first
+    // and start the transcription on the mixdownUpdated signal.
     const QString mixPath =
         QDir(m.folder).filePath(m.mixdownFile.isEmpty() ? QStringLiteral("mixdown.mp3")
                                                         : m.mixdownFile);
     const bool needMix = m.mixdownFile.isEmpty() || m.mixdownDirty || !QFile::exists(mixPath);
 
-    // Strukturált feladat: szakasz-lista (M04). A lekeverés csak akkor szakasz, ha kell;
-    // az azonosítás csak akkor, ha van hang-modell.
+    // Structured task: the stage list. The mixdown is a stage only if needed; identification only if there
+    // is a voice model.
     {
         int activeTracks = 0;
         for (const Track& t : m.tracks) if (t.active) ++activeTracks;
@@ -2705,7 +2701,7 @@ void AppController::transcribeMeeting(const QString& meetingId)
                 if (id != meetingId) return;
                 QObject::disconnect(*conn);
                 auto it = d->transcribeRuns.find(meetingId);
-                if (it == d->transcribeRuns.end()) return;   // közben megszakították
+                if (it == d->transcribeRuns.end()) return;   // cancelled meanwhile
                 it->mixPhase = false;
                 it->mixConn.reset();
                 if (ok) {
@@ -2719,14 +2715,14 @@ void AppController::transcribeMeeting(const QString& meetingId)
                 const QString msg = tr("A lekeverés sikertelen — az átírás nem indult.");
                 JobError je;
                 je.message = msg;
-                je.detail = d->mixdownFailReason.take(meetingId);   // pl. melyik sáv fájlja hiányzik
+                je.detail = d->mixdownFailReason.take(meetingId);   // e.g. which track's file is missing
                 d->jobs->fail(meetingId, JobKind::Transcribe, je);
                 emit errorOccurred(msg);
             });
         Impl::TranscribeRun& tr_ = d->transcribeRuns[meetingId];
         tr_.mixPhase = true;
         tr_.mixConn = conn;
-        // Ha már futott egy önálló keverés, arra várunk — megszakításkor azt nem állítjuk le.
+        // If a standalone mix was already running, we wait for it; on cancel we do not stop that one.
         tr_.ownsMixdown = !d->mixdownProcs.contains(meetingId);
         d->jobs->setStage(meetingId, JobKind::Transcribe, QStringLiteral("mixdown"),
                           StageState::Running, 0);
@@ -2742,20 +2738,20 @@ void AppController::retranscribeMeeting(const QString& meetingId, bool keepBacku
     Meeting m = d->store->load(meetingId);
     if (m.id.isEmpty()) { emit errorOccurred(tr("Ismeretlen meeting: %1").arg(meetingId)); return; }
     if (d->jobs->isRunning(meetingId, JobKind::Transcribe))
-        return;   // már fut egy átírás ezen a meetingen
-    // A mostani átirat (a nevekkel és a kézi javításokkal) másolatként megmarad, ha kérték.
+        return;   // a transcription is already running on this meeting
+    // The current transcript (with the names and manual corrections) stays as a copy, if requested.
     if (keepBackup) speakeredit::backupTranscript(m);
-    // A beszélő-hozzárendelések (speakerMap) ÉS a kézi sor-javítások (overlay) egyaránt az ÚJ
-    // átirat megérkezésekor törlődnek, nem előre: a speakerMap az átírás finished-ágában, az
-    // overlay a transcriptReady horogban. Ha az újra-átírás megszakad vagy elbukik, a régi
-    // átirat a neveivel és a soronkénti javításaival együtt érintetlen marad.
+    // Both the speaker assignments (speakerMap) AND the manual line corrections (overlay) are cleared when the
+    // NEW transcript arrives, not beforehand: the speakerMap in the transcription's finished branch, the
+    // overlay in the transcriptReady hook. If the re-transcription is cancelled or fails, the old transcript
+    // stays untouched with its names and per-line corrections.
     d->clearSpeakersOnTranscript.insert(meetingId);
     transcribeMeeting(meetingId);
 }
 
 void AppController::transcribeFromMixdown(const QString& meetingId)
 {
-    // A feladat lezárása hibával még a szolgáltató-hívás előtt (belső segéd).
+    // Closing the task with an error before the provider call (an internal helper).
     auto abortJob = [this, meetingId](const QString& msg) {
         d->transcribeRuns.remove(meetingId);
         d->clearSpeakersOnTranscript.remove(meetingId);
@@ -2776,8 +2772,8 @@ void AppController::transcribeFromMixdown(const QString& meetingId)
     const AppSettings s = d->settings->settings();
     const QString sttId = s.sttProviderId;
     ProviderConfig cfg = s.sttSelected();
-    // Tanara Cloud: ugyanaz a Soniox-provider a gateway-configgal; a futás (job id, terhelés,
-    // visszaírás, hiba) a válasz-hookból töltődik.
+    // Tanara Cloud: the same Soniox provider with the gateway config; the run (job id, charge,
+    // write-back, error) is filled from the response hook.
     CloudRunPtr run;
     bool cloudDiarization = true;
     if (usesCloud(WorkflowStep::Transcribe)) {
@@ -2786,8 +2782,8 @@ void AppController::transcribeFromMixdown(const QString& meetingId)
         const std::optional<CloudModel> cm = findModel(d->cloud->models(), cfg.model);
         cloudDiarization = !cm.has_value() || cm->diarization;
     } else {
-        // Az API-kulcs slotja provider-függő — a descriptor secretKey-e mondja meg
-        // (soniox.apiKey / stt.whisper.apiKey / …), nem hardcode-oljuk a Sonioxra.
+        // The API key's slot is provider-dependent: the descriptor's secretKey tells it (soniox.apiKey /
+        // stt.whisper.apiKey / ...); we do not hardcode it to Soniox.
         const ProviderDescriptor sttDesc = SttProviderRegistry::instance().descriptor(sttId);
         for (const ConfigField& f : sttDesc.fields)
             if (f.isSecret && !f.secretKey.isEmpty()) {
@@ -2795,8 +2791,8 @@ void AppController::transcribeFromMixdown(const QString& meetingId)
                 break;
             }
     }
-    // Az utolsó sikertelen HTTP-váltás megjegyzése (saját kulcsos módban is) — ebből lesz a
-    // megmaradó hiba technikai sora („HTTP 401 · invalid_api_key”).
+    // Remembering the last failed HTTP exchange (in own-key mode too): this becomes the remembered error's
+    // technical line ("HTTP 401 | invalid_api_key").
     const auto sink = std::make_shared<FailureSink>();
     captureFailures(cfg, sink);
 
@@ -2812,20 +2808,20 @@ void AppController::transcribeFromMixdown(const QString& meetingId)
         QDir(m.folder).filePath(m.mixdownFile.isEmpty() ? QStringLiteral("mixdown.mp3")
                                                         : m.mixdownFile);
 
-    // EGYETLEN kérés a mixdownnal. A beszélő-szeparációt a Soniox diarizációja adja
-    // („Beszélő N" címkék); a NEVET utólag a voice-ID / kézi átnevezés oldja fel.
+    // A SINGLE request with the mixdown. Speaker separation comes from Soniox diarization ("Speaker N"
+    // labels); the NAME is resolved afterwards by voice ID / manual rename.
     SttRequest req;
     req.audioFilePath = mixPath;
     req.trackId = QStringLiteral("mixdown");
     req.languageHints = s.languageHints;
-    // Context-envelope → a Soniox strukturált „context" objektuma (general/text/terms):
-    // cím + a felhasználó megjegyzése (nevek, szakszavak, félrehallás-javítások) + a résztvevő-
-    // nevek. Az észlelt hívás-alkalmazás NEM megy (semmit nem mond az átírónak).
+    // Context envelope -> Soniox's structured "context" object (general/text/terms): the title + the user's
+    // note (names, jargon, mishearing corrections) + the participant names. The detected call app is NOT sent
+    // (it tells the transcriber nothing).
     meetingnotes::fillSttContext(req, m);
     req.diarization = true;
     if (run && !cloudDiarization) {
-        // A választott cloud-szint nem diarizál (pl. Gyors): mindenki „Beszélő 1” lesz
-        // (a felvétel sávjai megmaradnak; a K-04 figyelmeztetett).
+        // The chosen cloud tier does not diarize (e.g. Fast): everyone becomes "Speaker 1" (the recording's tracks
+        // stay; the pre-run warning covered this).
         req.diarization = false;
         req.speakerLabel = QStringLiteral("1");
     }
@@ -2833,8 +2829,8 @@ void AppController::transcribeFromMixdown(const QString& meetingId)
 
     SttJob* job = provider->transcribe(req);
 
-    // Strukturált állapot: megszakításhoz a job, becsléshez a korábbi futások sebessége
-    // (ugyanazzal a szolgáltatóval/modellel); minta nélkül nincs becslés.
+    // Structured state: the job for cancelling, the earlier runs' speed for the estimate (with the same
+    // provider/model); without a sample there is no estimate.
     const QString statsKey = QStringLiteral("transcribe/%1/%2").arg(sttId, cfg.model);
     {
         Impl::TranscribeRun& tr_ = d->transcribeRuns[meetingId];
@@ -2856,7 +2852,7 @@ void AppController::transcribeFromMixdown(const QString& meetingId)
 
     connect(job, &SttJob::uploadProgress, this, [this, meetingId](qint64 sent, qint64 total) {
         if (total <= 0) return;
-        // Valós bájt-arány. A 100% után a szolgáltató állapotváltása zárja le a szakaszt.
+        // Real byte ratio. After 100% the provider's state change closes the stage.
         const JobProgress jp = d->jobs->job(meetingId, JobKind::Transcribe);
         const JobStage* st = jp.stage(QStringLiteral("upload"));
         if (st && st->state == StageState::Running)
@@ -2865,9 +2861,9 @@ void AppController::transcribeFromMixdown(const QString& meetingId)
     });
     connect(job, &SttJob::stateChanged, this, [this, id = m.id, diarizing](JobState st) {
         emit jobProgress(id, sttPhase(st));
-        // A szolgáltatók az átírás alatt NEM adnak százalékot — csak állapotot (feltöltés /
-        // sorban áll / feldolgozás). A beszélő-szétválasztást a szolgáltató az átírással egy
-        // menetben végzi, ezért a két szakasz együtt fut és együtt zárul.
+        // During transcription the providers give NO percentage, only a state (upload / queued / processing).
+        // The provider does speaker separation in the same pass as transcription, so the two stages run and
+        // close together.
         const JobKind k = JobKind::Transcribe;
         if (st == JobState::Uploading) {
             d->jobs->setStage(id, k, QStringLiteral("upload"), StageState::Running, 0);
@@ -2880,8 +2876,8 @@ void AppController::transcribeFromMixdown(const QString& meetingId)
                 d->jobs->setStage(id, k, QStringLiteral("diarize"), StageState::Running);
         }
     });
-    // A részletes poll-üzenet (eltelt idő + életjel) is jusson ki a UI-ra, hogy a hosszú
-    // async feldolgozás alatt látszódjon: fut és a kapcsolat él.
+    // The detailed poll message (elapsed time + heartbeat) should also reach the UI, so that during a long
+    // async processing it shows it is running and the connection is alive.
     connect(job, &SttJob::progress, this, [this, id = m.id](int, const QString& msg) {
         emit jobProgress(id, msg);
         d->jobs->setMessage(id, JobKind::Transcribe, msg);
@@ -2890,11 +2886,11 @@ void AppController::transcribeFromMixdown(const QString& meetingId)
             [this, meetingId, providerObj, run, job, statsKey, sttClock, diarizing](const TrackTranscript& result) {
         d->transcribeRuns.remove(meetingId);
         if (providerObj) providerObj->deleteLater();
-        // A job a best-effort takarító DELETE-jeit még kiküldi; utána törölhető.
+        // The job still sends its best-effort cleanup DELETEs; after that it can be deleted.
         QTimer::singleShot(30000, job, &QObject::deleteLater);
 
-        // FRISS meeting: az átírás percekig futhat, közben a felhasználó átnevezhette,
-        // szerkeszthette (vagy törölhette) a meetinget — a régi példány mentése felülírná.
+        // A FRESH meeting: transcription may run for minutes, during which the user may have renamed or edited
+        // (or deleted) the meeting; saving the old instance would overwrite that.
         Meeting mm = d->store->load(meetingId);
         if (mm.id.isEmpty()) {
             d->clearSpeakersOnTranscript.remove(meetingId);
@@ -2903,8 +2899,8 @@ void AppController::transcribeFromMixdown(const QString& meetingId)
             return;
         }
 
-        // ÜRES eredmény (a szolgáltató egyetlen szót sem adott vissza) = HIBA: nem írjuk rá a
-        // meglévő átiratra. A korábbi átirat, a beszélő-nevek és a kézi javítások érintetlenek.
+        // An EMPTY result (the provider returned not a single word) = an ERROR: we do not write it over the
+        // existing transcript. The earlier transcript, speaker names and manual corrections are untouched.
         if (result.tokens.isEmpty()) {
             d->clearSpeakersOnTranscript.remove(meetingId);
             const QString msg = mm.hasTranscript
@@ -2914,16 +2910,16 @@ void AppController::transcribeFromMixdown(const QString& meetingId)
             JobError je;
             je.message = msg;
             d->jobs->fail(meetingId, JobKind::Transcribe, je);
-            finishCloudRun(run);   // a futás lezárul (az esetleges terhelés így is megjelenik)
+            finishCloudRun(run);   // the run closes (any charge shows up this way too)
             emit errorOccurred(msg);
             return;
         }
-        // Volt-e már átirat EZELŐTT a futás előtt (a flag-től függetlenül — lásd lent).
+        // Whether there was a transcript BEFORE the run (independent of the flag; see below).
         const bool hadTranscript = mm.hasTranscript
             || QFile::exists(QDir(mm.folder).filePath(QStringLiteral("transcript.tokens.json")));
 
         TrackTranscript res = result;
-        // A Soniox diarizációs id-ket (1,2,…) semleges „Beszélő N" címkére fordítjuk.
+        // We translate Soniox's diarization ids (1,2,...) into a neutral "Speaker N" label.
         for (TranscriptToken& tok : res.tokens)
             tok.speaker = tok.speaker.isEmpty()
                 ? QStringLiteral("Beszélő")
@@ -2936,11 +2932,11 @@ void AppController::transcribeFromMixdown(const QString& meetingId)
         writeTokensJson(QDir(mm.folder).filePath(QStringLiteral("transcript.tokens.json")), merged);
         writeSegmentsJson(QDir(mm.folder).filePath(QStringLiteral("transcript.segments.json")), merged.segments());
         d->mergedCache.insert(mm.id, merged);
-        ++d->transcriptGen[meetingId];   // új átirat → a futó azonosítások eredménye elavult
-        // Újra-átírás: az új diarizáció „Beszélő N” címkéi MÁS embereket jelölhetnek — a régi
-        // hozzárendelések az ÚJ átirattal együtt törlődnek. NEM csak a retranscribeMeeting
-        // jelzőjére: az hibánál elvész, és az utána jövő sima (újrapróbált) átírás a régi
-        // neveket hagyná az új címkéken. Ezért: ha volt már átirat, mindig törlünk.
+        ++d->transcriptGen[meetingId];   // a new transcript: the running identifications' results are stale
+        // Re-transcription: the new diarization's "Speaker N" labels may mean OTHER people, so the old
+        // assignments are cleared together with the NEW transcript. NOT only on retranscribeMeeting's flag: that
+        // is lost on failure, and a plain (retried) transcription after it would leave the old names on the new
+        // labels. So whenever a transcript already existed, we always clear.
         const bool flagged = d->clearSpeakersOnTranscript.remove(meetingId);
         if (flagged || hadTranscript)
             mm.speakerMap.clear();
@@ -2954,15 +2950,15 @@ void AppController::transcribeFromMixdown(const QString& meetingId)
         d->jobs->setStage(meetingId, k, QStringLiteral("transcribe"), StageState::Done);
         if (diarizing)
             d->jobs->setStage(meetingId, k, QStringLiteral("diarize"), StageState::Done);
-        d->jobs->markIdentified(meetingId, false);   // az új átiratra még nem futott azonosítás
+        d->jobs->markIdentified(meetingId, false);   // identification has not run on the new transcript yet
 
         emit transcriptReady(mm.id, mdPath);
-        finishCloudRun(run);   // K-07: „Ez az átírás $0,41 volt.” (csak cloud-futásnál)
-        // Voice-ID: a diarizált beszélők auto-párosítása a lenyomat-DB ellen — háttérszálon,
-        // az átírás-feladat utolsó szakaszaként (a UI közben használható, megszakítható).
-        // (Ha a felhasználó az M03 kapcsolóval kihagyta, az átirat névtelen beszélőkkel kész.)
-        // A „Ki volt ott?" döntés (jóváhagyás / „csak én") az átirat előtt megszületett: azt
-        // alkalmazzuk, az automatikus azonosítás kimarad. Különben a jelöltek kötése + azonosítás.
+        finishCloudRun(run);   // "This transcription cost $0.41." (cloud runs only)
+        // Voice ID: auto-matching the diarized speakers against the voiceprint DB, on a background thread, as
+        // the last stage of the transcription task (the UI stays usable, cancellable). (If the user skipped it
+        // with the toggle, the transcript finishes with anonymous speakers.) The "Who was there?" decision
+        // (approval / "only me") was made before the transcript: we apply that, and automatic identification is
+        // skipped. Otherwise the candidates' binding + identification.
         const bool decided = applyParticipantsToTranscript(meetingId);
         if (decided && d->voiceModelUsable())
             d->jobs->setStage(meetingId, JobKind::Transcribe, QStringLiteral("identify"),
@@ -2975,11 +2971,11 @@ void AppController::transcribeFromMixdown(const QString& meetingId)
         const Impl::TranscribeRun info = d->transcribeRuns.take(meetingId);
         d->clearSpeakersOnTranscript.remove(meetingId);
         if (providerObj) providerObj->deleteLater();
-        QTimer::singleShot(30000, job, &QObject::deleteLater);   // a takarító DELETE-ek után
+        QTimer::singleShot(30000, job, &QObject::deleteLater);   // after the cleanup DELETEs
 
         if (info.cancelRequested) {
-            // Megszakítás: nincs hiba, nincs errorOccurred. A szolgáltatónál a job takarított
-            // (feltöltött hang + átírás törölve); a korábbi átirat (ha volt) érintetlen.
+            // Cancel: no error, no errorOccurred. At the provider the job cleaned up (the uploaded audio +
+            // transcript deleted); the earlier transcript (if any) is untouched.
             if (run) {
                 if (!run->transcriptionId.isEmpty())
                     d->cloud->removePendingTranscription(run->transcriptionId);
@@ -2997,9 +2993,9 @@ void AppController::transcribeFromMixdown(const QString& meetingId)
     });
 }
 
-// A ténylegesen küldendő rendszer-prompt: settings-override → fájl-override
-// (<metadataDir>/prompts/<id>.md) → beépített default (PromptLibrary), a végén a
-// célnyelv alkalmazásával ({{NYELV}} placeholder / direktíva).
+// The system prompt actually to be sent: settings override -> file override
+// (<metadataDir>/prompts/<id>.md) -> built-in default (PromptLibrary), finally with the target language
+// applied ({{NYELV}} placeholder / directive).
 static QString resolvedPrompt(const AppSettings& s, const QString& userOverride, const char* id)
 {
     const QString base = userOverride.trimmed().isEmpty()
@@ -3011,7 +3007,7 @@ static QString resolvedPrompt(const AppSettings& s, const QString& userOverride,
 void AppController::summarizeMeeting(const QString& meetingId)
 {
     if (d->jobs->isRunning(meetingId, JobKind::Summarize))
-        return;   // már fut
+        return;   // already running
 
     Meeting m = d->store->load(meetingId);
     if (m.id.isEmpty()) { emit errorOccurred(tr("Ismeretlen meeting: %1").arg(meetingId)); return; }
@@ -3022,18 +3018,18 @@ void AppController::summarizeMeeting(const QString& meetingId)
     MergedTranscript merged = d->mergedCache.value(meetingId);
     if (merged.tokens.isEmpty())
         merged = readTokensJson(QDir(m.folder).filePath(QStringLiteral("transcript.tokens.json")));
-    // Tartalmi védőág: a canRun(Summarize) a meeting.hasTranscript flagre kapuz, de ha a
-    // tokens.json hiányzik/üres (kézzel törölt, részleges írás, rosszul bemásolt meeting),
-    // ne induljon összefoglaló üres átiratra — tükrözi az eredeti tartalom-alapú guardot.
+    // A content guard: canRun(Summarize) gates on the meeting.hasTranscript flag, but if tokens.json is
+    // missing/empty (deleted by hand, a partial write, a wrongly copied meeting), no summary should start on
+    // an empty transcript; this mirrors the original content-based guard.
     if (merged.tokens.isEmpty()) {
         emit errorOccurred(tr("Nincs átirat — előbb futtass átírást."));
         return;
     }
-    speakeredit::applyResolvedSpeakers(merged, m);   // a Gemma a valódi neveket lássa
+    speakeredit::applyResolvedSpeakers(merged, m);   // Gemma should see the real names
 
     const AppSettings s = d->settings->settings();
     const QString llmId = s.llmProviderId;
-    CloudRunPtr run;   // cloud: EGY futás (egy job id) az összes jegyzet- és összegző hívásra
+    CloudRunPtr run;   // cloud: ONE run (one job id) for all the note and merge calls
     ProviderConfig cfg = llmConfigFor(run, meetingId, QStringLiteral("summary"), QStringLiteral("quick"));
     const auto sink = std::make_shared<FailureSink>();
     captureFailures(cfg, sink);
@@ -3049,17 +3045,17 @@ void AppController::summarizeMeeting(const QString& meetingId)
 
     SummaryRequest req = summaryRequestFor(s, merged, m, cfg.model, cfg.maxTokens);
     req.temperature = cfg.temperature;
-    // A forrás-hivatkozásokhoz: a megszólalások a mostani (feloldott) beszélővel — ez lesz az
-    // összefoglaló beszélő-pillanatképe (a célzott elavulás ehhez hasonlít).
+    // For the source references: the utterances with their current (resolved) speaker; this becomes the
+    // summary's speaker snapshot (the targeted staleness compares against it).
     req.sourceLines = speakeredit::resolvedSourceLines(m);
-    req.adaptToContext = !run;   // a Tanara Cloudnál a kontextus a gateway dolga
+    req.adaptToContext = !run;   // with Tanara Cloud the context is the gateway's business
     const SummaryPlan plan = SummaryService::plan(req);
     const auto ctx = std::make_shared<Impl::LlmContextState>();
     ctx->need = SummaryService::contextNeed(req);
 
-    // Strukturált feladat: rövid megbeszélésnél egy szakasz (egy hívás), hosszabbnál
-    // „Jegyzetelés részenként” (k / n rész) + „Összegzés”. Becslés csak a korábbi, ugyanazzal
-    // a modellel mért futásokból (egység: az átirat hossza).
+    // Structured task: for a short meeting one stage (one call), for a longer one "Notes per part" (k / n
+    // parts) + "Summarizing". The estimate comes only from earlier runs measured with the same model (unit:
+    // the transcript's length).
     const QString key = Impl::llmKey(meetingId, JobKind::Summarize);
     const QString statsKey = QStringLiteral("summary-notes/%1/%2").arg(llmId, cfg.model);
     const double units = double(merged.renderMarkdown().size());
@@ -3067,7 +3063,7 @@ void AppController::summarizeMeeting(const QString& meetingId)
     if (plan.singleCall) {
         stages.append({ QStringLiteral("single"), tr("Összefoglalás"), StageState::Waiting, -1, QString() });
     } else {
-        // A korábbi futásból kész részek már induláskor látszanak (a modell betöltése alatt is).
+        // Parts finished in an earlier run are visible at startup (during the model load too).
         QString notesDetail = tr("%n rész", nullptr, plan.parts);
         if (plan.cachedParts > 0) notesDetail += tr(" · %n korábbi futásból", nullptr, plan.cachedParts);
         stages.append({ QStringLiteral("notes"), tr("Jegyzetelés részenként"), StageState::Waiting, -1,
@@ -3082,7 +3078,7 @@ void AppController::summarizeMeeting(const QString& meetingId)
     auto clock = std::make_shared<QElapsedTimer>();
     clock->start();
 
-    // Kontextushoz igazított újrabontás: a szakaszok a részenkénti jegyzetelésre váltanak.
+    // Context-adapted re-split: the stages switch to per-part notes.
     connect(svc, &SummaryService::partsChanged, this, [this, meetingId](int parts, int cached) {
         if (!d->jobs->isRunning(meetingId, JobKind::Summarize)) return;
         QVector<JobStage> stages;
@@ -3126,7 +3122,7 @@ void AppController::summarizeMeeting(const QString& meetingId)
         d->llmRuns.remove(key);
         if (providerObj) providerObj->deleteLater();
         svc->deleteLater();
-        // FRISS meeting (az összefoglalás alatt módosulhatott / törlődhetett).
+        // A FRESH meeting (it may have changed / been deleted during the summarization).
         Meeting mm = d->store->load(meetingId);
         if (mm.id.isEmpty()) {
             d->jobs->cancelled(meetingId, JobKind::Summarize);
@@ -3136,7 +3132,7 @@ void AppController::summarizeMeeting(const QString& meetingId)
         const QString md = sum.renderMarkdown();
         const QString mdPath = QDir(mm.folder).filePath(QStringLiteral("summary.md"));
         writeTextFile(mdPath, md);
-        // A strukturált forma + a keletkezés metaadatai (summary.json) — az M07 ebből rajzol.
+        // The structured form + the provenance (summary.json); the summary view draws from this.
         SummaryDocument doc;
         doc.exists = true;
         doc.summary = sum;
@@ -3145,10 +3141,10 @@ void AppController::summarizeMeeting(const QString& meetingId)
         doc.meta.providerId = llmId;
         doc.meta.model = model;
         doc.meta.mode = SummaryMode::Quick;
-        doc.meta.contextNote = note;            // a megjegyzés, amellyel készült
+        doc.meta.contextNote = note;            // the note it was made with
         doc.meta.contextNoteKnown = true;
         summarystore::save(mm.folder, doc);
-        // másolat a notes (vault) mappába
+        // a copy into the notes (vault) folder
         QDir().mkpath(d->notesDir);
         const QString noteName = QStringLiteral("%1 %2.md")
             .arg(mm.startedAt.toString(QStringLiteral("yyyy-MM-dd")), slugify(mm.title));
@@ -3170,11 +3166,11 @@ void AppController::summarizeMeeting(const QString& meetingId)
         failCloudRun(run, tr("Összefoglaló hiba: %1").arg(je.message));
     });
 
-    // A modell előkészítése (LM Studio: betöltés a szükséges kontextussal), utána indul.
+    // Preparing the model (LM Studio: loading with the needed context), then it starts.
     LlmModelPreparer* prep = d->prepareLlm(meetingId, JobKind::Summarize, cfg, bool(run), ctx,
         [this, svc = QPointer<SummaryService>(svc), req, ctx, cfg, clock]() mutable {
             if (!svc) return;
-            clock->restart();   // a modell betöltése nem számít a futás sebességébe (becslés)
+            clock->restart();   // the model load does not count in the run's speed (estimate)
             req.contextLimit = ctx->loadedContext > 0 ? ctx->loadedContext
                                                       : d->learnedContext.value(Impl::serverKey(cfg));
             svc->summarize(req);
@@ -3190,13 +3186,13 @@ void AppController::summarizeMeeting(const QString& meetingId)
     if (prep && d->llmRuns.contains(key)) d->llmRuns[key].preparer = prep;
 }
 
-// A gyors összefoglaló kérése a beállításokból: a három prompt (felülírás → fájl → beépített,
-// a célnyelvvel), a kontextus és a részjegyzet-gyorsítótár útja. model / maxTokens a ténylegesen
-// használt provider-configból jön (cloud: a fedezet-szabály miatt mérsékelt max_tokens).
+// The quick summary request from the settings: the three prompts (override -> file -> built-in, with the
+// target language), the context and the part-note cache path. model / maxTokens come from the provider
+// config actually used (cloud: a moderate max_tokens because of the coverage rule).
 static SummaryRequest summaryRequestFor(const AppSettings& s, const MergedTranscript& merged,
                                         const Meeting& m, const QString& model, int maxTokens)
 {
-    constexpr int kNotesMaxTokens = 3000;   // egy részjegyzet bőven belefér
+    constexpr int kNotesMaxTokens = 3000;   // one part note fits well within it
     SummaryRequest req;
     req.transcript = merged;
     req.contextNotes = m.contextNote.trimmed();
@@ -3212,17 +3208,17 @@ static SummaryRequest summaryRequestFor(const AppSettings& s, const MergedTransc
     return req;
 }
 
-// ---- komplex (több körös) összefoglaló ------------------------------------
+// ---- complex (multi-pass) summary ------------------------------------------
 
 void AppController::extractMeetingTopics(const QString& meetingId)
 {
     if (d->jobs->isRunning(meetingId, JobKind::ExtractTopics))
-        return;   // már fut
+        return;   // already running
 
     Meeting m = d->store->load(meetingId);
     if (m.id.isEmpty()) { emit errorOccurred(tr("Ismeretlen meeting: %1").arg(meetingId)); return; }
 
-    // Ha már van (esetleg szerkesztett) téma-lista, azt adjuk vissza — nincs újrakinyerés.
+    // If a (possibly edited) topic list already exists, we return that; no re-extraction.
     const QString topicsPath = QDir(m.folder).filePath(QStringLiteral("summary.topics.json"));
     const QVector<SummaryTopic> existing = readTopicsJson(topicsPath);
     if (!existing.isEmpty()) { emit topicsReady(m.id, existing); return; }
@@ -3263,14 +3259,13 @@ void AppController::extractMeetingTopics(const QString& meetingId)
             [this, id = m.id, topicsPath, providerObj, svc, run, key, statsKey, units, clock]
             (const QVector<SummaryTopic>& topics) {
         d->llmRuns.remove(key);
-        if (QFileInfo(topicsPath).absoluteDir().exists())   // (a meeting közben törlődhetett)
+        if (QFileInfo(topicsPath).absoluteDir().exists())   // (the meeting may have been deleted meanwhile)
             writeTopicsJson(topicsPath, topics);
         if (providerObj) providerObj->deleteLater();
         svc->deleteLater();
-        // Cloud: a témagyűjtés a komplex futás ELSŐ része — a futás (és az X-Tanara-Job-Id)
-        // nyitva marad, a téma-elemzések és az összegzés ugyanezt használják; a K-07 a
-        // futás végén a teljes összeget mutatja (grill-döntés 29: egy futás = egy azonosító).
-        // Itt csak az egyenleg-chip frissül.
+        // Cloud: topic gathering is the FIRST part of the complex run; the run (and the X-Tanara-Job-Id) stays
+        // open, the topic analyses and the merge use the same one; at the end of the run the total is shown
+        // (one run = one id). Here only the balance chip refreshes.
         if (run) {
             d->complexRuns.insert(id, run);
             if (run->balance.isValid() || run->calls > 0)
@@ -3298,7 +3293,7 @@ void AppController::extractMeetingTopics(const QString& meetingId)
     LlmModelPreparer* prep = d->prepareLlm(m.id, JobKind::ExtractTopics, cfg, bool(run), ctx,
         [svc = QPointer<ComplexSummaryService>(svc), transcriptMd, note = m.contextNote.trimmed(),
          topicPrompt, cfg, clock]() {
-            clock->restart();   // a modell betöltése nem számít a futás sebességébe (becslés)
+            clock->restart();   // the model load does not count in the run's speed (estimate)
             if (svc) svc->requestTopics(transcriptMd, note, topicPrompt, cfg.model, cfg.temperature, cfg.maxTokens);
         },
         [this, id = m.id, providerObj = QPointer<QObject>(providerObj),
@@ -3325,13 +3320,13 @@ void AppController::generateComplexSummary(const QString& meetingId, const QVect
     if (m.id.isEmpty()) { emit errorOccurred(tr("Ismeretlen meeting: %1").arg(meetingId)); return; }
     if (topics.isEmpty()) { emit errorOccurred(tr("Nincs téma a komplex összefoglalóhoz.")); return; }
 
-    // A (szerkesztett) téma-lista perzisztálása — folytatható marad.
+    // Persisting the (edited) topic list: it stays resumable.
     writeTopicsJson(QDir(m.folder).filePath(QStringLiteral("summary.topics.json")), topics);
     emit topicsChanged(meetingId);
 
-    // Csak a MÉG ELEMZETLEN témák mennek a sorba (a kész elemzés a lemezen van) —
-    // megszakítás/hiba után az újraindítás így onnan folytat, ahol tartott. Egy már kész
-    // téma újrafuttatása a kártya saját gombjával (analyzeTopic) kérhető.
+    // Only the topics NOT YET ANALYZED go into the queue (finished analyses are on disk), so after a
+    // cancel/error a restart resumes where it stopped. Rerunning an already finished topic can be requested
+    // with the card's own button (analyzeTopic).
     const QVector<TopicAnalysis> existing =
         readAnalysesJson(QDir(m.folder).filePath(QStringLiteral("summary.analyses.json")));
     QSet<QString> doneIds;
@@ -3341,10 +3336,10 @@ void AppController::generateComplexSummary(const QString& meetingId, const QVect
     for (const SummaryTopic& t : topics)
         if (!doneIds.contains(t.id)) missing.append(t);
 
-    // Cloud: a komplex összefoglaló (témagyűjtés + téma-elemzések + reduce) EGY futás, egy
-    // X-Tanara-Job-Id-vel. Ha a témagyűjtés futása (vagy egy már futó köteg) még nyitva van,
-    // azt folytatjuk; különben — pl. megszakítás / hiba utáni folytatásnál, ahol a futás
-    // már lezárult — új futás indul, új azonosítóval.
+    // Cloud: the complex summary (topic gathering + topic analyses + reduce) is ONE run with one
+    // X-Tanara-Job-Id. If the topic-gathering run (or an already running batch) is still open, we continue it;
+    // otherwise (e.g. continuing after a cancel / error, where the run has already closed) a new run starts
+    // with a new id.
     if (usesCloud(WorkflowStep::Summarize)) {
         CloudRunPtr run = d->complexRuns.value(meetingId);
         if (!run) {
@@ -3366,7 +3361,7 @@ void AppController::analyzeTopic(const QString& meetingId, const SummaryTopic& t
         return;
     }
 
-    // A (szerkesztett) téma átvezetése a topics.json-ba — a reduce sorrendje/tartalma innen jön.
+    // Carrying the (edited) topic into topics.json: the reduce's order/content comes from there.
     const QString topicsPath = QDir(m.folder).filePath(QStringLiteral("summary.topics.json"));
     QVector<SummaryTopic> topics = readTopicsJson(topicsPath);
     bool found = false;
@@ -3387,7 +3382,7 @@ void AppController::enqueueTopicAnalyses(const QString& meetingId,
 
     int added = 0;
     for (const SummaryTopic& t : topics) {
-        // Dedup: ha ugyanez a téma már fut vagy sorban áll, nem kerül be még egyszer.
+        // Dedup: if the same topic is already running or queued, it does not go in again.
         if (d->topicJobActive && d->activeTopicMeetingId == meetingId && d->activeTopicId == t.id)
             continue;
         const bool queued = std::any_of(d->topicJobQueue.cbegin(), d->topicJobQueue.cend(),
@@ -3396,11 +3391,11 @@ void AppController::enqueueTopicAnalyses(const QString& meetingId,
             continue;
         d->topicJobQueue.append({ meetingId, t });
         ++added;
-        d->jobs->clearTopicError(meetingId, t.id);   // új kísérlet → a régi hiba érvényét veszti
+        d->jobs->clearTopicError(meetingId, t.id);   // a new attempt: the old error loses its validity
         emit topicAnalysisQueued(meetingId, t.id);
         emit topicStatusChanged(meetingId, t.id);
     }
-    // Strukturált feladat: meetingenként EGY „Témák elemzése” (darab-haladással).
+    // Structured task: ONE "Analyzing topics" per meeting (with count progress).
     if (added > 0 || d->jobs->isRunning(meetingId, JobKind::AnalyzeTopics)) {
         d->topicBatchTotal[meetingId] += added;
         if (!d->jobs->isRunning(meetingId, JobKind::AnalyzeTopics))
@@ -3413,9 +3408,9 @@ void AppController::enqueueTopicAnalyses(const QString& meetingId,
 
 void AppController::startNextTopicJob()
 {
-    // A sor végére értünk? Meetingenként lezárjuk a batch-et: queueFinished + (ha kérték
-    // és nem volt bukás) auto-reduce. Több meeting jobjai elvben keveredhetnek a sorban,
-    // ezért csak akkor zárunk le egy meetinget, ha már nincs rá váró job.
+    // Did we reach the end of the queue? We close the batch per meeting: queueFinished + (if requested and
+    // nothing failed) auto-reduce. Jobs of several meetings may in principle mix in the queue, so we close a
+    // meeting only when no job is waiting for it.
     if (d->topicJobQueue.isEmpty()) {
         d->topicJobActive = false;
         d->activeTopicMeetingId.clear();
@@ -3426,8 +3421,8 @@ void AppController::startNextTopicJob()
         for (auto it = counts.cbegin(); it != counts.cend(); ++it) {
             const QString& id = it.key();
             const int ok = it.value().first, fail = it.value().second;
-            // Strukturált lezárás: bukott téma → az összefoglaló-lépés hibája (a témánkénti
-            // részletek a topicStatuses-ban); különben kész.
+            // Structured closing: a failed topic -> the summary step's error (the per-topic details are in
+            // topicStatuses); otherwise done.
             d->topicBatchTotal.remove(id);
             if (d->jobs->isRunning(id, JobKind::AnalyzeTopics)) {
                 if (fail > 0) {
@@ -3441,15 +3436,15 @@ void AppController::startNextTopicJob()
             emit topicAnalysisQueueFinished(id, ok, fail);
             const bool wantReduce = d->reduceWhenDone.remove(id);
             if (wantReduce && fail == 0) {
-                finalizeComplexSummary(id);   // a cloud-futás a reduce-szal folytatódik
+                finalizeComplexSummary(id);   // the cloud run continues with the reduce
                 continue;
             }
             if (wantReduce)
                 emit jobProgress(id, tr(
                     "%1 téma elemzése nem sikerült — futtasd újra a kártyáján, majd kérd a végső összegzést.")
                     .arg(fail));
-            // Reduce nélkül záruló cloud-futás (egy téma újrafuttatása, vagy nem-cloud hiba):
-            // az eddigi terhelések összege a K-07-be.
+            // A cloud run closing without a reduce (rerunning one topic, or a non-cloud error): the sum of the
+            // charges so far goes to the cost feedback.
             const CloudRunPtr run = d->complexRuns.take(id);
             if (run && !run->lastError.isError())
                 finishCloudRun(run);
@@ -3458,7 +3453,7 @@ void AppController::startNextTopicJob()
     }
 
     const Impl::TopicJob job = d->topicJobQueue.takeFirst();
-    // Korai (szolgáltató-hívás előtti) bukás: megmaradó téma-hiba + a sor megy tovább.
+    // An early (pre-provider-call) failure: a remembered topic error + the queue goes on.
     auto failEarly = [this, &job](const QString& msg) {
         d->jobCounts[job.meetingId].second++;
         JobError je;
@@ -3481,11 +3476,11 @@ void AppController::startNextTopicJob()
 
     const AppSettings s = d->settings->settings();
     CloudRunPtr run = d->complexRuns.value(m.id);
-    if (usesCloud(WorkflowStep::Summarize) && !run) {   // egy téma újrafuttatása köteg nélkül
+    if (usesCloud(WorkflowStep::Summarize) && !run) {   // rerunning one topic without a batch
         run = newCloudRun(m.id, QStringLiteral("complex"));
         d->complexRuns.insert(m.id, run);
     }
-    if (run) run->kind = QStringLiteral("complex");   // a témagyűjtés után az elemzés-szakasz
+    if (run) run->kind = QStringLiteral("complex");   // after topic gathering, the analysis stage
     ProviderConfig cfg = llmConfigFor(run, m.id, QStringLiteral("complex"), QStringLiteral("complex"));
     const auto sink = std::make_shared<FailureSink>();
     captureFailures(cfg, sink);
@@ -3513,10 +3508,10 @@ void AppController::startNextTopicJob()
     connect(svc, &ComplexSummaryService::topicAnalysisReady, this,
             [this, meetingId = m.id, analysesPath, cleanup](const TopicAnalysis& a) {
         if (QFileInfo(analysesPath).absoluteDir().exists())
-            upsertAnalysisJson(analysesPath, a);   // AZONNAL lemezre — a munka nem veszhet el
+            upsertAnalysisJson(analysesPath, a);   // IMMEDIATELY to disk: the work must not be lost
         d->jobCounts[meetingId].first++;
         cleanup();
-        // A téma már nem „fut”: az állapot-lekérdezés (topicStatuses) innentől „kész”-t ad.
+        // The topic is no longer "running": the state query (topicStatuses) now gives "done".
         d->activeTopicId.clear();
         d->activeTopicRun = {};
         d->jobs->clearTopicError(meetingId, a.topicId);
@@ -3528,7 +3523,7 @@ void AppController::startNextTopicJob()
     const QString transcriptMd = merged.renderMarkdown();
     const QString analysisPrompt = resolvedPrompt(s, s.topicAnalysisPrompt, "analysis");
     const auto ctx = std::make_shared<Impl::LlmContextState>();
-    const auto prepError = std::make_shared<JobError>();   // az előkészítés hibája (ha az bukott)
+    const auto prepError = std::make_shared<JobError>();   // the preparation's error (if that failed)
     ctx->need = llmctx::callContextNeed(analysisPrompt.size() + transcriptMd.size() + m.contextNote.size()
                                         + job.topic.title.size() + job.topic.summary.size() + 400,
                                         cfg.maxTokens);
@@ -3543,9 +3538,9 @@ void AppController::startNextTopicJob()
         const QString e = je.message;
         d->jobs->setTopicError(meetingId, topicId, je);
         if (run && run->lastError.isError()) {
-            // Cloud-hiba (402 / 403 / 426 / 429 / 503 …): a meeting hátralévő témái ugyanezt
-            // kapnák → a sorból kivesszük őket; a K-12 részleges-hiba dialógus mutatja az eddig
-            // terhelt összeget és a „Folytatás”-t (csak a hátralévő részekért fizet).
+            // Cloud error (402 / 403 / 426 / 429 / 503 ...): the meeting's remaining topics would get the same, so we
+            // take them out of the queue; the partial-failure dialog shows the amount charged so far and "Continue"
+            // (it pays only for the remaining parts).
             emit topicAnalysisFailed(meetingId, topicId, run->lastError.message.isEmpty() ? e : run->lastError.message);
             emit topicStatusChanged(meetingId, topicId);
             for (int i = d->topicJobQueue.size() - 1; i >= 0; --i) {
@@ -3559,7 +3554,7 @@ void AppController::startNextTopicJob()
             d->complexRuns.remove(meetingId);
             failCloudRun(run, e);
         } else {
-            emit topicAnalysisFailed(meetingId, topicId, e);   // a többi téma megy tovább
+            emit topicAnalysisFailed(meetingId, topicId, e);   // the other topics go on
             emit topicStatusChanged(meetingId, topicId);
         }
         d->updateTopicCounts(meetingId);
@@ -3573,7 +3568,7 @@ void AppController::startNextTopicJob()
                                                cfg.model, cfg.temperature, cfg.maxTokens);
         },
         [svc = QPointer<ComplexSummaryService>(svc), prepError](const JobError& je) {
-            // Ugyanaz az út, mint egy szolgáltató-hibánál: a téma hibája megmarad, a sor megy tovább.
+            // The same path as for a provider error: the topic's error is remembered, the queue goes on.
             *prepError = je;
             if (svc) emit svc->failed(je.message);
         });
@@ -3583,13 +3578,13 @@ void AppController::startNextTopicJob()
 void AppController::finalizeComplexSummary(const QString& meetingId)
 {
     if (d->jobs->isRunning(meetingId, JobKind::Summarize))
-        return;   // már fut egy összegzés
+        return;   // a merge is already running
 
     Meeting m = d->store->load(meetingId);
     if (m.id.isEmpty()) { emit errorOccurred(tr("Ismeretlen meeting: %1").arg(meetingId)); return; }
 
-    // A lemezen lévő elemzések, a topics.json (szerkesztett) sorrendjében; az árva
-    // (törölt témához tartozó) elemzések kimaradnak.
+    // The analyses on disk, in the (edited) order of topics.json; orphan analyses (belonging to a deleted
+    // topic) are left out.
     const QVector<SummaryTopic> topics =
         readTopicsJson(QDir(m.folder).filePath(QStringLiteral("summary.topics.json")));
     const QVector<TopicAnalysis> all =
@@ -3604,7 +3599,7 @@ void AppController::finalizeComplexSummary(const QString& meetingId)
     }
 
     const AppSettings s = d->settings->settings();
-    CloudRunPtr run = d->complexRuns.take(meetingId);   // a köteg futása (ha volt) folytatódik
+    CloudRunPtr run = d->complexRuns.take(meetingId);   // the batch's run (if any) continues
     ProviderConfig cfg = llmConfigFor(run, meetingId, QStringLiteral("complex"), QStringLiteral("complex"));
     const auto sink = std::make_shared<FailureSink>();
     captureFailures(cfg, sink);
@@ -3643,9 +3638,9 @@ void AppController::finalizeComplexSummary(const QString& meetingId)
             [this, m, ordered, cleanup, run, key, llmId = s.llmProviderId, model = cfg.model]
             (const QString& execSummary, const QVector<ActionItem>&) {
         d->llmRuns.remove(key);
-        // Teendők KÓDBÓL (nem az LLM-től): a per-téma elemzések teendőit gyűjtjük össze,
-        // normalizált szöveg-dedup. Determinisztikus, modellfüggetlen — az LLM reduce-ának
-        // csak a vezetői összefoglaló marad (kevesebb hely a „hangos gondolkodásra").
+        // Action items from CODE (not from the LLM): we collect the per-topic analyses' action items with a
+        // normalized-text dedup. Deterministic, model-independent; only the executive summary is left to the LLM
+        // reduce (less room for "thinking out loud").
         QVector<ActionItem> mergedItems;
         QSet<QString> seen;
         for (const TopicAnalysis& a : ordered)
@@ -3658,7 +3653,7 @@ void AppController::finalizeComplexSummary(const QString& meetingId)
             }
         const QString md = renderComplexMarkdown(execSummary, mergedItems, ordered);
         Meeting mm = d->store->load(m.id);
-        if (mm.id.isEmpty()) {   // a meeting közben törlődött
+        if (mm.id.isEmpty()) {   // the meeting was deleted meanwhile
             cleanup();
             d->jobs->cancelled(m.id, JobKind::Summarize);
             finishCloudRun(run);
@@ -3666,8 +3661,8 @@ void AppController::finalizeComplexSummary(const QString& meetingId)
         }
         const QString mdPath = QDir(mm.folder).filePath(QStringLiteral("summary.md"));
         writeTextFile(mdPath, md);
-        // Strukturált forma + metaadat (summary.json): vezetői összefoglaló, összevont
-        // teendők, a témák döntéseinek uniója és maguk a téma-elemzések, sorrendben.
+        // Structured form + metadata (summary.json): executive summary, merged action items, the union of the
+        // topics' decisions, and the topic analyses themselves, in order.
         SummaryDocument doc;
         doc.exists = true;
         doc.markdown = md;
@@ -3682,7 +3677,7 @@ void AppController::finalizeComplexSummary(const QString& meetingId)
         doc.meta.providerId = llmId;
         doc.meta.model = model;
         doc.meta.mode = SummaryMode::Topics;
-        doc.meta.contextNote = m.contextNote.trimmed();   // a záró összegzés indulásakor
+        doc.meta.contextNote = m.contextNote.trimmed();   // at the start of the final merge
         doc.meta.contextNoteKnown = true;
         summarystore::save(mm.folder, doc);
         QDir().mkpath(d->notesDir);
@@ -3694,7 +3689,7 @@ void AppController::finalizeComplexSummary(const QString& meetingId)
         cleanup();
         d->jobs->finish(mm.id, JobKind::Summarize);
         emit summaryReady(mm.id, mdPath);
-        finishCloudRun(run);   // K-07: „Az összefoglaló $0,46 volt (12 rész).”
+        finishCloudRun(run);   // "The summary cost $0.46 (12 parts)."
     });
 
     LlmModelPreparer* prep = d->prepareLlm(meetingId, JobKind::Summarize, cfg, bool(run), ctx,
@@ -3713,8 +3708,8 @@ void AppController::finalizeComplexSummary(const QString& meetingId)
 }
 
 // =========================================================================================
-// Strukturált réteg az újratervezett főablakhoz: állapot-lekérdezés, megszakítás, témák,
-// aszinkron azonosítás, hullámforma. (A régi jobProgress / errorOccurred mellett él.)
+// Structured layer for the redesigned main window: state queries, cancel, topics, asynchronous
+// identification, waveform. (It lives alongside the old jobProgress / errorOccurred.)
 // =========================================================================================
 
 MeetingJobTracker* AppController::jobs() const      { return d->jobs; }
@@ -3735,7 +3730,7 @@ QString AppController::importAudio(const ImportRequest& request)
     return d->importer->start(request);
 }
 
-// ---- megbeszélés-archívum ---------------------------------------------------------------
+// ---- meeting archive ---------------------------------------------------------------
 
 namespace {
 
@@ -3749,14 +3744,14 @@ QVector<Tag> archiveTags(TagService* tags, const Meeting& m)
     return out;
 }
 
-// A kicsomagolt mappa behúzása + a címkék feloldása a helyi készletre. Fő szálon fut.
+// Pulling in the unpacked folder + resolving the tags to the local set. Runs on the main thread.
 Meeting adoptArchiveFolder(MeetingStore* store, TagService* tags, const QString& folder,
                            const ArchiveManifest& manifest, QString* error)
 {
     Meeting m = store->adoptMeetingFolder(folder, error);
     if (m.id.isEmpty() || !tags) return m;
     QStringList ids;
-    QStringList pending = m.tagIds;   // a manifesztben nem szereplő, de helyben ismert azonosítók
+    QStringList pending = m.tagIds;   // identifiers not in the manifest but known locally
     for (const Tag& t : manifest.tags) {
         Tag local = tags->tag(t.id);
         if (!local.isValid()) local = tags->byName(t.name);
@@ -3878,8 +3873,8 @@ QString AppController::importMeetingFolder(const QString& folderIn)
     const QString opId = QStringLiteral("import:") + QUuid::createUuid().toString(QUuid::WithoutBraces);
     auto staged = std::make_shared<QString>();
     auto error = std::make_shared<QString>();
-    // A felvételek mappája alatt lévő forrás helyben marad (nincs másolás); minden más előbb
-    // a .import-* ideiglenes mappába kerül a háttérszálon, hogy a GUI ne álljon meg.
+    // A source under the recordings folder stays in place (no copy); everything else first goes into the
+    // .import-* temporary folder on a background thread, so the GUI does not freeze.
     const bool inPlace = QFileInfo(folder).dir().absolutePath() == root;
 
     QPointer<AppController> self(this);
@@ -3933,7 +3928,7 @@ QString AppController::importMeetingArchive(const QString& zipPath)
         }, manifest.get());
     });
     d->archiveThread = th;
-    d->archiveCancel.reset();   // a kicsomagolás nem szakítható meg (rövid, és a végén úgyis takarít)
+    d->archiveCancel.reset();   // unpacking cannot be cancelled (it is short, and cleans up at the end anyway)
     d->archiveOp = opId;
     connect(th, &QThread::finished, this, [this, th, zipPath, folder, error, manifest, opId]() {
         d->archiveThread = nullptr;
@@ -3957,14 +3952,14 @@ MeetingProcessingState AppController::processingState(const QString& meetingId) 
     return d->jobs->state(meetingId);
 }
 
-// ---- címkék és címkejavaslatok ------------------------------------------------------------
+// ---- tags and tag suggestions ------------------------------------------------------------
 
 void AppController::publishTagSuggestions(const QString& meetingId, QVector<TagSuggestion> list)
 {
-    // A résztvevők kézi címkéiből jövő javaslat (UX-terv 3.3, „A résztvevők alapján”) mindig
-    // frissen számolódik: a korábbi People-elemek kiesnek, az újak elöl állnak (a sor forrás-
-    // címkéje ezekből). Ha egy címkét a hasonlóság is javasol, egy elem marad, az indokok
-    // összeadódnak. Átírás előtt is működik (kézi / jóváhagyott résztvevők).
+    // The suggestion from the participants' manual tags ("By participants") is always computed fresh: earlier
+    // People items drop out, new ones stand first (the row's source tag comes from these). If a tag is also
+    // suggested by similarity, one item remains and the reasons add up. It works before transcription too
+    // (manual / approved participants).
     list.erase(std::remove_if(list.begin(), list.end(), [](const TagSuggestion& sg) {
         return sg.source == SuggestionSource::People;
     }), list.end());
@@ -3981,8 +3976,8 @@ void AppController::publishTagSuggestions(const QString& meetingId, QVector<TagS
         }
         list = people + list;
     }
-    // A már felrakott és az elutasított javaslat kimarad (az LLM új név-ötlete is, ha közben
-    // ilyen nevű címke került a meetingre).
+    // An already applied and a rejected suggestion are dropped (the LLM's new-name idea too, if a tag with
+    // that name has since been put on the meeting).
     const QStringList applied = d->tags->tagsOf(meetingId);
     QStringList appliedKeys;
     for (const QString& id : applied) appliedKeys << tagKey(d->tags->tag(id).name);
@@ -3995,7 +3990,7 @@ void AppController::publishTagSuggestions(const QString& meetingId, QVector<TagS
     emit tagSuggestionsReady(meetingId, list);
 }
 
-// A gyorsítótárazott hasonlóság-alapú lista kiadása (a számolás a háttérszálon fut:
+// Publishing the cached similarity-based list (the computation runs on a background thread:
 // startTagSuggestionJob).
 void AppController::computeTagSuggestions(const QString& meetingId)
 {
@@ -4010,18 +4005,18 @@ void AppController::invalidateTagSuggestions()
     ++d->tagDataGen;
 }
 
-// A profilok (sorok + átirat-kifejezések) háttérszálon épülnek; a kör végén (idle) indul a
-// javaslat-számolás.
+// The profiles (rows + transcript phrases) are built on a background thread; at the end of the round
+// (idle) the suggestion computation starts.
 void AppController::scheduleTagSuggestions(const QString& meetingId)
 {
     d->tagRequests.insert(meetingId);
     d->profiles->ensureBuilt();
 }
 
-// Szálkezelés: a TagService a fő szálé, ezért itt, a fő szálon egy kis pillanatkép készül a
-// címke-adatokból (TagSnapshot); a háttérszál csak ezt, valamint a szálbiztos MeetingProfiles /
-// EmbeddingIndex olvasóit használja. Az eredmény sorban állított hívással jön vissza a fő
-// szálra (finishTagSuggestionJob). A ~AppController bevárja a futó számolást.
+// Threading: TagService belongs to the main thread, so a small snapshot of the tag data (TagSnapshot) is
+// made here, on the main thread; the background thread uses only that and the thread-safe readers of
+// MeetingProfiles / EmbeddingIndex. The result comes back to the main thread via a queued call
+// (finishTagSuggestionJob). ~AppController waits for the running computation.
 void AppController::startTagSuggestionJob(const QString& meetingId)
 {
     auto run = d->tagRuns.find(meetingId);
@@ -4029,7 +4024,7 @@ void AppController::startTagSuggestionJob(const QString& meetingId)
         d->tagRuns.remove(meetingId);
         return;
     }
-    if (run->running) return;   // a futó eredménye válaszol (adatváltozásnál újraindul)
+    if (run->running) return;   // the running one's result answers (it restarts on a data change)
     const auto cached = d->similarCache.constFind(meetingId);
     if (cached != d->similarCache.constEnd()) {
         finishTagSuggestionJob(meetingId, d->tagDataGen, *cached);
@@ -4063,7 +4058,7 @@ void AppController::finishTagSuggestionJob(const QString& meetingId, quint64 dat
     if (run == d->tagRuns.end()) return;
     run->running = false;
     if (dataGen != d->tagDataGen) {
-        // Közben változtak a címkék / az átirat / az index: az eredmény elavult.
+        // The tags / transcript / index changed meanwhile: the result is stale.
         if (run->publish || run->llm) scheduleTagSuggestions(meetingId);
         else d->tagRuns.erase(run);
         return;
@@ -4108,7 +4103,7 @@ void AppController::requestLlmTagSuggestions(const QString& meetingId)
     const SummaryDocument doc = summaryDocument(meetingId);
     if (!doc.exists || doc.markdown.trimmed().isEmpty()) return;
     emit tagSuggestionsComputing(meetingId);
-    // A jelöltlista (hasonlóság-alapú javaslatok) a gyorsítótárból, vagy háttérszálon készül.
+    // The candidate list (similarity-based suggestions) from the cache, or made on a background thread.
     if (d->similarCache.contains(meetingId)) {
         startLlmTagSuggestions(meetingId, d->similarCache.value(meetingId));
         return;
@@ -4125,7 +4120,7 @@ void AppController::startLlmTagSuggestions(const QString& meetingId, const QVect
         publishTagSuggestions(meetingId, d->pendingTags.value(meetingId));
         return;
     }
-    // Egyszerre egy LLM-javaslat fut (a helyi modell egy szálon dolgozik).
+    // One LLM suggestion runs at a time (the local model works on one thread).
     if (d->llmTags->isRunning()) {
         const QString prev = d->llmTagsMeetingId;
         d->llmTags->cancel();
@@ -4176,7 +4171,7 @@ void AppController::setEmbeddingProvider(const QString& providerId, const Provid
     if (!providerId.isEmpty()) {
         ProviderConfig cfg = config;
         cfg.type = providerId;
-        cfg.apiKey.clear();   // a kulcs a KeyStore-ba való (setSecret), nem a beállításokba
+        cfg.apiKey.clear();   // the key belongs in the KeyStore (setSecret), not in the settings
         s.embeddingConfigs.insert(providerId, cfg);
     }
     d->settings->setSettings(s);   // settingsChanged → applyEmbeddingSettings(true)
@@ -4188,13 +4183,13 @@ void AppController::applyEmbeddingSettings(bool restart)
     const QString id = EmbeddingProviderRegistry::instance().has(s.embeddingProviderId)
         ? s.embeddingProviderId : QString();
     ProviderConfig base = s.embeddingSelected();
-    // A Tanara Cloud változatnak nincs modell-mezője: a gateway alapmodellje.
+    // The Tanara Cloud variant has no model field: the gateway's default model.
     const QString model = id.isEmpty() ? QString()
         : (!base.model.trimmed().isEmpty() ? base.model.trimmed()
                                            : (id == embeddingproviders::CloudId ? QStringLiteral("default") : QString()));
     const QString key = id.isEmpty() || model.isEmpty()
         ? QString() : id + QLatin1Char('|') + base.baseUrl.trimmed() + QLatin1Char('|') + model;
-    if (key == d->embeddingKey && restart) return;   // más beállítás változott
+    if (key == d->embeddingKey && restart) return;   // another setting changed
     const QString oldModel = d->embeddingPreparer->state().model;
     const bool hadProvider = !d->embeddingKey.isEmpty();
     d->embeddingKey = key;
@@ -4206,7 +4201,7 @@ void AppController::applyEmbeddingSettings(bool restart)
             ProviderConfig cfg = cur.embeddingConfigs.value(id);
             cfg.type = id;
             if (id == embeddingproviders::CloudId) {
-                // Ugyanaz a bejelentkezés és fejléc-készlet, mint az LLM-útvonalon (/v1/embeddings).
+                // The same sign-in and header set as on the LLM path (/v1/embeddings).
                 cfg.baseUrl = d->cloud->apiBase();
                 cfg.apiKey = d->cloud->apiKey();
                 cfg.extraHeaders = d->cloud->requestHeaders(QUuid::createUuid().toString(QUuid::WithoutBraces));
@@ -4218,7 +4213,7 @@ void AppController::applyEmbeddingSettings(bool restart)
             return EmbeddingProviderRegistry::instance().create(id, cfg, parent);
         };
     }
-    // Modellváltás: a régi beágyazások nem hasonlíthatók az újakhoz → elölről.
+    // A model change: the old embeddings cannot be compared to the new ones, so start over.
     if (restart && hadProvider && !key.isEmpty() && oldModel != model)
         d->embeddings->invalidateAll();
     d->embeddingPreparer->setProvider(key.isEmpty() ? QString() : id, model, factory);
@@ -4264,8 +4259,8 @@ QVector<TopicStatus> AppController::topicStatuses(const QString& meetingId) cons
         } else if (queued) {
             st.state = TopicState::Queued;
         } else if (errors.contains(t.id)) {
-            // Az UTOLSÓ kísérlet bukott (akkor is ez látszik, ha korábbról van kész elemzés —
-            // az megmarad a lemezen; új sikeres futás vagy újrapróbálás törli a hibát).
+            // The LAST attempt failed (this shows even if a finished analysis exists from earlier; that stays on
+            // disk; a new successful run or a retry clears the error).
             st.state = TopicState::Failed;
             st.error = errors.value(t.id).message;
             st.errorDetail = errors.value(t.id).detail;
@@ -4289,14 +4284,14 @@ QVector<SummaryTopic> AppController::setMeetingTopics(const QString& meetingId,
     for (SummaryTopic t : topics) {
         t.title = t.title.trimmed();
         t.summary = t.summary.trimmed();
-        if (t.title.isEmpty()) continue;                      // cím nélküli téma nem menthető
-        if (t.id.isEmpty() || ids.contains(t.id))             // új (vagy duplikált id-jű) téma
+        if (t.title.isEmpty()) continue;                      // a topic without a title cannot be saved
+        if (t.id.isEmpty() || ids.contains(t.id))             // a new (or duplicate-id) topic
             t.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
         ids.insert(t.id);
         saved.append(t);
     }
     const QString topicsPath = QDir(m.folder).filePath(QStringLiteral("summary.topics.json"));
-    // A törölt témák: sorból ki / futó megszakítva, megmaradt hibájuk törölve.
+    // The deleted topics: out of the queue / the running one cancelled, their remembered error cleared.
     for (const SummaryTopic& old : readTopicsJson(topicsPath)) {
         if (ids.contains(old.id)) continue;
         cancelTopicAnalysis(meetingId, old.id);
@@ -4327,13 +4322,13 @@ bool AppController::cancelTopicAnalysis(const QString& meetingId, const QString&
         any = true;
     }
     if (!any) return false;
-    // Egy téma kivétele után a köteg már nem teljes → nincs automatikus záró összegzés.
+    // After removing a topic the batch is no longer complete, so there is no automatic final summary.
     d->reduceWhenDone.remove(meetingId);
     d->updateTopicCounts(meetingId);
     emit topicAnalysisFailed(meetingId, topicId, tr("Megszakítva"));
     emit topicStatusChanged(meetingId, topicId);
     if (active)
-        startNextTopicJob();   // a sor megy tovább (vagy lezárul)
+        startNextTopicJob();   // the queue goes on (or closes)
     return true;
 }
 
@@ -4350,7 +4345,7 @@ bool AppController::cancelJob(const QString& meetingId, JobKind kind)
     case JobKind::Transcribe: {
         auto it = d->transcribeRuns.find(meetingId);
         if (it == d->transcribeRuns.end()) {
-            // Az átirat már kész, az utolsó (azonosítás) szakasz fut → csak az marad ki.
+            // The transcript is already done, the last (identification) stage is running, so only that one is skipped.
             const auto ir = d->identifyRuns.constFind(meetingId);
             if (ir == d->identifyRuns.constEnd() || !ir->asStage) return false;
             ir->cancel->store(true);
@@ -4359,8 +4354,8 @@ bool AppController::cancelJob(const QString& meetingId, JobKind kind)
         }
         d->jobs->setCancelling(meetingId, kind);
         if (it->mixPhase) {
-            // Lekeverés-fázis: a láncot bontjuk; a saját indítású ffmpeg-et leállítjuk (a
-            // félkész fájl törlődik, a korábbi keverék és a sávok érintetlenek).
+            // Mixdown phase: we break the chain; the ffmpeg we started ourselves is stopped (the half-made file is
+            // deleted, the earlier mix and the tracks are untouched).
             if (it->mixConn) QObject::disconnect(*it->mixConn);
             const bool owns = it->ownsMixdown;
             d->transcribeRuns.erase(it);
@@ -4376,10 +4371,10 @@ bool AppController::cancelJob(const QString& meetingId, JobKind kind)
         }
         if (it->job) {
             it->cancelRequested = true;
-            it->job->cancel();   // szinkron failed("cancelled") → a failed-ág zár le (hiba nélkül)
+            it->job->cancel();   // a synchronous failed("cancelled"): the failed branch closes it (without an error)
             return true;
         }
-        // (Elvileg nem fordul elő: sem keverés, sem job.)
+        // (In principle it does not occur: neither a mix nor a job.)
         d->transcribeRuns.erase(it);
         d->clearSpeakersOnTranscript.remove(meetingId);
         d->jobs->cancelled(meetingId, kind);
@@ -4393,8 +4388,8 @@ bool AppController::cancelJob(const QString& meetingId, JobKind kind)
         const Impl::LlmRun run = *it;
         d->llmRuns.erase(it);
         d->abortLlmRun(run);
-        // Cloud: a megszakított hívásért nincs terhelés; a futás eddigi (pl. témagyűjtés +
-        // elemzések) terhelései összesítve mennek a K-07-be.
+        // Cloud: there is no charge for the cancelled call; the run's charges so far (e.g. topic gathering +
+        // analyses) go summed to the cost feedback.
         if (run.cloudRun && !run.cloudRun->lastError.isError())
             finishCloudRun(run.cloudRun);
         d->jobs->cancelled(meetingId, kind);
@@ -4421,8 +4416,8 @@ bool AppController::cancelJob(const QString& meetingId, JobKind kind)
             any = true;
         }
         if (!any && !d->jobs->isRunning(meetingId, kind)) return false;
-        // A köteg lezárása: nincs auto-összegzés, nincs „N téma nem sikerült” üzenet; a már
-        // kész elemzések a lemezen maradnak, a folytatás onnan megy tovább.
+        // Closing the batch: no auto-summary, no "N topics failed" message; the analyses already finished stay on
+        // disk, a continuation picks up from there.
         const QPair<int, int> counts = d->jobCounts.take(meetingId);
         d->reduceWhenDone.remove(meetingId);
         d->topicBatchTotal.remove(meetingId);
@@ -4432,7 +4427,7 @@ bool AppController::cancelJob(const QString& meetingId, JobKind kind)
         emit topicAnalysisQueueFinished(meetingId, counts.first, counts.second);
         d->jobs->cancelled(meetingId, kind);
         if (activeMine)
-            startNextTopicJob();   // más meetingek témái mennek tovább
+            startNextTopicJob();   // other meetings' topics go on
         return true;
     }
     case JobKind::Mixdown: {
@@ -4440,13 +4435,13 @@ bool AppController::cancelJob(const QString& meetingId, JobKind kind)
         if (!proc || !d->jobs->isRunning(meetingId, kind)) return false;
         d->jobs->setCancelling(meetingId, kind);
         d->mixdownCancelled.insert(meetingId);
-        proc->kill();   // a finished-ág zár le: félkész fájl törölve, a régi keverék marad
+        proc->kill();   // the finished branch closes: the half-made file is deleted, the old mix stays
         return true;
     }
     case JobKind::Import: {
         if (d->importer->currentId() != meetingId || !d->jobs->isRunning(meetingId, kind)) return false;
         d->jobs->setCancelling(meetingId, kind);
-        d->importer->cancel();   // a cancelled-ág zár le: a félkész mappa törölve
+        d->importer->cancel();   // the cancelled branch closes: the half-made folder is deleted
         return true;
     }
     case JobKind::Export: {
@@ -4454,13 +4449,13 @@ bool AppController::cancelJob(const QString& meetingId, JobKind kind)
             || !d->jobs->isRunning(meetingId, kind))
             return false;
         d->jobs->setCancelling(meetingId, kind);
-        d->archiveCancel->store(true);   // a szál a következő blokknál megáll, a félkész fájl törlődik
+        d->archiveCancel->store(true);   // the thread stops at the next block, the half-made file is deleted
         return true;
     }
     case JobKind::Identify: {
         const auto ir = d->identifyRuns.constFind(meetingId);
         if (ir == d->identifyRuns.constEnd() || ir->asStage) return false;
-        ir->cancel->store(true);   // a szál a következő beszélő előtt megáll
+        ir->cancel->store(true);   // the thread stops before the next speaker
         d->jobs->setCancelling(meetingId, kind);
         return true;
     }
@@ -4494,7 +4489,7 @@ bool AppController::voiceIdentificationAvailable() const
 bool AppController::identifyMeetingAsync(const QString& meetingId)
 {
     if (d->jobs->isRunning(meetingId, JobKind::Transcribe))
-        return false;   // az átírás a végén maga azonosít
+        return false;   // the transcription identifies by itself at the end
     return startIdentify(meetingId, /*asTranscribeStage*/ false);
 }
 
@@ -4508,7 +4503,7 @@ bool AppController::startIdentify(const QString& meetingId, bool asStage)
         readTokensJson(QDir(m.folder).filePath(QStringLiteral("transcript.tokens.json")));
     if (merged.tokens.isEmpty()) return false;
 
-    // A még névtelen (nem leképezett) nyers beszélő-címkék és a hangforrásuk.
+    // The still anonymous (unmapped) raw speaker labels and their audio source.
     struct Item { QString label; QString audioPath; qint64 offsetMs = 0; };
     QVector<Item> items;
     QStringList seen;
@@ -4520,7 +4515,7 @@ bool AppController::startIdentify(const QString& meetingId, bool asStage)
         if (!src.absPath.isEmpty()) items.append({t.speaker, src.absPath, src.offsetMs});
     }
     if (items.isEmpty()) {
-        d->jobs->markIdentified(meetingId);   // nincs névtelen beszélő → nincs mit azonosítani
+        d->jobs->markIdentified(meetingId);   // no anonymous speaker, nothing to identify
         return false;
     }
 
@@ -4534,23 +4529,23 @@ bool AppController::startIdentify(const QString& meetingId, bool asStage)
         d->jobs->setCounts(meetingId, kind, 0, total);
     }
 
-    // A dekódolás (ffmpeg) + embedding (ONNX) háttérszálon fut, SAJÁT embedder-példánnyal
-    // (a fő szál embedderéhez nem nyúl). A párosítás a lenyomat-DB ellen és a mentés a fő
-    // szálon történik (applyIdentification) — a DB-t csak a fő szál éri el.
+    // Decoding (ffmpeg) + embedding (ONNX) run on a background thread, with its OWN embedder instance (it
+    // does not touch the main thread's embedder). Matching against the voiceprint DB and saving happen on the
+    // main thread (applyIdentification): only the main thread reaches the DB.
     auto cancel = std::make_shared<std::atomic<bool>>(false);
     auto results = std::make_shared<QVector<QPair<QString, EmbeddingSet>>>();
     const VoiceEmbedderSet proto = d->voiceSet.freshCopy();
     QPointer<AppController> self(this);
     QThread* th = QThread::create([self, items, merged, proto, cancel, results, meetingId,
                                    total, kind, asStage]() {
-        const VoiceEmbedderSet emb = proto.freshCopy();   // a szál saját modell-példányai
+        const VoiceEmbedderSet emb = proto.freshCopy();   // the thread's own model instances
         if (!emb.ensureLoaded()) return;
         int done = 0;
         for (const Item& it : items) {
             if (cancel->load()) break;
             const EmbeddingSet e = embeddingForLabel(emb, it.audioPath, it.offsetMs, merged, it.label);
             ++done;
-            // Eredmény + valós darab-haladás vissza a fő szálra.
+            // The result + real count progress back to the main thread.
             QMetaObject::invokeMethod(qApp, [self, results, label = it.label, e, meetingId,
                                              done, total, kind, asStage]() {
                 if (!self) return;
@@ -4571,9 +4566,9 @@ bool AppController::startIdentify(const QString& meetingId, bool asStage)
             [this, th, meetingId, cancel, results, asStage, kind, stampAtStart, folder = m.folder]() {
         d->identifyRuns.remove(meetingId);
         th->deleteLater();
-        // Ha a futás alatt az átirat megváltozott (új átírás érkezett), az embeddingek a RÉGI
-        // átirat címkéihez tartoznak: nem írjuk a neveket az új átiratra — megszakítottnak
-        // számít. (Különben: megszakításnál is mentjük, amit addig találtunk.)
+        // If the transcript changed during the run (a new transcription arrived), the embeddings belong to the
+        // OLD transcript's labels: we do not write the names onto the new transcript; it counts as cancelled.
+        // (Otherwise: even on cancel we save what was found so far.)
         const bool stale = d->transcriptStamp(meetingId, folder) != stampAtStart;
         const bool wasCancelled = cancel->load() || stale;
         if (!stale)
@@ -4583,7 +4578,7 @@ bool AppController::startIdentify(const QString& meetingId, bool asStage)
         if (asStage) {
             d->jobs->setStage(meetingId, kind, QStringLiteral("identify"),
                               wasCancelled ? StageState::Skipped : StageState::Done);
-            d->jobs->finish(meetingId, kind);   // az átirat kész — a feladat sikerrel zárul
+            d->jobs->finish(meetingId, kind);   // the transcript is done; the task closes successfully
         } else if (wasCancelled) {
             d->jobs->cancelled(meetingId, kind);
         } else {
@@ -4610,7 +4605,7 @@ void AppController::requestWaveforms(const QString& meetingId)
     }
 }
 
-// ---- átirat-szerkesztő (beszélő-javítás) ----------------------------------
+// ---- transcript editor (speaker correction) ----------------------------------
 
 SpeakerEditor* AppController::speakerEditor(const QString& meetingId)
 {
@@ -4620,22 +4615,22 @@ SpeakerEditor* AppController::speakerEditor(const QString& meetingId)
 
     auto* ed = new SpeakerEditor(d->store, d->people.get(), d->voiceprints.get(), meetingId, this);
     ed->setUserSpeakerName(d->settings->settings().userSpeakerName);
-    // Voice-ID nélkül (nincs modell / TANARA_BUILD_VOICEID=OFF) a szerkesztő bizonytalanság
-    // és javaslat nélkül is teljes értékű.
+    // Without voice ID (no model / TANARA_BUILD_VOICEID=OFF) the editor is fully functional even without
+    // uncertainty and suggestions.
     ed->setVoiceModelIds(d->editorModelIds(d->settings));
     ed->setEmbedderFactory(utteranceEmbedderFactory());
-    // A címke-bizonyíték a jelölt-rangsorhoz (kézi címke + tanult kapcsolat; D5).
+    // The tag evidence for the candidate ranking (manual tag + learned association).
     ed->setTagEvidenceProvider(d->candidateContext().tagEvidence);
-    // A kézi címkék a gyors „+ #Címke" ajánlathoz (a teszt-varrat, különben a TagService).
+    // Manual tags for the quick "+ #Tag" offer (the test seam, otherwise the TagService).
     {
         TagService* ts = d->tags;
         ed->setPersonTagsProvider(d->personTags ? d->personTags
                                                 : [ts](const QString& n) { return ts ? ts->tagsOfPerson(n) : QStringList(); });
     }
     d->speakerEditors.insert(meetingId, ed);
-    meetingUndo(meetingId);   // G4: a közös visszavonás a szerkesztő első lépésétől követi
+    meetingUndo(meetingId);   // the shared undo follows from the editor's first step
 
-    // A szerkesztő mellékhatásai a megszokott jeleken mennek ki (régi UI, könyvtár).
+    // The editor's side effects go out on the usual signals (old UI, library).
     connect(ed, &SpeakerEditor::speakerMapChanged, this, [this](const QString& id) {
         d->editorEmitting = true;
         emit speakerMapChanged(id);
@@ -4645,8 +4640,7 @@ SpeakerEditor* AppController::speakerEditor(const QString& meetingId)
     connect(ed, &SpeakerEditor::voiceprintsChanged, this, &AppController::voiceprintsChanged);
     connect(ed, &SpeakerEditor::summaryStaleChanged, this,
             [this, meetingId] { emit summaryStaleChanged(meetingId); });
-    // Kívülről jövő változás (régi UI átnevezés, auto-azonosítás, személy-átnevezés) →
-    // a szerkesztő újraolvassa a lemezt.
+    // A change from outside (old UI rename, auto-identification, person rename) -> the editor rereads the disk.
     connect(this, &AppController::speakerMapChanged, ed, [this, ed](const QString& id) {
         if (!d->editorEmitting && id == ed->meetingId()) ed->refreshFromDisk();
     });
@@ -4670,7 +4664,7 @@ SummaryStaleInfo AppController::summaryStale(const QString& meetingId) const
     const Meeting m = d->store->load(meetingId);
     SpeakerEditor* ed = d->speakerEditors.value(meetingId);
     SummaryStaleInfo info = ed ? ed->summaryStale() : speakeredit::summaryStale(m);
-    // A szerkesztő minden lépés után perzisztál, így a célzott rész a lemezről számolható.
+    // The editor persists after every step, so the targeted part can be computed from disk.
     if (!m.id.isEmpty()) speakeredit::fillTargetedStale(m, info);
     return info;
 }
@@ -4694,8 +4688,7 @@ bool AppController::flagStatement(const QString& meetingId, const QString& state
     return true;
 }
 
-// Ugyanez már betöltött meetingre (a könyvtár soronként hívja — nincs újabb lemez-olvasás
-// a meeting.json-ért).
+// The same for an already loaded meeting (the library calls it per row; no further disk read for meeting.json).
 SummaryStaleInfo AppController::summaryStale(const Meeting& meeting) const
 {
     if (SpeakerEditor* ed = d->speakerEditors.value(meeting.id)) return ed->summaryStale();
@@ -4711,7 +4704,7 @@ RetranscribeImpact AppController::retranscribeImpact(const QString& meetingId) c
 void AppController::dismissSummaryStale(const QString& meetingId)
 {
     if (SpeakerEditor* ed = d->speakerEditors.value(meetingId)) {
-        ed->dismissSummaryStale();   // a summaryStaleChanged a szerkesztő jeléből megy ki
+        ed->dismissSummaryStale();   // summaryStaleChanged goes out from the editor's signal
         return;
     }
     const Meeting m = d->store->load(meetingId);
@@ -4720,9 +4713,9 @@ void AppController::dismissSummaryStale(const QString& meetingId)
 }
 
 
-// ---- résztvevők („Ki volt ott?") és sáv-beszédarány ----------------------------------------
-// A tiszta logika: edit/TrackSpeech.h, edit/ParticipantAnalysis.h. Itt csak a szálkezelés, a
-// mentés és a szerkesztőn át történő kötés.
+// ---- participants ("Who was there?") and per-track speech share ----------------------------------------
+// The pure logic: edit/TrackSpeech.h, edit/ParticipantAnalysis.h. Here only the threading, saving and
+// binding through the editor.
 
 participants::CandidateContext AppController::Impl::candidateContext() const
 {
@@ -4734,8 +4727,8 @@ participants::CandidateContext AppController::Impl::candidateContext() const
     };
     ctx.hasVoiceprint = [vp](const QString& name) { return vp && vp->printCount(name) > 0; };
     TagService* ts = tags;
-    // A címke-bizonyíték (UX-terv 4.): a TagService pillanatképe — kézi címke és tanult
-    // kapcsolat; a beállított varrat (tesztek) a kézi címkéket írja felül.
+    // The tag evidence (UX plan rule 4): the TagService snapshot, manual tag and learned association; the
+    // configured seam (tests) overrides the manual tags.
     ctx.tagEvidence = [ts, override = personTags](const QString& name, const QStringList& meetingTags,
                                                   const QString& meetingId) {
         if (!ts) return TagEvidence();
@@ -4797,7 +4790,7 @@ void AppController::finishSpeechCheck(const QString& meetingId, const MeetingAct
                                       bool thenMixdown)
 {
     d->speechCheckRunning.remove(meetingId);
-    d->speechChecked.insert(meetingId);   // hibánál (nem dekódolható sáv) se ismételjük
+    d->speechChecked.insert(meetingId);   // on error (an undecodable track) we do not repeat either
     Meeting m = d->store->load(meetingId);
     if (m.id.isEmpty()) return;
     const trackspeech::SpeechCheckResult r = trackspeech::applySpeechRatios(m, activity);
@@ -4806,10 +4799,10 @@ void AppController::finishSpeechCheck(const QString& meetingId, const MeetingAct
             m.mixdownDirty = true;
             qCInfo(lcAudio).noquote() << "Beszéd nélküli sáv kimarad a lekeverésből:"
                                       << r.excluded.join(QStringLiteral(", "));
-            // A teljes mérés a beszéd-csík gyorsítótára lesz (a kimaradt sáv is látsszon, és ne
-            // kelljen újra dekódolni); az elemzés cache-e a bevont sávoké.
+            // The full measurement becomes the speech strip's cache (so the excluded track shows too and need not be
+            // decoded again); the analysis's cache is that of the included tracks.
             activity.save(m.folder, MeetingActivity::viewFilePath(m.folder));
-            // A sáv-aktivitás cache a bevont sávokhoz tartozik: a kimaradtak nélkül mentjük újra.
+            // The track-activity cache belongs to the included tracks: we save it again without the excluded ones.
             MeetingActivity kept;
             kept.fingerprint = trackactivity::activityFingerprint(m, m.folder);
             for (const TrackActivity& t : activity.tracks)
@@ -4818,10 +4811,10 @@ void AppController::finishSpeechCheck(const QString& meetingId, const MeetingAct
         }
         d->store->saveMeeting(m);
     }
-    // Akkor is jelzünk, ha nem változott semmi: a nézet a „mérés fut” állapotból csak erre lép ki.
+    // We signal even if nothing changed: the view leaves the "measuring" state only on this.
     emit tracksChanged(meetingId);
     if (thenMixdown) regenerateMixdown(meetingId);
-    // A beszéd nélküli sávok kiszűrve: mehet a hangelemzés a maradék nyers sávokon.
+    // The speechless tracks are filtered out: the voice analysis can go on over the remaining raw tracks.
     if (d->autoMixdown) maybeAnalyzeParticipants(meetingId);
 }
 
@@ -4839,11 +4832,11 @@ bool AppController::checkTrackSpeech(const QString& meetingId)
     return true;
 }
 
-// ---- sávok meghallgatása: beszéd-csík, beszélő → sáv kötés ---------------------------------
+// ---- listening to tracks: speech strip, speaker -> track binding ---------------------------------
 
 namespace {
 
-// A meeting bevont, adott oldalú logikai sávjainak vezető id-jai (a sávok sorrendjében).
+// The leading ids of the meeting's included logical tracks on a given side (in track order).
 QStringList includedLeaders(const Meeting& m, bool mic, bool loop)
 {
     QStringList out;
@@ -4859,7 +4852,7 @@ QStringList includedLeaders(const Meeting& m, bool mic, bool loop)
     return out;
 }
 
-// A sáv-id-k a meeting logikai sávjainak vezető id-jaira (ismeretlen kimarad, ismétlés nélkül).
+// Track ids mapped to the leading ids of the meeting's logical tracks (unknown ones dropped, no repeats).
 QStringList normalizeTrackIds(const Meeting& m, const QStringList& trackIds)
 {
     QStringList out;
@@ -4889,14 +4882,14 @@ MeetingActivity AppController::trackActivity(const QString& meetingId)
 {
     const Meeting m = d->store->load(meetingId);
     if (m.id.isEmpty() || m.tracks.isEmpty()) return {};
-    // A csík MINDEN sávot mutat (a kimaradtat is): a lenyomat mindet aktívnak veszi.
+    // The strip shows EVERY track (the excluded one too): the fingerprint treats them all as active.
     Meeting all = m;
     for (Track& t : all.tracks) t.active = true;
     const QString fp = trackactivity::activityFingerprint(all, m.folder);
     if (const auto it = d->activityView.constFind(meetingId);
         it != d->activityView.constEnd() && it->fingerprint == fp)
         return *it;
-    MeetingActivity a = MeetingActivity::load(m.folder, fp);   // ha minden sáv bevont, ez az
+    MeetingActivity a = MeetingActivity::load(m.folder, fp);   // if every track is included, this one
     if (a.isEmpty()) a = MeetingActivity::load(m.folder, fp, MeetingActivity::viewFilePath(m.folder));
     if (!a.isEmpty()) {
         d->activityView.insert(meetingId, a);
@@ -4933,7 +4926,7 @@ bool AppController::trackActivityComputing(const QString& meetingId) const
 void AppController::finishTrackActivity(const QString& meetingId, const MeetingActivity& activity)
 {
     d->activityViewRunning.remove(meetingId);
-    // Az üres eredmény is a lenyomatával kerül be: nem számolunk újra, amíg a sávok nem változnak.
+    // An empty result also goes in with its fingerprint: we do not recompute until the tracks change.
     d->activityView.insert(meetingId, activity);
     emit trackActivityReady(meetingId);
 }
@@ -4950,7 +4943,7 @@ QStringList AppController::speakerKeysFor(const Meeting& m, const QString& id)
             if (s.key == id) return {id};
         return {};
     }
-    QStringList raws;   // a kötött nyers beszélők ("Beszélő 1" vagy "Beszélő 1@mic")
+    QStringList raws;   // the bound raw speakers ("Speaker 1" or "Speaker 1@mic")
     for (const QString& r : p->rawSpeakerIds) raws << r.section(QLatin1Char('@'), 0, 0);
     QStringList keys;
     for (const EditorSpeaker& s : speakers) {
@@ -4973,7 +4966,7 @@ bool AppController::setParticipantTracks(const QString& meetingId, const QString
         if (m.participants.at(i).id == id) pIdx = i;
     const QStringList keys = speakerKeysFor(m, id);
     if (pIdx < 0 && !keys.isEmpty()) {
-        // Beszélő-kulcs: a hozzá tartozó résztvevő (ha van) is megkapja.
+        // Speaker key: the participant belonging to it (if any) gets it too.
         for (int i = 0; i < m.participants.size() && pIdx < 0; ++i)
             if (speakerKeysFor(m, m.participants.at(i).id).contains(id)) pIdx = i;
     }
@@ -4982,7 +4975,7 @@ bool AppController::setParticipantTracks(const QString& meetingId, const QString
     if (pIdx >= 0 && m.participants.at(pIdx).tracks != ids) {
         Participant& p = m.participants[pIdx];
         p.tracks = ids;
-        // A sáv-oldal bizonyítéka a kézi kötésből (a hang-bizonyíték változatlan).
+        // The track-side evidence from the manual binding (the voice evidence is unchanged).
         double score = -1.0;
         const bool heard = !p.sides.isEmpty() || p.talkShare > 0.0;
         for (const Evidence& e : p.evidence)
@@ -5007,7 +5000,7 @@ ParticipantTrackBinding AppController::participantTracks(const QString& meetingI
     const Participant* p = participantById(m, id);
     const QStringList keys = speakerKeysFor(m, id);
     SpeakerEditor* ed = keys.isEmpty() ? nullptr : speakerEditor(meetingId);
-    // Kézi: átirat után a szerkesztő beosztása az igazság (a „Miért ő?" chipjei), előtte a résztvevőé.
+    // Manual: after the transcript the editor's assignment is the truth (the "Why them?" chips), before it the participant's.
     if (ed) {
         for (const QString& key : keys) {
             const QStringList t = ed->trackAssignment(key);
@@ -5022,7 +5015,7 @@ ParticipantTrackBinding AppController::participantTracks(const QString& meetingI
         b.manual = !b.trackIds.isEmpty();
         if (b.manual) return b;
     }
-    // Következtetett: a szerkesztő oldal-elemzése, különben a hangelemzés oldalai.
+    // Inferred: the editor's side analysis, otherwise the voice analysis's sides.
     bool mic = false, loop = false;
     if (ed) {
         const SideReport r = ed->sideReport();
@@ -5055,7 +5048,7 @@ void AppController::copyParticipantTracksToOverlay(const QString& meetingId)
 
 void AppController::includeTrack(const QString& meetingId, const QString& trackId)
 {
-    ParticipantUndoScope undoScope(this, meetingId, tr("Sáv beemelve"));   // G4
+    ParticipantUndoScope undoScope(this, meetingId, tr("Sáv beemelve"));
     Meeting m = d->store->load(meetingId);
     if (m.id.isEmpty()) return;
     const QVector<tracknames::SegmentInfo> seg = tracknames::segments(m.tracks);
@@ -5081,7 +5074,7 @@ void AppController::includeTrack(const QString& meetingId, const QString& trackI
 
 void AppController::excludeTrack(const QString& meetingId, const QString& trackId)
 {
-    ParticipantUndoScope undoScope(this, meetingId, tr("Sáv kivéve"));   // G4
+    ParticipantUndoScope undoScope(this, meetingId, tr("Sáv kivéve"));
     Meeting m = d->store->load(meetingId);
     if (m.id.isEmpty()) return;
     const QVector<tracknames::SegmentInfo> seg = tracknames::segments(m.tracks);
@@ -5110,14 +5103,14 @@ void AppController::excludeTrack(const QString& meetingId, const QString& trackI
 bool AppController::maybeAnalyzeParticipants(const QString& meetingId)
 {
     if (!d->voiceModelUsable() || d->analysisRuns.contains(meetingId)) return false;
-    if (d->speechCheckRunning.contains(meetingId)) return false;   // a mérés vége hív újra
+    if (d->speechCheckRunning.contains(meetingId)) return false;   // the end of the measurement calls again
     const Meeting m = d->store->load(meetingId);
     if (m.id.isEmpty() || m.tracks.isEmpty() || m.approval.has_value()) return false;
-    // A beszéd nélküli sávok még nincsenek kiszűrve: előbb a mérés (annak a vége hív újra).
+    // The speechless tracks are not filtered out yet: the measurement first (its end calls again).
     if (!m.hasTranscript && trackspeech::needsSpeechCheck(m) && !d->speechChecked.contains(meetingId))
         return false;
     if (ParticipantAnalysisFile::load(m.folder).tracksKey == trackactivity::activityFingerprint(m, m.folder))
-        return false;   // ugyanezeken a sávokon már lefutott
+        return false;   // it already ran on these same tracks
     return analyzeParticipants(meetingId);
 }
 
@@ -5126,7 +5119,7 @@ bool AppController::analyzeParticipants(const QString& meetingId)
     if (d->analysisRuns.contains(meetingId)) return false;
     const Meeting m = d->store->load(meetingId);
     if (m.id.isEmpty() || !d->voiceModelUsable()) return false;
-    if (m.approval && m.approval->solo) return false;   // „csak én": nincs mit azonosítani
+    if (m.approval && m.approval->solo) return false;   // "only me": nothing to identify
 
     auto cancel = std::make_shared<std::atomic<bool>>(false);
     d->analysisRuns.insert(meetingId, cancel);
@@ -5143,10 +5136,10 @@ bool AppController::analyzeParticipants(const QString& meetingId)
                 act = computeMeetingActivity(m, m.folder);
                 if (!act.isEmpty()) act.save(m.folder);
             }
-            const VoiceEmbedderSet emb = proto.freshCopy();   // a szál saját modell-példányai
-            // Haladás (A8): az ablak-sorszámból a sáv (k / N, csak a beszédes sávok) és a
-            // százalék; a fő szálra csak változáskor megy jel.
-            QVector<int> ends;   // a beszédes sávok kumulált ablak-száma
+            const VoiceEmbedderSet emb = proto.freshCopy();   // the thread's own model instances
+            // Progress: from the window index the track (k / N, only tracks with speech) and the percentage; a signal
+            // goes to the main thread only on change.
+            QVector<int> ends;   // cumulative window count of the tracks with speech
             int windows = 0;
             for (const TrackActivity& ta : act.tracks) {
                 const int n = int(participants::speechWindows(ta, QString()).size());
@@ -5196,7 +5189,7 @@ void AppController::finishParticipantAnalysis(const QString& meetingId, ClusterS
         emit participantAnalysisFinished(meetingId);
         return;
     }
-    if (m.approval && m.approval->solo) {   // közben „csak én" lett: az elemzés eredménye nem kell
+    if (m.approval && m.approval->solo) {   // it became "only me" meanwhile: the analysis result is not needed
         emit participantAnalysisFinished(meetingId);
         return;
     }
@@ -5210,7 +5203,7 @@ void AppController::finishParticipantAnalysis(const QString& meetingId, ClusterS
     if (!file.save(m.folder))
         qCWarning(lcVoice).noquote() << "Résztvevő-elemzés: nem írható:" << ParticipantAnalysisFile::filePath(m.folder);
 
-    // Ha az átirat már megvan: a kötés most fut (különben az átirat érkezésekor).
+    // If the transcript already exists: the binding runs now (otherwise when the transcript arrives).
     const QVector<TranscriptLine> lines = speakeredit::loadTranscriptLines(m.folder);
     if (!lines.isEmpty()) participants::bindRawSpeakers(m.participants, file.clusters, lines);
     d->store->saveMeeting(m);
@@ -5245,7 +5238,7 @@ bool AppController::applySpeakerBindings(const QString& meetingId, const QVector
 bool AppController::applyParticipantsToTranscript(const QString& meetingId)
 {
     bindRawSpeakers(meetingId);
-    // Az átirat előtt beállított kézi sáv-kötés átkerül a beszélők beosztásába (egy adat).
+    // A manual track binding set before the transcript is carried into the speakers' assignment (one piece of data).
     copyParticipantTracksToOverlay(meetingId);
     const Meeting m = d->store->load(meetingId);
     if (m.id.isEmpty() || !m.approval || m.approval->skipped) return false;
@@ -5276,7 +5269,7 @@ bool AppController::applyParticipantsToTranscript(const QString& meetingId)
 
 bool AppController::approveParticipants(const QString& meetingId, const QVector<Participant>& accepted)
 {
-    ParticipantUndoScope undoScope(this, meetingId, tr("Résztvevők jóváhagyva"));   // G4
+    ParticipantUndoScope undoScope(this, meetingId, tr("Résztvevők jóváhagyva"));
     Meeting m = d->store->load(meetingId);
     if (m.id.isEmpty()) return false;
     const participants::CandidateContext ctx = d->candidateContext();
@@ -5286,7 +5279,7 @@ bool AppController::approveParticipants(const QString& meetingId, const QVector<
         for (int i = 0; i < m.participants.size(); ++i)
             if (!a.id.isEmpty() && m.participants.at(i).id == a.id) idx = i;
         if (idx < 0) {
-            // A párbeszédben felvett új személy.
+            // The new person added in the dialog.
             Participant p = a;
             p.personName = a.personName.trimmed();
             if (p.personName.isEmpty()) continue;
@@ -5296,7 +5289,7 @@ bool AppController::approveParticipants(const QString& meetingId, const QVector<
             m.participants.append(p);
             idx = m.participants.size() - 1;
         } else if (!a.personName.trimmed().isEmpty()) {
-            m.participants[idx].personName = a.personName.trimmed();   // név szerkesztve
+            m.participants[idx].personName = a.personName.trimmed();   // name edited
         }
         acceptedIds << m.participants.at(idx).id;
     }
@@ -5313,14 +5306,14 @@ bool AppController::approveParticipants(const QString& meetingId, const QVector<
     m.approval = ap;
     d->store->saveMeeting(m);
     emit participantsChanged(meetingId);
-    // Ha az átirat már megvan: a kötés most (egy visszavonási lépés); különben az átirat érkezésekor.
+    // If the transcript already exists: the binding now (one undo step); otherwise when the transcript arrives.
     if (m.hasTranscript) applyParticipantsToTranscript(meetingId);
     return true;
 }
 
 bool AppController::skipApproval(const QString& meetingId)
 {
-    ParticipantUndoScope undoScope(this, meetingId, tr("Jóváhagyás kihagyva"));   // G4
+    ParticipantUndoScope undoScope(this, meetingId, tr("Jóváhagyás kihagyva"));
     Meeting m = d->store->load(meetingId);
     if (m.id.isEmpty()) return false;
     ParticipantApproval ap;
@@ -5337,7 +5330,7 @@ bool AppController::skipApproval(const QString& meetingId)
 
 bool AppController::unbindParticipant(const QString& meetingId, const QString& participantId)
 {
-    ParticipantUndoScope undoScope(this, meetingId, tr("Nem volt ott"));   // G4
+    ParticipantUndoScope undoScope(this, meetingId, tr("Nem volt ott"));
     Meeting m = d->store->load(meetingId);
     if (m.id.isEmpty()) return false;
     int idx = -1;
@@ -5345,17 +5338,17 @@ bool AppController::unbindParticipant(const QString& meetingId, const QString& p
         if (m.participants.at(i).id == participantId) idx = i;
     if (idx < 0) return false;
     Participant& p = m.participants[idx];
-    undoScope.text = tr("Nem volt ott: %1").arg(p.personName);   // G4
+    undoScope.text = tr("Nem volt ott: %1").arg(p.personName);
 
-    // A sorai névtelenre: a kötött nyers beszélők (kétoldalúnál csak az adott oldal sorai), és
-    // minden beszélő, aki a személyhez van kötve (pl. korábbi automatikus azonosításból).
+    // Its lines go anonymous: the bound raw speakers (for a two-sided one only that side's lines), and every
+    // speaker bound to the person (e.g. from an earlier automatic identification).
     QVector<SpeakerBinding> bindings;
     if (m.hasTranscript) {
         const QVector<TranscriptLine> lines = speakeredit::loadTranscriptLines(m.folder);
         const ParticipantAnalysisFile file = ParticipantAnalysisFile::load(m.folder);
         const MeetingActivity act =
             MeetingActivity::load(m.folder, trackactivity::activityFingerprint(m, m.folder));
-        Participant named = p;   // csak az ő kötései (névvel, hogy a kétoldalú sorok kiadódjanak)
+        Participant named = p;   // only their bindings (with the name, so two-sided lines come out)
         if (named.personName.isEmpty()) named.personName = QStringLiteral("?");
         for (SpeakerBinding b : participants::approvalBindings({named}, {p.id}, lines, file.clusters,
                                                                act.isEmpty() ? nullptr : &act)) {
@@ -5381,7 +5374,7 @@ bool AppController::unbindParticipant(const QString& meetingId, const QString& p
 
 QString AppController::addParticipant(const QString& meetingId, const QString& personName)
 {
-    ParticipantUndoScope undoScope(this, meetingId, tr("Résztvevő felvéve: %1").arg(personName.trimmed()));   // G4
+    ParticipantUndoScope undoScope(this, meetingId, tr("Résztvevő felvéve: %1").arg(personName.trimmed()));
     const QString name = personName.trimmed();
     Meeting m = d->store->load(meetingId);
     if (m.id.isEmpty() || name.isEmpty()) return {};
@@ -5401,12 +5394,12 @@ QString AppController::addParticipant(const QString& meetingId, const QString& p
 
 bool AppController::setSoloMeeting(const QString& meetingId)
 {
-    ParticipantUndoScope undoScope(this, meetingId, tr("Csak én beszéltem"));   // G4
+    ParticipantUndoScope undoScope(this, meetingId, tr("Csak én beszéltem"));
     const QString self = d->settings->settings().userSpeakerName.trimmed();
     Meeting m = d->store->load(meetingId);
     if (m.id.isEmpty() || self.isEmpty()) return false;
     if (const auto it = d->analysisRuns.constFind(meetingId); it != d->analysisRuns.constEnd())
-        it.value()->store(true);   // a futó elemzés eredménye már nem kell
+        it.value()->store(true);   // the running analysis's result is no longer needed
 
     bool have = false;
     for (Participant& p : m.participants) {
@@ -5435,7 +5428,7 @@ bool AppController::setSoloMeeting(const QString& meetingId)
     return true;
 }
 
-// ==== G4: közös visszavonás, tartós résztvevő-törlés, résztvevők átírás után, modell-műveletek ====
+// ==== shared undo, permanent participant delete, participants after transcription, model operations ====
 
 MeetingUndoService* AppController::meetingUndo(const QString& meetingId)
 {
@@ -5465,8 +5458,8 @@ bool AppController::removeParticipant(const QString& meetingId, const QString& p
     const auto has = [&participantId](const Participant& p) { return p.id == participantId; };
     const auto it0 = std::find_if(m0.participants.cbegin(), m0.participants.cend(), has);
     if (it0 == m0.participants.cend()) {
-        // Nincs résztvevő-rekord (a meeting a résztvevő-elemzés előtt kapott neveket): az
-        // azonosító az átirat beszélőjének kulcsa; a sorai névtelenek lesznek (egy lépés).
+        // There is no participant record (the meeting got names before participant analysis): the id is the
+        // transcript speaker's key; its lines go anonymous (one step).
         SpeakerEditor* ed = m0.hasTranscript ? speakerEditor(meetingId) : nullptr;
         if (!ed) return false;
         for (const EditorSpeaker& s : ed->speakers()) {
@@ -5480,7 +5473,7 @@ bool AppController::removeParticipant(const QString& meetingId, const QString& p
     }
     if (!it0->personName.isEmpty()) undoScope.text = tr("Résztvevő eltávolítva: %1").arg(it0->personName);
 
-    // A sorai névtelenre (egy szerkesztő-lépés, amelyet a közös lépés elnyel), majd a törlés.
+    // Its lines go anonymous (one editor step, which the shared step absorbs), then the deletion.
     unbindParticipant(meetingId, participantId);
     Meeting m = d->store->load(meetingId);
     m.participants.erase(std::remove_if(m.participants.begin(), m.participants.end(), has), m.participants.end());
@@ -5499,7 +5492,7 @@ QVector<Participant> AppController::unheardParticipants(const QString& meetingId
 {
     const Meeting m = d->store->load(meetingId);
     if (m.id.isEmpty() || !m.hasTranscript) return {};
-    // Az átirat beszélőinek személyei: a nyitott szerkesztőből, különben a lemezről feloldva.
+    // The persons of the transcript's speakers: from the open editor, otherwise resolved from disk.
     QSet<QString> heard;
     if (SpeakerEditor* ed = d->speakerEditors.value(meetingId)) {
         for (const EditorSpeaker& s : ed->speakers())
@@ -5543,8 +5536,8 @@ void AppController::Impl::noteBackfillSkip(const QString& person, const QString&
 void AppController::rescanVoiceModels()
 {
     const QStringList before = d->voiceModelIds;
-    applyVoiceModels();   // változáskor maga jelez (és bővülésnél pótol)
-    if (d->voiceModelIds == before) emit voiceModelsChanged();   // a fájl-állapot így is változhatott
+    applyVoiceModels();   // it signals by itself on change (and backfills on growth)
+    if (d->voiceModelIds == before) emit voiceModelsChanged();   // the file state may have changed anyway
 }
 
 bool AppController::deleteVoiceModelFile(const QString& id, QString* error)
@@ -5560,6 +5553,5 @@ bool AppController::deleteVoiceModelFile(const QString& id, QString* error)
     return true;
 }
 
-// ==== /G4 ===================================================================================
 
 } // namespace tanara

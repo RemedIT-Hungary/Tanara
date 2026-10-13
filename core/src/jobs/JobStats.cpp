@@ -11,7 +11,7 @@
 namespace tanara {
 
 namespace {
-constexpr double kAlpha = 0.3;   // mozgóátlag súlya az új mintára
+constexpr double kAlpha = 0.3;   // weight of the new sample in the moving average
 }
 
 JobStats::JobStats(const QString& filePath) : m_filePath(filePath)
@@ -56,7 +56,7 @@ void JobStats::save() const
 
 void JobStats::addSample(const QString& key, double wallSec, double audioSec)
 {
-    // Túl rövid hangból / mérésből nem tanulunk (a fix költség torzítana).
+    // We do not learn from too short audio / a measurement (the fixed cost would distort it).
     if (key.isEmpty() || audioSec < 10.0 || wallSec <= 0.0) return;
     const double ratio = wallSec / audioSec;
     Entry& e = m_entries[key];

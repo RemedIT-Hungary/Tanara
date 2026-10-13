@@ -48,7 +48,7 @@ bool writeFile(const QString& path, const QByteArray& data)
     return f.commit();
 }
 
-// A transcript.tokens.json beolvasása (ugyanaz a formátum, amit az AppController ír).
+// Reading transcript.tokens.json (the same format AppController writes).
 MergedTranscript readTokens(const QString& path)
 {
     MergedTranscript mt;
@@ -80,7 +80,7 @@ void appendUnique(QStringList& list, const QString& s)
 
 } // namespace
 
-// ---- fájlok -----------------------------------------------------------------
+// ---- files -----------------------------------------------------------------
 
 QString overlayPath(const QString& meetingFolder)
 {
@@ -105,7 +105,7 @@ QVector<TranscriptLine> loadTranscriptLines(const QString& meetingFolder)
     if (!f.open(QIODevice::ReadOnly)) return lines;
     const QJsonArray arr = QJsonDocument::fromJson(f.readAll()).array();
     lines.reserve(arr.size());
-    QHash<QString, int> seen;   // alap-id → hányszor fordult elő
+    QHash<QString, int> seen;   // base id -> how many times it occurred
     for (const QJsonValue& v : arr) {
         const QJsonObject o = v.toObject();
         TranscriptLine l;
@@ -113,8 +113,8 @@ QVector<TranscriptLine> loadTranscriptLines(const QString& meetingFolder)
         l.endMs    = qint64(o.value(QStringLiteral("endMs")).toDouble());
         l.rawLabel = o.value(QStringLiteral("speaker")).toString();
         l.text     = o.value(QStringLiteral("text")).toString();
-        // Az id a kezdőidőből képződik: az átirat újragenerálásáig stabil, és a fájl
-        // átrendezésére sem érzékeny. Azonos kezdőidő (átfedő beszélők) → sorszám-utótag.
+        // The id is formed from the start time: stable until the transcript is regenerated, and insensitive to
+        // the file being reordered. The same start time (overlapping speakers) -> a number suffix.
         const QString base = QStringLiteral("u%1").arg(l.startMs);
         const int n = ++seen[base];
         l.id = n == 1 ? base : QStringLiteral("%1-%2").arg(base).arg(n);
@@ -206,8 +206,8 @@ SpeakerOverlay loadOverlayFor(const QString& meetingFolder, const QVector<Transc
     SpeakerOverlay ov = loadOverlay(meetingFolder);
     const QString fp = transcriptFingerprint(lines);
     if (!ov.transcriptFingerprint.isEmpty() && ov.transcriptFingerprint != fp) {
-        // Másik (korábbi) átirathoz tartozó javítások: a megszólalás-határok már nem
-        // ugyanazok → nem alkalmazhatók. Az azonosítás/elavult-jelző átirat-független.
+        // Corrections belonging to another (earlier) transcript: the utterance boundaries are no longer the same,
+        // so they cannot be applied. Identification / the stale flag are transcript-independent.
         ov.participants.clear();
         ov.merged.clear();
         ov.removedRaw.clear();
@@ -224,7 +224,7 @@ bool saveOverlay(const QString& meetingFolder, const SpeakerOverlay& ov)
 {
     const QString path = overlayPath(meetingFolder);
     if (ov.isEmpty()) {
-        // Nincs mit tárolni → ne hagyjunk üres fájlt a meeting-mappában.
+        // Nothing to store: we do not leave an empty file in the meeting folder.
         return !QFile::exists(path) || QFile::remove(path);
     }
 
@@ -292,7 +292,7 @@ bool saveOverlay(const QString& meetingFolder, const SpeakerOverlay& ov)
     return writeFile(path, QJsonDocument(root).toJson(QJsonDocument::Indented));
 }
 
-// ---- feloldás ---------------------------------------------------------------
+// ---- resolution ---------------------------------------------------------------
 
 bool isParticipantKey(const QString& key)
 {
@@ -337,7 +337,7 @@ void applyResolvedSpeakers(MergedTranscript& mt, const Meeting& m)
     const SpeakerOverlay ov = loadOverlayFor(m.folder, lines);
 
     if (!ov.hasEdits() || lines.isEmpty()) {
-        // Nincs kézi javítás (vagy régi meeting segments.json nélkül): a régi viselkedés.
+        // No manual correction (or an old meeting without segments.json): the old behavior.
         if (m.speakerMap.isEmpty()) return;
         for (TranscriptToken& t : mt.tokens) {
             const auto it = m.speakerMap.constFind(t.speaker);
@@ -346,8 +346,8 @@ void applyResolvedSpeakers(MergedTranscript& mt, const Meeting& m)
         return;
     }
 
-    // Nyers címkénként a sorok kezdőidő szerint — a token a saját nyers beszélőjének abba
-    // a sorába tartozik, amelyik időben tartalmazza (egy beszélő sorai nem fedik egymást).
+    // Per raw label the lines by start time: a token belongs to the line of its own raw speaker that contains
+    // it in time (one speaker's lines do not overlap).
     struct Span { qint64 startMs; qint64 endMs; QString name; };
     QHash<QString, QVector<Span>> byRaw;
     for (const TranscriptLine& l : lines) {
@@ -363,7 +363,7 @@ void applyResolvedSpeakers(MergedTranscript& mt, const Meeting& m)
         const auto it = byRaw.constFind(raw);
         const Span* hit = nullptr;
         if (it != byRaw.constEnd()) {
-            // Az utolsó sor, amelyik a token kezdete előtt (vagy épp akkor) indul.
+            // The last line that starts before (or exactly at) the token's start.
             auto up = std::upper_bound(it->constBegin(), it->constEnd(), t.startMs,
                 [](qint64 ms, const Span& s) { return ms < s.startMs; });
             if (up != it->constBegin()) {
@@ -374,7 +374,7 @@ void applyResolvedSpeakers(MergedTranscript& mt, const Meeting& m)
         if (hit) {
             t.speaker = hit->name;
         } else {
-            // Sorhoz nem köthető token (pl. üres szövegű, kihagyott blokk): beszélő-szint.
+            // A token not attachable to a line (e.g. an empty-text, skipped block): speaker level.
             const QString key = ov.merged.value(raw, raw);
             t.speaker = speakerDisplayName(ov, m.speakerMap, key);
         }
@@ -391,7 +391,7 @@ bool regenerateTranscriptMarkdown(const Meeting& m)
                      mt.renderMarkdown().toUtf8());
 }
 
-// ---- összefoglaló-elavultság -----------------------------------------------
+// ---- summary staleness -----------------------------------------------
 
 SummaryStaleInfo summaryStale(const Meeting& m)
 {
@@ -488,7 +488,7 @@ void fillTargetedStale(const Meeting& m, SummaryStaleInfo& info, QVector<Summary
     if (statements) *statements = sts;
 }
 
-// ---- az AppController horgai -----------------------------------------------
+// ---- AppController hooks -----------------------------------------------
 
 void recordIdentification(const QString& meetingFolder, const QString& rawLabel,
                           const QString& person, double score)
@@ -520,7 +520,7 @@ bool removePersonFromOverlay(const QString& meetingFolder, const QString& name)
     bool changed = false;
     for (OverlayParticipant& p : ov.participants) {
         if (p.person != name) continue;
-        // A résztvevő névtelenné válik (a sorai megmaradnak nála).
+        // The participant becomes anonymous (their lines stay with them).
         p.person.clear();
         if (p.label.isEmpty())
             p.label = QCoreApplication::translate("tanara::SpeakerEditor", "Új beszélő %1")
@@ -534,7 +534,7 @@ bool removePersonFromOverlay(const QString& meetingFolder, const QString& name)
     return changed;
 }
 
-// ---- újra-átírás ------------------------------------------------------------
+// ---- re-transcription ------------------------------------------------------------
 
 RetranscribeImpact retranscribeImpact(const Meeting& m)
 {
@@ -558,8 +558,7 @@ RetranscribeImpact retranscribeImpact(const Meeting& m)
 QString backupTranscript(const Meeting& m)
 {
     if (m.folder.isEmpty()) return {};
-    // A szerkesztő a transcript.md-t késleltetve írja újra: a másolat mindig a MOSTANI
-    // (feloldott nevű) állapotot tartalmazza.
+    // The editor rewrites transcript.md with a delay: the copy always contains the CURRENT (resolved-name) state.
     regenerateTranscriptMarkdown(m);
     QDir folder(m.folder);
     const QString stamp = QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd-HHmmss"));
@@ -577,11 +576,11 @@ QString backupTranscript(const Meeting& m)
         if (folder.exists(f) && QFile::copy(folder.filePath(f), dest.filePath(f)))
             ++copied;
     if (copied == 0) {
-        folder.rmdir(name);   // nem volt mit menteni
+        folder.rmdir(name);   // nothing to save
         return {};
     }
-    // A nyers címke → név leképezés a meeting.json-ban él, és újra-átíráskor törlődik:
-    // a másolat mellé tesszük, hogy az átirat a nevekkel együtt visszaállítható legyen.
+    // The raw label -> name mapping lives in meeting.json and is cleared at re-transcription: we put it next
+    // to the copy so the transcript can be restored together with the names.
     QJsonObject sm;
     for (auto it = m.speakerMap.constBegin(); it != m.speakerMap.constEnd(); ++it)
         sm[it.key()] = it.value();
@@ -603,11 +602,11 @@ void discardForNewTranscript(const QString& meetingFolder)
     ov.removedRaw.clear();
     ov.utterances.clear();
     ov.speakerTracks.clear();
-    ov.identified.clear();      // az új diarizáció címkéi mást jelentenek
+    ov.identified.clear();      // the new diarization's labels mean something else
     ov.nextParticipant = 1;
     ov.nextAnonymous = 1;
     ov.transcriptFingerprint.clear();
-    // Az elavult-jelző marad: az összefoglaló a RÉGI átiratból készült.
+    // The stale flag stays: the summary was made from the OLD transcript.
     saveOverlay(meetingFolder, ov);
 }
 

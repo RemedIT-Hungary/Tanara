@@ -16,12 +16,12 @@ namespace tanara {
 
 namespace {
 constexpr int kMaxConcurrent = 2;
-constexpr int kRate = 8000;            // dekódolási mintavétel (csúcsokhoz bőven elég)
-constexpr int kWindow = 400;           // finom ablak: 50 ms
-constexpr int kCacheVersion = 2;       // 2: + "rms" (vödrönkénti effektív szint)
-constexpr int kRmsScale = 10000;       // az RMS kvantálása a gyorsítótárban (halk sávhoz is elég finom)
+constexpr int kRate = 8000;            // decode sample rate (plenty for peaks)
+constexpr int kWindow = 400;           // fine window: 50 ms
+constexpr int kCacheVersion = 2;       // 2: + "rms" (per-bucket effective level)
+constexpr int kRmsScale = 10000;       // quantization of the RMS in the cache (fine enough for a quiet track too)
 
-// Finom ablak-csúcsok → pontosan `buckets` (vagy kevesebb, ha nincs annyi ablak) vödör.
+// Fine window peaks -> exactly `buckets` buckets (or fewer if there are not that many windows).
 QVector<float> reduceMax(const QVector<float>& fine, int buckets)
 {
     const int n = int(fine.size());
@@ -38,7 +38,7 @@ QVector<float> reduceMax(const QVector<float>& fine, int buckets)
     return out;
 }
 
-// Ablakonkénti átlag-négyzetek → vödrönkénti RMS (ugyanaz a felosztás, mint a reduceMax-é).
+// Per-window mean squares -> per-bucket RMS (the same division as reduceMax's).
 QVector<float> reduceRms(const QVector<float>& fineSq, int buckets)
 {
     const int n = int(fineSq.size());
@@ -62,12 +62,12 @@ struct WaveformService::Job {
     QString trackId;
     QString audioPath;
     QProcess* proc = nullptr;
-    QByteArray carry;            // páratlan bájt a darabhatáron
-    QVector<float> fine;         // 50 ms-os ablakok csúcsai
-    QVector<float> fineSq;       // 50 ms-os ablakok átlag-négyzete (0..1) — az RMS-hez
-    double winSq = 0.0;          // négyzetösszeg az aktuális ablakban
-    int   winFill = 0;           // minták az aktuális ablakban
-    int   winMax = 0;            // |minta| max az aktuális ablakban
+    QByteArray carry;            // odd byte at a chunk boundary
+    QVector<float> fine;         // peaks of 50 ms windows
+    QVector<float> fineSq;       // mean squares (0..1) of 50 ms windows, for the RMS
+    double winSq = 0.0;          // sum of squares in the current window
+    int   winFill = 0;           // samples in the current window
+    int   winMax = 0;            // max |sample| in the current window
     qint64 samples = 0;
     bool  cancelled = false;
     qint64 srcSize = 0;
@@ -134,7 +134,7 @@ TrackPeaks WaveformService::loadCached(const QString& audioPath)
     if (!f.open(QIODevice::ReadOnly)) return out;
     const QJsonObject o = QJsonDocument::fromJson(f.readAll()).object();
     if (o.value(QStringLiteral("version")).toInt() != kCacheVersion) return out;
-    // A gyorsítótár a forrásfájl állapotához kötött: méret + módosítási idő.
+    // The cache is tied to the source file's state: size + modification time.
     if (qint64(o.value(QStringLiteral("srcSize")).toDouble()) != src.size()) return out;
     if (qint64(o.value(QStringLiteral("srcMtimeMs")).toDouble()) != src.lastModified().toMSecsSinceEpoch())
         return out;
@@ -202,7 +202,7 @@ void WaveformService::cancel(const QString& meetingId)
     for (Job* j : std::as_const(m_running))
         if (j->meetingId == meetingId && !j->cancelled) {
             j->cancelled = true;
-            if (j->proc) j->proc->kill();   // a finished ág takarít (jel nélkül)
+            if (j->proc) j->proc->kill();   // the finished branch cleans up (without a signal)
         }
 }
 
@@ -227,7 +227,7 @@ void WaveformService::startNext()
             job->consume(proc->readAllStandardOutput());
         });
         connect(proc, &QProcess::errorOccurred, this, [this, job, proc](QProcess::ProcessError err) {
-            if (err != QProcess::FailedToStart) return;   // a többi esetben jön finished
+            if (err != QProcess::FailedToStart) return;   // in other cases finished comes
             finishJob(job, false, tr("Az ffmpeg nem indítható."));
             proc->deleteLater();
         });
@@ -246,10 +246,10 @@ void WaveformService::startNext()
 
 void WaveformService::finishJob(Job* job, bool ok, const QString& error)
 {
-    if (!m_running.removeOne(job)) return;   // már lezárva
+    if (!m_running.removeOne(job)) return;   // already closed
     if (!job->cancelled) {
         if (ok) {
-            job->closeWindow();                  // a csonka utolsó ablak
+            job->closeWindow();                  // the truncated last window
             TrackPeaks tp;
             tp.trackId = job->trackId;
             tp.peaks = reduceMax(job->fine, kBuckets);
@@ -274,8 +274,8 @@ void WaveformService::finishJob(Job* job, bool ok, const QString& error)
                 f.write(QJsonDocument(o).toJson(QJsonDocument::Compact));
                 f.commit();
             }
-            // A jel a gyorsítótárral egyező (kvantált) értékeket adja — így az első és a
-            // későbbi megnyitás pontosan ugyanazt rajzolja.
+            // The signal gives the values identical to the cache (quantized), so the first and later
+            // opens draw exactly the same.
             for (float& v : tp.peaks) v = float(qBound(0, int(v * 1000.0f + 0.5f), 1000)) / 1000.0f;
             for (float& v : tp.rms)
                 v = float(qBound(0, int(v * float(kRmsScale) + 0.5f), kRmsScale)) / float(kRmsScale);

@@ -1,18 +1,17 @@
 #pragma once
 //
-// Átirat ELŐTTI hangelemzés („Ki volt ott?"): a sáv-aktivitás beszéd-szakaszaiból (TrackActivity)
-// hang-ablakok, ablakonként beágyazás (VoiceEmbedderSet), sávonként agglomeratív klaszterezés,
-// klaszterenként párosítás a tárolt lenyomatokkal → résztvevő-jelöltek bizonyítékokkal.
-// Soniox / fizetős szolgáltatás nélkül, lokálisan.
+// PRE-transcript voice analysis ("Who was there?"): voice windows from the speech spans of the
+// track activity (TrackActivity), an embedding per window (VoiceEmbedderSet), agglomerative
+// clustering per track, matching per cluster against the stored voiceprints -> participant
+// candidates with evidence. Local, with no Soniox / paid service.
 //
-// Két lépés, hogy a nehéz rész háttérszálon fusson:
-//  1. computeVoiceClusters — dekódolás + beágyazás + klaszterezés (szálbiztos: csak a kapott
-//     adatból dolgozik, tár-hozzáférés nincs; a PCM-olvasó cserélhető → teszt hamis hanggal);
-//  2. buildParticipants — párosítás + bizonyítékok + csoportok (a fő szálon, a lenyomat-DB-vel
-//     egy rangsoroló függvényen át).
-// Az átirat megléte után bindRawSpeakers köti a klasztereket a nyers STT-beszélőkhöz időbeli
-// átfedéssel; a kétoldalú nyers beszélő (mikrofon ÉS hívás) két résztvevőre bomlik.
-//
+// Two steps so the heavy part runs on a background thread:
+//  1. computeVoiceClusters: decoding + embedding + clustering (thread-safe: works only from the
+//     given data, no store access; the PCM reader is replaceable, so tests use fake audio);
+//  2. buildParticipants: matching + evidence + groups (on the main thread, through a ranking
+//     function over the voiceprint DB).
+// Once a transcript exists, bindRawSpeakers binds the clusters to the raw STT speakers by time
+// overlap; a two-sided raw speaker (mic AND call) splits into two participants.
 #include "tanara/Types.h"
 #include "tanara/edit/SpeakerEditTypes.h"
 #include "tanara/edit/SpeakerOverlay.h"
@@ -32,43 +31,43 @@ namespace tanara {
 
 class VoiceEmbedderSet;
 
-// Egy hang-ablak egy sávon (megbeszélés-időben).
+// One voice window on a track (in meeting time).
 struct SpeechWindow {
-    QString trackId;            // a logikai sáv (vezető szakasz) id-ja
-    QString side;               // "mic" | "loopback" | "" (egyéb)
+    QString trackId;            // id of the logical track (leading span)
+    QString side;               // "mic" | "loopback" | "" (other)
     qint64  startMs = 0;
     qint64  endMs = 0;
     qint64 durationMs() const { return endMs - startMs; }
 };
 
-// Egy hang-klaszter: egy sávon egy beszélő (feltehetően).
+// A voice cluster: (presumably) one speaker on one track.
 struct VoiceCluster {
     QString trackId;
     QString side;
-    QVector<QPair<qint64, qint64>> windows;   // a tagablakok [start, end) megbeszélés-időben
-    EmbeddingSet centroid;                    // modellenként L2-normalizált centroid (nem perzisztált)
-    QString sampleRef;                        // "<fájl>#start-end" — a medoid ablak
-    // A párosítás eredménye (buildParticipants tölti):
+    QVector<QPair<qint64, qint64>> windows;   // the member windows [start, end) in meeting time
+    EmbeddingSet centroid;                    // per-model L2-normalized centroid (not persisted)
+    QString sampleRef;                        // "<file>#start-end": the medoid window
+    // Result of the matching (filled by buildParticipants):
     QString participantId;
-    QString matchName;                        // az elfogadott lenyomat-találat (küszöb felett); üres = ismeretlen
-    double  matchScore = -1.0;                // a legjobb találat pontszáma (küszöb alatt is)
+    QString matchName;                        // the accepted voiceprint match (above threshold); empty = unknown
+    double  matchScore = -1.0;                // score of the best match (also below the threshold)
     qint64 speechMs() const;
 };
 
 struct ClusterSet {
-    QStringList modelIds;           // a fúzióban részt vevő modellek
+    QStringList modelIds;           // models taking part in the fusion
     QVector<VoiceCluster> clusters;
-    int windows = 0;                // hány ablakból (beágyazott) állt
+    int windows = 0;                // how many (embedded) windows it consisted of
     bool cancelled = false;
-    QString error;                  // nem futott: miért (pl. nincs modell)
+    QString error;                  // did not run: why (e.g. no model)
 };
 
-// Az elemzés perzisztált része (<mappa>/participants.analysis.json): a klaszterek ablakai és
-// párosításai (a később érkező átirathoz kötéshez kellenek).
+// The persisted part of the analysis (<folder>/participants.analysis.json): the clusters'
+// windows and matches (needed to bind to a transcript that arrives later).
 struct ParticipantAnalysisFile {
     QString at;
     QStringList modelIds;
-    QString tracksKey;              // a bevont sávok lenyomata (activityFingerprint) az elemzéskor
+    QString tracksKey;              // fingerprint of the included tracks (activityFingerprint) at analysis time
     QVector<VoiceCluster> clusters;
     bool isEmpty() const { return at.isEmpty(); }
     static QString filePath(const QString& meetingFolder);
@@ -78,94 +77,94 @@ struct ParticipantAnalysisFile {
 
 namespace participants {
 
-// Beszéd-szakasz: a beszéd-keretek (trackspeech::isSpeechFrame) futamai, legfeljebb
-// kMaxGapMs szünettel összefogva. Ablak: legalább kMinWindowMs, legfeljebb kMaxWindowMs.
+// Speech span: runs of speech frames (trackspeech::isSpeechFrame), joined across pauses of at
+// most kMaxGapMs. Window: at least kMinWindowMs, at most kMaxWindowMs.
 inline constexpr qint64 kMinWindowMs = 3000;
 inline constexpr qint64 kMaxWindowMs = 10000;
 inline constexpr qint64 kMaxGapMs = 400;
 inline constexpr int    kMaxWindowsPerTrack = 60;
-// Klaszter-összevonás (fúziós cosine) és lenyomat-párosítás küszöbe.
+// Thresholds for cluster merging (fusion cosine) and voiceprint matching.
 inline constexpr double kClusterThreshold = 0.55;
 inline constexpr double kMatchThreshold = 0.5;
-// Kézzel felvett résztvevő előnye a párosításnál (a pontszámhoz adódik).
+// Advantage of a manually added participant in matching (added to the score).
 inline constexpr double kManualBoost = 0.1;
-// Kétoldalú nyers beszélő: mindkét oldal átfedése legalább ekkora hányad.
+// Two-sided raw speaker: both sides' overlap is at least this fraction.
 inline constexpr double kSplitMinShare = 0.25;
 
 inline const QString kSideMic = QStringLiteral("mic");
 inline const QString kSideLoopback = QStringLiteral("loopback");
 
-QString sideOf(TrackKind kind);                 // Mic → "mic", Loopback → "loopback", más → ""
-QString sideLabel(const QString& side);         // "mikrofon" | "hívás" | ""
+QString sideOf(TrackKind kind);                 // Mic -> "mic", Loopback -> "loopback", other -> ""
+QString sideLabel(const QString& side);         // Hungarian caption for the side ("mic" | "call" | "")
 
-// Egy sáv hang-ablakai (időrendben; túl sok esetén egyenletesen ritkítva kMaxWindowsPerTrack-re).
+// A track's voice windows (in time order; if too many, evenly thinned to kMaxWindowsPerTrack).
 QVector<SpeechWindow> speechWindows(const TrackActivity& t, const QString& side);
 
-// Agglomeratív klaszterezés cosine-centroiddal: ablakonként a klaszter címkéje (egy tag indexe).
+// Agglomerative clustering with a cosine centroid: per window, the cluster's label (the index of one member).
 QVector<int> clusterEmbeddings(const QVector<QVector<float>>& embs, double mergeThreshold);
 
-// Egy logikai sáv [startMs, endMs) szakaszának hangja (16 kHz mono, [-1,1]); üres = nincs.
+// Audio of a logical track's [startMs, endMs) span (16 kHz mono, [-1,1]); empty = none.
 using PcmReader = std::function<QVector<float>(const QString& trackId, qint64 startMs, qint64 endMs)>;
-// A valódi olvasó: a sáv (szakaszai) fájljából, az eltolással (tracktiming) — ffmpeg.
+// The real reader: from the track's (span) file, with the offset (tracktiming), via ffmpeg.
 PcmReader filePcmReader(const Meeting& m);
 
-// 1. lépés (háttérszál). A bevont sávok aktivitásából ablakok → beágyazás → sávonként klaszterek
-// (az egyablakos klaszter zajnak számít, ha van más). progress(done,total) false → megszakítás.
+// Step 1 (background thread). From the included tracks' activity: windows -> embedding -> per-track
+// clusters (a one-window cluster counts as noise if there is another). progress(done,total) returning false cancels.
 ClusterSet computeVoiceClusters(const Meeting& m, const MeetingActivity& activity,
                                 const VoiceEmbedderSet& embedders, const PcmReader& pcm,
                                 const std::function<bool(int, int)>& progress = {});
 
-// A jelöltek kontextusa (a fő szálon töltve).
+// Context of the candidates (filled on the main thread).
 struct CandidateContext {
-    QString selfName;                                                  // a mikrofon gazdája
-    std::function<QVector<VoiceMatch>(const EmbeddingSet&)> rank;      // lenyomat-rangsor, csökkenő
+    QString selfName;                                                  // the microphone's owner
+    std::function<QVector<VoiceMatch>(const EmbeddingSet&)> rank;      // voiceprint ranking, descending
     std::function<bool(const QString& person)> hasVoiceprint;
-    // A címke-bizonyíték (kézi címke és tanult kapcsolat; ugyanaz a varrat, mint a
-    // jelölt-rangsoré: PersonTagSnapshot::evidence). Üres = nincs címke-bizonyíték.
+    // The tag evidence (manual tag and learned association; the same seam as the candidate ranking's:
+    // PersonTagSnapshot::evidence). Empty = no tag evidence.
     TagEvidenceFn tagEvidence;
 };
 
-// 2. lépés: a klaszterekből résztvevők. A meglévő kézi résztvevők megmaradnak (bizonyítékkal
-// bővítve), a korábbi hang-jelöltek helyére újak jönnek; a jóváhagyott név jóváhagyott marad.
-// A clusters participantId / matchName / matchScore mezőit kitölti.
+// Step 2: participants from the clusters. Existing manual participants stay (extended with
+// evidence), earlier voice candidates are replaced by new ones; an approved name stays approved.
+// Fills the participantId / matchName / matchScore fields of the clusters.
 QVector<Participant> buildParticipants(ClusterSet& clusters, const Meeting& m,
                                        const CandidateContext& ctx);
 
-// A résztvevő bizonyítékai újraszámolva (heard: hallottuk-e; score: a hang-pontszám).
+// The participant's evidence recomputed (heard: whether we heard them; score: the voice score).
 QVector<Evidence> participantEvidence(const Participant& p, bool heard, double score,
                                       const Meeting& m, const CandidateContext& ctx);
 
 ParticipantGroup participantGroup(const Participant& p);
-// A jóváhagyó párbeszéd alapértelmezése: névvel bír és nincs ellentmondó bizonyítéka.
+// Default of the approval dialog: has a name and no contradicting evidence.
 bool defaultChecked(const Participant& p);
 
-// Nyers beszélő-hivatkozás: "Beszélő 1" (egész) vagy "Beszélő 1@mic" / "@loopback" (kétoldalú
-// nyers beszélő egyik oldala).
+// Raw-speaker reference: "Speaker 1" (whole) or "Speaker 1@mic" / "@loopback" (one side of a
+// two-sided raw speaker).
 QString rawLabelOf(const QString& rawId);
 QString rawSideOf(const QString& rawId);
 QString rawId(const QString& rawLabel, const QString& side = QString());
-// Megjelenítés: "Beszélő 1" ill. "Beszélő 1 · mikrofon" / "Beszélő 1 · hívás".
+// Display: "Speaker 1" or "Speaker 1 - mic" / "Speaker 1 - call" (Hungarian captions in the UI).
 QString rawDisplay(const QString& rawId);
 
-// A klaszterek kötése a nyers STT-beszélőkhöz időbeli átfedéssel (rawSpeakerIds, talkShare).
-// Kétoldalú nyers beszélő (mindkét oldal ≥ kSplitMinShare, más-más legjobb résztvevővel) → két
-// résztvevőre bontva ("@mic" / "@loopback"). true, ha bármi változott.
+// Binds the clusters to the raw STT speakers by time overlap (rawSpeakerIds, talkShare).
+// A two-sided raw speaker (both sides >= kSplitMinShare, with different best participants) is
+// split into two participants ("@mic" / "@loopback"). true if anything changed.
 bool bindRawSpeakers(QVector<Participant>& ps, const QVector<VoiceCluster>& clusters,
                      const QVector<TranscriptLine>& lines);
 
-// Egy átirat-sor oldala: a klaszter-ablakok átfedése, ennek híján a sáv-energia (activity lehet
-// null). "" = eldönthetetlen.
+// A transcript line's side: the overlap of the cluster windows, failing that the track energy
+// (activity may be null). "" = undecidable.
 QString lineSide(const TranscriptLine& line, const QVector<VoiceCluster>& clusters,
                  const MeetingActivity* activity);
 
-// A jóváhagyás kötései: a bejelölt (accepted) résztvevők nyers beszélői a nevükre (kétoldalú
-// nyers beszélőnél csak az adott oldal sorai), a csak ki nem jelölt résztvevőhöz kötött nyers
-// beszélők névtelenre.
-// Sáv-kizárás (G10; meeting + activity kell): ha minden bejelölt, elnevezett résztvevőnek van kézi
-// sávja (Participant::tracks), a nyers beszélő sorai OLDAL SZERINT válnak szét (a sor oldala:
-// sides::classifyLineSides): a személy csak a nem kizárt sorokat kapja; a kizártak a másik oldal
-// legjobb (a klaszterei szerint) nem-kizárt résztvevőjéhez kerülnek, ennek híján névtelenek
-// maradnak (az egész nyers beszélő névtelen, a megmaradó sorok utteranceIds-szel a személyé).
+// The approval's bindings: the raw speakers of the checked (accepted) participants go to their
+// names (for a two-sided raw speaker only that side's lines), raw speakers bound only to
+// unchecked participants go anonymous.
+// Track veto (needs meeting + activity): if every checked, named participant has manual tracks
+// (Participant::tracks), the raw speaker's lines split BY SIDE (the line's side:
+// sides::classifyLineSides): the person gets only the non-excluded lines; excluded ones go to
+// the best (by its clusters) non-excluded participant of the other side, failing that they stay
+// anonymous (the whole raw speaker is anonymous, the remaining lines go to the person via utteranceIds).
 QVector<SpeakerBinding> approvalBindings(const QVector<Participant>& all, const QStringList& acceptedIds,
                                          const QVector<TranscriptLine>& lines,
                                          const QVector<VoiceCluster>& clusters,

@@ -1,8 +1,8 @@
 #include "tanara/detect/DetectorRegistry.h"
 #include "tanara/detect/IMeetingDetector.h"
 
-// A beépített, platform-specifikus detektorok konkrét fejlécei KIZÁRÓLAG itt jelennek
-// meg (a saját platform-#if-jük alatt) — a registry maga platform-agnosztikus marad.
+// The concrete headers of the built-in, platform-specific detectors appear ONLY here (under their
+// own platform #if); the registry itself stays platform-agnostic.
 #if defined(Q_OS_LINUX)
 #include "tanara/detect/LinuxCaptureDetector.h"
 #endif
@@ -42,7 +42,7 @@ DetectorDescriptor windowsWasapiDescriptor()
 
 void registerBuiltinDetectors()
 {
-    // Idempotens: a többszöri hívás (figyelő + felvevő --record mód) ne duplikáljon.
+    // Idempotent: repeated calls (watcher + the recorder's --record mode) must not duplicate.
     static bool registered = false;
     if (registered)
         return;
@@ -58,7 +58,7 @@ void registerBuiltinDetectors()
         windowsWasapiDescriptor(),
         []() -> IMeetingDetector* { return new WindowsCaptureDetector(); });
 #endif
-    // macOS (CoreAudio) detektor: későbbi kör.
+    // macOS (CoreAudio) detector: a later round.
 }
 
 } // namespace tanara

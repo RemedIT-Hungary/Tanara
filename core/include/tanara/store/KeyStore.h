@@ -1,14 +1,13 @@
 #pragma once
 //
-// Tanara — titok-tár absztrakció (API-kulcsok, tokenek).
+// Secret-store abstraction (API keys, tokens).
 //
-// MVP: fájl-alapú tár a ~/.tanara/secrets.json-ban (chmod 600).
-// Az API szándékosan minimális, hogy később egy QtKeychain backend
-// drop-in cserélhesse a fájl-alapút.
+// MVP: a file-based store in ~/.tanara/secrets.json (chmod 600).
+// The API is deliberately minimal so a QtKeychain backend can later replace the
+// file-based one as a drop-in.
 //
-// TODO: QtKeychain backend — ehhez CMake-módosítás (QtKeychain link) kell,
-//       amit ebben a modulban NEM végzünk el.
-//
+// TODO: QtKeychain backend: needs a CMake change (linking QtKeychain), which this
+// module does NOT do.
 #include <QString>
 #include <QHash>
 
@@ -16,16 +15,16 @@ namespace tanara {
 
 class KeyStore {
 public:
-    // filePath üres → alapértelmezett: <metadataDir vagy ~/.tanara>/secrets.json
+    // Empty filePath = default: <metadataDir or ~/.tanara>/secrets.json
     explicit KeyStore(const QString& filePath = QString());
 
-    // Visszaadja a tárolt értéket, vagy üres stringet ha nincs.
+    // Returns the stored value, or an empty string if there is none.
     QString get(const QString& key) const;
 
-    // Beállít/felülír egy kulcsot és azonnal perzisztál (chmod 600).
+    // Sets/overwrites a key and persists at once (chmod 600).
     void set(const QString& key, const QString& value);
 
-    // Töröl egy kulcsot (ha létezik) és perzisztál.
+    // Deletes a key (if it exists) and persists.
     void remove(const QString& key);
 
     bool contains(const QString& key) const;

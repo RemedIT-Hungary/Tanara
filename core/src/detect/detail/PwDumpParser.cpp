@@ -6,8 +6,8 @@
 
 namespace tanara::detail {
 
-// A bináris-útból/névből ember-olvasható app-nevet és normalizált app-id-t képez.
-// pl. "/usr/bin/zoom" → appId "zoom". Az ismert appokra szép nevet ad.
+// Builds a human-readable app name and a normalized app id from the binary path/name.
+// e.g. "/usr/bin/zoom" -> appId "zoom". Gives a pretty name for known apps.
 QString prettyAppName(const QString& binaryLower, const QString& appNameProp)
 {
     struct Known { const char* key; const char* name; };
@@ -20,13 +20,13 @@ QString prettyAppName(const QString& binaryLower, const QString& appNameProp)
     for (const Known& k : table)
         if (binaryLower.contains(QLatin1String(k.key)))
             return QString::fromLatin1(k.name);
-    // Ismeretlen: a props application.name-je, ha van, különben a bináris.
+    // Unknown: the props' application.name if present, otherwise the binary.
     return appNameProp.isEmpty() ? binaryLower : appNameProp;
 }
 
 namespace {
 
-// Böngésző-binárisok: a webes hívások (Google Meet, Teams a böngészőben…) ezekben futnak.
+// Browser binaries: web calls (Google Meet, Teams in the browser...) run in these.
 bool isBrowserBinary(const QString& binaryLower)
 {
     static const char* browsers[] = {"chromium", "chrome", "firefox", "vivaldi", "brave",
@@ -54,7 +54,7 @@ MeetingSignal parsePwDump(const QByteArray& json,
                           const QStringList& knownApps,
                           const QString& selfBinary)
 {
-    MeetingSignal sig;   // active=false alapból
+    MeetingSignal sig;   // active=false by default
 
     const QJsonDocument doc = QJsonDocument::fromJson(json);
     if (!doc.isArray())
@@ -69,7 +69,7 @@ MeetingSignal parsePwDump(const QByteArray& json,
         const QJsonObject info = o.value(QStringLiteral("info")).toObject();
         const QJsonObject props = info.value(QStringLiteral("props")).toObject();
 
-        // Csak mikrofon-fogó streamek (egy app FOGJA a mikrofont), és csak ha AKTÍV.
+        // Only microphone-holding streams (an app HOLDS the microphone), and only if ACTIVE.
         if (props.value(QStringLiteral("media.class")).toString() != QStringLiteral("Stream/Input/Audio"))
             continue;
         if (info.value(QStringLiteral("state")).toString() != QStringLiteral("running"))
@@ -82,15 +82,15 @@ MeetingSignal parsePwDump(const QByteArray& json,
         const QString appLower    = appNameProp.toLower();
         const QString mediaLower  = mediaName.toLower();
 
-        // Ön-kizárás: a saját felvevőnk (tanara) capture-je SOHA nem meeting.
+        // Self-exclusion: our own recorder's (tanara) capture is NEVER a meeting.
         if (!selfLower.isEmpty()
             && (binaryLower.contains(selfLower) || appLower.contains(selfLower)))
             continue;
-        // A Discord képernyőmegosztás/játék-hang NEM hívás.
+        // Discord screen share / game audio is NOT a call.
         if (mediaLower.contains(QStringLiteral("game capture")))
             continue;
 
-        // Illeszkedés: WebRTC-motor VAGY recStream/webrtc media.name VAGY ismert bináris.
+        // Match: a WebRTC engine OR a recStream/webrtc media.name OR a known binary.
         bool matched = appLower.contains(QStringLiteral("webrtc voiceengine"))
                        || mediaLower.contains(QStringLiteral("recstream"))
                        || mediaLower.contains(QStringLiteral("webrtc"));
@@ -100,10 +100,9 @@ MeetingSignal parsePwDump(const QByteArray& json,
                 if (a.isEmpty())
                     continue;
                 if (binaryLower.contains(a) || appLower.contains(a)) { matched = true; break; }
-                // A „meet” listaelem minden böngészőt jelent: a Google Meet (és a többi webes
-                // hívás) a böngésző folyamatában fogja a mikrofont (Vivaldi: „vivaldi-bin”,
-                // Chrome: „chrome”, Edge: „msedge”…), a Chromium-alapúak media.name-je csak
-                // „RecordStream”. Ugyanez az alias él a Windows-detektorban is.
+                // The "meet" list item means every browser: Google Meet (and other web calls) holds the microphone
+                // in the browser's process (Vivaldi: "vivaldi-bin", Chrome: "chrome", Edge: "msedge"...), and for
+                // Chromium-based ones media.name is just "RecordStream". The same alias lives in the Windows detector.
                 if (a == QLatin1String("meet") && isBrowserBinary(binaryLower)) { matched = true; break; }
             }
         }
@@ -116,7 +115,7 @@ MeetingSignal parsePwDump(const QByteArray& json,
         sig.windowTitle = props.value(QStringLiteral("node.name")).toString();  // best-effort
         sig.sourceRef   = QStringLiteral("pw-node:%1")
                               .arg(o.value(QStringLiteral("id")).toInt());
-        return sig;   // az első aktív találat elég
+        return sig;   // the first active match is enough
     }
     return sig;
 }

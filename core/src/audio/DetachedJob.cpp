@@ -13,10 +13,10 @@ struct DetachedJob::State {
 };
 
 DetachedJob::DetachedJob(std::function<void()> work) : state_(std::make_shared<State>()) {
-    // A szál a saját másolatát tartja az állapotról: a DetachedJob megszűnése után is él.
+    // The thread keeps its own copy of the state: it lives on after the DetachedJob is gone.
     std::thread([state = state_, work = std::move(work)]() mutable {
         if (work) work();
-        work = nullptr;   // a munka birtokolta erőforrások itt, a szálon szabadulnak fel
+        work = nullptr;   // resources the work owned are freed here, on the thread
         {
             std::lock_guard<std::mutex> lock(state->mutex);
             state->done = true;

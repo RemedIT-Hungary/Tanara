@@ -1,14 +1,13 @@
 #pragma once
 //
-// Tanara — az átirat-szerkesztő (beszélő-javítás) value-típusai: a backend ⟷ UI szerződés.
-// Sima adat-struktúrák (QObject nélkül), queued signalban is átküldhetők.
+// Value types of the transcript editor (speaker correction): the backend <-> UI contract.
+// Plain data structs (no QObject); they can also be sent in queued signals.
 //
-// Fogalmak:
-//  - MEGSZÓLALÁS (utterance): a transcript.segments.json egy sora. Soron belüli vágás nincs.
-//  - BESZÉLŐ (speaker): a meeting egy résztvevője, stabil kulccsal. Vagy egy nyers
-//    diarizációs címke („Beszélő 1" — a kulcs maga a címke), vagy kézzel felvett résztvevő
-//    („participant:N"). Személyhez (névhez) köthető, vagy névtelen.
-//
+// Concepts:
+//  - UTTERANCE: one line of transcript.segments.json. No cutting within a line.
+//  - SPEAKER: a participant of the meeting, with a stable key. Either a raw diarization
+//    label ("Speaker 1": the key is the label itself) or a manually added participant
+//    ("participant:N"). Can be bound to a person (a name) or anonymous.
 #include <QString>
 #include <QStringList>
 #include <QVector>
@@ -16,41 +15,41 @@
 
 namespace tanara {
 
-// Egy megszólalás FELOLDOTT állapota (a UI lista-modelljének egy sora).
+// The RESOLVED state of an utterance (one row of the UI list model).
 struct EditorUtterance {
-    QString id;                 // stabil azonosító (amíg az átirat nem generálódik újra)
-    int     index = -1;         // sorszám a transcript.segments.json-ban (időrend)
+    QString id;                 // stable id (until the transcript is regenerated)
+    int     index = -1;         // index in transcript.segments.json (time order)
     qint64  startMs = 0;
     qint64  endMs = 0;
     QString text;
-    QString speakerKey;         // a feloldott beszélő kulcsa (EditorSpeaker::key)
-    QString rawLabel;           // a nyers diarizációs címke (érintetlen)
-    bool    uncertain = false;          // hangra gyengén illik a beszélőjéhez (sraffozott)
-    bool    manuallyCorrected = false;  // kézzel átsorolt („javítva")
-    bool    confirmed = false;          // a felhasználó megerősítette („Jó így")
-    // „Egymásra beszéltek": nem használjuk hangmintának (centroid, hanglenyomat). Automatikus
-    // (átfedés más beszélővel) vagy kézi; a kézi felülírás mindkét irányba érvényes.
+    QString speakerKey;         // key of the resolved speaker (EditorSpeaker::key)
+    QString rawLabel;           // the raw diarization label (untouched)
+    bool    uncertain = false;          // fits its speaker's voice poorly (hatched)
+    bool    manuallyCorrected = false;  // reassigned by hand ("corrected")
+    bool    confirmed = false;          // confirmed by the user ("Fine as is")
+    // "Talked over each other": not used as a voice sample (centroid, voiceprint). Automatic
+    // (overlap with another speaker) or manual; the manual override applies in both directions.
     bool    noisy = false;
-    bool    noisyOverlap = false;       // az átfedés-szabály szerint zajos (a kézi felülírástól függetlenül)
-    bool    rechecked = false;          // az újraellenőrzés jelölte bizonytalannak
-    // „Nem azonosítható" (SpeakerOverlay: OverlayUtterance::ignored): a név marad, de a hang-elemzés
-    // figyelmen kívül hagyja; sosem bizonytalan, nem minta, nem kerül Átnézendő csoportba.
+    bool    noisyOverlap = false;       // noisy per the overlap rule (regardless of the manual override)
+    bool    rechecked = false;          // marked uncertain by the recheck
+    // "Unidentifiable" (SpeakerOverlay: OverlayUtterance::ignored): the name stays, but the voice
+    // analysis ignores it; never uncertain, not a sample, not put in a "To review" group.
     bool    ignored = false;
-    // A hangra jobban illő beszélő kulcsa (az újraellenőrzés javaslata); üres = nincs.
+    // Key of the speaker that fits the voice better (the recheck's suggestion); empty = none.
     QString likelySpeakerKey;
-    // Miért bizonytalan (v3, 14. döntés — a pirula felirata): "side" (a sor a beszélője oldalával
-    // ellentétes sávon szólt), "tag" (hangra kétes, és a beszélő címkéi nem illenek a
-    // megbeszéléshez), "voice" (hangra kétes); üres, ha nem bizonytalan.
+    // Why it is uncertain (the pill's label): "side" (the line was on a track opposite its
+    // speaker's side), "tag" (doubtful by voice, and the speaker's tags do not fit the meeting),
+    // "voice" (doubtful by voice); empty if not uncertain.
     QString uncertainReason;
 };
 
-// „Eltérő minta" jelzés (SpeakerEditor::lastSampleDeviation): egy pozitív, mintát adó döntés
-// (megerősítés, vagy áthelyezés mintaként) után a döntött sorok közül a cél-beszélő magjától
-// legtávolabbi. deviates = a hasonlóság a küszöb (speakeredit::kSampleDeviationFit) alatt van.
+// "Deviating sample" flag (SpeakerEditor::lastSampleDeviation): after a positive, sample-giving
+// decision (a confirmation, or a move as a sample), the decided line farthest from the target
+// speaker's core. deviates = the similarity is below the threshold (speakeredit::kSampleDeviationFit).
 struct SampleDeviation {
-    QString utteranceId;        // üres = nincs mérés (nincs érvényes jelzés)
-    QString speakerKey;         // a cél-beszélő
-    double  similarity = 0.0;   // cosine a beszélő magjához (a döntött sorok nélkül), 0..1 körül
+    QString utteranceId;        // empty = not measured (no valid flag)
+    QString speakerKey;         // the target speaker
+    double  similarity = 0.0;   // cosine to the speaker's core (without the decided lines), around 0..1
     bool    deviates = false;
     bool isValid() const { return !utteranceId.isEmpty(); }
     bool operator==(const SampleDeviation& o) const {
@@ -60,18 +59,18 @@ struct SampleDeviation {
     bool operator!=(const SampleDeviation& o) const { return !(*this == o); }
 };
 
-// Minta-mérő (SpeakerEditor::sampleStats): beszélőnként a hangmintának számító sorok. Minta-sor =
-// zárolt (megerősített / javított), nem „egymásra beszéltek", nem „nem azonosítható", és legalább
-// speakeredit::kMinEmbedMs hosszú (beágyazható). A „munkamenet" a szerkesztő megnyitása (ill. az
-// utolsó új átirat) óta tart.
+// Sample meter (SpeakerEditor::sampleStats): per speaker, the lines counting as voice samples. A sample
+// line = locked (confirmed / corrected), not "talked over each other", not "unidentifiable", and at least
+// speakeredit::kMinEmbedMs long (embeddable). The "session" runs since the editor was opened (or the
+// last new transcript).
 struct SpeakerSampleStats {
     QString speakerKey;
-    QString personName;         // üres = névtelen
+    QString personName;         // empty = anonymous
     QString displayName;
     int     sampleLines = 0;
-    qint64  sampleMs = 0;       // a minta-sorok teljes hossza
-    int     sessionAdded = 0;   // ebből a munkamenetben lett ennek a beszélőnek a mintája
-    QStringList sessionAddedIds;    // ezek a sorok (időrendben) — a „+N most" szűrőhöz
+    qint64  sampleMs = 0;       // total length of the sample lines
+    int     sessionAdded = 0;   // of these, became a sample of this speaker in this session
+    QStringList sessionAddedIds;    // those lines (in time order), for the "+N now" filter
     bool operator==(const SpeakerSampleStats& o) const {
         return speakerKey == o.speakerKey && personName == o.personName && displayName == o.displayName
             && sampleLines == o.sampleLines && sampleMs == o.sampleMs && sessionAdded == o.sessionAdded
@@ -79,101 +78,101 @@ struct SpeakerSampleStats {
     }
 };
 
-// Egy kötés a résztvevő-jóváhagyáshoz (SpeakerEditor::applyBindings): a nyers beszélő (vagy
-// csak a megadott sorai) személyhez kerül; üres personName = névtelenre állítás.
+// A binding for the participant approval (SpeakerEditor::applyBindings): the raw speaker (or
+// only its given lines) goes to a person; empty personName = set anonymous.
 struct SpeakerBinding {
     QString     rawLabel;
     QString     personName;
-    QStringList utteranceIds;   // üres = a nyers beszélő egésze
+    QStringList utteranceIds;   // empty = the whole raw speaker
 };
 
-// A meeting egy beszélője (a sáv/oszlop a szerkesztőben).
+// A speaker of the meeting (the track/column in the editor).
 struct EditorSpeaker {
-    QString key;                // stabil kulcs: nyers címke VAGY "participant:N"
-    QString displayName;        // személynév, vagy névtelen címke („Beszélő 2", „Új beszélő 1")
-    QString personName;         // a kötött személy neve; üres = névtelen
-    QString rawLabel;           // nyers címke (kézzel felvett résztvevőnél üres)
-    bool    anonymous = true;   // nincs személyhez kötve
-    bool    added = false;      // kézzel felvett résztvevő (nem a diarizációból jön)
-    bool    isSelf = false;     // a felhasználó saját maga (userSpeakerName)
-    int     colorIndex = 0;     // első megjelenés sorrendje a meetingben; szerkesztéstől független
+    QString key;                // stable key: raw label OR "participant:N"
+    QString displayName;        // person name, or an anonymous label ("Speaker 2", "New speaker 1")
+    QString personName;         // name of the bound person; empty = anonymous
+    QString rawLabel;           // raw label (empty for a manually added participant)
+    bool    anonymous = true;   // not bound to a person
+    bool    added = false;      // manually added participant (does not come from diarization)
+    bool    isSelf = false;     // the user themselves (userSpeakerName)
+    int     colorIndex = 0;     // order of first appearance in the meeting; independent of editing
     int     utteranceCount = 0;
     qint64  talkTimeMs = 0;
-    double  talkShare = 0.0;    // 0..1, a teljes beszédidő hányada
-    bool    hasVoiceprint = false;      // a kötött személynek van hanglenyomata
-    double  voiceConfidence = -1.0;     // hang-azonosítás cosine pontszáma; <0 = nem ismert
+    double  talkShare = 0.0;    // 0..1, share of the total speaking time
+    bool    hasVoiceprint = false;      // the bound person has a voiceprint
+    double  voiceConfidence = -1.0;     // cosine score of the voice identification; <0 = unknown
 };
 
-// Kézi átsorolás utáni javaslat: a forrás-beszélőnél maradt sorok, amelyek hangra a
-// célhoz állnak közelebb („Még 14 sor hasonlít erre a hangra. Átrakjam?").
+// Suggestion after a manual reassignment: lines left at the source speaker that are closer
+// to the target by voice ("14 more lines sound like this voice. Move them?").
 struct SpeakerSuggestion {
     QString     sourceSpeakerKey;
-    QString     targetSpeaker;      // a cél-beszélő kulcsa
-    QString     anchorUtteranceId;  // a kézzel átsorolt sor (a UI ez alá teszi a dobozt)
+    QString     targetSpeaker;      // key of the target speaker
+    QString     anchorUtteranceId;  // the manually reassigned line (the UI puts the box under it)
     QStringList utteranceIds;
     bool isValid() const { return !targetSpeaker.isEmpty() && !utteranceIds.isEmpty(); }
 };
 
-// Kézi átsorolás után, ha a „hasonló sorok" javaslat azért hallgat, mert a két hang túl
-// hasonló („nem két ember" őr), de mindkét beszélő elnevezett, és mindkettőnek van legalább
-// 3 megerősített / javított (embeddelt, tiszta) sora: a szerkesztő felajánlja a kettejük
-// közötti átnézést („A és B hangja hasonló. Nézzem át kettejük sorait…?").
+// After a manual reassignment, when the "similar lines" suggestion stays silent because the two
+// voices are too similar (a "not two people" guard), but both speakers are named and each has at least
+// 3 confirmed / corrected (embedded, clean) lines: the editor offers a review between the two
+// ("A's and B's voices are similar. Review their lines...?").
 struct PairRecheckOffer {
-    QString sourceSpeakerKey;       // ahonnan a sor(ok) jöttek
-    QString targetSpeakerKey;       // ahova kerültek
-    double  centroidSimilarity = 0.0;   // a „hasonló sorok" 2-közepének két hangja közti cosine
+    QString sourceSpeakerKey;       // where the line(s) came from
+    QString targetSpeakerKey;       // where they went
+    double  centroidSimilarity = 0.0;   // cosine between the two voices (the 2-means of the "similar lines")
     bool isValid() const { return !sourceSpeakerKey.isEmpty() && !targetSpeakerKey.isEmpty(); }
 };
 
-// Egy ismert személy a személyválasztó panelhez.
+// A known person for the person-picker panel.
 struct PersonInfo {
     QString name;
     bool    hasVoiceprint = false;
     int     voiceprintCount = 0;
-    int     meetingCount = 0;       // hány meetingen szerepel
-    QStringList aliases;            // becenevek (people.json) — a keresés ezekre is talál
-    QString matchedAlias;           // szűrés után: ha a találat becenévből jött, az a becenév
+    int     meetingCount = 0;       // in how many meetings they appear
+    QStringList aliases;            // nicknames (people.json); search matches these too
+    QString matchedAlias;           // after filtering: if the match came from a nickname, that nickname
 };
 
-// Mennyi anyag van egy beszélő kézi hanglenyomatához ebben a meetingben.
+// How much material there is for a speaker's manual voiceprint in this meeting.
 struct VoiceprintMaterial {
-    int    usableLines = 0;     // elég hosszú (és nem bizonytalan) sorok száma
-    qint64 usableMs = 0;        // ezek felhasználható hossza összesen
-    qint64 missingMs = 0;       // ennyi hiányzik a minimumhoz (0 = elég)
+    int    usableLines = 0;     // number of lines that are long enough (and not uncertain)
+    qint64 usableMs = 0;        // their total usable length
+    qint64 missingMs = 0;       // how much is missing to the minimum (0 = enough)
     bool   sufficient = false;
 };
 
-// A kézi hanglenyomat-készítés eredménye.
+// Result of the manual voiceprint creation.
 struct VoiceprintResult {
     bool    ok = false;
-    QString printId;            // a létrejött lenyomat azonosítója
-    QString error;              // emberi hibaüzenet, ha !ok
+    QString printId;            // id of the voiceprint created
+    QString error;              // human-readable error message if !ok
     int     usedLines = 0;
     qint64  usedMs = 0;
-    qint64  missingMs = 0;      // ha nincs elég anyag: ennyi hiányzik
+    qint64  missingMs = 0;      // if there is not enough material: how much is missing
 };
 
-// Az összefoglaló elavultsága: a készítése óta változott a beszélő-hozzárendelés.
-// Célzott elavulás (ha az összefoglalónak vannak forrás-hivatkozásos állításai): mely
-// állítások / teendők forrás-sorainak beszélője változott. Állítások nélkül (régi vagy
-// témánkénti összefoglaló) targeted == false, és csak az egész-dokumentum jelzés él.
+// Summary staleness: the speaker assignment changed since it was made.
+// Targeted staleness (if the summary has statements with source references): which
+// statements / action items have source lines whose speaker changed. Without statements (old
+// or per-topic summary) targeted == false and only the whole-document flag applies.
 struct SummaryStaleInfo {
     bool stale = false;
-    int  correctedSpeakers = 0; // „Az összefoglaló óta N beszélőt javítottál"
-    bool targeted = false;              // van statement-szintű adat (a lenti mezők érvényesek)
-    int  affectedStatements = 0;        // érintett állítás + döntés („2 állítás")
-    int  affectedTodos = 0;             // érintett teendő („1 teendő")
-    int  ownerChanges = 0;              // ebből: teendő, amelynek a felelőse is érintett
+    int  correctedSpeakers = 0; // "You corrected N speakers since the summary"
+    bool targeted = false;              // statement-level data exists (the fields below are valid)
+    int  affectedStatements = 0;        // affected statements + decisions ("2 statements")
+    int  affectedTodos = 0;             // affected action items ("1 action item")
+    int  ownerChanges = 0;              // of which: action items whose owner is affected too
     QStringList affectedStatementIds;   // a SummaryStatement::id-k
-    QStringList affectedUtteranceIds;   // a térkép kiemeléséhez
+    QStringList affectedUtteranceIds;   // for highlighting on the map
 };
 
-// Mi vész el újra-átíráskor (a megerősítő párbeszédhez).
+// What is lost on re-transcription (for the confirmation dialog).
 struct RetranscribeImpact {
-    int correctedUtterances = 0;    // kézzel átsorolt sorok
-    int confirmedUtterances = 0;    // „Jó így" sorok (amelyek nem átsoroltak)
-    int namedSpeakers = 0;          // nevesített beszélők (speakerMap + nevesített résztvevők)
-    int addedParticipants = 0;      // kézzel felvett résztvevők
+    int correctedUtterances = 0;    // manually reassigned lines
+    int confirmedUtterances = 0;    // "Fine as is" lines (that are not reassigned)
+    int namedSpeakers = 0;          // named speakers (speakerMap + named participants)
+    int addedParticipants = 0;      // manually added participants
     int manualCorrections() const { return correctedUtterances + confirmedUtterances; }
     bool any() const { return manualCorrections() > 0 || namedSpeakers > 0 || addedParticipants > 0; }
 };

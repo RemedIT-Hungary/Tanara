@@ -1,9 +1,8 @@
 #pragma once
 //
-// Tanara — közös adattípusok (a backend ⟷ UI szerződés magja).
-// Minden modul ezekre épít. QObject NINCS itt: ezek sima value-típusok,
-// hogy queued signalokban átküldhetők legyenek (Q_DECLARE_METATYPE lent).
-//
+// Shared data types (the core of the backend <-> UI contract).
+// Every module builds on these. No QObject here: these are plain value types so they
+// can be sent in queued signals (Q_DECLARE_METATYPE below).
 #include <QString>
 #include <QStringList>
 #include <QVector>
@@ -24,14 +23,14 @@ namespace tanara {
 
 struct HttpExchange;   // tanara/cloud/CloudTypes.h
 
-QString libraryVersion();   // definíció: core/src/Version.cpp
+QString libraryVersion();   // defined in core/src/Version.cpp
 
 // ---- enumok ----------------------------------------------------------------
 enum class TrackKind { Mic, Loopback, Other };
 enum class RecordingState { Idle, Recording, Stopping, Encoding };
 enum class JobState { Idle, Uploading, Queued, Processing, Completed, Failed };
 
-// ---- audio eszköz / sáv ----------------------------------------------------
+// ---- audio device / track ----------------------------------------------------
 struct AudioDeviceInfo {
     QString id;
     QString name;
@@ -44,40 +43,40 @@ struct AudioDeviceInfo {
 struct Track {
     QString id;             // pl. "mic", "loopback", deviceslug
     QString deviceName;
-    QString file;           // relatív a meeting-mappához (pl. "track_mic.ogg")
-    QString speakerLabel;   // ehhez a sávhoz tartozó (fix) beszélő
+    QString file;           // relative to the meeting folder (e.g. "track_mic.ogg")
+    QString speakerLabel;   // the (fixed) speaker belonging to this track
     TrackKind kind = TrackKind::Mic;
     bool fixedSpeaker = false;
     int sampleRate = 48000;
     int channels = 1;
-    bool active = true;     // false = felvétel után csendesnek ítélve, eldobva (fájl MARAD)
-    float peakLevel = 0.0f; // a felvétel alatti csúcs-RMS (a megtartás-döntéshez)
-    QString customName;     // a felhasználó által adott sávnév; üres → barátságos név (TrackCatalog)
-    // A sáv hangja ennyivel KÉSŐBB kezdődik a felvétel 0-pontjánál (ms). 0 = együtt indult.
-    // A fájl a ténylegesen felvett szakasz (csend-kitöltés NINCS): a felvevő a felvétel közben
-    // bekapcsolt eszköz sávjának, ill. egy ki-be kapcsolt eszköz minden szakaszának (új fájl:
-    // track_<slug>-2.ogg …) a megnyitás idejét írja ide. A lekeverés ennyi csenddel tolja el
-    // (adelay); a sávfájlból olvasók a megbeszélés-időt ennyivel tolják (tracktiming). Régi /
-    // máshonnan hozott mappánál a CLI `align` parancsa állítja (--auto: közös vég feltételezve).
+    bool active = true;     // false = judged silent after recording and dropped (the file STAYS)
+    float peakLevel = 0.0f; // peak RMS during recording (for the keep/drop decision)
+    QString customName;     // track name given by the user; empty = friendly name (TrackCatalog)
+    // The track's audio starts this much LATER than the recording's zero point (ms). 0 = started together.
+    // The file is the span actually recorded (NO silence padding): the recorder writes here the
+    // open time of a device track enabled mid-recording, or of each span of a device toggled
+    // on and off (new file: track_<slug>-2.ogg ...). The mixdown shifts by that much silence
+    // (adelay); readers of the track file shift meeting time by it (tracktiming). For an old /
+    // imported folder the CLI `align` command sets it (--auto: assumes a common end).
     qint64 startOffsetMs = 0;
-    // A beszédszint-közeli keretek aránya a sáv lefedett idejében (0..1); -1 = még nem mérték.
-    // A felvétel / import utáni beszéd-ellenőrzés tölti (edit/TrackSpeech.h).
+    // Share of speech-level frames in the track's covered time (0..1); -1 = not measured yet.
+    // Filled by the speech check after recording / import (edit/TrackSpeech.h).
     double speechRatio = -1.0;
-    // Miért maradt ki a lekeverésből: "" = benne van, "noSpeech" = nincs rajta beszéd
-    // (automatikus), "manual" = a felhasználó vette ki. Kimaradt sávnál active == false is.
+    // Why it was left out of the mixdown: "" = included, "noSpeech" = no speech on it
+    // (automatic), "manual" = the user removed it. A left-out track also has active == false.
     QString excludedReason;
-    // A lekeverésbe (és az elemzésekbe) kerül-e.
+    // Whether it goes into the mixdown (and the analyses).
     bool included() const { return active && excludedReason.isEmpty(); }
 };
 
 // ---- transcript ------------------------------------------------------------
 struct TranscriptToken {
     QString text;
-    QString speaker;        // Soniox "speaker" (per-sáv általában fix label)
+    QString speaker;        // Soniox "speaker" (usually a fixed label per track)
     qint64 startMs = 0;
     qint64 endMs = 0;
     double confidence = 0.0;
-    QString trackId;        // melyik sávból jött (merge során töltjük)
+    QString trackId;        // which track it came from (filled during merge)
 };
 
 struct TrackTranscript {
@@ -85,13 +84,13 @@ struct TrackTranscript {
     QString speakerLabel;
     QString language;
     QVector<TranscriptToken> tokens;
-    // A token-idők a token KIADÁSÁNAK pillanatát jelölik (Soniox), nem valódi szó-tartományt:
-    // a sorokra utólagos elő-/utó-futás kell (MergedTranscript::segments). Csak a SonioxProvider állítja.
+    // Token times mark the moment the token was EMITTED (Soniox), not a real word span:
+    // utterances need a later pre/post-roll pass (MergedTranscript::segments). Only SonioxProvider sets this.
     bool emissionTiming = false;
 };
 
-// Egy összefüggő beszéd-blokk (egy beszélő, szünetig). A lejátszó-szinkronhoz
-// és a kattintható transcripthez ez a gépiesen kezelhető egység.
+// A contiguous speech block (one speaker, up to a pause). The machine-friendly unit
+// for player sync and the clickable transcript.
 struct Utterance {
     qint64 startMs = 0;
     qint64 endMs = 0;
@@ -101,140 +100,141 @@ struct Utterance {
 
 struct MergedTranscript {
     QString language;
-    QVector<TranscriptToken> tokens;     // startMs szerint rendezve, sávok összefésülve
-    // Kiadási-pillanat időzítés (lásd TrackTranscript): a segments() a csoportosítás UTÁN
-    // a kész sorokat párnázza (sonioxtiming::padUtterances). tokens.json: "timing": "emission".
+    QVector<TranscriptToken> tokens;     // sorted by startMs, tracks merged
+    // Emission-time timing (see TrackTranscript): after grouping, segments() pads the finished
+    // lines (sonioxtiming::padUtterances). tokens.json: "timing": "emission".
     bool emissionTiming = false;
-    QVector<Utterance> segments() const; // beszélőnként, szünet-alapú blokkok időrendben
-    QString renderMarkdown() const;      // impl: TranscriptMerger modul
+    QVector<Utterance> segments() const; // per speaker, pause-based blocks in time order
+    QString renderMarkdown() const;      // impl: the TranscriptMerger module
 };
 
-// ---- összefoglaló ----------------------------------------------------------
+// ---- summary ----------------------------------------------------------------
 struct ActionItem {
     QString text;
     QString owner;
     QString due;
 };
 
-// A memó egy szakasza: egy tárgy, amiről a megbeszélésen szó volt, időrendben. A pontok a
-// konkrétumok (nevek, számok, dátumok; ki mondta, ha számít). Az idő -1, ha nem ismert.
+// One section of the memo: a subject discussed in the meeting, in time order. The points are
+// the specifics (names, numbers, dates; who said it, if it matters). Time is -1 if unknown.
 struct MemoSection {
     QString     title;
     qint64      startMs = -1;
     qint64      endMs = -1;
     QStringList points;
-    QStringList speakers;   // a szakasz időkeretébe eső megszólalások beszélői (első megszólalás sorrendjében)
-    // A szakasz bevezetője: 1–2 mondat a tárgy lényegéről (jelölő nélkül; üres = nincs).
+    QStringList speakers;   // speakers of the utterances within the section's time span (in order of first utterance)
+    // The section's intro: 1-2 sentences on the gist of the subject (no markers; empty = none).
     QString     intro;
-    // A pontok alszakasza, a points-szal párhuzamosan (rövidebb lista = a többi a törzsé):
-    // "" = a szakasz törzse, "arguments" = „Elhangzott érvek”, "open" = „Nyitott kérdés”,
-    // más szöveg: a modell saját al-címe. Az alszakaszok a pontok sorrendjében követik egymást.
+    // Subsection of each point, parallel to points (a shorter list = the rest belong to the body):
+    // "" = section body, "arguments" = "Arguments made", "open" = "Open question",
+    // other text: the model's own subheading. Subsections follow each other in point order.
     QStringList pointGroups;
     QString groupOf(int i) const { return i >= 0 && i < pointGroups.size() ? pointGroups.at(i) : QString(); }
 };
 
-// Egy összefoglaló-állítás forrása az átiratban: időtartomány + a megszólalások azonosítói
-// (a transcript.segments.json "u<startMs>" id-i).
+// Source of a summary statement in the transcript: time range + ids of the utterances
+// (the "u<startMs>" ids of transcript.segments.json).
 struct SourceSpan {
     qint64      startMs = -1;
     qint64      endMs = -1;
     QStringList utteranceIds;
 };
 
-// Statement: a vezetői összefoglaló egy mondata; Decision / Todo / OpenQuestion: a decisions /
-// actionItems / openQuestions egy eleme; MemoIntro: egy memó-szakasz bevezetőjének egy mondata;
-// MemoPoint: egy memó-pont (bármelyik alszakaszban).
+// Statement: one sentence of the executive summary; Decision / Todo / OpenQuestion: one item of
+// decisions / actionItems / openQuestions; MemoIntro: one sentence of a memo section intro;
+// MemoPoint: one memo point (in any subsection).
 enum class StatementKind { Statement, Decision, Todo, OpenQuestion, MemoIntro, MemoPoint };
 
-// Az összefoglaló egy forrás-hivatkozásos állítása. A sorrend és az id a Summary mezőit követi:
-// "s<k>" az execSummary k. mondata, "d<k>" a decisions[k-1], "q<k>" az openQuestions[k-1],
-// "t<k>" az actionItems[k-1], "i<n>.<k>" a memo[n-1].intro k. mondata, "m<n>.<k>" a
-// memo[n-1].points[k-1]. Üres sourceSpans = „nincs forrás”.
+// One statement of the summary with source references. Order and id follow the Summary fields:
+// "s<k>" is sentence k of execSummary, "d<k>" decisions[k-1], "q<k>" openQuestions[k-1],
+// "t<k>" actionItems[k-1], "i<n>.<k>" sentence k of memo[n-1].intro, "m<n>.<k>"
+// memo[n-1].points[k-1]. Empty sourceSpans = "no source".
 struct SummaryStatement {
-    QString       id;               // "s1", "d1", "q1", "t1", "i3.1", "m3.2" … (a summary-n belül stabil)
-    QString       text;             // jelölők nélkül
+    QString       id;               // "s1", "d1", "q1", "t1", "i3.1", "m3.2" ... (stable within the summary)
+    QString       text;             // without markers
     StatementKind kind = StatementKind::Statement;
     QVector<SourceSpan> sourceSpans;
-    QString       owner;            // teendőnél a felelős
-    bool          flagged = false;  // „Nem így hangzott el?” — a felhasználó jelezte
-    // Futásidejű (nem tárolt): a forrás-sorok beszélője az összefoglaló óta változott
-    // („X → Y?”); ownerStaleBecause: a teendő felelőse is érintett („X → Y?”).
+    QString       owner;            // for an action item: the owner
+    bool          flagged = false;  // "Not said like this?" - flagged by the user
+    // Runtime only (not stored): the speaker of the source lines changed since the summary
+    // ("X -> Y?"); ownerStaleBecause: the action item's owner is affected too ("X -> Y?").
     QStringList   staleBecause;
     QString       ownerStaleBecause;
 };
 
-// Egy forrás-megszólalás beszélője az összefoglaló készítésekor (a célzott elavuláshoz).
+// The speaker of a source utterance at summary time (for targeted staleness).
 struct SourceSpeaker {
-    QString key;     // a feloldott beszélő-kulcs (nyers címke vagy "participant:N")
-    QString name;    // a megjelenített név, ahogy az LLM látta
+    QString key;     // the resolved speaker key (raw label or "participant:N")
+    QString name;    // the displayed name, as the LLM saw it
 };
 
-// Egy összefoglaló-futás eredménye: a RÖVID forma (vezetői összefoglaló + listák) és a
-// HOSSZÚ forma (memó) ugyanabból a részenkénti jegyzetből készül, így egymással konzisztensek.
+// Result of a summary run: the SHORT form (executive summary + lists) and the LONG form
+// (memo) are built from the same per-part notes, so they stay consistent.
 struct Summary {
     QString execSummary;
     QStringList decisions;
-    QStringList openQuestions;           // eldöntetlen, nyitva maradt ügyek (legfeljebb ~5)
+    QStringList openQuestions;           // undecided, still-open matters (at most ~5)
     QVector<ActionItem> actionItems;
     QStringList participants;
-    QVector<MemoSection> memo;           // a megbeszélés részletes jegyzete, időrendben
-    // Forrás-hivatkozások (a gyors összefoglalónál; régi / témánkénti összefoglalónál üres).
+    QVector<MemoSection> memo;           // detailed notes of the meeting, in time order
+    // Source references (for the quick summary; empty for an old / per-topic summary).
     QVector<SummaryStatement> statements;
-    QMap<QString, SourceSpeaker> sourceSpeakers;   // utteranceId → beszélő akkor
-    QString renderMarkdown() const;      // impl: SummaryService modul
+    QMap<QString, SourceSpeaker> sourceSpeakers;   // utteranceId -> speaker at the time
+    QString renderMarkdown() const;      // impl: the SummaryService module
 };
 
-// ---- komplex (több körös, téma-bontásos) összefoglaló ----------------------
-// 1. kör: a teljes átiratból kinyert TÉMÁK, a felhasználó által szerkeszthető
-// köztes állapot (cím + 1 soros gist). A 2. kör ezekre a (jóváhagyott) témákra megy.
+// ---- complex (multi-pass, topic-based) summary ------------------------------
+// Pass 1: the TOPICS extracted from the full transcript, an intermediate state the
+// user can edit (title + 1-line gist). Pass 2 runs on these (approved) topics.
 struct SummaryTopic {
-    QString id;        // stabil azonosító (QUuid) — túléli a szerkesztést/köröket
+    QString id;        // stable id (QUuid); survives editing / passes
     QString title;
-    QString summary;   // 1-2 mondatos gist (az 1. kör adja; szerkeszthető)
+    QString summary;   // 1-2 sentence gist (from pass 1; editable)
 };
 
-// 2. kör eredménye egy témára: részletes összegző + döntések + teendők.
+// Result of pass 2 for one topic: detailed summary + decisions + action items.
 struct TopicAnalysis {
     QString topicId;
     QString title;
     QString detail;
     QStringList decisions;
-    QStringList openQuestions;           // a témában nyitva maradt kérdések (opcionális)
+    QStringList openQuestions;           // questions left open in the topic (optional)
     QVector<ActionItem> actionItems;
-    // A törzs markdownja CÍM NÉLKÜL (detail + döntések + teendők) — a téma-kártya
-    // eredmény-nézete és a komplex summary.md témaszekciói is ebből épülnek.
-    QString renderMarkdown() const;      // impl: SummaryService modul
+    // Markdown of the body WITHOUT a title (detail + decisions + action items); the topic card's
+    // result view and the topic sections of the complex summary.md are built from it.
+    QString renderMarkdown() const;      // impl: the SummaryService module
 };
 
-// ---- résztvevők („Ki volt ott?") -------------------------------------------
-// Honnan jött a résztvevő: kézzel felvett, hang-elemzés, címke-javaslat, naptár (később).
+// ---- participants ("Who was there?") ------------------------------------------
+// Where a participant came from: added by hand, voice analysis, tag suggestion, calendar (later).
 enum class ParticipantSource { Manual, Voice, Tag, Calendar };
-// A jóváhagyó párbeszéd csoportjai: Biztos (hang + másik forrás), Kétséges (csak hang, vagy
-// ellentmondó bizonyíték), Meghívott, de nem hallottuk (naptár, hang nélkül).
+// Groups of the approval dialog: Certain (voice + another source), Doubtful (voice only, or
+// conflicting evidence), Invited but not heard (calendar, no voice).
 enum class ParticipantGroup { Sure, Doubt, InvitedNotHeard };
 
 struct Participant {
-    QString id;                     // stabil azonosító a meetingen belül
-    QString personName;             // üres = névtelen (ismeretlen hang)
-    QStringList rawSpeakerIds;      // a kötött nyers STT-beszélők („Beszélő 1")
+    QString id;                     // stable id within the meeting
+    QString personName;             // empty = anonymous (unknown voice)
+    QStringList rawSpeakerIds;      // bound raw STT speakers ("Speaker 1")
     ParticipantSource source = ParticipantSource::Voice;
-    bool approved = false;          // a felhasználó jóváhagyta („Ki volt ott?")
-    QStringList sides;              // "mic" | "loopback" — melyik oldalon hallottuk
-    // Kézi beszélő → sáv kötés (sáv-id-k, „Melyik sávon beszél?"); üres = a következtetett oldal
-    // (sides) érvényes. Átirat után a SpeakerOverlay::speakerTracks a párja (a core szinkronban tartja).
+    bool approved = false;          // approved by the user ("Who was there?")
+    QStringList sides;              // "mic" | "loopback": which side it was heard on
+    // Manual speaker -> track binding (track ids, "Which track do they speak on?"); empty = the
+    // inferred side (sides) applies. After transcription SpeakerOverlay::speakerTracks is its
+    // counterpart (the core keeps them in sync).
     QStringList tracks;
     QVector<Evidence> evidence;
-    double talkShare = 0.0;         // 0..1, a beszédidő hányada
+    double talkShare = 0.0;         // 0..1, share of speaking time
 };
 
-// Egy résztvevő / beszélő sáv-kötése a UI-nak: a kézi sávok (manual), különben a következtetett
-// oldal sávjai (a lekeverésbe bevont mikrofon / hívás sávok vezető id-jai).
+// A participant's / speaker's track binding for the UI: the manual tracks (manual), otherwise
+// the tracks of the inferred side (leading ids of the mic / call tracks included in the mixdown).
 struct ParticipantTrackBinding {
     QStringList trackIds;
     bool manual = false;
 };
 
-// Egy jelölt állapota a döntés pillanatában.
+// State of a candidate at the moment of the decision.
 struct ParticipantApprovalEntry {
     QString participantId;
     QString personName;
@@ -245,169 +245,169 @@ struct ParticipantApprovalEntry {
 
 struct ParticipantApproval {
     QString at;                     // ISO-8601
-    QStringList modelIds;           // a döntés alapjául szolgáló elemzés hangmodelljei
+    QStringList modelIds;           // voice models of the analysis the decision was based on
     QVector<ParticipantApprovalEntry> candidates;
-    bool skipped = false;           // „Kihagyás": nincs kötés, a jelölések maradnak
-    bool solo = false;              // „Csak én beszéltem": minden nyers beszélő a saját névre
+    bool skipped = false;           // "Skip": no binding, the markers stay
+    bool solo = false;              // "Only I spoke": every raw speaker maps to the user's own name
 };
 
 // ---- meeting --------------------------------------------------------------
 struct Meeting {
     QString id;
     QString title;
-    QString folder;          // abszolút mappa-út
+    QString folder;          // absolute folder path
     QDateTime startedAt;
     qint64 durationMs = 0;
     QVector<Track> tracks;
     QString mixdownFile;     // pl. "mixdown.mp3"
-    bool mixdownDirty = false;   // true → a sávok változtak a mixdown óta (újrakeverés kell)
+    bool mixdownDirty = false;   // true = the tracks changed since the mixdown (remix needed)
     bool hasTranscript = false;
     bool hasSummary = false;
-    QMap<QString, QString> speakerMap;   // nyers beszélő-címke ("Távoli 1") → valódi név ("Béla")
-    // A felhasználó pár szavas leírása a meetingről (téma/kontextus). Beépül a STT
-    // context-envelope-jába (pontosabb átirat a kétes részeknél) ÉS az LLM-összefoglaló
-    // kontextusába is. Az átirat előtti nézetben és az Összefoglaló fülön szerkeszthető; ide
-    // valók a nevek, szakszavak és az ismert félrehallások („A „…” helyesen: …”).
+    QMap<QString, QString> speakerMap;   // raw speaker label ("Remote 1") -> real name ("Bela")
+    // A few words from the user describing the meeting (topic/context). It goes into the STT
+    // context envelope (more accurate transcript for doubtful parts) AND into the LLM summary
+    // context. Editable in the pre-transcript view and on the Summary tab; names, jargon and
+    // known mishearings belong here ("X" is correctly: ...).
     QString contextNote;
-    // A figyelő által észlelt hívás-alkalmazás (pl. „Microsoft Teams”); üres, ha kézi felvétel.
-    // Csak tájékoztató: sem az átírónak, sem az összefoglalónak nem megy.
+    // The call app detected by the watcher (e.g. "Microsoft Teams"); empty for a manual recording.
+    // Informational only: not sent to the transcriber or the summarizer.
     QString detectedCallApp;
-    // A megbeszélés címkéinek azonosítói, a felrakás sorrendjében (a címkekészlet:
-    // <metadataDir>/tags.json, lásd tags/TagService.h). A meeting.json-ban "tags".
+    // Ids of the meeting's tags, in the order they were applied (the tag set lives in
+    // <metadataDir>/tags.json, see tags/TagService.h). "tags" in meeting.json.
     QStringList tagIds;
-    // Résztvevők (kézi + hang-elemzés jelöltjei) és a jóváhagyás. A meeting.json-ban
-    // "participants" / "participantApproval".
+    // Participants (manual + voice-analysis candidates) and the approval. "participants" /
+    // "participantApproval" in meeting.json.
     QVector<Participant> participants;
     std::optional<ParticipantApproval> approval;
 };
 
-// ---- beszélő-azonosítás (voice fingerprint) -------------------------------
-// Egy hang-lenyomat: egy beszélő egy reprezentatív szegmenséből számolt,
-// L2-normalizált embedding-vektor + a forrás metaadatai. Egy névhez több is
-// tartozhat (más mikrofon más akusztikai aláírást ad).
+// ---- speaker identification (voiceprint) ------------------------------------
+// A voiceprint: an L2-normalized embedding vector computed from one representative
+// segment of a speaker + the source metadata. A name may have several (a different
+// microphone gives a different acoustic signature).
 struct Voiceprint {
-    QString id;                 // egyedi azonosító (QUuid)
-    QVector<float> embedding;   // L2-normalizált beszélő-embedding
-    int dim = 0;                // embedding.size() (redundáns, de a JSON-ban hasznos)
-    QString sourceMeetingId;    // melyik meetingből származik
+    QString id;                 // unique id (QUuid)
+    QVector<float> embedding;   // L2-normalized speaker embedding
+    int dim = 0;                // embedding.size() (redundant, but useful in the JSON)
+    QString sourceMeetingId;    // which meeting it came from
     QString sourceTrack;        // pl. "loopback" / "mic" / track-id
-    QString device;             // a felvevő eszköz neve (több-mikrofonos kontextus)
-    QString sampleRef;          // "<folder>/track_x.ogg#startMs-endMs" — az idők megbeszélés-időben
+    QString device;             // name of the recording device (multi-microphone context)
+    QString sampleRef;          // "<folder>/track_x.ogg#startMs-endMs"; times in meeting time
     QString createdAt;          // ISO-8601
-    // A beágyazó modell (VoiceModelRegistry id). JSON "model"; hiányzik → "campplus". Egy minta
-    // (sampleRef) minden engedélyezett modellel külön lenyomatot kap (azonos sampleRef/createdAt).
+    // The embedding model (VoiceModelRegistry id). JSON "model"; missing = "campplus". A sample
+    // (sampleRef) gets a separate voiceprint per enabled model (same sampleRef/createdAt).
     QString model{QStringLiteral("campplus")};
-    // Minden hozzájáruló hangszakasz "<fájl>#startMs-endMs" alakban (megbeszélés-idő), ha a
-    // lenyomat több szakaszból készült (JSON "sourceRefs"). A sampleRef a lejátszandó (leghosszabb)
-    // szakasz; a lusta pótlás (más modellel) ezekből számol újra, ennek híján a sampleRef-ből.
+    // Every contributing audio span as "<file>#startMs-endMs" (meeting time), when the voiceprint
+    // was built from several spans (JSON "sourceRefs"). sampleRef is the span to play (the longest);
+    // lazy backfill (with another model) recomputes from these, or from sampleRef if absent.
     QStringList sourceRefs;
 };
 
-// Egy párosítás eredménye: melyik személy, milyen (cosine) pontszámmal.
+// Result of a match: which person, with what (cosine) score.
 struct VoiceMatch {
     QString name;
-    double score = -1.0;        // [-1..1] cosine; <0 = nincs találat / üres DB
+    double score = -1.0;        // [-1..1] cosine; <0 = no match / empty DB
 };
 
-// Egy ÁTÍRÁS ELŐTT (lokálisan) felismert beszélő-jelölt egy sávon: a hang-klaszter
-// + a DB-beli legjobb találat (vagy üres név = ismeretlen). A reprezentatív
-// szegmens visszahallgatható / elnevezhető (= betanítás) az átírás előtt.
+// A speaker candidate recognized (locally) BEFORE transcription on a track: the voice cluster
+// + the best DB match (or an empty name = unknown). The representative segment can be
+// listened to / named (= training) before transcription.
 struct ParticipantGuess {
     QString trackId;
     QString deviceName;
-    QString name;          // a DB-találat neve, vagy "" ha ismeretlen (küszöb alatt)
-    double  score = -1.0;  // a találat cosine pontszáma
-    int     windows = 0;   // hány hang-ablakból állt a klaszter (megbízhatóság)
-    QString sampleRef;     // "track_x.ogg#startMs-endMs" — reprezentatív minta (megbeszélés-időben)
+    QString name;          // name of the DB match, or "" if unknown (below threshold)
+    double  score = -1.0;  // cosine score of the match
+    int     windows = 0;   // how many voice windows the cluster consisted of (reliability)
+    QString sampleRef;     // "track_x.ogg#startMs-endMs": representative sample (in meeting time)
 };
 
-// ---- provider konfiguráció / beállítások ----------------------------------
+// ---- provider configuration / settings ----------------------------------------
 struct ProviderConfig {
     QString type;            // "soniox" | "openai-compat" | ...
     QString baseUrl;
-    QString apiKey;          // futásidőben; tároláskor keychainbe megy
+    QString apiKey;          // runtime only; goes to the keychain when stored
     QString model;
-    double temperature = 0.2; // LLM mintavételezési hőmérséklet (összefoglaló); STT nem használja
-    int maxTokens = 8000;     // LLM válasz max tokenszáma (reasoning-modellnek bőven); STT nem használja
-    // A modell „gondolkodása” (reasoning) — csak LLM. Mérés szerint az összefoglalóhoz KI kell
-    // kapcsolni (különben a kimeneti keret elfogy gondolkodásra, és 2–5× lassabb):
-    //  "auto" — kikapcsolva; a módszert a modellnév dönti el (Gemma: reasoning_effort "none";
-    //           Qwen 3+: üres <think> blokkal előtöltött asszisztens-üzenet; ismeretlen:
-    //           reasoning_effort "none", amit a nem ismerő szerverek figyelmen kívül hagynak),
-    //  "off"  — ugyanaz, mint az auto (kifejezett kikapcsolás),
-    //  "on"   — nem küldünk kapcsolót: a modell alapviselkedése (gondolkodó modell gondolkodik).
+    double temperature = 0.2; // LLM sampling temperature (summary); not used by STT
+    int maxTokens = 8000;     // max tokens of the LLM reply (plenty for a reasoning model); not used by STT
+    // The model's "thinking" (reasoning), LLM only. Measured: it must be OFF for the summary
+    // (otherwise the output budget is spent on thinking, and it is 2-5x slower):
+    //  "auto" - off; the method depends on the model name (Gemma: reasoning_effort "none";
+    //           Qwen 3+: assistant message prefilled with an empty <think> block; unknown:
+    //           reasoning_effort "none", which servers that do not know it ignore),
+    //  "off"  - same as auto (explicit off),
+    //  "on"   - no switch is sent: the model's default behavior (a thinking model thinks).
     QString reasoning{QStringLiteral("auto")};
-    // A modell kontextusa (tokenben) — csak LLM. 0 = automatikus: a Tanara a feladat indulásakor
-    // a legkisebb szabványos lépcsőt kéri (8k / 16k / 20k / 32k …), ami a feladatot lefedi
-    // (legfeljebb a modell maximumáig). Rögzített érték: mindig ekkorával töltjük be. Csak
-    // LM Studiónál hat (natív API-val betöltés), más szervernél a betöltést ott kell beállítani.
+    // The model's context (in tokens), LLM only. 0 = automatic: at task start Tanara requests
+    // the smallest standard step (8k / 16k / 20k / 32k ...) that covers the task (up to the
+    // model's maximum). Fixed value: always loaded with that size. Only effective with
+    // LM Studio (loaded via its native API); for other servers set the load there.
     int contextLength = 0;
     QVariantMap extra;
 
-    // --- futásidejű (NEM perzisztált) gateway-hookok — csak a Tanara Cloud útvonal tölti ---
-    // Minden kéréshez hozzáadott fejlécek (X-Tanara-Client, Accept-Language, X-Tanara-Job-Id …).
+    // --- runtime (NOT persisted) gateway hooks, filled only by the Tanara Cloud path ---
+    // Headers added to every request (X-Tanara-Client, Accept-Language, X-Tanara-Job-Id ...).
     QList<QPair<QByteArray, QByteArray>> extraHeaders;
-    // Minden HTTP-válasz (siker, hiba, hálózati hiba) visszajelzése a hívónak — ebből olvassa a
-    // cloud-réteg a terhelést, a visszaírást, a request id-t és a strukturált hibát.
+    // Feedback of every HTTP response (success, error, network error) to the caller; the cloud
+    // layer reads the load, the write-back, the request id and the structured error from it.
     std::function<void(const HttpExchange&)> onExchange;
 };
 
 struct AppSettings {
-    QString audioDir;            // hova menti a felvételeket
-    QString notesDir;            // hova az összefoglaló .md másolatát (vault Meetings/)
+    QString audioDir;            // where recordings are saved
+    QString notesDir;            // where the summary .md copy goes (vault Meetings/)
     QString metadataDir;         // pl. ~/.tanara
-    QString userSpeakerName;     // a mic-sáv fix neve (pl. "Ádám")
-    bool autoRecordAllDevices = true;  // true → minden eszközt rögzít (csendeseket utólag eldobja)
+    QString userSpeakerName;     // fixed name of the mic track (e.g. "Adam")
+    bool autoRecordAllDevices = true;  // true = record every device (silent ones are dropped afterwards)
     QStringList languageHints{QStringLiteral("hu")};
 
-    // UI-nyelv: "auto" (rendszer-locale dönt) | "hu" | "en". A forrásnyelv a magyar;
-    // váltás után újraindítás kell (nincs futásidejű retranslate). Lásd Localization.h.
+    // UI language: "auto" (system locale decides) | "hu" | "en". The source language is Hungarian;
+    // a restart is needed after switching (no runtime retranslate). See Localization.h.
     QString uiLanguage{QStringLiteral("auto")};
 
-    // Felvételi hangminőség (per-sáv Opus bitráta). A nyers per-sáv .ogg-kat az STT is
-    // használja, ezért a legalsó fokozat is „STT-biztos" (24 kbps). Gyengébb fokozat =
-    // kisebb fájlok. Értékek: "best"|"high"|"medium"|"low".
+    // Recording audio quality (per-track Opus bitrate). The raw per-track .ogg files are also
+    // used by the STT, so even the lowest step is "STT-safe" (24 kbps). Lower step =
+    // smaller files. Values: "best"|"high"|"medium"|"low".
     QString audioQuality{QStringLiteral("best")};
 
-    // Lekeverés (mixdown) időzítése a felvétel leállítása után. "auto" → háttérben,
-    // nem-blokkolóan azonnal; "manual" → csak kézi indításra (a review-panel gombja).
-    // A mixdown CSAK hallgatásra kell (az STT a per-sáv .ogg-kból megy), ezért a stop()
-    // sosem várja meg — a fő szál nem fagy.
+    // Timing of the mixdown after recording stops. "auto" = in the background,
+    // non-blocking, immediately; "manual" = only on manual start (the review panel's button).
+    // The mixdown is needed ONLY for listening (the STT works from the per-track .ogg files),
+    // so stop() never waits for it and the main thread does not freeze.
     QString mixdownMode{QStringLiteral("auto")};
 
-    // Az összefoglaló LLM rendszer-promptjai. ÜRES → a fájl-override / beépített default
-    // (PromptLibrary) érvényes (így a kód-default jövőbeli javításai automatikusan
-    // érvényesülnek, amíg a felhasználó nem ír sajátot).
-    //  summaryPrompt — az EGY részből álló (rövid) megbeszélés egylépéses promptja ("single":
-    //                  memó-jegyzet + vezetői összefoglaló és listák egy hívásban),
-    //  notesPrompt   — hosszabb megbeszélésnél a részenkénti jegyzetelés ("notes"),
-    //  mergePrompt   — a részjegyzetek összegzése ("merge").
+    // System prompts of the summary LLM. EMPTY = the file override / built-in default
+    // (PromptLibrary) applies (so future improvements of the code default take effect
+    // automatically until the user writes their own).
+    //  summaryPrompt - single-step prompt for a meeting with ONE part (short) ("single":
+    //                  memo notes + executive summary and lists in one call),
+    //  notesPrompt   - per-part notes for a longer meeting ("notes"),
+    //  mergePrompt   - combining the part notes ("merge").
     QString summaryPrompt;
     QString notesPrompt;
     QString mergePrompt;
 
-    // A komplex (több körös) összefoglaló két szerkeszthető prompt-ja. ÜRES → a kód-default
+    // The two editable prompts of the complex (multi-pass) summary. EMPTY = the code default
     // (ComplexSummaryService::defaultTopicPrompt() / defaultAnalysisPrompt()).
-    QString topicExtractionPrompt;   // 1. kör: téma-kinyerés
-    QString topicAnalysisPrompt;     // 2. kör: témánkénti elemzés
+    QString topicExtractionPrompt;   // pass 1: topic extraction
+    QString topicAnalysisPrompt;     // pass 2: per-topic analysis
 
-    // Az összefoglaló CÉLNYELVE (szabad szöveg, pl. "magyar", "angol", "német") — a
-    // promptok {{NYELV}} placeholderébe kerül (PromptLibrary::applySummaryLanguage).
-    // Független a UI-nyelvtől. A strukturális szakaszcímek (## Döntések/## Teendők)
-    // nyelvtől függetlenül magyarok maradnak (a parser ezekre illeszt).
+    // The summary's TARGET LANGUAGE (free text, e.g. Hungarian, English or German); it goes into
+    // the prompts' {{NYELV}} placeholder (PromptLibrary::applySummaryLanguage).
+    // Independent of the UI language. The structural section headings (the Hungarian decisions / action-item headings)
+    // stay Hungarian regardless of the language (the parser matches on them).
     QString summaryLanguage{QStringLiteral("magyar")};
 
-    // Multi-provider: a kiválasztott provider id-ja típusonként + providerenkénti
-    // config (így a váltás nem törli a másik provider beállításait). A régi egyetlen
-    // `stt`/`llm` shape JSON-ből migrálódik (lásd JsonSerialization).
-    // Tanara Cloud (a gateway-szerződés: docs/cloud-gateway-api.yaml).
-    //  cloudEnabled — a bejelentkezős cloud-mód él („indulás után”); false → a Beállítások
-    //                 Tanara Cloud szekciója a „Hamarosan” (várólista) panelt mutatja.
-    //                 A TANARA_CLOUD_URL környezeti változó fejlesztéshez felülírja (bekapcsol).
-    //  cloudBaseUrl — gateway alap-URL (/v1 nélkül); üres → az éles alapértelmezés.
-    //  cloudSttTier / cloudLlmTier — Gyors / Pontos szint feladatonként (fast | accurate).
-    //  cloudSttModel / cloudLlmModel — Expert mód: konkrét katalógus-id; üres → a tier virtuális modellje.
-    //  waitlistEmail — a „Hamarosan” panelről feliratkozott cím (nem üres → nem kérdez újra).
+    // Multi-provider: the selected provider id per type + per-provider config (so switching
+    // does not delete the other provider's settings). The old single `stt`/`llm` shape is
+    // migrated from the JSON (see JsonSerialization).
+    // Tanara Cloud (the gateway contract: docs/cloud-gateway-api.yaml).
+    //  cloudEnabled - the sign-in cloud mode is live ("after launch"); false = the Settings
+    //                 Tanara Cloud section shows the "Coming soon" (waitlist) panel.
+    //                 The TANARA_CLOUD_URL environment variable overrides it for development (turns it on).
+    //  cloudBaseUrl - gateway base URL (without /v1); empty = the production default.
+    //  cloudSttTier / cloudLlmTier - Fast / Accurate tier per task (fast | accurate).
+    //  cloudSttModel / cloudLlmModel - Expert mode: a concrete catalog id; empty = the tier's virtual model.
+    //  waitlistEmail - address subscribed from the "Coming soon" panel (non-empty = do not ask again).
     bool    cloudEnabled = false;
     QString cloudBaseUrl;
     QString cloudSttTier{QStringLiteral("accurate")};
@@ -415,20 +415,20 @@ struct AppSettings {
     QString cloudSttModel;
     QString cloudLlmModel;
     QString waitlistEmail;
-    //  cloudEstimateBeforeRun — Tanara Cloud feldolgozás előtt mindig költségbecslés +
-    //                 megerősítés (alapból be). Kikapcsolva a futás becslés nélkül indul; a
-    //                 hibaágak (elfogyott egyenleg, ÁSZF) ugyanúgy megállítják.
+    //  cloudEstimateBeforeRun - always show a cost estimate + confirmation before Tanara Cloud
+    //                 processing (on by default). When off, the run starts without an estimate; the
+    //                 error branches (out of balance, terms of service) still stop it.
     bool    cloudEstimateBeforeRun = true;
 
-    // Hangeszközök felhasználói neve: nyers OS-eszköznév → barátságos név. Mindenhol ez
-    // látszik, ahol az eszköz vagy a sávja névvel szerepel (felvevő, Sávok fül, értesítés).
-    // A feloldás EGY helyen történik: tanara::devicenames (audio/TrackCatalog.h); a
-    // SettingsManager tölti be minden betöltéskor / mentéskor.
+    // User-facing names of audio devices: raw OS device name -> friendly name. Shown everywhere
+    // the device or its track appears by name (recorder, Tracks tab, notification).
+    // Resolution happens in ONE place: tanara::devicenames (audio/TrackCatalog.h); the
+    // SettingsManager loads it on every load / save.
     QMap<QString, QString> deviceNames;
 
-    // Az „Első lépések” ablak (OnboardingWindow.qml) már lezajlott: bezárták, kihagyták vagy
-    // végigmentek rajta. Csak az automatikus megnyitást kapcsolja ki (első indításkor egyszer);
-    // a Fájl › „Első lépések…” menüből és a Beállításokból bármikor újranyitható.
+    // The "Getting started" window (OnboardingWindow.qml) has already run: it was closed, skipped
+    // or completed. Only turns off the automatic opening (once on first launch); it can be
+    // reopened any time from File > "Getting started..." and from Settings.
     bool onboardingDone = false;
 
     QString sttProviderId{QStringLiteral("soniox")};
@@ -436,58 +436,58 @@ struct AppSettings {
     QMap<QString, ProviderConfig> sttConfigs;   // id -> config
     QMap<QString, ProviderConfig> llmConfigs;   // id -> config
 
-    // Back-compat accessorok: a kiválasztott provider futásidejű configja.
-    // A hívóhelyek nagy része ezekre cserélhető (s.stt → s.sttSelected()).
+    // Back-compat accessors: the runtime config of the selected provider.
+    // Most call sites can switch to these (s.stt -> s.sttSelected()).
     ProviderConfig sttSelected() const { return sttConfigs.value(sttProviderId); }
     ProviderConfig llmSelected() const { return llmConfigs.value(llmProviderId); }
 
-    // Beágyazó modell (embedding) a címkejavaslatokhoz. Üres id → nincs („alap” szint: a
-    // javaslatok a közös résztvevőkből, kifejezésekből és a címből készülnek). Lásd
-    // embedding/EmbeddingProviderRegistry.h: "openai-compat-embedding" | "tanara-hosted-embedding".
+    // Embedding model for tag suggestions. Empty id = none ("basic" level: suggestions come
+    // from shared participants, phrases and the title). See embedding/EmbeddingProviderRegistry.h:
+    // "openai-compat-embedding" | "tanara-hosted-embedding".
     QString embeddingProviderId;
     QMap<QString, ProviderConfig> embeddingConfigs;   // id -> config
     ProviderConfig embeddingSelected() const { return embeddingConfigs.value(embeddingProviderId); }
-    // Címkejavaslatok be/ki, ill. a nyelvi modell javasoljon-e az összefoglaló után.
+    // Tag suggestions on/off, and whether the language model suggests after the summary.
     bool tagSuggestions = true;
     bool llmTagSuggestions = true;
 
-    // Átnézendő (fókusz-nézet): a kártyára lépő sor magától megszólal (sor + 0,3 s). A nézet
-    // fejlécének kapcsolója írja; alapból be.
+    // To review (focus view): the line stepped onto on the card plays by itself (line + 0.3 s).
+    // Written by the view header's toggle; on by default.
     bool reviewAutoPlay = true;
 
-    // Bekapcsolt beszélő-embedding modellek (VoiceModelRegistry id-k), ábécérendben. Lenyomatnál
-    // és elemzésnél mindegyik számít (fúzió); a hiányzó modellfájl futáskor kimarad, a beállítás
-    // megmarad. A settings.json "voiceModels" kulcsa; hiányzik → ["wespeaker-resnet34-lm"].
+    // Enabled speaker-embedding models (VoiceModelRegistry ids), alphabetical. Every one counts
+    // for voiceprints and analysis (fusion); a missing model file is skipped at run time, the
+    // setting stays. The "voiceModels" key of settings.json; missing = ["wespeaker-resnet34-lm"].
     QStringList voiceModels{QStringLiteral("wespeaker-resnet34-lm")};
 
-    // Meeting-figyelő (háttér-detektor + tray). A figyelő olvassa; az elemző/felvevő
-    // nem függ tőle. detectorId üres → a registry az első elérhető detektort választja.
-    bool detectorEnabled = true;              // aktív-hívás észlelés be/ki
-    int  detectorIntervalSec = 8;             // poll-intervallum (mp); épkézláb tartomány 5–30
-    bool watcherAutostart = false;            // a figyelő induljon-e bejelentkezéskor
-    // Felvétel közben a rögzítő is figyeli a hívást: ha az véget ér (az app leáll / elengedi
-    // a mikrofont), rákérdez a leállításra. Nem állít le magától.
+    // Meeting watcher (background detector + tray). The watcher reads it; the analyzer/recorder
+    // does not depend on it. Empty detectorId = the registry picks the first available detector.
+    bool detectorEnabled = true;              // active-call detection on/off
+    int  detectorIntervalSec = 8;             // poll interval (s); sensible range 5-30
+    bool watcherAutostart = false;            // whether the watcher starts at login
+    // During recording the recorder also watches the call: when it ends (the app quits / releases
+    // the microphone), it asks whether to stop. It never stops by itself.
     bool askStopOnCallEnd = true;
-    // Csend-figyelés felvétel közben: ha MINDEN sáv ennyi percig csendes, rákérdez a
-    // leállításra (Teams/böngésző esetén a mikrofon-elengedés nem mindig látszik a
-    // detektornak — ez a detektortól FÜGGETLEN háló). 0 = kikapcsolva.
+    // Silence watch during recording: if ALL tracks stay silent this many minutes, it asks
+    // whether to stop (with Teams/browser, mic release is not always visible to the detector;
+    // this net is INDEPENDENT of the detector). 0 = off.
     int  silenceAskMinutes = 3;
-    QString detectorId;                       // üres → MeetingDetectorRegistry::createBest()
-    // Ismert hívás-appok (bináris/app-név részletek) — ezekre jelez a detektor.
+    QString detectorId;                       // empty = MeetingDetectorRegistry::createBest()
+    // Known call apps (binary/app-name fragments); the detector signals on these.
     QStringList knownCallApps{
         QStringLiteral("zoom"), QStringLiteral("teams"), QStringLiteral("webex"),
         QStringLiteral("slack"), QStringLiteral("discord"), QStringLiteral("meet"),
         QStringLiteral("skype"), QStringLiteral("chromium"), QStringLiteral("firefox")};
 };
 
-// A felvételi hangminőség-fokozat → per-sáv Opus bitráta (kbps). Ismeretlen → 64 ("best").
-// A legalsó fokozat (24 kbps) az „STT-talp": az alá nem megyünk, hogy a per-sáv .ogg-ból
-// dolgozó átírás pontossága ne romoljon.
+// Recording quality step -> per-track Opus bitrate (kbps). Unknown = 64 ("best").
+// The lowest step (24 kbps) is the "STT floor": we do not go below it, so the accuracy of
+// transcription working from the per-track .ogg does not degrade.
 inline int opusBitrateKbps(const QString& quality) {
     if (quality == QStringLiteral("low"))    return 24;
     if (quality == QStringLiteral("medium")) return 32;
     if (quality == QStringLiteral("high"))   return 48;
-    return 64;   // "best" / ismeretlen
+    return 64;   // "best" / unknown
 }
 
 } // namespace tanara

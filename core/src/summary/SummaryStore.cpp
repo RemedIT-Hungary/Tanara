@@ -18,8 +18,8 @@ namespace summarystore {
 
 namespace {
 
-// 2: openQuestions + memo, témánkénti openQuestions; 3: statements + sourceSpeakers + memo.speakers;
-// 4: memó-pontok, -bevezetők és nyitott kérdések is állítások (q / i / m), memo.intro + pointGroups
+// 2: openQuestions + memo, per-topic openQuestions; 3: statements + sourceSpeakers + memo.speakers;
+// 4: memo points, intros and open questions are statements too (q / i / m), memo.intro + pointGroups
 constexpr int kVersion = 4;
 
 QJsonObject topicToJson(const TopicAnalysis& a)
@@ -50,8 +50,8 @@ TopicAnalysis topicFromJson(const QJsonObject& o)
     return a;
 }
 
-// Egy teendő-sor törzse („szöveg — Felelős (határidő)”) → ActionItem. A renderelt formát
-// (em dash + záró zárójel) olvassa vissza; a gondolatjel en dash-sel is elfogadott.
+// The body of an action-item line ("text - Owner (deadline)") -> ActionItem. It reads back the rendered
+// form (em dash + closing parenthesis); an en dash is accepted as the dash too.
 ActionItem parseActionItem(QString line)
 {
     static const QRegularExpression dueRe(QStringLiteral("\\s*\\(([^()]*)\\)\\s*$"));
@@ -148,11 +148,11 @@ SummaryDocument parseMarkdown(const QString& markdown)
 
     Section sec = Section::Exec;
     TopicPart part = TopicPart::Detail;
-    QStringList para;            // a futó bekezdés sorai (Exec / Unknown / téma-detail)
-    QString unknownHeading;      // ismeretlen szakasz címe (a szöveg elé kerül)
+    QStringList para;            // the running paragraph's lines (Exec / Unknown / topic detail)
+    QString unknownHeading;      // title of an unknown section (goes in front of the text)
     bool inTopic = false;
-    QString memoGroup;           // a futó memó-alszakasz kulcsa ("" = a szakasz törzse)
-    bool memoGroupFresh = false; // az alszakasznak még nincs pontja
+    QString memoGroup;           // key of the running memo subsection ("" = the section body)
+    bool memoGroupFresh = false; // the subsection has no point yet
 
     auto flushPara = [&]() {
         if (para.isEmpty()) return;
@@ -187,7 +187,7 @@ SummaryDocument parseMarkdown(const QString& markdown)
         if (m3.hasMatch()) {
             flushPara();
             if (sec == Section::Memo) {
-                // „### Cím (12:30–18:05)” → memó-szakasz; az időkeret a cím végéről.
+                // "### Title (12:30-18:05)" -> a memo section; the time frame from the title's end.
                 MemoSection ms;
                 QString title = m3.captured(1).trimmed();
                 const QRegularExpressionMatch rm = memoRange.match(title);
@@ -209,8 +209,7 @@ SummaryDocument parseMarkdown(const QString& markdown)
                 inTopic = true;
                 part = TopicPart::Detail;
             } else {
-                // Al-címsor egy sima szakaszban: a tartalma a szakaszé marad; a prózai
-                // szakaszokban a cím szövegként megmarad.
+                // A subheading in a plain section: its content stays the section's; in prose sections the heading stays as text.
                 if (sec == Section::Exec || sec == Section::Unknown) para << m3.captured(1).trimmed();
             }
             continue;
@@ -218,7 +217,7 @@ SummaryDocument parseMarkdown(const QString& markdown)
 
         if (t.isEmpty()) { flushPara(); continue; }
 
-        // Téma-szekción belül: **Döntések:** / **Teendők:** al-címkék.
+        // Inside a topic section: the **Decisions:** / **Action items:** sublabels.
         if (sec == Section::Topics && inTopic) {
             const QRegularExpressionMatch bl = boldLabel.match(t);
             if (bl.hasMatch()) {
@@ -249,7 +248,7 @@ SummaryDocument parseMarkdown(const QString& markdown)
         switch (sec) {
         case Section::Decisions:
             if (bm.hasMatch()) doc.summary.decisions << bm.captured(1).trimmed();
-            else if (!doc.summary.decisions.isEmpty())      // tördelt sor folytatása
+            else if (!doc.summary.decisions.isEmpty())      // continuation of a wrapped line
                 doc.summary.decisions.last() += QLatin1Char(' ') + t;
             else doc.summary.decisions << t;
             break;
@@ -263,7 +262,7 @@ SummaryDocument parseMarkdown(const QString& markdown)
             if (doc.summary.memo.isEmpty()) doc.summary.memo.append(MemoSection{});
             MemoSection& ms = doc.summary.memo.last();
             QStringList& pts = ms.points;
-            // „**Elhangzott érvek:**” / „**Nyitott kérdés:**” → alszakasz.
+            // "**Arguments made:**" / "**Open question:**" -> a subsection.
             const QRegularExpressionMatch bl = boldLabel.match(t);
             if (bl.hasMatch()) {
                 memoGroup = summarysrc::memoGroupKey(bl.captured(1));
@@ -278,7 +277,7 @@ SummaryDocument parseMarkdown(const QString& markdown)
                 memoGroupFresh = false;
             };
             if (bm.hasMatch()) addPoint(bm.captured(1).trimmed());
-            else if (pts.isEmpty() && memoGroup.isEmpty())      // a cím utáni próza: a bevezető
+            else if (pts.isEmpty() && memoGroup.isEmpty())      // prose after the title: the intro
                 ms.intro += (ms.intro.isEmpty() ? QString() : QStringLiteral(" ")) + t;
             else if (!pts.isEmpty() && !memoGroupFresh) pts.last() += QLatin1Char(' ') + t;
             else addPoint(t);
@@ -307,14 +306,14 @@ SummaryDocument parseMarkdown(const QString& markdown)
         }
         case Section::Exec:
         case Section::Unknown:
-        case Section::Topics:      // „## Témák” alatti, téma-cím előtti szöveg
+        case Section::Topics:      // text under "## Topics", before a topic title
             para << t;
             break;
         }
     }
     flushPara();
 
-    // Témánkénti mód: a felső szinten nincs „Döntések” szakasz — a témák döntéseinek uniója.
+    // Per-topic mode: there is no "Decisions" section at the top level; it is the union of the topics' decisions.
     if (doc.meta.mode == SummaryMode::Topics && doc.summary.decisions.isEmpty()) {
         for (const TopicAnalysis& a : std::as_const(doc.topics))
             for (const QString& d : a.decisions)
@@ -357,8 +356,8 @@ SummaryDocument fromJson(const QJsonObject& o)
     doc.meta.createdAt  = QDateTime::fromString(o.value(QStringLiteral("createdAt")).toString(), Qt::ISODate);
     doc.meta.providerId = o.value(QStringLiteral("providerId")).toString();
     doc.meta.model      = o.value(QStringLiteral("model")).toString();
-    // A megjegyzés, amellyel készült (régi summary.json-ban nincs → ismeretlen). A figyelő
-    // régi automatikus mondata üres megjegyzésnek számít, mint a meeting.json-ban.
+    // The note it was made with (absent in an old summary.json -> unknown). The watcher's old automatic
+    // sentence counts as an empty note, as in meeting.json.
     doc.meta.contextNoteKnown = o.contains(QStringLiteral("contextNote"));
     doc.meta.contextNote = o.value(QStringLiteral("contextNote")).toString();
     if (meetingnotes::parseAutoCallNote(doc.meta.contextNote))
@@ -396,20 +395,20 @@ SummaryDocument load(const QString& meetingFolder)
 
     if (haveJson) {
         doc.markdown = markdown;
-        // Kézzel szerkesztett summary.md (érdemben újabb a json-nál) → a markdown az igazság;
-        // a keletkezés metaadatai a json-ból maradnak.
+        // A hand-edited summary.md (substantially newer than the json) -> the markdown is the truth; the
+        // provenance stays from the json.
         if (!markdown.trimmed().isEmpty()
             && mdInfo.lastModified() > jsInfo.lastModified().addSecs(2)) {
             SummaryDocument md = parseMarkdown(markdown);
             const SummaryMode parsedMode = md.meta.mode;
             md.meta = doc.meta;
             if (md.meta.mode == SummaryMode::Unknown) md.meta.mode = parsedMode;
-            // A markdownban nincs témaazonosító — cím szerint visszakötjük a json-ból.
+            // There is no topic id in the markdown: we bind back by title from the json.
             for (TopicAnalysis& a : md.topics)
                 for (const TopicAnalysis& old : std::as_const(doc.topics))
                     if (old.title == a.title) { a.topicId = old.topicId; break; }
-            // A forrás-hivatkozások közül azok maradnak, amelyek szövege a kézzel szerkesztett
-            // markdownban is változatlanul megvan (a többinek nincs már mire mutatnia).
+            // Of the source references, those stay whose text is still unchanged in the hand-edited markdown
+            // (the others have nothing left to point to).
             for (const SummaryStatement& st : std::as_const(doc.summary.statements))
                 if (!st.text.isEmpty() && markdown.contains(st.text)) md.summary.statements.append(st);
             if (!md.summary.statements.isEmpty()) md.summary.sourceSpeakers = doc.summary.sourceSpeakers;
@@ -422,11 +421,11 @@ SummaryDocument load(const QString& meetingFolder)
     }
 
     if (markdown.trimmed().isEmpty())
-        return doc;                      // nincs összefoglaló
+        return doc;                      // no summary
     doc = parseMarkdown(markdown);
     doc.meta.createdAt = mdInfo.lastModified();
-    // Régi összefoglaló: a „## Témák” szakasz megléte megbízhatóan jelzi a témánkénti módot;
-    // nélküle gyors összefoglalónak tekintjük (a parseMarkdown ezt állítja be).
+    // Old summary: the presence of the "## Topics" section reliably signals the per-topic mode;
+    // without it we treat it as a quick summary (parseMarkdown sets this).
     return doc;
 }
 

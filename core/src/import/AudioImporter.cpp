@@ -26,7 +26,7 @@ QString trImport(const char* text)
     return QCoreApplication::translate("AudioImporter", text);
 }
 
-// Fájlnév-rész a sávhoz: ékezet nélküli, kisbetűs, kötőjeles ASCII (mint a felvett sávoké).
+// File-name part for the track: accent-free, lowercase, hyphenated ASCII (like the recorded tracks').
 QString slugify(const QString& in)
 {
     QString s;
@@ -40,8 +40,8 @@ QString slugify(const QString& in)
     return s.isEmpty() ? QStringLiteral("sav") : s;
 }
 
-// A sáv neve úgy, hogy a TrackCatalog rövidítése (tracknames::shortDeviceName — az
-// eszköznevek „ - Profil” és „(…)” részét vágja) ne csonkítsa: a fájlnév egészben látsszon.
+// The track's name so that TrackCatalog's shortening (tracknames::shortDeviceName, which cuts the
+// " - Profile" and "(...)" parts of device names) does not truncate it: the file name shows whole.
 QString trackNameFromFile(const QString& path)
 {
     QString n = QFileInfo(path).completeBaseName().simplified();
@@ -59,9 +59,8 @@ QString trackNameFromFile(const QString& path)
     return n;
 }
 
-// A fájlba ágyazott készítési idő a címkékből (MP4/MOV/MKV: ISO creation_time; BWF WAV:
-// date + creation_time külön). Érvénytelen, ha nincs vagy nyilvánvalóan hibás (beállítatlan
-// óra: 1904 / 1970, vagy jövőbeli).
+// The creation time embedded in the file, from the tags (MP4/MOV/MKV: ISO creation_time; BWF WAV: date +
+// creation_time separately). Invalid if absent or obviously wrong (an unset clock: 1904 / 1970, or in the future).
 QDateTime embeddedDate(const QJsonObject& tags)
 {
     QString creation, date;
@@ -75,7 +74,7 @@ QDateTime embeddedDate(const QJsonObject& tags)
         dt = QDateTime::fromString(creation, Qt::ISODateWithMs);
         if (!dt.isValid()) dt = QDateTime::fromString(creation, Qt::ISODate);
         if (!dt.isValid() || !creation.contains(QLatin1Char('-'))) {
-            // BWF: a dátum és az idő külön címkében (helyi idő).
+            // BWF: the date and the time in separate tags (local time).
             const QDate d = QDate::fromString(date.left(10), Qt::ISODate);
             const QTime t = QTime::fromString(creation.left(8), QStringLiteral("HH:mm:ss"));
             dt = (d.isValid() && t.isValid()) ? QDateTime(d, t) : QDateTime();
@@ -106,7 +105,7 @@ QStringList probeArgs(const QString& path)
             QStringLiteral("-show_format"), QStringLiteral("-show_streams"), path};
 }
 
-// Az ffprobe JSON-kimenetéből az adatok (az ELSŐ hangfolyam számít).
+// The data from ffprobe's JSON output (the FIRST audio stream counts).
 void parseProbe(ImportFileInfo& info, bool exitedOk, const QByteArray& json)
 {
     const QString name = QFileInfo(info.path).fileName();
@@ -121,7 +120,7 @@ void parseProbe(ImportFileInfo& info, bool exitedOk, const QByteArray& json)
         const QJsonObject s = v.toObject();
         const QString type = s.value(QStringLiteral("codec_type")).toString();
         if (type == QLatin1String("audio") && audio.isEmpty()) audio = s;
-        // A borítókép (attached_pic) nem videó.
+        // Cover art (attached_pic) is not video.
         if (type == QLatin1String("video")
             && s.value(QStringLiteral("disposition")).toObject()
                    .value(QStringLiteral("attached_pic")).toInt() == 0)
@@ -151,7 +150,7 @@ QString ffmpegMissing()
 
 } // namespace
 
-// ---- szabad függvények ---------------------------------------------------------------
+// ---- free functions ---------------------------------------------------------------
 
 namespace audioimport {
 
@@ -203,14 +202,14 @@ QVector<ImportPlannedTrack> planTracks(const QVector<ImportSource>& sources,
                 t.channel = c;
                 t.channels = 1;
                 const QString ch = channelName(c, info.channels);
-                // Egyetlen fájlnál elég a csatorna neve; többnél a fájlé is kell elé.
+                // For a single file the channel's name is enough; for several the file's is needed in front.
                 t.name = sources.size() > 1 ? QStringLiteral("%1 – %2").arg(base, ch) : ch;
                 out.append(t);
             }
         } else {
             ImportPlannedTrack t;
             t.sourceIndex = i;
-            t.channels = info.channels >= 2 ? 2 : 1;   // kettőnél több csatorna → sztereóba keverve
+            t.channels = info.channels >= 2 ? 2 : 1;   // more than two channels -> mixed down to stereo
             t.name = base;
             out.append(t);
         }
@@ -232,7 +231,7 @@ QString defaultTitle(const QStringList& paths)
         while (k < common.size() && k < n.size() && common.at(k) == n.at(k)) ++k;
         common.truncate(k);
     }
-    // A közös rész végéről a csonka elválasztók le („interjú_”, „Kovács - ”, „felvétel (”).
+    // Cut the truncated separators off the end of the common part ("interview_", "Smith - ", "recording (").
     static const QRegularExpression tail(QStringLiteral("[\\s\\-–—_.,(\\[]+$"));
     common.remove(tail);
     if (names.size() > 1 && common.size() >= 3) return common;
@@ -259,19 +258,19 @@ struct AudioImporter::Impl {
     int            kbps = 64;
     QString        userName;
 
-    // A futó importálás. A lezárás (siker / hiba / megszakítás) EGY helyen történik: close().
+    // The running import. The closing (success / error / cancel) happens in ONE place: close().
     struct Run {
         QString id;
         ImportRequest req;
         QString title;
         QVector<ImportFileInfo> files;
         QVector<ImportPlannedTrack> plan;
-        QStringList trackFiles;          // a tervvel párhuzamos (relatív fájlnevek)
+        QStringList trackFiles;          // parallel to the plan (relative file names)
         QStringList trackIds;
         QString stagingDir;
         int probeIndex = 0;
         int encodeIndex = -1;
-        QVector<qint64> encodedMs;       // forrásonként az ffmpeg által kiírt hossz
+        QVector<qint64> encodedMs;       // per source, the length written by ffmpeg
         QPointer<QProcess> proc;
         QByteArray outBuf;
         bool cancelled = false;
@@ -302,7 +301,7 @@ AudioImporter::AudioImporter(MeetingStore* store, QObject* parent)
 
 AudioImporter::~AudioImporter()
 {
-    // Kilépés importálás közben: ne maradjon futó ffmpeg és félkész mappa.
+    // Exit during an import: no ffmpeg and no half-made folder may be left.
     if (d->run) {
         if (QProcess* p = d->run->proc) {
             p->disconnect(this);
@@ -360,7 +359,7 @@ QString AudioImporter::start(const ImportRequest& request)
                                                 : request.title.trimmed();
     const QString id = r.id;
     emit started(id, r.title);
-    // A munka a következő eseménykörben indul: a hívó addigra megkapta az azonosítót.
+    // The work starts in the next event-loop turn: the caller has received the id by then.
     QTimer::singleShot(0, this, [this, id] {
         if (!d->run || d->run->id != id) return;
         if (d->run->req.sources.isEmpty()) {
@@ -379,14 +378,14 @@ void AudioImporter::cancel()
     d->run->cancelled = true;
     if (QProcess* p = d->run->proc) {
         if (p->state() != QProcess::NotRunning) {
-            p->kill();   // a finished-ág zár le
+            p->kill();   // the finished branch closes
             return;
         }
     }
     d->close(Impl::End::Cancelled);
 }
 
-// Egy nappal korábbi, összeomlásból itt maradt félkész import-mappák törlése.
+// Deleting half-made import folders left from a crash a day earlier.
 void AudioImporter::Impl::sweepStaleStaging() const
 {
     const QDir root(store->audioDir());
@@ -445,7 +444,7 @@ void AudioImporter::Impl::beginEncode()
         close(End::Failed, AudioImporter::tr("Nem hozható létre mappa a felvételek helyén."), dir);
         return;
     }
-    // Sáv-azonosítók / fájlnevek: a névből képzett, a meetingen belül egyedi slug.
+    // Track ids / file names: a slug made from the name, unique within the meeting.
     QStringList used;
     for (const ImportPlannedTrack& t : r.plan) {
         const QString base = slugify(t.name);
@@ -461,8 +460,8 @@ void AudioImporter::Impl::beginEncode()
     encodeNext();
 }
 
-// Egy forrás ffmpeg-parancsa: az első hangfolyam → Opus/ogg, 48 kHz. Bontásnál egyetlen
-// ffmpeg több kimenettel (csatornánként egy mono sáv) — a forrást egyszer olvassuk végig.
+// One source's ffmpeg command: the first audio stream -> Opus/ogg, 48 kHz. For splitting, a single
+// ffmpeg with several outputs (one mono track per channel): we read the source through once.
 QStringList AudioImporter::Impl::encodeArgs(int sourceIndex) const
 {
     const Run& r = *run;
@@ -532,7 +531,7 @@ void AudioImporter::Impl::encodeNext()
         }
         run->outBuf += p->readAllStandardOutput();
         onProgressOutput();
-        // Minden sávnak meg kell lennie (üres / hiányzó kimenet = hiba).
+        // Every track must exist (an empty / missing output = an error).
         for (int i = 0; i < run->plan.size(); ++i) {
             if (run->plan.at(i).sourceIndex != index) continue;
             if (QFileInfo(QDir(run->stagingDir).filePath(run->trackFiles.at(i))).size() <= 0) {
@@ -554,7 +553,7 @@ void AudioImporter::Impl::encodeNext()
     p->start(QStringLiteral("ffmpeg"), encodeArgs(index));
 }
 
-// Az ffmpeg `-progress` kimenete: kulcs=érték sorok; out_time_us = a már kiírt hang hossza.
+// The ffmpeg `-progress` output: key=value lines; out_time_us = the length already written.
 void AudioImporter::Impl::onProgressOutput()
 {
     Run& r = *run;
@@ -565,14 +564,14 @@ void AudioImporter::Impl::onProgressOutput()
         r.outBuf.remove(0, nl + 1);
         if (line.startsWith("out_time_us=") || line.startsWith("out_time_ms=")) {
             bool ok = false;
-            const qint64 us = line.mid(12).toLongLong(&ok);   // (az out_time_ms is µs)
+            const qint64 us = line.mid(12).toLongLong(&ok);   // (out_time_ms is in fact microseconds too)
             if (ok && us >= 0) outMs = us / 1000;
         }
     }
     if (outMs < 0) return;
     r.encodedMs[r.encodeIndex] = qMax(r.encodedMs.at(r.encodeIndex), outMs);
 
-    // Teljes százalék a források (ismert) hosszával súlyozva; ismeretlen hossznál nincs.
+    // Total percentage weighted by the sources' (known) length; none if a length is unknown.
     qint64 total = 0, doneMs = 0;
     for (int i = 0; i < r.files.size(); ++i) {
         const qint64 dur = r.files.at(i).durationMs;
@@ -606,7 +605,7 @@ void AudioImporter::Impl::finalize()
         t.channels = p.channels;
         t.active = true;
         if (i == r.req.ownTrack) {
-            // A felhasználó saját mikrofonja: úgy viselkedik, mint egy felvett mic-sáv.
+            // The user's own microphone: it behaves like a recorded mic track.
             t.kind = TrackKind::Mic;
             t.fixedSpeaker = true;
             t.speakerLabel = userName.isEmpty() ? QStringLiteral("Mikrofon 1") : userName;
@@ -617,7 +616,7 @@ void AudioImporter::Impl::finalize()
         m.tracks.append(t);
     }
 
-    // Végleges mappa: ugyanaz a névminta, mint a felvételnél (dátum_idő_cím-slug).
+    // Final folder: the same name pattern as for a recording (date_time_title-slug).
     const QDir root(store->audioDir());
     const QString base = m.startedAt.toString(QStringLiteral("yyyy-MM-dd_HHmm"))
                          + QLatin1Char('_') + slugify(m.title);
@@ -625,8 +624,8 @@ void AudioImporter::Impl::finalize()
     if (root.exists(name)) name = base + QLatin1Char('_') + r.id.left(8);
     m.folder = root.filePath(name);
 
-    // A meeting.json még a rejtett mappában elkészül, így az átnevezés után a mappa már
-    // teljes (ha a folyamat épp ott állna le, az index-újraépítés rendesen megtalálja).
+    // meeting.json is made while still in the hidden folder, so after the rename the folder is already
+    // complete (if the process stopped right there, the index rebuild finds it properly).
     const QByteArray json = QJsonDocument(toJson(m)).toJson(QJsonDocument::Indented);
     QSaveFile f(QDir(r.stagingDir).filePath(QStringLiteral("meeting.json")));
     const bool written = f.open(QIODevice::WriteOnly) && f.write(json) == json.size() && f.commit();
@@ -636,7 +635,7 @@ void AudioImporter::Impl::finalize()
         return;
     }
     r.stagingDir.clear();
-    store->saveMeeting(m);   // index + meetingUpdated (a könyvtár ebből veszi fel)
+    store->saveMeeting(m);   // index + meetingUpdated (the library picks it up from this)
     close(End::Done, {}, {}, m);
     qCInfo(lcStore).noquote() << "Importálva:" << name << "sávok:" << m.tracks.size()
                               << "hossz(ms):" << m.durationMs;
@@ -645,11 +644,11 @@ void AudioImporter::Impl::finalize()
 void AudioImporter::Impl::close(End end, const QString& message, const QString& detail,
                                 const Meeting& meeting)
 {
-    // Előbb a futás elengedése (a jel kezelője már indíthat újat), aztán a jel.
+    // First release the run (the signal's handler may already start a new one), then the signal.
     const std::unique_ptr<Run> r = std::move(run);
     if (!r) return;
     if (!r->stagingDir.isEmpty())
-        QDir(r->stagingDir).removeRecursively();   // félkész mappa nem marad
+        QDir(r->stagingDir).removeRecursively();   // no half-made folder stays
     switch (end) {
     case End::Done:
         emit q->progress(r->id, 100, int(r->req.sources.size()) - 1, int(r->req.sources.size()));

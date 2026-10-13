@@ -1,8 +1,7 @@
 #pragma once
 //
-// OpenAI-kompatibilis LLM provider (LM Studio / Ollama / OpenAI / Claude proxy).
-// MVP: nem-stream, egyszeri /chat/completions POST.
-//
+// OpenAI-compatible LLM provider (LM Studio / Ollama / OpenAI / Claude proxy).
+// MVP: non-streaming, a single /chat/completions POST.
 #include "tanara/llm/ILlmProvider.h"
 #include "tanara/Types.h"
 
@@ -15,28 +14,27 @@ class QJsonObject;
 
 namespace tanara {
 
-// A „gondolkodás” kikapcsolásának módja egy kérésben (ProviderConfig::reasoning + modellnév).
+// How "thinking" is turned off in a request (ProviderConfig::reasoning + model name).
 enum class ReasoningSwitch {
-    None,      // nem küldünk kapcsolót (reasoning = "on": a modell alapviselkedése)
-    Effort,    // "reasoning_effort": "none" a kérés törzsében (Gemma, ismeretlen modell)
-    Prefill,   // üres <think></think> blokkal előtöltött asszisztens-üzenet (Qwen 3+)
+    None,      // no switch is sent (reasoning = "on": the model's default behavior)
+    Effort,    // "reasoning_effort": "none" in the request body (Gemma, unknown model)
+    Prefill,   // assistant message prefilled with an empty <think></think> block (Qwen 3+)
 };
 
-// A módszer a beállítás ("auto" | "off" | "on") és a modell-azonosító alapján. Az LM Studio
-// a többi ismert kapcsolót (enable_thinking, think:false, /no_think, chat_template_kwargs)
-// figyelmen kívül hagyja — mérés szerint csak ez a kettő hat.
+// The method from the setting ("auto" | "off" | "on") and the model id. LM Studio ignores the other
+// known switches (enable_thinking, think:false, /no_think, chat_template_kwargs); measured: only these two work.
 ReasoningSwitch reasoningSwitchFor(const QString& setting, const QString& model);
 
-// A /chat/completions kérés törzse (a reasoning-kapcsolóval együtt) — tesztelhető tiszta függvény.
+// Body of the /chat/completions request (with the reasoning switch): a testable pure function.
 QJsonObject buildChatCompletionBody(const ProviderConfig& cfg, const LlmRequest& req);
 
-// A válasz tartalmából a gondolkodás-maradék levétele: egy vezető <think>…</think> blokk
-// (vagy előtöltés után egy magányos, vezető </think>). Lezáratlan <think> → üres (az egész
-// gondolkodás volt, válasz nincs).
+// Strips the leftover thinking from the response content: a leading <think>...</think> block (or,
+// after a prefill, a lone leading </think>). An unterminated <think> -> empty (all of it was
+// thinking, no answer).
 QString stripThinking(const QString& content);
 
-// Egyetlen chat-kérést reprezentáló job. A finished(content) / failed(error)
-// signalokat az ILlmProvider::LlmJob bázis deklarálja.
+// A job representing a single chat request. The finished(content) / failed(error) signals are
+// declared by the ILlmProvider::LlmJob base.
 class OpenAiCompatibleJob : public LlmJob {
     Q_OBJECT
 public:

@@ -41,7 +41,7 @@ bool isWatcherEnabled()
 
 bool managed()
 {
-    if (!paths::homeOverride().isEmpty()) return false;      // homokozó: a valódi bejegyzés tabu
+    if (!paths::homeOverride().isEmpty()) return false;      // sandbox: the real entry is taboo
     if (QStandardPaths::isTestModeEnabled()) return false;
     return !watcherEntryPath().isEmpty();
 }
@@ -66,7 +66,7 @@ bool writeEntry(const QString& entryPath, const QString& watcherExecutable)
     if (entryPath.isEmpty() || watcherExecutable.isEmpty()) return false;
     QDir().mkpath(QFileInfo(entryPath).absolutePath());
     QFile f(entryPath);
-    // .desktop-fájl: LF sorvég kell (Text mód nélkül — Windowson az CRLF-et írna).
+    // .desktop file: needs LF line endings (without Text mode; on Windows it would write CRLF).
     if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) return false;
     QTextStream(&f)
         << "[Desktop Entry]\n"
@@ -98,7 +98,7 @@ bool applyWatcher(bool on, const QString& watcherExecutable)
 #endif
 }
 
-// ---- Windows Run-kulcs -------------------------------------------------------------------
+// ---- Windows Run key -------------------------------------------------------------------
 
 #if defined(Q_OS_WIN)
 namespace {
@@ -110,7 +110,7 @@ bool writeRunValue(const QString& subKey, const QString& valueName, const QStrin
 {
 #if defined(Q_OS_WIN)
     if (subKey.isEmpty() || valueName.isEmpty() || watcherExecutable.isEmpty()) return false;
-    // Idézőjeles, natív elválasztós út: a "Program Files"-féle szóközös utak miatt kell.
+    // A quoted path with native separators: needed because of "Program Files"-style paths with spaces.
     const QString cmd = QLatin1Char('"') + QDir::toNativeSeparators(watcherExecutable) + QLatin1Char('"');
     HKEY k = nullptr;
     if (RegCreateKeyExW(HKEY_CURRENT_USER, wc(subKey), 0, nullptr, 0, KEY_SET_VALUE, nullptr, &k, nullptr)
@@ -139,7 +139,7 @@ QString readRunValue(const QString& subKey, const QString& valueName)
         std::wstring buf(bytes / sizeof(wchar_t) + 1, L'\0');
         if (RegQueryValueExW(k, wc(valueName), nullptr, &type, reinterpret_cast<BYTE*>(buf.data()), &bytes)
             == ERROR_SUCCESS)
-            out = QString::fromWCharArray(buf.c_str());   // a záró NUL-ig
+            out = QString::fromWCharArray(buf.c_str());   // up to the terminating NUL
     }
     RegCloseKey(k);
     return out;

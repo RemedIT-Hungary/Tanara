@@ -20,7 +20,7 @@ namespace tanara {
 
 namespace {
 
-// „Monitor of X” / „Loopback of X” → „X” (a kimenet leírása).
+// "Monitor of X" / "Loopback of X" -> "X" (the output's description).
 QString stripMonitorPrefix(const QString& name)
 {
     static const QRegularExpression prefix(
@@ -84,7 +84,7 @@ AudioGraphSnapshot parsePwDumpGraph(const QByteArray& json)
     struct Stream { QString app, binary; bool running = false; };
     QHash<int, Sink> sinks;
     QHash<int, Stream> streams;
-    QVector<QPair<int, int>> links;   // (kimenő node, bemenő node)
+    QVector<QPair<int, int>> links;   // (source node, sink node)
 
     for (const QJsonValue& v : doc.array()) {
         const QJsonObject o = v.toObject();
@@ -120,7 +120,7 @@ AudioGraphSnapshot parsePwDumpGraph(const QByteArray& json)
         }
     }
 
-    // Egy stream csatornánként külön linket kap → (app, kimenet) páronként egy útvonal.
+    // A stream gets a separate link per channel, so there is one route per (app, output) pair.
     QStringList seen;
     for (const auto& l : links) {
         const auto st = streams.constFind(l.first);
@@ -211,7 +211,7 @@ void PlaybackRouteMonitor::stop()
 
 void PlaybackRouteMonitor::poll()
 {
-    if (d->proc || d->bin.isEmpty()) return;   // az előző még fut
+    if (d->proc || d->bin.isEmpty()) return;   // the previous one is still running
     auto* proc = new QProcess(this);
     d->proc = proc;
     connect(proc, &QProcess::finished, this, [this, proc](int code, QProcess::ExitStatus st) {

@@ -1,11 +1,10 @@
 #pragma once
 //
-// Tanara — JSON (de)szerializáció a value-típusokhoz.
-// Szabad függvények a `tanara` namespace-ben: QJsonObject ⟷ DTO.
+// JSON (de)serialization for the value types.
+// Free functions in the `tanara` namespace: QJsonObject <-> DTO.
 //
-// FONTOS: ProviderConfig szerializálásakor az `apiKey` NEM kerül JSON-be —
-// a titkok a KeyStore-ba tartoznak.
-//
+// IMPORTANT: when serializing ProviderConfig the `apiKey` does NOT go into the JSON;
+// secrets belong in the KeyStore.
 #include "tanara/Types.h"
 #include <QJsonObject>
 #include <QJsonArray>
@@ -23,7 +22,7 @@ ActionItem  actionItemFromJson(const QJsonObject& o);
 QJsonObject toJson(const Summary& s);
 Summary     summaryFromJson(const QJsonObject& o);
 
-// ---- résztvevők / bizonyíték ---------------------------------------------
+// ---- participants / evidence ---------------------------------------------
 QJsonObject toJson(const Evidence& e);
 Evidence    evidenceFromJson(const QJsonObject& o);
 QJsonObject toJson(const Participant& p);

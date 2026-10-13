@@ -67,9 +67,9 @@ namespace tracknames {
 
 bool looksLikeCallDevice(const QString& deviceName)
 {
-    // A headsetek a hívásokhoz külön (mono, kétirányú) profilt adnak; a hívás-appok ezt
-    // használják. PipeWire/PulseAudio: „… - Communication”, „… Chat”, HSP/HFP „Hands-Free”,
-    // „Headset Head Unit”; WASAPI: „… Hands-Free AG Audio”, „Kommunikációs …”.
+    // Headsets give a separate (mono, two-way) profile for calls; call apps use it. PipeWire/PulseAudio:
+    // "... - Communication", "... Chat", HSP/HFP "Hands-Free", "Headset Head Unit"; WASAPI:
+    // "... Hands-Free AG Audio" and the localized "Communication ..." names.
     static const QStringList keys{
         QStringLiteral("communication"), QStringLiteral("kommunik"), QStringLiteral("chat"),
         QStringLiteral("hands-free"), QStringLiteral("handsfree"), QStringLiteral("hfp"),
@@ -88,10 +88,10 @@ QString shortDeviceName(const QString& deviceName)
         QStringLiteral("^(monitor of|monitor:|loopback of|loopback:)\\s*"),
         QRegularExpression::CaseInsensitiveOption);
     n.remove(monitorPrefix);
-    // „Gyártó Típus - Profil” → „Gyártó Típus”.
+    // "Vendor Model - Profile" -> "Vendor Model".
     const int dash = n.indexOf(QStringLiteral(" - "));
     if (dash > 0) n = n.left(dash);
-    // WASAPI: „Hangszórók (Realtek Audio)” → a zárójeles rész az eszköz.
+    // WASAPI: "Speakers (Realtek Audio)" -> the parenthesized part is the device.
     static const QRegularExpression paren(QStringLiteral("^[^()]*\\(([^()]+)\\)\\s*$"));
     const QRegularExpressionMatch pm = paren.match(n);
     if (pm.hasMatch()) n = pm.captured(1);
@@ -111,7 +111,7 @@ QVector<SegmentInfo> segments(const QVector<Track>& all)
             if (!done[j] && all.at(j).deviceName == all.at(i).deviceName) group.append(j);
         for (int j : group) done[j] = true;
         if (group.size() < 2) continue;
-        // Csak ha mind különböző időben indult (lásd a fejlécet).
+        // Only if all started at different times (see the header).
         QVector<qint64> offs;
         for (int j : group) offs.append(all.at(j).startOffsetMs);
         std::sort(offs.begin(), offs.end());
@@ -127,7 +127,7 @@ QVector<SegmentInfo> segments(const QVector<Track>& all)
 
 namespace {
 
-// A logikai sáv (egy eszköz összes szakasza) összesített állapota a szerep-döntéshez.
+// The logical track's (all spans of a device) aggregate state for the role decision.
 struct Logical {
     int leader = -1;
     bool active = false;
@@ -142,12 +142,12 @@ TrackRole classifyAt(int idx, const QVector<Track>& all, const QVector<SegmentIn
 
     if (looksLikeCallDevice(track.deviceName))
         return TrackRole::CallAudio;
-    // Logikai loopback-sávok (szakaszok összevonva).
+    // Logical loopback tracks (spans merged).
     QVector<Logical> logical;
     for (int i = 0; i < all.size(); ++i) {
         const Track& t = all.at(i);
         if (t.kind != TrackKind::Loopback) continue;
-        // Ha VAN olyan loopback, amelyik név szerint a hívás eszköze, minden más rendszerhang.
+        // If there IS a loopback whose name says it is the call's device, every other one is system audio.
         if (looksLikeCallDevice(t.deviceName)) return TrackRole::SystemAudio;
         const int lead = seg.at(i).leader;
         auto it = std::find_if(logical.begin(), logical.end(),
@@ -155,8 +155,8 @@ TrackRole classifyAt(int idx, const QVector<Track>& all, const QVector<SegmentIn
         if (it == logical.end()) { logical.append(Logical{lead, false, 0.0f}); it = logical.end() - 1; }
         if (t.active) { it->active = true; it->peak = std::max(it->peak, t.peakLevel); }
     }
-    // Név alapján nem dönthető el: a felvett hívás azon a monitoron szólt, amelyiken volt
-    // hang — az egyetlen aktív, ill. több közül a leghangosabb.
+    // Cannot be decided by name: the recorded call played on the monitor that had sound: the only
+    // active one, or the loudest of several.
     const Logical* loudest = nullptr;
     int activeLoopbacks = 0;
     for (const Logical& l : std::as_const(logical)) {
@@ -180,7 +180,7 @@ TrackRole classify(const Track& track, const QVector<Track>& all)
     for (int i = 0; i < all.size(); ++i)
         if (all.at(i).id == track.id && all.at(i).file == track.file)
             return classifyAt(i, all, segments(all));
-    // Nincs a listában: önmagában, a többiek mellé téve.
+    // Not in the list: alone, placed next to the others.
     QVector<Track> withIt = all;
     withIt.append(track);
     return classifyAt(int(withIt.size()) - 1, withIt, segments(withIt));
@@ -193,7 +193,7 @@ QStringList friendlyNames(const QVector<Track>& all)
     const QMap<QString, QString> own = devicenames::overrides();
     for (int i = 0; i < all.size(); ++i) {
         const Track& t = all.at(i);
-        // A felhasználó által átnevezett eszköz sávja az ő nevét kapja (a szerep-név helyett).
+        // A track of a device the user renamed gets their name (instead of the role name).
         if (const QString o = own.value(t.deviceName); !o.isEmpty()) {
             names << o;
             continue;
@@ -212,8 +212,8 @@ QStringList friendlyNames(const QVector<Track>& all)
         }
         }
     }
-    // Azonos nevek megkülönböztetése — csak a logikai sávok (szakasz-vezetők) között: előbb a
-    // rövid eszköznévvel, aztán sorszámmal. A további szakaszok a vezetőjük nevét kapják.
+    // Telling identical names apart, only between logical tracks (span leaders): first with the short
+    // device name, then with a number. Further spans get their leader's name.
     auto isLeader = [&seg](int i) { return seg.at(i).leader == i; };
     for (int i = 0; i < names.size(); ++i) {
         if (!isLeader(i)) continue;
@@ -223,7 +223,7 @@ QStringList friendlyNames(const QVector<Track>& all)
         if (same.size() < 2) continue;
         const QString base = names.at(i);
         for (int j : same) {
-            if (own.contains(all.at(j).deviceName)) continue;   // a saját név már egyedi szándék
+            if (own.contains(all.at(j).deviceName)) continue;   // the user's own name is already a deliberate unique choice
             const QString s = shortDeviceName(all.at(j).deviceName);
             if (!s.isEmpty() && s != base)
                 names[j] = QStringLiteral("%1 (%2)").arg(base, s);
@@ -255,8 +255,8 @@ QVector<TrackView> TrackCatalog::tracks(const Meeting& m)
     out.reserve(m.tracks.size());
     const QStringList friendly = tracknames::friendlyNames(m.tracks);
     const QVector<tracknames::SegmentInfo> seg = tracknames::segments(m.tracks);
-    // Sorrend: logikai sávonként (a vezető első előfordulása szerint — a vezető a legkorábbi
-    // szakasz, ezért a csoport első tagjának indexét vesszük), azon belül szakasz szerint.
+    // Order: per logical track (by the leader's first occurrence; the leader is the earliest span, so we
+    // take the group's first member's index), within it by span.
     QVector<int> order(m.tracks.size());
     std::iota(order.begin(), order.end(), 0);
     QVector<int> groupPos(m.tracks.size(), -1);
@@ -322,8 +322,8 @@ bool TrackCatalog::renameTrack(const QString& meetingId, const QString& trackId,
         if (m.tracks.at(i).id == trackId) { target = i; break; }
     if (target < 0) return false;
     QString n = name.simplified();
-    if (n == friendly.at(target)) n.clear();   // a barátságos névre „átnevezés” = nincs egyedi név
-    // Az eszköz minden szakasza ugyanazt a nevet kapja (egy logikai sáv).
+    if (n == friendly.at(target)) n.clear();   // "renaming" to the friendly name = no custom name
+    // Every span of the device gets the same name (one logical track).
     bool changed = false;
     for (int i = 0; i < m.tracks.size(); ++i) {
         if (seg.at(i).leader != seg.at(target).leader) continue;
@@ -355,8 +355,8 @@ bool TrackCatalog::relocateTrack(const QString& meetingId, const QString& trackI
     if (src.size() == 0)
         return fail(tr("A kiválasztott fájl üres: %1").arg(newFilePath));
 
-    // Csak hangfájl lehet sáv (a meeting.json, átirat, hullámforma-cache stb. nem). Kiterjesztés
-    // nélküli KÜLSŐ fájlt a régi viselkedés szerint ogg-nak veszünk.
+    // Only an audio file can be a track (not meeting.json, the transcript, the waveform cache etc.). An
+    // EXTERNAL file without an extension is taken as ogg, as in the old behavior.
     static const QStringList kAudioExt{
         QStringLiteral("ogg"), QStringLiteral("oga"), QStringLiteral("opus"), QStringLiteral("wav"),
         QStringLiteral("mp3"), QStringLiteral("flac"), QStringLiteral("m4a"), QStringLiteral("aac"),
@@ -370,8 +370,8 @@ bool TrackCatalog::relocateTrack(const QString& meetingId, const QString& trackI
     const QDir folder(m.folder);
     QString rel;
     if (inFolder) {
-        // Már a meeting mappájában van → csak ráhivatkozunk. Másik sáv fájlját nem vesszük át,
-        // és a LEKEVERÉST sem: sávként később (sáv-törléssel) a keverék is törlődne.
+        // Already in the meeting's folder: we only reference it. Another track's file is not taken over,
+        // nor is the MIXDOWN: as a track it would later be deleted with a track delete, and the mix with it.
         rel = src.fileName();
         const Qt::CaseSensitivity cs =
 #if defined(Q_OS_WIN) || defined(Q_OS_MACOS)
@@ -386,9 +386,9 @@ bool TrackCatalog::relocateTrack(const QString& meetingId, const QString& trackI
             if (t.id != trackId && t.file.compare(rel, cs) == 0)
                 return fail(tr("Ez a fájl már egy másik sávhoz tartozik."));
     } else {
-        // Bemásoljuk a meeting mappájába (az eredeti érintetlen marad). Az eredeti sáv-
-        // fájlnevet tartjuk meg, ha a kiterjesztés egyezik és a hely szabad; különben a
-        // forrás kiterjesztésével, ütközésnél sorszámozva.
+        // We copy it into the meeting's folder (the original stays untouched). We keep the original
+        // track file name if the extension matches and the spot is free; otherwise with the source's
+        // extension, numbered on collision.
         QString base = QFileInfo(track->file).completeBaseName();
         if (base.isEmpty()) base = QStringLiteral("track_") + track->id;
         const QString ext = src.suffix().isEmpty() ? QStringLiteral("ogg") : src.suffix().toLower();
@@ -403,7 +403,7 @@ bool TrackCatalog::relocateTrack(const QString& meetingId, const QString& trackI
         WaveformService::removeCache(folder.filePath(track->file));
     track->file = rel;
     if (track->active)
-        m.mixdownDirty = true;   // a keverék a hiányzó sáv nélkül készülhetett
+        m.mixdownDirty = true;   // the mix may have been made without the missing track
     m_store->saveMeeting(m);
     emit tracksChanged(meetingId);
     return true;
@@ -418,21 +418,21 @@ int TrackCatalog::deleteDroppedTracks(const QString& meetingId)
     int removed = 0;
     for (const Track& t : std::as_const(m.tracks)) {
         if (t.active) { kept.append(t); continue; }
-        // A lekeverés fájlját sáv-törlés SOSEM törli (régi meeting.json-ban sávként
-        // szerepelhet — lásd relocateTrack), és olyat sem, amire megmaradó sáv hivatkozik.
+        // Track deletion NEVER deletes the mixdown file (in an old meeting.json it may be listed as a track;
+        // see relocateTrack), nor one that a remaining track references.
         bool shared = !m.mixdownFile.isEmpty() && t.file == m.mixdownFile;
         for (const Track& o : std::as_const(m.tracks))
             if (o.active && o.file == t.file) shared = true;
         if (!t.file.isEmpty() && !shared) {
             const QString path = QDir(m.folder).filePath(t.file);
-            QFile::remove(path);                  // a hangfájl FIZIKAI törlése (explicit kérés)
+            QFile::remove(path);                  // PHYSICAL deletion of the audio file (an explicit request)
             WaveformService::removeCache(path);
         }
         ++removed;
     }
     if (removed == 0) return 0;
     m.tracks = kept;
-    // Eldobott sáv nem része a keveréknek → a mixdown érvényes marad (nincs mixdownDirty).
+    // A dropped track is not part of the mix, so the mixdown stays valid (no mixdownDirty).
     m_store->saveMeeting(m);
     emit tracksChanged(meetingId);
     return removed;

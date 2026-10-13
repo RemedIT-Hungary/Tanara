@@ -21,10 +21,10 @@ QString libraryVersion();   // Version.cpp
 
 namespace {
 
-// A manifeszt legfeljebb ekkora lehet (védelem a felfújt bejegyzés ellen).
+// The manifest may be at most this big (protection against an inflated entry).
 constexpr mz_uint64 kMaxManifestBytes = 1024 * 1024;
 
-// Már tömörített formátumok: tárolva (gyors, a tömörítés úgysem nyerne rajtuk).
+// Already compressed formats: stored (fast; compression would gain nothing on them).
 bool storeOnly(const QString& name)
 {
     static const QStringList exts = {QStringLiteral(".ogg"), QStringLiteral(".opus"), QStringLiteral(".mp3"),
@@ -34,7 +34,7 @@ bool storeOnly(const QString& name)
     return false;
 }
 
-// Haladás-számláló: csak a változó százalékot jelenti.
+// Progress counter: reports only a changed percentage.
 struct ProgressTracker {
     MeetingArchive::Progress fn;
     qint64 total = 0;
@@ -53,7 +53,7 @@ struct ProgressTracker {
     }
 };
 
-// ---- írás -------------------------------------------------------------------------------
+// ---- writing -------------------------------------------------------------------------------
 
 struct WriteCtx {
     QFile* out = nullptr;
@@ -76,7 +76,7 @@ struct ReadSourceCtx {
 size_t readFromSource(void* opaque, mz_uint64 ofs, void* buf, size_t n)
 {
     auto* ctx = static_cast<ReadSourceCtx*>(opaque);
-    if (ctx->cancel && ctx->cancel->load()) return 0;   // a miniz hibával áll le
+    if (ctx->cancel && ctx->cancel->load()) return 0;   // miniz stops with an error
     if (qint64(ofs) != ctx->in->pos() && !ctx->in->seek(qint64(ofs))) return 0;
     const qint64 r = ctx->in->read(static_cast<char*>(buf), qint64(n));
     if (r <= 0) return 0;
@@ -126,7 +126,7 @@ ArchiveManifest manifestFromJson(const QJsonObject& o)
     return a;
 }
 
-// ---- olvasás ----------------------------------------------------------------------------
+// ---- reading ----------------------------------------------------------------------------
 
 size_t readFromZip(void* opaque, mz_uint64 ofs, void* buf, size_t n)
 {
@@ -151,15 +151,15 @@ size_t extractToFile(void* opaque, mz_uint64 ofs, const void* buf, size_t n)
     return size_t(w);
 }
 
-// Biztonságos-e a bejegyzés útja: relatív, perjeles, nincs „..” / „.” / üres elem, nincs
-// meghajtó-betűjel és visszaper.
+// Whether an entry's path is safe: relative, slash-separated, no ".." / "." / empty element, no
+// drive letter and no backslash.
 bool safeEntryPath(const QString& p)
 {
     if (p.isEmpty() || p.startsWith(QLatin1Char('/')) || p.contains(QLatin1Char('\\'))
         || p.contains(QLatin1Char(':')) || p.contains(QChar(0)))
         return false;
     QString s = p;
-    if (s.endsWith(QLatin1Char('/'))) s.chop(1);   // mappa-bejegyzés
+    if (s.endsWith(QLatin1Char('/'))) s.chop(1);   // a folder entry
     for (const QString& part : s.split(QLatin1Char('/'))) {
         if (part.isEmpty() || part == QLatin1String(".") || part == QLatin1String(".."))
             return false;
@@ -203,7 +203,7 @@ bool MeetingArchive::exportMeeting(const Meeting& m, const QString& zipPath, QSt
     const QString folderName = folderInfo.fileName();
     const QDir root(folderInfo.absoluteFilePath());
 
-    // A becsomagolandó fájlok (rendezve, hogy az archívum determinisztikus legyen).
+    // The files to pack (sorted, so the archive is deterministic).
     QStringList files;
     qint64 totalBytes = 0;
     QDirIterator it(root.absolutePath(), QDir::Files | QDir::Hidden | QDir::NoSymLinks,
@@ -236,7 +236,7 @@ bool MeetingArchive::exportMeeting(const Meeting& m, const QString& zipPath, QSt
     if (!mz_zip_writer_init_v2(&zip, 0, 0))
         return abort(QCoreApplication::translate("MeetingArchive", "Az archívum írása nem sikerült: %1").arg(zipErrorText(&zip)));
 
-    // Manifeszt elöl (a fogadó oldal így gyorsan ellenőrizhet).
+    // Manifest first (so the receiving side can check it quickly).
     const QByteArray manifest = QJsonDocument(manifestJson(m, tags)).toJson(QJsonDocument::Indented);
     if (!mz_zip_writer_add_mem(&zip, manifestFileName().toUtf8().constData(), manifest.constData(),
                                size_t(manifest.size()), MZ_DEFAULT_LEVEL))
@@ -303,13 +303,13 @@ QString MeetingArchive::importArchive(const QString& zipPath, const QString& tem
         ~ReaderGuard() { mz_zip_reader_end(z); }
     } readerGuard{&zip};
 
-    // 1) Bejegyzések ellenőrzése — még semmi nem kerül a lemezre.
+    // 1) Checking the entries: nothing goes to disk yet.
     const mz_uint count = mz_zip_reader_get_num_files(&zip);
     int manifestIndex = -1;
     QString topDir;
     bool hasMeetingJson = false, hasTrack = false;
     qint64 totalBytes = 0;
-    QVector<QPair<mz_uint, QString>> entries;   // (index, relatív út a felső mappán belül)
+    QVector<QPair<mz_uint, QString>> entries;   // (index, relative path inside the top folder)
     for (mz_uint i = 0; i < count; ++i) {
         mz_zip_archive_file_stat st;
         if (!mz_zip_reader_file_stat(&zip, i, &st))
@@ -364,7 +364,7 @@ QString MeetingArchive::importArchive(const QString& zipPath, const QString& tem
     if (topDir.isEmpty() || (!hasMeetingJson && !hasTrack))
         return fail(QCoreApplication::translate("MeetingArchive", "Az archívumban nincs megbeszélés (meeting.json vagy track_*.ogg)."));
 
-    // 2) Kicsomagolás az ideiglenes mappába.
+    // 2) Unpacking into the temporary folder.
     const QString tempDir = QDir(tempRoot).filePath(tempDirPrefix()
                                                     + QUuid::createUuid().toString(QUuid::WithoutBraces));
     const QString target = QDir(tempDir).filePath(topDir);

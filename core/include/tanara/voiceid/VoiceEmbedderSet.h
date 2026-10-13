@@ -1,12 +1,11 @@
 #pragma once
 //
-// VoiceEmbedderSet — a használt (engedélyezett ∩ elérhető) beszélő-modellek készlete: modellenként
-// egy lustán (első használatkor) betöltött VoiceEmbedder. Egy PCM-szeletből minden modell
-// beágyazását adja (EmbeddingSet). Nem szálbiztos: háttérszál a freshCopy()-val saját példányt kap.
+// VoiceEmbedderSet: the set of speaker models in use (enabled intersect available): one lazily
+// (on first use) loaded VoiceEmbedder per model. From one PCM slice it gives every model's embedding
+// (EmbeddingSet). Not thread-safe: a background thread gets its own instance with freshCopy().
 //
-// Teszt-varrat: a betöltő (PcmEmbedderLoader) cserélhető — így hamis „modell” is beadható, ONNX
-// nélkül. Alapból a valódi VoiceEmbedder tölt (voice-ID nélküli buildben semmi sem töltődik).
-//
+// Test seam: the loader (PcmEmbedderLoader) is replaceable, so a fake "model" can be injected without
+// ONNX. By default the real VoiceEmbedder loads (in a build without voice ID nothing loads).
 #include "tanara/voiceid/EmbeddingSet.h"
 #include "tanara/voiceid/VoiceModelRegistry.h"
 
@@ -19,13 +18,13 @@
 
 namespace tanara {
 
-// Egy betöltött modell: 16 kHz mono PCM ([-1,1]) → L2-normalizált vektor (üres = nem sikerült).
+// A loaded model: 16 kHz mono PCM ([-1,1]) -> L2-normalized vector (empty = failed).
 using PcmEmbedder = std::function<QVector<float>(const QVector<float>& mono16k)>;
-// Modell betöltése a feloldott fájlból; üres függvény = nem tölthető be (error: az ok).
+// Loading a model from the resolved file; an empty function = cannot be loaded (error: the reason).
 using PcmEmbedderLoader =
     std::function<PcmEmbedder(const VoiceModelSpec& spec, const QString& path, QString* error)>;
 
-// Egy használt modell: a leíró + a feloldott fájl.
+// A model in use: the descriptor + the resolved file.
 struct VoiceModelEntry {
     VoiceModelSpec spec;
     QString path;
@@ -33,31 +32,30 @@ struct VoiceModelEntry {
 
 class VoiceEmbedderSet {
 public:
-    // models: a használt modellek (bármilyen sorrendben; belül id szerint rendez). loader üres →
-    // a valódi VoiceEmbedder (defaultLoader()).
+    // models: the models in use (any order; sorted by id inside). Empty loader = the real VoiceEmbedder (defaultLoader()).
     explicit VoiceEmbedderSet(QVector<VoiceModelEntry> models = {}, PcmEmbedderLoader loader = {});
-    // A beállítás szerinti készlet: VoiceModelRegistry::active(enabledIds, metaDir, appDir).
+    // The set per the settings: VoiceModelRegistry::active(enabledIds, metaDir, appDir).
     static VoiceEmbedderSet fromSettings(const QStringList& enabledIds, const QString& metaDir,
                                          const QString& appDir, PcmEmbedderLoader loader = {});
     static PcmEmbedderLoader defaultLoader();
 
-    // Ugyanez a konfiguráció betöltetlenül (háttérszálnak; a modellek ott töltődnek be újra).
+    // The same configuration unloaded (for a background thread; the models load again there).
     VoiceEmbedderSet freshCopy() const;
 
-    QStringList modelIds() const;                    // ábécérendben
+    QStringList modelIds() const;                    // alphabetical
     bool isEmpty() const { return m_models.isEmpty(); }
     const QVector<VoiceModelEntry>& models() const { return m_models; }
     PcmEmbedderLoader loader() const { return m_loader; }
 
-    // Betölti a még nem próbált modelleket; true, ha legalább egy használható.
+    // Loads the models not tried yet; true if at least one is usable.
     bool ensureLoaded() const;
-    // A betölthető modellek id-i (betöltést vált ki).
+    // Ids of the loadable models (triggers loading).
     QStringList loadedModelIds() const;
 
-    // Minden betölthető modell vektora (a sikertelen / be nem tölthető modell kulcsa hiányzik).
+    // The vector of every loadable model (the key of a failed / unloadable model is missing).
     EmbeddingSet embedPcm(const QVector<float>& mono16k) const;
-    // Csak a felsorolt modellekkel; a betölthető, kért modell kulcsa üres vektorral is szerepel
-    // (= megpróbáltuk, nem sikerült), a be nem tölthetőé hiányzik.
+    // Only with the listed models; the key of a loadable, requested model is present even with an empty
+    // vector (= tried, failed); that of an unloadable one is missing.
     EmbeddingSet embedPcmWith(const QVector<float>& mono16k, const QStringList& modelIds) const;
 
     QString lastError() const { return m_error; }

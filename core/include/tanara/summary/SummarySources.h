@@ -1,17 +1,15 @@
 #pragma once
 //
-// SummarySources — a gyors összefoglaló forrás-hivatkozásai (TISZTA függvények, I/O és LLM nélkül).
+// SummarySources: the quick summary's source references (PURE functions, no I/O and no LLM).
 //
-// A modell a vezetői összefoglaló minden mondata, minden döntés és teendő végére forrás-jelölőt
-// tesz: `[t=12:30]` (több is lehet: `[t=12:30, t=14:05]`, tartomány: `[t=12:30-13:10]`), vagy
-// megszólalás-azonosítót: `[u754000]`. A json_schema helyi modellel megbízhatatlan, ezért sima
-// szöveg + jelölő. Itt:
-//   - a jelölők kinyerése és levétele (a tárolt summary.md / mezők jelölő nélküliek),
-//   - a vezetői összefoglaló mondatokra bontása,
-//   - a jelölt idő → a legközelebbi megszólalás (±kToleranceMs),
-//   - a Summary kiegészítése: statements, sourceSpeakers, memó-szakaszok beszélői,
-//   - célzott elavulás: mely állítások forrás-sorainak beszélője változott azóta.
-//
+// At the end of every sentence of the executive summary, every decision and action item, the model puts a
+// source marker: `[t=12:30]` (there may be several: `[t=12:30, t=14:05]`, a range: `[t=12:30-13:10]`), or
+// an utterance id: `[u754000]`. json_schema is unreliable with a local model, hence plain text + marker. Here:
+//   - extracting and stripping the markers (the stored summary.md / fields are marker-free),
+//   - splitting the executive summary into sentences,
+//   - the marked time -> the nearest utterance (+-kToleranceMs),
+//   - completing the Summary: statements, sourceSpeakers, memo-section speakers,
+//   - targeted staleness: which statements' source lines have a speaker that changed since.
 #include "tanara/Types.h"
 #include "tanara/edit/SpeakerEditTypes.h"
 
@@ -25,81 +23,81 @@
 namespace tanara {
 namespace summarysrc {
 
-// A jelölt idő és a megszólalás közti legnagyobb eltérés.
+// Largest deviation between the marked time and the utterance.
 constexpr qint64 kToleranceMs = 5000;
 
-// Egy megszólalás az átiratból (a forrás-feloldáshoz).
+// One utterance of the transcript (for source resolution).
 struct SourceLine {
     QString id;             // "u<startMs>" (transcript.segments.json)
     qint64  startMs = 0;
     qint64  endMs = 0;
-    QString speakerKey;     // feloldott beszélő-kulcs
-    QString speakerName;    // megjelenített név (ahogy az LLM látta)
+    QString speakerKey;     // resolved speaker key
+    QString speakerName;    // displayed name (as the LLM saw it)
 };
 
-// Egy jelölő egy eleme, nyersen: idő(tartomány) vagy megszólalás-id.
+// One item of a marker, raw: a time (range) or an utterance id.
 struct SourceRef {
-    qint64  startMs = -1;   // a jelölt idő (másodperc-pontosság); -1 = nem idő
-    qint64  endMs = -1;     // tartománynál a vége, különben = startMs
-    QString utteranceId;    // `[u123]` alak
+    qint64  startMs = -1;   // the marked time (second precision); -1 = not a time
+    qint64  endMs = -1;     // for a range its end, otherwise = startMs
+    QString utteranceId;    // the `[u123]` form
 };
 
-// Egy szöveg(darab) jelölők nélkül + a benne talált hivatkozások.
+// A text (piece) without markers + the references found in it.
 struct MarkedText {
     QString text;
     QVector<SourceRef> refs;
 };
 
-// A beszéd-blokkokból képzett sorok (ha nincs transcript.segments.json): id = "u<startMs>",
-// kulcs = név = a blokk beszélője.
+// Lines built from the speech blocks (if there is no transcript.segments.json): id = "u<startMs>",
+// key = name = the block's speaker.
 QVector<SourceLine> linesFromSegments(const QVector<Utterance>& segments);
 
-// Jelölők kinyerése és levétele. A szöveg szerkezete (sortörések) marad; a jelölő előtti
-// szóköz és a jelölő utáni írásjel előtti szóköz eltűnik („szó [t=1:00].” → „szó.”). Az
-// értelmezhetetlen idejű jelölő (pl. `[t=12:7]`) is lekerül, hivatkozás nélkül.
+// Extracting and stripping markers. The text's structure (line breaks) stays; the space before the
+// marker and the space before punctuation after the marker disappear ("word [t=1:00]." -> "word."). A
+// marker with an unparseable time (e.g. `[t=12:7]`) is stripped too, without a reference.
 MarkedText extractMarkers(const QString& text);
 QString stripMarkers(const QString& text);
 
-// Mondatokra bontás (. ! ? … után, ha nagybetű / sortörés / vég jön); a mondat UTÁNI
-// jelölő is a mondaté („Mondat. [t=1:00] Következő”). A mondatok jelölő nélküliek.
+// Splitting into sentences (after . ! ? ... when an uppercase letter / line break / end follows); a
+// marker AFTER the sentence also belongs to the sentence ("Sentence. [t=1:00] Next"). The sentences are marker-free.
 QVector<MarkedText> splitSentences(const QString& text);
 
-// Hivatkozás → forrás-tartomány. Idő: az a megszólalás, amelyik tartalmazza (a jelölt
-// másodpercet), különben a legközelebbi kToleranceMs-on belül; tartomány: az átfedő
-// megszólalások. Feloldhatatlan hivatkozás kimarad. Az azonos megszólalások összevonódnak.
+// Reference -> source range. Time: the utterance that contains it (the marked second), otherwise the
+// nearest within kToleranceMs; range: the overlapping utterances. An unresolvable reference is dropped.
+// Identical utterances merge.
 QVector<SourceSpan> resolveRefs(const QVector<SourceRef>& refs, const QVector<SourceLine>& lines,
                                 qint64 toleranceMs = kToleranceMs);
 
-// A memó-szakaszok beszélői: az időkeretükbe eső megszólalások beszélői (sorrendben).
+// Speakers of the memo sections: the speakers of the utterances within their time frame (in order).
 void fillMemoSpeakers(QVector<MemoSection>& memo, const QVector<SourceLine>& lines);
 
-// A modell kimenetéből épült Summary kiegészítése: a jelölők lekerülnek minden mezőről
-// (execSummary, decisions, openQuestions, actionItems, a memó bevezetői és pontjai), a
-// statements és a sourceSpeakers kitöltődik (a vezetői összefoglaló mondatai, döntések,
-// nyitott kérdések, teendők, a memó bevezető-mondatai és pontjai — az id-k a Types.h szerint),
-// a memó-szakaszok beszélőket kapnak. A jelölő nélkül üres elemek kimaradnak.
+// Completing the Summary built from the model's output: the markers are stripped from every field
+// (execSummary, decisions, openQuestions, actionItems, the memo's intros and points), statements and
+// sourceSpeakers are filled (the executive summary's sentences, decisions, open questions, action items, the
+// memo's intro sentences and points; ids per Types.h), and the memo sections get speakers. Items that are
+// empty without a marker are dropped.
 void attachSources(Summary& s, const QVector<SourceLine>& lines);
 
 // "statement" | "decision" | "todo" | "openQuestion" | "intro" | "memoPoint"
 QString kindToString(StatementKind k);
 StatementKind kindFromString(const QString& s);
 
-// Memó-alszakasz: a kanonikus kulcs egy al-címből (angol vagy magyar, ékezet- és kisbetű-
-// függetlenül, a díszítések — #, **, kettőspont — nélkül): "arguments" (Arguments / Elhangzott
-// érvek), "open" (Unresolved / Open question / Nyitott kérdés), egyébként a cím maga. Üres → "".
+// Memo subsection: the canonical key from a subheading (English or Hungarian, accent- and
+// case-insensitive, without decoration such as #, **, colon): "arguments" (Arguments), "open" (Unresolved /
+// Open question), otherwise the title itself. Empty = "".
 QString memoGroupKey(const QString& heading);
-// A kulcs magyar címkéje a summary.md-hez („Elhangzott érvek”, „Nyitott kérdés”, más: maga).
+// The key's Hungarian caption for summary.md ("Arguments made", "Open question"; others: itself).
 QString memoGroupLabel(const QString& key);
-// A szakasz pontjainak indexei alszakaszonként: elöl a törzs (""), utána az alszakaszok az
-// első előfordulásuk sorrendjében. [(kulcs, [pont-indexek])]
+// Indexes of a section's points per subsection: the body ("") first, then the subsections in order of
+// first occurrence. [(key, [point indexes])]
 QVector<QPair<QString, QVector<int>>> memoGroups(const MemoSection& m);
 
-// Célzott elavulás. then: az összefoglaló készítésekor rögzített beszélők (Summary::
-// sourceSpeakers); now: a mostani feloldás (utteranceId → beszélő); changedKeys: az
-// összefoglaló óta javított beszélő-kulcsok (a „Rendben így” után üres → semmi sem érintett).
-// Egy forrás-sor érintett, ha a neve azóta más lett, és a régi vagy az új kulcsa javított.
-// Kitölti a statement-ek staleBecause / ownerStaleBecause mezőit és az info célzott mezőit
-// (az info.stale / correctedSpeakers értékét nem bántja). info.targeted: van-e forrásos állítás.
+// Targeted staleness. then: the speakers recorded when the summary was made (Summary::sourceSpeakers);
+// now: the current resolution (utteranceId -> speaker); changedKeys: the speaker keys corrected since the
+// summary (empty after "Fine as is" -> nothing is affected). A source line is affected if its name became
+// different since, and the old or the new key was corrected. Fills the statements' staleBecause /
+// ownerStaleBecause fields and the info's targeted fields (does not touch info.stale / correctedSpeakers).
+// info.targeted: whether there is a statement with a source.
 void applyTargetedStaleness(QVector<SummaryStatement>& statements,
                             const QMap<QString, SourceSpeaker>& then,
                             const QHash<QString, SourceSpeaker>& now,

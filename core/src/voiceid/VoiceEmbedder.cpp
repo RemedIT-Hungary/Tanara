@@ -8,22 +8,21 @@
 #include <cstring>
 #include <vector>
 
-// A beszélő-embedding (fbank + ONNX) csak akkor fordul, ha a voice-ID engedélyezett
-// (TANARA_BUILD_VOICEID=ON → TANARA_HAVE_VOICEID). Egyébként stub: isValid()==false,
-// üres embedding → az AppController/CLI automatikusan kihagyja a beszélő-címkézést.
-// A decodePcm16kMono (tisztán ffmpeg/QProcess) MINDKÉT buildben elérhető.
+// The speaker embedding (fbank + ONNX) is compiled only if voice ID is enabled
+// (TANARA_BUILD_VOICEID=ON -> TANARA_HAVE_VOICEID). Otherwise a stub: isValid()==false, an empty
+// embedding, so AppController/CLI automatically skip speaker labeling.
+// decodePcm16kMono (pure ffmpeg/QProcess) is available in BOTH builds.
 #ifdef TANARA_HAVE_VOICEID
 #include "tanara/store/VoiceprintStore.h"   // l2normalize
 #include "kaldi-native-fbank/csrc/online-feature.h"
 
-// --- SAL-shim MinGW-hez --------------------------------------------------------
-// Az ONNX Runtime C-API fejléce _WIN32 alatt a <specstrings.h>-ra bízza a SAL2
-// annotációkat (_In_, _Outptr_, _Frees_ptr_opt_, …). A MinGW specstrings.h-ja
-// régi, és több SAL2-makró hiányzik belőle → definiálatlan tokenek miatt a
-// függvénymutató-paraméterek „eltűnnek" (implicit int → fordítási hiba).
-// Megoldás: MinGW-n (csak ott, MSVC-n NEM) az include ELŐTT üresként definiáljuk
-// pontosan azt a készletet, amit a header a nem-Windows ágban maga is használ.
-// (#ifndef-guard → a specstrings.h már meglévő definíciói nem ütköznek.)
+// --- SAL shim for MinGW --------------------------------------------------------
+// Under _WIN32 the ONNX Runtime C-API header relies on <specstrings.h> for the SAL2 annotations
+// (_In_, _Outptr_, _Frees_ptr_opt_, ...). MinGW's specstrings.h is old and lacks several SAL2
+// macros, so undefined tokens make function-pointer parameters "disappear" (implicit int -> a
+// compile error). Solution: on MinGW (only there, NOT on MSVC) we define as empty, BEFORE the include,
+// exactly the set the header itself uses in its non-Windows branch.
+// (#ifndef guard: the definitions already in specstrings.h do not collide.)
 #if defined(_WIN32) && !defined(_MSC_VER)
 #  ifndef _In_
 #    define _In_
@@ -110,8 +109,8 @@ struct VoiceEmbedder::Impl {
     QString error;
     QString path;
     mutable int dim = 0;
-    int staticDim = 0;            // a kimenet utolsó dimenziója a modellből (0 = dinamikus)
-    int expectedDim = 0;          // a leíró szerint (0 = nem ellenőrizzük)
+    int staticDim = 0;            // last dimension of the output from the model (0 = dynamic)
+    int expectedDim = 0;          // per the descriptor (0 = not checked)
     mutable bool dimWarned = false;
 
     void checkDim(int got) const {
@@ -125,7 +124,7 @@ struct VoiceEmbedder::Impl {
     std::unique_ptr<Ort::Session> session;
     std::string inputName;
     std::string outputName;
-    mutable std::mutex runMutex;   // a Session::Run nem feltétlen szálbiztos több hívásra
+    mutable std::mutex runMutex;   // Session::Run is not necessarily thread-safe for several calls
 
     explicit Impl(const EmbedderConfig& c) : cfg(c) {}
 };
@@ -142,8 +141,8 @@ VoiceEmbedder::VoiceEmbedder(const QString& modelPath, const EmbedderConfig& cfg
         Ort::SessionOptions so;
         so.SetIntraOpNumThreads(1);
         so.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
-        // Az ORT a modell-útvonalat ORTCHAR_T*-ként várja: Windowson wchar_t
-        // (wide path), POSIX-on char. Ennek megfelelően alakítjuk a QString-et.
+        // ORT expects the model path as ORTCHAR_T*: wchar_t on Windows (wide path), char on POSIX. We
+        // convert the QString accordingly.
 #if defined(_WIN32)
         const std::wstring modelPathOrt = modelPath.toStdWString();
 #else
@@ -176,7 +175,7 @@ EmbedderConfig VoiceEmbedder::config() const { return d->cfg; }
 
 QVector<float> VoiceEmbedder::embedPcm(const QVector<float>& mono16k) const {
     if (!d->session) return {};
-    if (mono16k.size() < d->cfg.sampleRate / 2) {   // <0.5s → megbízhatatlan
+    if (mono16k.size() < d->cfg.sampleRate / 2) {   // <0.5 s: unreliable
         d->error = QStringLiteral("Túl rövid hangminta az embeddinghez.");
         return {};
     }
@@ -210,7 +209,7 @@ QVector<float> VoiceEmbedder::embedPcm(const QVector<float>& mono16k) const {
         std::copy(f, f + D, feats.begin() + static_cast<size_t>(t) * D);
     }
 
-    // --- CMN: bin-enkénti átlag levonása az idő mentén ---
+    // --- CMN: subtracting the per-bin mean over time ---
     if (d->cfg.subtractMean) {
         std::vector<double> mean(D, 0.0);
         for (int t = 0; t < T; ++t)
@@ -268,7 +267,7 @@ QVector<float> VoiceEmbedder::embedFile(const QString& audioPath,
     return embedPcm(pcm);
 }
 
-#else  // !TANARA_HAVE_VOICEID — stub (nincs ONNX/fbank a buildben)
+#else  // !TANARA_HAVE_VOICEID: a stub (no ONNX/fbank in the build)
 
 struct VoiceEmbedder::Impl {
     EmbedderConfig cfg;
@@ -300,14 +299,14 @@ QVector<float> VoiceEmbedder::embedFile(const QString& /*audioPath*/,
 
 #endif // TANARA_HAVE_VOICEID
 
-// --- Közös (mindkét build): hangfájl-szegmens → 16 kHz mono float PCM (ffmpeg) -----
+// --- Shared (both builds): audio-file segment -> 16 kHz mono float PCM (ffmpeg) -----
 QVector<float> VoiceEmbedder::decodePcm16kMono(const QString& audioPath,
                                                qint64 startMs, qint64 endMs,
                                                const QString& ffmpegPath) {
     QStringList args;
     args << QStringLiteral("-v") << QStringLiteral("error");
-    // INPUT seek: a -ss az -i ELŐTT → a dekódolás a keresett pozíciónál kezdődik
-    // (gyors, hosszú fájlnál is konstans), nem 0-tól. A hosszt -t-vel korlátozzuk.
+    // INPUT seek: -ss BEFORE -i, so decoding starts at the sought position (fast, constant even for a
+    // long file), not from 0. The length is limited with -t.
     if (startMs > 0)
         args << QStringLiteral("-ss") << QString::number(startMs / 1000.0, 'f', 3);
     args << QStringLiteral("-i") << audioPath;

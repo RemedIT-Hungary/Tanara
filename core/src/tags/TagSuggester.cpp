@@ -31,7 +31,7 @@ QVector<SimilarHit> TagSuggester::fuseRrf(const QVector<SimilarHit>& a, const QV
                 order << h.meetingId;
             }
             it->score += 1.0 / double(k + rank + 1);
-            // Indoklás: fajtánként az első forrásé (a klasszikus a konkrétabb).
+            // Reason: per kind the first source's (the classic one is the more concrete).
             for (const SuggestionReason& r : h.reasons) {
                 const bool have = std::any_of(it->reasons.cbegin(), it->reasons.cend(),
                                               [&](const SuggestionReason& x) { return x.kind == r.kind; });
@@ -72,8 +72,8 @@ QVector<TagSuggestion> TagSuggester::vote(const TagSnapshot& snap, const QVector
 
     struct Vote {
         double score = 0;
-        QVector<QPair<double, QString>> voters;            // (hozzájárulás, meetingId)
-        QHash<int, QStringList> reasons;                   // ReasonKind → értékek
+        QVector<QPair<double, QString>> voters;            // (contribution, meetingId)
+        QHash<int, QStringList> reasons;                   // ReasonKind -> values
     };
     QHash<QString, Vote> votes;
     for (const SimilarHit& n : neighbours) {
@@ -135,7 +135,7 @@ QVector<TagSuggestion> TagSuggester::suggestFrom(const TagSnapshot& snap, const 
     if (!profiles || snap.meetingId.isEmpty()) return {};
     QVector<SimilarHit> neighbours = profiles->similar(snap.meetingId, 20);
     if (index) {
-        // A mappák a profilokból: az index (SQLite) háttérszálról nem kérdezhető.
+        // The folders from the profiles: the index (SQLite) cannot be queried from a background thread.
         const QHash<QString, QString> folders = profiles->folders();
         if (index->has(snap.meetingId, folders.value(snap.meetingId))) {
             const QVector<SimilarHit> emb = index->similar(snap.meetingId, folders, 20);
@@ -162,7 +162,7 @@ QVector<TagSuggestion> TagSuggester::cooccur(const QString& meetingId, const QSt
     QVector<TagSuggestion> out;
     if (!m_tags) return out;
     const QStringList with = m_tags->meetingsWith(justAddedTagId);
-    // A most címkézett meeting nem számít a mintába.
+    // The meeting just tagged does not count in the sample.
     QStringList base;
     for (const QString& id : with) if (id != meetingId) base << id;
     const int n = int(base.size());
@@ -184,7 +184,7 @@ QVector<TagSuggestion> TagSuggester::cooccur(const QString& meetingId, const QSt
         s.source = SuggestionSource::Cooccur;
         s.baseTagId = justAddedTagId;
         s.score = double(c) / double(n);
-        for (const QString& mid : it.value()) {   // legújabb elöl (a meetingsWith sorrendje)
+        for (const QString& mid : it.value()) {   // newest first (the order of meetingsWith)
             if (s.similarMeetings.size() >= 3) break;
             s.similarMeetings.append(m_tags->meetingRef(mid));
         }

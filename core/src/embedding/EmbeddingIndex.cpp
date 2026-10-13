@@ -77,7 +77,7 @@ QString EmbeddingIndex::folderOf(const QString& meetingId) const
         const auto it = m_folders.constFind(meetingId);
         if (it != m_folders.constEnd()) return *it;
     }
-    // Az index (SQLite) csak a tulajdonos szálról kérdezhető.
+    // The index (SQLite) may be queried only from the owner thread.
     if (!m_store || QThread::currentThread() != thread()) return QString();
     const QString folder = m_store->load(meetingId).folder;
     if (!folder.isEmpty()) {
@@ -98,7 +98,7 @@ QVector<float> EmbeddingIndex::meanFor(const QString& meetingId, const QString& 
         m_cache.remove(meetingId);
         return {};
     }
-    // Régebbi, mint az átirat → elavult.
+    // Older than the transcript -> stale.
     const FileStamp ts = FileStamp::of(segmentsPath(folder));
     if (ts.mtimeMs > fs.mtimeMs) return {};
     Entry e;
@@ -109,7 +109,7 @@ QVector<float> EmbeddingIndex::meanFor(const QString& meetingId, const QString& 
         if (it != m_cache.constEnd() && it->fileMtime == fs.mtimeMs) { e = *it; cached = true; }
     }
     if (!cached) {
-        // A fájl olvasása zár nélkül; párhuzamos olvasóknál legfeljebb kétszer töltődik.
+        // Reading the file without a lock; with parallel readers it loads at most twice.
         e.fileMtime = fs.mtimeMs;
         QVector<EmbeddingChunk> chunks;
         if (!readFile(path, &e.model, &chunks)) return {};
@@ -220,8 +220,8 @@ QVector<EmbeddingChunk> EmbeddingIndex::chunkTranscript(const QVector<Transcript
     for (const TranscriptLine& l : lines) {
         const QString t = l.text.simplified();
         if (t.isEmpty()) continue;
-        // Megszólalás-határon zárunk, ha a következő már túllógna (egy túl hosszú megszólalás
-        // egymagában is egy darab).
+        // We close at an utterance boundary if the next one would overshoot (an utterance that is too long is
+        // one chunk by itself).
         if (open && cur.text.size() + 1 + t.size() > maxChars) {
             out.append(cur);
             cur = EmbeddingChunk{};
@@ -271,7 +271,7 @@ bool EmbeddingIndex::readFile(const QString& path, QString* model, QVector<Embed
     qint32 dim = 0, count = 0;
     ds >> m >> dim >> count;
     if (ds.status() != QDataStream::Ok || dim <= 0 || count < 0 || dim > 65536) return false;
-    // A fájl mérete alapján is ellenőrzünk (sérült fejléc ne foglaljon sok memóriát).
+    // We also check against the file's size (a corrupt header must not claim a lot of memory).
     const qint64 need = qint64(count) * (16 + qint64(dim) * 4);
     if (f.size() - f.pos() < need) return false;
     QVector<EmbeddingChunk> out;
@@ -299,7 +299,7 @@ QVector<float> EmbeddingIndex::meanVector(const QVector<EmbeddingChunk>& chunks)
     for (const EmbeddingChunk& c : chunks) {
         if (c.vector.size() != dim) continue;
         QVector<float> v = c.vector;
-        normalizeVec(v);   // a darabok egyenlő súllyal
+        normalizeVec(v);   // the chunks with equal weight
         for (int i = 0; i < dim; ++i) acc[i] += v.at(i);
     }
     QVector<float> mean(dim);

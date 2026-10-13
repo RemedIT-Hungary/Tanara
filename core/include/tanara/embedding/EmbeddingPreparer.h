@@ -1,17 +1,15 @@
 #pragma once
 //
-// EmbeddingPreparer — „KÖNYVTÁR ELŐKÉSZÍTÉSE”: minden átirattal bíró, de érvényes index
-// nélküli megbeszélés beágyazása, egyszerre egy meeting (egy kérés-sorozat) fut.
+// EmbeddingPreparer: "PREPARING THE LIBRARY": embedding every meeting that has a transcript but no
+// valid index, one meeting at a time (one request sequence runs).
 //
-//  - start(): összegyűjti a teendőket, és sorban beágyazza őket (stateChanged a haladással,
-//    becsült hátralévő idővel);
-//  - cancel(): a futó kérés megszakad, a már kész meetingek megmaradnak (Idle);
-//  - resume(): ugyanaz, mint a start() — onnan folytatja, ahol abbahagyta (a kész indexek
-//    érvényesek maradnak);
-//  - hiba: Error állapot az üzenettel; a sor megáll (Folytatás = resume()).
-//  - enqueue(meetingId): egy később átírt meeting háttér-beágyazása (ha van provider).
-// A lastRun és a modell a <metadataDir>/embedding-state.json-ba kerül.
-//
+//  - start(): collects the work and embeds it in turn (stateChanged with progress and an
+//    estimated remaining time);
+//  - cancel(): the running request is cancelled, meetings already done stay (Idle);
+//  - resume(): same as start(): it continues where it left off (finished indexes stay valid);
+//  - error: the Error state with a message; the queue stops (Continue = resume()).
+//  - enqueue(meetingId): background embedding of a meeting transcribed later (if there is a provider).
+// lastRun and the model go into <metadataDir>/embedding-state.json.
 #include "tanara/Types.h"
 
 #include <QDateTime>
@@ -31,13 +29,13 @@ class EmbeddingJob;
 struct EmbeddingState {
     enum Status { Idle, Running, Error, Done };
     Status    status = Idle;
-    QString   provider;      // provider id ("" = nincs beágyazás)
+    QString   provider;      // provider id ("" = no embedding)
     QString   model;
-    int       prepared = 0;  // ennyi meeting indexe érvényes
-    int       total = 0;     // ennyi átirattal bíró meeting van
-    QString   error;         // Error állapotban
-    QDateTime lastRun;       // az utolsó hibátlanul végigfutott előkészítés vége
-    int       etaSec = -1;   // becsült hátralévő idő (Running); -1 = még nem becsülhető
+    int       prepared = 0;  // this many meetings have a valid index
+    int       total = 0;     // this many meetings have a transcript
+    QString   error;         // in the Error state
+    QDateTime lastRun;       // end of the last preparation that ran without error
+    int       etaSec = -1;   // estimated remaining time (Running); -1 = cannot be estimated yet
 };
 
 class EmbeddingPreparer : public QObject {
@@ -49,8 +47,8 @@ public:
                       QObject* parent = nullptr);
     ~EmbeddingPreparer() override;
 
-    // A provider beállítása (üres id → nincs beágyazás: a futó előkészítés leáll, Idle).
-    // A factory minden futáshoz új providert ad (a hívó tölti a kulcsot / gateway-configot).
+    // Sets the provider (empty id = no embedding: a running preparation stops, Idle).
+    // The factory gives a new provider for every run (the caller fills the key / gateway config).
     void setProvider(const QString& providerId, const QString& model, ProviderFactory factory);
 
     EmbeddingState state() const;
@@ -83,7 +81,7 @@ private:
     IEmbeddingProvider* m_provider = nullptr;
     QPointer<EmbeddingJob> m_job;
     QString         m_current;
-    QStringList     m_skip;          // ebben a futásban beágyazhatatlan (üres átirat) meetingek
+    QStringList     m_skip;          // meetings that cannot be embedded in this run (empty transcript)
     qint64          m_runStartMs = 0;
     int             m_runDone = 0;
 };

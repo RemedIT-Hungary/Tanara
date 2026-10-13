@@ -7,10 +7,10 @@ namespace tanara {
 
 namespace {
 
-// Egy required, NEM-titok mező értékének kinyerése a futásidejű configból.
-// A jól-ismert kulcsok (baseUrl/model/temperature/maxTokens) a ProviderConfig
-// saját mezőire mutatnak; minden más a ProviderConfig.extra-ból jön.
-// Visszatérés string-formában — a hívó csak az „üres-e?" kérdést teszi fel.
+// Extracting the value of a required, NON-secret field from the runtime config.
+// The well-known keys (baseUrl/model/temperature/maxTokens) point to the ProviderConfig's own fields;
+// everything else comes from ProviderConfig.extra.
+// Returned in string form: the caller only asks "is it empty?".
 QString configValueFor(const ProviderConfig& cfg, const QString& key)
 {
     if (key == QStringLiteral("baseUrl"))
@@ -24,15 +24,15 @@ QString configValueFor(const ProviderConfig& cfg, const QString& key)
     return cfg.extra.value(key).toString();
 }
 
-// A kiválasztott provider descriptorának végigellenőrzése: required mezők +
-// Login-ág. A meeting-állapotot a hívó már leellenőrizte. A `cfg` a kiválasztott
-// provider futásidejű configja (sttSelected()/llmSelected()).
+// Checking the selected provider's descriptor through: required fields + the Login branch. The
+// caller has already checked the meeting state. `cfg` is the selected provider's runtime config
+// (sttSelected()/llmSelected()).
 ReadinessResult checkProviderConfig(const ProviderDescriptor& desc,
                                     const QString& providerId,
                                     const ProviderConfig& cfg,
                                     const ReadinessModel::SecretProbe& hasSecret)
 {
-    // (b) required mezők
+    // (b) required fields
     for (const ConfigField& field : desc.fields) {
         if (!field.required)
             continue;
@@ -57,7 +57,7 @@ ReadinessResult checkProviderConfig(const ProviderDescriptor& desc,
         }
     }
 
-    // (c) Login-ág: a Login-provider „token" jellegű titka hiányzik → nincs bejelentkezve.
+    // (c) Login branch: the Login provider's "token"-like secret is missing -> not signed in.
     const QString loginKey = desc.loginSecretKey.isEmpty()
         ? providerId + QStringLiteral(".token") : desc.loginSecretKey;
     if (desc.authMode == AuthMode::Login && !hasSecret(loginKey)) {
@@ -87,11 +87,11 @@ ReadinessResult ReadinessModel::check(WorkflowStep step, const Meeting& meeting)
 {
     switch (step) {
     case WorkflowStep::Record:
-        // Meeting-független: a felvétel-állapotot az AppController kezeli, ide nem tartozik.
+        // Meeting-independent: the recording state is handled by AppController, it does not belong here.
         return ReadinessResult{ /*runnable*/ true };
 
     case WorkflowStep::Transcribe: {
-        // (a) meeting-állapot: van-e legalább egy aktív hangsáv?
+        // (a) meeting state: is there at least one active audio track?
         bool hasActiveTrack = false;
         for (const Track& t : meeting.tracks) {
             if (t.active) {
@@ -108,10 +108,10 @@ ReadinessResult ReadinessModel::check(WorkflowStep step, const Meeting& meeting)
             return r;
         }
 
-        // (b)+(c) a kiválasztott STT provider konfig- és auth-ellenőrzése.
+        // (b)+(c) config and auth check of the selected STT provider.
         const QString sttId = m_settings.sttProviderId;
-        // Ismeretlen / nem regisztrált provider → a descriptor() üres descriptort adna
-        // (required-loop kimarad, authMode default ApiKey) → tévesen runnable lenne.
+        // An unknown / unregistered provider: descriptor() would return an empty descriptor (the required
+        // loop is skipped, authMode defaults to ApiKey), so it would wrongly be runnable.
         if (!SttProviderRegistry::instance().has(sttId)) {
             ReadinessResult r;
             r.runnable      = false;
@@ -126,7 +126,7 @@ ReadinessResult ReadinessModel::check(WorkflowStep step, const Meeting& meeting)
     }
 
     case WorkflowStep::Summarize: {
-        // (a) van-e átirat? (tükrözi az AppController summarize-guardját)
+        // (a) is there a transcript? (mirrors AppController's summarize guard)
         if (!meeting.hasTranscript) {
             ReadinessResult r;
             r.runnable      = false;
@@ -136,9 +136,9 @@ ReadinessResult ReadinessModel::check(WorkflowStep step, const Meeting& meeting)
             return r;
         }
 
-        // (b)+(c) a kiválasztott LLM provider konfig- és auth-ellenőrzése.
+        // (b)+(c) config and auth check of the selected LLM provider.
         const QString llmId = m_settings.llmProviderId;
-        // Ismeretlen / nem regisztrált provider → ld. a Transcribe-ág indoklását.
+        // An unknown / unregistered provider: see the reasoning of the Transcribe branch.
         if (!LlmProviderRegistry::instance().has(llmId)) {
             ReadinessResult r;
             r.runnable      = false;

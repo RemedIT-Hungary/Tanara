@@ -49,8 +49,8 @@ IMeetingDetector* MeetingDetectorRegistry::create(const QString& id) const
 
 IMeetingDetector* MeetingDetectorRegistry::createBest() const
 {
-    // Az első olyan detektor, ami létrehozható ÉS elérhető ezen a hoston. A nem
-    // elérhető jelöltet (pl. hiányzó pw-dump) eldobjuk.
+    // The first detector that can be created AND is available on this host. An unavailable candidate
+    // (e.g. a missing pw-dump) is dropped.
     for (auto it = m_map.constBegin(); it != m_map.constEnd(); ++it) {
         const Factory& factory = it.value().second;
         if (!factory)

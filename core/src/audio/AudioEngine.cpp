@@ -20,17 +20,17 @@ namespace {
 
 constexpr ma_uint32 kSampleRate = 48000;
 
-// Eszközönkénti, a valós idejű callbackből elért állapot. POD-szerű: a callback
-// CSAK a ring-be ír és az atomikat frissíti — semmi allokáció, lock vagy Qt.
+// Per-device state reached from the real-time callback. POD-like: the callback ONLY writes
+// into the ring and updates the atomics: no allocation, lock or Qt.
 struct DeviceSlot {
     std::unique_ptr<RingBuffer> ring;
     std::atomic<float> rms{0.0f};
     std::atomic<float> peak{0.0f};
-    std::atomic<float> peakMax{0.0f};   // csúcstartás a takePeak()-hez
-    std::atomic<bool> open{false};      // a capture fut (closeDevice után hamis)
+    std::atomic<float> peakMax{0.0f};   // peak hold for takePeak()
+    std::atomic<bool> open{false};      // capture is running (false after closeDevice)
     ma_uint32 channels = 1;
     AudioDeviceInfo info;
-    // Saját ma_device a slot mellett (külön vektorban tartjuk a stabil címekért).
+    // Its own ma_device next to the slot (kept in a separate vector for stable addresses).
 };
 
 } // namespace
@@ -40,61 +40,60 @@ static void dataCallback(ma_device* pDevice, void* pOutput, const void* pInput,
 
 namespace {
 
-// Egy eszköz lebontásának felső korlátja (több eszköznél közös határidő). A normál út
-// néhány ms; ennyi után a beragadt eszközt elengedjük (lásd markReleased()).
+// Upper bound for tearing down one device (a shared deadline for several devices). The normal path
+// takes a few ms; after this a stuck device is released (see markReleased()).
 constexpr std::chrono::milliseconds kDeviceTeardownTimeout{1500};
 
-// Egy ma_device leállítása és felszabadítása.
+// Stopping and freeing one ma_device.
 //
-// Miért kell a ma_device_stop() a ma_device_uninit() ELŐTT: a miniaudio 0.11.x
-// ma_device_uninit()-je csak „uninitialized”-ra állítja az állapotot, jelez a wakeupEventen,
-// majd megvárja (join) az eszköz munkaszálát. A PulseAudio-backend munkaszála viszont nem azon
-// az eseményen áll, hanem a pa_mainloop_iterate(block=1) → poll()-ban, és az állapotot csak a
-// következő pulse-esemény után nézi meg újra. Élő eszköznél ez ~10 ms múlva jön (adat),
-// egy kihúzott eszköznél (a stream DONT_MOVE-val nyílt, a szerver megöli) SOHA → a join örökre
-// blokkol (a 2026-10-09-i fagyás: GUI-szál a pthread_join-ban). A ma_device_stop() ezzel
-// szemben meghívja a backend onDeviceDataLoopWakeup-ját (pa_mainloop_wakeup), így a hurok
-// kilép, a cork a halott streamen azonnal hibával visszatér, az állapot „stopped” lesz, és az
-// ezt követő uninit már csak a várakozó munkaszálat ébreszti fel.
+// Why ma_device_stop() is needed BEFORE ma_device_uninit(): miniaudio 0.11.x's ma_device_uninit()
+// only sets the state to "uninitialized", signals the wakeupEvent, then waits (joins) for the
+// device's worker thread. The PulseAudio backend's worker thread does not wait on that event but in
+// pa_mainloop_iterate(block=1) -> poll(), and rechecks the state only after the next pulse event. For a
+// live device that comes in ~10 ms (data); for an unplugged device (the stream was opened with
+// DONT_MOVE, the server kills it) NEVER, so the join blocks forever (the 2026-10-09 freeze: the GUI
+// thread in pthread_join). ma_device_stop(), by contrast, calls the backend's onDeviceDataLoopWakeup
+// (pa_mainloop_wakeup), so the loop exits, the cork on the dead stream returns an error at once, the
+// state becomes "stopped", and the following uninit only wakes the waiting worker thread.
 void stopAndUninit(ma_device* dev) {
-    ma_device_stop(dev);     // eredménye közömbös: halott streamnél a cork hibát ad, a szál mégis megáll
+    ma_device_stop(dev);     // the result does not matter: on a dead stream the cork errors, yet the thread stops
     ma_device_uninit(dev);
 }
 
 } // namespace
 
 struct AudioEngine::Impl {
-    // A slotok RÖGZÍTETT méretű tömbben élnek, a darabszám atomi: az olvasó (drain) szál
-    // zár nélkül éri el őket, miközben a fő szál új eszközt nyit (addDevice). Egy slot előbb
-    // teljesen elkészül, és csak utána nő a count. A callback a pDevice->pUserData-n át a
-    // saját slotjára mutat, ezért a slotok címe a motor teljes életében stabil.
+    // The slots live in a FIXED-size array and the count is atomic: the reader (drain) thread reaches
+    // them without a lock while the main thread opens a new device (addDevice). A slot is fully built
+    // first, and only then does count grow. The callback points to its own slot through
+    // pDevice->pUserData, so the slots' addresses are stable for the engine's whole life.
     std::array<std::unique_ptr<DeviceSlot>, AudioEngine::kMaxDevices> deviceSlots;
     std::array<std::unique_ptr<ma_device>, AudioEngine::kMaxDevices> devices;
-    // Egy elengedett (határidőn túl le nem bontott) eszköz slotja: a callbackje még
-    // írhat bele, ezért a slot sosem szabadul fel (szándékos szivárgás).
+    // The slot of a released device (not torn down by the deadline): its callback may still write
+    // into it, so the slot is never freed (an intentional leak).
     std::array<bool, AudioEngine::kMaxDevices> slotLeaked{};
     std::atomic<int> count{0};
 
-    // Heapen, hogy egy beragadt eszköz esetén elengedhető legyen (a beragadt szál még
-    // hivatkozik rá a miniaudión belül).
+    // On the heap so it can be released if a device gets stuck (the stuck thread still refers to it
+    // inside miniaudio).
     std::unique_ptr<ma_context> context;
     bool contextReady = false;
-    bool contextLeaked = false;   // volt elengedett eszköz → a context nem bontható le
+    bool contextLeaked = false;   // a device was released, so the context cannot be torn down
     bool started = false;
 
-    // Tartalék üres puffer érvénytelen indexekhez.
+    // A spare empty buffer for invalid indexes.
     RingBuffer emptyRing{2};
 
     ~Impl() { teardown(); }
 
-    // Egy eszköz lebontásának elindítása egy háttérszálon. A ma_device a munkáé lesz.
+    // Starting a device's teardown on a background thread. The ma_device becomes the work's.
     static DetachedJob launchRelease(std::unique_ptr<ma_device> device) {
         ma_device* dev = device.release();
         return DetachedJob([dev] { stopAndUninit(dev); delete dev; });
     }
 
-    // A határidőig nem végzett lebontás: a slot és a context marad (a beragadt szál és a
-    // callback még hivatkozhat rájuk); az alkalmazás megy tovább.
+    // A teardown not finished by the deadline: the slot and the context stay (the stuck thread and the
+    // callback may still refer to them); the application goes on.
     void markReleased(int i, bool finished) {
         if (finished) return;
         slotLeaked[static_cast<size_t>(i)] = true;
@@ -105,8 +104,8 @@ struct AudioEngine::Impl {
             << "ms alatt (eltűnt eszköz?), a szála elengedve:" << (s ? s->info.name : QString());
     }
 
-    // Minden eszköz leállítása és felszabadítása. Sosem blokkol kDeviceTeardownTimeout-nál
-    // tovább: az eszközök párhuzamosan, háttérszálakon bomlanak le.
+    // Stops and frees every device. Never blocks longer than kDeviceTeardownTimeout: the devices are
+    // torn down in parallel, on background threads.
     void teardown() {
         const int n = count.load();
         std::vector<std::pair<int, DetachedJob>> jobs;
@@ -119,7 +118,7 @@ struct AudioEngine::Impl {
         count.store(0);
         for (int i = 0; i < n; ++i) {
             const auto k = static_cast<size_t>(i);
-            if (slotLeaked[k]) (void)deviceSlots[k].release();   // szándékos: lásd slotLeaked
+            if (slotLeaked[k]) (void)deviceSlots[k].release();   // intentional: see slotLeaked
             else deviceSlots[k].reset();
             slotLeaked[k] = false;
         }
@@ -141,14 +140,13 @@ struct AudioEngine::Impl {
         return (i >= 0 && i < count.load(std::memory_order_acquire)) ? deviceSlots[i].get() : nullptr;
     }
 
-    // Megnyit és elindít egy eszközt; siker esetén az új index, különben -1.
+    // Opens and starts a device; on success the new index, otherwise -1.
     int open(const AudioDeviceInfo& want) {
         const int idx = count.load();
         if (!contextReady || idx >= AudioEngine::kMaxDevices) return -1;
 
-        // Az eszközöket az enumeráció szerinti ma_device_id-vel kell megnyitni; ezért
-        // lekérjük a context listáját és név szerint párosítunk. Ha nincs pontos egyezés,
-        // a default eszközt nyitjuk (pDeviceID = nullptr).
+        // Devices must be opened with the ma_device_id from enumeration; so we fetch the context's list and
+        // match by name. If there is no exact match, we open the default device (pDeviceID = nullptr).
         ma_device_info* captureInfos = nullptr;
         ma_uint32 captureCount = 0;
         ma_device_info* playbackInfos = nullptr;
@@ -156,9 +154,9 @@ struct AudioEngine::Impl {
         ma_context_get_devices(context.get(), &playbackInfos, &playbackCount,
                                &captureInfos, &captureCount);
 
-        // A loopback (rendszerhang) eszközöket Windowson egy PLAYBACK eszköz
-        // ma_device_type_loopback-módú megnyitásával vesszük fel → a playback-
-        // listából párosítunk. Minden más (mic, ill. Linux-monitor) capture.
+        // On Windows loopback (system audio) devices are captured by opening a PLAYBACK device in
+        // ma_device_type_loopback mode, so we match from the playback list. Everything else (mic, or a Linux
+        // monitor) is capture.
         ma_device_type devType = ma_device_type_capture;
         const ma_device_info* matchInfos = captureInfos;
         ma_uint32 matchCount = captureCount;
@@ -182,20 +180,20 @@ struct AudioEngine::Impl {
         auto slot = std::make_unique<DeviceSlot>();
         slot->channels = want.channels > 0 ? static_cast<ma_uint32>(want.channels) : 1;
         slot->info = want;
-        // ~1 mp tartalék (48000 * ch). Bőven elég a worker drain-ütemhez.
+        // ~1 s of headroom (48000 * ch). Plenty for the worker's drain cadence.
         const size_t cap = static_cast<size_t>(kSampleRate) * slot->channels;
         slot->ring = std::make_unique<RingBuffer>(cap);
 
         auto dev = std::make_unique<ma_device>();
 
         ma_device_config cfg = ma_device_config_init(devType);
-        // Loopback esetén is a capture.pDeviceID hordozza a (playback) eszköz id-t.
-        cfg.capture.pDeviceID = matchedId;        // nullptr → default eszköz
+        // For loopback too, capture.pDeviceID carries the (playback) device's id.
+        cfg.capture.pDeviceID = matchedId;        // nullptr = default device
         cfg.capture.format    = ma_format_s16;
         cfg.capture.channels  = slot->channels;
         cfg.sampleRate        = kSampleRate;
         cfg.dataCallback      = dataCallback;
-        cfg.pUserData         = slot.get();        // stabil cím (heap)
+        cfg.pUserData         = slot.get();        // stable address (heap)
 
         if (ma_device_init(context.get(), &cfg, dev.get()) != MA_SUCCESS)
             return -1;
@@ -206,12 +204,12 @@ struct AudioEngine::Impl {
         slot->open.store(true);
         deviceSlots[idx] = std::move(slot);
         devices[idx] = std::move(dev);
-        count.store(idx + 1, std::memory_order_release);   // csak a kész slot után
+        count.store(idx + 1, std::memory_order_release);   // only after the slot is complete
         return idx;
     }
 };
 
-// --- valós idejű callback: triviális, allokáció/lock/Qt MENTES -----------------
+// --- real-time callback: trivial, free of allocation/lock/Qt -----------------
 static void dataCallback(ma_device* pDevice, void* /*pOutput*/, const void* pInput,
                          ma_uint32 frameCount) {
     auto* slot = static_cast<DeviceSlot*>(pDevice->pUserData);
@@ -221,10 +219,10 @@ static void dataCallback(ma_device* pDevice, void* /*pOutput*/, const void* pInp
     const ma_uint32 ch = slot->channels;
     const size_t total = static_cast<size_t>(frameCount) * ch;
 
-    // 1) nyers PCM a körpufferbe (felülcsordulásnál a ring eldobja a maradékot).
+    // 1) raw PCM into the ring buffer (on overflow the ring drops the rest).
     slot->ring->write(samples, total);
 
-    // 2) RMS + peak ezen a blokkon (csak atomi store, nincs allokáció).
+    // 2) RMS + peak over this block (atomic stores only, no allocation).
     double sumSq = 0.0;
     int16_t pk = 0;
     for (size_t i = 0; i < total; ++i) {
@@ -241,8 +239,8 @@ static void dataCallback(ma_device* pDevice, void* /*pOutput*/, const void* pInp
     slot->rms.store(rms, std::memory_order_relaxed);
     const float peak = static_cast<float>(pk) / 32768.0f;
     slot->peak.store(peak, std::memory_order_relaxed);
-    // Csúcstartás a szintmérőnek: a takePeak() nullázza (a verseny ártalmatlan, legfeljebb
-    // egy blokknyi csúcs marad ki).
+    // Peak hold for the level meter: takePeak() resets it (the race is harmless; at worst one
+    // block's peak is missed).
     if (peak > slot->peakMax.load(std::memory_order_relaxed))
         slot->peakMax.store(peak, std::memory_order_relaxed);
 }
@@ -261,7 +259,7 @@ bool AudioEngine::start(const QVector<AudioDeviceInfo>& devices) {
     }
     impl_->contextReady = true;
 
-    // A be nem indult eszközöket kihagyjuk, a többivel megyünk tovább.
+    // Devices that did not start are skipped; we go on with the others.
     for (const AudioDeviceInfo& want : devices)
         impl_->open(want);
 
@@ -286,8 +284,8 @@ int AudioEngine::addDevice(const AudioDeviceInfo& device) {
 void AudioEngine::closeDevice(int trackIndex) {
     DeviceSlot* s = impl_->slot(trackIndex);
     if (!s || !s->open.exchange(false)) return;
-    // A lebontás háttérszálon fut, a hívó (GUI) legfeljebb kDeviceTeardownTimeout-ig vár rá;
-    // a slot (és a ring) megmarad, a maradék adat kiolvasható.
+    // The teardown runs on a background thread, the caller (GUI) waits for it at most kDeviceTeardownTimeout;
+    // the slot (and the ring) stay, the remaining data can be read out.
     if (auto& dev = impl_->devices[static_cast<size_t>(trackIndex)]) {
         const DetachedJob job = Impl::launchRelease(std::move(dev));
         impl_->markReleased(trackIndex, job.waitFor(kDeviceTeardownTimeout));

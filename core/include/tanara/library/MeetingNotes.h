@@ -1,18 +1,17 @@
 #pragma once
 //
-// A megbeszélés-megjegyzés (Meeting::contextNote) körüli, UI-független szabályok:
+// UI-independent rules around the meeting note (Meeting::contextNote):
 //
-//  - Régi, automatikus megjegyzés: a figyelő korábban „Automatikusan észlelt hívás: <app>”
-//    szöveget írt a megjegyzésbe. Ez nem a felhasználó szava, és az átírónak sem mond semmit:
-//    betöltéskor üres megjegyzésként + észlelt hívás-alkalmazásként értelmezzük
-//    (interpretLegacyNote), a következő mentés már a tiszta formát írja.
-//  - Az átírónak küldött kontextus (fillSttContext): cím (general), a megjegyzés (text) és a
-//    résztvevő-nevek (terms). Az automatikus hívás-szöveg sosem kerül bele.
-//  - Sablon-javaslatok: a hasonló című (pl. ismétlődő „<Projekt> heti meeting”) korábbi
-//    megbeszélések megjegyzései. A címeket szavanként hasonlítjuk, ékezet- és kisbetű-
-//    függetlenül, a dátumokat és számokat figyelmen kívül hagyva (titleWords /
-//    titleSimilarity). Pár száz meetingnél egy hívás mikroszekundumos nagyságrendű.
-//
+//  - Legacy automatic note: the watcher used to write an "automatically detected call: <app>"
+//    sentence into the note. That is not the user's own words and tells the transcriber nothing:
+//    on load it is interpreted as an empty note + a detected call app (interpretLegacyNote);
+//    the next save writes the clean form.
+//  - The context sent to the transcriber (fillSttContext): the title (general), the note (text)
+//    and the participant names (terms). The automatic call text never goes in.
+//  - Template suggestions: the notes of earlier meetings with a similar title (e.g. a recurring
+//    "<Project> weekly meeting"). Titles are compared word by word, accent- and case-insensitive,
+//    ignoring dates and numbers (titleWords / titleSimilarity). With a few hundred meetings one
+//    call takes microseconds.
 #include "tanara/Types.h"
 
 #include <QDateTime>
@@ -26,35 +25,34 @@ struct SttRequest;
 
 namespace meetingnotes {
 
-// „Automatikusan észlelt hívás: Teams” / „Automatically detected call: Teams” → true, app = „Teams”.
+// The legacy auto sentence (Hungarian or English) with ": Teams" -> true, app = "Teams".
 bool parseAutoCallNote(const QString& note, QString* app = nullptr);
 
-// Ha a megjegyzés pontosan az automatikus mondat: a megjegyzés üres lesz, az app-név a
-// detectedCallApp-be kerül (ha az még üres). true, ha változott valami.
+// If the note is exactly the automatic sentence: the note becomes empty, the app name goes into
+// detectedCallApp (if that is still empty). true if anything changed.
 bool interpretLegacyNote(Meeting& m);
 
-// Az átírónak szánt szabad szöveg: a megjegyzés, vágva; az automatikus mondat sosem.
+// Free text for the transcriber: the note, trimmed; never the automatic sentence.
 QString sttContextText(const Meeting& m);
 
-// A context-envelope kitöltése a meetingből (general: cím, text: megjegyzés, terms: az aktív
-// sávok fix beszélői).
+// Fills the context envelope from the meeting (general: title, text: note, terms: the fixed
+// speakers of the active tracks).
 void fillSttContext(SttRequest& req, const Meeting& m);
 
-// A cím összehasonlítható szavai: ékezet nélkül, kisbetűvel, egyszer-egyszer; kimarad minden
-// számot tartalmazó szó (dátum, sorszám, időpont), a hónap- és napnevek (rövidítve is), az
-// egybetűs szavak és néhány névelő / kötőszó.
+// The comparable words of a title: without accents, lowercase, once each; every word containing a
+// number (date, ordinal, time), month and day names (also abbreviated), single-letter words and a few
+// articles / conjunctions are dropped.
 QStringList titleWords(const QString& title);
 
-// Két szó-halmaz hasonlósága 0..1 (Jaccard: közös / összes). 0, ha a közös szavak mind
-// „gyengék” (megbeszélés, meeting, heti, hívás, Teams …) — ezek egyedül nem tesznek két
-// megbeszélést rokonná.
+// Similarity of two word sets, 0..1 (Jaccard: shared / total). 0 if the shared words are all
+// "weak" (meeting, weekly, call, Teams ...); alone they do not make two meetings related.
 double titleSimilarity(const QStringList& a, const QStringList& b);
 
-// A javaslathoz elég hasonló-e (titleSimilarity >= kSimilarThreshold).
+// Whether it is similar enough for a suggestion (titleSimilarity >= kSimilarThreshold).
 constexpr double kSimilarThreshold = 0.5;
 bool titlesSimilar(const QString& a, const QString& b);
 
-// Egy jelölt a javaslatokhoz (a könyvtár gyorsítótárából; words = titleWords(title)).
+// A candidate for the suggestions (from the library's cache; words = titleWords(title)).
 struct NoteCandidate {
     QString     meetingId;
     QString     title;
@@ -71,14 +69,14 @@ struct NoteSuggestion {
     double    score = 0.0;
 };
 
-// Legfeljebb `limit` javaslat a `selfId` meetinghez: a hasonló című, NEM üres és a
-// jelenlegitől (currentNote) eltérő megjegyzésű MÁSIK megbeszélések, legújabb elöl; azonos
-// megjegyzés csak egyszer (a legújabb forrással).
+// At most `limit` suggestions for the `selfId` meeting: OTHER meetings with a similar title and a
+// NON-empty note different from the current one (currentNote), newest first; an identical note
+// only once (with the newest source).
 QVector<NoteSuggestion> suggestNotes(const QVector<NoteCandidate>& candidates,
                                      const QString& selfId, const QString& selfTitle,
                                      const QString& currentNote, int limit = 3);
 
-// Kényelmi változat közvetlenül meetingekből (tesztekhez, apró listákhoz).
+// A convenience variant directly from meetings (for tests, small lists).
 QVector<NoteSuggestion> suggestNotes(const QVector<Meeting>& meetings,
                                      const QString& selfId, const QString& selfTitle,
                                      const QString& currentNote, int limit = 3);

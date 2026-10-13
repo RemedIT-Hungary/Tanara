@@ -1,19 +1,18 @@
 #pragma once
 //
-// VoiceModelDownloader — a beszélő-modellek (ONNX) letöltése a VoiceModelSpec::downloadUrl-ről
-// a <metaDir>/models/<fileName> helyre. A CLI (`voice-models fetch`) és a GUI (Beállítások ›
-// Beszélők, Első lépések) közös letöltője.
+// VoiceModelDownloader: downloads the speaker models (ONNX) from VoiceModelSpec::downloadUrl to
+// <metaDir>/models/<fileName>. The shared downloader of the CLI (`voice-models fetch`) and the GUI
+// (Settings > Speakers, Getting started).
 //
-//  - aszinkron (QNetworkAccessManager a hívó szálán, nincs saját eseményhurok): a GUI-szálat nem
-//    blokkolja; egyszerre több modell is töltődhet (id szerint);
-//  - QSaveFile: a célfájl csak sikeres, méret-ellenőrzött letöltés után jelenik meg (hiba,
-//    megszakítás vagy méret-eltérés esetén nem marad félkész fájl);
-//  - meglévő fájlt NEM ír felül, csak kifejezett `overwrite` mellett (CLI: --force);
-//  - hálózat nélkül (QNetworkInformation: Disconnected) el sem indul: Failure::Offline.
+//  - asynchronous (QNetworkAccessManager on the caller's thread, no own event loop): does not block
+//    the GUI thread; several models can download at once (by id);
+//  - QSaveFile: the target file appears only after a successful, size-checked download (on error,
+//    cancel or size mismatch no half-written file stays);
+//  - does NOT overwrite an existing file unless `overwrite` is explicit (CLI: --force);
+//  - without a network (QNetworkInformation: Disconnected) it does not even start: Failure::Offline.
 //
-// Teszt-varrat (hálózat nélkül): a spec downloadUrl-je lehet file:// URL (a QNetworkAccessManager
-// helyi fájlt olvas), a NAM injektálható, és az elérhetőség felülírható (setReachableOverride).
-//
+// Test seam (without a network): the spec's downloadUrl may be a file:// URL (QNetworkAccessManager
+// reads a local file), the NAM can be injected, and reachability can be overridden (setReachableOverride).
 #include "tanara/voiceid/VoiceModelRegistry.h"
 
 #include <QHash>
@@ -30,81 +29,81 @@ namespace tanara {
 class VoiceModelDownloader : public QObject {
     Q_OBJECT
 public:
-    // Miért nem sikerült (a felület ebből ír emberi szöveget; az `error` technikai részlet).
+    // Why it failed (the UI writes human text from this; `error` is the technical detail).
     enum class Failure {
         None,
-        Offline,        // nincs hálózat (indulás előtt vagy közben: a gép nem éri el a szervert)
-        Network,        // egyéb hálózati / HTTP-hiba
-        SizeMismatch,   // a letöltött méret eltér a várttól — semmi nem íródott
-        Write,          // a célfájl nem írható
-        Exists,         // a célfájl már létezik (overwrite nélkül)
+        Offline,        // no network (before or during the start: the machine cannot reach the server)
+        Network,        // other network / HTTP error
+        SizeMismatch,   // the downloaded size differs from the expected one; nothing was written
+        Write,          // the target file is not writable
+        Exists,         // the target file already exists (without overwrite)
         Cancelled,      // cancel()
-        NoUrl,          // a leírónak nincs letöltési címe
+        NoUrl,          // the descriptor has no download address
     };
     Q_ENUM(Failure)
 
-    // A meglévő modellfájl ellenőrzése (Beállítások › Beszélők „ellenőrzés” állapota). Most a
-    // fájlméret egyezése a leíró sizeBytes-ával; később hash is.
+    // Check of an existing model file (the Settings > Speakers "verifying" state). For now the file size
+    // matching the descriptor's sizeBytes; a hash later.
     enum class VerifyResult {
-        Ok,             // a méret egyezik
-        Missing,        // nincs ilyen fájl
-        SizeMismatch,   // a méret eltér (sérült / félbehagyott / más fájl)
-        Unverifiable,   // a leíró nem közöl méretet — nincs mihez mérni (használható)
+        Ok,             // the size matches
+        Missing,        // no such file
+        SizeMismatch,   // the size differs (corrupt / interrupted / another file)
+        Unverifiable,   // the descriptor gives no size, nothing to measure against (usable)
     };
     Q_ENUM(VerifyResult)
 
     explicit VoiceModelDownloader(QObject* parent = nullptr);
     ~VoiceModelDownloader() override;
 
-    // A használt NAM (nem birtokolja; nullptr → saját példány). Teszt-varrat.
+    // The NAM in use (not owned; nullptr = its own instance). Test seam.
     void setNetworkAccessManager(QNetworkAccessManager* nam);
 
-    // A letöltési cél: <metaDir>/models/<fileName> (a VoiceModelRegistry első feloldási helye).
+    // The download target: <metaDir>/models/<fileName> (the first resolution place of VoiceModelRegistry).
     static QString targetPath(const VoiceModelSpec& spec, const QString& metaDir);
 
-    // Letöltés indítása a `target` fájlba. true: elindult (a végén finished jön). false: nem
-    // indult (NoUrl / Exists / Write / Offline) — ilyenkor a finished(id, false, …) jel még a
-    // hívás alatt kimegy, és lastFailure(id) megmondja az okot. Ha ez a modell már töltődik:
-    // false, jel nélkül (a futó letöltés megy tovább).
+    // Starts a download into the `target` file. true: it started (finished comes at the end). false: it
+    // did not start (NoUrl / Exists / Write / Offline); then the finished(id, false, ...) signal is emitted
+    // during the call, and lastFailure(id) tells the reason. If this model is already downloading: false,
+    // without a signal (the running download goes on).
     bool start(const VoiceModelSpec& spec, const QString& target, bool overwrite = false);
-    // Futó letöltés megszakítása (a célfájl nem jön létre). finished(id, false, …) jön,
-    // lastFailure = Cancelled. Nem futó id-re nem csinál semmit.
+    // Cancels a running download (the target file is not created). finished(id, false, ...) comes,
+    // lastFailure = Cancelled. Does nothing for an id that is not running.
     void cancel(const QString& id);
 
     bool isRunning(const QString& id) const;
     QStringList runningIds() const;
-    // Az id utolsó befejezett letöltésének eredménye (None: sikerült vagy még nem volt).
+    // Result of the id's last finished download (None: it succeeded or there has been none).
     Failure lastFailure(const QString& id) const;
 
-    // Van-e hálózat (QNetworkInformation; ha a platformon nincs backend: igaz). Teszt-varrat:
-    // setReachableOverride(false/true), std::nullopt → a valódi állapot.
+    // Whether there is a network (QNetworkInformation; true if the platform has no backend). Test seam:
+    // setReachableOverride(false/true), std::nullopt = the real state.
     bool networkReachable() const;
     void setReachableOverride(std::optional<bool> reachable);
 
-    // A hálózati hibák közül azok, amelyek „nincs net” jellegűek (névfeloldás, hálózat le).
+    // Of the network errors, those of the "no internet" kind (name resolution, network down).
     static bool isOfflineError(int networkReplyError);
 
-    // ---- ellenőrzés és törlés (G4, B1) ----
-    // Szinkron ellenőrzés (CLI, tesztek). detail: technikai sor (angol), lehet üres.
+    // ---- verification and deletion ----
+    // Synchronous check (CLI, tests). detail: a technical line (English), may be empty.
     static VerifyResult verifyFile(const VoiceModelSpec& spec, const QString& path, QString* detail = nullptr);
-    // Aszinkron ellenőrzés a felületnek: verifyStarted(id) még a hívásban, verified(id, …) a
-    // következő eseményhurok-körben (addig isVerifying(id) igaz — az „ellenőrzés” állapot).
-    // false: már ellenőrződik vagy épp töltődik (jel nélkül).
+    // Asynchronous check for the UI: verifyStarted(id) within the call, verified(id, ...) in the next
+    // event-loop turn (until then isVerifying(id) is true: the "verifying" state).
+    // false: already verifying or currently downloading (no signal).
     bool verify(const VoiceModelSpec& spec, const QString& path);
     bool isVerifying(const QString& id) const;
-    // Az id utolsó befejezett ellenőrzésének eredménye (nullopt: még nem volt).
+    // Result of the id's last finished verification (nullopt: there has been none).
     std::optional<VerifyResult> lastVerify(const QString& id) const;
-    // A LETÖLTÖTT modellfájl törlése: csak <metaDir>/models/<fileName> (targetPath); a csomagban
-    // (<appDir>/models) lévőhöz nem nyúl. false (+ *error, angol): nincs letöltött fájl / nem
-    // törölhető. A futó letöltést / ellenőrzést a hívó zárja ki (isRunning / isVerifying).
+    // Deletes the DOWNLOADED model file: only <metaDir>/models/<fileName> (targetPath); does not touch the
+    // one bundled in the package (<appDir>/models). false (+ *error, English): no downloaded file / not
+    // deletable. The caller excludes a running download / verification (isRunning / isVerifying).
     static bool deleteModelFile(const VoiceModelSpec& spec, const QString& metaDir, QString* error = nullptr);
 
 signals:
     void started(const QString& id);
-    // total: a szerver által közölt méret, ennek híján a leíró sizeBytes-a (0 = ismeretlen).
+    // total: the size reported by the server, failing that the descriptor's sizeBytes (0 = unknown).
     void progress(const QString& id, qint64 received, qint64 total);
     void finished(const QString& id, bool ok, const QString& error);
-    // Ellenőrzés (G4, B1).
+    // Verification.
     void verifyStarted(const QString& id);
     void verified(const QString& id, tanara::VoiceModelDownloader::VerifyResult result, const QString& detail);
 
@@ -119,8 +118,8 @@ private:
     QHash<QString, Job*> m_jobs;
     QHash<QString, Failure> m_last;
     std::optional<bool> m_reachableOverride;
-    QHash<QString, VerifyResult> m_verified;   // G4: az utolsó ellenőrzés id szerint
-    QStringList m_verifying;                   // G4: épp ellenőrzött id-k
+    QHash<QString, VerifyResult> m_verified;   // last verification per id
+    QStringList m_verifying;                   // ids being verified now
 };
 
 } // namespace tanara

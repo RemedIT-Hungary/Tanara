@@ -1,12 +1,11 @@
 #pragma once
 //
-// TrackCatalog — a „Sávok” fül (M09) háttere: sávonként barátságos megjelenített név az
-// eszköz SZEREPE alapján, felhasználói átnevezés, hiányzó hangfájl észlelése és
-// megkeresése, az eldobott sávok végleges törlése egy lépésben. UI-független.
+// TrackCatalog: the backend of the "Tracks" tab: a friendly display name per track based on the
+// device's ROLE, user rename, detecting and locating a missing audio file, permanently deleting the
+// dropped tracks in one step. UI-independent.
 //
-// (A sáv visszaállítása / egyenkénti törlése és a lekeverés az AppController-ben él:
-//  restoreTrack / deleteTrack / regenerateMixdown. A hullámforma: WaveformService.)
-//
+// (Restoring / individually deleting a track and the mixdown live in AppController:
+//  restoreTrack / deleteTrack / regenerateMixdown. The waveform: WaveformService.)
 #include "tanara/Types.h"
 
 #include <QMap>
@@ -17,90 +16,89 @@ namespace tanara {
 
 class MeetingStore;
 
-// Az eszköz szerepe a felvételben — ebből lesz a barátságos név.
+// The device's role in the recording; the friendly name comes from it.
 enum class TrackRole {
-    OwnMic,        // saját bemenet → „Saját mikrofon”
-    CallAudio,     // a hívás eszközének monitorja / loopbackje → „Hívás hangja”
-    SystemAudio,   // más monitor / loopback → „Rendszerhang”
-    Other,         // vonalbemenet, AUX, ismeretlen → az eszköz (rövidített) neve
+    OwnMic,        // own input -> "Own microphone"
+    CallAudio,     // monitor / loopback of the call's device -> "Call audio"
+    SystemAudio,   // another monitor / loopback -> "System audio"
+    Other,         // line-in, AUX, unknown -> the device's (shortened) name
 };
 
 struct TrackView {
-    Track     track;              // a nyers sáv (id, file, kind, active, peakLevel …)
+    Track     track;              // the raw track (id, file, kind, active, peakLevel ...)
     TrackRole role = TrackRole::Other;
-    QString   displayName;        // amit a UI mutat: a felhasználó neve, különben a barátságos név
-    QString   friendlyName;       // a szerepből levezetett alapértelmezett név (átnevezés visszavonásához)
-    QString   rawDeviceName;      // a nyers eszköznév (a UI kis betűvel alatta mutatja)
-    bool      renamed = false;    // a felhasználó átnevezte
-    QString   absolutePath;       // a hangfájl teljes útja
-    bool      fileMissing = false;// a hangfájl nincs a helyén („hiányzik a fájl” → „Megkeresés…”)
+    QString   displayName;        // what the UI shows: the user's name, otherwise the friendly name
+    QString   friendlyName;       // the default name derived from the role (to undo a rename)
+    QString   rawDeviceName;      // the raw device name (the UI shows it small underneath)
+    bool      renamed = false;    // the user renamed it
+    QString   absolutePath;       // full path of the audio file
+    bool      fileMissing = false;// the audio file is not in place ("file missing" -> "Locate...")
     qint64    fileSize = 0;
-    // Egy eszköz több szakasza (felvétel közben ki-be kapcsolt eszköz → több fájl): a szakasz
-    // sorszáma 1-től (az eltolás sorrendjében), ill. 0, ha az eszköznek egyetlen fájlja van.
-    // A szakaszok egy logikai sávot alkotnak: közös név és szerep, egymás után állnak.
+    // Several spans of a device (a device switched on and off during recording -> several files): the
+    // span's number from 1 (in offset order), or 0 if the device has a single file. The spans form one
+    // logical track: shared name and role, one after another.
     int       segment = 0;
     int       segmentCount = 1;
-    // A sáv hossza ms-ben: a hullámforma-gyorsítótárból (pontos, dekódolt hossz), ha az már
-    // elkészült és érvényes; különben -1 (a WaveformService::peaksReady adja meg).
+    // The track's length in ms: from the waveform cache (the exact, decoded length) if it is already
+    // done and valid; otherwise -1 (WaveformService::peaksReady gives it).
     qint64    durationMs = -1;
 };
 
-// ---- hangeszközök felhasználói nevei --------------------------------------------------
-// A felhasználó a Beállításokban átnevezheti az eszközeit (AppSettings::deviceNames: nyers
-// OS-név → barátságos név). EZ az egyetlen hely, ahol a név feloldódik: a felvevő, a „Sávok”
-// fül (tracknames::friendlyNames), a figyelő értesítése és a Beállítások is innen kérdez.
-// A táblát a SettingsManager tölti (betöltéskor és minden setSettings-nél), folyamat-szintű;
-// szálbiztos.
+// ---- user-given names of audio devices --------------------------------------------------
+// The user can rename their devices in Settings (AppSettings::deviceNames: raw OS name -> friendly
+// name). THIS is the one place where the name is resolved: the recorder, the "Tracks" tab
+// (tracknames::friendlyNames), the watcher's notification and Settings all ask here.
+// The table is filled by the SettingsManager (at load and on every setSettings), process-wide;
+// thread-safe.
 namespace devicenames {
 
 void setOverrides(const QMap<QString, QString>& rawToFriendly);
 QMap<QString, QString> overrides();
-// Van-e a felhasználónak saját neve erre az eszközre.
+// Whether the user has their own name for this device.
 bool hasOverride(const QString& rawDeviceName);
-// A megjelenítendő név: a felhasználó neve, különben tracknames::shortDeviceName(raw)
-// (ha az üres, maga a nyers név). A monitor-előtagos alak („Monitor of X”) a saját kulcsán
-// kap nevet: a kimenet és a bemenet külön eszköz.
+// The name to display: the user's name, otherwise tracknames::shortDeviceName(raw) (if that is
+// empty, the raw name itself). The monitor-prefixed form ("Monitor of X") is named under its own key:
+// the output and the input are separate devices.
 QString displayName(const QString& rawDeviceName);
-// Ugyanez egy adott táblával (a Beállítások még nem mentett piszkozatához).
+// The same with a given table (for Settings' not yet saved draft).
 QString displayName(const QString& rawDeviceName, const QMap<QString, QString>& overrides);
 
 } // namespace devicenames
 
 namespace tracknames {
 
-// A hívás (kommunikációs) eszközére utal-e a név — pl. a headsetek „Communication” /
-// „Chat” / „Hands-Free” profilja, amit a hívás-appok használnak.
+// Whether the name points to the call (communication) device, e.g. the "Communication" / "Chat" /
+// "Hands-Free" profile of headsets, which call apps use.
 bool looksLikeCallDevice(const QString& deviceName);
 
-// A monitor/loopback előtag és a profil-rész nélküli rövid eszköznév
-// („Monitor of Kanto YU4 - Optikai Digitális sztereó (IEC958)” → „Kanto YU4”).
+// The short device name without the monitor/loopback prefix and the profile part
+// ("Monitor of Kanto YU4 - Optical Digital stereo (IEC958)" -> "Kanto YU4").
 QString shortDeviceName(const QString& deviceName);
 
-// Egy eszköz szakaszai. Ugyanannak az eszköznek (azonos, nem üres deviceName) a fájljai
-// akkor egy logikai sáv szakaszai, ha MIND különböző eltolással (startOffsetMs) indultak — a
-// felvevő egy eszközt egyszerre csak egyszer tart nyitva, így a ki-be kapcsolás szakaszai
-// mindig eltérő időben kezdődnek. Azonos eltolás (pl. két egyforma nevű mikrofon egyszerre)
-// → külön logikai sávok.
+// A device's spans. The files of the same device (same, non-empty deviceName) are spans of one logical
+// track if ALL started with different offsets (startOffsetMs); the recorder keeps a device open only
+// once at a time, so the spans of switching on and off always begin at different times. The same
+// offset (e.g. two identically named microphones at once) -> separate logical tracks.
 struct SegmentInfo {
-    int leader = -1;   // a logikai sáv első (legkorábbi) szakaszának indexe `all`-ban
-    int segment = 0;   // 1..count az eltolás sorrendjében; 0, ha a sáv egyetlen fájl
+    int leader = -1;   // index in `all` of the logical track's first (earliest) span
+    int segment = 0;   // 1..count in offset order; 0 if the track is a single file
     int count = 1;
 };
 QVector<SegmentInfo> segments(const QVector<Track>& all);
 
-// Egy sáv szerepe a meeting ÖSSZES sávjának ismeretében:
-//  - Mic → OwnMic; Other → Other;
-//  - Loopback: ha a neve a hívás eszközére utal → CallAudio. Ha egyik loopback neve sem
-//    utal rá: az egyetlen aktív loopback a CallAudio (a felvett hívás azon szól); több aktív
-//    közül a leghangosabb (peakLevel). A többi SystemAudio. Egy eszköz szakaszai (segments)
-//    együtt számítanak: közös a szerepük (aktív, ha bármelyik aktív; a csúcsuk a legnagyobb).
+// A track's role knowing ALL of the meeting's tracks:
+//  - Mic -> OwnMic; Other -> Other;
+//  - Loopback: if its name points to the call's device -> CallAudio. If no loopback's name points to
+//    it: the single active loopback is CallAudio (the recorded call plays on it); among several active
+//    ones the loudest (peakLevel). The rest are SystemAudio. A device's spans (segments) count together:
+//    they share the role (active if any is active; their peak is the largest).
 TrackRole classify(const Track& track, const QVector<Track>& all);
 
-// Barátságos nevek a meeting összes sávjára (a `all` sorrendjében). Azonos szerepű sávoknál
-// a rövid eszköznév különböztet („Rendszerhang (Kanto YU4)”), végső esetben sorszám. Egy
-// eszköz szakaszai ugyanazt a nevet kapják (a szakaszt a Sávok fül a második sorban jelzi).
-// Ha a felhasználó az eszközt átnevezte (devicenames), a sáv azt a nevet kapja a szerep-név
-// helyett — amit ő adott, azt látja mindenhol.
+// Friendly names for all of the meeting's tracks (in the order of `all`). For tracks of the same role
+// the short device name tells them apart ("System audio (Kanto YU4)"), as a last resort a number. A
+// device's spans get the same name (the Tracks tab marks the span on the second line).
+// If the user renamed the device (devicenames), the track gets that name instead of the role name:
+// what they gave is what they see everywhere.
 QStringList friendlyNames(const QVector<Track>& all);
 
 } // namespace tracknames
@@ -110,31 +108,30 @@ class TrackCatalog : public QObject {
 public:
     explicit TrackCatalog(MeetingStore* store, QObject* parent = nullptr);
 
-    // A meeting sávjai megjelenítésre készen: logikai sávonként (az első előfordulás
-    // sorrendjében), azon belül a szakaszok eltolás szerint. Szakasz nélkül = a meeting.json
-    // sorrendje.
+    // The meeting's tracks ready for display: per logical track (in order of first occurrence), within
+    // it the spans by offset. Without spans = the meeting.json order.
     QVector<TrackView> tracks(const QString& meetingId) const;
     static QVector<TrackView> tracks(const Meeting& meeting);
 
-    // Hány eldobott (nem aktív) sáv van — a „végleges törlés” gomb és a megerősítés számához.
+    // How many dropped (inactive) tracks there are, for the "delete permanently" button and the
+    // confirmation's number.
     int droppedTrackCount(const QString& meetingId) const;
 
 public slots:
-    // Sáv átnevezése (perzisztens: meeting.json → track.customName). Üres név → vissza a
-    // barátságos névre. Egy eszköz minden szakasza együtt kapja az új nevet. true, ha
-    // változott. tracksChanged jel.
+    // Renames a track (persistent: meeting.json -> track.customName). An empty name goes back to the
+    // friendly name. Every span of a device gets the new name together. true if changed. tracksChanged signal.
     bool renameTrack(const QString& meetingId, const QString& trackId, const QString& name);
 
-    // Hiányzó hangfájl megkeresése („Megkeresés…”): a kiválasztott fájlt a meeting mappájába
-    // MÁSOLJA (az eredeti érintetlen marad; ha már a mappában van, csak ráhivatkozik), és a
-    // sávot erre állítja. Aktív sávnál a lekeverés elavultnak jelölődik. Hiba esetén false és
-    // *error kitöltve (nincs változás). tracksChanged jel.
+    // Locates a missing audio file ("Locate..."): COPIES the chosen file into the meeting's folder (the
+    // original stays untouched; if it is already in the folder, it only references it), and points the track
+    // at it. For an active track the mixdown is marked stale. On error false and *error filled (no change).
+    // tracksChanged signal.
     bool relocateTrack(const QString& meetingId, const QString& trackId,
                        const QString& newFilePath, QString* error = nullptr);
 
-    // MINDEN eldobott (nem aktív) sáv végleges törlése egy lépésben: a hangfájlok és a
-    // hullámforma-gyorsítótáruk törlődnek, a sávok kikerülnek a meetingből. Az aktív sávokhoz
-    // és a lekeveréshez nem nyúl. Visszatér: a törölt sávok száma. Egyetlen tracksChanged jel.
+    // PERMANENT deletion of EVERY dropped (inactive) track in one step: the audio files and their waveform
+    // cache are deleted, the tracks leave the meeting. Does not touch the active tracks or the mixdown.
+    // Returns the number of tracks deleted. A single tracksChanged signal.
     int deleteDroppedTracks(const QString& meetingId);
 
 signals:

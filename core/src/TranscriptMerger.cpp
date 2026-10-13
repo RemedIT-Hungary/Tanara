@@ -18,8 +18,8 @@ MergedTranscript mergeTranscripts(const QVector<TrackTranscript>& tracks) {
         merged.emissionTiming = merged.emissionTiming || tr.emissionTiming;
         for (TranscriptToken tok : tr.tokens) {
             tok.trackId = tr.trackId;
-            // A token beszélője a sáv fix beszélője, kivéve ha a token már
-            // hozott magával speaker-t (diarizáció esetén).
+            // A token's speaker is the track's fixed speaker, unless the token already brought a speaker with it
+            // (in case of diarization).
             if (tok.speaker.isEmpty())
                 tok.speaker = tr.speakerLabel;
             merged.tokens.append(tok);
@@ -47,8 +47,8 @@ QString formatTimestamp(qint64 ms) {
 } // namespace
 
 QVector<Utterance> MergedTranscript::segments() const {
-    // A Soniox subword-tokeneket KÖZVETLENÜL fűzzük (a vezető szóköz a szóhatár).
-    // Beszélőnként, szünet-alapú (1.5s) blokkokba rendezünk, majd idő szerint.
+    // Soniox subword tokens are concatenated DIRECTLY (the leading space marks the word boundary).
+    // We arrange into pause-based (1.5 s) blocks per speaker, then by time.
     const qint64 GAP_MS = 1500;
 
     QHash<QString, QVector<const TranscriptToken*>> bySpeaker;
@@ -83,14 +83,14 @@ QVector<Utterance> MergedTranscript::segments() const {
     }
     std::stable_sort(out.begin(), out.end(),
                      [](const Utterance& a, const Utterance& b) { return a.startMs < b.startMs; });
-    // Kiadási-pillanat időzítés (Soniox): a csoportosítás az EREDETI token-időkkel történt (így
-    // a sorok se nem olvadnak össze, se nem válnak szét); most a kész sorok kapnak elő-/utó-futást.
+    // Emission-moment timing (Soniox): grouping used the ORIGINAL token times (so lines neither merge nor
+    // split); now the finished lines get the pre-/post-roll.
     if (emissionTiming) sonioxtiming::padUtterances(out);
     return out;
 }
 
 QString renderUtterancesMarkdown(const QVector<Utterance>& utterances) {
-    // Formátum: `[mm:ss]` **Beszélő** szöveg — időbélyeg ELŐL (időre kereshető).
+    // Format: `[mm:ss]` **Speaker** text, timestamp FIRST (searchable by time).
     QStringList paragraphs;
     for (const Utterance& u : utterances)
         paragraphs << QStringLiteral("`[%1]` **%2** %3")

@@ -12,8 +12,8 @@ namespace summarysrc {
 
 namespace {
 
-// Forrás-jelölő: `[t=…]`, `[u…]`, ill. a csupasz `[12:30]` / `[12:30-13:10]` (a modell néha
-// így írja). A belseje legfeljebb 80 karakter, zárójel nélkül.
+// Source marker: `[t=...]`, `[u...]`, or the bare `[12:30]` / `[12:30-13:10]` (the model sometimes
+// writes it that way). Its inside is at most 80 characters, without brackets.
 const QRegularExpression& markerRe()
 {
     static const QRegularExpression re(QStringLiteral(
@@ -23,7 +23,7 @@ const QRegularExpression& markerRe()
     return re;
 }
 
-// Szigorú időértelmezés: mm:ss / mmm:ss / h:mm:ss, a másodperc (és óránál a perc) < 60.
+// Strict time parsing: mm:ss / mmm:ss / h:mm:ss, seconds (and minutes after an hour) < 60.
 qint64 strictTime(const QString& s)
 {
     static const QRegularExpression re(QStringLiteral("^\\s*(\\d{1,3}):(\\d{2})(?::(\\d{2}))?\\s*$"));
@@ -40,7 +40,7 @@ qint64 strictTime(const QString& s)
     return (mi * 60 + se) * 1000;
 }
 
-// Egy jelölő belseje → hivatkozások (az értelmezhetetlen elemek kimaradnak).
+// A marker's inside -> references (unparseable items are dropped).
 QVector<SourceRef> parseMarkerBody(const QString& body)
 {
     QVector<SourceRef> out;
@@ -78,7 +78,7 @@ QVector<SourceRef> parseMarkerBody(const QString& body)
     return out;
 }
 
-// A jelölők levétele után maradt szóköz-hibák javítása soronként (a sortörések maradnak).
+// Fixing whitespace errors left after stripping the markers, per line (line breaks stay).
 QString tidy(const QString& s)
 {
     static const QRegularExpression spaces(QStringLiteral("[ \\t]{2,}"));
@@ -103,7 +103,7 @@ bool isCloser(QChar c)
         || c == QChar(0x00BB) || c == QLatin1Char('\'');
 }
 
-// A pont előtti szó rövidítés-e (ilyenkor a pont nem mondatvég).
+// Whether the word before the period is an abbreviation (then the period is not a sentence end).
 bool endsWithAbbreviation(const QString& sentence)
 {
     static const QSet<QString> abbr{
@@ -169,13 +169,13 @@ MarkedText extractMarkers(const QString& text)
     while (it.hasNext()) {
         const QRegularExpressionMatch m = it.next();
         rest += text.mid(pos, m.capturedStart() - pos);
-        // A jelölő előtti szóköz is megy (a sor elején álló jelölő után maradt szóközt a tidy viszi).
+        // The space before the marker goes too (the tidy pass removes the space left after a marker at line start).
         while (!rest.isEmpty() && (rest.back() == QLatin1Char(' ') || rest.back() == QLatin1Char('\t')))
             rest.chop(1);
         if (!rest.isEmpty() && !rest.back().isSpace() && m.capturedEnd() < text.size()
             && !text.at(m.capturedEnd()).isSpace() && !isCloser(text.at(m.capturedEnd()))
             && text.at(m.capturedEnd()) != QLatin1Char(',') && text.at(m.capturedEnd()) != QLatin1Char(';'))
-            rest += QLatin1Char(' ');   // „szó[t=1:00]szó” → ne tapadjon össze
+            rest += QLatin1Char(' ');   // "word[t=1:00]word" -> must not stick together
         out.refs += parseMarkerBody(m.captured(1));
         pos = m.capturedEnd();
     }
@@ -192,12 +192,12 @@ QString stripMarkers(const QString& text)
 QVector<MarkedText> splitSentences(const QString& text)
 {
     QVector<MarkedText> out;
-    QString cur;            // a mondat nyers szövege (jelölőkkel)
+    QString cur;            // the sentence's raw text (with markers)
     auto flush = [&]() {
         const MarkedText mt = extractMarkers(cur);
         cur.clear();
         if (mt.text.isEmpty()) {
-            // Önálló jelölő (pl. a bekezdés végén, mondat nélkül): az előző mondaté.
+            // A standalone marker (e.g. at a paragraph end, with no sentence): it belongs to the previous sentence.
             if (!out.isEmpty()) out.last().refs += mt.refs;
             return;
         }
@@ -207,7 +207,7 @@ QVector<MarkedText> splitSentences(const QString& text)
     const int n = int(text.size());
     int i = 0;
     while (i < n) {
-        // Jelölő: egyben másoljuk (a belső pont / kettőspont nem mondatvég).
+        // A marker: copied as a whole (an inner period / colon is not a sentence end).
         const QRegularExpressionMatch mm = markerRe().match(text, i, QRegularExpression::NormalMatch,
                                                             QRegularExpression::AnchorAtOffsetMatchOption);
         if (mm.hasMatch()) {
@@ -216,7 +216,7 @@ QVector<MarkedText> splitSentences(const QString& text)
             continue;
         }
         const QChar c = text.at(i);
-        // Bekezdés-határ: üres sor.
+        // Paragraph boundary: an empty line.
         if (c == QLatin1Char('\n')) {
             int j = i + 1;
             while (j < n && (text.at(j) == QLatin1Char(' ') || text.at(j) == QLatin1Char('\t'))) ++j;
@@ -231,7 +231,7 @@ QVector<MarkedText> splitSentences(const QString& text)
         if (!isSentenceEnd(c)) continue;
         while (i < n && isCloser(text.at(i))) cur += text.at(i++);
         if (endsWithAbbreviation(cur)) continue;
-        // Előrenézés: szóközök és a mondat utáni jelölők.
+        // Lookahead: spaces and the markers after the sentence.
         int j = i;
         QString tail;
         bool sawSpace = false;
@@ -266,18 +266,18 @@ QVector<SourceSpan> resolveRefs(const QVector<SourceRef>& refs, const QVector<So
             continue;
         }
         if (r.startMs < 0) continue;
-        // A jelölt másodperc: [start, end + 999] (a jelölő másodperc-pontosságú).
+        // The marked second: [start, end + 999] (the marker has second precision).
         const qint64 from = r.startMs;
         const qint64 to = qMax(r.endMs, r.startMs) + 999;
         if (r.endMs > r.startMs) {
-            // Tartomány: minden átfedő megszólalás.
+            // Range: every overlapping utterance.
             bool any = false;
             for (const SourceLine& l : lines)
                 if (l.startMs <= to && l.endMs >= from) { appendSpan(spans, seen, l); any = true; }
             if (any) continue;
         }
-        // Egy időpont: a tartalmazó megszólalás (átfedésnél a legközelebbi kezdetű), különben
-        // a legközelebbi a tűrésen belül.
+        // A point in time: the containing utterance (on overlap the one with the nearest start), otherwise
+        // the nearest within tolerance.
         const SourceLine* best = nullptr;
         qint64 bestDist = std::numeric_limits<qint64>::max();
         bool bestContains = false;
@@ -306,8 +306,8 @@ void fillMemoSpeakers(QVector<MemoSection>& memo, const QVector<SourceLine>& lin
         const qint64 end = m.endMs >= m.startMs ? m.endMs : m.startMs;
         for (const SourceLine& l : lines) {
             if (l.startMs > end || l.endMs < m.startMs) continue;
-            // A határon épp csak érintkező / átlógó sor (a keret vége után kezdődik, ill. a keret
-            // előtt kezdődik és alig ér bele) nem számít — a szomszéd szakaszé.
+            // A line that only just touches / spills over the boundary (starts after the frame's end, or starts
+            // before the frame and barely reaches in) does not count: it belongs to the neighboring section.
             if (end > m.startMs && l.startMs >= end) continue;
             if (l.startMs < m.startMs && l.endMs - m.startMs < 1000 && end > m.startMs) continue;
             const QString name = l.speakerName.trimmed();
@@ -335,7 +335,7 @@ void attachSources(Summary& s, const QVector<SourceLine>& lines)
         s.statements.append(st);
     };
 
-    // Vezetői összefoglaló: mondatonként egy állítás; a tárolt szöveg jelölő nélkül.
+    // Executive summary: one statement per sentence; the stored text is marker-free.
     int k = 0;
     for (const MarkedText& mt : splitSentences(s.execSummary))
         add(StatementKind::Statement, QStringLiteral("s"), ++k, mt.text, mt.refs, QString());
@@ -378,8 +378,8 @@ void attachSources(Summary& s, const QVector<SourceLine>& lines)
     }
     s.actionItems = items;
 
-    // Memó: szakaszonként a bevezető mondatai ("i<n>.<k>") és a pontok ("m<n>.<k>", a points
-    // indexe szerint — a jelölő nélkül üres pont előbb kimarad, a pointGroups vele együtt).
+    // Memo: per section the intro sentences ("i<n>.<k>") and the points ("m<n>.<k>", by the points'
+    // index; a point that is empty without markers is dropped first, with pointGroups alongside).
     for (int n = 0; n < s.memo.size(); ++n) {
         MemoSection& m = s.memo[n];
         const QString sec = QString::number(n + 1) + QLatin1Char('.');
@@ -473,8 +473,7 @@ void applyTargetedStaleness(QVector<SummaryStatement>& statements,
                             const QHash<QString, SourceSpeaker>& now,
                             const QStringList& changedKeys, SummaryStaleInfo& info)
 {
-    // Célzott csak akkor, ha legalább egy állításnak van forrása (különben az egész-dokumentum
-    // jelzés a fallback).
+    // Targeted only if at least one statement has a source (otherwise the whole-document flag is the fallback).
     info.targeted = std::any_of(statements.cbegin(), statements.cend(),
                                 [](const SummaryStatement& st) { return !st.sourceSpans.isEmpty(); });
     info.affectedStatements = info.affectedTodos = info.ownerChanges = 0;
@@ -486,12 +485,12 @@ void applyTargetedStaleness(QVector<SummaryStatement>& statements,
         st.staleBecause.clear();
         st.ownerStaleBecause.clear();
         if (changed.isEmpty()) continue;
-        QVector<QPair<QString, QString>> moves;     // (akkor, most) nevek
+        QVector<QPair<QString, QString>> moves;     // (then, now) names
         for (const SourceSpan& sp : std::as_const(st.sourceSpans)) {
             for (const QString& id : sp.utteranceIds) {
                 const auto t = then.constFind(id);
                 const auto n = now.constFind(id);
-                if (t == then.constEnd() || n == now.constEnd()) continue;   // újragenerált átirat
+                if (t == then.constEnd() || n == now.constEnd()) continue;   // regenerated transcript
                 if (t->name == n->name) continue;
                 if (!changed.contains(t->key) && !changed.contains(n->key)) continue;
                 const QString reason = QStringLiteral("%1 → %2?").arg(t->name, n->name);

@@ -1,18 +1,17 @@
 #pragma once
 //
-// MeetingLibrary — a főablak bal oldali könyvtárának lekérdező rétege (UI-független).
+// MeetingLibrary: the query layer of the main window's left library (UI-independent).
 //
-//  - Lista: meetingek legújabb elöl, dátum-szekció kulccsal (ma / tegnap / ezen a héten / korábban).
-//  - Keresés: teljes szöveges, a címben ÉS az átirat szövegében, ékezet- és kisbetű-függetlenül
-//    („odon” megtalálja „Ödön”-t); találatonként kivonat + a találat helye (kiemeléshez).
-//  - Szűrők: nincs átirat / nincs összefoglaló / X személy részt vett; találatszám.
-//  - „Ezek várnak rád” (M02): átírásra váró és bukott átírású meetingek.
+//  - List: meetings newest first, with a date section key (today / yesterday / this week / earlier).
+//  - Search: full text, in the title AND the transcript text, accent- and case-insensitive
+//    ("odon" finds "Odon" with accents); per hit a snippet + the match position (for highlighting).
+//  - Filters: no transcript / no summary / person X attended; hit count.
+//  - "Waiting for you": meetings awaiting transcription and with failed transcription.
 //
-// Teljesítmény: a meeting-metaadat és az átirat-szöveg lustán, meetingenként gyorsítótárazott;
-// a store / AppController jelzéseire meetingenként érvénytelenít. Pár száz meetingnél az első
-// keresés tölti be az átiratokat (warmUp() ezt előre, szeletekben, az eseményhurokban megteszi),
-// utána egy keresés memóriában fut.
-//
+// Performance: meeting metadata and transcript text are cached lazily per meeting; invalidated per
+// meeting on signals of the store / AppController. With a few hundred meetings the first search
+// loads the transcripts (warmUp() does this ahead of time, in slices, in the event loop), after
+// that a search runs in memory.
 #include "tanara/Types.h"
 #include "tanara/jobs/JobTypes.h"
 #include "tanara/library/MeetingNotes.h"
@@ -40,31 +39,31 @@ struct LibraryEntry {
     bool      hasTranscript = false;
     bool      hasSummary = false;
     DateSection section = DateSection::Earlier;
-    QStringList participants;          // nevesített résztvevők (speakerMap + saját mikrofon-sáv)
-    MeetingProcessingState state;      // ikon-állapotok (ha a könyvtár kapott trackert)
+    QStringList participants;          // named participants (speakerMap + the own mic track)
+    MeetingProcessingState state;      // icon states (if the library got a tracker)
 
-    // --- keresési találat (üres keresésnél mind érvénytelen/üres) ---
-    textfold::Range titleMatch;        // a találat helye a title-ben
-    QString   snippet;                 // kivonat az átiratból a találat körül
-    textfold::Range snippetMatch;      // a találat helye a snippet-ben
-    qint64    snippetMs = -1;          // a találatot tartalmazó megszólalás kezdete (ugráshoz)
-    QString   snippetSpeaker;          // a megszólaló (megjelenített név)
+    // --- search hit (all invalid/empty for an empty search) ---
+    textfold::Range titleMatch;        // position of the match in the title
+    QString   snippet;                 // snippet from the transcript around the match
+    textfold::Range snippetMatch;      // position of the match in the snippet
+    qint64    snippetMs = -1;          // start of the utterance containing the match (for jumping)
+    QString   snippetSpeaker;          // the speaker (displayed name)
 
-    // --- címkék (setTagService után) ---
-    QStringList tagIds;                // a meeting sorrendjében, csak a létező címkék
-    QStringList tagNames;              // ugyanabban a sorrendben
-    bool      tagMatch = false;        // a keresés egy címke nevében talált
-    QString   tagMatchName;            // az első találó címke neve
+    // --- tags (after setTagService) ---
+    QStringList tagIds;                // in the meeting's order, only existing tags
+    QStringList tagNames;              // in the same order
+    bool      tagMatch = false;        // the search matched in a tag's name
+    QString   tagMatchName;            // name of the first matching tag
 };
 
 struct LibraryQuery {
-    QString     text;                  // keresőkifejezés (üres → nincs szöveges szűrés)
-    bool        noTranscript = false;  // csak az átirat nélküliek
-    bool        noSummary = false;     // csak az összefoglaló nélküliek
-    QStringList people;                // mindegyik megadott személy részt vett
-    QStringList tags;                  // címke-azonosítók: bármelyik (tagsAll → mindegyik) rajta van
-    bool        tagsAll = false;       // true → ÉS, false → VAGY
-    bool        untagged = false;      // címke nélküliek (a tags-szel VAGY kapcsolatban)
+    QString     text;                  // search term (empty = no text filter)
+    bool        noTranscript = false;  // only those without a transcript
+    bool        noSummary = false;     // only those without a summary
+    QStringList people;                // every given person attended
+    QStringList tags;                  // tag ids: any (tagsAll = every) is on it
+    bool        tagsAll = false;       // true = AND, false = OR
+    bool        untagged = false;      // untagged ones (OR-ed with tags)
 
     bool isEmpty() const {
         return text.trimmed().isEmpty() && !noTranscript && !noSummary && people.isEmpty()
@@ -73,9 +72,9 @@ struct LibraryQuery {
 };
 
 struct LibraryResult {
-    QVector<LibraryEntry> entries;     // legújabb elöl
-    int totalMeetings = 0;             // a könyvtár teljes mérete (szűrés nélkül)
-    int count() const { return int(entries.size()); }   // találatszám
+    QVector<LibraryEntry> entries;     // newest first
+    int totalMeetings = 0;             // the library's total size (without filtering)
+    int count() const { return int(entries.size()); }   // hit count
 };
 
 struct PersonPresence {
@@ -83,11 +82,11 @@ struct PersonPresence {
     int meetingCount = 0;
 };
 
-// Az M02 („Válassz egy megbeszélést / Ezek várnak rád”) kártya elemei.
+// Items of the "Pick a meeting / Waiting for you" card.
 enum class PendingKind {
-    AwaitingTranscription,   // van felvétel, még nincs átirat („Megnyitás”)
-    TranscriptionFailed,     // az átírás elbukott („Megnézem”) — error kitöltve
-    StaleSummary,            // elavult összefoglaló („Frissítés”) — correctedSpeakers kitöltve
+    AwaitingTranscription,   // there is a recording, no transcript yet ("Open")
+    TranscriptionFailed,     // transcription failed ("Take a look"); error filled
+    StaleSummary,            // stale summary ("Refresh"); correctedSpeakers filled
 };
 
 struct PendingItem {
@@ -96,75 +95,75 @@ struct PendingItem {
     QString   title;
     QDateTime startedAt;
     qint64    durationMs = 0;
-    JobError  error;         // TranscriptionFailed esetén
-    int       correctedSpeakers = 0;   // StaleSummary: hány beszélőt javítottak az összefoglaló óta
+    JobError  error;         // for TranscriptionFailed
+    int       correctedSpeakers = 0;   // StaleSummary: how many speakers were corrected since the summary
 };
 
 class MeetingLibrary : public QObject {
     Q_OBJECT
 public:
-    // tracker lehet nullptr (ekkor az állapot csak a hasTranscript/hasSummary flagekből áll).
+    // tracker may be nullptr (then the state consists only of the hasTranscript/hasSummary flags).
     explicit MeetingLibrary(MeetingStore* store, MeetingJobTracker* tracker = nullptr,
                             QObject* parent = nullptr);
     ~MeetingLibrary() override;
 
-    // A lista / keresés. `now` a szekció-számítás „mai napja” (teszthez átadható).
+    // The list / search. `now` is the "today" for the section computation (can be passed for tests).
     LibraryResult query(const LibraryQuery& q = {},
                         const QDateTime& now = QDateTime::currentDateTime()) const;
 
-    // Egy meeting bejegyzése keresés nélkül (inkrementális modell-frissítéshez); üres id, ha nincs.
+    // One meeting's entry without a search (for incremental model refresh); empty id if none.
     LibraryEntry entry(const QString& meetingId,
                        const QDateTime& now = QDateTime::currentDateTime()) const;
 
-    // A teljes (meeting.json-ból töltött) meeting a gyorsítótárból.
+    // The full meeting (loaded from meeting.json) from the cache.
     Meeting meeting(const QString& meetingId) const;
     int meetingCount() const;
 
-    // Sablon-javaslatok a meeting megjegyzéséhez: a hasonló című korábbi megbeszélések nem
-    // üres, a jelenlegitől eltérő megjegyzései, legújabb elöl (lásd MeetingNotes.h).
+    // Template suggestions for the meeting's note: the non-empty notes, different from the current
+    // one, of earlier meetings with a similar title, newest first (see MeetingNotes.h).
     QVector<meetingnotes::NoteSuggestion> noteSuggestions(const QString& meetingId,
                                                           const QString& currentNote,
                                                           int limit = 3) const;
 
-    // A könyvtárban szereplő nevesített személyek, gyakoriság szerint (szűrő-chipekhez).
+    // The named people in the library, by frequency (for the filter chips).
     QVector<PersonPresence> people() const;
 
-    // Címkék: a bejegyzések címke-nevei, a címke-szűrő és a keresés címkékben ehhez kell.
+    // Tags: the entries' tag names; the tag filter and the search in tags need this.
     void setTagService(TagService* tags);
-    // A szűrő-popover címkéi: minden címke a könyvtárbeli darabszámmal (gyakoriság, majd ABC).
+    // The filter popover's tags: every tag with its library count (frequency, then alphabetical).
     QVector<TagUsage> tagOptions() const;
-    // Hány megbeszélésen nincs címke („Címke nélkül” szám).
+    // How many meetings have no tag (the "Untagged" count).
     int untaggedCount() const;
 
-    // „Ezek várnak rád”: legújabb elöl. limit <= 0 → mind.
+    // "Waiting for you": newest first. limit <= 0 -> all.
     QVector<PendingItem> pendingItems(int limit = 0) const;
 
-    // Dátum-szekció: ma / tegnap / ezen a héten (a hét hétfővel indul) / korábban.
+    // Date section: today / yesterday / this week (the week starts on Monday) / earlier.
     static DateSection sectionFor(const QDateTime& startedAt, const QDate& today);
     static QString sectionKey(DateSection s);     // "today" | "yesterday" | "thisWeek" | "earlier"
-    static QString sectionTitle(DateSection s);   // „Ma” | „Tegnap” | „Ezen a héten” | „Korábban”
+    static QString sectionTitle(DateSection s);   // Hungarian section captions ("Today" | "Yesterday" | "This week" | "Earlier")
 
-    // Betöltötte-e már minden átirat szövegét a kereséshez.
+    // Whether every transcript's text has already been loaded for search.
     bool isWarm() const;
 
-    // A meeting nevesített résztvevői: a saját (mikrofon-) sáv fix beszélője + a speakerMap
-    // nevei, egyszer-egyszer. A generikus sáv-címkék („Mikrofon 2”) nem személyek.
+    // The meeting's named participants: the fixed speaker of the own (mic) track + the speakerMap
+    // names, once each. Generic track labels ("Microphone 2") are not people.
     static QStringList participantsOf(const Meeting& m);
 
 public slots:
-    // Az átirat-szövegek előtöltése szeletekben az eseményhurokban (nem blokkol). warmedUp jel.
+    // Preloading the transcript texts in slices in the event loop (non-blocking). warmedUp signal.
     void warmUp();
-    // Egy meeting (vagy üres id → minden) gyorsítótárának eldobása; a következő lekérdezés újratölt.
+    // Drops the cache of one meeting (or, with an empty id, of all); the next query reloads.
     void invalidate(const QString& meetingId = QString());
 
 signals:
     void meetingAdded(QString meetingId);
-    void meetingChanged(QString meetingId);     // cím, állapot, átirat, résztvevők … változott
+    void meetingChanged(QString meetingId);     // title, state, transcript, participants ... changed
     void meetingRemoved(QString meetingId);
     void pendingItemsChanged();
-    void reset();                               // teljes újratöltés kell (invalidate() mind)
-    // A címkekészlet változott (név, törlés, összevonás): a sorok címke-nevei és a szűrő-
-    // popover frissítendő. (Egy meeting címkéinek változása meetingChanged-ként jön.)
+    void reset();                               // a full reload is needed (invalidate() everything)
+    // The tag set changed (name, delete, merge): the rows' tag names and the filter popover need
+    // refreshing. (A change of a meeting's tags comes as meetingChanged.)
     void tagsChanged();
     void warmedUp();
 

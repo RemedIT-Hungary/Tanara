@@ -15,7 +15,7 @@ namespace tanara {
 
 QString foldForSearch(const QString& text)
 {
-    // Kanonikus felbontás (ő → o + kettős ékezet), majd a kombináló jelek eldobása.
+    // Canonical decomposition (o-double-acute -> o + a combining mark), then dropping the combining marks.
     const QString decomposed = text.normalized(QString::NormalizationForm_D);
     QString out;
     out.reserve(decomposed.size());
@@ -39,7 +39,7 @@ bool matchesSearch(const QString& text, const QString& needle)
 QVector<PersonInfo> listPeople(const PeopleStore* people, const VoiceprintStore* voiceprints,
                                MeetingStore* store)
 {
-    // Név-egyesítés kisbetű-függetlenül (a people.json és a lenyomat-DB így kezeli).
+    // Name merging case-insensitively (people.json and the voiceprint DB treat it this way).
     QVector<PersonInfo> out;
     QHash<QString, int> indexByFolded;
     auto ensure = [&](const QString& name) -> int {
@@ -73,7 +73,7 @@ QVector<PersonInfo> listPeople(const PeopleStore* people, const VoiceprintStore*
         for (const Meeting& entry : index) {
             const Meeting m = store->load(entry.id);
             if (m.id.isEmpty()) continue;
-            QSet<QString> present;   // egy meeting egy személyt egyszer számol
+            QSet<QString> present;   // a meeting counts a person once
             for (const QString& v : m.speakerMap) present.insert(v.trimmed().toCaseFolded());
             for (const Track& t : m.tracks)
                 if (t.fixedSpeaker) present.insert(t.speakerLabel.trimmed().toCaseFolded());
@@ -104,7 +104,7 @@ QVector<PersonInfo> filterPeople(const QVector<PersonInfo>& all, const QString& 
         const QString folded = foldForSearch(p.name);
         const int pos = folded.indexOf(n);
         if (pos < 0) {
-            // A névben nincs: a becenevek közt az első egyező.
+            // Not in the name: the first matching among the nicknames.
             for (const QString& a : p.aliases) {
                 if (!foldForSearch(a).contains(n)) continue;
                 PersonInfo hit = p;

@@ -1,11 +1,10 @@
 #pragma once
 //
-// Tanara — egy felvételi munkamenet vezérlése:
-//   capture (AudioEngine) → eszközönként ffmpeg (QProcess) raw PCM stdin → Opus,
-//   majd stopkor a per-sáv encoderek lezárása és egy kész tanara::Meeting.
-//   A lekevert .mp3 (mixdown) NEM itt készül — azt az AppController gyártja aszinkron,
-//   hogy a leállítás ne fagyassza a UI-t (lásd AppController::regenerateMixdown()).
-//
+// Control of one recording session:
+//   capture (AudioEngine) -> per device an ffmpeg (QProcess) raw PCM stdin -> Opus,
+//   then at stop the per-track encoders are closed and a finished tanara::Meeting is produced.
+//   The mixed .mp3 (mixdown) is NOT made here; AppController makes it asynchronously so that
+//   stopping does not freeze the UI (see AppController::regenerateMixdown()).
 #include "tanara/Types.h"
 
 #include <QObject>
@@ -22,10 +21,10 @@ class AudioEngine;
 class RecordingSession : public QObject {
     Q_OBJECT
 public:
-    // audioDir: a felvételek gyökere (ez alá jön a meeting-mappa).
-    // title: a meeting címe (a mappanév slugjához és a Meeting.title-höz).
-    // userSpeakerName: az első mic-sáv fix beszélő-neve (pl. "Ádám").
-    // opusKbps: per-sáv Opus bitráta (a hangminőség-beállításból; lásd opusBitrateKbps()).
+    // audioDir: the root of recordings (the meeting folder goes under it).
+    // title: the meeting's title (for the folder name slug and Meeting.title).
+    // userSpeakerName: the fixed speaker name of the first mic track (e.g. "Adam").
+    // opusKbps: per-track Opus bitrate (from the audio quality setting; see opusBitrateKbps()).
     explicit RecordingSession(QString audioDir,
                               QString title,
                               QString userSpeakerName = QStringLiteral("Beszélő 1"),
@@ -33,52 +32,51 @@ public:
                               QObject* parent = nullptr);
     ~RecordingSession() override;
 
-    // A capture-motor gyártója (start() előtt hívandó). Üres → valódi AudioEngine (miniaudio).
-    // A tesztek egy hamis motorral hajtják meg a felvevőt, hangeszköz nélkül.
+    // Factory of the capture engine (call before start()). Empty = the real AudioEngine (miniaudio).
+    // Tests drive the recorder with a fake engine, without an audio device.
     using EngineFactory = std::function<std::unique_ptr<AudioEngine>()>;
     void setEngineFactory(EngineFactory factory);
-    // A néma capture-szakaszok csenddel pótlása (lásd tracktiming::silenceToInsert) minden
-    // sávra be/ki. Alapból platform szerint: csak Windowson, csak loopback sávnál. Teszthez.
+    // Turns the filling of silent capture gaps with silence (see tracktiming::silenceToInsert) on/off for
+    // every track. By default per platform: only on Windows, only for a loopback track. For tests.
     void setFillCaptureGaps(bool on);
 
     RecordingState state() const;
-    QString folder() const;          // a létrejött meeting-mappa abszolút útja
+    QString folder() const;          // absolute path of the meeting folder created
 
-    // A sávok eszközei a sáv-index sorrendjében (a felvétel közben hozzáadottak a végén).
+    // The tracks' devices in track-index order (those added during recording at the end).
     QVector<AudioDeviceInfo> trackDevices() const;
-    // Él-e még a sáv (hamis, ha az eszközt leválasztották és a sáv le lett zárva).
+    // Whether the track is still alive (false if the device was detached and the track closed).
     bool trackOpen(int trackIndex) const;
 
 public slots:
-    // Létrehozza a meeting-mappát, elindítja a capture-t és eszközönként az
-    // ffmpeg encodert + a drain workert. Nem dob; hibára failed()-et emittál.
+    // Creates the meeting folder, starts capture and, per device, the ffmpeg encoder + the drain
+    // worker. Does not throw; emits failed() on error.
     void start(const QVector<AudioDeviceInfo>& devices);
 
-    // Leállít: flush + closeWriteChannel minden ffmpeg-en, megvárja a per-sáv encoderek
-    // végét (gyors tail-flush), majd finished(Meeting)-et (vagy failed()-et) emittál.
-    // NEM blokkol: a lezárás a worker szálán fut, a finished() akkor jön, amikor MINDEN
-    // sávfájl lezárult a lemezen (addig az állapot Stopping → Encoding).
-    // A mixdownt MÁR NEM gyártja le — `mixdownFile` üres marad; a lekeverést az
-    // AppController készíti később, aszinkron (auto vagy kézi módban).
+    // Stops: flush + closeWriteChannel on every ffmpeg, waits for the per-track encoders to end (a
+    // fast tail flush), then emits finished(Meeting) (or failed()). Does NOT block: the shutdown runs on
+    // the worker's thread, and finished() comes when EVERY track file is closed on disk (until then the
+    // state is Stopping -> Encoding). It NO LONGER makes the mixdown; `mixdownFile` stays empty;
+    // AppController makes the mix later, asynchronously (in auto or manual mode).
     void stop();
 
-    // Felvétel KÖZBEN egy további eszköz sávjának indítása. A sáv fájlja a megnyitás
-    // pillanatától tart (csend-kitöltés NINCS); a megnyitás ideje a felvétel 0-pontjától a sáv
-    // Track::startOffsetMs-a, ebből tolja a helyére a lekeverés és minden más fogyasztó.
-    // Egy korábban lezárt eszköz újra-hozzáadása új fájlt ad (track_<slug>-2.ogg …): ugyanannak
-    // az eszköznek egy újabb SZAKASZA (lásd TrackCatalog). false, ha nem fut felvétel, az
-    // eszköz már (nyitott) sávon van, vagy nem nyitható meg. Siker: trackAdded().
+    // Starts another device's track DURING recording. The track's file runs from the moment of opening
+    // (NO silence padding); the open time relative to the recording's zero point is the track's
+    // Track::startOffsetMs, from which the mixdown and every other consumer shift it into place.
+    // Re-adding a previously closed device gives a new file (track_<slug>-2.ogg ...): a newer SPAN of the
+    // same device (see TrackCatalog). false if no recording is running, the device is already on an (open)
+    // track, or cannot be opened. On success: trackAdded().
     bool addDevice(const tanara::AudioDeviceInfo& device);
 
-    // Egy sáv biztonságos lezárása felvétel közben (az eszközt leválasztották): a capture
-    // leáll, a maradék hang kiíródik, az encoder lezárja a fájlt. A felvétel a többi sávval
-    // megy tovább; a lezárt sáv a meeting része marad (a fájlja a lezárásig tart). trackClosed().
+    // Safely closes a track during recording (the device was detached): capture stops, the remaining
+    // audio is written out, the encoder closes the file. The recording continues with the other tracks; the
+    // closed track stays part of the meeting (its file runs until the close). trackClosed().
     void closeTrack(const QString& deviceName);
 
 signals:
     void stateChanged(tanara::RecordingState state);
     void levelMeterUpdated(int trackIndex, float rms);   // ~30 Hz, queued
-    void trackLevel(int trackIndex, float rms, float peak);   // ugyanaz, csúccsal
+    void trackLevel(int trackIndex, float rms, float peak);   // the same, with peak
     void trackAdded(int trackIndex, QString deviceName);
     void trackClosed(int trackIndex, QString deviceName);
     void elapsedChanged(qint64 ms);
@@ -86,7 +84,7 @@ signals:
     void failed(QString error);
 
 private:
-    void onFinalized(const QStringList& failedFiles);   // a worker lezárta a sávfájlokat
+    void onFinalized(const QStringList& failedFiles);   // the worker closed the track files
     struct Impl;
     std::unique_ptr<Impl> impl_;
 };

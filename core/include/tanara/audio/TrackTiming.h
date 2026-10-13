@@ -1,76 +1,75 @@
 #pragma once
 //
-// Tanara — a sávok időzítése: megbeszélés-idő ↔ sávfájl-idő, és a capture-rések pótlása.
+// Track timing: meeting time <-> track-file time, and filling capture gaps.
 //
-// Egy sáv fájlja a TÉNYLEGESEN felvett szakaszt tartalmazza: ha a sáv később indult (felvétel
-// közben bekapcsolt eszköz, ki-be kapcsolt eszköz második szakasza), a fájl 0-pontja a
-// megbeszélés `Track::startOffsetMs`-ánál van. Minden időtartomány, amit a program tárol
-// (átirat-időbélyegek, lenyomat-minták „fájl#start-end” hivatkozása), MEGBESZÉLÉS-időben
-// értendő; a sávfájlból olvasás előtt kell fájl-időre váltani (meetingToFileRange).
-//
+// A track's file contains the span ACTUALLY recorded: if the track started later (a device enabled
+// during recording, the second span of a device switched on and off), the file's zero point is at the
+// meeting's `Track::startOffsetMs`. Every time range the program stores (transcript timestamps,
+// the "file#start-end" references of voiceprint samples) is meant in MEETING time; before reading from
+// a track file it must be converted to file time (meetingToFileRange).
 #include "tanara/Types.h"
 
 #include <QtGlobal>
 
 namespace tanara::tracktiming {
 
-// Egy fájlon belüli időtartomány (ms). Érvénytelen (valid() == false), ha a kért megbeszélés-
-// tartomány teljesen a sáv kezdete elé esik, vagy üres.
+// A time range within a file (ms). Invalid (valid() == false) if the requested meeting range falls
+// entirely before the track's start, or is empty.
 struct FileRange {
     qint64 startMs = -1;
     qint64 endMs = -1;
     bool valid() const { return startMs >= 0 && endMs > startMs; }
 };
 
-// Megbeszélés-idő [startMs, endMs) → a sávfájl ideje. A sáv kezdete előtti rész levágódik
-// (a fájl 0-pontja előtt nincs hang); ha fileDurationMs >= 0, a fájl vége utáni rész is.
-// Ha semmi nem marad, érvénytelen tartományt ad.
+// Meeting time [startMs, endMs) -> the track file's time. The part before the track's start is cut
+// off (there is no audio before the file's zero point); if fileDurationMs >= 0, the part after the
+// file's end too. If nothing remains, it returns an invalid range.
 FileRange meetingToFileRange(qint64 offsetMs, qint64 startMs, qint64 endMs,
                              qint64 fileDurationMs = -1);
 
-// Ugyanez egy sávra (a startOffsetMs-ével).
+// The same for a track (with its startOffsetMs).
 inline FileRange fileRange(const Track& track, qint64 startMs, qint64 endMs,
                            qint64 fileDurationMs = -1)
 {
     return meetingToFileRange(track.startOffsetMs, startMs, endMs, fileDurationMs);
 }
 
-// ---- capture-rések pótlása --------------------------------------------------------------
+// ---- filling capture gaps --------------------------------------------------------------
 //
-// A Windows WASAPI loopback (rendszerhang) NEM ad csomagot, amíg semmi nem szól a kimeneten:
-// a miniaudio ilyenkor egyszerűen tovább vár (lásd miniaudio.h, ma_device_read__wasapi:
-// „Keep waiting in loopback mode”), a callback nem fut, a fájlba nem kerül semmi. A csendes
-// szakaszok így kimaradnának, a sáv rövidebb lenne és a hang „előre csúszna”. A felvevő ezért
-// az ilyen sávoknál a fali órához méri a kapott keretek számát, és a hiányt csenddel pótolja.
+// Windows WASAPI loopback (system audio) delivers NO packet while nothing plays on the output: miniaudio
+// just keeps waiting (see miniaudio.h, ma_device_read__wasapi: "Keep waiting in loopback mode"), the
+// callback does not run, nothing goes into the file. The silent stretches would be missing, the track
+// would be shorter and the audio would "slip ahead". So for such tracks the recorder measures the number
+// of frames received against the wall clock and fills the shortfall with silence.
 
-// Hány keretnyi csend hiányzik: a fali óra szerint várt (expected) és a ténylegesen kiírt
-// (delivered) keretek különbsége, ha az meghaladja a tűréshatárt (tolerance — a normál
-// pufferelési késés ne okozzon beszúrást); különben 0. Sosem negatív.
+// How many frames of silence are missing: the difference between the frames expected by the wall clock
+// (expected) and the frames actually written (delivered), if it exceeds the tolerance (tolerance: normal
+// buffering latency must not trigger an insertion); otherwise 0. Never negative.
 qint64 framesOwed(qint64 expectedFrames, qint64 deliveredFrames, qint64 toleranceFrames);
 
-// A fali óra szerint eddig várt keretek száma (elapsedMs alatt, sampleRate mellett).
+// Number of frames expected so far by the wall clock (over elapsedMs, at sampleRate).
 inline qint64 expectedFrames(qint64 elapsedMs, int sampleRate)
 {
     return elapsedMs <= 0 ? 0 : elapsedMs * sampleRate / 1000;
 }
 
-// Mikor pótolunk: csak ha az eszköz legalább kGapIdleMs óta nem adott adatot (tényleg „néma”
-// a loopback) — így beszéd közben sosem kerül csend a hangba, a fali óra és az eszköz órája
-// közti lassú elcsúszás pedig a csendes szakaszokon igazodik ki. A pótlás után a fájl legfeljebb
-// kGapToleranceMs-mal marad el a fali órától.
+// When to fill: only if the device has delivered no data for at least kGapIdleMs (the loopback is really
+// "silent"), so no silence ever goes into the audio during speech, and the slow drift between the wall
+// clock and the device clock corrects itself in the quiet stretches. After filling, the file lags the wall
+// clock by at most kGapToleranceMs.
 constexpr qint64 kGapIdleMs = 100;
 constexpr qint64 kGapToleranceMs = 20;
 
-// A most beszúrandó csend keretekben: 0, ha az eszköz kGapIdleMs-nál rövidebb ideje hallgat;
-// különben framesOwed(a sáv megnyitása óta várt keretek, a kiírt keretek, kGapToleranceMs).
+// The silence to insert now, in frames: 0 if the device has been quiet for less than kGapIdleMs;
+// otherwise framesOwed(frames expected since the track opened, frames written, kGapToleranceMs).
 qint64 silenceToInsert(qint64 elapsedSinceOpenMs, qint64 idleMs, qint64 deliveredFrames,
                        int sampleRate);
 
-// Kell-e az adott fajtájú sávnál a réseket pótolni. Loopback sávnál minden platformon: a
-// Windows-loopback csendben nem ad mintát; a Linux PipeWire/PulseAudio monitor csendben is ad,
-// DE ha a figyelt kimenet folyama megszakad (a hívás-alkalmazás eszközt vált, újracsatlakozik),
-// percekig semmit nem küld — a 2026-10-07-i felvételen így hiányzott 57 s a hívás-sáv közepéből,
-// a fájl rövidebb lett, és az átirat a felétől elcsúszott. A mikrofon mindig ad mintát.
+// Whether gaps must be filled for a track of the given kind. For a loopback track on every platform:
+// Windows loopback silently delivers no samples; a Linux PipeWire/PulseAudio monitor delivers even
+// silence, BUT if the watched output's stream breaks (the call app switches device, reconnects), it sends
+// nothing for minutes. That is how 57 s went missing from the middle of the call track in a recording
+// (2026-10-07), the file got shorter and the transcript slipped from its middle. A microphone always delivers samples.
 constexpr bool fillsCaptureGaps(TrackKind kind)
 {
     return kind == TrackKind::Loopback;

@@ -30,8 +30,8 @@ VoiceModelDownloader::VoiceModelDownloader(QObject* parent) : QObject(parent) {}
 
 VoiceModelDownloader::~VoiceModelDownloader()
 {
-    // Futó letöltés: a reply-k a NAM-hoz tartoznak; leválasztjuk és eldobjuk őket (a félkész
-    // QSaveFile commit nélkül semmit nem hagy hátra).
+    // Running downloads: the replies belong to the NAM; we detach and drop them (a half-made QSaveFile
+    // leaves nothing behind without a commit).
     for (Job* job : std::as_const(m_jobs)) {
         if (job->reply) {
             job->reply->disconnect(this);
@@ -71,8 +71,8 @@ void VoiceModelDownloader::setReachableOverride(std::optional<bool> reachable) {
 bool VoiceModelDownloader::networkReachable() const
 {
     if (m_reachableOverride) return *m_reachableOverride;
-    // A backend egyszer töltődik be (folyamat-szintű). Ha nincs (pl. konténer), nem tudjuk:
-    // ilyenkor megpróbáljuk, és a hálózati hiba úgyis kiderül.
+    // The backend loads once (process-wide). If there is none (e.g. a container), we cannot know: then we
+    // just try, and the network error shows up anyway.
     static const bool loaded = QNetworkInformation::loadBackendByFeatures(QNetworkInformation::Feature::Reachability);
     if (!loaded || !QNetworkInformation::instance()) return true;
     return QNetworkInformation::instance()->reachability() != QNetworkInformation::Reachability::Disconnected;
@@ -101,7 +101,7 @@ bool VoiceModelDownloader::start(const VoiceModelSpec& spec, const QString& targ
 {
     const QString id = spec.id;
     if (m_jobs.contains(id)) {
-        // A futó letöltés megy tovább; jelet nem küldünk (a figyelők a futó letöltés végét várják).
+        // The running download goes on; we send no signal (the observers wait for the running download's end).
         return false;
     }
     const QUrl url(spec.downloadUrl);
@@ -166,7 +166,7 @@ void VoiceModelDownloader::cancel(const QString& id)
     Job* job = m_jobs.value(id);
     if (!job || !job->reply) return;
     job->cancelled = true;
-    job->reply->abort();   // a finished jel (OperationCanceledError) zárja le
+    job->reply->abort();   // the finished signal (OperationCanceledError) closes it
 }
 
 void VoiceModelDownloader::finishJob(const QString& id)
@@ -223,7 +223,7 @@ void VoiceModelDownloader::finishJob(const QString& id)
     emit finished(id, true, QString());
 }
 
-// ---- ellenőrzés és törlés (G4, B1) ---------------------------------------------------------
+// ---- verification and deletion ---------------------------------------------------------
 
 VoiceModelDownloader::VerifyResult VoiceModelDownloader::verifyFile(const VoiceModelSpec& spec, const QString& path,
                                                                     QString* detail)

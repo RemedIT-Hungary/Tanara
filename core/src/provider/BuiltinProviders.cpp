@@ -1,7 +1,7 @@
 #include "tanara/provider/ProviderRegistry.h"
 
-// A beépített providerek konkrét fejlécei KIZÁRÓLAG itt jelennek meg — így a
-// registry maga provider-agnosztikus marad, a függés egy helyre koncentrálódik.
+// The concrete headers of the built-in providers appear ONLY here, so the registry itself stays
+// provider-agnostic and the dependency is concentrated in one place.
 #include "tanara/stt/SonioxProvider.h"
 #include "tanara/stt/WhisperCompatProvider.h"
 #include "tanara/llm/OpenAiCompatibleProvider.h"
@@ -48,12 +48,12 @@ ProviderDescriptor sonioxDescriptor()
     apiKey.secretKey = QStringLiteral("soniox.apiKey");
 
     d.fields = { baseUrl, model, apiKey };
-    // GET /models: kulccsal védett, ingyenes lista-végpont (nem indít átírást).
+    // GET /models: a key-protected, free list endpoint (does not start a transcription).
     d.probe = { QStringLiteral("/models"), true };
     return d;
 }
 
-// --- OpenAI-kompatibilis LLM descriptor ---
+// --- OpenAI-compatible LLM descriptor ---
 ProviderDescriptor openAiCompatDescriptor()
 {
     ProviderDescriptor d;
@@ -75,7 +75,7 @@ ProviderDescriptor openAiCompatDescriptor()
     model.label          = QCoreApplication::translate("BuiltinProviders", "Modell");
     model.type           = ConfigFieldType::Combo;
     model.dynamicOptions = true;
-    model.defaultValue   = QStringLiteral("google/gemma-4-12b"); // #27: üres config se legyen üres mező
+    model.defaultValue   = QStringLiteral("google/gemma-4-12b"); // an empty config must not mean an empty field
 
     ConfigField temperature;
     temperature.key          = QStringLiteral("temperature");
@@ -84,7 +84,7 @@ ProviderDescriptor openAiCompatDescriptor()
     temperature.defaultValue = QStringLiteral("0.2");
     temperature.advanced     = true;
     temperature.minValue     = 0.0;
-    temperature.maxValue     = 1.0;   // összefoglaláshoz e fölött nincs értelme
+    temperature.maxValue     = 1.0;   // above this makes no sense for summarization
 
     ConfigField maxTokens;
     maxTokens.key          = QStringLiteral("maxTokens");
@@ -104,7 +104,7 @@ ProviderDescriptor openAiCompatDescriptor()
     apiKey.secretKey = QStringLiteral("llm.apiKey");
 
     d.fields = { baseUrl, model, temperature, maxTokens, apiKey };
-    d.probe = { QStringLiteral("/models"), true };   // ugyanaz, amit a modell-lekérés használ
+    d.probe = { QStringLiteral("/models"), true };   // the same as the model fetch uses
     return d;
 }
 
@@ -116,7 +116,7 @@ ProviderDescriptor whisperCompatDescriptor()
                                                 "Whisper (OpenAI-kompatibilis)");
     d.kind     = ProviderKind::Stt;
     d.authMode = AuthMode::ApiKey;
-    d.supportsDiarization = false;   // minden token „Beszélő 1" — a nevet a voice-ID adja
+    d.supportsDiarization = false;   // every token is "Speaker 1"; the name comes from voice ID
 
     ConfigField baseUrl;
     baseUrl.key          = QStringLiteral("baseUrl");
@@ -150,16 +150,16 @@ ProviderDescriptor whisperCompatDescriptor()
     apiKey.key       = QStringLiteral("apiKey");
     apiKey.label     = QCoreApplication::translate("BuiltinProviders", "API-kulcs");
     apiKey.type      = ConfigFieldType::Secret;
-    apiKey.required  = false;   // lokális szervernek nem kell
+    apiKey.required  = false;   // a local server does not need it
     apiKey.isSecret  = true;
     apiKey.secretKey = QStringLiteral("stt.whisper.apiKey");
 
     d.fields = {baseUrl, model, language, apiKey};
-    d.probe = { QStringLiteral("/models"), true };   // OpenAI API és a helyi whisper-szerverek is adják
+    d.probe = { QStringLiteral("/models"), true };   // both the OpenAI API and local whisper servers provide it
     return d;
 }
 
-// --- Tanara Cloud (STT és LLM ugyanazzal az id-vel, a két registryben külön) ---
+// --- Tanara Cloud (STT and LLM with the same id, separately in the two registries) ---
 ProviderDescriptor tanaraCloudDescriptor(ProviderKind kind)
 {
     ProviderDescriptor d;
@@ -168,14 +168,14 @@ ProviderDescriptor tanaraCloudDescriptor(ProviderKind kind)
     d.kind                = kind;
     d.authMode            = AuthMode::Login;
     d.loginSecretKey      = QStringLiteral("tanara.cloud.apiKey");
-    d.supportsDiarization = true;    // a Pontos szint diarizál; a Gyors nem (katalógus-metaadat)
+    d.supportsDiarization = true;    // the Accurate tier diarizes; Fast does not (catalog metadata)
     d.networkRequired     = true;
-    // Nincs kulcs-mező: egy bejelentkezés (device flow) mindkét providerhez; a szintet
-    // (Gyors / Pontos / Expert) a Beállítások Tanara Cloud panelje és a becslés-dialógus állítja.
+    // No key field: one sign-in (device flow) serves both providers; the tier (Fast / Accurate / Expert)
+    // is set by the Settings Tanara Cloud panel and the estimate dialog.
     return d;
 }
 
-// --- Beágyazás: helyi / saját OpenAI-kompatibilis végpont ---
+// --- Embedding: a local / own OpenAI-compatible endpoint ---
 ProviderDescriptor openAiCompatEmbeddingDescriptor()
 {
     ProviderDescriptor d;
@@ -217,7 +217,7 @@ ProviderDescriptor openAiCompatEmbeddingDescriptor()
     return d;
 }
 
-// --- Beágyazás: Tanara Cloud (a gateway /v1/embeddings útvonala) ---
+// --- Embedding: Tanara Cloud (the gateway's /v1/embeddings route) ---
 ProviderDescriptor tanaraHostedEmbeddingDescriptor()
 {
     ProviderDescriptor d;
@@ -242,18 +242,18 @@ void registerCloudProviders()
     SttProviderRegistry::instance().registerProvider(
         tanaraCloudDescriptor(ProviderKind::Stt),
         [](const ProviderConfig& c, QObject* p) -> ISttProvider* {
-            return new SonioxProvider(c, p);           // a gateway Soniox-alakú
+            return new SonioxProvider(c, p);           // the gateway is Soniox-shaped
         });
     LlmProviderRegistry::instance().registerProvider(
         tanaraCloudDescriptor(ProviderKind::Llm),
         [](const ProviderConfig& c, QObject* p) -> ILlmProvider* {
-            return new OpenAiCompatibleProvider(c, p); // a gateway OpenAI-alakú
+            return new OpenAiCompatibleProvider(c, p); // the gateway is OpenAI-shaped
         });
 }
 
 void registerBuiltinProviders()
 {
-    // Idempotens: a többszöri hívás (pl. több AppController) ne duplikáljon.
+    // Idempotent: repeated calls (e.g. several AppControllers) must not duplicate.
     static bool registered = false;
     if (registered)
         return;
@@ -277,8 +277,8 @@ void registerBuiltinProviders()
             return new OpenAiCompatibleProvider(c, p);
         });
 
-    // Beágyazás (címkejavaslatok): mindkét leíró mindig regisztrált — a Tanara Cloud változat
-    // bejelentkezés nélkül strukturált gateway-hibával áll meg (a UI kínálja a belépést).
+    // Embedding (tag suggestions): both descriptors are always registered; the Tanara Cloud variant stops
+    // with a structured gateway error without sign-in (the UI offers the login).
     EmbeddingProviderRegistry::instance().registerProvider(
         openAiCompatEmbeddingDescriptor(),
         [](const ProviderConfig& c, QObject* p) -> IEmbeddingProvider* {
@@ -287,7 +287,7 @@ void registerBuiltinProviders()
     EmbeddingProviderRegistry::instance().registerProvider(
         tanaraHostedEmbeddingDescriptor(),
         [](const ProviderConfig& c, QObject* p) -> IEmbeddingProvider* {
-            return new OpenAiCompatibleEmbeddingProvider(c, p);   // a gateway OpenAI-alakú
+            return new OpenAiCompatibleEmbeddingProvider(c, p);   // the gateway is OpenAI-shaped
         });
 }
 

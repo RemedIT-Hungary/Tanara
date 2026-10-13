@@ -23,7 +23,7 @@ namespace {
 
 QString findPersonByName(const QMap<QString, QVector<Voiceprint>>& people, const QString& name)
 {
-    // Case-insensitive kulcs-keresés (a tárolt írásmódot adja vissza).
+    // Case-insensitive key lookup (returns the stored spelling).
     for (auto it = people.constBegin(); it != people.constEnd(); ++it)
         if (it.key().compare(name, Qt::CaseInsensitive) == 0)
             return it.key();
@@ -76,10 +76,10 @@ void VoiceprintStore::addPrint(const QString& name, Voiceprint print)
     print.dim = print.embedding.size();
     if (print.model.isEmpty())
         print.model = VoiceModelRegistry::defaultModelId();
-    // Biztos, ami biztos: normalizálva tároljuk (a cosine így stabil marad).
+    // To be safe we store it normalized (so the cosine stays stable).
     print.embedding = l2normalize(print.embedding);
 
-    // Zár + a lemez friss állapota: más folyamat időközben felvett lenyomatai megmaradnak.
+    // Lock + the fresh state from disk: voiceprints another process added meanwhile are kept.
     const SharedFileLock lock(m_filePath);
     reloadIfChanged();
     const QString key = findPersonByName(m_people, n);
@@ -106,7 +106,7 @@ bool VoiceprintStore::removePrint(const QString& printId)
         if (prints.size() != before)
             removed = true;
     }
-    // Üresen maradt személyt kuka.
+    // A person left empty goes to the bin.
     for (auto it = m_people.begin(); it != m_people.end(); ) {
         if (it.value().isEmpty()) it = m_people.erase(it);
         else ++it;
@@ -144,7 +144,7 @@ void VoiceprintStore::renamePerson(const QString& oldName, const QString& newNam
     if (dstKey.isEmpty())
         m_people[n] = prints;
     else
-        m_people[dstKey] += prints;   // egyesítés, ha a cél már létezik
+        m_people[dstKey] += prints;   // merge if the target already exists
     persist();
 }
 
@@ -178,8 +178,8 @@ void VoiceprintStore::merge(const QString& from, const QString& into)
 
 namespace {
 
-// Egy személy pontszáma: modellenként a max cosine az adott modellű lenyomatain, majd átlag a
-// közös modelleken. Nincs közös modell → -1.
+// One person's score: per model the max cosine over their voiceprints of that model, then the mean
+// over the shared models. No shared model -> -1.
 double personScore(const QVector<Voiceprint>& prints, const EmbeddingSet& query, const QStringList& ids)
 {
     double sum = 0.0;
@@ -191,7 +191,7 @@ double personScore(const QVector<Voiceprint>& prints, const EmbeddingSet& query,
         for (const Voiceprint& p : prints)
             if (p.model == id)
                 best = std::max(best, VoiceprintStore::cosineSimilarity(q, p.embedding));
-        if (best < -1.5) continue;   // ennek a modellnek nincs lenyomata a személynél
+        if (best < -1.5) continue;   // this model has no voiceprint for the person
         sum += best;
         ++n;
     }
@@ -264,7 +264,7 @@ QString VoiceprintStore::siblingKey(const Voiceprint& p)
 QVector<QVector<Voiceprint>> VoiceprintStore::siblingGroups(const QVector<Voiceprint>& prints)
 {
     QVector<QVector<Voiceprint>> groups;
-    QHash<QString, QVector<int>> byKey;   // kulcs → a csoportok indexei
+    QHash<QString, QVector<int>> byKey;   // key -> the groups' indexes
     for (const Voiceprint& p : prints) {
         if (p.sampleRef.isEmpty()) { groups.append(QVector<Voiceprint>{p}); continue; }
         QVector<int>& idx = byKey[siblingKey(p)];
@@ -299,7 +299,7 @@ QVector<Voiceprint> VoiceprintStore::samplesMissingModel(const QString& name, co
 {
     QVector<Voiceprint> out;
     for (const QVector<Voiceprint>& g : siblingGroups(printsFor(name))) {
-        if (g.first().sampleRef.isEmpty()) continue;   // nincs mintája: nem pótolható
+        if (g.first().sampleRef.isEmpty()) continue;   // no sample: cannot be backfilled
         bool has = false;
         for (const Voiceprint& p : g)
             if (p.model == modelId) { has = true; break; }
@@ -361,8 +361,8 @@ void VoiceprintStore::load()
     QJsonParseError err{};
     const QJsonDocument doc = QJsonDocument::fromJson(f.readAll(), &err);
     if (err.error != QJsonParseError::NoError || !doc.isObject()) {
-        // Értelmezhetetlen fájl: a memóriabeli lenyomatok maradnak, a fájlt a következő
-        // mentés félreteszi (a lenyomatokat nem írjuk felül nyom nélkül).
+        // Unparseable file: the in-memory voiceprints stay, the next save sets the file aside (we do not
+        // overwrite the voiceprints without a trace).
         qCWarning(lcVoice).noquote() << "voiceprints.json nem értelmezhető:" << m_filePath << err.errorString();
         m_corrupt = true;
         return;
@@ -443,7 +443,7 @@ void VoiceprintStore::persist()
     if (f.open(QIODevice::WriteOnly)) {
         f.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
         if (f.commit())
-            m_stamp = FileStamp::of(m_filePath);   // a saját írásunkat nem kell visszaolvasni
+            m_stamp = FileStamp::of(m_filePath);   // no need to reread our own write
     }
 }
 

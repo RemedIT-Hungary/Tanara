@@ -24,7 +24,7 @@ constexpr quint32 kCacheMagic = 0x54414354;   // "TACT"
 constexpr quint32 kCacheVersion = 1;
 const float kNaN = std::numeric_limits<float>::quiet_NaN();
 
-// Keretenkénti RMS-gyűjtő: a PCM darabokban jön, a keret-határ a darabolástól független.
+// Per-frame RMS collector: the PCM comes in chunks, the frame boundary is independent of the chunking.
 class FrameAccumulator {
 public:
     explicit FrameAccumulator(int frameMs) : m_frameSamples(std::max(1, frameMs) * trackactivity::kSampleRate / 1000) {}
@@ -37,7 +37,7 @@ public:
             if (++m_count == m_frameSamples) flush();
         }
     }
-    // A maradék (rövidebb) utolsó keret is számít.
+    // The remaining (shorter) last frame counts too.
     QVector<float> finish()
     {
         if (m_count > 0) flush();
@@ -98,7 +98,7 @@ PcmDecoder ffmpegDecoder(const QString& ffmpegPath)
                                 QStringLiteral("-ar"), QString::number(kSampleRate),
                                 QStringLiteral("-f"), QStringLiteral("s16le"), QStringLiteral("-")});
         if (!proc.waitForStarted(5000)) return fail(QStringLiteral("Az ffmpeg nem indítható."));
-        // Folyamatos olvasás: a PCM nem gyűlik a memóriában, csak egy páratlan bájt marad át.
+        // Streaming read: the PCM does not accumulate in memory, only an odd byte carries over.
         QByteArray carry;
         qint64 total = 0;
         auto pump = [&]() {
@@ -162,7 +162,7 @@ QString activityFingerprint(const Meeting& m, const QString& folder, int frameMs
 std::optional<float> windowEnergyDb(const TrackActivity& t, qint64 startMs, qint64 endMs)
 {
     if (endMs <= startMs || t.frameMs <= 0 || t.dbAboveFloor.isEmpty()) return std::nullopt;
-    // Az ablakkal átfedő keretek: [origin + i·frame, origin + (i+1)·frame) ∩ [start, end) ≠ ∅.
+    // Frames overlapping the window: [origin + i*frame, origin + (i+1)*frame) intersect [start, end) is non-empty.
     const qint64 rel0 = startMs - t.originMs;
     const qint64 rel1 = endMs - t.originMs;
     const qint64 first = std::max<qint64>(0, rel0 >= 0 ? rel0 / t.frameMs : -1);
@@ -212,7 +212,7 @@ MeetingActivity MeetingActivity::load(const QString& meetingFolder, const QStrin
     QVector<TrackActivity> tracks;
     for (qint32 i = 0; i < count; ++i) {
         TrackActivity t;
-        if (!readTrack(in, t)) return a;   // sérült fájl → üres (újraszámolunk)
+        if (!readTrack(in, t)) return a;   // corrupt file -> empty (we recompute)
         tracks.append(t);
     }
     a.tracks = tracks;
@@ -241,7 +241,7 @@ MeetingActivity computeMeetingActivity(const Meeting& m, const QString& folder,
     MeetingActivity out;
     out.fingerprint = trackactivity::activityFingerprint(m, folder, frameMs);
 
-    // Logikai sávok: az eszköz szakaszai a vezető (legkorábbi) szakasz alá, az első előfordulás sorrendjében.
+    // Logical tracks: a device's spans under the leading (earliest) span, in order of first occurrence.
     const QVector<tracknames::SegmentInfo> seg = tracknames::segments(m.tracks);
     QVector<int> leaders;
     QHash<int, QVector<int>> members;
@@ -254,7 +254,7 @@ MeetingActivity computeMeetingActivity(const Meeting& m, const QString& folder,
 
     const QDir dir(folder);
     for (int lead : leaders) {
-        // Szakaszonként a keret-dB-k a saját eltolásukkal.
+        // Per span the frame dBs with their own offset.
         struct Part { qint64 offsetMs; QVector<float> db; };
         QVector<Part> parts;
         for (int idx : members.value(lead)) {
@@ -282,7 +282,7 @@ MeetingActivity computeMeetingActivity(const Meeting& m, const QString& folder,
         ta.frameMs = frameMs;
         ta.originMs = std::min_element(parts.cbegin(), parts.cend(),
                                        [](const Part& a, const Part& b) { return a.offsetMs < b.offsetMs; })->offsetMs;
-        // A szakaszok a megbeszélés-idejükre; a lyukak NaN.
+        // The spans onto their meeting time; the gaps are NaN.
         QVector<float> raw;
         for (const Part& p : parts) {
             const qint64 at = (p.offsetMs - ta.originMs + frameMs / 2) / frameMs;

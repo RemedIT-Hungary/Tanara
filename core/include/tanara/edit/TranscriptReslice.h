@@ -1,19 +1,18 @@
 #pragma once
 //
-// TranscriptReslice — egy MEGLÉVŐ (Soniox-féle időzítésű) átirat sorainak párnázása a
-// transcript.tokens.json-ból, az utterance id-k átvezetésével (a `tanara-cli reslice` magja).
+// TranscriptReslice: padding the lines of an EXISTING (Soniox-timed) transcript from
+// transcript.tokens.json, carrying the utterance ids through (the core of `tanara-cli reslice`).
 //
-// A csoportosítás az EREDETI token-időkkel fut (ugyanaz a merger), csak a kész sorok kapnak
-// elő-/utó-futást (sonioxtiming::padUtterances) → a sorok száma és sorrendje nem változik, a
-// régi → új id térkép index szerinti 1:1. A megszólalás-id a kezdőidőből képződik („u<startMs>"),
-// ezért a párnázás az id-ket megváltoztatja: a térképet az overlay (transcript.speakers.json:
-// minden id-hivatkozás + az átirat-ujjlenyomat) és a summary.json (sourceSpans.utteranceIds + a
-// span-idők, sourceSpeakers kulcsai) kapja; a transcript.embeddings.bin törlődik. A tokens.json
-// tokenjei érintetlenek; a gyökérbe "timing": "emission" kerül (ettől párnáz a merger az app
-// minden szeletelésénél — és ez a második futás „nincs teendő" jelzője is).
+// Grouping runs on the ORIGINAL token times (the same merger); only the finished lines get a
+// pre-/post-roll (sonioxtiming::padUtterances), so the number and order of lines do not change, and the
+// old -> new id map is 1:1 by index. The utterance id is formed from the start time ("u<startMs>"), so
+// padding changes the ids: the map goes to the overlay (transcript.speakers.json: every id reference + the
+// transcript fingerprint) and summary.json (sourceSpans.utteranceIds + the span times, sourceSpeakers
+// keys); transcript.embeddings.bin is deleted. The tokens in tokens.json are untouched; "timing":
+// "emission" goes into the root (this makes the merger pad at every slicing in the app, and it is also
+// the second run's "nothing to do" marker).
 //
-// UI-független, nincs QObject.
-//
+// UI-independent, no QObject.
 #include "tanara/Types.h"
 #include "tanara/edit/SpeakerOverlay.h"
 
@@ -24,15 +23,15 @@
 
 namespace tanara::reslice {
 
-// A tokens.json gyökérmezője (ugyanazt írja az AppController a Soniox-átiratokhoz).
+// Root field of tokens.json (AppController writes the same for Soniox transcripts).
 inline QString timingKey() { return QStringLiteral("timing"); }
 inline QString emissionTimingValue() { return QStringLiteral("emission"); }
 
 enum class Verdict {
-    Error,              // nincs / olvashatatlan tokens.json, vagy a segments.json nem illik hozzá
-    RealWordSpans,      // a token-szélességek mediánja > 80 ms: valódi szó-tartományok (Whisper)
-    AlreadyPadded,      // a tokens.json-on már ott a "timing": "emission"
-    Reslice,            // van mit tenni
+    Error,              // no / unreadable tokens.json, or segments.json does not fit it
+    RealWordSpans,      // the median of the token widths is > 80 ms: real word spans (Whisper)
+    AlreadyPadded,      // tokens.json already has "timing": "emission"
+    Reslice,            // there is something to do
 };
 
 struct Plan {
@@ -41,20 +40,20 @@ struct Plan {
     qint64  medianWidthMs = -1;
     int     tokenCount = 0;
 
-    QVector<TranscriptLine> oldLines;   // a mostani segments.json (vagy a tokenekből, ha hiányzik)
-    QVector<Utterance>      newSegments;// a párnázott sorok (a segments.json új tartalma)
-    QVector<TranscriptLine> newLines;   // ugyanezek, új id-vel; oldLines[i] → newLines[i]
-    QMap<QString, QString> idMap;       // régi id → új id (minden régi sor)
-    int  renamedIds = 0;                // ahol az id változik
-    int  textChanged = 0;               // ahol a szöveg eltér (nem várt; a szöveg nem változik)
-    // Kezdet-eltolás (régi kezdet − új kezdet, ms) hisztogramja: "0", "1-100", "101-200",
-    // "201-300", ">300" (a párnázás legfeljebb 300 ms).
+    QVector<TranscriptLine> oldLines;   // the current segments.json (or from the tokens if it is missing)
+    QVector<Utterance>      newSegments;// the padded lines (the new content of segments.json)
+    QVector<TranscriptLine> newLines;   // the same, with new ids; oldLines[i] -> newLines[i]
+    QMap<QString, QString> idMap;       // old id -> new id (every old line)
+    int  renamedIds = 0;                // where the id changes
+    int  textChanged = 0;               // where the text differs (unexpected; the text does not change)
+    // Histogram of the start shift (old start - new start, ms): "0", "1-100", "101-200", "201-300",
+    // ">300" (padding is at most 300 ms).
     QMap<QString, int> shiftHistogram;
 
     bool overlayPresent = false;
-    bool overlayStale = false;          // az overlay egy korábbi átirathoz tartozik → nem nyúlunk hozzá
-    int  overlayRefs = 0;               // id-hivatkozások száma az overlay-ben
-    int  overlayRenamed = 0;            // ebből átnevezendő
+    bool overlayStale = false;          // the overlay belongs to an earlier transcript, so we do not touch it
+    int  overlayRefs = 0;               // number of id references in the overlay
+    int  overlayRenamed = 0;            // of which to rename
 
     bool summaryPresent = false;
     int  summaryRefs = 0;
@@ -63,20 +62,20 @@ struct Plan {
     bool embeddingsPresent = false;
 };
 
-// Elemzés, írás nélkül.
+// Analysis, without writing.
 Plan plan(const QString& meetingFolder);
 
 struct ApplyResult {
     bool ok = false;
     QString error;
-    QStringList backups;        // most készült .bak fájlok (a meglévőt nem írja felül)
-    QStringList written;        // átírt fájlok
+    QStringList backups;        // .bak files made now (an existing one is not overwritten)
+    QStringList written;        // files rewritten
     bool embeddingsRemoved = false;
     bool markdownRegenerated = false;
 };
 
-// A plan alkalmazása (Verdict::Reslice kell). Előbb a .bak másolatok (transcript.tokens.json /
-// .segments.json / .speakers.json / summary.json / transcript.md), aztán az írás.
+// Applies the plan (needs Verdict::Reslice). First the .bak copies (transcript.tokens.json /
+// .segments.json / .speakers.json / summary.json / transcript.md), then the write.
 ApplyResult apply(const QString& meetingFolder, const Plan& plan);
 
 } // namespace tanara::reslice

@@ -14,7 +14,7 @@ namespace {
 
 using Vec = QVector<double>;
 
-// A sor súlya a centroidban: a hossza (mp), a felhasznált ablakra vágva.
+// A line's weight in the centroid: its length (s), clipped to the window used.
 double weightOf(const AnalysisLine& l)
 {
     return double(std::clamp<qint64>(l.durationMs, 500, kMaxEmbedMs)) / 1000.0;
@@ -41,14 +41,14 @@ double norm2(const Vec& a)
     return s;
 }
 
-// cos(e, sum), ahol e egységvektor.
+// cos(e, sum), where e is a unit vector.
 double cosTo(const Vec& sum, double sumNorm2, const QVector<float>& e)
 {
     if (sumNorm2 <= 1e-12) return qQNaN();
     return dot(sum, e) / std::sqrt(sumNorm2);
 }
 
-// cos(e, sum − w·e): a centroid a sor NÉLKÜL (leave-one-out), e egységvektor.
+// cos(e, sum - w*e): the centroid WITHOUT the line (leave-one-out), e a unit vector.
 double cosToWithout(const Vec& sum, double sumNorm2, const QVector<float>& e, double w)
 {
     const double d = dot(sum, e);
@@ -61,13 +61,13 @@ double cosToWithout(const Vec& sum, double sumNorm2, const QVector<float>& e, do
 
 namespace {
 
-// A centroid-építés közös része: beszélőnként a súlyozott összeg és a benne lévő sorok száma.
+// The shared part of building centroids: per speaker the weighted sum and the number of lines in it.
 struct Centroids {
     QVector<Vec> sums;
     QVector<double> norms;
     QVector<int> counts;
-    QVector<bool> member;           // soronként: benne van-e a saját beszélője centroidjában
-    QVector<bool> printReady;       // beszélőnként: lenyomat is van benne → a sorszámtól függetlenül kész
+    QVector<bool> member;           // per line: whether it is in its own speaker's centroid
+    QVector<bool> printReady;       // per speaker: a voiceprint is in it too, so it is ready regardless of the line count
 };
 
 bool readyWith(const Centroids& c, int s, int minus)
@@ -80,7 +80,7 @@ bool validLine(const AnalysisLine& l, int speakerCount)
     return l.hasEmbedding() && l.speaker >= 0 && l.speaker < speakerCount;
 }
 
-// A rendes szabály: minden sor, de a zajosak csak akkor, ha nincs elég tiszta sor.
+// The normal rule: every line, but noisy ones only if there are not enough clean lines.
 QVector<bool> cleanEnough(const QVector<AnalysisLine>& lines, int speakerCount)
 {
     QVector<int> clean(speakerCount, 0);
@@ -111,7 +111,7 @@ Centroids buildCentroids(const QVector<AnalysisLine>& lines, int speakerCount,
     return c;
 }
 
-// A sor illeszkedése a centroidokhoz (a sajátjához leave-one-out, ha benne van).
+// A line's fit to the centroids (to its own with leave-one-out, if it is in it).
 LineFit fitOf(const Centroids& c, const QVector<AnalysisLine>& lines, int i, int speakerCount)
 {
     LineFit f;
@@ -133,15 +133,15 @@ LineFit fitOf(const Centroids& c, const QVector<AnalysisLine>& lines, int i, int
     return f;
 }
 
-// A küszöbök: egy másik beszélő jobban illik, vagy (megbízható hosszú sornál) a sajátjához sem.
+// The thresholds: another speaker fits better, or (for a reliable long line) not even its own.
 bool judgeUncertain(const AnalysisLine& l, const LineFit& f)
 {
-    if (std::isnan(f.own)) return false;    // a saját beszélőről nincs elég minta → nem ítélünk
+    if (std::isnan(f.own)) return false;    // not enough samples of its own speaker: we do not judge
     const bool reliable = l.durationMs >= kReliableMs;
     const double margin = reliable ? kUncertainMargin : kUncertainMarginShort;
     if (!std::isnan(f.other) && f.other - f.own >= margin)
-        return true;                        // egy másik beszélőre jobban hasonlít
-    return reliable && f.own < kUncertainMinFit;    // a sajátjára sem hasonlít (új, el nem különített hang)
+        return true;                        // it resembles another speaker better
+    return reliable && f.own < kUncertainMinFit;    // it does not even resemble its own (a new, unseparated voice)
 }
 
 } // namespace
@@ -179,7 +179,7 @@ const SpeakerPrior* priorOf(const QVector<SpeakerPrior>& priors, int speaker)
     return &priors[speaker];
 }
 
-// Soronként: a hangját egy itteni lenyomat már hordozza (a referenciában nem számít külön).
+// Per line: its voice is already carried by a local voiceprint (it does not count separately in the reference).
 QVector<bool> replacedMask(const QVector<AnalysisLine>& lines, const QVector<SpeakerPrior>& priors)
 {
     QVector<bool> out(lines.size(), false);
@@ -189,9 +189,9 @@ QVector<bool> replacedMask(const QVector<AnalysisLine>& lines, const QVector<Spe
     return out;
 }
 
-// A lenyomatok hozzáadása egy beszélő referencia-összegéhez a súlyszabállyal (lásd a
-// fejlécben a SpeakerPrior leírását). localLineWeight: a referenciába került sorok súlya (mp).
-// localCore: van-e helyi mag; ha nincs, csak a korábbi lenyomatok kerülnek be (teljes súllyal).
+// Adding the voiceprints to a speaker's reference sum with the weight rule (see SpeakerPrior in the
+// header). localLineWeight: the weight (s) of the lines that went into the reference.
+// localCore: whether there is a local core; if not, only the earlier voiceprints go in (at full weight).
 void addPrints(Vec& sum, const SpeakerPrior* p, double localLineWeight, bool localCore,
                ReferenceInfo& info)
 {
@@ -227,10 +227,10 @@ void addPrints(Vec& sum, const SpeakerPrior* p, double localLineWeight, bool loc
     info.priorShare = priorWeight / (priorWeight + localWeight);
 }
 
-// Beszélőnként a referencia módja: 2 = csak a tiszta zárolt sorok, 1 = minden zárolt sor
-// (a zajosakkal együtt, mert tisztából nincs elég), 3 = itteni lenyomat + a (kevés) tiszta
-// zárolt sor, 4 = a korábbi lenyomatok + a (kevés) tiszta zárolt sor, 0 = nincs mag (a rendes szabály).
-// Az itteni lenyomatba olvadt sorok (replaced) nem számítanak.
+// Per speaker the reference mode: 2 = only the clean locked lines, 1 = every locked line (including
+// noisy, since there are not enough clean ones), 3 = a local voiceprint + the (few) clean locked lines,
+// 4 = the earlier voiceprints + the (few) clean locked lines, 0 = no core (the normal rule).
+// Lines folded into a local voiceprint (replaced) do not count.
 enum { kModeNone = 0, kModeLockedAll = 1, kModeLockedClean = 2, kModeLocalPrint = 3, kModePrior = 4 };
 
 QVector<int> coreModes(const QVector<AnalysisLine>& lines, int speakerCount,
@@ -275,17 +275,17 @@ RecheckAnalysis computeUncertainRechecked(const QVector<AnalysisLine>& lines, in
     const QVector<bool> replaced = replacedMask(lines, priors);
     const QVector<int> mode = coreModes(lines, speakerCount, priors, replaced);
     const QVector<bool> clean = cleanEnough(lines, speakerCount);
-    // Az itteni lenyomatba olvadt sorok kimaradnak (a lenyomat számít helyettük).
+    // Lines folded into a local voiceprint are left out (the voiceprint counts instead).
     Centroids c = buildCentroids(lines, speakerCount, [&](const AnalysisLine& l) {
         if (replaced[int(&l - lines.constData())]) return false;
         switch (mode[l.speaker]) {
         case kModeLockedClean:
         case kModeLocalPrint:  return l.locked && !l.noisy;
         case kModeLockedAll:   return l.locked;
-        // Csak korábbi lenyomat ad magot: a (kevés) tiszta megerősített sor azért beszáll
-        // mellé, hogy az itteni akusztika is számítson — a lenyomat súlya ilyenkor nincs vágva.
+        // Only an earlier voiceprint gives a core: the (few) clean confirmed lines join it so the local
+        // acoustics count too; the voiceprint's weight is not capped then.
         case kModePrior:       return l.locked && !l.noisy;
-        default:               return !l.noisy || !clean[l.speaker];     // a rendes szabály
+        default:               return !l.noisy || !clean[l.speaker];     // the normal rule
         }
     });
     out.trustedCore.resize(speakerCount);
@@ -312,7 +312,7 @@ RecheckAnalysis computeUncertainRechecked(const QVector<AnalysisLine>& lines, in
 
     for (int i = 0; i < lines.size(); ++i) {
         const AnalysisLine& l = lines[i];
-        // A zárolt sor a felhasználó döntése; a zajosat ő sem tudná eldönteni → nem jelöljük.
+        // A locked line is the user's decision; they could not decide a noisy one either, so we do not flag it.
         if (l.locked || l.noisy || !validLine(l, speakerCount) || l.durationMs < kMinEmbedMs)
             continue;
         const LineFit f = fitOf(c, lines, i, speakerCount);
@@ -320,7 +320,7 @@ RecheckAnalysis computeUncertainRechecked(const QVector<AnalysisLine>& lines, in
         v.own = f.own;
         v.other = f.other;
         v.uncertain = judgeUncertain(l, f);
-        // Javaslat csak akkor, ha a másik beszélő TÉNYLEG jobban illik (nem csak a saját gyenge).
+        // A suggestion only if the other speaker REALLY fits better (not just its own weak fit).
         const double margin = l.durationMs >= kReliableMs ? kUncertainMargin : kUncertainMarginShort;
         if (v.uncertain && !std::isnan(f.other) && f.other - f.own >= margin)
             v.otherSpeaker = f.otherSpeaker;
@@ -333,7 +333,7 @@ QVector<bool> computeOverlapNoisy(const QVector<TimedLine>& lines)
     QVector<bool> out(lines.size(), false);
     for (int i = 0; i < lines.size(); ++i) {
         const TimedLine& l = lines[i];
-        // Az embedding-ablak: hosszú sornál csak a közepe számít (lásd kMaxEmbedMs).
+        // The embedding window: for a long line only its middle counts (see kMaxEmbedMs).
         qint64 ws = l.startMs, we = l.endMs;
         if (we - ws > kMaxEmbedMs) {
             ws = (l.startMs + l.endMs) / 2 - kMaxEmbedMs / 2;
@@ -345,7 +345,7 @@ QVector<bool> computeOverlapNoisy(const QVector<TimedLine>& lines)
         for (int j = 0; j < lines.size(); ++j) {
             const TimedLine& o = lines[j];
             if (j == i || o.speaker == l.speaker) continue;
-            if (o.startMs >= we) break;     // időrend: a továbbiak már az ablak után kezdődnek
+            if (o.startMs >= we) break;     // time order: the rest start after the window
             overlap += std::max<qint64>(0, std::min(we, o.endMs) - std::max(ws, o.startMs));
         }
         overlap = std::min(overlap, window);
@@ -365,10 +365,10 @@ SuggestOutcome suggestSimilarDetailed(const QVector<AnalysisLine>& lines, int so
 {
     SuggestOutcome outcome;
     if (sourceSpeaker == targetSpeaker) return outcome;
-    // A cél „magja": a jelenlegi sorai (köztük a most kézzel átrakottak) — ez végig rögzített.
+    // The target's "core": its current lines (including those just moved by hand); fixed throughout.
     Vec seed;
     int anchors = 0;
-    QVector<int> members;       // a forrás embeddelt sorai
+    QVector<int> members;       // the source's embedded lines
     for (int i = 0; i < lines.size(); ++i) {
         const AnalysisLine& l = lines[i];
         if (!l.hasEmbedding()) continue;
@@ -382,9 +382,9 @@ SuggestOutcome suggestSimilarDetailed(const QVector<AnalysisLine>& lines, int so
     if (anchors == 0 || members.size() < 2) return outcome;
     const double seedNorm = norm2(seed);
 
-    // Magozott 2-közép a forrás sorain. A „marad" klaszter kezdete a maghoz LEGKEVÉSBÉ
-    // hasonló sorok (alsó ~30%) + a zárolt sorok — így akkor is működik, ha a kiemelt hang
-    // a forrás többsége (a teljes, kevert forrás-centroidhoz mérve ilyenkor semmi sem válna le).
+    // Core-seeded 2-means on the source's lines. The "stays" cluster starts from the lines LEAST similar to
+    // the core (bottom ~30%) + the locked lines, so it works even if the highlighted voice is the majority of
+    // the source (measured against the full, mixed source centroid nothing would split off then).
     QVector<int> bySim = members;
     QHash<int, double> simToSeed;
     for (int i : std::as_const(members))
@@ -400,7 +400,7 @@ SuggestOutcome suggestSimilarDetailed(const QVector<AnalysisLine>& lines, int so
     }
     double stayNorm = norm2(stay);
 
-    QSet<int> moved;            // a forrás sorai, amelyek a célhoz húznak
+    QSet<int> moved;            // the source's lines that pull toward the target
     for (int i : std::as_const(members)) {
         if (lines[i].locked) continue;
         const double toStay = cosTo(stay, stayNorm, *lines[i].embedding);
@@ -423,10 +423,10 @@ SuggestOutcome suggestSimilarDetailed(const QVector<AnalysisLine>& lines, int so
         QSet<int> next;
         for (int i : std::as_const(members)) {
             const AnalysisLine& l = lines[i];
-            if (l.locked) continue;     // a megerősített / kézzel javított sor a forrásnál marad
+            if (l.locked) continue;     // a confirmed / manually corrected line stays at the source
             const double w = weightOf(l);
             const bool in = moved.contains(i);
-            // Mindkét oldalon a sor NÉLKÜLI centroidhoz mérünk (különben önmagát húzná).
+            // On both sides we measure against the centroid WITHOUT the line (otherwise it would pull itself).
             const double toTarget = in ? cosToWithout(target, targetNorm, *l.embedding, w)
                                        : cosTo(target, targetNorm, *l.embedding);
             const double toStay = in ? cosTo(stay, stayNorm, *l.embedding)
@@ -438,8 +438,8 @@ SuggestOutcome suggestSimilarDetailed(const QVector<AnalysisLine>& lines, int so
         moved = next;
     }
 
-    // Ha a két klaszter hangja nem különül el (ugyanannak az embernek két „hangulata"), a
-    // szétválás nem valódi második beszélő → nincs javaslat.
+    // If the two clusters' voices do not separate (two "moods" of the same person), the split is not a real
+    // second speaker, so no suggestion.
     if (targetNorm > 1e-12 && stayNorm > 1e-12) {
         double d = 0.0;
         const int n = std::min<int>(target.size(), stay.size());
@@ -451,7 +451,7 @@ SuggestOutcome suggestSimilarDetailed(const QVector<AnalysisLine>& lines, int so
         }
     }
 
-    // A javaslatba csak a HATÁROZOTTAN a célhoz húzó, elég hosszú sorok kerülnek.
+    // Only lines that DECISIVELY pull toward the target and are long enough go into the suggestion.
     QVector<int> out;
     for (int i : std::as_const(members)) {
         if (!moved.contains(i)) continue;
@@ -478,9 +478,9 @@ PairRecheckAnalysis computePairRecheck(const QVector<AnalysisLine>& lines, int s
 
     auto usable = [](const AnalysisLine& l) { return l.hasEmbedding() && !l.noisy; };
     const QVector<bool> replaced = replacedMask(lines, priors);
-    // Referenciánként (lásd SpeakerPrior): helyi mag = a zárolt tiszta sorok (ha elég van)
-    // és/vagy az itteni lenyomatok, plusz a vágott súlyú korábbi lenyomatok; helyi mag híján a
-    // korábbi lenyomatok; ha az sincs, az összes tiszta sor (fallback).
+    // Per reference (see SpeakerPrior): local core = the locked clean lines (if there are enough) and/or the
+    // local voiceprints, plus the earlier voiceprints with capped weight; without a local core the earlier
+    // voiceprints; if there are none either, all clean lines (fallback).
     struct Ref { Vec sum; double norm = 0.0; int count = 0; bool hasPrints = false;
                  ReferenceInfo info; QVector<bool> member; };
     auto buildRef = [&](int speaker) {
@@ -532,7 +532,7 @@ PairRecheckAnalysis computePairRecheck(const QVector<AnalysisLine>& lines, int s
     }
     if (!out.valid) return out;
 
-    // A sor illeszkedése egy referenciához: ha benne van, önmaga nélkül (különben önmagát húzná).
+    // A line's fit to a reference: if it is in it, without itself (otherwise it would pull itself).
     auto fit = [&](const Ref& r, int i) {
         const AnalysisLine& l = lines[i];
         if (!r.member[i]) return cosTo(r.sum, r.norm, *l.embedding);
@@ -542,7 +542,7 @@ PairRecheckAnalysis computePairRecheck(const QVector<AnalysisLine>& lines, int s
     for (int i = 0; i < lines.size(); ++i) {
         const AnalysisLine& l = lines[i];
         if (l.speaker != speakerA && l.speaker != speakerB) continue;
-        // A zárolt sor a felhasználó döntése; a zajosat ő sem tudná eldönteni; a rövid megbízhatatlan.
+        // A locked line is the user's decision; they could not decide a noisy one; a short one is unreliable.
         if (l.locked || l.noisy || !l.hasEmbedding() || l.durationMs < kMinEmbedMs) continue;
         PairVerdict& v = out.lines[i];
         v.toA = fit(a, i);

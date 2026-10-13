@@ -1,12 +1,11 @@
 #pragma once
 //
-// Tanara — több-eszközös capture motor. Eszközönként egy ma_device, mindegyik
-// valós idejű callbackje CSAK a saját körpufferébe másol + frissít egy atomi
-// RMS/peak értéket. Semmi allokáció / lock / Qt a callbackben.
+// Multi-device capture engine. One ma_device per device; each one's real-time callback
+// ONLY copies into its own ring buffer + updates an atomic RMS/peak value. No allocation /
+// lock / Qt in the callback.
 //
-// A metódusok virtuálisak: a tesztek egy hamis motorral (valódi hangeszköz nélkül) hajtják
-// meg a RecordingSession-t (lásd RecordingSession::setEngineFactory).
-//
+// The methods are virtual: tests drive the RecordingSession with a fake engine (without a real
+// audio device); see RecordingSession::setEngineFactory.
 #include "tanara/Types.h"
 #include "tanara/audio/RingBuffer.h"
 
@@ -25,50 +24,48 @@ public:
     AudioEngine(const AudioEngine&)            = delete;
     AudioEngine& operator=(const AudioEngine&) = delete;
 
-    // Megnyit eszközönként egy capture ma_device-t (s16, 48000 Hz, eszközönkénti
-    // csatornaszám). Igaz, ha legalább egy eszköz elindult. Részleges sikerre is
-    // igazat ad: a be nem indult eszközöket kihagyja (count() ennek megfelelő).
-    // Hiba/üres bemenet → false, és tisztán visszaáll (stop()).
+    // Opens one capture ma_device per device (s16, 48000 Hz, per-device channel count). True if at
+    // least one device started. Returns true even for partial success: devices that did not start are
+    // skipped (count() reflects that). Error/empty input -> false, and it resets cleanly (stop()).
     virtual bool start(const QVector<AudioDeviceInfo>& devices);
 
-    // Leállít és felszabadít minden eszközt és puffert.
+    // Stops and frees every device and buffer.
     virtual void stop();
 
-    // Egy TOVÁBBI eszköz megnyitása a már futó motorban (felvétel közbeni sáv-hozzáadás).
-    // Visszaadja az új sáv indexét, hibára -1-et. A meglévő indexek nem változnak. Csak a
-    // motort birtokló szálról hívható (a callbackek és az olvasó szál közben futhatnak).
+    // Opens ONE MORE device in the already running engine (adding a track during recording).
+    // Returns the new track's index, -1 on error. Existing indexes do not change. Callable only from the
+    // thread owning the engine (the callbacks and the reader thread may run meanwhile).
     virtual int addDevice(const AudioDeviceInfo& device);
 
-    // Egy eszköz lezárása menet közben (pl. leválasztották): a capture leáll, de a slot és a
-    // körpuffere megmarad (az index stabil, a maradék adat még kiolvasható).
+    // Closes a device mid-run (e.g. it was unplugged): capture stops, but the slot and its ring buffer
+    // stay (the index is stable, the remaining data can still be read out).
     virtual void closeDevice(int trackIndex);
     virtual bool isOpen(int trackIndex) const;
 
-    // Legfeljebb ennyi eszköz nyitható (a slot-tömb rögzített méretű, hogy az olvasó szál
-    // zár nélkül, biztonságosan érhesse el, miközben új eszköz nyílik).
+    // At most this many devices can be opened (the slot array has a fixed size so the reader thread can
+    // access it safely without a lock while a new device opens).
     static constexpr int kMaxDevices = 64;
 
     virtual int count() const;
 
-    // A trackIndex-edik (elindult) eszköz körpuffere. Érvénytelen indexre egy
-    // belső üres-puffer referenciát ad (sosem null), hogy a hívó ne crasheljen.
+    // Ring buffer of the trackIndex-th (started) device. For an invalid index it returns a reference to
+    // an internal empty buffer (never null), so the caller does not crash.
     virtual RingBuffer& buffer(int trackIndex);
 
-    // Az adott sáv legutóbbi RMS-e (0..~1, s16-ot normalizálva). Érvénytelen
-    // indexre 0.
+    // The given track's latest RMS (0..~1, s16 normalized). 0 for an invalid index.
     virtual float rms(int trackIndex) const;
 
-    // Az adott sáv legutóbbi csúcsértéke (0..~1). Érvénytelen indexre 0.
+    // The given track's latest peak (0..~1). 0 for an invalid index.
     virtual float peak(int trackIndex) const;
 
-    // A legutóbbi hívás óta mért legnagyobb csúcs (0..~1), majd nullázza — a szintmérő
-    // csúcstartásához (a peak() csak az utolsó blokkot látja, a rövid tüskék kimaradnának).
+    // The largest peak measured since the last call (0..~1), then resets it, for the level meter's peak
+    // hold (peak() sees only the last block, short spikes would be missed).
     virtual float takePeak(int trackIndex);
 
-    // Az adott elindult eszköz csatornaszáma (a callback ezzel másol).
+    // Channel count of the given started device (the callback copies with it).
     virtual int channels(int trackIndex) const;
 
-    // Az adott elindult eszközhöz tartozó AudioDeviceInfo (a felvétel-szervezőnek).
+    // The AudioDeviceInfo of the given started device (for the recording organizer).
     virtual AudioDeviceInfo deviceInfo(int trackIndex) const;
 
 private:

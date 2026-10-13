@@ -1,33 +1,31 @@
 #pragma once
 //
-// MeetingProfiles — megbeszélések hasonlósága beágyazó modell nélkül (az „alap” szint).
+// MeetingProfiles: meeting similarity without an embedding model (the "basic" level).
 //
-// Meetingenként egy PROFIL:
-//  - résztvevők: a nevesített beszélők (speakerMap + a saját mikrofon-sáv neve), a könyvtárbeli
-//    ritkaságukkal súlyozva (aki a megbeszélések több mint 60 %-án ott van, ~0 súlyú);
-//  - cím-szavak: meetingnotes::titleWords;
-//  - jellemző kifejezések (≤ 60): az átirat szavai hajtogatva, számok / rövid szavak /
-//    töltelékszavak nélkül, könnyű magyar toldalék-levágással (tagtext::stem), súly =
-//    tf × log(N / df) a könyvtáron. A ritka, egymástól legfeljebb egy betűben eltérő tövek
-//    (félrehallás: „remedi” ~ „remedit”) összevonódnak; a megjelenített alak a leggyakoribb
-//    eredeti írásmód.
+// One PROFILE per meeting:
+//  - participants: the named speakers (speakerMap + the own mic track's name), weighted by their
+//    rarity in the library (someone present in over 60% of meetings has ~0 weight);
+//  - title words: meetingnotes::titleWords;
+//  - characteristic phrases (<= 60): the transcript's words folded, without numbers / short words /
+//    filler words, with light Hungarian suffix stripping (tagtext::stem), weight =
+//    tf * log(N / df) over the library. Rare stems differing by at most one letter (mishearing:
+//    "remedi" ~ "remedit") are merged; the displayed form is the most frequent original spelling.
 //
-// A sorok (meeting.json) betöltése és a kifejezés-számlálás (az átirat beolvasása, szavakra
-// bontása) a „tanara-profiles” háttérszálon fut; a profil a meeting mappájába gyorsítótárazódik
-// (profile.json, az átirat-fájl módosítási ideje + mérete szerint érvényes). A könyvtár-szintű
-// statisztika (df, összevonás, súlyok) lustán, megváltoztathatatlan pillanatképként áll össze
-// a kész profilokból — az építés végén a háttérszálon előre is.
+// Loading the rows (meeting.json) and counting phrases (reading the transcript, splitting into
+// words) run on the "tanara-profiles" background thread; the profile is cached in the meeting's
+// folder (profile.json, valid by the transcript file's mtime + size). The library-level
+// statistics (df, merging, weights) assemble lazily as an immutable snapshot from the finished
+// profiles, and also ahead of time on the background thread at the end of a build.
 //
-// Szálbiztonság: az olvasó metódusok (similar, similarToDraft, termsOf, topTerms, sharedTerms,
-// participantWeight, folders, isBuilt) bármelyik szálról hívhatók; az ensureBuilt /
-// invalidate / isIdle a tulajdonos (fő) szálé. Az első ensureBuilt után (háttér-mód; az
-// alkalmazás indításkor hívja) a fő szál sosem tölt be sorokat és sosem számol statisztikát:
-// elavult állapotnál a korábbi pillanatképet kapja, a háttérszál pedig frissít. Előtte (csak
-// szinkron használat: tesztek, egyszerű eszközök) az első olvasás a fő szálon tölt és számol.
+// Thread safety: the reader methods (similar, similarToDraft, termsOf, topTerms, sharedTerms,
+// participantWeight, folders, isBuilt) may be called from any thread; ensureBuilt /
+// invalidate / isIdle belong to the owner (main) thread. After the first ensureBuilt (background
+// mode; the app calls it at startup) the main thread never loads rows and never computes
+// statistics: for stale state it gets the earlier snapshot while the background thread refreshes.
+// Before that (synchronous use only: tests, simple tools) the first read loads and computes on the main thread.
 //
-// Hasonlóság: 0.45 · résztvevők (súlyozott Jaccard) + 0.40 · kifejezések (koszinusz) +
-// 0.15 · cím (meetingnotes::titleSimilarity).
-//
+// Similarity: 0.45 * participants (weighted Jaccard) + 0.40 * phrases (cosine) +
+// 0.15 * title (meetingnotes::titleSimilarity).
 #include "tanara/tags/TagTypes.h"
 
 #include <QHash>
@@ -44,14 +42,14 @@ class MeetingStore;
 
 namespace tagtext {
 
-// Hajtogatott (ékezet nélküli, kisbetűs) szó töve: a leghosszabb illeszkedő toldalék levágva,
-// egyszer, csak ha a tő legalább 4 betű marad.
+// Stem of a folded (accent-free, lowercase) word: the longest matching suffix removed, once, only
+// if at least 4 letters remain.
 QString stem(const QString& foldedWord);
 
-// Töltelék- / kötőszó-e (hajtogatott alakban; magyar és angol).
+// Whether it is a filler / conjunction word (in folded form; Hungarian and English).
 bool isStopWord(const QString& foldedWord);
 
-// Egy szöveg kifejezés-jelöltjei: (tő, eredeti szóalak) párok, a szöveg sorrendjében.
+// Phrase candidates of a text: (stem, original word form) pairs, in text order.
 QVector<QPair<QString, QString>> terms(const QString& text);
 
 } // namespace tagtext
@@ -62,29 +60,29 @@ public:
     explicit MeetingProfiles(MeetingStore* store, QObject* parent = nullptr);
     ~MeetingProfiles() override;
 
-    // A sorok betöltése és a hiányzó / elavult profilok építése a háttérszálon (nem blokkol;
-    // a fő szálon csak az index-lekérdezés fut). profileReady jelek, a kör végén idle() —
-    // akkor is, ha nem volt teendő. A még el nem kezdett kör nem duplázódik.
+    // Loading the rows and building missing / stale profiles on the background thread (non-blocking;
+    // only the index query runs on the main thread). profileReady signals, idle() at the end of a
+    // round, even if there was nothing to do. A round not yet started is not duplicated.
     void ensureBuilt();
     bool isIdle() const;
     bool isBuilt(const QString& meetingId) const;
-    // Egy meeting profiljának eldobása (pl. új átirat); a következő ensureBuilt újraépíti.
+    // Drops one meeting's profile (e.g. a new transcript); the next ensureBuilt rebuilds it.
     void invalidate(const QString& meetingId);
 
-    // A legjobban hasonlító MÁSIK megbeszélések, csökkenő pontszám szerint (0 pontszám kimarad).
+    // The most similar OTHER meetings, by descending score (a zero score is dropped).
     QVector<SimilarHit> similar(const QString& meetingId, int limit = 8) const;
-    // Még nem létező megbeszéléshez (import / felvétel előtt): cím + résztvevők alapján.
+    // For a not-yet-existing meeting (import / before recording): by title + participants.
     QVector<SimilarHit> similarToDraft(const QString& title, const QStringList& participants,
                                        const QString& excludeId = QString(), int limit = 8) const;
 
-    // Megjelenítéshez: a meeting jellemző kifejezései, ill. több meeting közös jellemzői.
+    // For display: the meeting's characteristic phrases, or the shared ones of several meetings.
     QStringList termsOf(const QString& meetingId, int limit = 12) const;
     QStringList topTerms(const QStringList& meetingIds, int limit = 12) const;
-    // Két meeting közös jellemző kifejezései (a súlyok szorzata szerint).
+    // The shared characteristic phrases of two meetings (by the product of the weights).
     QStringList sharedTerms(const QString& a, const QString& b, int limit = 3) const;
-    // A meeting résztvevőinek ritkasági súlya (0..1) — teszthez / indokláshoz.
+    // Rarity weight (0..1) of the meeting's participants, for tests / explanation.
     double participantWeight(const QString& name) const;
-    // Az ismert meetingek mappái (id → mappa) — háttérszálról az index nélkül (EmbeddingIndex).
+    // Folders of the known meetings (id -> folder), from a background thread without the index (EmbeddingIndex).
     QHash<QString, QString> folders() const;
 
 signals:

@@ -17,7 +17,7 @@ namespace tanara {
 
 namespace {
 
-// A hálózati réteg hibája → kód + mondat. local: helyi végpontnál a tanács más (fut-e a szerver).
+// A network-layer error -> code + sentence. local: for a local endpoint the advice differs (is the server running).
 void describeNetworkError(QNetworkReply::NetworkError err, bool local, ConnectionTestResult* r)
 {
     r->status = ConnectionTestResult::Status::Unreachable;
@@ -67,8 +67,8 @@ void describeNetworkError(QNetworkReply::NetworkError err, bool local, Connectio
     }
 }
 
-// {"data":[{"id":…}]} (OpenAI-alak) vagy {"models":[{"id":…}]} (Soniox-alak). *ok: a válasz
-// értelmezhető modell-lista volt-e.
+// {"data":[{"id":...}]} (OpenAI shape) or {"models":[{"id":...}]} (Soniox shape). *ok: whether the
+// response was a parseable model list.
 QStringList parseModels(const QByteArray& body, bool* ok)
 {
     *ok = false;
@@ -238,7 +238,7 @@ void ConnectionTester::onFinished(int id, QNetworkReply* reply, qint64 startedMs
                                   const ProviderDescriptor& d, const ProviderConfig& cfg)
 {
     reply->deleteLater();
-    if (!m_replies.contains(id)) return;   // eldobták (cancel)
+    if (!m_replies.contains(id)) return;   // dropped (cancel)
     m_replies.remove(id);
 
     const bool local = isLocalEndpoint(cfg.baseUrl);
@@ -264,8 +264,8 @@ void ConnectionTester::onFinished(int id, QNetworkReply* reply, qint64 startedMs
     } else {
         describeNetworkError(reply->error(), local, &r);
     }
-    // Saját kulcsos LLM: a natív szerver-API (LM Studio) — betöltött kontextus, párhuzamosság.
-    // Csak olvas (GET); ha nincs ilyen API, az eredmény változatlan.
+    // An LLM with your own key: the native server API (LM Studio): loaded context, parallelism.
+    // Read-only (GET); if there is no such API, the result is unchanged.
     if (r.ok() && d.kind == ProviderKind::Llm && d.authMode != AuthMode::Login) {
         auto* probe = new LlmServerProbe(this);
         probe->setTimeoutMs(qMin(m_timeoutMs, 3000));

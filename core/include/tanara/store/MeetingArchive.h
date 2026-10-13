@@ -1,25 +1,24 @@
 #pragma once
 //
-// Tanara — megbeszélés-archívum (export / import egyetlen fájlban).
+// Meeting archive (export / import in a single file).
 //
-// Formátum: sima ZIP (titkosítás nélkül), alapnév „<mappanév>.tanara.zip”. Tartalma:
-//   tanara-archive.json          — manifeszt (lásd ArchiveManifest; "version": 1)
-//   <mappanév>/…                 — a megbeszélés mappájának fájljai, változatlan névvel
-// A mappanév pontosan a felvételek mappája alatti név (yyyy-MM-dd_HHmm_…), így a másik
-// gépen ugyanazzal a névvel jön létre. Kimarad: recording.lock, *.tmp, transcript-backup-*
-// mappák (nagyok, nem kellenek), *.embeddings.bin és profile.json (levezetett adat, magától
-// újraépül). Benne marad: hang, meeting.json (benne a címke-azonosítók), mixdown, átirat,
-// beszélő-javítások, összefoglaló, hullámforma-cache, processing.json.
+// Format: a plain ZIP (no encryption), base name "<folder name>.tanara.zip". Contents:
+//   tanara-archive.json          - manifest (see ArchiveManifest; "version": 1)
+//   <folder name>/...            - the files of the meeting's folder, names unchanged
+// The folder name is exactly the name under the recordings folder (yyyy-MM-dd_HHmm_...), so it is
+// created with the same name on the other machine. Left out: recording.lock, *.tmp, transcript-backup-*
+// folders (large, not needed), *.embeddings.bin and profile.json (derived data, rebuilt by itself).
+// Kept: audio, meeting.json (including the tag ids), mixdown, transcript, speaker corrections,
+// summary, waveform cache, processing.json.
 //
-// A címkekészlet gépenként külön él (<metadataDir>/tags.json), ezért a manifeszt a
-// megbeszélés címkéinek NEVÉT is viszi; a behúzást végző réteg (AppController) ezekből
-// oldja fel / hozza létre a helyi címkéket.
+// The tag set lives per machine (<metadataDir>/tags.json), so the manifest also carries the
+// NAMES of the meeting's tags; the layer doing the import (AppController) resolves / creates the
+// local tags from them.
 //
-// Az import csak kicsomagol + ellenőriz; a felvételek közé a MeetingStore::adoptMeetingFolder
-// teszi (a .import-* ideiglenes mappából áthelyezve, majd azt eltakarítva).
+// The import only unpacks + validates; MeetingStore::adoptMeetingFolder puts it among the recordings
+// (moved from the temporary .import-* folder, which is then cleaned up).
 //
-// UI-független, szálbiztos (nincs QObject, nincs megosztott állapot) → munkaszálon futtatható.
-//
+// UI-independent, thread-safe (no QObject, no shared state), so it can run on a worker thread.
 #include "tanara/Types.h"
 #include "tanara/tags/TagTypes.h"
 
@@ -34,14 +33,14 @@ namespace tanara {
 
 struct ArchiveManifest {
     int       version = 0;
-    QString   app;            // az exportáló Tanara verziója
+    QString   app;            // version of the exporting Tanara
     QDateTime exportedAt;
     QString   meetingId;
     QString   title;
     QDateTime startedAt;
     qint64    durationMs = 0;
     int       trackCount = 0;
-    QVector<Tag> tags;        // a megbeszélés címkéi (azonosító + név), a felrakás sorrendjében
+    QVector<Tag> tags;        // the meeting's tags (id + name), in the order applied
 };
 
 class MeetingArchive {
@@ -51,27 +50,26 @@ public:
 
     static QString manifestFileName() { return QStringLiteral("tanara-archive.json"); }
     static QString fileSuffix() { return QStringLiteral(".tanara.zip"); }
-    // Javasolt fájlnév: „<mappanév>.tanara.zip”.
+    // Suggested file name: "<folder name>.tanara.zip".
     static QString suggestedFileName(const Meeting& m);
-    // Kimarad-e az archívumból a mappán belüli (perjeles) relatív út.
+    // Whether the relative (slash-separated) path inside the folder is left out of the archive.
     static bool isExcluded(const QString& relativePath);
 
-    // A megbeszélés mappájának becsomagolása zipPath-ba (előbb „.part” fájlba, a végén
-    // átnevezve; a meglévő célfájlt felülírja). tags: a megbeszélés címkéi a manifeszthez.
-    // cancel: ha igazra vált, a félkész fájl törlődik és false + „Megszakítva.” jön vissza.
+    // Packs the meeting's folder into zipPath (first into a ".part" file, renamed at the end;
+    // overwrites an existing target). tags: the meeting's tags for the manifest.
+    // cancel: if it turns true, the half-written file is deleted and false + "Cancelled." is returned.
     static bool exportMeeting(const Meeting& m, const QString& zipPath, QString* error,
                               Progress progress = {}, const QVector<Tag>& tags = {},
                               const std::atomic<bool>* cancel = nullptr);
 
-    // Kicsomagolás tempRoot/.import-<uuid>/ alá (tempRoot = a felvételek mappája, hogy a
-    // behúzás átnevezéssel menjen). Ellenőrzi: manifeszt van, version == 1, pontosan egy
-    // felső szintű mappa, abban meeting.json vagy track_*.ogg, nincs abszolút / „..” út,
-    // nincs titkosított bejegyzés. Visszaadja a kicsomagolt megbeszélés-mappa útját; hibánál
-    // üres + *error, és az ideiglenes mappa törlődik.
+    // Unpacks under tempRoot/.import-<uuid>/ (tempRoot = the recordings folder, so adoption works by
+    // rename). Checks: a manifest exists, version == 1, exactly one top-level folder, in it
+    // meeting.json or track_*.ogg, no absolute / ".." path, no encrypted entry. Returns the path of the
+    // unpacked meeting folder; on error empty + *error, and the temporary folder is deleted.
     static QString importArchive(const QString& zipPath, const QString& tempRoot, QString* error,
                                  Progress progress = {}, ArchiveManifest* manifest = nullptr);
 
-    // Az ideiglenes kicsomagoló mappák előtagja (a felvételek mappája alatt rejtett mappa).
+    // Prefix of the temporary unpack folders (a hidden folder under the recordings folder).
     static QString tempDirPrefix() { return QStringLiteral(".import-"); }
 };
 

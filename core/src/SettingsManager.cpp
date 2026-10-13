@@ -27,7 +27,7 @@ namespace tanara {
 
 namespace {
 
-// A metaadat-mappa alapértelmezése és a TANARA_HOME felülírás EGY helyen: tanara/Paths.h.
+// The default of the metadata folder and the TANARA_HOME override in ONE place: tanara/Paths.h.
 QString defaultMetadataDir() { return paths::defaultMetadataDir(); }
 QString expandHome(const QString& path) { return paths::expandHome(path); }
 
@@ -41,9 +41,9 @@ SettingsManager::SettingsManager(const QString& metadataDir, QObject* parent)
 }
 
 namespace {
-// A saját mikrofon-sáv alapértelmezett neve: az operációs rendszer fiókjának megjelenített
-// neve (Windows: NameDisplay; POSIX: a gecos első mezője), különben a bejelentkezési név
-// nagy kezdőbetűvel. A felhasználó az első indításkor és a Beállításokban bármikor átírja.
+// Default name of the own microphone track: the OS account's display name (Windows: NameDisplay;
+// POSIX: the first field of gecos), otherwise the login name capitalized. The user can change it at
+// first start and in Settings any time.
 QString defaultUserSpeakerName()
 {
     QString name;
@@ -65,7 +65,7 @@ QString defaultUserSpeakerName()
     name = name.trimmed();
     if (name.isEmpty())
         return QStringLiteral("Én");
-    // Bejelentkezési név (csupa kisbetű): nagy kezdőbetű, hogy névnek nézzen ki.
+    // Login name (all lowercase): capitalized so it looks like a name.
     if (name == name.toLower())
         name[0] = name.at(0).toUpper();
     return name;
@@ -77,13 +77,13 @@ AppSettings SettingsManager::defaults(const QString& metadataDir)
     const QString meta = metadataDir.isEmpty() ? defaultMetadataDir() : metadataDir;
 
     AppSettings s;
-    s.audioDir        = paths::defaultAudioDir();   // TANARA_HOME mellett a sandboxba
+    s.audioDir        = paths::defaultAudioDir();   // with TANARA_HOME into the sandbox
     s.notesDir        = paths::defaultNotesDir();
     s.metadataDir     = meta;
     s.userSpeakerName = defaultUserSpeakerName();
     s.languageHints   = QStringList{QStringLiteral("hu")};
 
-    // STT: kiválasztott provider = "soniox", a hozzá tartozó configgal.
+    // STT: selected provider = "soniox", with its config.
     s.sttProviderId = QStringLiteral("soniox");
     {
         ProviderConfig stt;
@@ -93,19 +93,19 @@ AppSettings SettingsManager::defaults(const QString& metadataDir)
         s.sttConfigs.insert(s.sttProviderId, stt);
     }
 
-    // LLM: kiválasztott provider = "openai-compat" (helyi LM Studio), gemma-default.
+    // LLM: selected provider = "openai-compat" (a local LM Studio), the gemma default.
     s.llmProviderId = QStringLiteral("openai-compat");
     {
         ProviderConfig llm;
         llm.type        = QStringLiteral("openai-compat");
         llm.baseUrl     = QStringLiteral("http://localhost:1234/v1");
-        llm.model       = QStringLiteral("google/gemma-4-12b"); // #27: gemma-default MARAD
+        llm.model       = QStringLiteral("google/gemma-4-12b"); // the gemma default STAYS
         llm.temperature = 0.2;
         llm.maxTokens   = 8000;
         s.llmConfigs.insert(s.llmProviderId, llm);
     }
 
-    // Beágyazás: alapból nincs (alap szint); a helyi végpont előre kitöltve, ha bekapcsolják.
+    // Embedding: none by default (basic level); the local endpoint is prefilled if they turn it on.
     s.embeddingProviderId.clear();
     {
         ProviderConfig emb;
@@ -139,22 +139,22 @@ void SettingsManager::load()
     const QString path = settingsFilePath();
     QFile f(path);
 
-    // Első indítás: a folyamat ELSŐ SettingsManager-e hozza létre a fájlt (a fordító-telepítés
-    // már az AppController előtt betölt) → a jelzés folyamatszintű.
+    // First run: the process's FIRST SettingsManager creates the file (translator installation already
+    // loads before AppController), so the flag is process-wide.
     static bool s_createdInThisProcess = false;
     if (!f.exists()) s_createdInThisProcess = true;
     m_firstRun = s_createdInThisProcess;
 
     m_loadFailed = false;
     if (!f.exists()) {
-        // Nincs még config → defaultok + lemezre írás.
+        // No config yet: defaults + write to disk.
         m_settings = defaults(m_metadataDir);
         devicenames::setOverrides(m_settings.deviceNames);
         save();
         return;
     }
     if (!f.open(QIODevice::ReadOnly)) {
-        // VAN fájl, de nem nyitható: defaultok a memóriában, a fájlhoz NEM nyúlunk.
+        // A file EXISTS but cannot be opened: defaults in memory, we do NOT touch the file.
         qCWarning(lcApp).noquote() << "settings.json nem olvasható — alapértelmezések a memóriában,"
                                       " a fájl érintetlen:" << path << f.errorString();
         m_settings = defaults(m_metadataDir);
@@ -169,9 +169,9 @@ void SettingsManager::load()
     QJsonParseError err{};
     const QJsonDocument doc = QJsonDocument::fromJson(data, &err);
     if (err.error != QJsonParseError::NoError || !doc.isObject()) {
-        // Sérült / félkész fájl (pl. egy másik folyamat régi buildje épp írta): defaultok a
-        // memóriában, de a fájlt NEM írjuk felül csendben — a felhasználó beállításai abban
-        // vannak. Csak egy későbbi, kifejezett mentés teszi félre (lásd save()).
+        // A corrupt / half-written file (e.g. an old build of another process was just writing it): defaults
+        // in memory, but we do NOT silently overwrite the file, since the user's settings are in it. Only a later,
+        // explicit save sets it aside (see save()).
         qCWarning(lcApp).noquote() << "settings.json nem értelmezhető (" << err.errorString()
                                    << ") — alapértelmezések a memóriában, a fájl érintetlen:" << path;
         m_settings = defaults(m_metadataDir);
@@ -179,43 +179,42 @@ void SettingsManager::load()
         return;
     }
 
-    // A teljes AppSettings-et (MINDEN skalár + a provider-réteg régi→új shape
-    // migrációja) EGY helyen, az appSettingsFromJson olvassa be — így új mező
-    // hozzáadásakor nem kell két helyen átvezetni (a JSON-szerializáció és ez a
-    // betöltő nem csúszhat szét). Utána csak a defaultokkal pótoljuk a hiányt.
+    // The whole AppSettings (EVERY scalar + the provider layer's old -> new shape migration) is read in ONE
+    // place, appSettingsFromJson, so when a field is added it need not be wired in two places (the JSON
+    // serialization and this loader cannot drift apart). Afterwards we only fill the gaps with defaults.
     const QJsonObject obj = doc.object();
     const AppSettings def = defaults(m_metadataDir);
     AppSettings loaded = appSettingsFromJson(obj);
 
-    // Üres kötelező mappa-/név-mezők → sensible default (az appSettingsFromJson nem
-    // tölt defaultot; az üres string valódi „nincs megadva", nem „töröld").
+    // Empty required folder/name fields -> a sensible default (appSettingsFromJson does not fill defaults;
+    // an empty string really means "not given", not "delete").
     if (loaded.audioDir.isEmpty())        loaded.audioDir = def.audioDir;
     if (loaded.notesDir.isEmpty())        loaded.notesDir = def.notesDir;
     if (loaded.metadataDir.isEmpty())     loaded.metadataDir = def.metadataDir;
-    // TANARA_HOME: a settings.json-beli metadataDir NEM térítheti vissza az appot a valódi
-    // ~/.tanara-ba (pl. egy átmásolt minta-settings) — a futó érték mindig a felülírás.
+    // TANARA_HOME: the metadataDir in settings.json must NOT send the app back to the real ~/.tanara (e.g.
+    // a copied sample settings file); the running value is always the override.
     if (!paths::homeOverride().isEmpty()) loaded.metadataDir = paths::homeOverride();
     if (loaded.userSpeakerName.isEmpty()) loaded.userSpeakerName = def.userSpeakerName;
-    // languageHints: az ÜRES lista érvényes érték („Automatikus” nyelv, K-04) — csak a
-    // hiányzó kulcs kap defaultot (azt az appSettingsFromJson már megadta).
+    // languageHints: the EMPTY list is a valid value ("Automatic" language); only a missing key gets the
+    // default (appSettingsFromJson already supplied that).
 
-    // A provider-réteg már be van töltve+migrálva; csak a hiányokat pótoljuk.
+    // The provider layer is already loaded + migrated; we only fill the gaps.
     applyProviderDefaults(loaded, def);
 
     m_settings = loaded;
-    devicenames::setOverrides(m_settings.deviceNames);   // az eszköznevek egyetlen feloldója
+    devicenames::setOverrides(m_settings.deviceNames);   // the single resolver of device names
     ensureDirs();
 }
 
 void SettingsManager::applyProviderDefaults(AppSettings& loaded, const AppSettings& def)
 {
     // ---- STT safety net ---------------------------------------------------
-    // Defaultokkal merge: ne legyen üres provider-lista / kiválasztott id.
+    // Merge with the defaults: there must be no empty provider list / selected id.
     if (loaded.sttConfigs.isEmpty())
         loaded.sttConfigs = def.sttConfigs;
     if (loaded.sttProviderId.isEmpty())
         loaded.sttProviderId = def.sttProviderId;
-    // A kiválasztott id-hez tartozzon config (különben essünk vissza defaultra).
+    // The selected id must have a config (otherwise fall back to the default).
     if (!loaded.sttConfigs.contains(loaded.sttProviderId)) {
         if (def.sttConfigs.contains(loaded.sttProviderId))
             loaded.sttConfigs.insert(loaded.sttProviderId, def.sttConfigs.value(loaded.sttProviderId));
@@ -235,7 +234,7 @@ void SettingsManager::applyProviderDefaults(AppSettings& loaded, const AppSettin
             loaded.llmProviderId = loaded.llmConfigs.firstKey();
     }
 
-    // ---- Beágyazás: a hiányzó előre kitöltött configok pótlása (az üres id = nincs) ----
+    // ---- Embedding: filling in missing prefilled configs (an empty id = none) ----
     for (auto it = def.embeddingConfigs.constBegin(); it != def.embeddingConfigs.constEnd(); ++it)
         if (!loaded.embeddingConfigs.contains(it.key()))
             loaded.embeddingConfigs.insert(it.key(), it.value());
@@ -249,8 +248,8 @@ void SettingsManager::save() const
     QFileInfo fi(path);
     QDir().mkpath(fi.absolutePath());
 
-    // A betöltéskor olvashatatlan fájlt mentés ELŐTT félretesszük (nem semmisítjük meg):
-    // kézzel még kimenthető belőle, amit a felhasználó beállított.
+    // A file unreadable at load is set aside BEFORE saving (not destroyed): what the user configured can
+    // still be rescued from it by hand.
     if (m_loadFailed && QFile::exists(path)) {
         const QString aside = path + QStringLiteral(".corrupt-")
             + QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd-HHmmss"));
@@ -263,9 +262,8 @@ void SettingsManager::save() const
     }
     m_loadFailed = false;
 
-    // Atomikus írás (ideiglenes fájl + átnevezés): több folyamat (elemző, felvevő, figyelő)
-    // olvassa ugyanezt a fájlt — egyik se lásson csonka tartalmat, és megszakadt írás után
-    // a korábbi fájl maradjon meg.
+    // Atomic write (temporary file + rename): several processes (analyzer, recorder, watcher) read this
+    // same file, and none may see truncated content; after an interrupted write the earlier file stays.
     const QByteArray data = QJsonDocument(toJson(m_settings)).toJson(QJsonDocument::Indented);
     QSaveFile f(path);
     if (!f.open(QIODevice::WriteOnly) || f.write(data) != data.size() || !f.commit())

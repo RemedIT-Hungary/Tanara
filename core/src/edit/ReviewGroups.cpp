@@ -21,7 +21,7 @@ bool decided(Side s) { return s == Side::Local || s == Side::Remote; }
 
 QString percent(double v) { return QStringLiteral("%1%").arg(qRound(std::clamp(v, 0.0, 1.0) * 100.0)); }
 
-// Soronkénti nézet az elemzéshez.
+// Per-line view for the analysis.
 struct Row {
     int index = 0;
     QString id;
@@ -29,7 +29,7 @@ struct Row {
     qint64 durationMs = 0;
     bool locked = false;
     bool noisy = false;
-    bool ignored = false;       // „nem azonosítható”: nincs hangja az elemzésben, nem kerül csoportba
+    bool ignored = false;       // "unidentifiable": it has no voice in the analysis, does not go into a group
     Side side = Side::Unknown;
     const QVector<float>* emb = nullptr;
     bool clean() const { return emb && !noisy; }
@@ -64,7 +64,7 @@ void addTo(QVector<double>& sum, const QVector<float>& v)
     for (int i = 0; i < v.size(); ++i) sum[i] += double(v[i]);
 }
 
-// A sorok többsége szerinti oldal (Local / Remote), ha egyértelmű.
+// Side by the majority of the lines (Local / Remote), if unambiguous.
 Side majoritySide(int local, int remote)
 {
     const int lr = local + remote;
@@ -119,7 +119,7 @@ Evidence makeEvidence(EvidenceKind k, Polarity p, double v, const QString& text,
     return e;
 }
 
-// „új távoli beszélő” / „új helyi beszélő” (a SideConflict új-beszélő javaslata).
+// "new remote speaker" / "new local speaker" (SideConflict's new-speaker suggestion).
 QString newSpeakerLabel(Side s)
 {
     return s == Side::Remote ? QCoreApplication::translate("ReviewGroups", "új távoli beszélő")
@@ -147,7 +147,7 @@ QString reviewKindName(ReviewKind k)
     return QStringLiteral("shortLines");
 }
 
-// ---- 2-közép ------------------------------------------------------------------
+// ---- 2-means ------------------------------------------------------------------
 
 namespace review {
 
@@ -155,7 +155,7 @@ QVector<int> twoMeans(const QVector<QVector<float>>& v, int iterations)
 {
     const int n = int(v.size());
     if (n < 2) return {};
-    // Kezdés: a legkevésbé hasonló pár.
+    // Start: the least similar pair.
     int a = 0, b = 1;
     double worst = 2.0;
     for (int i = 0; i < n; ++i)
@@ -214,7 +214,7 @@ CoreSplit splitConfirmedCore(const ReviewInput& in, const SideReport& sides, con
 
 } // namespace review
 
-// ---- kontextus ------------------------------------------------------------------
+// ---- context ------------------------------------------------------------------
 
 RankContext buildRankContext(const ReviewInput& in, const SideReport& sides)
 {
@@ -223,10 +223,10 @@ RankContext buildRankContext(const ReviewInput& in, const SideReport& sides)
     ctx.vetoActive = sides::allNamedSpeakersBound(in.meeting, sides, in.overlay, in.sideHints);
     ctx.meetingTags = in.meeting.tagIds;
 
-    // A kézi sáv-beosztás személyenként (azonos nevű beszélők sávjai együtt) — a kizárás 3. feltétele.
+    // The manual track assignment per person (tracks of same-named speakers together): the 3rd condition of the veto.
     const QHash<QString, QStringList>& manual = in.sideHints.speakerTracks.isEmpty() ? in.overlay.speakerTracks
                                                                                      : in.sideHints.speakerTracks;
-    QHash<QString, QStringList> personTracks;   // case-folded név → sávok
+    QHash<QString, QStringList> personTracks;   // case-folded name -> tracks
     for (const PersonSide& ps : sides.persons)
         if (!ps.personName.isEmpty()) personTracks[ps.personName.toCaseFolded()] += ps.manualTracks;
     for (const OverlayParticipant& op : in.overlay.participants)
@@ -236,7 +236,7 @@ RankContext buildRankContext(const ReviewInput& in, const SideReport& sides)
                                                                 : personTracks.value(person.toCaseFolded()));
     };
 
-    QHash<QString, QVector<QVector<float>>> prints;   // case-folded név → lenyomatok
+    QHash<QString, QVector<QVector<float>>> prints;   // case-folded name -> voiceprints
     QHash<QString, QString> printNames;
     for (auto it = in.personPrints.cbegin(); it != in.personPrints.cend(); ++it) {
         prints[it.key().toCaseFolded()] += it.value();
@@ -261,7 +261,7 @@ RankContext buildRankContext(const ReviewInput& in, const SideReport& sides)
         ctx.index.insert(p.key, int(ctx.speakers.size()));
         ctx.speakers.append(p);
     }
-    // Sor nélküli, kézzel felvett résztvevők.
+    // Manually added participants without lines.
     for (const OverlayParticipant& op : in.overlay.participants) {
         if (ctx.index.contains(op.key)) continue;
         SpeakerProfile p;
@@ -272,7 +272,7 @@ RankContext buildRankContext(const ReviewInput& in, const SideReport& sides)
                                      : in.sideHints.learnedSides.value(op.person.toCaseFolded(), Side::Unknown);
         p.sideBasis = decided(p.side) ? QStringLiteral("learned") : QStringLiteral("none");
         p.manualSide = manualSideOf(p.key, p.personName);
-        if (sides.active && p.manualSide != Side::Unknown) {   // sor nélkül is: a kézi beosztás az igazság
+        if (sides.active && p.manualSide != Side::Unknown) {   // even without lines: the manual assignment is the truth
             p.side = p.manualSide;
             p.sideBasis = QStringLiteral("manual");
         }
@@ -282,11 +282,11 @@ RankContext buildRankContext(const ReviewInput& in, const SideReport& sides)
         ctx.speakers.append(p);
     }
 
-    // Sor-összegek és megerősített magok.
+    // Line sums and confirmed cores.
     QHash<QString, QVector<double>> coreSum;
     QHash<QString, int> coreCount;
     for (const Row& r : rowsOf(in, sides)) {
-        if (r.ignored) continue;    // „nem azonosítható”: se sorszám, se hang a profilban
+        if (r.ignored) continue;    // "unidentifiable": neither a line count nor voice in the profile
         const auto it = ctx.index.constFind(r.key);
         if (it == ctx.index.constEnd()) continue;
         SpeakerProfile& p = ctx.speakers[it.value()];
@@ -307,7 +307,7 @@ RankContext buildRankContext(const ReviewInput& in, const SideReport& sides)
         }
     }
 
-    // A meetingen kívüli, lenyomattal bíró személyek.
+    // People outside the meeting who have a voiceprint.
     QSet<QString> inMeeting;
     for (const SpeakerProfile& p : std::as_const(ctx.speakers))
         if (!p.personName.isEmpty()) inMeeting.insert(p.personName.toCaseFolded());
@@ -328,7 +328,7 @@ RankContext buildRankContext(const ReviewInput& in, const SideReport& sides)
     return ctx;
 }
 
-// ---- csoportok ------------------------------------------------------------------
+// ---- groups ------------------------------------------------------------------
 
 QVector<ReviewGroup> buildReviewGroups(const ReviewInput& in, const SideReport& sides, const RankContext& ctx)
 {
@@ -336,13 +336,13 @@ QVector<ReviewGroup> buildReviewGroups(const ReviewInput& in, const SideReport& 
     QHash<QString, int> rowOf;
     for (int i = 0; i < rows.size(); ++i) rowOf.insert(rows[i].id, i);
     QVector<bool> used(rows.size(), false);
-    // A „nem azonosítható” sorok egyik csoportfajtába sem kerülnek.
+    // "Unidentifiable" lines go into none of the group kinds.
     for (int i = 0; i < rows.size(); ++i) used[i] = rows[i].ignored;
 
     QVector<ReviewGroup> out;
-    // Csoport-gyűjtő: id → index az out-ban.
+    // Group collector: id -> index in out.
     QHash<QString, int> byId;
-    QHash<QString, QVector<double>> voiceSums;   // id → a javasolt hang-pontszámai
+    QHash<QString, QVector<double>> voiceSums;   // id -> the proposed voice's scores
     auto groupFor = [&](ReviewKind kind, const QString& current, const QString& pKey, const QString& pPerson,
                         Side newSide = Side::Unknown) -> ReviewGroup& {
         const QString id = groupId(kind, current, pKey, pPerson, newSide);
@@ -362,7 +362,7 @@ QVector<ReviewGroup> buildReviewGroups(const ReviewInput& in, const SideReport& 
         return out[it.value()];
     };
 
-    // 1. Sáv-ellentmondás.
+    // 1. Track contradiction.
     if (sides.active) {
         for (const SideConflict& c : sides.conflicts) {
             const int ri = rowOf.value(c.utteranceId, -1);
@@ -370,8 +370,8 @@ QVector<ReviewGroup> buildReviewGroups(const ReviewInput& in, const SideReport& 
             const Row& r = rows[ri];
             QString pKey, pPerson;
             double voice = qQNaN();
-            // Hang-beágyazás nélkül (rövid sor) nincs automatikus javaslat: a sáv csak azt mondja
-            // meg, melyik OLDAL, azt nem, hogy ki — ezeket egyenként kell eldönteni.
+            // Without a voice embedding (a short line) there is no automatic suggestion: the track only says which
+            // SIDE, not who; these must be decided one by one.
             const QVector<Candidate> cands = r.emb
                 ? ranking::rankForLine(ctx, *r.emb, c.lineSide, r.key, r.clean())
                 : QVector<Candidate>();
@@ -388,8 +388,8 @@ QVector<ReviewGroup> buildReviewGroups(const ReviewInput& in, const SideReport& 
                 }
                 break;
             }
-            // A kézi sáv-beosztás kizárja a mostani beszélőt (G10), és a sor oldalán nincs ismert
-            // jelölt → javaslat: új beszélő azon az oldalon (nem mozgat magától).
+            // The manual track assignment excludes the current speaker and there is no known candidate on the line's
+            // side -> suggestion: a new speaker on that side (it moves nothing by itself).
             Side newSide = Side::Unknown;
             const SpeakerProfile* curP = ctx.profile(r.key);
             if (r.emb && pKey.isEmpty() && pPerson.isEmpty() && curP
@@ -439,7 +439,7 @@ QVector<ReviewGroup> buildReviewGroups(const ReviewInput& in, const SideReport& 
         }
     }
 
-    // 2. Hasonló sorok az új személyhez.
+    // 2. Similar lines to the new person.
     if (!in.newPersonKey.isEmpty()) {
         if (const SpeakerProfile* np = ctx.profile(in.newPersonKey)) {
             const QVector<float> ref = np->core.isEmpty() ? ranking::normalized(np->sum) : np->core;
@@ -482,7 +482,7 @@ QVector<ReviewGroup> buildReviewGroups(const ReviewInput& in, const SideReport& 
                         g.evidence << makeEvidence(EvidenceKind::Side, Polarity::Support, 1.0,
                                                    newSide == Side::Remote ? QCoreApplication::translate("ReviewGroups", "mind a hívás hangján") : QCoreApplication::translate("ReviewGroups", "mind a mikrofonon"),
                                                    QString(), QStringLiteral("tracks"));
-                    // A leggyakoribb forrás a „jelenlegi".
+                    // The most frequent source is the "current" one.
                     int best = 0;
                     for (auto it = fromKeys.cbegin(); it != fromKeys.cend(); ++it)
                         if (it.value() > best) { best = it.value(); g.currentSpeakerKey = it.key(); }
@@ -493,12 +493,12 @@ QVector<ReviewGroup> buildReviewGroups(const ReviewInput& in, const SideReport& 
         }
     }
 
-    // 3. Szennyezett mag (zárolt sorok: más csoporttal nem fed át).
+    // 3. Contaminated core (locked lines: they do not overlap other groups).
     for (const SpeakerProfile& p : ctx.speakers) {
         if (p.key.isEmpty() || p.confirmedLines < review::kContamMinLines) continue;
         const review::CoreSplit split = review::splitConfirmedCore(in, sides, p.key);
         if (!split.contaminated) continue;
-        // Javaslat: a kisebb fél centroidjához legjobban illő más beszélő / személy, ha elég jól illik.
+        // Suggestion: the other speaker / person best fitting the smaller half's centroid, if it fits well enough.
         int local = 0, remote = 0;
         for (const QString& id : split.minority) {
             const int ri = rowOf.value(id, -1);
@@ -535,7 +535,7 @@ QVector<ReviewGroup> buildReviewGroups(const ReviewInput& in, const SideReport& 
         g.confirmedBasis = p.confirmedLines;
     }
 
-    // 4. Mag-eltérés.
+    // 4. Core mismatch.
     for (int i = 0; i < rows.size(); ++i) {
         const Row& r = rows[i];
         if (used[i] || r.locked || !r.clean()) continue;
@@ -548,7 +548,7 @@ QVector<ReviewGroup> buildReviewGroups(const ReviewInput& in, const SideReport& 
         for (const SpeakerProfile& o : ctx.speakers) {
             if (o.key.isEmpty() || o.key == r.key || o.core.isEmpty()) continue;
             if (!o.personName.isEmpty() && o.personName.compare(own->personName, Qt::CaseInsensitive) == 0) continue;
-            if (sides.active && sides::vetoes(ctx.vetoActive, o.manualSide, r.side)) continue;   // G10: sosem javaslat
+            if (sides.active && sides::vetoes(ctx.vetoActive, o.manualSide, r.side)) continue;   // never a suggestion
             const double f = ranking::cosine(o.core, *r.emb);
             if (!std::isnan(f) && (std::isnan(bestFit) || f > bestFit)) { bestFit = f; best = &o; }
         }
@@ -583,7 +583,7 @@ QVector<ReviewGroup> buildReviewGroups(const ReviewInput& in, const SideReport& 
         g.evidence += ranking::similarityWarnings(ctx, g.currentSpeakerKey);
     }
 
-    // 5. Rövid sorok (csak tájékoztató).
+    // 5. Short lines (informational only).
     {
         QStringList ids;
         for (int i = 0; i < rows.size(); ++i) {
@@ -599,7 +599,7 @@ QVector<ReviewGroup> buildReviewGroups(const ReviewInput& in, const SideReport& 
         }
     }
 
-    // Időrend a csoportokon belül; a csoportok fajta, majd méret szerint.
+    // Time order within groups; the groups by kind, then size.
     for (ReviewGroup& g : out)
         std::sort(g.utteranceIds.begin(), g.utteranceIds.end(),
                   [&](const QString& a, const QString& b) { return rowOf.value(a) < rowOf.value(b); });

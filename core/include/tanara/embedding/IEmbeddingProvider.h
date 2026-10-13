@@ -1,9 +1,8 @@
 #pragma once
 //
-// Beágyazó modell (embedding) plugin-szerződés — a címkejavaslatok „rokon téma” szintjéhez.
-// Egy OpenAI-kompatibilis implementáció lefedi az LM Studio / Ollama / OpenAI és a Tanara
-// Cloud gateway (/v1/embeddings) végpontjait.
-//
+// Embedding-model plugin contract, for the "related topic" level of tag suggestions.
+// One OpenAI-compatible implementation covers the LM Studio / Ollama / OpenAI and Tanara Cloud
+// gateway (/v1/embeddings) endpoints.
 #include <QObject>
 #include <QString>
 #include <QStringList>
@@ -13,7 +12,7 @@ namespace tanara {
 
 struct EmbeddingRequest {
     QStringList texts;
-    QString     model;   // üres → a provider configjában lévő modell
+    QString     model;   // empty = the model in the provider's config
 };
 
 class EmbeddingJob : public QObject {
@@ -21,14 +20,14 @@ class EmbeddingJob : public QObject {
 public:
     explicit EmbeddingJob(QObject* parent = nullptr) : QObject(parent) {}
     ~EmbeddingJob() override = default;
-    // A futó kérés megszakítása; utána sem finished, sem failed nem jön.
+    // Cancels the running request; neither finished nor failed follows.
     virtual void cancel() = 0;
 
-    // Sikertelen HTTP-válasz esetén (a failed előtt kitöltve).
+    // On a failed HTTP response (filled before failed).
     int errorStatus() const { return m_errorStatus; }
 
 signals:
-    // A vektorok a kérés szövegeinek sorrendjében (egy szöveg → egy vektor).
+    // The vectors in the order of the request's texts (one text -> one vector).
     void finished(QVector<QVector<float>> vectors);
     void failed(QString error);
 
@@ -40,7 +39,7 @@ class IEmbeddingProvider {
 public:
     virtual ~IEmbeddingProvider() = default;
     virtual QString name() const = 0;
-    // A job a provider gyereke; a hívó a jelek után törölheti (deleteLater).
+    // The job is the provider's child; the caller may delete it after the signals (deleteLater).
     virtual EmbeddingJob* embed(const EmbeddingRequest& req) = 0;
 };
 

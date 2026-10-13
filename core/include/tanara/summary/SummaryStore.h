@@ -1,16 +1,15 @@
 #pragma once
 //
-// SummaryStore — a meeting összefoglalójának STRUKTURÁLT elérése (M06–M08).
+// SummaryStore: STRUCTURED access to a meeting's summary.
 //
-// A lemezen eddig csak a summary.md létezett. Mostantól minden ÚJ összefoglaló mellé
-// summary.json is készül (a strukturált Summary + a keletkezés metaadatai: mikor, melyik
-// szolgáltató/modell, gyors vagy témánkénti). Régi meetingnél (csak summary.md) a
-// struktúrát a markdownból nyerjük vissza egy hibatűrő értelmezővel — az a formátum, amit
-// a Summary::renderMarkdown és a komplex összefoglaló ír, veszteség nélkül visszaolvasható.
+// Only summary.md used to exist on disk. From now on every NEW summary also gets a
+// summary.json (the structured Summary + its provenance: when, which provider/model, quick or
+// per-topic). For an old meeting (summary.md only) the structure is recovered from the markdown with
+// a fault-tolerant parser; the format written by Summary::renderMarkdown and the complex summary reads
+// back losslessly.
 //
-// A summary.md marad az ember-olvasható / jegyzetekbe másolt forma; ha valaki kézzel
-// szerkeszti (újabb, mint a summary.json), a markdown az igazság, a metaadat a json-ból jön.
-//
+// summary.md stays the human-readable / copied-into-notes form; if someone edits it by hand (newer
+// than summary.json), the markdown is the truth and the metadata comes from the json.
 #include "tanara/Types.h"
 
 #include <QJsonObject>
@@ -19,55 +18,55 @@
 namespace tanara {
 
 enum class SummaryMode {
-    Unknown,   // régi összefoglaló, a mód nem állapítható meg biztosan
-    Quick,     // gyors összefoglaló (egy LLM-hívás)
-    Topics,    // témánkénti elemzés (témák → elemzések → összegzés)
+    Unknown,   // old summary, the mode cannot be determined for sure
+    Quick,     // quick summary (one LLM call)
+    Topics,    // per-topic analysis (topics -> analyses -> combining)
 };
 
-// Az összefoglaló keletkezésének adatai (M07 jobb oszlop). Régi összefoglalónál a
-// providerId / model üres, a createdAt a summary.md módosítási ideje.
+// Provenance of the summary (right column of the summary view). For an old summary providerId / model
+// are empty and createdAt is the summary.md modification time.
 struct SummaryMeta {
     QDateTime   createdAt;
     QString     providerId;    // pl. "openai-compat", "tanara-cloud"
-    QString     model;         // a ténylegesen küldött modell-azonosító
+    QString     model;         // the model id actually sent
     SummaryMode mode = SummaryMode::Unknown;
-    // A megbeszélés-megjegyzés, amellyel az összefoglaló készült (az Összefoglaló fül ebből
-    // jelzi szelíden, ha azóta változott). Régi összefoglalónál ismeretlen (Known = false).
+    // The meeting note the summary was made with (the Summary tab uses it to gently signal if it changed
+    // since). Unknown for an old summary (Known = false).
     QString     contextNote;
     bool        contextNoteKnown = false;
 };
 
 struct SummaryDocument {
-    bool        exists = false;        // van-e összefoglaló a meetinghez
-    Summary     summary;               // vezetői összefoglaló, döntések, teendők, résztvevők
-    QVector<TopicAnalysis> topics;     // témánkénti mód: a témaszekciók, sorrendben
+    bool        exists = false;        // whether the meeting has a summary
+    Summary     summary;               // executive summary, decisions, action items, participants
+    QVector<TopicAnalysis> topics;     // per-topic mode: the topic sections, in order
     SummaryMeta meta;
-    QString     markdown;              // a summary.md tartalma
-    bool        fromMarkdown = false;  // a struktúra a markdownból lett visszanyerve
+    QString     markdown;              // the content of summary.md
+    bool        fromMarkdown = false;  // the structure was recovered from the markdown
 };
 
 namespace summarystore {
 
-QString jsonPath(const QString& meetingFolder);       // <mappa>/summary.json
-QString markdownPath(const QString& meetingFolder);   // <mappa>/summary.md
+QString jsonPath(const QString& meetingFolder);       // <folder>/summary.json
+QString markdownPath(const QString& meetingFolder);   // <folder>/summary.md
 
-// Markdown → struktúra. Felismeri a gyors (## Vezetői összefoglaló / ## Döntések /
-// ## Nyitott kérdések / ## Teendők / ## Résztvevők / ## Memó + ### cím (mm:ss–mm:ss)) és a
-// témánkénti (## Teendők (összevont) / ## Témák / ### N. cím + **Döntések:** / **Nyitott
-// kérdések:** / **Teendők:**) formát; a címsorokat ékezet- és kisbetű-függetlenül illeszti.
-// Ismeretlen szakasz szövege nem vész el: a vezetői összefoglaló végére kerül. Témánkénti
-// módban a summary.decisions (és openQuestions) a témákéinak uniója.
+// Markdown -> structure. Recognizes the quick form (## Executive summary / ## Decisions /
+// ## Open questions / ## Action items / ## Participants / ## Memo + ### title (mm:ss-mm:ss)) and the
+// per-topic form (## Action items (merged) / ## Topics / ### N. title + **Decisions:** / **Open
+// questions:** / **Action items:**), using the Hungarian headings the app writes; headings are matched
+// accent- and case-insensitively. The text of an unknown section is not lost: it goes to the end of the
+// executive summary. In per-topic mode summary.decisions (and openQuestions) is the union of the topics'.
 SummaryDocument parseMarkdown(const QString& markdown);
 
-// A meeting összefoglalójának betöltése (summary.json, különben summary.md értelmezve).
+// Loads the meeting's summary (summary.json, otherwise summary.md parsed).
 SummaryDocument load(const QString& meetingFolder);
 
-// A strukturált forma + metaadat mentése (summary.json). A summary.md-t NEM írja.
+// Saves the structured form + metadata (summary.json). Does NOT write summary.md.
 bool save(const QString& meetingFolder, const SummaryDocument& doc);
 
-// „Nem így hangzott el? · Jelzem”: egy állítás megjelölése (később tanítóadat). Csak a
-// summary.json statements-ét írja át (a json módosítási ideje marad, hogy egy kézzel
-// szerkesztett summary.md továbbra is az igazság legyen). false: nincs ilyen állítás / írási hiba.
+// "Not said like this? / Flag": marks a statement (later training data). It rewrites only the
+// statements of summary.json (the json's mtime stays, so a hand-edited summary.md remains the truth).
+// false: no such statement / write error.
 bool setStatementFlagged(const QString& meetingFolder, const QString& statementId, bool flagged = true);
 
 QJsonObject    toJson(const SummaryDocument& doc);

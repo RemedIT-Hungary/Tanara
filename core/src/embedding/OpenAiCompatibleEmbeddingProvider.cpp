@@ -60,7 +60,7 @@ void OpenAiCompatibleEmbeddingJob::start()
 
 void OpenAiCompatibleEmbeddingJob::cancel()
 {
-    m_done = true;   // jel nem megy ki
+    m_done = true;   // no signal goes out
     if (m_reply) {
         m_reply->disconnect(this);
         m_reply->abort();
@@ -103,8 +103,8 @@ void OpenAiCompatibleEmbeddingJob::onReply()
     if (reply->error() != QNetworkReply::NoError) {
         m_done = true;
         m_errorStatus = status;
-        // A Tanara Cloud strukturált hibája (error.code/message) és az OpenAI-alak egyaránt
-        // az error.message-ben hozza az emberi mondatot.
+        // Both a Tanara Cloud structured error (error.code/message) and the OpenAI shape carry the human
+        // sentence in error.message.
         QString apiMsg;
         const QJsonDocument edoc = QJsonDocument::fromJson(data);
         if (edoc.isObject()) {
@@ -129,7 +129,7 @@ void OpenAiCompatibleEmbeddingJob::onReply()
                         .arg(arr.size()).arg(m_batch));
         return;
     }
-    // A data[] elemei az "index" szerint (ha van), különben a válasz sorrendjében.
+    // The data[] items by "index" (if present), otherwise in the response's order.
     QVector<QVector<float>> batch(m_batch);
     for (int i = 0; i < arr.size(); ++i) {
         const QJsonObject o = arr.at(i).toObject();
@@ -173,7 +173,7 @@ QString OpenAiCompatibleEmbeddingProvider::name() const
 EmbeddingJob* OpenAiCompatibleEmbeddingProvider::embed(const EmbeddingRequest& req)
 {
     auto* job = new OpenAiCompatibleEmbeddingJob(m_nam, m_cfg, req, this);
-    // Az indítás az eseményhurokba kerül, hogy a hívó előbb bekösse a jeleket.
+    // The start goes into the event loop so the caller connects the signals first.
     QTimer::singleShot(0, job, [job]() { job->start(); });
     return job;
 }

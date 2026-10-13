@@ -1,8 +1,7 @@
 #pragma once
 //
-// EmbeddingSet — egy hangszelet (vagy lenyomat) beágyazásai modellenként, és a fúzió.
-// A modell-sorrend mindenhol determinisztikus: a QMap kulcs szerint rendez.
-//
+// EmbeddingSet: the embeddings of an audio slice (or voiceprint) per model, and the fusion.
+// The model order is deterministic everywhere: the QMap sorts by key.
 #include <QMap>
 #include <QString>
 #include <QStringList>
@@ -14,14 +13,13 @@ using EmbeddingSet = QMap<QString /*modelId*/, QVector<float>>;
 
 namespace fusion {
 
-// Egy közös vektor: minden kért modell L2-normalizált vektora egymás után fűzve (a modellIds
-// ábécérendjében), mindegyik 1/sqrt(k)-val szorozva. Így két fúziós vektor cosine-ja = a
-// modellenkénti cosine-ok ÁTLAGA. Üres, ha bármely kért modellhez nincs (nem üres) vektor,
-// vagy a modellIds üres.
+// One common vector: the L2-normalized vector of every requested model concatenated (in the
+// alphabetical order of modelIds), each multiplied by 1/sqrt(k). So the cosine of two fused vectors =
+// the MEAN of the per-model cosines. Empty if any requested model lacks a (non-empty) vector, or modelIds is empty.
 QVector<float> fuse(const EmbeddingSet& set, const QStringList& modelIds);
 
-// A modellenkénti cosine-ok átlaga a KÖZÖS (mindkét oldalon nem üres) kért modelleken.
-// Nincs közös modell → -1. used: hány modell vett részt (opcionális).
+// The mean of the per-model cosines over the COMMON requested models (non-empty on both sides).
+// No common model -> -1. used: how many models took part (optional).
 double averageCosine(const EmbeddingSet& a, const EmbeddingSet& b, const QStringList& modelIds,
                      int* used = nullptr);
 

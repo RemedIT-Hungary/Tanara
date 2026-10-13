@@ -1,27 +1,26 @@
 #pragma once
 //
-// Átnézendő csoportok (v3 design, 15. döntés / E2): a kétes sorok csoportokba rendezve, csoportonként
-// egy döntés (és egy visszavonási lépés). Tiszta függvények egy pillanatképen (ReviewInput) —
-// a SpeakerEditor háttérszálon hívja, a CLI (`tanara-cli review`) közvetlenül.
+// "To review" groups: the doubtful lines arranged into groups, one decision (and one undo step)
+// per group. Pure functions on a snapshot (ReviewInput); SpeakerEditor calls them on a background
+// thread, the CLI (`tanara-cli review`) directly.
 //
-// Csoportfajták (prioritás szerint; egy sor legfeljebb egy csoportban):
-//   SideConflict       — a sor oldala ellentmond a beszélője oldalának; javaslat: a legjobb azonos
-//                        oldali, nem kizárt jelölt; ha a kézi sáv-beosztás kizárja a mostani
-//                        beszélőt és nincs ilyen jelölt: új beszélő azon az oldalon (proposeNew).
-//                        Beszélő- és javaslat-páronként egy csoport.
-//   SimilarToNewPerson — új személy létrehozása után a hozzá hasonló (≥ kNewPersonSimilarity)
-//                        sorok ugyanazon az oldalon.
-//   CoreMismatch       — a megerősített magokhoz mérve ≥ kCoreMargin-nal egy másik maghoz közelebb;
-//                        (jelenlegi, javasolt) páronként.
-//   ContaminatedCore   — egy beszélő megerősített sorai 2-közép szerint két hangra esnek (klaszter-
-//                        hasonlóság < kContamMaxSimilarity, mindkét fél ≥ kContamMinShare) →
-//                        javaslat: szétválasztás (a kisebb fél a legjobb jelölthöz, vagy új névtelen
-//                        résztvevőhöz). Ezek zárolt sorok, így más csoporttal nem fednek át.
-//   ShortLines         — < kMinEmbedMs, nincs beágyazás; csak tájékoztató (nincs javaslat).
+// Group kinds (by priority; a line is in at most one group):
+//   SideConflict       - the line's side contradicts its speaker's side; suggestion: the best
+//                        same-side, non-excluded candidate; if the manual track assignment excludes
+//                        the current speaker and there is no such candidate: a new speaker on that
+//                        side (proposeNew). One group per speaker and suggestion pair.
+//   SimilarToNewPerson - after creating a new person, the lines similar to them (>= kNewPersonSimilarity)
+//                        on the same side.
+//   CoreMismatch       - measured against the confirmed cores, closer to another core by >= kCoreMargin;
+//                        per (current, proposed) pair.
+//   ContaminatedCore   - a speaker's confirmed lines fall into two voices by 2-means (cluster
+//                        similarity < kContamMaxSimilarity, both halves >= kContamMinShare) ->
+//                        suggestion: split (the smaller half goes to the best candidate, or to a new
+//                        anonymous participant). These are locked lines, so they do not overlap other groups.
+//   ShortLines         - < kMinEmbedMs, no embedding; informational only (no suggestion).
 //
-// A „nem azonosítható” sorok (OverlayUtterance::ignored) egyik fajtába sem kerülnek, és a rangsor
-// profiljaiba (sorszám, sor-összeg, megerősített mag) sem számítanak bele.
-//
+// "Unidentifiable" lines (OverlayUtterance::ignored) go into none of the kinds and do not count in
+// the ranking's profiles (line count, line sum, confirmed core) either.
 #include "tanara/Types.h"
 #include "tanara/edit/CandidateRanker.h"
 #include "tanara/edit/Evidence.h"
@@ -40,43 +39,43 @@ namespace tanara {
 enum class ReviewKind { SideConflict, CoreMismatch, ShortLines, ContaminatedCore, SimilarToNewPerson };
 
 struct ReviewGroup {
-    QString id;                 // stabil a (fajta, jelenlegi, javasolt) hármasra — applyReviewGroup kulcsa
+    QString id;                 // stable for the (kind, current, proposed) triple; the key of applyReviewGroup
     ReviewKind kind = ReviewKind::ShortLines;
-    QString title;              // magyar, rövid
+    QString title;              // Hungarian, short
     QString subtitle;
-    QStringList utteranceIds;   // időrendben
+    QStringList utteranceIds;   // in time order
     QString currentSpeakerKey;
-    QString proposedSpeakerKey; // üres: proposedPersonName, vagy új névtelen résztvevő (ShortLines: nincs javaslat)
-    QString proposedPersonName; // a javasolt személy (meetingen kívüli jelöltnél a kulcs üres)
-    // SideConflict (G10): a kézi sáv-beosztás kizárja a mostani beszélőt, és a sor oldalán nincs
-    // ismert jelölt → javaslat: ÚJ névtelen beszélő ezen az oldalon (proposedSide: Local / Remote).
-    // A kulcs és a név ilyenkor üres; az alkalmazás (applyReviewGroup) új résztvevőt hoz létre.
+    QString proposedSpeakerKey; // empty: proposedPersonName, or a new anonymous participant (ShortLines: no suggestion)
+    QString proposedPersonName; // the proposed person (the key is empty for a candidate outside the meeting)
+    // SideConflict: the manual track assignment excludes the current speaker and there is no known
+    // candidate on the line's side -> suggestion: a NEW anonymous speaker on this side (proposedSide:
+    // Local / Remote). The key and name are empty then; applying (applyReviewGroup) creates a new participant.
     bool proposeNew = false;
     Side proposedSide = Side::Unknown;
     QVector<Evidence> evidence;
-    int confirmedBasis = 0;     // ennyi megerősített sor a döntés alapja
+    int confirmedBasis = 0;     // this many confirmed lines are the basis of the decision
 };
 
 QString reviewKindName(ReviewKind k);   // "sideConflict" | "coreMismatch" | … (CLI / JSON)
 
-// A csoportképzés bemenete: a meeting pillanatképe (érték-másolat, háttérszálra vihető).
+// Input of the grouping: a snapshot of the meeting (a value copy, can go to a background thread).
 struct ReviewInput {
     Meeting meeting;                                    // speakerMap, tracks, tagIds
     QVector<TranscriptLine> lines;
     SpeakerOverlay overlay;
-    QHash<QString, QVector<float>> embeddings;          // megszólalás-id → fúziós, L2-normalizált vektor
+    QHash<QString, QVector<float>> embeddings;          // utterance id -> fused, L2-normalized vector
     QString userName;
-    QHash<QString, QVector<QVector<float>>> personPrints;   // személynév → fúziós lenyomatok (L2)
-    TagEvidenceFn tagEvidence;                          // üres = nincs címke-bizonyíték (PersonTags.h)
-    SideHints sideHints;                                // tanult oldalak (a kézi beosztás az overlay-ből jön)
-    QString newPersonKey;                               // az imént létrehozott személy (SimilarToNewPerson)
+    QHash<QString, QVector<QVector<float>>> personPrints;   // person name -> fused voiceprints (L2)
+    TagEvidenceFn tagEvidence;                          // empty = no tag evidence (PersonTags.h)
+    SideHints sideHints;                                // learned sides (the manual assignment comes from the overlay)
+    QString newPersonKey;                               // the person just created (SimilarToNewPerson)
 };
 
 struct ReviewResult {
     SideReport sides;
     ranking::RankContext context;
     QVector<ReviewGroup> groups;
-    // Sor-id → a beszélő-kulcs, akivel ellentmondásban áll (nem zárolt sorok; „bizonytalan · sáv").
+    // Line id -> the speaker key it contradicts (non-locked lines; "uncertain - track").
     QHash<QString, QString> sideConflicts;
 };
 
@@ -89,31 +88,31 @@ inline constexpr double kContamMinShare = 0.20;
 inline constexpr double kNewPersonSimilarity = 0.60;
 inline constexpr int    kKMeansIterations = 12;
 
-// Egy beszélő megerősített magjának szétválási vizsgálata.
+// Split check of a speaker's confirmed core.
 struct CoreSplit {
     bool contaminated = false;
-    double similarity = qQNaN();    // a két klaszter-centroid cosine-ja
-    QStringList minority;           // a kisebb fél sorai (időrendben)
+    double similarity = qQNaN();    // cosine of the two cluster centroids
+    QStringList minority;           // lines of the smaller half (in time order)
     QStringList majority;
     QVector<float> minorityCentroid;
 };
 CoreSplit splitConfirmedCore(const ReviewInput& in, const SideReport& sides, const QString& speakerKey);
 
-// Gömbi 2-közép L2 vektorokon (determinisztikus kezdés: a legkevésbé hasonló pár). Vissza:
-// soronként 0 / 1; üres, ha kevesebb mint 2 vektor.
+// Spherical 2-means on L2 vectors (deterministic start: the least similar pair). Returns 0 / 1
+// per line; empty if fewer than 2 vectors.
 QVector<int> twoMeans(const QVector<QVector<float>>& vectors, int iterations = kKMeansIterations);
 
 } // namespace review
 
-// A rangsor kontextusa: a meeting beszélői (megerősített mag, sor-összeg, oldal, lenyomat, címke)
-// és a meetingen kívüli, lenyomattal bíró személyek.
+// The ranking context: the meeting's speakers (confirmed core, line sum, side, voiceprint, tags)
+// and the people outside the meeting who have a voiceprint.
 ranking::RankContext buildRankContext(const ReviewInput& in, const SideReport& sides);
 
-// A csoportok a kész oldal-elemzésből és kontextusból.
+// The groups from the finished side analysis and context.
 QVector<ReviewGroup> buildReviewGroups(const ReviewInput& in, const SideReport& sides,
                                        const ranking::RankContext& ctx);
 
-// Az egész: oldal-elemzés (az aktivitásból) + kontextus + csoportok.
+// The whole thing: side analysis (from the activity) + context + groups.
 ReviewResult analyzeReview(const ReviewInput& in, const MeetingActivity& activity);
 
 } // namespace tanara

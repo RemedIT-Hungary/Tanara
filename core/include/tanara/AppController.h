@@ -1,9 +1,8 @@
 #pragma once
 //
-// AppController — az EGYETLEN objektum, amihez az UI köt (a QML-nézetmodellek, a CLI).
-// Összedrótozza a modulokat: beállítások, eszközök, felvétel, tár, STT, LLM, összefoglaló.
-// SZABÁLY: itt sincs Widgets-függőség — sima QObject API (signal/slot + value DTO-k).
-//
+// AppController: the ONE object the UI binds to (the QML view models, the CLI).
+// Wires the modules together: settings, devices, recording, store, STT, LLM, summary.
+// RULE: no Widgets dependency here either; a plain QObject API (signals/slots + value DTOs).
 #include "tanara/Types.h"
 #include "tanara/provider/ReadinessModel.h"
 #include "tanara/edit/SpeakerEditTypes.h"
@@ -41,7 +40,7 @@ class MeetingProfiles;
 class EmbeddingIndex;
 class EmbeddingPreparer;
 class AudioEngine;
-class MeetingUndoService;   // G4: edit/MeetingUndo.h
+class MeetingUndoService;   // edit/MeetingUndo.h
 
 class AppController : public QObject {
     Q_OBJECT
@@ -50,700 +49,699 @@ public:
     explicit AppController(QObject* parent = nullptr);
     ~AppController() override;
 
-    // Alkomponensek (a UI ezekre köthet modellt/nézetet).
+    // Sub-components (the UI can bind models/views to these).
     SettingsManager* settings() const;
     DeviceManager*   devices() const;
     MeetingStore*    store() const;
-    VoiceprintStore* voiceprints() const;   // hang-lenyomat DB (voice-ID)
+    VoiceprintStore* voiceprints() const;   // voiceprint DB (voice ID)
 
-    // ---- az újratervezett főablak háttere (strukturált réteg) -------------------------
-    // Meetingenkénti feldolgozási állapot: futó feladatok (szakaszok, valós haladás),
-    // megmaradó hibák, levezetett ikon-állapotok. Lásd jobs/MeetingJobTracker.h.
+    // ---- backend of the redesigned main window (structured layer) -------------------------
+    // Per-meeting processing state: running jobs (phases, real progress), persistent errors,
+    // derived icon states. See jobs/MeetingJobTracker.h.
     MeetingJobTracker* jobs() const;
-    // A könyvtár-oldalsáv lekérdezései: dátum-szekciók, keresés, szűrők, „Ezek várnak rád”.
+    // Library sidebar queries: date sections, search, filters, "Waiting for you".
     MeetingLibrary*    library() const;
-    // „Sávok” fül: barátságos nevek, átnevezés, hiányzó fájl megkeresése, eldobottak törlése.
+    // "Tracks" tab: friendly names, rename, locate a missing file, delete dropped tracks.
     TrackCatalog*      tracks() const;
-    // Hullámforma-csúcsok (aszinkron, gyorsítótárazva a meeting mappájában).
+    // Waveform peaks (asynchronous, cached in the meeting folder).
     WaveformService*   waveforms() const;
-    // Hangfájl-importálás motorja (fájl-adatok lekérése: probeAsync; indítás: importAudio).
+    // Audio file import engine (file info: probeAsync; start: importAudio).
     AudioImporter*     importer() const;
-    // Kényelmi: jobs()->state(meetingId).
+    // Convenience: jobs()->state(meetingId).
     MeetingProcessingState processingState(const QString& meetingId) const;
 
-    // A meeting összefoglalója STRUKTURÁLTAN + a keletkezés metaadatai (mikor, melyik
-    // szolgáltató/modell, gyors vagy témánkénti). Régi (csak summary.md) összefoglalónál a
-    // struktúra a markdownból jön (fromMarkdown=true). exists=false, ha nincs összefoglaló.
+    // The meeting's summary in STRUCTURED form + its provenance (when, which provider/model,
+    // quick or per-topic). For an old (summary.md only) summary the structure is parsed from the
+    // markdown (fromMarkdown=true). exists=false if there is no summary.
     SummaryDocument summaryDocument(const QString& meetingId) const;
 
-    // A meeting (szerkesztett) téma-listája a lemezről (summary.topics.json) — LLM-hívás nélkül.
+    // The meeting's (edited) topic list from disk (summary.topics.json), without an LLM call.
     QVector<tanara::SummaryTopic> meetingTopics(const QString& meetingId) const;
-    // Témánkénti állapot BÁRMIKOR lekérdezve (nem csak az átmeneti jelekből): a téma-lista
-    // sorrendjében vár / sorban áll / fut / kész / hibás (üzenettel; a hiba újraindítás után
-    // is megmarad). A lemezen lévő elemzésekből, a futó sorból és a megmaradt hibákból áll össze.
+    // Per-topic state, queryable AT ANY TIME (not only from transient signals): in topic-list
+    // order waiting / queued / running / done / failed (with message; a failure survives a
+    // restart). Assembled from the analyses on disk, the running queue and the remembered failures.
     QVector<tanara::TopicStatus> topicStatuses(const QString& meetingId) const;
 
     RecordingState recordingState() const;
-    QString currentMeetingFolder() const;   // épp felvett/utoljára felvett mappa
+    QString currentMeetingFolder() const;   // the folder currently or last recorded
 
     // ---- Tanara Cloud ----------------------------------------------------------------
-    // A fiók (mindig létezik: a teaser-mód várólistája is ezen megy). Lásd CloudAccount.h.
+    // The account (always exists: the teaser-mode waitlist goes through it too). See CloudAccount.h.
     CloudAccount* cloud() const;
-    // A bejelentkezős cloud-mód él: befordult (TANARA_BUILD_CLOUD) ÉS bekapcsolt
-    // (settings.cloudEnabled, vagy TANARA_CLOUD=live). TANARA_CLOUD=off mindent kikapcsol.
+    // The sign-in cloud mode is live: compiled in (TANARA_BUILD_CLOUD) AND enabled
+    // (settings.cloudEnabled, or TANARA_CLOUD=live). TANARA_CLOUD=off disables everything.
     bool cloudLive() const;
-    // A „Hamarosan” (várólista) panel látszik: befordult (TANARA_CLOUD_TEASER) és a cloud még nem él.
+    // The "Coming soon" (waitlist) panel is visible: compiled in (TANARA_CLOUD_TEASER) and the cloud is not live yet.
     bool cloudTeaser() const;
-    // Az adott lépés kiválasztott providere a Tanara Cloud.
+    // The selected provider of the given step is Tanara Cloud.
     bool usesCloud(WorkflowStep step) const;
-    // A ténylegesen küldött modell-azonosító (Expert-modell, különben a tier virtuális neve).
+    // The model id actually sent (the Expert model, otherwise the tier's virtual name).
     QString cloudModelFor(WorkflowStep step) const;
-    // Becslés-kérés összeállítása egy meetingre (task: transcribe | summarize; summaryMode:
-    // quick | complex). Az LLM-részt folyamat-függetlenül, hívás-csoportokban írja le (llm_calls).
+    // Builds an estimate request for a meeting (task: transcribe | summarize; summaryMode:
+    // quick | complex). The LLM part is described process-independently, in call groups (llm_calls).
     EstimateRequest makeEstimateRequest(const QString& meetingId, const QString& task,
                                         const QString& summaryMode) const;
 
-    // Egy munkafolyamat-lépés kapuzása EGYETLEN igazságforrásból (ReadinessModel):
-    // futtatható-e az adott meetingen, és ha nem, PONTOSAN mi hiányzik. Ugyanezt
-    // használja a GUI gomb-engedélyezés és az itteni guardok is. Headless (nincs UI).
+    // Gates a workflow step from a SINGLE source of truth (ReadinessModel): whether it can run
+    // on the given meeting and, if not, EXACTLY what is missing. The GUI button enabling and the
+    // guards here use the same thing. Headless (no UI).
     ReadinessResult canRun(WorkflowStep step, const QString& meetingId) const;
 
-    // Az utoljára (legutóbbi felvételnél) használt eszközök NEVEI — induláskor
-    // ezeket érdemes előpipálni a UI-ban. Perzisztens (~/.tanara/state.json).
+    // NAMES of the devices used last (at the latest recording); the UI should pre-check
+    // these at startup. Persistent (~/.tanara/state.json).
     QStringList lastUsedDeviceNames() const;
 
-    // ---- felvevő (lebegő felvevő-ablak) -------------------------------------------------
-    // A futó felvétel ÉLŐ (nyitott) sávjainak eszköznevei (sáv-sorrendben), ill. a felvétel
-    // közben leválasztott (biztonságosan lezárt) sávok eszköznevei. A felhasználó által
-    // kikapcsolt sáv egyikben sincs. Felvételen kívül üresek.
+    // ---- recorder (floating recorder window) -------------------------------------------------
+    // Device names of the running recording's LIVE (open) tracks (in track order), and of the
+    // tracks detached during recording (safely closed). A track switched off by the user is in
+    // neither. Empty outside a recording.
     QStringList recordingDeviceNames() const;
     QStringList disconnectedRecordingDeviceNames() const;
 
-    // ---- Személyek ablak háttere ---------------------------------------------------------
-    // Személyek, becenevek / megjegyzés, hangminták, összevonás, törlés, visszavonás — lásd
-    // people/PeopleService.h. A személyenkénti statisztika (megbeszélés-szám, beszédidő,
-    // utoljára látva) háttérszálon számolódik: people/PeopleStats.h.
+    // ---- backend of the People window ---------------------------------------------------------
+    // People, nicknames / notes, voice samples, merge, delete, undo; see people/PeopleService.h.
+    // Per-person statistics (meeting count, speaking time, last seen) are computed on a
+    // background thread: people/PeopleStats.h.
     PeopleService* peopleService() const;
     PeopleStats*   peopleStats() const;
-    // Az ALAPmodell (CAM++ ONNX) várt helye (diagnosztika); a használhatóság:
+    // Expected location of the BASE model (CAM++ ONNX), for diagnostics; usability is
     // voiceIdentificationAvailable().
     QString voiceModelPath() const;
 
-    // ---- beszélő-modellek (voice embedding) --------------------------------------------
-    // A használt modellek: a beállítás "voiceModels" listája ∩ a meglévő modellfájlok
-    // (VoiceModelRegistry::active), ábécérendben. A beállítás változásakor újraszámolódik
-    // (a nyitott szerkesztők is megkapják), és ha a lista bővült, indul a lenyomat-pótlás.
+    // ---- speaker models (voice embedding) --------------------------------------------
+    // Models in use: the "voiceModels" list of the settings, intersected with the existing model
+    // files (VoiceModelRegistry::active), alphabetical. Recomputed when the setting changes
+    // (open editors get it too), and if the list grew, voiceprint backfill starts.
     QStringList activeVoiceModelIds() const;
-    // A használt modellek készlete (betöltetlen másolat — a hívó saját példánya).
+    // The set of models in use (an unloaded copy; the caller's own instance).
     VoiceEmbedderSet voiceEmbedderSet() const;
-    // Megszólalás-embedder gyár a használt modellekre (SpeakerEditor / PeopleService); üres, ha
-    // nincs használható modell.
+    // Utterance-embedder factory for the models in use (SpeakerEditor / PeopleService); empty if
+    // there is no usable model.
     UtteranceEmbedderFactory utteranceEmbedderFactory() const;
-    // Teszt-varrat: a modellek betöltője (hamis „modell” ONNX nélkül). Üres → a valódi.
-    // Azonnal újraszámolja a készletet.
+    // Test seam: the loader of the models (a fake "model" without ONNX). Empty = the real one.
+    // Recomputes the set immediately.
     void setVoiceEmbedderLoader(PcmEmbedderLoader loader);
 
-    // Lusta lenyomat-pótlás: minden személy minden olyan mintájához (sampleRef), amelyhez egy
-    // használt modellel még nincs lenyomat, háttérszálon (1 szálas pool) kiszámolja a vektort a
-    // minta hangjából (sourceRefs, ennek híján sampleRef), és addPrint-eli (testvér-lenyomat:
-    // azonos sampleRef / forrás / createdAt / sourceRefs). Hiányzó hang → kihagyja (egyszer
-    // naplóz). A fő szálat nem blokkolja; ha már fut, a végén újra lefut. Kész:
-    // voiceprintBackfillFinished(added). Induláskor és a modell-lista bővülésekor magától indul.
+    // Lazy voiceprint backfill: for every sample (sampleRef) of every person that has no
+    // voiceprint yet for a model in use, computes the vector on a background thread (1-thread
+    // pool) from the sample's audio (sourceRefs, else sampleRef) and addPrint-s it (sibling
+    // voiceprint: same sampleRef / source / createdAt / sourceRefs). Missing audio is skipped
+    // (logged once). Does not block the main thread; if already running, it reruns at the end.
+    // Done: voiceprintBackfillFinished(added). Starts by itself at startup and when the model list grows.
     void backfillVoiceprints();
     bool voiceprintBackfillRunning() const;
 
-    // ---- címkék és címkejavaslatok -------------------------------------------------------
-    // A készlet és a meetingenkénti címkék (tags/TagService.h); a klasszikus hasonlóság
-    // (tags/MeetingProfiles.h); a beágyazások és a könyvtár előkészítése (embedding/).
+    // ---- tags and tag suggestions -------------------------------------------------------
+    // The tag set and per-meeting tags (tags/TagService.h); the classic similarity
+    // (tags/MeetingProfiles.h); embeddings and library preparation (embedding/).
     TagService*        tags() const;
     MeetingProfiles*   profiles() const;
     EmbeddingIndex*    embeddings() const;
     EmbeddingPreparer* embeddingPreparer() const;
-    // A meeting utolsó javaslat-listája (bármelyik forrásból; a már felrakott és az elutasított
-    // kiszűrve) — a később csatlakozó nézetmodellnek.
+    // The meeting's last suggestion list (from any source; already applied and rejected tags
+    // filtered out), for a view model that connects later.
     QVector<tanara::TagSuggestion> pendingTagSuggestions(const QString& meetingId) const;
-    // Javaslat még nem létező megbeszéléshez (import-ablak, felvétel előtt): cím alapján. Szinkron.
+    // Suggestion for a not-yet-existing meeting (import window, before recording): by title. Synchronous.
     QVector<tanara::TagSuggestion> draftTagSuggestions(const QString& title) const;
-    // Felvétel KÖZBEN megadott címkék (a meeting még nincs a tárban): a felvétel végén a
-    // meetingre kerülnek. Felvételen kívül hatástalan; a következő felvétel üresen indul.
+    // Tags given DURING recording (the meeting is not in the store yet): they go onto the
+    // meeting when the recording ends. No effect outside a recording; the next recording starts empty.
     void setRecordingTags(const QStringList& tagIds);
     QStringList recordingTags() const;
 
-    // Ismert személynevek (globális, meetingek közt újrahasznált) — autocomplete-hez.
+    // Known person names (global, reused across meetings), for autocomplete.
     QStringList knownPeople() const;
 
-    // Személy átnevezése/törlése GLOBÁLISAN: a névlistában + MINDEN meeting
-    // speakerMap-jében átvezetve (a transcript.md-k újragenerálva). peopleChanged jel.
-    // A személy rekordja (becenevek, megjegyzés) egyben megy: átnevezésnél az új névre
-    // kerül (ha a cél-név már létezik, a két személy adatai egyesülnek), törlésnél
-    // törlődik. (A régi nevet becenévként a Személyek ablak művelete, a PeopleService őrzi meg.)
+    // Renames/deletes a person GLOBALLY: in the name list + carried through EVERY meeting's
+    // speakerMap (transcript.md files regenerated). peopleChanged signal.
+    // The person's record (nicknames, note) moves as a whole: on rename it goes to the new name
+    // (if the target name exists, the two people's data merge), on delete it is deleted. (The
+    // old name is kept as a nickname by the People window action, PeopleService.)
     void renamePerson(const QString& oldName, const QString& newName);
     void removePerson(const QString& name);
 
-    // A meeting eddig elkészült (perzisztált) téma-elemzései (summary.analyses.json).
-    // A UI ebből tölti a téma-kártyák „✓ Kész" állapotát a szerkesztő megnyitásakor.
+    // The meeting's per-topic analyses completed so far (persisted, summary.analyses.json).
+    // The UI loads the topic cards' "Done" state from this when the editor opens.
     QVector<tanara::TopicAnalysis> topicAnalyses(const QString& meetingId) const;
 
-    // ---- átirat-szerkesztő (beszélő-javítás) ------------------------------
-    // A meeting beszélő-szerkesztő munkamenete (lásd edit/SpeakerEditor.h). Meetingenként
-    // EGY példány él (az AppController a szülője); az undo-verem a bezárásig megmarad.
-    // Ismeretlen meeting → nullptr. A voice-ID modell megléte esetén az embedder be van kötve.
+    // ---- transcript editor (speaker correction) ------------------------------
+    // The meeting's speaker-editor session (see edit/SpeakerEditor.h). ONE instance lives per
+    // meeting (AppController is its parent); the undo stack survives until it is closed.
+    // Unknown meeting = nullptr. If a voice-ID model exists, the embedder is wired in.
     SpeakerEditor* speakerEditor(const QString& meetingId);
-    // A munkamenet lezárása (az undo-verem eldobva; a javítások a lemezen maradnak).
+    // Closes the session (undo stack dropped; the corrections stay on disk).
     void closeSpeakerEditor(const QString& meetingId);
 
-    // Ismert személyek a választó panelhez: név, van-e hanglenyomat, hány meetingen szerepel.
-    // (Szűrés: edit/PeopleDirectory.h — filterPeople / matchesSearch.)
+    // Known people for the picker panel: name, whether there is a voiceprint, in how many meetings they appear.
+    // (Filtering: edit/PeopleDirectory.h, filterPeople / matchesSearch.)
     QVector<tanara::PersonInfo> peopleDirectory() const;
 
-    // Elavult-e az összefoglaló (a készítése óta változott a beszélő-hozzárendelés), és
-    // hány beszélőt javítottak azóta. Megnyitott szerkesztő nélkül is hívható.
-    // Az egy-meetinges változat a CÉLZOTT elavulást is kitölti (targeted, affected…: mely
-    // állítások / teendők forrás-sorainak beszélője változott); a Meeting-es (könyvtár-sor)
-    // változat olcsó, csak az egész-dokumentum jelzést adja.
+    // Whether the summary is stale (the speaker assignment changed since it was made), and how
+    // many speakers were corrected since. Callable without an open editor.
+    // The single-meeting variant also fills the TARGETED staleness (targeted, affected...: which
+    // statements / action items have source lines whose speaker changed); the Meeting (library
+    // row) variant is cheap and only gives the whole-document flag.
     tanara::SummaryStaleInfo summaryStale(const QString& meetingId) const;
     tanara::SummaryStaleInfo summaryStale(const tanara::Meeting& meeting) const;
-    // A gyors összefoglaló állításai (vezetői összefoglaló mondatai, döntések, teendők) a
-    // forrás-hivatkozásaikkal; a staleBecause / ownerStaleBecause a mostani beszélő-állapot
-    // szerint kitöltve. Régi / témánkénti összefoglalónál üres.
+    // The quick summary's statements (executive-summary sentences, decisions, action items) with
+    // their source references; staleBecause / ownerStaleBecause filled per the current speaker
+    // state. Empty for an old / per-topic summary.
     QVector<tanara::SummaryStatement> summaryStatements(const QString& meetingId) const;
-    // „Nem így hangzott el? · Jelzem”: az állítás megjelölése (summary.json, flagged = true).
-    // Siker esetén summaryStatementsChanged. false: nincs ilyen meeting / állítás.
+    // "Not said like this? / Flag": marks the statement (summary.json, flagged = true).
+    // Emits summaryStatementsChanged on success. false: no such meeting / statement.
     bool flagStatement(const QString& meetingId, const QString& statementId);
-    // Mi vész el újra-átíráskor (kézi javítások száma a megerősítő párbeszédhez).
+    // What is lost on re-transcription (number of manual corrections, for the confirmation dialog).
     tanara::RetranscribeImpact retranscribeImpact(const QString& meetingId) const;
 
-    // ---- résztvevők („Ki volt ott?") és sáv-beszédarány --------------------------------
-    // A meeting résztvevői (kézi + a hangelemzés jelöltjei, bizonyítékokkal) a meeting.json-ból.
+    // ---- participants ("Who was there?") and per-track speech share --------------------------------
+    // The meeting's participants (manual + the voice-analysis candidates, with evidence) from meeting.json.
     QVector<tanara::Participant> participants(const QString& meetingId) const;
-    // Fut-e a meeting átirat előtti hangelemzése (analyzeParticipants).
+    // Whether the meeting's pre-transcript voice analysis is running (analyzeParticipants).
     bool participantAnalysisRunning(const QString& meetingId) const;
-    // Kész az elemzés, de még nincs döntés (jóváhagyás / kihagyás / „csak én") → a banner látszik.
+    // The analysis is done but there is no decision yet (approve / skip / "only me"): the banner shows.
     bool participantApprovalPending(const QString& meetingId) const;
 
-    // ---- sávok meghallgatása: beszéd-csík, beszélő → sáv kötés ----------------------------
-    // A meeting MINDEN sávjának aktivitása (a lekeverésből kimaradtaké is) a beszéd-csíkhoz:
-    // logikai sávonként egy TrackActivity (trackId = a vezető szakasz id-ja), megbeszélés-időben.
-    // Memóriából / a tracks.activity.view.bin gyorsítótárból (ha minden sáv bevont, a
-    // tracks.activity.bin is jó); ha nincs, ÜRES eredményt ad, a háttérben számol, és kész:
-    // trackActivityReady(meetingId). Nincs ilyen meeting / sáv → üres, jel nélkül.
+    // ---- listening to tracks: speech strip, speaker -> track binding ----------------------------
+    // Activity of EVERY track of the meeting (including those left out of the mixdown) for the
+    // speech strip: one TrackActivity per logical track (trackId = id of the leading span), in meeting time.
+    // From memory / the tracks.activity.view.bin cache (if every track is included,
+    // tracks.activity.bin works too); if absent, returns an EMPTY result, computes in the
+    // background, and emits trackActivityReady(meetingId) when done. No such meeting / track:
+    // empty, no signal.
     tanara::MeetingActivity trackActivity(const QString& meetingId);
     bool trackActivityComputing(const QString& meetingId) const;
-    // Beszélő → sáv kötés („Melyik sávon beszél?"). id: résztvevő-id (Participant::id) vagy
-    // beszélő-kulcs (átirat után). A Participant::tracks-ba kerül; ha van átirat, a résztvevő
-    // minden beszélő-kulcsára a szerkesztő kézi sáv-beosztásába is (SpeakerOverlay::speakerTracks,
-    // visszavonható) — EGY adat a „Miért ő?" chipjeivel. Üres lista = a kötés törlése (vissza a
-    // következtetett oldalra). Az ismeretlen sáv-id-k kimaradnak. true, ha változott;
-    // participantsChanged.
+    // Speaker -> track binding ("Which track do they speak on?"). id: participant id (Participant::id)
+    // or speaker key (after the transcript). Goes into Participant::tracks; if there is a transcript,
+    // into the editor's manual track assignment for each of the participant's speaker keys too
+    // (SpeakerOverlay::speakerTracks, undoable): ONE piece of data shared with the "Why them?" chips.
+    // An empty list clears the binding (back to the inferred side). Unknown track ids are
+    // dropped. true if changed; participantsChanged.
     bool setParticipantTracks(const QString& meetingId, const QString& id, const QStringList& trackIds);
-    // A kötés: a kézi sávok (manual), különben a következtetett oldal (átirat után a szerkesztő
-    // oldal-elemzése, előtte a Participant::sides) bevont sávjai.
+    // The binding: the manual tracks (manual), otherwise the included tracks of the inferred side
+    // (after the transcript the editor's side analysis, before it Participant::sides).
     tanara::ParticipantTrackBinding participantTracks(const QString& meetingId, const QString& id);
-    // Teszt-varrat: egy személy kézi címkéi (címke-id-k, a Meeting::tagIds terében) a TagService
-    // kézi címkéi helyett; a tanult kapcsolat (c(p,t)) továbbra is a TagService-ből jön.
+    // Test seam: a person's manual tags (tag ids, in the Meeting::tagIds space) instead of the
+    // TagService's manual tags; the learned association (c(p,t)) still comes from the TagService.
     void setPersonTagsProvider(std::function<QStringList(const QString& personName)> provider);
 
-    // Teszt-varrat: a következő felvételek capture-motorjának gyártója (üres → valódi
-    // miniaudio-motor). Lásd RecordingSession::setEngineFactory.
+    // Test seam: factory of the capture engine for the next recordings (empty = the real
+    // miniaudio engine). See RecordingSession::setEngineFactory.
     void setRecordingEngineFactory(std::function<std::unique_ptr<tanara::AudioEngine>()> factory);
 
-    // ==== G4: közös visszavonás, résztvevők átírás után, modell-műveletek (core) ============
-    // A meeting közös visszavonási verme (edit/MeetingUndo.h): a szerkesztő, a meetinghez tartozó
-    // címke-lépések és a résztvevő-műveletek időrendben. Meetingenként EGY példány (lustán jön
-    // létre; a szerkesztő megnyitása is létrehozza). Ismeretlen meeting → nullptr. A meeting
-    // törlésével megszűnik.
+    // ==== shared undo, participants after transcription, model operations (core) ============
+    // The meeting's shared undo stack (edit/MeetingUndo.h): the editor, the meeting's tag
+    // steps and the participant operations, in time order. ONE instance per meeting (created
+    // lazily; opening the editor creates it too). Unknown meeting = nullptr. It ends when the
+    // meeting is deleted.
     MeetingUndoService* meetingUndo(const QString& meetingId);
-    // A7: az átirat beszélőihez NEM kötött, névvel bíró résztvevők (kézzel felvett, ill. meg nem
-    // szólalt jelöltek): nincs nyers beszélőjük, és a nevük egyik átirat-beszélőé sem. Átirat
-    // nélkül üres (ilyenkor a participants() az egész lista).
+    // Participants with a name that are NOT bound to the transcript's speakers (added by hand, or
+    // candidates that never spoke): they have no raw speaker and their name matches no transcript
+    // speaker. Empty without a transcript (participants() is then the whole list).
     QVector<tanara::Participant> unheardParticipants(const QString& meetingId) const;
-    // B1: a legutóbbi lenyomat-pótlás kimaradt mintái (hiányzó forrás-megbeszélés / hang, ill. nem
-    // számolható), személy szerint rendezve. Új futás indulásakor ürül.
+    // Samples skipped by the latest voiceprint backfill (missing source meeting / audio, or not
+    // computable), sorted by person. Cleared when a new run starts.
     QVector<tanara::VoiceprintBackfillSkip> backfillSkippedSamples() const;
-    // ==== /G4 ================================================================================
 
 public slots:
-    // Eszközök újrafelsorolása (→ devicesChanged()).
+    // Re-enumerates devices (-> devicesChanged()).
     void refreshDevices();
 
-    // Élő szintfigyelés (a felvevő szintmérőihez). Megnyitja az összes capture-eszközt, és
-    // deviceLevelPeak(name, rms, peak)-et emittál. A felvétel ALATT is megy — a sávra NEM
-    // kerülő eszközökön (a rögzítettek szintjét a felvétel adja), így a felvevő minden eszköz
-    // mérőjét mozgatni tudja.
+    // Live level monitoring (for the recorder's level meters). Opens all capture devices and
+    // emits deviceLevelPeak(name, rms, peak). It also runs DURING recording, on devices that are
+    // NOT on a track (the level of recorded ones comes from the recording), so the recorder can
+    // move every device's meter.
     void startLevelMonitoring();
     void stopLevelMonitoring();
 
-    // Felvétel KÖZBEN egy további eszköz sávjának indítása (a sáv attól a pillanattól szól; a
-    // fájl a megnyitástól tart, a kezdete a Track::startOffsetMs). Egy korábban kikapcsolt /
-    // leválasztott eszköz újra-bekapcsolása az eszköz újabb SZAKASZA (új fájl). false, ha nem
-    // megy felvétel vagy az eszköz nem nyitható. Siker: recordingTrackAdded + a kijelölés mentése.
+    // Starts a further device's track DURING recording (the track plays from that moment; the
+    // file runs from the open, its start is Track::startOffsetMs). Re-enabling a previously
+    // switched-off / detached device is a new SPAN of the device (new file). false if no
+    // recording is running or the device cannot be opened. On success: recordingTrackAdded + the selection is saved.
     bool addRecordingDevice(const tanara::AudioDeviceInfo& device);
-    // Felvétel KÖZBEN egy eszköz sávjának kikapcsolása: a fájlja itt lezárul (a meeting része
-    // marad), a felvétel a többi sávval megy tovább; újra bekapcsolva új szakasz indul. false,
-    // ha nem megy felvétel, az eszköz nincs (nyitott) sávon, vagy ez az utolsó nyitott sáv.
-    // Siker: recordingTrackClosed (a név NEM kerül a leválasztottak közé).
+    // Switches off a device's track DURING recording: its file closes here (stays part of the
+    // meeting), the recording continues with the other tracks; re-enabling starts a new span.
+    // false if no recording is running, the device has no (open) track, or it is the last open track.
+    // On success: recordingTrackClosed (the name does NOT go into the detached ones).
     bool stopRecordingDevice(const QString& deviceName);
 
-    // A felvétel utáni AUTOMATIKUS lekeverés engedélyezése ebben a folyamatban (alapból be).
-    // Az önálló felvevő-folyamat (tanara --record) kikapcsolja: az a felvétel után kilép, a
-    // félbehagyott ffmpeg csak csonka mixdown.part.mp3-at hagyna. A lekeverést ilyenkor az
-    // elemző készíti el, amikor kell (az átírás a hiányzó/elavult keveréket előbb legyártja).
+    // Enables the AUTOMATIC mixdown after recording in this process (on by default).
+    // The standalone recorder process (tanara --record) turns it off: it exits after recording,
+    // and an interrupted ffmpeg would leave only a truncated mixdown.part.mp3. The analyzer then
+    // produces the mixdown when needed (transcription first builds a missing/stale mix).
     void setAutoMixdownAfterRecording(bool on);
 
-    // Az utoljára használt eszközök kézi felülírása/perzisztálása.
+    // Manual override/persistence of the last used devices.
     void setLastUsedDeviceNames(const QStringList& names);
 
-    // Felvétel indítása a megadott eszközökkel (üres → az összes capture eszköz).
+    // Starts recording with the given devices (empty = all capture devices).
     void startRecording(const QString& title, const QVector<tanara::AudioDeviceInfo>& devices = {});
     void stopRecording();
 
-    // Meeting címének átnevezése (meeting.json + index frissül).
+    // Renames the meeting's title (meeting.json + the index updates).
     void renameMeeting(const QString& meetingId, const QString& newTitle);
 
-    // A meeting pár szavas kontextus-leírásának mentése (téma/résztvevők) — beépül a
-    // STT context-envelope-jába és az LLM-összefoglaló kontextusába. Perzisztens.
+    // Saves the meeting's few-word context description (topic/participants); it goes into the
+    // STT context envelope and the LLM summary context. Persistent.
     void setMeetingContextNote(const QString& meetingId, const QString& note);
-    // A figyelő által észlelt hívás-alkalmazás (pl. „Microsoft Teams”) — csak tájékoztató mező,
-    // a megjegyzést nem érinti, és az átírónak sem megy. Üres → törli.
+    // The call app detected by the watcher (e.g. "Microsoft Teams"): an informational field only;
+    // does not touch the note and is not sent to the transcriber. Empty = clears it.
     void setMeetingDetectedCall(const QString& meetingId, const QString& appName);
 
-    // Meeting VÉGLEGES törlése (mappa + index). A store meetingRemoved jelét adja.
+    // PERMANENT deletion of a meeting (folder + index). The store emits meetingRemoved.
     void deleteMeeting(const QString& meetingId);
 
-    // Egy (felvétel után eldobott) sáv visszaállítása aktívvá — a fájl megvolt a lemezen.
+    // Restores a track dropped after recording to active; the file was still on disk.
     void restoreTrack(const QString& meetingId, const QString& trackId);
-    // A sávok beszéd-ellenőrzése (Track::speechRatio; a beszéd nélküli sáv kimarad a lekeverésből),
-    // háttérszálon. Felvétel / import után magától fut (az automatikus lekeverés előtt); a máshol
-    // (önálló felvevő-folyamat) készült meetingre a nézet hívja megnyitáskor. Csak a még nem mért
-    // sávokat méri; kész: tracksChanged (ha változott). false: nincs mit mérni / már fut.
+    // Speech check of the tracks (Track::speechRatio; a track without speech is left out of the mixdown),
+    // on a background thread. Runs by itself after recording / import (before the automatic mixdown);
+    // for a meeting made elsewhere (standalone recorder process) the view calls it on open. Only measures
+    // tracks not yet measured; when done: tracksChanged (if changed). false: nothing to measure / already running.
     bool checkTrackSpeech(const QString& meetingId);
-    // Fut-e épp a sávok beszéd-ellenőrzése (a nézet „futó” állapotához).
+    // Whether the tracks' speech check is running (for the view's "running" state).
     bool speechCheckRunning(const QString& meetingId) const;
-    // „Beemelem": a (beszéd nélküli vagy kézzel kivett) sáv vissza a lekeverésbe; „Kiveszem":
-    // kézi kizárás (excludedReason "manual"). Egy eszköz minden szakaszára hat. Mindkettő után
-    // tracksChanged és újralekeverés (ha maradt bevont sáv).
+    // "Include": the (speechless or manually removed) track goes back into the mixdown; "Remove":
+    // manual exclusion (excludedReason "manual"). Acts on all spans of a device. After both,
+    // tracksChanged and a remix (if an included track remains).
     void includeTrack(const QString& meetingId, const QString& trackId);
     void excludeTrack(const QString& meetingId, const QString& trackId);
-    // Egy sáv VÉGLEGES törlése: a hangfájl fizikailag törlődik + kikerül a meetingből.
+    // PERMANENT deletion of a track: the audio file is physically deleted and removed from the meeting.
     void deleteTrack(const QString& meetingId, const QString& trackId);
 
-    // A mixdown.mp3 újrakeverése a meeting AKTÍV sávjaiból (a sávok módosítása után
-    // a mixdown „dirty" lesz; ez frissíti). Aszinkron (ffmpeg QProcess, nem blokkol):
-    // a végén mixdownUpdated(meetingId, ok) + tracksChanged jelet ad. jobProgress-t is
-    // emittál az állapotról. Ha nincs aktív sáv vagy fut már egy keverés → no-op.
+    // Remixes mixdown.mp3 from the meeting's ACTIVE tracks (after track changes the mixdown
+    // becomes "dirty"; this refreshes it). Asynchronous (ffmpeg QProcess, non-blocking):
+    // at the end emits mixdownUpdated(meetingId, ok) + tracksChanged. Also emits jobProgress
+    // with the state. No-op if there is no active track or a mix is already running.
     void regenerateMixdown(const QString& meetingId);
 
-    // Hangfájlok importálása ÚJ meetingbe (lásd import/AudioImporter.h): forrásonként egy sáv,
-    // kérésre csatornánként bontva; aszinkron (ffmpeg), a UI nem áll meg. Visszaadja a leendő
-    // meeting azonosítóját (üres + errorOccurred, ha már fut egy importálás). A haladás a
-    // jobs()-ban JobKind::Import feladatként látszik EZEN az azonosítón (valós százalék,
-    // megszakítható: cancelJob(id, JobKind::Import)). A meeting csak a sikeres végén jön
-    // létre (importFinished); hiba / megszakítás után semmi nem marad a lemezen. A lekeverés
-    // ugyanúgy indul, mint felvétel után: mixdownMode "auto" → azonnal a háttérben, "manual"
-    // → kézre vár (és setAutoMixdownAfterRecording(false) mellett itt sem indul). Átírás
-    // NEM indul magától.
+    // Imports audio files into a NEW meeting (see import/AudioImporter.h): one track per source,
+    // split per channel on request; asynchronous (ffmpeg), the UI does not freeze. Returns the
+    // future meeting's id (empty + errorOccurred if an import is already running). Progress shows
+    // in jobs() as a JobKind::Import task on THIS id (real percentage, cancellable:
+    // cancelJob(id, JobKind::Import)). The meeting is created only on success (importFinished);
+    // after an error / cancel nothing stays on disk. The mixdown starts the same way as after a
+    // recording: mixdownMode "auto" = immediately in the background, "manual" = waits for the user
+    // (and with setAutoMixdownAfterRecording(false) it does not start here either). Transcription
+    // does NOT start by itself.
     QString importAudio(const tanara::ImportRequest& request);
 
-    // ---- megbeszélés-archívum (*.tanara.zip, lásd store/MeetingArchive.h) ----
-    // Exportálás háttérszálon (a GUI nem áll meg egy 1 GB-os felvételnél sem). Azonnal
-    // visszatér a művelet azonosítójával ("export:<meetingId>"); a haladás a jobs()-ban
-    // JobKind::Export feladatként látszik a meetingen (valós százalék, megszakítható:
-    // cancelJob(meetingId, JobKind::Export)), és archiveProgress jelként is jön. A vége
-    // archiveFinished. Üres azonosító + errorOccurred: nincs ilyen meeting / felvétel alatt
-    // áll / már fut egy archívum-művelet.
+    // ---- meeting archive (*.tanara.zip, see store/MeetingArchive.h) ----
+    // Export on a background thread (the GUI does not freeze even for a 1 GB recording). Returns
+    // at once with the operation id ("export:<meetingId>"); progress shows in jobs() as a
+    // JobKind::Export task on the meeting (real percentage, cancellable:
+    // cancelJob(meetingId, JobKind::Export)) and also comes as the archiveProgress signal. The end
+    // is archiveFinished. Empty id + errorOccurred: no such meeting / it is being recorded /
+    // an archive operation is already running.
     QString exportMeetingArchive(const QString& meetingId, const QString& zipPath);
-    // Importálás háttérszálon: kicsomagolás a felvételek mappája alatti .import-* mappába,
-    // majd (fő szálon) MeetingStore::adoptMeetingFolder + a címkék feloldása a helyi
-    // címkekészletre (azonos azonosító → az; különben név szerint, szükség esetén létrehozva).
-    // Visszaad: művelet-azonosító ("import:<uuid>"); üres + errorOccurred, ha már fut egy.
-    // A vége archiveFinished (siker esetén meetingId = az új megbeszélés).
+    // Import on a background thread: unpack into an .import-* folder under the recordings
+    // folder, then (on the main thread) MeetingStore::adoptMeetingFolder + resolve the tags to the
+    // local tag set (same id = that one; otherwise by name, created if needed).
+    // Returns an operation id ("import:<uuid>"); empty + errorOccurred if one is already running.
+    // The end is archiveFinished (on success meetingId = the new meeting).
     QString importMeetingArchive(const QString& zipPath);
-    // Egy sima megbeszélés-mappa behúzása (másik gépről kimásolt mappa, zip nélkül): a
-    // felvételek mappáján kívüli forrást háttérszálon bemásolja (.import-*), majd ugyanaz
-    // az útvonal, mint az archívumnál (adopt + címkék). A felvételek mappája alatti forrás
-    // helyben marad. Visszaad: "import:<uuid>"; a vége archiveFinished.
+    // Pulls in a plain meeting folder (copied from another machine, no zip): a source outside the
+    // recordings folder is copied on a background thread (.import-*), then the same path as for
+    // an archive (adopt + tags). A source under the recordings folder stays in place.
+    // Returns "import:<uuid>"; the end is archiveFinished.
     QString importMeetingFolder(const QString& folder);
-    // Ugyanezek szinkron (CLI, tesztek). Hiba: false / üres Meeting + *error.
+    // The same, synchronously (CLI, tests). Error: false / empty Meeting + *error.
     bool exportMeetingArchiveNow(const QString& meetingId, const QString& zipPath, QString* error,
                                  std::function<void(int)> progress = {});
     tanara::Meeting importMeetingArchiveNow(const QString& zipPath, QString* error,
                                             std::function<void(int)> progress = {});
-    // Fut-e épp archívum-művelet (export vagy import).
+    // Whether an archive operation (export or import) is running.
     bool archiveBusy() const;
 
-    // A saját (mic-sáv) beszélőnév beállítása — a beállításba ÉS a személy-DB-be is.
+    // Sets the user's own (mic track) speaker name, in the settings AND in the people DB.
     void setUserSpeakerName(const QString& name);
 
-    // Egy meeting átírása. A leirat a MIXDOWNból készül (egyetlen hangfolyam → nincs
-    // sávonkénti átfedés-összefésülés/duplikáció, ~N× helyett 1× Soniox-költség). Ha a
-    // mixdown hiányzik/elavult, előbb legyártja, és a kész jelére indítja az átírást.
-    // Kulcs a KeyStore-ból.
+    // Transcribes a meeting. The transcript is built from the MIXDOWN (a single audio stream: no
+    // per-track overlap merging/duplication, 1x Soniox cost instead of ~Nx). If the mixdown is
+    // missing/stale, it builds it first and starts the transcription on its done signal.
+    // The key comes from the KeyStore.
     void transcribeMeeting(const QString& meetingId);
 
-    // Újra-átírás meglévő átirat mellett: törli a beszélő-hozzárendeléseket (más provider
-    // más beszélő-felosztást adhat — a nevek tévesen ragadnának át), majd transcribeMeeting.
-    // keepBackup: a mostani átirat-fájlok másolata megmarad a meeting-mappában
-    // (transcript-backup-<időbélyeg>/). A kézi sor-javítások (overlay) az új átirat
-    // elkészültekor törlődnek — a megszólalások határai megváltoznak.
+    // Re-transcription with an existing transcript: clears the speaker assignments (another
+    // provider may split speakers differently; names would stick wrongly), then transcribeMeeting.
+    // keepBackup: a copy of the current transcript files stays in the meeting folder
+    // (transcript-backup-<timestamp>/). The manual line corrections (overlay) are deleted when the
+    // new transcript is ready, because the utterance boundaries change.
     void retranscribeMeeting(const QString& meetingId, bool keepBackup = false);
-    // „Rendben így": az összefoglaló elavult-jelzőjének elengedése újragenerálás nélkül.
+    // "It's fine as is": dismisses the summary's stale flag without regenerating.
     void dismissSummaryStale(const QString& meetingId);
-    // Egy meeting összefoglalása (LM Studio/Gemma → summary.md + másolat a notesDir-be).
+    // Summarizes a meeting (LM Studio/Gemma -> summary.md + a copy into notesDir).
     void summarizeMeeting(const QString& meetingId);
 
-    // Komplex (több körös) összefoglaló — 1. kör: a teljes átiratból TÉMÁKAT nyer ki, és
-    // topicsReady(meetingId, topics)-szal adja vissza (a UI szerkesztésre megjeleníti).
-    // Ha már létezik summary.topics.json, azt adja vissza (nincs újrakinyerés).
+    // Complex (multi-pass) summary, pass 1: extracts TOPICS from the full transcript and returns
+    // them with topicsReady(meetingId, topics) (the UI shows them for editing).
+    // If summary.topics.json already exists, it returns that (no re-extraction).
     void extractMeetingTopics(const QString& meetingId);
-    // 2. kör + reduce (batch): a (szerkesztett) témákból CSAK a még elemzetleneket sorolja
-    // be a téma-elemzés job-sorba, majd ha minden téma elemzése megvan, reduce → summary.md
-    // (summaryReady). Minden kész elemzés AZONNAL a summary.analyses.json-ba perzisztálódik,
-    // így megszakítás/hiba után az újraindítás onnan folytatja, ahol tartott.
+    // Pass 2 + reduce (batch): of the (edited) topics queues only those not yet analyzed into the
+    // topic-analysis job queue, then, once every topic's analysis exists, reduce -> summary.md
+    // (summaryReady). Every finished analysis is persisted to summary.analyses.json IMMEDIATELY,
+    // so after a cancel/error a restart resumes where it stopped.
     void generateComplexSummary(const QString& meetingId,
                                 const QVector<tanara::SummaryTopic>& topics);
-    // EGY téma elemzésének (újra)indítása — a job-sorba kerül (a lokális modell parallel=1,
-    // ezért egyszerre egy fut). A topic a summary.topics.json-ba is átvezetődik (szerkesztés).
-    // Eredmény: topicAnalysisReady/Failed; a kész elemzés felülírja a korábbit a JSON-ban.
+    // (Re)starts the analysis of ONE topic; it goes into the job queue (the local model runs with
+    // parallel=1, so one at a time). The topic is also carried into summary.topics.json (editing).
+    // Result: topicAnalysisReady/Failed; a finished analysis overwrites the earlier one in the JSON.
     void analyzeTopic(const QString& meetingId, const tanara::SummaryTopic& topic);
-    // Reduce a LEMEZEN lévő elemzésekből (summary.analyses.json, a topics.json sorrendjében)
-    // → summary.md + summaryReady. Külön hívható, pl. egy hibás téma újrafuttatása után.
+    // Reduce from the analyses ON DISK (summary.analyses.json, in topics.json order)
+    // -> summary.md + summaryReady. Callable separately, e.g. after rerunning a failed topic.
     void finalizeComplexSummary(const QString& meetingId);
 
-    // Egy beszélő átnevezése egy meetingben (nyers címke → valódi név). Perzisztál
-    // (Meeting.speakerMap + people.json), újragenerálja a transcript.md-t a nevekkel,
-    // és speakerMapChanged-et emittál. Üres/azonos név → a leképezés törlése.
-    // Ha enroll=true (alapért.) és van hang-modell, a beszélő hangjából lenyomatot is
-    // rögzít a name alá (a kézi címkézés „tanítja" a voice-ID-t).
+    // Renames a speaker in a meeting (raw label -> real name). Persists (Meeting.speakerMap +
+    // people.json), regenerates transcript.md with the names, and emits speakerMapChanged.
+    // Empty/same name = clears the mapping.
+    // If enroll=true (default) and there is a voice model, it also records a voiceprint of the
+    // speaker's voice under the name (manual labeling "teaches" voice ID).
     void renameSpeaker(const QString& meetingId, const QString& rawLabel,
                        const QString& displayName, bool enroll = true);
 
-    // Egy beszélő hang-lenyomatának explicit rögzítése a voiceprint DB-be (a meeting
-    // adott nyers címkéjének reprezentatív hangjából). voiceprintsChanged jel.
+    // Explicitly records a speaker's voiceprint in the voiceprint DB (from the representative
+    // audio of the meeting's raw label). voiceprintsChanged signal.
     void enrollSpeaker(const QString& meetingId, const QString& rawLabel, const QString& name);
 
-    // Auto-azonosítás: a meeting még névtelen (nem leképezett) nyers beszélőit a
-    // voiceprint DB ellen párosítja; küszöb felett előtölti a speakerMap-et.
-    // speakerMapChanged-et emittál. Bármikor újrafuttatható (a friss DB-vel).
-    // onProgress(done,total): opcionális; false visszatérés → megszakítás (a UI-nak,
-    // a fő szálon hívva — a callback rajzolhat progresst / nézhet „mégse"-t).
+    // Auto-identification: matches the meeting's still anonymous (unmapped) raw speakers against
+    // the voiceprint DB; above the threshold it pre-fills the speakerMap.
+    // Emits speakerMapChanged. Can be rerun any time (with the fresh DB).
+    // onProgress(done,total): optional; returning false cancels (for the UI, called on the
+    // main thread; the callback may draw progress / check "cancel").
     void autoIdentifyMeeting(const QString& meetingId,
                              const std::function<bool(int,int)>& onProgress = {});
 
-    // Fingerprint-teszt EGY beszélőre: a hangjából a legjobb egyezés a voiceprint-DB-ből
-    // (név + cosine pontszám). Nem módosít semmit; { "", -1 } ha nincs modell/egyezés.
+    // Fingerprint test for ONE speaker: the best match from the voiceprint DB for its voice
+    // (name + cosine score). Modifies nothing; { "", -1 } if there is no model/match.
     tanara::VoiceMatch testSpeakerMatch(const QString& meetingId, const QString& rawLabel);
 
-    // ÁTÍRÁS ELŐTTI résztvevő-azonosítás: sávonként ablakozva mintázza a hangot,
-    // beszélőkre klaszterezi, és a voiceprint-DB ellen párosítja → kik voltak a
-    // meetingen (név vagy "ismeretlen"). Lokális, Soniox nélkül; szinkron (pár mp).
-    // onProgress(done,total): opcionális; false → megszakítás (lásd autoIdentifyMeeting).
+    // PRE-TRANSCRIPT participant identification: samples the audio per track with windowing,
+    // clusters it into speakers, and matches against the voiceprint DB -> who was in the
+    // meeting (a name or "unknown"). Local, no Soniox; synchronous (a few seconds).
+    // onProgress(done,total): optional; false cancels (see autoIdentifyMeeting).
     QVector<tanara::ParticipantGuess> identifyParticipants(
         const QString& meetingId, const std::function<bool(int,int)>& onProgress = {});
 
-    // ---- résztvevők („Ki volt ott?") ----------------------------------------------------
-    // Átirat ELŐTTI hangelemzés háttérszálon (Soniox nélkül): a sávok beszéd-ablakaiból
-    // beágyazás, klaszterezés, párosítás a lenyomatokkal → Participant-jelöltek bizonyítékkal
-    // (edit/ParticipantAnalysis.h). A NYERS sávfájlokból dolgozik, a lekeveréstől független;
-    // magától a maybeAnalyzeParticipants indítja. Ha az átirat már megvan, a kötés is lefut. Vége:
-    // participantAnalysisFinished (+ participantsChanged). false: nincs modell / fut már / nincs ilyen.
-    // Közben participantAnalysisProgress (sáv k / N, százalék).
+    // ---- participants ("Who was there?") ----------------------------------------------------
+    // Pre-transcript voice analysis on a background thread (no Soniox): embedding from the tracks'
+    // speech windows, clustering, matching with the voiceprints -> Participant candidates with
+    // evidence (edit/ParticipantAnalysis.h). Works from the RAW track files, independent of the
+    // mixdown; maybeAnalyzeParticipants starts it by itself. If the transcript already exists, the
+    // binding runs too. End: participantAnalysisFinished (+ participantsChanged). false: no model /
+    // already running / no such meeting. Meanwhile participantAnalysisProgress (track k / N, percent).
     bool analyzeParticipants(const QString& meetingId);
-    // Az elemzés indítása, ha indokolt: van használható modell, nem fut, a sávok megvannak és a
-    // beszéd-mérésük nem fut / nem hiányzik, nincs még döntés (approval), és a sávok az előző
-    // elemzés óta változtak (vagy nem volt elemzés). Hívói: a felvétel vége, a beszéd-mérés vége,
-    // a lekeverés vége, az átírás indítása és a meeting megnyitása (Áttekintés). true: most indult.
+    // Starts the analysis if warranted: a usable model exists, it is not running, the tracks exist
+    // and their speech check is not running / not missing, there is no decision (approval) yet, and
+    // the tracks changed since the previous analysis (or there was none). Callers: end of recording,
+    // end of the speech check, end of the mixdown, transcription start and opening the meeting
+    // (Overview). true: it started now.
     bool maybeAnalyzeParticipants(const QString& meetingId);
-    // A jelöltek kötése a nyers STT-beszélőkhöz (időbeli átfedés; kétoldalú nyers beszélő két
-    // résztvevőre bontva). Az átirat érkezésekor magától fut. participantsChanged, ha változott.
+    // Binds the candidates to the raw STT speakers (time overlap; a two-sided raw speaker is
+    // split between two participants). Runs by itself when the transcript arrives. participantsChanged if changed.
     bool bindRawSpeakers(const QString& meetingId);
-    // „Tovább": a bejelölt résztvevők jóváhagyása. A meglévők id szerint (a név szerkeszthető),
-    // az ismeretlen id-jűek új, kézi résztvevőként. Ha van átirat: a nyers beszélők a nevekre
-    // kerülnek EGY visszavonási lépésben (SpeakerEditor::applyBindings), a ki nem jelöltekhez kötött
-    // nyers beszélők névtelenek maradnak; ha nincs, a kötés az átirat érkezésekor fut. approval mentve.
+    // "Continue": approves the checked participants. Existing ones by id (the name is editable),
+    // those with an unknown id as new manual participants. If there is a transcript: the raw
+    // speakers get the names in ONE undo step (SpeakerEditor::applyBindings), raw speakers bound
+    // to unchecked ones stay anonymous; if not, the binding runs when the transcript arrives. approval saved.
     bool approveParticipants(const QString& meetingId, const QVector<tanara::Participant>& accepted);
-    // „Kihagyás": döntés kötés nélkül (a banner eltűnik, a jelöltek maradnak).
+    // "Skip": a decision without binding (the banner disappears, the candidates stay).
     bool skipApproval(const QString& meetingId);
-    // „Ő nem volt ott": a résztvevő sorai névtelenek lesznek (egy visszavonási lépés), a
-    // jelölése törlődik.
+    // "They were not there": the participant's lines become anonymous (one undo step), their
+    // marker is cleared.
     bool unbindParticipant(const QString& meetingId, const QString& participantId);
-    // Kézi résztvevő felvétele (átírás előtt is): source = Manual; az elemzésben előnyt kap.
-    // Visszaad: a résztvevő id-ja (már meglévő névnél azé); üres, ha nincs ilyen meeting / név.
+    // Adds a manual participant (also before transcription): source = Manual; gets priority in the analysis.
+    // Returns the participant's id (for an existing name, that one's); empty if no such meeting / name.
     QString addParticipant(const QString& meetingId, const QString& personName);
-    // „Csak én beszéltem": minden nyers beszélő a saját névre (most, vagy az átirat érkezésekor),
-    // az azonosítás kimarad. false: nincs saját név beállítva / nincs ilyen meeting.
+    // "Only I spoke": every raw speaker gets the user's own name (now, or when the transcript arrives),
+    // identification is skipped. false: no own name set / no such meeting.
     bool setSoloMeeting(const QString& meetingId);
 
-    // Lenyomat felvétele egy tetszőleges hang-szegmensből (átírás előtti névadáshoz):
-    // a meeting adott sávjának [startMs,endMs] részéből embeddinget számol és a név
-    // alá menti. Az idők MEGBESZÉLÉS-időben vannak (mint az identifyParticipants sampleRef-je);
-    // a sáv eltolását (Track::startOffsetMs) a függvény vonja le. voiceprintsChanged jel.
+    // Records a voiceprint from an arbitrary audio segment (for naming before transcription):
+    // computes an embedding from the [startMs,endMs] part of the meeting's given track and saves
+    // it under the name. Times are in MEETING time (like the sampleRef of identifyParticipants);
+    // the function subtracts the track's offset (Track::startOffsetMs). voiceprintsChanged signal.
     void enrollVoiceprintFromSample(const QString& name, const QString& meetingId,
                                     const QString& trackId, qint64 startMs, qint64 endMs);
 
-    // ---- strukturált réteg: megszakítás, témák, azonosítás, hullámforma ----------------
-    // Egy futó feladat megszakítása. A meeting konzisztens állapotban marad, felvétel nem
-    // törlődik:
-    //  - Transcribe: a lekeverés-fázisban az ffmpeg leáll (a régi keverék érintetlen); a
-    //    szolgáltatónál a job megszakad és a feltöltött hang/átírás törlődik (Soniox cleanup);
-    //    a korábbi átirat (ha volt) megmarad. Az azonosítás-szakaszban: csak az azonosítás
-    //    marad ki, az átirat kész.
-    //  - Summarize / ExtractTopics: a futó LLM-kérés megszakad, a korábbi összefoglaló marad.
-    //  - AnalyzeTopics: a meeting sorban álló témái kikerülnek, a futó megszakad; a már kész
-    //    (perzisztált) elemzések megmaradnak, a folytatás onnan megy tovább.
-    //  - Mixdown: az ffmpeg leáll, a félkész fájl törlődik, a korábbi keverék érintetlen.
-    //  - Identify: a már megtalált egyezések mentődnek, a többi beszélő névtelen marad.
-    // true, ha volt mit megszakítani. Megszakításnál NINCS errorOccurred és nem marad hiba.
+    // ---- structured layer: cancel, topics, identification, waveform ----------------
+    // Cancels a running task. The meeting stays in a consistent state, no recording is
+    // deleted:
+    //  - Transcribe: in the mixdown phase ffmpeg stops (the old mix is untouched); at the
+    //    provider the job is cancelled and the uploaded audio/transcript deleted (Soniox cleanup);
+    //    the earlier transcript (if any) stays. In the identification phase: only the
+    //    identification is skipped, the transcript is done.
+    //  - Summarize / ExtractTopics: the running LLM request is cancelled, the earlier summary stays.
+    //  - AnalyzeTopics: the meeting's queued topics are removed and the running one cancelled;
+    //    finished (persisted) analyses stay, a resume continues from there.
+    //  - Mixdown: ffmpeg stops, the half-written file is deleted, the earlier mix is untouched.
+    //  - Identify: matches already found are saved, the other speakers stay anonymous.
+    // true if there was something to cancel. A cancel emits NO errorOccurred and leaves no error.
     bool cancelJob(const QString& meetingId, tanara::JobKind kind);
-    // A meeting MINDEN futó feladatának megszakítása (pl. törlés előtt).
+    // Cancels ALL running tasks of the meeting (e.g. before deleting).
     void cancelAllJobs(const QString& meetingId);
-    // „Betöltés nagyobb kontextussal” (LM Studio): a KÖVETKEZŐ LLM-feladat előtt a modell
-    // legalább `tokens` tokenes kontextussal (és parallel = 1-gyel) töltődik újra, ha a betöltött
-    // példány ennél kisebb. Egyszer érvényes; a feladatot a hívó indítja újra. A Tanara Cloudnál
-    // nincs hatása.
+    // "Load with a larger context" (LM Studio): before the NEXT LLM task the model is reloaded with
+    // at least `tokens` of context (and parallel = 1), if the loaded instance is smaller. Applies
+    // once; the caller restarts the task. No effect with Tanara Cloud.
     void requestLlmContext(int tokens);
-    // Egyetlen téma kivétele a sorból / futó elemzésének megszakítása.
+    // Removes a single topic from the queue / cancels its running analysis.
     bool cancelTopicAnalysis(const QString& meetingId, const QString& topicId);
 
-    // A téma-lista mentése a megadott SORRENDBEN (hozzáadás / törlés / szerkesztés /
-    // átrendezés egyaránt ezzel perzisztál). Az üres id-jű (új) témák azonosítót kapnak, az
-    // üres című témák kimaradnak; a törölt témák megmaradt hibái törlődnek. A kész
-    // elemzések (summary.analyses.json) érintetlenek — a törölt témáké egyszerűen nem kerül
-    // az összegzésbe. Visszaadja a mentett listát. topicsChanged jel.
+    // Saves the topic list in the given ORDER (add / delete / edit / reorder all persist
+    // through this). Topics with an empty id (new) get an id, topics with an empty title are
+    // dropped; remembered errors of deleted topics are cleared. Finished analyses
+    // (summary.analyses.json) are untouched; those of deleted topics simply do not go into the
+    // summary. Returns the saved list. topicsChanged signal.
     QVector<tanara::SummaryTopic> setMeetingTopics(const QString& meetingId,
                                                    const QVector<tanara::SummaryTopic>& topics);
 
-    // Résztvevők azonosítása hang alapján ASZINKRON (az autoIdentifyMeeting nem-blokkoló
-    // párja): a hang dekódolása + embedding háttérszálon fut, a párosítás és a mentés a fő
-    // szálon. Haladás: jobs() (Identify feladat, „3 / 5 beszélő”); megszakítható. A végén
-    // speakerMapChanged (ha lett új név). false, ha nincs hang-modell / átirat / már fut.
+    // Identifies participants by voice ASYNCHRONOUSLY (the non-blocking counterpart of
+    // autoIdentifyMeeting): audio decoding + embedding run on a background thread, matching and
+    // saving on the main thread. Progress: jobs() (Identify task, "3 / 5 speakers"); cancellable.
+    // At the end speakerMapChanged (if there is a new name). false if no voice model / transcript / already running.
     bool identifyMeetingAsync(const QString& meetingId);
 
-    // Az átírás utáni automatikus hang-azonosítás be/ki EGY meetingre (M03 „Résztvevők
-    // azonosítása hang alapján” kapcsoló). Alapértelmezés: be. Kikapcsolva az átírás-feladat
-    // „identify” szakasza Skipped, az átirat névtelen beszélőkkel készül el. A választás a
-    // folyamat életére szól (nem perzisztált); az utólagos identifyMeetingAsync-et nem érinti.
+    // Automatic voice identification after transcription on/off for ONE meeting (the "Identify
+    // participants by voice" toggle). Default: on. When off, the "identify" phase of the
+    // transcription task is Skipped and the transcript is built with anonymous speakers. The choice
+    // lasts for the life of the process (not persisted); it does not affect a later identifyMeetingAsync.
     void setIdentifyAfterTranscription(const QString& meetingId, bool enabled);
     bool identifyAfterTranscription(const QString& meetingId) const;
-    // Van-e használható hang-modell (nélküle nincs azonosítás-szakasz; a kapcsoló letiltható).
+    // Whether a usable voice model exists (without it there is no identify phase; the toggle can be disabled).
     bool voiceIdentificationAvailable() const;
 
-    // Hullámforma-csúcsok kérése a meeting összes meglévő sávjára (+ a keverékre, trackId
-    // "mixdown"). Eredmény: waveforms()->peaksReady / peaksFailed.
+    // Requests waveform peaks for all existing tracks of the meeting (+ the mix, trackId
+    // "mixdown"). Result: waveforms()->peaksReady / peaksFailed.
     void requestWaveforms(const QString& meetingId);
 
-    // ---- címkejavaslatok (aszinkron; jelek: tagSuggestionsComputing → tagSuggestionsReady) ----
-    // Hasonló megbeszélésekből (+ beágyazással, ha van). A meeting megjelenítésekor / új
-    // átiratnál hívandó; meetingenként gyorsítótárazott, amíg a címkék, az átirat vagy az
-    // index nem változik. Kikapcsolt javaslatoknál üres listát ad. A számolás háttérszálon
-    // fut (a fő szál nem akad meg); a gyorsítótárból azonnal, még a hívásban jön a jel. Az
-    // ugyanarra a meetingre ismételt kérések összevonódnak.
+    // ---- tag suggestions (asynchronous; signals: tagSuggestionsComputing -> tagSuggestionsReady) ----
+    // From similar meetings (+ embeddings, if available). Call when a meeting is displayed / on a
+    // new transcript; cached per meeting until the tags, the transcript or the index change.
+    // With suggestions off it returns an empty list. The computation runs on a background thread
+    // (the main thread does not stall); from the cache the signal arrives immediately, within the
+    // call. Repeated requests for the same meeting are merged.
     void requestTagSuggestions(const QString& meetingId);
-    // Egy címke felrakása után az együtt járók (source = Cooccur). Ha nincs ilyen, nem jön jel
-    // (a korábbi javaslatok maradnak, a felrakott címke nélkül).
+    // The co-occurring tags after a tag is applied (source = Cooccur). If there are none, no signal
+    // is emitted (earlier suggestions stay, without the applied tag).
     void requestCooccurSuggestions(const QString& meetingId, const QString& tagId);
-    // A nyelvi modell javaslata az összefoglalóból (source = Llm; új név-ötletek isNew-val).
-    // Az összefoglaló elkészülte után magától fut, ha a llmTagSuggestions beállítás be van kapcsolva.
+    // The language model's suggestion from the summary (source = Llm; new name ideas with isNew).
+    // Runs by itself after the summary is done, if the llmTagSuggestions setting is on.
     void requestLlmTagSuggestions(const QString& meetingId);
-    // A beágyazó provider beállítása (a settings.json-ba is). Modellváltás → az index
-    // eldobása és az előkészítés újraindítása. Üres id → nincs beágyazás (alap szint).
+    // Sets the embedding provider (also in settings.json). A model change drops the index and
+    // restarts preparation. Empty id = no embedding (basic level).
     void setEmbeddingProvider(const QString& providerId, const tanara::ProviderConfig& config);
 
-    // Titok (pl. Soniox API-kulcs) beállítása a KeyStore-ban. name pl. "soniox.apiKey".
+    // Sets a secret (e.g. the Soniox API key) in the KeyStore. name e.g. "soniox.apiKey".
     void setSecret(const QString& name, const QString& value);
     bool hasSecret(const QString& name) const;
-    // A tárolt titok értéke ("" ha nincs) — a Beállítások kulcs-mezőjéhez (szem-gomb) és a
-    // „Kapcsolat tesztelése” próbához. Máshol ne jelenítsd meg.
+    // The stored secret's value ("" if none), for the Settings key field (eye button) and the
+    // "Test connection" probe. Do not display it anywhere else.
     QString secret(const QString& name) const;
 
-    // Számlált szintfigyelés több fogyasztónak (a Beállítások „Rögzítés” lapja a felvevő
-    // mellett): amíg legalább egy fogyasztó kéri — vagy a start/stopLevelMonitoring párosa
-    // (a felvevő) él —, a figyelés megy; az utolsó elengedésekor leáll. A megszűnő `owner`
-    // kérése magától elengedődik.
+    // Counted level monitoring for several consumers (the Settings "Recording" page alongside the
+    // recorder): while at least one consumer requests it, or the start/stopLevelMonitoring pair
+    // (the recorder) is alive, monitoring runs; it stops when the last one releases. The request
+    // of a destroyed `owner` is released automatically.
     void retainLevelMonitoring(QObject* owner);
     void releaseLevelMonitoring(QObject* owner);
 
-    // ==== G4: közös visszavonás, tartós törlés, modell-műveletek ============================
-    // A6: résztvevő TARTÓS törlése a meetingből (meeting.json): a sorai névtelenek lesznek (mint
-    // az unbindParticipant), a résztvevő és a jóváhagyás-bejegyzése kikerül. Egy lépés a közös
-    // visszavonásban (a szerkesztő kötés-lépésével együtt). false: nincs ilyen meeting / résztvevő.
-    // (Egy későbbi, kézzel indított újraelemzés a hang-jelöltet újra felveheti.) Ha nincs ilyen
-    // résztvevő-rekord, az azonosító az átirat beszélőjének kulcsa lehet (a meeting a résztvevő-
-    // elemzés előtt kapott neveket): a névvel bíró beszélő sorai névtelenek lesznek.
+    // ==== shared undo, permanent delete, model operations ============================
+    // PERMANENT deletion of a participant from the meeting (meeting.json): their lines become
+    // anonymous (like unbindParticipant), the participant and their approval entry are removed.
+    // One step in the shared undo (together with the editor's binding step). false: no such
+    // meeting / participant. (A later, manually started re-analysis may add the voice candidate
+    // again.) If there is no such participant record, the id may be an utterance speaker's key
+    // (the meeting got names before participant analysis): the lines of the named speaker become anonymous.
     bool removeParticipant(const QString& meetingId, const QString& participantId);
-    // B1: a modellfájlok újraellenőrzése (pl. kézzel bemásolt ONNX): a használt modellek
-    // újraszámolása; a voiceModelsChanged MINDIG kimegy (a fájl-állapot is változhatott), és ha a
-    // használt lista bővült, indul a lenyomat-pótlás.
+    // Rechecks the model files (e.g. a manually copied ONNX): recomputes the models in use;
+    // voiceModelsChanged is ALWAYS emitted (the file state may have changed too), and if the
+    // list in use grew, voiceprint backfill starts.
     void rescanVoiceModels();
-    // B1: egy letöltött modellfájl törlése (csak <metaDir>/models; a csomagban lévőhöz nem nyúl),
-    // utána rescanVoiceModels. false (+ *error): ismeretlen id / nincs letöltött fájl / épp töltődik
-    // vagy nem törölhető.
+    // Deletes a downloaded model file (only <metaDir>/models; a bundled one is not touched),
+    // then rescanVoiceModels. false (+ *error): unknown id / no downloaded file / currently
+    // downloading or not deletable.
     bool deleteVoiceModelFile(const QString& id, QString* error = nullptr);
-    // ==== /G4 ================================================================================
 
 signals:
     void devicesChanged();
-    // Élő szint ESZKÖZNÉV szerint, csúccsal (~30 Hz) — felvétel előtt minden figyelt eszközre,
-    // felvétel alatt a rögzített sávokra és (a szintfigyelésből) a többire is.
+    // Live level BY DEVICE NAME, with peak (~30 Hz): before recording for every monitored device,
+    // during recording for the recorded tracks and (from the level monitoring) the others too.
     void deviceLevelPeak(QString deviceName, float rms, float peak);
-    void recordingTrackAdded(QString deviceName);    // felvétel közben új sáv indult
-    void recordingTrackClosed(QString deviceName);   // a rögzített eszközt leválasztották
-    void recordingDeviceReturned(QString deviceName); // a leválasztott eszköz visszatért: új szakasz indul
+    void recordingTrackAdded(QString deviceName);    // a new track started during recording
+    void recordingTrackClosed(QString deviceName);   // the recorded device was detached
+    void recordingDeviceReturned(QString deviceName); // the detached device returned: a new span starts
     void recordingStateChanged(tanara::RecordingState state);
     void elapsedChanged(qint64 ms);
     void recordingFinished(tanara::Meeting meeting);
-    // Az importálás elkészült: a meeting a tárban van (a könyvtár felvette).
+    // The import is done: the meeting is in the store (the library picked it up).
     void importFinished(tanara::Meeting meeting);
-    // Az importálás nem sikerült (nem maradt utána semmi). detail: technikai sor, lehet üres.
+    // The import failed (nothing is left behind). detail: a technical line, may be empty.
     void importFailed(QString importId, QString message, QString detail);
     void importCancelled(QString importId);
-    // Archívum-művelet haladása (opId: az exportMeetingArchive / importMeetingArchive
-    // visszatérési értéke) és vége. ok == false: message a hiba (megszakításnál „Megszakítva.”).
-    // Exportnál path a kész fájl, importnál meetingId az új megbeszélés.
+    // Progress and end of an archive operation (opId: the return value of exportMeetingArchive /
+    // importMeetingArchive). ok == false: message is the error ("Cancelled." on cancel).
+    // For export path is the finished file, for import meetingId is the new meeting.
     void archiveProgress(QString opId, int percent);
     void archiveFinished(QString opId, bool ok, QString meetingId, QString path, QString message);
-    // Felvétel közben a hívás véget ért (a detektor 2 egymást követő pollban inaktívat
-    // látott egy korábban aktív hívás után). A UI ebből kérdez rá a leállításra.
+    // The call ended during recording (the detector saw inactive in 2 consecutive polls after a
+    // previously active call). The UI asks whether to stop.
     void callEnded(QString appName);
-    // Felvétel közben minden sáv legalább `minutes` perce csendes (silenceAskMinutes).
-    // A UI ebből kérdez rá a leállításra; hang visszatértekor újra-élesedik.
+    // During recording every track has been silent for at least `minutes` minutes (silenceAskMinutes).
+    // The UI asks whether to stop; it re-arms when audio returns.
     void silenceDetected(int minutes);
     void transcriptReady(QString meetingId, QString markdownPath);
     void summaryReady(QString meetingId, QString markdownPath);
-    void topicsReady(QString meetingId, QVector<tanara::SummaryTopic> topics);  // komplex 1. kör
-    // Komplex 2. kör — PER-TÉMA életciklus (a UI a topicId-vel címzi a kártyát):
-    void topicAnalysisQueued(QString meetingId, QString topicId);    // sorba került
-    void topicAnalysisStarted(QString meetingId, QString topicId);   // elemzés fut
-    void topicAnalysisReady(QString meetingId, tanara::TopicAnalysis analysis);  // kész + perzisztálva
-    void topicAnalysisFailed(QString meetingId, QString topicId, QString error); // csak ez a téma bukott
-    void topicAnalysisQueueFinished(QString meetingId, int okCount, int failCount); // a sor kiürült
-    // A téma-lista változott (javaslat érkezett / setMeetingTopics / analyzeTopic szerkesztés).
+    void topicsReady(QString meetingId, QVector<tanara::SummaryTopic> topics);  // complex pass 1
+    // Complex pass 2: PER-TOPIC lifecycle (the UI addresses the card by topicId):
+    void topicAnalysisQueued(QString meetingId, QString topicId);    // queued
+    void topicAnalysisStarted(QString meetingId, QString topicId);   // analysis running
+    void topicAnalysisReady(QString meetingId, tanara::TopicAnalysis analysis);  // done + persisted
+    void topicAnalysisFailed(QString meetingId, QString topicId, QString error); // only this topic failed
+    void topicAnalysisQueueFinished(QString meetingId, int okCount, int failCount); // the queue is empty
+    // The topic list changed (suggestion arrived / setMeetingTopics / analyzeTopic edit).
     void topicsChanged(QString meetingId);
-    // Egy téma állapota változott (lásd topicStatuses) — a kártya inkrementális frissítéséhez.
+    // A topic's state changed (see topicStatuses), for incremental card updates.
     void topicStatusChanged(QString meetingId, QString topicId);
-    void speakerMapChanged(QString meetingId);              // beszélő-átnevezés után
-    void summaryStaleChanged(QString meetingId);            // az összefoglaló elavult-jelzője változott
-    // Az összefoglaló állításai változtak (jelölés). A célzott elavulás változását a
-    // summaryStaleChanged jelzi — utána a summaryStatements is újraolvasandó.
+    void speakerMapChanged(QString meetingId);              // after a speaker rename
+    void summaryStaleChanged(QString meetingId);            // the summary's stale flag changed
+    // The summary's statements changed (flagging). A change of the targeted staleness is
+    // signaled by summaryStaleChanged; summaryStatements must be reread afterwards.
     void summaryStatementsChanged(QString meetingId);
-    void peopleChanged();                                   // személy-lista változott
-    void voiceprintsChanged();                              // voice-ID lenyomat-DB változott
-    // A lusta pótlás (B1): elindult (total: a számolandó lenyomatok), haladás (done / total), kész
-    // (added: új lenyomatok, skipped: kimaradt minták — lásd backfillSkippedSamples). Ha nincs
-    // mit számolni, csak a Finished jön.
+    void peopleChanged();                                   // the people list changed
+    void voiceprintsChanged();                              // the voice-ID voiceprint DB changed
+    // Lazy backfill: started (total: voiceprints to compute), progress (done / total), done
+    // (added: new voiceprints, skipped: skipped samples, see backfillSkippedSamples). If there is
+    // nothing to compute, only Finished is emitted.
     void voiceprintBackfillStarted(int total);
     void voiceprintBackfillProgress(int done, int total);
     void voiceprintBackfillFinished(int added, int skipped);
-    void voiceModelsChanged();                              // a használt modellek listája változott
-    void tracksChanged(QString meetingId);                  // sáv aktív/eldobott/törölve/beszédarány
-    void participantAnalysisStarted(QString meetingId);     // a hangelemzés elindult
-    void participantAnalysisFinished(QString meetingId);    // a hangelemzés kész (jelöltek a meetingen)
-    // A hangelemzés haladása (A8): a feldolgozott sáv k / N (1-től; N = a beszédet tartalmazó
-    // sávok száma) és a beszéd-ablakok szerinti százalék 0..100. Csak változáskor jön.
+    void voiceModelsChanged();                              // the list of models in use changed
+    void tracksChanged(QString meetingId);                  // track active/dropped/deleted/speech share
+    void participantAnalysisStarted(QString meetingId);     // the voice analysis started
+    void participantAnalysisFinished(QString meetingId);    // the voice analysis is done (candidates on the meeting)
+    // Progress of the voice analysis: processed track k / N (from 1; N = number of tracks with
+    // speech) and the percentage by speech windows, 0..100. Emitted only on change.
     void participantAnalysisProgress(QString meetingId, int tracksDone, int tracksTotal, int percent);
-    void participantsChanged(QString meetingId);            // résztvevők / jóváhagyás / kötés változott
-    void trackActivityReady(QString meetingId);             // elkészült a sávok aktivitása (beszéd-csík)
-    void mixdownUpdated(QString meetingId, bool ok);        // regenerateMixdown eredménye
-    void mixdownProgress(QString meetingId, int pct);       // lekeverés haladása 0..100
-    // ---- Tanara Cloud feldolgozás visszajelzései (K-07, K-09…K-12) ----
-    // Egy futás (átírás / összefoglaló / komplex köteg) sikeres vége: a hívásonkénti
-    // terhelések összege (a gateway adta — a kliens nem számol), hívásszám, új egyenleg.
+    void participantsChanged(QString meetingId);            // participants / approval / binding changed
+    void trackActivityReady(QString meetingId);             // track activity (speech strip) is ready
+    void mixdownUpdated(QString meetingId, bool ok);        // result of regenerateMixdown
+    void mixdownProgress(QString meetingId, int pct);       // mixdown progress 0..100
+    // ---- Tanara Cloud processing feedback ----
+    // Successful end of a run (transcription / summary / complex batch): sum of the per-call
+    // charges (given by the gateway; the client does not compute), call count, new balance.
     // kind: transcribe | summary | topics | complex.
     void cloudCharged(QString meetingId, QString kind, tanara::Money total, int calls,
                       tanara::Money balance, QString vatMode);
-    // Az átírás upstream-hibával zárult, a gateway automatikusan visszaírta a díjat.
+    // The transcription ended with an upstream error; the gateway refunded the charge automatically.
     void cloudRefunded(QString meetingId, tanara::Money refund, tanara::Money balance,
                        QString requestId);
-    // Strukturált gateway-hiba egy futásban. chargedSoFar: a futás már terhelt hívásainak
-    // összege (részleges hibánál > 0; ilyenkor NEM igaz, hogy „semmit nem terheltünk”).
+    // Structured gateway error in a run. chargedSoFar: sum of the calls the run already charged
+    // (> 0 on a partial failure; it is then NOT true that "nothing was charged").
     void cloudError(QString meetingId, QString kind, tanara::CloudError error,
                     tanara::Money chargedSoFar);
 
-    // Címkejavaslatok: a számolás elindult / kész (a lista lehet üres). A Ready mindig a
-    // Computing után jön, de ugyanabban az eseményhurok-körben is jöhet.
+    // Tag suggestions: computation started / done (the list may be empty). Ready always comes
+    // after Computing, but may arrive in the same event-loop turn.
     void tagSuggestionsComputing(QString meetingId);
     void tagSuggestionsReady(QString meetingId, QVector<tanara::TagSuggestion> suggestions);
 
-    void jobProgress(QString meetingId, QString message);   // átírás/összefoglaló állapot
+    void jobProgress(QString meetingId, QString message);   // transcription/summary state
     void errorOccurred(QString message);
 
 private:
-    // Hívás-vég figyelés felvétel közben (askStopOnCallEnd) — a figyelő detektor-magjával.
+    // Call-end watching during recording (askStopOnCallEnd), using the watcher's detector core.
     void startCallEndMonitor();
     void stopCallEndMonitor();
     void pollCallEnd();
-    // A szintfigyelő (újra)indítása a megfelelő eszköz-halmazzal; force nélkül csak akkor,
-    // ha a halmaz változott. Felvétel alatt a rögzített eszközök kimaradnak.
+    // (Re)starts the level monitor with the right device set; without force only if the set
+    // changed. During recording the recorded devices are left out.
     void restartLevelMonitor(bool force);
     void beginLevelMonitoring();
     void endLevelMonitoring();
-    // Eszköz-újrafelsorolás után: felvétel alatt az eltűnt rögzített eszköz sávjának lezárása.
+    // After a device re-enumeration: during recording, closes the track of a recorded device that disappeared.
     void handleDeviceSetChange();
-    // A kész (friss) mixdownt egyetlen Soniox-kéréssel írja át; a transcribeMeeting ehhez
-    // láncolja a lekeverés elkészültét. A beszélő-szeparációt a Soniox diarizációja adja
-    // („Beszélő N" címkék) — a nevet utólag a voice-ID / kézi átnevezés oldja fel.
+    // Transcribes the finished (fresh) mixdown with a single Soniox request; transcribeMeeting
+    // chains the mixdown's completion to it. Speaker separation comes from Soniox diarization
+    // ("Speaker N" labels); the name is resolved afterwards by voice ID / manual rename.
     void transcribeFromMixdown(const QString& meetingId);
 
-    // Téma-elemzés job-sor: a témák sorba kerülnek (topicAnalysisQueued), egyszerre EGY fut
-    // (lokális modell), a kész eredmény azonnal perzisztálódik. Egy téma hibája nem állítja
-    // le a sort. reduceWhenDone=true → a sor kiürülésekor (ha nincs bukás) finalize.
+    // Topic-analysis job queue: topics are queued (topicAnalysisQueued), ONE runs at a time
+    // (local model), the finished result is persisted immediately. A topic's failure does not
+    // stop the queue. reduceWhenDone=true: when the queue empties (if nothing failed) finalize.
     void enqueueTopicAnalyses(const QString& meetingId,
                               const QVector<tanara::SummaryTopic>& topics, bool reduceWhenDone);
     void startNextTopicJob();
 
-    // Tanara Cloud feldolgozás-futás (X-Tanara-Job-Id, terhelés-összesítő, utolsó hiba).
+    // Tanara Cloud processing run (X-Tanara-Job-Id, charge totals, last error).
     struct CloudRun;
     using CloudRunPtr = std::shared_ptr<CloudRun>;
     CloudRunPtr newCloudRun(const QString& meetingId, const QString& kind) const;
-    // A futás gateway-configja (baseUrl, kulcs, modell, X-Tanara-* fejlécek, válasz-hook).
+    // The run's gateway config (baseUrl, key, model, X-Tanara-* headers, response hook).
     ProviderConfig cloudConfig(WorkflowStep step, const CloudRunPtr& run,
                                const QString& summaryMode) const;
-    // BYO: a kiválasztott LLM config + kulcs (run marad null). Cloud: gateway-config; ha a
-    // run még null, új futás indul (kind / summaryMode szerint).
+    // BYO: the selected LLM config + key (run stays null). Cloud: gateway config; if the run is
+    // still null, a new run starts (by kind / summaryMode).
     ProviderConfig llmConfigFor(CloudRunPtr& run, const QString& meetingId, const QString& kind,
                                 const QString& summaryMode) const;
     void finishCloudRun(const CloudRunPtr& run);                       // cloudCharged
-    // Sáv-beszédarány (háttérszálon), majd a kész meetingre alkalmazva; thenMixdown → lekeverés.
+    // Per-track speech share (background thread), then applied to the finished meeting; thenMixdown = remix.
     void startSpeechCheck(const QString& meetingId, bool thenMixdown);
     void finishSpeechCheck(const QString& meetingId, const tanara::MeetingActivity& activity,
                            bool thenMixdown);
     void finishParticipantAnalysis(const QString& meetingId, tanara::ClusterSet clusters,
                                    const QString& tracksKey);
     void finishTrackActivity(const QString& meetingId, const tanara::MeetingActivity& activity);
-    // A résztvevő (id) vagy beszélő-kulcs beszélő-kulcsai a szerkesztőben (átirat után).
+    // The speaker keys of a participant (id) or speaker key in the editor (after the transcript).
     QStringList speakerKeysFor(const tanara::Meeting& m, const QString& id);
-    // Átirat érkezésekor: a résztvevők kézi sáv-kötése a még üres beszélő-beosztásokba.
+    // When the transcript arrives: the participants' manual track binding into the still-empty speaker assignments.
     void copyParticipantTracksToOverlay(const QString& meetingId);
-    // Az átirat megérkezett: kötés + a döntés (jóváhagyás / „csak én") alkalmazása. true, ha a
-    // döntés lefedte a beszélőket (az automatikus azonosítás kimarad).
+    // The transcript arrived: binding + applying the decision (approve / "only me"). true if the
+    // decision covered the speakers (automatic identification is skipped).
     bool applyParticipantsToTranscript(const QString& meetingId);
-    // A kötések a szerkesztőn át, egy visszavonási lépésben.
+    // The bindings through the editor, in one undo step.
     bool applySpeakerBindings(const QString& meetingId, const QVector<tanara::SpeakerBinding>& bindings,
                               const QString& undoText);
-    // Az átirat utáni automatikus azonosítás az átírás-feladat utolsó szakaszaként (aszinkron).
+    // Automatic identification after the transcript, as the last phase of the transcription task (asynchronous).
     bool startIdentify(const QString& meetingId, bool asTranscribeStage);
-    // Címkejavaslatok: a kiszámolt lista kiadása (szűrve), ill. a beágyazás beállítása.
+    // Tag suggestions: publishing the computed list (filtered), and setting the embedding.
     void publishTagSuggestions(const QString& meetingId, QVector<tanara::TagSuggestion> list);
     void computeTagSuggestions(const QString& meetingId);
-    // A hasonlóság-alapú lista háttérszálon (lásd az AppController.cpp „címkejavaslatok” részét).
+    // The similarity-based list on a background thread (see the "tag suggestions" part of AppController.cpp).
     void scheduleTagSuggestions(const QString& meetingId);
     void startTagSuggestionJob(const QString& meetingId);
     void finishTagSuggestionJob(const QString& meetingId, quint64 dataGen, QVector<tanara::TagSuggestion> list);
     void invalidateTagSuggestions();
     void startLlmTagSuggestions(const QString& meetingId, const QVector<tanara::TagSuggestion>& suggested);
     void applyEmbeddingSettings(bool restart);
-    // A használt modellek újraszámolása (beállítás / betöltő változásakor); bővülésnél pótlás.
+    // Recomputes the models in use (on a setting / loader change); backfill when it grows.
     void applyVoiceModels();
-    // Hiba: strukturált gateway-hiba → cloudError, különben errorOccurred(fallback).
+    // Error: a structured gateway error -> cloudError, otherwise errorOccurred(fallback).
     void failCloudRun(const CloudRunPtr& run, const QString& fallbackMessage);
 
-    // G4: a résztvevő-műveletek közös visszavonási lépése (RAII, lásd AppController.cpp).
+    // Shared undo step for participant operations (RAII, see AppController.cpp).
     struct ParticipantUndoScope;
 
     struct Impl;
     std::unique_ptr<Impl> d;
 };
 
-// A KeyStore kulcsnevei (egy helyen).
+// The KeyStore key names (in one place).
 namespace keys {
 inline const QString SonioxApiKey = QStringLiteral("soniox.apiKey");
 inline const QString LlmApiKey    = QStringLiteral("llm.apiKey");

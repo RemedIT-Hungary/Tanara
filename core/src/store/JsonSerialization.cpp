@@ -9,7 +9,7 @@ namespace tanara {
 
 namespace {
 
-// Enum ⟷ string, hogy a JSON ember-olvasható és stabil maradjon.
+// Enum <-> string, so the JSON stays human-readable and stable.
 QString trackKindToString(TrackKind k)
 {
     switch (k) {
@@ -81,13 +81,13 @@ Track trackFromJson(const QJsonObject& o)
     t.fixedSpeaker = o.value(QStringLiteral("fixedSpeaker")).toBool();
     t.sampleRate   = o.value(QStringLiteral("sampleRate")).toInt(48000);
     t.channels     = o.value(QStringLiteral("channels")).toInt(1);
-    t.active       = o.value(QStringLiteral("active")).toBool(true);   // régi felvétel → aktív
+    t.active       = o.value(QStringLiteral("active")).toBool(true);   // old recording -> active
     t.peakLevel    = static_cast<float>(o.value(QStringLiteral("peakLevel")).toDouble(0.0));
     t.customName   = o.value(QStringLiteral("customName")).toString();
     t.startOffsetMs = qint64(o.value(QStringLiteral("startOffsetMs")).toDouble(0.0));
     t.speechRatio  = o.value(QStringLiteral("speechRatio")).toDouble(-1.0);
     t.excludedReason = o.value(QStringLiteral("excludedReason")).toString();
-    // Régi meeting: a felvétel utáni csend-eldobás (active=false) ok nélkül → „nincs beszéd".
+    // Old meeting: a post-recording silence drop (active=false) without a reason -> "no speech".
     if (!t.active && t.excludedReason.isEmpty())
         t.excludedReason = QStringLiteral("noSpeech");
     return t;
@@ -127,7 +127,7 @@ QJsonObject toJson(const Summary& s)
     o[QStringLiteral("participants")] = stringListToArray(s.participants);
     o[QStringLiteral("openQuestions")] = stringListToArray(s.openQuestions);
 
-    // A memó szakaszai időrendben (az idő ms-ban; -1 = ismeretlen).
+    // The memo's sections in time order (time in ms; -1 = unknown).
     QJsonArray memo;
     for (const MemoSection& m : s.memo) {
         QJsonObject mo;
@@ -145,8 +145,8 @@ QJsonObject toJson(const Summary& s)
     }
     o[QStringLiteral("memo")] = memo;
 
-    // Forrás-hivatkozások: az állítások (a staleBecause futásidejű, nem tároljuk) és a
-    // hivatkozott megszólalások beszélője a készítéskor.
+    // Source references: the statements (staleBecause is runtime-only, not stored) and the speaker of the
+    // referenced utterances at creation time.
     if (!s.statements.isEmpty()) {
         QJsonArray sts;
         for (const SummaryStatement& st : s.statements) {
@@ -193,7 +193,7 @@ Summary summaryFromJson(const QJsonObject& o)
         s.actionItems.append(actionItemFromJson(v.toObject()));
 
     s.participants = arrayToStringList(o.value(QStringLiteral("participants")).toArray());
-    // Régi summary.json-ban ezek a mezők hiányoznak → üresek maradnak.
+    // In an old summary.json these fields are missing -> they stay empty.
     s.openQuestions = arrayToStringList(o.value(QStringLiteral("openQuestions")).toArray());
     for (const auto& v : o.value(QStringLiteral("memo")).toArray()) {
         const QJsonObject mo = v.toObject();
@@ -208,7 +208,7 @@ Summary summaryFromJson(const QJsonObject& o)
         if (!m.title.isEmpty() || !m.points.isEmpty() || !m.intro.isEmpty())
             s.memo.append(m);
     }
-    // Régi summary.json: nincs statements / sourceSpeakers → üres.
+    // Old summary.json: no statements / sourceSpeakers -> empty.
     for (const auto& v : o.value(QStringLiteral("statements")).toArray()) {
         const QJsonObject so = v.toObject();
         SummaryStatement st;
@@ -236,7 +236,7 @@ Summary summaryFromJson(const QJsonObject& o)
     return s;
 }
 
-// ---- résztvevők / bizonyíték ---------------------------------------------
+// ---- participants / evidence ---------------------------------------------
 QString participantSourceName(ParticipantSource s)
 {
     switch (s) {
@@ -422,7 +422,7 @@ QJsonObject toJson(const Meeting& m)
     o[QStringLiteral("id")]        = m.id;
     o[QStringLiteral("title")]     = m.title;
     o[QStringLiteral("folder")]    = m.folder;
-    // ISO-8601, hogy stabil és időzóna-tudatos legyen.
+    // ISO-8601, to be stable and time-zone-aware.
     o[QStringLiteral("startedAt")] = m.startedAt.toString(Qt::ISODateWithMs);
     o[QStringLiteral("durationMs")] = static_cast<double>(m.durationMs);
 
@@ -488,14 +488,14 @@ Meeting meetingFromJson(const QJsonObject& o)
         m.participants.append(participantFromJson(v.toObject()));
     if (o.value(QStringLiteral("participantApproval")).isObject())
         m.approval = participantApprovalFromJson(o.value(QStringLiteral("participantApproval")).toObject());
-    // Régi meeting: a figyelő automatikus mondata („Automatikusan észlelt hívás: …”) nem
-    // megjegyzés → üres megjegyzés + észlelt hívás. A következő mentés már így írja ki.
+    // Old meeting: the watcher's automatic sentence ("Automatically detected call: ...") is not a note
+    // -> an empty note + the detected call. The next save writes it this way.
     meetingnotes::interpretLegacyNote(m);
     return m;
 }
 
 // ---- ProviderConfig -------------------------------------------------------
-// FONTOS: az apiKey SZÁNDÉKOSAN NEM kerül a JSON-be (KeyStore felel érte).
+// IMPORTANT: apiKey INTENTIONALLY does NOT go into the JSON (the KeyStore is responsible for it).
 QJsonObject toJson(const ProviderConfig& p)
 {
     QJsonObject o;
@@ -517,12 +517,12 @@ ProviderConfig providerConfigFromJson(const QJsonObject& o)
     p.type    = o.value(QStringLiteral("type")).toString();
     p.baseUrl = o.value(QStringLiteral("baseUrl")).toString();
     p.model   = o.value(QStringLiteral("model")).toString();
-    // Visszafelé kompatibilis: hiányzó mezőnél a ProviderConfig-default marad.
+    // Backward compatible: for a missing field the ProviderConfig default stays.
     p.temperature = o.value(QStringLiteral("temperature")).toDouble(0.2);
     p.maxTokens   = o.value(QStringLiteral("maxTokens")).toInt(8000);
     p.reasoning   = o.value(QStringLiteral("reasoning")).toString(p.reasoning);
     p.contextLength = qMax(0, o.value(QStringLiteral("contextLength")).toInt(0));
-    // apiKey-t SOHA nem olvasunk JSON-ből; futásidőben a KeyStore tölti.
+    // apiKey is NEVER read from JSON; the KeyStore fills it at run time.
     if (o.contains(QStringLiteral("extra")))
         p.extra = o.value(QStringLiteral("extra")).toObject().toVariantMap();
     return p;
@@ -531,8 +531,8 @@ ProviderConfig providerConfigFromJson(const QJsonObject& o)
 // ---- AppSettings ----------------------------------------------------------
 namespace {
 
-// id -> ProviderConfig map → JSON-objektum (providerenként a meglévő
-// toJson(ProviderConfig); az apiKey továbbra sem kerül bele).
+// id -> ProviderConfig map -> JSON object (per provider the existing toJson(ProviderConfig); the
+// apiKey still does not go in).
 QJsonObject providerConfigsToJson(const QMap<QString, ProviderConfig>& configs)
 {
     QJsonObject o;
@@ -570,7 +570,7 @@ QJsonObject toJson(const AppSettings& s)
     o[QStringLiteral("topicAnalysisPrompt")]   = s.topicAnalysisPrompt;
     o[QStringLiteral("summaryLanguage")]       = s.summaryLanguage;
 
-    // Új multi-provider shape: kiválasztott id + providerenkénti config.
+    // New multi-provider shape: the selected id + per-provider config.
     o[QStringLiteral("sttProviderId")] = s.sttProviderId;
     o[QStringLiteral("llmProviderId")] = s.llmProviderId;
     o[QStringLiteral("sttProviders")]  = providerConfigsToJson(s.sttConfigs);
@@ -582,7 +582,7 @@ QJsonObject toJson(const AppSettings& s)
     o[QStringLiteral("reviewAutoPlay")]      = s.reviewAutoPlay;
     o[QStringLiteral("voiceModels")]         = stringListToArray(VoiceModelRegistry::normalizeIds(s.voiceModels));
 
-    // Meeting-figyelő (háttér-detektor + tray).
+    // Meeting watcher (background detector + tray).
     o[QStringLiteral("detectorEnabled")]     = s.detectorEnabled;
     o[QStringLiteral("detectorIntervalSec")] = s.detectorIntervalSec;
     o[QStringLiteral("watcherAutostart")]    = s.watcherAutostart;
@@ -602,7 +602,7 @@ QJsonObject toJson(const AppSettings& s)
     o[QStringLiteral("cloudEstimateBeforeRun")] = s.cloudEstimateBeforeRun;
     o[QStringLiteral("onboardingDone")] = s.onboardingDone;
 
-    // Hangeszközök felhasználói nevei (nyers név → barátságos név).
+    // User-facing names of audio devices (raw name -> friendly name).
     QJsonObject names;
     for (auto it = s.deviceNames.constBegin(); it != s.deviceNames.constEnd(); ++it)
         names[it.key()] = it.value();
@@ -628,7 +628,7 @@ AppSettings appSettingsFromJson(const QJsonObject& o)
     s.topicExtractionPrompt = o.value(QStringLiteral("topicExtractionPrompt")).toString(s.topicExtractionPrompt);
     s.topicAnalysisPrompt   = o.value(QStringLiteral("topicAnalysisPrompt")).toString(s.topicAnalysisPrompt);
 
-    // STT: új shape (sttProviders) elsőbbség; különben migráció a régi `stt`-ből.
+    // STT: the new shape (sttProviders) takes precedence; otherwise migration from the old `stt`.
     if (o.contains(QStringLiteral("sttProviders"))) {
         s.sttProviderId = o.value(QStringLiteral("sttProviderId"))
                               .toString(s.sttProviderId);
@@ -644,7 +644,7 @@ AppSettings appSettingsFromJson(const QJsonObject& o)
         s.sttConfigs.insert(id, cfg);
     }
 
-    // LLM: ugyanígy, openai-compat fallback id-vel.
+    // LLM: the same, with an openai-compat fallback id.
     if (o.contains(QStringLiteral("llmProviders"))) {
         s.llmProviderId = o.value(QStringLiteral("llmProviderId"))
                               .toString(s.llmProviderId);
@@ -665,7 +665,7 @@ AppSettings appSettingsFromJson(const QJsonObject& o)
     s.tagSuggestions    = o.value(QStringLiteral("tagSuggestions")).toBool(s.tagSuggestions);
     s.llmTagSuggestions = o.value(QStringLiteral("llmTagSuggestions")).toBool(s.llmTagSuggestions);
     s.reviewAutoPlay    = o.value(QStringLiteral("reviewAutoPlay")).toBool(s.reviewAutoPlay);
-    // Beszélő-modellek: hiányzó kulcs → alapérték; az üres lista érvényes (minden modell ki).
+    // Speaker models: a missing key -> the default; an empty list is valid (every model off).
     if (o.contains(QStringLiteral("voiceModels")))
         s.voiceModels = VoiceModelRegistry::normalizeIds(
             arrayToStringList(o.value(QStringLiteral("voiceModels")).toArray()));
@@ -673,7 +673,7 @@ AppSettings appSettingsFromJson(const QJsonObject& o)
     s.uiLanguage = o.value(QStringLiteral("uiLanguage")).toString(s.uiLanguage);
     s.summaryLanguage = o.value(QStringLiteral("summaryLanguage")).toString(s.summaryLanguage);
 
-    // Meeting-figyelő — safe-merge a defaultokkal (a régi settings.json e nélkül tölt).
+    // Meeting watcher: safe merge with the defaults (an old settings.json loads without this).
     s.detectorEnabled     = o.value(QStringLiteral("detectorEnabled")).toBool(s.detectorEnabled);
     s.detectorIntervalSec = o.value(QStringLiteral("detectorIntervalSec")).toInt(s.detectorIntervalSec);
     s.watcherAutostart    = o.value(QStringLiteral("watcherAutostart")).toBool(s.watcherAutostart);
@@ -695,7 +695,7 @@ AppSettings appSettingsFromJson(const QJsonObject& o)
         o.value(QStringLiteral("cloudEstimateBeforeRun")).toBool(s.cloudEstimateBeforeRun);
     s.onboardingDone = o.value(QStringLiteral("onboardingDone")).toBool(s.onboardingDone);
 
-    // Hangeszközök felhasználói nevei — az üres név nem felülírás (kimarad).
+    // User-facing device names: an empty name is not an override (dropped).
     const QJsonObject names = o.value(QStringLiteral("deviceNames")).toObject();
     for (auto it = names.constBegin(); it != names.constEnd(); ++it) {
         const QString name = it.value().toString().simplified();

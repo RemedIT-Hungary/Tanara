@@ -10,22 +10,21 @@ namespace tanara {
 
 struct DeviceManagerPrivate {
     QVector<AudioDeviceInfo> capture;
-    std::optional<QVector<AudioDeviceInfo>> override;   // teszt-varrat
+    std::optional<QVector<AudioDeviceInfo>> override;   // test seam
 };
 
 namespace {
 
-// Heurisztika: Linuxon (PulseAudio/PipeWire) a kimenetek "monitor" forrásai is
-// capture eszközként jelennek meg. Ezeket Loopback-nek soroljuk, a vonalbemenet/AUX
-// jellegű inputokat Other-nek (valódi capture, de NEM mikrofon → az auto-rögzítés
-// alapból kihagyja, lásd autoRecordDevices()), a többit Mic-nek.
+// Heuristic: on Linux (PulseAudio/PipeWire) the outputs' "monitor" sources also show up as capture
+// devices. We classify these as Loopback, line-in/AUX-like inputs as Other (a real capture, but NOT a
+// microphone, so auto-record skips it by default; see autoRecordDevices()), the rest as Mic.
 TrackKind classifyByName(const QString& nameLower) {
     if (nameLower.contains(QStringLiteral("monitor")) ||
         nameLower.contains(QStringLiteral("loopback"))) {
         return TrackKind::Loopback;
     }
-    // Vonalbemenet / line-in / AUX: tipikusan nincs bedugva semmi (csendet venne),
-    // ezért nem mikrofon. Kézzel továbbra is bepipálható a felvevő "Egyéb" csoportjában.
+    // Line-in / AUX: typically nothing is plugged in (it would record silence), so it is not a
+    // microphone. It can still be checked by hand in the recorder's "Other" group.
     if (nameLower.contains(QStringLiteral("line-in")) ||
         nameLower.contains(QStringLiteral("line in")) ||
         nameLower.contains(QStringLiteral("vonalbemenet")) ||
@@ -49,8 +48,8 @@ QVector<AudioDeviceInfo> DeviceManager::captureDevices() const {
 }
 
 QVector<AudioDeviceInfo> DeviceManager::autoRecordDevices() const {
-    // Az auto-rögzítés („minden eszköz") halmaza: a valódi mikrofonok + loopback-ek,
-    // de a vonalbemenet/AUX (Other) jellegű inputok NÉLKÜL (azok kézzel pipálhatók).
+    // The auto-record ("every device") set: the real microphones + loopbacks, but WITHOUT line-in/AUX
+    // (Other) inputs (those can be checked by hand).
     QVector<AudioDeviceInfo> out;
     for (const auto& d : d_->capture)
         if (d.kind != TrackKind::Other)
@@ -73,8 +72,8 @@ void DeviceManager::refresh() {
     QVector<AudioDeviceInfo> result;
 
     ma_context context;
-    // Alapértelmezett backend-lista (a platform legjobbja). Ha a context-init
-    // elhasal (nincs hangrendszer), üres listát adunk és nem crashelünk.
+    // Default backend list (the platform's best). If the context init fails (no audio system), we
+    // return an empty list and do not crash.
     if (ma_context_init(nullptr, 0, nullptr, &context) != MA_SUCCESS) {
         d_->capture = result;
         emit devicesChanged();
@@ -93,16 +92,14 @@ void DeviceManager::refresh() {
 
             AudioDeviceInfo dev;
             dev.name = QString::fromUtf8(info.name);
-            // Az eszköz-azonosítót stabil, ember által nem értelmezett kulcsként
-            // tároljuk: a sorszám + név elég az újra-megnyitáshoz (a tényleges
-            // ma_device_id-t az AudioEngine az enumeráció alapján maga keresi ki).
+            // We store the device identifier as a stable key not meant for humans: the index + name is enough
+            // to reopen (AudioEngine looks up the actual ma_device_id itself from the enumeration).
             dev.id = QString::number(i) + QStringLiteral(":") + dev.name;
             dev.isDefault = info.isDefault ? true : false;
             dev.kind = classifyByName(dev.name.toLower());
 
-            // Az enumerációkor a nativeDataFormats nincs garantáltan kitöltve;
-            // fix 48 kHz-cel és (ha ismert) az első natív csatornaszámmal dolgozunk,
-            // különben mono. A felvétel mindenképp s16 / 48 kHz lesz.
+            // At enumeration nativeDataFormats is not guaranteed to be filled; we work with a fixed 48 kHz and
+            // (if known) the first native channel count, otherwise mono. The recording will be s16 / 48 kHz anyway.
             dev.sampleRate = 48000;
             dev.channels = 1;
             if (info.nativeDataFormatCount > 0 &&
@@ -114,25 +111,24 @@ void DeviceManager::refresh() {
         }
 
 #if defined(_WIN32)
-        // Windows (WASAPI): a rendszerhang ("loopback") NEM jelenik meg capture-
-        // eszközként (szemben a PulseAudio/PipeWire monitor-forrásokkal). A
-        // kimeneti (playback) eszközöket vesszük fel Loopback-ként; az AudioEngine
-        // ezeket ma_device_type_loopback-kel nyitja meg (a playback eszköz hangját
-        // veszi fel). Így a távoli résztvevők hangja is sávra kerül.
+        // Windows (WASAPI): system audio ("loopback") does NOT appear as a capture device (unlike the
+        // PulseAudio/PipeWire monitor sources). We take the output (playback) devices as Loopback; AudioEngine
+        // opens them with ma_device_type_loopback (it records the playback device's sound). That way the remote
+        // participants' audio gets a track too.
         for (ma_uint32 i = 0; i < playbackCount; ++i) {
             const ma_device_info& info = playbackInfos[i];
 
             AudioDeviceInfo dev;
             dev.name = QString::fromUtf8(info.name);
-            // "loopback:" prefix → emberi szem + nem ütközik a capture-id-kel.
-            // (Az AudioEngine névre párosít a playback-listából, az id csak kulcs.)
+            // The "loopback:" prefix is human-readable + does not collide with capture ids.
+            // (AudioEngine matches by name from the playback list; the id is only a key.)
             dev.id = QStringLiteral("loopback:") + QString::number(i) +
                      QStringLiteral(":") + dev.name;
             dev.isDefault = info.isDefault ? true : false;
             dev.kind = TrackKind::Loopback;
 
             dev.sampleRate = 48000;
-            dev.channels = 2;   // a rendszerhang jellemzően sztereó
+            dev.channels = 2;   // system audio is typically stereo
             if (info.nativeDataFormatCount > 0 &&
                 info.nativeDataFormats[0].channels > 0) {
                 dev.channels = static_cast<int>(info.nativeDataFormats[0].channels);

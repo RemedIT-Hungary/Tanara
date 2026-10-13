@@ -10,7 +10,7 @@ namespace tanara {
 
 namespace {
 
-// Egysoros, rövidített szöveg a technikai sorba.
+// A one-line, shortened text for the technical line.
 QString oneLine(const QString& s, int maxLen = 200)
 {
     QString t = s.simplified();
@@ -19,7 +19,7 @@ QString oneLine(const QString& s, int maxLen = 200)
     return t;
 }
 
-// A hibatörzsből gépi kód + üzenet (több szolgáltató alakja).
+// From the error body a machine code + message (the shapes of several providers).
 void parseErrorBody(const QByteArray& body, QString* code, QString* message)
 {
     const QJsonDocument doc = QJsonDocument::fromJson(body);
@@ -27,7 +27,7 @@ void parseErrorBody(const QByteArray& body, QString* code, QString* message)
         return;
     const QJsonObject root = doc.object();
     const QJsonValue ev = root.value(QStringLiteral("error"));
-    if (ev.isObject()) {                       // OpenAI-kompatibilis / Tanara-gateway
+    if (ev.isObject()) {                       // OpenAI-compatible / Tanara gateway
         const QJsonObject e = ev.toObject();
         *code = e.value(QStringLiteral("code")).toVariant().toString();
         if (code->isEmpty())
@@ -85,8 +85,8 @@ JobError describeContextOverflow(JobKind kind, const llmctx::ContextOverflow& ov
     e.kind = kind;
     e.when = QDateTime::currentDateTime();
 
-    // Az ajánlott kontextus: a hívó becslése, különben a kérés + egy szokásos kimeneti keret;
-    // mindenképp a mostaninál nagyobb lépcső.
+    // The recommended context: the caller's estimate, otherwise the request + a usual output budget;
+    // in any case a step larger than the current one.
     int rec = hint.recommendedContext;
     if (rec <= 0 && ov.promptTokens > 0) rec = llmctx::contextStepFor(ov.promptTokens + 4096);
     if (ov.contextTokens > 0 && rec > 0 && rec <= ov.contextTokens)
@@ -159,8 +159,8 @@ JobError describeJobFailure(JobKind kind, const QString& rawMessage, const HttpE
     e.when = QDateTime::currentDateTime();
     const QString raw = rawMessage.trimmed();
 
-    // A „nem fér a kontextusba” hiba minden alakja (LM Studio / llama.cpp / OpenAI / vLLM)
-    // saját, számokkal kiírt magyarázatot kap — a nyers JSON nem kerül a felhasználó elé.
+    // Every form of the "does not fit the context" error (LM Studio / llama.cpp / OpenAI / vLLM) gets
+    // its own explanation with the numbers written out; the raw JSON does not reach the user.
     if (kind != JobKind::Transcribe && kind != JobKind::Mixdown && kind != JobKind::Import
         && kind != JobKind::Identify && kind != JobKind::Export) {
         const llmctx::ContextOverflow ov =
@@ -203,8 +203,8 @@ JobError describeJobFailure(JobKind kind, const QString& rawMessage, const HttpE
     } else if (st >= 400) {
         e.message = raw.isEmpty() ? QCoreApplication::translate("JobErrors", "A szolgáltató elutasította a kérést.") : raw;
     } else {
-        // 2xx válasz után bukott (pl. értelmezhetetlen tartalom): a nyers szöveg a magyarázat,
-        // a HTTP-sor félrevezető lenne.
+        // Failed after a 2xx response (e.g. unparseable content): the raw text is the explanation; the HTTP
+        // line would be misleading.
         e.message = raw.isEmpty() ? QCoreApplication::translate("JobErrors", "Ismeretlen hiba történt.") : raw;
         e.detail.clear();
     }

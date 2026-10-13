@@ -20,7 +20,7 @@ bool opposite(Side a, Side b)
 
 QString percent(double v) { return QStringLiteral("%1%").arg(qRound(std::clamp(v, 0.0, 1.0) * 100.0)); }
 
-// A leave-one-out centroid (a próba hangja nélkül), ha marad elég sor.
+// The leave-one-out centroid (without the probe's voice), if enough lines remain.
 QVector<float> centroidWithout(const SpeakerProfile& p, const QVector<float>& probe, bool exclude)
 {
     if (p.sum.isEmpty()) return {};
@@ -52,7 +52,7 @@ Evidence voiceEvidence(double v, const QString& basis)
     return e;
 }
 
-// Sáv-bizonyíték a jelölt oldala és a próba oldala között. Nincs, ha valamelyik nem dönthető.
+// Track evidence between the candidate's side and the probe's side. None if either is undecidable.
 bool sideEvidence(const SpeakerProfile& p, Side probeSide, Evidence* out)
 {
     if (!decided(p.side) || !decided(probeSide)) return false;
@@ -89,7 +89,7 @@ Candidate score(const RankContext& ctx, const SpeakerProfile& p, const Probe& pr
 
     Evidence e;
     if (ctx.sidesActive && sides::vetoes(ctx.vetoActive, p.manualSide, probe.side)) {
-        // Kézi sáv-beosztás szerint nem ő (G10): pontszám nélkül, a lista végére (sortCandidates).
+        // Not them per the manual track assignment: without a score, to the end of the list (sortCandidates).
         c.vetoed = true;
         c.otherSide = true;
         Evidence v;
@@ -128,7 +128,7 @@ Candidate score(const RankContext& ctx, const SpeakerProfile& p, const Probe& pr
     return c;
 }
 
-// Csökkenő pontszám; a kizártak a végén (egymás közt a pontszámuk szerint), majd pontszám nélkül.
+// Descending score; the excluded at the end (among themselves by score), then those without a score.
 void sortCandidates(QVector<Candidate>& v)
 {
     std::stable_sort(v.begin(), v.end(), [](const Candidate& a, const Candidate& b) {
@@ -218,7 +218,7 @@ QVector<Candidate> rankForSpeaker(const RankContext& ctx, const QString& speaker
     QVector<Candidate> out;
     for (const SpeakerProfile& sp : ctx.speakers) {
         if (sp.key == speakerKey) continue;
-        // Ugyanaz a személy más kulccsal (pl. két nyers címke) nem „valójában más".
+        // The same person under another key (e.g. two raw labels) is not "actually someone else".
         if (!sp.personName.isEmpty() && sp.personName.compare(self->personName, Qt::CaseInsensitive) == 0) continue;
         out.append(score(ctx, sp, p));
     }
@@ -231,7 +231,7 @@ QVector<Evidence> selfEvidence(const RankContext& ctx, const QString& speakerKey
     QVector<Evidence> out;
     const SpeakerProfile* p = ctx.profile(speakerKey);
     if (!p) return out;
-    // Hang: a beszélő itteni hangja a személy lenyomataihoz.
+    // Voice: the speaker's voice here against the person's voiceprints.
     const QVector<float> own = p->core.isEmpty() ? normalized(p->sum) : p->core;
     if (!p->personName.isEmpty()) {
         double best = qQNaN();

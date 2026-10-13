@@ -11,7 +11,7 @@ void padUtterances(QVector<Utterance>& u)
     const int n = int(u.size());
     if (n == 0) return;
 
-    // 1) kezdetek: a szigorúan korábban kezdődő sorok legkésőbbi végéig (azonos kezdetűek csoportban).
+    // 1) starts: up to the latest end of the strictly earlier-starting lines (same-start lines as a group).
     std::vector<qint64> starts(size_t(n), 0);
     qint64 prefixEnd = std::numeric_limits<qint64>::min();
     for (int i = 0; i < n;) {
@@ -26,7 +26,7 @@ void padUtterances(QVector<Utterance>& u)
         for (int k = i; k < j; ++k) prefixEnd = std::max(prefixEnd, u[k].endMs);
         i = j;
     }
-    // 2) végek: a szigorúan később kezdődő sorok legkorábbi új kezdetéig.
+    // 2) ends: up to the earliest new start of the strictly later-starting lines.
     qint64 suffixStart = std::numeric_limits<qint64>::max();
     for (int j = n; j > 0;) {
         int i = j - 1;

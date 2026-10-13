@@ -86,7 +86,7 @@ QList<QPair<QByteArray, QByteArray>> CloudAccount::requestHeaders(const QString&
 void CloudAccount::observeExchange(const HttpExchange& ex)
 {
     if (ex.status == 0) return;
-    // Min-client: minden válaszon ott van; ha a saját verziónk régebbi → cloud tiltva (K-10).
+    // Min-client: it is on every response; if our own version is older, the cloud is disabled.
     const QString minC = QString::fromUtf8(ex.headers.value(QByteArrayLiteral("x-tanara-min-client")));
     bool tooOld = !minC.isEmpty() && semverLess(libraryVersion(), minC);
     if (ex.status == 426) {
@@ -102,10 +102,10 @@ void CloudAccount::observeExchange(const HttpExchange& ex)
         qCWarning(lcCloud).noquote() << "A kliens túl régi a gatewayhez; minimum:" << m_minClient;
         emit clientTooOldDetected(m_minClient);
     } else if (!tooOld && m_tooOld && !minC.isEmpty()) {
-        m_tooOld = false;   // a gateway lejjebb vette a minimumot
+        m_tooOld = false;   // the gateway lowered the minimum
     }
 
-    // Egyenleg a terhelő hívások fejlécéből → a chip azonnal frissül.
+    // The balance from the charging calls' headers, so the chip refreshes at once.
     const ChargeInfo c = chargeInfoFromHeaders(ex.headers);
     if (c.valid && c.balance.isValid()) {
         m_account.balance = c.balance;
@@ -188,7 +188,7 @@ void CloudAccount::pollDeviceToken()
     body.insert(QStringLiteral("device_code"), m_device.deviceCode);
     const QString code = m_device.deviceCode;
     send("POST", QStringLiteral("/auth/device/token"), &body, false, [this, code](const HttpExchange& ex) {
-        if (!m_deviceActive || code != m_device.deviceCode) return;   // közben Mégse / új kód
+        if (!m_deviceActive || code != m_device.deviceCode) return;   // Cancel / a new code came meanwhile
         const CloudError e = parseCloudError(ex.status, ex.headers, ex.body, ex.networkError);
         if (!e.isError()) {
             const QJsonObject o = QJsonDocument::fromJson(ex.body).object();
@@ -208,7 +208,7 @@ void CloudAccount::pollDeviceToken()
             m_pollTimer->start(m_device.interval * 1000);
         } else if (e.kind == CloudErrorKind::Network || e.kind == CloudErrorKind::Upstream
                    || e.kind == CloudErrorKind::Maintenance || e.kind == CloudErrorKind::RateLimited) {
-            // Átmeneti hiba: a szerződés szerint a kliens tovább pollozik (retry_after után).
+            // A transient error: per the contract the client keeps polling (after retry_after).
             m_pollTimer->start(qMax(m_device.interval, e.retryAfterSec > 0 ? qMin(e.retryAfterSec, 60) : 0) * 1000);
         } else {
             m_deviceActive = false;
@@ -224,7 +224,7 @@ void CloudAccount::cancelDeviceFlow()
     m_deviceActive = false;
     QJsonObject body;
     body.insert(QStringLiteral("device_code"), m_device.deviceCode);
-    send("POST", QStringLiteral("/auth/device/cancel"), &body, false, nullptr);   // 204, idempotens
+    send("POST", QStringLiteral("/auth/device/cancel"), &body, false, nullptr);   // 204, idempotent
 }
 
 void CloudAccount::setManualApiKey(const QString& key, const QString& email)
@@ -247,11 +247,11 @@ void CloudAccount::logout()
         emit loggedOut();
     };
     if (!isLoggedIn()) { clearLocal(); return; }
-    // A helyi kulcs akkor is törlődik, ha a hívás sikertelen (K-02).
+    // The local key is deleted even if the call fails.
     send("POST", QStringLiteral("/auth/logout"), nullptr, true, [clearLocal](const HttpExchange&) { clearLocal(); });
 }
 
-// ---- fiók / katalógus ----------------------------------------------------------------
+// ---- account / catalog ----------------------------------------------------------------
 
 void CloudAccount::refreshAccount()
 {
@@ -334,7 +334,7 @@ void CloudAccount::joinWaitlist(const WaitlistSignup& signup)
     });
 }
 
-// ---- függő átírások ------------------------------------------------------------------
+// ---- pending transcriptions ------------------------------------------------------------------
 
 void CloudAccount::addPendingTranscription(const QString& transcriptionId, const QString& fileId)
 {
@@ -357,15 +357,15 @@ void CloudAccount::checkPendingTranscriptions()
         send("GET", QStringLiteral("/transcriptions/") + trId, nullptr, true,
              [this, trId, fileId](const HttpExchange& ex) {
             if (ex.status == 404) { removePendingTranscription(trId); return; }
-            if (ex.status != 200) return;   // később újra
+            if (ex.status != 200) return;   // later again
             const TranscriptionJobInfo j = transcriptionJobInfoFromJson(QJsonDocument::fromJson(ex.body).object());
             if (j.status == QLatin1String("queued") || j.status == QLatin1String("processing"))
-                return;   // még fut — a következő indításkor újra megnézzük
+                return;   // still running: we will look again at the next start
             if (j.refunded) {
                 if (j.balance.isValid()) { m_account.balance = j.balance; emit balanceChanged(j.balance); }
                 emit previousTranscriptionRefunded(j.refund, j.balance);
             }
-            // A tanara-mezőt kiolvastuk → az upstream tartalom takarítása (idempotens).
+            // We read out the tanara field, so clean up the upstream content (idempotent).
             send("DELETE", QStringLiteral("/transcriptions/") + trId, nullptr, true, nullptr);
             if (!fileId.isEmpty()) send("DELETE", QStringLiteral("/files/") + fileId, nullptr, true, nullptr);
             removePendingTranscription(trId);
@@ -373,7 +373,7 @@ void CloudAccount::checkPendingTranscriptions()
     }
 }
 
-// ---- helyi állapot -------------------------------------------------------------------
+// ---- local state -------------------------------------------------------------------
 
 void CloudAccount::postponeTerms() { m_termsPostponed = QDateTime::currentDateTime(); saveState(); }
 void CloudAccount::dismissLowBanner() { m_lowDismissed = QDateTime::currentDateTime(); saveState(); }

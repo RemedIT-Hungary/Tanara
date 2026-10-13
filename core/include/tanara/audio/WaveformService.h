@@ -1,13 +1,12 @@
 #pragma once
 //
-// WaveformService — sávonkénti hullámforma-csúcsok (peaks) a rajzoláshoz (M09).
+// WaveformService: per-track waveform peaks for drawing.
 //
-// Aszinkron: a hangfájlt ffmpeg dekódolja (QProcess, ahogy a kód többi része is), a PCM-et
-// az eseményhurokban, darabokban dolgozzuk fel — a UI-szál SOSEM blokkol. Az eredmény a
-// meeting mappájában gyorsítótárazódik (<hangfájl>.peaks.json), így a következő megnyitás
-// azonnali; a gyorsítótár a forrásfájl méretéhez + módosítási idejéhez kötött (ha a fájl
-// változik, újraszámol). A dekódolásból a sáv PONTOS hossza is kijön (durationMs).
-//
+// Asynchronous: ffmpeg decodes the audio file (QProcess, like the rest of the code), the PCM is
+// processed in chunks in the event loop, so the UI thread NEVER blocks. The result is cached in the
+// meeting's folder (<audio file>.peaks.json), so the next open is instant; the cache is tied to the
+// source file's size + modification time (recomputed if the file changes). Decoding also yields the
+// track's EXACT length (durationMs).
 #include <QObject>
 #include <QString>
 #include <QVector>
@@ -17,37 +16,37 @@ namespace tanara {
 
 struct TrackPeaks {
     QString        trackId;
-    QVector<float> peaks;          // vödrönként a |minta| maximuma, 0..1
-    // Vödrönként az effektív (RMS) szint, 0..1 — ugyanannyi elem, mint a peaks. Hosszú
-    // felvételnél a vödrönkénti csúcs szinte mindenhol közel maximális (egyenletesen magas
-    // kép); a rajzoláshoz ez adja a beszéd / csend valódi arányait.
+    QVector<float> peaks;          // per bucket the maximum of |sample|, 0..1
+    // Per bucket the effective (RMS) level, 0..1: the same number of elements as peaks. For a long
+    // recording the per-bucket peak is near maximal almost everywhere (an evenly high picture); this gives
+    // the true speech / silence proportions for drawing.
     QVector<float> rms;
-    qint64         durationMs = 0; // a dekódolt hang hossza
+    qint64         durationMs = 0; // length of the decoded audio
     bool isValid() const { return !peaks.isEmpty(); }
 };
 
 class WaveformService : public QObject {
     Q_OBJECT
 public:
-    static constexpr int kBuckets = 400;   // a gyorsítótárazott felbontás („pár száz vödör”)
+    static constexpr int kBuckets = 400;   // the cached resolution ("a few hundred buckets")
 
     explicit WaveformService(QObject* parent = nullptr);
     ~WaveformService() override;
 
-    // ---- gyorsítótár (szinkron, kicsi fájl) -------------------------------------------
-    static QString cachePath(const QString& audioPath);          // <hangfájl>.peaks.json
-    // Érvényes gyorsítótár betöltése; érvénytelen TrackPeaks, ha nincs / elavult / sérült.
+    // ---- cache (synchronous, small file) -------------------------------------------
+    static QString cachePath(const QString& audioPath);          // <audio file>.peaks.json
+    // Loads a valid cache; an invalid TrackPeaks if missing / stale / corrupt.
     static TrackPeaks loadCached(const QString& audioPath);
     static void removeCache(const QString& audioPath);
-    // Újramintavételezés a rajzoláshoz kért vödörszámra (max-tartó; nagyításnál ismétel).
+    // Resampling to the bucket count requested for drawing (max-hold; repeats when zooming in).
     static QVector<float> resample(const QVector<float>& peaks, int buckets);
 
-    // ---- aszinkron számítás -----------------------------------------------------------
-    // Csúcsok kérése egy hangfájlra. Érvényes gyorsítótárnál a peaksReady a következő
-    // eseményhurok-körben jön; különben sorba áll (egyszerre legfeljebb 2 ffmpeg fut).
-    // Ugyanarra a fájlra futó/váró kérésnél nem indul második.
+    // ---- asynchronous computation -----------------------------------------------------------
+    // Request peaks for an audio file. With a valid cache peaksReady comes in the next event-loop turn;
+    // otherwise it is queued (at most 2 ffmpeg run at once). A second request for the same file already
+    // running/waiting does not start another.
     void request(const QString& meetingId, const QString& trackId, const QString& audioPath);
-    // A meeting váró kéréseinek eldobása és a futók leállítása (pl. másik meeting kiválasztása).
+    // Drops the meeting's waiting requests and stops the running ones (e.g. when another meeting is selected).
     void cancel(const QString& meetingId);
     bool isPending(const QString& audioPath) const;
 
@@ -63,8 +62,8 @@ private:
     void finishJob(Job* job, bool ok, const QString& error);
 
     QString m_ffmpeg{QStringLiteral("ffmpeg")};
-    QVector<Job*> m_queue;     // várakozók
-    QVector<Job*> m_running;   // futók (max. 2)
+    QVector<Job*> m_queue;     // waiting
+    QVector<Job*> m_running;   // running (max 2)
 };
 
 } // namespace tanara

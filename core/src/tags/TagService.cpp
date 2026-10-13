@@ -29,16 +29,16 @@ constexpr int kUndoLimit = 50;
 
 struct TagRec {
     Tag         tag;
-    QDateTime   lastUsedAt;   // a legutóbbi felrakás ideje
-    QStringList aliases;      // összevont címkék régi nevei
+    QDateTime   lastUsedAt;   // time of the latest application
+    QStringList aliases;      // old names of merged tags
 };
 
 struct Rejected {
-    QString meetingId;   // üres → személy-szintű, tartós (person kitöltve)
-    QString person;      // nem üres → (személy, címke) elutasítás; tagId nélkül (meetingId-vel):
-                         // a személy javaslata arra a megbeszélésre elutasítva
-    QString tagId;     // üres → név szerinti (pl. az LLM új név-ötlete)
-    QString name;      // az eredeti név (a kulcs ebből számolódik)
+    QString meetingId;   // empty = person-level, lasting (person filled in)
+    QString person;      // non-empty = a (person, tag) rejection; without tagId (with meetingId):
+                         // the person's suggestion rejected for that meeting
+    QString tagId;     // empty = by name (e.g. the LLM's new-name idea)
+    QString name;      // the original name (the key is computed from it)
     QString key;
 };
 
@@ -52,19 +52,19 @@ struct Row {
 
 struct UndoStep {
     QString label;
-    quint64 serial = 0;           // a lépés sorszáma (a közös visszavonás adapteréhez)
-    QStringList meetingIds;       // a lépés mely megbeszélésekhez tartozik (MeetingUndoService)
+    quint64 serial = 0;           // the step's serial number (for the shared undo adapter)
+    QStringList meetingIds;       // which meetings the step belongs to (MeetingUndoService)
     bool    hasSet = false;
     QVector<TagRec>   tags;
     QVector<Rejected> rejected;
-    QHash<QString, QStringList> meetings;   // meetingId → címkék előtte
-    QHash<QString, QStringList> persons;    // személy → kézi címkék előtte
+    QHash<QString, QStringList> meetings;   // meetingId -> its tags before
+    QHash<QString, QStringList> persons;    // person -> manual tags before
     bool isEmpty() const { return !hasSet && meetings.isEmpty() && persons.isEmpty(); }
 };
 
-// A megbeszélés nevesített résztvevői a személy ↔ címke számoláshoz (UX-terv 3.: M(p)): a
-// beszélő-térkép és a saját sáv (MeetingLibrary::participantsOf), továbbá a kézzel felvett,
-// a naptárból jött és a jóváhagyott („Ki volt ott?”) résztvevők — így átírás előtt is.
+// The meeting's named participants for the person <-> tag computation (UX plan 3: M(p)): the speaker
+// map and the own track (MeetingLibrary::participantsOf), plus manually added, calendar-sourced and
+// approved ("Who was there?") participants, so also before transcription.
 QStringList namedParticipants(const Meeting& m)
 {
     QStringList out = MeetingLibrary::participantsOf(m);
@@ -105,17 +105,17 @@ struct TagService::Impl {
     bool undoing = false;
     quint64 nextSerial = 0;
 
-    // ---- tanult kapcsolat (személy ↔ címke) ----
+    // ---- learned association (person <-> tag) ----
     mutable std::shared_ptr<const PersonTagStats> stats = std::make_shared<PersonTagStats>();
     mutable bool statsDirty = true;
     bool statsAsync = false;
     bool statsRunning = false;
     bool statsAgain = false;
-    QSet<QString> askedLearning;   // a már feltett tanulási kérdések (megbeszélés, személy, címke)
+    QSet<QString> askedLearning;   // learning questions already asked (meeting, person, tag)
     int  statsGen = 0;
     std::shared_ptr<std::atomic_bool> alive = std::make_shared<std::atomic_bool>(true);
 
-    // ---- fájl ----
+    // ---- file ----
     void load() {
         tags.clear();
         rejected.clear();
@@ -180,12 +180,12 @@ struct TagService::Impl {
         stamp = FileStamp::of(path);
         return ok;
     }
-    // Módosítás előtt: ha egy másik folyamat közben írta a fájlt, annak állapotára építünk.
+    // Before a modification: if another process wrote the file meanwhile, we build on its state.
     void syncFromDisk() {
         if (FileStamp::of(path) != stamp) load();
     }
 
-    // ---- keresés ----
+    // ---- search ----
     int indexOf(const QString& id) const {
         for (int i = 0; i < tags.size(); ++i)
             if (tags.at(i).tag.id == id) return i;
@@ -202,7 +202,7 @@ struct TagService::Impl {
         return -1;
     }
 
-    // ---- meeting-gyorsítótár ----
+    // ---- meeting cache ----
     void ensureRows() const {
         if (rowsLoaded || !store) return;
         rows.clear();
@@ -222,7 +222,7 @@ struct TagService::Impl {
             if (m.id.isEmpty()) rows.remove(id);
             else rows.insert(id, rowOf(m));
         }
-        invalidateStats();   // a frissített sorokból
+        invalidateStats();   // from the refreshed rows
     }
     QHash<QString, int> counts() const {
         ensureRows();
@@ -246,7 +246,7 @@ struct TagService::Impl {
         return u;
     }
 
-    // ---- visszavonás ----
+    // ---- undo ----
     void snapshotSet() {
         if (undoing || current.hasSet) return;
         current.hasSet = true;
@@ -280,7 +280,7 @@ struct TagService::Impl {
         emit q->undoChanged();
     }
 
-    // A meeting címkéinek kiírása (meeting.json). true, ha változott.
+    // Writing the meeting's tags (meeting.json). true if changed.
     bool writeMeetingTags(const QString& meetingId, const QStringList& ids) {
         if (!store) return false;
         Meeting m = store->load(meetingId);
@@ -291,14 +291,14 @@ struct TagService::Impl {
         if (m.tagIds == clean) return false;
         snapshotMeeting(meetingId);
         m.tagIds = clean;
-        store->saveMeeting(m);   // meetingUpdated → a sor újratöltődik
+        store->saveMeeting(m);   // meetingUpdated: the row reloads
         ensureRows();
         rows[meetingId].tagIds = clean;
         invalidateStats();
         emit q->meetingTagsChanged(meetingId);
         return true;
     }
-    // ---- személyek ----
+    // ---- people ----
     QString self() const { return selfProvider ? selfProvider().trimmed() : QString(); }
     bool isSelf(const QString& name) const {
         const QString s = self();
@@ -310,7 +310,7 @@ struct TagService::Impl {
             if (samePerson(it.key(), name)) return;
         current.persons.insert(name.trimmed(), people->tags(name));
     }
-    // A személy kézi címkéinek kiírása (people.json). true, ha változott.
+    // Writing the person's manual tags (people.json). true if changed.
     bool writePersonTags(const QString& name, const QStringList& ids) {
         if (!people) return false;
         people->refresh();
@@ -323,7 +323,7 @@ struct TagService::Impl {
         emit q->personTagsChanged(name.trimmed());
         return true;
     }
-    // Minden személyen: a `from` címke `to`-ra cserélve (üres `to` = levétel).
+    // On every person: tag `from` replaced by `to` (an empty `to` = removal).
     void replacePersonTag(const QString& from, const QString& to) {
         if (!people) return;
         people->refresh();
@@ -338,7 +338,7 @@ struct TagService::Impl {
         }
     }
 
-    // ---- statisztika ----
+    // ---- statistics ----
     QVector<PersonTagRow> statRows() const {
         QVector<PersonTagRow> out;
         out.reserve(rows.size());
@@ -346,7 +346,7 @@ struct TagService::Impl {
             out.append(PersonTagRow{ it.key(), it->startedAt, it->tagIds, it->participants });
         return out;
     }
-    // A sorok a lemezről (háttérszálon; csak fájl-olvasás).
+    // The rows from disk (on a background thread; file reading only).
     static QVector<PersonTagRow> readRows(const QVector<QPair<QString, QString>>& folders) {
         QVector<PersonTagRow> out;
         for (const auto& f : folders) {
@@ -374,7 +374,7 @@ struct TagService::Impl {
         statsAgain = false;
         const int gen = statsGen;
         const QString selfName = self();
-        // A már betöltött sorok másolata; különben a háttérszál olvassa a meeting.json-okat.
+        // A copy of the rows already loaded; otherwise the background thread reads the meeting.json files.
         QVector<PersonTagRow> copied;
         QVector<QPair<QString, QString>> folders;
         if (rowsLoaded) copied = statRows();
@@ -386,7 +386,7 @@ struct TagService::Impl {
         QThreadPool::globalInstance()->start([this, gen, selfName, copied, folders, fromDisk, guard] {
             const QVector<PersonTagRow> list = fromDisk ? readRows(folders) : copied;
             auto result = std::make_shared<const PersonTagStats>(PersonTagStats::compute(list, selfName));
-            // A kontextus az alkalmazás (a TagService addigra megszűnhetett; az őr jelzi).
+            // The context is the application's (the TagService may be gone by then; the guard signals it).
             QCoreApplication* app = QCoreApplication::instance();
             if (!app || !guard->load()) return;
             QMetaObject::invokeMethod(app, [this, gen, result, guard] {
@@ -440,7 +440,7 @@ struct TagService::Impl {
     }
 };
 
-// Egy nyilvános hívás = egy visszavonási lépés (vagy a nyitott csoport része).
+// One public call = one undo step (or part of the open group).
 class StepScope {
 public:
     StepScope(TagService* s, const QString& label) : m_s(s) { m_s->beginGroup(label); }
@@ -472,7 +472,7 @@ TagService::TagService(MeetingStore* store, const QString& tagsFile, QObject* pa
                 d->save();
                 emit rejectedChanged();
             }
-            if (had) emit tagsChanged();   // a darabszámok változtak
+            if (had) emit tagsChanged();   // the counts changed
         });
     }
 }
@@ -494,7 +494,7 @@ void TagService::reload()
     emit rejectedChanged();
 }
 
-// ---- készlet ----------------------------------------------------------------------------
+// ---- set ----------------------------------------------------------------------------
 
 QVector<TagUsage> TagService::all(Sort sort) const
 {
@@ -585,7 +585,7 @@ QVector<TagInputRow> TagService::inputRows(const QString& typed, int limit) cons
         const int pos = fn.indexOf(fq);
         int tier = -1;
         if (pos == 0) tier = 0;
-        else if (pos > 0) tier = fn.at(pos - 1).isLetterOrNumber() ? 2 : 1;   // szó eleje → „előtag”
+        else if (pos > 0) tier = fn.at(pos - 1).isLetterOrNumber() ? 2 : 1;   // word start -> "prefix"
         else if (!key.isEmpty() && tagKey(d->tags.at(i).tag.name).contains(key)) tier = 3;
         if (tier >= 0) cands.append({ i, tier, pos });
     }
@@ -614,7 +614,7 @@ QVector<TagInputRow> TagService::inputRows(const QString& typed, int limit) cons
         if (rows.size() >= limit) break;
         addMatch(c.idx, c.pos);
     }
-    if (exactIdx >= 0) return rows;   // pontos egyezés: nincs „Új címke” sor
+    if (exactIdx >= 0) return rows;   // exact match: no "New tag" row
 
     bool near = false;
     for (const Tag& t : similarNames(norm, 2)) {
@@ -673,7 +673,7 @@ bool TagService::rename(const QString& id, const QString& name)
     if (other >= 0 && other != i) return false;
     if (d->tags.at(i).tag.name == norm) return true;
     d->snapshotSet();
-    // A régi név egy másik címke álneve volt? Akkor onnan lekerül (ez a címke viseli).
+    // Was the old name another tag's alias? Then it is removed from there (this tag carries it).
     for (TagRec& r : d->tags)
         r.aliases.erase(std::remove_if(r.aliases.begin(), r.aliases.end(),
                                        [&](const QString& a) { return tagKey(a) == tagKey(norm); }),
@@ -694,7 +694,7 @@ void TagService::merge(const QString& fromId, const QString& keepId)
     if (fi < 0 || ki < 0) return;
     d->snapshotSet();
     d->ensureRows();
-    // Minden meeting átcímkézése (a megtartott címke a régi helyére kerül, ha még nincs rajta).
+    // Re-tagging every meeting (the kept tag goes in the old one's place if not on it yet).
     const QStringList ids = d->rows.keys();
     for (const QString& mid : ids) {
         QStringList t = d->rows.value(mid).tagIds;
@@ -704,7 +704,7 @@ void TagService::merge(const QString& fromId, const QString& keepId)
         else t[pos] = keepId;
         d->writeMeetingTags(mid, t);
     }
-    // Elutasítások: a megszűnő címkéé a megtartottra száll (ismétlés nélkül).
+    // Rejections: those of the disappearing tag pass to the kept one (without repeats).
     QVector<Rejected> rej;
     for (Rejected r : std::as_const(d->rejected)) {
         if (r.tagId == fromId) r.tagId = keepId;
@@ -751,7 +751,7 @@ void TagService::remove(const QString& id)
     emit rejectedChanged();
 }
 
-// ---- meetingek --------------------------------------------------------------------------
+// ---- meetings --------------------------------------------------------------------------
 
 QStringList TagService::tagsOf(const QString& meetingId) const
 {
@@ -877,7 +877,7 @@ MeetingRef TagService::meetingRef(const QString& meetingId) const
     return { meetingId, it->title, it->startedAt, it->durationMs };
 }
 
-// ---- levezetett ---------------------------------------------------------------------------
+// ---- derived ---------------------------------------------------------------------------
 
 QVector<QPair<QString, int>> TagService::cooccurring(const QString& id) const
 {
@@ -940,7 +940,7 @@ QString TagService::profileLine(const QString& id) const
     return parts.join(QStringLiteral("; "));
 }
 
-// ---- elutasítás ---------------------------------------------------------------------------
+// ---- rejection ---------------------------------------------------------------------------
 
 void TagService::reject(const QString& meetingId, const TagSuggestion& suggestion)
 {
@@ -988,7 +988,7 @@ void TagService::clearRejected()
     emit rejectedChanged();
 }
 
-// ---- visszavonás --------------------------------------------------------------------------
+// ---- undo --------------------------------------------------------------------------
 
 QString TagService::beginGroup(const QString& label)
 {
@@ -1045,7 +1045,7 @@ void TagService::undo()
     emit undoChanged();
 }
 
-// ---- személyek: kézi címkék ------------------------------------------------------------------
+// ---- people: manual tags ------------------------------------------------------------------
 
 void TagService::setPeopleStore(PeopleStore* people) { d->people = people; }
 
@@ -1076,7 +1076,7 @@ bool TagService::setPersonTags(const QString& name, const QStringList& ids)
     QStringList clean;
     for (const QString& id : ids)
         if (d->indexOf(id) >= 0 && !clean.contains(id)) clean << id;
-    // A készletből időközben eltűnt azonosítók a rekordból is lekerülnek.
+    // Ids that have since vanished from the set also come off the record.
     const QStringList before = tagsOfPerson(name);
     if (!d->writePersonTags(name, clean)) return true;
     SharedFileLock lock(d->path);
@@ -1123,7 +1123,7 @@ QStringList TagService::peopleWith(const QString& tagId) const
     return out;
 }
 
-// ---- személyek: tanult kapcsolat + javaslatok ------------------------------------------------
+// ---- people: learned association + suggestions ------------------------------------------------
 
 void TagService::ensurePersonStats()
 {
@@ -1137,7 +1137,7 @@ void TagService::invalidatePersonStats() { d->invalidateStats(); }
 
 void TagService::refreshPersonStatsNow()
 {
-    ++d->statsGen;   // a futó háttér-eredmény elavult
+    ++d->statsGen;   // the running background result is stale
     d->computeStatsNow();
     emit personStatsChanged();
 }
@@ -1165,7 +1165,7 @@ PersonTagSnapshot TagService::personTagSnapshot() const
 
 namespace {
 
-// Kézi előbb, aztán a közös megbeszélések száma, a legutóbbi közös, végül név.
+// Manual first, then the number of shared meetings, the latest shared, finally name.
 bool statLess(const PersonTagStat& a, const PersonTagStat& b)
 {
     if (a.manual != b.manual) return a.manual;
@@ -1194,7 +1194,7 @@ QVector<PersonTagStat> TagService::peopleStats(const QString& tagId, int limit) 
     for (const QString& n : std::as_const(names)) {
         PersonTagStat s = d->statOf(*st, n, tagId);
         s.manual = d->people && d->people->tags(n).contains(tagId);
-        if (s.manual) s.name = n;   // a rekord írásmódja
+        if (s.manual) s.name = n;   // the record's spelling
         s.rejected = d->personRejected(n, tagId, QString());
         out.append(s);
     }
@@ -1250,7 +1250,7 @@ QVector<PersonTagStat> TagService::suggestTagsForPerson(const QString& name, int
         if (!persontags::suggestableForPerson(s.shared, s.tagTotal, s.personTotal)) continue;
         out.append(s);
     }
-    // A több közös megbeszélés, aztán a címke nagyobb hányada (2/3 előbb, mint 2/20).
+    // The more shared meetings, then the tag's larger share (2/3 before 2/20).
     std::stable_sort(out.begin(), out.end(), [](const PersonTagStat& a, const PersonTagStat& b) {
         if (a.shared != b.shared) return a.shared > b.shared;
         const qint64 l = qint64(a.shared) * b.tagTotal, r = qint64(b.shared) * a.tagTotal;
@@ -1271,7 +1271,7 @@ QVector<TagSuggestion> TagService::suggestTagsForPeople(const QStringList& names
             people << n.trimmed();
     if (people.isEmpty()) return out;
     const QStringList onMeeting = meetingId.isEmpty() ? QStringList() : tagsOf(meetingId);
-    QHash<QString, QStringList> carriers;   // tagId → a címkét viselő résztvevők
+    QHash<QString, QStringList> carriers;   // tagId -> the participants carrying the tag
     QStringList order;
     for (const QString& p : std::as_const(people))
         for (const QString& t : tagsOfPerson(p)) {
@@ -1315,12 +1315,12 @@ QVector<PersonTagQuestion> TagService::learningQuestions(const QString& meetingI
     const QStringList meetingTags = tagsOf(meetingId);
     if (meetingTags.isEmpty()) return {};
     const PersonTagSnapshot snap = personTagSnapshot();
-    // Induláskor, amíg az első háttér-számolás nem kész, mindenki „új” volna: inkább nem kérdez.
+    // At startup, until the first background computation is done, everyone would be "new": better not to ask.
     if (snap.stats->meetingCount() == 0 && personStatsBusy()) return {};
     QVector<PersonTagQuestion> out = snap.learningQuestions(
         meetingId, meetingTags, names,
         [this](const QString& name, const QString& tagId) { return isRejectedForPerson(name, tagId); });
-    // Egyszer kérdez: a már feltett (megbeszélés, személy, címke) hármas kimarad.
+    // It asks once: an already asked (meeting, person, tag) triple is dropped.
     for (PersonTagQuestion& q : out)
         q.people.removeIf([&](const QString& name) {
             return d->askedLearning.contains(meetingId + QChar(0x1f) + persontags::personKey(name) + QChar(0x1f) + q.tagId);
@@ -1339,7 +1339,7 @@ void TagService::markLearningAsked(const QString& meetingId, const QVector<Perso
 void TagService::answerLearning(const PersonTagQuestion& question, bool accept)
 {
     if (question.tagId.isEmpty() || question.people.isEmpty() || !tag(question.tagId).isValid()) return;
-    // Egy kérdés egy visszavonási lépés („Igen” és „Nem” egyaránt).
+    // A question is one undo step (both "Yes" and "No").
     beginGroup(accept ? tr("Címke a személyeken: #%1").arg(tag(question.tagId).name)
                       : tr("Javaslat elutasítása"));
     for (const QString& name : question.people) {
@@ -1374,7 +1374,7 @@ bool TagService::isRejectedForPerson(const QString& name, const QString& tagId, 
     return d->personRejected(name, tagId, meetingId);
 }
 
-// ---- személy-javaslat egy megbeszélésre (A6) -------------------------------------------------
+// ---- person suggestion for a meeting ---------------------------------------------------------
 
 QVector<PersonTagStat> TagService::suggestPeopleForMeeting(const QString& meetingId, const QStringList& excludeNames,
                                                            int limit) const
@@ -1425,8 +1425,8 @@ void TagService::renamePersonRefs(const QString& oldName, const QString& newName
 {
     const QString o = oldName.trimmed(), n = newName.trimmed();
     if (o.isEmpty() || n.isEmpty() || o == n) return;
-    // A verem személy-pillanatképei: tiszta átnevezésnél követik a nevet; összevonásnál (a cél
-    // már létezik) a megszűnő név pillanatképe eldobódik — nem írhatná felül az uniót.
+    // The stack's person snapshots: on a pure rename they follow the name; on a merge (the target already
+    // exists) the disappearing name's snapshot is dropped: it must not overwrite the union.
     bool merging = false;
     if (d->people && !samePerson(o, n)) {
         d->people->refresh();
@@ -1440,7 +1440,7 @@ void TagService::renamePersonRefs(const QString& oldName, const QString& newName
             const QStringList tags = s.persons.take(k);
             if (!merging) s.persons.insert(n, tags);
         }
-        // A lépés elutasítás-pillanatképe is az új névre (ne támassza fel a régit).
+        // The step's rejection snapshot also moves to the new name (so it does not resurrect the old one).
         for (Rejected& r : s.rejected)
             if (!r.person.isEmpty() && samePerson(r.person, o)) r.person = n;
     }

@@ -1,14 +1,13 @@
 #pragma once
 //
-// STT plugin-szerződés. Async, signal-alapú (illeszkedik a Qt event loophoz),
-// és előre felkészítve a későbbi élő/streaming módra (startLive()).
-//
+// STT plugin contract. Async, signal-based (fits the Qt event loop), and
+// prepared for a later live/streaming mode (startLive()).
 #include "tanara/Types.h"
 #include <QObject>
 
 namespace tanara {
 
-// Egy futó átírási feladat. A hívó a finished/failed jelekre köt.
+// A running transcription job. The caller connects to the finished/failed signals.
 class SttJob : public QObject {
     Q_OBJECT
 public:
@@ -19,25 +18,25 @@ public:
 signals:
     void stateChanged(tanara::JobState state);
     void progress(int percent, const QString& message);
-    // A hang feltöltésének VALÓS haladása bájtban (a hálózati rétegből). Az átírás alatt a
-    // szolgáltatók nem adnak százalékot — ott csak a stateChanged állapotai vannak.
+    // REAL progress of the audio upload in bytes (from the network layer). During transcription the
+    // providers give no percentage; only the stateChanged states exist.
     void uploadProgress(qint64 bytesSent, qint64 bytesTotal);
     void finished(const tanara::TrackTranscript& result);
     void failed(const QString& error);
 };
 
 struct SttRequest {
-    QString audioFilePath;          // egy sáv .ogg fájlja
+    QString audioFilePath;          // one track's .ogg file
     QString trackId;
-    QString speakerLabel;           // a sávhoz tartozó fix beszélő
+    QString speakerLabel;           // the fixed speaker of the track
     QStringList languageHints{QStringLiteral("hu")};
-    bool diarization = false;       // per-sávnál általában false (a sáv = a beszélő)
-    // Context-envelope — a STT jobban dönt a kétes részeknél. A Soniox stt-async-v5 a
-    // „context" objektumot várja (general/text/terms); ezt a három mezőre képezzük:
-    //   contextGeneral → "general" (kulcs-érték metaadat: pl. Megbeszélés címe)
-    //   context        → "text"    (szabad háttérszöveg: a felhasználó leírása)
-    //   contextTerms   → "terms"   (fontos szavak: résztvevő-nevek, szakszavak)
-    // A context-et nem támogató providerek e mezőket figyelmen kívül hagyják.
+    bool diarization = false;       // usually false per track (the track = the speaker)
+    // Context envelope: the STT decides better in doubtful parts. Soniox stt-async-v5 expects a
+    // "context" object (general/text/terms); we map it to the three fields:
+    //   contextGeneral -> "general" (key-value metadata: e.g. the meeting's title)
+    //   context        -> "text"    (free background text: the user's description)
+    //   contextTerms   -> "terms"   (important words: participant names, jargon)
+    // Providers that do not support context ignore these fields.
     QMap<QString, QString> contextGeneral;
     QString context;
     QStringList contextTerms;
@@ -50,10 +49,10 @@ public:
     virtual QString name() const = 0;
     virtual bool supportsLive() const = 0;
 
-    // A visszaadott job a hívóé (parentelni / finish után deleteLater).
+    // The returned job belongs to the caller (parent it / deleteLater after finish).
     virtual SttJob* transcribe(const SttRequest& req) = 0;
 
-    // Jövőbeli élő mód — alapból nincs, a provider opt-inol később.
+    // Future live mode: none by default; a provider opts in later.
     virtual SttJob* startLive(const SttRequest& /*req*/) { return nullptr; }
 };
 

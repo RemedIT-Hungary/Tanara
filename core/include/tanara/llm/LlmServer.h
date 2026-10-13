@@ -1,20 +1,19 @@
 #pragma once
 //
-// A beállított LLM-szerver képességei és a modell előkészítése (LM Studio natív API).
+// Capabilities of the configured LLM server and model preparation (LM Studio native API).
 //
-//  - LlmServerProbe: GET <gyökér>/api/v1/models (csak olvas). Ha válaszol, a szerver LM Studio:
-//    a beállított modell betöltött példányai (kontextus, párhuzamosság) és a modell maximuma.
-//    Más szervernél (llama.cpp, Ollama, vLLM, felhő) az eredmény „ismeretlen”. A választ
-//    rövid ideig (kCacheMs) gyorsítótárazzuk címenként; a hívás sosem blokkol (aszinkron jel).
-//  - LlmModelPreparer: egy LLM-feladat ELŐTT gondoskodik róla, hogy a modell legalább a
-//    feladathoz szükséges kontextussal és parallel = 1-gyel legyen betöltve (a parallel > 1
-//    ezen a GPU-n már összeomlást okozott). Ha a betöltött példány megfelel, nem nyúl hozzá;
-//    ha nincs betöltve, betölti; ha kicsi / párhuzamos, kiveszi és újratölti — CSAK a
-//    beállított modell példányait, és csak ha a Tanara épp nem futtat rajta más kérést.
-//    Feladatonként legfeljebb EGY betöltési kísérlet; a kudarc érthető hibát ad.
+//  - LlmServerProbe: GET <root>/api/v1/models (read-only). If it answers, the server is LM Studio:
+//    the configured model's loaded instances (context, parallelism) and the model's maximum.
+//    For another server (llama.cpp, Ollama, vLLM, cloud) the result is "unknown". The response is
+//    cached briefly (kCacheMs) per address; the call never blocks (asynchronous signal).
+//  - LlmModelPreparer: BEFORE an LLM task it makes sure the model is loaded with at least the
+//    context the task needs and parallel = 1 (parallel > 1 already caused a crash on this GPU). If
+//    the loaded instance is fine, it does not touch it; if not loaded, it loads; if small /
+//    parallel, it unloads and reloads, ONLY the configured model's instances, and only if Tanara
+//    is not running another request on it. At most ONE load attempt per task; failure gives an
+//    understandable error.
 //
-// A Tanara Cloud útvonal ezeket nem használja (ott nincs natív API).
-//
+// The Tanara Cloud path does not use these (it has no native API).
 #include "tanara/Types.h"
 #include "tanara/jobs/JobTypes.h"
 #include "tanara/llm/LlmContext.h"
@@ -38,11 +37,11 @@ public:
     ~LlmServerProbe() override;
 
     void setTimeoutMs(int ms) { m_timeoutMs = ms; }
-    // Lekérdezés; az eredmény a finished jelben jön (gyorsítótár-találatnál is aszinkron).
+    // Query; the result comes in the finished signal (asynchronous even on a cache hit).
     void probe(const ProviderConfig& cfg, bool useCache = true);
     void cancel();
 
-    // A gyorsítótár elvetése egy címre (üres → mind). Betöltés / kivétel után kötelező.
+    // Drops the cache for an address (empty = all). Required after a load / unload.
     static void invalidateCache(const QString& baseUrl = QString());
 
 signals:
@@ -61,28 +60,28 @@ public:
     explicit LlmModelPreparer(const ProviderConfig& cfg, QObject* parent = nullptr);
     ~LlmModelPreparer() override;
 
-    // Igaz, ha a Tanara épp egy MÁSIK LLM-kérést futtat (ilyenkor nem veszünk ki modellt).
+    // True if Tanara is currently running ANOTHER LLM request (then we do not unload the model).
     void setBusyCheck(std::function<bool()> busy) { m_busy = std::move(busy); }
     void setProbeTimeoutMs(int ms) { m_probeTimeoutMs = ms; }
     void setLoadTimeoutMs(int ms) { m_loadTimeoutMs = ms; }
 
-    // need: a feladat becsült kontextus-igénye; floor: a kért minimum (0 = nincs).
+    // need: the task's estimated context need; floor: the requested minimum (0 = none).
     void start(int need, int floor = 0);
-    // A futó lekérdezés / kivétel / betöltés eldobása; utána semmilyen jel nem jön.
+    // Drops the running query / unload / load; no signal follows.
     void cancel();
 
     const llmctx::LlmServerInfo& serverInfo() const { return m_info; }
     const llmctx::PreloadDecision& decision() const { return m_decision; }
-    // A modell kontextusa a ready után (-1: ismeretlen — pl. nem LM Studio).
+    // The model's context after ready (-1: unknown, e.g. not LM Studio).
     int loadedContext() const { return m_loadedContext; }
     bool didLoad() const { return m_didLoad; }
 
 signals:
-    // Betöltés / újratöltés kezdődik (a feladat „Modell betöltése…” szakasza).
+    // A load / reload begins (the task's "Loading the model..." stage).
     void loadingStarted(int contextLength);
-    // A feladat indulhat.
+    // The task may start.
     void ready();
-    // Az előkészítés elbukott (a kind-ot a hívó állítja).
+    // Preparation failed (the caller sets the kind).
     void failed(const tanara::JobError& error);
 
 private:

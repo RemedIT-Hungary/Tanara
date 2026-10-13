@@ -1,10 +1,9 @@
 #pragma once
 //
-// OpenAI-kompatibilis beágyazó provider: POST {baseUrl}/embeddings {model, input:[…]} →
-// data[].embedding. Legfeljebb 16 szöveg kérésenként (a hosszabb listát sorban, több kérésben
-// küldi). Ugyanazokat a ProviderConfig-mezőket használja, mint az LLM-út: baseUrl, model,
-// apiKey, extraHeaders, onExchange (a Tanara Cloud gateway-hookjai).
-//
+// OpenAI-compatible embedding provider: POST {baseUrl}/embeddings {model, input:[...]} ->
+// data[].embedding. At most 16 texts per request (a longer list is sent in order, in several requests).
+// It uses the same ProviderConfig fields as the LLM path: baseUrl, model, apiKey, extraHeaders,
+// onExchange (the Tanara Cloud gateway hooks).
 #include "tanara/embedding/IEmbeddingProvider.h"
 #include "tanara/Types.h"
 
@@ -31,12 +30,12 @@ private:
     void sendNext();
     void onReply();
 
-    QNetworkAccessManager* m_nam;   // nem birtokolt
+    QNetworkAccessManager* m_nam;   // not owned
     ProviderConfig   m_cfg;
     EmbeddingRequest m_req;
     QVector<QVector<float>> m_out;
-    int  m_next = 0;                // a következő elküldendő szöveg indexe
-    int  m_batch = 0;               // az épp futó köteg mérete
+    int  m_next = 0;                // index of the next text to send
+    int  m_batch = 0;               // size of the batch running now
     bool m_done = false;
     QPointer<QNetworkReply> m_reply;
 };
@@ -52,7 +51,7 @@ public:
 
 private:
     ProviderConfig m_cfg;
-    QNetworkAccessManager* m_nam;    // birtokolt
+    QNetworkAccessManager* m_nam;    // owned
 };
 
 } // namespace tanara

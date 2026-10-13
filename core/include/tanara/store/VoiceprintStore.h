@@ -1,12 +1,11 @@
 #pragma once
 //
-// VoiceprintStore — globális hang-lenyomat adatbázis (~/.tanara/voiceprints.json).
-// Névhez több embedding tartozhat (más mikrofon/feltétel). A párosítás a személy
-// lenyomat-halmazán a LEGNAGYOBB cosine-hasonlóságot veszi. Minden lokális (privacy).
+// VoiceprintStore: the global voiceprint database (~/.tanara/voiceprints.json).
+// A name can have several embeddings (another microphone/condition). Matching takes the
+// LARGEST cosine similarity over the person's voiceprint set. Everything is local (privacy).
 //
-// Több folyamat is írhatja: minden módosítás zár alatt visszaolvassa a lemez friss állapotát
-// (ha változott), arra alkalmazza a változást, és atomikusan ír (lásd store/SharedFile.h).
-//
+// Several processes may write it: every modification rereads the fresh state from disk under lock
+// (if it changed), applies the change to that, and writes atomically (see store/SharedFile.h).
 #include "tanara/Types.h"
 #include "tanara/store/SharedFile.h"
 #include "tanara/voiceid/EmbeddingSet.h"
@@ -20,77 +19,77 @@ namespace tanara {
 
 class VoiceprintStore {
 public:
-    explicit VoiceprintStore(const QString& filePath = QString()); // üres → ~/.tanara/voiceprints.json
+    explicit VoiceprintStore(const QString& filePath = QString()); // empty = ~/.tanara/voiceprints.json
 
-    // Azon nevek, amelyekhez van legalább egy lenyomat (ábécé-rendben).
+    // Names that have at least one voiceprint (alphabetical).
     QStringList people() const;
     QVector<Voiceprint> printsFor(const QString& name) const;
     int printCount(const QString& name) const;
     int totalPrintCount() const;
 
-    // Lenyomat hozzáadása egy névhez. Üres print.id esetén generál egyet; üres print.model →
-    // az alapmodell. print.dim-et az embedding méretére igazítja. Persist.
+    // Adds a voiceprint to a name. With an empty print.id it generates one; an empty print.model =
+    // the base model. It sets print.dim to the embedding's size. Persists.
     void addPrint(const QString& name, Voiceprint print);
-    // Lenyomat törlése id alapján (bármely személytől). true, ha törölt.
+    // Deletes a voiceprint by id (from any person). true if it deleted.
     bool removePrint(const QString& printId);
-    // Személy átnevezése (a lenyomatok átkerülnek); ha a cél létezik, egyesít.
+    // Renames a person (the voiceprints move); if the target exists, merges.
     void renamePerson(const QString& oldName, const QString& newName);
-    // Személy összes lenyomatának törlése.
+    // Deletes all of a person's voiceprints.
     void removePerson(const QString& name);
-    // Két személy egyesítése: 'from' lenyomatai 'into'-ba, 'from' törlése.
+    // Merges two people: 'from's voiceprints go to 'into', 'from' is deleted.
     void merge(const QString& from, const QString& into);
 
-    // Több modelles párosítás: személyenként modellenként a MAX cosine a személy adott modellű
-    // lenyomatain, majd ezek átlaga a közös modelleken (a kért modellIds közül azokon, amelyekhez
-    // a lekérdezésben van vektor ÉS a személynek van lenyomata). Nincs közös modell → -1.
-    // Legjobb párosítás; üres DB / üres lekérdezés / sehol közös modell → { "", -1 }.
+    // Multi-model matching: per person per model the MAX cosine over the person's voiceprints of that
+    // model, then the mean of these over the shared models (of the requested modelIds, those for which the
+    // query has a vector AND the person has a voiceprint). No shared model -> -1.
+    // Best match; an empty DB / empty query / no shared model anywhere -> { "", -1 }.
     VoiceMatch bestMatch(const EmbeddingSet& query, const QStringList& modelIds) const;
-    // Minden személy pontszáma csökkenő sorrendben (UI/diagnosztika); közös modell nélkül -1.
+    // Every person's score in descending order (UI/diagnostics); -1 without a shared model.
     QVector<VoiceMatch> rankedMatches(const EmbeddingSet& query, const QStringList& modelIds) const;
-    // Egymodelles (régi) forma: {"campplus" → embedding}.
+    // Single-model (old) form: {"campplus" -> embedding}.
     VoiceMatch bestMatch(const QVector<float>& embedding) const;
     QVector<VoiceMatch> rankedMatches(const QVector<float>& embedding) const;
 
-    // A személy azon mintái (sampleRef, ábécérendben, egyedi), amelyekhez még nincs az adott
-    // modellel készült lenyomat (a lusta pótláshoz). Üres sampleRef-ű lenyomat nem számít.
+    // The person's samples (sampleRef, alphabetical, unique) that have no voiceprint with the given
+    // model yet (for lazy backfill). A voiceprint with an empty sampleRef does not count.
     QStringList printsMissingModel(const QString& name, const QString& modelId) const;
 
-    // Testvér-lenyomatok: ugyanaz a minta más modellekkel (azonos sampleRef + sourceMeetingId +
-    // createdAt, KÜLÖNBÖZŐ modell). A kulcs a hármast fogja össze.
+    // Sibling voiceprints: the same sample with other models (same sampleRef + sourceMeetingId +
+    // createdAt, DIFFERENT model). The key ties the triple together.
     static QString siblingKey(const Voiceprint& p);
-    // Lenyomatok testvér-csoportokba (egy csoport = egy minta): azonos kulcson belül minden
-    // modellből legfeljebb egy lenyomat; az azonos modellű ismétlés új csoportot nyit. Üres
-    // sampleRef → saját csoport. A csoportok az első tagjuk sorrendjében, belül modell szerint.
+    // Voiceprints into sibling groups (one group = one sample): within the same key at most one
+    // voiceprint per model; a repeat of the same model opens a new group. An empty sampleRef = its own
+    // group. Groups in the order of their first member, within a group by model.
     static QVector<QVector<Voiceprint>> siblingGroups(const QVector<Voiceprint>& prints);
-    // A lenyomat testvér-csoportja a gazdájánál (önmagával együtt); üres, ha nincs ilyen id.
+    // A voiceprint's sibling group at its owner (itself included); empty if there is no such id.
     QVector<Voiceprint> siblingsOf(const QString& printId, QString* owner = nullptr) const;
-    // A személy mintái (csoportonként egy képviselő: a legkisebb modell-id), amelyekhez még
-    // nincs az adott modellel lenyomat (a printsMissingModel testvér-pontos párja: két meeting
-    // azonos nevű fájljának azonos szakasza sem keveredik).
+    // The person's samples (one representative per group: the smallest model id) that have no voiceprint
+    // with the given model yet (the sibling-exact counterpart of printsMissingModel: the same span of
+    // same-named files of two meetings never gets mixed up).
     QVector<Voiceprint> samplesMissingModel(const QString& name, const QString& modelId) const;
-    // A személy mintáinak (testvér-csoportjainak) száma.
+    // Number of the person's samples (sibling groups).
     int sampleCount(const QString& name) const;
 
-    // Egy lenyomat és a gazdája id alapján; false, ha nincs ilyen.
+    // A voiceprint and its owner by id; false if there is no such.
     bool findPrint(const QString& printId, QString* owner, Voiceprint* print) const;
-    // Ha a fájl a lemezen megváltozott (másik folyamat írta), újraolvassa.
+    // If the file changed on disk (another process wrote it), rereads it.
     void refresh() { reloadIfChanged(); }
 
     QString filePath() const { return m_filePath; }
 
-    // --- segéd-matek (publikus + statikus, hogy tesztelhető és újrahasznosítható) ---
+    // --- helper math (public + static, so it is testable and reusable) ---
     static double cosineSimilarity(const QVector<float>& a, const QVector<float>& b);
     static QVector<float> l2normalize(const QVector<float>& v);
 
 private:
     void load();
-    void reloadIfChanged();   // ha a fájl a lemezen megváltozott (másik folyamat írta)
+    void reloadIfChanged();   // if the file changed on disk (another process wrote it)
     void persist();
 
     QString m_filePath;
-    QMap<QString, QVector<Voiceprint>> m_people;   // név → lenyomatok
-    FileStamp m_stamp;            // a fájl állapota az utolsó betöltéskor / mentéskor
-    bool      m_corrupt = false;  // a lemezen lévő fájl értelmezhetetlen (mentéskor félretesszük)
+    QMap<QString, QVector<Voiceprint>> m_people;   // name -> voiceprints
+    FileStamp m_stamp;            // state of the file at the last load / save
+    bool      m_corrupt = false;  // the file on disk is unparseable (set aside on save)
 };
 
 } // namespace tanara

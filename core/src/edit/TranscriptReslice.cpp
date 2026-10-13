@@ -64,7 +64,7 @@ QVector<TranscriptToken> tokensFromJson(const QJsonArray& arr)
     return out;
 }
 
-// Ugyanaz a formátum, amit az AppController ír (writeSegmentsJson).
+// The same format AppController writes (writeSegmentsJson).
 QByteArray segmentsJson(const QVector<Utterance>& segs)
 {
     QJsonArray arr;
@@ -105,8 +105,8 @@ QString shiftBucket(qint64 shift)
     return QStringLiteral(">300");
 }
 
-// Id-átnevezés egy JSON-fán: az objektum-kulcsok és a szöveg-értékek közül azok, amelyek a
-// térképben vannak. A térkép 1:1 (injektív), így kulcs-ütközés nem lehet.
+// Renaming ids on a JSON tree: of the object keys and the text values, those that are in the map. The
+// map is 1:1 (injective), so no key collision can occur.
 struct Remapper {
     const QMap<QString, QString>& map;
     int refs = 0;
@@ -141,7 +141,7 @@ struct Remapper {
     }
 };
 
-// A summary.json forrás-tartományainak ideje az új sorokból (az id-k már átnevezve).
+// The times of summary.json's source ranges from the new lines (the ids already renamed).
 void refreshSpans(QJsonValue& node, const QHash<QString, const TranscriptLine*>& byId)
 {
     if (node.isArray()) {
@@ -206,8 +206,8 @@ Plan plan(const QString& folder)
         return p;
     }
 
-    // A csoportosítás az EREDETI token-időkkel (ugyanaz a merger), csak a kész sorok párnázódnak
-    // → a sorok száma és sorrendje nem változik, a régi → új térkép index szerinti 1:1.
+    // Grouping uses the ORIGINAL token times (the same merger), only the finished lines get padded, so the
+    // number and order of lines do not change, and the old -> new map is 1:1 by index.
     MergedTranscript padded = raw;
     padded.emissionTiming = true;
     p.newSegments = padded.segments();
@@ -264,7 +264,7 @@ ApplyResult apply(const QString& folder, const Plan& p)
     ApplyResult res;
     if (p.verdict != Verdict::Reslice) { res.error = QStringLiteral("nothing to apply"); return res; }
 
-    // 1) biztonsági másolatok — egyszer: a meglévő .bak-ot nem írjuk felül.
+    // 1) backups, once: an existing .bak is not overwritten.
     for (const QString& name : {kTokens, kSegments, kSpeakers, kSummary, kMarkdown}) {
         const QString src = pathIn(folder, name);
         const QString bak = src + QStringLiteral(".bak");
@@ -273,8 +273,8 @@ ApplyResult apply(const QString& folder, const Plan& p)
         res.backups << bak;
     }
 
-    // 2) tokens.json: a tokenek ÉRINTETLENEK, csak a "timing": "emission" jelző kerül rá (ettől
-    //    párnáz a merger mindenhol, ahol az app a tokenekből szeletel).
+    // 2) tokens.json: the tokens are UNTOUCHED, only the "timing": "emission" marker is put on (that makes
+    //    the merger pad everywhere the app slices from the tokens).
     QJsonDocument tokDoc;
     readJson(pathIn(folder, kTokens), &tokDoc);
     QJsonObject root = tokDoc.object();
@@ -285,7 +285,7 @@ ApplyResult apply(const QString& folder, const Plan& p)
     }
     res.written << kTokens;
 
-    // 3) segments.json (nyers címkékkel, mint az átíráskor; párnázott idők).
+    // 3) segments.json (with raw labels, as at transcription; padded times).
     if (!writeBytes(pathIn(folder, kSegments), segmentsJson(p.newSegments))) {
         res.error = QStringLiteral("cannot write %1").arg(kSegments);
         return res;
@@ -293,7 +293,7 @@ ApplyResult apply(const QString& folder, const Plan& p)
     res.written << kSegments;
 
 
-    // 4) overlay: minden id-hivatkozás + az ujjlenyomat (ha az overlay a mostani átiraté volt).
+    // 4) overlay: every id reference + the fingerprint (if the overlay belonged to the current transcript).
     QJsonDocument ov;
     if (p.overlayPresent && !p.overlayStale && readJson(pathIn(folder, kSpeakers), &ov) && ov.isObject()) {
         Remapper r{p.idMap};
@@ -307,7 +307,7 @@ ApplyResult apply(const QString& folder, const Plan& p)
         res.written << kSpeakers;
     }
 
-    // 5) summary.json: id-k + a forrás-tartományok ideje.
+    // 5) summary.json: ids + the times of the source ranges.
     QJsonDocument sum;
     if (p.summaryPresent && readJson(pathIn(folder, kSummary), &sum)) {
         Remapper r{p.idMap};
@@ -323,13 +323,13 @@ ApplyResult apply(const QString& folder, const Plan& p)
         res.written << kSummary;
     }
 
-    // 6) a megszólalás-embedding cache az átirat ujjlenyomatához kötött → törlés.
+    // 6) the utterance-embedding cache is tied to the transcript fingerprint, so it is deleted.
     if (QFile::exists(UtteranceEmbeddingCache::filePath(folder))) {
         UtteranceEmbeddingCache::remove(folder);
         res.embeddingsRemoved = !QFile::exists(UtteranceEmbeddingCache::filePath(folder));
     }
 
-    // 7) transcript.md (időbélyegek) a feloldott nevekkel, ha volt.
+    // 7) transcript.md (timestamps) with the resolved names, if there was one.
     if (QFile::exists(pathIn(folder, kMarkdown))) {
         Meeting m = MeetingStore::readMeetingFolder(folder);
         if (!m.id.isEmpty()) {

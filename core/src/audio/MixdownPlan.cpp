@@ -9,8 +9,8 @@ namespace tanara {
 
 namespace {
 
-// Loudness-normalizálás (EBU R128, -16 LUFS, true-peak -1.5 dBTP) — felhozza a halk beszédet
-// kényelmes lejátszási hangerőre. Csak a hallgatásra szánt keveréket érinti, az STT-t nem.
+// Loudness normalization (EBU R128, -16 LUFS, true-peak -1.5 dBTP): brings quiet speech up to a
+// comfortable playback volume. It affects only the mix meant for listening, not the STT.
 const QString kLoudnorm = QStringLiteral(
     "loudnorm=I=-16,acompressor=threshold=-24dB:ratio=4:makeup=10,alimiter=limit=0.97");
 
@@ -19,9 +19,9 @@ const QString kLoudnorm = QStringLiteral(
 MixdownPlan MixdownPlan::fromMeeting(const Meeting& m)
 {
     MixdownPlan plan;
-    QVector<TrackView> views;   // a hiányzó sávok nevéhez — csak ha kell
+    QVector<TrackView> views;   // for the names of missing tracks, only if needed
     for (const Track& t : m.tracks) {
-        if (!t.included()) continue;   // eldobott / beszéd nélküli / kézzel kivett sáv
+        if (!t.included()) continue;   // dropped / speechless / manually removed track
         const QString path = QDir(m.folder).filePath(t.file);
         if (t.file.isEmpty() || !QFileInfo(path).isFile()) {
             if (views.isEmpty()) views = TrackCatalog::tracks(m);
@@ -43,7 +43,7 @@ QStringList MixdownPlan::filterArgs(const QVector<qint64>& offsets)
     QString pre, mixIn;
     for (int i = 0; i < n; ++i) {
         if (offsets.at(i) <= 0) { mixIn += QStringLiteral("[%1]").arg(i); continue; }
-        // "[1]adelay=57200:all=1[d1];" — a bemenet minden csatornáját ennyivel tolja.
+        // "[1]adelay=57200:all=1[d1];": shifts every channel of the input by this much.
         pre += QStringLiteral("[%1]adelay=%2:all=1[d%1];").arg(i).arg(offsets.at(i));
         mixIn += QStringLiteral("[d%1]").arg(i);
     }
@@ -52,8 +52,8 @@ QStringList MixdownPlan::filterArgs(const QVector<qint64>& offsets)
                 QStringLiteral("%1%2amix=inputs=%3:duration=longest:normalize=0,%4")
                     .arg(pre, mixIn).arg(n).arg(kLoudnorm)};
     if (!pre.isEmpty())
-        return {QStringLiteral("-filter_complex"), pre + mixIn + kLoudnorm};   // 1 eltolt sáv
-    return {QStringLiteral("-af"), kLoudnorm};                                // 1 sáv → normalizálás
+        return {QStringLiteral("-filter_complex"), pre + mixIn + kLoudnorm};   // 1 shifted track
+    return {QStringLiteral("-af"), kLoudnorm};                                // 1 track -> normalization
 }
 
 QStringList MixdownPlan::ffmpegArgs(const QString& outPath) const
@@ -67,12 +67,12 @@ QStringList MixdownPlan::ffmpegArgs(const QString& outPath) const
         offsets << in.offsetMs;
     }
     args += filterArgs(offsets);
-    // SZTEREÓ kimenet (dual-mono) — a Qt6/PipeWire mono streamet halkan/egy csatornára
-    // játszhat; sztereóval mindkét hangszóró megszólal.
+    // STEREO output (dual-mono): Qt6/PipeWire may play a mono stream quietly / on one channel; with
+    // stereo both speakers sound.
     args << QStringLiteral("-ac") << QStringLiteral("2")
          << QStringLiteral("-c:a") << QStringLiteral("libmp3lame")
          << QStringLiteral("-q:a") << QStringLiteral("4");
-    // Valós haladás: az ffmpeg kulcs=érték sorokat ír a stdoutra (out_time_us=…).
+    // Real progress: ffmpeg writes key=value lines to stdout (out_time_us=...).
     args << QStringLiteral("-progress") << QStringLiteral("pipe:1") << QStringLiteral("-nostats")
          << QStringLiteral("-y") << outPath;
     return args;

@@ -11,7 +11,7 @@ namespace tanara {
 
 LinuxCaptureDetector::LinuxCaptureDetector()
 {
-    // Beépített default: a leggyakoribb hívás-appok. A figyelő a settingsből felülírja.
+    // Built-in default: the most common call apps. The watcher overrides it from the settings.
     m_knownApps = { QStringLiteral("zoom"), QStringLiteral("teams"), QStringLiteral("webex"),
                     QStringLiteral("slack"), QStringLiteral("discord"), QStringLiteral("meet"),
                     QStringLiteral("skype"), QStringLiteral("chromium"), QStringLiteral("firefox") };
@@ -24,7 +24,7 @@ QString LinuxCaptureDetector::id() const
 
 bool LinuxCaptureDetector::isAvailable() const
 {
-    // pw-dump a PATH-on = PipeWire elérhető. (pactl-fallback: későbbi kör.)
+    // pw-dump on the PATH = PipeWire is available. (pactl fallback: a later round.)
     return !QStandardPaths::findExecutable(QStringLiteral("pw-dump")).isEmpty();
 }
 
@@ -38,12 +38,12 @@ void LinuxCaptureDetector::configure(const QStringList& knownCallApps, const QSt
 
 MeetingSignal LinuxCaptureDetector::poll()
 {
-    // A pw-dump JSON kimenete locale-független. Szinkron futtatás rövid timeouttal:
-    // a poll() a figyelő QTimer-éből hívódik, nem hot path.
+    // The JSON output of pw-dump is locale-independent. Synchronous run with a short timeout:
+    // poll() is called from the watcher's QTimer, not a hot path.
     QProcess proc;
     proc.start(QStringLiteral("pw-dump"), QStringList{});
     if (!proc.waitForStarted(500))
-        return {};                       // pw-dump nem indult → nincs jel
+        return {};                       // pw-dump did not start -> no signal
     if (!proc.waitForFinished(1500)) {
         proc.kill();
         proc.waitForFinished(200);

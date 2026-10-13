@@ -38,7 +38,7 @@ bool containsAlias(const QStringList& list, const QString& alias)
                        [&](const QString& a) { return sameName(a, alias); });
 }
 
-// Egy rekord a JSON-objektumból: az ismert mezők kiemelve, a többi `raw`-ban marad.
+// One record from the JSON object: the known fields extracted, the rest stays in `raw`.
 void readRecord(QJsonObject obj, PersonDetails* d, QJsonObject* raw)
 {
     d->name = obj.take(kNameKey).toString();
@@ -54,9 +54,9 @@ void readRecord(QJsonObject obj, PersonDetails* d, QJsonObject* raw)
     *raw = obj;
 }
 
-// `src` beolvasztása `dst`-be: becenevek uniója (a cél neve nem lehet saját beceneve);
-// megjegyzés: a célé, ha üres, a forrásé, ha mindkettő van és eltér, egymás alá; a forrás
-// ismeretlen mezői a célba, ha ott nincsenek.
+// Merging `src` into `dst`: union of nicknames (the target's name cannot be its own nickname);
+// note: the target's if non-empty, the source's if the target's is empty, and if both exist and
+// differ, one under the other; the source's unknown fields go to the target if absent there.
 void absorb(PersonDetails& dst, QJsonObject& dstRaw, const PersonDetails& src, const QJsonObject& srcRaw)
 {
     for (const QString& a : src.aliases)
@@ -80,8 +80,8 @@ QJsonObject writeRecord(const PersonDetails& d, const QJsonObject& raw)
     return o;
 }
 
-// A fájl átnevezése „<fájl>.<utótag>-<időbélyeg>” névre (nem törlünk olyat, amit nem
-// olvasztottunk be). true, ha a fájl már nincs az eredeti helyén.
+// Renaming the file to "<file>.<suffix>-<timestamp>" (we do not delete what we did not merge in).
+// true if the file is no longer at its original place.
 bool setAsideAs(const QString& path, const QString& suffix)
 {
     if (!QFileInfo::exists(path)) return true;
@@ -124,8 +124,8 @@ PeopleStore::Entry& PeopleStore::ensure(const QString& name)
     return m_entries.last();
 }
 
-// A névlista név szerint rendezve elöl, a listán kívüli rekordok utána (egymás közt a
-// meglévő sorrendben).
+// The name list sorted by name first, the off-list records after it (among themselves in their
+// existing order).
 void PeopleStore::sortEntries()
 {
     std::stable_sort(m_entries.begin(), m_entries.end(), [](const Entry& a, const Entry& b) {
@@ -160,9 +160,9 @@ PersonDetails PeopleStore::details(const QString& name) const
     return d;
 }
 
-// Minden módosítás: folyamatközi zár → a lemez friss állapotának visszaolvasása (ha egy
-// másik folyamat közben írt) → a módosítás → kiírás. Így a teljes fájl újraírása nem dobja
-// el, amit egy másik folyamat (felvevő / figyelő / másik ablak) időközben hozzáadott.
+// Every modification: inter-process lock -> reread the fresh state from disk (if another process
+// wrote meanwhile) -> the modification -> write out. So rewriting the whole file does not discard what
+// another process (recorder / watcher / another window) added in the meantime.
 
 void PeopleStore::add(const QString& name)
 {
@@ -175,7 +175,7 @@ void PeopleStore::add(const QString& name)
     if (i >= 0) {
         if (m_entries[i].listed)
             return;
-        m_entries[i].listed = true;    // a listán kívüli rekord (becenevek, megjegyzés) visszatér
+        m_entries[i].listed = true;    // the off-list record (nicknames, note) comes back
     } else {
         Entry e;
         e.d.name = n;
@@ -194,7 +194,7 @@ void PeopleStore::rename(const QString& oldName, const QString& newName, bool ol
     reloadIfChanged();
     const int from = indexOf(o);
     if (sameName(o, n)) {
-        // Csak az írásmód változik: ugyanaz a rekord.
+        // Only the spelling changes: the same record.
         Entry& e = from >= 0 ? m_entries[from] : ensure(n);
         e.d.name = n;
         e.listed = true;
@@ -228,7 +228,7 @@ void PeopleStore::unlist(const QString& name)
     const int i = indexOf(name);
     if (i < 0 || !m_entries[i].listed)
         return;
-    m_entries[i].listed = false;    // az üres rekordot a mentés eldobja
+    m_entries[i].listed = false;    // the save drops the empty record
     sortEntries();
     persist();
 }
@@ -329,7 +329,7 @@ bool PeopleStore::setDefaultSide(const QString& name, const QString& side, bool 
     if (i < 0 && side.isEmpty()) return false;
     const QString key = QStringLiteral("defaultSide");
     const QString manualKey = QStringLiteral("defaultSideManual");
-    // A kézi érték a tanulástól védett.
+    // The manual value is protected from learning.
     if (!manual && i >= 0 && m_entries[i].raw.value(manualKey).toBool()) return false;
     Entry& e = ensure(n);
     const bool flag = manual && !side.isEmpty();
@@ -366,20 +366,20 @@ void PeopleStore::reloadIfChanged()
         load();
 }
 
-// Betöltés. Három eset a people.json-ra:
-//  - nincs / nem nyitható: a memóriabeli állapot marad (induláskor üres);
-//  - értelmezhetetlen: a memóriabeli állapot marad, a fájlt a következő mentés félreteszi;
-//  - értelmezhető: a memória a fájl tartalma lesz. Régi alak (nincs "version", vagy a
-//    "people" elemei sima nevek) → átállás kell (m_migrationPending).
-// Ezután a régi people-details.json, ha létezik:
-//  - ha a people.json MÁR új alakú, a details-fájl egy korábbi átállás maradéka (a törlése
-//    nem sikerült): nem olvasztjuk be újra (feltámasztana azóta törölt beceneveket), hanem
-//    a mentés / átállás lépése „.leftover-<idő>” néven félreteszi;
-//  - különben beolvad a memóriába: a névlistán szereplő névhez a rekordjába, az ismeretlen
-//    névhez (árva bejegyzés) listán kívüli rekordként; a fájl a sikeres mentés UTÁN törlődik;
-//  - ha értelmezhetetlen: a névlista ettől még átáll, a details-fájlt pedig a sikeres mentés
-//    után „.corrupt-<idő>” néven félretesszük (nem töröljük, kézzel menthető belőle).
-// Ez a függvény a lemezre NEM ír.
+// Loading. Three cases for people.json:
+//  - missing / cannot be opened: the in-memory state stays (empty at startup);
+//  - unparseable: the in-memory state stays, the next save sets the file aside;
+//  - parseable: memory becomes the file's content. Old shape (no "version", or the "people" items
+//    are plain names) -> migration is needed (m_migrationPending).
+// Then the old people-details.json, if it exists:
+//  - if people.json is ALREADY in the new shape, the details file is a leftover of an earlier migration
+//    (its deletion failed): we do not merge it again (it would resurrect nicknames deleted since), the
+//    save / migration step sets it aside as ".leftover-<time>";
+//  - otherwise it merges into memory: for a name on the list into its record, for an unknown name (an
+//    orphan entry) as an off-list record; the file is deleted AFTER a successful save;
+//  - if unparseable: the name list still migrates, and the details file is set aside after a
+//    successful save as ".corrupt-<time>" (not deleted, can be rescued by hand).
+// This function does NOT write to disk.
 void PeopleStore::load()
 {
     m_stamp = FileStamp::of(m_filePath);
@@ -393,8 +393,8 @@ void PeopleStore::load()
         QJsonParseError err{};
         const QJsonDocument doc = QJsonDocument::fromJson(f.readAll(), &err);
         if (err.error != QJsonParseError::NoError || !doc.isObject()) {
-            // Értelmezhetetlen fájl: a memóriabeli lista marad, a fájlt a következő mentés
-            // félreteszi (nem írjuk felül nyom nélkül).
+            // Unparseable file: the in-memory list stays, the next save sets the file aside (we do not overwrite
+            // it without a trace).
             qCWarning(lcStore).noquote() << "people.json nem értelmezhető:" << m_filePath << err.errorString();
             m_corrupt = true;
         } else {
@@ -409,7 +409,7 @@ void PeopleStore::load()
                 for (const QJsonValue& v : arr) {
                     Entry e;
                     e.listed = isListed;
-                    if (v.isString()) {             // régi alak: sima név
+                    if (v.isString()) {             // old shape: a plain name
                         e.d.name = v.toString();
                         plainNames = true;
                     } else {
@@ -421,7 +421,7 @@ void PeopleStore::load()
                         m_entries.append(e);
                         continue;
                     }
-                    // Ugyanaz a név kétszer (kisbetű-függetlenül): egy rekord lesz belőle.
+                    // The same name twice (case-insensitively): it becomes one record.
                     absorb(m_entries[have].d, m_entries[have].raw, e.d, e.raw);
                     m_entries[have].listed = m_entries[have].listed || isListed;
                 }
@@ -448,7 +448,7 @@ void PeopleStore::load()
     const bool readable = lf.open(QIODevice::ReadOnly);
     if (readable) bytes = lf.readAll();
     if (readable && bytes.trimmed().isEmpty()) {
-        m_legacy = LegacyDetails::Remove;       // üres fájl: nincs mit átvenni
+        m_legacy = LegacyDetails::Remove;       // empty file: nothing to take over
         return;
     }
     QJsonParseError err{};
@@ -474,7 +474,7 @@ void PeopleStore::load()
         d.name = d.name.trimmed();
         if (d.name.isEmpty() || (d.isEmpty() && raw.isEmpty())) continue;
         const bool known = indexOf(d.name) >= 0;
-        Entry& e = ensure(d.name);      // ismeretlen név → listán kívüli rekord
+        Entry& e = ensure(d.name);      // unknown name -> an off-list record
         absorb(e.d, e.raw, d, raw);
         if (!known) orphans << d.name;
     }
@@ -483,11 +483,10 @@ void PeopleStore::load()
                                   << "bejegyzés neve nincs a névlistán — listán kívüli rekordként megmarad";
 }
 
-// Egyszeri átállás a régi alakról (a konstruktor hívja a betöltés után). Zár alatt újraolvas
-// (egy másik folyamat közben már átállíthatta), és csak akkor ír, ha még mindig kell. Ha a
-// zár nem szerezhető meg, a people.json értelmezhetetlen, vagy az írás nem sikerül: a régi
-// fájlok érintetlenek maradnak, a tár a memóriában dolgozik, és a következő sikeres mentés
-// (persist) fejezi be az átállást.
+// One-time migration from the old shape (the constructor calls it after loading). It rereads under
+// lock (another process may have migrated meanwhile) and writes only if still needed. If the lock cannot
+// be obtained, people.json is unparseable, or the write fails: the old files stay untouched, the store
+// works in memory, and the next successful save (persist) completes the migration.
 void PeopleStore::migrateIfNeeded()
 {
     if (!m_migrationPending && m_legacy == LegacyDetails::None)
@@ -499,7 +498,7 @@ void PeopleStore::migrateIfNeeded()
         qCWarning(lcStore).noquote() << "people.json: az átálláshoz nem szerezhető zár — később újra:" << m_filePath;
         return;
     }
-    load();     // a zár alatti, friss állapot
+    load();     // the fresh state under the lock
     if (m_corrupt)
         return;
     if (m_migrationPending) {
@@ -510,8 +509,7 @@ void PeopleStore::migrateIfNeeded()
     }
 }
 
-// A régi people-details.json eltávolítása — CSAK akkor hívjuk, amikor az új alakú people.json
-// már biztosan a lemezen van.
+// Removing the old people-details.json: called ONLY when the new-shape people.json is surely already on disk.
 void PeopleStore::finishLegacyDetails()
 {
     const QString legacyPath = legacyDetailsPath();
@@ -545,7 +543,7 @@ bool PeopleStore::persist()
         return false;
     }
     m_corrupt = false;
-    // Az üres, listán kívüli rekord nem hordoz adatot: nem tároljuk.
+    // An empty, off-list record carries no data: we do not store it.
     m_entries.erase(std::remove_if(m_entries.begin(), m_entries.end(), [](const Entry& e) {
                         return !e.listed && e.d.isEmpty() && e.raw.isEmpty();
                     }),
@@ -563,7 +561,7 @@ bool PeopleStore::persist()
     QSaveFile f(m_filePath);
     bool ok = f.open(QIODevice::WriteOnly) && f.write(bytes) == bytes.size() && f.commit();
     if (ok && m_legacy != LegacyDetails::None) {
-        // A régi details-fájl eltávolítása előtt: tényleg az van a lemezen, amit írtunk?
+        // Before removing the old details file: is what is on disk really what we wrote?
         QFile check(m_filePath);
         ok = check.open(QIODevice::ReadOnly) && check.readAll() == bytes;
     }
@@ -572,7 +570,7 @@ bool PeopleStore::persist()
                                      << (m_migrationPending ? "— az átállás elmaradt, a régi fájlok érintetlenek" : "");
         return false;
     }
-    m_stamp = FileStamp::of(m_filePath);   // a saját írásunkat nem kell visszaolvasni
+    m_stamp = FileStamp::of(m_filePath);   // no need to reread our own write
     m_version = std::max(m_version, kFormatVersion);
     m_migrationPending = false;
     finishLegacyDetails();

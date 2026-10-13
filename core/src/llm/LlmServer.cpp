@@ -20,7 +20,7 @@ using namespace llmctx;
 
 namespace {
 
-// Címenkénti rövid gyorsítótár (a fő szálon élünk — nincs zár).
+// A short per-address cache (we live on the main thread: no lock).
 struct ProbeCacheEntry { qint64 atMs = 0; QByteArray body; };
 QHash<QString, ProbeCacheEntry>& probeCache()
 {
@@ -113,7 +113,7 @@ void LlmServerProbe::probe(const ProviderConfig& cfg, bool useCache)
         QByteArray body;
         if (reply->error() == QNetworkReply::NoError && status >= 200 && status < 300)
             body = reply->readAll();
-        // A sikertelen (nem natív) választ is megjegyezzük: rövid ideig nem kérdezünk újra.
+        // A failed (non-native) response is remembered too: we do not ask again for a short while.
         if (status > 0) probeCache().insert(root, {QDateTime::currentMSecsSinceEpoch(), body});
         const LlmServerInfo info = parseLmStudioModels(body, model);
         qInfo().noquote().nospace() << "[LLM] szerver-próba " << root << ": "
@@ -148,14 +148,14 @@ void LlmModelPreparer::cancel()
         r->disconnect(this);
         r->abort();
         r->deleteLater();
-        // Egy félbehagyott betöltés / kivétel után a szerver állapota bizonytalan.
+        // After an abandoned load / unload the server's state is uncertain.
         LlmServerProbe::invalidateCache(m_cfg.baseUrl);
     }
 }
 
 void LlmModelPreparer::start(int need, int floor)
 {
-    if (m_started) return;          // feladatonként egy előkészítés — nincs ismétlés
+    if (m_started) return;          // one preparation per task, no repeats
     m_started = true;
     m_need = need;
     m_floor = floor;
@@ -229,7 +229,7 @@ void LlmModelPreparer::unloadNext()
         LlmServerProbe::invalidateCache(m_cfg.baseUrl);
         const QByteArray data = reply->readAll();
         const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
-        // 404: a példány már nincs betöltve — a cél teljesült.
+        // 404: the instance is no longer loaded, so the goal is met.
         if ((status >= 200 && status < 300) || status == 404) {
             qInfo().noquote() << "[LLM] modell-példány kivéve:" << id;
             unloadNext();

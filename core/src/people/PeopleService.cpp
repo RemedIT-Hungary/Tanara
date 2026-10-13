@@ -29,7 +29,7 @@ bool sameName(const QString& a, const QString& b)
     return a.trimmed().compare(b.trimmed(), Qt::CaseInsensitive) == 0;
 }
 
-// "fájl#startMs-endMs" → fájl + tartomány (a tartomány elhagyható).
+// "file#startMs-endMs" -> file + range (the range may be omitted).
 void parseSampleRef(const QString& ref, QString* file, qint64* startMs, qint64* endMs)
 {
     *file = ref;
@@ -44,7 +44,7 @@ void parseSampleRef(const QString& ref, QString* file, qint64* startMs, qint64* 
     *endMs = range.mid(dash + 1).toLongLong();
 }
 
-// Egy elavult-jelölés nyoma (a visszavonáshoz): melyik megbeszélés mely kulcsai kerültek fel.
+// The trace of a stale mark (for undo): which meeting's which keys were added.
 struct StaleMark {
     QString meetingId;
     QString folder;
@@ -53,15 +53,15 @@ struct StaleMark {
 
 struct UndoStep {
     PeopleUndoKind kind = PeopleUndoKind::None;
-    QString person;         // minta: a (korábbi) gazda; becenév / átnevezés: a személy (régi név)
-    QString other;          // áthelyezés: a cél; átnevezés: az új név
-    Voiceprint print;       // minta-lépéseknél (a kiválasztott lenyomat)
-    QVector<Voiceprint> prints;   // …és minden testvére (ugyanaz a minta más modellekkel), vele együtt
+    QString person;         // sample: the (former) owner; nickname / rename: the person (old name)
+    QString other;          // move: the target; rename: the new name
+    Voiceprint print;       // for sample steps (the selected voiceprint)
+    QVector<Voiceprint> prints;   // ...and all its siblings (the same sample with other models), together with it
     QString detail;
     QString alias;
     int aliasIndex = -1;
-    bool createdPerson = false;     // az áthelyezés hozta létre a cél-személyt
-    bool aliasWasPresent = false;   // átnevezés: az új név már becenév volt
+    bool createdPerson = false;     // the move created the target person
+    bool aliasWasPresent = false;   // rename: the new name was already a nickname
     QVector<StaleMark> marks;
 };
 
@@ -100,7 +100,7 @@ struct PeopleService::Private {
         return out;
     }
 
-    // A tárolt írásmód (kisbetű-független egyezésnél), különben üres.
+    // The stored spelling (on a case-insensitive match), otherwise empty.
     QString canonical(const QString& name) const
     {
         for (const QString& n : names())
@@ -136,7 +136,7 @@ struct PeopleService::Private {
         undo.clear();
         emit q->undoChanged();
     }
-    // Átnevezés után a verem korábbi lépései az új névre hivatkozzanak.
+    // After a rename the stack's earlier steps should refer to the new name.
     void renameInUndo(const QString& from, const QString& to)
     {
         for (UndoStep& s : undo) {
@@ -145,8 +145,8 @@ struct PeopleService::Private {
         }
     }
 
-    // A személy megbeszéléseinek összefoglalóit elavultnak jelöli a LEMEZEN (jelek nélkül);
-    // only: csak ezen a megbeszélésen (üres = mindegyiken).
+    // Marks the summaries of the person's meetings stale ON DISK (without signals);
+    // only: only this meeting (empty = all of them).
     QVector<StaleMark> markStale(const QString& person, const QString& only = QString())
     {
         QVector<StaleMark> marks;
@@ -164,8 +164,8 @@ struct PeopleService::Private {
         }
         return marks;
     }
-    // A jelölés (vagy visszavonása) után: a nyitott szerkesztő olvassa újra a lemezt, a
-    // könyvtár / összefoglaló-fül frissítse az elavult-jelzőt.
+    // After the marking (or its undo): the open editor rereads the disk, and the library / summary tab
+    // refreshes the stale flag.
     void announceStale(const QVector<StaleMark>& marks)
     {
         if (!controller) return;
@@ -182,8 +182,8 @@ struct PeopleService::Private {
         return controller->utteranceEmbedderFactory();
     }
 
-    // Ideiglenes szerkesztő a lenyomat-műveletekhez: a használt modellekkel (a beinjektált gyárnál
-    // a szerkesztő alapértelmezése marad).
+    // A temporary editor for the voiceprint operations: with the models in use (with an injected factory
+    // the editor's default stays).
     void configureEditor(SpeakerEditor& ed, const UtteranceEmbedderFactory& f) const
     {
         if (!factoryInjected && controller) {
@@ -194,7 +194,7 @@ struct PeopleService::Private {
         if (f) ed.setEmbedderFactory(f);
     }
 
-    // A személy beszélő-kulcsai egy megnyitott szerkesztőben.
+    // The person's speaker keys in an open editor.
     static QStringList speakerKeysOf(const SpeakerEditor& ed, const QString& person)
     {
         QStringList keys;
@@ -280,9 +280,9 @@ QVector<VoiceSample> PeopleService::samples(const QString& name) const
 {
     QVector<VoiceSample> out;
     if (!d->voiceprints) return out;
-    QHash<QString, Meeting> meetings;   // egy megbeszélést egyszer töltünk
-    // Testvér-lenyomatok (ugyanaz a minta más modellekkel) egy mintaként: a képviselő a legkisebb
-    // modell-id-jű; a törlés / áthelyezés a testvérekre is hat.
+    QHash<QString, Meeting> meetings;   // a meeting is loaded once
+    // Sibling voiceprints (the same sample with other models) as one sample: the representative is the one
+    // with the smallest model id; delete / move also act on the siblings.
     QVector<Voiceprint> reps;
     for (const QVector<Voiceprint>& g : VoiceprintStore::siblingGroups(d->voiceprints->printsFor(name)))
         reps.append(g.first());
@@ -309,7 +309,7 @@ QVector<VoiceSample> PeopleService::samples(const QString& name) const
                 s.audioPath = QDir(m.folder).filePath(file);
                 s.audioExists = QFileInfo::exists(s.audioPath);
             }
-            // A forrás-sáv: az azonosítója, annak híján a fájlneve alapján.
+            // The source track: by its id, failing that by its file name.
             const QVector<TrackView> views = TrackCatalog::tracks(m);
             const TrackView* view = nullptr;
             for (const TrackView& v : views)
@@ -318,8 +318,7 @@ QVector<VoiceSample> PeopleService::samples(const QString& name) const
                 for (const TrackView& v : views)
                     if (v.track.file == file) { view = &v; break; }
             if (view) {
-                // A sampleRef megbeszélés-időben van; a sávfájl a sáv eltolásánál kezdődik →
-                // a lejátszáshoz fájl-idő kell.
+                // The sampleRef is in meeting time; the track file starts at the track's offset, so playback needs file time.
                 if (view->track.startOffsetMs > 0 && s.endMs > s.startMs) {
                     s.startMs = qMax<qint64>(0, s.startMs - view->track.startOffsetMs);
                     s.endMs = qMax<qint64>(s.startMs, s.endMs - view->track.startOffsetMs);
@@ -327,7 +326,7 @@ QVector<VoiceSample> PeopleService::samples(const QString& name) const
                 switch (view->role) {
                 case TrackRole::OwnMic:
                     s.sourceKind = QStringLiteral("mic");
-                    // A saját mikrofonnál az eszköz neve a hasznos (több mikrofon más hang).
+                    // For the own microphone the device's name is the useful one (several microphones, different voices).
                     s.deviceLabel = view->renamed || view->track.deviceName.isEmpty()
                         ? view->displayName : devicenames::displayName(view->track.deviceName);
                     break;
@@ -366,7 +365,7 @@ double PeopleService::similarity(const QString& a, const QString& b) const
     if (!d->voiceprints) return -1.0;
     const QVector<Voiceprint> pa = d->voiceprints->printsFor(a), pb = d->voiceprints->printsFor(b);
     if (pa.isEmpty() || pb.isEmpty()) return -1.0;
-    // Ugyanaz a szabály, mint a felismerésnél: a legjobban egyező pár számít.
+    // The same rule as in recognition: the best matching pair counts.
     double best = 0.0;
     for (const Voiceprint& x : pa)
         for (const Voiceprint& y : pb)
@@ -374,7 +373,7 @@ double PeopleService::similarity(const QString& a, const QString& b) const
     return std::clamp(best, 0.0, 1.0);
 }
 
-// ---- műveletek ---------------------------------------------------------------
+// ---- operations ---------------------------------------------------------------
 
 PeopleOpResult PeopleService::addPerson(const QString& name)
 {
@@ -429,12 +428,11 @@ PeopleOpResult PeopleService::renamePerson(const QString& oldName, const QString
         for (const QString& a : d->people->aliases(o))
             if (sameName(a, n)) step.aliasWasPresent = true;
 
-    // A meglévő globális átnevezés: a személy rekordja (becenevekkel, megjegyzéssel együtt),
-    // lenyomatok, minden megbeszélés. A saját névnél ugyanaz történik, mint a Beállítások
-    // „Saját neved” mezőjénél.
+    // The existing global rename: the person's record (with nicknames and note), voiceprints, every
+    // meeting. For the own name the same happens as for Settings' "Your name" field.
     if (isSelf(o)) d->controller->setUserSpeakerName(n);
     else d->controller->renamePerson(o, n);
-    // A régi név becenévként megmarad (a régi átiratokban szereplő néven is megtalálható).
+    // The old name stays as a nickname (also findable by the name in old transcripts).
     if (d->people && !sameName(o, n)) d->people->addAlias(n, o);
 
     d->renameInUndo(o, n);
@@ -564,14 +562,14 @@ PeopleOpResult PeopleService::moveSample(const QString& printId, const QString& 
     step.other = existing.isEmpty() ? target : existing;
     step.createdPerson = existing.isEmpty();
 
-    // A forrás-megbeszélés összefoglalója: ott a beszélő kiléte kérdésessé vált.
+    // The summary of the source meeting: there the speaker's identity became questionable.
     if (d->stats) d->stats->refreshNow();
     step.marks = d->markStale(step.person, step.print.sourceMeetingId);
 
-    step.prints = d->voiceprints->siblingsOf(printId);   // a testvérek együtt mennek
+    step.prints = d->voiceprints->siblingsOf(printId);   // the siblings go together
     for (const Voiceprint& p : std::as_const(step.prints)) {
         d->voiceprints->removePrint(p.id);
-        d->voiceprints->addPrint(step.other, p);   // az azonosító megmarad
+        d->voiceprints->addPrint(step.other, p);   // the id stays
     }
     if (d->people) d->people->add(step.other);
     if (d->store) step.detail = d->store->load(step.print.sourceMeetingId).title;
@@ -596,7 +594,7 @@ VoiceprintPlan PeopleService::voiceprintPlan(const QString& name) const
     for (const PersonMeetingStat& pm : ps.meetings) {
         if (pm.talkMs <= 0) continue;
         ++plan.meetingsWithLines;
-        // A meglévő szerkesztő-logika mondja meg, van-e elég biztos (nem kétes), hosszú sor.
+        // The existing editor logic tells whether there is a sure (not doubtful), long line.
         SpeakerEditor ed(d->store, d->people, d->voiceprints, pm.meetingId);
         d->configureEditor(ed, {});
         qint64 best = 0;
@@ -620,8 +618,8 @@ VoiceprintResult PeopleService::createVoiceprintFromMeeting(const QString& name,
         return r;
     }
     if (!d->store || !d->voiceprints) return r;
-    // Saját, ideiglenes szerkesztő-munkamenet: a főablakban esetleg nyitott szerkesztő
-    // állapotához (undo-verem) nem nyúlunk; a lenyomat a közös tárolóba kerül.
+    // Its own, temporary editor session: we do not touch the state (undo stack) of an editor possibly
+    // open in the main window; the voiceprint goes into the shared store.
     SpeakerEditor ed(d->store, d->people, d->voiceprints, meetingId);
     d->configureEditor(ed, factory);
     QString bestKey;
@@ -670,17 +668,16 @@ PeopleOpResult PeopleService::merge(const QString& loserName, const QString& sur
         return r;
     }
     if (d->stats) d->stats->refreshNow();
-    // A megszűnő név megbeszélésein változik a beszélő neve: azok összefoglalója elavul.
+    // In the meetings of the name that disappears the speaker's name changes: their summaries go stale.
     const QVector<StaleMark> marks = d->markStale(loser);
 
-    // A meglévő globális átnevezés létező cél-névre = egyesítés: a két rekord egy lesz
-    // (becenevek, megjegyzés), a lenyomatok és minden megbeszélés követi; a megszűnő név
-    // becenév lesz.
+    // The existing global rename to an existing target name = merge: the two records become one
+    // (nicknames, note), the voiceprints and every meeting follow; the name that disappears becomes a nickname.
     if (isSelf(loser)) d->controller->setUserSpeakerName(survivor);
     else d->controller->renamePerson(loser, survivor);
     if (d->people) d->people->addAlias(survivor, loser);
 
-    d->clearUndo();   // nem visszavonható, és a korábbi lépések nevei már nem érvényesek
+    d->clearUndo();   // not undoable, and the earlier steps' names are no longer valid
     if (d->stats) d->stats->refreshNow();
     r.ok = true;
     r.name = survivor;
@@ -702,7 +699,7 @@ DeletePreview PeopleService::deletePreview(const QString& name) const
     for (const PersonMeetingStat& m : ps.meetings) {
         if (m.hasSummary) ++p.staleSummaries;
         if (!p.exampleLabel.isEmpty()) continue;
-        // Egy nyers címke, amivé a beszélő visszaváltozik (a legújabb megbeszélésről).
+        // A raw label the speaker reverts to (from the newest meeting).
         for (const QString& key : m.speakerKeys)
             if (!speakeredit::isParticipantKey(key) && !sameName(key, name)) {
                 p.exampleLabel = key;
@@ -730,8 +727,8 @@ PeopleOpResult PeopleService::removePerson(const QString& nameIn, bool keepSampl
     r.samples = d->voiceprints ? d->voiceprints->sampleCount(name) : 0;
     const QVector<StaleMark> marks = d->markStale(name);
 
-    // „Hangminták megtartása névtelen személyként”: a minták a törlés ELŐTT egy új,
-    // „Névtelen N” nevű személyhez kerülnek (így egy pillanatra sem tűnnek el a tárolóból).
+    // "Keep voice samples as an anonymous person": the samples go BEFORE the deletion to a new person
+    // named "Anonymous N" (so they do not vanish from the store for even a moment).
     if (keepSamples && r.samples > 0 && d->voiceprints) {
         r.name = d->freeAnonymousName();
         d->voiceprints->renamePerson(name, r.name);
@@ -748,7 +745,7 @@ PeopleOpResult PeopleService::removePerson(const QString& nameIn, bool keepSampl
     return r;
 }
 
-// ---- visszavonás ---------------------------------------------------------------
+// ---- undo ---------------------------------------------------------------
 
 bool PeopleService::canUndo() const { return !d->undo.isEmpty(); }
 
@@ -787,7 +784,7 @@ PeopleUndoInfo PeopleService::undo()
                 d->voiceprints->addPrint(s.person, p);
             }
         }
-        // Ha a művelet hozta létre a cél-személyt, és azóta semmi nem kötődik hozzá, eltűnik.
+        // If the operation created the target person and nothing is bound to it since, it disappears.
         if (s.createdPerson && d->people && d->voiceprints && d->voiceprints->printCount(s.other) == 0
             && d->people->details(s.other).isEmpty()
             && (!d->stats || d->stats->stats(s.other).meetingCount == 0))
@@ -804,13 +801,13 @@ PeopleUndoInfo PeopleService::undo()
         d->finish(true, false);
         break;
     case PeopleUndoKind::Renamed: {
-        // Vissza a régi névre ugyanazon a globális úton; az átnevezéskor felvett becenév
-        // (a régi név) a visszanevezéssel magától megszűnik (a név nem lehet saját beceneve).
+        // Back to the old name via the same global route; the nickname added at the rename (the old name)
+        // disappears by itself with the rename back (a name cannot be its own nickname).
         const QString current = d->canonical(s.other);
         if (current.isEmpty()) break;
         if (isSelf(current)) d->controller->setUserSpeakerName(s.person);
         else d->controller->renamePerson(current, s.person);
-        // Ha az új név eredetileg becenév volt (az átnevezés levette), visszakerül.
+        // If the new name was originally a nickname (the rename removed it), it comes back.
         if (d->people && s.aliasWasPresent) d->people->addAlias(s.person, s.other);
         d->renameInUndo(s.other, s.person);
         d->finish(true, false);

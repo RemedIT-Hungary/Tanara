@@ -1,14 +1,13 @@
 #pragma once
 //
-// PwDumpParser — a `pw-dump` (PipeWire) JSON kimenetéből dönti el, folyik-e hívás.
-// TISZTA függvény: nincs folyamat-indítás, nincs I/O → önállóan unit-tesztelhető
-// (a LinuxCaptureDetector futtatja a pw-dump-ot és ide adja a nyers JSON-t).
+// PwDumpParser: decides from the JSON output of `pw-dump` (PipeWire) whether a call is going on.
+// A PURE function: no process start, no I/O, so it is unit-testable on its own (LinuxCaptureDetector
+// runs pw-dump and passes the raw JSON here).
 //
-// Jel: egy AKTÍV mikrofon-fogó stream — PipeWire Node, amelynek
-//   info.props["media.class"] == "Stream/Input/Audio"  (egy app fogja a mikrofont)
-//   info.state == "running"                             (nem szüneteltetett)
-// és a tulajdonos bináris ISMERT hívás-app, de NEM a miénk (ön-kizárás).
-//
+// The signal: an ACTIVE microphone-holding stream, a PipeWire Node with
+//   info.props["media.class"] == "Stream/Input/Audio"  (an app holds the microphone)
+//   info.state == "running"                             (not paused)
+// and the owner binary is a KNOWN call app, but NOT ours (self-exclusion).
 #include "tanara/detect/IMeetingDetector.h"
 
 #include <QByteArray>
@@ -17,16 +16,16 @@
 
 namespace tanara::detail {
 
-// json: a `pw-dump` teljes kimenete. knownApps: bináris/app-név részletek, amelyek
-// hívás-appot jelölnek (pl. "zoom","teams","discord"). selfBinary: a saját processz
-// binárisa (pl. "tanara"), amit sosem veszünk meetingnek. Nincs találat → {active:false}.
+// json: the full output of `pw-dump`. knownApps: binary/app-name fragments that mark a call app
+// (e.g. "zoom","teams","discord"). selfBinary: our own process's binary (e.g. "tanara"), which is never
+// taken as a meeting. No match -> {active:false}.
 MeetingSignal parsePwDump(const QByteArray& json,
                           const QStringList& knownApps,
                           const QString& selfBinary);
 
-// Ember-olvasható app-név a (kisbetűs) binárisból, ill. az application.name-ből: az ismert
-// appokra szép nevet ad ("teams" → "Microsoft Teams"), különben az application.name, annak
-// híján a bináris. (A lejátszás-útvonal figyelő — audio/PlaybackRouting.h — is ezt használja.)
+// A human-readable app name from the (lowercase) binary, or from application.name: it gives a pretty name
+// for known apps ("teams" -> "Microsoft Teams"), otherwise application.name, failing that the binary.
+// (The playback-route watcher, audio/PlaybackRouting.h, uses this too.)
 QString prettyAppName(const QString& binaryLower, const QString& appNameProp);
 
 } // namespace tanara::detail

@@ -31,7 +31,7 @@ int damerauLevenshtein(const QString& a, const QString& b, int maxDistance)
     if (maxDistance >= 0 && std::abs(n - m) > maxDistance) return maxDistance + 1;
     if (n == 0) return m;
     if (m == 0) return n;
-    // Három sor elég (az átrendezés a kettővel korábbi sort nézi).
+    // Three rows are enough (the transposition looks at the row two back).
     QVector<int> prev2(m + 1), prev(m + 1), cur(m + 1);
     for (int j = 0; j <= m; ++j) prev[j] = j;
     for (int i = 1; i <= n; ++i) {

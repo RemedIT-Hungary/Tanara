@@ -94,7 +94,7 @@ LlmTagSuggester::Parsed LlmTagSuggester::parse(const QString& reply)
                 ? rest.split(QLatin1Char(';')) : rest.split(QLatin1Char(','));
             for (QString name : parts) {
                 name = name.trimmed();
-                // Idézőjelek, csillagok, vezető „#”, záró írásjel le.
+                // Quotes, asterisks, a leading "#" and trailing punctuation off.
                 static const QRegularExpression strip(QStringLiteral("^[\"'„“”«»*`#\\s]+|[\"'„“”«»*`\\s.!]+$"));
                 name.replace(strip, QString());
                 name = normalizeTagName(name);
@@ -133,7 +133,7 @@ QVector<TagSuggestion> LlmTagSuggester::toSuggestions(const Parsed& parsed,
     int added = 0;
     for (const QString& name : parsed.newNames) {
         if (added >= kMaxNew) break;
-        // Létező (vagy nagyon hasonló nevű) címke → azt javasoljuk új helyett.
+        // An existing (or very similarly named) tag: we suggest that instead of a new one.
         Tag existing = m_tags ? m_tags->byName(name) : Tag{};
         if (!existing.isValid() && m_tags) {
             const QVector<Tag> near = m_tags->similarNames(name, 1);

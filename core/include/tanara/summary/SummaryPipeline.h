@@ -1,18 +1,17 @@
 #pragma once
 //
-// SummaryPipeline — a gyors összefoglaló TISZTA (I/O- és LLM-mentes) építőkövei.
+// SummaryPipeline: the PURE (I/O- and LLM-free) building blocks of the quick summary.
 //
-// A folyamat minden hosszra ugyanaz:
-//   1. darabolás: az átirat ~15 perces részekre, bekezdés-határon (rövid megbeszélés = 1 rész;
-//      a túl rövid utolsó rész az előzőhöz olvad) — splitTranscript,
-//   2. jegyzet részenként (LLM, "notes" prompt): TOPICS / DECISIONS / OPEN / ACTIONS — parseNotes,
-//   3. memó: a részek TOPICS-jegyzeteiből DETERMINISZTIKUSAN (a részhatáron folytatódó tárgy
-//      egy szakasz marad) — assembleMemo,
-//   4. összegzés (LLM, "merge" prompt): vezetői összefoglaló + döntések + nyitott kérdések +
-//      teendők a jegyzetekből (válogatás, nem másolás) — renderNotesForMerge + parseMergeJson.
-// Egy részből álló megbeszélésnél a 2+4 EGY hívás ("single" prompt): TOPICS + SUMMARY-JSON —
-// parseSingle. A vezénylés (hívások sorrendje, gyorsítótár, megszakítás) a SummaryService-ben él.
-//
+// The process is the same for every length:
+//   1. splitting: the transcript into ~15-minute parts, at paragraph boundaries (a short meeting =
+//      1 part; a too-short last part merges into the previous one): splitTranscript,
+//   2. notes per part (LLM, "notes" prompt): TOPICS / DECISIONS / OPEN / ACTIONS: parseNotes,
+//   3. memo: DETERMINISTICALLY from the parts' TOPICS notes (a subject continuing across a part
+//      boundary stays one section): assembleMemo,
+//   4. summarizing (LLM, "merge" prompt): executive summary + decisions + open questions +
+//      action items from the notes (selecting, not copying): renderNotesForMerge + parseMergeJson.
+// For a meeting with one part, 2+4 is ONE call ("single" prompt): TOPICS + SUMMARY JSON: parseSingle.
+// The orchestration (call order, cache, cancel) lives in SummaryService.
 #include "tanara/Types.h"
 #include "tanara/summary/SummarySources.h"
 
@@ -25,109 +24,109 @@
 namespace tanara {
 namespace summarypipe {
 
-// Egy rész célhossza és a záró rész minimuma (ennél rövidebb utolsó rész az előzőhöz olvad).
+// Target length of a part and the minimum of the last part (a shorter last part merges into the previous one).
 constexpr qint64 kDefaultPartMs = 15 * 60 * 1000;
-// A nyitott kérdések felső korlátja az összegzés után (a hosszú lista a mérés szerint árt).
+// Upper limit of open questions after the summary (a long list hurts, per measurement).
 constexpr int kMaxOpenQuestions = 5;
-// Az egymást követő, azonos tárgyú memó-szakaszok legfeljebb eddig a hosszig olvadnak össze.
+// Consecutive memo sections on the same subject merge up to at most this length.
 constexpr qint64 kMaxMemoJoinMs = 20 * 60 * 1000;
 
 struct TranscriptPart {
-    int     index = 0;          // 0-tól
-    qint64  startMs = 0;        // az első bekezdés kezdete
-    qint64  endMs = 0;          // az utolsó bekezdés vége
-    QString markdown;           // a rész bekezdései (`[mm:ss]` **Beszélő** szöveg)
+    int     index = 0;          // from 0
+    qint64  startMs = 0;        // start of the first paragraph
+    qint64  endMs = 0;          // end of the last paragraph
+    QString markdown;           // the part's paragraphs (`[mm:ss]` **Speaker** text)
 };
 
-// A beszéd-blokkok (MergedTranscript::segments) időrendben, ~partMs-es részekre. Egy bekezdés
-// sosem vágódik ketté. A rész akkor zárul, ha a következő bekezdés legalább partMs-sel a rész
-// kezdete után indul; a partMs/2-nél rövidebb (vagy 1500 karakternél kisebb) utolsó rész az
-// előzőhöz olvad. Üres bemenet → üres lista.
+// The speech blocks (MergedTranscript::segments) in time order, into ~partMs parts. A paragraph is
+// never cut in two. A part closes when the next paragraph starts at least partMs after the part's
+// start; a last part shorter than partMs/2 (or under 1500 characters) merges into the previous one.
+// Empty input -> an empty list.
 QVector<TranscriptPart> splitTranscript(const QVector<Utterance>& segments,
                                         qint64 partMs = kDefaultPartMs);
 
-// A beszéd-blokkok legfeljebb maxChars hosszú (markdown) részekre, sorrendben, bekezdés-
-// határon (a kontextushoz igazított újrabontáshoz). Az indexek 0-tól. Üres lista, ha egyetlen
-// bekezdés önmagában is hosszabb maxChars-nál (vagy üres a bemenet).
+// The speech blocks into parts of at most maxChars (markdown) length, in order, at paragraph
+// boundaries (for the context-adapted re-split). Indexes from 0. An empty list if a single paragraph
+// is longer than maxChars by itself (or the input is empty).
 QVector<TranscriptPart> splitTranscriptByChars(const QVector<Utterance>& segments, int maxChars);
 
-// Egy rész jegyzete (a "notes" lépés kimenete, értelmezve).
+// A part's notes (the output of the "notes" step, parsed).
 struct PartNotes {
     int     index = 0;
     qint64  startMs = 0;
     qint64  endMs = 0;
-    QVector<MemoSection> topics;   // a rész tárgyai (a memó nyersanyaga)
-    QStringList decisions;         // "[mm:ss] szöveg" alakban, ahogy a modell írta
+    QVector<MemoSection> topics;   // the part's subjects (raw material of the memo)
+    QStringList decisions;         // in the form "[mm:ss] text", as the model wrote it
     QStringList open;
-    QStringList actions;           // "[mm:ss] teendő — felelős — határidő"
+    QStringList actions;           // "[mm:ss] action - owner - deadline"
     bool isEmpty() const { return topics.isEmpty() && decisions.isEmpty() && open.isEmpty() && actions.isEmpty(); }
 };
 
-// "mm:ss" / "h:mm:ss" (ill. "mmm:ss") → ms; értelmezhetetlen → -1.
+// "mm:ss" / "h:mm:ss" (or "mmm:ss") -> ms; unparseable -> -1.
 qint64 parseTimestamp(const QString& s);
-// ms → "mm:ss" (a perc nem fordul át órába — az átirat is így írja).
+// ms -> "mm:ss" (the minutes do not roll over into hours; the transcript writes it this way too).
 QString formatTimestamp(qint64 ms);
 
-// A jegyzet-szöveg hibatűrő értelmezése. Elfogadja a fejlécek változatait (## TOPICS, **TOPICS**,
-// TOPICS:, magyar TÉMÁK/DÖNTÉSEK/NYITOTT/TEENDŐK), a kódkerítést, a fejléc előtti prózát. A
-// tárgy-cím `###`/`##` sor (opcionális [mm:ss-mm:ss] időkerettel) vagy félkövér sor; a
-// tárgy-cím nélküli pontok névtelen szakaszba kerülnek. A „- none” sorok kimaradnak. A
-// hiányzó időket a rész kerete és a szomszédos tárgyak alapján tölti ki. Ha a szövegben nincs
-// felismerhető fejléc, a sorai egyetlen tárgy pontjai lesznek (nem dobjuk el a részt).
-// Egy tárgyon belül: a cím utáni pötty nélküli sor(ok) a bevezető (MemoSection::intro); a
-// „#### Arguments” / „#### Unresolved” (ill. bármely ####) al-cím utáni pontok az alszakaszé
-// (pointGroups; a #### sor sosem szakasz-fejléc). A forrás-jelölők itt még a szövegben maradnak
-// (a merge-bemenet is viszi őket); a buildSummary veszi le őket.
+// Fault-tolerant parsing of the notes text. Accepts the variants of the headings (## TOPICS,
+// **TOPICS**, TOPICS:, the Hungarian equivalents of TOPICS/DECISIONS/OPEN/ACTIONS), a code fence, prose
+// before the heading. A subject title is a `###`/`##` line (with an optional [mm:ss-mm:ss] time frame)
+// or a bold line; points without a subject title go into an anonymous section. "- none" lines are
+// dropped. Missing times are filled from the part's frame and the neighboring subjects. If the text has
+// no recognizable heading, its lines become the points of a single subject (the part is not dropped).
+// Within a subject: the non-bulleted line(s) after the title are the intro (MemoSection::intro); points
+// after a "#### Arguments" / "#### Unresolved" (or any ####) subheading belong to the subsection
+// (pointGroups; a #### line is never a section heading). Source markers still stay in the text here
+// (the merge input carries them too); buildSummary strips them.
 PartNotes parseNotes(const QString& raw, const TranscriptPart& part);
 
-// A memó a részek TOPICS-jegyzeteiből: időrendben összefűzve; az egymás után következő,
-// ugyanarról szóló szakaszok (azonos vagy nagyon hasonló cím — tipikusan a részhatáron
-// folytatódó tárgy) egy szakasszá olvadnak (a pontok sorban, ismétlés nélkül, az időkeret
-// kitágul) — de csak kMaxMemoJoinMs hosszig; azon túl azonos címmel, külön szakasz marad.
-// A cím nélküli szakasz az előzőhöz csatlakozik (ha van).
+// The memo from the parts' TOPICS notes: concatenated in time order; consecutive sections about
+// the same subject (an identical or very similar title, typically a subject continuing across a part
+// boundary) merge into one (points in order without repeats, the time frame widens), but only up to
+// kMaxMemoJoinMs; beyond that, with an identical title, it stays a separate section.
+// A section without a title joins the previous one (if any).
 QVector<MemoSection> assembleMemo(const QVector<PartNotes>& parts);
 
-// Az összegző lépés bemenete: a beszélők listája + a részek normalizált jegyzetei
-// ("=== PART k of n [mm:ss-mm:ss] ===" fejjel, TOPICS / DECISIONS / OPEN / ACTIONS).
+// Input of the summarizing step: the list of speakers + the parts' normalized notes
+// (with a "=== PART k of n [mm:ss-mm:ss] ===" header, TOPICS / DECISIONS / OPEN / ACTIONS).
 QString renderNotesForMerge(const QVector<PartNotes>& parts, const QStringList& speakers);
 
-// A rövid forma mezői (a merge / single lépés JSON-ja).
+// Fields of the short form (the JSON of the merge / single step).
 struct MergeResult {
     bool        ok = false;
-    QString     error;            // ok == false: emberi (magyar) magyarázat a hibáról
+    QString     error;            // ok == false: a human (Hungarian) explanation of the error
     QString     execSummary;
     QStringList decisions;
     QStringList openQuestions;
     QVector<ActionItem> actionItems;
 };
 
-// Megengedő JSON-kinyerés: kódkerítés le, a próza előtte/utána le (az első '{'-tól a hozzá
-// tartozó záró '}'-ig, a sztringeken belüli zárójeleket figyelembe véve).
+// Permissive JSON extraction: code fence off, prose before/after off (from the first '{' to its
+// matching closing '}', respecting brackets inside strings).
 QByteArray extractJsonObject(const QString& raw);
-// A kis modellek gyakori JSON-hibáinak javítása, ahol ez biztonságos: idézőjel nélküli
-// (escape-eletlen) belső idézőjel, nyers sortörés a sztringben, záró vessző, csonka vég
-// (nyitott sztring / tömb / objektum lezárása), „okos” idézőjelek kulcs körül.
+// Fixing the common JSON mistakes of small models where it is safe: unescaped inner quotes, a raw
+// line break in a string, a trailing comma, a truncated end (closing an open string / array / object),
+// "smart" quotes around a key.
 QByteArray repairJson(const QByteArray& json);
-// A merge / single JSON hibatűrő értelmezése: hiányzó mező → üres; kulcs-álnevek
-// (open_questions, action_items…); tömb helyett sztring és fordítva; a teendő lehet sima
-// sztring is. A nyitott kérdések kMaxOpenQuestions-re vágva. ok == false, ha nincs
-// értelmezhető objektum, vagy egyik ismert mező sincs benne.
+// Fault-tolerant parsing of the merge / single JSON: a missing field = empty; key aliases
+// (open_questions, action_items ...); a string instead of an array and vice versa; an action item may
+// be a plain string too. Open questions cut to kMaxOpenQuestions. ok == false if there is no parseable
+// object, or none of the known fields is in it.
 MergeResult parseMergeJson(const QString& raw);
 
-// Az egylépéses ("single") válasz: a JSON előtti rész a jegyzet (TOPICS), a JSON a rövid forma.
+// The single-step ("single") answer: the part before the JSON is the notes (TOPICS), the JSON is the short form.
 struct SingleResult {
-    PartNotes   notes;            // üres, ha a modell nem írt jegyzetet (pl. régi saját prompt)
+    PartNotes   notes;            // empty if the model wrote no notes (e.g. an old custom prompt)
     MergeResult merge;
 };
 SingleResult parseSingle(const QString& raw, const TranscriptPart& part);
 
-// A beszélők (résztvevők) a beszéd-blokkokból, az első megszólalás sorrendjében.
+// The speakers (participants) from the speech blocks, in the order of their first utterance.
 QStringList speakersOf(const QVector<Utterance>& segments);
 
-// A teljes Summary összeállítása: a rövid forma + memó + résztvevők. A forrás-jelölők
-// (`[t=mm:ss]`) lekerülnek a szövegekről, és a lines alapján statements + sourceSpeakers +
-// memó-szakasz beszélők lesznek belőlük (summarysrc::attachSources). Üres lines → az
-// állításoknak nincs forrása (a jelölők akkor is lekerülnek).
+// Assembles the full Summary: the short form + memo + participants. Source markers (`[t=mm:ss]`) are
+// stripped from the texts, and from lines they become statements + sourceSpeakers + memo-section
+// speakers (summarysrc::attachSources). Empty lines -> the statements have no source (the markers are
+// stripped anyway).
 Summary buildSummary(const MergeResult& merge, const QVector<PartNotes>& parts,
                      const QStringList& participants,
                      const QVector<summarysrc::SourceLine>& lines = {});

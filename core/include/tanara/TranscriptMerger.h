@@ -1,20 +1,18 @@
 #pragma once
 //
-// Sáv-átiratok összefésülése egy időrendi, beszélőnként tagolt átiratba.
-// A MergedTranscript::renderMarkdown() implementációja is itt (a .cpp-ben) él.
-//
+// Merges per-track transcripts into one chronological, per-speaker transcript.
+// The implementation of MergedTranscript::renderMarkdown() also lives here (in the .cpp).
 #include "tanara/Types.h"
 #include <QVector>
 
 namespace tanara {
 
-// Összefűzi az összes sáv tokenjeit, beállítja minden tokenen a trackId/speaker
-// mezőt a forrássáv alapján, stabilan startMs szerint rendez, és a nyelvet az
-// első sávból veszi.
+// Concatenates the tokens of all tracks, sets trackId/speaker on every token from its
+// source track, stable-sorts by startMs, and takes the language from the first track.
 MergedTranscript mergeTranscripts(const QVector<TrackTranscript>& tracks);
 
-// Beszéd-blokkok markdownja: bekezdésenként `[mm:ss]` **Beszélő** szöveg, üres sorral
-// elválasztva. A MergedTranscript::renderMarkdown() és az összefoglaló részei is ezt használják.
+// Markdown of the speech blocks: per paragraph `[mm:ss]` **Speaker** text, separated by a
+// blank line. MergedTranscript::renderMarkdown() and the summary parts use this too.
 QString renderUtterancesMarkdown(const QVector<Utterance>& utterances);
 
 } // namespace tanara

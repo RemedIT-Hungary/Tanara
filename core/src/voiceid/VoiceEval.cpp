@@ -30,7 +30,7 @@ Vec meanOf(const QVector<const Vec*>& vs, const Vec* skip = nullptr)
 
 double cosine(const Vec& a, const Vec& b) { return VoiceprintStore::cosineSimilarity(a, b); }
 
-// 2-közép cosine-nal: kezdőpontok a centroidtól legtávolabbi sor és a tőle legtávolabbi.
+// 2-means with cosine: the start points are the line farthest from the centroid and the one farthest from that.
 VoiceEvalSplit twoMeans(const QVector<const Vec*>& vs)
 {
     VoiceEvalSplit out;
@@ -78,7 +78,7 @@ VoiceEvalSpace evaluateSpace(const QString& id, const QVector<Vec>& vecs,
         if (!vecs[i].isEmpty()) ++sp.linesCovered;
     }
 
-    // (2) magok: zárolt, nem zajos, vektoros sorok.
+    // (2) cores: locked, non-noisy lines with a vector.
     QVector<QVector<const Vec*>> coreMembers(speakerCount);
     QVector<QVector<const Vec*>> speakerLines(speakerCount);
     for (int i = 0; i < lines.size(); ++i) {
@@ -99,10 +99,10 @@ VoiceEvalSpace evaluateSpace(const QString& id, const QVector<Vec>& vecs,
         for (int b = 0; b < speakerCount; ++b)
             if (!cores[a].isEmpty() && !cores[b].isEmpty()) sp.coreCosine[a][b] = cosine(cores[a], cores[b]);
 
-    // (3) 2-közép beszélőnként.
+    // (3) 2-means per speaker.
     for (int s = 0; s < speakerCount; ++s) sp.splits.append(twoMeans(speakerLines[s]));
 
-    // (4) közelebb egy másik maghoz. A saját mag tagjánál a mag önmaga nélkül számít.
+    // (4) closer to another core. For a member of its own core, the core counts without itself.
     for (int i = 0; i < lines.size(); ++i) {
         const int s = lines[i].speaker;
         if (s < 0 || s >= speakerCount || vecs[i].isEmpty() || cores[s].isEmpty()) continue;

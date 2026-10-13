@@ -1,23 +1,21 @@
 #pragma once
 //
-// WindowsCaptureDetector — WASAPI-alapú meeting-detektor Windowsra (id: "windows-wasapi").
+// WindowsCaptureDetector: a WASAPI-based meeting detector for Windows (id: "windows-wasapi").
 //
-// Elsődleges jel: a felvevő (capture) végpontok AKTÍV audio-session-jei. Minden aktív
-// capture-végponton (IMMDeviceEnumerator::EnumAudioEndpoints(eCapture, ACTIVE)) végigmegyünk
-// a session-ökön (IAudioSessionManager2 → IAudioSessionEnumerator); egy AudioSessionStateActive
-// session = egy processz épp fogja a mikrofont. A PID-ből képnév (QueryFullProcessImageNameW),
-// abból kisbetűs alapnév, és ezt illesztjük az ismert hívás-appokra (detail/WinCaptureRules.h).
+// Primary signal: the ACTIVE audio sessions of the recording (capture) endpoints. We go over the
+// sessions of every active capture endpoint (IMMDeviceEnumerator::EnumAudioEndpoints(eCapture, ACTIVE))
+// (IAudioSessionManager2 -> IAudioSessionEnumerator); an AudioSessionStateActive session = a process is
+// holding the microphone right now. From the PID an image name (QueryFullProcessImageNameW), from that
+// a lowercase base name, which we match against the known call apps (detail/WinCaptureRules.h).
 //
-// Másodlagos jel (ha nincs illeszkedő session, pl. csomagolt/UWP appok): a
-// HKCU\...\CapabilityAccessManager\ConsentStore\microphone kulcsai — egy appnál, amelynek
-// LastUsedTimeStart-ja későbbi a LastUsedTimeStop-nál (vagy Stop == 0), épp használatban van
-// a mikrofon.
+// Secondary signal (if no session matches, e.g. packaged/UWP apps): the keys of
+// HKCU\...\CapabilityAccessManager\ConsentStore\microphone: an app whose LastUsedTimeStart is later than
+// LastUsedTimeStop (or Stop == 0) is using the microphone right now.
 //
-// Ön-kizárás: a saját PID-ünk és minden "tanara" / "tanara-*" képnevű processz kimarad.
+// Self-exclusion: our own PID and every process with an image name "tanara" / "tanara-*" is left out.
 //
-// A teljes tartalom Q_OS_WIN alatt (a core CMakeLists GLOB-ol → máshol üres fordítási egység).
-// NEM QObject (szinkron poll, nincs moc-függőség) — a LinuxCaptureDetector mintáját követi.
-//
+// The whole content is under Q_OS_WIN (core's CMakeLists uses GLOB, so it is an empty translation unit
+// elsewhere). NOT a QObject (synchronous poll, no moc dependency); it follows the LinuxCaptureDetector pattern.
 #include <QtGlobal>
 #if defined(Q_OS_WIN)
 
@@ -41,7 +39,7 @@ public:
     void configure(const QStringList& knownCallApps, const QString& selfBinary) override;
 
 private:
-    struct Impl;                       // COM-objektumok (a fejléc Windows-fejléc-mentes marad)
+    struct Impl;                       // COM objects (the header stays free of Windows headers)
     std::unique_ptr<Impl> d;
     QStringList m_knownApps;
     QString     m_selfBinary = QStringLiteral("tanara");

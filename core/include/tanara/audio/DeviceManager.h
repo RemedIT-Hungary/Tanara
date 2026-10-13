@@ -1,7 +1,6 @@
 #pragma once
 //
-// Tanara — capture (mikrofon + monitor/loopback) eszközök felsorolása miniaudióval.
-//
+// Enumeration of capture (microphone + monitor/loopback) devices with miniaudio.
 #include "tanara/Types.h"
 
 #include <QObject>
@@ -12,8 +11,8 @@
 
 namespace tanara {
 
-// A miniaudio részleteit (ma_context) elrejtjük a fejlécből, hogy a fejléc
-// Qt-only fordítási egységekbe is befordulhasson miniaudio-include nélkül.
+// We hide miniaudio's details (ma_context) from the header so the header can also be compiled
+// into Qt-only translation units without a miniaudio include.
 struct DeviceManagerPrivate;
 
 class DeviceManager : public QObject {
@@ -22,20 +21,19 @@ public:
     explicit DeviceManager(QObject* parent = nullptr);
     ~DeviceManager() override;
 
-    // A legutóbbi refresh() eredménye. Üres lista, ha nincs elérhető backend.
+    // Result of the latest refresh(). An empty list if no backend is available.
     QVector<AudioDeviceInfo> captureDevices() const;
 
-    // Az „auto-rögzítés minden eszközre" halmaza: a captureDevices() a vonalbemenet/
-    // AUX (TrackKind::Other) inputok NÉLKÜL. Ezeket kézzel kell bepipálni a felvevőben.
+    // The "auto-record every device" set: captureDevices() WITHOUT the line-in/AUX (TrackKind::Other)
+    // inputs. Those must be checked by hand in the recorder.
     QVector<AudioDeviceInfo> autoRecordDevices() const;
 
-    // Teszt-varrat: nem üres → a refresh() ezt a listát adja a valódi felsorolás helyett
-    // (eszköz be- és kihúzásának szimulálásához). std::nullopt → újra a valódi felsorolás.
+    // Test seam: non-empty = refresh() returns this list instead of the real enumeration (to simulate
+    // plugging / unplugging a device). std::nullopt = the real enumeration again.
     void setDeviceListOverride(std::optional<QVector<AudioDeviceInfo>> devices);
 
 public slots:
-    // Újra felsorolja az eszközöket. Robusztus: ha a backend nem elérhető,
-    // üres listát állít be és nem dob.
+    // Re-enumerates the devices. Robust: if the backend is unavailable, it sets an empty list and does not throw.
     void refresh();
 
 signals:

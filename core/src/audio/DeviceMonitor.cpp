@@ -12,13 +12,12 @@
 
 namespace tanara {
 
-// Szálkezelés: a motor (AudioEngine) teljes életciklusa — megnyitás, a ~30 Hz-es mérés,
-// lezárás — a saját „tanara-levelmon” szálon fut, így a fő szál sosem vár eszköz-megnyitásra
-// (N eszköznél több száz ms). A fő szál csak parancsot küld (start / stop), és sorban állított
-// hívással kapja a szinteket. Minden parancs új generációt kap; a háttérszál a már elavult
-// indítást ki sem nyitja (összevonás), a fő szál pedig az elavult generáció szintjeit eldobja.
-// A motor ugyanazon a szálon nyílik és záródik (Windowson a miniaudio COM-init/uninit
-// ugyanazon a szálon marad párban).
+// Threading: the engine's (AudioEngine) whole lifecycle (opening, the ~30 Hz measurement, closing)
+// runs on its own "tanara-levelmon" thread, so the main thread never waits for a device open (hundreds of
+// ms with N devices). The main thread only sends a command (start / stop) and receives the levels via a
+// queued call. Every command gets a new generation; the background thread does not even open a stale
+// start (coalescing), and the main thread drops the levels of a stale generation.
+// The engine opens and closes on the same thread (on Windows miniaudio's COM init/uninit stay paired on the same thread).
 namespace {
 
 struct LevelSample {
@@ -32,9 +31,9 @@ public:
     explicit LevelWorker(std::shared_ptr<std::atomic<quint64>> gen) : m_gen(std::move(gen)) {}
     ~LevelWorker() override { stopEngine(); }
 
-    // A háttérszálon fut.
+    // Runs on the background thread.
     void start(quint64 gen, const QVector<AudioDeviceInfo>& devices, DeviceMonitor* monitor) {
-        if (m_gen->load() != gen) return;   // közben újabb parancs jött: ki sem nyitjuk
+        if (m_gen->load() != gen) return;   // a newer command came meanwhile: we do not even open
         stopEngine();
         QElapsedTimer t;
         t.start();
@@ -76,7 +75,7 @@ private:
             batch.append({ m_engine->deviceInfo(i).name, m_engine->rms(i), m_engine->takePeak(i) });
         const quint64 gen = m_runningGen;
         QMetaObject::invokeMethod(monitor, [monitor, gen, batch]() {
-            if (!monitor->d_isCurrent(gen)) return;   // leállított / lecserélt indítás
+            if (!monitor->d_isCurrent(gen)) return;   // a stopped / replaced start
             for (const LevelSample& s : batch) {
                 emit monitor->level(s.name, s.rms);
                 emit monitor->levelPeak(s.name, s.rms, s.peak);
@@ -96,8 +95,8 @@ struct DeviceMonitor::Impl {
     QThread thread;
     LevelWorker* worker = nullptr;
     std::shared_ptr<std::atomic<quint64>> gen = std::make_shared<std::atomic<quint64>>(0);
-    bool wanted = false;          // indítás kérve (és nem bukott el)
-    QStringList names;            // a ténylegesen megnyitott eszközök (az indítás után)
+    bool wanted = false;          // a start was requested (and has not failed)
+    QStringList names;            // the devices actually opened (after the start)
 };
 
 DeviceMonitor::DeviceMonitor(QObject* parent)
@@ -113,7 +112,7 @@ DeviceMonitor::DeviceMonitor(QObject* parent)
 DeviceMonitor::~DeviceMonitor()
 {
     stop();
-    // A motor a saját szálán záródik (a lebontás határidős, lásd AudioEngine / DetachedJob).
+    // The engine closes on its own thread (the teardown has a deadline, see AudioEngine / DetachedJob).
     d_->thread.quit();
     d_->thread.wait();
 }
@@ -145,7 +144,7 @@ bool DeviceMonitor::d_isCurrent(quint64 gen) const { return gen != 0 && gen == d
 
 void DeviceMonitor::d_started(quint64 gen, bool ok, const QStringList& names) {
     if (!d_isCurrent(gen)) return;
-    if (!ok) {   // nem sikerült megnyitni → csendben kilép (mint korábban)
+    if (!ok) {   // could not open: exits silently (as before)
         d_->wanted = false;
         d_->names.clear();
         return;

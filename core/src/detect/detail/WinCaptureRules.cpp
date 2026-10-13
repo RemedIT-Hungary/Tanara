@@ -4,16 +4,16 @@ namespace tanara::detail::win {
 
 namespace {
 
-// Windows-os képnév-aliasok: egy (felhasználói) lista-elemhez tartozó további képnevek.
+// Windows image-name aliases: further image names belonging to a (user) list item.
 struct Alias { const char* entry; const char* images[8]; };
 const Alias kAliases[] = {
     {"teams", {"ms-teams", "msteams", "teams", nullptr}},
     {"webex", {"ciscocollabhost", "webexmta", "atmgr", "ciscowebexstart", nullptr}},
-    // A Google Meet böngészőben fut → a böngésző fogja a mikrofont.
+    // Google Meet runs in a browser, so the browser holds the microphone.
     {"meet",  {"chrome", "msedge", "firefox", "brave", "opera", "vivaldi", "chromium", nullptr}},
 };
 
-// Képnév-részlet → normalizált app-id + szép név. A sorrend számít (az első találat nyer).
+// Image-name fragment -> normalized app id + pretty name. The order matters (the first match wins).
 struct Canonical { const char* image; const char* id; const char* name; };
 const Canonical kCanonical[] = {
     {"teams", "teams", "Microsoft Teams"},      // ms-teams, msteams, teams
@@ -77,7 +77,7 @@ CallAppMatch matchCallApp(const QString& baseLower, const QStringList& knownApps
             return m;
         }
     }
-    m.appId = baseLower;     // ismeretlen (felhasználó által felvett) app: a képnév maga
+    m.appId = baseLower;     // unknown (user-added) app: the image name itself
     m.appName = baseLower;
     return m;
 }
@@ -85,12 +85,12 @@ CallAppMatch matchCallApp(const QString& baseLower, const QStringList& knownApps
 QString consentKeyToName(const QString& keyName, bool nonPackaged)
 {
     if (nonPackaged) {
-        // A NonPackaged kulcsnév a teljes út, '\' helyett '#'-tel.
+        // The NonPackaged key name is the full path, with '#' instead of '\'.
         QString path = keyName;
         path.replace(QLatin1Char('#'), QLatin1Char('\\'));
         return imageBaseName(path);
     }
-    // Csomagolt app: "<Név>_<publisher-hash>" → a név, kisbetűvel.
+    // Packaged app: "<Name>_<publisher-hash>" -> the name, lowercase.
     const qsizetype us = keyName.lastIndexOf(QLatin1Char('_'));
     return (us > 0 ? keyName.left(us) : keyName).toLower();
 }

@@ -15,9 +15,9 @@ namespace tanara {
 
 namespace {
 
-// Megengedő JSON-kinyerés: leveszi az esetleges ```json ... ``` kerítést, és ha még
-// mindig nem objektum, megpróbálja az első { ... } blokkot kivágni. (A SummaryService
-// extractJson-jával azonos viselkedés; a két modul szándékosan független.)
+// Permissive JSON extraction: strips an optional ```json ... ``` fence, and if it is still not an
+// object, tries to cut out the first { ... } block. (The same behavior as SummaryService's
+// extractJson; the two modules are intentionally independent.)
 QByteArray extractJson(const QString& raw)
 {
     QString s = raw.trimmed();
@@ -61,10 +61,10 @@ QStringList parseStringArray(const QJsonArray& arr)
     return out;
 }
 
-// A téma-lista MARKDOWNból: minden `#`-heading egy téma CÍME, az utána következő (nem-heading)
-// sorok az összegzés a következő headingig. Megengedő: a nem illeszkedő prózát (pl. reasoning-
-// maradék, bevezető) egyszerűen átugorja — egy elrontott szakasz NEM dönti be az egészet
-// (szemben a JSON-nal, ahol egy hiányzó `}` = teljes bukás).
+// The topic list from MARKDOWN: every `#` heading is a topic's TITLE, the following (non-heading)
+// lines are the summary until the next heading. Permissive: prose that does not fit (e.g. leftover
+// reasoning, an intro) is simply skipped, so one botched section does NOT sink everything (unlike JSON,
+// where one missing `}` = total failure).
 QVector<SummaryTopic> parseTopicsMarkdown(const QString& raw)
 {
     static const QRegularExpression head(QStringLiteral("^\\s*#{1,6}\\s+(.+)$"));
@@ -85,7 +85,7 @@ QVector<SummaryTopic> parseTopicsMarkdown(const QString& raw)
             flush();
             QString title = m.captured(1);
             title.remove(numPrefix);
-            title.remove(QLatin1Char('*'));   // **félkövér** cím-jelölés levétele
+            title.remove(QLatin1Char('*'));   // stripping the **bold** title markup
             cur.title = title.trimmed();
             have = true;
         } else if (have) {
@@ -97,8 +97,8 @@ QVector<SummaryTopic> parseTopicsMarkdown(const QString& raw)
     return out;
 }
 
-// Fallback: ha a modell mégis JSON-t adott (vagy egyedi JSON-prompt van mentve), abból is
-// kinyerjük a témákat. Üres, ha nem értelmezhető.
+// Fallback: if the model did give JSON after all (or a custom JSON prompt is saved), we extract the
+// topics from that too. Empty if not parseable.
 QVector<SummaryTopic> parseTopicsJson(const QString& raw)
 {
     QVector<SummaryTopic> out;
@@ -116,8 +116,8 @@ QVector<SummaryTopic> parseTopicsJson(const QString& raw)
     return out;
 }
 
-// Egy markdown teendő-sor → ActionItem: "- szöveg — Felelős (határidő)". A „ — Felelős" és a
-// „(határidő)" opcionális; több gondolatjel-variánst (—, –, -) elfogad elválasztónak.
+// A markdown action-item line -> ActionItem: "- text - Owner (deadline)". The " - Owner" and the
+// "(deadline)" are optional; several dash variants (em dash, en dash, hyphen) are accepted as separator.
 ActionItem parseActionItemLine(QString line)
 {
     static const QRegularExpression bullet(QStringLiteral("^\\s*(?:[-*•]|\\d+[.)])\\s+"));
@@ -136,9 +136,9 @@ ActionItem parseActionItemLine(QString line)
 
 enum class MdSection { Detail, Decisions, Open, Actions };
 
-// Egy téma-elemzés MARKDOWNból: bevezető bekezdés = detail; `## Döntések` bulletjei =
-// decisions; `## Teendők` bulletjei = actionItems. Hibatűrő: egy csonka/elrontott sor nem
-// dönti be az egészet (szemben a JSON-nal).
+// One topic analysis from MARKDOWN: the intro paragraph = detail; the bullets of the Hungarian decisions
+// section = decisions; those of the Hungarian action-items section = actionItems. Fault-tolerant: one
+// truncated/botched line does not sink everything (unlike JSON).
 TopicAnalysis parseAnalysisMarkdown(const QString& raw, const SummaryTopic& topic)
 {
     static const QRegularExpression head(QStringLiteral("^\\s*#{1,6}\\s+(.+)$"));
@@ -168,7 +168,7 @@ TopicAnalysis parseAnalysisMarkdown(const QString& raw, const SummaryTopic& topi
         } else if (sec == MdSection::Open) {
             const QString q = bm.hasMatch() ? bm.captured(1).trimmed() : t;
             if (!q.isEmpty()) a.openQuestions << q;
-        } else if (bm.hasMatch()) {   // Actions — csak a bulletek számítanak
+        } else if (bm.hasMatch()) {   // Actions: only the bullets count
             const ActionItem ai = parseActionItemLine(t);
             if (!ai.text.isEmpty()) a.actionItems << ai;
         }
@@ -177,8 +177,8 @@ TopicAnalysis parseAnalysisMarkdown(const QString& raw, const SummaryTopic& topi
     return a;
 }
 
-// Fallback: régi JSON-elemzés (egyedi JSON-prompt / ha a modell mégis JSON-t ad). ok=false, ha
-// nem értelmezhető.
+// Fallback: the old JSON analysis (a custom JSON prompt / if the model gives JSON anyway). ok=false if
+// not parseable.
 TopicAnalysis parseAnalysisJson(const QString& raw, const SummaryTopic& topic, bool* ok)
 {
     TopicAnalysis a; a.topicId = topic.id; a.title = topic.title;
@@ -194,7 +194,7 @@ TopicAnalysis parseAnalysisJson(const QString& raw, const SummaryTopic& topic, b
     return a;
 }
 
-// Reduce MARKDOWNból: bevezető bekezdés = execSummary; `## Teendők` bulletjei = actionItems.
+// Reduce from MARKDOWN: the intro paragraph = execSummary; the bullets of the Hungarian action-items section = actionItems.
 void parseReduceMarkdown(const QString& raw, QString* execSummary, QVector<ActionItem>* items)
 {
     static const QRegularExpression head(QStringLiteral("^\\s*#{1,6}\\s+(.+)$"));
@@ -218,10 +218,10 @@ void parseReduceMarkdown(const QString& raw, QString* execSummary, QVector<Actio
     *execSummary = summary.join(QLatin1Char(' ')).simplified();
 }
 
-// A reduce-prompt beépített defaultja a PromptLibrary-ben él ("reduce"); az AppController
-// a setReducePrompt()-tal adhat feloldott (fájl-override-os) promptot.
+// The built-in default of the reduce prompt lives in PromptLibrary ("reduce"); AppController may give a
+// resolved (file-override) prompt with setReducePrompt().
 
-// Egy context-blokk a user-prompt elejére (ha van).
+// A context block at the start of the user prompt (if any).
 QString contextBlock(const QString& contextNotes)
 {
     if (contextNotes.trimmed().isEmpty()) return {};
@@ -268,7 +268,7 @@ void ComplexSummaryService::requestTopics(const QString& transcriptMd, const QSt
     connect(job, &LlmJob::finished, this, [self, job](const QString& text) {
         job->deleteLater();
         if (!self) return;
-        // Elsődlegesen markdown (`## cím` + összegzés) — hibatűrő; ha üres, JSON-fallback.
+        // Primarily markdown (`## title` + summary): fault-tolerant; if empty, a JSON fallback.
         QVector<SummaryTopic> topics = parseTopicsMarkdown(text);
         if (topics.isEmpty()) topics = parseTopicsJson(text);
         if (topics.isEmpty()) {
@@ -310,11 +310,11 @@ void ComplexSummaryService::requestTopicAnalysis(const QString& transcriptMd, co
     LlmJob* job = m_provider->chat(req);
     if (!job) { emit failed(tr("A provider nem adott vissza jobot.")); return; }
     QPointer<ComplexSummaryService> self(this);
-    const SummaryTopic cap = topic;   // a topicId/title az eredménybe öröklődik
+    const SummaryTopic cap = topic;   // topicId/title are inherited into the result
     connect(job, &LlmJob::finished, this, [self, job, cap](const QString& text) {
         job->deleteLater();
         if (!self) return;
-        // Elsődlegesen markdown (összegző + `## Döntések` / `## Teendők`); ha üres, JSON-fallback.
+        // Primarily markdown (summary + the Hungarian decisions / action-items headings); if empty, a JSON fallback.
         TopicAnalysis a = parseAnalysisMarkdown(text, cap);
         if (a.detail.isEmpty() && a.decisions.isEmpty() && a.actionItems.isEmpty()) {
             bool ok = false;
@@ -342,7 +342,7 @@ void ComplexSummaryService::requestReduce(const QVector<TopicAnalysis>& analyses
 {
     if (!m_provider) { emit failed(tr("Nincs beállított LLM provider.")); return; }
 
-    // A per-téma elemzések szöveges összefoglalása a reduce bemenetéhez.
+    // A text summary of the per-topic analyses for the reduce's input.
     QString usr = contextBlock(contextNotes);
     usr += QStringLiteral("Analyses per topic:\n\n");
     for (const TopicAnalysis& a : analyses) {

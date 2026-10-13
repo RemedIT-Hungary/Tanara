@@ -21,7 +21,7 @@ QString homeOverride()
     const QString raw = qEnvironmentVariable("TANARA_HOME").trimmed();
     if (raw.isEmpty())
         return QString();
-    // Relatív út → az indítási munkakönyvtárhoz képest abszolút.
+    // Relative path -> absolute, against the startup working directory.
     return QDir::cleanPath(QDir(expandHome(raw)).absolutePath());
 }
 
@@ -72,7 +72,7 @@ QString voiceModelFileName()
 
 QString resolveVoiceModelPath(const QString& metaDir, const QString& appDir)
 {
-    // Egyetlen feloldási szabály: a VoiceModelRegistry-é (az alapmodellre).
+    // Single resolution rule: VoiceModelRegistry's (for the base model).
     return VoiceModelRegistry::resolvePath(*VoiceModelRegistry::spec(VoiceModelRegistry::defaultModelId()),
                                            metaDir, appDir);
 }

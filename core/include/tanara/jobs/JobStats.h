@@ -1,14 +1,13 @@
 #pragma once
 //
-// JobStats — korábbi futások mért sebessége, a hátralévő idő ŐSZINTE becsléséhez.
+// JobStats: measured speed of earlier runs, for an HONEST estimate of the remaining time.
 //
-// A szolgáltatók (Soniox async, OpenAI-kompatibilis /audio/transcriptions) az átírás alatt
-// NEM adnak százalékot — csak állapotot. Becslést ezért kizárólag a saját, korábbi sikeres
-// futásainkból adunk: kulcsonként (pl. "transcribe/soniox") a „feldolgozási idő / hanghossz”
-// arány mozgóátlaga. Minta nélkül nincs becslés (-1) — nem találunk ki számot.
+// The providers (Soniox async, OpenAI-compatible /audio/transcriptions) give NO percentage during
+// transcription, only a state. So an estimate comes solely from our own earlier successful runs:
+// per key (e.g. "transcribe/soniox") the moving average of the "processing time / audio length"
+// ratio. Without a sample there is no estimate (-1); we do not invent a number.
 //
-// Tárolás: <metaadat-mappa>/job-stats.json (kicsi, bármikor törölhető).
-//
+// Storage: <metadata folder>/job-stats.json (small, deletable any time).
 #include <QString>
 #include <QHash>
 
@@ -16,13 +15,13 @@ namespace tanara {
 
 class JobStats {
 public:
-    // filePath üres → csak memóriában (teszt).
+    // Empty filePath = in memory only (tests).
     explicit JobStats(const QString& filePath = QString());
 
-    // Egy sikeres futás: wallSec mp alatt audioSec mp hangot dolgozott fel.
+    // One successful run: processed audioSec seconds of audio in wallSec seconds.
     void addSample(const QString& key, double wallSec, double audioSec);
 
-    // Becsült teljes futásidő (mp) audioSec hosszú hangra; -1, ha a kulcshoz nincs minta.
+    // Estimated total run time (s) for audioSec of audio; -1 if there is no sample for the key.
     int estimateSec(const QString& key, double audioSec) const;
 
     int sampleCount(const QString& key) const;

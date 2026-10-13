@@ -1,8 +1,7 @@
 #pragma once
 //
-// LLM plugin-szerződés. Egyetlen OpenAI-kompatibilis impl lefedi az
-// LM Studio / Ollama / OpenAI / Claude endpointokat. Stream-kész a jövőre.
-//
+// LLM plugin contract. A single OpenAI-compatible implementation covers the
+// LM Studio / Ollama / OpenAI / Claude endpoints. Stream-ready for the future.
 #include "tanara/Types.h"
 #include <QObject>
 
@@ -18,7 +17,7 @@ struct LlmRequest {
     QString model;
     double temperature = 0.2;
     int maxTokens = 2048;
-    bool stream = false;            // jövőbeli élő összefoglaló
+    bool stream = false;            // future live summary
     QVariantMap providerOptions;
 };
 
@@ -29,13 +28,13 @@ public:
     ~LlmJob() override = default;
     virtual void cancel() = 0;
 
-    // Sikertelen HTTP-válasz esetén (a failed jel előtt kitöltve): a státusz és a nyers
-    // hibatörzs — ebből ismerhető fel pl. a „nem fér a kontextusba” hiba (llm/LlmContext.h).
+    // On a failed HTTP response (filled before the failed signal): the status and the raw error body;
+    // from this e.g. the "does not fit the context" error is recognized (llm/LlmContext.h).
     int errorStatus() const { return m_errorStatus; }
     QByteArray errorBody() const { return m_errorBody; }
 
 signals:
-    void delta(const QString& chunk);          // stream==true esetén
+    void delta(const QString& chunk);          // if stream==true
     void finished(const QString& fullText);
     void failed(const QString& error);
 

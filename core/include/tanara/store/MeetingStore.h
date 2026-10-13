@@ -1,13 +1,11 @@
 #pragma once
 //
-// Tanara — meeting-tár.
+// Meeting store.
 //
-// A LEMEZ az igazság forrása: minden meeting egy mappa az audioDir alatt
+// The DISK is the source of truth: every meeting is a folder under audioDir
 //   yyyy-MM-dd_HHmm_<titleslug>_<shortid>
-// benne meeting.json (JsonSerialization). A <metadataDir>/index.db (Qt6::Sql,
-// SQLite) csak gyors listázás céljából cache-eli a metaadatot, bármikor
-// újraépíthető a lemezről.
-//
+// containing meeting.json (JsonSerialization). <metadataDir>/index.db (Qt6::Sql,
+// SQLite) only caches the metadata for fast listing and can be rebuilt from disk any time.
 #include "tanara/Types.h"
 #include <QObject>
 #include <QVector>
@@ -19,62 +17,60 @@ class SettingsManager;
 class MeetingStore : public QObject {
     Q_OBJECT
 public:
-    // Explicit könyvtárakkal.
+    // With explicit folders.
     explicit MeetingStore(const QString& audioDir,
                           const QString& metadataDir,
                           QObject* parent = nullptr);
 
-    // SettingsManagerből veszi az audio/metadata dir-t.
+    // Takes the audio/metadata dir from the SettingsManager.
     explicit MeetingStore(SettingsManager* settings, QObject* parent = nullptr);
 
     ~MeetingStore() override;
 
-    // Létrehoz egy új meetinget: mappa + üres meeting.json, index-be írva.
+    // Creates a new meeting: folder + empty meeting.json, written to the index.
     Meeting createMeeting(const QString& title);
 
-    // A meeting.json kiírása a meeting mappájába + index frissítés.
+    // Writes meeting.json into the meeting's folder + updates the index.
     void saveMeeting(const Meeting& m);
 
-    // Árva felvétel-mappák (track_*.ogg VAN, meeting.json NINCS — pl. crash felvétel
-    // közben) helyreállítása: a sávokból újraépíti a Meetinget (hossz ffprobe-bal),
-    // kiírja a meeting.json-t és indexeli. Visszatér: helyreállított mappák száma.
-    // Kimarad, amibe MÉG ÍRNAK: a recording.lock (élő PID) mappája, ill. az a mappa,
-    // amelynek valamelyik sáv-fájlja az utolsó pár percben módosult.
+    // Recovers orphan recording folders (track_*.ogg PRESENT, meeting.json ABSENT, e.g. a crash during
+    // recording): rebuilds the Meeting from the tracks (length via ffprobe), writes meeting.json and
+    // indexes it. Returns the number of folders recovered. Skipped: a folder still being written to:
+    // the recording.lock (live PID) folder, or a folder where any track file changed in the last few minutes.
     int recoverOrphanRecordings();
-    // Egy felvétel-mappa behúzása (pl. másik gépről, pendrive-ról): ha nem a felvételek mappája
-    // alatt van, oda MÁSOLJA (ugyanazzal a névvel; ha már létezik, hiba), a meeting.json-t a
-    // tényleges hellyel javítja, és csak EZT az egy megbeszélést veszi fel az indexbe — a többi
-    // mappát nem nézi (a törölt / teszt-felvételek nem jönnek vissza). meeting.json nélkül a
-    // track_*.ogg sávokból építi fel, „(helyreállított)” címmel. Hiba: üres Meeting + *error.
-    // Archívum-importnál (MeetingArchive) a forrás a felvételek mappája alatti .import-<uuid>
-    // ideiglenes mappában van: ilyenkor ÁTHELYEZI (nem másolja), és az ideiglenes mappát
-    // sikertől függetlenül törli. Hiba akkor is, ha ugyanez az azonosító már a könyvtárban
-    // van egy másik mappában.
+    // Adopts a recording folder (e.g. from another machine, a USB stick): if it is not under the
+    // recordings folder, it is COPIED there (same name; an error if it already exists), meeting.json is
+    // fixed with the actual location, and only THIS one meeting is added to the index; other folders are
+    // not looked at (deleted / test recordings do not come back). Without meeting.json it is built from
+    // the track_*.ogg tracks, titled "(recovered)". Error: an empty Meeting + *error.
+    // For an archive import (MeetingArchive) the source is in the temporary .import-<uuid> folder under
+    // the recordings folder: then it is MOVED (not copied), and the temporary folder is deleted
+    // regardless of success. Also an error if the same id is already in the library in another folder.
     Meeting adoptMeetingFolder(const QString& sourceDir, QString* error = nullptr);
-    // Egy külső mappa bemásolása a felvételek mappája alatti .import-<uuid>/<név> ideiglenes
-    // helyre (háttérszálról hívható: csak a fájlrendszert érinti). Az eredményt az
-    // adoptMeetingFolder helyezi át végleges helyére és takarítja a temp mappát. Hiba: üres + *error.
+    // Copies an external folder to the temporary .import-<uuid>/<name> location under the recordings
+    // folder (callable from a background thread: touches only the file system). adoptMeetingFolder
+    // moves the result to its final place and cleans up the temp folder. Error: empty + *error.
     QString stageFolderForImport(const QString& sourceDir, QString* error = nullptr) const;
 
-    // Összes meeting a (lemez-cache) indexből, startedAt szerint csökkenőben.
+    // All meetings from the (disk cache) index, descending by startedAt.
     QVector<Meeting> loadAll();
 
-    // Egy meeting betöltése azonosító alapján (lemezről).
+    // Loads one meeting by id (from disk).
     Meeting load(const QString& id);
 
-    // Egy meeting-mappa meeting.json-jának beolvasása (index nélkül). Bármelyik szálról
-    // hívható: csak a fájlrendszert érinti. Hiba / hiányzó fájl: üres Meeting.
+    // Reads the meeting.json of a meeting folder (without the index). Callable from any thread: touches
+    // only the file system. Error / missing file: an empty Meeting.
     static Meeting readMeetingFolder(const QString& folder);
-    // A meeting mappája az indexből (csak az index-lekérdezés, fájl-olvasás nélkül).
+    // The meeting's folder from the index (only the index query, no file reading).
     QString folderOf(const QString& id);
 
-    // Egy meeting VÉGLEGES törlése: a mappa (audio + átirat + összefoglaló) +
-    // az index-bejegyzés. meetingRemoved jel. true, ha volt mit törölni.
-    // A mappa a lemezen MARAD (csak az index-sor törlődik), ha másik listázott meeting is
-    // rá mutat, a meeting.json-ja más id-t tartalmaz, vagy élő felvétel megy bele.
+    // PERMANENT deletion of a meeting: the folder (audio + transcript + summary) + the index entry.
+    // meetingRemoved signal. true if there was something to delete.
+    // The folder STAYS on disk (only the index row is deleted) if another listed meeting points to it,
+    // its meeting.json contains a different id, or a live recording is going into it.
     bool deleteMeeting(const QString& id);
 
-    // Teljes index újraépítés az audioDir mappáit végigpásztázva.
+    // Full index rebuild by scanning the folders of audioDir.
     void rebuildIndexFromDisk();
 
     QString audioDir() const { return m_audioDir; }
@@ -97,7 +93,7 @@ private:
 
     QString m_audioDir;
     QString m_metadataDir;
-    QString m_connName;   // egyedi QSqlDatabase connection-név
+    QString m_connName;   // unique QSqlDatabase connection name
 };
 
 } // namespace tanara

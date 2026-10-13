@@ -1,13 +1,12 @@
 #pragma once
 //
-// Tanara — háttér-feladatok (átírás, összefoglaló, téma-elemzés, lekeverés, azonosítás)
-// STRUKTURÁLT állapot-típusai. Sima value-típusok (QObject nincs), queued signalban
-// átküldhetők (Q_DECLARE_METATYPE lent). A könyvtár-lista állapot-ikonjai, a feladat-sáv
-// (task strip) és a fülek tartalma (M03–M09) ezekből rajzol.
+// STRUCTURED state types of the background tasks (transcription, summary, topic analysis,
+// mixdown, identification). Plain value types (no QObject), sendable in queued signals
+// (Q_DECLARE_METATYPE below). The library list's status icons, the task strip and the tab
+// contents are drawn from these.
 //
-// A régi, szabad szöveges AppController::jobProgress / errorOccurred jelek MEGMARADNAK
-// (CLI) — ez a réteg mellettük él.
-//
+// The old free-text AppController::jobProgress / errorOccurred signals REMAIN (CLI); this
+// layer lives alongside them.
 #include <QString>
 #include <QVector>
 #include <QDateTime>
@@ -18,64 +17,64 @@ namespace tanara {
 struct HttpExchange;   // tanara/cloud/CloudTypes.h
 struct CloudError;
 
-// Egy feldolgozási lépés állapota egy meetingen (a könyvtár-ikonokhoz).
-//  - az azonosításnál (identifyState) a Failed nem fordul elő.
+// State of a processing step on a meeting (for the library icons).
+//  - for identification (identifyState) Failed does not occur.
 enum class StepState { None, Running, Failed, Done };
 
-// A megszakítható háttér-feladat fajtája.
+// Kind of a cancellable background task.
 enum class JobKind {
-    Transcribe,      // átírás (benne: lekeverés az átíráshoz → feltöltés → átírás → azonosítás)
-    Summarize,       // gyors összefoglaló, ill. a témánkénti elemzés záró összegzése (reduce)
-    ExtractTopics,   // témák javaslása (komplex 1. kör)
-    AnalyzeTopics,   // téma-elemzés sor (komplex 2. kör) — meetingenként egy feladat
-    Mixdown,         // önálló lekeverés (nem az átírás része)
-    Identify,        // résztvevők azonosítása hang alapján (átirat után)
-    Import,          // hangfájlok importálása új meetingbe — a feladat a LEENDŐ meeting
-                     // azonosítója alatt fut (a meeting csak a sikeres végén jön létre)
-    Export,          // a megbeszélés becsomagolása archívumba (*.tanara.zip, store/MeetingArchive.h)
+    Transcribe,      // transcription (includes: mixdown for the transcription -> upload -> transcribe -> identify)
+    Summarize,       // quick summary, or the final combining step (reduce) of the per-topic analysis
+    ExtractTopics,   // suggesting topics (complex pass 1)
+    AnalyzeTopics,   // topic-analysis queue (complex pass 2): one task per meeting
+    Mixdown,         // standalone mixdown (not part of the transcription)
+    Identify,        // identifying participants by voice (after the transcript)
+    Import,          // importing audio files into a new meeting: the task runs under the id of the FUTURE meeting
+                     // (the meeting is created only on success)
+    Export,          // packing the meeting into an archive (*.tanara.zip, store/MeetingArchive.h)
 };
 
 enum class StageState { Waiting, Running, Done, Failed, Skipped };
 
-// Egy bukott lépés megmaradó leírása. A meeting mappájában perzisztálódik
-// (processing.json), így másik meeting kiválasztása ÉS újraindítás után is látszik.
+// The remembered description of a failed step. Persisted in the meeting's folder (processing.json),
+// so it is visible after selecting another meeting AND after a restart.
 struct JobError {
     JobKind   kind = JobKind::Transcribe;
-    QString   message;        // emberi magyarázat (pl. „A szolgáltató nem fogadta el az API-kulcsot.”)
-    QString   detail;         // technikai sor (pl. „HTTP 401 · invalid_api_key · …”)
-    QString   fixActionHint;  // gépi tipp a javító gombhoz (pl. "settings:stt"); lehet üres
+    QString   message;        // human explanation (e.g. "The provider did not accept the API key.")
+    QString   detail;         // technical line (e.g. "HTTP 401 | invalid_api_key | ...")
+    QString   fixActionHint;  // machine hint for the fix button (e.g. "settings:stt"); may be empty
     QDateTime when;
     bool isValid() const { return !message.isEmpty(); }
 };
 
-// Egy futó feladat egy szakasza (M04 szakasz-lista).
+// One stage of a running task (the stage list).
 struct JobStage {
-    QString    id;            // stabil gépi azonosító: mixdown | upload | transcribe | diarize | identify | …
-    QString    label;         // megjelenítendő név (lefordítva)
+    QString    id;            // stable machine id: mixdown | upload | transcribe | diarize | identify | ...
+    QString    label;         // display name (translated)
     StageState state = StageState::Waiting;
-    int        percent = -1;  // 0..100, CSAK ha valós mérésből jön; -1 = nincs (határozatlan)
-    QString    detail;        // rövid kiegészítés (pl. „52 perc, 3 sáv”, „3 / 5 beszélő”)
+    int        percent = -1;  // 0..100, ONLY if it comes from a real measurement; -1 = none (indeterminate)
+    QString    detail;        // short addition (e.g. "52 min, 3 tracks", "3 / 5 speakers")
 };
 
-// Egy futó feladat pillanatképe.
+// Snapshot of a running task.
 struct JobProgress {
     QString   meetingId;
     JobKind   kind = JobKind::Transcribe;
-    QString   title;          // pl. „Átírás folyamatban”
-    QString   message;        // az utolsó szabad szöveges állapot (= jobProgress üzenet)
-    QVector<JobStage> stages; // sorrendben; üres, ha a feladat egylépéses
-    int       percent = -1;   // a TELJES feladat százaléka, csak ha valós (pl. lekeverés)
-    int       done = -1;      // darab-haladás (pl. 3 / 5 beszélő, 2 / 7 téma); -1 = nincs
+    QString   title;          // e.g. "Transcription in progress"
+    QString   message;        // the last free-text state (= the jobProgress message)
+    QVector<JobStage> stages; // in order; empty if the task has a single step
+    int       percent = -1;   // percentage of the WHOLE task, only if real (e.g. mixdown)
+    int       done = -1;      // count progress (e.g. 3 / 5 speakers, 2 / 7 topics); -1 = none
     int       total = -1;
     bool      cancellable = true;
-    bool      cancelling = false;       // megszakítás kérve, a lezárásra várunk
+    bool      cancelling = false;       // cancel requested, waiting for completion
     QDateTime startedAt;
-    // Becsült teljes futásidő mp-ben; -1 = nem becsülhető. Csak korábbi, UGYANAZZAL a
-    // szolgáltatóval mért futásokból számolunk (lásd JobStats) — nincs kitalált érték.
+    // Estimated total run time in s; -1 = cannot be estimated. Computed only from earlier runs measured
+    // with the SAME provider (see JobStats); no invented value.
     int       estimatedTotalSec = -1;
 
     bool isValid() const { return !meetingId.isEmpty(); }
-    // Hátralévő idő mp-ben (estimatedTotalSec − eltelt), min. 0; -1, ha nincs becslés.
+    // Remaining time in s (estimatedTotalSec - elapsed), min 0; -1 if there is no estimate.
     int etaSeconds(const QDateTime& now = QDateTime::currentDateTime()) const {
         if (estimatedTotalSec < 0 || !startedAt.isValid()) return -1;
         const qint64 left = estimatedTotalSec - startedAt.secsTo(now);
@@ -87,48 +86,47 @@ struct JobProgress {
     }
 };
 
-// Egy meeting teljes feldolgozási állapota — ebből rajzol a könyvtár-elem (3 ikon),
-// a feladat-sáv és a fülek.
+// A meeting's full processing state: the library item (3 icons), the task strip and the tabs draw from it.
 struct MeetingProcessingState {
     QString   meetingId;
     StepState transcriptState = StepState::None;
     StepState summaryState    = StepState::None;
     StepState identifyState   = StepState::None;   // None | Running | Done
-    bool      mixdownRunning  = false;             // önálló VAGY az átírás részeként futó keverés
-    int       mixdownPercent  = -1;                // 0..100, ha fut
-    // Az utolsó hiba lépésenként. Failed állapotnál mindig érvényes; ha egy ÚJRA-futtatás
-    // bukott el úgy, hogy a korábbi eredmény megvan, az állapot Done marad, de a hiba itt
-    // látszik (a UI figyelmeztethet), amíg egy sikeres futás vagy clearError() nem törli.
+    bool      mixdownRunning  = false;             // a mixdown running standalone OR as part of the transcription
+    int       mixdownPercent  = -1;                // 0..100, if running
+    // The last error per step. Always valid for Failed; if a RE-run failed while the earlier result
+    // exists, the state stays Done but the error shows here (the UI may warn) until a successful run or
+    // clearError() clears it.
     JobError  transcriptError;
     JobError  summaryError;
-    // Az összefoglaló ELAVULT: elkészülte óta beszélő-hozzárendelés változott (a könyvtár
-    // „elavult” ikon-állapota, az Összefoglaló fül pillje, M07 sáv). Csak summaryState==Done
-    // mellett lehet igaz. A számláló: hány beszélőt javítottak azóta.
+    // The summary is STALE: a speaker assignment changed since it was made (the library's "stale" icon
+    // state, the Summary tab's pill, the strip). Can be true only with summaryState==Done. The counter:
+    // how many speakers were corrected since.
     bool      summaryStale = false;
     int       staleCorrectedSpeakers = 0;
-    QVector<JobProgress> jobs;   // a meeting épp futó feladatai (feladat-sáv)
+    QVector<JobProgress> jobs;   // the meeting's currently running tasks (task strip)
 
     bool busy() const { return !jobs.isEmpty(); }
 };
 
-// Egy téma állapota a témánkénti elemzésben (M08 kártya-pill).
+// State of a topic in the per-topic analysis (card pill).
 enum class TopicState {
-    Waiting,   // nincs elemzése, és nincs is sorban („vár”)
-    Queued,    // sorban áll
-    Running,   // épp fut
-    Done,      // van kész (perzisztált) elemzése
-    Failed,    // az utolsó kísérlet elbukott (üzenettel)
+    Waiting,   // no analysis and not queued ("waiting")
+    Queued,    // queued
+    Running,   // running now
+    Done,      // has a finished (persisted) analysis
+    Failed,    // the last attempt failed (with a message)
 };
 
 struct TopicStatus {
     QString    topicId;
     TopicState state = TopicState::Waiting;
-    QString    error;         // Failed: emberi üzenet
-    QString    errorDetail;   // Failed: technikai sor
-    QString    fixActionHint; // Failed: gépi tipp a javító gombhoz (lásd JobError)
+    QString    error;         // Failed: human message
+    QString    errorDetail;   // Failed: technical line
+    QString    fixActionHint; // Failed: machine hint for the fix button (see JobError)
 };
 
-// A feladat lezárásának módja (jobFinished jel).
+// How a task ended (jobFinished signal).
 enum class JobOutcome { Done, Failed, Cancelled };
 
 } // namespace tanara

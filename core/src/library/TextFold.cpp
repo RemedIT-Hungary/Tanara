@@ -14,14 +14,15 @@ QString fold(const QString& nfc)
     QChar* d = out.data();
     for (int i = 0; i < out.size(); ++i) {
         QChar c = d[i];
-        if (c.unicode() < 0x80) {                 // ASCII gyorsút
+        if (c.unicode() < 0x80) {                 // ASCII fast path
             d[i] = c.toLower();
             continue;
         }
         if (c.isSurrogate())
-            continue;                             // BMP-n kívüli karakter: érintetlen (1:1 hossz)
-        // Kanonikus felbontás alap-karaktere (ő → o, Ű → U, ǘ → ü → u). A kompatibilitási
-        // felbontásokat (ﬁ, ½ …) nem bontjuk — azok hosszt váltanának.
+            continue;                             // a character outside the BMP: untouched (1:1 length)
+        // The base character of the canonical decomposition (o-double-acute -> o, U-double-acute -> U,
+        // u-diaeresis-acute -> u-diaeresis -> u). We do not break down compatibility decompositions (ligature fi,
+        // the half sign ...) since those would change the length.
         for (int guard = 0; guard < 4; ++guard) {
             if (c.decompositionTag() != QChar::Canonical) break;
             const QString dec = c.decomposition();
@@ -66,7 +67,7 @@ QString snippet(const QString& text, const Range& match, Range* matchInSnippet,
     }
     int from = qMax(0, match.start - before);
     int to   = qMin(int(text.size()), match.start + match.length + after);
-    // Szóhatárra igazítás: ne vágjunk szót ketté (de legfeljebb 16 karaktert engedünk).
+    // Aligning to a word boundary: we do not cut a word in two (but allow at most 16 characters).
     if (from > 0 && !text.at(from - 1).isSpace()) {
         int f = from;
         while (f < match.start && f - from < 16 && !text.at(f).isSpace()) ++f;
@@ -78,7 +79,7 @@ QString snippet(const QString& text, const Range& match, Range* matchInSnippet,
         if (t > match.start + match.length && text.at(t - 1).isSpace()) to = t - 1;
     }
     QString body = text.mid(from, to - from);
-    // Sortörés / tab → szóköz, a hossz megtartásával (a találat pozíciója nem csúszik el).
+    // Line break / tab -> space, keeping the length (the match position does not shift).
     for (QChar& c : body)
         if (c == QLatin1Char('\n') || c == QLatin1Char('\r') || c == QLatin1Char('\t'))
             c = QLatin1Char(' ');

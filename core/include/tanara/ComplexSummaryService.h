@@ -1,13 +1,12 @@
 #pragma once
 //
-// ComplexSummaryService — több körös, téma-bontásos összefoglaló LLM-rétege.
-// Három hívás-típus, mindegyik EGY LLM round-trip + tipizált eredmény:
-//   1. requestTopics        — a teljes átiratból téma-lista (1. kör)
-//   2. requestTopicAnalysis — egy témára: összegző + döntések + teendők (2. kör)
-//   3. requestReduce        — a per-téma elemzésekből globális összefoglaló + összevont teendők
-// A sorrendet/szekvenciát az AppController vezényli (a lokális modell parallel=1 → szekvenciális).
-// A provider NEM tulajdona (nem deletálja).
-//
+// ComplexSummaryService: LLM layer of the multi-pass, topic-based summary.
+// Three call types, each ONE LLM round trip with a typed result:
+//   1. requestTopics        - topic list from the full transcript (pass 1)
+//   2. requestTopicAnalysis - per topic: summary + decisions + action items (pass 2)
+//   3. requestReduce        - global summary + merged action items from the per-topic analyses
+// AppController sequences the calls (the local model runs with parallel=1, so strictly in order).
+// The provider is NOT owned (never deleted).
 #include "tanara/Types.h"
 #include "tanara/llm/ILlmProvider.h"
 
@@ -23,30 +22,30 @@ public:
     explicit ComplexSummaryService(ILlmProvider* provider, QObject* parent = nullptr);
     ~ComplexSummaryService() override;
 
-    // 1. kör — téma-kinyerés a teljes (renderelt) átiratból. systemPrompt üres → default.
+    // Pass 1: topic extraction from the full (rendered) transcript. Empty systemPrompt = default.
     void requestTopics(const QString& transcriptMd, const QString& contextNotes,
                        const QString& systemPrompt, const QString& model = {},
                        double temperature = 0.2, int maxTokens = 4000);
 
-    // 2. kör — egy téma elemzése (a TELJES átirat + a téma fókusza). A topicId/title
-    // a kapott topicból öröklődik az eredménybe (a modell csak detail/decisions/items-et ad).
+    // Pass 2: analysis of one topic (the FULL transcript + the topic's focus). topicId/title
+    // are inherited from the given topic into the result (the model only returns detail/decisions/items).
     void requestTopicAnalysis(const QString& transcriptMd, const SummaryTopic& topic,
                               const QString& contextNotes, const QString& systemPrompt,
                               const QString& model = {}, double temperature = 0.2,
                               int maxTokens = 4000);
 
-    // reduce — a per-téma elemzésekből globális vezetői összefoglaló + összevont teendők.
+    // Reduce: global executive summary + merged action items from the per-topic analyses.
     void requestReduce(const QVector<TopicAnalysis>& analyses, const QString& contextNotes,
                        const QString& model = {}, double temperature = 0.2, int maxTokens = 2000);
 
-    // A beépített default prompt-ok (a UI „Visszaállítás" + a core fallback forrása).
+    // The built-in default prompts (source of the UI "Reset" and of the core fallback).
     static QString defaultTopicPrompt();
     static QString defaultAnalysisPrompt();
 
-    // A reduce rendszer-promptja. Üres (default) → a beépített ("reduce" a PromptLibrary-ből).
-    // Az AppController a fájl-override-dal feloldott promptot adja itt át.
+    // System prompt of the reduce step. Empty (default) = the built-in ("reduce" from PromptLibrary).
+    // AppController passes the prompt resolved with the file override here.
     void setReducePrompt(const QString& prompt) { m_reducePrompt = prompt; }
-    // A célnyelv (a beállítás szövege) — a felhasználói üzenet végi nyelvi emlékeztetőhöz.
+    // The target language (the setting's text), for the language reminder at the end of the user message.
     void setLanguage(const QString& language) { m_language = language; }
 
 signals:
@@ -57,8 +56,8 @@ signals:
 
 private:
     ILlmProvider* m_provider;  // not owned
-    QString m_reducePrompt;    // üres → beépített default
-    QString m_language;        // üres → magyar
+    QString m_reducePrompt;    // empty = built-in default
+    QString m_language;        // empty = Hungarian
 };
 
 } // namespace tanara

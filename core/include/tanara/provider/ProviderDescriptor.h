@@ -1,18 +1,17 @@
 #pragma once
 //
-// Provider-leíró + deklaratív konfig-séma (headless érték-típusok).
-// Ezekből renderelődik a Beállítások UI generikusan, és ezeken alapul a
-// ReadinessModel kapuzás (Fázis 3). NEM linkel Qt Widgetset.
-//
+// Provider descriptor + declarative config schema (headless value types).
+// The Settings UI is rendered generically from these, and the ReadinessModel gating is based on them.
+// Does NOT link Qt Widgets.
 #include <QString>
 #include <QStringList>
 #include <QVector>
 
 namespace tanara {
 
-// Embedding: beágyazó modell a címkejavaslatokhoz (embedding/EmbeddingProviderRegistry.h).
+// Embedding: an embedding model for the tag suggestions (embedding/EmbeddingProviderRegistry.h).
 enum class ProviderKind { Stt, Llm, Embedding };
-enum class AuthMode { None, ApiKey, Login };          // Login = jövőbeli hosztolt „bejelentkezés"
+enum class AuthMode { None, ApiKey, Login };          // Login = a future hosted "sign-in"
 enum class ConfigFieldType { Text, Secret, Number, Combo, Url };
 
 struct ConfigOption {
@@ -20,54 +19,54 @@ struct ConfigOption {
     QString label;
 };
 
-// Egy konfig-mező deklaratív leírása. A `key` vagy egy ProviderConfig jól-ismert
-// mezőjére mutat (baseUrl/model/temperature/maxTokens), vagy a ProviderConfig.extra
-// kulcsa. Titok esetén az érték a KeyStore-ba megy (secretKey alatt), nem a configba.
+// Declarative description of a config field. The `key` points either to a well-known field of a
+// ProviderConfig (baseUrl/model/temperature/maxTokens) or to a key of ProviderConfig.extra. For a secret
+// the value goes into the KeyStore (under secretKey), not into the config.
 struct ConfigField {
     QString key;
     QString label;
     ConfigFieldType type = ConfigFieldType::Text;
     bool required = false;
-    QString help;                       // a „miért" — tooltip/súgó forrása
-    QString defaultValue;               // string-formában; számokat a renderer értelmez
-    QVector<ConfigOption> options;      // Combo esetén
-    bool isSecret = false;              // true → KeyStore (nem perzisztálódik a settings.json-be)
-    QString secretKey;                  // KeyStore-kulcs, ha isSecret (pl. "soniox.apiKey")
-    bool dynamicOptions = false;        // Combo, aminek opcióit futásidőben kérjük le (pl. modell-lista)
-    bool advanced = false;              // a UI a „Haladó” rész alá teszi (alapból összecsukva)
-    // Number: a UI által kínált tartomány (minValue == maxValue → nincs megkötés). A tárolt,
-    // tartományon kívüli érték megmarad, amíg a felhasználó nem nyúl hozzá.
+    QString help;                       // the "why": source of the tooltip/help
+    QString defaultValue;               // in string form; numbers are interpreted by the renderer
+    QVector<ConfigOption> options;      // for Combo
+    bool isSecret = false;              // true = KeyStore (not persisted into settings.json)
+    QString secretKey;                  // KeyStore key if isSecret (e.g. "soniox.apiKey")
+    bool dynamicOptions = false;        // a Combo whose options are fetched at run time (e.g. a model list)
+    bool advanced = false;              // the UI puts it under the "Advanced" part (collapsed by default)
+    // Number: the range the UI offers (minValue == maxValue = no constraint). A stored value outside the
+    // range stays until the user touches it.
     double minValue = 0.0;
     double maxValue = 0.0;
 };
 
-// „Kapcsolat tesztelése”: mit kérdez a tesztelő a szolgáltatótól (provider/ConnectionTester.h).
-// Deklaratív, hogy új provider csak leírót adjon. Üres `path` → a provider nem tesztelhető
-// így (a UI nem kínál gombot). A kérés: GET <baseUrl><path>, API-kulccsal „Authorization:
-// Bearer”. Fizetős / állapotot változtató hívás SOSEM lehet.
+// "Test connection": what the tester asks the provider (provider/ConnectionTester.h).
+// Declarative, so a new provider only needs to give a descriptor. An empty `path` = the provider
+// cannot be tested this way (the UI offers no button). The request: GET <baseUrl><path>, with the API key
+// as "Authorization: Bearer". It must NEVER be a paid / state-changing call.
 struct ConnectionProbe {
     QString path;                       // pl. "/models"
-    // A válasz modell-listát ad ({"data":[{"id":…}]} vagy {"models":[{"id":…}]}): a tesztelő
-    // ellenőrzi, hogy a beállított modell szerepel-e benne, és a lista a UI-nak is átadható.
+    // The response gives a model list ({"data":[{"id":...}]} or {"models":[{"id":...}]}): the tester checks
+    // whether the configured model is in it, and the list can be passed to the UI too.
     bool listsModels = false;
     bool isValid() const { return !path.isEmpty(); }
 };
 
 struct ProviderDescriptor {
-    QString id;                         // stabil azonosító: "soniox", "openai-compat", "tanara-hosted"
-    QString displayName;                // ember-olvasható név
+    QString id;                         // stable id: "soniox", "openai-compat", "tanara-hosted"
+    QString displayName;                // human-readable name
     ProviderKind kind = ProviderKind::Stt;
     AuthMode authMode = AuthMode::ApiKey;
-    bool supportsLive = false;          // STT élő/streaming
+    bool supportsLive = false;          // STT live/streaming
     bool supportsStreaming = false;     // LLM streaming
     bool supportsDiarization = false;
     bool networkRequired = true;
-    QStringList languages;              // pl. {"hu","en"}; üres = bármi
-    QVector<ConfigField> fields;        // a deklaratív konfig-séma
-    // AuthMode::Login: a KeyStore-kulcs, amelynek megléte = „be van jelentkezve”.
-    // Üres → "<id>.token" (a korábbi konvenció).
+    QStringList languages;              // e.g. {"hu","en"}; empty = any
+    QVector<ConfigField> fields;        // the declarative config schema
+    // AuthMode::Login: the KeyStore key whose presence = "signed in".
+    // Empty = "<id>.token" (the earlier convention).
     QString loginSecretKey;
-    ConnectionProbe probe;              // „Kapcsolat tesztelése” (üres → nincs)
+    ConnectionProbe probe;              // "Test connection" (empty = none)
 };
 
 } // namespace tanara

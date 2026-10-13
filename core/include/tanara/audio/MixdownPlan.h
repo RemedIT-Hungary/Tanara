@@ -1,13 +1,12 @@
 #pragma once
 //
-// Tanara — a lekeverés (mixdown.mp3) terve: mely sávfájlok kerülnek bele, mennyi eltolással,
-// és milyen ffmpeg-argumentumokkal. Tiszta (I/O csak a fájlok meglétének ellenőrzése), így
-// a szűrőgráf tesztelhető; a futtatás az AppController::regenerateMixdown dolga.
+// The plan of the mixdown (mixdown.mp3): which track files go in, with what offset, and with what
+// ffmpeg arguments. Pure (the only I/O is checking that the files exist), so the filter graph is
+// testable; running it is the job of AppController::regenerateMixdown.
 //
-// Eltolás: a később kezdődő sáv (Track::startOffsetMs > 0 — felvétel közben bekapcsolt eszköz,
-// egy eszköz második szakasza, `align`-nal igazított sáv) adelay-jel kerül a helyére, így a
-// keverékben minden hang a megbeszélés-idő szerinti helyén szól.
-//
+// Offset: a track that starts later (Track::startOffsetMs > 0: a device enabled during recording,
+// the second span of a device, a track aligned with `align`) is put in place with adelay, so in the
+// mix every sound is at its place by meeting time.
 #include "tanara/Types.h"
 
 #include <QString>
@@ -18,24 +17,23 @@ namespace tanara {
 
 struct MixdownInput {
     QString trackId;
-    QString path;          // abszolút út
-    qint64  offsetMs = 0;  // ennyi csenddel tolva kerül a keverékbe
+    QString path;          // absolute path
+    qint64  offsetMs = 0;  // goes into the mix shifted by this much silence
 };
 
 struct MixdownPlan {
-    QVector<MixdownInput> inputs;   // a bevont (Track::included), lemezen meglévő sávok (a meeting.json sorrendjében)
-    QStringList missing;            // az aktív, de hiányzó fájlú sávok megjelenített neve
+    QVector<MixdownInput> inputs;   // the included (Track::included) tracks existing on disk (in meeting.json order)
+    QStringList missing;            // display names of the tracks that are active but have a missing file
 
-    // A meeting aktív sávjaiból (az eldobottak kimaradnak).
+    // From the meeting's active tracks (dropped ones are left out).
     static MixdownPlan fromMeeting(const Meeting& m);
 
-    // A keverő szűrő: üres inputs-ra üres. Egy eltolás nélküli bemenetnél csak a normalizálás
-    // („-af”), különben „-filter_complex” adelay-ekkel és amix-szel. Visszatérés: a két
-    // argumentum (kapcsoló + gráf).
+    // The mixing filter: empty for empty inputs. For one input without offset only the normalization
+    // ("-af"), otherwise "-filter_complex" with adelays and amix. Returns the two arguments (switch + graph).
     static QStringList filterArgs(const QVector<qint64>& offsets);
 
-    // A teljes ffmpeg-argumentumlista (a program neve nélkül): bemenetek, szűrő, MP3-kódolás,
-    // haladás a stdoutra (-progress pipe:1), kimenet. inputs üres → üres lista.
+    // The full ffmpeg argument list (without the program name): inputs, filter, MP3 encoding, progress
+    // to stdout (-progress pipe:1), output. Empty inputs -> an empty list.
     QStringList ffmpegArgs(const QString& outPath) const;
 };
 

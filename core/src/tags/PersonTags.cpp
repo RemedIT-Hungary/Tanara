@@ -32,7 +32,7 @@ PersonTagStats PersonTagStats::compute(const QVector<PersonTagRow>& rows, const 
 {
     PersonTagStats s;
     const QString self = personKey(selfName);
-    QHash<QString, QDateTime> displayAt;   // a megjelenített írásmód a legutóbbi megbeszélésé
+    QHash<QString, QDateTime> displayAt;   // the displayed spelling is the latest meeting's
     for (const PersonTagRow& r : rows) {
         ++s.m_meetings;
         QStringList tags;
@@ -103,7 +103,7 @@ bool PersonTagStats::meetingHasPerson(const QString& meetingId, const QString& p
 
 namespace {
 
-// A megbeszélés saját sora nélküli számok: c(p,t), |M(t)|, |M(p)| és a címkézett megbeszélések.
+// Numbers without the meeting's own row: c(p,t), |M(t)|, |M(p)| and the tagged meetings.
 struct Counts {
     int shared = 0, tagTotal = 0;
 };
@@ -166,7 +166,7 @@ TagEvidence PersonTagSnapshot::evidence(const QString& personName, const QString
         ev.detail = QStringLiteral("%1 / %2").arg(f.shared).arg(f.total);
     };
     if (!support.isEmpty()) {
-        // Kézi előbb, aztán a több közös megbeszélés.
+        // Manual first, then the more shared meetings.
         std::stable_sort(support.begin(), support.end(), [](const TagEvidenceItem& a, const TagEvidenceItem& b) {
             if (a.manual != b.manual) return a.manual;
             return a.shared > b.shared;
@@ -177,18 +177,18 @@ TagEvidence PersonTagSnapshot::evidence(const QString& personName, const QString
         fill(support);
         return ev;
     }
-    // Ellentmondás (UX-terv 4., mind a négy feltétel): (1) a megbeszélésnek van (ismert) címkéje;
+    // Contradiction (UX plan rule 4, all four conditions): (1) the meeting has a (known) tag;
     if (other.isEmpty()) return ev;
-    // (2) a személynek van kézi címkéje, vagy elég címkézett megbeszélése;
+    // (2) the person has a manual tag, or enough tagged meetings;
     if (manualTags.isEmpty()
         && personTaggedWithout(*stats, personName, meetingId) < persontags::kContradictPersonTagged)
         return ev;
-    // (3) minden címkére c = 0 (és egyik sincs rajta kézzel — az már támogatás volna);
-    // (4) minden címke beérett.
+    // (3) c = 0 for every tag (and none is manually on them, which would be support);
+    // (4) every tag is mature.
     for (const TagEvidenceItem& it : std::as_const(other))
         if (it.shared > 0 || it.total < persontags::kMatureTagMeetings) return ev;
     for (const TagEvidenceItem& it : std::as_const(other)) ev.contradictTagIds << it.tagId;
-    // A „Más címkéken szokott lenni” lista: kézi címkék, ezek híján a tanultak gyakoriság szerint.
+    // The "Usually on other tags" list: manual tags, failing that the learned ones by frequency.
     QStringList elsewhere = manualTags;
     if (elsewhere.isEmpty()) {
         elsewhere = stats->tagsOf(personName);
@@ -237,7 +237,7 @@ QVector<PersonTagQuestion> PersonTagSnapshot::learningQuestions(
             bucket(t, isNew).people << name;
         }
     }
-    // A több személyes kérdés előbb; döntetlennél a megbeszélés címke-sorrendje (stabil).
+    // A multi-person question first; on a tie the meeting's tag order (stable).
     std::stable_sort(out.begin(), out.end(), [](const PersonTagQuestion& a, const PersonTagQuestion& b) {
         return a.people.size() > b.people.size();
     });

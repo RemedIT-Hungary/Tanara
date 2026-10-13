@@ -1,16 +1,15 @@
 #pragma once
 //
-// PlaybackRouting — „melyik alkalmazás melyik kimenetre szól épp” + az audio-eszközök
-// halmazának változása (hot-plug jel). A felvevő ebből írja ki az eszköz-sor alá, hogy
-// pl. „▸ Microsoft Teams”, és ebből tudja meg olcsón, hogy újra kell-e sorolni az eszközöket.
+// PlaybackRouting: "which application is playing to which output right now" + the change of the
+// audio devices set (a hot-plug signal). The recorder uses it to print e.g. "> Microsoft Teams"
+// under a device row, and to learn cheaply whether the devices must be re-enumerated.
 //
-// Linux: PipeWire (`pw-dump`) — Stream/Output/Audio node → Link → Audio/Sink node. A
-// PulseAudio-kompatibilis réteg (pipewire-pulse) alatt is ez a gráf él.
-// Windows / macOS: nincs megvalósítva (WASAPI audio session-ök végpontonként lenne) —
-// az available() hamis, a pillanatkép üres; a hívó ilyenkor egyszerűen nem ír ki appot.
+// Linux: PipeWire (`pw-dump`): Stream/Output/Audio node -> Link -> Audio/Sink node. This graph also
+// lives under the PulseAudio-compatible layer (pipewire-pulse).
+// Windows / macOS: not implemented (WASAPI audio sessions would be per endpoint): available() is
+// false, the snapshot is empty; the caller then simply does not print an app.
 //
-// Headless (core); NEM linkel Qt Gui/Widgets-et.
-//
+// Headless (core); does NOT link Qt Gui/Widgets.
 #include <QByteArray>
 #include <QObject>
 #include <QString>
@@ -22,43 +21,43 @@
 namespace tanara {
 
 struct PlaybackRoute {
-    QString appName;           // ember-olvasható („Microsoft Teams”, „Firefox”)
-    QString appBinary;         // application.process.binary (kisbetűs)
-    QString sinkName;          // a kimenet node.name-je (pl. alsa_output.usb-…)
-    QString sinkDescription;   // a kimenet leírása — a monitor-eszköz neve „Monitor of <ez>”
-    bool    running = false;   // a stream épp szól (nem szüneteltetett)
+    QString appName;           // human-readable ("Microsoft Teams", "Firefox")
+    QString appBinary;         // application.process.binary (lowercase)
+    QString sinkName;          // the output's node.name (e.g. alsa_output.usb-...)
+    QString sinkDescription;   // description of the output; the monitor device's name is "Monitor of <this>"
+    bool    running = false;   // the stream is playing now (not paused)
 };
 
 struct AudioGraphSnapshot {
     QVector<PlaybackRoute> routes;
-    // A hangeszközök (Audio/Sink + Audio/Source node-ok) rendezett kulcslistája: ha ez
-    // változik, eszközt dugtak be / húztak ki → újra kell sorolni.
+    // Sorted key list of the audio devices (Audio/Sink + Audio/Source nodes): if it changes, a device
+    // was plugged / unplugged and must be re-enumerated.
     QStringList deviceKeys;
 
-    // A megadott capture-eszközre (kimenet monitorja / loopbackje, a miniaudio neve szerint,
-    // pl. „Monitor of Kanto YU4 - …”) épp játszó alkalmazás neve; több közül a ténylegesen
-    // szóló az első. Üres, ha senki nem játszik oda (vagy az eszköz nem kimenet-monitor).
+    // Name of the application currently playing to the given capture device (an output's monitor /
+    // loopback, by the miniaudio name, e.g. "Monitor of Kanto YU4 - ..."); among several, the one actually
+    // sounding comes first. Empty if nobody plays there (or the device is not an output monitor).
     QString appForOutput(const QString& captureDeviceName) const;
-    // Fordítva: az adott app (név- vagy bináris-részlet) melyik kimenetre szól (leírás).
+    // Conversely: which output the given app (a name or binary fragment) plays to (description).
     QString outputForApp(const QString& appNameOrBinary) const;
 };
 
 namespace detail {
-// TISZTA függvény (unit-tesztelhető): a `pw-dump` JSON-jából a lejátszás-útvonalak.
+// PURE function (unit-testable): the playback routes from the JSON of `pw-dump`.
 AudioGraphSnapshot parsePwDumpGraph(const QByteArray& json);
 } // namespace detail
 
-// Egyszeri, SZINKRON lekérdezés (a figyelő értesítéséhez). Nem elérhető platformon üres.
+// One-time, SYNCHRONOUS query (for the watcher's notification). Empty on an unavailable platform.
 AudioGraphSnapshot queryAudioGraph(int timeoutMs = 1500);
 
-// Időzített, NEM blokkoló figyelő (a pw-dump aszinkron QProcess-ként fut).
+// Timed, NON-blocking watcher (pw-dump runs as an asynchronous QProcess).
 class PlaybackRouteMonitor : public QObject {
     Q_OBJECT
 public:
     explicit PlaybackRouteMonitor(QObject* parent = nullptr);
     ~PlaybackRouteMonitor() override;
 
-    // Van-e megvalósítás ezen a hoston (Linux + pw-dump a PATH-on).
+    // Whether there is an implementation on this host (Linux + pw-dump on the PATH).
     static bool available();
 
     AudioGraphSnapshot snapshot() const;
@@ -68,8 +67,8 @@ public slots:
     void stop();
 
 signals:
-    void routesChanged();      // más app szól más kimenetre
-    void deviceSetChanged();   // eszköz jelent meg / tűnt el
+    void routesChanged();      // another app plays to another output
+    void deviceSetChanged();   // a device appeared / disappeared
 
 private:
     void poll();

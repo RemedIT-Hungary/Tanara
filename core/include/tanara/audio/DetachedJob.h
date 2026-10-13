@@ -1,16 +1,14 @@
 #pragma once
 //
-// Tanara — határidővel megvárt háttér-munka (a hangeszköz-lebontás biztonsági hálója).
+// Background work awaited with a deadline (the safety net of audio-device teardown).
 //
-// A munka azonnal elindul egy saját, leválasztott (detached) szálon. A hívó legfeljebb a
-// határidőig vár rá (waitUntil). Ha a munka addig nem végez, a hívó tovább megy, a szál pedig
-// magától fut tovább, és a végén felszabadítja, amit a munka birtokol. Így egy beragadt
-// rendszerhívás (pl. egy eltűnt eszköz miniaudio-szála) nem fagyaszthatja be a hívó szálat
-// (a GUI-t); a legrosszabb eset egy elszivárgott, beragadt szál.
+// The work starts at once on its own detached thread. The caller waits for it at most until the
+// deadline (waitUntil). If the work has not finished by then, the caller moves on, and the thread keeps
+// running by itself and at the end frees what the work owns. So a stuck system call (e.g. the miniaudio
+// thread of a vanished device) cannot freeze the caller thread (the GUI); the worst case is one leaked, stuck thread.
 //
-// A munka nem hivatkozhat a hívó élettartamához kötött objektumra: mindent érték szerint vagy
-// saját tulajdonként kell átvennie, mert a hívó a határidő után már nem vár rá.
-//
+// The work must not refer to objects tied to the caller's lifetime: it must take everything by value or
+// as its own property, because after the deadline the caller no longer waits for it.
 #include <chrono>
 #include <functional>
 #include <memory>
@@ -21,7 +19,7 @@ class DetachedJob {
 public:
     using Clock = std::chrono::steady_clock;
 
-    // Elindítja a munkát egy új, leválasztott szálon.
+    // Starts the work on a new, detached thread.
     explicit DetachedJob(std::function<void()> work);
     ~DetachedJob();
 
@@ -30,7 +28,7 @@ public:
     DetachedJob(const DetachedJob&)            = delete;
     DetachedJob& operator=(const DetachedJob&) = delete;
 
-    // Vár a munka végéig, legfeljebb a határidőig. Igaz: a munka befejeződött.
+    // Waits for the work to finish, at most until the deadline. True: the work finished.
     bool waitUntil(Clock::time_point deadline) const;
     bool waitFor(std::chrono::milliseconds timeout) const { return waitUntil(Clock::now() + timeout); }
     bool finished() const;

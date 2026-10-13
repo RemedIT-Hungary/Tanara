@@ -24,8 +24,8 @@ namespace {
 
 namespace win = detail::win;
 
-// A GUID-okat magunk definiáljuk (nem a uuid-libre / __uuidof-ra bízzuk) — így MinGW és MSVC
-// alatt is ugyanúgy fordul, ütközés nélkül.
+// We define the GUIDs ourselves (not relying on uuid-lib / __uuidof), so it compiles the same under
+// MinGW and MSVC, without collisions.
 const CLSID kClsidMMDeviceEnumerator = {0xBCDE0395, 0xE52F, 0x467C, {0x8E, 0x3D, 0xC4, 0x57, 0x92, 0x91, 0x69, 0x2E}};
 const IID   kIidIMMDeviceEnumerator  = {0xA95664D2, 0x9614, 0x4F35, {0xA7, 0x46, 0xDE, 0x8D, 0xB6, 0x36, 0x17, 0xE6}};
 const IID   kIidIAudioSessionManager2 = {0x77AA99A0, 0x1BD6, 0x484F, {0x8B, 0xC7, 0x2C, 0x65, 0x4C, 0x9A, 0x9B, 0x6F}};
@@ -34,7 +34,7 @@ const IID   kIidIAudioSessionControl2 = {0xBFB7FF88, 0x7239, 0x4FC9, {0x8F, 0xA2
 const wchar_t kConsentMicKey[] =
     L"Software\\Microsoft\\Windows\\CurrentVersion\\CapabilityAccessManager\\ConsentStore\\microphone";
 
-// Minimális COM-okos mutató (a WRL MinGW-n nem mindig elérhető).
+// A minimal COM smart pointer (WRL is not always available on MinGW).
 template <typename T>
 class Com {
 public:
@@ -52,11 +52,11 @@ private:
     T* p = nullptr;
 };
 
-// Processz-pillanatkép (PID → szülő PID + képnév) — csak ha kell (WebView2-szülő, NonPackaged
-// futás-ellenőrzés, ill. ha az OpenProcess nem sikerül). Pollonként legfeljebb egyszer készül.
+// Process snapshot (PID -> parent PID + image name), only if needed (WebView2 parent, the running
+// check of NonPackaged, or when OpenProcess fails). Made at most once per poll.
 struct ProcessTable {
     bool built = false;
-    QHash<DWORD, QPair<DWORD, QString>> byPid;   // pid → (ppid, kisbetűs alapnév)
+    QHash<DWORD, QPair<DWORD, QString>> byPid;   // pid -> (ppid, lowercase base name)
 
     void build()
     {
@@ -90,11 +90,11 @@ QString imageOf(DWORD pid, ProcessTable& procs)
         if (ok)
             return win::imageBaseName(QString::fromWCharArray(buf, int(len)));
     }
-    procs.build();   // pl. emelt jogú processz → a pillanatkép neve
+    procs.build();   // e.g. an elevated process: the snapshot's name
     return procs.byPid.value(pid).second;
 }
 
-// A PID látható, legfelső szintű ablakai közül a leghosszabb című (best-effort).
+// Among the PID's visible top-level windows, the one with the longest title (best-effort).
 struct TitleSearch { DWORD pid; QString best; };
 
 BOOL CALLBACK collectTitle(HWND hwnd, LPARAM lp)
@@ -158,15 +158,15 @@ bool keyInUse(HKEY parent, const QString& sub)
 } // namespace
 
 struct WindowsCaptureDetector::Impl {
-    bool comOwned = false;                      // mi inicializáltuk a COM-ot ezen a szálon → mi is zárjuk
-    mutable Com<IMMDeviceEnumerator> enumerator;  // egyszer létrehozva, hibánál újra
+    bool comOwned = false;                      // we initialized COM on this thread, so we close it
+    mutable Com<IMMDeviceEnumerator> enumerator;  // created once, again on error
 
     Impl()
     {
-        // MTA-t kérünk; ha a szál már STA (pl. a GUI fő szála: a Qt OleInitialize-t hív), az
-        // RPC_E_CHANGED_MODE nem hiba — a meglévő apartmentben dolgozunk, és nem zárjuk le.
+        // We ask for MTA; if the thread is already STA (e.g. the GUI main thread: Qt calls OleInitialize),
+        // RPC_E_CHANGED_MODE is not an error: we work in the existing apartment and do not close it.
         const HRESULT hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
-        comOwned = SUCCEEDED(hr);   // S_OK és S_FALSE is egy CoUninitialize-t kíván
+        comOwned = SUCCEEDED(hr);   // both S_OK and S_FALSE require a CoUninitialize
     }
     ~Impl()
     {
@@ -185,7 +185,7 @@ struct WindowsCaptureDetector::Impl {
 WindowsCaptureDetector::WindowsCaptureDetector()
     : d(std::make_unique<Impl>())
 {
-    // Beépített default (a settings knownCallApps defaultjával egyező). A figyelő felülírja.
+    // Built-in default (matches the settings' knownCallApps default). The watcher overrides it.
     m_knownApps = { QStringLiteral("zoom"), QStringLiteral("teams"), QStringLiteral("webex"),
                     QStringLiteral("slack"), QStringLiteral("discord"), QStringLiteral("meet"),
                     QStringLiteral("skype"), QStringLiteral("chromium"), QStringLiteral("firefox") };
@@ -217,13 +217,12 @@ MeetingSignal WindowsCaptureDetector::poll()
     ProcessTable procs;
     const DWORD selfPid = GetCurrentProcessId();
 
-    // ---- 1) WASAPI capture-session-ök -----------------------------------------------------
+    // ---- 1) WASAPI capture sessions -----------------------------------------------------
     if (d->ensureEnumerator()) {
         Com<IMMDeviceCollection> devices;
         HRESULT hr = d->enumerator->EnumAudioEndpoints(eCapture, DEVICE_STATE_ACTIVE, devices.out());
         if (FAILED(hr)) {
-            // Eszköz-/szolgáltatás-változás után a gyorsítótárazott enumerátor elavulhat →
-            // eldobjuk, és egyszer újrapróbáljuk.
+            // After a device/service change the cached enumerator may go stale, so we drop it and retry once.
             d->enumerator.reset();
             if (d->ensureEnumerator())
                 hr = d->enumerator->EnumAudioEndpoints(eCapture, DEVICE_STATE_ACTIVE, devices.out());
@@ -236,8 +235,8 @@ MeetingSignal WindowsCaptureDetector::poll()
             Com<IMMDevice> dev;
             if (FAILED(devices->Item(di, dev.out())))
                 continue;
-            // A session-managert pollonként frissen kérjük: a gyorsítótárazott példány
-            // enumerátora a később létrejött session-öket nem mindig látja.
+            // We request the session manager fresh on every poll: the cached instance's enumerator does not
+            // always see sessions created later.
             Com<IAudioSessionManager2> mgr;
             if (FAILED(dev->Activate(kIidIAudioSessionManager2, CLSCTX_ALL, nullptr, mgr.outVoid())))
                 continue;
@@ -263,8 +262,8 @@ MeetingSignal WindowsCaptureDetector::poll()
                     continue;
 
                 QString base = imageOf(pid, procs);
-                // WebView2-ben futó app (pl. az új Teams): a mikrofont a msedgewebview2
-                // gyerekprocessz fogja → a szülő-láncon az első nem-WebView2 processz számít.
+                // An app running in WebView2 (e.g. the new Teams): the microphone is held by the msedgewebview2
+                // child process, so along the parent chain the first non-WebView2 process counts.
                 if (base == QLatin1String("msedgewebview2")) {
                     procs.build();
                     DWORD cur = pid;
@@ -277,7 +276,7 @@ MeetingSignal WindowsCaptureDetector::poll()
                     }
                 }
                 if (base.isEmpty() || pid == selfPid || win::isSelfImage(base, m_selfBinary))
-                    continue;   // ön-kizárás: a saját felvevőnk sosem meeting
+                    continue;   // self-exclusion: our own recorder is never a meeting
                 const win::CallAppMatch m = win::matchCallApp(base, m_knownApps);
                 if (!m.matched)
                     continue;
@@ -287,12 +286,12 @@ MeetingSignal WindowsCaptureDetector::poll()
                 sig.appName     = m.appName;
                 sig.windowTitle = windowTitleOf(pid);
                 sig.sourceRef   = QStringLiteral("wasapi-session:%1:%2").arg(pid).arg(base);
-                return sig;   // az első aktív találat elég
+                return sig;   // the first active match is enough
             }
         }
     }
 
-    // ---- 2) Tartalék: mikrofon-hozzájárulás (ConsentStore) -------------------------------
+    // ---- 2) Fallback: microphone consent (ConsentStore) -------------------------------
     HKEY mic = nullptr;
     if (RegOpenKeyExW(HKEY_CURRENT_USER, kConsentMicKey, 0, KEY_READ, &mic) != ERROR_SUCCESS)
         return sig;
@@ -319,8 +318,8 @@ MeetingSignal WindowsCaptureDetector::poll()
         const win::CallAppMatch m = win::matchCallApp(c.name, m_knownApps);
         if (!m.matched)
             continue;
-        // NonPackaged: csak ha a processz tényleg fut (egy összeomlott app Stop-időbélyeg
-        // nélkül maradhat → különben örökre „hívásban" lenne).
+        // NonPackaged: only if the process is really running (a crashed app may be left without a Stop
+        // timestamp, otherwise it would be "in a call" forever).
         if (c.nonPackaged && !procs.running(c.name))
             continue;
         sig.active    = true;

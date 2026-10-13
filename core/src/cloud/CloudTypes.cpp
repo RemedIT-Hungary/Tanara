@@ -22,7 +22,7 @@ QDateTime parseTime(const QJsonValue& v)
 
 QString nullableString(const QJsonValue& v) { return v.isString() ? v.toString() : QString(); }
 
-// Ezres tagolás egy nem-negatív egész számjegy-sorozatra.
+// Thousands grouping for a digit sequence of a non-negative integer.
 QString groupThousands(const QString& digits, const QChar sep)
 {
     QString out;
@@ -35,8 +35,8 @@ QString groupThousands(const QString& digits, const QChar sep)
     return out;
 }
 
-// |micros| → „1 284,50” / „1,284.50” adott tizedes-számmal (a kerekítést a hívó végezte:
-// `units` már a kívánt tizedesjegyekre skálázott egész).
+// |micros| -> "1 284,50" / "1,284.50" with a given number of decimals (the caller did the rounding:
+// `units` is already an integer scaled to the desired decimals).
 QString renderUnits(qint64 units, int decimals, const QString& lang)
 {
     const bool hu = lang == QLatin1String("hu");
@@ -53,7 +53,7 @@ QString renderUnits(qint64 units, int decimals, const QString& lang)
 
 } // namespace
 
-// ---- pénz ----------------------------------------------------------------------------
+// ---- money ----------------------------------------------------------------------------
 
 Money moneyFromJson(const QJsonValue& v)
 {
@@ -77,7 +77,7 @@ QString formatMoney(const Money& m, MoneyStyle style, const QString& lang)
     QString number;
     bool lessThan = false;
     if (style == MoneyStyle::Balance) {
-        // Egyenleg: 2 tizedes, LEFELÉ (sose mutassunk többet, mint amennyi van).
+        // Balance: 2 decimals, DOWN (never show more than there is).
         const qint64 cents = neg ? -static_cast<qint64>(std::floor(-static_cast<double>(absMicros) / 10000.0))
                                  : absMicros / 10000;
         number = renderUnits(cents, 2, lang);
@@ -87,7 +87,7 @@ QString formatMoney(const Money& m, MoneyStyle style, const QString& lang)
         lessThan = true;
         number = renderUnits(1, 4, lang);   // 0,0001
     } else if (absMicros < 10000) {
-        number = renderUnits((absMicros + 50) / 100, 4, lang);   // 4 tizedes, normál kerekítés
+        number = renderUnits((absMicros + 50) / 100, 4, lang);   // 4 decimals, normal rounding
     } else {
         number = renderUnits((absMicros + 5000) / 10000, 2, lang);
     }
@@ -137,7 +137,7 @@ bool semverLess(const QString& a, const QString& b)
     const QStringList x = a.trimmed().split(QLatin1Char('.'));
     const QStringList y = b.trimmed().split(QLatin1Char('.'));
     for (int i = 0; i < 3; ++i) {
-        const int xi = x.value(i).toInt();   // nem szám / hiányzó → 0
+        const int xi = x.value(i).toInt();   // not a number / missing -> 0
         const int yi = y.value(i).toInt();
         if (xi != yi) return xi < yi;
     }
@@ -162,7 +162,7 @@ QString clientHeaderValue()
     return libraryVersion() + QLatin1Char('/') + clientPlatform();
 }
 
-// ---- hibák ---------------------------------------------------------------------------
+// ---- errors ---------------------------------------------------------------------------
 
 CloudError parseCloudError(int httpStatus, const QHash<QByteArray, QByteArray>& headers,
                            const QByteArray& body, const QString& networkError)
@@ -301,7 +301,7 @@ QString describeCloudError(const CloudError& e, const Money& charged, const QStr
     return lines.join(QLatin1Char('\n'));
 }
 
-// ---- fiók ----------------------------------------------------------------------------
+// ---- account ----------------------------------------------------------------------------
 
 TermsStatus termsFromJson(const QJsonObject& o)
 {
@@ -351,7 +351,7 @@ AccountInfo accountFromJson(const QJsonObject& o)
     return a;
 }
 
-// ---- katalógus -----------------------------------------------------------------------
+// ---- catalog -----------------------------------------------------------------------
 
 bool CloudModel::notRecommendedFor(const QString& lang) const
 {
@@ -366,7 +366,7 @@ QVector<CloudModel> modelsFromJson(const QJsonObject& root)
     for (const QJsonValue& v : root.value(QStringLiteral("data")).toArray()) {
         const QJsonObject o = v.toObject();
         const QJsonObject t = o.value(QStringLiteral("tanara")).toObject();
-        if (t.isEmpty()) continue;   // Tanara-metaadat nélküli modell nem használható
+        if (t.isEmpty()) continue;   // a model without Tanara metadata is not usable
         CloudModel m;
         m.id          = o.value(QStringLiteral("id")).toString();
         m.kind        = t.value(QStringLiteral("kind")).toString();
@@ -411,7 +411,7 @@ QString virtualModelId(const QString& kind, const QString& tier)
                                         : QStringLiteral("tanara/summary-") + t;
 }
 
-// ---- becslés -------------------------------------------------------------------------
+// ---- estimate -------------------------------------------------------------------------
 
 QJsonObject estimateRequestToJson(const EstimateRequest& r)
 {
@@ -472,7 +472,7 @@ EstimateLevel estimateLevel(const EstimateResult& e)
     return EstimateLevel::NotEnough;
 }
 
-// ---- terhelés / visszaírás -----------------------------------------------------------
+// ---- charge / write-back -----------------------------------------------------------
 
 ChargeInfo chargeInfoFromJson(const QJsonObject& o)
 {
@@ -517,7 +517,7 @@ TranscriptionJobInfo transcriptionJobInfoFromJson(const QJsonObject& root)
     j.errorCode      = nullableString(t.value(QStringLiteral("error_code")));
     j.contentDeleted = t.value(QStringLiteral("content_deleted")).toBool();
     j.jobId          = nullableString(t.value(QStringLiteral("job_id")));
-    if (j.refunded && !j.refund.isValid()) j.refund = j.charge;   // hiányzó refund → a terhelés
+    if (j.refunded && !j.refund.isValid()) j.refund = j.charge;   // missing refund -> the charge
     return j;
 }
 
@@ -535,7 +535,7 @@ DeviceCode deviceCodeFromJson(const QJsonObject& o)
     return d;
 }
 
-// ---- várólista -----------------------------------------------------------------------
+// ---- waitlist -----------------------------------------------------------------------
 
 QJsonObject waitlistToJson(const WaitlistSignup& s)
 {
@@ -565,7 +565,7 @@ QString validateWaitlist(const WaitlistSignup& s)
     return {};
 }
 
-// ---- fordítási kapcsolók -------------------------------------------------------------
+// ---- compile switches -------------------------------------------------------------
 
 namespace cloud {
 bool clientCompiled()

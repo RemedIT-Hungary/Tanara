@@ -1,48 +1,47 @@
 #pragma once
 //
-// Tanara — útvonal-segédek: a metaadat-mappa EGYETLEN igazságforrása.
+// Path helpers: the single source of truth for the metadata folder.
 //
-// Alapértelmezés: ~/.tanara. A TANARA_HOME környezeti változó felülírja — ilyenkor az app
-// SEMMIT nem olvas/ír a ~/.tanara alatt (settings, kulcsok, személyek, lenyomatok, logok,
-// promptok, modellek, state.json, lock-fájlok, index.db). Ez teszi lehetővé a biztonságos
-// tesztelést mintaadaton: TANARA_HOME=/tmp/sandbox/home tanara
+// Default: ~/.tanara. The TANARA_HOME environment variable overrides it; the app then
+// reads and writes NOTHING under ~/.tanara (settings, keys, people, voiceprints, logs,
+// prompts, models, state.json, lock files, index.db). This allows safe testing on
+// sample data: TANARA_HOME=/tmp/sandbox/home tanara
 //
-// SZABÁLY: sehol máshol ne számolj `homePath() + ".tanara"`-t — mindig ezt használd.
-//
+// RULE: never compute `homePath() + ".tanara"` anywhere else; always use this.
 #include <QString>
 
 namespace tanara {
 namespace paths {
 
-// A TANARA_HOME értéke abszolút, "~"-kifejtett úttá oldva; üres, ha nincs beállítva.
+// Value of TANARA_HOME as an absolute path with "~" expanded; empty if unset.
 QString homeOverride();
 
-// Az alapértelmezett metaadat-mappa: TANARA_HOME, különben ~/.tanara.
+// The default metadata folder: TANARA_HOME, otherwise ~/.tanara.
 QString defaultMetadataDir();
 
-// "~" / "~/x" kifejtése a felhasználó home-jára (más út változatlan).
+// Expands "~" / "~/x" to the user's home (other paths unchanged).
 QString expandHome(const QString& path);
 
-// Egy (beállításból jövő, akár üres vagy "~"-os) metaadat-mappa feloldása:
-//  - ha TANARA_HOME be van állítva → MINDIG az (a settings.json-beli érték nem térítheti el);
-//  - üres → defaultMetadataDir(); egyébként a "~"-kifejtett érték.
+// Resolves a metadata folder (from settings; may be empty or start with "~"):
+//  - if TANARA_HOME is set, it ALWAYS wins (a settings.json value cannot override it);
+//  - empty -> defaultMetadataDir(); otherwise the "~"-expanded value.
 QString resolveMetadataDir(const QString& configured);
 
-// Fájl/almappa a metaadat-mappában (pl. metadataFile("people.json")).
+// A file/subfolder in the metadata folder (e.g. metadataFile("people.json")).
 QString metadataFile(const QString& relative, const QString& configuredDir = QString());
 
-// TANARA_HOME mellett a felvételek / jegyzetek ALAPÉRTELMEZETT helye is a sandboxba kerül
-// (<TANARA_HOME>/recordings, <TANARA_HOME>/notes), különben ~/Tanara/recordings|notes.
-// (A settings.json-ban explicit megadott mappát nem írja felül.)
+// With TANARA_HOME, the DEFAULT location of recordings and notes also moves into the
+// sandbox (<TANARA_HOME>/recordings, <TANARA_HOME>/notes), otherwise ~/Tanara/recordings|notes.
+// (A folder set explicitly in settings.json is not overridden.)
 QString defaultAudioDir();
 QString defaultNotesDir();
 
-// Az ALAP beszélő-embedding modell (CAM++) fájlneve és feloldása — a VoiceModelRegistry
-// szabályát használja (ott a többi modellé is). Sorrend:
-//  1) <metaDir>/models/<név>  — a felhasználó saját (letöltött) modellje;
-//  2) <appDir>/models/<név>   — az alkalmazás mellé csomagolt modell (Windows-zip/telepítő);
-//  3) egyik sincs → az 1) útja (a „várt hely”, hibaüzenetekhez / letöltési célnak).
-// Az appDir üres is lehet (pl. QCoreApplication nélkül) — ilyenkor a 2) kimarad.
+// File name and resolution of the DEFAULT speaker-embedding model (CAM++); uses the
+// VoiceModelRegistry rule (which covers the other models too). Order:
+//  1) <metaDir>/models/<name>  - the user's own (downloaded) model;
+//  2) <appDir>/models/<name>   - a model bundled with the app (Windows zip/installer);
+//  3) neither exists -> the path from 1) (the "expected location", for error messages / download target).
+// appDir may be empty (e.g. without QCoreApplication); then 2) is skipped.
 QString voiceModelFileName();
 QString resolveVoiceModelPath(const QString& metaDir, const QString& appDir);
 

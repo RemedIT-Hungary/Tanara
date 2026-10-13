@@ -1,35 +1,33 @@
 #pragma once
 //
-// PeopleStore — a személyek globális tára (<metaadat-mappa>/people.json): személyenként EGY
-// rekord (név, becenevek, szabad szöveges megjegyzés), meetingek közt újrahasználva a
-// beszélő-átnevezéshez és a személyválasztókhoz. A meeting-specifikus nyers→név leképezés a
-// Meeting.speakerMap-ben él, nem itt; a hanglenyomatok a voiceprints.json-ban, névhez kötve.
+// PeopleStore: the global store of people (<metadata folder>/people.json): ONE record per
+// person (name, nicknames, free-text note), reused across meetings for speaker rename and the
+// person pickers. The meeting-specific raw -> name mapping lives in Meeting.speakerMap, not here;
+// voiceprints are in voiceprints.json, bound to the name.
 //
-// A fájl alakja (2-es verzió):
+// File shape (version 2):
 //   {
 //     "version": 2,
-//     "people":   [ {"name": "…", "aliases": ["…"], "note": "…", "tags": ["<tagId>"]}, … ],   // a névlista
-//     "unlisted": [ {"name": "…", "aliases": ["…"], "note": "…"}, … ]    // csak ha van ilyen
+//     "people":   [ {"name": "...", "aliases": ["..."], "note": "...", "tags": ["<tagId>"]}, ... ],   // the name list
+//     "unlisted": [ {"name": "...", "aliases": ["..."], "note": "..."}, ... ]    // only if there are any
 //   }
-// - "tags": a személyre kézzel tett címkék azonosítói (a tags.json készletéből; csak ha van).
-//   Átnevezéskor / összevonáskor a rekorddal megy (összevonásnál unió).
-// - A személy azonosítója a NÉV (kisbetű-függetlenül), ahogy a voiceprints.json-ban is.
-// - Az ismeretlen (jövőbeli) mezőket a gyökérben és a rekordokban is megőrzi.
-// - "unlisted": olyan név adatai, amely NINCS a névlistán — pl. csak hanglenyomata van, vagy a
-//   nevét kívülről átírták, és a becenevei / megjegyzése a régi néven maradtak. Ezek nem
-//   vesznek el: details() név szerint megtalálja őket, és ha a név (újra) felkerül a listára
-//   (add / rename), a rekord visszakerül a "people" tömbbe. Üres ilyen rekordot nem tárolunk.
+// - "tags": ids of the tags set by hand on the person (from the tags.json set; only if any).
+//   They go with the record on rename / merge (a union on merge).
+// - The person's identifier is the NAME (case-insensitive), as in voiceprints.json.
+// - Unknown (future) fields are preserved, both in the root and in the records.
+// - "unlisted": data of a name that is NOT on the name list, e.g. it only has a voiceprint, or its
+//   name was rewritten from outside and its nicknames / note stayed under the old name. These are not
+//   lost: details() finds them by name, and if the name is put on the list (again) (add / rename), the
+//   record returns to the "people" array. An empty such record is not stored.
 //
-// Egyszeri, automatikus átállás a régi alakról (betöltéskor): a régi people.json egy sima
-// névlista volt ({"people": ["A", "B"]}), a becenevek és a megjegyzés pedig egy testvér-
-// fájlban, a people-details.json-ban éltek. Betöltéskor a kettő egyesül, az új alak zár alatt,
-// atomikusan kerül a lemezre, és a people-details.json CSAK ezután törlődik. Ha az írás nem
-// sikerül, mindkét régi fájl érintetlen marad, a tár a memóriában dolgozik tovább, és a
-// következő sikeres mentés fejezi be az átállást. A részleteket lásd a .cpp-ben.
+// One-time, automatic migration from the old shape (at load): the old people.json was a plain name
+// list ({"people": ["A", "B"]}), and nicknames and notes lived in a sibling file, people-details.json.
+// At load the two merge, the new shape is written to disk under lock, atomically, and people-details.json
+// is deleted ONLY after that. If the write fails, both old files stay untouched, the store keeps
+// working in memory, and the next successful save completes the migration. Details in the .cpp.
 //
-// Több folyamat is írhatja: minden módosítás zár alatt visszaolvassa a lemez friss állapotát
-// (ha változott), arra alkalmazza a változást, és atomikusan ír (lásd store/SharedFile.h).
-//
+// Several processes may write it: every modification rereads the fresh state from disk under lock (if
+// it changed), applies the change to that, and writes atomically (see store/SharedFile.h).
 #include "tanara/store/SharedFile.h"
 
 #include <QHash>
@@ -44,84 +42,84 @@ struct PersonDetails {
     QString     name;
     QStringList aliases;
     QString     note;
-    QStringList tags;       // kézi címkék (tagId), felrakási sorrendben
+    QStringList tags;       // manual tags (tagId), in the order applied
     bool isEmpty() const { return aliases.isEmpty() && note.isEmpty() && tags.isEmpty(); }
 };
 
 class PeopleStore {
 public:
-    explicit PeopleStore(const QString& filePath = QString());  // üres → <metaadat-mappa>/people.json
+    explicit PeopleStore(const QString& filePath = QString());  // empty = <metadata folder>/people.json
 
-    // ---- névlista ----
+    // ---- name list ----
     QStringList names() const;
-    // Hozzáadja, ha még nincs (kisbetű-függetlenül). Ha a névhez listán kívüli rekord
-    // tartozik, az visszakerül a listára (a becenevekkel, megjegyzéssel együtt).
+    // Adds it if not there yet (case-insensitive). If an unlisted record belongs to the name, it returns
+    // to the list (with its nicknames and note).
     void add(const QString& name);
-    // Átnevezés: a TELJES rekord az új névre kerül. Ha az új néven már van rekord, a kettő
-    // egyesül (becenevek uniója; megjegyzés: a célé, ha üres, a forrásé; ha mindkettő van,
-    // egymás alá). oldNameAsAlias: a régi név becenév lesz (ha csak kis-/nagybetűben tér el
-    // az újtól, akkor nem). Az új név mindenképp a listára kerül.
+    // Rename: the WHOLE record moves to the new name. If the new name already has a record, the two
+    // merge (union of nicknames; note: the target's, or the source's if empty; if both exist, one
+    // under the other). oldNameAsAlias: the old name becomes a nickname (not if it differs from the new
+    // one only in case). The new name always goes on the list.
     void rename(const QString& oldName, const QString& newName, bool oldNameAsAlias = false);
-    // A személy törlése: a teljes rekord (becenevek, megjegyzés) megszűnik.
+    // Deleting the person: the whole record (nicknames, note) goes away.
     void remove(const QString& name);
-    // Csak a névlistáról veszi le (pl. egy „új személy” lépés visszavonása): ha vannak
-    // becenevei / megjegyzése, azok listán kívüli rekordként megmaradnak.
+    // Only takes it off the name list (e.g. undoing a "new person" step): if it has nicknames / a note,
+    // they stay as an unlisted record.
     void unlist(const QString& name);
 
-    // ---- becenevek, megjegyzés (bármely névre, akkor is, ha nincs a listán) ----
-    PersonDetails details(const QString& name) const;   // ismeretlen név → üres (a név kitöltve)
+    // ---- nicknames, note (for any name, even if not on the list) ----
+    PersonDetails details(const QString& name) const;   // unknown name = empty (name filled in)
     QStringList aliases(const QString& name) const { return details(name).aliases; }
-    // Becenév felvétele. false: üres, megegyezik a névvel, vagy már szerepel (kisbetű-függetlenül).
+    // Adds a nickname. false: empty, equal to the name, or already present (case-insensitive).
     bool addAlias(const QString& name, const QString& alias);
-    // Becenév törlése. Vissza: a törölt becenév helye a listában (-1 = nem volt ilyen).
+    // Deletes a nickname. Returns the deleted nickname's position in the list (-1 = there was none).
     int removeAlias(const QString& name, const QString& alias);
-    // Becenév visszatétele az eredeti helyére (visszavonás).
+    // Puts a nickname back at its original place (undo).
     bool insertAlias(const QString& name, const QString& alias, int index);
     void setNote(const QString& name, const QString& note);
 
-    // ---- kézi címkék (tagId-k; a TagService kezeli, lásd tags/TagService.h) ----
+    // ---- manual tags (tagIds; handled by TagService, see tags/TagService.h) ----
     QStringList tags(const QString& name) const { return details(name).tags; }
-    // A címkék cseréje (ismétlés nélkül, sorrendtartóan). Ismeretlen névhez listán kívüli
-    // rekordot hoz létre. true, ha változott.
+    // Replaces the tags (no repeats, order kept). For an unknown name it creates an unlisted record.
+    // true if changed.
     bool setTags(const QString& name, const QStringList& tagIds);
-    // Minden címkés rekord (név → címkék), a listán kívüliek is.
+    // Every record with tags (name -> tags), the unlisted ones too.
     QHash<QString, QStringList> allTags() const;
-    // ---- tanult sáv-oldal (a megerősített sorokból / kézi sáv-beosztásból; SideAnalysis) ----
-    // A rekord "defaultSide" mezője: "local" | "remote"; üres = nincs tanult érték.
+    // ---- learned track side (from confirmed lines / manual track assignment; SideAnalysis) ----
+    // The record's "defaultSide" field: "local" | "remote"; empty = no learned value.
     QString defaultSide(const QString& name) const;
-    // Üres side → a mező törlődik. true, ha változott. manual: a felhasználó írta át (Személyek
-    // ablak) — a "defaultSideManual" jelző a tanult felülírástól védi (a manual nélküli hívás
-    // ilyenkor nem változtat); kézi ürítés a jelzőt is törli (a tanulás újra írhatja).
+    // An empty side deletes the field. true if changed. manual: written by the user (People window);
+    // the "defaultSideManual" flag protects it from learned overwrite (a call without manual then changes
+    // nothing); a manual clear also clears the flag (learning may write it again).
     bool setDefaultSide(const QString& name, const QString& side, bool manual = false);
     bool defaultSideManual(const QString& name) const;
-    // Minden tanult érték: név → oldal.
+    // Every learned value: name -> side.
     QHash<QString, QString> defaultSides() const;
 
-    // A listán kívüli, de adatot hordozó rekordok nevei (lásd fent: "unlisted").
+    // Names of the records that are off the list but carry data (see above: "unlisted").
     QStringList unlistedNames() const;
 
-    // Ha a fájl a lemezen megváltozott (másik folyamat írta), újraolvassa. Olvasás előtt hívd.
+    // If the file changed on disk (another process wrote it), rereads it. Call before reading.
     void refresh() { reloadIfChanged(); }
 
-    // Igaz, amíg a régi alakról való átállás még nincs a lemezen (az írás nem sikerült):
-    // a tár a memóriában dolgozik, a régi fájlok érintetlenek.
+    // True while the migration from the old shape is not on disk yet (the write failed): the store works
+    // in memory, the old files are untouched.
     bool migrationPending() const { return m_migrationPending; }
 
     QString filePath() const { return m_filePath; }
-    // A régi testvér-fájl (people-details.json) helye ugyanabban a mappában.
+    // Location of the old sibling file (people-details.json) in the same folder.
     QString legacyDetailsPath() const;
 
 private:
     struct Entry {
         PersonDetails d;
-        QJsonObject   raw;            // a rekord ismeretlen mezői
-        bool          listed = true;  // szerepel a névlistán
+        QJsonObject   raw;            // unknown fields of the record
+        bool          listed = true;  // is on the name list
     };
-    // A régi people-details.json sorsa a következő sikeres mentés után.
+    // Fate of the old people-details.json after the next successful save.
     enum class LegacyDetails { None, Remove, SetAsideCorrupt, SetAsideLeftover };
 
     int indexOf(const QString& name) const;
-    Entry& ensure(const QString& name);     // ha nincs: listán kívüli rekordként létrehozza
+    Entry& ensure(const QString& name);     // if missing: creates it as an unlisted record
     void sortEntries();
     void load();
     void reloadIfChanged();
@@ -131,11 +129,11 @@ private:
 
     QString        m_filePath;
     QVector<Entry> m_entries;
-    QJsonObject    m_rootExtra;                 // a gyökér ismeretlen mezői
-    int            m_version = 0;               // a beolvasott fájl verziója (0 = régi alak / nincs)
-    FileStamp      m_stamp;                     // a fájl állapota az utolsó betöltéskor / mentéskor
-    bool           m_corrupt = false;           // a lemezen lévő fájl értelmezhetetlen (mentéskor félretesszük)
-    bool           m_migrationPending = false;  // a lemezen még a régi alak van
+    QJsonObject    m_rootExtra;                 // unknown fields of the root
+    int            m_version = 0;               // version of the file read (0 = old shape / none)
+    FileStamp      m_stamp;                     // state of the file at the last load / save
+    bool           m_corrupt = false;           // the file on disk is unparseable (set aside on save)
+    bool           m_migrationPending = false;  // the old shape is still on disk
     LegacyDetails  m_legacy = LegacyDetails::None;
 };
 

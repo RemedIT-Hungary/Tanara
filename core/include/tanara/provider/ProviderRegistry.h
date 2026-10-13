@@ -1,10 +1,8 @@
 #pragma once
 //
-// Provider-registry (STT és LLM). Az AppController ezen keresztül old fel és hoz
-// létre providert id alapján — nincs hardkódolt `new SonioxProvider`. Új provider
-// hozzáadása: 1 descriptor + 1 factory + 1 registerProvider() hívás.
-// Headless (core); NEM linkel Qt Widgetset.
-//
+// Provider registry (STT and LLM). AppController resolves and creates a provider by id through it;
+// there is no hard-coded `new SonioxProvider`. Adding a provider: 1 descriptor + 1 factory + 1
+// registerProvider() call. Headless (core); does NOT link Qt Widgets.
 #include "tanara/provider/ProviderDescriptor.h"
 #include "tanara/Types.h"
 
@@ -31,8 +29,8 @@ public:
     void registerProvider(const ProviderDescriptor& desc, Factory factory);
     QVector<ProviderDescriptor> all() const;
     bool has(const QString& id) const;
-    ProviderDescriptor descriptor(const QString& id) const;     // üres descriptor, ha ismeretlen
-    ISttProvider* create(const QString& id, const ProviderConfig& cfg, QObject* parent) const; // nullptr, ha ismeretlen
+    ProviderDescriptor descriptor(const QString& id) const;     // an empty descriptor if unknown
+    ISttProvider* create(const QString& id, const ProviderConfig& cfg, QObject* parent) const; // nullptr if unknown
 
 private:
     QHash<QString, QPair<ProviderDescriptor, Factory>> m_map;
@@ -54,16 +52,16 @@ private:
     QHash<QString, QPair<ProviderDescriptor, Factory>> m_map;
 };
 
-// A beépített providerek (Soniox STT + OpenAI-kompatibilis LLM) egyszeri, EXPLICIT
-// regisztrációja. NEM static-init-időben (az törékeny statikus lib-eknél). Idempotens:
-// többszöri hívás biztonságos. Az AppController ctora hívja.
+// One-time, EXPLICIT registration of the built-in providers (Soniox STT + OpenAI-compatible LLM).
+// NOT at static-init time (that is fragile with static libs). Idempotent: calling it repeatedly is
+// safe. AppController's constructor calls it.
 void registerBuiltinProviders();
 
-// A Tanara Cloud STT + LLM provider („tanara-cloud”, AuthMode::Login) regisztrációja.
-// Feature-flag (kill-kritérium): csak akkor hívódik, ha a cloud-kliens befordult
-// (TANARA_BUILD_CLOUD) ÉS a cloud-mód él (settings.cloudEnabled / TANARA_CLOUD_URL).
-// A factory a meglévő SonioxProvider / OpenAiCompatibleProvider — a gateway-configot
-// (baseUrl, kulcs, modell, fejlécek, hook) az AppController tölti. Idempotens.
+// Registers the Tanara Cloud STT + LLM provider ("tanara-cloud", AuthMode::Login).
+// A feature flag (kill criterion): called only if the cloud client is compiled in
+// (TANARA_BUILD_CLOUD) AND the cloud mode is live (settings.cloudEnabled / TANARA_CLOUD_URL).
+// The factory is the existing SonioxProvider / OpenAiCompatibleProvider; AppController fills the gateway
+// config (baseUrl, key, model, headers, hook). Idempotent.
 void registerCloudProviders();
 
 } // namespace tanara

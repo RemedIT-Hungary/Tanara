@@ -1,15 +1,13 @@
 #pragma once
 //
-// PeopleStats — személyenkénti statisztika a megbeszélésekből: hány megbeszélésen szerepel,
-// mennyit beszélt összesen, mikor láttuk utoljára, és megbeszélésenként mennyit beszélt.
+// PeopleStats: per-person statistics from the meetings: in how many meetings they appear,
+// how long they spoke in total, when we last saw them, and how long they spoke per meeting.
 //
-// A számolás megbeszélésenként egy meeting.json + transcript.segments.json +
-// transcript.speakers.json olvasás (a feloldott beszélő = a szerkesztő szabályai szerint:
-// soronkénti felülírás → összevonás → speakerMap). Több tucat megbeszélésnél ez a fő szálon
-// érezhető lenne, ezért HÁTTÉRSZÁLON fut, és megbeszélésenként gyorsítótárazott: a három
-// fájl módosítási ideje + mérete a kulcs, így egy frissítés csak a megváltozott
-// megbeszéléseket olvassa újra. A gyorsítótár a folyamat életére szól (nincs lemezen).
-//
+// The computation reads one meeting.json + transcript.segments.json + transcript.speakers.json
+// per meeting (the resolved speaker = per the editor's rules: per-line override -> merge ->
+// speakerMap). With dozens of meetings this would be noticeable on the main thread, so it runs on a
+// BACKGROUND THREAD and is cached per meeting: the three files' mtime + size is the key, so a
+// refresh rereads only the changed meetings. The cache lasts for the process life (not on disk).
 #include "tanara/Types.h"
 #include "tanara/store/SharedFile.h"
 
@@ -26,14 +24,14 @@ namespace tanara {
 
 class MeetingStore;
 
-// Egy személy egy megbeszélésen.
+// One person at one meeting.
 struct MeetingPerson {
     QString     name;
     qint64      talkMs = 0;
-    QStringList speakerKeys;    // a megbeszélés mely beszélő-kulcsai (nyers címke / participant:N) az övéi
+    QStringList speakerKeys;    // which of the meeting's speaker keys (raw label / participant:N) are theirs
 };
 
-// Egy megbeszélés résztvevői (a gyorsítótár egy eleme).
+// A meeting's participants (one cache item).
 struct MeetingPeople {
     QString   meetingId;
     QString   title;
@@ -57,12 +55,11 @@ struct PersonMeetingStat {
 struct PersonStats {
     int       meetingCount = 0;
     qint64    talkMs = 0;
-    QDateTime lastSeen;                     // érvénytelen, ha egy megbeszélésen sem szerepel
-    QVector<PersonMeetingStat> meetings;    // legújabb elöl
+    QDateTime lastSeen;                     // invalid if they appear in no meeting
+    QVector<PersonMeetingStat> meetings;    // newest first
 };
 
-// Egy megbeszélés résztvevői és beszédidejük a lemezről. Tiszta fájl-olvasás: bármely szálon
-// hívható.
+// A meeting's participants and their speaking time from disk. Pure file reading: callable on any thread.
 MeetingPeople scanMeetingPeople(const Meeting& meeting);
 
 class PeopleStats : public QObject {
@@ -71,23 +68,23 @@ public:
     explicit PeopleStats(MeetingStore* store, QObject* parent = nullptr);
     ~PeopleStats() override;
 
-    // Volt-e már teljes számolás (előtte minden statisztika üres).
+    // Whether a full computation has happened yet (before that every statistic is empty).
     bool ready() const { return m_ready; }
     bool busy() const { return m_running; }
     PersonStats stats(const QString& name) const;
-    // A megbeszélések résztvevői (a gyorsítótár tartalma), sorrend nélkül.
+    // The meetings' participants (the cache content), unordered.
     QVector<MeetingPeople> meetings() const;
-    // Az utolsó frissítés ideje ms-ben és az újraolvasott megbeszélések száma (diagnosztika).
+    // Time of the last refresh in ms and the number of meetings reread (diagnostics).
     qint64 lastRefreshMs() const { return m_lastMs; }
     int lastRescanned() const { return m_lastRescanned; }
 
 public slots:
-    // Frissítés a háttérben; a végén changed() (ha bármi változott, vagy ez az első).
+    // Refresh in the background; at the end changed() (if anything changed, or this is the first).
     void refresh();
-    // Ugyanez rövid késleltetéssel, összevonva (sok egymás utáni jelre egy számolás).
+    // The same with a short delay, coalesced (one computation for many consecutive signals).
     void scheduleRefresh();
-    // Frissítés MOST, a hívó szálán (műveletek előtt, hogy a következmény-számok pontosak
-    // legyenek; tesztek). Csak a megváltozott megbeszéléseket olvassa újra.
+    // Refresh NOW, on the caller's thread (before operations so the consequence numbers are exact;
+    // tests). Rereads only the changed meetings.
     void refreshNow();
 
 signals:
@@ -116,8 +113,8 @@ private:
 
     MeetingStore* m_store = nullptr;
     QHash<QString, Stamp> m_stamps;
-    QHash<QString, MeetingPeople> m_cache;          // meetingId → résztvevők
-    QHash<QString, PersonStats> m_byPerson;         // kisbetűsített név → statisztika
+    QHash<QString, MeetingPeople> m_cache;          // meetingId -> participants
+    QHash<QString, PersonStats> m_byPerson;         // lowercased name -> statistics
     std::shared_ptr<std::atomic_bool> m_alive;
     bool m_ready = false;
     bool m_running = false;

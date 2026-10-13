@@ -46,7 +46,7 @@ namespace sides {
 
 namespace {
 
-// A zajpadló feletti dB → a padló FELETTI lineáris teljesítmény (a padló maga 0).
+// dB above the noise floor -> the linear power ABOVE the floor (the floor itself is 0).
 double excessPower(float db) { return std::max(0.0, std::pow(10.0, double(db) / 10.0) - 1.0); }
 
 } // namespace
@@ -68,7 +68,7 @@ Thresholds adaptiveThresholds(const QVector<float>& shares)
     if (n < kAdaptiveMinLines) return th;
     std::sort(v.begin(), v.end());
 
-    // Egzakt 1D 2-közép: a rendezett sor kettévágása [0,k) | [k,n) a legkisebb négyzetes hibával.
+    // Exact 1D 2-means: splitting the sorted sequence into [0,k) | [k,n) with the smallest squared error.
     QVector<double> pre(n + 1, 0.0), pre2(n + 1, 0.0);
     for (int i = 0; i < n; ++i) {
         pre[i + 1] = pre[i] + v[i];
@@ -118,8 +118,8 @@ Side classifyLevels(float micRelDb, float loopRelDb)
     const bool loopHigh = loopRelDb >= kSpeechDb;
     if (micHigh && loopHigh) return loopRelDb <= kEchoDb ? Side::Local : Side::Mixed;
     if (micHigh) return Side::Local;
-    // A loopback beszédszinten, a mic a beszédszint alatt (zaj vagy áthallás a hangszóróból):
-    // távoli. A köztes mic-sáv sem helyi beszéd — valódi mérésen 171 sor esett volna „ismeretlen"-be.
+    // The loopback at speech level, the mic below speech level (noise or bleed from the speaker): remote.
+    // An in-between mic track is not local speech either; on a real measurement 171 lines would have fallen into "unknown".
     if (loopHigh) return Side::Remote;
     return Side::Unknown;
 }
@@ -151,8 +151,8 @@ bool opposite(Side a, Side b)
     return (a == Side::Local && b == Side::Remote) || (a == Side::Remote && b == Side::Local);
 }
 
-// Egy sávfajta együttes energiája az ablakban: a lefedő sávok padló feletti teljesítményének összege.
-// false, ha egyik ilyen fajtájú sáv sem fedi le az ablakot.
+// The combined energy of a track kind in the window: the sum of the covering tracks' power above the floor.
+// false if no track of this kind covers the window.
 bool kindEnergy(const MeetingActivity& act, TrackKind kind, qint64 s, qint64 e, float* db)
 {
     bool any = false;
@@ -168,8 +168,8 @@ bool kindEnergy(const MeetingActivity& act, TrackKind kind, qint64 s, qint64 e, 
     return any;
 }
 
-// Egy sávfajta szintje a beszédszinthez mérve: a lefedő sávok közül a legerősebb (ablak-energia −
-// a sáv beszédszintje). -inf, ha egyiken sincs kActiveDb feletti jel; false, ha egyik sem fedi le.
+// A track kind's level relative to speech level: the strongest of the covering tracks (window energy -
+// the track's speech level). -inf if none has a signal above kActiveDb; false if none covers it.
 bool kindRelativeDb(const MeetingActivity& act, const QMap<QString, float>& speech, TrackKind kind,
                     qint64 s, qint64 e, float* rel)
 {
@@ -287,7 +287,7 @@ SideReport analyzeSides(const Meeting& m, const QVector<TranscriptLine>& lines,
     r.histogram = QVector<int>(10, 0);
     r.active = hasKind(activity, TrackKind::Mic) && hasKind(activity, TrackKind::Loopback);
 
-    // Sorok: feloldott beszélő, zárolt / zajos jelzők (a szerkesztő szabályaival).
+    // Lines: resolved speaker, locked / noisy flags (with the editor's rules).
     QHash<QString, int> speakerIdx;
     QStringList speakerOrder;
     QVector<speakeredit::TimedLine> timed;
@@ -317,7 +317,7 @@ SideReport analyzeSides(const Meeting& m, const QVector<TranscriptLine>& lines,
         ls.ignored = has && o->ignored;
     }
 
-    // Energia + localShare + beszédszinthez mért szint soronként (csak ha mindkét oldal van).
+    // Energy + localShare + level relative to speech level per line (only if both sides exist).
     for (const TrackActivity& t : activity.tracks) r.speechLevels.insert(t.trackId, sides::speechLevelDb(t));
     QVector<float> shares;
     if (r.active) {
@@ -332,8 +332,8 @@ SideReport analyzeSides(const Meeting& m, const QVector<TranscriptLine>& lines,
                 ls.micRelDb = micRel;
             if (kindRelativeDb(activity, r.speechLevels, TrackKind::Loopback, ls.startMs, ls.endMs, &loopRel))
                 ls.loopRelDb = loopRel;
-            if (!hasMic || !hasLoop) continue;                               // valamelyik oldal nem fedi le
-            if (mic < sides::kActiveDb && loop < sides::kActiveDb) continue; // egyik oldalon sincs jel
+            if (!hasMic || !hasLoop) continue;                               // one of the sides does not cover it
+            if (mic < sides::kActiveDb && loop < sides::kActiveDb) continue; // no signal on either side
             ls.localShare = sides::localShareFromDb(mic, loop);
             shares.append(ls.localShare);
         }
@@ -349,7 +349,7 @@ SideReport analyzeSides(const Meeting& m, const QVector<TranscriptLine>& lines,
             ++r.histogram[std::clamp(int(ls.localShare * 10.0f), 0, 9)];
     }
 
-    // Személyek oldala.
+    // People's sides.
     QHash<QString, int> personIdx;
     for (const QString& key : speakerOrder) {
         PersonSide p;
@@ -360,7 +360,7 @@ SideReport analyzeSides(const Meeting& m, const QVector<TranscriptLine>& lines,
         r.persons.append(p);
     }
     for (const LineSide& ls : r.lines) {
-        if (ls.ignored) continue;   // „nem azonosítható”: nem bizonyíték a személy oldalára
+        if (ls.ignored) continue;   // "unidentifiable": not evidence for the person's side
         PersonSide& p = r.persons[personIdx.value(ls.speakerKey)];
         p.allLines.add(ls.side);
         if (!ls.locked || ls.noisy) continue;
@@ -377,14 +377,14 @@ SideReport analyzeSides(const Meeting& m, const QVector<TranscriptLine>& lines,
             p.learnedSide = hints.learnedSides.value(p.personName.toCaseFolded(), Side::Unknown);
         if (!r.active) { p.basis = QStringLiteral("none"); continue; }
         if (p.manualSide != Side::Unknown) {
-            // A kézi sáv-beosztás az egyetlen igazság (a felhasználó mondta ki).
+            // The manual track assignment is the single truth (the user stated it).
             p.side = p.manualSide;
             p.confidence = 1.0f;
             p.basis = QStringLiteral("manual");
             continue;
         }
-        // Alapértelmezés: a tanult alapérték; különben a saját név → mic; a sávhoz kötött
-        // (fixedSpeaker) beszélő → a sáv oldala.
+        // Default: the learned default; otherwise the own name -> mic; the track-bound (fixedSpeaker) speaker ->
+        // the track's side.
         QString defBasis;
         if (p.learnedSide == Side::Local || p.learnedSide == Side::Remote) {
             p.defaultSide = p.learnedSide;
@@ -402,7 +402,7 @@ SideReport analyzeSides(const Meeting& m, const QVector<TranscriptLine>& lines,
                 }
             }
         }
-        // Az adatok ítélete a megerősített sorokból (Mixed nem számít).
+        // The verdict of the data from the confirmed lines (Mixed does not count).
         const int lr = p.localLines + p.remoteLines;
         Side dataSide = Side::Unknown;
         float maj = 0.0f;
@@ -436,9 +436,9 @@ SideReport analyzeSides(const Meeting& m, const QVector<TranscriptLine>& lines,
         }
     }
 
-    // Ellentmondások: a sor egyértelműen a beszélője oldalával ellentétes oldalon szólt.
+    // Contradictions: the line clearly sounded on the side opposite its speaker's side.
     for (const LineSide& ls : r.lines) {
-        if (ls.ignored) continue;   // „nem azonosítható”: sosem kerül újra az Átnézendőbe
+        if (ls.ignored) continue;   // "unidentifiable": never goes into "To review" again
         const PersonSide& p = r.persons.at(personIdx.value(ls.speakerKey));
         if (!opposite(ls.side, p.side)) continue;
         r.conflicts.append({ls.utteranceId, ls.startMs, ls.speakerKey, ls.side, p.side, ls.localShare});

@@ -35,7 +35,7 @@ qint64 VoiceCluster::speechMs() const
     return sum;
 }
 
-// ---- perzisztált elemzés ------------------------------------------------------------------
+// ---- persisted analysis ------------------------------------------------------------------
 
 QString ParticipantAnalysisFile::filePath(const QString& meetingFolder)
 {
@@ -147,7 +147,7 @@ QVector<SpeechWindow> speechWindows(const TrackActivity& t, const QString& side)
     int i = 0;
     while (i < n) {
         if (!trackspeech::isSpeechFrame(t, i)) { ++i; continue; }
-        // Egy szakasz: beszéd-keretek, legfeljebb gapFrames szünettel.
+        // One span: speech frames, with pauses of at most gapFrames.
         const int start = i;
         int last = i, gap = 0;
         for (++i; i < n; ++i) {
@@ -156,7 +156,7 @@ QVector<SpeechWindow> speechWindows(const TrackActivity& t, const QString& side)
         }
         const qint64 s = t.originMs + qint64(start) * t.frameMs;
         const qint64 e = t.originMs + qint64(last + 1) * t.frameMs;
-        // Darabolás legfeljebb kMaxWindowMs-es ablakokra; a kMinWindowMs-nél rövidebb maradék kimarad.
+        // Split into windows of at most kMaxWindowMs; a remainder shorter than kMinWindowMs is dropped.
         for (qint64 w = s; e - w >= kMinWindowMs; w += kMaxWindowMs)
             out.append({t.trackId, side, w, std::min(e, w + kMaxWindowMs)});
         i = last + 1;
@@ -177,7 +177,7 @@ QVector<int> clusterEmbeddings(const QVector<QVector<float>>& embs, double merge
     for (int i = 0; i < n; ++i) label[i] = i;
     if (n <= 1) return label;
 
-    QVector<QVector<float>> cent = embs;   // L2-normalizált embeddingek
+    QVector<QVector<float>> cent = embs;   // L2-normalized embeddings
     QVector<int> sz(n, 1);
     QVector<bool> alive(n, true);
     for (;;) {
@@ -201,7 +201,7 @@ QVector<int> clusterEmbeddings(const QVector<QVector<float>>& embs, double merge
 
 PcmReader filePcmReader(const Meeting& m)
 {
-    // Logikai sávonként a szakaszok (eltolás szerint növekvő sorrendben).
+    // Per logical track the spans (in ascending offset order).
     QHash<QString, QVector<Track>> parts;
     const QVector<tracknames::SegmentInfo> seg = tracknames::segments(m.tracks);
     for (int i = 0; i < m.tracks.size(); ++i) {
@@ -214,7 +214,7 @@ PcmReader filePcmReader(const Meeting& m)
     const QString folder = m.folder;
     return [parts, folder](const QString& trackId, qint64 startMs, qint64 endMs) -> QVector<float> {
         const QVector<Track> list = parts.value(trackId);
-        const Track* use = nullptr;   // a kezdéskor szóló (legkésőbb indult) szakasz
+        const Track* use = nullptr;   // the span sounding at the start (the latest started)
         for (const Track& t : list)
             if (t.startOffsetMs <= startMs || !use) use = &t;
         if (!use || use->file.isEmpty()) return {};
@@ -235,7 +235,7 @@ ClusterSet computeVoiceClusters(const Meeting& m, const MeetingActivity& activit
     }
     out.modelIds = embedders.loadedModelIds();
 
-    // A logikai sávok fájlneve a mintához (sampleRef).
+    // The logical tracks' file names for the sample (sampleRef).
     QHash<QString, QString> fileOf;
     for (const Track& t : m.tracks)
         if (!fileOf.contains(t.id)) fileOf.insert(t.id, t.file);
@@ -271,7 +271,7 @@ ClusterSet computeVoiceClusters(const Meeting& m, const MeetingActivity& activit
         for (int i = 0; i < labels.size(); ++i) groups[labels[i]].append(i);
         for (auto it = groups.constBegin(); it != groups.constEnd(); ++it) {
             const QVector<int>& idxs = it.value();
-            // Zaj-szűrés: az egyablakos klaszter kimarad, ha van más is.
+            // Noise filter: a single-window cluster is dropped if there is another.
             if (idxs.size() < 2 && groups.size() > 1) continue;
 
             VoiceCluster c;
@@ -287,7 +287,7 @@ ClusterSet computeVoiceClusters(const Meeting& m, const MeetingActivity& activit
                 }
                 c.centroid.insert(id, VoiceprintStore::l2normalize(acc));
             }
-            // Medoid: a fúziós centroidhoz legközelebbi ablak.
+            // Medoid: the window nearest to the fused centroid.
             QVector<float> fc(embs.at(idxs.first()).size(), 0.0f);
             for (int i : idxs)
                 for (int k = 0; k < fc.size(); ++k) fc[k] += embs.at(i).at(k);
@@ -314,7 +314,7 @@ QVector<Evidence> participantEvidence(const Participant& p, bool heard, double s
     if (p.source == ParticipantSource::Manual)
         ev.append({EvidenceKind::Manual, Polarity::Support, 1.0, QCoreApplication::translate("ParticipantAnalysis", "kézzel felvéve"), {}, {}});
 
-    // Hang.
+    // Voice.
     if (heard && named) {
         ev.append({EvidenceKind::Voice, Polarity::Support, score,
                    QCoreApplication::translate("ParticipantAnalysis", "hang %1%").arg(percent(score)), {}, QStringLiteral("samples")});
@@ -331,8 +331,8 @@ QVector<Evidence> participantEvidence(const Participant& p, bool heard, double s
                        {}, QStringLiteral("samples")});
     }
 
-    // Sáv-oldal: a kézi sáv-kötés (Participant::tracks) az igazság, ha van.
-    QStringList manualSides;   // mikrofon elöl
+    // Track side: the manual track binding (Participant::tracks) is the truth, if present.
+    QStringList manualSides;   // mic first
     for (const QString& side : {kSideMic, kSideLoopback})
         for (const Track& t : m.tracks)
             if (p.tracks.contains(t.id) && sideOf(t.kind) == side && !manualSides.contains(side))
@@ -344,7 +344,7 @@ QVector<Evidence> participantEvidence(const Participant& p, bool heard, double s
                    QCoreApplication::translate("ParticipantAnalysis", "kézzel: %1").arg(labels.join(QCoreApplication::translate("ParticipantAnalysis", " és "))), {},
                    QStringLiteral("tracks")});
     }
-    // Különben a hallott oldal: a saját hang a mikrofonon várható.
+    // Otherwise the heard side: the user's own voice is expected on the microphone.
     else if (heard && !p.sides.isEmpty()) {
         QStringList labels;
         for (const QString& s : p.sides) labels << sideLabel(s);
@@ -360,8 +360,8 @@ QVector<Evidence> participantEvidence(const Participant& p, bool heard, double s
             ev.append({EvidenceKind::Side, Polarity::Neutral, 0.0, text, {}, QStringLiteral("tracks")});
     }
 
-    // Címke (UX-terv 4.): kézi címke VAGY tanult kapcsolat támogat; az ellentmondás itt csak
-    // tájékoztat (semleges): a „Ki volt ott?” csoportját és alapjelölését a hang dönti el.
+    // Tag (UX plan rule 4): a manual tag OR a learned association supports; a contradiction only informs
+    // here (neutral): the voice decides the "Who was there?" group and the default checking.
     if (named && ctx.tagEvidence) {
         Evidence e;
         if (ranking::tagEvidenceOf(ctx.tagEvidence(p.personName, m.tagIds, m.id), p.personName, &e)) {
@@ -375,12 +375,12 @@ QVector<Evidence> participantEvidence(const Participant& p, bool heard, double s
 QVector<Participant> buildParticipants(ClusterSet& clusters, const Meeting& m,
                                        const CandidateContext& ctx)
 {
-    // A megmaradók: a kézi résztvevők (az előző elemzés bizonyítékai nélkül).
+    // The survivors: the manual participants (without the previous analysis's evidence).
     QVector<Participant> out;
     QSet<QString> manualNames;
     QSet<QString> approvedNames;
     QSet<QString> usedIds;
-    QHash<QString, QStringList> manualTracks;   // név → kézi sáv-kötés (az újraelemzés is megtartja)
+    QHash<QString, QStringList> manualTracks;   // name -> manual track binding (a re-analysis keeps it too)
     for (const Participant& p : m.participants) {
         if (p.approved && !p.personName.isEmpty()) approvedNames.insert(p.personName.toLower());
         if (!p.tracks.isEmpty() && !p.personName.isEmpty()) manualTracks.insert(p.personName.toLower(), p.tracks);
@@ -394,7 +394,7 @@ QVector<Participant> buildParticipants(ClusterSet& clusters, const Meeting& m,
         if (!k.personName.isEmpty()) manualNames.insert(k.personName.toLower());
     }
 
-    // Párosítás klaszterenként (kézi résztvevő előnnyel).
+    // Matching per cluster (a manual participant has an advantage).
     qint64 totalMs = 0;
     for (VoiceCluster& c : clusters.clusters) {
         totalMs += c.speechMs();
@@ -406,8 +406,8 @@ QVector<Participant> buildParticipants(ClusterSet& clusters, const Meeting& m,
         double pickScore = -1.0, bestEff = -2.0;
         for (const VoiceMatch& vm : ranked) {
             if (vm.name.isEmpty()) continue;
-            // Kézi sáv-kötés („Melyik sávon beszél?"): más sávon szóló klaszter nem lehet ő; a
-            // kötött sávon szóló előnyt kap (mint a kézi résztvevő).
+            // Manual track binding ("Which track do they speak on?"): a cluster speaking on another track cannot be
+            // them; one speaking on the bound track gets an advantage (like a manual participant).
             const auto bound = manualTracks.constFind(vm.name.toLower());
             const bool hasBinding = bound != manualTracks.constEnd();
             if (hasBinding && !c.trackId.isEmpty() && !bound->contains(c.trackId)) continue;
@@ -416,7 +416,7 @@ QVector<Participant> buildParticipants(ClusterSet& clusters, const Meeting& m,
             if (eff > bestEff) { bestEff = eff; pick = vm.name; pickScore = vm.score; }
         }
         if (bestEff >= kMatchThreshold) { c.matchName = pick; c.matchScore = pickScore; }
-        else if (!ranked.isEmpty()) c.matchScore = ranked.first().score;   // név nélkül, tájékoztató
+        else if (!ranked.isEmpty()) c.matchScore = ranked.first().score;   // without a name, informational
     }
 
     auto newId = [&usedIds]() {
@@ -426,11 +426,11 @@ QVector<Participant> buildParticipants(ClusterSet& clusters, const Meeting& m,
         }
     };
 
-    // Klaszterek → résztvevők: azonos név egy résztvevő; névtelen klaszter külön.
-    QHash<QString, int> byName;   // kisbetűs név → index az out-ban
+    // Clusters -> participants: the same name is one participant; an anonymous cluster stands separate.
+    QHash<QString, int> byName;   // lowercase name -> index in out
     for (int i = 0; i < out.size(); ++i)
         if (!out.at(i).personName.isEmpty()) byName.insert(out.at(i).personName.toLower(), i);
-    QHash<int, double> bestScore;   // résztvevő-index → legjobb hang-pontszám
+    QHash<int, double> bestScore;   // participant index -> best voice score
     QHash<int, qint64> speech;
     for (VoiceCluster& c : clusters.clusters) {
         int idx = -1;
@@ -461,8 +461,8 @@ QVector<Participant> buildParticipants(ClusterSet& clusters, const Meeting& m,
         p.evidence = participantEvidence(p, heard, bestScore.value(i, -1.0), m, ctx);
     }
 
-    // Sorrend: csoport (Biztos, Kétséges, Meghívott), azon belül beszédarány; a kézi, nem hallott
-    // résztvevők a csoportjuk végén.
+    // Order: group (Certain, Doubtful, Invited), within that by speech share; manual, unheard participants
+    // at the end of their group.
     std::stable_sort(out.begin(), out.end(), [](const Participant& a, const Participant& b) {
         const int ga = int(participantGroup(a)), gb = int(participantGroup(b));
         if (ga != gb) return ga < gb;
@@ -518,7 +518,7 @@ bool bindRawSpeakers(QVector<Participant>& ps, const QVector<VoiceCluster>& clus
     QHash<QString, int> idxOf;
     for (int i = 0; i < ps.size(); ++i) idxOf.insert(ps.at(i).id, i);
 
-    // Nyers beszélőnként: (résztvevő, oldal) → átfedés ms.
+    // Per raw speaker: (participant, side) -> overlap ms.
     QStringList rawOrder;
     QHash<QString, QHash<int, QHash<QString, qint64>>> ov;
     QHash<QString, qint64> rawDur;
@@ -543,7 +543,7 @@ bool bindRawSpeakers(QVector<Participant>& ps, const QVector<VoiceCluster>& clus
         const auto& per = ov.value(r);
         qint64 total = 0;
         QHash<QString, qint64> sideTotal;
-        QHash<QString, QPair<int, qint64>> bestBySide;   // oldal → (résztvevő, átfedés)
+        QHash<QString, QPair<int, qint64>> bestBySide;   // side -> (participant, overlap)
         QHash<int, qint64> perPart;
         for (auto it = per.cbegin(); it != per.cend(); ++it) {
             for (auto jt = it->cbegin(); jt != it->cend(); ++jt) {
@@ -580,7 +580,7 @@ bool bindRawSpeakers(QVector<Participant>& ps, const QVector<VoiceCluster>& clus
     bool changed = false;
     for (int i = 0; i < ps.size(); ++i) {
         if (ps[i].rawSpeakerIds != raw[i]) { ps[i].rawSpeakerIds = raw[i]; changed = true; }
-        // A beszédarány az átiratból (ha van kötés); különben marad az elemzésé.
+        // The speech share from the transcript (if there is a binding); otherwise the analysis's stays.
         if (!raw[i].isEmpty() && !qFuzzyCompare(1.0 + ps[i].talkShare, 1.0 + talk[i])) {
             ps[i].talkShare = talk[i];
             changed = true;
@@ -601,7 +601,7 @@ QString lineSide(const TranscriptLine& line, const QVector<VoiceCluster>& cluste
         }
     if (mic != loop) return mic > loop ? kSideMic : kSideLoopback;
     if (!activity) return QString();
-    // Sáv-energia: a zajpadló feletti teljesítmény oldalanként.
+    // Track energy: the power above the noise floor per side.
     double pm = 0.0, pl = 0.0;
     for (const TrackActivity& t : activity->tracks) {
         const auto db = windowEnergyDb(t, line.startMs, line.endMs);
@@ -619,12 +619,12 @@ QVector<SpeakerBinding> approvalBindings(const QVector<Participant>& all, const 
                                          const QVector<VoiceCluster>& clusters,
                                          const MeetingActivity* activity, const Meeting* meeting)
 {
-    // Sáv-kizárás (G10): ha minden bejelölt, elnevezett résztvevőnek van kézi sávja, a sor
-    // egyértelmű oldala (v3 besorolás) kizárja azt, akinek egyik sávja sincs azon az oldalon.
+    // Track veto: if every checked, named participant has a manual track, the line's unambiguous side
+    // (the speech-level-normalized classification) excludes whoever has none of their tracks on that side.
     const bool veto = meeting && activity && sides::allNamedParticipantsBound(*meeting, all, acceptedIds);
     QVector<Side> sideOfLine;
     QHash<QString, int> lineIdx;
-    QHash<QString, Side> manualOf;   // résztvevő-id → a kézi sávjai oldala
+    QHash<QString, Side> manualOf;   // participant id -> side of their manual tracks
     if (veto) {
         sideOfLine = sides::classifyLineSides(*activity, lines);
         for (int i = 0; i < lines.size(); ++i) lineIdx.insert(lines[i].id, i);
@@ -632,8 +632,8 @@ QVector<SpeakerBinding> approvalBindings(const QVector<Participant>& all, const 
             if (acceptedIds.contains(p.id) && !p.personName.isEmpty())
                 manualOf.insert(p.id, sides::sideOfTracks(*meeting, p.tracks));
     }
-    // A kizárt sor legjobb nem-kizárt gazdája: a bejelölt, elnevezett résztvevő, akinek a
-    // klaszterei a legtöbbet fedik a sorból (más nincs → üres: a sor névtelen marad).
+    // The excluded line's best non-excluded owner: the checked, named participant whose clusters cover the
+    // most of the line (none -> empty: the line stays anonymous).
     auto alternativeFor = [&](const Participant& self, const TranscriptLine& l, Side ls) -> QString {
         QHash<QString, qint64> ov;
         for (const VoiceCluster& c : clusters) {
@@ -649,7 +649,7 @@ QVector<SpeakerBinding> approvalBindings(const QVector<Participant>& all, const 
     };
 
     QVector<SpeakerBinding> out;
-    QSet<QString> acceptedRaw;   // a bejelöltekhez kötött nyers címkék
+    QSet<QString> acceptedRaw;   // raw labels bound to the checked ones
     for (const Participant& p : all) {
         if (!acceptedIds.contains(p.id) || p.personName.isEmpty()) continue;
         for (const QString& id : p.rawSpeakerIds) {
@@ -661,8 +661,8 @@ QVector<SpeakerBinding> approvalBindings(const QVector<Participant>& all, const 
                     for (const TranscriptLine& l : lines)
                         if (l.rawLabel == label) mine << l.id;
             } else {
-                // Kétoldalú nyers beszélő: csak az adott oldal sorai. Az eldönthetetlen sor ahhoz az
-                // oldalhoz kerül, amelyiken a nyers beszélő többet beszélt (ez a „fő" oldal).
+                // A two-sided raw speaker: only that side's lines. An undecidable line goes to the side on which the raw
+                // speaker spoke more (the "main" side).
                 qint64 micMs = 0, loopMs = 0;
                 QStringList undecided;
                 for (const TranscriptLine& l : lines) {
@@ -676,9 +676,9 @@ QVector<SpeakerBinding> approvalBindings(const QVector<Participant>& all, const 
                 const QString major = micMs >= loopMs ? kSideMic : kSideLoopback;
                 if (side == major) mine << undecided;
             }
-            // A kizárt sorok kiválnak: a másik oldal legjobb nem-kizárt résztvevőjéhez, vagy névtelenek.
+            // Excluded lines split off: to the best non-excluded participant of the other side, or become anonymous.
             QStringList kept;
-            QMap<QString, QStringList> moved;   // személy (üres = névtelen) → sorok
+            QMap<QString, QStringList> moved;   // person (empty = anonymous) -> lines
             for (const QString& uid : std::as_const(mine)) {
                 const int li = lineIdx.value(uid, -1);
                 const Side ls = li >= 0 ? sideOfLine.value(li, Side::Unknown) : Side::Unknown;
@@ -686,15 +686,15 @@ QVector<SpeakerBinding> approvalBindings(const QVector<Participant>& all, const 
                 moved[alternativeFor(p, lines[li], ls)] << uid;
             }
             if (side.isEmpty() && moved.isEmpty()) { out.append({label, p.personName, {}}); continue; }
-            // Az egész nyers beszélő névtelen (a korábbi kötés se vigye a kizárt sorokat), a
-            // megmaradó sorok a személyé.
+            // The whole raw speaker becomes anonymous (an earlier binding must not carry the excluded lines
+            // either), the remaining lines go to the person.
             if (side.isEmpty()) out.append({label, QString(), {}});
             if (!kept.isEmpty()) out.append({label, p.personName, kept});
             for (auto it = moved.cbegin(); it != moved.cend(); ++it)
                 if (!it.key().isEmpty()) out.append({label, it.key(), it.value()});
         }
     }
-    // A csak ki nem jelölt résztvevőkhöz kötött (egész) nyers beszélők névtelenre.
+    // (Whole) raw speakers bound only to unchecked participants go anonymous.
     for (const Participant& p : all) {
         if (acceptedIds.contains(p.id)) continue;
         for (const QString& id : p.rawSpeakerIds) {

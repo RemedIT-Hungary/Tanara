@@ -37,7 +37,7 @@ int partBudgetChars(int contextTokens, qint64 promptChars, int outputTokens)
 
 int typicalSummaryPartNeed()
 {
-    // ~15 perc magyar beszéd ≈ 13–15 ezer karakter; a jegyzet-prompt + fejléc ≈ 3–4 ezer.
+    // ~15 minutes of Hungarian speech = 13-15 thousand characters; the notes prompt + header = 3-4 thousand.
     return callContextNeed(18000, 3000);
 }
 
@@ -56,7 +56,7 @@ int contextStepFor(int need, int maxContext)
     return step;
 }
 
-// ---- kontextus-túllépés felismerése ------------------------------------------------------
+// ---- recognizing a context overflow ------------------------------------------------------
 
 namespace {
 
@@ -80,7 +80,7 @@ bool textMentionsOverflow(const QString& text)
     return re.match(text).hasMatch();
 }
 
-// A szövegből a két szám (llama.cpp, OpenAI, vLLM, Anthropic alakok).
+// The two numbers from the text (llama.cpp, OpenAI, vLLM, Anthropic forms).
 void numbersFromText(const QString& text, ContextOverflow* o)
 {
     static const QRegularExpression llama(QStringLiteral(
@@ -118,7 +118,7 @@ int intField(const QJsonObject& o, const char* key)
 
 void scanObject(const QJsonObject& root, ContextOverflow* o, int depth);
 
-// Egy (esetleg JSON-t tartalmazó) szöveg feldolgozása: a beágyazott JSON-objektum is.
+// Processing a text that may contain JSON: the embedded JSON object too.
 void scanText(const QString& text, ContextOverflow* o, int depth)
 {
     if (text.isEmpty()) return;
@@ -176,7 +176,7 @@ ContextOverflow parseContextOverflow(const QByteArray& body, const QString& text
     return o;
 }
 
-// ---- LM Studio natív API -------------------------------------------------------------------
+// ---- LM Studio native API -------------------------------------------------------------------
 
 QString nativeApiRoot(const QString& baseUrl)
 {
@@ -196,8 +196,8 @@ LlmServerInfo parseLmStudioModels(const QByteArray& json, const QString& model)
     const QJsonValue mv = doc.object().value(QStringLiteral("models"));
     if (!mv.isArray()) return info;
     const QJsonArray models = mv.toArray();
-    // A natív lista elemei kulcsot és loaded_instances-t hordoznak; a Soniox-szerű
-    // {"models":[{"id":…}]} nem ilyen → ismeretlen szerver.
+    // The native list's items carry a key and loaded_instances; Soniox-style {"models":[{"id":...}]} is
+    // not like that -> unknown server.
     bool native = models.isEmpty();
     for (const QJsonValue& v : models) {
         const QJsonObject m = v.toObject();
@@ -247,11 +247,11 @@ PreloadDecision decidePreload(const LlmServerInfo& info, int need, int setting, 
 
     const int effectiveNeed = qMax(need, floor);
     int target = setting > 0 ? setting : contextStepFor(effectiveNeed, info.maxContext);
-    // A kifejezett kérés („Betöltés nagyobb kontextussal”) a rögzített beállítást is felülírja.
+    // An explicit request ("Load with a larger context") also overrides the fixed setting.
     if (floor > 0) target = qMax(target, contextStepFor(floor, info.maxContext));
     if (info.maxContext > 0) target = qMin(target, info.maxContext);
-    // Amit a betöltött példánytól megkövetelünk: az igény, de legfeljebb amit kérnénk (ha a
-    // kérendő kisebb, egy újratöltés úgysem segítene).
+    // What we require of the loaded instance: the need, but at most what we would request (if the
+    // requestable is smaller, a reload would not help anyway).
     const int required = qMin(effectiveNeed, target);
     d.contextLength = target;
     d.contextInsufficient = target < effectiveNeed;
@@ -259,7 +259,7 @@ PreloadDecision decidePreload(const LlmServerInfo& info, int need, int setting, 
     bool anyCtxOk = false;
     for (const LlmInstanceInfo& i : info.instances) {
         const bool ctxOk = i.contextLength < 0 || i.contextLength >= required;
-        const bool parOk = i.parallel <= 1;   // -1 (ismeretlen) → régebbi szerver, egy szál
+        const bool parOk = i.parallel <= 1;   // -1 (unknown) = an older server, one thread
         if (ctxOk && parOk) {
             d.action = PreloadDecision::Action::None;
             d.reason = QStringLiteral("ok");
@@ -276,8 +276,8 @@ PreloadDecision decidePreload(const LlmServerInfo& info, int need, int setting, 
     }
     d.action = PreloadDecision::Action::Reload;
     d.reason = anyCtxOk ? QStringLiteral("parallel") : QStringLiteral("context-small");
-    // Csak párhuzamosság miatti újratöltésnél a meglévő (nagyobb) kontextust megtartjuk —
-    // automatikus módban; a rögzített beállítás a felhasználó döntése.
+    // For a reload caused only by parallelism, we keep the existing (larger) context in automatic mode;
+    // a fixed setting is the user's decision.
     if (anyCtxOk && setting <= 0) {
         for (const LlmInstanceInfo& i : info.instances)
             if (i.contextLength > d.contextLength) d.contextLength = i.contextLength;

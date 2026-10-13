@@ -1,30 +1,26 @@
 #pragma once
 //
-// MeetingUndoService — EGY megbeszélés közös visszavonási verme (v3 4. döntés: „One shared undo
-// stack for tags and speakers”). UI-független QObject; példányt az AppController::meetingUndo ad.
+// MeetingUndoService: ONE meeting's shared undo stack (design decision: "One shared undo stack for
+// tags and speakers"). A UI-independent QObject; an instance comes from AppController::meetingUndo.
 //
-// A meglévő két verem érintetlen marad: a SpeakerEditoré (átirat-szerkesztő) és a TagServiceé
-// (címkék, globális). Ez a réteg csak azt tartja nyilván, hogy IDŐRENDBEN melyik forrás lépése
-// a legfrissebb, és az undo() azt vonja vissza a saját forrásán át. Harmadik forrásként a
-// saját lépéseit is vezeti: a résztvevő-műveleteket (jóváhagyás, kihagyás, „Csak én beszéltem”,
-// sáv be- / kiemelése, résztvevő felvétele / törlése, leírás), amelyeket az AppController
-// rögzít egy visszaállító függvénnyel.
+// The two existing stacks stay untouched: SpeakerEditor's (transcript editor) and TagService's
+// (tags, global). This layer only keeps track of which source's step is the most recent IN TIME ORDER,
+// and undo() reverses that through its own source. As a third source it also keeps its own steps: the
+// participant operations (approve, skip, "Only I spoke", including / removing a track, adding /
+// deleting a participant, description), which AppController records with a restoring function.
 //
-// Szabályok:
-//  - A forrás-vermek lépéseit sorszám azonosítja (SpeakerEditor::undoSerials,
-//    TagService::undoSerials). Új sorszám a forrás tetején → új bejegyzés a közös verem tetején
-//    (a szerkesztő redo-ja is ilyen: a visszahozott lépés a legfrissebb). Eltűnt sorszám (a
-//    forrásban közvetlenül visszavonták, a verem újratöltődött / túlcsordult) → a bejegyzés is
-//    kiesik.
-//  - A TagService globális: csak a meetinghez tartozó lépései kerülnek ide (a meeting címkéit
-//    érintő, a meetingre szóló elutasítás, ill. a TagService::beginGroup(label, meetingId)
-//    csoport). Ha egy ide tartozó címke-lépés fölé a TagService-ben más (pl. a Címkék ablak)
-//    lépése került, az nem vonható vissza innen, amíg az ott van: a bejegyzés átugródik.
-//  - Egy résztvevő-lépés „elnyelheti” a művelet közben keletkezett szerkesztő-lépést (pl. a
-//    jóváhagyás kötései): ilyenkor az egy bejegyzés, és a visszavonása mindkettőt visszacsinálja
-//    (a szerkesztőét csak akkor, ha még az van a tetején).
-//  - A csatolás előtt már meglévő forrás-lépések nem kerülnek ide.
-//
+// Rules:
+//  - Steps of the source stacks are identified by a serial number (SpeakerEditor::undoSerials,
+//    TagService::undoSerials). A new serial on a source's top -> a new entry on top of the shared stack
+//    (the editor's redo is like that too: the restored step is the most recent). A vanished serial (it
+//    was undone directly in the source, the stack reloaded / overflowed) -> the entry drops out too.
+//  - TagService is global: only its steps belonging to the meeting come here (those touching the
+//    meeting's tags, a rejection for the meeting, or a TagService::beginGroup(label, meetingId) group). If
+//    another step of TagService (e.g. from the Tags window) landed above a tag step belonging here, it
+//    cannot be undone from here while that one is there: the entry is skipped.
+//  - A participant step may "absorb" an editor step created during the operation (e.g. the approval's
+//    bindings): then it is one entry, and undoing it reverses both (the editor's only if it is still on top).
+//  - Source steps that existed before attaching do not come here.
 #include <QObject>
 #include <QPointer>
 #include <QString>
@@ -51,35 +47,35 @@ public:
 
     QString meetingId() const;
 
-    // A források csatolása (nullptr: leválasztás — a forrás bejegyzései kiesnek). A szerkesztő
-    // megszűnésekor magától leválik.
+    // Attaching the sources (nullptr: detach, the source's entries drop out). It detaches by itself when the
+    // editor goes away.
     void attachSpeakerEditor(SpeakerEditor* editor);
     void attachTagService(TagService* tags);
     SpeakerEditor* speakerEditor() const;
     TagService* tagService() const;
 
-    // Saját (résztvevő-) lépés. undo: a visszaállítás (a fő szálon, a közös undo() hívja).
-    // absorbEditorSerial: a művelet közben keletkezett szerkesztő-lépés sorszáma (0: nincs) —
-    // a bejegyzése beleolvad ebbe a lépésbe.
+    // Own (participant) step. undo: the restore (on the main thread, called by the shared undo()).
+    // absorbEditorSerial: serial of the editor step created during the operation (0: none); its entry
+    // merges into this step.
     void pushStep(const QString& text, std::function<void()> undo, quint64 absorbEditorSerial = 0);
 
-    // A legfrissebb visszavonható bejegyzés (a blokkolt címke-lépések átugorva).
+    // The most recent undoable entry (blocked tag steps skipped).
     bool canUndo() const;
     QString undoText() const;
-    Source undoSource() const;   // érvénytelen, ha !canUndo()
-    // Az összes bejegyzés (a blokkoltakkal együtt) — diagnosztika / tesztek.
+    Source undoSource() const;   // invalid if !canUndo()
+    // All entries (including blocked ones): diagnostics / tests.
     int count() const;
-    // A bejegyzések szövegei időrendben (régebbi elöl) — diagnosztika / tesztek.
+    // The entries' texts in time order (oldest first): diagnostics / tests.
     QStringList texts() const;
 
 public slots:
-    // A legfrissebb visszavonása a saját forrásán át. false: nincs mit.
+    // Undoes the most recent through its own source. false: nothing to undo.
     bool undo();
 
 signals:
-    // canUndo / undoText / a bejegyzések változtak.
+    // canUndo / undoText / the entries changed.
     void changed();
-    // Egy lépés visszavonva (a „Visszavonva: …” visszajelzéshez).
+    // A step was undone (for the "Undone: ..." feedback).
     void undone(QString text, tanara::MeetingUndoService::Source source);
 
 private:

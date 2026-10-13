@@ -19,7 +19,7 @@ namespace {
 
 QString defaultSecretsPath()
 {
-    // <metaadat-mappa>/secrets.json — ~/.tanara vagy TANARA_HOME (tanara/Paths.h).
+    // <metadata folder>/secrets.json: ~/.tanara or TANARA_HOME (tanara/Paths.h).
     return paths::metadataFile(QStringLiteral("secrets.json"));
 }
 
@@ -61,8 +61,8 @@ void KeyStore::persist() const
     for (auto it = m_cache.constBegin(); it != m_cache.constEnd(); ++it)
         o.insert(it.key(), it.value());
 
-    // Atomikus írás: megszakadt írásnál a korábbi kulcsok megmaradnak. Az ideiglenes fájl
-    // már a commit ELŐTT 0600 — a kulcsok egy pillanatra se legyenek mások által olvashatók.
+    // Atomic write: if the write is interrupted, the earlier keys survive. The temporary file is
+    // already 0600 BEFORE the commit, so the keys are never readable by others even for a moment.
     QSaveFile f(m_filePath);
     if (!f.open(QIODevice::WriteOnly))
         return;
@@ -71,11 +71,11 @@ void KeyStore::persist() const
     if (!f.commit())
         return;
 
-    // Titkos fájl: csak a tulajdonos olvashassa/írhassa (chmod 600).
+    // Secret file: only the owner may read/write it (chmod 600).
     QFile::setPermissions(m_filePath,
                           QFile::ReadOwner | QFile::WriteOwner);
 #ifdef Q_OS_UNIX
-    // Biztos, ami biztos: POSIX 0600 explicit is.
+    // To be extra safe: an explicit POSIX 0600 too.
     ::chmod(m_filePath.toLocal8Bit().constData(), S_IRUSR | S_IWUSR);
 #endif
 }

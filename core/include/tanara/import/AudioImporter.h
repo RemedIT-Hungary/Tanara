@@ -1,26 +1,25 @@
 #pragma once
 //
-// AudioImporter — meglévő hang- (vagy videó-) fájlokból új meeting, „mintha külső
-// interfészen vettük volna fel”: forrásonként egy sáv, vagy — ha a felhasználó kéri —
-// a többcsatornás fájl csatornánként külön sávra bontva. UI-független (QtCore).
+// AudioImporter: a new meeting from existing audio (or video) files, "as if recorded on an
+// external interface": one track per source or, on request, a multichannel file split into one track
+// per channel. UI-independent (QtCore).
 //
-//  - A forrásfájlokhoz NEM nyúl (csak olvassa őket); a sávok ffmpeg-gel ugyanabba a
-//    lemez-formába kerülnek, mint a felvett sávok: track_<slug>.ogg, Opus, 48 kHz, a
-//    beállított bitrátával (opusBitrateKbps). Így a TrackCatalog, a lekeverés, a
-//    hullámforma, a hang-azonosítás és az átirat-szerkesztő változatlanul működik.
-//  - Több fájl: mind a 0. időpontban indul (nincs eltolás / szinkronizálás).
-//  - Fájlonként az ELSŐ hangfolyam kerül be (videónál a hangja).
-//  - Az importált sáv fajtája TrackKind::Other, fixedSpeaker = false (minden hangja a
-//    beszélő-szétválasztáson megy át), a neve a fájl neve kiterjesztés nélkül, ill. bontott
-//    csatornánál „Bal csatorna” / „Jobb csatorna” / „N. csatorna”. Egy sáv megjelölhető a
-//    felhasználó saját mikrofonjaként: az TrackKind::Mic, fixedSpeaker = true, a beszélője
-//    a felhasználó neve (ha nincs beállítva: „Mikrofon 1”, mint a felvett sávoknál).
-//  - Félkész meeting SOSEM látszik: a kódolás egy rejtett <audioDir>/.import-<id> mappába
-//    megy (az árva-helyreállítás a ponttal kezdődő mappákat nem nézi); csak a teljes siker
-//    után kap végleges nevet és meeting.json-t. Hiba / megszakítás után a mappa törlődik.
-//  - Lekeverést az importáló NEM készít: azt a hívó (AppController) indítja a mixdownMode
-//    szerint, pontosan úgy, mint egy felvétel végén.
-//
+//  - It does NOT touch the source files (only reads them); the tracks go through ffmpeg into the
+//    same on-disk form as recorded tracks: track_<slug>.ogg, Opus, 48 kHz, at the configured
+//    bitrate (opusBitrateKbps). So TrackCatalog, the mixdown, the waveform, voice identification
+//    and the transcript editor work unchanged.
+//  - Several files: all start at time 0 (no offset / synchronization).
+//  - Per file the FIRST audio stream is taken (for video, its audio).
+//  - The imported track's kind is TrackKind::Other, fixedSpeaker = false (all its audio goes
+//    through speaker separation), its name is the file name without extension, or for a split
+//    channel "Left channel" / "Right channel" / "channel N" (Hungarian captions in the UI). One track
+//    can be marked as the user's own microphone: it becomes TrackKind::Mic, fixedSpeaker = true, its
+//    speaker is the user's name (if unset: "Microphone 1", as for recorded tracks).
+//  - A half-made meeting is NEVER visible: encoding goes into a hidden <audioDir>/.import-<id>
+//    folder (orphan recovery skips dot-prefixed folders); only after full success does it get its
+//    final name and meeting.json. After an error / cancel the folder is deleted.
+//  - The importer does NOT make a mixdown: the caller (AppController) starts it per mixdownMode,
+//    exactly as at the end of a recording.
 #include "tanara/Types.h"
 
 #include <QObject>
@@ -31,66 +30,66 @@ namespace tanara {
 
 class MeetingStore;
 
-// Egy forrásfájl ffprobe-eredménye.
+// ffprobe result of one source file.
 struct ImportFileInfo {
-    QString   path;               // abszolút út
-    bool      ok = false;         // van benne dekódolható hangfolyam
-    QString   error;              // !ok: emberi magyarázat
-    qint64    durationMs = 0;     // 0 = a konténer nem mondja meg (a haladás ilyenkor határozatlan)
+    QString   path;               // absolute path
+    bool      ok = false;         // contains a decodable audio stream
+    QString   error;              // !ok: human explanation
+    qint64    durationMs = 0;     // 0 = the container does not say (progress is then indeterminate)
     int       channels = 0;
     int       sampleRate = 0;
-    QString   codec;              // pl. "pcm_s16le", "aac", "opus"
-    bool      hasVideo = false;   // videó-konténer (csak a hangja kerül be)
+    QString   codec;              // e.g. "pcm_s16le", "aac", "opus"
+    bool      hasVideo = false;   // a video container (only its audio is imported)
     qint64    sizeBytes = 0;
-    QDateTime createdAt;          // a fájlba ágyazott készítési idő; érvénytelen, ha nincs
-    QDateTime modifiedAt;         // a fájl módosítási ideje
+    QDateTime createdAt;          // creation time embedded in the file; invalid if none
+    QDateTime modifiedAt;         // file modification time
 
-    // A meeting kezdetének alapértelmezése: a beágyazott idő, különben a módosítási idő.
+    // Default for the meeting's start: the embedded time, otherwise the modification time.
     QDateTime bestDate() const { return createdAt.isValid() ? createdAt : modifiedAt; }
 };
 
 struct ImportSource {
     QString path;
-    bool    splitChannels = false;   // a csatornák külön sávra kerülnek (csak channels >= 2 mellett hat)
+    bool    splitChannels = false;   // channels become separate tracks (effective only with channels >= 2)
 };
 
-// Egy leendő sáv (a kérésből és a fájl-adatokból levezetve; a UI ebből mondja meg előre,
-// hány sáv lesz, és ezek közül választható a „saját mikrofon”).
+// A future track (derived from the request and the file info; the UI uses it to tell in advance how
+// many tracks there will be, and "own microphone" can be chosen among them).
 struct ImportPlannedTrack {
     int     sourceIndex = 0;
-    int     channel = -1;         // -1 = a teljes fájl; különben a forrás csatornája (0-tól)
-    int     channels = 1;         // a kész sáv csatornaszáma (1 vagy 2)
-    QString name;                 // megjelenített név
+    int     channel = -1;         // -1 = the whole file; otherwise the source's channel (from 0)
+    int     channels = 1;         // channel count of the finished track (1 or 2)
+    QString name;                 // display name
 };
 
 struct ImportRequest {
     QVector<ImportSource> sources;
-    QString   title;              // üres → audioimport::defaultTitle
-    QDateTime startedAt;          // érvénytelen → audioimport::defaultStart
-    int       ownTrack = -1;      // a tervezett sávok közül a saját mikrofon indexe; -1 = nincs
+    QString   title;              // empty = audioimport::defaultTitle
+    QDateTime startedAt;          // invalid = audioimport::defaultStart
+    int       ownTrack = -1;      // index among the planned tracks of the own microphone; -1 = none
 };
 
 namespace audioimport {
 
-// ffprobe, BLOKKOLVA (CLI, tesztek). A UI az AudioImporter::probeAsync-et használja.
+// ffprobe, BLOCKING (CLI, tests). The UI uses AudioImporter::probeAsync.
 ImportFileInfo probe(const QString& path, int timeoutMs = 20000);
 
-// Érdemes-e alapból csatornákra bontani: kettőnél több csatornás HANGfájlnál igen (több-
-// csatornás interfész felvétele); sima sztereónál és videónál nem (a felhasználó dönt).
+// Whether to split into channels by default: yes for an AUDIO file with more than two channels (a
+// multichannel interface recording); no for plain stereo and for video (the user decides).
 bool splitByDefault(const ImportFileInfo& info);
 
-// A leendő sávok a források sorrendjében. A `files` a `sources`-szal párhuzamos.
+// The future tracks in source order. `files` is parallel to `sources`.
 QVector<ImportPlannedTrack> planTracks(const QVector<ImportSource>& sources,
                                        const QVector<ImportFileInfo>& files);
 
-// Cím: a fájl neve kiterjesztés nélkül; több fájlnál a nevek közös eleje (ha értelmes),
-// különben az első fájl neve.
+// Title: the file name without extension; for several files the common start of the names (if
+// meaningful), otherwise the first file's name.
 QString defaultTitle(const QStringList& paths);
 
-// Kezdés: a források bestDate()-jei közül a legkorábbi érvényes; ha nincs, a mostani idő.
+// Start: the earliest valid of the sources' bestDate(); if none, the current time.
 QDateTime defaultStart(const QVector<ImportFileInfo>& files);
 
-// A csatorna neve: 2 csatornánál „Bal csatorna” / „Jobb csatorna”, különben „N. csatorna”.
+// Channel name: for 2 channels "Left channel" / "Right channel", otherwise "channel N" (Hungarian captions in the UI).
 QString channelName(int channel, int channelCount);
 
 } // namespace audioimport
@@ -101,28 +100,28 @@ public:
     explicit AudioImporter(MeetingStore* store, QObject* parent = nullptr);
     ~AudioImporter() override;
 
-    // A sávok Opus-bitrátája (kbps) és a „saját mikrofon” sáv beszélőneve.
+    // The tracks' Opus bitrate (kbps) and the speaker name of the "own microphone" track.
     void setOpusBitrateKbps(int kbps);
     void setUserSpeakerName(const QString& name);
 
-    bool    busy() const;          // fut egy importálás (egyszerre egy futhat)
-    QString currentId() const;     // a futó importálás (= a leendő meeting) azonosítója
+    bool    busy() const;          // an import is running (one at a time)
+    QString currentId() const;     // id of the running import (= the future meeting)
 
-    // Egy fájl adatainak lekérése a háttérben → probed(). Több is futhat egyszerre.
+    // Fetches a file's info in the background -> probed(). Several may run at once.
     void probeAsync(const QString& path);
 
-    // Importálás indítása. Visszaadja a leendő meeting azonosítóját; üres, ha már fut egy.
-    // Minden további eredmény jelben jön (started → progress… → finished | failed | cancelled).
+    // Starts the import. Returns the future meeting's id; empty if one is already running.
+    // Every further result comes in signals (started -> progress... -> finished | failed | cancelled).
     QString start(const ImportRequest& request);
 
 public slots:
-    // A futó importálás megszakítása: az ffmpeg leáll, a félkész mappa törlődik → cancelled().
+    // Cancels the running import: ffmpeg stops, the half-made folder is deleted -> cancelled().
     void cancel();
 
 signals:
     void probed(tanara::ImportFileInfo info);
     void started(QString importId, QString title);
-    // percent: 0..100 a teljes munkára, -1 = nem mérhető; fileIndex: a futó forrás (0-tól).
+    // percent: 0..100 of the total work, -1 = not measurable; fileIndex: the running source (from 0).
     void progress(QString importId, int percent, int fileIndex, int fileCount);
     void finished(QString importId, tanara::Meeting meeting);
     void failed(QString importId, QString message, QString detail);

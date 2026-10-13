@@ -1,8 +1,7 @@
 #pragma once
 //
-// A lusta lenyomat-pótlás (AppController::backfillVoiceprints) kimaradt mintái — a Beállítások ›
-// Beszélők „részben” állapotához: KINEK a mintái maradtak ki és miért. Sima érték-típus.
-//
+// The skipped samples of the lazy voiceprint backfill (AppController::backfillVoiceprints), for the
+// Settings > Speakers "partial" state: WHOSE samples were skipped and why. A plain value type.
 #include <QString>
 #include <QMetaType>
 
@@ -10,14 +9,14 @@ namespace tanara {
 
 struct VoiceprintBackfillSkip {
     enum class Reason {
-        MissingMeeting,   // a minta forrás-megbeszélése nincs meg (törölve / másik gépen)
-        MissingAudio,     // a megbeszélés megvan, de a minta hangja nem olvasható
-        Failed,           // a hang megvan, de a modell nem adott vektort (pl. túl rövid)
+        MissingMeeting,   // the sample's source meeting is gone (deleted / on another machine)
+        MissingAudio,     // the meeting exists, but the sample's audio is not readable
+        Failed,           // the audio exists, but the model gave no vector (e.g. too short)
     };
     QString person;
-    QString model;            // a hiányzó modell id-ja
-    QString sampleRef;        // a minta helye ("<folder>/track.ogg#start-end")
-    QString sourceMeetingId;  // üres is lehet
+    QString model;            // id of the missing model
+    QString sampleRef;        // the sample's location ("<folder>/track.ogg#start-end")
+    QString sourceMeetingId;  // may be empty
     Reason  reason = Reason::MissingAudio;
 };
 

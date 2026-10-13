@@ -39,7 +39,7 @@ void EmbeddingPreparer::setProvider(const QString& providerId, const QString& mo
     const bool changed = providerId != m_state.provider || model != m_state.model;
     stopJob();
     m_factory = std::move(factory);
-    if (changed) m_state.lastRun = QDateTime();   // más modell: a korábbi „naprakész” nem érvényes
+    if (changed) m_state.lastRun = QDateTime();   // another model: the earlier "up to date" is no longer valid
     m_state.provider = providerId;
     m_state.model = model;
     m_state.status = EmbeddingState::Idle;
@@ -62,7 +62,7 @@ QStringList EmbeddingPreparer::pending() const
 {
     QStringList out;
     if (!m_store || !m_index) return out;
-    for (const Meeting& m : m_store->loadAll())   // legújabb elöl: a friss megbeszélések előbb
+    for (const Meeting& m : m_store->loadAll())   // newest first: fresh meetings go first
         if (m.hasTranscript && !m_skip.contains(m.id) && !m_index->has(m.id)) out << m.id;
     return out;
 }
@@ -117,8 +117,8 @@ void EmbeddingPreparer::enqueue(const QString& meetingId)
 {
     Q_UNUSED(meetingId)
     if (!isConfigured()) return;
-    // A futó sor a következő lépésben úgyis megtalálja; különben csendben (hiba-állapotban is)
-    // újraindul — a felhasználó közben dolgozhat.
+    // The running queue will find it in the next step anyway; otherwise it restarts silently (even in
+    // the error state); the user may work meanwhile.
     if (m_state.status != EmbeddingState::Running) start();
 }
 
@@ -154,7 +154,7 @@ void EmbeddingPreparer::next()
     const Meeting m = m_store->load(m_current);
     QVector<EmbeddingChunk> chunks = EmbeddingIndex::chunkTranscript(speakeredit::loadTranscriptLines(m.folder));
     if (chunks.isEmpty()) {
-        m_skip << m_current;   // nincs szöveg: ebben a futásban kimarad
+        m_skip << m_current;   // no text: skipped in this run
         next();
         return;
     }

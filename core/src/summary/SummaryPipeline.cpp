@@ -17,10 +17,10 @@ namespace summarypipe {
 namespace {
 
 
-// Időpont: m:ss, mm:ss, mmm:ss vagy h:mm:ss.
+// Time of day: m:ss, mm:ss, mmm:ss or h:mm:ss.
 const QString kTime = QStringLiteral("\\d{1,3}:\\d{2}(?::\\d{2})?");
 
-// Időkeret egy címben: [12:30-18:05], (12:30–18:05), 12:30 - 18:05 …
+// A time frame in a title: [12:30-18:05], (12:30-18:05), 12:30 - 18:05 ...
 const QRegularExpression& rangeRe()
 {
     static const QRegularExpression re(
@@ -28,8 +28,8 @@ const QRegularExpression& rangeRe()
     return re;
 }
 
-// Egyetlen, zárójelezett időbélyeg egy sor elején: "[12:30]" / "(12:30) –". (Zárójel nélkül
-// nem vesszük le: a „14:00-kor kezdünk” szövegből nem vághatunk.)
+// A single, bracketed timestamp at the start of a line: "[12:30]" / "(12:30) -". (Without brackets we
+// do not strip it: we cannot cut from a text like "we start at 14:00".)
 const QRegularExpression& leadingTimeRe()
 {
     static const QRegularExpression re(
@@ -45,7 +45,7 @@ const QRegularExpression& bulletRe()
 
 enum class Sec { None, Topics, Decisions, Open, Actions, Summary };
 
-// Egy sor szakasz-fejléc-e (a díszítések — #, **, kettőspont — nélkül, ékezet-függetlenül).
+// Whether a line is a section heading (without decoration such as #, **, colon; accent-insensitive).
 Sec headingOf(const QString& line)
 {
     QString t = line.trimmed();
@@ -77,7 +77,7 @@ Sec headingOf(const QString& line)
     return Sec::None;
 }
 
-// A „nincs ilyen” jelölések (- none, - nincs, - n/a, - (none), - –).
+// The "none" markers (- none, - nincs, - n/a, - (none), - dash).
 bool isNoneItem(const QString& text)
 {
     QString f = textfold::foldQuery(text);
@@ -88,7 +88,7 @@ bool isNoneItem(const QString& text)
         || f == QLatin1String("nincs ilyen") || f == QLatin1String("semmi");
 }
 
-// Félkövér / dőlt jelölés levétele egy cím köré.
+// Stripping bold / italic markup around a title.
 QString unwrapEmphasis(QString s)
 {
     s = s.trimmed();
@@ -100,7 +100,7 @@ QString unwrapEmphasis(QString s)
     return s.trimmed();
 }
 
-// Egy tárgy-cím sor → MemoSection (cím + opcionális időkeret).
+// A subject-title line -> MemoSection (title + optional time frame).
 MemoSection topicFromTitle(QString title)
 {
     MemoSection m;
@@ -121,14 +121,14 @@ MemoSection topicFromTitle(QString title)
     title = unwrapEmphasis(title);
     static const QRegularExpression numPrefix(QStringLiteral("^\\s*\\d+[.)]\\s+"));
     title.remove(numPrefix);
-    // A maradék elválasztók (": ", " – ") levétele a cím széléről.
+    // Stripping the remaining separators (": ", " - ") from the title's edge.
     static const QRegularExpression edges(QStringLiteral("^[\\s:–—-]+|[\\s:–—-]+$"));
     title.remove(edges);
     m.title = title;
     return m;
 }
 
-// JSON-töredék sor (a jegyzetbe keveredett JSON nem lesz memó-pont). A „[12:30] …” nem az.
+// A JSON-fragment line (JSON mixed into the notes does not become a memo point). "[12:30] ..." is not one.
 bool looksLikeJson(const QString& t)
 {
     if (t.startsWith(QLatin1Char('{')) || t.startsWith(QLatin1Char('}'))
@@ -141,7 +141,7 @@ bool looksLikeJson(const QString& t)
     return false;
 }
 
-// A hiányzó időket kitölti, a kereteket a rész határai közé szorítja.
+// Fills in missing times, clamps the frames between the part's bounds.
 void fillTimes(QVector<MemoSection>& topics, qint64 partStart, qint64 partEnd)
 {
     for (int i = 0; i < topics.size(); ++i) {
@@ -168,16 +168,17 @@ PartNotes parseNotesImpl(const QString& raw, const TranscriptPart& part, bool fa
 
     Sec sec = Sec::None;
     bool sawHeading = false;
-    QStringList loose;                  // fejléc nélküli szöveg (fallbackhez)
-    QStringList* list = nullptr;        // a futó lista-szakasz (döntés / nyitott / teendő)
+    QStringList loose;                  // text without a heading (for the fallback)
+    QStringList* list = nullptr;        // the running list section (decision / open / action)
 
     auto currentTopic = [&n]() -> MemoSection& {
         if (n.topics.isEmpty()) n.topics.append(MemoSection{});
         return n.topics.last();
     };
-    // A futó tárgy állapota: a cím utáni nem-pont sorok a bevezető (introOpen), az al-cím
-    // (#### Arguments / #### Unresolved) utáni pontok az alszakaszé (group); groupFresh: az
-    // alszakasznak még nincs pontja (a nem-pont sor ilyenkor új pont, nem az előző folytatása).
+    // State of the running subject: the non-bullet lines after the title are the intro (introOpen), the
+    // points after a subheading (#### Arguments / #### Unresolved) belong to the subsection (group);
+    // groupFresh: the subsection has no point yet (a non-bullet line is then a new point, not a continuation
+    // of the previous one).
     bool introOpen = false;
     QString group;
     bool groupFresh = false;
@@ -192,8 +193,8 @@ PartNotes parseNotesImpl(const QString& raw, const TranscriptPart& part, bool fa
     for (const QString& rawLine : raw.split(QLatin1Char('\n'))) {
         const QString line = rawLine.trimmed();
         if (line.isEmpty()) continue;
-        if (line.startsWith(QLatin1String("```"))) continue;   // kódkerítés
-        // A tárgyon belüli al-cím (####) sosem szakasz-fejléc („#### Open questions” ≠ OPEN).
+        if (line.startsWith(QLatin1String("```"))) continue;   // code fence
+        // A subheading (####) within a subject is never a section heading ("#### Open questions" != OPEN).
         const bool subHeading = sec == Sec::Topics && line.startsWith(QLatin1String("####"));
         const Sec h = subHeading ? Sec::None : headingOf(line);
         if (h != Sec::None) {
@@ -202,7 +203,7 @@ PartNotes parseNotesImpl(const QString& raw, const TranscriptPart& part, bool fa
             list = h == Sec::Decisions ? &n.decisions
                  : h == Sec::Open      ? &n.open
                  : h == Sec::Actions   ? &n.actions : nullptr;
-            if (h == Sec::Summary) break;                       // single: innen a JSON jön
+            if (h == Sec::Summary) break;                       // single: the JSON comes from here
             continue;
         }
         if (sec == Sec::None) { loose << line; continue; }
@@ -215,7 +216,7 @@ PartNotes parseNotesImpl(const QString& raw, const TranscriptPart& part, bool fa
                                    && unwrapEmphasis(line).size() < 160;
             const bool rangeTitle = !bm.hasMatch() && rangeRe().match(line).hasMatch()
                                     && rangeRe().match(line).capturedStart() <= 1;
-            // Al-cím: „####” sor, vagy egy ismert alszakasz-név (#/** díszítéssel) egy tárgyon belül.
+            // Subheading: a "####" line, or a known subsection name (with # / ** decoration) within a subject.
             if (!n.topics.isEmpty() && (subHeading || hashTitle || boldTitle)) {
                 QString t = line;
                 while (t.startsWith(QLatin1Char('#'))) t.remove(0, 1);
@@ -243,10 +244,10 @@ PartNotes parseNotesImpl(const QString& raw, const TranscriptPart& part, bool fa
             if (point.isEmpty() || isNoneItem(point)) continue;
             MemoSection& cur = currentTopic();
             if (!bm.hasMatch() && introOpen) {
-                // A cím utáni próza: a szakasz bevezetője.
+                // Prose after the title: the section's intro.
                 cur.intro += (cur.intro.isEmpty() ? QString() : QStringLiteral(" ")) + point;
             } else if (!bm.hasMatch() && !cur.points.isEmpty() && !groupFresh) {
-                cur.points.last() += QLatin1Char(' ') + point;      // tördelt sor folytatása
+                cur.points.last() += QLatin1Char(' ') + point;      // continuation of a wrapped line
             } else {
                 addPoint(cur, point);
             }
@@ -263,7 +264,7 @@ PartNotes parseNotesImpl(const QString& raw, const TranscriptPart& part, bool fa
     }
 
     if (!sawHeading && fallbackWithoutHeadings) {
-        // Nincs felismerhető fejléc: a sorok egyetlen tárgy pontjai (a részt nem dobjuk el).
+        // No recognizable heading: the lines are the points of a single subject (the part is not dropped).
         MemoSection m;
         for (const QString& l : std::as_const(loose)) {
             if (looksLikeJson(l)) continue;
@@ -274,7 +275,7 @@ PartNotes parseNotesImpl(const QString& raw, const TranscriptPart& part, bool fa
         if (!m.points.isEmpty()) n.topics.append(m);
     }
 
-    // Üres (pont, bevezető és cím nélküli) tárgyak ki; alszakasz nélkül a pointGroups üres.
+    // Empty subjects (no points, no intro, no title) out; without subsections pointGroups is empty.
     n.topics.erase(std::remove_if(n.topics.begin(), n.topics.end(),
                                   [](const MemoSection& m) {
                                       return m.title.isEmpty() && m.points.isEmpty() && m.intro.isEmpty();
@@ -295,11 +296,11 @@ QSet<QString> titleWords(const QString& folded)
     QSet<QString> out;
     static const QRegularExpression split(QStringLiteral("[^\\p{L}\\p{N}]+"));
     for (const QString& w : folded.split(split, Qt::SkipEmptyParts))
-        if (w.size() >= 3 || w.front().isDigit()) out.insert(w);   // a sorszám is megkülönböztet
+        if (w.size() >= 3 || w.front().isDigit()) out.insert(w);   // the number distinguishes too
     return out;
 }
 
-// Ugyanarról a tárgyról szól-e a két cím (a részhatáron folytatódó tárgy összevonásához).
+// Whether two titles are about the same subject (to merge a subject continuing across a part boundary).
 bool sameSubject(const QString& a, const QString& b)
 {
     const QString fa = foldedTitle(a), fb = foldedTitle(b);
@@ -315,7 +316,7 @@ bool sameSubject(const QString& a, const QString& b)
     return uni > 0 && double(inter) / uni >= 0.6;
 }
 
-// Egy lista-elem elejéről a modell által másolt időbélyeg levétele.
+// Stripping a timestamp the model copied from the start of a list item.
 QString stripLeadingTime(QString s)
 {
     const QRegularExpressionMatch m = leadingTimeRe().match(s);
@@ -405,7 +406,7 @@ QVector<ActionItem> actionList(const QJsonValue& v)
     return out;
 }
 
-// A JSON-szöveg egy pozíciójának környezete a hibaüzenethez.
+// Context around a position of the JSON text, for the error message.
 QString snippetAround(const QByteArray& json, int offset)
 {
     const int from = qMax(0, offset - 40);
@@ -415,7 +416,7 @@ QString snippetAround(const QByteArray& json, int offset)
 
 } // namespace
 
-// ---- darabolás ------------------------------------------------------------------------
+// ---- splitting ------------------------------------------------------------------------
 
 QVector<TranscriptPart> splitTranscript(const QVector<Utterance>& segments, qint64 partMs)
 {
@@ -433,7 +434,7 @@ QVector<TranscriptPart> splitTranscript(const QVector<Utterance>& segments, qint
     }
     if (!cur.isEmpty()) groups.append(cur);
 
-    // A túl rövid utolsó rész (fél célhossz alatt, vagy alig van benne szöveg) az előzőhöz olvad.
+    // A too-short last part (under half the target length, or hardly any text) merges into the previous one.
     if (groups.size() > 1) {
         const QVector<Utterance>& last = groups.last();
         qint64 end = 0;
@@ -465,7 +466,7 @@ QVector<TranscriptPart> splitTranscriptByChars(const QVector<Utterance>& segment
     QVector<Utterance> cur;
     qint64 curLen = 0;
     for (const Utterance& u : segments) {
-        // A csoport hossza additív: bekezdésenként a saját sora + "\n\n" elválasztó.
+        // A group's length is additive: per paragraph its own line + a "\n\n" separator.
         const qint64 len = renderUtterancesMarkdown({u}).size();
         if (len > maxChars) return {};
         const qint64 next = cur.isEmpty() ? len : curLen + 2 + len;
@@ -509,7 +510,7 @@ QString formatTimestamp(qint64 ms)
                                   .arg(sec % 60, 2, 10, QLatin1Char('0'));
 }
 
-// ---- jegyzet --------------------------------------------------------------------------
+// ---- notes --------------------------------------------------------------------------
 
 PartNotes parseNotes(const QString& raw, const TranscriptPart& part)
 {
@@ -522,9 +523,9 @@ QVector<MemoSection> assembleMemo(const QVector<PartNotes>& parts)
     for (const PartNotes& p : parts) {
         for (const MemoSection& t : p.topics) {
             if (t.points.isEmpty() && t.title.isEmpty() && t.intro.isEmpty()) continue;
-            // Összevonás csak észszerű hosszig: egy 20 percnél hosszabb szakasz már nem olvasható
-            // memó-egység (a modell néha egy egész részt egyetlen, az előzővel azonos című blokkba
-            // tesz) — ilyenkor azonos címmel, külön időkerettel marad.
+            // Merging only up to a reasonable length: a section longer than 20 minutes is no longer a readable memo
+            // unit (the model sometimes puts a whole part into a single block titled like the previous one), so then
+            // it stays with the same title, with a separate time frame.
             const bool fits = out.isEmpty() || t.endMs < 0 || out.last().startMs < 0
                               || t.endMs - out.last().startMs <= kMaxMemoJoinMs;
             const bool join = !out.isEmpty() && fits
@@ -543,7 +544,7 @@ QVector<MemoSection> assembleMemo(const QVector<PartNotes>& parts)
                 while (last.pointGroups.size() < last.points.size()) last.pointGroups << QString();
             for (int i = 0; i < t.points.size(); ++i) {
                 const QString& pt = t.points.at(i);
-                // Az ismétlés a jelölők nélkül számít (ugyanaz a pont más időponttal is ismétlés).
+                // A repeat counts without the markers (the same point with another timestamp is also a repeat).
                 const QString f = foldedTitle(summarysrc::stripMarkers(pt));
                 bool dup = false;
                 for (const QString& e : std::as_const(last.points))
@@ -602,7 +603,7 @@ QByteArray extractJsonObject(const QString& raw)
     const QString s = raw;
     const int start = s.indexOf(QLatin1Char('{'));
     if (start < 0) return QByteArray();
-    // A hozzá tartozó záró '}' (sztring-tudatosan); ha nincs (csonka), a szöveg végéig.
+    // Its matching closing '}' (string-aware); if absent (truncated), to the end of the text.
     int depth = 0;
     bool inStr = false;
     int end = -1;
@@ -618,7 +619,7 @@ QByteArray extractJsonObject(const QString& raw)
         else if (c == QLatin1Char('}')) { if (--depth == 0) { end = i; break; } }
     }
     QString body = end >= 0 ? s.mid(start, end - start + 1) : s.mid(start);
-    // Csonka válasz végén maradt záró kódkerítés.
+    // A closing code fence left at the end of a truncated response.
     if (end < 0) {
         const int fence = body.lastIndexOf(QLatin1String("```"));
         if (fence > 0) body = body.left(fence);
@@ -633,7 +634,7 @@ QByteArray repairJson(const QByteArray& json)
     out.reserve(s.size() + 16);
     QVector<QChar> stack;
     bool inStr = false;
-    bool smartOpen = false;   // a sztringet „okos” idézőjel nyitotta (akkor az is zárhatja)
+    bool smartOpen = false;   // the string was opened by a "smart" quote (then that can close it too)
 
     auto nextNonSpace = [&s](int from) {
         int j = from;
@@ -650,7 +651,7 @@ QByteArray repairJson(const QByteArray& json)
         while (k >= 0 && out.at(k).isSpace()) --k;
         if (k >= 0 && out.at(k) == QLatin1Char(',')) out.remove(k, 1);
     };
-    // Egy érték / kulcs kezdete előtt hiányzó vessző pótlása (pl. "a" "b" egy tömbben).
+    // Adding a comma missing before a value / key start (e.g. "a" "b" in an array).
     auto commaIfNeeded = [&]() {
         if (stack.isEmpty()) return;
         const QChar p = lastSignificant();
@@ -668,7 +669,7 @@ QByteArray repairJson(const QByteArray& json)
             }
             const bool smart = smartOpen && (c == QChar(0x201C) || c == QChar(0x201D));
             if (c == QLatin1Char('"') || smart) {
-                // Záró idézőjel-e? Utána (szóköz után) vessző, ':', '}' , ']' vagy a vég jön.
+                // Is it a closing quote? After it (after whitespace) comes a comma, ':', '}', ']' or the end.
                 const int j = nextNonSpace(i + 1);
                 bool closes = j >= s.size();
                 if (!closes) {
@@ -681,11 +682,11 @@ QByteArray repairJson(const QByteArray& json)
                         closes = k >= s.size() || starts.contains(s.at(k)) || s.at(k).isDigit();
                     } else if (n == QLatin1Char('"') && s.at(j - 1).isSpace()
                                && (s.indexOf(QLatin1Char('\n'), i) >= 0 && s.indexOf(QLatin1Char('\n'), i) < j)) {
-                        closes = true;   // sor végén lezárt sztring, a következő sorban új elem (hiányzó vessző)
+                        closes = true;   // a string closed at the line end, a new element on the next line (missing comma)
                     }
                 }
                 if (closes) { inStr = false; out += QLatin1Char('"'); }
-                else out += smart ? QString(c) : QStringLiteral("\\\"");   // escape-eletlen belső idézőjel
+                else out += smart ? QString(c) : QStringLiteral("\\\"");   // unescaped inner quote
                 continue;
             }
             if (c == QLatin1Char('\n')) { out += QStringLiteral("\\n"); continue; }
@@ -695,7 +696,7 @@ QByteArray repairJson(const QByteArray& json)
             out += c;
             continue;
         }
-        // Sztringen kívül.
+        // Outside a string.
         if (c == QLatin1Char('"') || c == QChar(0x201C) || c == QChar(0x201D) || c == QChar(0x201E)) {
             commaIfNeeded();
             inStr = true;
@@ -708,21 +709,21 @@ QByteArray repairJson(const QByteArray& json)
         } else if (c == QLatin1Char('}') || c == QLatin1Char(']')) {
             dropTrailingComma();
             const QChar want = c == QLatin1Char('}') ? QLatin1Char('{') : QLatin1Char('[');
-            // Egy kimaradt zárójel: a belső nyitottat előbb lezárjuk.
+            // A missing bracket: the inner open one is closed first.
             while (!stack.isEmpty() && stack.last() != want) {
                 out += stack.last() == QLatin1Char('{') ? QLatin1Char('}') : QLatin1Char(']');
                 stack.removeLast();
             }
             if (!stack.isEmpty()) { stack.removeLast(); out += c; }
-            if (stack.isEmpty()) break;                              // az objektum vége — a maradék próza
+            if (stack.isEmpty()) break;                              // the end of the object; the rest is prose
         } else {
             out += c;
         }
     }
-    // Csonka vég: nyitott sztring / tömb / objektum lezárása.
+    // A truncated end: closing an open string / array / object.
     if (inStr) out += QLatin1Char('"');
     {
-        // Egy félbemaradt „"kulcs":” pár eldobása.
+        // Dropping a half-finished "key": pair.
         int k = out.size() - 1;
         while (k >= 0 && out.at(k).isSpace()) --k;
         if (k >= 0 && out.at(k) == QLatin1Char(':')) {
@@ -783,9 +784,9 @@ MergeResult parseMergeJson(const QString& raw)
 SingleResult parseSingle(const QString& raw, const TranscriptPart& part)
 {
     SingleResult r;
-    // A jegyzet és a JSON határa: a SUMMARY fejléc, különben az első sor eleji '{' (vagy kerítés).
+    // The boundary of the notes and the JSON: the SUMMARY heading, otherwise the first '{' at a line start (or a fence).
     const QStringList lines = raw.split(QLatin1Char('\n'));
-    int cut = -1;            // karakter-pozíció a raw-ban
+    int cut = -1;            // character position in raw
     int pos = 0;
     for (const QString& l : lines) {
         const QString t = l.trimmed();
