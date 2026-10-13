@@ -69,7 +69,7 @@ void TrackActivityModel::connectController()
     auto mine = [this](const QString& id) { return !m_meetingId.isEmpty() && id == m_meetingId; };
     m_connections << connect(c, &AppController::trackActivityReady, this,
                              [this, mine](const QString& id) { if (mine(id)) reload(); });
-    // Új / megtalált / törölt sáv: a lenyomat változik, a core újraszámol.
+    // New / located / deleted track: the fingerprint changes, the core recomputes.
     m_connections << connect(c, &AppController::tracksChanged, this,
                              [this, mine](const QString& id) { if (mine(id)) reload(); });
 }
@@ -81,7 +81,7 @@ TrackActivityModel::Lane TrackActivityModel::laneFrom(const TrackActivity& t)
     lane.originMs = t.originMs;
     lane.frameMs = std::max(1, t.frameMs);
     lane.frames.resize(t.dbAboveFloor.size());
-    // Beszéd: a sáv beszédszintjéhez mérve legfeljebb 10 dB-lel halkabb, és a zaj felett.
+    // Speech: relative to the track's speech level at most 10 dB quieter, and above the noise.
     const float level = sides::speechLevelDb(t);
     const float threshold = std::isnan(level) ? INFINITY
                                               : std::max(sides::kActiveDb, level + sides::kSpeechDb);
@@ -155,7 +155,7 @@ void TrackActivityModel::reload()
         m_lanes.append(laneFrom(t));
         m_durationMs = std::max(m_durationMs, t.endMs());
     }
-    // Minden szakasz-id a logikai sáv vezetőjére.
+    // Every segment id to the logical track's leader.
     const QVector<tracknames::SegmentInfo> seg = tracknames::segments(m.tracks);
     for (int i = 0; i < m.tracks.size(); ++i) {
         const int lead = seg.value(i).leader >= 0 ? seg.value(i).leader : i;
@@ -165,7 +165,7 @@ void TrackActivityModel::reload()
     publish(c->trackActivityComputing(m_meetingId) ? QStringLiteral("loading") : QStringLiteral("ready"));
 }
 
-// Kitalált, determinisztikus beszéd-minta a demóhoz (a TrackListModel demó-sávjaihoz).
+// Fictional, deterministic speech pattern for the demo (for TrackListModel's demo tracks).
 void TrackActivityModel::loadDemo()
 {
     m_lanes.clear();

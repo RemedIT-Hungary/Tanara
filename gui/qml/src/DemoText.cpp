@@ -15,8 +15,9 @@ QString& overrideLang()
     return lang;
 }
 
-// A kitalált magyar nevek angol párjai (a keresztnév-/vezetéknév-egyezések szándékosak: ahol a
-// magyar demó névrokonságra épít — két „Bence”, két „Fehér” —, ott az angol is).
+// The English counterparts of the fictional Hungarian names (the first-name / surname
+// matches are deliberate: where the Hungarian demo relies on shared names, two "Bence"s, two
+// "Fehér"s, the English one does too).
 const char* const kNames[][2] = {
     {"Kovács Lilla", "Emma Carter"},
     {"Fehér Gábor", "Daniel Hughes"},

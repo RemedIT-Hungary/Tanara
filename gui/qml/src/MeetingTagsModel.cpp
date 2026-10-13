@@ -90,7 +90,7 @@ void MeetingTagsModel::setDraftTitle(const QString& title)
 
 void MeetingTagsModel::applyDemoState()
 {
-    // Csak a saját (kitalált) backenden: valódi adatot a demó-állapot nem írhat felül.
+    // Only on the own (fictional) backend: the demo state must not overwrite real data.
     auto* demo = qobject_cast<TagDemoBackend*>(m_backend);
     if (!demo || m_demoState.isEmpty() || m_backend != m_ownBackend) return;
     demo->loadMeetingDemo(effectiveMeetingId(), m_demoState);
@@ -136,7 +136,7 @@ void MeetingTagsModel::reloadSuggestions()
         visible << s;
     }
     QString source = state.source;
-    // A2: cím alapú tartalék, ha nincs rendes javaslat (és nem is számol).
+    // Title-based fallback if there is no regular suggestion (and none is computing).
     if (visible.isEmpty() && !state.computing && m_backend && !m_draftTitle.trimmed().isEmpty()) {
         for (const TagSuggestionItem& s : m_backend->draftSuggestions(m_draftTitle)) {
             if (applied(s)) continue;
@@ -203,7 +203,7 @@ QString MeetingTagsModel::add(const QString& nameOrId)
     const QString meeting = effectiveMeetingId();
     QString name = tagName(nameOrId);
     if (name.isEmpty()) {
-        // Név szerint: a meglévő címke a saját írásmódjával szerepel a lépés nevében.
+        // By name: the existing tag appears with its own spelling in the step's name.
         name = tagmatch::normalizeName(nameOrId);
         const QString k = tagmatch::key(name);
         for (const TagItem& t : m_backend->tags())
@@ -216,7 +216,7 @@ QString MeetingTagsModel::add(const QString& nameOrId)
     m_backend->endGroup();
     if (id.isEmpty()) return {};
     reloadTags();
-    // Csak akkor kér együtt járó javaslatot, ha tényleg felkerült valami.
+    // Asks for a co-occurring suggestion only if something was really attached.
     if (m_tagIds.size() > before) m_backend->requestCooccur(meeting, id);
     return id;
 }
@@ -287,7 +287,7 @@ QVariantList MeetingTagsModel::whyData() const
                                 : r.kind == QLatin1String("peopleTags")  ? tr("Résztvevők címkéje")
                                                                          : tr("Közös kifejezések");
             QString text = r.values.join(QStringLiteral(", "));
-            // „Fehér Gábor, Varga Árpád (mindkettőjükön)” (UX-terv 3.3).
+            // "Fehér Gábor, Varga Árpád (on both of them)".
             if (r.kind == QLatin1String("peopleTags") && r.values.size() == 2) text += tr(" (mindkettőjükön)");
             else if (r.kind == QLatin1String("peopleTags") && r.values.size() == 3) text += tr(" (mindhármukon)");
             else if (r.kind == QLatin1String("peopleTags") && r.values.size() > 3)

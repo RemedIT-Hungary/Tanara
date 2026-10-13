@@ -1,15 +1,15 @@
 #pragma once
 //
-// TranscriptEditorViewModel — az „Átirat" fül (átirat-szerkesztő, 3a) nézetmodellje: EGY
-// megnyitott meeting szerkesztő-munkamenete a QML felé. A core tanara::SpeakerEditor-ára
-// épül (az végzi a műveleteket, az undo-t, a hang-elemzést); ez az osztály a megjelenítés
-// állapotát adja hozzá: lista-modell, sávok (összecsukási szabály), áttekintő, kijelölés,
-// „Bizonytalan" szűrő, keresés, lejátszás-követés, javaslat, hang-elemzés állapota.
+// TranscriptEditorViewModel: view model of the "Transcript" tab (transcript editor): the
+// editing session of ONE open meeting, exposed to QML. It builds on the core
+// tanara::SpeakerEditor (which performs the actions, undo and audio analysis); this class adds
+// the display state: list model, tracks (collapse rule), overview, selection, "Uncertain"
+// filter, search, playback following, suggestion, audio-analysis state.
 //
-// Honnan jön a munkamenet:
-//  - van AppController (éles):  meetingId → AppController::speakerEditor(id)
-//  - nincs (App.demo, --qml-shot, --demo):  beépített KITALÁLT meeting (TranscriptDemoSession)
-//  - teszt:  setEditor() + setPeopleProvider() közvetlenül
+// Where the session comes from:
+//  - with an AppController (live):  meetingId -> AppController::speakerEditor(id)
+//  - without (App.demo, --qml-shot, --demo):  built-in FICTIONAL meeting (TranscriptDemoSession)
+//  - tests:  setEditor() + setPeopleProvider() directly
 //
 #include "ReviewGroupsModel.h"
 #include "TranscriptListModel.h"
@@ -42,7 +42,7 @@ class SpeakerEditor;
 namespace tanara_qml {
 
 class TranscriptDemoSession;
-class ReviewQueueModel;     // S3: a ReviewQueueModel.h ezt a fejlécet includolja
+class ReviewQueueModel;     // ReviewQueueModel.h includes this header
 
 class TranscriptEditorViewModel : public QObject, public QQmlParserStatus {
     Q_OBJECT
@@ -52,42 +52,42 @@ class TranscriptEditorViewModel : public QObject, public QQmlParserStatus {
 
     Q_PROPERTY(QString meetingId READ meetingId WRITE setMeetingId NOTIFY meetingIdChanged)
     Q_PROPERTY(QString demoVariant READ demoVariant WRITE setDemoVariant NOTIFY demoVariantChanged)
-    // Igaz: a munkamenet a beépített kitalált meeting (nincs AppController).
+    // True: the session is the built-in fictional meeting (no AppController).
     Q_PROPERTY(bool demo READ demo NOTIFY sessionChanged)
     Q_PROPERTY(bool hasTranscript READ hasTranscript NOTIFY sessionChanged)
-    // A meetingnek VAN átirata, de régi formátumú (nincs megszólalás-lista), ezért itt nem
-    // szerkeszthető — újra-átírás után jelenik meg.
+    // The meeting HAS a transcript but in the old format (no utterance list), so it cannot be
+    // edited here; it appears after a re-transcription.
     Q_PROPERTY(bool legacyTranscript READ legacyTranscript NOTIFY sessionChanged)
-    // Régi formátumú átiratnál a transcript.md szövege (csak olvasásra; üres, ha nincs fájl).
+    // For an old-format transcript, the text of transcript.md (read-only; empty if no file).
     Q_PROPERTY(QString legacyText READ legacyText NOTIFY sessionChanged)
     Q_PROPERTY(tanara_qml::TranscriptListModel* rows READ rows CONSTANT)
 
     Q_PROPERTY(int utteranceCount READ utteranceCount NOTIFY sessionChanged)
     Q_PROPERTY(int speakerCount READ speakerCount NOTIFY speakersChanged)
-    // A sín látható oszlopai: [{ key, name, personName, colorIndex, hasVoiceprint, anonymous,
-    // added, isSelf, utteranceCount, pct, voiceprint }] — saját magam elöl, utána első megjelenés
-    // szerint. `voiceprint`: "has" | "none" (elnevezett, de nincs lenyomata) | "anonymous".
+    // The visible lanes: [{ key, name, personName, colorIndex, hasVoiceprint, anonymous,
+    // added, isSelf, utteranceCount, pct, voiceprint }], myself first, then by first appearance.
+    // `voiceprint`: "has" | "none" (named but no voiceprint) | "anonymous".
     Q_PROPERTY(QVariantList lanes READ lanes NOTIFY speakersChanged)
-    // Minden beszélő (az összecsukottak is), ugyanilyen elemekkel + `lane` (-1 = összecsukva).
+    // All speakers (collapsed ones too), same elements + `lane` (-1 = collapsed).
     Q_PROPERTY(QVariantList speakers READ speakers NOTIFY speakersChanged)
     Q_PROPERTY(int collapsedCount READ collapsedCount NOTIFY speakersChanged)
     Q_PROPERTY(bool lanesExpanded READ lanesExpanded WRITE setLanesExpanded NOTIFY speakersChanged)
-    // Áttekintő: [{ key, name, colorIndex (-1 = „Egyéb"), pct, voiceprint ("has" | "none" |
-    // "anonymous"; „Egyéb"-nél üres), segments: [x, w, …], marks: [x, w, …] }]
+    // Overview: [{ key, name, colorIndex (-1 = "Other"), pct, voiceprint ("has" | "none" |
+    // "anonymous"; empty for "Other"), segments: [x, w, ...], marks: [x, w, ...] }]
     Q_PROPERTY(QVariantList overview READ overview NOTIFY overviewChanged)
     Q_PROPERTY(int durationMs READ durationMs NOTIFY overviewChanged)
-    // A lejátszó hossza (ha hosszabb az utolsó megszólalásnál, az áttekintő ehhez igazodik).
+    // The player's length (if longer than the last utterance, the overview adapts to it).
     Q_PROPERTY(int timelineMs READ timelineMs WRITE setTimelineMs NOTIFY overviewChanged)
 
     Q_PROPERTY(bool railVisible READ railVisible WRITE setRailVisible NOTIFY railVisibleChanged)
     Q_PROPERTY(bool uncertainOnly READ uncertainOnly WRITE setUncertainOnly NOTIFY uncertainOnlyChanged)
     Q_PROPERTY(int uncertainCount READ uncertainCount NOTIFY uncertainCountChanged)
-    // Újraellenőrzés a megerősített sorok alapján: futtatható-e most, és ha nem, miért
-    // (magyar mondat; üres, ha futtatható).
+    // Re-check from confirmed lines: whether it can run now, and if not, why
+    // (a sentence; empty if it can run).
     Q_PROPERTY(bool canRecheck READ canRecheck NOTIFY recheckStateChanged)
     Q_PROPERTY(QString recheckBlocker READ recheckBlocker NOTIFY recheckStateChanged)
     Q_PROPERTY(int selectedCount READ selectedCount NOTIFY selectionChanged)
-    // Az egyetlen kijelölt sor (vagy a kijelölés „horgonya") a listában; -1 = nincs.
+    // The single selected line (or the selection's "anchor") in the list; -1 = none.
     Q_PROPERTY(int currentRow READ currentRow NOTIFY selectionChanged)
 
     Q_PROPERTY(bool canUndo READ canUndo NOTIFY undoStateChanged)
@@ -98,153 +98,153 @@ class TranscriptEditorViewModel : public QObject, public QQmlParserStatus {
     Q_PROPERTY(bool suggestionActive READ suggestionActive NOTIFY suggestionChanged)
     Q_PROPERTY(int suggestionCount READ suggestionCount NOTIFY suggestionChanged)
     Q_PROPERTY(QString suggestionTargetName READ suggestionTargetName NOTIFY suggestionChanged)
-    // Páronkénti átnézés ajánlata a sávon: a kézi átsorolás után a „hasonló sorok" javaslat a
-    // két hang hasonlósága miatt hallgatott, de mindkét elnevezett beszélőnek van legalább 3
-    // megerősített sora → „A és B hangja hasonló. Nézzem át kettejük sorait…?"
+    // Pairwise review offer on the lane: after a manual reassignment the "similar lines"
+    // suggestion stayed silent because the two voices are similar, but both named speakers have
+    // at least 3 confirmed lines -> "A and B sound alike. Review both of their lines...?"
     Q_PROPERTY(bool pairOfferActive READ pairOfferActive NOTIFY suggestionChanged)
     Q_PROPERTY(QString pairOfferText READ pairOfferText NOTIFY suggestionChanged)
-    // „Megmutatom": a javasolt sorok kiemelve a sínen és az áttekintőn.
+    // "Show me": the suggested lines are highlighted on the rail and the overview.
     Q_PROPERTY(bool suggestionShown READ suggestionShown WRITE setSuggestionShown NOTIFY suggestionChanged)
 
-    // A legutóbbi átsorolás értesítése (az alsó sáv): mi történt, és mi folytatható belőle.
-    // Minden új átsorolás lecseréli; visszavonás / újra / más szerkesztés megszünteti.
+    // Notice of the latest reassignment (bottom bar): what happened and what can be continued.
+    // Each new reassignment replaces it; undo / redo / other edits clear it.
     Q_PROPERTY(bool changeActive READ changeActive NOTIFY changeChanged)
-    Q_PROPERTY(int changeSerial READ changeSerial NOTIFY changeChanged)     // sávonként nő (időzítő)
+    Q_PROPERTY(int changeSerial READ changeSerial NOTIFY changeChanged)     // grows per lane (timer)
     Q_PROPERTY(QString changeText READ changeText NOTIFY changeChanged)
-    // Az utoljára áthelyezett sor a listában (maradjon látható); -1 = nincs ilyen.
+    // The line moved last in the list (should stay visible); -1 = none.
     Q_PROPERTY(int changeRow READ changeRow NOTIFY changeChanged)
-    // „<Forrás> mind a N sora": a forrás-beszélő megmaradt sorai (0 = nincs ilyen folytatás).
+    // "All N lines of <source>": the source speaker's remaining lines (0 = no such continuation).
     Q_PROPERTY(int changeRestCount READ changeRestCount NOTIFY changeChanged)
     Q_PROPERTY(QString changeRestText READ changeRestText NOTIFY changeChanged)
     Q_PROPERTY(QString changeSourceKey READ changeSourceKey NOTIFY changeChanged)
     Q_PROPERTY(QString changeTargetKey READ changeTargetKey NOTIFY changeChanged)
-    // Hanglenyomat-ajánlat a sávon: egy TELJES beszélő most kapott nevet, a személynek még
-    // nincs lenyomata, és itt van hozzá elég anyag. Soronkénti áthelyezés után sosem igaz.
+    // Voiceprint offer on the lane: a COMPLETE speaker just got a name, the person has no
+    // voiceprint yet, and there is enough material for one. Never true after a per-line move.
     Q_PROPERTY(bool changeVoiceprintOffer READ changeVoiceprintOffer NOTIFY changeChanged)
-    // A sávról most készült lenyomat: a sáv „Visszavonás"-a ezt a lenyomatot törli.
+    // A voiceprint was just made from the lane: the lane's "Undo" deletes this voiceprint.
     Q_PROPERTY(bool changeVoiceprintCreated READ changeVoiceprintCreated NOTIFY changeChanged)
-    // Hamis: a sáv már csak tájékoztat (a most készült lenyomat visszavonása után).
+    // False: the lane only informs now (after undoing the voiceprint just made).
     Q_PROPERTY(bool changeUndoable READ changeUndoable NOTIFY changeChanged)
 
-    // Hang-elemzés (megszólalás-embeddingek): a bizonytalanság és a javaslat alapja.
+    // Audio analysis (utterance embeddings): the basis of uncertainty and suggestions.
     Q_PROPERTY(bool voiceAvailable READ voiceAvailable NOTIFY voiceStateChanged)
     Q_PROPERTY(bool embeddingRunning READ embeddingRunning NOTIFY voiceStateChanged)
     Q_PROPERTY(qreal embeddingProgress READ embeddingProgress NOTIFY voiceStateChanged)
-    // Nem üres: miért nincs hang-elemzés (egyszer, visszafogottan megjelenítendő).
+    // Non-empty: why there is no audio analysis (to show once, in a subdued way).
     Q_PROPERTY(QString voiceNote READ voiceNote NOTIFY voiceStateChanged)
 
     Q_PROPERTY(QString searchQuery READ searchQuery WRITE setSearchQuery NOTIFY searchChanged)
     Q_PROPERTY(int searchMatchCount READ searchMatchCount NOTIFY searchChanged)
-    Q_PROPERTY(int searchCurrent READ searchCurrent NOTIFY searchChanged)   // 0-alapú; -1 = nincs
+    Q_PROPERTY(int searchCurrent READ searchCurrent NOTIFY searchChanged)   // 0-based; -1 = none
     Q_PROPERTY(QColor highlightColor READ highlightColor WRITE setHighlightColor NOTIFY highlightColorChanged)
     Q_PROPERTY(QColor highlightCurrentColor READ highlightCurrentColor WRITE setHighlightCurrentColor NOTIFY highlightColorChanged)
 
-    // Az épp lejátszott megszólalás sora; -1 = nincs (vagy a szűrő elrejti).
+    // Row of the utterance currently playing; -1 = none (or hidden by the filter).
     Q_PROPERTY(int playingRow READ playingRow NOTIFY playingRowChanged)
 
-    // ---- v3 Javítás mód: Átnézendő csoportok, új személy (handoff-v3 E1–E4) ----
-    // Az Átnézendő nézet sorai (csoport-kártyák, kinyitott csoport sorai, „··· N sor" sorok).
-    // A nézet az `uncertainOnly` kapcsolóra jelenik meg (az „Átnézendő N" chip).
+    // ---- Fix mode: review groups, new person ----
+    // Rows of the "To review" view (group cards, rows of the expanded group, "... N lines" rows).
+    // The view appears on the `uncertainOnly` switch (the "To review N" chip).
     Q_PROPERTY(tanara_qml::ReviewGroupsModel* reviewGroups READ reviewGroups CONSTANT)
-    // Átnézendő sorok száma: a döntést kérő csoportok sorai (a rövid sorok tájékoztató csoportja
-    // és a szennyezett mag nélkül) — az eszköz-sor chipje.
+    // Number of lines to review: lines of the groups asking for a decision (without the short
+    // lines' informational group and the contaminated core): the toolbar chip.
     Q_PROPERTY(int reviewCount READ reviewCount NOTIFY reviewChanged)
-    // A döntést kérő csoportok száma („84 / 1298 sor · 3 csoport").
+    // Number of groups asking for a decision ("84 / 1298 lines, 3 groups").
     Q_PROPERTY(int reviewGroupCount READ reviewGroupCount NOTIFY reviewChanged)
-    // A háttér-elemzés (sáv-oldal, jelöltek, csoportok) épp fut.
+    // The background analysis (side analysis, candidates, groups) is running.
     Q_PROPERTY(bool reviewRunning READ reviewRunning NOTIFY reviewChanged)
-    // Szennyezett mag (a banner): { groupId, speakerKey, name, title, count, confirmed } — üres
-    // map, ha nincs ilyen.
+    // Contaminated core (the banner): { groupId, speakerKey, name, title, count, confirmed };
+    // empty map if none.
     Q_PROPERTY(QVariantMap contaminated READ contaminated NOTIFY reviewChanged)
-    // Az imént (ebben a munkamenetben) létrehozott személy oszlopa; üres = nincs.
+    // Column of the person just created (in this session); empty = none.
     Q_PROPERTY(QString newPersonKey READ newPersonKey NOTIFY reviewChanged)
-    // A változás-sáv „új személy" sorai (E4): igaz, ha a legutóbbi átsorolás új személyt hozott létre.
+    // Change bar "new person" row: true if the latest reassignment created a new person.
     Q_PROPERTY(bool changeNewPerson READ changeNewPerson NOTIFY changeChanged)
-    // „Még N sor hangja hasonlít…": { groupId, count, name, lines (az új személy sorai), detail } —
-    // üres, ha nincs hasonló sor.
+    // "N more lines sound similar...": { groupId, count, name, lines (the new person's lines),
+    // detail }; empty if there are no similar lines.
     Q_PROPERTY(QVariantMap newPersonSimilar READ newPersonSimilar NOTIFY reviewChanged)
-    // Új személy címkés megbeszélésen (vault UX-terv 5.): a változás-sáv kérdése
-    // { text, pairs: [{ index, name, tagName, text }], answer } — „Szabó Bence új személy.
-    // Ráteszem a #Nordvik címkét?”; a válasz után answer a visszajelzés (Visszavonás-sal). Üres
-    // map: nincs kérdés. Egyszer kérdez (TagService::markLearningAsked).
+    // New person on a tagged meeting: the change bar's question
+    // { text, pairs: [{ index, name, tagName, text }], answer }, e.g. "Alex Smith is a new
+    // person. Add the #Nordvik tag?"; after the answer, answer holds the feedback (with Undo).
+    // Empty map: no question. Asks only once (TagService::markLearningAsked).
     Q_PROPERTY(QVariantMap changeTagQuestion READ changeTagQuestion NOTIFY changeChanged)
-    // Lenyomat-készültség az új személynél: { text, ready, pending } — üres, ha nem értelmes.
+    // Voiceprint readiness for the new person: { text, ready, pending }; empty if not meaningful.
     Q_PROPERTY(QVariantMap newPersonReadiness READ newPersonReadiness NOTIFY reviewChanged)
-    // Az új személyhez hasonló sorok kiemelése (sín: 2 px accent keret, térkép: accent jel).
+    // Highlight of lines similar to the new person (rail: 2 px accent frame, map: accent mark).
     Q_PROPERTY(bool similarShown READ similarShown WRITE setSimilarShown NOTIFY reviewChanged)
-    // A kiemelt hasonló sorok a térképnek: [x, w, x, w, …] (0..1, az idővonalon). Ugyanezek az
-    // `overview` sorainak `marks` listájában is benne vannak (a térkép-dokk accent jelei).
+    // The highlighted similar lines for the map: [x, w, x, w, ...] (0..1, on the timeline). The
+    // same ones are in the `overview` rows' `marks` list too (the map dock's accent marks).
     Q_PROPERTY(QVariantList similarMarks READ similarMarks NOTIFY reviewChanged)
 
-    // ---- S2: az Átnézendő-újratervezés közös alapja ----
-    // Az „Imént" sor: az utolsó döntés { text, time ("12:58"; üres, ha nincs sor), utteranceId,
+    // ---- shared base of the "To review" redesign ----
+    // The "Just now" row: the last decision { text, time ("12:58"; empty if no row), utteranceId,
     // chips: [{ kind: "sample" | "noSample" | "ignored" | "unignored" | "changed", text }], undone
-    // (igaz: ez egy visszavonás visszajelzése), verb (S7, az ikonhoz: "move" — a sor(ok) másik
-    // beszélőhöz került(ek) · "keep" — a név maradt (Jó így / megerősítés) · "ignore" — nem
-    // azonosítható · "" — egyéb) } — üres map: még nem volt döntés.
+    // (true: feedback of an undo), verb (for the icon: "move": line(s) went to another speaker,
+    // "keep": the name stayed (Looks right / confirm), "ignore": cannot be identified, "":
+    // other) }; empty map: no decision yet.
     Q_PROPERTY(QVariantMap lastDecision READ lastDecision NOTIFY decisionsChanged)
-    // Az előző döntések (legfeljebb 5, a legfrissebb elöl), a lastDecision elemeivel.
+    // The previous decisions (at most 5, newest first), with the elements of lastDecision.
     Q_PROPERTY(QVariantList decisionLog READ decisionLog NOTIFY decisionsChanged)
-    // Eltérő minta (SpeakerEditor::lastSampleDeviation, csak ha deviates): { utteranceId,
-    // speakerKey, name, pct (0..100), similarity, text: „Ez a minta eltér X többi sorától (hang
-    // 41%). Biztos?" } — üres map: nincs figyelmeztetés.
+    // Deviating sample (SpeakerEditor::lastSampleDeviation, only if deviates): { utteranceId,
+    // speakerKey, name, pct (0..100), similarity, text: "This sample differs from X's other
+    // lines (voice 41%). Sure?" }; empty map: no warning.
     Q_PROPERTY(QVariantMap sampleDeviation READ sampleDeviation NOTIFY sampleDeviationChanged)
-    // Minta-mérő (SpeakerEditor::sampleStats): [{ key, name, colorIndex, sampleLines, sampleMs,
-    // sessionAdded, sessionAddedIds, durationText („1 p 12 mp"), text („23 minta · +4 most") }].
+    // Sample meter (SpeakerEditor::sampleStats): [{ key, name, colorIndex, sampleLines, sampleMs,
+    // sessionAdded, sessionAddedIds, durationText ("1 min 12 s"), text ("23 samples, +4 now") }].
     Q_PROPERTY(QVariantList sampleStats READ sampleStats NOTIFY sampleStatsChanged)
-    // „Nem azonosítható" sorok száma; a Javítás lista elrejtheti őket (hideIgnored).
+    // Number of "Cannot be identified" lines; the Fix list can hide them (hideIgnored).
     Q_PROPERTY(int ignoredCount READ ignoredCount NOTIFY ignoredCountChanged)
     Q_PROPERTY(bool hideIgnored READ hideIgnored WRITE setHideIgnored NOTIFY listFilterChanged)
-    // A minta-mérő „+N most" szűrője: ennek a beszélőnek az ebben a munkamenetben lett mintái
-    // látszanak a listán (üres = nincs szűrő).
+    // The sample meter's "+N now" filter: only the samples this speaker got in this session
+    // show in the list (empty = no filter).
     Q_PROPERTY(QString sampleFilterKey READ sampleFilterKey NOTIFY listFilterChanged)
-    // A lista épp érvényes szűrője: "" | "uncertain" | "samples" | "hideIgnored".
+    // The list's currently active filter: "" | "uncertain" | "samples" | "hideIgnored".
     Q_PROPERTY(QString listFilter READ listFilter NOTIFY listFilterChanged)
 
-    // ---- S3: az Átnézendő munkalistája (Fókusz-sor; ReviewQueueModel.h) ----
-    // Fagyasztott, időrendi munkalista kurzorral, beérkező halmazzal, kör-zárással. A
-    // reviewGroups a régi nézeté marad, amíg az S4 le nem cseréli.
+    // ---- the "To review" worklist (focus queue; ReviewQueueModel.h) ----
+    // Frozen, chronological worklist with a cursor, an incoming set and round closing. The
+    // reviewGroups stay for the old view until it is replaced.
     Q_PROPERTY(tanara_qml::ReviewQueueModel* reviewQueue READ reviewQueue CONSTANT)
-    // Fut-e a munkalista (reviewQueue.start() után, stop() / új munkamenet előtt).
+    // Whether the worklist is running (after reviewQueue.start(), before stop() / a new session).
     Q_PROPERTY(bool queueActive READ queueActive NOTIFY queueActiveChanged)
-    // ---- S6: söprés-mód (a Javítás nézetben: hallgatás közben javítani) ----
-    // Bekapcsolva a lejátszás a kétes sorok végén megáll (megálló-mód), vagy — folyamatos módban —
-    // tovább megy, és a kétes sor még 3 mp-ig a billentyűk célpontja („utólagos ablak”). A látható
-    // terület sorai (± 2) fagyasztottak: ott a háttér-elemzés jelölő-változása függőben marad.
+    // ---- sweep mode (in the Fix view: fix while listening) ----
+    // When on, playback stops at doubtful lines (stop mode) or, in continuous mode, keeps going
+    // and the doubtful line stays the key target for 3 s more (the "after window"). The
+    // visible rows (+/- 2) are frozen: marker changes from the background analysis stay pending there.
     Q_PROPERTY(bool sweepActive READ sweepActive WRITE setSweepActive NOTIFY sweepChanged)
     Q_PROPERTY(bool sweepContinuous READ sweepContinuous WRITE setSweepContinuous NOTIFY sweepChanged)
-    // A megálló sora (itt állt meg a lejátszás, alatta a döntés-sáv); -1 = nincs megálló.
+    // The stop row (playback stopped here, the decision bar is below); -1 = no stop.
     Q_PROPERTY(int sweepStopRow READ sweepStopRow NOTIFY sweepChanged)
-    // Folyamatos mód: az utólagos ablak sora (az imént lejátszott kétes sor); -1 = nincs.
+    // Continuous mode: the after-window row (the doubtful line just played); -1 = none.
     Q_PROPERTY(int sweepAfterRow READ sweepAfterRow NOTIFY sweepChanged)
-    // A söprés-billentyűk célsora: megálló > utólagos ablak > a futó sor; -1 = nincs.
+    // The sweep keys' target row: stop > after window > the playing row; -1 = none.
     Q_PROPERTY(int sweepTargetRow READ sweepTargetRow NOTIFY sweepChanged)
-    // A fagyasztott ablak (sorokban; a látható terület ± 2 sor): első / utolsó sor, -1 = nincs.
+    // The frozen window (in rows; visible area +/- 2 rows): first / last row, -1 = none.
     Q_PROPERTY(int sweepFrozenFirstRow READ sweepFrozenFirstRow NOTIFY sweepWindowChanged)
     Q_PROPERTY(int sweepFrozenLastRow READ sweepFrozenLastRow NOTIFY sweepWindowChanged)
-    // A fagyasztott ablak ideje a sávnak („14:07”, „15:27”).
+    // The frozen window's time for the lane ("14:07", "15:27").
     Q_PROPERTY(QString sweepFrozenFrom READ sweepFrozenFrom NOTIFY sweepWindowChanged)
     Q_PROPERTY(QString sweepFrozenTo READ sweepFrozenTo NOTIFY sweepWindowChanged)
-    // A fagyasztott ablakban függőben tartott jelölő-változások sorai (megszólalás-azonosítók).
+    // Rows (utterance ids) of marker changes held back in the frozen window.
     Q_PROPERTY(QStringList pendingMarkerIds READ pendingMarkerIds NOTIFY sweepMarkersChanged)
-    // „N sor újra kétes”: a már elhagyott sorok, amelyeket a háttér-elemzés kétesnek jelölt.
+    // "N lines doubtful again": lines already passed that the background analysis marked doubtful.
     Q_PROPERTY(int rebehindCount READ rebehindCount NOTIFY sweepMarkersChanged)
-    // Ugyanezek a listának: [{ utteranceId, row, time, name, colorIndex }] időrendben.
+    // The same for the list: [{ utteranceId, row, time, name, colorIndex }] in time order.
     Q_PROPERTY(QVariantList rebehindRows READ rebehindRows NOTIFY sweepMarkersChanged)
-    // Előtted álló (még el nem ért) kétes sorok száma.
+    // Number of doubtful lines ahead of you (not yet reached).
     Q_PROPERTY(int sweepAheadCount READ sweepAheadCount NOTIFY sweepMarkersChanged)
-    // Szakaszok (12 perc vagy 20 kétes sor, ami előbb): [{ index, startMs, endMs, start, end
-    // (0..1), label („12:00–24:00”), uncertain, done, active }].
+    // Sections (12 minutes or 20 doubtful lines, whichever comes first): [{ index, startMs, endMs,
+    // start, end (0..1), label ("12:00-24:00"), uncertain, done, active }].
     Q_PROPERTY(QVariantList sweepSections READ sweepSections NOTIFY sweepSectionsChanged)
     Q_PROPERTY(int sweepSectionIndex READ sweepSectionIndex NOTIFY sweepSectionsChanged)
-    // A szakasz végén az összesítő: { index, label, decided, ignored, later, background,
-    // samplesText, rebehind, nextLabel, last } — üres map: nincs összesítő.
+    // The summary at the end of a section: { index, label, decided, ignored, later, background,
+    // samplesText, rebehind, nextLabel, last }; empty map: no summary.
     Q_PROPERTY(QVariantMap sweepSectionSummary READ sweepSectionSummary NOTIFY sweepSectionsChanged)
-    // A dokk söprés-rétege: { uncertain: [x…], decided: [x…], frozenStart, frozenEnd, sections:
-    // [{ start, end, done, active }], doneCount, total, aheadCount } (0..1); üres map: nincs söprés.
+    // The dock's sweep layer: { uncertain: [x...], decided: [x...], frozenStart, frozenEnd, sections:
+    // [{ start, end, done, active }], doneCount, total, aheadCount } (0..1); empty map: no sweep.
     Q_PROPERTY(QVariantMap sweepDock READ sweepDock NOTIFY sweepDockChanged)
-    // S4: az Átnézendő fókusz-nézet auto-lejátszása (AppSettings::reviewAutoPlay; AppController
-    // nélkül — demó, teszt — csak a memóriában). Alapból be.
+    // Auto-play of the "To review" focus view (AppSettings::reviewAutoPlay; without an
+    // AppController, i.e. demo or test, in memory only). On by default.
     Q_PROPERTY(bool reviewAutoPlay READ reviewAutoPlay WRITE setReviewAutoPlay NOTIFY reviewAutoPlayChanged)
 
 public:
@@ -257,13 +257,13 @@ public:
     explicit TranscriptEditorViewModel(QObject* parent = nullptr);
     ~TranscriptEditorViewModel() override;
 
-    // QML-ből példányosítva a munkamenet a property-k beállítása UTÁN oldódik fel.
+    // When instantiated from QML, the session resolves AFTER the properties are set.
     void classBegin() override { m_deferred = true; }
     void componentComplete() override;
-    // C++-ból (teszt): a munkamenet feloldása a mostani meetingId / demoVariant szerint.
+    // From C++ (tests): resolves the session from the current meetingId / demoVariant.
     void resolveSession();
 
-    // ---- munkamenet -------------------------------------------------------
+    // ---- session -------------------------------------------------------
     QString meetingId() const { return m_meetingId; }
     void setMeetingId(const QString& id);
     QString demoVariant() const { return m_demoVariant; }
@@ -274,17 +274,17 @@ public:
     QString legacyText() const { return legacyTranscript() ? m_legacyText : QString(); }
     TranscriptListModel* rows() const { return m_rows; }
 
-    // Tesztekhez / beágyazáshoz: a szerkesztő és a személylista közvetlen megadása. A
-    // megadott szerkesztő tulajdonosa a hívó marad. nullptr → üres munkamenet.
+    // For tests / embedding: sets the editor and the person list directly. The caller keeps
+    // ownership of the given editor. nullptr -> empty session.
     void setEditor(tanara::SpeakerEditor* editor);
     tanara::SpeakerEditor* editor() const { return m_editor; }
     void setPeopleProvider(std::function<QVector<tanara::PersonInfo>()> provider);
-    // AppController megadása (alapból az App-singletoné). A meetingId ezután ezen át oldódik fel.
+    // Sets the AppController (defaults to the App singleton's). The meetingId resolves through it.
     void setController(tanara::AppController* controller);
-    // A sín-láthatóság (meetingenként) ebbe a JSON-fájlba kerül; üres → csak memóriában.
+    // Lane visibility (per meeting) is stored in this JSON file; empty -> in memory only.
     void setUiStatePath(const QString& path);
 
-    // ---- olvasó-állapot ---------------------------------------------------
+    // ---- read state ---------------------------------------------------
     int utteranceCount() const { return int(m_utts.size()); }
     int speakerCount() const { return int(m_speakers.size()); }
     QVariantList lanes() const { return m_lanes; }
@@ -371,302 +371,303 @@ public:
     void setHideIgnored(bool hide);
     QString sampleFilterKey() const { return m_sampleFilterKey; }
     QString listFilter() const;
-    // A lista-modell olvassa: a szűrő látható sorai (a minta-szűrő azonosítói).
+    // Read by the list model: the visible rows of the filter (the sample filter's ids).
     bool inSampleFilter(int utterance) const { return m_sampleFilter.contains(utterance); }
-    // A sor minta-állapota a jelölőnek: "sample" | "noSample" | "" (nem döntött / nem azonosítható).
+    // The row's sample state for the marker: "sample" | "noSample" | "" (undecided / not identifiable).
     QString sampleState(int utterance) const;
 
-    // ---- bizonyíték / jelöltek (a CandidateListModel és a panelek olvassák) ----
+    // ---- evidence / candidates (read by CandidateListModel and the panels) ----
     QVector<tanara::Candidate> candidatesForLine(const QString& utteranceId) const;
     QVector<tanara::Candidate> candidatesForSpeaker(const QString& speakerKey) const;
-    // Egy bizonyíték a QML-nek: { kind (EvidenceChip), polarity, side ("mic" | "loopback" | ""),
-    // text (chip), label („Hang:"), sentence (a „Miért…?" blokkok mondata), detail, fixTarget,
-    // fixLabel, value }. sideContext: a „támogató" sáv-bizonyíték oldala (a sor / a beszélő oldala).
+    // One piece of evidence for QML: { kind (EvidenceChip), polarity, side ("mic" | "loopback" | ""),
+    // text (chip), label ("Voice:"), sentence (the "Why...?" blocks' sentence), detail, fixTarget,
+    // fixLabel, value }. sideContext: the side of the "supporting" track evidence (the line's / speaker's side).
     QVariantMap evidenceMap(const tanara::Evidence& e, const QString& sideContext = QString(),
                             bool forLine = false) const;
     QVariantList evidenceList(const QVector<tanara::Evidence>& list, const QString& sideContext = QString(),
                               bool forLine = false, bool chipsOnly = false) const;
-    // A beszélő oldala a sáv-elemzés szerint: "local" | "remote" | "mixed" | "unknown".
+    // The speaker's side per the track analysis: "local" | "remote" | "mixed" | "unknown".
     QString speakerSideName(const QString& speakerKey) const;
-    // A sor oldala: "local" | "remote" | "mixed" | "unknown".
+    // The row's side: "local" | "remote" | "mixed" | "unknown".
     QString lineSideName(const QString& utteranceId) const;
-    // A csoport-modell olvassa: a megszólalás indexe az azonosítóhoz (-1 = nincs).
+    // Read by the group model: the utterance index for the id (-1 = none).
     int utteranceIndexOf(const QString& utteranceId) const { return m_uttIndex.value(utteranceId, -1); }
     struct ReviewView {
         QString id;
         QString kind;           // "sideConflict" | "coreMismatch" | "similarToNewPerson" | "shortLines" |
-                                // "uncertain" (a csoportokon kívüli, hangra kétes sorok; a VM képzi)
+                                // "uncertain" (voice-doubtful lines outside the groups; built by the VM)
         QString title;
         QString subtitle;
         QStringList ids;
         QString currentKey;
         QString proposedKey;
         QString proposedName;
-        QString newSide;        // G10: a javaslat új beszélő ezen az oldalon ("local" | "remote"; üres = nincs)
+        QString newSide;        // G10: the suggestion is a new speaker on this side ("local" | "remote"; empty = none)
         QVariantList evidence;
-        bool actionable = true; // döntést kér (a rövid sorok csak tájékoztatnak)
+        bool actionable = true; // asks for a decision (short lines only inform)
     };
     const QVector<ReviewView>& reviewViews() const { return m_reviewViews; }
     QString displayName(const QString& key) const { return m_views.value(key).name; }
 
-    // ---- a lista-modell olvassa -------------------------------------------
+    // ---- read by the list model -------------------------------------------
     const QVector<tanara::EditorUtterance>& utterances() const { return m_utts; }
     SpeakerView speakerView(const QString& key) const { return m_views.value(key); }
     bool isSelected(int utterance) const { return m_selected.contains(utterance); }
     bool isSuggested(int utterance) const { return m_suggestionShown && m_suggested.contains(utterance); }
-    // Az új személyhez hasonló sor, és épp mutatjuk (sín: keret az új személy oszlopában).
+    // A line similar to the new person that is being shown (rail: frame in the new person's column).
     bool isSimilar(int utterance) const { return m_similarShown && m_similar.contains(utterance); }
     bool isShort(int utterance) const;
     bool isNewPerson(const QString& speakerKey) const { return !m_newPersonKey.isEmpty() && speakerKey == m_newPersonKey; }
     bool isSideConflict(const QString& utteranceId) const { return m_sideConflicts.contains(utteranceId); }
-    // A „Bizonytalan" szűrőben frissen javított sor: a szűrő újbóli alkalmazásáig látható marad
-    // (ne tűnjön el a kurzor alól, és ne csússzon más sor a következő kattintás alá).
+    // A line just fixed in the "Uncertain" filter: stays visible until the filter is applied again
+    // (it must not vanish under the cursor, and no other line may slide under the next click).
     bool isSticky(int utterance) const { return m_sticky.contains(utterance); }
     int suggestionAnchor() const { return m_suggestionAnchor; }
     QString richText(int utterance) const;
     static QString timeLabel(qint64 ms);
 
-    // ---- pozíció / lejátszás ---------------------------------------------
-    // A lejátszó állása; active = van mit kiemelni (lejátszik, vagy megállt egy soron).
+    // ---- position / playback ---------------------------------------------
+    // The player's position; active = there is something to highlight (playing, or stopped on a row).
     Q_INVOKABLE void setPlaybackPosition(int ms, bool active);
-    Q_INVOKABLE int rowForTime(int ms) const;               // a legközelebbi LÁTHATÓ sor
+    Q_INVOKABLE int rowForTime(int ms) const;               // the nearest VISIBLE row
     Q_INVOKABLE int utteranceForTime(int ms) const;
-    Q_INVOKABLE qreal rowStartFraction(int row) const;      // 0..1 az idővonalon
+    Q_INVOKABLE qreal rowStartFraction(int row) const;      // 0..1 on the timeline
     Q_INVOKABLE qreal rowEndFraction(int row) const;
     Q_INVOKABLE int timeAtFraction(qreal fraction) const;
     Q_INVOKABLE int rowStartMs(int row) const;
-    // A sor megszólalás-azonosítója (jobb-klikk menü → „minta ebből a sorból”); üres, ha nem sor.
+    // The row's utterance id (right-click menu "sample from this line"); empty if not a row.
     Q_INVOKABLE QString rowUtteranceId(int row) const;
     Q_INVOKABLE int rowEndMs(int row) const;
-    // A sor megszólalása a soronkénti panelhez: { utteranceId, speakerKey, timeLabel, startMs,
-    // endMs }; elválasztónál / érvénytelen sornál üres.
+    // The row's utterance for the per-line panel: { utteranceId, speakerKey, timeLabel, startMs,
+    // endMs }; empty for a separator / invalid row.
     Q_INVOKABLE QVariantMap rowInfo(int row) const;
-    // Egy sor lejátszásának szomszéd-határai (minden megszólalás, szűrőtől függetlenül):
-    // { minStartMs: az előtte kezdődő sorok legkésőbbi vége (legfeljebb startMs), maxEndMs: az
-    // utána kezdődő sorok legkorábbi kezdete (legalább endMs) }; -1 = nincs ilyen szomszéd.
+    // Neighbor bounds for playing a line (all utterances, regardless of the filter):
+    // { minStartMs: latest end of the lines starting before it (at most startMs), maxEndMs: earliest
+    // start of the lines starting after it (at least endMs) }; -1 = no such neighbor.
     Q_INVOKABLE QVariantMap playBounds(int startMs, int endMs) const;
 
-    // ---- kijelölés --------------------------------------------------------
-    // Kattintás egy soron: sima → csak ez (újra rákattintva megszűnik); toggle (Ctrl) →
-    // hozzáad / elvesz; range (Shift) → a horgonytól idáig.
+    // ---- selection --------------------------------------------------------
+    // Click on a row: plain -> only this one (clicking again clears it); toggle (Ctrl) ->
+    // add / remove; range (Shift) -> from the anchor to here.
     Q_INVOKABLE void selectRow(int row, bool toggle = false, bool range = false);
     Q_INVOKABLE void selectOnly(int row);
     Q_INVOKABLE void selectRows(int fromRow, int toRow);
     Q_INVOKABLE void clearSelection();
-    // Fel / le: a kijelölés léptetése; vissza: az új sor (-1 = nem mozdult).
+    // Up / down: move the selection; returns the new row (-1 = did not move).
     Q_INVOKABLE int stepSelection(int delta);
-    // Előző / következő sor (térkép-dokk gombjai, nyilak): lejátszás közben a lejátszó alatti
-    // sortól, különben a kijelölt (aktuális) sortól lép; a célsort kijelöli.
-    // { row, startMs } — row = -1, ha nincs hova lépni.
+    // Previous / next row (map dock buttons, arrows): while playing, steps from the row under the
+    // player, otherwise from the selected (current) row; selects the target row.
+    // { row, startMs }; row = -1 if there is nowhere to go.
     Q_INVOKABLE QVariantMap stepLine(int delta, bool playing);
     Q_INVOKABLE bool isRowSelected(int row) const;
 
-    // ---- műveletek (mind egy visszavonási lépés) --------------------------
-    // Kattintás a sor egy másik oszlopába. Ha a sor egy több soros kijelölés része, az
-    // egész kijelölés megy.
-    // noisy (Shift = „nem minta", S2): a sor egyben „egymásra beszéltek" jelzést kap, UGYANABBAN
-    // a visszavonási lépésben (SpeakerEditor::moveUtterances noisy) — minden áthelyezésnél.
+    // ---- actions (each one undo step) --------------------------------------
+    // Click into another column of the row. If the row is part of a multi-row selection, the
+    // whole selection moves.
+    // noisy (Shift = "not a sample"): the row also gets an "overlapping speech" flag, in the SAME
+    // undo step (SpeakerEditor::moveUtterances noisy); on every move.
     Q_INVOKABLE bool moveRowToLane(int row, int lane, bool noisy = false);
-    // Húzás: a [fromRow, toRow] sorok a `lane` oszlop beszélőjéhez.
+    // Drag: rows [fromRow, toRow] to the speaker of column `lane`.
     Q_INVOKABLE bool moveRowsToLane(int fromRow, int toRow, int lane, bool noisy = false);
-    Q_INVOKABLE bool moveSelectionToLane(int lane, bool noisy = false);     // 1–9 billentyű, chip
+    Q_INVOKABLE bool moveSelectionToLane(int lane, bool noisy = false);     // keys 1-9, chip
     Q_INVOKABLE bool moveSelectionToSpeaker(const QString& speakerKey, bool noisy = false);
     Q_INVOKABLE bool moveSelectionToPerson(const QString& personName, bool noisy = false);
-    Q_INVOKABLE bool moveSelectionToNewParticipant(bool noisy = false);    // névtelen új résztvevő
-    // EGY sor (a névre kattintva, „Csak ez a sor"): a megszólalás azonosítójával, hogy a
-    // panel nyitva tartása alatt változó sorszám (szűrő) ne vihessen el másik sort.
+    Q_INVOKABLE bool moveSelectionToNewParticipant(bool noisy = false);    // anonymous new participant
+    // ONE row (clicking the name, "Only this line"): by utterance id, so a row number that
+    // changes while the panel is open (filter) cannot take another line.
     Q_INVOKABLE bool moveUtteranceToSpeaker(const QString& utteranceId, const QString& speakerKey,
                                             bool noisy = false);
     Q_INVOKABLE bool moveUtteranceToPerson(const QString& utteranceId, const QString& personName,
                                            bool noisy = false);
     Q_INVOKABLE bool moveUtteranceToNewParticipant(const QString& utteranceId, bool noisy = false);
-    // „Nem azonosítható" (0 billentyű, sor-gomb) / „újra azonosítható" (false) — egy lépés
-    // (SpeakerEditor::setUtterancesIgnored). A sor neve marad.
+    // "Cannot be identified" (key 0, row button) / "identifiable again" (false): one step
+    // (SpeakerEditor::setUtterancesIgnored). The row keeps its name.
     Q_INVOKABLE bool setUtteranceIgnored(const QString& utteranceId, bool ignored);
     Q_INVOKABLE bool setSelectionIgnored(bool ignored);
     Q_INVOKABLE bool setRowIgnored(int row, bool ignored);
-    // A kijelölés (vagy egy sor) „Jó így" — Shift: „Jó így, nem minta" (J billentyű a Javításban).
+    // The selection (or one row) "Looks right"; Shift: "Looks right, not a sample" (J key in Fix).
     Q_INVOKABLE bool confirmSelection(bool asNoisy = false);
-    // Minta-mérő „+N most": a lista ennek a beszélőnek a most lett mintáira szűr (a többi
-    // sor elválasztóvá csukódik), és az elsőre görget. Üres kulcs / clearSampleFilter: vissza.
+    // Sample meter "+N now": the list filters to the samples this speaker got just now (other
+    // rows collapse into separators) and scrolls to the first. Empty key / clearSampleFilter: back.
     Q_INVOKABLE bool showSessionSamples(const QString& speakerKey);
     Q_INVOKABLE void clearSampleFilter();
-    // „<Forrás> mind a N sora": a legutóbbi soronkénti áthelyezés forrásának MEGMARADT sorai
-    // is a célhoz kerülnek (a két beszélő összevonása) — egy további visszavonási lépés.
+    // "All N lines of <source>": the REMAINING lines of the last per-line move's source go to
+    // the target too (merging the two speakers): one more undo step.
     Q_INVOKABLE bool moveRestOfSource();
-    // A sáv „Visszavonás" gombja: az átsorolás visszavonása — vagy, ha a sávról épp
-    // hanglenyomat készült, PONTOSAN annak a lenyomatnak a törlése (az átsorolás marad).
+    // The lane's "Undo" button: undoes the reassignment, or, if a voiceprint was just made from
+    // the lane, deletes EXACTLY that voiceprint (the reassignment stays).
     Q_INVOKABLE void undoChange();
-    // A sáv „Hanglenyomat készítése" gombja (csak changeVoiceprintOffer mellett).
+    // The lane's "Make voiceprint" button (only with changeVoiceprintOffer).
     Q_INVOKABLE bool createVoiceprintFromChange();
-    Q_INVOKABLE void dismissChange();                           // a sáv bezárása (a javaslat is megszűnik)
+    Q_INVOKABLE void dismissChange();                           // closes the lane (the suggestion goes away too)
     Q_INVOKABLE QString addParticipant(const QString& personName = QString());
     Q_INVOKABLE bool removeParticipant(const QString& speakerKey);
     Q_INVOKABLE bool reassignSpeaker(const QString& speakerKey, const QString& personName,
                                      bool fixVoiceprints);
     Q_INVOKABLE bool revertSpeakerToAnonymous(const QString& speakerKey, bool fixVoiceprints);
     Q_INVOKABLE bool mergeSpeakers(const QString& fromKey, const QString& intoKey);
-    Q_INVOKABLE bool confirmRow(int row);                       // „Jó így"
-    // „Jó így, de ne használd mintának": megerősítés + „egymásra beszéltek" jelzés.
+    Q_INVOKABLE bool confirmRow(int row);                       // "Looks right"
+    // "Looks right, but don't use as a sample": confirmation + "overlapping speech" flag.
     Q_INVOKABLE bool confirmRowNoisy(int row);
-    // Az „egymásra beszéltek" jelzés kézi beállítása (false: „Mintának használható").
+    // Manual setting of the "overlapping speech" flag (false: "Usable as a sample").
     Q_INVOKABLE bool setRowNoisy(int row, bool noisy);
     Q_INVOKABLE bool setUtteranceNoisy(const QString& utteranceId, bool noisy);
-    // Újraellenőrzés a megerősített / javított sorok hangja alapján. { ran, flagged,
+    // Re-check from the audio of confirmed / corrected lines. { ran, flagged,
     // speakersWithConfirmedCore, confirmedLines, referenceSummary, blocker } (referenceSummary:
-    // „Referencia: …", ha tárolt lenyomat is beszállt; lásd SpeakerEditor::referenceSummary). Ha talált kétes sort, a
-    // „Bizonytalan" szűrő bekapcsol.
+    // "Reference: ..." if a stored voiceprint took part; see SpeakerEditor::referenceSummary).
+    // If it found doubtful lines, the "Uncertain" filter turns on.
     Q_INVOKABLE QVariantMap recheckSpeakers();
     Q_INVOKABLE bool acceptSuggestion();
     Q_INVOKABLE void dismissSuggestion();
-    // Páronkénti átnézés („Átnézés A és B között"): csak a két beszélő sorai, csak kettejük
-    // hangja alapján. { ran, flagged, blocker, fallbackA, fallbackB, centroidSimilarity,
-    // referenceSummary, message } — a message végén a referencia összetétele, ha lenyomat is volt benne.
-    // Talált kétes sort → a „Bizonytalan" szűrő bekapcsol; az eredmény (vagy az akadály)
-    // notice-ként is elhangzik.
+    // Pairwise review ("Review A and B"): only the two speakers' lines, based only on their
+    // voices. { ran, flagged, blocker, fallbackA, fallbackB, centroidSimilarity,
+    // referenceSummary, message }; the message ends with the reference composition if a voiceprint was used.
+    // If it found doubtful lines, the "Uncertain" filter turns on; the result (or the blocker)
+    // is also announced as a notice.
     Q_INVOKABLE QVariantMap recheckPair(const QString& speakerKeyA, const QString& speakerKeyB);
-    // A sáv ajánlata: „Átnézés" (a fenti, az ajánlat két beszélőjére) / „Most nem" (ebben a
-    // munkamenetben erre a párra nem kérdez újra).
+    // The lane offer: "Review" (the above, for the offer's two speakers) / "Not now" (does not
+    // ask again for this pair in this session).
     Q_INVOKABLE QVariantMap acceptPairOffer();
     Q_INVOKABLE void declinePairOffer();
-    // A páronkénti átnézés lehetséges párjai: a meeting többi ELNEVEZETT, sorral bíró
-    // beszélője (más személy) — { key, name, colorIndex, utteranceCount }.
+    // Possible partners for the pairwise review: the meeting's other NAMED speakers that have
+    // lines (a different person): { key, name, colorIndex, utteranceCount }.
     Q_INVOKABLE QVariantList pairCandidates(const QString& speakerKey) const;
     Q_INVOKABLE void undo();
     Q_INVOKABLE void redo();
 
-    // ---- másolás (vágólap) -------------------------------------------------
-    // A sorok szövege a beszélő nevével és az időbélyeggel; beszélőváltáskor új fejsor.
+    // ---- copy (clipboard) -------------------------------------------------
+    // The rows' text with the speaker's name and timestamp; a new header line on speaker change.
     Q_INVOKABLE QString textOfRows(const QVariantList& rows) const;
     Q_INVOKABLE QString selectionText() const;
-    // Vágólapra tesz; vissza: hány megszólalás került rá (0 = semmi).
+    // Puts it on the clipboard; returns how many utterances were copied (0 = nothing).
     Q_INVOKABLE int copyRow(int row);
     Q_INVOKABLE int copySelection();
     Q_INVOKABLE int copyAll();
     Q_INVOKABLE void selectAll();
 
-    // ---- „Következő bizonytalan" -------------------------------------------
-    // A `fromRow` utáni (direction < 0: előtti) első bizonytalan sorra lép — körbefordul —,
-    // kijelöli és odagörget. Vissza: a sor; -1 = nincs bizonytalan sor.
+    // ---- "Next uncertain" -------------------------------------------
+    // Steps to the first uncertain row after `fromRow` (direction < 0: before it), wrapping
+    // around, selects it and scrolls there. Returns the row; -1 = no uncertain row.
     Q_INVOKABLE int stepUncertain(int fromRow, int direction = 1);
 
-    // ---- „Meghallgatás": reprezentatív minta egy beszélőtől ----------------
-    // { ok, startMs, endMs } — a beszélő egy hosszabb, nem bizonytalan megszólalása
-    // (legfeljebb ~12 mp-re vágva).
+    // ---- "Listen": representative sample of a speaker ----------------
+    // { ok, startMs, endMs }: a longer, non-uncertain utterance of the speaker
+    // (trimmed to at most ~12 s).
     Q_INVOKABLE QVariantMap speakerSample(const QString& speakerKey) const;
 
-    // ---- beszélő / hanglenyomat -------------------------------------------
+    // ---- speaker / voiceprint -------------------------------------------
     Q_INVOKABLE QVariantMap speakerInfo(const QString& speakerKey) const;
-    // A meeting beszélői a keresőszövegre szűrve (ékezet- és kisbetű-függetlenül, mint a
-    // személylista), `excludeKey` nélkül — a `speakers` elemeivel.
+    // The meeting's speakers filtered by the search text (accent- and case-insensitive, like the
+    // person list), without `excludeKey`; same elements as `speakers`.
     Q_INVOKABLE QVariantList speakersMatching(const QString& query, const QString& excludeKey) const;
-    // A személy beszélő-kulcsa ebben a meetingben; üres, ha nem résztvevő.
+    // The person's speaker key in this meeting; empty if not a participant.
     Q_INVOKABLE QString speakerKeyForPerson(const QString& personName) const;
-    // Magyar névelő a szám elé: igaz → „az" (1, 5, 50…, 1000…), különben „a".
+    // Hungarian definite article before a number: true -> "az" (1, 5, 50..., 1000...), else "a".
     Q_INVOKABLE static bool needsAz(int number);
-    // { supported, reason, usableLines, usableSec, missingSec, sufficient } — reason: miért
-    // nem érhető el a hang-elemzés ("model" = nincs hangmodell, "audio" = nincs lekevert hang).
+    // { supported, reason, usableLines, usableSec, missingSec, sufficient }; reason: why audio
+    // analysis is unavailable ("model" = no voice model, "audio" = no mixed-down audio).
     Q_INVOKABLE QVariantMap voiceprintMaterial(const QString& speakerKey) const;
-    // { ok, message, printId, usedLines, usedSec, missingSec } — csak kifejezett műveletre készül.
+    // { ok, message, printId, usedLines, usedSec, missingSec }; made only on explicit request.
     Q_INVOKABLE QVariantMap createVoiceprint(const QString& speakerKey);
-    // A sor felugrójának „Hanglenyomat-minta ebből a sorból” gombja. lineSampleInfo:
-    // { ok, reason, seconds, personName } — a gomb állapota és magyarázata.
+    // The line popup's "Voiceprint sample from this line" button. lineSampleInfo:
+    // { ok, reason, seconds, personName }: the button's state and explanation.
     Q_INVOKABLE QVariantMap lineSampleInfo(const QString& utteranceId) const;
     Q_INVOKABLE QVariantMap createVoiceprintFromLine(const QString& utteranceId);
-    // A most készített lenyomat visszavonása: pontosan az a lenyomat törlődik.
+    // Undoes the voiceprint just made: exactly that voiceprint is deleted.
     Q_INVOKABLE bool removeVoiceprint(const QString& printId);
 
-    // ---- keresés ----------------------------------------------------------
-    // A következő / előző találatra lép; vissza: a sora (-1 = nincs találat).
+    // ---- search ----------------------------------------------------------
+    // Steps to the next / previous hit; returns its row (-1 = no hit).
     Q_INVOKABLE int searchStep(int direction);
 
-    // ---- személyek (a PersonListModel olvassa) ---------------------------
+    // ---- people (read by PersonListModel) ---------------------------------
     QVector<tanara::PersonInfo> people() const;
     bool isMeetingPerson(const QString& name) const;
 
-    // ---- v3: bizonyíték, jelöltek, csoportok, sáv-beosztás -------------------
-    // „Miért nem X?" (a sor mostani beszélője ellen szóló bizonyítékok, fix-linkkel).
+    // ---- evidence, candidates, groups, lane assignment -------------------
+    // "Why not X?" (evidence against the row's current speaker, with a fix link).
     Q_INVOKABLE QVariantList whyNot(const QString& utteranceId) const;
-    // „Miért ő?" a teljes beszélőre.
+    // "Why this one?" for the whole speaker.
     Q_INVOKABLE QVariantList speakerEvidence(const QString& speakerKey) const;
-    // A sor adatai az Átnézendő nézet sorairól nyitott panelhez: { utteranceId, speakerKey,
-    // timeLabel, startMs, endMs } (mint a rowInfo).
+    // Row data for the panel opened from a "To review" row: { utteranceId, speakerKey,
+    // timeLabel, startMs, endMs } (like rowInfo).
     Q_INVOKABLE QVariantMap lineInfo(const QString& utteranceId) const;
-    // „Melyik sávon beszél?": a meeting sávjai { id, name, kind ("mic" | "loopback" | "other"),
-    // checked } — üres, ha egysávos a meeting (ott nincs mit beosztani).
+    // "Which track does the speaker use?": the meeting's tracks { id, name, kind ("mic" |
+    // "loopback" | "other"), checked }; empty if the meeting is single-track (nothing to assign).
     Q_INVOKABLE QVariantList trackOptions(const QString& speakerKey) const;
-    // A kézi sáv-beosztás (egy undo-lépés; üres lista = a megkötés törlése).
+    // Manual track assignment (one undo step; empty list = clear the constraint).
     Q_INVOKABLE bool setSpeakerTracks(const QString& speakerKey, const QStringList& trackIds);
-    // „tanult: jellemzően a hívás hangján" — üres, ha nincs tanult / kézi alap.
+    // "learned: usually on the call audio"; empty if there is no learned / manual basis.
     Q_INVOKABLE QString sideBasisText(const QString& speakerKey) const;
-    // Gyors „+ #Címke" (E1 jelölt-sor, E3 címke-sora): a megbeszélés első olyan címkéje, amely
-    // még nincs a személyen — { tagId, name, label: "+ #Nordvik" }; üres, ha nincs ilyen (nincs
-    // címke a megbeszélésen, névtelen / saját személy, vagy minden címke rajta van már).
+    // Quick "+ #Tag" (E1 candidate row, E3 tag row): the meeting's first tag the person does
+    // not have yet: { tagId, name, label: "+ #Nordvik" }; empty if none (no tag on the meeting,
+    // anonymous / own person, or every tag is already on them).
     Q_INVOKABLE QVariantMap quickTagFor(const QString& personName) const;
-    // A címke rátétele a személyre (TagService::addPersonTag: egy lépés a címke-vermen, a héj
-    // „tags" visszavonása veszi vissza); utána a jelöltek / bizonyítékok újraszámolódnak.
-    // Siker esetén notice-t nem ad: a hívó a visszavonható toastot mutatja.
+    // Puts the tag on the person (TagService::addPersonTag: one step on the tag stack, undone by
+    // the shell's "tags" undo); candidates / evidence are then recomputed.
+    // On success no notice: the caller shows the undoable toast.
     Q_INVOKABLE bool addQuickTag(const QString& personName, const QString& tagId);
-    // A csoport javaslatának végrehajtása (egy undo-lépés; a változás-sáv kiírja). S5: ha a
-    // csoport a munkalista nyitó-javaslata, pontosan a nyitó még nyitott sorai mozdulnak (amit a
-    // hatás-előnézet mutatott); noisy: „nem minta" (Shift+Enter), ugyanabban a lépésben. Az
-    // „Imént" sor szövege: „Mind az N → Y".
+    // Applies the group's suggestion (one undo step; the change bar reports it). If the group is
+    // the queue's opening suggestion, exactly the opening's still-open rows move (what the
+    // effect preview showed); noisy: "not a sample" (Shift+Enter), in the same step. The "Just
+    // now" row text: "All N -> Y".
     Q_INVOKABLE bool applyReviewGroup(const QString& groupId, bool noisy = false);
-    // S5 mintázat-ajánlat „Igen": a sorok egy meglévő beszélőhöz EGY visszavonási lépésben
-    // (noisy: nem minta). Az „Imént" sor szövege: „Mind az N → Y".
+    // Pattern offer "Yes": the rows go to an existing speaker in ONE undo step
+    // (noisy: not a sample). The "Just now" row text: "All N -> Y".
     Q_INVOKABLE bool moveUtterancesToSpeaker(const QStringList& utteranceIds, const QString& speakerKey,
                                              bool noisy = false);
-    // „Kihagyom": a csoport ebben a munkamenetben nem jelenik meg újra.
+    // "Skip": the group does not show up again in this session.
     Q_INVOKABLE void skipReviewGroup(const QString& groupId);
-    // A szennyezett mag szétválasztása (egy undo-lépés).
+    // Splits the contaminated core (one undo step).
     Q_INVOKABLE bool splitSpeaker(const QString& speakerKey);
-    // „Jó így" / „Jó így, de nem minta" a sor azonosítójával (az Átnézendő nézet sorairól).
+    // "Looks right" / "Looks right, not a sample" by utterance id (from the "To review" rows).
     Q_INVOKABLE bool confirmUtterance(const QString& utteranceId, bool asNoisy = false);
-    // Az új személyhez hasonló sorok mind hozzá (a SimilarToNewPerson csoport).
+    // All lines similar to the new person go to them (the SimilarToNewPerson group).
     Q_INVOKABLE bool acceptNewPersonSimilar();
-    // „Hanglenyomat, ha elég": most, ha elég az anyag; különben amint elég lesz (kifejezett kérés).
+    // "Voiceprint when enough": now if the material suffices, otherwise as soon as it does (explicit request).
     Q_INVOKABLE QVariantMap requestNewPersonVoiceprint();
-    // Az új személy címke-kérdésének válasza (Igen: a címke rá; Nem: tartós elutasítás) — egy
-    // visszavonási lépés a címke-vermen; pár: az „Egyenként…” listából.
+    // Answer to the new person's tag question (Yes: the tag goes on them; No: lasting refusal);
+    // one undo step on the tag stack; pair: from the "One by one..." list.
     Q_INVOKABLE void answerChangeTag(bool yes);
     Q_INVOKABLE void answerChangeTagPair(int index, bool yes);
-    // A most adott válasz visszavonása (a címke-verem legutóbbi lépése).
+    // Undoes the answer just given (the tag stack's latest step).
     Q_INVOKABLE void undoChangeTagAnswer();
-    // A személy (a „Ki volt ott?" résztvevő) neve a beszélőhöz; üres = névtelen.
+    // The name of the person (a "Who was there?" participant) for the speaker; empty = anonymous.
     Q_INVOKABLE QString personOf(const QString& speakerKey) const;
 
-    // ---- S3: munkalista (TranscriptEditorViewModelQueue.cpp) ----
+    // ---- worklist (TranscriptEditorViewModelQueue.cpp) ----
     ReviewQueueModel* reviewQueue() const { return m_queue; }
     bool queueActive() const;
-    // A csoportok újraszámolása most (a munkalista a friss ReviewView-kból induljon).
+    // Recomputes the groups now (so the queue starts from fresh ReviewViews).
     void flushPendingReview();
     bool reviewAutoPlay() const;
     void setReviewAutoPlay(bool on);
-    // S4: a fókusz-kártya kontextus-sorai — a sor előtti `before` és utáni `after` megszólalás
-    // az átiratból (szűrő nélkül, a nem kétesek is), időrendben: [{ utteranceId, offset (−2…+2),
-    // speakerKey, speakerName, colorIndex, timeLabel, startMs, endMs, text, uncertain,
-    // decidedKind ("corrected" | "confirmed" | "ignored" | "") }]. Ismeretlen sor: üres lista.
+    // Context rows of the focus card: the `before` utterances before the row and `after` after
+    // it, from the transcript (unfiltered, non-uncertain ones too), in time order:
+    // [{ utteranceId, offset (-2..+2), speakerKey, speakerName, colorIndex, timeLabel, startMs,
+    // endMs, text, uncertain, decidedKind ("corrected" | "confirmed" | "ignored" | "") }].
+    // Unknown row: empty list.
     Q_INVOKABLE QVariantList contextLines(const QString& utteranceId, int before, int after) const;
-    // S7 „Mind megerősítem”: a munkalista magától eldőlt (alreadyDecided) sorai közül a legalább
-    // kMinEmbedMs hosszúak megerősítése EGY visszavonási lépésben (a rövidek nem lennének minta,
-    // azokat nem bántja). Az „Imént” sor: „N sor megerősítve”. Vissza: a megerősített sorok száma.
+    // "Confirm all": among the queue's self-resolved (alreadyDecided) rows, confirms those at
+    // least kMinEmbedMs long in ONE undo step (short ones would not be samples; they are left
+    // alone). The "Just now" row: "N lines confirmed". Returns the number of confirmed rows.
     Q_INVOKABLE int confirmSettled();
 
-    // ---- demó-állapotok (képernyőképhez) ---------------------------------
+    // ---- demo states (for screenshots) ---------------------------------
     // "selection" | "suggestion" | "suggestionShown" | "filter" | "search" | "searchEmpty" |
     // "rail" | "changeLine" | "changeSelection" | "changeSpeaker" | "changeFilter" |
     // "changeVoiceprint" | "changeVoiceprintDone" | "voiceprintHas" | "voiceprintNone" |
-    // "voiceprintDone" | "voiceprintShort" | "recheck" (újraellenőrzés után a szűrő) |
-    // "recheckReady" (minden kétes sor eldöntve: a szűrő-gomb az újraellenőrzést kínálja) |
-    // "noisy" (egy „egymásra beszéltek" sor) | "changePairOffer" (átsorolás után a páros
-    // átnézés ajánlata a sávon) | v3 + S2: "imentWarning" / "imentLog" („Imént" sor eltérő-minta
-    // figyelmeztetéssel, döntés-naplóval) | "shiftPreview" | "ignoredRows" | "sampleFilter".
-    // Ha a hang-elemzés még fut, a végén alkalmazódik.
+    // "voiceprintDone" | "voiceprintShort" | "recheck" (the filter after a re-check) |
+    // "recheckReady" (every doubtful row decided: the filter button offers the re-check) |
+    // "noisy" (an "overlapping speech" row) | "changePairOffer" (the pairwise review offer on
+    // the lane after a reassignment) | "imentWarning" / "imentLog" ("Just now" row with a
+    // deviating-sample warning, with the decision log) | "shiftPreview" | "ignoredRows" |
+    // "sampleFilter". If the audio analysis is still running, it applies at the end.
     Q_INVOKABLE void applyDemoState(const QString& state);
-    // Vár-e még egy demó-állapot a hang-elemzés végére.
+    // Whether a demo state still waits for the end of the audio analysis.
     Q_INVOKABLE bool demoStatePending() const { return !m_pendingDemoState.isEmpty(); }
 
-    // ---- S6: söprés-mód ----
+    // ---- sweep mode ----
     bool sweepActive() const { return m_sweepActive; }
     void setSweepActive(bool on);
     bool sweepContinuous() const { return m_sweepContinuous; }
@@ -686,43 +687,43 @@ public:
     int sweepSectionIndex() const { return m_sweepSection; }
     QVariantMap sweepSectionSummary() const { return m_sweepSummary; }
     QVariantMap sweepDock() const { return m_sweepDockCache; }
-    // A sor a söprésben már eldőlt / átugrott / „Később” (nem megálló; a lista-modell szerepe).
+    // The row was already decided / skipped / "Later" in the sweep (not a stop; the list model's role).
     bool isSweepHandled(int utterance) const;
-    // A látható terület sorai (a QML a görgetéskor adja); a fagyasztott ablak ebből ± 2 sor.
+    // The visible rows (QML supplies them on scroll); the frozen window is this +/- 2 rows.
     Q_INVOKABLE void setSweepWindow(int firstRow, int lastRow);
-    // Döntés a söprés célsorán (a billentyűk és a döntés-sáv): action = "default" (Enter: a
-    // javaslat, különben Jó így) | "confirm" (J) | "ignore" (0) | "lane" (1–9, a sín oszlopa) |
-    // "later" (→, Később) | "continue" (Space: tovább döntés nélkül) | "replay" (←: a sor újra, a
-    // megálló marad). noisy = Shift (nem minta).
-    // Megállónál a döntés után a lejátszás folytatódik (sweepResumeRequested).
+    // Decision on the sweep's target row (keys and the decision bar): action = "default" (Enter:
+    // the suggestion, else Looks right) | "confirm" (J) | "ignore" (0) | "lane" (1-9, the rail's
+    // column) | "later" (right arrow, Later) | "continue" (Space: go on without deciding) |
+    // "replay" (left arrow: the row again, the stop stays). noisy = Shift (not a sample).
+    // At a stop, playback resumes after the decision (sweepResumeRequested).
     Q_INVOKABLE bool sweepDecide(int row, const QString& action, int lane = -1, bool noisy = false);
-    // A következő megálló (kétes, még el nem döntött, nem „Később”) sora a `fromRow` után; -1 = nincs.
+    // The next stop row (doubtful, not yet decided, not "Later") after `fromRow`; -1 = none.
     Q_INVOKABLE int sweepNextStopRow(int fromRow) const;
-    // A függő jelölők alkalmazása most (szakasz vége, söprés vége).
+    // Applies the pending markers now (section end, sweep end).
     Q_INVOKABLE void releasePendingMarkers();
-    // Az összesítő gombjai: a következő szakasz / az újra kétes sorok / a kihagyottak eleje (ms;
-    // -1 = nincs hova menni). Mindhárom bezárja az összesítőt.
+    // The summary's buttons: the next section / the rows doubtful again / the start of the
+    // skipped ones (ms; -1 = nowhere to go). All three close the summary.
     Q_INVOKABLE int sweepNextSection();
     Q_INVOKABLE int sweepReviewBehind();
     Q_INVOKABLE int sweepReviewLater();
     Q_INVOKABLE void dismissSweepSummary();
-    // Szakasz-határok (tesztek, demó): legfeljebb ennyi idő / ennyi kétes sor egy szakaszban.
+    // Section limits (tests, demo): at most this much time / this many doubtful rows per section.
     Q_INVOKABLE void setSweepSectionLimits(int maxMs, int maxUncertain);
-    // Demó (képernyőkép): "sweepStop" | "sweepContinuous" | "sweepSectionDone" — a söprés egy
-    // pillanata a kitalált meetingen (a lejátszó-pozíciót a QML adja: sweepDemoPositionMs).
+    // Demo (screenshot): "sweepStop" | "sweepContinuous" | "sweepSectionDone": a moment of the
+    // sweep on the fictional meeting (QML supplies the player position: sweepDemoPositionMs).
     Q_INVOKABLE int stageSweepDemo(const QString& state);
 
 signals:
     void meetingIdChanged();
     void demoVariantChanged();
-    void sessionChanged();          // másik meeting / új átirat: minden újraolvasandó
+    void sessionChanged();          // another meeting / new transcript: everything must be re-read
     void speakersChanged();
     void overviewChanged();
     void railVisibleChanged();
     void uncertainOnlyChanged();
     void uncertainCountChanged();
     void recheckStateChanged();
-    // Lefutott egy újraellenőrzés (innen vagy a héjból, ugyanazon a szerkesztőn).
+    // A re-check finished (from here or from the shell, on the same editor).
     void recheckFinished(int flagged, int speakersWithConfirmedCore, int confirmedLines);
     void selectionChanged();
     void undoStateChanged();
@@ -740,19 +741,19 @@ signals:
     void ignoredCountChanged();
     void listFilterChanged();
     void queueActiveChanged();      // S3
-    // ---- S6: söprés-mód ----
+    // ---- sweep mode ----
     void sweepChanged();
     void sweepWindowChanged();
     void sweepMarkersChanged();
     void sweepSectionsChanged();
     void sweepDockChanged();
-    void sweepStopReached(int row);         // megálló-mód: a QML megállítja a lejátszót
-    void sweepResumeRequested();            // döntés a megállónál: a lejátszás folytatódik
-    void sweepSectionEnded(int index);      // a szakasz végére ért: összesítő, a lejátszó megáll
+    void sweepStopReached(int row);         // stop mode: QML stops the player
+    void sweepResumeRequested();            // decision at the stop: playback resumes
+    void sweepSectionEnded(int index);      // reached the section end: summary, the player stops
     void reviewAutoPlayChanged();   // S4
-    // A QML görgessen erre a sorra (keresés, „Megmutatom", javaslat, demó).
+    // QML should scroll to this row (search, "Show me", suggestion, demo).
     void revealRequested(int row);
-    // Rövid, nem modális visszajelzés (a QML a shell.toast-nak adja, ha van).
+    // Short, non-modal feedback (QML hands it to shell.toast, if present).
     void notice(const QString& text);
 
 private:
@@ -778,31 +779,31 @@ private:
     QString laneKey(int lane) const;
     void afterMove(const QString& targetKey);
     enum class MoveTarget { Speaker, Person, NewParticipant };
-    // A soronkénti áthelyezések közös útja: művelet + oszlop-kibontás + értesítő sáv.
-    // Vissza: a cél-beszélő kulcsa (üres = nem történt semmi).
+    // Shared path of the per-line moves: action + column expansion + notice bar.
+    // Returns the target speaker's key (empty = nothing happened).
     QString moveLines(const QStringList& ids, MoveTarget kind, const QString& value, bool noisy = false);
-    // ---- S2: döntés-napló („Imént" sor) ----
+    // ---- decision log ("Just now" row) ----
     struct Decision {
         QString text;
         QString time;
         QString utteranceId;
         QVariantList chips;
-        quint64 serial = 0;         // a szerkesztő undo-lépése (0: visszajelzés, nem vonható vissza)
+        quint64 serial = 0;         // the editor's undo step (0: feedback, cannot be undone)
         bool undone = false;
-        QString verb;               // S7: "move" | "keep" | "ignore" | "" (az Imént sor ikonja)
+        QString verb;               // "move" | "keep" | "ignore" | "" (the Just now row's icon)
     };
-    // Egy döntés előtt / után: a mellékhatás (más sorok javaslata) számolásához.
+    // Before / after a decision: for computing the side effect (suggestions for other rows).
     void beginDecision(const QStringList& ids);
     void endDecision(const QString& text, const QStringList& ids, const QString& kind);
     void pruneDecisions();
     void updateSampleDeviation();
     void updateSampleStats();
     void updateIgnoredCount();
-    QVector<Decision> m_decisions;      // időrendben (a legfrissebb a végén)
+    QVector<Decision> m_decisions;      // in time order (newest last)
     bool m_tracking = false;
-    QSet<QString> m_trackIds;           // a döntött sorok
-    QHash<QString, QString> m_trackKeys;    // S7: a döntött sorok beszélője a döntés előtt
-    QSet<QString> m_sideChanged;        // más sorok, amelyeknek a javaslata / kétessége változott
+    QSet<QString> m_trackIds;           // the decided rows
+    QHash<QString, QString> m_trackKeys;    // the decided rows' speaker before the decision
+    QSet<QString> m_sideChanged;        // other rows whose suggestion / doubt changed
     QVariantMap m_sampleDeviation;
     QVariantList m_sampleStats;
     int m_ignoredCount = 0;
@@ -844,8 +845,8 @@ private:
     QHash<QString, int> m_uttIndex;
     QVector<tanara::EditorSpeaker> m_speakers;
     QHash<QString, SpeakerView> m_views;
-    QStringList m_laneKeys;             // a látható oszlopok kulcsai, sorrendben
-    QSet<QString> m_collapsed;          // összecsukott (ritkán beszélő) kulcsok
+    QStringList m_laneKeys;             // keys of the visible columns, in order
+    QSet<QString> m_collapsed;          // collapsed (rarely speaking) keys
     bool m_lanesExpanded = false;
     int m_collapsedShown = 0;
     QVariantList m_lanes;
@@ -868,7 +869,7 @@ private:
     QString m_suggestionTargetName;
     bool m_suggestionShown = false;
     tanara::PairRecheckOffer m_pairOffer;
-    bool m_demoPairOffer = false;       // a demó-állapot kitalált ajánlata (nem a szerkesztőé)
+    bool m_demoPairOffer = false;       // the demo state's fictional offer (not the editor's)
 
     struct Change {
         bool active = false;
@@ -878,18 +879,18 @@ private:
         int utterance = -1;
         int restCount = 0;
         QString restText;
-        // A hanglenyomat-ajánlat állapota: nincs / ajánlható / most készült / visszavonva.
+        // State of the voiceprint offer: none / offerable / just made / undone.
         enum Voiceprint { None, Offer, Created, Removed };
         Voiceprint voiceprint = None;
-        QString printId;                // a sávról készült lenyomat (a visszavonásához)
-        bool newPerson = false;         // az átsorolás új személyt hozott létre (E4)
-        // Új személy címkés megbeszélésen: a tanulási kérdés (UX-terv 5.) és a válasz szövege.
+        QString printId;                // the voiceprint made from the lane (for its undo)
+        bool newPerson = false;         // the reassignment created a new person
+        // New person on a tagged meeting: the learning question and the answer text.
         QVector<tanara::PersonTagQuestion> tagQuestions;
         QString tagAnswer;
     };
     Change m_change;
     int m_changeSerial = 0;
-    int m_opDepth = 0;                  // > 0: saját művelet fut (a sávot utána mi írjuk ki)
+    int m_opDepth = 0;                  // > 0: own action running (we write the lane out afterwards)
     QSet<int> m_sticky;
 
     qreal m_embeddingProgress = 0.0;
@@ -919,10 +920,10 @@ private:
     int m_reviewCount = 0;
     int m_reviewGroupCount = 0;
     QVariantMap m_contaminated;
-    QSet<QString> m_sideConflicts;          // a sáv-ellentmondásos sorok azonosítói
-    QHash<QString, QString> m_speakerSides; // beszélő-kulcs → "local" | "remote" | "mixed" | "unknown"
+    QSet<QString> m_sideConflicts;          // ids of the lane-contradicting rows
+    QHash<QString, QString> m_speakerSides; // speaker key -> "local" | "remote" | "mixed" | "unknown"
     QString m_newPersonKey;
-    bool m_demoTagQuestion = false;     // demó: az új személy címke-kérdése (newPersonTag)
+    bool m_demoTagQuestion = false;     // demo: the new person's tag question (newPersonTag)
     void askNewPersonTag(const QString& name);
     void answerTagQuestion(const tanara::PersonTagQuestion& q, bool yes);
     QString m_newPersonGroupId;
@@ -930,22 +931,22 @@ private:
     bool m_similarShown = false;
     bool m_similarAutoShown = false;
     QVariantList m_similarMarks;
-    QString m_voiceprintWhenReady;          // „Hanglenyomat, ha elég" kérés erre a beszélőre
+    QString m_voiceprintWhenReady;          // "Voiceprint when enough" request for this speaker
     QTimer m_reviewTimer;
 
-    // ---- S3: munkalista (TranscriptEditorViewModelQueue.cpp) ----
+    // ---- worklist (TranscriptEditorViewModelQueue.cpp) ----
     ReviewQueueModel* m_queue = nullptr;
-    QString m_queueDemo;                    // a hang-elemzés / háttér-elemzés végére váró queue-demó
-    void initQueue();                       // a konstruktorból
-    // "reviewQueue*" demó-állapotok; igaz, ha kezelte.
+    QString m_queueDemo;                    // queue demo waiting for the end of audio / background analysis
+    void initQueue();                       // from the constructor
+    // "reviewQueue*" demo states; true if handled.
     bool applyQueueDemoState(const QString& state);
     void tryQueueDemo();
-    // S5: a munkalista nyitó-javaslatának végrehajtása (applyReviewGroup hívja); false, ha a
-    // groupId nem nyitó (ilyenkor a csoport-út fut).
+    // Executes the queue's opening suggestion (called by applyReviewGroup); false if the
+    // groupId is not an opening (then the group path runs).
     bool applyQueueOpener(const QString& groupId, bool noisy, bool* handled);
-    // S5: a csoportos döntés „Imént" szövege („Mind az N → Y"), az utolsó döntés felülírásával.
+    // The "Just now" text of the group decision ("All N -> Y"), overwriting the last decision.
     void relabelGroupDecision(int count, const QString& targetKey);
-    // ---- S6: söprés-mód (TranscriptEditorViewModel.cpp végén, külön blokkban) ----
+    // ---- sweep mode (at the end of TranscriptEditorViewModel.cpp, in its own block) ----
     struct SweepMarker {
         bool uncertain = false;
         QString reason;
@@ -957,11 +958,11 @@ private:
         qint64 startMs = 0;
         qint64 endMs = 0;
     };
-    // A szerkesztőből most beolvasott sor (m_utts[i]) jelölőjét a fagyasztott ablakban a régin
-    // tartja; mögötte a kétessé váltást az „újra kétes” listába veszi (onUtterancesChanged hívja).
+    // Keeps the marker of the row just read from the editor (m_utts[i]) at its old value in the
+    // frozen window; a turn to doubtful behind it goes into the "doubtful again" list (called by onUtterancesChanged).
     void sweepFilterIncoming(int i, const tanara::EditorUtterance& before);
-    void sweepOnPosition();                 // setPlaybackPosition hívja
-    void sweepReset();                      // reloadAll hívja
+    void sweepOnPosition();                 // called by setPlaybackPosition
+    void sweepReset();                      // called by reloadAll
     void sweepReleaseOutside();
     void sweepUpdateWindow();
     void sweepComputeSections();
@@ -974,23 +975,23 @@ private:
     QHash<QString, int> sweepSampleSnapshot() const;
     bool m_sweepActive = false;
     bool m_sweepContinuous = false;
-    bool m_sweepUserEdit = false;           // visszavonás / újra: a jelölők azonnal változnak
+    bool m_sweepUserEdit = false;           // undo / redo: markers change immediately
     bool m_sweepReleasing = false;
     int m_sweepStopUtt = -1;
     int m_sweepWatchUtt = -1;
     int m_sweepAfterUtt = -1;
-    int m_sweepViewFirst = -1;              // a látható terület (sorok)
+    int m_sweepViewFirst = -1;              // the visible area (rows)
     int m_sweepViewLast = -1;
-    int m_sweepWinFirstUtt = -1;            // a fagyasztott ablak (megszólalás-indexek)
+    int m_sweepWinFirstUtt = -1;            // the frozen window (utterance indices)
     int m_sweepWinLastUtt = -1;
     int m_sweepLastMs = -1;
-    QHash<QString, SweepMarker> m_sweepHeld;    // a fagyasztott ablakban kijelzett (régi) jelölő
+    QHash<QString, SweepMarker> m_sweepHeld;    // the (old) marker shown in the frozen window
     QStringList m_sweepRebehind;
-    QSet<QString> m_sweepHandled;           // eldöntött / átugrott / „Később” (nem áll meg újra)
+    QSet<QString> m_sweepHandled;           // decided / skipped / "Later" (does not stop again)
     QSet<QString> m_sweepDecided;
     QSet<QString> m_sweepIgnored;
     QSet<QString> m_sweepLater;
-    QSet<QString> m_sweepBackground;        // a háttérből lett kétes (előtted)
+    QSet<QString> m_sweepBackground;        // became doubtful in the background (ahead of you)
     QVector<SweepSection> m_sweepSectionList;
     QSet<int> m_sweepDone;
     int m_sweepSection = -1;
@@ -1000,8 +1001,8 @@ private:
     QVariantMap m_sweepSummary;
     QTimer m_sweepDockTimer;
     QVariantMap m_sweepDockCache;
-    bool m_reviewAutoPlay = true;           // S4: AppController nélkül (demó, teszt)
-    int m_queueDemoGen = 0;                 // S4: a fókusz-demók csend-várakozása
+    bool m_reviewAutoPlay = true;           // without an AppController (demo, test)
+    int m_queueDemoGen = 0;                 // silence wait of the focus demos
     bool m_queueDemoQuiet = false;
 };
 

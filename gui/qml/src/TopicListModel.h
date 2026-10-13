@@ -1,16 +1,16 @@
 #pragma once
 //
-// Tanara QML — a témánkénti elemzés (M08) téma-listája: kártyánként cím, leírás, állapot
-// (vár / sorban / fut / kész / hibás üzenettel) és a kész elemzés eredménye.
+// Tanara QML: the per-topic analysis' topic list: per card a title, description, state
+// (waiting / queued / running / done / failed with a message) and the finished analysis' result.
 //
-// A lemez az igazság (summary.topics.json + summary.analyses.json + a megmaradt hibák), így
-// újraindítás után onnan folytatódik, ahol abbamaradt. Minden szerkesztés (hozzáadás,
-// átírás, törlés, átrendezés) az AppController::setMeetingTopics-on át azonnal perzisztál.
-// A core jeleire (topicsChanged / topicStatusChanged / topicAnalysisReady) SORONKÉNT frissül:
-// azonos téma-sorrendnél csak dataChanged megy, teljes reset csak ismeretlen átrendezésnél.
+// The disk is the truth (summary.topics.json + summary.analyses.json + the leftover errors),
+// so after a restart it continues where it left off. Every edit (add, rewrite, delete,
+// reorder) persists immediately through AppController::setMeetingTopics. On the core's
+// signals (topicsChanged / topicStatusChanged / topicAnalysisReady) it refreshes PER ROW:
+// with an unchanged topic order only dataChanged goes out, a full reset only on an unknown reorder.
 //
-// A SummaryViewModel birtokolja (QML-ből: summaryVm.topics); controller nélkül kitalált
-// mintaadattal dolgozik, a szerkesztés ilyenkor csak memóriában történik.
+// SummaryViewModel owns it (from QML: summaryVm.topics); without a controller it works with
+// fictional sample data, and editing then happens in memory only.
 //
 #include "tanara/Types.h"
 #include "tanara/jobs/JobTypes.h"
@@ -32,28 +32,28 @@ class TopicListModel : public QAbstractListModel {
     QML_UNCREATABLE("A TopicListModel-t a SummaryViewModel adja (topics).")
 
     Q_PROPERTY(int count READ count NOTIFY countsChanged)
-    // „5 téma · 2 kész · 1 fut · 1 hibás · 1 vár”
+    // "5 topics · 2 done · 1 running · 1 failed · 1 waiting"
     Q_PROPERTY(QString countsText READ countsText NOTIFY countsChanged)
-    // Hány témának nincs kész elemzése és nem is fut / áll sorban (→ „Hiányzók elemzése”).
+    // How many topics have no finished analysis and are neither running nor queued (-> "Analyze missing").
     Q_PROPERTY(int missingCount READ missingCount NOTIFY countsChanged)
     Q_PROPERTY(int doneCount READ doneCount NOTIFY countsChanged)
-    Q_PROPERTY(bool busy READ busy NOTIFY countsChanged)   // van futó vagy sorban álló téma
+    Q_PROPERTY(bool busy READ busy NOTIFY countsChanged)   // there is a running or queued topic
 
 public:
     enum Role {
         TopicIdRole = Qt::UserRole + 1,
         TitleRole,
-        SummaryRole,          // a téma rövid leírása
+        SummaryRole,          // the topic's short description
         StateRole,            // waiting | queued | running | done | failed
         ErrorRole,
         ErrorDetailRole,
         HasResultRole,
-        ResultTextRole,       // a kész elemzés szövege (markdown)
+        ResultTextRole,       // the finished analysis' text (markdown)
         ResultDecisionsRole,  // QStringList
         ResultActionsRole,    // [{ text, owner, due }]
-        ResultOpenQuestionsRole,  // QStringList — a témában nyitva maradt kérdések
-        // A hiba javító műveletei (lásd jobsupport::FixAction): a Beállítások gomb felirata /
-        // oldala, ill. kontextus-hibánál LM Studióval az újratöltés tokenszáma (0 = nincs).
+        ResultOpenQuestionsRole,  // QStringList: the questions left open in the topic
+        // The error's fix actions (see jobsupport::FixAction): the Settings button's label / page,
+        // or for a context error with LM Studio the reload token count (0 = none).
         FixActionLabelRole,
         FixActionPageRole,
         FixReloadContextRole,
@@ -71,19 +71,19 @@ public:
     int doneCount() const;
     bool busy() const;
 
-    // A forrás beállítása: valódi (controller + meeting) vagy demó (controller == nullptr).
+    // Sets the source: real (controller + meeting) or demo (controller == nullptr).
     void bind(tanara::AppController* controller, const QString& meetingId);
     void loadDemo();
     void clear();
 
-    // Szerkesztés — mind azonnal perzisztál. Üres címmel nem történik semmi (false).
+    // Editing: all persist immediately. With an empty title nothing happens (false).
     Q_INVOKABLE bool addTopic(const QString& title, const QString& summary);
     Q_INVOKABLE bool updateTopic(int row, const QString& title, const QString& summary);
     Q_INVOKABLE void removeTopic(int row);
-    // Azonosító szerint (megerősítő ablak után: a sor-index közben elcsúszhatott). false = nincs ilyen.
+    // By id (after a confirm dialog the row index may have shifted meanwhile). False = no such one.
     Q_INVOKABLE bool removeTopicById(const QString& topicId);
     Q_INVOKABLE void moveTopic(int from, int to);
-    // Egyetlen téma futó / sorban álló elemzésének megszakítása.
+    // Cancels the running / queued analysis of a single topic.
     Q_INVOKABLE void cancelTopic(int row);
     Q_INVOKABLE QString topicIdAt(int row) const;
 
@@ -104,8 +104,8 @@ private:
         bool operator==(const Item& o) const;
     };
 
-    void sync();                 // a lemez-állapot beolvasása, soronkénti különbség-képzéssel
-    void persist();              // a jelenlegi sorrend mentése (setMeetingTopics)
+    void sync();                 // reads the disk state, building a per-row difference
+    void persist();              // saves the current order (setMeetingTopics)
     QVector<tanara::SummaryTopic> topicList() const;
 
     QPointer<tanara::AppController> m_controller;

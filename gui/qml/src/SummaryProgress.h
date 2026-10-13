@@ -1,17 +1,17 @@
 #pragma once
 //
-// Tanara QML — az összefoglaló-feladat (JobKind::Summarize) haladásának leképezése a felületre.
-// Az Összefoglaló fül futó állapota és a feladat-sáv (ShellMeetingModel) ugyanezt mutatja.
+// Tanara QML: mapping of the summary task's (JobKind::Summarize) progress onto the UI. The
+// Summary tab's running state and the task bar (ShellMeetingModel) show the same.
 //
-// A core szakaszai (AppController::summarizeMeeting):
-//   - rövid megbeszélés: egy szakasz, "single" — egy hívás, köztes haladás nincs (határozatlan);
-//   - hosszabb: "notes" (done / total rész kész) + "merge" (határozatlan);
-//   - LM Studiónál elöl, ha kell: "model" — a modell betöltése a szükséges kontextussal.
-// A felület ezekből:
-//   „Összefoglalás egy lépésben” · „Jegyzetek készítése: k / n rész” (valós csík k/n-ből) ·
-//   „Összefésülés”. Ha egy korábbi (elbukott / megszakított) futás kész részjegyzeteit
-//   használja újra, azt külön mondat jelzi. Szakaszok nélküli Summarize-feladat (a témánkénti
-//   elemzés záró összegzése) és minden más feladat: stage üres, a feladat címe, határozatlan.
+// The core's phases (AppController::summarizeMeeting):
+//   - short meeting: one phase, "single": one call, no intermediate progress (indeterminate);
+//   - longer: "notes" (done / total parts finished) + "merge" (indeterminate);
+//   - with LM Studio first, if needed: "model": loading the model with the needed context.
+// The UI shows from these:
+//   "Summarizing in one step" · "Taking notes: part k / n" (a real bar from k/n) ·
+//   "Merging". If it reuses the finished partial notes of an earlier (failed / cancelled)
+//   run, a separate sentence says so. A Summarize task without phases (the per-topic
+//   analysis' closing summary) and every other task: stage empty, the task's title, indeterminate.
 //
 #include "tanara/jobs/JobTypes.h"
 
@@ -26,26 +26,26 @@ struct SummaryProgress {
 
 public:
     QString stage;          // "" | "model" | "single" | "notes" | "merge"
-    QString label;          // a futó szakasz egy sorban (üres: a feladat címe a megjelenítendő)
-    int percent = -1;       // 0..100 csak valós darab-haladásból (notes); -1 = határozatlan
-    int done = -1;          // kész részek (notes / merge); -1 = nincs
+    QString label;          // the running phase on one line (empty: the task's title is to be shown)
+    int percent = -1;       // 0..100 only from real per-part progress (notes); -1 = indeterminate
+    int done = -1;          // finished parts (notes / merge); -1 = none
     int total = -1;
-    int reused = 0;         // ennyi rész jegyzete jött egy korábbi futásból
-    QString reusedNote;     // a hozzá tartozó mondat (üres, ha reused == 0)
-    // A szakasz-lista (JobStageRow): [{ id, label, state, percent, detail }]
+    int reused = 0;         // this many parts' notes came from an earlier run
+    QString reusedNote;     // its sentence (empty if reused == 0)
+    // The phase list (JobStageRow): [{ id, label, state, percent, detail }]
     QVariantList stages;
 
     bool isValid() const { return !stage.isEmpty(); }
 
     static SummaryProgress from(const tanara::JobProgress& job);
 
-    // A "notes" szakasz core-részletéből (pl. „3/5. rész · 2 korábbi futásból”) a korábbi
-    // futásból átvett részek száma: az utolsó „ · ” utáni első szám; nincs ilyen → 0.
-    // (A core a számot csak ebben a szövegben adja át.)
+    // From the "notes" phase's core detail (e.g. "part 3/5 · 2 from earlier runs") the number of
+    // parts taken over from an earlier run: the first number after the last " · "; none -> 0.
+    // (The core passes the number only in this text.)
     static int reusedParts(const QString& notesDetail);
 
 private:
-    // A modell-szakasz nélküli leképezés (single / notes / merge).
+    // The mapping without the model phase (single / notes / merge).
     static SummaryProgress fromWork(const tanara::JobProgress& job);
 };
 

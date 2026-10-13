@@ -79,7 +79,7 @@ void ShellActions::attachController()
     tanara::AppController* c = m_controller;
     if (!c)
         return;
-    // A kijelölés pillanatában még nem létező megbeszélés (új felvétel / import) verme később.
+    // The stack of a meeting that does not exist yet at selection time (new recording / import) comes later.
     if (tanara::MeetingStore* store = c->store())
         m_undoStoreConn = connect(store, &tanara::MeetingStore::meetingUpdated, this, [this](const QString& id) {
             if (id == m_currentMeetingId && !m_meetingUndo) attachMeetingUndo();
@@ -87,19 +87,19 @@ void ShellActions::attachController()
 
     connect(c, &tanara::AppController::recordingStateChanged, this,
             [this](tanara::RecordingState) { emit recordingChanged(); });
-    // Új felvétel: megjelenik a könyvtárban (a modell a store jelére frissül) és kijelölődik.
+    // New recording: appears in the library (the model refreshes on the store's signal) and is selected.
     connect(c, &tanara::AppController::recordingFinished, this, [this](const tanara::Meeting& m) {
         showMeeting(m.id);
         toast(tr("Felvétel kész: %1").arg(m.title));
     });
-    // Importálás kész: ugyanúgy, mint egy új felvétel — megjelenik és kijelölődik (az átirat
-    // előtti nézettel; átírás nem indul magától).
+    // Import done: like a new recording, it appears and is selected (with the pre-transcript
+    // view; transcription does not start on its own).
     connect(c, &tanara::AppController::importFinished, this, [this](const tanara::Meeting& m) {
         showMeeting(m.id);
         setCurrentTab(0);
         toast(tr("Importálva: %1").arg(m.title));
     });
-    // Kész az átirat / összefoglaló: értesítés; ha épp ez a megbeszélés van nyitva, a fülre vált.
+    // Transcript / summary done: notification; if this meeting is open, switches to the tab.
     connect(c, &tanara::AppController::transcriptReady, this, [this](const QString& id, const QString&) {
         toast(tr("Elkészült az átirat: %1").arg(meeting(id).title));
         if (id == m_currentMeetingId) setCurrentTab(0);
@@ -120,7 +120,7 @@ void ShellActions::attachController()
             toast(tr("%1, %2 — a hibásak a kártyájukon újrafuttathatók.")
                       .arg(tr("%n téma kész", nullptr, okCount), tr("%n hibázott", nullptr, failCount)));
     });
-    // Archívum-művelet vége (export: a feladat-sáv mutatta a haladást; import: kijelölés).
+    // End of an archive operation (export: the task bar showed progress; import: selection).
     connect(c, &tanara::AppController::archiveFinished, this,
             [this](const QString& opId, bool ok, const QString& meetingId, const QString& path,
                    const QString& message) {
@@ -148,9 +148,9 @@ void ShellActions::attachController()
     connect(c, &tanara::AppController::mixdownUpdated, this, [this](const QString&, bool ok) {
         if (!ok) emit toastRequested(tr("A lekeverés nem sikerült."), QStringLiteral("danger"), {}, false);
     });
-    // Feladathoz nem köthető hibák (felvétel, eszköz …). A feladatok hibáit a tracker őrzi
-    // (a nézetek hibakártyája mutatja), de a szöveges jel itt is látszik, nem modálisan.
-    // Ha a hiba a megnyitott megbeszélés hibasávjában már látszik, nem ismételjük toastban.
+    // Errors not tied to a task (recording, device ...). Task errors are kept by the tracker
+    // (shown by the views' error card), but the text notice is visible here too, non-modally.
+    // If the error already shows in the open meeting's error bar, it is not repeated in a toast.
     connect(c, &tanara::AppController::errorOccurred, this, [this](const QString& message) {
         if (!m_errorInBanner.isEmpty() && message.contains(m_errorInBanner))
             return;
@@ -167,7 +167,7 @@ void ShellActions::attachController()
             QTimer::singleShot(0, this, [this] { m_errorInBanner.clear(); });
         });
     }
-    // A kijelölt megbeszélést törölték (innen vagy máshonnan) → nincs kijelölés.
+    // The selected meeting was deleted (from here or elsewhere) -> no selection.
     if (tanara::MeetingStore* store = c->store())
         connect(store, &tanara::MeetingStore::meetingRemoved, this, [this](const QString& id) {
             m_participantGuesses.remove(id);
@@ -229,7 +229,7 @@ bool ShellActions::meetingExists(const QString& meetingId) const
     return AppContext::instance()->demo() && demo::find(meetingId);
 }
 
-// ---- navigáció -------------------------------------------------------------------------
+// ---- navigation -------------------------------------------------------------------------
 
 void ShellActions::setCurrentMeetingId(const QString& id)
 {
@@ -240,7 +240,7 @@ void ShellActions::setCurrentMeetingId(const QString& id)
     emit currentMeetingIdChanged();
 }
 
-// ---- közös visszavonás (G7b) ----
+// ---- shared undo ----
 
 void ShellActions::attachMeetingUndo()
 {
@@ -258,8 +258,8 @@ void ShellActions::attachMeetingUndo()
     if (u) {
         m_meetingUndoConns << connect(u, &tanara::MeetingUndoService::changed, this, [this] {
             emit meetingUndoChanged();
-            // Egy művelet több jelet is adhat (a szerkesztő-lépés, majd az elnyelő résztvevő-lépés):
-            // a kör végén nézzük meg, mi lett a tetején.
+            // One action can emit several signals (the editor step, then the absorbing participant step):
+            // at the end of the turn we check what ended up on top.
             if (m_undoCheckPending) return;
             m_undoCheckPending = true;
             QMetaObject::invokeMethod(this, &ShellActions::checkMeetingUndo, Qt::QueuedConnection);
@@ -268,7 +268,7 @@ void ShellActions::attachMeetingUndo()
                                       [this](const QString& text, tanara::MeetingUndoService::Source source) {
             emit meetingChangeUndone(text, int(source));
         });
-        // A meeting törlésével a verem megszűnik.
+        // Deleting the meeting removes the stack.
         m_meetingUndoConns << connect(u, &QObject::destroyed, this, [this] {
             m_meetingUndoConns.clear();
             m_meetingUndo = nullptr;
@@ -310,7 +310,7 @@ bool ShellActions::undoMeeting()
     tanara::MeetingUndoService* u = m_meetingUndo;
     if (!u) return false;
     const bool ok = u->undo();
-    // A visszavonás nem „új lépés”: az állapotot most rögzítjük.
+    // An undo is not a "new step": the state is recorded now.
     m_undoSeenCount = u->count();
     const QStringList texts = u->texts();
     m_undoSeenTop = texts.isEmpty() ? QString() : texts.last();
@@ -319,7 +319,7 @@ bool ShellActions::undoMeeting()
 
 void ShellActions::setCurrentTab(int index)
 {
-    index = qBound(0, index, 3);   // 0 Áttekintés · 1 Átirat · 2 Vezetői összefoglaló · 3 Memó
+    index = qBound(0, index, 3);   // 0 Overview, 1 Transcript, 2 Executive summary, 3 Memo
     if (index == m_currentTab)
         return;
     m_currentTab = index;
@@ -348,10 +348,10 @@ void ShellActions::seekTo(const QString& meetingId, int ms)
 {
     if (!meetingId.isEmpty())
         showMeeting(meetingId);
-    showTab(1);   // az Átirat fül
+    showTab(1);   // the Transcript tab
     if (m_player) {
-        // A lejátszó meetingId-je a Main.qml kötésén át követi a kijelölést; ha a kötés még
-        // nem futott le (vagy nincs), itt biztosítjuk, hogy a jó hangot tekerjük.
+        // The player's meetingId follows the selection via Main.qml's binding; if the binding has
+        // not run yet (or is missing), this makes sure we seek the right audio.
         if (!m_currentMeetingId.isEmpty() && m_player->meetingId() != m_currentMeetingId)
             m_player->setMeetingId(m_currentMeetingId);
         m_player->seek(ms);
@@ -384,8 +384,8 @@ void ShellActions::filterByTag(const QString& tagId)
 void ShellActions::openSettings(const QString& page, const QString& focusField)
 {
     if (ShellBridge* b = bridge()) {
-        // A Beállítások külön, nem modális ablak: a mentés a híd readinessChanged jelén át
-        // frissíti a nézeteket (itt csak a régi, modális hidak kedvéért léptetünk).
+        // Settings is a separate, non-modal window: saving refreshes the views via the bridge's
+        // readinessChanged signal (here we only step for the sake of the old, modal bridges).
         if (focusField.isEmpty()) b->openSettings(page);
         else b->openSettingsAt(page, focusField);
         bumpReadiness();
@@ -448,13 +448,13 @@ void ShellActions::openImport(const QVariantList& files)
     if (list.isEmpty() && !busy && bridge()) {
         const QStringList picked = pickAudioFiles();
         if (picked.isEmpty())
-            return;                       // visszalépett a választóból
+            return;                       // cancelled in the picker
         for (const QString& p : picked) list << p;
     }
     emit importDialogRequested(list);
 }
 
-// ---- megbeszélés-archívum --------------------------------------------------------------
+// ---- meeting archive --------------------------------------------------------------
 
 void ShellActions::exportArchive(const QString& meetingId)
 {
@@ -473,7 +473,7 @@ void ShellActions::exportArchive(const QString& meetingId)
                                    QDir(dir).filePath(tanara::MeetingArchive::suggestedFileName(m)),
                                    tr("Tanara-archívum (*.tanara.zip)"));
     if (path.isEmpty())
-        return;                           // visszalépett
+        return;                           // cancelled
     if (!path.endsWith(QLatin1String(".zip"), Qt::CaseInsensitive))
         path += tanara::MeetingArchive::fileSuffix();
     m_lastArchiveDir = QFileInfo(path).absolutePath();
@@ -499,7 +499,7 @@ void ShellActions::importArchive(const QVariant& pathOrUrl)
             return;
         file = b->pickArchiveFile();
         if (file.isEmpty())
-            return;                       // visszalépett
+            return;                       // cancelled
     }
     if (!m_controller->importMeetingArchive(file).isEmpty())
         toast(tr("Archívum importálása: %1…").arg(QFileInfo(file).fileName()));
@@ -516,7 +516,7 @@ void ShellActions::importFolder(const QVariant& pathOrUrl)
             return;
         folder = b->pickMeetingFolder();
         if (folder.isEmpty())
-            return;                       // visszalépett
+            return;                       // cancelled
     }
     if (!m_controller->importMeetingFolder(folder).isEmpty())
         toast(tr("Mappa importálása: %1…").arg(QFileInfo(folder).fileName()));
@@ -539,7 +539,7 @@ void ShellActions::revealFile(const QString& path)
         QDesktopServices::openUrl(QUrl::fromLocalFile(QFileInfo(path).absolutePath()));
 }
 
-// ---- kapuzás ---------------------------------------------------------------------------
+// ---- gating ---------------------------------------------------------------------------
 
 bool ShellActions::gate(WorkflowStep step, const QString& meetingId)
 {
@@ -549,13 +549,13 @@ bool ShellActions::gate(WorkflowStep step, const QString& meetingId)
     if (r.runnable)
         return true;
     ShellBridge* b = bridge();
-    // Tanara Cloud: pontosan egy teendő (bejelentkezés / feltöltés / frissítés).
+    // Tanara Cloud: exactly one thing to do (sign in / upload / refresh).
     if (b && b->handleCloudBlocker(r)) {
         bumpReadiness();
         return false;
     }
     if (r.blockerKind == BlockerKind::ProviderConfig || r.blockerKind == BlockerKind::Auth) {
-        // Hiányzó szolgáltató-beállítás → a Beállítások „Külső szolgáltatások” lapja.
+        // Missing provider setting -> the Settings "External services" page.
         openSettings(QStringLiteral("providers"),
                      step == WorkflowStep::Transcribe ? QStringLiteral("stt") : QStringLiteral("llm"));
     } else {
@@ -571,13 +571,13 @@ bool ShellActions::estimateOk(const QString& meetingId, const QString& task, con
     const WorkflowStep step = task == QLatin1String("transcribe") ? WorkflowStep::Transcribe
                                                                   : WorkflowStep::Summarize;
     if (!m_controller->usesCloud(step))
-        return true;                      // saját kulcs: nincs becslés
+        return true;                      // own key: no estimate
     ShellBridge* b = bridge();
-    // Híd nélkül cloud-futás NEM indulhat megerősítés nélkül.
+    // Without a bridge, a cloud run MUST NOT start without confirmation.
     return b && b->confirmCloudEstimate(meetingId, task, mode);
 }
 
-// ---- feldolgozás -----------------------------------------------------------------------
+// ---- processing -----------------------------------------------------------------------
 
 void ShellActions::startTranscription(const QString& meetingId)
 {
@@ -597,7 +597,7 @@ void ShellActions::retranscribe(const QString& meetingId)
 
 QVariantMap ShellActions::retranscribeImpact(const QString& meetingId) const
 {
-    int corrections = 23;                 // demó: az M10 minta számai
+    int corrections = 23;                 // demo: the numbers of the sample
     int named = 0;
     if (m_controller) {
         const tanara::RetranscribeImpact imp = m_controller->retranscribeImpact(meetingId);
@@ -641,7 +641,7 @@ void ShellActions::startTopicExtraction(const QString& meetingId)
 {
     if (!gate(WorkflowStep::Summarize, meetingId))
         return;
-    // Ha már van (szerkesztett) téma-lista, a kinyerés nem hív modellt → nincs becslés.
+    // If an (edited) topic list already exists, extraction calls no model -> no estimate.
     const bool haveTopics = !m_controller->meetingTopics(meetingId).isEmpty();
     if (!haveTopics
         && !estimateOk(meetingId, QStringLiteral("summarize"), QStringLiteral("complex")))
@@ -658,7 +658,7 @@ void ShellActions::startTopicAnalysis(const QString& meetingId)
         toast(tr("Adj meg legalább egy témát."));
         return;
     }
-    // Cloud: becslés a hátralévő (még elemzetlen) témákra + a záró összegzésre.
+    // Cloud: estimate for the remaining (not yet analyzed) topics + the closing summary.
     if (!estimateOk(meetingId, QStringLiteral("summarize"), QStringLiteral("complex")))
         return;
     m_controller->generateComplexSummary(meetingId, topics);
@@ -689,14 +689,14 @@ void ShellActions::identifyParticipants(const QString& meetingId)
     if (m.id.isEmpty())
         return;
     if (m.hasTranscript) {
-        // Átirat után: aszinkron, a feladat-sáv mutatja („3 / 5 beszélő”), megszakítható.
+        // After the transcript: async, shown in the task bar ("3 / 5 speakers"), cancelable.
         if (m_controller->jobs() && m_controller->jobs()->isRunning(meetingId, JobKind::Identify))
             return;
         if (m_controller->identifyMeetingAsync(meetingId)) {
             m_identifyRequested.insert(meetingId);
             return;
         }
-        // Nem indult: mondjuk meg, MIÉRT (a core csak igaz/hamisat ad).
+        // Did not start: say WHY (the core only returns true/false).
         if (m_controller->jobs() && m_controller->jobs()->isRunning(meetingId, JobKind::Transcribe)) {
             toast(tr("Az átírás még fut — a végén magától azonosítja a résztvevőket."));
             return;
@@ -710,7 +710,7 @@ void ShellActions::identifyParticipants(const QString& meetingId)
                 anonymous = anonymous || (sp.anonymous && !sp.added);
             }
         if (anySpeaker && !anonymous) {
-            // Mindenkinek van neve: azonosítani nincs mit, de a sorok újraellenőrizhetők.
+            // Everyone has a name: nothing to identify, but the lines can be re-checked.
             runRecheck(meetingId, tr("Mindenki azonosítva"),
                        tr("Ebben a megbeszélésben már minden beszélőnek van neve. Újraellenőrizzem a "
                           "sorokat a megerősített és javított sorok hangja alapján? A kétséges sorokat "
@@ -724,7 +724,7 @@ void ShellActions::identifyParticipants(const QString& meetingId)
         }
         return;
     }
-    // Átirat előtt: előnézet a hangsávokból (nem ír a megbeszélésbe) — modális haladás-ablakkal.
+    // Before the transcript: preview from the audio tracks (writes nothing into the meeting), with a modal progress window.
     ShellBridge* b = bridge();
     if (!b)
         return;
@@ -761,22 +761,22 @@ void ShellActions::runRecheck(const QString& meetingId, const QString& title, co
     }
     if (!confirm(title, text, tr("Újraellenőrzés"), false))
         return;
-    // A párbeszéd alatt változhatott az állapot (pl. elindult a hang-elemzés).
+    // The state may have changed during the dialog (e.g. audio analysis started).
     if (!ed->canRecheck()) {
         toast(ed->recheckBlocker());
         return;
     }
-    // Az „Átnézendő" nézetet a szerkesztő nézetmodellje kapcsolja be (recheckFinished jel).
+    // The editor's view model switches the "To review" view on (recheckFinished signal).
     const tanara::SpeakerEditor::RecheckResult r = ed->recheckFromConfirmed();
     QString msg;
     if (r.flagged > 0) {
-        if (meetingId == m_currentMeetingId) showTab(1);   // az Átirat fül
+        if (meetingId == m_currentMeetingId) showTab(1);   // the Transcript tab
         msg = tr("%n kétséges sort jelöltem meg — az Átnézendő szűrőben találod.", "", r.flagged);
     } else {
         msg = tr("A megerősített sorok alapján nem találtam kétséges sort.");
     }
-    // Mire támaszkodott: megerősített sorok, tárolt minták (ebből mennyi erről a megbeszélésről),
-    // modellek; és ha két hang nagyon hasonló, figyelmeztet (ugyanaz az érték, mint a „Miért ő?"-ben).
+    // What it relied on: confirmed lines, stored samples (how many of them from this meeting),
+    // models; and if two voices are very similar, a warning (same value as in "Why this one?").
     const QString basis = r.basisSummary();
     if (!basis.isEmpty()) msg += QLatin1Char(' ') + basis;
     const QString similar = r.similarityNote();
@@ -803,7 +803,7 @@ void ShellActions::openSpeakerWhy(const QString& meetingId, const QString& speak
 {
     if (speakerKey.isEmpty()) return;
     if (!meetingId.isEmpty() && meetingId != m_currentMeetingId) showMeeting(meetingId);
-    showTab(1);   // az Átirat fül: a panel a szerkesztőben él
+    showTab(1);   // the Transcript tab: the panel lives in the editor
     emit speakerWhyRequested(meetingId.isEmpty() ? m_currentMeetingId : meetingId, speakerKey);
 }
 
@@ -849,10 +849,10 @@ void ShellActions::cancelJob(const QString& meetingId, int jobKind)
 
 void ShellActions::onRetry(const QString& meetingId, const QString& kind)
 {
-    // Újra / Folytatás egy cloud-hiba után: ugyanaz a lépés, új futás (a folytatás csak a
-    // hátralévő részekért fizet — a kész téma-elemzések a lemezen vannak). A cél MINDIG az a
-    // megbeszélés, amelyikhez a hiba tartozik; ha már nem az van kijelölve (a hibaablak alatt
-    // váltott a kijelölés), nem indítunk a háttérben fizetős futást — ahogy a régi ablak sem.
+    // Retry / Resume after a cloud error: same step, new run (resume pays only for the remaining
+    // parts; finished topic analyses are on disk). The target is ALWAYS the meeting the error
+    // belongs to; if it is no longer selected (the selection changed under the error dialog), we
+    // do not start a paid background run, as the old window did not either.
     if (!m_controller || meetingId.isEmpty())
         return;
     const tanara::Meeting m = meeting(meetingId);
@@ -862,11 +862,11 @@ void ShellActions::onRetry(const QString& meetingId, const QString& kind)
         toast(tr("Az ismétlés nem indult el, mert közben másik megbeszélésre váltottál: %1").arg(m.title));
         return;
     }
-    // Minden ág a kapun és a költségbecslésen megy át (Tanara Cloud: a felhasználó újra látja
-    // az árat ehhez a megbeszéléshez).
+    // Every branch passes through the gate and the cost estimate (Tanara Cloud: the user sees
+    // the price again for this meeting).
     if (kind == QLatin1String("transcribe")) {
-        // Ha a megbeszélésnek VAN átirata, a hiba egy újra-átírásé volt: az a megerősítő
-        // ablakon át indul újra (kézi javítások, másolat), nem sima átírásként.
+        // If the meeting HAS a transcript, the error was from a re-transcription: it restarts via the
+        // confirm dialog (manual corrections, copy), not as a plain transcription.
         if (m.hasTranscript) retranscribe(meetingId);
         else startTranscription(meetingId);
     } else if (kind == QLatin1String("summary"))
@@ -877,7 +877,7 @@ void ShellActions::onRetry(const QString& meetingId, const QString& kind)
         startTopicAnalysis(meetingId);
 }
 
-// ---- megbeszélés-műveletek -------------------------------------------------------------
+// ---- meeting actions -------------------------------------------------------------
 
 void ShellActions::revealInFolder(const QString& meetingId)
 {
@@ -918,8 +918,8 @@ void ShellActions::deleteMeeting(const QString& meetingId)
 {
     if (!m_controller || meetingId.isEmpty())
         return;
-    // Törlés előtt a futó feladatok megszakadnak (ne írjanak a törölt mappába), a lejátszó
-    // pedig elengedi a hangfájlt.
+    // Before deleting, running tasks are cancelled (they must not write into the deleted
+    // folder) and the player releases the audio file.
     m_controller->cancelAllJobs(meetingId);
     if (m_player && m_player->meetingId() == meetingId)
         m_player->setMeetingId(QString());
@@ -940,20 +940,20 @@ void ShellActions::activateWindow()
     emit windowActivationRequested();
 }
 
-// ---- confirm(): M10-mintájú, modális megerősítés a QML-ablakban --------------------------
+// ---- confirm(): sample-style modal confirmation in the QML dialog --------------------------
 
 bool ShellActions::confirm(const QString& title, const QString& text, const QString& confirmLabel,
                            bool danger)
 {
     static const QMetaMethod sig = QMetaMethod::fromSignal(&ShellActions::confirmRequested);
-    // Nincs, aki megjelenítse (önállóan renderelt komponens, teszt) vagy már nyitva van egy.
+    // Nobody can show it (standalone-rendered component, test) or one is already open.
     if (!isSignalConnected(sig) || m_confirmLoop)
         return false;
     QEventLoop loop;
     m_confirmLoop = &loop;
     m_confirmResult = false;
     emit confirmRequested(title, text, confirmLabel, danger);
-    if (m_confirmLoop)                    // a QML azonnal is válaszolhatott
+    if (m_confirmLoop)                    // QML may have answered immediately
         loop.exec();
     m_confirmLoop = nullptr;
     return m_confirmResult;

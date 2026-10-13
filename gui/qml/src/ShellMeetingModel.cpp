@@ -24,11 +24,11 @@ using tanara::JobKind;
 
 namespace {
 
-// A (nyers) beszélő-címkék száma az átiratban; 0, ha nincs / nem olvasható.
+// Number of (raw) speaker labels in the transcript; 0 if none / unreadable.
 int speakerCount(const tanara::Meeting& m)
 {
-    // Egy elemű gyorsítótár: a feladat-haladás jelei sűrűn újratöltik a fejlécet, az átirat
-    // viszont közben nem változik (útvonal + módosítási idő + méret azonosítja).
+    // A one-element cache: task-progress signals reload the header often, while the transcript
+    // does not change meanwhile (identified by path + modification time + size).
     static QString cachedKey;
     static int cachedCount = 0;
     const QFileInfo fi(QDir(m.folder).filePath(QStringLiteral("transcript.segments.json")));
@@ -142,7 +142,7 @@ void ShellMeetingModel::attach()
                     &ShellMeetingModel::onMeetingTouched);
             connect(c, &tanara::AppController::transcriptReady, this,
                     [this](const QString& id, const QString&) {
-                // Új átirat → új javaslatok (a controller előbb eldobja a régi profilt).
+                // New transcript -> new suggestions (the controller drops the old profile first).
                 if (id == m_meetingId) m_tagsRequestedFor.clear();
                 onMeetingTouched(id);
             });
@@ -152,7 +152,7 @@ void ShellMeetingModel::attach()
                 connect(jobs, &tanara::MeetingJobTracker::stateChanged, this,
                         [this](const QString& id) {
                     if (id != m_meetingId) return;
-                    // Az állapot (pl. elavult-jelző) és a futó feladatok is változhattak.
+                    // The state (e.g. the stale marker) and the running tasks may have changed too.
                     reload();
                 });
                 connect(jobs, &tanara::MeetingJobTracker::jobProgressChanged, this,
@@ -161,7 +161,7 @@ void ShellMeetingModel::attach()
                 });
             }
         }
-        // A címkesor a valódi készlettel dolgozik (controller nélkül a kitalált marad).
+        // The tag row works with the real pool (without a controller the fictional one stays).
         if (m_controller) m_tags->setController(m_controller.data());
         m_tagsRequestedFor.clear();
     }
@@ -170,7 +170,7 @@ void ShellMeetingModel::attach()
 
 void ShellMeetingModel::syncTags()
 {
-    // Demóban (controller nélkül) üres azonosító → a kitalált demó-megbeszélés címkéi.
+    // In the demo (without a controller) an empty id -> the fictional demo meeting's tags.
     m_tags->setMeetingId(m_controller ? m_meetingId : QString());
     if (!m_controller || !m_exists || !m_hasTranscript || m_tagsRequestedFor == m_meetingId)
         return;
@@ -268,9 +268,9 @@ QVariantMap ShellMeetingModel::describeJob(const tanara::JobProgress& job)
     for (const tanara::JobStage& s : job.stages)
         if (s.state == tanara::StageState::Running) { running = &s; break; }
 
-    // Összefoglaló: a szakaszok szerint („Jegyzetek készítése: k / n rész” valós csíkkal, majd
-    // „Összefésülés” határozatlanul) — ugyanaz a leképezés, mint az Összefoglaló fülön (a
-    // korábbi futásból átvett részeket csak a fül mondja ki; a sáv rövid).
+    // Summary: by phases ("Taking notes: part k / n" with a real bar, then "Merging"
+    // indeterminate): the same mapping as on the Summary tab (parts taken over from an earlier
+    // run are stated only by the tab; the bar is short).
     const SummaryProgress sp = SummaryProgress::from(job);
     if (sp.isValid()) {
         detail = sp.label;
@@ -320,13 +320,13 @@ void ShellMeetingModel::reloadTasks()
         const QVector<tanara::JobProgress> jobs = m_controller->processingState(m_meetingId).jobs;
         for (const tanara::JobProgress& job : jobs) {
             if (job.kind == JobKind::Identify) identify = true;
-            // A fülek pirulája: a futó lépés haladása (határozatlannál 0).
+            // The tabs' pill: the running step's progress (0 if indeterminate).
             if (job.kind == JobKind::Transcribe)
                 transcribe = qMax(0, describeJob(job).value(QStringLiteral("percent")).toInt());
             if (job.kind == JobKind::Summarize || job.kind == JobKind::AnalyzeTopics)
                 summarize = qMax(0, describeJob(job).value(QStringLiteral("percent")).toInt());
-            // Az ELSŐ átírást az Áttekintés „Átirat” lépése mutatja (szakaszok + „Megszakítás”,
-            // TranscribeStepPanel); a sávba csak az újra-átírás kerül (ott nincs más jelzés).
+            // The FIRST transcription is shown by the Overview's "Transcript" step (phases + "Cancel",
+            // TranscribeStepPanel); only a re-transcription goes into the bar (there is no other indicator).
             if (job.kind == JobKind::Transcribe && !m_hasTranscript) continue;
             tasks.append(describeJob(job));
         }

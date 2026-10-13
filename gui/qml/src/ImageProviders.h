@@ -1,14 +1,14 @@
 #pragma once
 //
-// Tanara QML — kép-provider (image://tanara/…). Shader nélkül, CPU-n rajzol, ezért a
-// szoftveres rendererrel (képernyőkép-mód, gyenge GPU) is pontosan ugyanazt adja.
+// Tanara QML: image provider (image://tanara/...). Draws on the CPU without shaders, so even
+// with the software renderer (screenshot mode, weak GPU) it gives exactly the same.
 //
-//   image://tanara/icon/<név>/<szín-hex>/<vonalvastagság>
-//       Lucide SVG (:/qt/qml/Tanara/icons/<név>.svg) a kért színnel, a kért pixelméretben
-//       raszterelve (a TIcon a devicePixelRatio-val szorzott sourceSize-t kér → törtléptéken
-//       is éles). A szín "rrggbb" vagy "aarrggbb" (a '#' nélkül).
-//   image://tanara/shadow/<blur>/<sarok-sugár>/<szín-hex>
-//       Elmosott, lekerekített téglalap kilencfoltos (BorderImage) árnyéknak — lásd TShadow.
+//   image://tanara/icon/<name>/<color-hex>/<stroke-width>
+//       Lucide SVG (:/qt/qml/Tanara/icons/<name>.svg) in the requested color, rasterized at
+//       the requested pixel size (TIcon asks for sourceSize times devicePixelRatio, so it is
+//       sharp at fractional scales too). The color is "rrggbb" or "aarrggbb" (without '#').
+//   image://tanara/shadow/<blur>/<corner-radius>/<color-hex>
+//       A blurred rounded rectangle for a nine-patch (BorderImage) shadow; see TShadow.
 //
 #include <QQuickImageProvider>
 
@@ -19,7 +19,7 @@ public:
     TanaraImageProvider();
     QImage requestImage(const QString& id, QSize* size, const QSize& requestedSize) override;
 
-    // Külön is hívhatók (tesztelhetők).
+    // Can be called separately (testable).
     static QImage renderIcon(const QString& name, const QColor& color, qreal strokeWidth,
                              const QSize& pixelSize);
     static QImage renderShadow(int blur, int radius, const QColor& color);

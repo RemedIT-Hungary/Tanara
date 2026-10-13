@@ -1,19 +1,19 @@
 #pragma once
 //
-// Tanara QML — beszélő → sáv kötés az Áttekintés KIK VOLTAK OTT soraiban (sáv-chipek).
-// Egy megbeszélésre egy példány; soronként chips(id) adja a chipeket, toggle(id, trackId) vált.
-// Az adat a core-é: AppController::participantTracks / setParticipantTracks — átirat előtt a
-// Participant::tracks, átirat után a szerkesztő kézi sáv-beosztása (SpeakerOverlay::speakerTracks,
-// a „Miért ő?" MELYIK SÁVON BESZÉL? chipjeivel közös). A kézi kötés nélkül a következtetett oldal
-// sávjai látszanak (halványan).
+// Tanara QML: speaker -> track binding in the Overview's WHO WAS THERE rows (track chips).
+// One instance per meeting; per row chips(id) gives the chips, toggle(id, trackId) toggles.
+// The data is the core's: AppController::participantTracks / setParticipantTracks: before a
+// transcript Participant::tracks, after it the editor's manual track assignment
+// (SpeakerOverlay::speakerTracks, shared with the "Why this one?" WHICH TRACK DOES THE
+// SPEAKER USE? chips). Without a manual binding the inferred side's tracks show (dimmed).
 //
 // Chip: { trackId, name, shortName, icon ("mic" | "phone" | "audio-lines"), on, manual }.
-// Kattintás: a mostani halmaz ⊕ a sáv (kézi kötés lesz belőle); ha a kézi halmaz üres maradna →
-// a kézi kötés törlődik (vissza a következtetésre); a következtetett egyetlen sáv kattintása a
-// kötés megerősítése.
+// Click: the current set XOR the track (it becomes a manual binding); if the manual set would
+// stay empty -> the manual binding is cleared (back to inference); clicking the single
+// inferred track confirms the binding.
 //
-// Controller nélkül / App.demo mellett mintaadat (a demó résztvevő-id-khoz: p1 = mikrofon,
-// a többi = hívás; p3 kézzel mindkettőre kötve), a váltás memóriában.
+// Without a controller / with App.demo sample data (for the demo participant ids: p1 =
+// microphone, the others = call; p3 manually bound to both), toggling in memory.
 //
 #include <QHash>
 #include <QObject>
@@ -34,9 +34,9 @@ class ParticipantTrackBinder : public QObject {
 
     Q_PROPERTY(QObject* controller READ controllerObject WRITE setController NOTIFY controllerChanged)
     Q_PROPERTY(QString meetingId READ meetingId WRITE setMeetingId NOTIFY meetingIdChanged)
-    // Minden változáskor nő: a QML a chips(id) hívást ehhez köti.
+    // Grows on every change: QML binds the chips(id) call to it.
     Q_PROPERTY(int revision READ revision NOTIFY changed)
-    // Van-e legalább két választható sáv (különben a chipeknek nincs értelme).
+    // Whether there are at least two selectable tracks (otherwise the chips make no sense).
     Q_PROPERTY(bool available READ available NOTIFY changed)
 
 public:
@@ -49,11 +49,11 @@ public:
     int revision() const { return m_revision; }
     bool available() const;
 
-    // id: résztvevő-id vagy beszélő-kulcs (OverviewViewModel.participants[i].id). A javasolt
-    // („suggest:") sorokra üres.
+    // id: participant id or speaker key (OverviewViewModel.participants[i].id). Empty for the
+    // suggested ("suggest:") rows.
     Q_INVOKABLE QVariantList chips(const QString& id) const;
     Q_INVOKABLE bool toggle(const QString& id, const QString& trackId);
-    // A kézi kötés törlése (vissza a következtetett oldalra).
+    // Clears the manual binding (back to the inferred side).
     Q_INVOKABLE bool reset(const QString& id);
 
 signals:
@@ -72,7 +72,7 @@ private:
     void connectController();
     void reload();
     bool setTracks(const QString& id, const QStringList& trackIds);
-    // A kötés (demóban a memóriából).
+    // The binding (in the demo from memory).
     QStringList binding(const QString& id, bool* manual) const;
 
     QPointer<QObject> m_injected;

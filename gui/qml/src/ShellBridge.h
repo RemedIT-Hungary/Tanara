@@ -1,13 +1,13 @@
 #pragma once
 //
-// ShellBridge — amit a QML-héj a Qt Widgets világtól kér (App.bridge).
+// ShellBridge: what the QML shell asks of the Qt Widgets world (App.bridge).
 //
-// A megvalósítás a gui/src-ben él (QmlShellBridge: az ismeri a Beállítások / Személyek /
-// felvevő / Tanara Cloud Widgets-osztályokat), és a main.cpp telepíti:
+// The implementation lives in gui/src (QmlShellBridge: it knows the Settings / People /
+// recorder / Tanara Cloud Widgets classes) and main.cpp installs it:
 //   AppContext::instance()->setBridge(bridge)
-// Itt csak az absztrakt felület van, hogy a ShellActions (és a tesztek egy ál-híddal) a
-// Widgets linkelése nélkül használhassák. Híd nélkül (demó, képernyőkép) a ShellActions
-// ezeket a műveleteket kihagyja.
+// Only the abstract interface is here, so ShellActions (and tests with a fake bridge) can
+// be used without linking Widgets. Without a bridge (demo, screenshot) ShellActions skips
+// these actions.
 //
 #include "tanara/provider/ReadinessModel.h"
 
@@ -21,10 +21,10 @@ namespace tanara_qml {
 class ShellBridge : public QObject {
     Q_OBJECT
 
-    // ---- Tanara Cloud „króm” (K-08 / K-10 / notice): egyenleg-chip + sávok ----
+    // ---- Tanara Cloud chrome: balance chip + bars ----
     Q_PROPERTY(bool cloudChipVisible READ cloudChipVisible NOTIFY cloudChromeChanged)
     Q_PROPERTY(QString cloudChipText READ cloudChipText NOTIFY cloudChromeChanged)
-    // "normal" | "warn" (kevés egyenleg) | "danger" (elfogyott)
+    // "normal" | "warn" (low balance) | "danger" (used up)
     Q_PROPERTY(QString cloudChipTone READ cloudChipTone NOTIFY cloudChromeChanged)
     Q_PROPERTY(QString cloudChipToolTip READ cloudChipToolTip NOTIFY cloudChromeChanged)
     // [{ key, level: "critical"|"warning"|"info", text, cta, closable }]
@@ -39,51 +39,50 @@ public:
     virtual QString cloudChipToolTip() const = 0;
     virtual QVariantList cloudBanners() const = 0;
 
-    // ---- Widgets-párbeszédablakok ----
+    // ---- Widgets dialogs ----
     // page: "" | "providers" | "watcher" | "cloud" | "summary" | "recording"
     Q_INVOKABLE virtual void openSettings(const QString& page) = 0;
-    // Ugyanez mély hivatkozással (B04): focusField "stt" | "llm" — a hiányzó szolgáltató
-    // kártyája kiemelve, sikeres mentés után vissza a megbeszéléshez. Az alapértelmezés a
-    // sima openSettings (a tesztek ál-hídjainak nem kell tudniuk róla).
+    // The same with a deep link: focusField "stt" | "llm": the missing provider's card is
+    // highlighted, after a successful save back to the meeting. The default is plain
+    // openSettings (tests' fake bridges need not know about it).
     Q_INVOKABLE virtual void openSettingsAt(const QString& page, const QString& focusField)
     {
         Q_UNUSED(focusField);
         openSettings(page);
     }
     Q_INVOKABLE virtual void openPeople() = 0;
-    // Ugyanez egy személy kijelölésével (üres név: a korábbi kijelölés marad). Az
-    // alapértelmezés a sima openPeople (a tesztek ál-hídjainak nem kell tudniuk róla).
+    // The same with a person selected (empty name: the earlier selection stays). The default is
+    // plain openPeople (tests' fake bridges need not know about it).
     Q_INVOKABLE virtual void openPeopleAt(const QString& person)
     {
         Q_UNUSED(person);
         openPeople();
     }
-    // Ugyanez egy szakaszra görgetve (section: "tags" — a „Címkéi” javító link). Az
-    // alapértelmezés a sima openPeopleAt.
+    // The same scrolled to a section (section: "tags": the "Tags" fix link). The default is
+    // plain openPeopleAt.
     Q_INVOKABLE virtual void openPeopleAtSection(const QString& person, const QString& section)
     {
         Q_UNUSED(section);
         openPeopleAt(person);
     }
-    // A Címkék ablaka (TagsWindow.qml); tagId: ez a címke legyen kijelölve (üres: a korábbi
-    // kijelölés marad). Az alapértelmezés semmit sem tesz (a tesztek ál-hídjainak nem kell
-    // tudniuk róla).
+    // The Tags window (TagsWindow.qml); tagId: select this tag (empty: the earlier selection
+    // stays). The default does nothing (tests' fake bridges need not know about it).
     Q_INVOKABLE virtual void openTags() {}
     Q_INVOKABLE virtual void openTagsAt(const QString& tagId)
     {
         Q_UNUSED(tagId);
         openTags();
     }
-    // Az „Első lépések” ablak (OnboardingWindow.qml) — kézi újranyitás (Fájl menü). Az
-    // alapértelmezés semmit sem tesz (a tesztek ál-hídjainak nem kell tudniuk róla).
+    // The "Getting started" window (OnboardingWindow.qml): manual reopen (File menu). The
+    // default does nothing (tests' fake bridges need not know about it).
     Q_INVOKABLE virtual void openOnboarding() {}
     Q_INVOKABLE virtual void openRecorder() = 0;
-    // Natív fájlválasztó hangfájlhoz; üres, ha a felhasználó visszalépett.
+    // Native file picker for an audio file; empty if the user cancelled.
     Q_INVOKABLE virtual QString pickAudioFile() = 0;
-    // Ugyanez több fájlra (importálás): hang- és videófájlok; üres lista = visszalépett.
+    // The same for several files (import): audio and video files; empty list = cancelled.
     Q_INVOKABLE virtual QStringList pickAudioFiles() = 0;
-    // Natív mentés-ablak (proposedPath: javasolt mappa + fájlnév; filter: QFileDialog-szűrő);
-    // üres, ha visszalépett. Az alapértelmezés üres (a tesztek ál-hídjainak nem kell tudniuk róla).
+    // Native save dialog (proposedPath: suggested folder + file name; filter: QFileDialog filter);
+    // empty if cancelled. The default is empty (tests' fake bridges need not know about it).
     Q_INVOKABLE virtual QString pickSaveFile(const QString& title, const QString& proposedPath,
                                              const QString& filter)
     {
@@ -92,68 +91,68 @@ public:
         Q_UNUSED(filter);
         return {};
     }
-    // Megbeszélés-archívum (*.tanara.zip / *.zip) kiválasztása importáláshoz; üres = visszalépett.
+    // Pick a meeting archive (*.tanara.zip / *.zip) to import; empty = cancelled.
     Q_INVOKABLE virtual QString pickArchiveFile() { return {}; }
-    // Megbeszélés-mappa (track_*.ogg + meeting.json) kiválasztása importáláshoz; üres = visszalépett.
+    // Pick a meeting folder (track_*.ogg + meeting.json) to import; empty = cancelled.
     Q_INVOKABLE virtual QString pickMeetingFolder() { return {}; }
 
-    // ---- Tanara Cloud kapuk (a ShellActions hívja a feldolgozás indítása előtt) ----
-    // Egy blokkolt lépés cloud-teendője (bejelentkezés / feltöltés / frissítés). true = a
-    // híd kezelte (a hívó ne nyisson Beállításokat). Nem cloud-akadálynál false.
+    // ---- Tanara Cloud gates (called by ShellActions before starting processing) ----
+    // The cloud remedy of a blocked step (sign-in / upload / refresh). True = the bridge
+    // handled it (the caller must not open Settings). False for a non-cloud blocker.
     virtual bool handleCloudBlocker(const tanara::ReadinessResult& blocker) = 0;
-    // K-06: költségbecslés + megerősítés cloud-futás előtt. true = indítható. Saját kulcsos
-    // (BYO) lépésnél azonnal true. task: transcribe | summarize; mode: "" | quick | complex.
+    // Cost estimate + confirmation before a cloud run. True = can start. For an own-key (BYO)
+    // step, true immediately. task: transcribe | summarize; mode: "" | quick | complex.
     virtual bool confirmCloudEstimate(const QString& meetingId, const QString& task,
                                       const QString& mode) = 0;
 
-    // ---- Résztvevők tippelése ÁTIRAT ELŐTT (hang-klaszterek + lenyomat-DB) ----
-    // Modális, megszakítható haladás-ablakkal fut. Visszaad egy emberi összegző mondatot;
-    // megszakításnál üres és *cancelled = true.
+    // ---- Participant guessing BEFORE THE TRANSCRIPT (audio clusters + voiceprint DB) ----
+    // Runs with a modal, cancelable progress window. Returns a human summary sentence; on
+    // cancel it is empty and *cancelled = true.
     virtual QString identifyParticipantsPreview(const QString& meetingId, bool* cancelled) = 0;
 
-    // ---- sávok műveletei ----
+    // ---- track actions ----
     Q_INVOKABLE virtual void cloudBannerAction(const QString& key) = 0;
     Q_INVOKABLE virtual void cloudBannerDismiss(const QString& key) = 0;
 
-    // ---- felvétel és ablak-életciklus ----
-    // A lebegő felvevő megnyitása, a főablak pedig elrejthető (a felvétel a háttérben megy).
+    // ---- recording and window lifecycle ----
+    // Opens the floating recorder, and the main window can be hidden (recording runs in the background).
     Q_INVOKABLE virtual void continueRecordingInBackground() = 0;
-    // A felvétel leállítása; amikor a kódolás kész (Idle), quitRequested() jön.
+    // Stops the recording; when encoding is done (Idle), quitRequested() arrives.
     Q_INVOKABLE virtual void stopRecordingAndQuit() = 0;
-    // A főablak tényleges bezárása előtt: felvevő-ablak, singleton, szintfigyelés lezárása.
+    // Before the main window really closes: closes the recorder window, singleton, level monitoring.
     Q_INVOKABLE virtual void shutdown() = 0;
-    // A főablak láthatóvá vált (első alkalommal: cloud indulási ellenőrzések).
+    // The main window became visible (first time: cloud startup checks).
     Q_INVOKABLE virtual void windowShown() = 0;
-    // A főablak újra aktív lett (cloud-egyenleg frissítése feltöltés után).
+    // The main window became active again (refreshes the cloud balance after a top-up).
     Q_INVOKABLE virtual void windowActivated() = 0;
 
 signals:
     void cloudChromeChanged();
-    // Nem-modális értesítés (K-07 költség, visszaírás …). requestId: másolható hibaazonosító;
-    // usageLink: „Napló a weben” hivatkozás (lásd openUsageLog).
+    // Non-modal notice (cost, write-back ...). requestId: copyable error id; usageLink: "Log on
+    // the web" link (see openUsageLog).
     void toastRequested(const QString& text, const QString& requestId, bool usageLink);
-    // Egy cloud-hiba ablakában „Újra” / „Folytatás”: ugyanazt a lépést kell újraindítani.
+    // "Retry" / "Resume" in a cloud error window: the same step must be restarted.
     // kind: transcribe | summary | topics | complex.
     void retryRequested(const QString& meetingId, const QString& kind);
-    // Valami megváltozott, ami a lépések futtathatóságát érinti (beállítások, be-/kilépés,
-    // modellek) — a nézetek értékeljék újra a canRun-t.
+    // Something changed that affects steps' runnability (settings, sign-in/out, models);
+    // views should re-evaluate canRun.
     void readinessChanged();
-    // A Beállításokban mentett téma ("system" | "light" | "dark"): a főablak megjegyzi
-    // (ui-state.json), hogy a következő indításkor is ez legyen.
+    // The theme saved in Settings ("system" | "light" | "dark"): the main window remembers it
+    // (ui-state.json) so it applies on the next start too.
     void themeModeSaved(const QString& mode);
-    // Felvétel közben a hívás véget ért / csend van: a héj rákérdez („Vége a meetingnek?”).
-    // A QML-felvevővel a híd NEM küldi: a kérdést a felvevő saját doboza (R06) teszi fel,
-    // így a felhasználó egyszer kap kérdést. (Felvevő nélküli hídnak marad meg.)
+    // During recording the call ended / there is silence: the shell asks "End of the meeting?".
+    // With the QML recorder the bridge does NOT send it: the recorder's own box asks, so the
+    // user is asked once. (It stays for a bridge without a recorder.)
     void stopPromptRequested(const QString& reason);
-    // Egy megbeszélést ki kell jelölni és a főablakot előre hozni (a felvevő „Megnyitás az
-    // elemzőben” gombja, `tanara --meeting <id>`). Üres azonosító: csak az ablak jön előre.
+    // A meeting must be selected and the main window brought to the front (the recorder's "Open
+    // in analyzer" button, `tanara --meeting <id>`). Empty id: only the window comes forward.
     void showMeetingRequested(const QString& meetingId);
-    // A Címkék ablakából: a könyvtár szűrése erre a címkére, a főablak előre
-    // („Megnyitás a könyvtárban szűrőként”).
+    // From the Tags window: filter the library to this tag, main window to the front
+    // ("Show in library as a filter").
     void tagFilterRequested(const QString& tagId);
-    // A főablakot újra meg kell mutatni (háttér-felvétel vége, felvevő bezárása).
+    // The main window must be shown again (background recording ended, recorder closed).
     void showWindowRequested();
-    // „Leállítom és kilépek” után a felvétel lezárult: a főablak bezárható.
+    // After "Stop and quit" the recording closed: the main window can be closed.
     void quitRequested();
 
 public:

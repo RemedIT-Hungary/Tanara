@@ -1,9 +1,9 @@
 #pragma once
 //
-// LibraryPendingModel — az M02 („Válassz egy megbeszélést / Ezek várnak rád”) kártya sorai a
-// MeetingLibrary::pendingItems-ből: átírásra váró felvételek (összevonva egy sorba), elavult
-// összefoglalók és sikertelen átírások (megbeszélésenként egy sor, legfeljebb pár darab).
-// Controller nélkül (App.demo) a kitalált mintakönyvtárból dolgozik.
+// LibraryPendingModel: the rows of the "Pick a meeting / Waiting for you" card from
+// MeetingLibrary::pendingItems: recordings awaiting transcription (merged into one row), stale
+// summaries and failed transcriptions (one row per meeting, at most a few).
+// Without a controller (App.demo) it works from the fictional sample library.
 //
 #include "tanara/library/MeetingLibrary.h"
 
@@ -33,7 +33,7 @@ public:
     void setController(tanara::AppController* controller);
     QVariantList items() const { return m_items; }
 
-    // A lista összeállítása a core elemeiből (statikus: tesztelhető).
+    // Assembling the list from the core's items (static: testable).
     static QVariantList build(const QVector<tanara::PendingItem>& pending);
 
 signals:

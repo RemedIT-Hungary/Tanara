@@ -1,11 +1,12 @@
 #pragma once
 //
-// ShellImportModel — a „Hangfájl importálása” párbeszédablak (ShellImportDialog.qml) háttere:
-// a kiválasztott fájlok a háttérben beolvasott adataikkal (hossz, csatornák, méret), a
-// fájlonkénti „csatornánként külön sávra” kapcsoló, a leendő sávok listája és száma, a
-// „saját mikrofon” választás, a cím és a dátum (alapból a fájlból, szerkeszthető), majd a
-// futó importálás haladása és megszakítása. A munka a core-é (tanara::AudioImporter az
-// AppControlleren át); controller nélkül (demó, képernyőkép) kitalált mintaadatot mutat.
+// ShellImportModel: the backend of the "Import audio file" dialog (ShellImportDialog.qml): the
+// selected files with their data read in the background (length, channels, size), the
+// per-file "separate track per channel" switch, the list and number of the future tracks, the
+// "own microphone" choice, the title and the date (from the file by default, editable), then
+// the running import's progress and cancellation. The work belongs to the core
+// (tanara::AudioImporter via the AppController); without a controller (demo, screenshot) it
+// shows fictional sample data.
 //
 #include "tanara/import/AudioImporter.h"
 
@@ -31,44 +32,44 @@ class ShellImportModel : public QObject {
     Q_PROPERTY(QVariantList files READ files NOTIFY filesChanged)
     Q_PROPERTY(int fileCount READ fileCount NOTIFY filesChanged)
     Q_PROPERTY(bool probing READ probing NOTIFY filesChanged)
-    // A leendő sávok megjelenített nevei (a „saját mikrofon” ezek közül választható).
+    // The future tracks' display names (the "own microphone" can be chosen among these).
     Q_PROPERTY(QStringList trackNames READ trackNames NOTIFY filesChanged)
     Q_PROPERTY(int trackCount READ trackCount NOTIFY filesChanged)
-    // „3 sáv lesz belőle.” — a beolvasás alatt és importálható fájl nélkül ennek megfelelő szöveg.
+    // "It will become 3 tracks.": a matching text during probing and without an importable file.
     Q_PROPERTY(QString trackSummary READ trackSummary NOTIFY filesChanged)
     Q_PROPERTY(int ownTrack READ ownTrack WRITE setOwnTrack NOTIFY filesChanged)
     Q_PROPERTY(bool canStart READ canStart NOTIFY filesChanged)
 
     Q_PROPERTY(QString title READ title WRITE setTitle NOTIFY titleChanged)
-    // „2026-03-05 14:30” (szerkeszthető; a dátum elfogadja a pontos / szóközös írást is).
+    // "2026-03-05 14:30" (editable; the date also accepts exact / space-separated forms).
     Q_PROPERTY(QString dateText READ dateText WRITE setDateText NOTIFY dateChanged)
     Q_PROPERTY(bool dateValid READ dateValid NOTIFY dateChanged)
     Q_PROPERTY(QString dateHint READ dateHint NOTIFY dateChanged)
 
     Q_PROPERTY(bool running READ running NOTIFY runChanged)
     Q_PROPERTY(bool cancelling READ cancelling NOTIFY runChanged)
-    Q_PROPERTY(int percent READ percent NOTIFY runChanged)            // -1 = még nem mérhető
+    Q_PROPERTY(int percent READ percent NOTIFY runChanged)            // -1 = cannot be measured yet
     Q_PROPERTY(QString progressText READ progressText NOTIFY runChanged)
     Q_PROPERTY(QString runningTitle READ runningTitle NOTIFY runChanged)
     Q_PROPERTY(QString error READ error NOTIFY errorChanged)
     Q_PROPERTY(QString errorDetail READ errorDetail NOTIFY errorChanged)
 
-    // Címkék (C07): az importált megbeszélésre kerülnek, ha elkészült. [{ id, name }]
+    // Tags: go onto the imported meeting when it is done. [{ id, name }]
     Q_PROPERTY(QVariantList tags READ tags NOTIFY tagsChanged)
     Q_PROPERTY(QStringList tagIds READ tagIds NOTIFY tagsChanged)
-    // Javaslatok a cím alapján (AppController::draftTagSuggestions; a cím változásakor
-    // késleltetve újraszámolva): [{ id, name, isNew, source, reason }]; a reason egy rövid
-    // indok („hasonló cím: „Fókuszcsoport 2””). A felrakott és az elvetett nem szerepel.
+    // Suggestions by title (AppController::draftTagSuggestions; recomputed with a delay when the
+    // title changes): [{ id, name, isNew, source, reason }]; reason is a short justification
+    // ("similar title: "Focus group 2""). Attached and dismissed ones are not listed.
     Q_PROPERTY(QVariantList suggestions READ suggestions NOTIFY suggestionsChanged)
     Q_PROPERTY(QString suggestionReason READ suggestionReason NOTIFY suggestionsChanged)
 
-    // Képernyőképhez (controller nélkül): "files" | "split" | "probing" | "progress" | "error".
+    // For screenshots (without a controller): "files" | "split" | "probing" | "progress" | "error".
     Q_PROPERTY(QString demoState READ demoState WRITE setDemoState NOTIFY demoStateChanged)
 
 public:
     explicit ShellImportModel(QObject* parent = nullptr);
 
-    // Alapból az App-singleton controllere; tesztben injektálható.
+    // Defaults to the App singleton's controller; injectable in tests.
     void setController(tanara::AppController* controller);
 
     QVariantList files() const;
@@ -103,28 +104,28 @@ public:
     QStringList tagIds() const;
     QVariantList suggestions() const;
     QString suggestionReason() const;
-    // Címke név szerint (a készletben szükség szerint létrejön). false: üres / már rajta van.
+    // Tag by name (created in the pool if needed). False: empty / already on it.
     Q_INVOKABLE bool addTag(const QString& name);
     Q_INVOKABLE void removeTag(const QString& id);
     Q_INVOKABLE void acceptSuggestion(int index);
-    // Az ablakban nem kéri többé (a megbeszélés még nem létezik: nincs mit elutasítani).
+    // No longer asks for it in the window (the meeting does not exist yet: nothing to reject).
     Q_INVOKABLE void dismissSuggestion(int index);
-    // A javaslatok azonnali újraszámolása (a cím-változás késleltetése nélkül; tesztekhez).
+    // Immediate recomputation of the suggestions (without the title-change delay; for tests).
     Q_INVOKABLE void refreshSuggestions();
 
-    // Fájlok hozzáadása (helyi utak vagy file:// URL-ek — a húzd-és-ejtsd ezt adja); a már
-    // listán lévők és a mappák kimaradnak. Visszaadja, hány került fel.
+    // Adds files (local paths or file:// URLs; drag and drop gives these); those already on the
+    // list and folders are skipped. Returns how many were added.
     Q_INVOKABLE int addFiles(const QVariantList& pathsOrUrls);
     Q_INVOKABLE void removeFile(int row);
     Q_INVOKABLE void setSplit(int row, bool split);
-    // Az űrlap kiürítése (futó importálást nem érint).
+    // Clears the form (does not affect a running import).
     Q_INVOKABLE void reset();
     Q_INVOKABLE void clearError();
-    // Importálás indítása a mostani űrlapból. false, ha nem indítható.
+    // Starts the import from the current form. False if it cannot start.
     Q_INVOKABLE bool start();
     Q_INVOKABLE void cancel();
 
-    // A dátum-mező értelmezése: „2026-03-05 14:30”, „2026. 03. 05. 14:30”, „2026-03-05” …
+    // Parsing the date field: "2026-03-05 14:30", "2026. 03. 05. 14:30", "2026-03-05" ...
     static QDateTime parseDate(const QString& text);
 
 signals:
@@ -136,7 +137,7 @@ signals:
     void demoStateChanged();
     void tagsChanged();
     void suggestionsChanged();
-    // Az importálás elkészült: az új megbeszélés azonosítója (a kijelölést a ShellActions végzi).
+    // The import finished: the new meeting's id (ShellActions does the selection).
     void imported(const QString& meetingId);
     void failed(const QString& message);
 
@@ -182,9 +183,9 @@ private:
     QString m_demoState;
 
     QVector<TagRef> m_tags;
-    QStringList m_runningTagIds;         // az induláskor kiválasztott címkék (a végén kerülnek fel)
+    QStringList m_runningTagIds;         // tags selected at start (attached at the end)
     QVector<Suggestion> m_suggestions;
-    QStringList m_dismissed;             // elvetett javaslatok (kis betűs név)
+    QStringList m_dismissed;             // dismissed suggestions (lowercase name)
     QTimer m_suggestTimer;
 };
 

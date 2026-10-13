@@ -1,12 +1,12 @@
 #pragma once
 //
-// SettingsDialogs — amit a QML Beállítások-ablak a Qt Widgets / az asztal világától kér.
+// SettingsDialogs: what the QML Settings window asks of Qt Widgets / the desktop world.
 //
-// A Beállítások három folyamatban nyílhat meg (főablak, önálló felvevő, `tanara --settings`),
-// ezért nem a főablak hídjára (ShellBridge) támaszkodik, hanem erre a kis felületre. A
-// megvalósítás a gui/src-ben él (SettingsWidgetsDialogs: natív mappaválasztó, a Tanara Cloud
-// meglévő Widgets-ablakai, Személyek); a tesztek ál-megvalósítást adnak. Nélküle (demó,
-// képernyőkép) a nézetmodell ezeket a műveleteket kihagyja.
+// Settings can open in three processes (main window, standalone recorder, `tanara
+// --settings`), so it does not rely on the main window's bridge (ShellBridge) but on this
+// small interface. The implementation lives in gui/src (SettingsWidgetsDialogs: native folder
+// picker, Tanara Cloud's existing Widgets windows, People); tests provide a fake. Without it
+// (demo, screenshot) the view model skips these actions.
 //
 #include <QObject>
 #include <QString>
@@ -18,30 +18,30 @@ class SettingsDialogs : public QObject {
 public:
     using QObject::QObject;
 
-    // Natív mappaválasztó; üres, ha a felhasználó visszalépett.
+    // Native folder picker; empty if the user cancelled.
     virtual QString pickFolder(const QString& title, const QString& startDir) = 0;
-    // Mappa megnyitása a fájlkezelőben / hivatkozás a böngészőben.
+    // Opens a folder in the file manager / a link in the browser.
     virtual void openFolder(const QString& path) = 0;
     virtual void openUrl(const QString& url) = 0;
-    // Személyek kezelése (nem-modális ablak).
+    // Manage people (non-modal window).
     virtual void openPeople() = 0;
-    // Ugyanez egy személy kijelölésével (a Beállításokból: a saját személy).
+    // The same with a person selected (from Settings: the own person).
     virtual void openPeopleAt(const QString& person)
     {
         Q_UNUSED(person);
         openPeople();
     }
 
-    // Az „Első lépések” ablak (a Beállítások › Általános hivatkozása). Csak ott érhető el, ahol
-    // főablak fut (a híd nyitja); az önálló felvevőben és a `tanara --settings` módban nem.
+    // The "Getting started" window (Settings > General link). Available only where a main window
+    // runs (the bridge opens it); not in the standalone recorder or in `tanara --settings` mode.
     virtual bool canOpenOnboarding() const { return false; }
     virtual void openOnboarding() {}
 
-    // ---- Tanara Cloud: a meglévő (modális) Widgets-folyamatok ----
-    virtual bool cloudLogin() = 0;                        // true = bejelentkezett
-    virtual void cloudTopup() = 0;                        // feltöltés-link / „Írj nekünk”
-    virtual bool cloudPickModel(const QString& kind) = 0; // Expert mód; kind: stt | llm
-    virtual bool cloudTerms() = 0;                        // ÁSZF megtekintése / elfogadása
+    // ---- Tanara Cloud: the existing (modal) Widgets flows ----
+    virtual bool cloudLogin() = 0;                        // true = signed in
+    virtual void cloudTopup() = 0;                        // top-up link / "Write to us"
+    virtual bool cloudPickModel(const QString& kind) = 0; // Expert mode; kind: stt | llm
+    virtual bool cloudTerms() = 0;                        // view / accept the ToS
 };
 
 } // namespace tanara_qml

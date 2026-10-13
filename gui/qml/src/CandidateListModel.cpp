@@ -133,12 +133,12 @@ void CandidateListModel::refresh()
         }
         const QString needle = foldForSearch(m_query.trimmed());
         QHash<QString, int> meetings;
-        QHash<QString, QStringList> aliases;   // becenevek a kereséshez (név szerint)
+        QHash<QString, QStringList> aliases;   // nicknames for the search (by name)
         for (const PersonInfo& p : m_editor->people()) {
             meetings.insert(p.name.toCaseFolded(), p.meetingCount);
             if (!p.aliases.isEmpty()) aliases.insert(foldForSearch(p.name), p.aliases);
         }
-        // A kereső a névre vagy a becenévre; a talált becenév az alszövegbe („Dompa” · …).
+        // The search matches the name or the nickname; the matched nickname goes into the subtext ("Dompa" · ...).
         auto matchedAlias = [&](const QString& name, const QString& personName) -> QString {
             for (const QString& key : {foldForSearch(name), foldForSearch(personName)})
                 for (const QString& a : aliases.value(key))
@@ -148,7 +148,7 @@ void CandidateListModel::refresh()
 
         Item current;
         bool hasCurrent = false;
-        QVector<Item> vetoed;   // a lista legalján (G10)
+        QVector<Item> vetoed;   // at the very bottom of the list (G10)
         for (const Candidate& c : cands) {
             Item it;
             it.speakerKey = c.speakerKey;
@@ -170,8 +170,8 @@ void CandidateListModel::refresh()
             it.vetoed = c.vetoed;
             it.current = lineMode && c.speakerKey == currentKey;
             it.score = c.score;
-            // A „most ő" sornál csak az ellene szóló bizonyíték érdekes (miért nem ő). A kizárt
-            // jelölt chipje rövid: „a sávja szerint nem ő" (a teljes ok a buborékban).
+            // For the "is them now" row only the evidence against is interesting (why not them). The
+            // excluded candidate's chip is short: "not them per their track" (the full reason is in the bubble).
             QVector<Evidence> ev;
             for (Evidence e : c.evidence) {
                 if (it.current && e.polarity != Polarity::Contradict) continue;

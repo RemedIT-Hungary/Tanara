@@ -1,12 +1,12 @@
 #pragma once
 //
-// SettingsPromptHighlighter — a prompt-szerkesztő (B07) kiemelése: a `{{VÁLTOZÓ}}` jelölők
-// accentSoft háttérrel és accent betűvel. A kód által TÉNYLEG behelyettesített változók
-// (tanara::promptVariables) kapják az erős kiemelést; az ismeretlen `{{…}}` halványabbat
-// (elgépelés vagy saját jelölő — a modell szó szerint megkapja).
+// SettingsPromptHighlighter: the prompt editor's highlighting: the `{{VARIABLE}}` markers with
+// an accentSoft background and accent text. The variables the code REALLY substitutes
+// (tanara::promptVariables) get the strong highlight; an unknown `{{...}}` a fainter one
+// (a typo or a custom marker; the model receives it verbatim).
 //
-// QML-ből:  SettingsPromptHighlighter { document: editor.textDocument }
-// A színek a Theme-ből jönnek (a QML köti), így témaváltáskor újraszínez.
+// From QML:  SettingsPromptHighlighter { document: editor.textDocument }
+// The colors come from the Theme (QML binds them), so it recolors on a theme change.
 //
 #include <QColor>
 #include <QObject>
@@ -40,13 +40,13 @@ public:
     QColor unknownColor() const { return m_unknown; }
     void setUnknownColor(const QColor& c);
 
-    // Rögzített sormagasság (px) a dokumentum minden bekezdésére — a QML TextEdit-nek nincs
-    // lineHeight-ja, a spec 12 px × 1,65-öt kér. PROGRAMOZOTT szövegbetöltés után hívandó: a
-    // visszavonás-vermet üríti (a formázás ne legyen „visszavonható” lépés); a később gépelt
-    // sorok az előző bekezdés formátumát öröklik.
+    // Fixed line height (px) for every paragraph of the document: QML's TextEdit has no
+    // lineHeight, the spec asks for 12 px x 1.65. To call after a PROGRAMMATIC text load: it
+    // clears the undo stack (the formatting must not be an "undoable" step); lines typed later
+    // inherit the previous paragraph's format.
     Q_INVOKABLE void applyLineHeight(int pixels);
 
-    // Egy sor kiemelendő szakaszai: [start, length, ismert-e] — a kiemelő és a tesztek közös magja.
+    // A line's spans to highlight: [start, length, known]: the shared core of the highlighter and the tests.
     struct Span { int start = 0; int length = 0; bool known = false; };
     static QVector<Span> spans(const QString& line, const QStringList& knownTokens);
 

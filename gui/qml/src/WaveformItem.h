@@ -1,11 +1,11 @@
 #pragma once
 //
-// Tanara QML — hullámforma-rajz (M09): 2 px-es, lekerekített oszlopok a gyorsítótárazott
-// csúcsokból (WaveformService), a szélességhez újramintavételezve. QQuickPaintedItem, mert a
-// képernyőkép-mód szoftveres rendererrel fut (shader nincs).
+// Tanara QML: waveform drawing: 2 px rounded columns from the cached peaks (WaveformService),
+// resampled to the width. A QQuickPaintedItem, because screenshot mode runs with the software
+// renderer (no shaders).
 //   WaveformItem { peaks: model.peaks; reference: tracks.peakReference; color: Theme.speakerLine(0) }
-// flat: eldobott / csendes sáv → pontsor. loading: még számol → egyforma, halvány oszlopok
-// (a QML lüktető átlátszósággal jelzi).
+// flat: dropped / quiet track -> a dotted line. loading: still computing -> even, dim columns
+// (QML signals it with a pulsing opacity).
 //
 #include <QColor>
 #include <QList>
@@ -20,8 +20,8 @@ class WaveformItem : public QQuickPaintedItem {
 
     Q_PROPERTY(QList<qreal> peaks READ peaks WRITE setPeaks NOTIFY peaksChanged)
     Q_PROPERTY(QColor color READ color WRITE setColor NOTIFY colorChanged)
-    // A teljes kitérésnek megfelelő csúcs (a meeting leghangosabb sávja) — így a csendes sáv
-    // tényleg laposnak látszik. <= 0 → a saját maximumához igazít.
+    // The peak corresponding to the full excursion (the meeting's loudest track), so a quiet track
+    // really looks flat. <= 0 -> scales to its own maximum.
     Q_PROPERTY(qreal reference READ reference WRITE setReference NOTIFY referenceChanged)
     Q_PROPERTY(bool flat READ flat WRITE setFlat NOTIFY flatChanged)
     Q_PROPERTY(bool loading READ loading WRITE setLoading NOTIFY loadingChanged)
@@ -48,10 +48,10 @@ public:
     qreal barGap() const { return m_barGap; }
     void setBarGap(qreal g);
 
-    // Az oszlop-magasságok (0..1) adott oszlopszámra — a rajz és a teszt közös számítása.
+    // The column heights (0..1) for a given column count: the shared computation of the drawing and the test.
     static QList<qreal> barLevels(const QList<qreal>& peaks, int bars, qreal reference);
-    // A „telt magasság" szintje: a szintek 97. percentilise (egyetlen kiugró érték ne nyomja
-    // össze a képet). Üres listára 0.
+    // The "full height" level: the 97th percentile of the levels (a single outlier must not
+    // squash the picture). 0 for an empty list.
     static qreal referenceLevel(const QList<qreal>& levels);
 
 signals:

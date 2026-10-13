@@ -1,20 +1,20 @@
 #pragma once
 //
-// SettingsEmbeddingModel — a Beállítások › Szolgáltatások „Beágyazás” kártyája és a
-// „CÍMKEJAVASLATOK” rész (C09, T14–T16).
+// SettingsEmbeddingModel: the Settings > Services "Embedding" card and the "TAG SUGGESTIONS"
+// section.
 //
-//  - mód: „Nincs (alap)” / „Helyi végpont” / „Tanara Cloud” — a SettingsViewModel
-//    piszkozatába (AppSettings::embeddingProviderId / embeddingConfigs); a helyi végpont mezői,
-//    a „Lekérés” és a „Kapcsolat tesztelése” a `card` (SettingsProviderModel, Embedding) dolga;
-//  - KÖNYVTÁR ELŐKÉSZÍTÉSE: a core EmbeddingPreparer élő állapota (fut / megállt / naprakész),
-//    Megszakítás / Folytatás / (Újra)előkészítés;
-//  - modellváltás MENTÉS ELŐTT jelezve (restartPending): a core a settingsChanged-re maga
-//    indítja újra az előkészítést, mentéskor itt nincs külön teendő;
-//  - a két kapcsoló (tagSuggestions, llmTagSuggestions) a piszkozatba; az elutasított
-//    javaslatok visszaállítása AZONNALI művelet (TagService::clearRejected, a QML megerősít).
+//  - mode: "None (default)" / "Local endpoint" / "Tanara Cloud": into the SettingsViewModel
+//    draft (AppSettings::embeddingProviderId / embeddingConfigs); the local endpoint's fields,
+//    "Fetch" and "Test connection" are the `card`'s job (SettingsProviderModel, Embedding);
+//  - LIBRARY PREPARATION: the core EmbeddingPreparer's live state (running / stopped / up to
+//    date), Cancel / Resume / (Re)prepare;
+//  - a model change signaled BEFORE SAVING (restartPending): the core restarts the
+//    preparation itself on settingsChanged, so there is nothing separate to do here on save;
+//  - the two switches (tagSuggestions, llmTagSuggestions) go into the draft; resetting the
+//    rejected suggestions is an IMMEDIATE action (TagService::clearRejected, QML confirms).
 //
-// A SettingsViewModel hozza létre (vm.embedding); önmagában (szülő nélkül) csak a
-// demó-állapotok kitalált előkészítési adatát mutatja. demoState: local | localRunning |
+// Created by the SettingsViewModel (vm.embedding); standalone (without a parent) it only
+// shows the demo states' fictional preparation data. demoState: local | localRunning |
 // localError | localDone | cloud | modelChange | none.
 //
 #include "SettingsProviderModel.h"
@@ -40,36 +40,36 @@ class SettingsEmbeddingModel : public QObject {
     Q_OBJECT
     QML_ELEMENT
 
-    // "none" | "local" | "cloud" — a piszkozat választása.
+    // "none" | "local" | "cloud": the draft's choice.
     Q_PROPERTY(QString mode READ mode WRITE setMode NOTIFY changed)
-    // A szegmentált választó elemei: [{ value, label, enabled, toolTip }] (Cloud nélküli
-    // buildben a Tanara Cloud elem hiányzik; bejelentkezés nélkül tiltott).
+    // The segmented selector's items: [{ value, label, enabled, toolTip }] (in a build without
+    // Cloud the Tanara Cloud item is missing; without sign-in it is disabled).
     Q_PROPERTY(QVariantList modeOptions READ modeOptions NOTIFY changed)
     Q_PROPERTY(QString description READ description NOTIFY changed)
-    // A helyi végpont mezői (Cím, Modell, kulcs) és a kapcsolat-teszt.
+    // The local endpoint's fields (Address, Model, key) and the connection test.
     Q_PROPERTY(tanara_qml::SettingsProviderModel* card READ card CONSTANT)
-    // Az állapot-pirula: "neutral" | "ok" | "failed" | "testing" + felirat.
+    // The status pill: "neutral" | "ok" | "failed" | "testing" + label.
     Q_PROPERTY(QString status READ status NOTIFY changed)
     Q_PROPERTY(QString statusText READ statusText NOTIFY changed)
-    // Tanara Cloud: a tájékoztató doboz és (ha kell) a bejelentkezés hiánya.
+    // Tanara Cloud: the info box and (if needed) the missing sign-in.
     Q_PROPERTY(QString cloudInfo READ cloudInfo NOTIFY changed)
     Q_PROPERTY(QString cloudHint READ cloudHint NOTIFY changed)
 
-    // ---- KÖNYVTÁR ELŐKÉSZÍTÉSE ----
+    // ---- LIBRARY PREPARATION ----
     Q_PROPERTY(bool prepVisible READ prepVisible NOTIFY changed)
-    // "idle" | "running" | "error" | "done" | "pending" (a választás még nincs elmentve)
+    // "idle" | "running" | "error" | "done" | "pending" (the choice is not saved yet)
     Q_PROPERTY(QString prepStatus READ prepStatus NOTIFY changed)
     Q_PROPERTY(double progress READ progress NOTIFY changed)        // 0..1
-    Q_PROPERTY(QString countText READ countText NOTIFY changed)     // „23 / 40 megbeszélés”
-    Q_PROPERTY(QString etaText READ etaText NOTIFY changed)         // „kb. 4 perc van hátra”
-    Q_PROPERTY(QString errorText READ errorText NOTIFY changed)     // „Megállt 31 / 40-nél: …”
-    Q_PROPERTY(QString doneText READ doneText NOTIFY changed)       // „Naprakész · 40 megbeszélés · okt. 5. 09:12”
+    Q_PROPERTY(QString countText READ countText NOTIFY changed)     // "23 / 40 meetings"
+    Q_PROPERTY(QString etaText READ etaText NOTIFY changed)         // "about 4 minutes left"
+    Q_PROPERTY(QString errorText READ errorText NOTIFY changed)     // "Stopped at 31 / 40: ..."
+    Q_PROPERTY(QString doneText READ doneText NOTIFY changed)       // "Up to date · 40 meetings · Oct 5, 9:12 AM"
 
-    // ---- modellváltás ----
+    // ---- model change ----
     Q_PROPERTY(bool restartPending READ restartPending NOTIFY changed)
     Q_PROPERTY(QString restartWarning READ restartWarning NOTIFY changed)
 
-    // ---- CÍMKEJAVASLATOK ----
+    // ---- TAG SUGGESTIONS ----
     Q_PROPERTY(bool tagSuggestions READ tagSuggestions WRITE setTagSuggestions NOTIFY changed)
     Q_PROPERTY(bool llmTagSuggestions READ llmTagSuggestions WRITE setLlmTagSuggestions NOTIFY changed)
     Q_PROPERTY(int rejectedCount READ rejectedCount NOTIFY rejectedChanged)
@@ -109,21 +109,21 @@ public:
     QString demoState() const { return m_demoState; }
     void setDemoState(const QString& state);
 
-    Q_INVOKABLE void startPreparation();     // „Előkészítés”
-    Q_INVOKABLE void cancelPreparation();    // „Megszakítás”
-    Q_INVOKABLE void resumePreparation();    // „Folytatás”
-    Q_INVOKABLE void reprepare();            // „Újraelőkészítés”: az index eldobása + előről
-    Q_INVOKABLE void clearRejected();        // „Visszaállítás” (azonnal; a QML megerősít)
+    Q_INVOKABLE void startPreparation();     // "Prepare"
+    Q_INVOKABLE void cancelPreparation();    // "Cancel"
+    Q_INVOKABLE void resumePreparation();    // "Resume"
+    Q_INVOKABLE void reprepare();            // "Re-prepare": drop the index + start over
+    Q_INVOKABLE void clearRejected();        // "Reset" (immediate; QML confirms)
 
     // ---- a SettingsViewModelnek ----
-    void attach();                           // a controller (vagy demó) bekötése
-    void reset();                            // a piszkozat újratöltve / eldobva
+    void attach();                           // wiring the controller (or demo)
+    void reset();                            // the draft reloaded / discarded
     void notifyDraftChanged() { emit changed(); }
-    // A kiválasztott provider üres mezőinek kitöltése az alapértelmezésekkel.
+    // Fills the selected provider's empty fields with the defaults.
     void normalize(tanara::AppSettings& s) const;
-    // Demó: az előkészítés kitalált állapota + a piszkozat ehhez (a vm loadDemo-ja hívja).
+    // Demo: the fictional preparation state + the draft for it (called by the vm's loadDemo).
     void loadDemo(const QString& state);
-    // A számolt (és a tesztben ellenőrzött) előkészítési állapot.
+    // The computed (and in-test verified) preparation state.
     tanara::EmbeddingState prepState() const;
 
 signals:
@@ -135,8 +135,8 @@ private:
     tanara::AppController* controller() const;
     static QString modeOf(const QString& providerId);
     static QString providerFor(const QString& mode);
-    // A core által használt modell ("" = nincs beágyazás): a helyi végpont modellje, a
-    // Cloudé a gateway alapmodellje.
+    // The model the core uses ("" = no embedding): the local endpoint's model, for Cloud the
+    // gateway's base model.
     static QString effectiveModel(const tanara::AppSettings& s);
     bool cloudSelectable() const;
     int estimateMinutes(int meetings) const;
@@ -146,7 +146,7 @@ private:
     QPointer<tanara::EmbeddingPreparer> m_preparer;
     QMetaObject::Connection m_prepConn, m_rejectConn;
     QString m_demoState;
-    tanara::EmbeddingState m_demo;           // demó-állapot (controller nélkül)
+    tanara::EmbeddingState m_demo;           // demo state (without a controller)
     int m_demoRejected = 0;
 };
 

@@ -1,27 +1,27 @@
 #pragma once
 //
-// ParticipantsViewModel — a „Ki volt ott?" párbeszéd (ParticipantsDialog.qml, handoff-v3 V2)
-// nézetmodellje. A meeting résztvevő-jelöltjeit (AppController::participants) csoportokra bontja
-// (Biztos / Kétséges / Meghívott, de nem hallottuk + a kézzel felvett, még nem hallottak), és egy
-// MUNKAPÉLDÁNYON tartja a jelöléseket: a bejelölés, a hozzáadás és az elnevezés csak a
-// „Tovább"-ra (approve → AppController::approveParticipants) kerül a meetingre; a „Kihagyás"
-// (skip → skipApproval) kötés nélkül dönt.
+// ParticipantsViewModel: view model of the "Who was there?" dialog (ParticipantsDialog.qml).
+// It splits the meeting's participant candidates (AppController::participants) into groups
+// (Sure / Doubtful / Invited but not heard + the manually added, not yet heard), and keeps
+// the checkmarks on a WORKING COPY: checking, adding and naming reach the meeting only on
+// "Continue" (approve -> AppController::approveParticipants); "Skip" (skip -> skipApproval)
+// decides without binding.
 //
-// Alapjelölés: ha már volt jóváhagyás (nem kihagyás), az akkori döntés; különben
-// participants::defaultChecked (névvel bír és nincs ellentmondó bizonyítéka); a meghívott, de
-// nem hallott jelölt alapból ki.
+// Default checks: if there was an approval before (not a skip), that decision; otherwise
+// participants::defaultChecked (has a name and no contradicting evidence); an invited but
+// not heard candidate is unchecked by default.
 //
-// „Ő nem volt ott" (az átirat-szerkesztőből): unbind(participantId) → unbindParticipant.
+// "They were not there" (from the transcript editor): unbind(participantId) -> unbindParticipant.
 //
-// Tanulási kérdés (vault UX-terv 5.): a „Tovább” után, ha a jóváhagyott résztvevők közül
-// valakinél a megbeszélés egy címkéjére most lett c(p,t) = 2 (vagy új személy címkés
-// megbeszélésen), és a címke nincs rajta / nincs elutasítva, a `learnQuestion` egy kérdést ad
-// (a legnagyobb csoportot; a többi az „Egyenként…” listában). Egyszer kérdez
-// (TagService::markLearningAsked). „Igen” / „Nem” egy-egy visszavonási lépés a címke-vermen.
+// Learning question: after "Continue", if for one of the approved participants a tag of the
+// meeting just reached c(p,t) = 2 (or a new person on a tagged meeting), and the tag is not
+// on them / not rejected, `learnQuestion` gives a question (the largest group; the others are
+// in the "One by one..." list). Asks only once (TagService::markLearningAsked). "Yes" / "No"
+// are one undo step each on the tag stack.
 //
-// Controller nélkül vagy App.demo mellett KITALÁLT mintaadat (a handoff nevei); a demoState
-// választ: allSure | doubts | invitedNotHeard | addPerson | running | noTranscriptYet |
-// learnQuestion (jóváhagyás utáni kérdés, több pár) | learnNewPerson (új személy).
+// Without a controller or with App.demo, FICTIONAL sample data; demoState chooses: allSure |
+// doubts | invitedNotHeard | addPerson | running | noTranscriptYet | learnQuestion (question
+// after approval, several pairs) | learnNewPerson (new person).
 //
 #include "tanara/Types.h"
 #include "tanara/edit/SpeakerEditTypes.h"
@@ -46,34 +46,34 @@ class ParticipantsViewModel : public QObject {
     Q_OBJECT
     QML_ELEMENT
 
-    // Alapból az App-singleton controllere; tesztben injektálható.
+    // Defaults to the App singleton's controller; injectable in tests.
     Q_PROPERTY(QObject* controller READ controllerObject WRITE setController NOTIFY controllerChanged)
     Q_PROPERTY(QString meetingId READ meetingId WRITE setMeetingId NOTIFY meetingIdChanged)
     Q_PROPERTY(QString demoState READ demoState WRITE setDemoState NOTIFY demoStateChanged)
 
-    // Fut-e a hangelemzés (a párbeszéd „fut" állapota).
+    // Whether the audio analysis is running (the dialog's "running" state).
     Q_PROPERTY(bool running READ running NOTIFY changed)
     Q_PROPERTY(bool hasTranscript READ hasTranscript NOTIFY changed)
-    // Vár-e jóváhagyásra (a banner / az automatikus megnyitás feltétele).
+    // Whether it awaits approval (the condition for the banner / automatic opening).
     Q_PROPERTY(bool approvalPending READ approvalPending NOTIFY changed)
-    // Mono meta a címsor jobb oldalán: „hanglenyomat-elemzés · CAM++ + WeSpeaker · 3 perce".
+    // Mono meta on the title's right: "voiceprint analysis · CAM++ + WeSpeaker · 3 min ago".
     Q_PROPERTY(QString metaText READ metaText NOTIFY changed)
-    // [{ key: sure|doubt|invited|manual, label, hint, count, rows: [row] }] — üres csoport nincs benne.
+    // [{ key: sure|doubt|invited|manual, label, hint, count, rows: [row] }]; no empty group.
     // row: { id, name, displayName, colorIndex, checked, checkable, anonymous, added,
     //        evidence: [{ kind, polarity, text, side }], mapping, mappingPending, mappingDoubt }
     Q_PROPERTY(QVariantList groups READ groups NOTIFY changed)
     Q_PROPERTY(int rowCount READ rowCount NOTIFY changed)
     Q_PROPERTY(int checkedCount READ checkedCount NOTIFY changed)
-    // A lábléc információs sora (a kötetlen nyers beszélők névtelenek maradnak).
+    // The footer's info line (unbound raw speakers stay anonymous).
     Q_PROPERTY(QString infoText READ infoText NOTIFY changed)
-    // A lábléc állandó szabály-mondata (UX-terv 4.): „A címkék csak sorrendet adnak; a hang dönt."
+    // The footer's constant rule sentence: "Tags only set the order; the voice decides."
     Q_PROPERTY(QString footerText READ footerText CONSTANT)
-    // Címke-alapú javaslat: „A #Nordvik alapján:" + [{ name, countText }] (legfeljebb 3).
+    // Tag-based suggestion: "Based on #Nordvik:" + [{ name, countText }] (at most 3).
     Q_PROPERTY(QString tagSuggestionLabel READ tagSuggestionLabel NOTIFY changed)
     Q_PROPERTY(QVariantList tagSuggestions READ tagSuggestions NOTIFY changed)
-    // A jóváhagyás utáni tanulási kérdés: { text, tagName, people, newPeople, pairs: [{ index,
-    // name, tagName, text }] } — üres map: nincs kérdés. A pairs csak egynél több párnál nem üres
-    // („Egyenként…”).
+    // The learning question after approval: { text, tagName, people, newPeople, pairs: [{ index,
+    // name, tagName, text }] }; empty map: no question. pairs is non-empty only with more than
+    // one pair ("One by one...").
     Q_PROPERTY(QVariantMap learnQuestion READ learnQuestion NOTIFY learnChanged)
 
 public:
@@ -99,37 +99,37 @@ public:
     QString tagSuggestionLabel() const { return m_tagLabel; }
     QVariantList tagSuggestions() const;
 
-    // A személyválasztóhoz (PersonListModel.participants): ismert személyek, és hogy valaki
-    // már szerepel-e a párbeszédben.
+    // For the person picker (PersonListModel.participants): known people, and whether someone
+    // is already in the dialog.
     QVector<tanara::PersonInfo> people() const;
     bool isMeetingPerson(const QString& name) const;
 
-    // Újraolvasás a controllerből; a munkapéldány (jelölések, hozzáadások, elnevezések) eldobva.
-    // A párbeszéd megnyitásakor hívódik.
+    // Re-read from the controller; the working copy (checks, additions, names) is discarded.
+    // Called when the dialog opens.
     Q_INVOKABLE void reload();
     Q_INVOKABLE void setChecked(const QString& id, bool checked);
-    // Új résztvevő a párbeszédből (még nem mentve; a „Tovább" viszi a meetingre). Ha már
-    // szerepel, azt jelöli be. Visszaad: a sor id-ja.
+    // A new participant from the dialog (not saved yet; "Continue" takes it to the meeting). If
+    // already present, it checks that one. Returns the row's id.
     Q_INVOKABLE QString addPerson(const QString& name);
-    // A címke-alapú javaslat elfogadása (index a tagSuggestions-ben).
+    // Accepts the tag-based suggestion (index into tagSuggestions).
     Q_INVOKABLE void acceptTagSuggestion(int index);
-    // Névtelen (ismeretlen hangú) sor elnevezése; bejelöli.
+    // Names an anonymous (unknown-voice) row; checks it.
     Q_INVOKABLE void nameRow(const QString& id, const QString& name);
-    // A párbeszédben felvett sor elvetése.
+    // Discards a row added in the dialog.
     Q_INVOKABLE void removeAdded(const QString& id);
-    // „Tovább": a bejelöltek jóváhagyása. false: nincs meeting / a controller elutasította.
+    // "Continue": approves the checked ones. False: no meeting / the controller rejected it.
     Q_INVOKABLE bool approve();
     QVariantMap learnQuestion() const;
-    // A kérdés megválaszolása (Igen: a címke a személyekre; Nem: tartós elutasítás). Visszaad:
-    // a visszajelző szöveg (toast „Visszavonás”-sal); üres = nem történt semmi. Utána nincs kérdés.
+    // Answers the question (Yes: the tag onto the people; No: lasting rejection). Returns the
+    // feedback text (toast with "Undo"); empty = nothing happened. Afterwards there is no question.
     Q_INVOKABLE QString answerLearn(bool yes);
-    // Egy pár az „Egyenként…” listából (index a pairs-ben); a kérdés a maradékkal él tovább.
+    // One pair from the "One by one..." list (index into pairs); the question lives on with the rest.
     Q_INVOKABLE QString answerLearnPair(int index, bool yes);
-    // A sáv bezárása / lejárata: nem elutasítás (a javaslat a Személyek ablakban megmarad).
+    // Closing / expiry of the bar: not a rejection (the suggestion stays in the People window).
     Q_INVOKABLE void dismissLearn();
-    // „Kihagyás": döntés kötés nélkül.
+    // "Skip": decision without binding.
     Q_INVOKABLE bool skip();
-    // „Ő nem volt ott": a résztvevő sorai névtelenek lesznek, a jelölése törlődik.
+    // "They were not there": the participant's rows become anonymous, their check is cleared.
     Q_INVOKABLE bool unbind(const QString& participantId);
 
 signals:
@@ -142,12 +142,12 @@ signals:
 private:
     struct Row {
         QString id;
-        QString name;                   // üres = névtelen (ismeretlen hang)
-        int group = 1;                  // 0 biztos, 1 kétséges, 2 meghívott, 3 hozzáadva
+        QString name;                   // empty = anonymous (unknown voice)
+        int group = 1;                  // 0 sure, 1 doubtful, 2 invited, 3 added
         bool checked = false;
-        bool added = false;             // a párbeszédben felvett (még nincs a meetingen)
-        bool heard = false;             // hallottuk (van hang-klasztere / oldala)
-        bool manual = false;            // kézzel felvett (a párbeszédben vagy korábban)
+        bool added = false;             // added in the dialog (not yet on the meeting)
+        bool heard = false;             // heard (has a voice cluster / side)
+        bool manual = false;            // added manually (in the dialog or earlier)
         QVector<tanara::Evidence> evidence;
         QStringList rawIds;
         QStringList sides;
@@ -177,7 +177,7 @@ private:
     bool m_pending = false;
     QString m_metaText;
     QString m_selfName;
-    QStringList m_rawLabels;            // az átirat nyers beszélői (átirat nélkül üres)
+    QStringList m_rawLabels;            // the transcript's raw speakers (empty without a transcript)
     QStringList m_tagIds;
     QVector<Row> m_rows;
     int m_addedSeq = 0;
@@ -185,10 +185,10 @@ private:
     struct TagSuggestion { QString name; QString tagName; int shared = 0; int total = 0; };
     QString m_tagLabel;
     QVector<TagSuggestion> m_tagSuggestions;
-    QString m_demoInfo;                 // a demó lábléc-sora (ha nem számolható)
+    QString m_demoInfo;                 // the demo footer line (if not computable)
     void setLearn(const QVector<tanara::PersonTagQuestion>& questions);
     QString answer(const tanara::PersonTagQuestion& q, bool yes);
-    QVector<tanara::PersonTagQuestion> m_learn;   // a kérdés: az első; a többi az „Egyenként…”-ben
+    QVector<tanara::PersonTagQuestion> m_learn;   // the question: the first; the others in "One by one..."
     QVector<tanara::PersonTagQuestion> m_learnPairs;
     QVector<tanara::PersonInfo> m_demoPeople;
 };

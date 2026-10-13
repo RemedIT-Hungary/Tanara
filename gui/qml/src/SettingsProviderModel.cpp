@@ -17,7 +17,7 @@ namespace tanara_qml {
 
 namespace {
 
-// A ProviderConfig jól-ismert mezői (a többi → extra).
+// The ProviderConfig's well-known fields (the rest -> extra).
 bool isWellKnownKey(const QString& key)
 {
     return key == QLatin1String("baseUrl") || key == QLatin1String("model")
@@ -35,8 +35,8 @@ QVariant configValue(const ProviderConfig& cfg, const ConfigField& f)
 
 void setConfigValue(ProviderConfig& cfg, const ConfigField& f, const QVariant& v)
 {
-    // A szöveg NYERSEN kerül a piszkozatba (gépelés közben a levágott érték visszaíródna a
-    // mezőbe); a szóközöket a mentés és a futásidejű config vágja le (trimConfigs / runtimeConfig).
+    // The text goes into the draft RAW (while typing, the trimmed value would be written back
+    // into the field); spaces are trimmed by the save and the runtime config (trimConfigs / runtimeConfig).
     if (f.key == QLatin1String("baseUrl")) cfg.baseUrl = v.toString();
     else if (f.key == QLatin1String("model")) cfg.model = v.toString();
     else if (f.key == QLatin1String("temperature")) cfg.temperature = v.toDouble();
@@ -102,7 +102,7 @@ QVector<ProviderDescriptor> SettingsProviderModel::allDescriptors() const
     QVector<ProviderDescriptor> all = m_kind == ProviderKind::Stt ? SttProviderRegistry::instance().all()
         : m_kind == ProviderKind::Embedding ? EmbeddingProviderRegistry::instance().all()
                                             : LlmProviderRegistry::instance().all();
-    // A registry hash-sorrendje nem stabil: a saját kulcsosak név szerint, a bejelentkezős a végén.
+    // The registry's hash order is not stable: own-key ones by name, the sign-in one last.
     std::sort(all.begin(), all.end(), [](const ProviderDescriptor& a, const ProviderDescriptor& b) {
         const bool la = a.authMode == AuthMode::Login, lb = b.authMode == AuthMode::Login;
         if (la != lb) return lb;
@@ -144,8 +144,8 @@ QVariantList SettingsProviderModel::providers() const
     QVariantList out;
     const QString current = providerId();
     for (const ProviderDescriptor& d : allDescriptors()) {
-        // A bejelentkezős (Tanara Cloud) szolgáltató a fenti módválasztóval választható; itt
-        // csak akkor szerepel, ha épp az van kiválasztva (vegyes beállítás megőrzése).
+        // The sign-in (Tanara Cloud) provider is chosen with the mode selector above; it is listed
+        // here only if it is the selected one (preserving a mixed setting).
         if (d.authMode == AuthMode::Login && d.id != current) continue;
         QString tag;
         if (m_kind == ProviderKind::Stt && d.supportsDiarization && d.authMode != AuthMode::Login)
@@ -163,8 +163,8 @@ void SettingsProviderModel::fillDefaults(ProviderConfig& cfg, const ProviderDesc
     for (const ConfigField& f : d.fields) {
         if (f.isSecret || f.defaultValue.isEmpty()) continue;
         const QVariant v = configValue(cfg, f);
-        // A szám-mezőknél a 0 is „nincs megadva” (a régi, részlegesen kitöltött configok miatt).
-        const bool zeroIsValid = f.minValue != f.maxValue && f.minValue <= 0.0;   // pl. hőmérséklet 0
+        // For number fields 0 also means "not set" (because of old, partially filled configs).
+        const bool zeroIsValid = f.minValue != f.maxValue && f.minValue <= 0.0;   // e.g. temperature 0
         const bool empty = f.type == ConfigFieldType::Number ? (v.toDouble() == 0.0 && !zeroIsValid)
                                                              : v.toString().trimmed().isEmpty();
         if (!empty) continue;
@@ -179,9 +179,9 @@ void SettingsProviderModel::setProviderId(const QString& id)
 {
     if (id.isEmpty() || id == selectedId()) return;
     const ProviderDescriptor d = descriptor(id);
-    if (d.id.isEmpty()) return;   // nem regisztrált szolgáltató
+    if (d.id.isEmpty()) return;   // unregistered provider
     selectedId() = id;
-    // A másik szolgáltató beállítása a térképben marad; az újé az alapértelmezésekkel indul.
+    // The other provider's settings stay in the map; the new one starts with the defaults.
     ProviderConfig cfg = configs().value(id);
     fillDefaults(cfg, d);
     configs().insert(id, cfg);
@@ -306,7 +306,7 @@ void SettingsProviderModel::setReasoning(const QString& mode)
     cfg.type = d.id;
     cfg.reasoning = m;
     configs().insert(d.id, cfg);
-    m_vm->touch();          // a kapcsolat-tesztet nem érinti (az csak a címet / kulcsot nézi)
+    m_vm->touch();          // does not affect the connection test (that looks only at the address / key)
     bumpValues();
 }
 
@@ -325,7 +325,7 @@ void SettingsProviderModel::setContextLength(int tokens)
     cfg.type = d.id;
     cfg.contextLength = v;
     configs().insert(d.id, cfg);
-    m_vm->touch();          // a kapcsolat-tesztet nem érinti
+    m_vm->touch();          // does not affect the connection test
     bumpValues();
 }
 
@@ -341,7 +341,7 @@ QVariantList SettingsProviderModel::contextOptions() const
     if (cur > 0 && !steps.contains(cur)) { steps << cur; std::sort(steps.begin(), steps.end()); }
     const int max = m_server.maxContext;
     for (int s : std::as_const(steps)) {
-        if (max > 0 && s > max && s != cur) continue;   // a modell maximuma fölé nem kínálunk
+        if (max > 0 && s > max && s != cur) continue;   // we do not offer more than the model's maximum
         out << QVariantMap{{QStringLiteral("value"), QString::number(s)},
                            {QStringLiteral("label"), tr("%1 token").arg(QLocale().toString(s))}};
     }
@@ -360,7 +360,7 @@ void SettingsProviderModel::setServerInfo(const llmctx::LlmServerInfo& info, boo
     describeLlmServer(info, &text, &warning);
     m_serverText = !withWarnings || warning.isEmpty() ? text : text + QLatin1Char(' ') + warning;
     emit serverInfoChanged();
-    bumpValues();   // a lépcső-lista a modell maximumához igazodik
+    bumpValues();   // the step list adapts to the model's maximum
 }
 
 void SettingsProviderModel::clearServerInfo()
@@ -397,7 +397,7 @@ QHash<QString, QString> SettingsProviderModel::fieldErrors() const
     const ProviderDescriptor d = descriptor();
     const ProviderConfig cfg = configs().value(d.id);
     for (const ConfigField& f : d.fields) {
-        if (f.isSecret) continue;   // a hiányzó kulcs nem akadálya a mentésnek (a pötty jelzi)
+        if (f.isSecret) continue;   // a missing key is not an obstacle to saving (the dot signals it)
         const QVariant v = configValue(cfg, f);
         const QString text = v.toString().trimmed();
         if (f.type == ConfigFieldType::Url) {
@@ -410,7 +410,7 @@ QHash<QString, QString> SettingsProviderModel::fieldErrors() const
             if (!url.isValid() || !http || url.host().isEmpty())
                 out.insert(f.key, tr("http:// vagy https:// kezdetű címet adj meg."));
         } else if (f.type == ConfigFieldType::Number) {
-            // A tárolt, tartományon kívüli érték megmarad, amíg a felhasználó nem nyúl hozzá.
+            // A stored out-of-range value stays until the user touches it.
             const QMap<QString, ProviderConfig>& baseConfigs = m_kind == ProviderKind::Stt ? m_vm->base().sttConfigs
                 : m_kind == ProviderKind::Embedding ? m_vm->base().embeddingConfigs : m_vm->base().llmConfigs;
             const bool untouched = baseConfigs.contains(d.id) && configValue(baseConfigs.value(d.id), f) == v;
@@ -485,7 +485,7 @@ void SettingsProviderModel::setExpanded(bool expanded)
 void SettingsProviderModel::notifyFocusChanged()
 {
     emit highlightedChanged();
-    if (highlighted()) setExpanded(true);    // a mély hivatkozás kártyája mindig nyitva
+    if (highlighted()) setExpanded(true);    // the deep link's card is always open
 }
 
 QString SettingsProviderModel::summaryText() const
@@ -494,7 +494,7 @@ QString SettingsProviderModel::summaryText() const
     if (d.id.isEmpty()) return QString();
     const ProviderConfig cfg = configs().value(d.id);
     QString label = d.displayName;
-    // A helyi szerver jól ismert portjáról a nevét mutatjuk (a leíró neve általános).
+    // From the local server's well-known port we show its name (the descriptor's name is generic).
     const QUrl url(cfg.baseUrl.trimmed());
     if (d.authMode != AuthMode::Login && isLocalEndpoint(cfg.baseUrl)) {
         if (url.port() == 1234) label = QStringLiteral("LM Studio");
@@ -508,8 +508,8 @@ QString SettingsProviderModel::summaryText() const
 
 void SettingsProviderModel::invalidateTest()
 {
-    // A folyamatban lévő lekérés a RÉGI címhez / szolgáltatóhoz tartozott: eldobjuk, hogy a
-    // listája ne az új beállításnál jelenjen meg.
+    // The fetch in progress belonged to the OLD address / provider: we drop it so its list does
+    // not show under the new setting.
     if (m_fetchId) {
         if (m_tester) m_tester->cancel(m_fetchId);
         m_fetchId = 0;
@@ -517,7 +517,7 @@ void SettingsProviderModel::invalidateTest()
     }
     if (m_testId && m_tester) m_tester->cancel(m_testId);
     m_testId = 0;
-    clearServerInfo();   // a cím / modell változhatott — a régi szerver-adat félrevezető
+    clearServerInfo();   // the address / model may have changed; the old server data would mislead
     if (m_testState.isEmpty()) return;
     m_testState.clear();
     m_result = {};
@@ -531,7 +531,7 @@ void SettingsProviderModel::test()
     m_testState = QStringLiteral("testing");
     emit testChanged();
     if (!m_vm->controller()) {
-        // Demó: nincs hálózat — kitalált, de valószerű eredmény.
+        // Demo: no network; a fictional but realistic result.
         ConnectionTestResult r;
         r.status = ConnectionTestResult::Status::Ok;
         r.latencyMs = m_kind == ProviderKind::Stt ? 210 : 48;
@@ -582,7 +582,7 @@ void SettingsProviderModel::onFinished(int id, const ConnectionTestResult& resul
     m_testState = result.ok() ? QStringLiteral("ok") : QStringLiteral("failed");
     if (!result.ok()) setExpanded(true);
     if (result.ok() && m_kind == ProviderKind::Llm) setServerInfo(result.server, /*withWarnings*/ false);
-    // A sikeres próba modell-listája a „Lekérés” eredményét is frissíti (ugyanaz a kérés).
+    // A successful probe's model list also updates the "Fetch" result (same request).
     if (result.ok() && !result.models.isEmpty()) {
         m_models = result.models;
         m_modelsFor = providerId();
@@ -616,7 +616,7 @@ void SettingsProviderModel::reset()
     m_models.clear();
     m_modelsFor.clear();
     clearServerInfo();
-    // C09: a beállított szerep összecsukva indul; a hiányos / kiemelt nyitva.
+    // A configured role starts collapsed; an incomplete / highlighted one open.
     setExpanded(!configured() || highlighted());
     emit providersChanged();
     emit providerChanged();

@@ -22,8 +22,8 @@ int SummaryProgress::reusedParts(const QString& notesDetail)
 SummaryProgress SummaryProgress::from(const JobProgress& job)
 {
     SummaryProgress p = fromWork(job);
-    // A modell betöltése (LM Studio) a feladat első, látható szakasza: amíg tart, ez a futó
-    // szakasz, a többi vár.
+    // Loading the model (LM Studio) is the task's first, visible phase: while it lasts, it is the
+    // running phase and the others wait.
     const JobStage* model = job.stage(QStringLiteral("model"));
     if (!model || model->state != StageState::Running)
         return p;
@@ -57,7 +57,7 @@ SummaryProgress SummaryProgress::fromWork(const JobProgress& job)
     if (const JobStage* single = job.stage(QStringLiteral("single"))) {
         p.stage = QStringLiteral("single");
         p.label = tr("Összefoglalás egy lépésben");
-        // A szakasz a hívás indulásakor vált futóra; addig is ez az egyetlen teendő.
+        // The phase turns to running when the call starts; until then this is the only thing to do.
         const StageState st = single->state == StageState::Waiting ? StageState::Running : single->state;
         p.stages << stageMap(p.stage, p.label, st, -1, QString());
         return p;
@@ -66,7 +66,7 @@ SummaryProgress SummaryProgress::fromWork(const JobProgress& job)
     const JobStage* notes = job.stage(QStringLiteral("notes"));
     const JobStage* merge = job.stage(QStringLiteral("merge"));
     if (!notes || !merge)
-        return p;   // szakaszok nélküli összegzés (témánkénti elemzés vége): a feladat címe
+        return p;   // summary without phases (end of the per-topic analysis): the task's title
 
     p.done = job.done;
     p.total = job.total;

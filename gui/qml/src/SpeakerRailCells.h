@@ -1,15 +1,15 @@
 #pragma once
 //
-// SpeakerRailCells — a beszélő-sín EGY sora (a lista-delegált bal oldalán): a megszólalás
-// blokkja a beszélője oszlopában, a sor teljes magasságában. Egyetlen festett elem rajzolja
-// az összes oszlop állapotát, így soronként nem kell oszloponkénti QML-elem:
-//   tömör blokk · bizonytalan (lágy kitöltés + 135°-os csíkok) · kijelölt (2 px keret, a
-//   többi oszlopban szaggatott ejtési cél) · javasolt (2 px accent keret) · húzás forrása
-//   (30 %) · húzás célja (lágy kitöltés + 2 px szaggatott keret a cél színében; Shift = „nem
-//   minta": kitöltés nélkül, ritkás szaggatott keret) · javasolt
-//   cél-oszlop (2 px accent keret az üres cellában: az új személyhez hasonló sor).
-// Oszlopok: `laneCount` darab 24 px-es beszélő-oszlop, utána (hasGroup) egy 20 px-es
-// „+N" csoport-oszlop. A „+" oszlop a sorokban üres.
+// SpeakerRailCells: ONE row of the speaker rail (on the left of the list delegate): the
+// utterance's block in its speaker's column, over the row's full height. A single painted
+// item draws every column's state, so rows need no per-column QML items:
+//   solid block · uncertain (soft fill + 135-degree stripes) · selected (2 px frame, in the
+//   other columns a dashed drop target) · suggested (2 px accent frame) · drag source
+//   (30 %) · drag target (soft fill + 2 px dashed frame in the target's color; Shift = "not a
+//   sample": no fill, sparse dashed frame) · suggested
+//   target column (2 px accent frame in the empty cell: a row similar to the new person).
+// Columns: `laneCount` 24 px speaker columns, then (hasGroup) one 20 px "+N" group column.
+// The "+" column is empty in the rows.
 //
 #include <QColor>
 #include <QQuickPaintedItem>
@@ -22,10 +22,10 @@ class SpeakerRailCells : public QQuickPaintedItem {
     QML_ELEMENT
     Q_PROPERTY(int laneCount MEMBER m_laneCount NOTIFY changed)
     Q_PROPERTY(bool hasGroup MEMBER m_hasGroup NOTIFY changed)
-    Q_PROPERTY(qreal leftInset MEMBER m_leftInset NOTIFY changed)       // az első oszlop bal széle
+    Q_PROPERTY(qreal leftInset MEMBER m_leftInset NOTIFY changed)       // the left edge of the first column
     Q_PROPERTY(qreal laneWidth MEMBER m_laneWidth NOTIFY changed)
     Q_PROPERTY(qreal groupWidth MEMBER m_groupWidth NOTIFY changed)
-    // A sor beszélőjének oszlopa; -1 = a csoport-oszlopban; -2 = nincs blokk.
+    // The row's speaker's column; -1 = in the group column; -2 = no block.
     Q_PROPERTY(int ownLane MEMBER m_ownLane NOTIFY changed)
     Q_PROPERTY(QColor lineColor MEMBER m_line NOTIFY changed)
     Q_PROPERTY(QColor softColor MEMBER m_soft NOTIFY changed)
@@ -33,17 +33,17 @@ class SpeakerRailCells : public QQuickPaintedItem {
     Q_PROPERTY(bool selected MEMBER m_selected NOTIFY changed)
     Q_PROPERTY(bool suggested MEMBER m_suggested NOTIFY changed)
     Q_PROPERTY(bool dimmed MEMBER m_dimmed NOTIFY changed)
-    // Javasolt cél-oszlop (az új személyhez hasonló sor): 2 px accent keret az üres cellában (-1 = nincs).
+    // Suggested target column (a row similar to the new person): 2 px accent frame in the empty cell (-1 = none).
     Q_PROPERTY(int suggestLane MEMBER m_suggestLane NOTIFY changed)
-    // Húzás célja ebben a sorban (-1 = nincs).
+    // Drag target in this row (-1 = none).
     Q_PROPERTY(int targetLane MEMBER m_targetLane NOTIFY changed)
     Q_PROPERTY(QColor targetLineColor MEMBER m_targetLine NOTIFY changed)
     Q_PROPERTY(QColor targetSoftColor MEMBER m_targetSoft NOTIFY changed)
-    // A cél „nem minta" (Shift): ritkás szaggatott keret, kitöltés nélkül.
+    // The target is "not a sample" (Shift): sparse dashed frame, no fill.
     Q_PROPERTY(bool targetDashed MEMBER m_targetDashed NOTIFY changed)
-    Q_PROPERTY(QColor outlineColor MEMBER m_outline NOTIFY changed)     // kijelölés (Theme.text)
-    Q_PROPERTY(QColor dashColor MEMBER m_dash NOTIFY changed)           // ejtési cél (borderStrong)
-    Q_PROPERTY(QColor accentColor MEMBER m_accent NOTIFY changed)       // javasolt sor
+    Q_PROPERTY(QColor outlineColor MEMBER m_outline NOTIFY changed)     // selection (Theme.text)
+    Q_PROPERTY(QColor dashColor MEMBER m_dash NOTIFY changed)           // drop target (borderStrong)
+    Q_PROPERTY(QColor accentColor MEMBER m_accent NOTIFY changed)       // suggested row
 
 public:
     explicit SpeakerRailCells(QQuickItem* parent = nullptr);
@@ -77,19 +77,19 @@ private:
     QColor m_accent{Qt::blue};
 };
 
-// Csíkozott (135°) kitöltésű kis minta — a „Bizonytalan" szűrő-chip jelölője.
+// A small stripe-filled (135 degrees) swatch: the marker of the "Uncertain" filter chip.
 class SpeakerHatch : public QQuickPaintedItem {
     Q_OBJECT
     QML_ELEMENT
     Q_PROPERTY(QColor color MEMBER m_color NOTIFY changed)
     Q_PROPERTY(QColor backColor MEMBER m_fill NOTIFY changed)
     Q_PROPERTY(qreal radius MEMBER m_radius NOTIFY changed)
-    Q_PROPERTY(qreal stripe MEMBER m_stripe NOTIFY changed)             // csík- és hézagszélesség
+    Q_PROPERTY(qreal stripe MEMBER m_stripe NOTIFY changed)             // stripe and gap width
 
 public:
     explicit SpeakerHatch(QQuickItem* parent = nullptr);
     void paint(QPainter* painter) override;
-    // Közös rajzoló: lekerekített téglalap `fill` kitöltéssel és `line` csíkokkal.
+    // Shared painter: a rounded rectangle with `fill` and `line` stripes.
     static void paintHatch(QPainter* p, const QRectF& r, qreal radius, const QColor& fill,
                            const QColor& line, qreal stripe);
 

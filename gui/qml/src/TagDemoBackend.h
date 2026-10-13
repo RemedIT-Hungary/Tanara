@@ -1,13 +1,12 @@
 #pragma once
 //
-// TagDemoBackend — a TagBackend kitalált adatos megvalósítása (controller nélkül: --qml-shot,
-// --gallery, --demo, tesztek). A 12 címke, a számok és a nevek a handoff képeiről valók
-// (design/handoff-tags, T01–T13), mind kitaláltak.
+// TagDemoBackend: the fictional-data implementation of TagBackend (without a controller:
+// --qml-shot, --gallery, --demo, tests). The 12 tags, the numbers and the names come from the
+// handoff images, all fictional.
 //
-// Memóriában él, de VALÓDI szabályokkal: hozzáadás / eltávolítás / elutasítás / átnevezés /
-// összevonás / törlés módosítja az állapotot, az együtt járás (≥ 2 megbeszélés, a címke
-// megbeszéléseinek ≥ 50 %-a) számolódik, és minden csoport egy visszavonható lépés
-// (pillanatkép-alapú verem, legfeljebb 50).
+// It lives in memory but with REAL rules: add / remove / reject / rename / merge / delete
+// change the state, co-occurrence (>= 2 meetings, >= 50 % of the tag's meetings) is
+// computed, and every group is one undoable step (snapshot-based stack, at most 50).
 //
 #include "DemoText.h"
 #include "TagBackend.h"
@@ -24,12 +23,12 @@ public:
     explicit TagDemoBackend(QObject* parent = nullptr) : TagDemoBackend(Content::Sample, parent) {}
     TagDemoBackend(Content content, QObject* parent);
 
-    // A demó megbeszélés azonosítója (a MeetingTagsModel ezt használja, ha nincs meetingId).
+    // The demo meeting's id (MeetingTagsModel uses it when there is no meetingId).
     static QString demoMeetingId() { return QStringLiteral("m-demo"); }
-    // Egy megbeszélés demó-állapota (a T01 C03–C04 sorai + a T02 „why”):
-    // none | few | many | computing | similar | cooccur | llm | why | draft (T07: átirat előtt)
+    // A meeting's demo state (the T01 rows + the T02 "why"):
+    // none | few | many | computing | similar | cooccur | llm | why | draft (before a transcript)
     void loadMeetingDemo(const QString& meetingId, const QString& state);
-    // T13: üres készlet.
+    // Empty pool.
     void clearAll();
 
     QVector<TagItem> tags() const override { return m_state.tags; }
@@ -42,7 +41,7 @@ public:
     void requestCooccur(const QString& meetingId, const QString& tagId) override;
     void reject(const QString& meetingId, const TagSuggestionItem& suggestion) override;
     bool isRejected(const QString& meetingId, const QString& tagIdOrName) const override;
-    // T07: a cím alapú javaslat (a címtől függetlenül ugyanaz a kitalált elem).
+    // The title-based suggestion (the same fictional item regardless of the title).
     QVector<TagSuggestionItem> draftSuggestions(const QString& title) const override;
     TagProfileItem profile(const QString& tagId) const override;
     bool rename(const QString& tagId, const QString& name) override;
@@ -54,7 +53,7 @@ public:
     QString undoLabel() const override { return m_undo.isEmpty() ? QString() : m_undo.last().label; }
     void undo() override;
 
-    // Személyek (a design-csomagok kitalált nevei; a saját személy: Kovács Lilla).
+    // People (the design packages' fictional names; the own person: Kovács Lilla).
     QString selfName() const override { return demoName("Kovács Lilla"); }
     QStringList tagsOfPerson(const QString& name) const override;
     QString addPersonTag(const QString& name, const QString& nameOrId) override;
@@ -65,7 +64,7 @@ public:
     QVector<PersonTagItem> suggestTagsForPerson(const QString& name) const override;
     int personMeetingCount(const QString& name) const override { return m_state.personTotal.value(name); }
     bool personStatsBusy() const override { return m_statsBusy; }
-    // Képhez: a statisztika „még számol” állapota.
+    // For images: the statistics' "still computing" state.
     void setPersonStatsBusy(bool busy);
 
 private:
@@ -74,12 +73,12 @@ private:
         QStringList recentIds;
         QHash<QString, QStringList> meetingTags;
         QHash<QString, TagSuggestionState> suggestions;
-        QSet<QString> rejected;                     // "meetingId|tagId" vagy "meetingId|kulcs"
-        QHash<QString, int> cooccur;                // "idA|idB" (idA < idB) → együtt
-        QHash<QString, QStringList> personTags;     // név → kézi tagId-k
-        QHash<QString, QHash<QString, int>> shared; // tagId → név → közös megbeszélések
-        QHash<QString, int> personTotal;            // név → megbeszélések
-        QSet<QString> personRejected;               // "név|tagId"
+        QSet<QString> rejected;                     // "meetingId|tagId" or "meetingId|key"
+        QHash<QString, int> cooccur;                // "idA|idB" (idA < idB) -> together
+        QHash<QString, QStringList> personTags;     // name -> manual tagIds
+        QHash<QString, QHash<QString, int>> shared; // tagId -> name -> shared meetings
+        QHash<QString, int> personTotal;            // name -> meetings
+        QSet<QString> personRejected;               // "name|tagId"
     };
     struct UndoStep { QString label; State before; };
 

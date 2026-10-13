@@ -65,8 +65,8 @@ bool TranscriptListModel::headAt(int row) const
     if (row == 0 || m_rows[row - 1].gap) return true;
     const auto& utts = m_vm->utterances();
     const EditorUtterance& u = utts[r.utterance];
-    // A jelölt (bizonytalan / javítva / egymásra beszéltek / megerősített) sor mindig kap névsort:
-    // a jelölő ott jelenik meg.
+    // A marked row (uncertain / fixed / overlapping speech / confirmed) always gets the name:
+    // the marker shows there.
     if (u.uncertain || u.manuallyCorrected || u.noisy || u.confirmed || u.ignored) return true;
     return utts[m_rows[row - 1].utterance].speakerKey != u.speakerKey;
 }
@@ -160,7 +160,7 @@ int TranscriptListModel::nearestRow(int utteranceIndex) const
     if (m_rows.isEmpty() || utteranceIndex < 0) return -1;
     const int direct = rowOfUtterance(utteranceIndex);
     if (direct >= 0) return direct;
-    // Szűrőben: az első látható megszólalás-sor, amely nem korábbi a keresettnél.
+    // In a filter: the first visible utterance row that is not earlier than the searched one.
     int last = -1;
     for (int r = 0; r < m_rows.size(); ++r) {
         if (m_rows[r].gap) continue;
@@ -180,10 +180,10 @@ QVector<TranscriptListModel::Row> TranscriptListModel::computeRows() const
         for (int i = 0; i < utts.size(); ++i) out.append(Row{false, i, 0});
         return out;
     }
-    // „Bizonytalan" szűrő: a bizonytalan sorok, a szűrő bekapcsolása óta kézzel javítottak (ne
-    // tűnjenek el a kurzor alól), a javaslat horgonya, és — amíg a „Megmutatom" él — a javasolt
-    // sorok. Minta-szűrő: a beszélő „+N most" sorai. „Nem azonosítható" elrejtése: minden más.
-    // A rejtett futamok egy-egy elválasztóvá csukódnak.
+    // "Uncertain" filter: the uncertain rows, those fixed by hand since the filter was turned on
+    // (they must not vanish under the cursor), the suggestion's anchor, and, while "Show me"
+    // lives, the suggested rows. Sample filter: the speaker's "+N now" rows. Hiding "cannot be
+    // identified": everything else. Hidden runs collapse into one separator each.
     const int anchor = m_vm->suggestionAnchor();
     const bool uncertain = filter == QLatin1String("uncertain");
     const bool samples = filter == QLatin1String("samples");
@@ -231,7 +231,7 @@ void TranscriptListModel::syncFilter()
     for (const Row& r : target) targetKeys.insert(r.key());
 
     bool structural = false;
-    // 1) Törlés hátulról, összefüggő futamonként.
+    // 1) Removal from the back, per contiguous run.
     for (int r = int(m_rows.size()) - 1; r >= 0;) {
         if (targetKeys.contains(m_rows[r].key())) { --r; continue; }
         int first = r;
@@ -242,7 +242,7 @@ void TranscriptListModel::syncFilter()
         structural = true;
         r = first - 1;
     }
-    // 2) Beszúrás elölről (mindkét lista kulcs szerint rendezett).
+    // 2) Insertion from the front (both lists are sorted by key).
     QVector<int> gapChanged;
     for (int t = 0; t < target.size();) {
         if (t < m_rows.size() && m_rows[t].key() == target[t].key()) {
@@ -279,7 +279,7 @@ void TranscriptListModel::notifyUtterances(const QVector<int>& utteranceIndices,
         const int r = rowOfUtterance(u);
         if (r < 0) continue;
         emit dataChanged(index(r), index(r), roles);
-        // A következő sor névsora ettől a sortól függ (beszélőváltás).
+        // The next row's name depends on this row (speaker change).
         if (r + 1 < m_rows.size() && (roles.isEmpty() || roles.contains(SpeakerKeyRole)))
             emit dataChanged(index(r + 1), index(r + 1), {HeadRole});
     }

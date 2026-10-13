@@ -29,9 +29,9 @@ namespace tanara_qml {
 
 namespace {
 
-constexpr float  kSignalRms    = 0.004f;   // e fölött „van jel” (≈ −48 dBFS)
-constexpr qint64 kSignalHoldMs = 1500;     // ennyi ideig számít még jelnek az utolsó hang
-constexpr qint64 kPeakHoldMs   = 1500;     // csúcstartás ideje
+constexpr float  kSignalRms    = 0.004f;   // above this there is "signal" (about -48 dBFS)
+constexpr qint64 kSignalHoldMs = 1500;     // the last sound still counts as signal for this long
+constexpr qint64 kPeakHoldMs   = 1500;     // peak-hold time
 constexpr int    kSegments     = 14;
 
 QString recorderIniPath(AppController* c)
@@ -85,8 +85,8 @@ QVariant RecorderDeviceModel::data(const QModelIndex& index, int role) const
     case StatusRole:     return r.status;
     case StatusTextRole: return r.statusText;
     case ToggleableRole: {
-        // Felvétel közben a rögzített sáv is kikapcsolható (a fájlja lezárul; újra bekapcsolva
-        // új szakasz indul). A leválasztott eszköz sora zárolt, amíg vissza nem kerül.
+        // During recording the recorded track can be switched off too (its file is closed; switching
+        // it on again starts a new segment). A disconnected device's row is locked until it returns.
         const QString st = m_vm->m_state;
         if (r.disconnected) return false;
         return st == QLatin1String("idle") || st == QLatin1String("recording");
@@ -100,7 +100,7 @@ QVariant RecorderDeviceModel::data(const QModelIndex& index, int role) const
 RecorderViewModel::RecorderViewModel(QObject* parent) : QObject(parent)
 {
     m_clock.start();
-    m_tick.setInterval(33);   // ~30 Hz: csúcstartás + státuszok
+    m_tick.setInterval(33);   // ~30 Hz: peak hold + statuses
     connect(&m_tick, &QTimer::timeout, this, &RecorderViewModel::tick);
     m_fallbackScan.setInterval(3000);
     connect(&m_fallbackScan, &QTimer::timeout, this, [this] {
@@ -108,8 +108,8 @@ RecorderViewModel::RecorderViewModel(QObject* parent) : QObject(parent)
     });
 
     m_title = automaticTitle(QString(), QDateTime::currentDateTime());
-    // Az App.controller a következő eseményhurok-körben kötődik be, ha addig a hívó nem
-    // adott sajátot (setController) és nem kért demó-állapotot.
+    // App.controller binds in the next event-loop turn, if by then the caller has not given its
+    // own (setController) and has not asked for a demo state.
     QMetaObject::invokeMethod(this, [this] {
         if (m_controllerSet) return;
         if (AppController* c = AppContext::instance()->controller())
@@ -121,7 +121,7 @@ RecorderViewModel::RecorderViewModel(QObject* parent) : QObject(parent)
 
 RecorderViewModel::~RecorderViewModel()
 {
-    // A szintfigyelést csak akkor állítjuk le, ha épp nincs felvétel (a felvételhez nem nyúlunk).
+    // Level monitoring is stopped only when no recording runs (we do not touch the recording).
     if (m_controller && m_controller->recordingState() == RecordingState::Idle)
         m_controller->stopLevelMonitoring();
 }
@@ -167,7 +167,7 @@ QString RecorderViewModel::automaticTitle(const QString& appName, const QDateTim
 
 int RecorderViewModel::levelSegments(float rms)
 {
-    if (rms <= 0.001f) return 0;                       // −60 dBFS alatt semmi
+    if (rms <= 0.001f) return 0;                       // nothing below -60 dBFS
     const double db = 20.0 * std::log10(static_cast<double>(rms));
     return std::clamp(static_cast<int>(std::lround((db + 60.0) / 60.0 * kSegments)), 0, kSegments);
 }
@@ -204,11 +204,11 @@ void RecorderViewModel::setTitle(const QString& title)
 {
     const QString t = title.trimmed();
     if (t.isEmpty() || (t == m_title && !m_titleAuto)) return;
-    if (t == m_title && m_titleAuto) return;           // nem írt bele → marad automatikus
+    if (t == m_title && m_titleAuto) return;           // nothing was typed -> stays automatic
     m_title = t;
     m_titleAuto = false;
     emit titleChanged();
-    // A kész meetinget azonnal átnevezzük; a futó felvételét a végén (onFinished).
+    // A finished meeting is renamed right away; a running recording's at the end (onFinished).
     if (m_controller && m_state == QLatin1String("done") && !m_doneMeetingId.isEmpty())
         m_controller->renameMeeting(m_doneMeetingId, m_title);
 }
@@ -250,7 +250,7 @@ QVector<AudioDeviceInfo> RecorderViewModel::selectedDevices() const
     return out;
 }
 
-// ---- a core bekötése -------------------------------------------------------------------
+// ---- wiring the core -------------------------------------------------------------------
 
 void RecorderViewModel::attach()
 {
@@ -260,7 +260,7 @@ void RecorderViewModel::attach()
         m_knownDevices = ini.value(QStringLiteral("devices/known")).toStringList();
     }
     connect(c, &AppController::devicesChanged, this, &RecorderViewModel::rebuildDevices);
-    // A Beállításokban átnevezett eszköz neve itt is azonnal frissül (devicenames).
+    // A device renamed in Settings is refreshed here immediately too (devicenames).
     if (c->settings())
         connect(c->settings(), &SettingsManager::settingsChanged, this, [this] {
             for (int i = 0; i < m_rows.size(); ++i) {
@@ -274,7 +274,7 @@ void RecorderViewModel::attach()
     connect(c, &AppController::deviceLevelPeak, this, &RecorderViewModel::onLevel);
     connect(c, &AppController::recordingStateChanged, this, &RecorderViewModel::onRecordingState);
     connect(c, &AppController::elapsedChanged, this, [this](qint64 ms) {
-        // Másodpercenként elég jelezni (a kijelzés HH:MM:SS).
+        // Signaling once per second is enough (the display is HH:MM:SS).
         if (ms / 1000 == m_elapsedMs / 1000 && m_elapsedMs != 0) { m_elapsedMs = ms; return; }
         m_elapsedMs = ms;
         emit elapsedChanged();
@@ -292,7 +292,7 @@ void RecorderViewModel::attach()
     });
     connect(c, &AppController::recordingTrackClosed, this, [this](const QString& name) {
         const int i = rowOf(name);
-        // Leválasztott eszköz, vagy a felhasználó kapcsolta ki (az utóbbi újra bekapcsolható).
+        // Disconnected device, or the user switched it off (the latter can be switched on again).
         const bool unplugged = !m_controller
             || m_controller->disconnectedRecordingDeviceNames().contains(name);
         if (i >= 0) {
@@ -305,11 +305,11 @@ void RecorderViewModel::attach()
             m_rows[i].rms = m_rows[i].peak = 0.f;
             refreshRow(i, false);
         } else {
-            rebuildDevices();   // a sor már nincs a felsorolásban → „leválasztva” sorként visszakerül
+            rebuildDevices();   // the row is no longer in the enumeration -> comes back as a "disconnected" row
         }
         emit countsChanged();
         if (unplugged && m_state == QLatin1String("recording")) {
-            // Értesítés: a felvétel NEM állt le, csak ennek az eszköznek a sávja zárult le.
+            // Notice: the recording did NOT stop, only this device's track closed.
             const int row = rowOf(name);
             const QString shown = (row >= 0 && !m_rows[row].friendly.isEmpty()) ? m_rows[row].friendly : name;
             m_errorText = tr("A(z) %1 eszköz eltűnt, a sávja lezárult, a többi sáv megy tovább.").arg(shown);
@@ -317,7 +317,7 @@ void RecorderViewModel::attach()
         }
     });
     connect(c, &AppController::recordingDeviceReturned, this, [this](const QString& name) {
-        // A kihúzott, majd visszadugott eszközt a rendszer magától újra rögzíti (új szakasz).
+        // A device unplugged and plugged back in is recorded again by the system on its own (new segment).
         const int row = rowOf(name);
         const QString shown = (row >= 0 && !m_rows[row].friendly.isEmpty()) ? m_rows[row].friendly : name;
         m_errorText = tr("A(z) %1 eszköz visszatért, a rögzítése folytatódik (új szakasz).").arg(shown);
@@ -332,14 +332,14 @@ void RecorderViewModel::attach()
         raiseAsk(tr("Minden sávon %n perce csend van. Magamtól nem állítom le.", nullptr, minutes));
     });
     connect(c, &AppController::errorOccurred, this, [this](const QString& e) {
-        // Csak a felvevőt érintő hibákat mutatjuk: indítás / leállítás közben érkezőket.
+        // We show only errors that concern the recorder: those arriving during start / stop.
         if (m_state == QLatin1String("done")) return;
         m_errorText = e;
         emit errorChanged();
     });
 
-    // Lejátszás-útvonalak + hot-plug: ahol van (Linux/PipeWire), a gráf változása jelez;
-    // máshol időzítve soroljuk újra az eszközöket.
+    // Playback routes + hot-plug: where available (Linux/PipeWire), the graph change signals it;
+    // elsewhere we re-enumerate devices on a timer.
     if (PlaybackRouteMonitor::available()) {
         m_routes = new PlaybackRouteMonitor(this);
         connect(m_routes, &PlaybackRouteMonitor::routesChanged, this, &RecorderViewModel::updateRoutes);
@@ -364,18 +364,18 @@ void RecorderViewModel::rebuildDevices()
     const QStringList recNames = m_controller->recordingDeviceNames();
     const QStringList closed = m_controller->disconnectedRecordingDeviceNames();
 
-    // Ugyanaz a halmaz, ugyanabban az állapotban → nincs teendő (a DeviceManager minden
-    // felsorolásnál jelez; a sorok és a szintek ne ugráljanak fölöslegesen).
+    // Same set in the same state -> nothing to do (the DeviceManager signals on every
+    // enumeration; rows and levels should not jump needlessly).
     QStringList presentNames;
     for (const AudioDeviceInfo& d : present) presentNames << d.name;
-    // A felsorolásból hiányzó, de a felvételhez tartozó eszközök sora megmarad: amíg a core
-    // le nem zárja a sávot, rögzítettként; utána „leválasztva”.
+    // Rows of devices missing from the enumeration but belonging to the recording stay: as
+    // recorded until the core closes the track; afterwards "disconnected".
     QStringList extras;
     for (const QString& n : recNames + closed)
         if (!presentNames.contains(n) && !extras.contains(n)) extras << n;
 
-    // Ugyanaz a halmaz, ugyanabban az állapotban → nincs teendő (a DeviceManager minden
-    // felsorolásnál jelez; a sorok és a szintek ne ugráljanak fölöslegesen).
+    // Same set in the same state -> nothing to do (the DeviceManager signals on every
+    // enumeration; rows and levels should not jump needlessly).
     bool same = m_selectionLoaded && m_rows.size() == presentNames.size() + extras.size();
     for (int k = 0; same && k < present.size(); ++k) {
         const int i = rowOf(present.at(k).name);
@@ -391,9 +391,9 @@ void RecorderViewModel::rebuildDevices()
         return;
     }
 
-    // A kijelölés forrása: az élő sorok; első felsoroláskor a mentett kijelölés. Az addig
-    // nem látott eszköz „minden eszköz rögzítése” módban bekapcsolva érkezik (kivéve a
-    // vonalbemenet-félék), kézi módban kikapcsolva.
+    // Source of the selection: the live rows; on the first enumeration the saved selection. A
+    // device not seen until then arrives switched on in "record every device" mode (except
+    // line-in types), switched off in manual mode.
     const AppSettings s = m_controller->settings() ? m_controller->settings()->settings()
                                                    : AppSettings{};
     const QStringList last = m_controller->lastUsedDeviceNames();
@@ -414,7 +414,7 @@ void RecorderViewModel::rebuildDevices()
         else r.silentSince = now;
         r.selected = wantSelected(d);
         r.info = d;
-        r.friendly = devicenames::displayName(d.name);   // a felhasználó neve, különben a rövidített
+        r.friendly = devicenames::displayName(d.name);   // the user's name, otherwise the abbreviated one
         r.group = d.kind == TrackKind::Mic ? 0 : d.kind == TrackKind::Loopback ? 1 : 2;
         r.recorded = recNames.contains(d.name);
         r.disconnected = false;
@@ -526,12 +526,12 @@ void RecorderViewModel::tick()
             r.lastSignalAt = now;
             r.silentSince = now;
         }
-        // Csúcstartás: a legfelső elért szegmens ~1,5 mp-ig kijelölve marad, utána leesik.
+        // Peak hold: the highest reached segment stays marked for ~1.5 s, then drops.
         const int peakLevel = qMax(levelSegments(r.peak), r.level);
         const int seg = peakLevel - 1;
         if (seg >= r.peakSeg) { r.peakSeg = seg; r.peakAt = now; }
         else if (now - r.peakAt > kPeakHoldMs) { r.peakSeg = seg; r.peakAt = now; }
-        if (r.peakSeg < r.level) r.peakSeg = -1;        // a világító rész alatt nincs mit jelölni
+        if (r.peakSeg < r.level) r.peakSeg = -1;        // nothing to mark below the lit part
 
         computeStatus(r, now);
         const bool levelChanged = r.level != oldLevel || r.peakSeg != oldPeak;
@@ -558,15 +558,15 @@ void RecorderViewModel::persistSelection()
     m_controller->setLastUsedDeviceNames(names);
 }
 
-// ---- műveletek -------------------------------------------------------------------------
+// ---- actions -------------------------------------------------------------------------
 
 void RecorderViewModel::applyRequest(const QString& title, const QString& appName,
                                      const QString& context, const QList<int>& deviceIndexes)
 {
     if (m_state == QLatin1String("recording") || m_state == QLatin1String("stopping"))
-        return;   // futó felvétel címéhez / forrásaihoz külső kérés nem nyúl
-    // A régi figyelő az észlelt hívást megjegyzésként is küldte („Automatikusan észlelt hívás:
-    // …”): az nem megjegyzés, hanem az észlelt app — külön mezőbe kerül.
+        return;   // external requests do not touch a running recording's title / sources
+    // The old watcher also sent the detected call as a note ("Automatically detected call:
+    // ..."): that is not a note but the detected app, so it goes into a separate field.
     QString detectedApp = appName.trimmed();
     QString autoApp;
     if (tanara::meetingnotes::parseAutoCallNote(context, &autoApp)) {
@@ -601,7 +601,7 @@ void RecorderViewModel::start()
 {
     if (m_state != QLatin1String("idle")) return;
     clearError();
-    if (!m_controller) {                       // demó: csak az állapot vált
+    if (!m_controller) {                       // demo: only the state changes
         if (!m_demoState.isEmpty()) setDemoState(QStringLiteral("R03"));
         return;
     }
@@ -611,12 +611,12 @@ void RecorderViewModel::start()
         emit errorChanged();
         return;
     }
-    if (m_titleAuto) {                         // az automatikus név az INDÍTÁS idejét viseli
+    if (m_titleAuto) {                         // the automatic name carries the START time
         m_title = automaticTitle(m_appName, QDateTime::currentDateTime());
         emit titleChanged();
     }
     m_controller->startRecording(m_title, sel);
-    syncRecordingTags();                       // az indítás előtt választott címkék (a start üríti)
+    syncRecordingTags();                       // tags chosen before starting (start clears them)
 }
 
 void RecorderViewModel::stop()
@@ -633,7 +633,7 @@ void RecorderViewModel::toggleDevice(int row)
 {
     if (row < 0 || row >= m_rows.size()) return;
     Row& r = m_rows[row];
-    if (r.disconnected) return;                          // leválasztott eszköz: nincs mit kapcsolni
+    if (r.disconnected) return;                          // disconnected device: nothing to switch
     if (m_state == QLatin1String("idle")) {
         r.selected = !r.selected;
         r.silentSince = m_clock.elapsed();
@@ -643,8 +643,8 @@ void RecorderViewModel::toggleDevice(int row)
         emit countsChanged();
         persistSelection();
     } else if (m_state == QLatin1String("recording")) {
-        // Felvétel közben: BE → a sávja attól a pillanattól indul (egy korábban kikapcsolt
-        // eszköznél új szakasz); KI → a sáv fájlja itt lezárul, a felvétel megy tovább.
+        // During recording: ON -> its track starts from that moment (a new segment for a device
+        // switched off earlier); OFF -> the track's file closes here, the recording goes on.
         if (!m_controller) {
             r.recorded = r.selected = !r.recorded;
             refreshRow(row, false);
@@ -680,7 +680,7 @@ void RecorderViewModel::newRecording()
     emit elapsedChanged();
     m_appName.clear();
     m_context.clear();
-    if (!m_tags.isEmpty()) { m_tags.clear(); emit tagsChanged(); }   // a core is üresen indítja a következőt
+    if (!m_tags.isEmpty()) { m_tags.clear(); emit tagsChanged(); }   // the core starts the next one empty too
     m_titleAuto = true;
     m_title = automaticTitle(QString(), QDateTime::currentDateTime());
     emit titleChanged();
@@ -714,7 +714,7 @@ void RecorderViewModel::raiseAsk(const QString& text)
     emit askRaised(tr("Vége a megbeszélésnek?"), text);
 }
 
-// ---- címkék (C06) ----------------------------------------------------------------------
+// ---- tags ----
 
 QVariantList RecorderViewModel::tags() const
 {
@@ -733,7 +733,7 @@ QStringList RecorderViewModel::tagIds() const
 
 bool RecorderViewModel::tagsEditable() const
 {
-    // A leállítás alatt is: a core a meeting mentésekor olvassa ki a felvétel címkéit.
+    // Also during stopping: the core reads the recording's tags when saving the meeting.
     return m_state == QLatin1String("idle") || m_state == QLatin1String("recording")
         || m_state == QLatin1String("stopping");
 }
@@ -746,11 +746,11 @@ bool RecorderViewModel::addTag(const QString& name)
     if (m_tagCtl) {
         TagService* svc = m_tagCtl->tags();
         if (!svc) return false;
-        const Tag t = svc->create(n);          // létező kulcsnál a meglévő címke
+        const Tag t = svc->create(n);          // for an existing key, the existing tag
         if (!t.isValid()) return false;
         ref = {t.id, t.name};
     } else {
-        // Demó: a kitalált készlet azonosítói (a beviteli lista ugyanezt látja).
+        // Demo: the ids of the fictional pool (the input list sees the same).
         TagDemoBackend demo(TagDemoBackend::Content::Sample, nullptr);
         for (const TagItem& t : demo.tags())
             if (t.name.compare(n, Qt::CaseInsensitive) == 0) ref = {t.id, t.name};
@@ -785,8 +785,8 @@ bool RecorderViewModel::openTagInput()
 
 void RecorderViewModel::syncRecordingTags()
 {
-    // Indítás előtt is átadjuk (a startRecording üríti, utána újra átadjuk); a kész felvétel
-    // címkéihez már nem nyúlunk innen.
+    // Handed over before the start too (startRecording clears them, then handed over again);
+    // the finished recording's tags are no longer touched from here.
     if (!m_tagCtl || m_state == QLatin1String("done")) return;
     m_tagCtl->setRecordingTags(tagIds());
 }
@@ -797,7 +797,7 @@ void RecorderViewModel::refreshTagNames()
     bool changed = false;
     for (int i = 0; i < m_tags.size(); ++i) {
         const Tag t = m_tagCtl->tags()->tag(m_tags.at(i).id);
-        if (!t.isValid()) { m_tags.removeAt(i--); changed = true; continue; }   // közben törölték
+        if (!t.isValid()) { m_tags.removeAt(i--); changed = true; continue; }   // deleted meanwhile
         if (t.name != m_tags.at(i).name) { m_tags[i].name = t.name; changed = true; }
     }
     if (!changed) return;
@@ -805,7 +805,7 @@ void RecorderViewModel::refreshTagNames()
     syncRecordingTags();
 }
 
-// ---- felvétel-állapot ------------------------------------------------------------------
+// ---- recording state ------------------------------------------------------------------
 
 void RecorderViewModel::onRecordingState(RecordingState st)
 {
@@ -825,8 +825,8 @@ void RecorderViewModel::onRecordingState(RecordingState st)
         if (m_askVisible) { m_askVisible = false; emit askChanged(); }
         setState(QStringLiteral("stopping"));
     } else if (m_state == QLatin1String("recording") || m_state == QLatin1String("stopping")) {
-        // Idle a „kész” jel nélkül: a felvétel nem jött létre / megszakadt (a hibát az
-        // errorOccurred hozta). Kész állapotba CSAK a recordingFinished visz.
+        // Idle without the "done" signal: the recording was not created / was interrupted (the error
+        // came via errorOccurred). Only recordingFinished leads to the done state.
         for (Row& r : m_rows) { r.recorded = false; r.rms = r.peak = 0.f; }
         setState(m_rows.isEmpty() ? QStringLiteral("noDevice") : QStringLiteral("idle"));
         rebuildDevices();
@@ -835,8 +835,8 @@ void RecorderViewModel::onRecordingState(RecordingState st)
 
 void RecorderViewModel::onFinished(const Meeting& m)
 {
-    // Ide akkor jutunk, amikor a core lezárta a sávok encodereit ÉS elmentette a meetinget.
-    // Az „Elmentve” előtt magunk is megnézzük, hogy a sávfájlok tényleg ott vannak-e.
+    // We get here when the core has closed the tracks' encoders AND saved the meeting. Before
+    // "Saved" we check ourselves that the track files are really there.
     int ok = 0;
     QStringList missing;
     for (const Track& t : m.tracks) {
@@ -857,11 +857,11 @@ void RecorderViewModel::onFinished(const Meeting& m)
 
     if (m_controller) {
         if (m.title != m_title && !m_title.isEmpty())
-            m_controller->renameMeeting(m.id, m_title);     // felvétel közbeni átnevezés
+            m_controller->renameMeeting(m.id, m_title);     // rename during recording
         if (!m_context.isEmpty())
             m_controller->setMeetingContextNote(m.id, m_context);
         if (!m_appName.isEmpty())
-            m_controller->setMeetingDetectedCall(m.id, m_appName);   // „Észlelt hívás: …”
+            m_controller->setMeetingDetectedCall(m.id, m_appName);   // "Detected call: ..."
     }
     for (Row& r : m_rows) { r.recorded = false; r.rms = r.peak = 0.f; }
     const bool hadDisconnected = std::any_of(m_rows.cbegin(), m_rows.cend(),
@@ -871,12 +871,12 @@ void RecorderViewModel::onFinished(const Meeting& m)
     emit recordingFinished(m.id);
 }
 
-// ---- demó (kitalált eszközök, a design állapotai) ----------------------------------------
+// ---- demo (fictional devices, the design states) ----------------------------------------
 
 void RecorderViewModel::setDemoState(const QString& state)
 {
     if (m_controller) return;
-    m_controllerSet = true;              // demó: az App.controller-re sem várunk
+    m_controllerSet = true;              // demo: we do not wait for App.controller either
     m_demoState = state;
     loadDemo();
     emit demoStateChanged();
@@ -891,7 +891,7 @@ void RecorderViewModel::loadDemo()
     const bool quiet = st == QLatin1String("R06");
     const QDateTime when(QDate(2026, 10, 3), QTime(14, 2));
 
-    // A kitalált eszköznevek angol demo-nyelven (a magyar rendszer-leírások angol párjai).
+    // The fictional device names in the English demo language (English counterparts of the Hungarian system descriptions).
     static const QHash<QString, QString> deviceEn{
         {QStringLiteral("Trust USB mikrofon"), QStringLiteral("Trust USB microphone")},
         {QStringLiteral("Sennheiser fejhallgató (analóg)"), QStringLiteral("Sennheiser headphones (analog)")},
@@ -953,7 +953,7 @@ void RecorderViewModel::loadDemo()
     m_titleAuto = !namedTitle;
     emit titleChanged();
 
-    // Kitalált címkék (T08a–b): indítás előtt egy, felvétel közben kettő.
+    // Fictional tags: one before starting, two during recording.
     m_tags.clear();
     if (st != QLatin1String("R09") && st != QLatin1String("R10")) {
         m_tags.append({QStringLiteral("t-nordvik"), QStringLiteral("Nordvik")});

@@ -1,19 +1,19 @@
 #pragma once
 //
-// Tanara QML — a megbeszélés-megjegyzés (Meeting::contextNote) szerkesztésének közös
-// nézetmodellje. Két helyen él: az átirat előtti nézet 1. lépésében (PreTranscriptViewModel.note)
-// és az Összefoglaló fülön (SummaryViewModel.note); a QML-oldali párja a MeetingNoteEditor.
+// Tanara QML: shared view model for editing the meeting note (Meeting::contextNote). It
+// lives in two places: step 1 of the pre-transcript view (PreTranscriptViewModel.note) and
+// the Summary tab (SummaryViewModel.note); its QML-side counterpart is MeetingNoteEditor.
 //
-//  - Késleltetett mentés, mindig a SAJÁT megbeszélésébe: a mező gépelés közbeni tartalmát
-//    (draft) a megbeszélés azonosítójával együtt jegyezzük meg; a mentés (commitDraft) és a
-//    kijelölés-váltás ezt írja ki oda, ahová írták — akkor is, ha közben másik lett a kijelölt.
-//  - Sablon-javaslatok (suggestions): a hasonló című korábbi megbeszélések megjegyzései
-//    (tanara::MeetingLibrary::noteSuggestions). Kattintásra a mezőbe kerül (applySuggestion);
-//    magától soha semmi nem töltődik ki.
-//  - Észlelt hívás (detectedCallApp): a figyelő által felismert app, csak tájékoztatás.
+//  - Delayed save, always into its OWN meeting: the field's content while typing (draft) is
+//    remembered with the meeting's id; the save (commitDraft) and a selection switch write it
+//    where it was written, even if another meeting became selected meanwhile.
+//  - Template suggestions (suggestions): notes of earlier meetings with a similar title
+//    (tanara::MeetingLibrary::noteSuggestions). On click it goes into the field
+//    (applySuggestion); nothing is ever filled in on its own.
+//  - Detected call (detectedCallApp): the app recognized by the watcher, info only.
 //
-// Demóban (App.demo / nincs controller) a tulajdonos nézetmodell tölti a mintaadatot
-// (setDemoContent); a mentés ilyenkor csak a memóriában történik.
+// In the demo (App.demo / no controller) the owner view model fills the sample data
+// (setDemoContent); saving then happens in memory only.
 //
 #include <QObject>
 #include <QPointer>
@@ -33,21 +33,21 @@ class MeetingNoteModel : public QObject {
     QML_UNCREATABLE("A PreTranscriptViewModel.note / SummaryViewModel.note adja.")
 
     Q_PROPERTY(QString meetingId READ meetingId NOTIFY meetingIdChanged)
-    // A mentett megjegyzés (a mező gépelés közben a draft-ot hívja, ez csak mentéskor változik).
+    // The saved note (while typing the field uses draft; this changes only on save).
     Q_PROPERTY(QString note READ note WRITE setNote NOTIFY noteChanged)
-    // „Microsoft Teams” — üres, ha nem a figyelő indította a felvételt.
+    // "Microsoft Teams": empty if the watcher did not start the recording.
     Q_PROPERTY(QString detectedCallApp READ detectedCallApp NOTIFY changed)
-    // [{ meetingId, title, dateText, preview, note, tags }] — legfeljebb 3, legújabb elöl;
-    // tags: a forrás-megbeszélés címkéinek nevei (a kártya mini chipjei).
+    // [{ meetingId, title, dateText, preview, note, tags }]: at most 3, newest first;
+    // tags: the source meeting's tag names (the card's mini chips).
     Q_PROPERTY(QVariantList suggestions READ suggestions NOTIFY suggestionsChanged)
 
 public:
     explicit MeetingNoteModel(QObject* parent = nullptr);
 
-    // A tulajdonos nézetmodell állítja (a teszt injektált controllere vagy az App-é).
+    // Set by the owner view model (the test's injected controller or the App's).
     void setController(QObject* injected);
     QString meetingId() const { return m_meetingId; }
-    // Váltás előtt a függő piszkozatot a RÉGI megbeszélésbe menti.
+    // Before a switch, saves the pending draft into the OLD meeting.
     void setMeetingId(const QString& id);
 
     QString note() const { return m_note; }
@@ -56,25 +56,25 @@ public:
     QVariantList suggestions() const { return m_suggestions; }
     bool hasPendingDraft() const { return m_hasDraft; }
 
-    // A mező gépelés közbeni tartalma — a megbeszéléssel EGYÜTT, amelyhez írták.
+    // The field's content while typing, TOGETHER with the meeting it was written for.
     Q_INVOKABLE void draft(const QString& text);
-    // A függő piszkozat mentése a saját megbeszélésébe (késleltetett mentés, fókuszvesztés).
+    // Saves the pending draft into its own meeting (delayed save, focus loss).
     Q_INVOKABLE void commitDraft();
-    // Egy javaslat (a suggestions[i].note szövege) bemásolása: mode "replace" (csere) |
-    // "append" (a meglévő után, új sorba). Az új megjegyzés azonnal mentődik. A szöveget (nem
-    // az indexet) kapja, mert a piszkozat mentése újraszámolhatja a listát. Üres → semmi.
+    // Copies in a suggestion (the text of suggestions[i].note): mode "replace" | "append" (after
+    // the existing, on a new line). The new note is saved immediately. It takes the text (not
+    // the index), because saving the draft may recompute the list. Empty -> nothing.
     Q_INVOKABLE void applySuggestion(const QString& suggestion, const QString& mode);
 
-    // Újraolvasás a tárolóból (a tulajdonos hívja, pl. meetingUpdated után). Demóban nem nyúl
-    // a mintaadathoz.
+    // Re-read from the store (the owner calls it, e.g. after meetingUpdated). In the demo it does
+    // not touch the sample data.
     void reload();
-    // Demó-tartalom (kitalált adat).
+    // Demo content (fictional data).
     void setDemoContent(const QString& note, const QString& detectedCallApp,
                         const QVariantList& suggestions);
 
-    // A javaslat előnézete: az eleje egy sorban, legfeljebb ~90 karakter.
+    // The suggestion's preview: its start on one line, at most ~90 characters.
     static QString previewOf(const QString& note);
-    // Kitalált sablon-javaslatok a demó-állapotokhoz (átirat előtti nézet, Összefoglaló fül).
+    // Fictional template suggestions for the demo states (pre-transcript view, Summary tab).
     static QVariantList demoSuggestions();
 
 signals:

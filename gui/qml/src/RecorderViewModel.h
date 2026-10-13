@@ -1,14 +1,14 @@
 #pragma once
 //
-// RecorderViewModel — a lebegő felvevő (RecorderView.qml / RecorderWindow.qml) nézetmodellje.
+// RecorderViewModel: view model of the floating recorder (RecorderView.qml / RecorderWindow.qml).
 //
-// Egyetlen objektum adja a felvevő teljes állapotát: cím (automatikus név + átnevezés),
-// eszköz-lista (három csoport, kapcsolók, barátságos + nyers név, élő szint csúcstartással,
-// jel-tippek), felvétel-állapot és eltelt idő, a „Vége a megbeszélésnek?” kérdés, a kész
-// állapot. A core-t a tanara::AppController-en át éri el.
+// One object holds the recorder's whole state: title (automatic name + rename), device list
+// (three groups, toggles, friendly + raw name, live level with peak hold, signal hints),
+// recording state and elapsed time, the "End of the meeting?" question, the done state.
+// It reaches the core through tanara::AppController.
 //
-// Controller nélkül (--qml-shot / --demo / --gallery, tesztek) KITALÁLT eszközökkel és
-// szintekkel dolgozik; a `demoState` ("R01" … "R10") a design-állapotokat állítja be.
+// Without a controller (--qml-shot / --demo / --gallery, tests) it works with FICTIONAL
+// devices and levels; `demoState` ("R01" ... "R10") sets the design states.
 //
 #include "tanara/Types.h"
 
@@ -33,27 +33,27 @@ namespace tanara_qml {
 
 class RecorderViewModel;
 
-// Az eszköz-sorok modellje (a nézetmodell `devices` property-je).
+// Model of the device rows (the view model's `devices` property).
 class RecorderDeviceModel : public QAbstractListModel {
     Q_OBJECT
     QML_ANONYMOUS
 public:
     enum Role {
-        KeyRole = Qt::UserRole + 1,   // a nyers OS-eszköznév (stabil kulcs)
-        NameRole,                     // barátságos név
-        RawNameRole,                  // nyers OS-név (második sor, buborék)
-        GroupRole,                    // 0 mikrofon · 1 hangkimenet · 2 egyéb bemenet
-        GroupFirstRole,               // a csoport első sora (csoportfej kell fölé)
-        IconRole,                     // Lucide ikonnév az összecsukott sorhoz
-        SelectedRole,                 // sávra kerül / kerülne
-        LockedRole,                   // épp rögzített sáv (felvétel közben nem kapcsolható ki)
-        DefaultRole,                  // a rendszer alapértelmezett eszköze
-        AppRole,                      // a kimenetre épp játszó alkalmazás ("" ha nincs)
-        LevelRole,                    // 0..14 szegmens
-        PeakRole,                     // csúcstartás szegmens-indexe (-1 = nincs)
+        KeyRole = Qt::UserRole + 1,   // the raw OS device name (stable key)
+        NameRole,                     // friendly name
+        RawNameRole,                  // raw OS name (second line, bubble)
+        GroupRole,                    // 0 microphone, 1 audio output, 2 other input
+        GroupFirstRole,               // first row of the group (needs a group header above)
+        IconRole,                     // Lucide icon name for the collapsed row
+        SelectedRole,                 // goes / would go onto a track
+        LockedRole,                   // currently recorded track (cannot be switched off during recording)
+        DefaultRole,                  // the system's default device
+        AppRole,                      // the application currently playing to the output ("" if none)
+        LevelRole,                    // 0..14 segments
+        PeakRole,                     // peak-hold segment index (-1 = none)
         StatusRole,                   // "" | "noSignal" | "signalUnrecorded" | "silentWarn" | "disconnected"
-        StatusTextRole,               // a státusz felirata
-        ToggleableRole,               // most átkapcsolható-e
+        StatusTextRole,               // the status label
+        ToggleableRole,               // can be toggled now
     };
     explicit RecorderDeviceModel(RecorderViewModel* vm);
     int rowCount(const QModelIndex& parent = {}) const override;
@@ -72,34 +72,34 @@ class RecorderViewModel : public QObject {
     // "idle" | "recording" | "stopping" | "done" | "noDevice"
     Q_PROPERTY(QString state READ state NOTIFY stateChanged)
     Q_PROPERTY(QString title READ title WRITE setTitle NOTIFY titleChanged)
-    // Igaz, amíg a cím az automatikus név (halványan jelenik meg, alatta a tipp).
+    // True while the title is the automatic name (shown dimmed, with the hint below).
     Q_PROPERTY(bool titleAutomatic READ titleAutomatic NOTIFY titleChanged)
     Q_PROPERTY(qint64 elapsedMs READ elapsedMs NOTIFY elapsedChanged)
     Q_PROPERTY(QString elapsedText READ elapsedText NOTIFY elapsedChanged)
     Q_PROPERTY(QAbstractItemModel* devices READ devices CONSTANT)
     Q_PROPERTY(int deviceCount READ deviceCount NOTIFY countsChanged)
     Q_PROPERTY(int selectedCount READ selectedCount NOTIFY countsChanged)
-    Q_PROPERTY(int trackCount READ trackCount NOTIFY countsChanged)   // a futó felvétel sávjai
+    Q_PROPERTY(int trackCount READ trackCount NOTIFY countsChanged)   // the running recording's tracks
     Q_PROPERTY(bool canStart READ canStart NOTIFY countsChanged)
-    // „Vége a megbeszélésnek?” (R06) — a callEnded / silenceDetected jelből.
+    // "End of the meeting?": from the callEnded / silenceDetected signal.
     Q_PROPERTY(bool askVisible READ askVisible NOTIFY askChanged)
     Q_PROPERTY(QString askText READ askText NOTIFY askChanged)
-    // Kész állapot (R09).
-    Q_PROPERTY(QString doneSummary READ doneSummary NOTIFY doneChanged)   // "30:34 · 3 sáv"
+    // Done state.
+    Q_PROPERTY(QString doneSummary READ doneSummary NOTIFY doneChanged)   // "30:34 · 3 tracks"
     Q_PROPERTY(QString doneMeetingId READ doneMeetingId NOTIFY doneChanged)
-    Q_PROPERTY(QString doneProblem READ doneProblem NOTIFY doneChanged)   // nem üres → NEM „Elmentve”
+    Q_PROPERTY(QString doneProblem READ doneProblem NOTIFY doneChanged)   // non-empty -> NOT "Saved"
     Q_PROPERTY(QString errorText READ errorText NOTIFY errorChanged)
-    // A sávonkénti csend-figyelmeztetés küszöbe (perc).
+    // Threshold of the per-track silence warning (minutes).
     Q_PROPERTY(int silenceWarnMinutes READ silenceWarnMinutes CONSTANT)
-    // A felvétel címkéi (C06): [{ id, name }]. Indítás előtt és felvétel közben szerkeszthető;
-    // a meeting csak a felvétel végén jön létre, ezért a core a végén rakja rá őket
+    // The recording's tags: [{ id, name }]. Editable before starting and during recording; the
+    // meeting is only created at the end of the recording, so the core attaches them at the end
     // (AppController::setRecordingTags).
     Q_PROPERTY(QVariantList tags READ tags NOTIFY tagsChanged)
     Q_PROPERTY(QStringList tagIds READ tagIds NOTIFY tagsChanged)
     Q_PROPERTY(bool tagsEditable READ tagsEditable NOTIFY stateChanged)
-    // Design-állapot ("R01" … "R10"); csak controller nélkül hat. "" = nincs demó.
+    // Design state ("R01" ... "R10"); only effective without a controller. "" = no demo.
     Q_PROPERTY(QString demoState READ demoState WRITE setDemoState NOTIFY demoStateChanged)
-    // A core; alapból az App.controller. Tesztben / beágyazáskor felülírható.
+    // The core; defaults to App.controller. Can be overridden in tests / embedding.
     Q_PROPERTY(QObject* controller READ controllerObject WRITE setControllerObject NOTIFY controllerChanged)
 
 public:
@@ -132,38 +132,38 @@ public:
     tanara::AppController* controller() const;
     void setController(tanara::AppController* controller);
 
-    // Az automatikus név: „<App>-hívás · okt. 3. 14:02”, app nélkül „Megbeszélés · …”.
+    // The automatic name: "<App> call · Oct 3, 2:02 PM", without an app "Meeting · ...".
     static QString automaticTitle(const QString& appName, const QDateTime& when);
-    // RMS (0..1) → 0..14 szegmens (dB-skála: −60 dB = 0, 0 dB = 14).
+    // RMS (0..1) -> 0..14 segments (dB scale: -60 dB = 0, 0 dB = 14).
     static int levelSegments(float rms);
 
-    // Külső kérés (parancssor / figyelő / főablak): cím vagy app-név, eszköz-indexek
-    // (a capture-lista sorszámai; üres = a mentett kijelölés), kontextus-megjegyzés.
+    // External request (command line / watcher / main window): title or app name, device indices
+    // (the capture list's row numbers; empty = the saved selection), context note.
     Q_INVOKABLE void applyRequest(const QString& title, const QString& appName,
                                   const QString& context, const QList<int>& deviceIndexes = {});
 
     QVariantList tags() const;
     QStringList tagIds() const;
     bool tagsEditable() const;
-    // Címke a felvételre név szerint (szükség szerint létrehozza a készletben). false: nem
-    // szerkeszthető most, üres a név, vagy már rajta van.
+    // Adds a tag to the recording by name (creating it in the pool if needed). False: not
+    // editable now, the name is empty, or it is already on it.
     Q_INVOKABLE bool addTag(const QString& name);
     Q_INVOKABLE void removeTag(const QString& id);
-    // Ctrl+T: a címke-mező megnyitása (a nézet a tagInputRequested jelre nyitja).
+    // Ctrl+T: opens the tag field (the view opens it on the tagInputRequested signal).
     Q_INVOKABLE bool openTagInput();
-    // Csak a címkék bekötése a core-ra (eszköz-felsorolás, szintfigyelés NÉLKÜL) — tesztekhez,
-    // ahol hangeszközhöz nyúlni nem szabad. A teljes bekötés a setController.
+    // Wires only the tags to the core (WITHOUT device enumeration or level monitoring), for
+    // tests where touching audio devices is forbidden. The full wiring is setController.
     void attachTagsOnly(tanara::AppController* controller);
 
 public slots:
     void start();              // Ctrl+R
-    void stop();               // Ctrl+. — megerősítés nélkül (a gomb explicit)
+    void stop();               // Ctrl+. : without confirmation (the button is explicit)
     void toggleDevice(int row);
-    void rescan();             // R10 „Újrakeresés”
-    void newRecording();       // R09 „Új felvétel” (ugyanazokkal a forrásokkal)
-    void openInAnalyzer();     // R09 „Megnyitás az elemzőben”
-    void openSettings();       // R10 „Rögzítés beállításai”
-    void continueRecording();  // R06 „Folytatom”
+    void rescan();             // "Rescan"
+    void newRecording();       // "New recording" (with the same sources)
+    void openInAnalyzer();     // "Open in analyzer"
+    void openSettings();       // "Recording settings"
+    void continueRecording();  // R06 "Continue"
     void clearError();
 
 signals:
@@ -178,8 +178,8 @@ signals:
     void controllerChanged();
     void tagsChanged();
     void tagInputRequested();
-    // A felvevő-ablaknak / a befoglaló folyamatnak:
-    void askRaised(QString title, QString text);        // jelenjen meg + rendszerértesítés
+    // For the recorder window / the enclosing process:
+    void askRaised(QString title, QString text);        // show up + system notification
     void openAnalyzerRequested(QString meetingId);
     void settingsRequested();
     void recordingStarted(QString meetingFolder);
@@ -192,24 +192,24 @@ private:
         QString friendly;
         int group = 0;
         bool selected = false;
-        bool recorded = false;       // a futó felvétel élő sávja
-        bool disconnected = false;   // rögzített volt, de leválasztották
+        bool recorded = false;       // the running recording's live track
+        bool disconnected = false;   // was recorded, but was unplugged
         QString app;
-        float rms = 0.f, peak = 0.f; // legutóbbi nyers értékek
+        float rms = 0.f, peak = 0.f; // latest raw values
         int level = 0;
         int peakSeg = -1;
-        qint64 peakAt = 0;           // mikor állt be a csúcstartás (ms, monoton)
-        qint64 lastSignalAt = 0;     // utoljára mikor volt jel (ms, monoton); 0 = még soha
-        qint64 silentSince = 0;      // a rögzített sáv csendjének kezdete (ms, monoton)
+        qint64 peakAt = 0;           // when the peak hold started (ms, monotonic)
+        qint64 lastSignalAt = 0;     // when there was last a signal (ms, monotonic); 0 = never
+        qint64 silentSince = 0;      // start of the recorded track's silence (ms, monotonic)
         QString status, statusText;
-        bool demoFixed = false;      // demó: a státuszt/szintet nem számoljuk újra
+        bool demoFixed = false;      // demo: status / level are not recomputed
     };
 
-    void attach();                       // jelek a controllerre
-    void rebuildDevices();               // eszköz-újrafelsorolás → sorok (kijelölés megőrizve)
+    void attach();                       // signals to the controller
+    void rebuildDevices();               // device re-enumeration -> rows (selection preserved)
     void updateRoutes();
     void onLevel(const QString& device, float rms, float peak);
-    void tick();                         // 30 Hz: csúcstartás, státuszok, modell-frissítés
+    void tick();                         // 30 Hz: peak hold, statuses, model refresh
     void refreshRow(int row, bool levelOnly);
     void computeStatus(Row& r, qint64 now) const;
     void setState(const QString& state);
@@ -219,27 +219,27 @@ private:
     void raiseAsk(const QString& text);
     void loadDemo();
     QString iconFor(const Row& r) const;
-    void syncRecordingTags();            // a címkék átadása a core-nak (felvétel közben él)
-    void refreshTagNames();              // átnevezett / törölt címke a készletben
+    void syncRecordingTags();            // handing the tags to the core (live during recording)
+    void refreshTagNames();              // renamed / deleted tag in the pool
     int rowOf(const QString& deviceName) const;
     QVector<tanara::AudioDeviceInfo> selectedDevices() const;
 
     RecorderDeviceModel m_model{this};
     QVector<Row> m_rows;
     QPointer<tanara::AppController> m_controller;
-    QPointer<tanara::AppController> m_tagCtl;    // a címkék core-ja (= m_controller, vagy attachTagsOnly)
+    QPointer<tanara::AppController> m_tagCtl;    // the core of the tags (= m_controller, or attachTagsOnly)
     QMetaObject::Connection m_tagConn;
     bool m_controllerSet = false;
     tanara::PlaybackRouteMonitor* m_routes = nullptr;
     QTimer m_tick;
-    QTimer m_fallbackScan;               // ahol nincs útvonal-figyelő: időzített újrafelsorolás
+    QTimer m_fallbackScan;               // where there is no route watcher: timed re-enumeration
     QElapsedTimer m_clock;
 
     QString m_state = QStringLiteral("idle");
     QString m_title;
     bool m_titleAuto = true;
-    QString m_appName;                   // az észlelt hívás-app (a figyelőtől): automatikus név + a meeting detectedCallApp mezője
-    QString m_context;                   // kifejezett --context megjegyzés (a figyelő már nem küld ilyet)
+    QString m_appName;                   // the detected call app (from the watcher): automatic name + the meeting's detectedCallApp field
+    QString m_context;                   // explicit --context note (the watcher no longer sends one)
     qint64 m_elapsedMs = 0;
     bool m_askVisible = false;
     QString m_askText;
@@ -248,7 +248,7 @@ private:
     QString m_demoState;
     struct TagRef { QString id, name; };
     QVector<TagRef> m_tags;
-    QStringList m_knownDevices;          // amit már láttunk (az „új eszköz” felismeréséhez)
+    QStringList m_knownDevices;          // what we have already seen (to recognize a "new device")
     bool m_selectionLoaded = false;
 };
 

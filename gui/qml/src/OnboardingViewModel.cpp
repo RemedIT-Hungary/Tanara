@@ -36,14 +36,14 @@ QString resolvedUiLanguage(const QString& setting)
                                                               : QStringLiteral("en");
 }
 
-// Két mappa-út ugyanaz-e (a ~ kibontva, a záró perjel nélkül).
+// Whether two folder paths are the same (~ expanded, without the trailing slash).
 bool samePath(const QString& a, const QString& b)
 {
     return QDir::cleanPath(paths::expandHome(a.trimmed())) == QDir::cleanPath(paths::expandHome(b.trimmed()));
 }
 
-// Egy lépés állapot-sora a readiness alapján. A kitalált megbeszélésben van hangsáv és
-// átirat, így csak a szolgáltató beállítása számít (mint a Beállítások piszkozat-ellenőrzése).
+// A step's status line from readiness. The fictional meeting has an audio track and a
+// transcript, so only the provider setting counts (like the Settings draft validation).
 struct Line { QString text; bool ready = false; };
 
 Line readinessLine(const AppSettings& s, bool stt, const ReadinessModel::SecretProbe& hasSecret)
@@ -66,7 +66,7 @@ Line readinessLine(const AppSettings& s, bool stt, const ReadinessModel::SecretP
         out.text = head + QStringLiteral(": ") + OnboardingViewModel::tr("nincs bejelentkezve");
         return out;
     }
-    // Hiányzó titok (API-kulcs) vagy más kötelező mező?
+    // A missing secret (API key) or another required field?
     bool secret = false;
     const ProviderDescriptor d = stt ? SttProviderRegistry::instance().descriptor(r.providerId)
                                      : LlmProviderRegistry::instance().descriptor(r.providerId);
@@ -79,14 +79,14 @@ Line readinessLine(const AppSettings& s, bool stt, const ReadinessModel::SecretP
 
 } // namespace
 
-// ---- életciklus ------------------------------------------------------------------------
+// ---- lifecycle ------------------------------------------------------------------------
 
 OnboardingViewModel::OnboardingViewModel(QObject* parent) : QObject(parent)
 {
-    registerBuiltinProviders();   // idempotens; controller nélkül is kell a szolgáltató-nevekhez
+    registerBuiltinProviders();   // idempotent; needed for the provider names even without a controller
     m_baseTheme = m_draftTheme = AppContext::instance()->themeMode();
-    // Az App.controller a következő eseményhurok-körben kötődik be, ha addig a hívó nem
-    // adott sajátot és nem kért demó-állapotot.
+    // App.controller binds in the next event-loop turn, if by then the caller has not given its
+    // own and has not asked for a demo state.
     QMetaObject::invokeMethod(this, [this] {
         if (m_controllerSet) return;
         if (AppController* c = AppContext::instance()->controller())
@@ -146,8 +146,7 @@ void OnboardingViewModel::attach()
     }
     m_connections << connect(c->settings(), &SettingsManager::settingsChanged, this, [this] {
         if (m_applying || !m_controller) return;
-        // Valaki más mentett (Beállítások, cloud-ablak): a meg nem érintett mezők követik, a
-        // begépelt piszkozat marad.
+        // Someone else saved (Settings, cloud window): untouched fields follow, the typed draft stays.
         const AppSettings live = m_controller->settings()->settings();
         auto follow = [](auto& base, auto& draft, const auto& now) {
             if (draft == base) draft = now;
@@ -183,7 +182,7 @@ void OnboardingViewModel::loadFromCore()
 
 void OnboardingViewModel::reload()
 {
-    // Ha a bezárás nem dobta el (pl. a gazda nem kapta meg a jelet), most tesszük.
+    // If the close did not discard it (e.g. the host did not get the signal), we do it now.
     if (m_draftTheme != m_baseTheme) AppContext::instance()->setThemeMode(m_baseTheme);
     m_status.clear();
     m_step = kSteps.first();
@@ -201,7 +200,7 @@ void OnboardingViewModel::emitAllChanged()
     emit dirtyChanged();
 }
 
-// ---- lépések ---------------------------------------------------------------------------
+// ---- steps ---------------------------------------------------------------------------
 
 QVariantList OnboardingViewModel::steps() const
 {
@@ -279,7 +278,7 @@ void OnboardingViewModel::finish()
 
 void OnboardingViewModel::discardPending()
 {
-    // Minden el nem fogadott lépés piszkozata (a Vissza gombbal több is nyitva maradhat).
+    // The draft of every unaccepted step (with Back several can stay open).
     for (const QString& s : kSteps) discardStep(s);
 }
 
@@ -318,7 +317,7 @@ bool OnboardingViewModel::stepDirty() const
     return false;
 }
 
-// Az adott lépés mezőinek különbsége → a core éppen érvényes beállításaira.
+// The given step's fields' difference -> onto the core's currently effective settings.
 bool OnboardingViewModel::applyStep(const QString& step)
 {
     const bool you = step == QLatin1String("you");
@@ -344,9 +343,9 @@ bool OnboardingViewModel::applyStep(const QString& step)
                                      || live.notesDir != before.notesDir
                                      || live.watcherAutostart != before.watcherAutostart;
         if (settingsChanged) c->settings()->setSettings(live);
-        // A saját név: a core átvezeti a személy-DB-n, a megbeszéléseken és a hanglenyomatokon.
+        // The own name: the core carries it through the person DB, the meetings and the voiceprints.
         if (nameChanged) c->setUserSpeakerName(newName);
-        // A figyelő indítása bejelentkezéskor: azonnal érvényes (homokozóban / tesztben soha).
+        // Starting the watcher at sign-in: effective immediately (never in a sandbox / test).
         if (autostartChanged)
             autostart::applyWatcher(m_draft.watcherAutostart,
                                     autostart::findWatcherExecutable(QCoreApplication::applicationDirPath()));
@@ -363,7 +362,7 @@ bool OnboardingViewModel::applyStep(const QString& step)
         if (watcher) m_base.watcherAutostart = m_draft.watcherAutostart = now.watcherAutostart;
         if (settingsChanged || nameChanged) emit saved();
     } else {
-        // Demó: nincs mit lemezre írni — a piszkozat lesz az alap.
+        // Demo: nothing to write to disk; the draft becomes the base.
         m_draft.userSpeakerName = newName.isEmpty() ? m_draft.userSpeakerName : newName;
         if (you) {
             m_base.userSpeakerName = m_draft.userSpeakerName;
@@ -391,7 +390,7 @@ void OnboardingViewModel::discardStep(const QString& step)
         m_draft.uiLanguage = m_base.uiLanguage;
         if (m_draftTheme != m_baseTheme) {
             m_draftTheme = m_baseTheme;
-            AppContext::instance()->setThemeMode(m_baseTheme);   // az előnézet visszaáll
+            AppContext::instance()->setThemeMode(m_baseTheme);   // the preview reverts
         }
         emit youChanged();
     } else if (step == QLatin1String("folders")) {
@@ -431,7 +430,7 @@ void OnboardingViewModel::setUiLanguage(const QString& lang)
 
 QVariantList OnboardingViewModel::uiLanguageOptions() const
 {
-    // Ugyanaz a három választás, mint a Beállítások › Általános lapon.
+    // The same three choices as on the Settings > General page.
     auto mk = [](const QString& v, const QString& l) {
         return QVariantMap{{QStringLiteral("value"), v}, {QStringLiteral("label"), l}};
     };
@@ -453,12 +452,12 @@ void OnboardingViewModel::setThemeMode(const QString& mode)
     const QString m = AppContext::normalizedThemeMode(mode);
     if (m == m_draftTheme) return;
     m_draftTheme = m;
-    AppContext::instance()->setThemeMode(m);   // élő előnézet
+    AppContext::instance()->setThemeMode(m);   // live preview
     emit youChanged();
     emit dirtyChanged();
 }
 
-// ---- Mappák ------------------------------------------------------------------------------
+// ---- Folders ------------------------------------------------------------------------------
 
 QString OnboardingViewModel::folderPath(const QString& key) const
 {
@@ -470,7 +469,7 @@ QString OnboardingViewModel::folderPath(const QString& key) const
 QString OnboardingViewModel::defaultFolder(const QString& key) const
 {
     if (!m_controller) {
-        // Demó: a kitalált felhasználó alapértelmezett mappái.
+        // Demo: the fictional user's default folders.
         return key == QLatin1String("audio") ? demoText("/home/lilla/Tanara/felvetelek", "/home/emma/Tanara/recordings")
                                              : demoText("/home/lilla/Tanara/jegyzetek", "/home/emma/Tanara/notes");
     }
@@ -519,7 +518,7 @@ void OnboardingViewModel::browseFolder(const QString& key)
     if (!dir.isEmpty()) setFolder(key, dir);
 }
 
-// ---- Szolgáltatások ----------------------------------------------------------------------
+// ---- Services ----------------------------------------------------------------------------
 
 QString OnboardingViewModel::providerLabel(const AppSettings& s, bool stt)
 {
@@ -529,8 +528,8 @@ QString OnboardingViewModel::providerLabel(const AppSettings& s, bool stt)
     if (d.id.isEmpty()) return id;
     const ProviderConfig cfg = stt ? s.sttSelected() : s.llmSelected();
     QString label = d.displayName;
-    // A helyi szerver jól ismert portjáról a nevét mutatjuk (a leíró neve általános) —
-    // ugyanúgy, mint a Beállítások összecsukott szolgáltató-kártyája.
+    // From the local server's well-known port we show its name (the descriptor's name is
+    // generic), the same as in Settings' collapsed provider card.
     if (d.authMode != AuthMode::Login && isLocalEndpoint(cfg.baseUrl)) {
         const QUrl url(cfg.baseUrl.trimmed());
         if (url.port() == 1234) label = QStringLiteral("LM Studio");
@@ -558,7 +557,7 @@ void OnboardingViewModel::refreshReadiness()
         live = c->cloudLive();
         chosen = live && c->usesCloud(WorkflowStep::Transcribe) && c->usesCloud(WorkflowStep::Summarize);
     } else {
-        // Demó: a friss telepítés tipikus állapota — kulcs még nincs, a helyi LLM be van írva.
+        // Demo: a fresh install's typical state: no key yet, the local LLM entered.
         stt = tr("Átírás") + QStringLiteral(": ") + tr("nincs kulcs");
         llm = tr("Összefoglaló") + QStringLiteral(": ") + QStringLiteral("LM Studio · gemma-4-12b");
         llmOk = true;
@@ -580,7 +579,7 @@ void OnboardingViewModel::openServices()
     emit openSettingsRequested(QStringLiteral("providers"));
 }
 
-// ---- Hívásfigyelő ------------------------------------------------------------------------
+// ---- Call watcher ------------------------------------------------------------------------
 
 void OnboardingViewModel::setWatcherAutostart(bool on)
 {
@@ -600,13 +599,13 @@ QString OnboardingViewModel::autostartNote() const
 #else
     note = tr("Ezen a rendszeren az automatikus indítás még nem érhető el; a figyelőt kézzel indíthatod.");
 #endif
-    // Homokozóban (TANARA_HOME) és tesztben a bejegyzés nem íródik — ezt is megmondjuk.
+    // In a sandbox (TANARA_HOME) and in tests the entry is not written; we say so too.
     if (m_controller && !autostart::managed() && !autostart::watcherEntryPath().isEmpty())
         note += QLatin1Char(' ') + tr("Most nem íródik bejegyzés (elkülönített adatmappával fut a Tanara).");
     return note;
 }
 
-// ---- demó --------------------------------------------------------------------------------
+// ---- demo --------------------------------------------------------------------------------
 
 void OnboardingViewModel::loadDemo()
 {
@@ -623,7 +622,7 @@ void OnboardingViewModel::loadDemo()
 
     m_status.clear();
     const QString st = kSteps.contains(m_demoState) ? m_demoState : kSteps.first();
-    // A korábbi lépések: egy kihagyott (Mappák), a többi elfogadva — a navigáció mindkét jelét mutatja.
+    // The earlier steps: one skipped (Folders), the rest accepted, so the navigation shows both marks.
     for (const QString& k : kSteps) {
         if (k == st) break;
         m_status.insert(k, k == QLatin1String("folders") ? QStringLiteral("skipped") : QStringLiteral("done"));

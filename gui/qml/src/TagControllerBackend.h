@@ -1,22 +1,23 @@
 #pragma once
 //
-// TagControllerBackend — a TagBackend varrat valódi megvalósítása: tanara::AppController +
-// tanara::TagService (CONTRACT-TAGS.md, „Core API”).
+// TagControllerBackend: the real implementation of the TagBackend seam: tanara::AppController +
+// tanara::TagService (CONTRACT-TAGS.md, "Core API").
 //
-// Szálkezelés: minden hívás és minden jel a GUI-szálon fut. A core a profilokat háttérszálon
-// építi, de a javaslat-jeleket (tagSuggestionsComputing → tagSuggestionsReady) a GUI-szálon
-// adja ki; ez az osztály csak továbbítja őket.
+// Threading: every call and every signal runs on the GUI thread. The core builds the profiles
+// on a background thread but emits the suggestion signals (tagSuggestionsComputing ->
+// tagSuggestionsReady) on the GUI thread; this class only forwards them.
 //
-// Jelsorrend: egy címke felrakásakor a TagService::meetingTagsChanged-re ELŐBB a controller
-// adja ki újra a szűrt javaslat-listát (tagSuggestionsReady → suggestionsChanged), utána jön a
-// továbbított meetingTagsChanged — a nézetmodell mindkettőre frissít, a sorrend nem számít.
+// Signal order: when a tag is attached, on TagService::meetingTagsChanged the controller
+// FIRST re-emits the filtered suggestion list (tagSuggestionsReady -> suggestionsChanged),
+// then the forwarded meetingTagsChanged follows; the view model refreshes on both, so the order does not matter.
 //
-// A javaslat-állapot: meetingenként az utolsó FRISS lista (amely előtt Computing jött). A core
-// felrakás / elutasítás után a szűrt listát újra kiadja (Computing nélkül); ezt a backend nem
-// veszi át, ha a korábbi része — a szűrést a nézetmodell végzi, így a visszavonás után a
-// javaslat visszajön. Ami még nem jött ide, azt a controller pendingTagSuggestions()-éből adja
-// (a később csatlakozó nézetmodellnek). A `computing` jelző a Computing jeltől a következő
-// Ready-ig igaz; a törölt címkére mutató elem kimarad.
+// The suggestion state: per meeting the last FRESH list (preceded by a Computing). After an
+// attach / reject the core re-emits the filtered list (without Computing); the backend does
+// not take it over if it is a subset of the earlier one; the view model does the
+// filtering, so after an undo the suggestion comes back. What has not arrived here yet comes
+// from the controller's pendingTagSuggestions() (for a view model that connects later). The
+// `computing` flag is true from the Computing signal until the next Ready; an item pointing
+// to a deleted tag is dropped.
 //
 #include "TagBackend.h"
 
@@ -68,18 +69,18 @@ public:
     int personMeetingCount(const QString& name) const override;
     bool personStatsBusy() const override;
 
-    // Vázlat (még nem létező megbeszélés, pl. átirat előtti lépés): cím alapján, szinkron.
+    // Draft (a meeting that does not exist yet, e.g. the pre-transcript step): by title, synchronous.
     QVector<TagSuggestionItem> draftSuggestions(const QString& title) const override;
 
-    // core → UI átalakítás (tesztekhez és a vázlat-javaslatokhoz is).
+    // core -> UI conversion (for tests and the draft suggestions too).
     static TagSuggestionItem toItem(const tanara::TagSuggestion& s);
 
 private:
     tanara::TagService* service() const;
 
     QPointer<tanara::AppController> m_controller;
-    QSet<QString> m_computing;   // meetingId-k, amelyekre a Computing után még nem jött Ready
-    QHash<QString, QVector<tanara::TagSuggestion>> m_lists;   // meetingId → utolsó friss lista
+    QSet<QString> m_computing;   // meetingIds for which no Ready has come after the Computing
+    QHash<QString, QVector<tanara::TagSuggestion>> m_lists;   // meetingId -> last fresh list
 };
 
 } // namespace tanara_qml

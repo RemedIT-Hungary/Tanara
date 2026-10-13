@@ -91,7 +91,7 @@ void ParticipantTrackBinder::reload()
             m_demoManual.insert(QStringLiteral("p3"), {QStringLiteral("mic"), QStringLiteral("call")});
     } else if (!m_meetingId.isEmpty() && c->store()) {
         const Meeting m = c->store()->load(m_meetingId);
-        // A választható sávok: a lekeverésbe bevont logikai sávok (szakaszonként egyszer).
+        // The selectable tracks: the logical tracks included in the mixdown (once per segment).
         for (const TrackView& v : TrackCatalog::tracks(m)) {
             if (v.segment > 1 || !v.track.included() || v.fileMissing) continue;
             m_tracks.append({v.track.id, v.displayName, iconOf(v)});
@@ -122,7 +122,7 @@ QVariantList ParticipantTrackBinder::chips(const QString& id) const
         return out;
     bool manual = false;
     const QStringList on = binding(id, &manual);
-    // Rövid név a sorhoz: „mikrofon” / „hívás”, ha abból a fajtából egy sáv van; különben a sáv neve.
+    // Short name for the row: "mic" / "call" if there is one track of that kind; otherwise the track's name.
     auto count = [this](const QString& icon) {
         return std::count_if(m_tracks.cbegin(), m_tracks.cend(), [&icon](const TrackChoice& t) { return t.icon == icon; });
     };
@@ -149,7 +149,7 @@ bool ParticipantTrackBinder::setTracks(const QString& id, const QStringList& tra
     }
     if (m_meetingId.isEmpty())
         return false;
-    // A változás jelét (participantsChanged) a core adja → reload.
+    // The change signal (participantsChanged) comes from the core -> reload.
     return c->setParticipantTracks(m_meetingId, id, trackIds);
 }
 
@@ -161,9 +161,9 @@ bool ParticipantTrackBinder::toggle(const QString& id, const QString& trackId)
     QStringList set = binding(id, &manual);
     if (set.contains(trackId)) set.removeAll(trackId);
     else set.append(trackId);
-    // A következtetett egyetlen sáv kattintása = megerősítés kézi kötésként (nem „semmi").
+    // Clicking the single inferred track = confirmation as a manual binding (not "nothing").
     if (set.isEmpty() && !manual) set << trackId;
-    // A sávok sorrendjében (stabil megjelenítés és összevetés).
+    // In track order (stable display and comparison).
     QStringList ordered;
     for (const TrackChoice& t : m_tracks)
         if (set.contains(t.id)) ordered << t.id;

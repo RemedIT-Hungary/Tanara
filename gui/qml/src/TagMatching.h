@@ -1,17 +1,17 @@
 #pragma once
 //
-// Címkenév-illesztés a beviteli mezőhöz (C02) — tiszta függvények, állapot nélkül.
+// Tag-name matching for the input field: pure functions, stateless.
 //
-// A core (tanara/tags/TagNames.h) ugyanezt a szabályt valósítja meg a tároláshoz; ez a
-// nézet-oldali változat a beviteli lista sorrendjét és kiemelését adja, így a TagInputModel
-// bármelyik backenddel (demó / controller) ugyanúgy viselkedik:
-//  - üres mező → a legutóbb használt címkék;
-//  - gépelés → ékezet- és kisbetű-független találatok: előbb a név eleje, aztán szókezdet, aztán
-//    bárhol; azonos csoporton belül a gyakoribb előbb; a végén „Új címke: „…”” — kivéve, ha a
-//    beírt név (ékezet / kisbetű nélkül) pontosan megvan;
-//  - nagyon hasonló név (ugyanaz a kulcs szóközök / írásjelek nélkül, vagy Damerau-Levenshtein
-//    ≤ 1 a ≥ 5 hosszú kulcsokon, ≤ 2 a ≥ 10 hosszúakon) → „HASONLÓ MÁR VAN”: a meglévő elöl
-//    (kijelölve), alul „Mégis új: „…””.
+// The core (tanara/tags/TagNames.h) implements the same rule for storage; this view-side
+// version gives the input list's order and highlighting, so TagInputModel behaves the same
+// with any backend (demo / controller):
+//  - empty field -> the recently used tags;
+//  - typing -> accent- and case-insensitive hits: name start first, then word start, then
+//    anywhere; within a group the more frequent first; at the end "New tag: "..."", unless
+//    the typed name (without accents / case) exists exactly;
+//  - a very similar name (same key without spaces / punctuation, or Damerau-Levenshtein
+//    <= 1 on keys of length >= 5, <= 2 on those of length >= 10) -> "SIMILAR ALREADY EXISTS":
+//    the existing one first (selected), at the bottom "Create new anyway: "..."".
 //
 #include "TagBackend.h"
 
@@ -21,28 +21,28 @@
 
 namespace tanara_qml::tagmatch {
 
-// Megjelenítéshez: NFC, két szélén vágva, a belső szóközök egyre.
+// For display: NFC, trimmed at both ends, inner spaces collapsed to one.
 QString normalizeName(const QString& name);
-// Kereséshez: NFC + ékezet nélkül + kisbetűs; a hossz megegyezik az NFC alakéval (kiemeléshez).
+// For searching: NFC + accent-free + lowercase; the length equals the NFC form's (for highlighting).
 QString foldName(const QString& name);
-// Egyezés-kulcs: foldName, szóközök és írásjelek nélkül („Archive Plus” → „archiveplus”).
+// Match key: foldName without spaces and punctuation ("Archive Plus" -> "archiveplus").
 QString key(const QString& name);
-// Optimal string alignment (Damerau-Levenshtein, szomszédos csere = 1 lépés).
+// Optimal string alignment (Damerau-Levenshtein, an adjacent swap = 1 step).
 int editDistance(const QString& a, const QString& b);
-// Ugyanaz a kulcs, vagy kis szerkesztési távolság (≥ 5 hosszú kulcson ≤ 1, ≥ 10-en ≤ 2).
+// Same key, or a small edit distance (<= 1 on keys of length >= 5, <= 2 on >= 10).
 bool nearDuplicate(const QString& a, const QString& b);
 
 struct InputRow {
     QString kind;               // "recent" | "match" | "new" | "nearDuplicate" | "forceNew"
     QString id;
-    QString name;               // new / forceNew: a beírt (normalizált) név
+    QString name;               // new / forceNew: the typed (normalized) name
     int count = 0;
-    int matchStart = -1;        // a kiemelés a name-ben (match / nearDuplicate)
+    int matchStart = -1;        // the highlight in name (match / nearDuplicate)
     int matchLen = 0;
 };
 
-// A felugró lista sorai megjelenítési sorrendben. limit: legfeljebb ennyi meglévő címke
-// (a „new” / „forceNew” sor ezen felül). excludeIds: a megbeszélésen már rajta lévők.
+// The popup list's rows in display order. limit: at most this many existing tags (the "new" /
+// "forceNew" row is on top of that). excludeIds: those already on the meeting.
 QVector<InputRow> inputRows(const QVector<TagItem>& all, const QVector<TagItem>& recent,
                             const QString& typed, int limit, const QStringList& excludeIds = {});
 

@@ -18,11 +18,11 @@ QDateTime at(int y, int mo, int d, int h = 10, int mi = 0)
     return QDateTime(QDate(y, mo, d), QTime(h, mi));
 }
 
-// A demó „most”-ja: ettől determinisztikus a kép (a hozzáadás ide teszi az utolsó használatot).
+// The demo's "now": this makes the picture deterministic (an add puts the last use here).
 const QDateTime kNow = at(2026, 10, 5, 10, 0);
 
-// A kitalált címkenevek angol demo-nyelven (az azonosítók változatlanok; ugyanaz a készlet,
-// mint a LibraryDemoData-ban). A magyar névvel hívható, angolul a párját adja.
+// The fictional tag names in the English demo language (ids unchanged; the same pool as in
+// LibraryDemoData). Callable with the Hungarian name, returns its English counterpart.
 QString tagText(const char* hu)
 {
     static const QHash<QString, QString> en{
@@ -56,7 +56,7 @@ TagReasonItem reason(const char* kind, const QStringList& values)
 TagDemoBackend::TagDemoBackend(Content content, QObject* parent) : TagBackend(parent)
 {
     if (content == Content::Empty) return;
-    // Név, megbeszélés-szám, első / utolsó használat (a T10 listája).
+    // Name, meeting count, first / last use (the list of T10).
     m_state.tags = {
         {QStringLiteral("t-nordvik"), QStringLiteral("Nordvik"), 14, at(2026, 3, 3), at(2026, 10, 2, 16)},
         {QStringLiteral("t-q4"), tagText("Q4 tervezés"), 9, at(2026, 6, 10), at(2026, 10, 2, 15)},
@@ -71,7 +71,7 @@ TagDemoBackend::TagDemoBackend(Content content, QObject* parent) : TagBackend(pa
         {QStringLiteral("t-nordvikas"), QStringLiteral("Nordvik AS"), 3, at(2026, 2, 10), at(2026, 5, 20)},
         {QStringLiteral("t-kutatas"), tagText("Kutatás"), 2, at(2026, 1, 20), at(2026, 4, 14)},
     };
-    // A beviteli mező „LEGUTÓBB HASZNÁLT” listája (a felhasználó utolsó hozzáadásai, T01).
+    // The input field's "RECENTLY USED" list (the user's last additions).
     m_state.recentIds = {QStringLiteral("t-nordvik"), QStringLiteral("t-q4"), QStringLiteral("t-muzeo"),
                          QStringLiteral("t-partnerek")};
     const QList<std::tuple<const char*, const char*, int>> pairs{
@@ -82,8 +82,8 @@ TagDemoBackend::TagDemoBackend(Content content, QObject* parent) : TagBackend(pa
     };
     for (const auto& [a, b, n] : pairs)
         m_state.cooccur.insert(pairKey(QString::fromLatin1(a), QString::fromLatin1(b)), n);
-    // Személyek: megbeszélés-szám, közös megbeszélések címkénként, kézi címkék (a vault
-    // UX-tervének kitalált példái: „#Nordvik 11 / 14”, előre felvett személy 0 / 14-gyel).
+    // People: meeting count, shared meetings per tag, manual tags (fictional examples from the
+    // UX plan: "#Nordvik 11 / 14", a pre-added person with 0 / 14).
     const QList<std::pair<const char*, int>> totals{
         {"Kovács Lilla", 41}, {"Fehér Gábor", 16}, {"Varga Árpád", 12}, {"Szabó Bence", 8},
         {"Bárány Gergely", 23}, {"Molnár Eszter", 0}, {"Gál Bence", 12}, {"Dénes Zsófia", 17}, {"Tóth Eszter", 3}};
@@ -182,7 +182,7 @@ PersonTagItem TagDemoBackend::personItem(const QString& name, const QString& tag
 
 QVector<PersonTagItem> TagDemoBackend::peopleStats(const QString& tagId) const
 {
-    // Ugyanazok a szabályok, mint a core-ban: kézi + tanult (≥ 2 közös és ≥ 30 %), saját nélkül.
+    // The same rules as in the core: manual + learned (>= 2 shared and >= 30 %), without the own person.
     QVector<PersonTagItem> out;
     if (indexOf(tagId) < 0 || m_statsBusy) return out;
     QStringList names = peopleWith(tagId);
@@ -248,7 +248,7 @@ QString TagDemoBackend::idOf(const QString& nameOrId) const
 
 QVector<TagSuggestionItem> TagDemoBackend::draftSuggestions(const QString& /*title*/) const
 {
-    // T07: „Javasolt: + Ügyféltámogatás · hasonló cím: „Ügyféltámogatás heti””.
+    // "Suggested: + Customer support · similar title: "Customer support weekly"".
     TagSuggestionItem s;
     s.name = tagText("Ügyféltámogatás");
     s.tagId = idOf(s.name);
@@ -292,7 +292,7 @@ void TagDemoBackend::loadMeetingDemo(const QString& meetingId, const QString& st
         tags = ids({"Nordvik", "Partnerek", "Q4 tervezés", "Termék", "Ügyféltámogatás", "Belső", "Muzeo",
                     "MÉM-MDK", "Kutatás", "Múzeumi pályázat"});
     } else if (state == QLatin1String("draft")) {
-        // T07: átirat előtt — egy felrakott címke, a javaslat a cím alapján jön (draftSuggestions).
+        // Before a transcript: one attached tag, the suggestion comes from the title (draftSuggestions).
         tags = ids({"Nordvik"});
     } else if (state == QLatin1String("computing")) {
         tags = ids({"Nordvik"});
@@ -309,7 +309,7 @@ void TagDemoBackend::loadMeetingDemo(const QString& meetingId, const QString& st
                         reason("terms", {demoText("ütemterv", "roadmap"), demoText("költségkeret", "budget")})},
                        {quarterly})};
     } else if (state == QLatin1String("why")) {
-        // T02: a „Miért?” panel tartalma.
+        // The "Why?" panel's content.
         tags = ids({"Partnerek", "Q4 tervezés"});
         s.source = QStringLiteral("similar");
         s.items = {sug("Nordvik", "similar",
@@ -321,9 +321,9 @@ void TagDemoBackend::loadMeetingDemo(const QString& meetingId, const QString& st
                         reason("terms", {demoText("támogatási igény", "support demand"), demoText("súgóoldalak", "help pages")})},
                        {quarterly})};
     } else if (state == QLatin1String("people") || state == QLatin1String("peopleWhy")) {
-        // UX-terv 3.3: a résztvevők kézi címkéiből („A résztvevők alapján”), átírás előtt is; a
-        // „Miért?” panelben „Résztvevők címkéje: … (mindkettőjükön)”. peopleWhy: egy hasonlóság-
-        // alapú javaslat is van (a forrás-címke akkor is a résztvevőké, mert ők állnak elöl).
+        // From the participants' manual tags ("Based on the participants"), before the transcript
+        // too; in the "Why?" panel "Participants' tag: ... (on both of them)". peopleWhy: there is a
+        // similarity-based suggestion too (the source tag is still the participants', since they come first).
         tags = ids({"Q4 tervezés"});
         s.source = QStringLiteral("people");
         s.items = {sug("Nordvik", "people",
@@ -440,7 +440,7 @@ void TagDemoBackend::removeTag(const QString& meetingId, const QString& tagId)
 
 void TagDemoBackend::requestSuggestions(const QString&)
 {
-    // A demóban a javaslatok a loadMeetingDemo()-val töltődnek; nincs háttérszámolás.
+    // In the demo the suggestions load with loadMeetingDemo(); there is no background computing.
 }
 
 QVector<QPair<QString, int>> TagDemoBackend::cooccurring(const QString& tagId) const
@@ -479,7 +479,7 @@ void TagDemoBackend::requestCooccur(const QString& meetingId, const QString& tag
         item.score = double(n) / base;
         s.items << item;
     }
-    // Ha nincs együtt járó címke, a korábbi javaslatok maradnak.
+    // If there is no co-occurring tag, the earlier suggestions stay.
     if (s.items.isEmpty()) return;
     m_state.suggestions.insert(meetingId, s);
     emit suggestionsChanged(meetingId);
@@ -521,7 +521,7 @@ TagProfileItem TagDemoBackend::profile(const QString& tagId) const
                       meeting(QStringLiteral("m-nordvik-0922"), demoText("Nordvik heti meeting – demó előtt", "Nordvik weekly meeting – before the demo"), at(2026, 9, 22), 48)};
         return p;
     }
-    // A többi címke profilja sablonból: a résztvevők és a kifejezések arányosan.
+    // The other tags' profile from a template: participants and terms proportionally.
     const QStringList people{demoName("Kovács Anna"), demoName("Szabó Bence"),
                              demoName("Lantos Réka"), demoName("Varga Nóra")};
     const double share[] = {0.85, 0.6, 0.4, 0.25};
@@ -575,14 +575,14 @@ void TagDemoBackend::merge(const QString& fromId, const QString& keepId)
         if (tags.contains(keepId)) tags.removeAt(pos);
         else tags[pos] = keepId;
     }
-    // Az együtt járás összeadódik (a két címke egymással való párja megszűnik).
+    // Co-occurrence adds up (the two tags' pair with each other disappears).
     for (const auto& [other, n] : cooccurring(fromId))
         if (other != keepId) m_state.cooccur[pairKey(keepId, other)] += n;
     for (auto it = m_state.cooccur.begin(); it != m_state.cooccur.end();) {
         if (it.key().split(QLatin1Char('|')).contains(fromId)) it = m_state.cooccur.erase(it);
         else ++it;
     }
-    // A személyeken is egyesül.
+    // It merges on the people too.
     for (auto it = m_state.personTags.begin(); it != m_state.personTags.end(); ++it) {
         QStringList& ids = it.value();
         const int pos = ids.indexOf(fromId);

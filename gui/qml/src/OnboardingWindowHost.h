@@ -1,16 +1,16 @@
 #pragma once
 //
-// OnboardingWindowHost — az „Első lépések” ablak (OnboardingWindow.qml, K14) C++ gazdája
-// (a TagsWindowHost mintájára).
+// OnboardingWindowHost: the C++ host of the "Getting started" window (OnboardingWindow.qml),
+// modeled on TagsWindowHost.
 //
-// Egy folyamatban EGY példány elég: a főalkalmazásban a QmlShellBridge hozza létre. Két úton nyílik:
-//  - magától, az első indításkor (openIfNeeded: csak ha az `onboardingDone` még hamis) — a híd a
-//    főablak megjelenése UTÁN hívja (QTimer::singleShot(0)), így az indulást sosem tartja fel;
-//  - kézzel: Fájl › „Első lépések…” és a Beállítások › Általános hivatkozása (open) — ez nem
-//    függ a jelzőtől.
-// Saját QML-motorral dolgozik, a téma az `App` singletonon át közös. Az ablak nem modális; az
-// első megnyitáskor a főablak (transient parent) fölé középre kerül. Bezáráskor a mentetlen lépés
-// elvész, és az `onboardingDone` igazra áll.
+// ONE instance per process is enough: in the main application QmlShellBridge creates it. It opens two ways:
+//  - by itself, on first launch (openIfNeeded: only if `onboardingDone` is still false); the
+//    bridge calls it AFTER the main window appears (QTimer::singleShot(0)), so it never delays startup;
+//  - by hand: File > "Getting started..." and Settings > General's link (open); this does
+//    not depend on the flag.
+// It uses its own QML engine, the theme is shared through the `App` singleton. The window is
+// non-modal; on first opening it is centered over the main window (transient parent). On
+// close the unsaved step is lost and `onboardingDone` becomes true.
 //
 #include <QObject>
 #include <QPointer>
@@ -35,28 +35,28 @@ public:
                          QObject* parent = nullptr);
     ~OnboardingWindowHost() override;
 
-    // Az ablak megnyitása / előtérbe hozása. Zárt ablaknál a lépések elölről, friss
-    // beállításokkal indulnak. false: QML-hiba.
+    // Opens / raises the window. If it was closed, the steps start over with fresh settings.
+    // False: QML error.
     bool open();
-    // Az első indítás automatikus megnyitása: csak ha van controller és az `onboardingDone`
-    // hamis, és ebben a folyamatban még nem nyílt meg magától. true = megnyílt.
+    // Automatic opening on first launch: only if there is a controller and `onboardingDone` is
+    // false, and it has not yet opened by itself in this process. True = it opened.
     bool openIfNeeded();
-    // Megnyílna-e magától (a fenti feltétel, megnyitás nélkül).
+    // Whether it would open by itself (the condition above, without opening).
     bool shouldAutoOpen() const;
     void closeNow();
     bool isVisible() const;
     QQuickWindow* window() const;
     OnboardingViewModel* viewModel() const;
 
-    // Az ablak ehhez tartozzon az ablakkezelő szerint (és első megnyitáskor fölé középre kerül).
+    // The window should belong to this one per the window manager (and on first opening is centered over it).
     void setTransientParent(QWindow* parent);
 
 signals:
     void closed();
-    // „Beállítás most” — a Beállítások egy lapja ("providers").
+    // "Set up now": a Settings page ("providers").
     void openSettingsRequested(const QString& page);
     void themeModeSaved(const QString& mode);
-    // Egy lépés elfogadása a beállításokat módosította.
+    // Accepting a step changed the settings.
     void saved();
 
 private:

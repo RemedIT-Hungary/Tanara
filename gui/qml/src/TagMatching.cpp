@@ -61,11 +61,11 @@ namespace {
 
 struct Hit {
     const TagItem* tag;
-    int group;                  // 0: a név eleje · 1: szókezdet · 2: bárhol
+    int group;                  // 0: name start, 1: word start, 2: anywhere
     int pos;
 };
 
-// A beírt szöveg első előfordulása szókezdeten; -1, ha csak szó belsejében van meg.
+// The typed text's first occurrence at a word start; -1 if it exists only inside a word.
 int wordStartHit(const QString& folded, const QString& needle)
 {
     for (int at = folded.indexOf(needle); at >= 0; at = folded.indexOf(needle, at + 1))
@@ -107,7 +107,7 @@ QVector<InputRow> inputRows(const QVector<TagItem>& all, const QVector<TagItem>&
         }
         if (nearDuplicate(name, t.name) && folded != needle) near.push_back(&t);
     }
-    // Pontos egyezésnél nincs „hasonló már van”: a meglévő a találat.
+    // On an exact match there is no "similar already exists": the existing one is the hit.
     nearMode = !exact && !near.isEmpty();
 
     std::stable_sort(hits.begin(), hits.end(), [](const Hit& a, const Hit& b) {
@@ -124,7 +124,7 @@ QVector<InputRow> inputRows(const QVector<TagItem>& all, const QVector<TagItem>&
         const QString nfc = tanara::textfold::normalize(t->name);
         for (const Hit& h : std::as_const(hits)) {
             if (h.tag != t) continue;
-            // A kiemelés csak akkor pontos, ha a név NFC-alakja megegyezik a tárolttal.
+            // The highlight is exact only if the name's NFC form equals the stored one.
             if (nfc == t->name) { r.matchStart = h.pos; r.matchLen = int(needle.size()); }
             break;
         }

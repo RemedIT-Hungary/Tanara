@@ -1,7 +1,7 @@
 #pragma once
 //
-// Tanara QML — a héj (könyvtár, fejléc, lejátszó) közös szöveg-formázói: dátum, hossz,
-// lejátszási idő, állapot-ikon kulcsok. Tiszta függvények, állapot nélkül.
+// Tanara QML: the shell's (library, header, player) shared text formatters: date, length,
+// playback time, status icon keys. Pure functions, stateless.
 //
 #include "tanara/jobs/JobTypes.h"
 
@@ -11,19 +11,19 @@
 
 namespace tanara_qml::fmt {
 
-// A felület nyelvének megfelelő locale (hu / en) — a dátumok hónapneveihez.
+// The locale matching the UI language (hu / en), for the dates' month names.
 QLocale uiLocale();
 
-// Könyvtár-elem dátuma: „okt. 2.” (en: „Oct 2”).
+// A library item's date: "Oct 2" (hu: "okt. 2.").
 QString shortDate(const QDateTime& dt);
-// Fejléc dátuma: „2026. okt. 1.” (en: „Oct 1, 2026”).
+// The header's date: "Oct 1, 2026" (hu: "2026. okt. 1.").
 QString longDate(const QDateTime& dt);
-// Könyvtár-elem hossza: „30 p”, „1 ó 16 p”; egy perc alatt „<1 p”.
+// A library item's length: "30 min", "1 h 16 min"; under a minute "<1 min".
 QString shortDuration(qint64 ms);
-// Fejléc / lejátszó ideje: „30:34”, „1:16:04” (padMinutes: „00:17” a lejátszóban).
+// The header / player time: "30:34", "1:16:04" (padMinutes: "00:17" in the player).
 QString clock(qint64 ms, bool padMinutes = false);
 
-// A TStatusIcon `state` kulcsa egy lépés-állapotból: done | running | error | missing.
+// TStatusIcon's `state` key from a step state: done | running | error | missing.
 QString stepStateKey(tanara::StepState state);
 
 } // namespace tanara_qml::fmt

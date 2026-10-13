@@ -58,7 +58,7 @@ bool PeopleWindowHost::open(const QString& person, const QString& section)
 {
     if (!ensureWindow()) return false;
     const bool wasVisible = m_window->isVisible();
-    // Zárt ablak újranyitása: friss állapot a lemezről + a statisztika frissítése a háttérben.
+    // Reopening a closed window: fresh state from disk + the statistics refresh in the background.
     if (m_vm && !wasVisible) m_vm->refresh();
     if (m_vm && !person.trimmed().isEmpty()) m_vm->selectPerson(person.trimmed());
     if (m_vm && !section.isEmpty()) m_vm->requestSection(section);

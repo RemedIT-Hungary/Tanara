@@ -1,8 +1,8 @@
 #pragma once
 //
-// Tanulási kérdés a személy-címkékhez (vault UX-terv 5.) — a „Ki volt ott?” jóváhagyás utáni
-// sáv (ParticipantsViewModel) és a szerkesztő változás-sávja (új személy;
-// TranscriptEditorViewModel) közös szövegei. A logika a magban: TagService::learningQuestions.
+// Learning question for person tags: the shared texts of the "Who was there?" post-approval
+// bar (ParticipantsViewModel) and the editor's change bar (new person; TranscriptEditorViewModel).
+// The logic is in the core: TagService::learningQuestions.
 //
 #include "tanara/tags/PersonTags.h"
 
@@ -13,16 +13,15 @@
 
 namespace tanara_qml::taglearning {
 
-// „A”, „A és B”, „A, B és C”.
+// "A", "A and B", "A, B and C".
 QString nameList(const QStringList& names);
-// „Fehér Gábor és Varga Árpád másodszor van #Nordvik megbeszélésen. Rájuk teszem a címkét?”
-// „Szabó Bence új személy. Ráteszem a #Nordvik címkét?”
+// "Alex Smith is a new person. Add the #Nordvik tag?"
 QString questionText(const tanara::PersonTagQuestion& q);
-// A felrakás / elutasítás visszajelzése (toast „Visszavonás”-sal).
+// Feedback of the attach / reject (toast with "Undo").
 QString answeredText(const tanara::PersonTagQuestion& q, bool accepted);
-// Az „Egyenként…” lista: minden (személy, címke) pár külön kérdésként, a sorrendben.
+// The "One by one..." list: every (person, tag) pair as a separate question, in order.
 QVector<tanara::PersonTagQuestion> pairs(const QVector<tanara::PersonTagQuestion>& questions);
-// A párok QML-hez: [{ index, name, tagName, text }].
+// The pairs for QML: [{ index, name, tagName, text }].
 QVariantList pairMaps(const QVector<tanara::PersonTagQuestion>& pairs);
 
 } // namespace tanara_qml::taglearning

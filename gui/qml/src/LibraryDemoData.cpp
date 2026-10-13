@@ -18,7 +18,7 @@ namespace {
 struct Row {
     const char* id;
     const char* title;
-    const char* date;       // ISO, helyi idő
+    const char* date;       // ISO, local time
     int minutes;
     int seconds;
     StepState transcript;
@@ -27,15 +27,15 @@ struct Row {
     bool stale;
     int speakers;
     int tracks;
-    const char* people;     // vesszővel elválasztva
+    const char* people;     // comma-separated
     const char* text;
-    const char* tags;       // címke-azonosítók vesszővel (a kitalált készletből, lásd kTags)
-    const char* titleEn;    // angol demo-nyelvnél (a nevek a DemoText névpárjaiból jönnek)
+    const char* tags;       // tag ids comma-separated (from the fictional pool, see kTags)
+    const char* titleEn;    // for the English demo language (the names come from DemoText's name pairs)
     const char* textEn;
 };
 
-// A kitalált címkekészlet (ugyanazok az azonosítók és nevek, mint a TagDemoBackend-ben).
-// A harmadik oszlop az angol demo-nyelv neve.
+// The fictional tag pool (the same ids and names as in TagDemoBackend). The third column is
+// the English demo language's name.
 const char* const kTags[][3] = {
     {"t-nordvik", "Nordvik", "Nordvik"}, {"t-q4", "Q4 tervezés", "Q4 planning"},
     {"t-termek", "Termék", "Product"}, {"t-partnerek", "Partnerek", "Partners"},
@@ -45,7 +45,7 @@ const char* const kTags[][3] = {
     {"t-nordvikas", "Nordvik AS", "Nordvik AS"}, {"t-kutatas", "Kutatás", "Research"},
 };
 
-// A design-renderek (M02 / M05) könyvtára + néhány régebbi elem a görgetéshez.
+// The library of the design renders + a few older items for scrolling.
 const Row kRows[] = {
     {"demo-heti", "Termékcsapat heti egyeztetés", "2026-10-02T15:00:00", 30, 34,
      StepState::Done, StepState::Done, StepState::None, false, 4, 3,
@@ -166,12 +166,12 @@ QVector<DemoMeeting> build(bool en)
     return out;
 }
 
-// A demó címke-állapota (a kiinduló kRows-ból; a tömeges címkézés módosítja).
+// The demo's tag state (from the initial kRows; bulk tagging modifies it).
 struct TagState {
     QVector<DemoTag> catalog;
     QHash<QString, QStringList> assigned;
     int created = 0;
-    QString language;   // a demo-nyelv, amelyen a nevek készültek
+    QString language;   // the demo language the names were made in
 };
 
 TagState initialTags()
@@ -189,7 +189,7 @@ TagState initialTags()
 TagState& tagState()
 {
     static TagState st = initialTags();
-    if (st.language != demotext::language()) st = initialTags();   // tesztek nyelvváltása
+    if (st.language != demotext::language()) st = initialTags();   // language switch for tests
     return st;
 }
 
@@ -214,7 +214,7 @@ QDateTime now()
 
 const QVector<DemoMeeting>& meetings()
 {
-    // Nyelvenként (a tesztek a demo-nyelvet futás közben is átállíthatják).
+    // Per language (tests may switch the demo language at runtime).
     static const QVector<DemoMeeting> hu = build(false);
     if (!demotext::english()) return hu;
     static const QVector<DemoMeeting> en = build(true);
@@ -247,7 +247,7 @@ tanara::LibraryResult query(const tanara::LibraryQuery& q)
         if (!q.tags.isEmpty() || q.untagged) {
             bool ok = q.untagged && e.tagIds.isEmpty();
             if (!ok && !q.tags.isEmpty()) {
-                // Mindegyik (ÉS) vagy bármelyik (VAGY) a kért címkék közül.
+                // All (AND) or any (OR) of the requested tags.
                 int have = 0;
                 for (const QString& id : q.tags)
                     if (e.tagIds.contains(id)) ++have;

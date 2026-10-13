@@ -1,13 +1,13 @@
 #pragma once
 //
-// TranscriptListModel — az átirat-szerkesztő ListView-jának sorai. Egy sor vagy egy
-// MEGSZÓLALÁS, vagy (szűrőben: „Bizonytalan", minta-mérő „+N most", a „nem azonosítható" sorok
-// elrejtése) egy „··· N sor elrejtve" elválasztó.
+// TranscriptListModel: the rows of the transcript editor's ListView. A row is either an
+// UTTERANCE or (in a filter: "Uncertain", the sample meter's "+N now", hiding the "cannot be
+// identified" rows) a "... N rows hidden" separator.
 //
-// Az adat a TranscriptEditorViewModel pillanatképében él (megszólalások, beszélők,
-// kijelölés, javaslat, keresés); ez az osztály a LÁTHATÓ sorok leképezését tartja és a
-// finom-szemcsés értesítéseket adja ki. Egyetlen sor áthelyezésére SOSEM reseteli a modellt:
-// dataChanged megy az érintett sorokra, a szűrőben pedig beszúrás / törlés a különbségre.
+// The data lives in TranscriptEditorViewModel's snapshot (utterances, speakers, selection,
+// suggestion, search); this class holds the mapping of the VISIBLE rows and emits the
+// fine-grained notifications. For moving a single row it NEVER resets the model: dataChanged
+// goes out for the affected rows, and in a filter insert / remove for the difference.
 //
 #include <QAbstractListModel>
 #include <QVector>
@@ -32,42 +32,42 @@ public:
         EndMsRole,
         TimeLabelRole,                  // "01:16" / "1:02:03"
         TextRole,
-        RichTextRole,                   // keresési találat kiemelve (HTML); üres = nincs találat
+        RichTextRole,                   // search hit highlighted (HTML); empty = no hit
         SpeakerKeyRole,
         SpeakerNameRole,
         ColorIndexRole,
-        LaneRole,                       // a sáv oszlop-indexe; -1 = az összecsukott „+N" csoportban
-        HeadRole,                       // beszélőváltás → névsor látszik
-        FirstRole,                      // a lista első sora (nincs fölötte forduló-térköz)
+        LaneRole,                       // the lane's column index; -1 = in the collapsed "+N" group
+        HeadRole,                       // speaker change -> the name shows
+        FirstRole,                      // the list's first row (no turn spacing above it)
         UncertainRole,
         CorrectedRole,
         SelectedRole,
-        SuggestedRole,                  // a „hasonló sorok" javaslat része, és épp mutatjuk
-        SuggestionAnchorRole,           // a javaslatot kiváltó (kézzel javított) sor
-        HiddenCountRole,                // elválasztó: ennyi biztos sor van elrejtve
-        NoisyRole,                      // „egymásra beszéltek": nem hangminta (automatikus vagy kézi)
-        NoisyOverlapRole,               // az átfedés-szabály szerint zajos (a kézi felülírástól függetlenül)
-        LikelySpeakerKeyRole,           // az újraellenőrzés javaslata: a hangra jobban illő beszélő
+        SuggestedRole,                  // part of the "similar lines" suggestion, and currently shown
+        SuggestionAnchorRole,           // the row that triggered the suggestion (manually fixed)
+        HiddenCountRole,                // separator: this many sure rows are hidden
+        NoisyRole,                      // "overlapping speech": not a voice sample (automatic or manual)
+        NoisyOverlapRole,               // noisy by the overlap rule (independent of the manual override)
+        LikelySpeakerKeyRole,           // the re-check's suggestion: the speaker that fits the voice better
         LikelySpeakerNameRole,
-        // v3 sor-jelölők (handoff-v3 E1, 14. döntés)
-        UncertainReasonRole,            // "side" | "voice" | "tag" | "" — a „bizonytalan · …" pirula oka
-        ConfirmedRole,                  // „Jó így" (pipa)
-        ShortRole,                      // rövidebb, mint amit a hang-elemzés megbízhatóan megítél („rövid")
-        SideConflictRole,               // a sor a beszélője oldalával ellentétes sávon szólt
-        NewPersonRole,                  // a sor beszélője az imént létrehozott személy („új személy")
-        SimilarRole,                    // az új személyhez hasonló sor, kiemelve (sín: keret az oszlopában)
+        // Row markers
+        UncertainReasonRole,            // "side" | "voice" | "tag" | "" -- the reason for the "uncertain" pill
+        ConfirmedRole,                  // "Looks right" (check mark)
+        ShortRole,                      // shorter than what the audio analysis judges reliably ("short")
+        SideConflictRole,               // the row spoke on the track opposite to its speaker's side
+        NewPersonRole,                  // the row's speaker is the person just created ("new person")
+        SimilarRole,                    // a row similar to the new person, highlighted (rail: frame in its column)
         // S2
-        IgnoredRole,                    // „nem azonosítható": a név marad, a hang-elemzés kihagyja
-        SampleStateRole,                // döntött soron "sample" | "noSample"; különben ""
+        IgnoredRole,                    // "cannot be identified": the name stays, the audio analysis skips it
+        SampleStateRole,                // on a decided row "sample" | "noSample"; otherwise ""
         // S6
-        SweepHandledRole,               // söprés: a sor már eldőlt / átugrott / „Később” (nem megálló)
+        SweepHandledRole,               // sweep: the row is already decided / skipped / "Later" (not a stop)
     };
     Q_ENUM(Role)
 
     struct Row {
         bool gap = false;
-        int utterance = -1;     // megszólalás-index; elválasztónál az elrejtett futam első indexe
-        int hidden = 0;         // elválasztó: az elrejtett sorok száma
+        int utterance = -1;     // utterance index; for a separator the first index of the hidden run
+        int hidden = 0;         // separator: the number of hidden rows
         int key() const { return gap ? 2 * utterance : 2 * utterance + 1; }
     };
 
@@ -79,16 +79,16 @@ public:
     int count() const { return int(m_rows.size()); }
 
     const QVector<Row>& rows() const { return m_rows; }
-    // A megszólalás sora a listában; -1, ha épp nem látszik (szűrő).
+    // The utterance's row in the list; -1 if currently not visible (filter).
     int rowOfUtterance(int utteranceIndex) const;
-    // A sor megszólalás-indexe; elválasztónál / érvénytelen sornál -1.
+    // The row's utterance index; -1 for a separator / invalid row.
     int utteranceOfRow(int row) const;
-    // A megszólaláshoz legközelebbi látható megszólalás-sor (szűrőben is ad találatot).
+    // The visible utterance row nearest to the utterance (gives a hit in a filter too).
     int nearestRow(int utteranceIndex) const;
 
-    // ---- a nézetmodell hívja ----
-    void rebuild();                                     // teljes újraépítés (modell-reset)
-    void syncFilter();                                  // szűrő-sorok frissítése különbséggel
+    // ---- called by the view model ----
+    void rebuild();                                     // full rebuild (model reset)
+    void syncFilter();                                  // refreshes the filter rows by difference
     void notifyUtterances(const QVector<int>& utteranceIndices, const QList<int>& roles = {});
     void notifyAll(const QList<int>& roles);
 
@@ -101,7 +101,7 @@ private:
 
     TranscriptEditorViewModel* m_vm;
     QVector<Row> m_rows;
-    QVector<int> m_rowOfUtt;    // megszólalás-index → sor (-1 = rejtve)
+    QVector<int> m_rowOfUtt;    // utterance index -> row (-1 = hidden)
     void reindex();
 };
 

@@ -68,7 +68,7 @@ PersonTagItem toItem(const tanara::PersonTagStat& s)
     return {s.name, s.tagId, s.shared, s.tagTotal, s.personTotal, s.manual, s.rejected};
 }
 
-// A szűrt újrakiadás felismerése: minden eleme benne van-e a korábbi listában.
+// Detecting a filtered re-emit: whether all its elements are in the earlier list.
 bool subsetOf(const QVector<tanara::TagSuggestion>& list, const QVector<tanara::TagSuggestion>& before)
 {
     for (const tanara::TagSuggestion& s : list) {
@@ -101,7 +101,7 @@ TagControllerBackend::TagControllerBackend(tanara::AppController* controller, QO
         connect(s, &tanara::TagService::meetingTagsChanged, this, &TagBackend::meetingTagsChanged);
         connect(s, &tanara::TagService::undoChanged, this, &TagBackend::undoChanged);
         connect(s, &tanara::TagService::personTagsChanged, this, &TagBackend::personTagsChanged);
-        // A személy-szintű elutasítás a rejected-listában él: a nézetnek ez is személy-változás.
+        // A person-level rejection lives in the rejected list: for the view this is a person change too.
         connect(s, &tanara::TagService::rejectedChanged, this, [this] { emit personTagsChanged(QString()); });
         connect(s, &tanara::TagService::personStatsChanged, this, &TagBackend::personStatsChanged);
     }
@@ -177,9 +177,9 @@ TagSuggestionState TagControllerBackend::suggestions(const QString& meetingId) c
         return !sg.isNew && (!svc || !svc->tag(sg.tagId).isValid());
     }), list.end());
     for (const tanara::TagSuggestion& sg : list) state.items.push_back(toItem(sg));
-    // A sor forrás-címkéje: „A résztvevők alapján”, ha a látható (legfeljebb 2, C03) javaslatok
-    // mind a résztvevőkből jönnek (ezek állnak elöl); különben a többi forrásé (egy kiadott
-    // lista azokból egy forrásból jön; az együtt járónál az alapcímke is).
+    // The row's source label: "Based on the participants" if the visible (at most 2) suggestions
+    // all come from the participants (these come first); otherwise the other sources' (an emitted
+    // list comes from one source; for co-occurrence the base tag too).
     if (!list.isEmpty()) {
         const int head = std::min<int>(2, int(list.size()));
         bool people = true;
@@ -283,7 +283,7 @@ void TagControllerBackend::undo()
     if (tanara::TagService* s = service()) s->undo();
 }
 
-// ---- személyek ----
+// ---- people ----
 
 QString TagControllerBackend::selfName() const
 {
@@ -343,7 +343,7 @@ int TagControllerBackend::personMeetingCount(const QString& name) const
 
 bool TagControllerBackend::personStatsBusy() const
 {
-    // A régi pillanatkép az újraszámolás alatt is érvényes: „számol” csak az első eredményig.
+    // The old snapshot stays valid during a recompute: "computing" only until the first result.
     tanara::TagService* s = service();
     return s && s->personStatsBusy() && s->personStats()->meetingCount() == 0;
 }

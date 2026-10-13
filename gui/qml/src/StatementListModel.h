@@ -1,14 +1,14 @@
 #pragma once
 //
-// Tanara QML — az összefoglaló forrás-hivatkozásos állításai (S1–S3) egy fajtából:
-// a SummaryViewModel ötöt birtokol (sentences: a vezetői összefoglaló mondatai,
-// decisionItems: a döntések, questionItems: a nyitott kérdések, todoItems: a teendők,
-// memoItems: a memó bevezető-mondatai és pontjai). Soronként: szöveg, a forrás-tartományok
-// idő-chipjei (üres = „nincs forrás”), teendőnél felelős + határidő, és a célzott elavulás
-// (az állítás / egy forrás-tartomány / a felelős érintett-e a beszélő-javítás óta).
+// Tanara QML: the summary's source-linked statements (S1-S3) of one kind: SummaryViewModel
+// owns five (sentences: the executive summary's sentences, decisionItems: the decisions,
+// questionItems: the open questions, todoItems: the action items, memoItems: the memo's
+// intro sentences and points). Per row: text, the time chips of the source ranges (empty =
+// "no source"), for an action item the owner + due date, and targeted staleness (whether the
+// statement / a source range / the owner is affected since the speaker fix).
 //
-// A `rows` ugyanez QVariantList-ként: a mondatok egy folyó bekezdésbe tördelődnek (szavanként
-// egy Flow-ban), ahhoz a QML egyben kéri az egészet.
+// `rows` is the same as a QVariantList: the sentences wrap into one flowing paragraph (one
+// Flow item per word), for which QML requests the whole at once.
 //
 #include <QAbstractListModel>
 #include <QVariantList>
@@ -31,21 +31,21 @@ public:
         qint64 startMs = -1;
         qint64 endMs = -1;
         QStringList utteranceIds;
-        bool affected = false;      // a forrás-sorok egyikének beszélője változott azóta
+        bool affected = false;      // the speaker of one of the source rows changed since
     };
     struct Row {
         QString id;                 // "s1", "d1", "q1", "t1", "i3.1", "m3.2" …
         QString kind;               // statement | decision | openQuestion | todo | intro | memoPoint
         QString text;
         QVector<Span> spans;
-        QString owner;              // teendő felelőse (nyers szöveg)
-        QVariantList owners;        // [{ name, index }] (beszélő-szín, -1: nem a meeting beszélője)
+        QString owner;              // the action item's owner (raw text)
+        QVariantList owners;        // [{ name, index }] (speaker color, -1: not the meeting's speaker)
         QString due;
-        bool flagged = false;       // „Nem így hangzott el?” — jelezve
-        bool affected = false;      // célzott elavulás: a forrásában más lett a beszélő
-        QString staleBecause;       // „X → Y?” (a forrás-sorok beszélő-váltásai, „, ”-vel)
-        QString ownerStale;         // „X → Y?” (a felelős is érintett) — üres: nem
-        int ownerStaleIndex = -1;   // az új (Y) beszélő színe, ha ismert
+        bool flagged = false;       // "Not how it was said?": flagged
+        bool affected = false;      // targeted staleness: the speaker changed in its source
+        QString staleBecause;       // "X -> Y?" (the source rows' speaker changes, joined with ", ")
+        QString ownerStale;         // "X -> Y?" (the owner is affected too); empty: no
+        int ownerStaleIndex = -1;   // the new (Y) speaker's color, if known
     };
 
     enum Role {
@@ -76,13 +76,13 @@ public:
     void setRows(const QVector<Row>& rows);
     void clear() { setRows({}); }
     const QVector<Row>& items() const { return m_rows; }
-    // Egy állítás jelzése (helyben, a lemez-írás után vagy demóban). true: volt ilyen.
+    // Flags a statement (in place, after the disk write or in the demo). True: there was such a one.
     bool setFlagged(const QString& id, bool flagged);
 
     Q_INVOKABLE int indexOfId(const QString& id) const;
     Q_INVOKABLE QVariantMap get(int row) const;
 
-    // „00:04”, „47:02”, „131:04”: perc:mp, a perc nincs órára váltva (a design szerint).
+    // "00:04", "47:02", "131:04": min:sec, minutes not rolled over to hours (per the design).
     static QString stamp(qint64 ms);
     static QVariantMap spanMap(const Span& s);
     static QVariantMap rowMap(const Row& r);

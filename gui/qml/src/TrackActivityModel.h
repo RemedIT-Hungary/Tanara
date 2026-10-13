@@ -1,17 +1,18 @@
 #pragma once
 //
-// Tanara QML — a sávok beszéd-aktivitása a beszéd-csíkhoz (TrackActivityStrip): a core
-// AppController::trackActivity() kereteiből (50 ms, a sáv zajpadlója feletti dB) sávonként
-// egy keret-állapot sor: nincs adat / csend / beszéd. Beszéd = a keret legfeljebb 10 dB-lel a
-// sáv beszédszintje alatt (sides::speechLevelDb + sides::kSpeechDb), ugyanaz a mérce, mint a
-// sáv-oldal elemzésé.
+// Tanara QML: the tracks' speech activity for the speech strip (TrackActivityStrip): from the
+// core AppController::trackActivity() frames (50 ms, dB above the track's noise floor), one
+// frame-state row per track: no data / silence / speech. Speech = the frame is at most 10 dB
+// below the track's speech level (sides::speechLevelDb + sides::kSpeechDb), the same yardstick
+// as the track-side analysis.
 //
-// Egy példány egy megbeszélésre; a TrackActivityItem C++-ból olvassa (nincs QML-tömb másolás,
-// így 2 óra × 50 ms = 144 000 keret is gyors). Ha a core még számol: state "loading", a kész
-// jelre (trackActivityReady) frissül. A sáv-id bármelyik szakaszé lehet (a vezetőre képezzük).
+// One instance per meeting; TrackActivityItem reads it from C++ (no QML array copy, so
+// 2 hours x 50 ms = 144,000 frames is fast too). While the core is still computing: state
+// "loading", refreshes on the ready signal (trackActivityReady). The track id may be any
+// segment's (we map to the leading one).
 //
-// Controller nélkül / App.demo mellett determinisztikus mintaadat (a TrackListModel demó-
-// sávjaihoz: mic, call, system, mic2); demoState "loading" → számolás állapot.
+// Without a controller / with App.demo deterministic sample data (for TrackListModel's demo
+// tracks: mic, call, system, mic2); demoState "loading" -> the computing state.
 //
 #include "tanara/edit/TrackActivity.h"
 
@@ -34,22 +35,22 @@ class TrackActivityModel : public QObject {
     Q_PROPERTY(QObject* controller READ controllerObject WRITE setController NOTIFY controllerChanged)
     Q_PROPERTY(QString meetingId READ meetingId WRITE setMeetingId NOTIFY meetingIdChanged)
     Q_PROPERTY(QString demoState READ demoState WRITE setDemoState NOTIFY demoStateChanged)
-    // "none" (nincs megbeszélés / sáv) | "loading" (a core számol) | "ready"
+    // "none" (no meeting / track) | "loading" (the core is computing) | "ready"
     Q_PROPERTY(QString state READ state NOTIFY changed)
-    // A közös idővonal hossza (ms): a megbeszélés hossza, de legalább a leghosszabb sáv vége.
+    // The common timeline's length (ms): the meeting's length, but at least the longest track's end.
     Q_PROPERTY(int durationMs READ durationMs NOTIFY changed)
-    // Minden adatváltozáskor nő (a rajzoló ehhez köti az újrarajzolást).
+    // Grows on every data change (the painter ties its repaint to this).
     Q_PROPERTY(int revision READ revision NOTIFY changed)
 
 public:
-    // Keret-állapotok.
+    // Frame states.
     enum Frame : qint8 { NoData = -1, Quiet = 0, Speech = 1 };
 
     struct Lane {
-        QString trackId;            // a vezető szakasz id-ja
+        QString trackId;            // the leading segment's id
         qint64 originMs = 0;
         int frameMs = 50;
-        QVector<qint8> frames;      // Frame értékek
+        QVector<qint8> frames;      // Frame values
         int speechFrames = 0;
     };
 
@@ -65,17 +66,17 @@ public:
     int durationMs() const { return int(m_durationMs); }
     int revision() const { return m_revision; }
 
-    // A sáv (bármelyik szakaszának id-ja) adatai; nullptr, ha nincs.
+    // The track's (any segment's id) data; nullptr if none.
     const Lane* lane(const QString& trackId) const;
 
     Q_INVOKABLE bool hasTrack(const QString& trackId) const { return lane(trackId) != nullptr; }
-    // Az első beszédes keret kezdete fromMs-től (megbeszélés-idő); -1, ha nincs több.
+    // The start of the first speech frame from fromMs (meeting time); -1 if there are no more.
     Q_INVOKABLE int nextSpeechMs(const QString& trackId, int fromMs = 0) const;
-    // A beszédes keretek aránya a lefedett keretekhez (0..1); -1, ha nincs adat.
+    // The share of speech frames among the covered frames (0..1); -1 if no data.
     Q_INVOKABLE qreal speechShare(const QString& trackId) const;
     Q_INVOKABLE void refresh() { reload(); }
 
-    // A core keretei → csík-állapotok (tiszta függvény; a tesztekhez is).
+    // The core's frames -> strip states (pure function; for tests too).
     static Lane laneFrom(const tanara::TrackActivity& t);
 
 signals:
@@ -101,7 +102,7 @@ private:
     qint64 m_durationMs = 0;
     int m_revision = 0;
     QVector<Lane> m_lanes;
-    QHash<QString, int> m_laneOf;   // bármely szakasz-id → m_lanes index
+    QHash<QString, int> m_laneOf;   // any segment id -> m_lanes index
 };
 
 } // namespace tanara_qml

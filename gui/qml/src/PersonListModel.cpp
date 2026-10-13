@@ -106,7 +106,7 @@ void PersonListModel::setParticipants(ParticipantsViewModel* participants)
 
 namespace {
 
-// A Címkék ablak demójának névsora (controller nélkül; a design-csomagok kitalált nevei).
+// The name list of the Tags window's demo (without a controller; the design packages' fictional names).
 QVector<PersonInfo> demoPeople()
 {
     const QList<std::pair<const char*, int>> rows{
@@ -123,7 +123,7 @@ QVector<PersonInfo> demoPeople()
     return out;
 }
 
-// Egy személy legjobb kapcsolata a viszonyítási címkék közül.
+// A person's best relation among the reference tags.
 struct TagLink {
     QString tagName;
     int shared = 0;
@@ -183,7 +183,7 @@ void PersonListModel::refresh()
     if (m_participants) m_all = m_participants->people();
     else if (m_editor) m_all = m_editor->people();
     else if (!m_tagId.isEmpty()) {
-        // Önálló (Címkék ablak): a teljes névsor.
+        // Standalone (Tags window): the full name list.
         tanara::AppController* app = AppContext::instance()->controller();
         m_all = app ? app->peopleDirectory() : demoPeople();
     } else m_all.clear();
@@ -202,7 +202,7 @@ void PersonListModel::refilter()
     QVector<PersonInfo> shown;
     if (needle.isEmpty()) {
         shown = m_all;
-        // Gyakran szereplők elöl, azon belül ábécében (a lista név szerint rendezve érkezik).
+        // The frequent ones first, alphabetical within (the list arrives sorted by name).
         std::stable_sort(shown.begin(), shown.end(), [](const PersonInfo& a, const PersonInfo& b) {
             return a.meetingCount > b.meetingCount;
         });
@@ -210,8 +210,8 @@ void PersonListModel::refilter()
         shown = filterPeople(m_all, needle);
     }
 
-    // A viszonyítási címkék (a megbeszélésé, ill. a tagId) személyei: kézi + tanult ≥ küszöb.
-    QHash<QString, TagLink> links;   // foldForSearch(név) → legjobb kapcsolat
+    // The people of the reference tags (the meeting's, or the tagId's): manual + learned >= threshold.
+    QHash<QString, TagLink> links;   // foldForSearch(name) -> best relation
     QHash<QString, QString> tagNames;
     if (tags) {
         for (const TagItem& t : tags->tags()) tagNames.insert(t.id, t.name);
@@ -233,7 +233,7 @@ void PersonListModel::refilter()
         if (!folded.isEmpty() && foldForSearch(p.name) == folded) exact = true;
         if (!m_exclude.isEmpty() && p.name.compare(m_exclude, Qt::CaseInsensitive) == 0) continue;
         const QString key = foldForSearch(p.name);
-        // Címke-mód: akin kézzel rajta van, és a saját személy kimarad.
+        // Tag mode: those who have it manually, and the own person, are left out.
         if (!m_tagId.isEmpty() && ((links.contains(key) && links.value(key).manual) || key == selfKey)) continue;
         const bool here = m_participants ? m_participants->isMeetingPerson(p.name)
                         : m_editor && m_editor->isMeetingPerson(p.name);
@@ -253,7 +253,7 @@ void PersonListModel::refilter()
         }
     }
     std::stable_sort(tagged.begin(), tagged.end(), [](const Row& a, const Row& b) { return a.link.better(b.link); });
-    // A közös címkés csoport legfeljebb 5 soros; a többi a „többi” közé kerül, jelzés nélkül.
+    // The shared-tag group has at most 5 rows; the rest go among "others", without a mark.
     while (tagged.size() > 5) {
         Row r = tagged.takeLast();
         r.group = QStringLiteral("other");
@@ -285,7 +285,7 @@ void PersonListModel::refilter()
     m_hints = hints;
     m_groups = groups;
     m_tagSection = section;
-    // Címke-módban új személy nem jön létre innen (a Személyek ablak „Új személy” a helye).
+    // In tag mode no new person is created from here (the People window's "New person" is the place).
     m_canCreate = !needle.isEmpty() && !exact && m_tagId.isEmpty();
     endResetModel();
     emit countChanged();

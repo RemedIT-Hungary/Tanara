@@ -25,7 +25,7 @@ using namespace tanara;
 
 namespace {
 
-// detail: a jelvény tooltipje (a bizonyíték hosszabb magyarázata; üres → a felirat).
+// detail: the badge's tooltip (the evidence's longer explanation; empty -> the label).
 QVariantMap source(const QString& icon, const QString& text, bool negative = false, bool accent = false,
                    const QString& detail = QString())
 {
@@ -48,8 +48,8 @@ QVariantMap stat(const QString& label, const QString& value, const QString& sub)
             {QStringLiteral("sub"), sub}};
 }
 
-// Egy résztvevő bizonyítékai → jelvények (a design: hang / sáv-oldal / címke / naptár / kézi;
-// az ellentmondó bizonyíték szaggatott, halvány).
+// A participant's evidence -> badges (the design: voice / track side / tag / calendar / manual;
+// contradicting evidence is dashed, dim).
 QVariantList sourcesOf(const Participant& p, bool self)
 {
     QVariantList out;
@@ -71,7 +71,7 @@ QVariantList sourcesOf(const Participant& p, bool self)
                           e.text, neg, false, e.detail);
             break;
         case EvidenceKind::Tag:
-            // A chip („#Nordvik”, „#Nordvik +1”); a magyarázat a detail-ben (ranking::tagEvidenceOf).
+            // The chip ("#Nordvik", "#Nordvik +1"); the explanation is in detail (ranking::tagEvidenceOf).
             out << source(QStringLiteral("tag"), e.text, neg);
             break;
         case EvidenceKind::Calendar:
@@ -82,7 +82,7 @@ QVariantList sourcesOf(const Participant& p, bool self)
             break;
         }
     }
-    // Bizonyíték nélkül (régi adat) legalább az oldal látsszon.
+    // Without evidence (old data) at least the side shows.
     if (p.evidence.isEmpty()) {
         for (const QString& side : p.sides)
             out << (side == QLatin1String("mic")
@@ -108,8 +108,8 @@ QVariantMap personRow(const QString& id, const QString& name, int colorIndex, co
             {QStringLiteral("unheard"), false}};
 }
 
-// A7: átirat után a beszélőhöz nem kötött (meg nem szólalt / kézzel felvett) résztvevő: halvány
-// sor „nem hallottuk” jelvénnyel, törölhető.
+// After the transcript, a participant not tied to a speaker (never spoke / added manually):
+// a dim row with a "not heard" badge, removable.
 QVariantMap unheardRow(const Participant& p, int colorIndex)
 {
     QVariantList src = sourcesOf(p, false);
@@ -120,7 +120,7 @@ QVariantMap unheardRow(const Participant& p, int colorIndex)
     return row;
 }
 
-// A sor az átirat egy beszélője (a „Miért ő?” és az „Elnevezés…” ehhez a kulcshoz kötődik).
+// The row is one of the transcript's speakers ("Why this one?" and "Name..." bind to this key).
 QVariantMap withSpeaker(QVariantMap row, const QString& speakerKey, bool anonymous)
 {
     row.insert(QStringLiteral("speakerKey"), speakerKey);
@@ -128,7 +128,7 @@ QVariantMap withSpeaker(QVariantMap row, const QString& speakerKey, bool anonymo
     return row;
 }
 
-// A címke alapú személy-javaslatok száma az Áttekintésen (UX-terv 3.1).
+// The number of tag-based person suggestions on the Overview.
 constexpr int kMaxSuggestedPeople = 3;
 
 bool sameName(const QString& a, const QString& b)
@@ -233,7 +233,7 @@ QString OverviewViewModel::monogramOf(const QString& name)
     const QStringList words = name.split(QLatin1Char(' '), Qt::SkipEmptyParts);
     QString out;
     for (const QString& w : words) {
-        if (w.startsWith(QLatin1Char('('))) continue;   // „Kovács Lilla (te)”
+        if (w.startsWith(QLatin1Char('('))) continue;   // "Kovács Lilla (you)"
         out += w.left(1).toUpper();
         if (out.size() == 2) break;
     }
@@ -270,7 +270,7 @@ void OverviewViewModel::removeParticipant(const QString& id)
 {
     AppController* c = app();
     if (jobsupport::demoMode(c)) {
-        // Demóban (képernyőkép) helyben: a sor eltűnik.
+        // In the demo (screenshot) in place: the row disappears.
         QVariantList rows;
         for (const QVariant& v : std::as_const(m_participants))
             if (v.toMap().value(QStringLiteral("id")).toString() != id) rows << v;
@@ -281,8 +281,8 @@ void OverviewViewModel::removeParticipant(const QString& id)
     if (m_meetingId.isEmpty() || id.isEmpty())
         return;
     if (id.startsWith(QLatin1String("suggest:"))) {
-        // A javaslat tartós, erre a megbeszélésre szóló elutasítása (a közös visszavonás lépése;
-        // a verem előbb jöjjön létre, mert a csatolás előtti címke-lépéseket nem veszi fel).
+        // The suggestion's lasting rejection for this meeting (a shared-undo step; the stack must
+        // be created first, since it does not take tag steps from before the attachment).
         c->meetingUndo(m_meetingId);
         if (TagService* tags = c->tags())
             tags->rejectPersonForMeeting(id.mid(8), m_meetingId);
@@ -376,13 +376,13 @@ void OverviewViewModel::reload()
     m_approvalPending = !m.id.isEmpty() && c->participantApprovalPending(m.id);
     m_analysisRunning = !m.id.isEmpty() && c->participantAnalysisRunning(m.id);
     if (!m_analysisRunning) m_analysisProgress = {};
-    // „Újraelemzés” (D4): van hang és modell, nem fut, és nem „csak én beszéltem”.
+    // "Re-analyze": there is audio and a model, it is not running, and not "only I spoke".
     m_canReanalyze = !m.id.isEmpty() && !m_analysisRunning && !m.tracks.isEmpty()
                      && c->voiceIdentificationAvailable() && !(m.approval && m.approval->solo)
                      && (m.hasTranscript || !transcribeJob);
     m_approved = m.approval.has_value() && !m.approval->skipped;
 
-    // ---- résztvevők ----
+    // ---- participants ----
     const QVector<Participant> parts = m.id.isEmpty() ? QVector<Participant>() : c->participants(m.id);
     m_candidateCount = int(std::count_if(parts.cbegin(), parts.cend(), [](const Participant& p) {
         return p.source != ParticipantSource::Manual;
@@ -394,7 +394,7 @@ void OverviewViewModel::reload()
     QStringList names;
     QVariantList anonymous;
     if (!speakers.isEmpty()) {
-        // Átirat után: a beszélők (színnel, aránnyal), a résztvevő bizonyítékaival.
+        // After the transcript: the speakers (with color, share), with the participant's evidence.
         QVector<EditorSpeaker> sorted = speakers;
         std::sort(sorted.begin(), sorted.end(),
                   [](const EditorSpeaker& a, const EditorSpeaker& b) { return a.colorIndex < b.colorIndex; });
@@ -414,8 +414,8 @@ void OverviewViewModel::reload()
             QString name = s.displayName;
             if (self) name = tr("%1 (te)").arg(name);
             const QVariantList src = match ? sourcesOf(*match, false) : QVariantList();
-            // Törölhető: résztvevő-rekorddal, vagy rekord nélkül is, ha névvel bír (a sorai
-            // névtelenek lesznek — AppController::removeParticipant a beszélő-kulccsal).
+            // Removable: with a participant record, or without one too if it has a name (its rows
+            // become anonymous: AppController::removeParticipant with the speaker key).
             rows << withSpeaker(personRow(match ? match->id : s.key, name, s.colorIndex,
                                           s.anonymous ? tr("névtelen · elnevezhető") : QString(), src,
                                           s.talkShare, self, false, false, match != nullptr || !s.anonymous),
@@ -425,8 +425,8 @@ void OverviewViewModel::reload()
                                      {QStringLiteral("share"), s.talkShare},
                                      {QStringLiteral("colorIndex"), s.colorIndex}};
         }
-        // A7: a beszélőhöz nem kötött, névvel bíró résztvevők (kézi / meg nem szólalt) a beszélők
-        // után, halványan; törölhetők.
+        // Participants not tied to a speaker but with a name (manual / never spoke) after the
+        // speakers, dim; removable.
         const QVector<Participant> unheard = c->unheardParticipants(m.id);
         int colorIndex = int(sorted.size());
         for (const Participant& p : unheard) {
@@ -455,9 +455,9 @@ void OverviewViewModel::reload()
     }
     m_anonymous = m_peopleState == QLatin1String("nobody") ? anonymous : QVariantList();
 
-    // Címke alapú javaslat (D): a megbeszélés címkéin tanult személyek, akik még nincsenek itt.
-    // A core szűri a már itt lévőket, a saját személyt és az erre a megbeszélésre elutasítottakat
-    // (rejectPersonForMeeting); legfeljebb 3 (UX-terv 3.1).
+    // Tag-based suggestion: people learned from the meeting's tags who are not here yet. The
+    // core filters out those already here, the own person and those rejected for this meeting
+    // (rejectPersonForMeeting); at most 3.
     if (TagService* tags = c->tags(); tags && !m.id.isEmpty() && m_peopleState != QLatin1String("nobody")) {
         int added = 0;
         const QVector<PersonTagStat> stats = tags->suggestPeopleForMeeting(m.id, names, kMaxSuggestedPeople);
@@ -487,7 +487,7 @@ void OverviewViewModel::reload()
         m_peopleHint = m_peopleState == QLatin1String("list") ? tr("naptár · hang · címke · kézi") : QString();
     }
 
-    // Ki beszél az egyes oldalakon (a Sávok sorainak alszövege).
+    // Who speaks on each side (the Tracks rows' subtext).
     QStringList micNames, loopNames;
     for (const Participant& p : parts) {
         if (p.sides.contains(QStringLiteral("mic"))) micNames << (p.personName.isEmpty() ? tr("névtelen") : p.personName);
@@ -499,7 +499,7 @@ void OverviewViewModel::reload()
     if (loopNames.size() == 1 && !loopNames.first().isEmpty()) m_sideWho.insert(QStringLiteral("loopback"), loopNames.first());
     else if (!loopNames.isEmpty()) m_sideWho.insert(QStringLiteral("loopback"), tr("%n résztvevő", nullptr, int(loopNames.size())));
 
-    // ---- feldolgozás ----
+    // ---- processing ----
     int included = 0, excluded = 0, measured = 0;
     for (const Track& t : m.tracks) {
         if (t.included()) ++included;
@@ -513,11 +513,11 @@ void OverviewViewModel::reload()
                   m.tracks.isEmpty() ? QStringLiteral("waiting") : QStringLiteral("done"));
     QString tracksSub = tr("%n aktív", nullptr, included);
     if (excluded > 0) tracksSub += QStringLiteral(" · ") + tr("%n kimaradt, nincs rajta beszéd", nullptr, excluded);
-    // A még nem mért sávok beszéd-ellenőrzését a nézet indítja (a külön felvevő-folyamatban vagy
-    // régebben készült meetingen senki más nem tenné); a lépés csak addig „fut”, amíg a core
-    // tényleg mér — különben a csík örökre pörögne.
+    // The speech check for not-yet-measured tracks is started by the view (in a separate recorder
+    // process or on an older meeting nobody else would); the step "runs" only while the core
+    // really measures, otherwise the bar would spin forever.
     if (measured < m.tracks.size() && !m.hasTranscript) c->checkTrackSpeech(m_meetingId);
-    // Az átirat előtti hangelemzés a nyers sávokból, megnyitáskor is (ha még nem futott ezeken).
+    // The pre-transcript audio analysis from the raw tracks, on opening too (if not yet run on these).
     if (!m.hasTranscript) c->maybeAnalyzeParticipants(m_meetingId);
     const bool speechRunning = c->speechCheckRunning(m_meetingId);
     steps << step(QStringLiteral("tracks"), tr("Sávok"), tracksSub,
@@ -536,7 +536,7 @@ void OverviewViewModel::reload()
     QString voiceSub, voiceState;
     int voiceProgress = -1;
     if (m_analysisRunning) {
-        // A8: „k / N sáv” (a core participantAnalysisProgress jele szerint); az első jelig „fut”.
+        // "track k / N" (per the core's participantAnalysisProgress signal); "running" until the first signal.
         if (m_analysisProgress.total > 0) {
             voiceSub = tr("%1 / %2 sáv").arg(m_analysisProgress.done).arg(m_analysisProgress.total);
             voiceProgress = m_analysisProgress.percent;
@@ -604,7 +604,7 @@ void OverviewViewModel::reload()
     });
     m_stepsSummary = tr("felvétel · lekeverés · átirat · összefoglaló");
 
-    // ---- ADATOK ----
+    // ---- DATA ----
     QVariantList stats;
     if (m.hasTranscript && ed) {
         qint64 speech = 0;
@@ -633,16 +633,16 @@ void OverviewViewModel::reload()
 
 void OverviewViewModel::loadDemo()
 {
-    // Kitalált adat a handoff neveivel (V1 / V3 / V5 / V6).
+    // Fictional data with the handoff's names.
     const QString st = m_demoState.isEmpty() ? QStringLiteral("overviewDone") : m_demoState;
     const bool done = st == QLatin1String("overviewDone");
     const bool empty = st == QLatin1String("overviewEmpty");
     const bool nobody = st == QLatin1String("overviewNobody");
-    // U6: felvétel után, átírás előtt (V5-szerű, az „Átírás indítása” a lépésben); …Error: hibával.
+    // After recording, before the transcript (like the empty state, "Start transcription" in the step); ...Error: with an error.
     const bool recordedError = st == QLatin1String("overviewRecordedError");
     const bool recorded = recordedError || st == QLatin1String("overviewRecorded");
 
-    // A1: az első átírás fut (két sáv, még senki): a lépésben a szakaszok és a „Megszakítás”.
+    // The first transcription runs (two tracks, nobody yet): the phases and "Cancel" in the step.
     const bool transcribingOnly = st == QLatin1String("overviewTranscribing");
 
     m_hasTranscript = done || nobody;
@@ -654,7 +654,7 @@ void OverviewViewModel::loadDemo()
     m_approvalPending = st == QLatin1String("overviewProcessing");
     m_approved = done;
     m_candidateCount = 4;
-    // A leírás a demó-állapot első betöltésekor kap értéket (utána a setContextNote-é).
+    // The description gets its value on the demo state's first load (after that setContextNote's).
     if (m_demoLoadedFor != st) {
         m_demoLoadedFor = st;
         m_contextNote = (empty || nobody || recorded || transcribingOnly) ? QString()
@@ -679,7 +679,7 @@ void OverviewViewModel::loadDemo()
              << withSpeaker(personRow(QStringLiteral("S5"), demoRaw(QStringLiteral("Távoli 1")), 4, tr("névtelen · elnevezhető"),
                                       {callSide}, 0.07),
                             QStringLiteral("S5"), true);
-        // A7: meghívott, de nem szólalt meg (kézzel felvéve): halványan, a beszélők után.
+        // Invited but did not speak (added manually): dim, after the speakers.
         Participant invited;
         invited.id = QStringLiteral("p5");
         invited.personName = demoName("Lantos Réka");

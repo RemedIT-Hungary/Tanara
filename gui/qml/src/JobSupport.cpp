@@ -67,8 +67,8 @@ FixAction fixActionForError(const tanara::JobError& error)
         return {};
     if (hint.startsWith(QLatin1String("cloud")) || hint.startsWith(QLatin1String("login:")))
         return {trj("Tanara Cloud fiók"), QStringLiteral("cloud")};
-    // Kontextus-hiba: a Beállítások LLM-kártyája (kontextus-beállítás); LM Studiónál mellette
-    // az újratöltés-és-újra gomb is.
+    // Context error: Settings' LLM card (context setting); with LM Studio the reload-and-retry
+    // button next to it too.
     if (hint.contains(QLatin1String("-context"))) {
         FixAction a{QCoreApplication::translate("JobSupport", "Beállítások"), QStringLiteral("providers")};
         if (tanara::isReloadContextHint(hint))
@@ -76,7 +76,7 @@ FixAction fixActionForError(const tanara::JobError& error)
         return a;
     }
     if (hint.startsWith(QLatin1String("settings"))) {
-        // Kulcs-hibánál (401 / 403) a gomb a kulcsot nevezi meg; különben a szolgáltatót.
+        // For a key error (401 / 403) the button names the key; otherwise the provider.
         const bool keyProblem = error.detail.contains(QLatin1String("HTTP 401"))
                              || error.detail.contains(QLatin1String("HTTP 403"));
         return {keyProblem ? trj("Kulcs módosítása") : trj("Szolgáltató beállítása"),
@@ -100,8 +100,8 @@ QVariantMap blockerInfo(tanara::AppController* controller, tanara::WorkflowStep 
     case tanara::BlockerKind::ProviderConfig:
         title = transcribe ? trj("Nincs beállítva átíró szolgáltató")
                            : trj("Nincs beállítva összefoglaló szolgáltató");
-        // A pontos hiány (pl. „Hiányzik: API-kulcs (Soniox)”) + merre tovább. A Tanara Cloudot
-        // csak akkor említjük, ha ebben a buildben tényleg be lehet jelentkezni.
+        // The exact gap (e.g. "Missing: API key (Soniox)") + where to go next. Tanara Cloud is
+        // mentioned only if sign-in is really possible in this build.
         text = r.detail;
         if (!text.isEmpty() && !text.endsWith(QLatin1Char('.')))
             text += QLatin1Char('.');

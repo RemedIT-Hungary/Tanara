@@ -1,16 +1,16 @@
 #pragma once
 //
-// Tanara QML — a Sávok fül (M09) modellje: a meeting hangsávjai megjelenítésre készen
-// (barátságos név, nyers eszköznév, állapot: aktív / eldobott / hiányzó fájl), sávonként a
-// gyorsítótárazott hullámforma-csúcsok, és a lekeverés állapota (kész / elavult / fut %).
+// Tanara QML: model of the Tracks tab: the meeting's audio tracks ready for display
+// (friendly name, raw device name, state: active / dropped / missing file), per track the
+// cached waveform peaks, and the mixdown state (ready / stale / running %).
 //
-// Források: TrackCatalog (nevek, átnevezés, megkeresés, eldobottak törlése), WaveformService
-// (csúcsok — aszinkron, a requestWaveforms() kéri a fül első megjelenésekor), az
-// AppController restoreTrack / regenerateMixdown, a MeetingJobTracker (lekeverés fut-e).
-// A core jeleire soronként frissül (azonos sáv-sorrendnél csak dataChanged megy).
+// Sources: TrackCatalog (names, rename, locate, delete dropped), WaveformService (peaks:
+// async, requested by requestWaveforms() when the tab first shows), AppController's
+// restoreTrack / regenerateMixdown, the MeetingJobTracker (whether a mixdown runs).
+// Updates per row on the core's signals (with an unchanged track order only dataChanged goes out).
 //
-// Controller nélkül vagy App.demo mellett kitalált mintaadat; demoState: "default" (az M09
-// rajz: fut a lekeverés) | "loading" (csúcsok számolása) | "idle" (minden kész).
+// Without a controller or with App.demo, fictional sample data; demoState: "default" (the
+// design sketch: the mixdown is running) | "loading" (computing peaks) | "idle" (all done).
 //
 #include "tanara/audio/TrackCatalog.h"
 #include "tanara/audio/WaveformService.h"
@@ -40,18 +40,18 @@ class TrackListModel : public QAbstractListModel {
     Q_PROPERTY(int count READ count NOTIFY changed)
     Q_PROPERTY(int activeCount READ activeCount NOTIFY changed)
     Q_PROPERTY(int droppedCount READ droppedCount NOTIFY changed)
-    // A lekeverésbe kerülő sávok / a beszéd nélkül kimaradtak száma (Áttekintés › Sávok).
+    // Number of tracks going into the mixdown / left out for no speech (Overview > Tracks).
     Q_PROPERTY(int includedCount READ includedCount NOTIFY changed)
     Q_PROPERTY(int excludedCount READ excludedCount NOTIFY changed)
-    // A leghangosabb sáv csúcsa — a hullámformák közös skálája.
+    // The loudest track's peak: the waveforms' common scale.
     Q_PROPERTY(qreal peakReference READ peakReference NOTIFY peaksChanged)
 
-    // ---- lekeverés ----
-    // "none" (még nincs) | "ready" | "stale" (a sávok változtak azóta) | "running"
+    // ---- mixdown ----
+    // "none" (not yet) | "ready" | "stale" (tracks changed since) | "running"
     Q_PROPERTY(QString mixdownState READ mixdownState NOTIFY changed)
     Q_PROPERTY(int mixdownPercent READ mixdownPercent NOTIFY mixdownPercentChanged)
-    // Önálló lekeverés fut → megszakítható (shell.cancelJob(…, JobKinds.Mixdown)); ha az
-    // átírás részeként fut, az átírással együtt szakítható meg.
+    // A standalone mixdown is running -> cancelable (shell.cancelJob(..., JobKinds.Mixdown)); if
+    // it runs as part of the transcription, it can only be cancelled with the transcription.
     Q_PROPERTY(bool mixdownCancellable READ mixdownCancellable NOTIFY changed)
     Q_PROPERTY(bool mixdownCancelling READ mixdownCancelling NOTIFY changed)
     Q_PROPERTY(QString mixdownDurationText READ mixdownDurationText NOTIFY peaksChanged)
@@ -61,39 +61,39 @@ class TrackListModel : public QAbstractListModel {
 public:
     enum Role {
         TrackIdRole = Qt::UserRole + 1,
-        DisplayNameRole,      // amit a UI mutat (a felhasználó neve vagy a barátságos név)
-        FriendlyNameRole,     // a szerepből levezetett név (átnevezés visszavonása)
+        DisplayNameRole,      // what the UI shows (the user's name or the friendly name)
+        FriendlyNameRole,     // the name derived from the role (undoing a rename)
         RenamedRole,
-        RawNameRole,          // nyers eszköznév · fájlnév
+        RawNameRole,          // raw device name · file name
         IconNameRole,         // mic | monitor-speaker | speaker | audio-lines
-        ActiveRole,           // false = eldobott (csendes)
-        MissingRole,          // hiányzik a hangfájl
-        PathRole,             // abszolút út (lejátszáshoz)
+        ActiveRole,           // false = dropped (silent)
+        MissingRole,          // the audio file is missing
+        PathRole,             // absolute path (for playback)
         DurationTextRole,
         PeaksRole,            // QList<qreal>
         PeaksStateRole,       // none | loading | ready | failed
-        ColorIndexRole,       // a hullámforma színe (beszélő-paletta)
-        // A sáv helye a megbeszélés idővonalán (0..1): a hullámforma a sor szélességének
-        // waveStart-jánál kezdődik (később bekapcsolt sáv / második szakasz) és waveSpan
-        // hosszú (a fájl hossza a megbeszéléshez mérve).
+        ColorIndexRole,       // the waveform's color (speaker palette)
+        // The track's place on the meeting timeline (0..1): the waveform starts at waveStart of the
+        // row's width (a later-enabled track / second segment) and is waveSpan long (the file's
+        // length relative to the meeting).
         WaveStartRole,
         WaveSpanRole,
-        SegmentRole,          // az eszköz szakaszának sorszáma (1..), 0 = egyetlen fájl
+        SegmentRole,          // the device segment's number (1..), 0 = a single file
         StartOffsetRole,      // ms
-        // Beszéd-ellenőrzés (Track::speechRatio): 0..1, -1 = még nem mérték.
+        // Speech check (Track::speechRatio): 0..1, -1 = not measured yet.
         SpeechRatioRole,
-        // Miért maradt ki a lekeverésből: "" | "noSpeech" | "manual" (Track::excludedReason).
+        // Why it was left out of the mixdown: "" | "noSpeech" | "manual" (Track::excludedReason).
         ExcludedReasonRole,
-        IncludedRole,         // a lekeverésben van (Track::included())
-        KindRole,             // "mic" | "loopback" | "other" (melyik oldal hangja)
-        // A logikai sáv (az eszköz szakaszai) vezető szakaszának id-ja: a beszéd-csík, a
-        // sáv-lejátszás (PlayerController::previewTrackId) és a beszélő → sáv kötés kulcsa.
+        IncludedRole,         // is in the mixdown (Track::included())
+        KindRole,             // "mic" | "loopback" | "other" (which side's audio)
+        // The id of the leading segment of the logical track (the device's segments): the key of the
+        // speech strip, track playback (PlayerController::previewTrackId) and the speaker -> track binding.
         GroupIdRole,
     };
 
-    // A hullámforma helye a megbeszélés idővonalán: {kezdet, hossz} 0..1 arányban. Ismeretlen
-    // fájlhossz (fileDurationMs < 0) → a sáv a kezdetétől a megbeszélés végéig; ismeretlen
-    // megbeszélés-hossz → {0, 1}.
+    // The waveform's place on the meeting timeline: {start, length} as 0..1 fractions. Unknown
+    // file length (fileDurationMs < 0) -> the track runs from its start to the meeting's end;
+    // unknown meeting length -> {0, 1}.
     static QPair<qreal, qreal> waveExtent(qint64 startOffsetMs, qint64 fileDurationMs,
                                           qint64 meetingDurationMs);
 
@@ -126,37 +126,36 @@ public:
     QList<qreal> mixdownPeaks() const { return m_mixdownPeaks; }
     bool mixdownPeaksLoading() const { return m_mixdownPeaksLoading; }
 
-    // A csúcsok kérése a még hiányzó sávokra (a fül első megjelenésekor hívandó).
+    // Requests the peaks for the still-missing tracks (to call when the tab first shows).
     Q_INVOKABLE void requestWaveforms();
-    // Átnevezés; üres név → vissza a barátságos névre. true, ha változott.
+    // Rename; an empty name -> back to the friendly name. True if it changed.
     Q_INVOKABLE bool rename(int row, const QString& name);
-    // Eldobott sáv visszaállítása aktívvá.
+    // Restores a dropped track to active.
     Q_INVOKABLE void restore(int row);
-    // „Beemelem” / kapcsoló: a sáv vissza a lekeverésbe, ill. kézi kizárás
-    // (AppController::includeTrack / excludeTrack; utána újralekeverés).
+    // "Include" / toggle: the track back into the mixdown, or a manual exclusion
+    // (AppController::includeTrack / excludeTrack; then a remix).
     Q_INVOKABLE void setIncluded(int row, bool included);
-    // Hiányzó fájl megkeresése: a kiválasztott fájl a meeting mappájába másolódik. Üres
-    // visszatérés = siker; különben az emberi hibaüzenet.
+    // Locates a missing file: the chosen file is copied into the meeting's folder. An empty
+    // return = success; otherwise the human error message.
     QString relocate(int row, const QString& filePath);
-    // MINDEN eldobott sáv végleges törlése (a megerősítés a hívó dolga). Vissza: hány törlődött.
+    // Permanently deletes EVERY dropped track (confirmation is the caller's job). Returns how many were deleted.
     int deleteDropped();
-    // A QML ezeket hívja. A megerősítő / fájlválasztó ablak beágyazott eseményhurkot futtat,
-    // közben a kijelölés másik megbeszélésre válthat (pl. véget ér egy felvétel): ezért a
-    // hívó az ablak ELŐTT megjegyzi a megbeszélést (és a sáv azonosítóját, nem a sorát), és
-    // itt adja vissza. Ha a modell közben másik megbeszélésre váltott, NEM történik semmi
-    // (-1, ill. hibaüzenet).
-    // Egy sáv rajzolási skálája: a saját felső szintje, de legalább a közös skála 30%-a —
-    // a halk sáv (pl. a ritkán megszólaló saját mikrofon) is olvasható, a csendes mégsem
-    // nagyítódik zajjá.
+    // QML calls these. The confirm / file-picker dialog runs a nested event loop, during which
+    // the selection may switch to another meeting (e.g. a recording ends): so the caller notes
+    // the meeting BEFORE the dialog (and the track's id, not its row) and passes it back here.
+    // If the model switched to another meeting meanwhile, NOTHING happens (-1, or an error message).
+    // A track's drawing scale: its own top level, but at least 30% of the common scale, so a
+    // quiet track (e.g. a rarely speaking own mic) stays readable, yet a silent one is not
+    // amplified into noise.
     Q_INVOKABLE qreal rowReference(int row) const;
     Q_INVOKABLE QString trackIdAt(int row) const;
     Q_INVOKABLE QString relocateTrack(const QString& meetingId, const QString& trackId,
                                       const QString& filePath);
     Q_INVOKABLE int deleteDroppedIn(const QString& meetingId);
-    // EGY sáv végleges törlése (a hangfájl is; AppController::deleteTrack). A megerősítés a
-    // hívó dolga; a megbeszélés-ellenőrzés mint a deleteDroppedIn-nél. true: törölve.
+    // Permanently deletes ONE track (the audio file too; AppController::deleteTrack). The
+    // confirmation is the caller's job; the meeting check as in deleteDroppedIn. True: deleted.
     Q_INVOKABLE bool deleteTrackIn(const QString& meetingId, const QString& trackId);
-    // A lekeverés (újra)készítése az aktív sávokból.
+    // Makes the mixdown (again) from the active tracks.
     Q_INVOKABLE void refreshMixdown();
 
 signals:
@@ -190,7 +189,7 @@ private:
     QPointer<QObject> m_injected;
     QPointer<tanara::AppController> m_connected;
     QList<QMetaObject::Connection> m_connections;
-    QMap<QString, QString> m_deviceNames;   // az eszköz-átnevezések utolsó látott állapota
+    QMap<QString, QString> m_deviceNames;   // last seen state of the device renames
 
     QString m_meetingId;
     QString m_demoState;

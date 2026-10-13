@@ -51,7 +51,7 @@ bool TagsWindowHost::ensureWindow()
     connect(win, &QQuickWindow::visibleChanged, this, [this](bool visible) {
         if (!visible) emit closed();
     });
-    // A QML-ablak jelei (string-alapú: a típus a QML-ben él).
+    // The QML window's signals (string-based: the type lives in QML).
     connect(win, SIGNAL(openInLibraryRequested(QString)), this, SIGNAL(openInLibraryRequested(QString)));
     connect(win, SIGNAL(meetingRequested(QString)), this, SIGNAL(meetingRequested(QString)));
     connect(win, SIGNAL(personRequested(QString)), this, SIGNAL(personRequested(QString)));

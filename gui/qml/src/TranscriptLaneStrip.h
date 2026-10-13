@@ -1,8 +1,8 @@
 #pragma once
 //
-// TranscriptLaneStrip — az áttekintő egy sora: egy beszélő megszólalásai a meeting
-// idővonalán (8 px magas sáv). Egyetlen festett elem a sok kis téglalap helyett, hogy
-// 700 soros meetingnél se legyen több száz QML-elem. A szoftveres rendererrel is megy.
+// TranscriptLaneStrip: one row of the overview: a speaker's utterances on the meeting
+// timeline (8 px high band). One painted item instead of many small rectangles, so even a
+// 700-row meeting has no hundreds of QML items. It works with the software renderer too.
 //
 #include <QColor>
 #include <QList>
@@ -14,9 +14,9 @@ namespace tanara_qml {
 class TranscriptLaneStrip : public QQuickPaintedItem {
     Q_OBJECT
     QML_ELEMENT
-    // [x0, w0, x1, w1, …] a teljes szélesség hányadában (0..1).
+    // [x0, w0, x1, w1, ...] as a fraction of the full width (0..1).
     Q_PROPERTY(QList<qreal> segments READ segments WRITE setSegments NOTIFY changed)
-    // Kiemelt szakaszok (a „Megmutatom" javasolt sorai) ugyanilyen formában.
+    // Highlighted spans (the "Show me" suggested rows) in the same form.
     Q_PROPERTY(QList<qreal> marks READ marks WRITE setMarks NOTIFY changed)
     Q_PROPERTY(QColor color READ color WRITE setColor NOTIFY changed)
     Q_PROPERTY(QColor trackColor READ trackColor WRITE setTrackColor NOTIFY changed)

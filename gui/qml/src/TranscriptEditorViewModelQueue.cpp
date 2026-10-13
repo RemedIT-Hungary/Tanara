@@ -1,6 +1,6 @@
-// TranscriptEditorViewModel — az S3 munkalista (ReviewQueueModel) bekötése és demó-állapotai.
-// Külön fordítási egység, hogy a VM fő fájljában csak néhány jól körülhatárolt hívás legyen
-// (konstruktor, reloadAll, onUtterancesChanged, onSpeakersChanged, rebuildReview, demó-elágazás).
+// TranscriptEditorViewModel: wiring of the worklist (ReviewQueueModel) and its demo states.
+// A separate translation unit so the VM's main file has only a few well-delimited calls
+// (constructor, reloadAll, onUtterancesChanged, onSpeakersChanged, rebuildReview, demo branch).
 #include "ReviewQueueModel.h"
 #include "TranscriptDemoSession.h"
 #include "TranscriptEditorViewModel.h"
@@ -21,7 +21,7 @@ void TranscriptEditorViewModel::initQueue()
 {
     m_queue = new ReviewQueueModel(this);
     connect(m_queue, &ReviewQueueModel::activeChanged, this, &TranscriptEditorViewModel::queueActiveChanged);
-    // A queue-demó a háttér-elemzés végét várja (a csoportok a friss állapotból jöjjenek).
+    // The queue demo waits for the end of the background analysis (the groups should come from the fresh state).
     connect(this, &TranscriptEditorViewModel::reviewChanged, this, &TranscriptEditorViewModel::tryQueueDemo);
 }
 
@@ -35,8 +35,8 @@ void TranscriptEditorViewModel::flushPendingReview()
     rebuildReview();
 }
 
-// S4: az auto-lejátszás kapcsolója a settings.json-ban (reviewAutoPlay); AppController nélkül
-// (demó, teszt) csak a memóriában — a felhasználó beállításaihoz így teszt sosem nyúl.
+// The auto-play switch is in settings.json (reviewAutoPlay); without an AppController (demo,
+// test) only in memory, so a test never touches the user's settings.
 bool TranscriptEditorViewModel::reviewAutoPlay() const
 {
     const tanara::AppController* c = m_controller ? m_controller.data() : AppContext::instance()->controller();
@@ -85,7 +85,7 @@ QVariantList TranscriptEditorViewModel::contextLines(const QString& utteranceId,
     return out;
 }
 
-// S7 „Mind megerősítem”: a magától eldőlt sorok (≥ kMinEmbedMs) egy lépésben.
+// "Confirm all": the self-resolved rows (>= kMinEmbedMs) in one step.
 int TranscriptEditorViewModel::confirmSettled()
 {
     if (!m_editor || !m_queue || !m_queue->active()) return 0;
@@ -100,11 +100,11 @@ int TranscriptEditorViewModel::confirmSettled()
     return int(ids.size());
 }
 
-// ---- S5: nyitó-javaslat, mintázat-ajánlat -----------------------------------------------
+// ---- opening suggestion, pattern offer ---------------------------------------------
 
 namespace {
-// A magyar névelő a szám kiejtése szerint: „az" magánhangzóval kezdődő számnév előtt
-// (egy, öt…, ötven…, ezer…), különben „a".
+// The Hungarian definite article by the number's pronunciation: "az" before a vowel-initial
+// numeral (egy, ot..., otven..., ezer...), otherwise "a".
 bool articleAz(int n)
 {
     if (n == 1 || (n >= 1000 && n < 2000)) return true;
@@ -133,7 +133,7 @@ bool TranscriptEditorViewModel::applyQueueOpener(const QString& groupId, bool no
     }
     if (op.isEmpty()) return false;
     *handled = true;
-    // Pontosan a nyitó még nyitott sorai (a hatás-előnézet ezekből számolt).
+    // Exactly the opening's still-open rows (the effect preview was computed from these).
     QStringList ids;
     for (const QString& id : op.value(QStringLiteral("ids")).toStringList()) {
         const int r = m_queue->indexOf(id);
@@ -163,33 +163,33 @@ bool TranscriptEditorViewModel::moveUtterancesToSpeaker(const QStringList& utter
     return true;
 }
 
-// "reviewQueue"          a v3 „reviewExpanded" előkészítés + a munkalista indul (1. kör)
-// "reviewQueueProgress"  + az első három sor eldöntve (javaslat / Jó így nem minta / nem
-//                        azonosítható), a negyedik Később → a lista végére
-// "reviewQueueSummary"   minden sor eldöntve (a javaslatra / Jó így; egy nem azonosítható, egy
-//                        Később) → kör-zárás
-// Más változatban (pl. "many") a v3 előkészítés elmarad, a munkalista a meglévő kétes sorokból indul.
+// "reviewQueue"          the v3 "reviewExpanded" setup + the worklist starts (round 1)
+// "reviewQueueProgress"  + the first three rows decided (suggestion / Looks right not a
+//                        sample / cannot be identified), the fourth Later -> end of the list
+// "reviewQueueSummary"   every row decided (to the suggestion / Looks right; one cannot be
+//                        identified, one Later) -> round close
+// In another variant (e.g. "many") the v3 setup is skipped, the worklist starts from the existing doubtful rows.
 //
-// S4 — a fókusz-nézet (ReviewFocusView) állapotai a v3 meetingen (szennyezett mag nélkül):
-// "reviewFocus"               a munkalista indul, a kurzor az első javaslattal bíró soron
-// "reviewFocusDecided"        + a kurzor sora a javaslatra (Enter) → „Imént" sor + a következő kártya
-// "reviewFocusIncoming"       a munkalista az utolsó 3 kétes sor nélkül indul; a háttér-elemzés
-//                             ezeket „+3 új vár"-ként hozza; két sor eldöntve
-// "reviewFocusSummary"        mint a reviewFocusIncoming, majd minden sor eldöntve → kör-zárás
-// "reviewFocusAlreadyDecided" a kurzor sora a háttérben már nem kétes (S7: a kártya normálisan
-//                             mutatja, Enter = a név marad; a kurzor csak ↑ / ← / ↓-vel lép rá)
-// "reviewFocusSkipped"        S7: a munkalista 2.–7. nyitott sora a háttérben „magától eldőlt”
-//                             (✓ a csíkon, „6 magától eldőlt · Mind megerősítem” a fejlécben);
-//                             a kurzor egy javaslattal bíró nyitott soron
+// Focus view (ReviewFocusView) states on the v3 meeting (without the contaminated core):
+// "reviewFocus"               the worklist starts, the cursor on the first row with a suggestion
+// "reviewFocusDecided"        + the cursor row to the suggestion (Enter) -> "Just now" row + the next card
+// "reviewFocusIncoming"       the worklist starts without the last 3 doubtful rows; the
+//                             background analysis brings them as "+3 new waiting"; two rows decided
+// "reviewFocusSummary"        like reviewFocusIncoming, then every row decided -> round close
+// "reviewFocusAlreadyDecided" the cursor row is no longer doubtful in the background (the card
+//                             shows it normally, Enter = the name stays; the cursor reaches it only with up / left / down)
+// "reviewFocusSkipped"        the worklist's 2nd-7th open rows were "self-resolved" in the
+//                             background (check mark on the strip, "6 self-resolved · Confirm
+//                             all" in the header); the cursor on an open row with a suggestion
 //
-// S5 — a nyitó-javaslat és a mintázat-ajánlat (a többi állapotban a nyitók kikapcsolva, hogy a
-// fókusz-kártya látsszon):
-// "reviewFocusOpener"         a kör eleje: az első nyitó-javaslat (a v3 26 soros sáv-ellentmondása);
-//                             a szúrópróbából 1 meghallgatva (a nézet állítja)
-// "reviewFocusOpenerDoubt"    ugyanez, 2 meghallgatva, egy ✗ → az Egyenként az alapértelmezés
-// "reviewFocusOffer"          a leggyakoribb (ok, jelenlegi, javasolt) hármas 4 sora a javaslatra
-//                             → ajánlat-sáv a kártya alatt; a kurzor a hármas 5. során
-// "reviewFocusOfferList"      ugyanez, a „Megmutatom” lista kinyitva (a nézet állítja)
+// Opening suggestion and pattern offer (in the other states the openers are off, so the
+// focus card is visible):
+// "reviewFocusOpener"         the round start: the first opening suggestion (the v3's 26-row
+//                             track contradiction); 1 of the spot-check rows listened to (the view sets it)
+// "reviewFocusOpenerDoubt"    the same, 2 listened to, one x -> "One by one" is the default
+// "reviewFocusOffer"          the most frequent (reason, current, proposed) triple's 4 rows
+//                             to the suggestion -> offer bar under the card; the cursor on the triple's 5th row
+// "reviewFocusOfferList"      the same, the "Show me" list expanded (the view sets it)
 bool TranscriptEditorViewModel::applyQueueDemoState(const QString& state)
 {
     const bool focus = state.startsWith(QLatin1String("reviewFocus"));
@@ -209,8 +209,8 @@ void TranscriptEditorViewModel::tryQueueDemo()
 {
     if (m_queueDemo.isEmpty() || !m_editor) return;
     if (reviewRunning() || m_reviewTimer.isActive() || m_editor->isEmbeddingRunning()) return;
-    // A fókusz-demók csendes időszakot várnak (az utolsó elemzés-frissülés után 700 ms), hogy a
-    // képen már ne jöjjön „+N új vár” a pillanatkép után.
+    // The focus demos wait for a quiet period (700 ms after the last analysis refresh), so the
+    // screenshot gets no "+N new waiting" after the snapshot.
     if (m_queueDemo.startsWith(QLatin1String("reviewFocus")) && !m_queueDemoQuiet) {
         const int gen = ++m_queueDemoGen;
         QTimer::singleShot(700, this, [this, gen] {
@@ -232,8 +232,8 @@ void TranscriptEditorViewModel::tryQueueDemo()
         if (how == 2) return setUtteranceIgnored(id, true);
         return confirmUtterance(id, /*asNoisy*/ how == 1);
     };
-    // A munkalista egyes sorai nélkül (a háttér-elemzés eredménye változatlan): ezek a sorok
-    // nem kétesek a pillanatképben.
+    // Without some of the worklist's rows (the background analysis result unchanged): those rows
+    // are not doubtful in the snapshot.
     auto withoutIds = [this](const QSet<QString>& drop, QVector<ReviewView>& views, QVector<EditorUtterance>& utts) {
         views = m_reviewViews;
         for (ReviewView& v : views) {
@@ -274,7 +274,7 @@ void TranscriptEditorViewModel::tryQueueDemo()
         QVector<EditorUtterance> utts;
         withoutIds(drop, views, utts);
         m_queue->startFrom(views, utts);
-        m_queue->syncFromReview();      // a valódi elemzés: a 3 sor a beérkezők közé
+        m_queue->syncFromReview();      // the real analysis: the 3 rows go among the incoming
         jumpToSuggestion();
         decideCurrent(0);
         decideCurrent(1);
@@ -300,7 +300,7 @@ void TranscriptEditorViewModel::tryQueueDemo()
             QVector<ReviewView> views;
             QVector<EditorUtterance> utts;
             withoutIds({ids[1]}, views, utts);
-            m_queue->syncFromReview(views, utts);   // a 2. sor a háttérben „eldőlt"
+            m_queue->syncFromReview(views, utts);   // the 2nd row was "decided" in the background
             m_queue->jumpTo(m_queue->indexOf(ids[1]));
         }
     } else if (state == QLatin1String("reviewFocusSkipped")) {
@@ -310,10 +310,10 @@ void TranscriptEditorViewModel::tryQueueDemo()
         QVector<ReviewView> views;
         QVector<EditorUtterance> utts;
         withoutIds(drop, views, utts);
-        m_queue->syncFromReview(views, utts);   // a sorok a háttérben „magától eldőltek"
+        m_queue->syncFromReview(views, utts);   // the rows were "self-resolved" in the background
         jumpToSuggestion();
     } else if (state == QLatin1String("reviewFocusOffer") || state == QLatin1String("reviewFocusOfferList")) {
-        // A leggyakoribb (ok, jelenlegi, javasolt) hármas sorai; 4 a javaslatra → mintázat.
+        // Rows of the most frequent (reason, current, proposed) triple; 4 to the suggestion -> pattern.
         QHash<QString, QStringList> byTriple;
         QHash<QString, QString> targetOf;
         QString best;

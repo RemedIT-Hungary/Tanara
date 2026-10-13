@@ -1,31 +1,31 @@
 #pragma once
 //
-// PeopleViewModel — a Személyek ablak (design/handoff-people, P01–P06) nézetmodellje.
+// PeopleViewModel: view model of the People window.
 //
-// Bal oldal: `people` (PeopleListModel) — keresés névben ÉS becenévben (ékezet- és
-// kisbetű-független, a névbeli találat kiemelve), rendezés (ABC / legutóbb / legtöbb
-// megbeszélés), szakaszok. Jobb oldal: a kijelölt személy (`selectedName`) adatai:
-// becenevek, megjegyzés, hangminták, megbeszélések.
+// Left side: `people` (PeopleListModel): search in name AND nickname (accent- and
+// case-insensitive, the match in the name highlighted), sorting (alphabetical / recent / most
+// meetings), sections. Right side: the selected person's (`selectedName`) data: nicknames,
+// note, voice samples, meetings.
 //
-// A lista AZONNAL megjelenik (nevek + mintaszám a tárolókból); a megbeszélés-szám, a
-// beszédidő és az „utoljára” a háttérben számolódik (tanara::PeopleStats), és utólag töltődik
-// be (`statsReady`). Minden művelet a tanara::PeopleService-en megy át; a visszavonható
-// lépések után `toast(szöveg, visszavonható)` jelet ad (a QML ~8 mp-ig mutatja).
+// The list appears IMMEDIATELY (names + sample count from the stores); the meeting count,
+// speaking time and "last seen" are computed in the background (tanara::PeopleStats) and
+// load afterwards (`statsReady`). Every action goes through tanara::PeopleService; after
+// undoable steps it emits `toast(text, undoable)` (QML shows it for ~8 s).
 //
-// Címkék a személyen (vault UX-terv 2., 3.2, 7.): a kijelölt személy kézi címkéi
-// (`personTags`), a „Ezeken szokott ott lenni” javaslatok (`tagSuggestions`, mind; a nézet
-// hármat mutat + „+N”), a TagBackend varraton át (TagService). A saját személynél és a
-// „Névtelen N” mintatartónál nincs címke-szakasz (`tagsMode`). A keresés címkére is talál
-// (a találat-sor metája: „címke: #Nordvik”). A címke-műveletek a TagService vermében
-// vonhatók vissza; a Ctrl+Z a két verem közül a frissebbet vonja vissza.
+// Tags on the person: the selected person's manual tags (`personTags`), the "Usually there at
+// these" suggestions (`tagSuggestions`, all of them; the view shows three + "+N"), through
+// the TagBackend seam (TagService). The own person and the "Anonymous N" sample holder have
+// no tag section (`tagsMode`). Search also matches tags (the hit row's meta: "tag: #Nordvik").
+// Tag actions can be undone on the TagService stack; Ctrl+Z undoes the more recent of the
+// two stacks.
 //
-// Minták modellenként: egy minta (testvér-csoport) egy sor; a sor `modelText`-je („2/2
-// modell”) és `modelTip`-je mutatja, melyik használt hangmodellel van lenyomata. Amíg a
-// lenyomat-pótlás fut (`backfillRunning`), a fejléc ezt jelzi.
+// Samples per model: one sample (sibling group) is one row; the row's `modelText` ("2/2
+// models") and `modelTip` show which used voice model has a voiceprint of it. While the
+// voiceprint backfill runs (`backfillRunning`), the header shows it.
 //
-// Controller nélkül (demó, képernyőkép) kitalált személyeket szolgál ki (`demoState`:
-// P01 … P06 és a segéd-állapotok — lásd PeopleWindow.qml); ilyenkor a személy-műveletek nem
-// tesznek semmit, a címke-műveletek a kitalált címkekészleten futnak.
+// Without a controller (demo, screenshot) it serves fictional people (`demoState`:
+// P01 ... P06 and the helper states, see PeopleWindow.qml); then person actions do nothing,
+// and tag actions run on the fictional tag pool.
 //
 #include "PeopleListModel.h"
 
@@ -57,7 +57,7 @@ class PeopleViewModel : public QObject {
     Q_PROPERTY(QObject* controller READ controllerObject WRITE setControllerObject NOTIFY controllerChanged)
     Q_PROPERTY(QString demoState READ demoState WRITE setDemoState NOTIFY demoStateChanged)
 
-    // ---- lista ----
+    // ---- list ----
     Q_PROPERTY(tanara_qml::PeopleListModel* people READ people CONSTANT)
     Q_PROPERTY(QString query READ query WRITE setQuery NOTIFY queryChanged)
     Q_PROPERTY(bool searching READ searching NOTIFY queryChanged)
@@ -66,12 +66,12 @@ class PeopleViewModel : public QObject {
     Q_PROPERTY(QString sortLabel READ sortLabel NOTIFY sortChanged)
     Q_PROPERTY(QString countText READ countText NOTIFY listChanged)
     Q_PROPERTY(int totalCount READ totalCount NOTIFY listChanged)
-    // Csak a saját személy létezik (P06: üres állapot).
+    // Only the own person exists (empty state).
     Q_PROPERTY(bool onlySelf READ onlySelf NOTIFY listChanged)
-    // A megbeszélés-számok / beszédidők megvannak (előtte a sorok csak a mintaszámot mutatják).
+    // Meeting counts / speaking times are available (before that, rows show only the sample count).
     Q_PROPERTY(bool statsReady READ statsReady NOTIFY listChanged)
 
-    // ---- a kijelölt személy ----
+    // ---- the selected person ----
     Q_PROPERTY(QString selectedName READ selectedName WRITE setSelectedName NOTIFY selectionChanged)
     Q_PROPERTY(int selectedRow READ selectedRow NOTIFY listChanged)
     Q_PROPERTY(bool hasSelection READ hasSelection NOTIFY selectionChanged)
@@ -80,16 +80,16 @@ class PeopleViewModel : public QObject {
     Q_PROPERTY(QString detailMeta READ detailMeta NOTIFY detailChanged)
     Q_PROPERTY(QStringList aliases READ aliases NOTIFY detailChanged)
     Q_PROPERTY(QString note READ note NOTIFY detailChanged)
-    // [{ id, kind, icon, label, meetingTitle, date, length, playable }], legújabb elöl
+    // [{ id, kind, icon, label, meetingTitle, date, length, playable }], newest first
     Q_PROPERTY(QVariantList samples READ samples NOTIFY detailChanged)
     Q_PROPERTY(int sampleCount READ sampleCount NOTIFY detailChanged)
     Q_PROPERTY(QString samplesSubText READ samplesSubText NOTIFY detailChanged)
-    // [{ title, date, talk }], legújabb elöl
+    // [{ title, date, talk }], newest first
     Q_PROPERTY(QVariantList meetings READ meetings NOTIFY detailChanged)
     Q_PROPERTY(int meetingCount READ meetingCount NOTIFY detailChanged)
 
-    // ---- hanglenyomat nélküli személy (P03) ----
-    // A terv elkészült-e (a megbeszélések átnézése rövid ideig tart).
+    // ---- person without a voiceprint ----
+    // Whether the plan is ready (reviewing the meetings takes a short while).
     Q_PROPERTY(bool planReady READ planReady NOTIFY planChanged)
     Q_PROPERTY(bool planPossible READ planPossible NOTIFY planChanged)
     Q_PROPERTY(QString planText READ planText NOTIFY planChanged)
@@ -98,30 +98,30 @@ class PeopleViewModel : public QObject {
     Q_PROPERTY(bool creatingVoiceprint READ creatingVoiceprint NOTIFY planChanged)
     Q_PROPERTY(QString creatingText READ creatingText NOTIFY planChanged)
 
-    // ---- lejátszás, visszavonás ----
+    // ---- playback, undo ----
     Q_PROPERTY(QString playingSampleId READ playingSampleId NOTIFY playingChanged)
     Q_PROPERTY(bool canUndo READ canUndo NOTIFY undoChanged)
 
-    // ---- címkék a személyen ----
-    // "edit" (szerkeszthető) | "self" (saját személy: muted magyarázó sor) | "none" (névtelen)
+    // ---- tags on the person ----
+    // "edit" (editable) | "self" (own person: muted explanatory line) | "none" (anonymous)
     Q_PROPERTY(QString tagsMode READ tagsMode NOTIFY personTagsChanged)
-    // [{ id, name }] a felrakás sorrendjében
+    // [{ id, name }] in the order they were added
     Q_PROPERTY(QVariantList personTags READ personTags NOTIFY personTagsChanged)
-    // [{ id, name, countText, toolTip }] — mind; a nézet legfeljebb hármat mutat + „+N”
+    // [{ id, name, countText, toolTip }]: all of them; the view shows at most three + "+N"
     Q_PROPERTY(QVariantList tagSuggestions READ tagSuggestions NOTIFY personTagsChanged)
-    // A javaslat-sor helyén álló muted szöveg („Megbeszélések számolása…” / „A javaslathoz
-    // legalább két megbeszélés kell.”); üres: javaslatok vagy semmi.
+    // Muted text in place of the suggestion row ("Counting meetings..." / "A suggestion needs at
+    // least two meetings."); empty: suggestions or nothing.
     Q_PROPERTY(QString tagHintText READ tagHintText NOTIFY personTagsChanged)
 
-    // ---- tanult sáv-oldal (brief E02 3.) ----
-    // "local" | "remote" | "" (nincs adat) — a „Jellemzően: …” szegmens értéke.
+    // ---- learned track side ----
+    // "local" | "remote" | "" (no data): the value of the "Usually: ..." segment.
     Q_PROPERTY(QString defaultSide READ defaultSide NOTIFY detailChanged)
-    // A forrás a szegmens mellett: „tanult” | „kézzel beállítva” | "" (nincs adat).
+    // The source next to the segment: "learned" | "set manually" | "" (no data).
     Q_PROPERTY(QString defaultSideNote READ defaultSideNote NOTIFY detailChanged)
-    // Látszik-e a sor (nem a saját személy — az ő hangja a mikrofon — és nem a mintatartó).
+    // Whether the row is visible (not the own person, whose voice is the mic, and not the sample holder).
     Q_PROPERTY(bool defaultSideVisible READ defaultSideVisible NOTIFY detailChanged)
 
-    // ---- hangmodellek ----
+    // ---- voice models ----
     Q_PROPERTY(bool backfillRunning READ backfillRunning NOTIFY backfillChanged)
 
 public:
@@ -172,10 +172,10 @@ public:
     QString playingSampleId() const { return m_playingId; }
     bool canUndo() const;
 
-    // ---- műveletek (a visszatérő szöveg hibaüzenet; üres = sikerült) ----
-    // Az ablak megnyitásakor: friss állapot a lemezről + a statisztika frissítése a háttérben.
+    // ---- actions (the returned text is an error message; empty = succeeded) ----
+    // When the window opens: fresh state from disk + the statistics refresh in the background.
     Q_INVOKABLE void refresh();
-    // Kijelölés név szerint (mély hivatkozás): a keresőt is törli, ha a személy nem látszana.
+    // Select by name (deep link): also clears the search if the person would not be visible.
     Q_INVOKABLE bool selectPerson(const QString& name);
     Q_INVOKABLE bool personExists(const QString& name) const;
     Q_INVOKABLE QString addPerson(const QString& name);
@@ -187,32 +187,32 @@ public:
     Q_INVOKABLE void toggleSample(const QString& sampleId);
     Q_INVOKABLE void stopSample();
     Q_INVOKABLE void removeSample(const QString& sampleId);
-    // Áthelyezés létező személyhez, vagy — ha ilyen név nincs — új személy a mintából.
+    // Move to an existing person, or, if no such name exists, a new person from the sample.
     Q_INVOKABLE QString moveSample(const QString& sampleId, const QString& toName);
-    // A minta-áthelyező párbeszéd listája: [{ name, monogram, meta }] (a kijelölt nélkül).
+    // The sample-move dialog's list: [{ name, monogram, meta }] (without the selected one).
     Q_INVOKABLE QVariantList personChoices(const QString& query) const;
 
     Q_INVOKABLE void createVoiceprint();
 
-    // Összevonás: jelöltek hang-hasonlóság szerint: [{ name, monogram, meta, similarity }].
+    // Merge: candidates by voice similarity: [{ name, monogram, meta, similarity }].
     Q_INVOKABLE QVariantList mergeCandidates(const QString& query) const;
-    // Az eredmény-sor (rich text) a kiválasztott jelölttel; keepSelected: a kijelölt neve marad.
+    // The result row (rich text) with the chosen candidate; keepSelected: the selected one's name stays.
     Q_INVOKABLE QString mergeResultText(const QString& other, bool keepSelected) const;
     Q_INVOKABLE QString merge(const QString& other, bool keepSelected);
 
-    // A törlés következményei szövegesen (a jelölőnégyzet állása szerint).
+    // The consequences of deleting, as text (per the checkbox state).
     Q_INVOKABLE QString deleteText(bool keepSamples) const;
     Q_INVOKABLE bool deleteHasSamples() const;
     Q_INVOKABLE QString deletePerson(bool keepSamples);
 
     Q_INVOKABLE void undo();
 
-    // ---- címkék a kijelölt személyen (mind egy-egy visszavonható lépés, toasttal) ----
+    // ---- tags on the selected person (each one an undoable step, with a toast) ----
     QString tagsMode() const { return m_tagsMode; }
     QVariantList personTags() const { return m_personTags; }
     QVariantList tagSuggestions() const { return m_tagSuggestions; }
     QString tagHintText() const { return m_tagHint; }
-    // A mezőből: név (új címke is) vagy id.
+    // From the field: name (a new tag too) or id.
     Q_INVOKABLE void addPersonTag(const QString& nameOrId);
     Q_INVOKABLE void removePersonTag(const QString& tagId);
     Q_INVOKABLE void acceptTagSuggestion(const QString& tagId);
@@ -222,14 +222,14 @@ public:
     QString defaultSide() const { return m_detail.defaultSide; }
     QString defaultSideNote() const;
     bool defaultSideVisible() const;
-    // A sáv-oldal kézi átírása ("local" | "remote" | "" = nincs adat / felejtés).
+    // Manual override of the track side ("local" | "remote" | "" = no data / forget).
     Q_INVOKABLE void setDefaultSide(const QString& side);
-    // Mély hivatkozás egy szakaszra ("tags": a Címkék szakasz) — a nézet odagörget
-    // (sectionRequested). A „Címkéi” javító link így nyitja az ablakot (C4).
+    // Deep link to a section ("tags": the Tags section): the view scrolls there
+    // (sectionRequested). The "Their tags" fix link opens the window this way.
     Q_INVOKABLE void requestSection(const QString& section);
 
     bool backfillRunning() const { return m_backfillRunning; }
-    // Tesztekhez: a címke-adatforrás (nem veszi át); nullptr → a sajátja.
+    // For tests: the tag data source (not taken over); nullptr -> its own.
     void setTagBackend(TagBackend* backend);
 
 signals:
@@ -245,9 +245,9 @@ signals:
     void undoChanged();
     void personTagsChanged();
     void backfillChanged();
-    // Értesítés az ablak alján. undoable: „Visszavonás” gombbal.
+    // Notice at the bottom of the window. undoable: with an "Undo" button.
     void toast(const QString& text, bool undoable);
-    // A nézet görgessen a szakaszhoz ("tags").
+    // The view should scroll to the section ("tags").
     void sectionRequested(const QString& section);
 
 private:
@@ -316,7 +316,7 @@ private:
     bool m_planReady = false;
     bool m_planPossible = false;
     QString m_planText, m_planButton, m_planNote;
-    QString m_planFor;              // kinek a terve
+    QString m_planFor;              // whose plan it is
     QStringList m_planMeetingIds;
     int m_planGeneration = 0;
     bool m_creating = false;
@@ -333,7 +333,7 @@ private:
     QVariantList m_personTags;
     QVariantList m_tagSuggestions;
     QString m_tagHint;
-    // A visszavonási sorrend a két verem között ("people" | "tags"), legújabb a végén.
+    // The undo order between the two stacks ("people" | "tags"), newest last.
     QStringList m_undoOrder;
 
     bool m_backfillRunning = false;

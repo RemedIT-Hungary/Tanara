@@ -60,7 +60,7 @@ bool SettingsWindowHost::ensureWindow()
         connect(m_vm, &SettingsViewModel::saved, this, &SettingsWindowHost::saved);
         connect(m_vm, &SettingsViewModel::themeModeSaved, this, [this](const QString& mode) {
             if (m_persistTheme && m_controller) {
-                // Nincs főablak, amely megjegyezné: a közös ui-state.json-ba írjuk.
+                // There is no main window to remember it: we write to the shared ui-state.json.
                 ShellUiState state;
                 state.setFilePath(QDir(paths::resolveMetadataDir(
                     m_controller->settings()->settings().metadataDir)).filePath(QStringLiteral("ui-state.json")));
@@ -84,8 +84,8 @@ bool SettingsWindowHost::open(const QString& page, const QString& focusField)
 {
     if (!ensureWindow()) return false;
     const bool wasVisible = m_window->isVisible();
-    // Zárt ablak újranyitása: friss állapot a lemezről (közben más is menthetett). Nyitott
-    // ablaknál a piszkozat marad — csak a lap vált.
+    // Reopening a closed window: fresh state from disk (someone else may have saved meanwhile).
+    // With an open window the draft stays; only the page switches.
     if (m_vm && !wasVisible && !m_vm->dirty()) m_vm->reload();
     if (m_vm) m_vm->openPage(page.isEmpty() && !wasVisible ? QStringLiteral("general") : page, focusField);
     m_window->show();

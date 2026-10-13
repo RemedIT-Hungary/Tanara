@@ -97,7 +97,7 @@ QVector<qreal> TrackActivityItem::columns(const QVector<qint8>& frames, qint64 o
         return out;
     const qsizetype n = frames.size();
     for (int x = 0; x < count; ++x) {
-        // Az oszlop megbeszélés-idő tartománya → keret-tartomány (legalább egy keret).
+        // The column's meeting-time range -> frame range (at least one frame).
         const qint64 t0 = qint64(x) * durationMs / count;
         const qint64 t1 = qint64(x + 1) * durationMs / count;
         qint64 a = (t0 - originMs) / frameMs;
@@ -139,7 +139,7 @@ void TrackActivityItem::paint(QPainter* painter)
         m_cacheWidth = count;
         m_cacheRevision = rev;
     }
-    // Csend: vékony alapvonal ott, ahol a sávnak van hangja.
+    // Silence: a thin baseline where the track has audio.
     const qreal base = std::max(1.0, std::round(h * 0.12));
     painter->setBrush(m_quietColor);
     for (int x = 0; x < count;) {
@@ -149,7 +149,7 @@ void TrackActivityItem::paint(QPainter* painter)
         painter->drawRect(QRectF(x, (h - base) / 2.0, e - x, base));
         x = e;
     }
-    // Beszéd: teljes magasság, a beszédes keretek arányában telítve (a rövid szó is látsszon).
+    // Speech: full height, filled in proportion to the speech frames (a short word should show too).
     for (int x = 0; x < count;) {
         const qreal f = m_cols.at(x);
         if (f <= 0) { ++x; continue; }

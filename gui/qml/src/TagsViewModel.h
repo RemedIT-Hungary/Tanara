@@ -1,19 +1,18 @@
 #pragma once
 //
-// TagsViewModel — a Címkék ablak (C08, T10–T13; TagsWindow.qml) nézetmodellje, a
-// PeopleViewModel mintájára.
+// TagsViewModel: view model of the Tags window (TagsWindow.qml), modeled on PeopleViewModel.
 //
-// Bal oldal: `tags` (TagListModel) — keresés a nevekben (ékezet- és kisbetű-független, a
-// találat kiemelve), rendezés (legutóbb használt / ABC / leggyakoribb). Jobb oldal: a
-// kijelölt címke (`selectedId`) tanult profilja (`detail`): résztvevők, kifejezések, együtt
-// járó címkék, megbeszélések. Műveletek: átnevezés, összevonás, törlés — mind visszavonható
-// lépés a backendben; utánuk `toast(szöveg, visszavonható)`.
+// Left side: `tags` (TagListModel): search in names (accent- and case-insensitive, hit
+// highlighted), sorting (recently used / alphabetical / most frequent). Right side: the
+// selected tag's (`selectedId`) learned profile (`detail`): participants, terms,
+// co-occurring tags, meetings. Actions: rename, merge, delete; each an undoable step in the
+// backend; afterwards `toast(text, undoable)`.
 //
-// Személyek (a „Jellemző résztvevők” utódja): a címke kézi viselői + a tanult kapcsolat
-// (≥ küszöb), a számláló szerint; a sorban „címkéje” (×: levétel) vagy „+ Ráteszem” / ×
-// (elutasítás). A saját személy és az elutasított tanult sor kimarad.
+// People (successor of "Typical participants"): the tag's manual wearers + the learned
+// relation (>= threshold), by count; the row has "their tag" (x: remove) or "+ Add" / x
+// (reject). The own person and a rejected learned row are left out.
 //
-// Controller nélkül a kitalált 12 címke; `demoState`: T10 | T11 | T12 | T13 | rename |
+// Without a controller the fictional 12 tags; `demoState`: T10 | T11 | T12 | T13 | rename |
 // people | peopleEmpty | peopleAdd.
 //
 #include "TagListModel.h"
@@ -41,8 +40,8 @@ class TagsViewModel : public QObject {
     // "recent" | "alpha" | "count"
     Q_PROPERTY(QString sort READ sort WRITE setSort NOTIFY sortChanged)
     Q_PROPERTY(QString sortLabel READ sortLabel NOTIFY sortChanged)
-    Q_PROPERTY(int count READ count NOTIFY listChanged)            // látható sorok
-    Q_PROPERTY(int totalCount READ totalCount NOTIFY listChanged)  // a teljes készlet
+    Q_PROPERTY(int count READ count NOTIFY listChanged)            // visible rows
+    Q_PROPERTY(int totalCount READ totalCount NOTIFY listChanged)  // the whole pool
     Q_PROPERTY(QString countText READ countText NOTIFY listChanged)
 
     Q_PROPERTY(QString selectedId READ selectedId WRITE setSelectedId NOTIFY selectionChanged)
@@ -63,7 +62,7 @@ public:
 
     QObject* controller() const { return m_controller; }
     void setController(QObject* controller);
-    void setBackend(TagBackend* backend);           // tesztekhez; nem veszi át
+    void setBackend(TagBackend* backend);           // for tests; not taken over
     TagBackend* backend() const { return m_backend; }
     QString demoState() const { return m_demoState; }
     void setDemoState(const QString& state);
@@ -90,17 +89,17 @@ public:
     QString toastText() const { return m_toastText; }
 
     Q_INVOKABLE QString tagName(const QString& id) const;
-    // Hibaüzenet, vagy üres, ha sikerült.
+    // Error message, or empty if it succeeded.
     Q_INVOKABLE QString rename(const QString& id, const QString& name);
-    // Jelöltek: előbb a hasonló nevűek, aztán a gyakran együtt járók: [{ id, name, meta }].
+    // Candidates: similar names first, then frequent co-occurrers: [{ id, name, meta }].
     Q_INVOKABLE QVariantList mergeCandidates(const QString& id) const;
-    // Az eredmény-sor (StyledText): „Eredmény: <b>16 megbeszélés</b> (1 közös). …”
+    // The result row (StyledText): "Result: <b>16 meetings</b> (1 shared). ..."
     Q_INVOKABLE QString mergeResultText(const QString& fromId, const QString& keepId) const;
     Q_INVOKABLE QString merge(const QString& fromId, const QString& keepId);
     Q_INVOKABLE QString deleteTitle(const QString& id) const;
     Q_INVOKABLE QString deleteText(const QString& id) const;
     Q_INVOKABLE void remove(const QString& id);
-    // Személy-címke a kijelölt címkével (mind visszavonható lépés, utána toast).
+    // Person tag with the selected tag (each an undoable step, then a toast).
     Q_INVOKABLE void addPerson(const QString& name);
     Q_INVOKABLE void removePerson(const QString& name);
     Q_INVOKABLE void rejectPerson(const QString& name);
@@ -139,7 +138,7 @@ private:
     QString m_toastText;
 };
 
-// A határozott névelő egy név elé („a #Nordvik”, „az #Ügyféltámogatás”) — a magyar szövegekhez.
+// The Hungarian definite article before a name ("a #Nordvik", "az #Ugyfeltamogatas"), for the Hungarian texts.
 QString tagArticle(const QString& name);
 
 } // namespace tanara_qml

@@ -23,7 +23,7 @@ LibrarySelectionModel::LibrarySelectionModel(QObject* parent) : QObject(parent)
         m_controller = ctx->controller();
         rebuild();
     });
-    // Demóban a címkék a mintakönyvtárban változnak.
+    // In the demo the tags change in the sample library.
     connect(demo::tagNotifier(), &demo::DemoTagNotifier::changed, this, [this] {
         if (!m_controller) rebuild();
     });
@@ -42,7 +42,7 @@ void LibrarySelectionModel::setLibrary(LibraryListModel* library)
     if (m_library) m_library->disconnect(this);
     m_library = library;
     if (library) {
-        // A sorok (cím, címkék) változása → a panel adatai is frissülnek.
+        // A change of the rows (title, tags) -> the panel's data refreshes too.
         auto refresh = [this] { if (!m_ids.isEmpty()) rebuild(); };
         connect(library, &LibraryListModel::resultChanged, this, refresh);
         connect(library, &QAbstractItemModel::dataChanged, this, refresh);
@@ -63,7 +63,7 @@ void LibrarySelectionModel::toggle(const QString& id)
 {
     if (id.isEmpty()) return;
     QStringList next = m_ids;
-    // Az első Ctrl+kattintás a megnyitott megbeszéléshez ad hozzá.
+    // The first Ctrl+click adds to the open meeting.
     if (next.isEmpty() && !m_currentId.isEmpty() && m_currentId != id)
         next << m_currentId;
     if (next.contains(id))
@@ -87,7 +87,7 @@ void LibrarySelectionModel::rangeTo(const QString& id)
     QStringList next;
     for (int row = std::min(a, b); row <= std::max(a, b); ++row)
         next << m_library->meetingIdAt(row);
-    m_anchor = anchor;     // a következő Shift+kattintás ugyanonnan számol
+    m_anchor = anchor;     // the next Shift+click counts from the same place
     setIds(next);
 }
 
@@ -118,7 +118,7 @@ void LibrarySelectionModel::setIds(const QStringList& ids)
 QStringList LibrarySelectionModel::orderedIds() const
 {
     if (!m_library) return m_ids;
-    // A lista sorrendje (legújabb elöl); ami a szűrés miatt nem látszik, a kezdési idő szerint.
+    // The list's order (newest first); what is not visible due to filtering, by start time.
     QVector<QPair<int, QString>> visible;
     QVector<QPair<QDateTime, QString>> hidden;
     for (const QString& id : m_ids) {
@@ -152,14 +152,14 @@ QStringList LibrarySelectionModel::fullTagIds() const
 void LibrarySelectionModel::rebuild()
 {
     QVariantList items;
-    QStringList order;                       // a címkék első előfordulás szerint
+    QStringList order;                       // the tags by first occurrence
     QHash<QString, QString> names;
     QHash<QString, int> on;
     QStringList alive;
     if (m_library) {
         for (const QString& id : std::as_const(m_ids)) {
             const tanara::LibraryEntry e = m_library->entryFor(id);
-            if (e.id.isEmpty()) continue;    // közben törölték
+            if (e.id.isEmpty()) continue;    // deleted meanwhile
             alive << id;
             QStringList hashed;
             for (int i = 0; i < e.tagIds.size(); ++i) {
@@ -187,7 +187,7 @@ void LibrarySelectionModel::rebuild()
         QString note = full ? tr("mindegyiken rajta van")
                      : n == 1 ? tr("csak egyiken")
                               : tr("%1 megbeszélésen").arg(n);
-        // Az első részleges címke mellett elmondjuk, mit csinál a kattintás.
+        // Next to the first partial tag we say what a click does.
         if (!full && !hinted) {
             note += QStringLiteral(" · ") + tr("kattintásra mindegyikre");
             hinted = true;
@@ -217,7 +217,7 @@ void LibrarySelectionModel::addTagToAll(const QString& nameOrId)
     if (m_controller) {
         tanara::TagService* tags = m_controller->tags();
         if (!tags) return;
-        // A létrehozás és a felrakás együtt egy visszavonható lépés.
+        // Creating and attaching together are one undoable step.
         tanara::Tag t = tags->tag(key);
         tags->beginGroup(tr("Címke hozzáadása %n megbeszéléshez", nullptr, count()));
         if (!t.isValid()) t = tags->create(key);

@@ -21,7 +21,7 @@ QColor parseColor(const QString& hex)
     return c.isValid() ? c : QColor(Qt::black);
 }
 
-// Egy menetnyi doboz-elmosás egy 8 bites alfa-síkon (vízszintes + függőleges).
+// One pass of box blur on an 8-bit alpha plane (horizontal + vertical).
 void boxBlur(std::vector<int>& a, int w, int h, int r)
 {
     if (r <= 0)
@@ -64,8 +64,8 @@ QImage TanaraImageProvider::renderIcon(const QString& name, const QColor& color,
                             << "(gui/qml/icons/ — új ikon: gui/qml/fetch-assets.sh <név>)";
         return img;
     }
-    // A Lucide SVG-k currentColor-ral és 2-es vonalvastagsággal jönnek: a színt és a
-    // vastagságot a forrásban cseréljük (az alfa a festő átlátszóságán megy).
+    // The Lucide SVGs come with currentColor and stroke width 2: we replace the color and the
+    // width in the source (the alpha goes through the painter's opacity).
     QByteArray svg = f.readAll();
     QColor opaque = color;
     opaque.setAlpha(255);
@@ -83,8 +83,8 @@ QImage TanaraImageProvider::renderIcon(const QString& name, const QColor& color,
 
 QImage TanaraImageProvider::renderShadow(int blur, int radius, const QColor& color)
 {
-    // CSS box-shadow megfelelője: a „blur” sugár ≈ 2·szigma. A kép közepe egy pixelnyi
-    // nyújtható sáv; a szél (2·blur + sugár) a BorderImage kerete — lásd TShadow.qml.
+    // Equivalent of CSS box-shadow: the "blur" radius ~ 2*sigma. The image's middle is a
+    // one-pixel stretchable band; the edge (2*blur + radius) is the BorderImage's border; see TShadow.qml.
     blur = std::clamp(blur, 0, 64);
     radius = std::clamp(radius, 0, 64);
     const int edge = 2 * blur + radius;
@@ -105,7 +105,7 @@ QImage TanaraImageProvider::renderShadow(int blur, int radius, const QColor& col
         for (int x = 0; x < side; ++x)
             a[y * side + x] = line[x];
     }
-    // Három doboz-menet ≈ Gauss; blur/2 sugarú dobozzal a szigma ≈ blur/2 (mint a CSS-ben).
+    // Three box passes ~ Gaussian; with a blur/2 radius box the sigma ~ blur/2 (as in CSS).
     const int boxR = std::max(1, blur / 2);
     if (blur > 0)
         for (int pass = 0; pass < 3; ++pass)

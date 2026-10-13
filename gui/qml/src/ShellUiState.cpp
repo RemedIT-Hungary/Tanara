@@ -21,7 +21,7 @@ ShellUiState::ShellUiState(QObject* parent) : QObject(parent)
     m_saveTimer.setInterval(800);
     connect(&m_saveTimer, &QTimer::timeout, this, &ShellUiState::flush);
 
-    // Csak valódi controllerrel van lemez-állapot (a demó / képernyőkép nem ír sehova).
+    // Disk state exists only with a real controller (the demo / screenshot writes nowhere).
     if (tanara::AppController* c = AppContext::instance()->controller()) {
         if (c->settings())
             setFilePath(tanara::paths::metadataFile(QStringLiteral("ui-state.json"),
@@ -59,7 +59,7 @@ QVariant ShellUiState::value(const QString& key, const QVariant& fallback) const
 
 void ShellUiState::setValue(const QString& key, const QVariant& value)
 {
-    // QML-ből JS-objektum / tömb QJSValue-ként érkezik → előbb sima QVariant-tá alakítjuk.
+    // From QML a JS object / array arrives as a QJSValue -> first converted to a plain QVariant.
     const QJsonValue v = QJsonValue::fromVariant(
         value.userType() == qMetaTypeId<QJSValue>() ? value.value<QJSValue>().toVariant() : value);
     if (m_data.value(key) == v)

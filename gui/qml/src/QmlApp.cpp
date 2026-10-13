@@ -24,7 +24,7 @@ Q_LOGGING_CATEGORY(lcQmlApp, "tanara.qml.app")
 
 namespace {
 
-// "--kapcsoló érték" és "--kapcsoló=érték" alak is.
+// Both the "--switch value" and "--switch=value" forms.
 bool takeValue(const QStringList& args, int& i, const QString& name, QString* out)
 {
     const QString& a = args.at(i);
@@ -43,7 +43,7 @@ bool takeValue(const QStringList& args, int& i, const QString& name, QString* ou
 
 QVariant parsePropValue(const QString& text)
 {
-    // JSON (true/false, szám, "szöveg", tömb, objektum) — ha nem az, sima szöveg.
+    // JSON (true/false, number, "text", array, object); if it is not, plain text.
     QJsonParseError err{};
     const QJsonDocument doc = QJsonDocument::fromJson(
         QByteArray("[") + text.toUtf8() + QByteArray("]"), &err);
@@ -103,16 +103,16 @@ QmlOptions parseQmlOptions(const QStringList& args)
 
 void prepareProcess(const QmlOptions& opts)
 {
-    // A vezérlőink Qt Quick Templates-re épülnek; ahol mégis „gyári” vezérlő látszik
-    // (ApplicationWindow, Overlay), az a semleges Basic stílust kapja, ne az asztali témát.
+    // Our controls are built on Qt Quick Templates; where a stock control still shows
+    // (ApplicationWindow, Overlay), it gets the neutral Basic style, not the desktop theme.
     QQuickStyle::setStyle(QStringLiteral("Basic"));
-    // Natív (FreeType/DirectWrite) szövegrajzolás: kis méretben élesebb, és a szoftveres
-    // rendererrel készült képernyőkép így ugyanazt mutatja, mint az élő ablak.
+    // Native (FreeType/DirectWrite) text rendering: sharper at small sizes, and a screenshot
+    // made with the software renderer then shows the same as the live window.
     QQuickWindow::setTextRenderType(QQuickWindow::NativeTextRendering);
 
     if (opts.shotMode()) {
-        // Látható ablak nélkül: offscreen platform + szoftveres (QPainter) renderer. A modul
-        // nem használ shadert (ikon/árnyék a kép-providerből jön), így ez hű képet ad.
+        // Without a visible window: the offscreen platform + software (QPainter) renderer. The module
+        // uses no shaders (icons / shadows come from the image provider), so this gives a faithful image.
         qputenv("QT_QPA_PLATFORM", "offscreen");
         QQuickWindow::setGraphicsApi(QSGRendererInterface::Software);
         if (!qFuzzyCompare(opts.scale, 1.0))
@@ -126,13 +126,13 @@ void applyOptions(const QmlOptions& opts)
     QString theme = opts.theme;
     if (theme.isEmpty())
         theme = qEnvironmentVariable("TANARA_THEME");
-    ctx->setThemeMode(theme);                       // ismeretlen/üres → "system"
+    ctx->setThemeMode(theme);                       // unknown/empty -> "system"
     ctx->setDemo(opts.withoutController());
 }
 
 void setupEngine(QQmlEngine& engine)
 {
-    // IBM Plex Sans / Mono (SIL OFL) — a modul erőforrásaiból, egyszer folyamatonként.
+    // IBM Plex Sans / Mono (SIL OFL): from the module's resources, once per process.
     static bool fontsLoaded = false;
     if (!fontsLoaded) {
         fontsLoaded = true;
@@ -176,8 +176,8 @@ static QQuickWindow* createPage(QQmlEngine& engine, const QString& page,
         qCCritical(lcQmlApp) << page << "se nem ablak, se nem Item — nem jeleníthető meg.";
         return nullptr;
     }
-    // Nem-ablak gyökér (Gallery, egy fül, egy vezérlő…): ApplicationWindow-ba csomagoljuk,
-    // hogy a felugrók (Overlay) és a téma-háttér ugyanúgy működjenek, mint a főablakban.
+    // Non-window root (Gallery, a tab, a control...): wrapped in an ApplicationWindow so that
+    // popups (Overlay) and the theme background work as in the main window.
     QQmlComponent hostComp(&engine);
     hostComp.setData("import QtQuick\nimport QtQuick.Controls\nimport Tanara\n"
                      "ApplicationWindow { color: Theme.bg; font.family: Theme.fontSans; "

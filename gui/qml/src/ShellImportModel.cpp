@@ -35,7 +35,7 @@ QString channelsText(int channels)
 
 ShellImportModel::ShellImportModel(QObject* parent) : QObject(parent)
 {
-    // A cím gépelése közben nem számolunk minden billentyűre.
+    // While typing the title we do not compute on every key.
     m_suggestTimer.setSingleShot(true);
     m_suggestTimer.setInterval(300);
     connect(&m_suggestTimer, &QTimer::timeout, this, &ShellImportModel::refreshSuggestions);
@@ -88,7 +88,7 @@ void ShellImportModel::attach()
         m_running = m_cancelling = false;
         m_importId.clear();
         emit runChanged();
-        reset();   // a következő megnyitás üres űrlappal indul
+        reset();   // the next opening starts with an empty form
         emit imported(m.id);
     });
     connect(c, &tanara::AppController::importFailed, this,
@@ -102,14 +102,14 @@ void ShellImportModel::attach()
     });
     connect(c, &tanara::AppController::importCancelled, this, [this](const QString& id) {
         if (id != m_importId) return;
-        // Megszakítva: az űrlap megmarad, a felhasználó módosíthat és újraindíthatja.
+        // Cancelled: the form stays, the user can edit and restart.
         m_running = m_cancelling = false;
         m_importId.clear();
         emit runChanged();
     });
 }
 
-// ---- a fájlok --------------------------------------------------------------------------
+// ---- the files --------------------------------------------------------------------------
 
 QVariantList ShellImportModel::files() const
 {
@@ -121,7 +121,7 @@ QVariantList ShellImportModel::files() const
         const bool ok = r.probed && r.info.ok;
         m.insert(QStringLiteral("state"), !r.probed ? QStringLiteral("probing")
                                          : ok ? QStringLiteral("ok") : QStringLiteral("error"));
-        // A sorban a fájlnév már ott van: a hibaüzenet végéről ("…: fájlnév") lemarad.
+        // The file name is already in the row: it is dropped from the end of the error message ("...: file name").
         QString problem = r.probed && !r.info.ok ? r.info.error : QString();
         const QString tail = QStringLiteral(": ") + QFileInfo(r.path).fileName();
         if (problem.endsWith(tail)) problem.chop(tail.size());
@@ -166,7 +166,7 @@ QVector<ImportSource> ShellImportModel::sources(QVector<ImportFileInfo>* infos) 
 {
     QVector<ImportSource> out;
     for (const Row& r : m_rows) {
-        if (!r.probed || !r.info.ok) continue;   // a nem importálható fájl kimarad
+        if (!r.probed || !r.info.ok) continue;   // a file that cannot be imported is left out
         out.append({r.path, r.split});
         if (infos) infos->append(r.info);
     }
@@ -277,11 +277,11 @@ void ShellImportModel::setSplit(int row, bool split)
 {
     if (row < 0 || row >= m_rows.size() || m_rows.at(row).split == split) return;
     m_rows[row].split = split;
-    m_ownTrack = -1;   // a sávok sorszáma megváltozott
+    m_ownTrack = -1;   // the tracks' numbering changed
     emit filesChanged();
 }
 
-// A cím és a dátum alapértelmezése a fájlokból — amíg a felhasználó nem írta át.
+// The default title and date from the files, until the user has edited them.
 void ShellImportModel::refreshDefaults()
 {
     if (!m_titleEdited) {
@@ -307,7 +307,7 @@ void ShellImportModel::setTitle(const QString& title)
     m_title = title;
     m_titleEdited = !title.trimmed().isEmpty();
     emit titleChanged();
-    if (!m_titleEdited) refreshDefaults();   // kiürítve visszaáll a fájlnévből számoltra
+    if (!m_titleEdited) refreshDefaults();   // when cleared it reverts to the value computed from the file name
 }
 
 void ShellImportModel::setDateText(const QString& text)
@@ -316,7 +316,7 @@ void ShellImportModel::setDateText(const QString& text)
     m_dateText = text;
     m_dateEdited = true;
     emit dateChanged();
-    emit filesChanged();   // a canStart a dátumtól is függ
+    emit filesChanged();   // canStart depends on the date too
 }
 
 QDateTime ShellImportModel::parseDate(const QString& text)
@@ -347,7 +347,7 @@ QString ShellImportModel::dateHint() const
     return tr("A fájl módosítási idejéből — ha máskor készült, írd át.");
 }
 
-// ---- futás -----------------------------------------------------------------------------
+// ---- run -----------------------------------------------------------------------------
 
 QString ShellImportModel::progressText() const
 {
@@ -420,7 +420,7 @@ void ShellImportModel::setError(const QString& message, const QString& detail)
 
 void ShellImportModel::clearError() { setError(QString()); }
 
-// ---- címkék (C07) ----------------------------------------------------------------------
+// ---- tags ----------------------------------------------------------------------
 
 QVariantList ShellImportModel::tags() const
 {
@@ -460,11 +460,11 @@ bool ShellImportModel::addTag(const QString& name)
     if (m_controller) {
         tanara::TagService* svc = m_controller->tags();
         if (!svc) return false;
-        const tanara::Tag t = svc->create(n);     // létező kulcsnál a meglévő címke
+        const tanara::Tag t = svc->create(n);     // for an existing key, the existing tag
         if (!t.isValid()) return false;
         ref = {t.id, t.name};
     } else {
-        // Demó: a kitalált készlet azonosítói.
+        // Demo: the ids of the fictional pool.
         TagDemoBackend demo(TagDemoBackend::Content::Sample, nullptr);
         for (const TagItem& t : demo.tags())
             if (t.name.compare(n, Qt::CaseInsensitive) == 0) ref = {t.id, t.name};
@@ -474,7 +474,7 @@ bool ShellImportModel::addTag(const QString& name)
         if (t.id == ref.id) return false;
     m_tags.append(ref);
     emit tagsChanged();
-    // A felrakott címke kikerül a javaslatok közül.
+    // An attached tag drops out of the suggestions.
     for (int i = 0; i < m_suggestions.size(); ++i)
         if (m_suggestions.at(i).id == ref.id
             || m_suggestions.at(i).name.compare(ref.name, Qt::CaseInsensitive) == 0) {
@@ -512,7 +512,7 @@ void ShellImportModel::dismissSuggestion(int index)
 void ShellImportModel::refreshSuggestions()
 {
     m_suggestTimer.stop();
-    if (!m_controller) return;                 // demó: a kitalált javaslat marad
+    if (!m_controller) return;                 // demo: the fictional suggestion stays
     QVector<Suggestion> out;
     const QString title = m_title.trimmed();
     if (!title.isEmpty()) {
@@ -531,7 +531,7 @@ void ShellImportModel::refreshSuggestions()
             s.source = t.source == tanara::SuggestionSource::Llm ? QStringLiteral("llm")
                      : t.source == tanara::SuggestionSource::Cooccur ? QStringLiteral("cooccur")
                                                                       : QStringLiteral("similar");
-            // Egy rövid indok: a hasonló cím, különben a közös résztvevő / kifejezés.
+            // A short reason: the similar title, otherwise the shared participant / term.
             for (const tanara::SuggestionReason& r : t.reasons) {
                 if (r.values.isEmpty()) continue;
                 if (r.kind == tanara::ReasonKind::Title) {
@@ -558,7 +558,7 @@ void ShellImportModel::refreshSuggestions()
 void ShellImportModel::applyTags(const QString& meetingId, const QStringList& ids)
 {
     if (!m_controller || ids.isEmpty() || !m_controller->tags()) return;
-    // Közben törölt címke nem kerül fel.
+    // A tag deleted meanwhile is not attached.
     QStringList valid;
     for (const QString& id : ids)
         if (m_controller->tags()->tag(id).isValid()) valid << id;
@@ -566,7 +566,7 @@ void ShellImportModel::applyTags(const QString& meetingId, const QStringList& id
         m_controller->tags()->setTags(meetingId, valid, tanara::TagSource::Manual);
 }
 
-// ---- demó (képernyőkép) ------------------------------------------------------------------
+// ---- demo (screenshot) ------------------------------------------------------------------
 
 void ShellImportModel::setDemoState(const QString& state)
 {
@@ -622,7 +622,7 @@ void ShellImportModel::loadDemo()
                << file(dir + demoText("Fókuszcsoport 3 – kamera.mp4", "Focus group 3 – camera.mp4"), 4570000, 2, 1932000000, true);
     }
     refreshDefaults();
-    // Kitalált címke és javaslat (T09).
+    // Fictional tag and suggestion.
     m_tags.clear();
     m_suggestions.clear();
     m_dismissed.clear();

@@ -1,13 +1,13 @@
 #pragma once
 //
-// SettingsDeviceModel — a Beállítások „Rögzítés” lapjának (B02) eszközlistája: ugyanaz a
-// három csoport és ugyanazok a sorok, mint a felvevőben (kapcsoló, barátságos + nyers név,
-// „alapért.”, 14 szegmenses szintmérő csúcstartással), plusz az eszköz átnevezése.
+// SettingsDeviceModel: the device list of Settings' "Recording" page: the same three groups
+// and rows as in the recorder (toggle, friendly + raw name, "default", 14-segment level
+// meter with peak hold), plus renaming the device.
 //
-// A kapcsolók az „alapértelmezett források” piszkozatát állítják (a felvevővel közös
-// kijelölés, state.json), a nevek a piszkozat `deviceNames` tábláját — mindkettő a
-// SettingsViewModel mentésekor érvényesül. A szint a core szintfigyeléséből jön
-// (AppController::deviceLevelPeak), a skála a felvevőé (RecorderViewModel::levelSegments).
+// The toggles set the "default sources" draft (selection shared with the recorder,
+// state.json), the names the draft's `deviceNames` table; both take effect when the
+// SettingsViewModel saves. The level comes from the core's level monitoring
+// (AppController::deviceLevelPeak), the scale is the recorder's (RecorderViewModel::levelSegments).
 //
 #include "tanara/Types.h"
 
@@ -26,17 +26,17 @@ class SettingsDeviceModel : public QAbstractListModel {
     QML_ANONYMOUS
 public:
     enum Role {
-        KeyRole = Qt::UserRole + 1,   // a nyers OS-eszköznév (stabil kulcs)
-        NameRole,                     // megjelenített név (a felhasználóé vagy a rövidített)
+        KeyRole = Qt::UserRole + 1,   // the raw OS device name (stable key)
+        NameRole,                     // display name (the user's or the abbreviated one)
         RawNameRole,
-        DefaultNameRole,              // a rövidített gyári név (az átnevezés visszavonásához)
-        RenamedRole,                  // a felhasználó adott neki nevet
-        GroupRole,                    // 0 mikrofon · 1 hangkimenet · 2 egyéb bemenet
+        DefaultNameRole,              // the abbreviated factory name (to undo a rename)
+        RenamedRole,                  // the user gave it a name
+        GroupRole,                    // 0 microphone, 1 audio output, 2 other input
         GroupFirstRole,
-        SelectedRole,                 // alapértelmezett forrás
-        DefaultRole,                  // a rendszer alapértelmezett eszköze
-        LevelRole,                    // 0..14 szegmens
-        PeakRole,                     // csúcstartás szegmens-indexe (-1 = nincs)
+        SelectedRole,                 // default source
+        DefaultRole,                  // the system's default device
+        LevelRole,                    // 0..14 segments
+        PeakRole,                     // peak-hold segment index (-1 = none)
     };
 
     explicit SettingsDeviceModel(SettingsViewModel* vm);
@@ -45,15 +45,15 @@ public:
     QVariant data(const QModelIndex& index, int role) const override;
     QHash<int, QByteArray> roleNames() const override;
 
-    // Az eszközök újraolvasása a core-ból (vagy a demó-lista), a piszkozat neveivel.
+    // Re-reads the devices from the core (or the demo list), with the draft's names.
     void rebuild();
-    // A nevek / kijelölés a piszkozatból változott (eldobás, külső mentés).
+    // The names / selection changed from the draft (discard, external save).
     void refreshFromDraft();
     void toggle(int row);
     void rename(int row, const QString& name);
     void onLevel(const QString& deviceName, float rms, float peak);
     void setTicking(bool on);
-    // A jelen lévő eszközök nyers nevei (a mentés ezekre írja felül a kijelölést).
+    // The raw names of the present devices (saving overwrites the selection with these).
     QStringList presentNames() const;
 
 private:

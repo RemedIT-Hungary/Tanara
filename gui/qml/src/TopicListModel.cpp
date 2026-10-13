@@ -171,7 +171,7 @@ void TopicListModel::bind(AppController* controller, const QString& meetingId)
     const bool meetingChanged = meetingId != m_meetingId;
     m_meetingId = meetingId;
     if (meetingChanged) {
-        // Másik meeting: a sorok nem feleltethetők meg egymásnak → teljes csere.
+        // Another meeting: the rows cannot be matched up -> full replacement.
         beginResetModel();
         m_items.clear();
         endResetModel();
@@ -215,14 +215,14 @@ void TopicListModel::sync()
     };
 
     if (fresh.size() == m_items.size() && sameIds(fresh, m_items, int(fresh.size()))) {
-        // Azonos sorrend: csak a változott sorok jeleznek.
+        // Same order: only the changed rows signal.
         for (int i = 0; i < fresh.size(); ++i) {
             if (fresh[i] == m_items[i]) continue;
             m_items[i] = fresh[i];
             emit dataChanged(index(i), index(i));
         }
     } else if (fresh.size() > m_items.size() && sameIds(fresh, m_items, int(m_items.size()))) {
-        // A végére került új téma (hozzáadás / javaslat).
+        // A new topic at the end (add / suggestion).
         for (int i = 0; i < m_items.size(); ++i) {
             if (fresh[i] == m_items[i]) continue;
             m_items[i] = fresh[i];
@@ -267,7 +267,7 @@ bool TopicListModel::addTopic(const QString& title, const QString& summary)
     topic.summary = summary.trimmed();
     if (m_controller && !m_meetingId.isEmpty()) {
         QVector<SummaryTopic> list = topicList();
-        list.append(topic);                               // az azonosítót a core adja
+        list.append(topic);                               // the core provides the id
         m_controller->setMeetingTopics(m_meetingId, list);
         return true;
     }
@@ -311,7 +311,7 @@ void TopicListModel::removeTopic(int row)
 {
     if (row < 0 || row >= m_items.size())
         return;
-    // A futó / sorban álló elemzést előbb leállítjuk — a törölt témára ne menjen hívás.
+    // The running / queued analysis is stopped first, so no call goes to the deleted topic.
     if (m_controller && (m_items[row].state == TopicState::Running
                          || m_items[row].state == TopicState::Queued))
         m_controller->cancelTopicAnalysis(m_meetingId, m_items[row].topic.id);
@@ -325,7 +325,7 @@ void TopicListModel::moveTopic(int from, int to)
 {
     if (from < 0 || from >= m_items.size() || to < 0 || to >= m_items.size() || from == to)
         return;
-    // A Qt beginMoveRows cél-indexe „a sor elé” értendő → lefelé mozgatásnál +1.
+    // Qt's beginMoveRows destination index means "before the row" -> +1 when moving down.
     beginMoveRows(QModelIndex(), from, from, QModelIndex(), to > from ? to + 1 : to);
     m_items.move(from, to);
     endMoveRows();
@@ -344,7 +344,7 @@ QString TopicListModel::topicIdAt(int row) const
     return row >= 0 && row < m_items.size() ? m_items[row].topic.id : QString();
 }
 
-// Kitalált mintaadat (M08).
+// Fictional sample data.
 void TopicListModel::loadDemo()
 {
     for (const QMetaObject::Connection& c : std::as_const(m_connections))

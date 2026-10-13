@@ -1,14 +1,15 @@
 #pragma once
 //
-// ShellMeetingModel — a kijelölt megbeszélés héj-szintű állapota: fejléc (cím, meta-sor),
-// van-e átirata (→ fülek vagy az átirat előtti nézet), elavult-e az összefoglalója (→ pirula
-// a fülön), és a rajta futó megszakítható feladatok a feladat-sávhoz (MeetingJobTracker).
-// Controller nélkül (App.demo) a kitalált mintakönyvtárból dolgozik.
+// ShellMeetingModel: the selected meeting's shell-level state: header (title, meta line),
+// whether it has a transcript (-> tabs or the pre-transcript view), whether its summary is
+// stale (-> pill on the tab), and its cancelable running tasks for the task bar
+// (MeetingJobTracker). Without a controller (App.demo) it works from the fictional sample library.
 //
-// A fejléc címkesora (TagRow) a `tags` modellt kapja: a kijelölt megbeszélés címkéi és
-// javaslatai. Javaslatot kér, amikor egy átírt megbeszélés megjelenik és amikor az átirata
-// (újra) elkészül; az együtt járókat a címke felrakása után a MeetingTagsModel kéri, az LLM-
-// javaslat az összefoglaló után magától jön. Demóban a kitalált címke-készlet (demoState a QML-ből).
+// The header's tag row (TagRow) gets the `tags` model: the selected meeting's tags and
+// suggestions. It requests a suggestion when a transcribed meeting appears and when its
+// transcript is (re)made; co-occurring ones are requested by MeetingTagsModel after a tag is
+// attached; the LLM suggestion comes by itself after the summary. In the demo the fictional
+// tag pool (demoState from QML).
 //
 #include "MeetingTagsModel.h"
 
@@ -32,27 +33,27 @@ class ShellMeetingModel : public QObject {
     Q_PROPERTY(QString meetingId READ meetingId WRITE setMeetingId NOTIFY meetingIdChanged)
     Q_PROPERTY(bool exists READ exists NOTIFY changed)
     Q_PROPERTY(QString title READ title NOTIFY changed)
-    // „2026. okt. 1. · 1:16:04 · 6 beszélő” (átirat nélkül a sávok száma).
+    // "Oct 1, 2026 · 1:16:04 · 6 speakers" (without a transcript the track count).
     Q_PROPERTY(QString metaText READ metaText NOTIFY changed)
     Q_PROPERTY(bool hasTranscript READ hasTranscript NOTIFY changed)
     Q_PROPERTY(bool summaryStale READ summaryStale NOTIFY changed)
-    // Van-e (gyors vagy témánkénti) összefoglalója — a Vezetői összefoglaló / Memó fül elérhető-e.
+    // Whether it has a (quick or per-topic) summary: whether the Executive summary / Memo tab is available.
     Q_PROPERTY(bool hasSummary READ hasSummary NOTIFY changed)
-    // Futó átírás / összefoglaló a fülek pirulájához: -1 = nem fut; különben 0…100
-    // (határozatlan haladásnál 0).
+    // Running transcription / summary for the tabs' pills: -1 = not running; otherwise 0..100
+    // (0 for indeterminate progress).
     Q_PROPERTY(int transcribePercent READ transcribePercent NOTIFY tasksChanged)
     Q_PROPERTY(int summarizePercent READ summarizePercent NOTIFY tasksChanged)
-    // Az összefoglaló szolgáltatója („LM Studio · saját kulcs”) — a fül tooltip-panelje mondja.
+    // The summary's provider ("LM Studio · own key"): the tab's tooltip panel says it.
     Q_PROPERTY(QString summaryProviderLabel READ summaryProviderLabel NOTIFY changed)
-    // Van-e legalább egy aktív hangsáv (az azonosítás előfeltétele).
+    // Whether there is at least one active audio track (the precondition of identification).
     Q_PROPERTY(bool canIdentify READ canIdentify NOTIFY changed)
     Q_PROPERTY(bool identifyRunning READ identifyRunning NOTIFY tasksChanged)
-    // A feladat-sáv sorai: [{ kind, title, detail, eta, iconName, percent (0…100 | -1),
+    // The task bar's rows: [{ kind, title, detail, eta, iconName, percent (0..100 | -1),
     //                        cancellable, cancelling }]
     Q_PROPERTY(QVariantList tasks READ tasks NOTIFY tasksChanged)
-    // A fejléc címkesorának modellje (a kijelölt megbeszéléshez kötve).
+    // The header tag row's model (bound to the selected meeting).
     Q_PROPERTY(tanara_qml::MeetingTagsModel* tags READ tags CONSTANT)
-    // Csak demó / képernyőkép: egy minta-feladat a sávban.
+    // Demo / screenshot only: a sample task in the bar.
     Q_PROPERTY(bool demoTask READ demoTask WRITE setDemoTask NOTIFY tasksChanged)
 
 public:
@@ -78,7 +79,7 @@ public:
     void setDemoTask(bool on);
     MeetingTagsModel* tags() const { return m_tags; }
 
-    // Egy futó feladat sávbeli leírása (statikus: tesztelhető).
+    // A running task's description in the bar (static: testable).
     static QVariantMap describeJob(const tanara::JobProgress& job);
 
 signals:
@@ -113,7 +114,7 @@ private:
     QVariantList m_tasks;
 
     MeetingTagsModel* m_tags = nullptr;
-    QString m_tagsRequestedFor;   // erre a megbeszélésre már kértünk javaslatot (kijelölésenként egyszer)
+    QString m_tagsRequestedFor;   // a suggestion was already requested for this meeting (once per selection)
 };
 
 } // namespace tanara_qml

@@ -1,11 +1,11 @@
 #pragma once
 //
-// TagsWindowHost — a QML Címkék-ablak (TagsWindow.qml) C++ gazdája (a PeopleWindowHost mintájára).
+// TagsWindowHost: the C++ host of the QML Tags window (TagsWindow.qml), modeled on PeopleWindowHost.
 //
-// Egy folyamatban EGY példány elég: a főalkalmazásban a QmlShellBridge hozza létre
-// (ShellActions.openTags → open()). Saját QML-motorral dolgozik, a téma az `App` singletonon át
-// közös. Az ablak nem modális; a „Megnyitás a könyvtárban szűrőként” és a megbeszélés-linkek a
-// főablakhoz mennek (openInLibraryRequested / meetingRequested — a híd köti a héjhoz).
+// ONE instance per process is enough: in the main application QmlShellBridge creates it
+// (ShellActions.openTags -> open()). It uses its own QML engine, the theme is shared through
+// the `App` singleton. The window is non-modal; "Show in library as a filter" and the meeting
+// links go to the main window (openInLibraryRequested / meetingRequested; the bridge ties them to the shell).
 //
 #include <QObject>
 #include <QPointer>
@@ -29,22 +29,22 @@ public:
     explicit TagsWindowHost(tanara::AppController* controller, QObject* parent = nullptr);
     ~TagsWindowHost() override;
 
-    // Az ablak megnyitása / előtérbe hozása; tagId: ez a címke legyen kijelölve (üres: a korábbi
-    // kijelölés marad). false: QML-hiba.
+    // Opens / raises the window; tagId: select this tag (empty: the earlier selection stays).
+    // False: QML error.
     bool open(const QString& tagId = QString());
     void closeNow();
     bool isVisible() const;
     QQuickWindow* window() const;
     TagsViewModel* viewModel() const;
 
-    // Az ablak ehhez tartozzon az ablakkezelő szerint.
+    // The window should belong to this one per the window manager.
     void setTransientParent(QWindow* parent);
 
 signals:
     void closed();
     void openInLibraryRequested(const QString& tagId);
     void meetingRequested(const QString& meetingId);
-    // A Személyek-lista sorára kattintott: a Személyek ablak nyíljon ezen a személyen.
+    // A People-list row was clicked: the People window should open on this person.
     void personRequested(const QString& name);
 
 private:

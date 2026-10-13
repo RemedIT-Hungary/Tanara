@@ -1,22 +1,21 @@
 #pragma once
 //
-// MeetingTagsModel — egy megbeszélés címkesora (C03/C04, TagRow.qml) és „Miért?” panelje
-// (TagWhyPopover.qml).
+// MeetingTagsModel: a meeting's tag row (TagRow.qml) and "Why?" panel (TagWhyPopover.qml).
 //
-// tags: a felrakott címkék; suggestions: a még el nem fogadott, el nem utasított javaslatok
-// (a backend legutóbbi eredményéből szűrve: ami már rajta van vagy elutasított, kiesik — így a
-// visszavonás után magától visszajön). Elfogadás / elutasítás / „Mind” / eltávolítás egy-egy
-// visszavonható lépés, a lépés neve (undoLabel) a toast szövege is.
+// tags: the attached tags; suggestions: the not-yet-accepted, not-rejected suggestions
+// (filtered from the backend's latest result: what is already on it or rejected drops out, so
+// after an undo it comes back by itself). Accept / reject / "All" / remove are one undoable
+// step each; the step's name (undoLabel) is also the toast text.
 //
-// Kézi hozzáadás után a backendtől együtt járó javaslatot kér („<Címke> mellé gyakran”).
+// After a manual add, it asks the backend for a co-occurring suggestion ("often with <tag>").
 //
-// Cím alapú tartalék (draftTitle, A2): ha a gazda megadja a megbeszélés címét (az Áttekintés
-// átírás előtt), és a backendnek nincs rendes javaslata (és nem is számol), a cím alapján
-// javasol (TagBackend::draftSuggestions; a felrakottak és az elutasítottak nélkül, legfeljebb 3),
-// suggestionSource = "title", felirat „A cím alapján”. Elfogadás / elutasítás ugyanúgy megy.
+// Title-based fallback (draftTitle): if the host gives the meeting's title (the Overview
+// before a transcript) and the backend has no regular suggestion (and is not computing), it
+// suggests from the title (TagBackend::draftSuggestions; without attached and rejected
+// ones, at most 3), suggestionSource = "title", label "Based on the title". Accept / reject work the same.
 //
-// Controller nélkül a kitalált készlet; `demoState` a T01 C03–C04 sorai:
-// none | few | many | computing | similar | cooccur | llm, és why (a T02 panel adatai).
+// Without a controller the fictional pool; `demoState` is the T01 rows:
+// none | few | many | computing | similar | cooccur | llm, and why (the T02 panel's data).
 //
 #include <QObject>
 #include <QPointer>
@@ -36,17 +35,17 @@ class MeetingTagsModel : public QObject {
     Q_PROPERTY(QObject* controller READ controller WRITE setController NOTIFY controllerChanged)
     Q_PROPERTY(QString meetingId READ meetingId WRITE setMeetingId NOTIFY meetingIdChanged)
     Q_PROPERTY(QString demoState READ demoState WRITE setDemoState NOTIFY demoStateChanged)
-    // A cím alapú tartalék-javaslathoz a megbeszélés címe ("" = nincs tartalék).
+    // The meeting's title for the title-based fallback suggestion ("" = no fallback).
     Q_PROPERTY(QString draftTitle READ draftTitle WRITE setDraftTitle NOTIFY draftTitleChanged)
-    // [{ id, name }] a megbeszélés sorrendjében
+    // [{ id, name }] in the meeting's order
     Q_PROPERTY(QVariantList tags READ tags NOTIFY tagsChanged)
     Q_PROPERTY(QStringList tagIds READ tagIds NOTIFY tagsChanged)
     // [{ id, name, isNew, source }]
     Q_PROPERTY(QVariantList suggestions READ suggestions NOTIFY suggestionsChanged)
-    // "Javasolt" | "<Címke> mellé gyakran" | "Az összefoglaló alapján" | "A cím alapján"
-    // ("" ha nincs javaslat)
+    // "Suggested" | "Often with <tag>" | "Based on the summary" | "Based on the title"
+    // ("" if no suggestion)
     Q_PROPERTY(QString suggestionLabel READ suggestionLabel NOTIFY suggestionsChanged)
-    // "similar" | "cooccur" | "llm" | "title" (cím alapú tartalék) | ""
+    // "similar" | "cooccur" | "llm" | "title" (title-based fallback) | ""
     Q_PROPERTY(QString suggestionSource READ suggestionSource NOTIFY suggestionsChanged)
     Q_PROPERTY(bool computing READ computing NOTIFY suggestionsChanged)
     Q_PROPERTY(bool canUndo READ canUndo NOTIFY undoChanged)
@@ -57,7 +56,7 @@ public:
 
     QObject* controller() const { return m_controller; }
     void setController(QObject* controller);
-    void setBackend(TagBackend* backend);           // tesztekhez; nem veszi át
+    void setBackend(TagBackend* backend);           // for tests; not taken over
     TagBackend* backend() const { return m_backend; }
 
     QString meetingId() const { return m_meetingId; }
@@ -77,10 +76,10 @@ public:
     QString undoLabel() const { return m_backend ? m_backend->undoLabel() : QString(); }
 
     const QVector<TagSuggestionItem>& visibleSuggestions() const { return m_visible; }
-    // A ténylegesen használt megbeszélés-azonosító (demóban üres helyett a demó-megbeszélés).
+    // The meeting id actually used (in the demo the demo meeting instead of empty).
     QString effectiveMeetingId() const;
 
-    // Név (vagy id) hozzáadása kézzel; visszaadja az id-t.
+    // Adds a name (or id) manually; returns the id.
     Q_INVOKABLE QString add(const QString& nameOrId);
     Q_INVOKABLE void remove(const QString& tagId);
     Q_INVOKABLE void accept(int index);
@@ -88,7 +87,7 @@ public:
     Q_INVOKABLE void acceptAll();
     Q_INVOKABLE void undo();
     Q_INVOKABLE void requestSuggestions();
-    // A „Miért?” panel: [{ index, id, name, isNew, source,
+    // The "Why?" panel: [{ index, id, name, isNew, source,
     //   reasons: [{ kind, values, label, text }], similarMeetings: [{ meetingId, title, dateText }] }]
     Q_INVOKABLE QVariantList whyData() const;
     Q_INVOKABLE QString tagName(const QString& tagId) const;
@@ -101,7 +100,7 @@ signals:
     void tagsChanged();
     void suggestionsChanged();
     void undoChanged();
-    // Értesítés a lépés után (a héj mutatja „Visszavonás”-sal).
+    // Notice after the step (the shell shows it with "Undo").
     void toast(const QString& text, bool undoable);
 
 private:

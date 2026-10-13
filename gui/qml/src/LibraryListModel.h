@@ -1,17 +1,17 @@
 #pragma once
 //
-// LibraryListModel — a könyvtár-oldalsáv listamodellje a core MeetingLibrary fölött.
+// LibraryListModel: list model of the library sidebar over the core MeetingLibrary.
 //
-//  - Sorok: megbeszélések legújabb elöl; dátum-szekció, cím, meta („okt. 2. · 30 p”), a
-//    három állapot-ikon kulcsa (done | running | error | stale | missing) + buboréksúgó,
-//    keresésnél a cím- és átirat-találat három darabban (előtte / találat / utána).
-//  - Lekérdezés: searchText (késleltetve fut), noTranscript, noSummary, people, címkék
-//    (tags = azonosítók, tagsAll = ÉS / különben VAGY, untagged = címke nélküliek).
-//  - Címkék a sorban: a harmadik sor szövege („#Nordvik  #Partnerek  +1”), keresésnél a
-//    címke-találat („címke: #Nordvik”); a szűrő-popover listája (tagOptions, untaggedCount).
-//  - Frissítés: a MeetingLibrary jeleire INKREMENTÁLISAN (egy sor dataChanged / beszúrás /
-//    törlés); teljes reset csak akkor, ha a találatlista szerkezete megváltozott.
-//  - Controller nélkül (App.demo) a kitalált mintakönyvtárból dolgozik (LibraryDemoData).
+//  - Rows: meetings newest first; date section, title, meta ("Oct 2 · 30 min"), the key of the
+//    three state icons (done | running | error | stale | missing) + tooltip, for a search
+//    the title and transcript hit in three pieces (before / hit / after).
+//  - Query: searchText (runs delayed), noTranscript, noSummary, people, tags (tags = ids,
+//    tagsAll = AND / otherwise OR, untagged = those without a tag).
+//  - Tags on the row: the third line's text ("#Nordvik  #Partners  +1"), for a search the
+//    tag hit ("tag: #Nordvik"); the filter popover's list (tagOptions, untaggedCount).
+//  - Refresh: on the MeetingLibrary's signals INCREMENTALLY (one row dataChanged / insert /
+//    remove); a full reset only if the hit list's structure changed.
+//  - Without a controller (App.demo) it works from the fictional sample library (LibraryDemoData).
 //
 #include "tanara/library/MeetingLibrary.h"
 
@@ -36,23 +36,23 @@ class LibraryListModel : public QAbstractListModel {
     Q_PROPERTY(bool noTranscript READ noTranscript WRITE setNoTranscript NOTIFY queryChanged)
     Q_PROPERTY(bool noSummary READ noSummary WRITE setNoSummary NOTIFY queryChanged)
     Q_PROPERTY(QStringList people READ people WRITE setPeople NOTIFY queryChanged)
-    // Van-e bármilyen szűrés (keresés vagy chip) — ekkor nincs dátum-szekció, van találatszám.
+    // Whether any filtering is on (search or chip): then there are no date sections, and a hit count shows.
     Q_PROPERTY(bool filtered READ filtered NOTIFY queryChanged)
     Q_PROPERTY(int count READ count NOTIFY countChanged)
-    // A könyvtár teljes mérete szűrés nélkül (0 → üres könyvtár, M01).
+    // The library's total size without filtering (0 -> empty library).
     Q_PROPERTY(int totalCount READ totalCount NOTIFY countChanged)
     Q_PROPERTY(QString resultText READ resultText NOTIFY resultChanged)
     Q_PROPERTY(QStringList tags READ tags WRITE setTags NOTIFY queryChanged)
     Q_PROPERTY(bool tagsAll READ tagsAll WRITE setTagsAll NOTIFY queryChanged)
     Q_PROPERTY(bool untagged READ untagged WRITE setUntagged NOTIFY queryChanged)
-    // A kiválasztott címke-szűrők chipjei: [{ id, name }] (a tags sorrendjében).
+    // The selected tag filters' chips: [{ id, name }] (in tags order).
     Q_PROPERTY(QVariantList tagFilterItems READ tagFilterItems NOTIFY tagFilterItemsChanged)
-    // A szűrő-popover címkéi: [{ id, name, count }], gyakoriság (azonos számnál ABC) szerint.
+    // The filter popover's tags: [{ id, name, count }], by frequency (alphabetical on a tie).
     Q_PROPERTY(QVariantList tagOptions READ tagOptions NOTIFY tagOptionsChanged)
     Q_PROPERTY(int untaggedCount READ untaggedCount NOTIFY tagOptionsChanged)
-    // A „+ Szűrő” menü személyei: [{ name, count, colorIndex }], gyakoriság szerint.
+    // The "+ Filter" menu's people: [{ name, count, colorIndex }], by frequency.
     Q_PROPERTY(QVariantList peopleOptions READ peopleOptions NOTIFY peopleOptionsChanged)
-    // Csak demó / képernyőkép: az üres könyvtár (M01) kikényszerítése.
+    // Demo / screenshot only: forces the empty library.
     Q_PROPERTY(bool forceEmpty READ forceEmpty WRITE setForceEmpty NOTIFY forceEmptyChanged)
 
 public:
@@ -60,14 +60,14 @@ public:
         MeetingIdRole = Qt::UserRole + 1,
         TitleRole,
         MetaRole,
-        SectionRole,            // szekció-cím („Ma”…); szűrt listában üres
+        SectionRole,            // section title ("Today"...); empty in a filtered list
         TranscriptStateRole,
         SummaryStateRole,
         IdentifyStateRole,
         TranscriptTipRole,
         SummaryTipRole,
         IdentifyTipRole,
-        TitleBeforeRole,        // a cím három darabban (találat nélkül: csak az „after”)
+        TitleBeforeRole,        // the title in three pieces (without a hit: only "after")
         TitleMatchRole,
         TitleAfterRole,
         SnippetBeforeRole,
@@ -75,16 +75,16 @@ public:
         SnippetAfterRole,
         SnippetMsRole,
         HasSnippetRole,
-        TagIdsRole,             // QStringList, a megbeszélés sorrendjében
-        TagNamesRole,           // QStringList, ugyanabban a sorrendben
-        TagLineRole,            // a harmadik sor darabjai: ["#Nordvik", "#Partnerek", "+1"]
-        TagMatchRole,           // a keresés egy címke nevében talált
-        TagMatchNameRole,       // a találó címke neve
+        TagIdsRole,             // QStringList, in the meeting's order
+        TagNamesRole,           // QStringList, in the same order
+        TagLineRole,            // the third line's pieces: ["#Nordvik", "#Partners", "+1"]
+        TagMatchRole,           // the search matched in a tag's name
+        TagMatchNameRole,       // the matching tag's name
     };
 
     explicit LibraryListModel(QObject* parent = nullptr);
 
-    // A controller alapból az App-singletoné; tesztben injektálható.
+    // The controller defaults to the App singleton's; injectable in tests.
     void setController(tanara::AppController* controller);
 
     int rowCount(const QModelIndex& parent = {}) const override;
@@ -114,10 +114,10 @@ public:
     QString resultText() const;
     QVariantList peopleOptions() const;
 
-    // Egy megbeszélés bejegyzése a szűréstől függetlenül (a tömeges kijelölés panelje ebből
-    // dolgozik): controllerrel a MeetingLibrary-ből, demóban a mintakönyvtárból.
+    // A meeting's entry regardless of filtering (the bulk selection's panel works from this):
+    // with a controller from the MeetingLibrary, in the demo from the sample library.
     tanara::LibraryEntry entryFor(const QString& meetingId) const;
-    // A sor harmadik sora: annyi „#Név”, amennyi ~24 karakterbe fér, utána „+N”.
+    // The row's third line: as many "#Name" as fit in ~24 characters, then "+N".
     static QStringList tagLine(const QStringList& names);
     bool forceEmpty() const { return m_forceEmpty; }
     void setForceEmpty(bool on);
@@ -132,19 +132,19 @@ public:
     Q_INVOKABLE void removeTag(const QString& tagId);
     Q_INVOKABLE void toggleTag(const QString& tagId);
     Q_INVOKABLE QString tagName(const QString& tagId) const;
-    // A popover címkéi a keresőmező szerint (ékezet- és kisbetű-független részszó).
+    // The popover's tags by the search box (accent- and case-insensitive substring).
     Q_INVOKABLE QVariantList tagOptionsMatching(const QString& text) const;
-    // A személy állandó színindexe a chiphez (a peopleOptions sorrendje szerint).
+    // The person's constant color index for the chip (per the peopleOptions order).
     Q_INVOKABLE int personColorIndex(const QString& name) const;
-    // Az átirat-szövegek előtöltése a kereséshez (a keresőmező fókuszakor).
+    // Preloads the transcript texts for searching (when the search box gets focus).
     Q_INVOKABLE void warmUp();
-    // A függő (késleltetett) lekérdezés azonnali lefuttatása.
+    // Runs the pending (delayed) query immediately.
     Q_INVOKABLE void refreshNow();
 
 signals:
     void queryChanged();
     void countChanged();
-    void resultChanged();          // lefutott egy lekérdezés (a találat-szöveg változhatott)
+    void resultChanged();          // a query ran (the hit text may have changed)
     void peopleOptionsChanged();
     void tagOptionsChanged();
     void tagFilterItemsChanged();
@@ -159,14 +159,14 @@ private:
     tanara::MeetingLibrary* library() const;
 
     QPointer<tanara::AppController> m_controller;
-    QPointer<tanara::MeetingLibrary> m_library;     // amelyikre épp rá vagyunk kötve
+    QPointer<tanara::MeetingLibrary> m_library;     // the one we are currently bound to
     bool m_controllerInjected = false;
     tanara::LibraryQuery m_query;
     QVector<tanara::LibraryEntry> m_entries;
     int m_total = 0;
     bool m_forceEmpty = false;
     QTimer m_refreshTimer;
-    QTimer m_dayTimer;      // a dátum-szekciók (ma / tegnap) napváltáskor is frissüljenek
+    QTimer m_dayTimer;      // the date sections (today / yesterday) should refresh on a day change too
 };
 
 } // namespace tanara_qml

@@ -1,22 +1,21 @@
 #pragma once
 //
-// SettingsProviderModel — egy szolgáltató-kártya (B04 / B05) a Beállítások „Szolgáltatások”
-// lapján: „Átírás (STT)”, „Összefoglaló (LLM)” vagy a „Beágyazás” (embedding, C09) helyi
-// végpontjának mezői (ezt a SettingsEmbeddingModel fogja össze).
+// SettingsProviderModel: one provider card in Settings > Services: the local endpoint's
+// fields for "Transcription (STT)", "Summary (LLM)" or "Embedding" (SettingsEmbeddingModel
+// ties that one together).
 //
-// C09: a már beállított szerep egysoros, összecsukott kártyaként jelenik meg (`configured`,
-// `expanded`, `summaryText`); kattintásra nyílik. A mély hivatkozás (focusField) és a hibás
-// kapcsolat-teszt mindig kinyitja.
+// An already configured role shows as a one-line, collapsed card (`configured`,
+// `expanded`, `summaryText`); it opens on click. A deep link (focusField) and a failed
+// connection test always open it.
 //
-// ADATVEZÉRELT: a választható szolgáltatók a provider-registryből, a mezők a kiválasztott
-// ProviderDescriptor.fields-éből jönnek (típus, kötelező, titok, alapértelmezés, haladó,
-// lekérhető modell-lista); új provider itt kód nélkül megjelenik. A mezők a SettingsViewModel
-// piszkozatát írják (a titkok a titok-piszkozatot); szolgáltató-váltáskor a másik
-// szolgáltató beállítása megmarad.
+// DATA-DRIVEN: the selectable providers come from the provider registry, the fields from the
+// selected ProviderDescriptor.fields (type, required, secret, default, advanced, fetchable
+// model list); a new provider appears here without code. The fields write the
+// SettingsViewModel's draft (secrets the secret draft); on a provider switch the other
+// provider's settings are kept.
 //
-// „Kapcsolat tesztelése” és „Lekérés”: tanara::ConnectionTester a PISZKOZAT címével és
-// kulcsával (mentés előtt is kipróbálható). Bármelyik mező módosítása elavulttá teszi az
-// előző teszt eredményét.
+// "Test connection" and "Fetch": tanara::ConnectionTester with the DRAFT's address and key
+// (can be tried before saving). Changing any field makes the previous test's result stale.
 //
 #include "tanara/Types.h"
 #include "tanara/provider/ConnectionTester.h"
@@ -38,53 +37,53 @@ class SettingsProviderModel : public QObject {
     QML_ANONYMOUS
 
     Q_PROPERTY(QString kind READ kindName CONSTANT)   // "stt" | "llm" | "embedding"
-    // [{ value (a provider id-ja), label, tag }] — a saját kulcsos szolgáltatók (+ a Tanara Cloud, ha épp az van kiválasztva).
+    // [{ value (the provider's id), label, tag }]: the own-key providers (+ Tanara Cloud, if that is the selected one).
     Q_PROPERTY(QVariantList providers READ providers NOTIFY providersChanged)
     Q_PROPERTY(QString providerId READ providerId WRITE setProviderId NOTIFY providerChanged)
     Q_PROPERTY(QString providerLabel READ providerLabel NOTIFY providerChanged)
-    // A kiválasztott szolgáltató a Tanara Cloud (bejelentkezős): nincs mező, nincs teszt.
+    // The selected provider is Tanara Cloud (with sign-in): no fields, no test.
     Q_PROPERTY(bool loginProvider READ loginProvider NOTIFY providerChanged)
-    // A fő mezők és a „Haladó” mezők SZERKEZETE (csak szolgáltató-váltáskor változik, hogy
-    // gépelés közben a szerkesztők ne épüljenek újra):
+    // The STRUCTURE of the main and "Advanced" fields (changes only on a provider switch, so
+    // the editors are not rebuilt while typing):
     // [{ key, label, type: text|url|secret|number|combo, help, required, dynamic,
     //    minValue, maxValue, decimals }]
-    // Az értékek a value(key) / fieldError(key) / placeholder(key) / options(key) hívásokból
-    // jönnek; a QML a `revision`-t veszi kötésbe, hogy a változást észrevegye.
+    // The values come from value(key) / fieldError(key) / placeholder(key) / options(key) calls;
+    // QML binds to `revision` to notice the change.
     Q_PROPERTY(QVariantList fields READ fields NOTIFY fieldsChanged)
     Q_PROPERTY(QVariantList advancedFields READ advancedFields NOTIFY fieldsChanged)
     Q_PROPERTY(int revision READ revision NOTIFY valuesChanged)
     Q_PROPERTY(bool advancedOpen READ advancedOpen WRITE setAdvancedOpen NOTIFY advancedOpenChanged)
-    // Kapcsolat-teszt: "" (nincs / elavult) | "testing" | "ok" | "failed"
+    // Connection test: "" (none / stale) | "testing" | "ok" | "failed"
     Q_PROPERTY(bool testable READ testable NOTIFY providerChanged)
     Q_PROPERTY(QString testState READ testState NOTIFY testChanged)
-    Q_PROPERTY(QString statusText READ statusText NOTIFY testChanged)     // „Kapcsolódva · 210 ms”
-    Q_PROPERTY(QString errorText READ errorText NOTIFY testChanged)       // emberi mondat
+    Q_PROPERTY(QString statusText READ statusText NOTIFY testChanged)     // "Connected · 210 ms"
+    Q_PROPERTY(QString errorText READ errorText NOTIFY testChanged)       // human-readable sentence
     Q_PROPERTY(QString errorCode READ errorCode NOTIFY testChanged)       // ECONNREFUSED, HTTP 401 …
-    Q_PROPERTY(QString warningText READ warningText NOTIFY testChanged)   // siker, de pl. a modell nincs a listán
+    Q_PROPERTY(QString warningText READ warningText NOTIFY testChanged)   // success, but e.g. the model is not in the list
     Q_PROPERTY(bool fetching READ fetching NOTIFY fetchChanged)
     Q_PROPERTY(QString fetchError READ fetchError NOTIFY fetchChanged)
-    // A modell „gondolkodása” az összefoglalónál (ProviderConfig::reasoning): "auto" | "off" |
-    // "on". Csak a saját kulcsos LLM-szolgáltatónál (a Haladó részben); a cloud maga dönt.
+    // The model's "thinking" for the summary (ProviderConfig::reasoning): "auto" | "off" |
+    // "on". Only for the own-key LLM provider (in the Advanced part); the cloud decides itself.
     Q_PROPERTY(bool reasoningAvailable READ reasoningAvailable NOTIFY providerChanged)
     Q_PROPERTY(QString reasoning READ reasoning WRITE setReasoning NOTIFY valuesChanged)
-    // A modell kontextusa (ProviderConfig::contextLength): 0 = automatikus, különben token.
-    // Csak a saját kulcsos LLM-szolgáltatónál (a Haladó részben). contextOptions:
-    // [{ value ("0" | "16384" …), label }] — a szabványos lépcsők (+ a tárolt egyedi érték).
+    // The model's context (ProviderConfig::contextLength): 0 = automatic, otherwise tokens.
+    // Only for the own-key LLM provider (in the Advanced part). contextOptions:
+    // [{ value ("0" | "16384" ...), label }]: the standard steps (+ the stored custom value).
     Q_PROPERTY(bool contextAvailable READ contextAvailable NOTIFY providerChanged)
     Q_PROPERTY(int contextLength READ contextLength WRITE setContextLength NOTIFY valuesChanged)
     Q_PROPERTY(QVariantList contextOptions READ contextOptions NOTIFY valuesChanged)
-    // A szerver (LM Studio natív API) szerint: a betöltött kontextus, párhuzamosság, a modell
-    // maximuma — egy sor; üres, ha nem ismert (nem LM Studio, vagy még nem kérdeztük).
+    // Per the server (LM Studio native API): the loaded context, parallelism, the model's
+    // maximum, on one line; empty if unknown (not LM Studio, or not asked yet).
     Q_PROPERTY(QString serverInfo READ serverInfo NOTIFY serverInfoChanged)
     Q_PROPERTY(int serverLoadedContext READ serverLoadedContext NOTIFY serverInfoChanged)
     Q_PROPERTY(int serverMaxContext READ serverMaxContext NOTIFY serverInfoChanged)
-    // B04: ehhez a kártyához vezetett a mély hivatkozás.
+    // The deep link led to this card.
     Q_PROPERTY(bool highlighted READ highlighted NOTIFY highlightedChanged)
-    // C09: a szerep futtatható a piszkozattal (kötelező mezők, kulcs / bejelentkezés megvan).
+    // The role can run with the draft (required fields, key / sign-in present).
     Q_PROPERTY(bool configured READ configured NOTIFY valuesChanged)
-    // C09: kinyitott kártya (alapból: ami nincs beállítva, kiemelt, vagy elbukott a tesztje).
+    // Expanded card (by default: one that is not set up, highlighted, or whose test failed).
     Q_PROPERTY(bool expanded READ expanded WRITE setExpanded NOTIFY expandedChanged)
-    // Az összecsukott sor jobb oldala: „Soniox”, „LM Studio · gemma-4-12b”.
+    // The collapsed row's right side: "Soniox", "LM Studio · gemma-4-12b".
     Q_PROPERTY(QString summaryText READ summaryText NOTIFY valuesChanged)
 
 public:
@@ -123,7 +122,7 @@ public:
     QString serverInfo() const { return m_serverText; }
     int serverLoadedContext() const;
     int serverMaxContext() const { return m_server.maxContext; }
-    // A szerver-adatok frissítése (csak olvasó GET; a Haladó rész nyitásakor magától is).
+    // Refreshes the server data (read-only GET; also on its own when the Advanced part opens).
     Q_INVOKABLE void refreshServerInfo();
 
     Q_INVOKABLE void setValue(const QString& key, const QVariant& value);
@@ -139,22 +138,22 @@ public:
     tanara::ProviderDescriptor descriptor() const;
     tanara::ProviderDescriptor descriptor(const QString& id) const;
     QVector<tanara::ProviderDescriptor> allDescriptors() const;
-    // A hiányzó (üres) mezők kitöltése a leíró alapértelmezéseivel.
+    // Fills the missing (empty) fields with the descriptor's defaults.
     void fillDefaults(tanara::ProviderConfig& cfg, const tanara::ProviderDescriptor& d) const;
-    // A piszkozat futásidejű configja a kiválasztott szolgáltatóra (a kulccsal együtt).
+    // The draft's runtime config for the selected provider (with the key).
     tanara::ProviderConfig runtimeConfig() const;
-    // Mező-hibák a mentés előtti ellenőrzéshez: key → szöveg.
+    // Field errors for the pre-save validation: key -> text.
     QHash<QString, QString> fieldErrors() const;
-    // A piszkozat / a szolgáltató megváltozott (újratöltés, eldobás, külső változás).
+    // The draft / the provider changed (reload, discard, external change).
     void reset();
     void notifyFocusChanged();
     bool lastTestFailed() const { return m_testState == QLatin1String("failed"); }
-    // Demó: rögzített teszt-eredmény.
+    // Demo: a fixed test result.
     void setDemoResult(const QString& state, int latencyMs, const QString& message,
                        const QString& code);
-    // Demó: rögzített szerver-adat (LM Studio betöltött példánnyal).
+    // Demo: fixed server data (with a loaded LM Studio instance).
     void setDemoServerInfo(const tanara::llmctx::LlmServerInfo& info) { setServerInfo(info); }
-    void setTester(tanara::ConnectionTester* tester);   // tesztekhez (pl. rövid időkorlát)
+    void setTester(tanara::ConnectionTester* tester);   // for tests (e.g. a short timeout)
     tanara::ConnectionTester* tester() const { return m_tester; }
 
 signals:
@@ -188,15 +187,15 @@ private:
     int m_testId = 0;
     int m_fetchId = 0;
     QString m_fetchError;
-    // withWarnings: a figyelmeztetések is a sorba kerülnek (a kapcsolat-tesztnél azok a
-    // warningText-ben látszanak, ott nem ismételjük).
+    // withWarnings: warnings go into the line too (for the connection test they show in
+    // warningText, so we do not repeat them there).
     void setServerInfo(const tanara::llmctx::LlmServerInfo& info, bool withWarnings = true);
     void clearServerInfo();
     tanara::LlmServerProbe* m_serverProbe = nullptr;
     tanara::llmctx::LlmServerInfo m_server;
     QString m_serverText;
-    QStringList m_models;          // a lekért modell-lista (a kiválasztott szolgáltatóhoz)
-    QString m_modelsFor;           // melyik szolgáltató + cím listája
+    QStringList m_models;          // the fetched model list (for the selected provider)
+    QString m_modelsFor;           // which provider + address the list belongs to
 };
 
 } // namespace tanara_qml

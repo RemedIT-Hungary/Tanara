@@ -47,9 +47,9 @@ namespace {
 const QStringList kPages{QStringLiteral("general"), QStringLiteral("recording"),
                          QStringLiteral("watcher"), QStringLiteral("services"),
                          QStringLiteral("speakers"), QStringLiteral("summary")};
-// A szerkeszthető promptok sorrendben: a gyors összefoglaló három promptja (egylépéses,
-// részenkénti jegyzet, összefésülés), majd a témánkénti elemzés kettő. A "reduce" (a
-// témánkénti elemzés záró összegzése) csak fájl-override-dal hangolható, itt nem szerepel.
+// The editable prompts in order: the quick summary's three prompts (single-step, per-part
+// note, merge), then the two for per-topic analysis. "reduce" (the per-topic analysis'
+// closing summary) can only be tuned via a file override and is not listed here.
 const QStringList kPromptIds{QStringLiteral("single"), QStringLiteral("notes"), QStringLiteral("merge"),
                              QStringLiteral("topic"), QStringLiteral("analysis")};
 
@@ -59,7 +59,7 @@ QString promptGroupOf(const QString& id)
                                                                             : QStringLiteral("quick");
 }
 
-// A beállításokban tárolt felülírás az adott prompthoz (üres = a beépített / fájl-default él).
+// The override stored in settings for the given prompt (empty = the built-in / file default applies).
 QString storedPrompt(const AppSettings& s, const QString& id)
 {
     if (id == QLatin1String("single"))   return s.summaryPrompt;
@@ -92,7 +92,7 @@ QString resolvedUiLanguage(const QString& setting)
                                                               : QStringLiteral("en");
 }
 
-// A figyelt alkalmazás szép neve a folyamatnév-részletből („teams” → „Microsoft Teams”).
+// The watched app's pretty name from the process-name fragment ("teams" -> "Microsoft Teams").
 QString appLabel(const QString& match)
 {
     const QString lower = match.trimmed().toLower();
@@ -104,8 +104,8 @@ QString appLabel(const QString& match)
     return out;
 }
 
-// A felhő-szinkronban lévő mappák jellemző nevei (a belső adatokat nem szabad szinkronizálni:
-// két gép egyszerre írná az indexet és a hanglenyomatokat).
+// Typical names of cloud-synced folders (internal data must not be synced: two machines
+// would write the index and the voiceprints at once).
 bool looksSynced(const QString& path)
 {
     static const QStringList marks{
@@ -121,7 +121,7 @@ bool looksSynced(const QString& path)
 
 struct FolderUsage { qint64 bytes = 0; int meetings = 0; bool exists = false; };
 
-// Mappa mérete (rekurzívan) + a megbeszélés-mappák száma (közvetlen almappa meeting.json-nal).
+// Folder size (recursive) + number of meeting folders (direct subfolders with a meeting.json).
 FolderUsage measureFolder(const QString& path, bool countMeetings)
 {
     FolderUsage u;
@@ -155,7 +155,7 @@ void collectLeaves(const QJsonValue& v, const QString& path, QHash<QString, QJso
 
 } // namespace
 
-// ---- JSON-különbség (statikus, tesztelhető) --------------------------------------------
+// ---- JSON diff (static, testable) --------------------------------------------
 
 QJsonObject SettingsViewModel::mergedSettings(const QJsonObject& base, const QJsonObject& draft,
                                               const QJsonObject& onto)
@@ -166,7 +166,7 @@ QJsonObject SettingsViewModel::mergedSettings(const QJsonObject& base, const QJs
     for (auto it = draft.constBegin(); it != draft.constEnd(); ++it) keys.insert(it.key());
     for (const QString& k : std::as_const(keys)) {
         const QJsonValue b = base.value(k), d = draft.value(k);
-        if (b == d) continue;                       // a felhasználó nem nyúlt hozzá
+        if (b == d) continue;                       // the user did not touch it
         if (!draft.contains(k)) { out.remove(k); continue; }
         if (b.isObject() && d.isObject())
             out[k] = mergedSettings(b.toObject(), d.toObject(), onto.value(k).toObject());
@@ -187,8 +187,8 @@ int SettingsViewModel::countChanges(const QJsonObject& base, const QJsonObject& 
     int n = 0;
     for (const QString& p : std::as_const(paths)) {
         if (b.value(p) == d.value(p)) continue;
-        // Egy most először kiválasztott szolgáltató alapértelmezésekkel feltöltött configja
-        // nem külön változás (a szolgáltató-váltás már számít).
+        // A config of a just-selected provider filled with defaults is not a separate change
+        // (the provider switch already counts).
         const QStringList parts = p.split(QLatin1Char('/'), Qt::SkipEmptyParts);
         if (parts.size() >= 3
             && (parts.at(0) == QLatin1String("sttProviders") || parts.at(0) == QLatin1String("llmProviders")
@@ -210,19 +210,19 @@ QString SettingsViewModel::formatBytes(qint64 bytes)
     return loc.toString(bytes) + QStringLiteral(" B");
 }
 
-// ---- életciklus ------------------------------------------------------------------------
+// ---- lifecycle ------------------------------------------------------------------------
 
 SettingsViewModel::SettingsViewModel(QObject* parent) : QObject(parent)
 {
-    registerBuiltinProviders();   // idempotens; controller nélkül is kell a kártyákhoz
+    registerBuiltinProviders();   // idempotent; needed for the cards even without a controller
     m_devices = new SettingsDeviceModel(this);
     m_stt = new SettingsProviderModel(this, ProviderKind::Stt);
     m_llm = new SettingsProviderModel(this, ProviderKind::Llm);
     m_cloud = new SettingsCloudModel(this);
     m_embedding = new SettingsEmbeddingModel(this);
-    // A Cloud-választhatóság a bejelentkezéstől függ.
+    // Cloud selectability depends on sign-in.
     connect(m_cloud, &SettingsCloudModel::accountChanged, m_embedding, &SettingsEmbeddingModel::notifyDraftChanged);
-    // Hangmodellek: a bekapcsolt lista a piszkozat része; a letöltés azonnali (nem piszkozat).
+    // Voice models: the enabled list is part of the draft; the download is immediate (not a draft).
     m_voiceModels = new VoiceModelListModel(this);
     m_voiceModels->setDraftAccess([this] { return m_draft.voiceModels; },
                                   [this](const QStringList& ids) {
@@ -239,8 +239,8 @@ SettingsViewModel::SettingsViewModel(QObject* parent) : QObject(parent)
 
     m_baseTheme = m_draftTheme = AppContext::instance()->themeMode();
 
-    // Az App.controller a következő eseményhurok-körben kötődik be, ha addig a hívó nem
-    // adott sajátot és nem kért demó-állapotot.
+    // App.controller binds in the next event-loop turn, if by then the caller has not given its
+    // own and has not asked for a demo state.
     QMetaObject::invokeMethod(this, [this] {
         if (m_controllerSet) return;
         if (AppController* c = AppContext::instance()->controller())
@@ -286,12 +286,12 @@ void SettingsViewModel::setDialogsObject(QObject* dialogs)
 
 void SettingsViewModel::setDemoState(const QString& state)
 {
-    if (m_controller) return;            // valódi adat mellett a demó nem hat
+    if (m_controller) return;            // with real data the demo has no effect
     m_controllerSet = true;
     m_demoState = state;
     attach();
     emit demoStateChanged();
-    emit controllerChanged();            // a cloud-elérhetőség a demó-állapottól is függ
+    emit controllerChanged();            // cloud availability depends on the demo state too
 }
 
 void SettingsViewModel::attach()
@@ -325,8 +325,8 @@ void SettingsViewModel::attach()
 
 void SettingsViewModel::applyDefaultSelection()
 {
-    // Még soha nem volt mentett kijelölés (és a felhasználó sem nyúlt hozzá): a rendszer
-    // alapértelmezett eszközei az alap — a vonalbemenet-félék nélkül, ahogy a felvevőben.
+    // There was never a saved selection (and the user has not touched it): the system's default
+    // devices are the base, without line-in-type inputs, as in the recorder.
     if (!m_controller || !m_controller->devices() || !m_controller->lastUsedDeviceNames().isEmpty()
         || !m_baseSelected.isEmpty() || !m_draftSelected.isEmpty())
         return;
@@ -340,8 +340,8 @@ void SettingsViewModel::applyDefaultSelection()
 
 void SettingsViewModel::normalize(AppSettings& s) const
 {
-    // A kiválasztott szolgáltatók üres mezői a leíró alapértelmezéseit kapják (ahogy a régi
-    // ablak is feltöltötte őket) — így ez nem számít „változásnak”.
+    // The selected providers' empty fields get the descriptor's defaults (as the old window
+    // filled them), so this does not count as a "change".
     const ProviderDescriptor sd = SttProviderRegistry::instance().descriptor(s.sttProviderId);
     if (!sd.id.isEmpty()) m_stt->fillDefaults(s.sttConfigs[s.sttProviderId], sd);
     const ProviderDescriptor ld = LlmProviderRegistry::instance().descriptor(s.llmProviderId);
@@ -427,8 +427,8 @@ void SettingsViewModel::emitAllChanged()
 void SettingsViewModel::onExternalSettingsChanged()
 {
     if (m_saving || m_loading || !m_controller) return;
-    // Valaki más mentett (Expert-modell választó, becslés-ablak, várólista…): az új állapot
-    // lesz az alap, a még nem mentett saját változások pedig rákerülnek.
+    // Someone else saved (Expert model picker, estimate dialog, waitlist...): the new state
+    // becomes the base, and own unsaved changes are applied on top.
     storePromptsInDraft();
     AppSettings live = m_controller->settings()->settings();
     normalize(live);
@@ -438,7 +438,7 @@ void SettingsViewModel::onExternalSettingsChanged()
     m_draft = appSettingsFromJson(merged);
     if (typedName.trimmed() == m_draft.userSpeakerName) m_draft.userSpeakerName = typedName;
     {
-        // A promptok szerkesztő-szövege az összefésült piszkozatból (külső prompt-változás is megjelenik).
+        // The prompts' editor text from the merged draft (an external prompt change shows too).
         for (const QString& id : kPromptIds) {
             const QString stored = storedPrompt(m_draft, id);
             if (!stored.isEmpty() || m_promptText.value(id).trimmed() != m_promptDefault.value(id).trimmed())
@@ -454,7 +454,7 @@ void SettingsViewModel::onExternalSettingsChanged()
     emitAllChanged();
 }
 
-// ---- piszkozat: számlálás, ellenőrzés ---------------------------------------------------
+// ---- draft: counting, validation ---------------------------------------------------
 
 void SettingsViewModel::setDraftSecret(const QString& key, const QString& value)
 {
@@ -463,8 +463,8 @@ void SettingsViewModel::setDraftSecret(const QString& key, const QString& value)
 
 void SettingsViewModel::storePromptsInDraft()
 {
-    // Az alapértelmezettel egyező szöveg ÜRESEN mentődik: a kód-default későbbi javításai így
-    // érvényesülnek, amíg a felhasználó nem ír sajátot.
+    // Text equal to the default is saved EMPTY: later improvements of the code default then
+    // apply until the user writes their own.
     auto stored = [this](const QString& id) {
         const QString text = m_promptText.value(id);
         return text.trimmed() == m_promptDefault.value(id).trimmed() ? QString() : text;
@@ -519,7 +519,7 @@ void SettingsViewModel::validate()
 
 ReadinessResult SettingsViewModel::draftReadiness(WorkflowStep step) const
 {
-    // Kitalált megbeszélés: van hangsáv és van átirat — így csak a szolgáltató-beállítás számít.
+    // Fictional meeting: has an audio track and a transcript, so only the provider setting matters.
     Meeting m;
     Track t;
     t.active = true;
@@ -527,7 +527,7 @@ ReadinessResult SettingsViewModel::draftReadiness(WorkflowStep step) const
     m.hasTranscript = true;
     const ReadinessModel model(m_draft, [this](const QString& key) {
         if (m_draftSecrets.contains(key)) return !m_draftSecrets.value(key).trimmed().isEmpty();
-        if (!m_controller) return m_cloud->loggedIn();      // demó: a bejelentkezés-kulcs
+        if (!m_controller) return m_cloud->loggedIn();      // demo: the sign-in key
         return m_controller->hasSecret(key);
     });
     return model.check(step, m);
@@ -550,12 +550,12 @@ void SettingsViewModel::updateServicesWarn()
 QString SettingsViewModel::footerText() const
 {
     if (m_changeCount <= 0) return tr("Nincs mentetlen változás");
-    // C09: a beágyazó modell cseréje a könyvtár előkészítését is újraindítja.
+    // Changing the embedding model also restarts the library's preparation.
     if (m_embedding->restartPending()) return tr("Modellváltás · mentéskor újraindul az előkészítés");
     const bool toCloud = m_draft.sttProviderId == cloud::ProviderId && m_draft.llmProviderId == cloud::ProviderId
                          && (m_base.sttProviderId != cloud::ProviderId || m_base.llmProviderId != cloud::ProviderId);
     if (toCloud && m_changeCount <= 2) return tr("Tanara Cloud kiválasztva · mentéskor átvált");
-    // B08: új hangmodell bekapcsolva — mentéskor a meglévő minták pótlása indul.
+    // A new voice model was enabled: on save, backfilling the existing samples starts.
     bool modelAdded = false;
     for (const QString& id : m_draft.voiceModels)
         if (!m_base.voiceModels.contains(id)) modelAdded = true;
@@ -563,7 +563,7 @@ QString SettingsViewModel::footerText() const
     return tr("%n nem mentett változás", nullptr, m_changeCount);
 }
 
-// ---- ablak -----------------------------------------------------------------------------
+// ---- window ----
 
 void SettingsViewModel::setPage(const QString& page)
 {
@@ -607,7 +607,7 @@ void SettingsViewModel::openPage(const QString& page, const QString& focusField)
     }
 }
 
-// ---- B01 Általános ---------------------------------------------------------------------
+// ---- General ---------------------------------------------------------------------
 
 void SettingsViewModel::setUserName(const QString& name)
 {
@@ -623,7 +623,7 @@ void SettingsViewModel::refreshVoiceprint()
     bool has = false;
     if (m_controller && m_controller->voiceprints()) {
         const QVector<Voiceprint> prints = m_controller->voiceprints()->printsFor(m_base.userSpeakerName);
-        // Egy minta egy tétel: a modellenkénti testvér-lenyomatok egynek számítanak.
+        // One sample is one item: per-model sibling voiceprints count as one.
         QSet<QString> meetings, samples;
         for (const Voiceprint& p : prints) {
             if (!p.sourceMeetingId.isEmpty()) meetings.insert(p.sourceMeetingId);
@@ -656,7 +656,7 @@ QVariantList SettingsViewModel::uiLanguageOptions() const
         return QVariantMap{{QStringLiteral("value"), v}, {QStringLiteral("label"), l}};
     };
     const bool sysHu = QLocale::system().language() == QLocale::Hungarian;
-    // A nyelvek neve szándékosan a saját nyelvén áll: idegen nyelvű felületen is megtalálható.
+    // Language names are deliberately in their own language: findable in a foreign-language UI too.
     return {mk(QStringLiteral("auto"), sysHu ? tr("Rendszer nyelve (magyar)") : tr("Rendszer nyelve (English)")),
             mk(QStringLiteral("hu"), QStringLiteral("Magyar")),
             mk(QStringLiteral("en"), QStringLiteral("English"))};
@@ -674,7 +674,7 @@ void SettingsViewModel::setThemeMode(const QString& mode)
     const QString m = AppContext::normalizedThemeMode(mode);
     if (m == m_draftTheme) return;
     m_draftTheme = m;
-    AppContext::instance()->setThemeMode(m);   // élő előnézet
+    AppContext::instance()->setThemeMode(m);   // live preview
     emit themeModeChanged();
     touch();
 }
@@ -752,7 +752,7 @@ void SettingsViewModel::setFolder(const QString& key, const QString& path)
     if (key == QLatin1String("audio")) m_draft.audioDir = p;
     else if (key == QLatin1String("notes")) m_draft.notesDir = p;
     else if (key == QLatin1String("meta")) {
-        if (m_controller && !paths::homeOverride().isEmpty()) return;   // rögzített
+        if (m_controller && !paths::homeOverride().isEmpty()) return;   // pinned
         m_draft.metadataDir = p;
     } else return;
     m_folderUsage.remove(key);
@@ -782,7 +782,7 @@ void SettingsViewModel::openFolder(const QString& key)
 
 void SettingsViewModel::openPeople()
 {
-    // A hivatkozás a saját hanglenyomat sora mellett áll: a saját személy lesz kijelölve.
+    // The link sits next to the own-voiceprint row: the own person gets selected.
     if (m_dialogs) m_dialogs->openPeopleAt(m_base.userSpeakerName.trimmed());
 }
 
@@ -802,7 +802,7 @@ void SettingsViewModel::openOnboarding()
     if (m_dialogs) m_dialogs->openOnboarding();
 }
 
-// ---- B02 Rögzítés ----------------------------------------------------------------------
+// ---- Recording ----------------------------------------------------------------------
 
 QAbstractItemModel* SettingsViewModel::devicesModel() const { return m_devices; }
 int SettingsViewModel::deviceCount() const { return m_devices->rowCount(); }
@@ -850,7 +850,7 @@ QVariantList SettingsViewModel::audioQualityOptions() const
 QString SettingsViewModel::audioQualityHint() const
 {
     const int kbps = opusBitrateKbps(m_draft.audioQuality);
-    const int mb = qRound(kbps * 1000.0 / 8.0 * 5400.0 / 1e6);   // 1,5 óra egy sávon
+    const int mb = qRound(kbps * 1000.0 / 8.0 * 5400.0 / 1e6);   // 1.5 hours on one track
     const QString q = m_draft.audioQuality;
     const QString tail = q == QLatin1String("low")    ? tr("A legkisebb fájl; az átíráshoz még elég.")
                        : q == QLatin1String("medium") ? tr("Beszédhez elég.")
@@ -869,7 +869,7 @@ void SettingsViewModel::setMixdownMode(const QString& mode)
 
 QStringList SettingsViewModel::selectedDevicesForSave() const
 {
-    // A most nem csatlakoztatott eszközök kijelölése megmarad; a jelen lévőké a piszkozatból jön.
+    // The selection of currently disconnected devices is kept; present ones come from the draft.
     const QStringList present = m_devices->presentNames();
     QStringList out;
     for (const QString& n : m_baseSelected)
@@ -879,7 +879,7 @@ QStringList SettingsViewModel::selectedDevicesForSave() const
     return out;
 }
 
-// ---- B03 Hívásfigyelő ------------------------------------------------------------------
+// ---- Call watcher ------------------------------------------------------------------
 
 void SettingsViewModel::setDetectorEnabled(bool on)
 {
@@ -965,7 +965,7 @@ QVariantList SettingsViewModel::runningApps() const
                  QStringLiteral("thunderbird"), QStringLiteral("zoom")};
     } else {
 #if defined(Q_OS_LINUX)
-        // A futó folyamatok neve a /proc-ból (a kernel-szálaknak nincs parancssoruk → kimaradnak).
+        // Names of running processes from /proc (kernel threads have no command line, so they are skipped).
         const QDir proc(QStringLiteral("/proc"));
         const QStringList pids = proc.entryList(QDir::Dirs | QDir::NoDotAndDotDot);
         for (const QString& pid : pids) {
@@ -1017,7 +1017,7 @@ void SettingsViewModel::pollDetector()
     if (!m_watching) return;
     if (!m_detector && !m_detectorTried && m_controller) {
         m_detectorTried = true;
-        registerBuiltinDetectors();   // idempotens
+        registerBuiltinDetectors();   // idempotent
         m_detector.reset(m_draft.detectorId.isEmpty()
                              ? MeetingDetectorRegistry::instance().createBest()
                              : MeetingDetectorRegistry::instance().create(m_draft.detectorId));
@@ -1025,7 +1025,7 @@ void SettingsViewModel::pollDetector()
     const bool available = m_detector && m_detector->isAvailable();
     MeetingSignal sig;
     if (available) {
-        // A PISZKOZAT listájával: a most hozzáadott alkalmazás azonnal látszik, ha épp hívásban van.
+        // With the DRAFT's list: an app just added shows immediately if it is in a call.
         m_detector->configure(m_draft.knownCallApps, QStringLiteral("tanara"));
         sig = m_detector->poll();
     }
@@ -1040,7 +1040,7 @@ void SettingsViewModel::pollDetector()
     emit watchedAppsChanged();
 }
 
-// ---- B04–B06 Szolgáltatások ------------------------------------------------------------
+// ---- Services ------------------------------------------------------------
 
 QString SettingsViewModel::cloudAvailability() const
 {
@@ -1065,7 +1065,7 @@ QString SettingsViewModel::lastOwnProvider(bool stt) const
         if (first.isEmpty()) first = d.id;
         if (d.id == fallback) hasFallback = true;
     }
-    // Amelyiknek már van beállítása (és nem az alapértelmezett), az a valószínű korábbi választás.
+    // Whichever already has a setting (not the default) is the likely earlier choice.
     for (const ProviderDescriptor& d : card->allDescriptors())
         if (d.authMode != AuthMode::Login && d.id != fallback && configs.contains(d.id)) return d.id;
     return hasFallback ? fallback : first;
@@ -1076,10 +1076,10 @@ void SettingsViewModel::setServiceMode(const QString& mode)
     const QString m = mode == QLatin1String("cloud") ? QStringLiteral("cloud") : QStringLiteral("own");
     if (m == QLatin1String("cloud") && cloudAvailability() == QLatin1String("none")) return;
     const bool live = cloudAvailability() == QLatin1String("live");
-    // Csak VALÓDI módváltáskor nyúlunk a szolgáltatókhoz: a vegyes beállítás (pl. az átírás a
-    // Cloudban, az összefoglaló saját kulccsal) egy mély hivatkozástól nem változhat meg.
+    // Providers are touched only on a REAL mode switch: a mixed setting (e.g. transcription on
+    // Cloud, summary with an own key) must not change from a deep link.
     if (live && m != m_serviceMode) {
-        // Élő módban a választás a piszkozat része: mentéskor mindkét lépés szolgáltatója vált.
+        // In live mode the choice is part of the draft: on save both steps' providers switch.
         if (m == QLatin1String("cloud")) {
             if (m_draft.sttProviderId != cloud::ProviderId) m_ownStt = m_draft.sttProviderId;
             if (m_draft.llmProviderId != cloud::ProviderId) m_ownLlm = m_draft.llmProviderId;
@@ -1095,7 +1095,7 @@ void SettingsViewModel::setServiceMode(const QString& mode)
         m_stt->reset();
         m_llm->reset();
     }
-    // Teaser-módban a „Tanara Cloud” kártya csak a várólista-ajánlatot mutatja (nincs mit menteni).
+    // In teaser mode the "Tanara Cloud" card shows only the waitlist offer (nothing to save).
     if (m != m_serviceMode) {
         m_serviceMode = m;
         emit serviceModeChanged();
@@ -1103,7 +1103,7 @@ void SettingsViewModel::setServiceMode(const QString& mode)
     touch();
 }
 
-// ---- B07 Összefoglaló ------------------------------------------------------------------
+// ---- Summary ------------------------------------------------------------------
 
 void SettingsViewModel::setSummaryLanguage(const QString& language)
 {
@@ -1116,7 +1116,7 @@ void SettingsViewModel::setSummaryLanguage(const QString& language)
 
 QStringList SettingsViewModel::summaryLanguageOptions() const
 {
-    // Az érték szabad szöveg (a promptba kerül): magyarul írjuk, ahogy a beépített promptok.
+    // The value is free text (it goes into the prompt): written in Hungarian, like the built-in prompts.
     QStringList out{QStringLiteral("magyar"), QStringLiteral("angol"), QStringLiteral("német"),
                     QStringLiteral("francia"), QStringLiteral("spanyol")};
     if (!out.contains(m_draft.summaryLanguage) && !m_draft.summaryLanguage.isEmpty())
@@ -1131,7 +1131,7 @@ QString SettingsViewModel::promptId(int index) const
 
 QVariantList SettingsViewModel::promptGroups() const
 {
-    // tabs: a csoport promptjainak indexe a promptTabs-ban (állandó — a fülek nem épülnek újra).
+    // tabs: the index of the group's prompts in promptTabs (constant: the tabs are not rebuilt).
     auto indices = [](const QString& group) {
         QVariantList out;
         for (int i = 0; i < kPromptIds.size(); ++i)
@@ -1208,7 +1208,7 @@ void SettingsViewModel::setPromptText(const QString& text)
     if (m_promptText.value(id) == text) return;
     const bool wasModified = promptModified();
     m_promptText.insert(id, text);
-    // promptTextChanged szándékosan NINCS: a szerkesztő maga írta (a kurzor ne ugorjon).
+    // promptTextChanged is deliberately NOT emitted: the editor wrote it itself (the cursor must not jump).
     if (wasModified != promptModified()) emit promptsChanged();
     touch();
 }
@@ -1241,14 +1241,14 @@ QString SettingsViewModel::schemaSummary() const { return promptOutputFormat(pro
 QString SettingsViewModel::schemaBody() const { return promptOutputFormat(promptId(m_promptIndex)).body; }
 QString SettingsViewModel::schemaKind() const { return promptOutputFormat(promptId(m_promptIndex)).kind; }
 
-// ---- mentés / eldobás ------------------------------------------------------------------
+// ---- save / discard ------------------------------------------------------------------
 
 bool SettingsViewModel::save()
 {
     touch();
     if (!dirty()) return true;
 
-    // Érvénytelen mezővel nem mentünk: a hibás lapra váltunk, ott látszik a mező alatt.
+    // We do not save with an invalid field: we switch to the faulty page, where the field shows below it.
     QString badPage;
     if (m_errors.contains(QStringLiteral("userName")))
         badPage = QStringLiteral("speakers");
@@ -1265,7 +1265,7 @@ bool SettingsViewModel::save()
         return false;
     }
 
-    // A szolgáltató-mezők gépelés közben nyersen állnak a piszkozatban: mentéskor vágjuk le.
+    // Provider fields sit raw in the draft while typing: trimmed on save.
     for (QMap<QString, ProviderConfig>* map : {&m_draft.sttConfigs, &m_draft.llmConfigs, &m_draft.embeddingConfigs})
         for (auto it = map->begin(); it != map->end(); ++it) {
             it->baseUrl = it->baseUrl.trimmed();
@@ -1279,7 +1279,7 @@ bool SettingsViewModel::save()
     const QString theme = m_draftTheme;
 
     if (!m_controller) {
-        // Demó: nincs mit lemezre írni — a piszkozat lesz az alap.
+        // Demo: nothing to write to disk; the draft becomes the base.
         m_draft.userSpeakerName = newName;
         m_base = m_draft;
         m_baseSecrets = m_draftSecrets;
@@ -1293,10 +1293,10 @@ bool SettingsViewModel::save()
     AppController* c = m_controller;
     m_saving = true;
 
-    // 1) beállítások: csak a KÜLÖNBSÉG kerül a core éppen érvényes állapotára.
+    // 1) settings: only the DIFFERENCE goes onto the core's currently effective state.
     const AppSettings live = c->settings()->settings();
     AppSettings draft = m_draft;
-    draft.userSpeakerName = m_base.userSpeakerName;   // a névváltást a core külön műveletként végzi
+    draft.userSpeakerName = m_base.userSpeakerName;   // the core handles the rename as a separate operation
     const QJsonObject liveJson = toJson(live);
     const QJsonObject mergedJson = mergedSettings(toJson(m_base), toJson(draft), liveJson);
     if (mergedJson != liveJson) {
@@ -1304,20 +1304,20 @@ bool SettingsViewModel::save()
         if (!paths::homeOverride().isEmpty()) merged.metadataDir = live.metadataDir;
         c->settings()->setSettings(merged);
     }
-    // 2) saját név: a core átvezeti a személy-DB-n, a megbeszéléseken és a hanglenyomatokon.
+    // 2) own name: the core carries it through the person DB, the meetings and the voiceprints.
     if (!newName.isEmpty() && newName != m_base.userSpeakerName.trimmed())
         c->setUserSpeakerName(newName);
-    // 3) titkok → KeyStore.
+    // 3) secrets -> KeyStore.
     for (auto it = m_draftSecrets.constBegin(); it != m_draftSecrets.constEnd(); ++it)
         if (m_baseSecrets.value(it.key()) != it.value()) c->setSecret(it.key(), it.value().trimmed());
-    // 4) alapértelmezett források (a felvevővel közös kijelölés).
+    // 4) default sources (selection shared with the recorder).
     {
         QStringList a = m_baseSelected, b = m_draftSelected;
         a.sort();
         b.sort();
         if (a != b) c->setLastUsedDeviceNames(selectedDevicesForSave());
     }
-    // 5) a figyelő indítása bejelentkezéskor: azonnal érvényes (homokozóban / tesztben soha).
+    // 5) starting the watcher at sign-in: effective immediately (never in a sandbox / test).
     if (m_base.watcherAutostart != m_draft.watcherAutostart)
         autostart::applyWatcher(m_draft.watcherAutostart,
                                 autostart::findWatcherExecutable(QCoreApplication::applicationDirPath()));
@@ -1332,7 +1332,7 @@ bool SettingsViewModel::save()
     }
     emit saved();
 
-    // B04: ha a hiány megszűnt, vissza a megbeszéléshez.
+    // If the gap is gone, back to the meeting.
     if (!m_focusField.isEmpty()) {
         const WorkflowStep step = m_focusField == QLatin1String("stt") ? WorkflowStep::Transcribe
                                                                         : WorkflowStep::Summarize;
@@ -1354,7 +1354,7 @@ void SettingsViewModel::discard()
     m_draftSelected = m_baseSelected;
     if (m_draftTheme != m_baseTheme) {
         m_draftTheme = m_baseTheme;
-        AppContext::instance()->setThemeMode(m_baseTheme);   // az előnézet visszaáll
+        AppContext::instance()->setThemeMode(m_baseTheme);   // the preview reverts
     }
     for (const QString& id : kPromptIds) {
         const QString stored = storedPrompt(m_base, id);
@@ -1373,7 +1373,7 @@ void SettingsViewModel::discard()
     refreshFolderUsage();
 }
 
-// ---- demó (kitalált adat a design állapotaihoz) -----------------------------------------
+// ---- demo (fictional data for the design states) -----------------------------------------
 
 void SettingsViewModel::loadDemo()
 {
@@ -1456,7 +1456,7 @@ void SettingsViewModel::loadDemo()
     m_loading = false;
 
     m_cloud->loadDemo(st);
-    // C09 (T14–T16): a Beágyazás kártya állapotai; a többi lapon nincs beágyazás („alap”).
+    // States of the Embedding card; other pages have no embedding ("base").
     const QString emb = st == QLatin1String("B04") || st == QLatin1String("B04embedding") ? QStringLiteral("local")
         : st == QLatin1String("B04embeddingRunning") ? QStringLiteral("localRunning")
         : st == QLatin1String("B04embeddingError") ? QStringLiteral("localError")
@@ -1474,7 +1474,7 @@ void SettingsViewModel::loadDemo()
 
     if (st == QLatin1String("B02") || st == QLatin1String("rename")) {
         m_page = QStringLiteral("recording");
-        m_draft.deviceNames.insert(kantoMon, demoText("Kanto hangfal", "Kanto speakers"));   // 1 mentetlen változás
+        m_draft.deviceNames.insert(kantoMon, demoText("Kanto hangfal", "Kanto speakers"));   // 1 unsaved change
     } else if (st == QLatin1String("B03")) {
         m_page = QStringLiteral("watcher");
         m_liveActive = true;
@@ -1485,16 +1485,16 @@ void SettingsViewModel::loadDemo()
         m_focusField = QStringLiteral("stt");
         m_llm->setDemoResult(QStringLiteral("ok"), 48, QString(), QString());
     } else if (st.startsWith(QLatin1String("B04"))) {
-        // T14–T16: az átírás és az összefoglaló már be van állítva → összecsukott kártyák.
+        // Transcription and summary are already set up -> collapsed cards.
         m_page = QStringLiteral("services");
         m_stt->setDemoResult(QStringLiteral("ok"), 210, QString(), QString());
         m_llm->setDemoResult(QStringLiteral("ok"), 48, QString(), QString());
     } else if (st == QLatin1String("advanced")) {
-        // Az LLM-kártya „Haladó” része nyitva (hőmérséklet, max. tokenek, gondolkodás).
+        // The LLM card's "Advanced" part is open (temperature, max tokens, thinking).
         m_page = QStringLiteral("services");
         m_llm->setDemoResult(QStringLiteral("ok"), 48, QString(), QString());
         m_llm->setAdvancedOpen(true);
-        llmctx::LlmServerInfo info;   // LM Studio: a modell betöltve, egy szálon
+        llmctx::LlmServerInfo info;   // LM Studio: the model is loaded, on one thread
         info.kind = llmctx::LlmServerInfo::Kind::LmStudio;
         info.modelListed = true;
         info.modelKey = QStringLiteral("google/gemma-4-12b-qat");
@@ -1518,16 +1518,16 @@ void SettingsViewModel::loadDemo()
         m_serviceMode = QStringLiteral("cloud");
     } else if (st == QLatin1String("B07") || st == QLatin1String("B07notes") || st == QLatin1String("schema")) {
         m_page = QStringLiteral("summary");
-        // Egy saját szabállyal bővített prompt → „módosítva”.
+        // A prompt extended with an own rule -> "modified".
         const QString custom = promptBuiltin(QStringLiteral("single"))
             + QStringLiteral("\nFor each action item, name the owner and the deadline when they were said.\n");
         m_promptText.insert(QStringLiteral("single"), custom);
         m_base.summaryPrompt = m_draft.summaryPrompt = custom;
         if (st == QLatin1String("B07notes"))
-            m_promptIndex = 1;      // a részenkénti jegyzet promptja
+            m_promptIndex = 1;      // the per-part note prompt
     } else if (st.startsWith(QLatin1String("B08"))) {
         m_page = QStringLiteral("speakers");
-        // A piszkozat bekapcsolt listája a demó modell-állapotához igazodik.
+        // The draft's enabled list follows the demo's model state.
         m_base.voiceModels = m_draft.voiceModels = QStringList{QStringLiteral("wespeaker-resnet34-lm")};
     } else if (st == QLatin1String("dirty") || st == QLatin1String("unsaved")) {
         m_draft.userSpeakerName = demoText("Kovács Lilla Anna", "Emma Anne Carter");

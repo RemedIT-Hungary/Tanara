@@ -40,13 +40,13 @@ namespace tanara_qml {
 
 namespace {
 
-// Az összecsukási szabály: a 6 legtöbbet beszélő mindig látszik; azon túl az ennél kisebb
-// beszédidő-hányadúak a „+N" oszlopba / „Egyéb (N)" sorba csukódnak.
+// Collapse rule: the 6 speakers with the most speech are always visible; those with a smaller
+// share of speaking time collapse into the "+N" column / "Other (N)" row.
 constexpr int kAlwaysVisibleLanes = 6;
 constexpr double kCollapseShare = 0.03;
 
-// Karakterenkénti hajtogatás (kisbetű, ékezet nélkül) — a hossz megmarad, így a találat
-// pozíciója visszavetíthető az eredeti szövegre.
+// Character-by-character folding (lowercase, accents stripped): the length is preserved, so a
+// hit position maps back to the original text.
 QString foldKeepLength(const QString& text)
 {
     QString out;
@@ -58,7 +58,7 @@ QString foldKeepLength(const QString& text)
     return out;
 }
 
-// A hanglenyomat-jelző állapota egy beszélőnél (áttekintő, sáv-fejléc).
+// State of the voiceprint indicator for a speaker (overview, lane header).
 QString voiceprintState(const EditorSpeaker& s)
 {
     if (s.anonymous) return QStringLiteral("anonymous");
@@ -113,7 +113,7 @@ TranscriptEditorViewModel::~TranscriptEditorViewModel()
     detach();
 }
 
-// ---- munkamenet -------------------------------------------------------------
+// ---- session -------------------------------------------------------------
 
 void TranscriptEditorViewModel::setMeetingId(const QString& id)
 {
@@ -189,11 +189,11 @@ void TranscriptEditorViewModel::resolveSession()
         m_legacyTranscript = ed && !ed->hasTranscript() && meeting.hasTranscript;
         m_legacyText.clear();
         if (m_legacyTranscript) {
-            // A régi átirat olvasható marad: a transcript.md szövege (felső korláttal).
+            // An old transcript stays readable: the text of transcript.md (with an upper limit).
             QFile md(QDir(meeting.folder).filePath(QStringLiteral("transcript.md")));
             if (md.open(QIODevice::ReadOnly)) {
                 m_legacyText = QString::fromUtf8(md.read(4 * 1024 * 1024));
-                // Sima szövegként mutatjuk: a Markdown jelölői (`[00:06]`, **Név**) nélkül.
+                // Shown as plain text: without Markdown markers (`[00:06]`, **Name**).
                 m_legacyText.remove(QLatin1Char('`')).remove(QStringLiteral("**"));
             }
         }
@@ -203,7 +203,7 @@ void TranscriptEditorViewModel::resolveSession()
         else reloadAll();
         return;
     }
-    // Nincs controller (demó / képernyőkép / galéria): a beépített kitalált meeting.
+    // No controller (demo / screenshot / gallery): the built-in fictional meeting.
     if (m_demoSession) return;
     detach();
     m_demoSession = std::make_unique<TranscriptDemoSession>(m_demoVariant);
@@ -221,8 +221,8 @@ void TranscriptEditorViewModel::attach(SpeakerEditor* editor)
         emit uncertainCountChanged();
     });
     connect(editor, &SpeakerEditor::undoStateChanged, this, [this] {
-        // Nem a saját (sávot kiíró) műveletünk: visszavonás, újra, megerősítés, résztvevő… —
-        // a legutóbbi átsorolás értesítése már nem érvényes.
+        // Not our own action (the one that writes the lane): undo, redo, confirmation, participant...
+        // the latest reassignment's notice is no longer valid.
         if (m_opDepth == 0) clearChange();
         pruneDecisions();
         emit undoStateChanged();
@@ -237,7 +237,7 @@ void TranscriptEditorViewModel::attach(SpeakerEditor* editor)
     });
     connect(editor, &SpeakerEditor::recheckFinished, this,
             [this](int flagged, int speakers, int lines) {
-        // Talált kétes sort → rögtön a „Bizonytalan" szűrő (ott lehet végiglépkedni rajtuk).
+        // If it found doubtful lines, switch to the "Uncertain" filter right away (to step through them there).
         if (flagged > 0) setUncertainOnly(true);
         emit recheckFinished(flagged, speakers, lines);
     });
@@ -255,7 +255,7 @@ void TranscriptEditorViewModel::attach(SpeakerEditor* editor)
         applyPendingDemoState();
     });
     connect(editor, &SpeakerEditor::reloaded, this, &TranscriptEditorViewModel::reloadAll);
-    // v3: a háttér-elemzés (sáv-oldal, jelöltek, Átnézendő csoportok) végén.
+    // At the end of the background analysis (side analysis, candidates, "To review" groups).
     connect(editor, &SpeakerEditor::reviewGroupsChanged, this, &TranscriptEditorViewModel::rebuildReview);
     connect(editor, &SpeakerEditor::reviewRunningChanged, this, [this] { emit reviewChanged(); });
     connect(editor, &QObject::destroyed, this, [this] {
@@ -269,8 +269,8 @@ void TranscriptEditorViewModel::detach()
 {
     if (!m_editor) return;
     m_editor->disconnect(this);
-    // A háttérben futó hang-elemzés ne dolgozzon egy már nem látszó meetingen (a kész rész
-    // a cache-ben marad; visszatéréskor onnan folytatódik).
+    // The background audio analysis must not keep working on a meeting that is no longer shown
+    // (the finished part stays in the cache; it resumes from there on return).
     if (!m_editorInjected && m_editor->isEmbeddingRunning()) m_editor->cancelEmbedding();
     m_editor = nullptr;
 }
@@ -336,7 +336,7 @@ void TranscriptEditorViewModel::reloadAll()
     const qint64 tOverview = perf.elapsed();
     updateVoiceNote();
     updateRecheckState();
-    m_queue->stop();        // S3: új munkamenet → nincs munkalista
+    m_queue->stop();        // new session -> no worklist
     rebuildReview();
     m_review->reset();
     qCDebug(lcPerf).noquote()
@@ -375,7 +375,7 @@ void TranscriptEditorViewModel::startEmbeddingIfNeeded()
     m_editor->startEmbedding();
 }
 
-// ---- a szerkesztő jelei -----------------------------------------------------
+// ---- the editor's signals -----------------------------------------------------
 
 void TranscriptEditorViewModel::onUtterancesChanged(const QStringList& ids)
 {
@@ -389,18 +389,18 @@ void TranscriptEditorViewModel::onUtterancesChanged(const QStringList& ids)
         if (i < 0) continue;
         const EditorUtterance before = m_utts[i];
         m_utts[i] = m_editor->utterance(id);
-        sweepFilterIncoming(i, before);     // S6: fagyasztott ablak
+        sweepFilterIncoming(i, before);     // frozen window
         changed.append(i);
         const EditorUtterance& after = m_utts[i];
         if (before.ignored != after.ignored) {
             m_ignoredCount += after.ignored ? 1 : -1;
             ignoredChanged = true;
         }
-        // A döntés mellékhatása: egy MÁSIK sor javaslata / kétessége változott.
+        // Side effect of a decision: the suggestion / doubt of ANOTHER row changed.
         if (m_tracking && !m_trackIds.contains(id)
             && (before.uncertain != after.uncertain || before.likelySpeakerKey != after.likelySpeakerKey))
             m_sideChanged.insert(id);
-        // A szűrőben épp látható, most kézzel javított sor a helyén marad („javítva").
+        // A row visible in the filter and just fixed by hand stays in place ("fixed").
         if (m_uncertainOnly && m_utts[i].manuallyCorrected && m_rows->rowOfUtterance(i) >= 0)
             m_sticky.insert(i);
     }
@@ -409,11 +409,11 @@ void TranscriptEditorViewModel::onUtterancesChanged(const QStringList& ids)
     if (!listFilter().isEmpty()) m_rows->syncFilter();
     m_rows->notifyUtterances(changed);
     m_review->refreshUtterances(changed);
-    m_queue->refreshUtterances(changed);    // S3: csak az érintett sorok állapota
+    m_queue->refreshUtterances(changed);    // only the affected rows' state
     updatePlayingRow();
     scheduleOverview();
     updateRecheckState();
-    scheduleReview();       // a csoportokon kívüli kétes sorok csoportja azonnal frissül
+    scheduleReview();       // the group of doubtful rows outside the groups refreshes immediately
 }
 
 void TranscriptEditorViewModel::onSpeakersChanged()
@@ -427,8 +427,8 @@ void TranscriptEditorViewModel::onSpeakersChanged()
         viewsChanged = old == before.constEnd() || old->name != it->name
             || old->colorIndex != it->colorIndex || old->lane != it->lane;
     }
-    // Csak akkor nyúlunk a sorokhoz, ha név / szín / oszlop tényleg változott (egy sima
-    // áthelyezésnél csak a számlálók módosulnak).
+    // Rows are touched only if the name / color / column really changed (a plain move only
+    // changes the counters).
     if (viewsChanged) {
         m_rows->notifyAll({TranscriptListModel::SpeakerNameRole, TranscriptListModel::ColorIndexRole,
                            TranscriptListModel::LaneRole, TranscriptListModel::HeadRole,
@@ -442,13 +442,13 @@ void TranscriptEditorViewModel::onSpeakersChanged()
             emit suggestionChanged();
         }
     }
-    // Az új személy oszlopa megszűnt (pl. visszavonás).
+    // The new person's column is gone (e.g. undo).
     if (!m_newPersonKey.isEmpty() && !m_views.contains(m_newPersonKey)) {
         m_newPersonKey.clear();
         m_rows->notifyAll({TranscriptListModel::NewPersonRole});
         scheduleReview();
     }
-    // „Hanglenyomat, ha elég": amint elég az anyag, a kért lenyomat elkészül.
+    // "Voiceprint when enough": as soon as the material suffices, the requested voiceprint is made.
     if (!m_voiceprintWhenReady.isEmpty() && m_editor) {
         const EditorSpeaker sp = m_editor->speaker(m_voiceprintWhenReady);
         if (sp.key.isEmpty() || sp.anonymous || sp.hasVoiceprint) {
@@ -499,13 +499,13 @@ void TranscriptEditorViewModel::onSuggestionChanged()
     scheduleOverview();
 }
 
-// ---- beszélők / sávok -------------------------------------------------------
+// ---- speakers / lanes -------------------------------------------------------
 
 void TranscriptEditorViewModel::rebuildSpeakers(bool recomputeCollapsed)
 {
     m_speakers = m_editor ? m_editor->speakers() : QVector<EditorSpeaker>();
-    // Saját magam elöl; a többiek az első megjelenés (colorIndex) sorrendjében — ez a sorrend
-    // szerkesztés közben nem ugrál.
+    // Myself first; the others in order of first appearance (colorIndex): this order does not
+    // jump around while editing.
     std::stable_sort(m_speakers.begin(), m_speakers.end(),
                      [](const EditorSpeaker& a, const EditorSpeaker& b) { return a.isSelf && !b.isSelf; });
 
@@ -521,17 +521,17 @@ void TranscriptEditorViewModel::rebuildSpeakers(bool recomputeCollapsed)
         });
         for (int i = kAlwaysVisibleLanes; i < byTime.size(); ++i)
             if (byTime[i]->talkShare < kCollapseShare && !byTime[i]->isSelf) m_collapsed.insert(byTime[i]->key);
-        // Egyetlen beszélőt nem éri meg csoportba csukni (a „+1" oszlop sem keskenyebb érdemben).
+        // A single speaker is not worth collapsing into a group (the "+1" column is no narrower either).
         if (m_collapsed.size() < 2) m_collapsed.clear();
     } else {
-        // Szerkesztés közben a csoport nem rendeződik át: csak a megszűnt kulcsok esnek ki;
-        // az újonnan felvett résztvevő mindig látható oszlopot kap.
+        // The grouping does not reshuffle during editing: only vanished keys drop out;
+        // a newly added participant always gets a visible column.
         for (auto it = m_collapsed.begin(); it != m_collapsed.end();)
             it = keys.contains(*it) ? std::next(it) : m_collapsed.erase(it);
     }
 
-    // Azonos nevű beszélők (a diarizáció kettévágta ugyanazt a személyt, vagy két nyers
-    // beszélőt ugyanarra a névre azonosított): a felületen a nyers címke különbözteti meg őket.
+    // Speakers with the same name (diarization split one person in two, or two raw speakers were
+    // identified as the same name): the raw label tells them apart in the UI.
     QHash<QString, int> nameCount;
     for (const EditorSpeaker& s : std::as_const(m_speakers)) ++nameCount[s.displayName];
 
@@ -563,7 +563,7 @@ void TranscriptEditorViewModel::setLanesExpanded(bool expanded)
     m_lanesExpanded = expanded;
     rebuildSpeakers(false);
     m_rows->notifyAll({TranscriptListModel::LaneRole});
-    m_review->refreshAll();     // az Átnézendő sorok sín-oszlopa is változik
+    m_review->refreshAll();     // the "To review" rows' rail column changes too
     emit speakersChanged();
     rebuildOverview();
 }
@@ -573,7 +573,7 @@ QString TranscriptEditorViewModel::laneKey(int lane) const
     return lane >= 0 && lane < m_laneKeys.size() ? m_laneKeys[lane] : QString();
 }
 
-// ---- áttekintő --------------------------------------------------------------
+// ---- overview --------------------------------------------------------------
 
 void TranscriptEditorViewModel::scheduleOverview()
 {
@@ -594,7 +594,7 @@ void TranscriptEditorViewModel::rebuildOverview()
     const bool other = !m_lanesExpanded && !m_collapsed.isEmpty();
     const int rowCount = int(m_laneKeys.size()) + (other ? 1 : 0);
     QVector<QList<qreal>> segs(rowCount), marks(rowCount);
-    QVector<int> lastEnd(rowCount, -1);     // az utolsó szegmens megszólalás-indexe (összevonáshoz)
+    QVector<int> lastEnd(rowCount, -1);     // utterance index of the last segment (for merging)
 
     for (int i = 0; i < m_utts.size(); ++i) {
         const EditorUtterance& u = m_utts[i];
@@ -604,14 +604,14 @@ void TranscriptEditorViewModel::rebuildOverview()
         const qreal x = qreal(u.startMs) / total;
         const qreal w = qreal(std::max<qint64>(0, u.endMs - u.startMs)) / total;
         QList<qreal>& s = segs[row];
-        // Az egymást követő megszólalások (ugyanaz a beszélő, köztük nincs más) egy sávvá olvadnak.
+        // Consecutive utterances (same speaker, nobody in between) merge into one band.
         if (lastEnd[row] == i - 1 && s.size() >= 2 && x - (s[s.size() - 2] + s.last()) < 0.004) {
             s.last() = x + w - s[s.size() - 2];
         } else {
             s << x << w;
         }
         lastEnd[row] = i;
-        // A kiemelt sorok accent jele: a „hasonló sorok" javaslat és az új személyhez hasonló sorok.
+        // Accent marks of the highlighted rows: the "similar lines" suggestion and the lines similar to the new person.
         if ((m_suggestionShown && m_suggested.contains(i)) || (m_similarShown && m_similar.contains(i)))
             marks[row] << x << w;
     }
@@ -648,7 +648,7 @@ void TranscriptEditorViewModel::rebuildOverview()
     emit overviewChanged();
 }
 
-// ---- sín / szűrő ------------------------------------------------------------
+// ---- rail / filter ------------------------------------------------------------
 
 bool TranscriptEditorViewModel::loadRailState() const
 {
@@ -668,7 +668,7 @@ void TranscriptEditorViewModel::saveRailState() const
         if (f.open(QIODevice::ReadOnly)) root = QJsonDocument::fromJson(f.readAll()).object();
     }
     QJsonObject rail = root.value(QStringLiteral("rail")).toObject();
-    // Az alapértelmezés a rejtett sín: csak a bekapcsoltakat tároljuk.
+    // The default is the hidden rail: only the switched-on ones are stored.
     if (m_railVisible) rail.insert(m_editor->meetingId(), true);
     else rail.remove(m_editor->meetingId());
     root.insert(QStringLiteral("rail"), rail);
@@ -692,18 +692,18 @@ void TranscriptEditorViewModel::setUncertainOnly(bool on)
     if (m_uncertainOnly == on) return;
     m_uncertainOnly = on;
     m_sticky.clear();
-    if (on && !m_sampleFilterKey.isEmpty()) {     // az Átnézendő a minta-szűrőt is lezárja
+    if (on && !m_sampleFilterKey.isEmpty()) {     // "To review" also closes the sample filter
         m_sampleFilterKey.clear();
         m_sampleFilter.clear();
     }
-    emit listFilterChanged();       // a szűrő újbóli alkalmazása: a javított sorok már nem maradnak
+    emit listFilterChanged();       // applying the filter again: fixed rows no longer stay
     m_rows->rebuild();
     updatePlayingRow();
     emit uncertainOnlyChanged();
     emit selectionChanged();
 }
 
-// ---- undo / javaslat --------------------------------------------------------
+// ---- undo / suggestion --------------------------------------------------------
 
 bool TranscriptEditorViewModel::canUndo() const { return m_editor && m_editor->canUndo(); }
 bool TranscriptEditorViewModel::canRedo() const { return m_editor && m_editor->canRedo(); }
@@ -712,7 +712,7 @@ QString TranscriptEditorViewModel::redoText() const { return m_editor ? m_editor
 
 void TranscriptEditorViewModel::undo()
 {
-    const QScopedValueRollback<bool> userEdit(m_sweepUserEdit, true);   // S6: nem háttér-változás
+    const QScopedValueRollback<bool> userEdit(m_sweepUserEdit, true);   // not a background change
     if (m_editor) m_editor->undo();
 }
 
@@ -724,7 +724,7 @@ void TranscriptEditorViewModel::redo()
         const QScopedValueRollback<bool> userEdit(m_sweepUserEdit, true);   // S6
         m_editor->redo();
     }
-    // A visszahozott lépés az „Imént" sor tetejére (a sorszáma ugyanaz, mint eredetileg).
+    // The restored step goes on top of the "Just now" row (its row number is the same as originally).
     Decision d;
     d.text = tr("Újra: %1").arg(text);
     const QVector<quint64> serials = m_editor->undoSerials();
@@ -738,7 +738,7 @@ void TranscriptEditorViewModel::setSuggestionShown(bool shown)
     if (m_suggestionAnchor < 0) shown = false;
     if (m_suggestionShown == shown) return;
     m_suggestionShown = shown;
-    // A szűrőben a megmutatott (javasolt) sorok is látszanak, amíg a kiemelés él.
+    // In the filter the shown (suggested) rows are visible too while the highlight lasts.
     if (m_uncertainOnly) m_rows->syncFilter();
     QVector<int> touched;
     for (int i : std::as_const(m_suggested)) touched.append(i);
@@ -746,7 +746,7 @@ void TranscriptEditorViewModel::setSuggestionShown(bool shown)
     emit suggestionChanged();
     rebuildOverview();
     if (shown) {
-        // A javasolt sorok a sínen látszanak: kapcsoljuk be, és ugorjunk az elsőre.
+        // The suggested rows show on the rail: turn it on and jump to the first.
         setRailVisible(true);
         int first = -1;
         for (int i : std::as_const(m_suggested)) first = first < 0 ? i : std::min(first, i);
@@ -791,7 +791,7 @@ void TranscriptEditorViewModel::dismissSuggestion()
     if (m_editor) m_editor->dismissSuggestion();
 }
 
-// ---- páronkénti átnézés -----------------------------------------------------
+// ---- pairwise review -----------------------------------------------------
 
 QString TranscriptEditorViewModel::pairOfferText() const
 {
@@ -823,14 +823,14 @@ QVariantMap TranscriptEditorViewModel::recheckPair(const QString& speakerKeyA, c
     QString text = r.flagged > 0
         ? tr("%n kétséges sor %1 és %2 között — az Átnézendő szűrőben.", nullptr, r.flagged).arg(nameA, nameB)
         : tr("A megerősített sorok alapján nem találtam kétséges sort %1 és %2 között.").arg(nameA, nameB);
-    // Ha valamelyiküknél kevés volt a megerősített sor, a referencia az összes sora (szennyezett lehet).
+    // If either had few confirmed rows, the reference is all of their rows (may be contaminated).
     QStringList few;
     if (r.fallbackA) few << nameA;
     if (r.fallbackB) few << nameB;
     if (!few.isEmpty())
         text += QLatin1Char(' ')
               + tr("Kevés megerősített sor (%1): az összes sorát vettem alapul.").arg(few.join(QStringLiteral(", ")));
-    // Ha tárolt lenyomat is beszállt a referenciába: miből állt össze (pl. „Dompa 3 sor + 1 korábbi lenyomat").
+    // If a stored voiceprint joined the reference: what it consisted of (e.g. "Alex 3 lines + 1 earlier voiceprint").
     const QString refs = r.referenceSummary();
     out[QStringLiteral("referenceSummary")] = refs;
     if (!refs.isEmpty()) text += QLatin1Char(' ') + refs;
@@ -854,7 +854,7 @@ QVariantMap TranscriptEditorViewModel::acceptPairOffer()
         emit suggestionChanged();
     }
     const QVariantMap out = recheckPair(o.sourceSpeakerKey, o.targetSpeakerKey);
-    // Az eredmény értesítésként szól; a sáv (az átsorolás híre + az ajánlat) ezzel lezárul.
+    // The result is announced as a notice; the lane (the reassignment news + the offer) closes with it.
     clearChange();
     return out;
 }
@@ -885,7 +885,7 @@ QVariantList TranscriptEditorViewModel::pairCandidates(const QString& speakerKey
     return out;
 }
 
-// ---- hang-elemzés -----------------------------------------------------------
+// ---- audio analysis -----------------------------------------------------------
 
 bool TranscriptEditorViewModel::voiceAvailable() const
 {
@@ -912,7 +912,7 @@ void TranscriptEditorViewModel::updateVoiceNote()
     m_voiceNote = note;
 }
 
-// ---- keresés ----------------------------------------------------------------
+// ---- search ----------------------------------------------------------------
 
 void TranscriptEditorViewModel::setSearchQuery(const QString& query)
 {
@@ -921,7 +921,7 @@ void TranscriptEditorViewModel::setSearchQuery(const QString& query)
     updateSearch();
     if (!m_matches.isEmpty()) {
         m_searchCurrent = 0;
-        // Az első találat a mostani lejátszási / kijelölési hely után legyen, ha van ilyen.
+        // The first hit should be after the current playback / selection position, if there is one.
         m_rows->notifyUtterances({m_matches[0]}, {TranscriptListModel::RichTextRole});
         const int row = m_rows->nearestRow(m_matches[0]);
         emit searchChanged();
@@ -1005,7 +1005,7 @@ void TranscriptEditorViewModel::setHighlightCurrentColor(const QColor& c)
     emit highlightColorChanged();
 }
 
-// ---- pozíció / lejátszás ----------------------------------------------------
+// ---- position / playback ----------------------------------------------------
 
 QString TranscriptEditorViewModel::timeLabel(qint64 ms)
 {
@@ -1019,7 +1019,7 @@ QString TranscriptEditorViewModel::timeLabel(qint64 ms)
 int TranscriptEditorViewModel::utteranceForTime(int ms) const
 {
     if (m_utts.isEmpty()) return -1;
-    // Az utolsó megszólalás, amely legkésőbb `ms`-kor kezdődik (a sorok időrendben állnak).
+    // The last utterance starting at `ms` at the latest (rows are in time order).
     const auto it = std::upper_bound(m_utts.cbegin(), m_utts.cend(), qint64(ms),
                                      [](qint64 t, const EditorUtterance& u) { return t < u.startMs; });
     if (it == m_utts.cbegin()) return 0;
@@ -1036,7 +1036,7 @@ void TranscriptEditorViewModel::setPlaybackPosition(int ms, bool active)
     m_playbackMs = ms;
     m_playbackActive = active;
     updatePlayingRow();
-    sweepOnPosition();      // S6: megálló, utólagos ablak, szakasz-vég
+    sweepOnPosition();      // stop, after window, section end
 }
 
 void TranscriptEditorViewModel::updatePlayingRow()
@@ -1073,7 +1073,7 @@ QVariantMap TranscriptEditorViewModel::playBounds(int startMs, int endMs) const
 {
     qint64 minStart = -1, maxEnd = -1;
     for (const EditorUtterance& u : m_utts) {
-        if (u.startMs == startMs && u.endMs == endMs) continue;     // maga a sor
+        if (u.startMs == startMs && u.endMs == endMs) continue;     // the row itself
         if (u.startMs < startMs) minStart = qMax(minStart, qMin(u.endMs, qint64(startMs)));
         else if (u.startMs > startMs) {
             const qint64 b = qMax(u.startMs, qint64(endMs));
@@ -1120,7 +1120,7 @@ int TranscriptEditorViewModel::timeAtFraction(qreal fraction) const
     return int(std::clamp(fraction, 0.0, 1.0) * total);
 }
 
-// ---- kijelölés --------------------------------------------------------------
+// ---- selection --------------------------------------------------------------
 
 int TranscriptEditorViewModel::currentRow() const
 {
@@ -1168,7 +1168,7 @@ void TranscriptEditorViewModel::selectRow(int row, bool toggle, bool range)
         setSelection(sel, u);
         return;
     }
-    // Sima kattintás: csak ez a sor; az egyetlen kijelölt sorra újra kattintva megszűnik.
+    // Plain click: only this row; clicking the single selected row again clears it.
     if (m_selected.size() == 1 && m_selected.contains(u)) setSelection({}, -1);
     else setSelection({u}, u);
 }
@@ -1252,12 +1252,12 @@ QStringList TranscriptEditorViewModel::idsOfRows(int fromRow, int toRow) const
     return ids;
 }
 
-// ---- műveletek --------------------------------------------------------------
+// ---- actions --------------------------------------------------------------
 
 void TranscriptEditorViewModel::afterMove(const QString& targetKey)
 {
-    // Ha a cél épp összecsukott oszlopban volt, kapjon saját oszlopot (lássa a felhasználó,
-    // hova került a sor).
+    // If the target was in a collapsed column, it gets its own column (so the user sees where
+    // the row went).
     if (!targetKey.isEmpty() && m_collapsed.remove(targetKey)) {
         rebuildSpeakers(false);
         m_rows->notifyAll({TranscriptListModel::LaneRole});
@@ -1270,7 +1270,7 @@ QString TranscriptEditorViewModel::moveLines(const QStringList& ids, MoveTarget 
                                              bool noisy)
 {
     if (!m_editor || ids.isEmpty()) return {};
-    // A művelet előtti beszélők: ebből derül ki, hány sor mozdult ténylegesen, és honnan.
+    // The speakers before the action: shows how many rows actually moved, and from where.
     QVector<QPair<int, QString>> before;
     before.reserve(ids.size());
     for (const QString& id : ids) {
@@ -1304,13 +1304,13 @@ QString TranscriptEditorViewModel::moveLines(const QStringList& ids, MoveTarget 
     QString source;
     bool mixed = false;
     for (const auto& b : std::as_const(before)) {
-        if (b.second == key) continue;          // már ott volt
+        if (b.second == key) continue;          // was already there
         ++moved;
         last = std::max(last, b.first);
         if (source.isEmpty()) source = b.second;
         else if (source != b.second) mixed = true;
     }
-    // Új személy jött létre (E4): az oszlopa kiemelt, a sáv a hozzá hasonló sorokat ajánlja.
+    // A new person was created: their column is highlighted, the lane suggests the lines similar to them.
     const bool created = kind != MoveTarget::Speaker && !keysBefore.contains(key);
     if (created) {
         m_newPersonKey = key;
@@ -1327,7 +1327,7 @@ QString TranscriptEditorViewModel::moveLines(const QStringList& ids, MoveTarget 
         if (created && kind == MoveTarget::Person) askNewPersonTag(value);
         endDecision(m_change.text, ids, noisy ? QStringLiteral("noSample") : QStringLiteral("sample"));
     } else {
-        // A sorok már ott voltak (pl. csak a „nem minta" jelzés változott): az is döntés.
+        // The rows were already there (e.g. only the "not a sample" flag changed): that is a decision too.
         endDecision(noisy ? tr("%n sor: nem minta (%1)", nullptr, int(ids.size())).arg(m_views.value(key).name)
                           : tr("%n sor marad: %1", nullptr, int(ids.size())).arg(m_views.value(key).name),
                     ids, noisy ? QStringLiteral("noSample") : QStringLiteral("sample"));
@@ -1408,7 +1408,7 @@ bool TranscriptEditorViewModel::moveUtteranceToNewParticipant(const QString& utt
     return !moveLines({utteranceId}, MoveTarget::NewParticipant, QString(), noisy).isEmpty();
 }
 
-// ---- S2: „nem azonosítható", „Jó így" a kijelölésre ------------------------------------
+// ---- "cannot be identified", "Looks right" on the selection ------------------------------------
 
 bool TranscriptEditorViewModel::setUtteranceIgnored(const QString& utteranceId, bool ignored)
 {
@@ -1469,11 +1469,11 @@ bool TranscriptEditorViewModel::moveRestOfSource()
     return mergeSpeakers(m_change.sourceKey, m_change.targetKey);
 }
 
-// ---- a legutóbbi átsorolás értesítése (alsó sáv) ----------------------------
+// ---- notice of the latest reassignment (bottom bar) ----------------------------
 
 bool TranscriptEditorViewModel::needsAz(int number)
 {
-    // „az" a magánhangzóval kezdődő számnevek előtt: egy, öt…, ötven…, ötszáz…, ezer…
+    // Hungarian "az" before vowel-initial numerals: egy, ot..., otven..., otszaz..., ezer...
     if (number == 1 || (number >= 1000 && number < 2000)) return true;
     return QString::number(number).startsWith(QLatin1Char('5'));
 }
@@ -1494,7 +1494,7 @@ void TranscriptEditorViewModel::publishChange(const QString& text, const QString
     c.text = text;
     c.targetKey = targetKey;
     c.utterance = lastUtterance;
-    // A tömeges folytatás csak akkor ajánlható, ha a forrásnak maradt sora.
+    // The bulk continuation is offered only if the source has rows left.
     if (!sourceKey.isEmpty() && sourceKey != targetKey) {
         for (const EditorSpeaker& s : std::as_const(m_speakers)) {
             if (s.key != sourceKey || s.utteranceCount <= 0) continue;
@@ -1518,8 +1518,8 @@ void TranscriptEditorViewModel::publishWholeSpeakerChange(const QString& fromNam
     if (lines <= 0 || target.isEmpty()) text = m_editor ? m_editor->undoText() : QString();
     else if (needsAz(lines)) text = tr("%1 mind az %n sora átkerült ide: %2", nullptr, lines).arg(fromName, target);
     else text = tr("%1 mind a %n sora átkerült ide: %2", nullptr, lines).arg(fromName, target);
-    // Egy teljes beszélő most kapott (vagy váltott) személyt: ha annak még nincs hanglenyomata
-    // és itt van hozzá elég anyag, a sáv felajánlja — magától sosem készül.
+    // A complete speaker just got (or changed) a person: if that person has no voiceprint yet
+    // and there is enough material for one, the lane offers it; it is never made on its own.
     publishChange(text, QString(), targetKey, -1, /*offerVoiceprint*/ true);
     beginDecision({});
     endDecision(text, {}, QString());
@@ -1530,7 +1530,7 @@ bool TranscriptEditorViewModel::canOfferVoiceprint(const QString& speakerKey) co
     if (!m_editor || !voiceAvailable()) return false;
     const EditorSpeaker s = m_editor->speaker(speakerKey);
     if (s.key.isEmpty() || s.anonymous || s.hasVoiceprint) return false;
-    return m_editor->voiceprintMaterial(speakerKey).sufficient;      // kevés anyagnál nem nyaggatunk
+    return m_editor->voiceprintMaterial(speakerKey).sufficient;      // with little material we do not nag
 }
 
 bool TranscriptEditorViewModel::createVoiceprintFromChange()
@@ -1540,7 +1540,7 @@ bool TranscriptEditorViewModel::createVoiceprintFromChange()
     const VoiceprintResult r = m_editor->createVoiceprint(m_change.targetKey);
     m_change.utterance = -1;
     if (!r.ok) {
-        // Nem sikerült (pl. közben eltűnt a hang): az ajánlat megszűnik, az ok egyszer elhangzik.
+        // Failed (e.g. the audio vanished meanwhile): the offer goes away, the reason is shown once.
         m_change.voiceprint = Change::None;
         emit changeChanged();
         emit notice(r.error);
@@ -1568,8 +1568,8 @@ void TranscriptEditorViewModel::undoChange()
         undo();
         return;
     }
-    // A lenyomat nem része az undo-veremnek: itt pontosan a most készült lenyomat törlődik,
-    // az átsorolás (elnevezés) marad — az továbbra is Ctrl+Z-vel vonható vissza.
+    // The voiceprint is not part of the undo stack: here exactly the voiceprint just made is
+    // deleted, the reassignment (naming) stays; that can still be undone with Ctrl+Z.
     const QString name = m_views.value(m_change.targetKey).name;
     if (m_editor) m_editor->removeVoiceprint(m_change.printId);
     m_change.voiceprint = Change::Removed;
@@ -1675,7 +1675,7 @@ bool TranscriptEditorViewModel::setUtteranceNoisy(const QString& utteranceId, bo
     return true;
 }
 
-// ---- újraellenőrzés ---------------------------------------------------------
+// ---- re-check ---------------------------------------------------------
 
 void TranscriptEditorViewModel::updateRecheckState()
 {
@@ -1699,14 +1699,14 @@ QVariantMap TranscriptEditorViewModel::recheckSpeakers()
         out[QStringLiteral("blocker")] = m_editor->recheckBlocker();
         return out;
     }
-    // A szűrő-váltás és a jel a szerkesztő recheckFinished-jéből jön (a héj is azt váltja ki).
+    // The filter switch and the signal come from the editor's recheckFinished (the shell triggers it too).
     const SpeakerEditor::RecheckResult r = m_editor->recheckFromConfirmed();
     out[QStringLiteral("ran")] = r.ran;
     out[QStringLiteral("flagged")] = r.flagged;
     out[QStringLiteral("speakersWithConfirmedCore")] = r.speakersWithConfirmedCore;
     out[QStringLiteral("confirmedLines")] = r.confirmedLines;
     out[QStringLiteral("referenceSummary")] = r.referenceSummary();
-    // Mire támaszkodott (T5): tárolt minták, modellek, nagyon hasonló hangok.
+    // What it relied on: stored samples, models, very similar voices.
     out[QStringLiteral("storedPrints")] = r.storedPrints();
     out[QStringLiteral("localPrints")] = r.localPrints;
     out[QStringLiteral("models")] = r.models;
@@ -1725,7 +1725,7 @@ QVariantMap TranscriptEditorViewModel::recheckSpeakers()
     return out;
 }
 
-// ---- másolás ----------------------------------------------------------------
+// ---- copy ----------------------------------------------------------------
 
 QString TranscriptEditorViewModel::textOfUtterances(QVector<int> utterances) const
 {
@@ -1740,7 +1740,7 @@ QString TranscriptEditorViewModel::textOfUtterances(QVector<int> utterances) con
     int last = -2;
     for (int i : std::as_const(utterances)) {
         const EditorUtterance& u = m_utts[i];
-        // Új fejsor beszélőváltáskor, vagy ha a kijelölés nem folytonos (kimaradt sorok).
+        // New header line on speaker change, or if the selection is not contiguous (skipped rows).
         if (u.speakerKey != lastKey || i != last + 1) {
             if (!out.isEmpty()) out += QLatin1Char('\n');
             out += QStringLiteral("%1 (%2)\n").arg(m_views.value(u.speakerKey).name, timeLabel(u.startMs));
@@ -1796,14 +1796,14 @@ int TranscriptEditorViewModel::copyAll()
 
 void TranscriptEditorViewModel::selectAll()
 {
-    // A látható sorok (a „Bizonytalan" szűrőben csak a mutatottak).
+    // The visible rows (in the "Uncertain" filter only the shown ones).
     QSet<int> sel;
     for (const TranscriptListModel::Row& r : m_rows->rows())
         if (!r.gap) sel.insert(r.utterance);
     setSelection(sel, m_anchor >= 0 && sel.contains(m_anchor) ? m_anchor : -1);
 }
 
-// ---- „Következő bizonytalan" ------------------------------------------------
+// ---- "Next uncertain" ------------------------------------------------
 
 int TranscriptEditorViewModel::stepUncertain(int fromRow, int direction)
 {
@@ -1823,12 +1823,12 @@ int TranscriptEditorViewModel::stepUncertain(int fromRow, int direction)
     return -1;
 }
 
-// ---- „Meghallgatás" ---------------------------------------------------------
+// ---- "Listen" ---------------------------------------------------------
 
 QVariantMap TranscriptEditorViewModel::speakerSample(const QString& speakerKey) const
 {
-    // A legjobb minta: nem bizonytalan, 4–15 mp közötti sorok közül a leghosszabb; ha nincs
-    // ilyen, a leghosszabb sor (hosszú monológból az első ~12 mp).
+    // The best sample: among non-uncertain rows of 4-15 s, the longest; if there is none, the
+    // longest row (the first ~12 s of a long monologue).
     constexpr qint64 kMin = 4000, kMax = 15000, kCut = 12000;
     int best = -1;
     qint64 bestScore = -1;
@@ -1838,7 +1838,7 @@ QVariantMap TranscriptEditorViewModel::speakerSample(const QString& speakerKey) 
         const qint64 len = u.endMs - u.startMs;
         if (len <= 0) continue;
         qint64 score = std::min(len, kMax);
-        if (len >= kMin && len <= kMax) score += 100000;    // ideális hossz
+        if (len >= kMin && len <= kMax) score += 100000;    // ideal length
         if (!u.uncertain) score += 50000;
         if (score > bestScore) {
             bestScore = score;
@@ -1852,11 +1852,11 @@ QVariantMap TranscriptEditorViewModel::speakerSample(const QString& speakerKey) 
             {QStringLiteral("endMs"), int(std::min(u.endMs, u.startMs + kCut))}};
 }
 
-// ---- beszélő / hanglenyomat -------------------------------------------------
+// ---- speaker / voiceprint -------------------------------------------------
 
 QVariantMap TranscriptEditorViewModel::speakerInfo(const QString& speakerKey) const
 {
-    // Ugyanaz a térkép, mint a `speakers` listában (benne a nameDuplicate jelzés is).
+    // The same map as in the `speakers` list (including the nameDuplicate flag).
     for (const QVariant& v : std::as_const(m_speakerList))
         if (v.toMap().value(QStringLiteral("key")).toString() == speakerKey) return v.toMap();
     for (const EditorSpeaker& s : m_speakers)
@@ -1870,7 +1870,7 @@ QVariantList TranscriptEditorViewModel::speakersMatching(const QString& query, c
     QVariantList out;
     for (const EditorSpeaker& s : m_speakers) {
         if (s.key == excludeKey) continue;
-        // Névre VAGY becenévre: a megbeszélésen szereplő személyt a beceneve is megtalálja.
+        // By name OR nickname: a person in the meeting is also found by their nickname.
         QString matchedAlias;
         if (!needle.isEmpty() && !foldForSearch(s.displayName).contains(needle)) {
             if (m_editor && !s.anonymous)
@@ -1951,8 +1951,8 @@ QVariantMap TranscriptEditorViewModel::lineSampleInfo(const QString& utteranceId
         out[QStringLiteral("reason")] = tr("Nincs hangmodell vagy lekevert hang.");
     else
         out[QStringLiteral("ok")] = true;
-    // Bizonytalan sor: a minta egyben megerősítés is („Jó így”), mert a felhasználó a sor
-    // kiválasztásával dönt arról, hogy ez tényleg ennek a beszélőnek a hangja.
+    // Uncertain row: the sample is also a confirmation ("Looks right"), because by choosing the
+    // row the user decides that this really is this speaker's voice.
     out[QStringLiteral("confirmFirst")] = u.uncertain && out.value(QStringLiteral("ok")).toBool();
     return out;
 }
@@ -1964,7 +1964,7 @@ QVariantMap TranscriptEditorViewModel::createVoiceprintFromLine(const QString& u
     if (i < 0 || !m_editor) return out;
     const QString key = m_utts.at(i).speakerKey;
     const QString name = m_views.value(key).name;
-    // Bizonytalan sorból: előbb megerősítjük (ugyanaz, mint a „Jó így”), aztán minta lesz belőle.
+    // From an uncertain row: confirm first (same as "Looks right"), then it becomes a sample.
     if (m_utts.at(i).uncertain)
         m_editor->confirmUtterances({utteranceId}, /*asNoisy*/ false);
     const VoiceprintResult r = m_editor->createVoiceprintFromLines(key, {utteranceId});
@@ -1992,7 +1992,7 @@ bool TranscriptEditorViewModel::removeVoiceprint(const QString& printId)
     return true;
 }
 
-// ---- személyek --------------------------------------------------------------
+// ---- people --------------------------------------------------------------
 
 QVector<PersonInfo> TranscriptEditorViewModel::people() const
 {
@@ -2009,13 +2009,13 @@ bool TranscriptEditorViewModel::isMeetingPerson(const QString& name) const
     return false;
 }
 
-// ---- v3: bizonyíték, jelöltek, Átnézendő csoportok, új személy -------------------
+// ---- evidence, candidates, "To review" groups, new person -------------------
 
 namespace {
 
 QString sideOf(Side side) { return sideName(side); }
 
-// „a hívás hangján" / „a mikrofonon" — a mondatokba.
+// "on the call audio" / "on the microphone", for use in sentences.
 QString sidePhrase(const QString& side)
 {
     if (side == QLatin1String("remote")) return TranscriptEditorViewModel::tr("a hívás hangján");
@@ -2067,7 +2067,7 @@ QVariantMap TranscriptEditorViewModel::evidenceMap(const Evidence& e, const QStr
     const QString polarity = ranking::polarityName(e.polarity);
     QString side;
     if (kind == QLatin1String("side")) {
-        // A kontextus csak egyértelmű oldalnál dönt (vegyes / több sávos beszélőnél a szöveg).
+        // The context decides only for a clear side (for a mixed / multi-track speaker, the text).
         QString s = sideContext == QLatin1String("remote") || sideContext == QLatin1String("local") ? sideContext : QString();
         if (s.isEmpty()) {
             if (e.text.contains(tr("hívás"))) s = QStringLiteral("remote");
@@ -2095,8 +2095,8 @@ QVariantMap TranscriptEditorViewModel::evidenceMap(const Evidence& e, const QStr
         }
         break;
     case EvidenceKind::Tag: {
-        // A chip „#Nordvik” / „#Nordvik +1” / „más címkék”; a mondat a számokkal (UX-terv 4.,
-        // ranking::tagEvidenceOf): „A #Nordvik megbeszéléseken szokott lenni (11 / 14).”
+        // The chip is "#Nordvik" / "#Nordvik +1" / "other tags"; the sentence has the numbers
+        // (ranking::tagEvidenceOf): "Usually at #Nordvik meetings (11 / 14)."
         label = tr("Címke:");
         sentence = e.detail.isEmpty() ? e.text : e.detail;
         break;
@@ -2184,7 +2184,7 @@ QVariantList TranscriptEditorViewModel::whyNot(const QString& utteranceId) const
     const QString speakerKey = m_utts[i].speakerKey;
     const QString lineSide = lineSideName(utteranceId);
     const QString speakerSide = speakerSideName(speakerKey);
-    // A rövid név („Lilla") a mondatban: elnevezett személynél az utónév.
+    // The short name ("Lilla") in the sentence: for a named person, the first name.
     QString shortName = m_views.value(speakerKey).name;
     if (!m_editor->speaker(speakerKey).anonymous && shortName.contains(QLatin1Char(' ')))
         shortName = shortName.section(QLatin1Char(' '), -1);
@@ -2206,7 +2206,7 @@ QVariantList TranscriptEditorViewModel::speakerEvidence(const QString& speakerKe
     if (!m_editor) return {};
     QVariantList out = evidenceList(m_editor->speakerEvidence(speakerKey), speakerSideName(speakerKey), false,
                                     /*chipsOnly*/ true);
-    // A szennyezett mag (E2 „Miért?"): a megerősített sorai két hangra esnek → Szétválasztás.
+    // The contaminated core ("Why?"): its confirmed rows fall on two voices -> Split.
     if (m_contaminated.value(QStringLiteral("speakerKey")).toString() == speakerKey) {
         out.prepend(QVariantMap{
             {QStringLiteral("kind"), QStringLiteral("similarity")},
@@ -2246,7 +2246,7 @@ QVariantList TranscriptEditorViewModel::trackOptions(const QString& speakerKey) 
         mics += t.kind == TrackKind::Mic;
         loops += t.kind == TrackKind::Loopback;
     }
-    // Egyoldalú meeting (csak mikrofon vagy csak hívás): nincs mit beosztani.
+    // One-sided meeting (only mic or only call): nothing to assign.
     if (mics == 0 || loops == 0) return {};
     QVariantList out;
     for (const Track& t : std::as_const(tracks)) {
@@ -2280,7 +2280,7 @@ QVariantMap TranscriptEditorViewModel::quickTagFor(const QString& personName) co
 {
     const QString person = personName.trimmed();
     if (!m_editor || person.isEmpty()) return {};
-    // A saját személy minden címke-szabályból kimarad.
+    // The own person is excluded from every tag rule.
     QString self;
     if (m_demoSession) self = m_demoSession->selfName();
     else if (m_controller && m_controller->tags()) self = m_controller->tags()->selfName();
@@ -2317,7 +2317,7 @@ QString TranscriptEditorViewModel::sideBasisText(const QString& speakerKey) cons
     for (const PersonSide& p : r.persons) {
         if (p.speakerKey != speakerKey) continue;
         if (p.basis == QLatin1String("manual")) {
-            // Több sáv (mikrofon és hívás is): „mindkét sávon"; a tanult oldal mellette marad.
+            // Several tracks (mic and call too): "on both tracks"; the learned side stays next to it.
             QString manual = sidePhrase(sideOf(p.manualSide));
             if (manual.isEmpty()) manual = tr("több sávon");
             QString text = tr("kézi beosztás: %1").arg(manual);
@@ -2392,7 +2392,7 @@ void TranscriptEditorViewModel::rebuildReview()
             const QString ctx = sides.value(!g.proposedSpeakerKey.isEmpty() ? g.proposedSpeakerKey : g.currentSpeakerKey);
             v.evidence = evidenceList(g.evidence, ctx, g.kind == ReviewKind::SideConflict, true);
             v.actionable = g.kind != ReviewKind::ShortLines;
-            // A handoff szövegei (E2): az ok a címben, a javaslat az alcímben.
+            // The handoff texts: the reason in the title, the suggestion in the subtitle.
             const QString curName = m_views.value(g.currentSpeakerKey).name;
             const QString target = !g.proposedSpeakerKey.isEmpty() && m_views.contains(g.proposedSpeakerKey)
                 ? m_views.value(g.proposedSpeakerKey).name : g.proposedPersonName;
@@ -2422,9 +2422,9 @@ void TranscriptEditorViewModel::rebuildReview()
                 m_newPersonGroupId = g.id;
             m_reviewViews.append(v);
         }
-        // A csoportokon kívüli, hangra kétes sorok (a régi „Bizonytalan" szűrő sorai): a javasolt
-        // beszélő szerint csoportosítva; javaslat nélkül egy közös, csak „Egyenként" csoport.
-        QMap<QString, QStringList> byPair;      // "jelenlegi\x1fjavasolt" → sorok
+        // Voice-doubtful rows outside the groups (the old "Uncertain" filter's rows): grouped by the
+        // suggested speaker; without a suggestion, one shared "One by one" only group.
+        QMap<QString, QStringList> byPair;      // "current\x1fproposed" -> rows
         QStringList loose;
         for (const EditorUtterance& u : std::as_const(m_utts)) {
             if (!u.uncertain || u.confirmed || covered.contains(u.id)) continue;
@@ -2467,7 +2467,7 @@ void TranscriptEditorViewModel::rebuildReview()
     m_reviewCount = count;
     m_reviewGroupCount = groups;
 
-    // A sín-fejléc oldal-ikonjai; a sorok sáv-ellentmondás jelzése.
+    // The rail header's side icons; the rows' track-contradiction flag.
     const bool sidesChanged = sides != m_speakerSides;
     const bool conflictsChanged = sideConflicts != m_sideConflicts;
     m_speakerSides = sides;
@@ -2478,7 +2478,7 @@ void TranscriptEditorViewModel::rebuildReview()
     }
     if (conflictsChanged) m_rows->notifyAll({TranscriptListModel::SideConflictRole});
     m_review->sync();
-    m_queue->syncFromReview();      // S3: csak a beérkező halmaz + javaslat-frissülés (sorrend nem)
+    m_queue->syncFromReview();      // only the incoming set + suggestion refresh (not the order)
     updateSimilar();
     emit reviewChanged();
 }
@@ -2493,7 +2493,7 @@ void TranscriptEditorViewModel::updateSimilar()
             if (i >= 0) similar.insert(i);
         }
     }
-    // Az új személy hasonló sorai először maguktól látszanak („Megmutatva a sínen").
+    // The new person's similar rows first show on their own ("Shown on the rail").
     if (!similar.isEmpty() && !m_similarAutoShown) {
         m_similarAutoShown = true;
         m_similarShown = true;
@@ -2524,7 +2524,7 @@ void TranscriptEditorViewModel::setSimilarShown(bool shown)
     m_similarAutoShown = true;
     m_similarMarks.clear();
     QSet<int> keep = m_similar;
-    m_similar.clear();          // updateSimilar újraszámolja (és értesít)
+    m_similar.clear();          // updateSimilar recomputes (and notifies)
     for (int i : std::as_const(keep)) m_rows->notifyUtterances({i}, {TranscriptListModel::SimilarRole});
     updateSimilar();
     if (shown) {
@@ -2587,7 +2587,7 @@ QVariantMap TranscriptEditorViewModel::requestNewPersonVoiceprint()
 bool TranscriptEditorViewModel::applyReviewGroup(const QString& groupId, bool noisy)
 {
     if (!m_editor) return false;
-    // S5: a munkalista nyitó-javaslata (TranscriptEditorViewModelQueue.cpp).
+    // The queue's opening suggestion (TranscriptEditorViewModelQueue.cpp).
     bool opener = false;
     const bool openerOk = applyQueueOpener(groupId, noisy, &opener);
     if (opener) return openerOk;
@@ -2604,7 +2604,7 @@ bool TranscriptEditorViewModel::applyReviewGroup(const QString& groupId, bool no
         last = std::max(last, i);
     }
     if (noisy) {
-        // „Nem minta": a sorok egy lépésben, zajos-jelzéssel (a core csoport-útja ezt nem tudja).
+        // "Not a sample": the rows in one step, with the noisy flag (the core's group path cannot do this).
         QStringList ids;
         for (const QString& id : v.ids) {
             const int i = m_uttIndex.value(id, -1);
@@ -2653,7 +2653,7 @@ bool TranscriptEditorViewModel::splitSpeaker(const QString& speakerKey)
     if (!m_editor) return false;
     const int count = m_contaminated.value(QStringLiteral("count")).toInt();
     const QList<QString> keysBefore = m_views.keys();
-    // A cél: a szennyezett-mag csoport javaslata (a core ugyanazt számolja újra).
+    // The target: the contaminated-core group's suggestion (the core recomputes the same).
     QString proposed;
     for (const ReviewGroup& g : m_editor->reviewGroups())
         if (g.kind == ReviewKind::ContaminatedCore && g.currentSpeakerKey == speakerKey)
@@ -2693,7 +2693,7 @@ bool TranscriptEditorViewModel::acceptNewPersonSimilar()
     return !m_newPersonGroupId.isEmpty() && applyReviewGroup(m_newPersonGroupId);
 }
 
-// ---- S2: döntés-napló, eltérő minta, minta-mérő, „nem azonosítható" szűrő ------------------
+// ---- decision log, deviating sample, sample meter, "cannot be identified" filter ----------------
 
 namespace {
 constexpr int kDecisionLogSize = 5;
@@ -2704,7 +2704,7 @@ QVariantMap chip(const QString& kind, const QString& text)
     return {{QStringLiteral("kind"), kind}, {QStringLiteral("text"), text}};
 }
 
-// „1 p 12 mp" / „48 mp".
+// Duration text as "1 min 12 s" / "48 s" (the code uses the Hungarian units "p" / "mp").
 QString durationText(qint64 ms)
 {
     const qint64 sec = (ms + 500) / 1000;
@@ -2731,7 +2731,7 @@ void TranscriptEditorViewModel::endDecision(const QString& text, const QStringLi
     if (!m_editor) return;
     Decision d;
     d.text = text;
-    // S7: a döntés igéje (az Imént sor ikonja): áthelyezés / marad / nem azonosítható.
+    // The decision's verb (the Just now row's icon): move / keep / cannot be identified.
     if (kind == QLatin1String("ignored")) {
         d.verb = QStringLiteral("ignore");
     } else if (kind == QLatin1String("sample") || kind == QLatin1String("noSample")) {
@@ -2754,7 +2754,7 @@ void TranscriptEditorViewModel::endDecision(const QString& text, const QStringLi
         d.time = timeLabel(m_utts[first].startMs);
         d.utteranceId = m_utts[first].id;
     }
-    // Mellékhatás-chipek: lett-e minta (a core minta-szabálya szerint), nem azonosítható.
+    // Side-effect chips: whether it became a sample (per the core's sample rule), cannot be identified.
     if (kind == QLatin1String("ignored")) {
         d.chips << chip(kind, tr("nem azonosítható"));
     } else if (kind == QLatin1String("unignored")) {
@@ -2877,7 +2877,7 @@ void TranscriptEditorViewModel::updateSampleStats()
     if (next == m_sampleStats) return;
     m_sampleStats = next;
     emit sampleStatsChanged();
-    // A „+N most" szűrő követi a mérőt (visszavonás után a sor már nem „most lett" minta).
+    // The "+N now" filter follows the meter (after an undo the row is no longer a "now" sample).
     if (!m_sampleFilterKey.isEmpty()) {
         QSet<int> filter;
         for (const QVariant& v : std::as_const(m_sampleStats)) {
@@ -2888,7 +2888,7 @@ void TranscriptEditorViewModel::updateSampleStats()
                 if (i >= 0) filter.insert(i);
             }
         }
-        // A már látható sor nem tűnik el a kurzor alól: a szűrő csak bővül, amíg be van kapcsolva.
+        // A row already visible does not vanish under the cursor: the filter only grows while it is on.
         m_sampleFilter.unite(filter);
         m_rows->syncFilter();
     }
@@ -2958,9 +2958,9 @@ void TranscriptEditorViewModel::clearSampleFilter()
     if (row >= 0) emit revealRequested(row);
 }
 
-// ---- demó-állapotok ---------------------------------------------------------
+// ---- demo states ---------------------------------------------------------
 
-// ---- új személy: címke-kérdés (UX-terv 5.) -------------------------------------------------
+// ---- new person: tag question ---------------------------------------------------
 
 void TranscriptEditorViewModel::askNewPersonTag(const QString& name)
 {
@@ -3025,14 +3025,14 @@ void TranscriptEditorViewModel::undoChangeTagAnswer()
     emit changeChanged();
 }
 
-// S2 demó-állapotok (a v3 kitalált meetingen, a stageV3 után): „Imént" sor figyelmeztetéssel és
-// naplóval, nem azonosítható sorok + minta-jelek, a minta-mérő szűrője.
+// Demo states (on the fictional v3 meeting, after stageV3): "Just now" row with a warning and
+// log, rows that cannot be identified + sample marks, the sample meter's filter.
 void TranscriptEditorViewModel::stageS2Demo(const QString& state)
 {
     if (!m_editor || m_utts.size() < 12) return;
     auto keyOfPerson = [this](const QString& name) { return speakerKeyForPerson(name); };
     if (state == QLatin1String("ignoredRows")) {
-        // Javítva + minta, Jó így + nem minta, két nem azonosítható sor.
+        // Fixed + sample, Looks right + not a sample, two rows that cannot be identified.
         const QString eszter = keyOfPerson(demoName("Molnár Eszter"));
         if (!eszter.isEmpty()) moveUtteranceToSpeaker(m_utts[3].id, eszter);
         confirmUtterance(m_utts[5].id, /*asNoisy*/ true);
@@ -3041,8 +3041,8 @@ void TranscriptEditorViewModel::stageS2Demo(const QString& state)
         clearChange();
         emit revealRequested(0);
     } else if (state == QLatin1String("imentWarning") || state == QLatin1String("imentLog")) {
-        // Egy mintaként áthelyezett sor, amelynek a hangja eltér a cél többi sorától: próbálgatással
-        // keressük meg (és vonjuk vissza), majd egy kis döntés-sor után ténylegesen megtesszük.
+        // A row moved as a sample whose voice differs from the target's other rows: found by trial
+        // (and undone), then actually done after a small decision row.
         QString hitId, hitKey;
         for (int i = 9; i < m_utts.size() && hitId.isEmpty(); ++i) {
             const EditorUtterance u = m_utts[i];
@@ -3079,7 +3079,7 @@ void TranscriptEditorViewModel::stageS2Demo(const QString& state)
 void TranscriptEditorViewModel::applyDemoState(const QString& state)
 {
     m_pendingDemoState = state;
-    if (m_editor && m_editor->isEmbeddingRunning()) return;    // a hang-elemzés végén
+    if (m_editor && m_editor->isEmbeddingRunning()) return;    // at the end of the audio analysis
     applyPendingDemoState();
 }
 
@@ -3114,8 +3114,8 @@ void TranscriptEditorViewModel::applyPendingDemoState()
     } else if (state == QLatin1String("rail")) {
         setRailVisible(true);
     } else if (state == QLatin1String("changeLine")) {
-        // Egy sor átkerül a szomszéd oszlopba: nincs hasonló-sor javaslat, csak a „mind a N
-        // sora" folytatás.
+        // A row moves to the adjacent column: no similar-row suggestion, only the "all N rows"
+        // continuation.
         setRailVisible(true);
         if (m_utts.size() > 3 && m_laneKeys.size() > 1)
             moveUtteranceToSpeaker(m_utts[3].id, m_laneKeys[m_utts[3].speakerKey == m_laneKeys[1] ? 0 : 1]);
@@ -3129,7 +3129,7 @@ void TranscriptEditorViewModel::applyPendingDemoState()
         setRailVisible(true);
         reassignSpeaker(m_laneKeys.value(0), demoName("Molnár Eszter"), false);
     } else if (state == QLatin1String("changeVoiceprint") || state == QLatin1String("changeVoiceprintDone")) {
-        // Egy névtelen beszélő nevet kap (a személynek nincs lenyomata): a sáv felajánlja.
+        // An anonymous speaker gets a name (the person has no voiceprint): the lane offers one.
         setRailVisible(true);
         for (const EditorSpeaker& s : std::as_const(m_speakers)) {
             if (!s.anonymous || m_views.value(s.key).lane < 0) continue;
@@ -3138,7 +3138,7 @@ void TranscriptEditorViewModel::applyPendingDemoState()
         }
         if (state == QLatin1String("changeVoiceprintDone")) createVoiceprintFromChange();
     } else if (state == QLatin1String("voiceprintNone") || state == QLatin1String("voiceprintDone")) {
-        // Legyen elnevezett, lenyomat nélküli beszélő (a panelt a TranscriptTab nyitja).
+        // Make it a named speaker without a voiceprint (the panel is opened by TranscriptTab).
         bool exists = false;
         for (const EditorSpeaker& s : std::as_const(m_speakers)) exists = exists || (!s.anonymous && !s.hasVoiceprint);
         for (const EditorSpeaker& s : std::as_const(m_speakers)) {
@@ -3148,12 +3148,12 @@ void TranscriptEditorViewModel::applyPendingDemoState()
         }
         dismissChange();
     } else if (state == QLatin1String("voiceprintShort")) {
-        // Egyetlen rövid sor egy új személynél: ebből nem készíthető lenyomat.
+        // A single short row for a new person: no voiceprint can be made from it.
         if (m_utts.size() > 3) moveUtteranceToPerson(m_utts[3].id, demoName("Bálint Péter"));
         dismissChange();
     } else if (state == QLatin1String("recheck") || state == QLatin1String("recheckReady")) {
-        // Beszélőnként 3 biztos sor megerősítve. recheckReady: a mostani bizonytalanok is
-        // eldöntve („Jó így") → a szűrő-gomb az újraellenőrzést kínálja; recheck: le is fut.
+        // 3 sure rows confirmed per speaker. recheckReady: the current uncertain ones are decided
+        // too ("Looks right") -> the filter button offers the re-check; recheck: it runs as well.
         setRailVisible(true);
         const bool ready = state == QLatin1String("recheckReady");
         QStringList ids = ready ? m_editor->uncertainUtteranceIds() : QStringList();
@@ -3167,7 +3167,7 @@ void TranscriptEditorViewModel::applyPendingDemoState()
         m_editor->confirmUtterances(ids);
         if (!ready) recheckSpeakers();
     } else if (state == QLatin1String("noisy")) {
-        // Egy hosszabb sor „Jó így, de ne használd mintának" jelzést kap.
+        // A longer row gets the "Looks right, but don't use as a sample" flag.
         for (const EditorUtterance& u : std::as_const(m_utts)) {
             if (u.uncertain || u.noisy || u.endMs - u.startMs < 3000) continue;
             m_editor->confirmUtterances({u.id}, /*asNoisy*/ true);
@@ -3176,8 +3176,8 @@ void TranscriptEditorViewModel::applyPendingDemoState()
             break;
         }
     } else if (state == QLatin1String("changePairOffer")) {
-        // Egy sor átkerül egy másik elnevezett beszélőhöz; a sáv a kettejük átnézését ajánlja
-        // (a kitalált hangok ehhez túl különbözők, ezért az ajánlat itt kitalált).
+        // A row moves to another named speaker; the lane offers reviewing the two together (the
+        // fictional voices are too different for this, so the offer is fictional here).
         setRailVisible(true);
         QString from, to;
         int moved = -1;
@@ -3192,7 +3192,7 @@ void TranscriptEditorViewModel::applyPendingDemoState()
             }
         }
         if (moved >= 0 && moveUtteranceToSpeaker(m_utts[moved].id, to)) {
-            m_editor->dismissSuggestion();      // a kettő együtt sosem jelenik meg
+            m_editor->dismissSuggestion();      // the two never show together
             m_demoPairOffer = true;
             m_pairOffer.sourceSpeakerKey = from;
             m_pairOffer.targetSpeakerKey = to;
@@ -3206,8 +3206,8 @@ void TranscriptEditorViewModel::applyPendingDemoState()
                || state == QLatin1String("imentWarning") || state == QLatin1String("imentLog")
                || state == QLatin1String("shiftPreview") || state == QLatin1String("ignoredRows")
                || state == QLatin1String("sampleFilter")) {
-        // v3 Javítás mód (a „v3" kitalált meetingen): megerősített magok, jelölők; a panelt /
-        // a csoport kinyitását a TranscriptTab végzi.
+        // Fix mode (on the fictional "v3" meeting): confirmed cores, markers; the panel / opening
+        // the group is done by TranscriptTab.
         setRailVisible(true);
         if (m_demoSession) m_demoSession->stageV3(state);
         if (state.startsWith(QLatin1String("review")) || state == QLatin1String("contaminatedCore"))
@@ -3222,7 +3222,7 @@ void TranscriptEditorViewModel::applyPendingDemoState()
         if (state == QLatin1String("markers")) clearChange();
         stageS2Demo(state);
     } else if (state == QLatin1String("changeFilter")) {
-        // A szűrőben javított sor a helyén marad („javítva"), alatta a sáv.
+        // A row fixed in the filter stays in place ("fixed"), the lane below it.
         setUncertainOnly(true);
         for (const TranscriptListModel::Row& r : m_rows->rows()) {
             if (r.gap) continue;
@@ -3238,16 +3238,16 @@ void TranscriptEditorViewModel::applyPendingDemoState()
 }
 
 // =============================================================================================
-// ---- S6: söprés-mód (a Javítás nézetben, hallgatás közben javítani) --------------------------
-// Külön blokk (a többi szelet ettől függetlenül módosíthatja a fenti részeket). A kapcsolódási
-// pontok fent egy-egy sorral: reloadAll → sweepReset, onUtterancesChanged → sweepFilterIncoming,
-// setPlaybackPosition → sweepOnPosition, undo / redo → m_sweepUserEdit.
+// ---- sweep mode (fix while listening, in the Fix view) ----
+// Separate block (other slices may change the parts above independently). The hooks are one
+// line each above: reloadAll -> sweepReset, onUtterancesChanged -> sweepFilterIncoming,
+// setPlaybackPosition -> sweepOnPosition, undo / redo -> m_sweepUserEdit.
 
 namespace {
-constexpr int kSweepStopSlackMs = 100;      // a megálló a sor vége után ennyivel
-constexpr int kSweepAfterMs = 3000;         // folyamatos mód: utólagos ablak
-constexpr int kSweepWindowMargin = 2;       // a fagyasztott ablak a látható sorokon túl
-constexpr int kSweepMaxJumpMs = 1500;       // ennél nagyobb ugrás tekerés, nem lejátszás
+constexpr int kSweepStopSlackMs = 100;      // the stop this long after the row's end
+constexpr int kSweepAfterMs = 3000;         // continuous mode: after window
+constexpr int kSweepWindowMargin = 2;       // the frozen window extends beyond the visible rows
+constexpr int kSweepMaxJumpMs = 1500;       // a larger jump is a seek, not playback
 } // namespace
 
 void TranscriptEditorViewModel::sweepReset()
@@ -3303,7 +3303,7 @@ void TranscriptEditorViewModel::setSweepActive(bool on)
         m_sweepSection = -1;
         m_sweepWinFirstUtt = m_sweepWinLastUtt = -1;
     }
-    // A „Később” / átugrott sorok jelölése a lista-modellben.
+    // Marking of "Later" / skipped rows in the list model.
     QVector<int> touched;
     for (const QString& id : handled) {
         const int i = m_uttIndex.value(id, -1);
@@ -3325,7 +3325,7 @@ void TranscriptEditorViewModel::setSweepContinuous(bool on)
     m_sweepStopUtt = -1;
     m_sweepAfterUtt = -1;
     emit sweepChanged();
-    // Megállóban állva folyamatos módra váltás: a lejátszás megy tovább.
+    // Switching to continuous mode while at a stop: playback goes on.
     if (wasStopped && on) emit sweepResumeRequested();
 }
 
@@ -3432,7 +3432,7 @@ int TranscriptEditorViewModel::sweepNextStopRow(int fromRow) const
     return -1;
 }
 
-// ---- a fagyasztott ablak --------------------------------------------------------------------
+// ---- the frozen window --------------------------------------------------------------------
 
 void TranscriptEditorViewModel::setSweepWindow(int firstRow, int lastRow)
 {
@@ -3459,7 +3459,7 @@ void TranscriptEditorViewModel::sweepUpdateWindow()
         a = rows[r0].utterance;
         b = rows[r1].gap ? rows[r1].utterance + rows[r1].hidden - 1 : rows[r1].utterance;
     } else if (!m_utts.isEmpty()) {
-        // Még nincs mérete a listának: a futó sor ± 3.
+        // The list has no size yet: the running row +/- 3.
         const int at = std::max(0, m_playingUtt >= 0 ? m_playingUtt : utteranceForTime(m_playbackMs));
         a = std::max(0, at - 3);
         b = std::min(int(m_utts.size()) - 1, at + 3);
@@ -3503,7 +3503,7 @@ void TranscriptEditorViewModel::sweepFilterIncoming(int i, const EditorUtterance
     if (!m_sweepActive) return;
     EditorUtterance& after = m_utts[i];
     const QString id = after.id;
-    // A felhasználó saját döntése (vagy visszavonása) ezen a soron: azonnal látszik.
+    // The user's own decision (or undo) on this row: shows immediately.
     const bool userTarget = m_sweepUserEdit || (m_tracking && m_trackIds.contains(id));
     const auto held = m_sweepHeld.constFind(id);
     const SweepMarker shown = held != m_sweepHeld.cend()
@@ -3514,14 +3514,14 @@ void TranscriptEditorViewModel::sweepFilterIncoming(int i, const EditorUtterance
     if (userTarget || !markerChanged) {
         notify = m_sweepHeld.remove(id) > 0;
     } else if (!m_sweepReleasing && sweepInWindow(i)) {
-        // A fagyasztott ablakban: a régi jelölő marad, az új függőben (a sor elhagyásakor jön).
+        // In the frozen window: the old marker stays, the new one is pending (applied when the row is left).
         m_sweepHeld.insert(id, shown);
         after.uncertain = shown.uncertain;
         after.uncertainReason = shown.reason;
         after.likelySpeakerKey = shown.likely;
         notify = true;
     } else if (after.uncertain && !shown.uncertain && !after.ignored) {
-        // A háttér kétesnek jelölte: mögötted → „újra kétes”; előtted → csendben (a háttérből jött).
+        // The background marked it doubtful: behind you -> "doubtful again"; ahead of you -> silently (it came from the background).
         const int at = m_sweepStopUtt >= 0 ? m_sweepStopUtt : utteranceForTime(m_playbackMs);
         if (i < at) {
             if (!m_sweepRebehind.contains(id)) m_sweepRebehind << id;
@@ -3535,7 +3535,7 @@ void TranscriptEditorViewModel::sweepFilterIncoming(int i, const EditorUtterance
     sweepScheduleDock();
 }
 
-// ---- lejátszás: megálló, utólagos ablak, szakasz-vég ------------------------------------------
+// ---- playback: stop, after window, section end ----------------------------------------
 
 void TranscriptEditorViewModel::sweepOnPosition()
 {
@@ -3551,7 +3551,7 @@ void TranscriptEditorViewModel::sweepOnPosition()
         if (m_sweepWatchUtt >= 0) {
             const EditorUtterance& w = m_utts[m_sweepWatchUtt];
             if (ms < w.startMs || (jumped && ms > w.endMs)) {
-                m_sweepWatchUtt = -1;       // tekerés: a megálló elmarad
+                m_sweepWatchUtt = -1;       // seek: the stop is skipped
             } else if (ms >= w.endMs + kSweepStopSlackMs) {
                 const int u = m_sweepWatchUtt;
                 m_sweepWatchUtt = -1;
@@ -3577,7 +3577,7 @@ void TranscriptEditorViewModel::sweepOnPosition()
         }
     }
 
-    // Szakasz: folyamatos lejátszással a végére ért → összesítő; ugrásnál csak a mutató vált.
+    // Section: reaching the end by continuous playback -> summary; on a jump only the pointer changes.
     if (m_sweepSection >= 0 && m_sweepSection < m_sweepSectionList.size() && m_sweepStopUtt < 0) {
         const SweepSection& sec = m_sweepSectionList[m_sweepSection];
         const bool last = m_sweepSection + 1 >= m_sweepSectionList.size();
@@ -3586,7 +3586,7 @@ void TranscriptEditorViewModel::sweepOnPosition()
             && !m_sweepDone.contains(m_sweepSection)) {
             sweepEndSection(m_sweepSection);
         } else if (jumped) {
-            // A pozíció szakasza (a szakasz vége után már a következőé).
+            // The position's section (after the section end it is already the next one's).
             int s = int(m_sweepSectionList.size()) - 1;
             for (int k = 0; k < m_sweepSectionList.size(); ++k)
                 if (ms <= m_sweepSectionList[k].endMs + kSweepStopSlackMs) { s = k; break; }
@@ -3612,7 +3612,7 @@ bool TranscriptEditorViewModel::sweepDecide(int row, const QString& action, int 
     const QString id = m_utts[u].id;
     const QString speaker = m_utts[u].speakerKey;
     if (action == QLatin1String("replay")) {
-        // ←: a sor újra (a megálló a végén újra megáll); döntés nincs.
+        // Left arrow: the row again (the stop stops again at the end); no decision.
         if (m_sweepStopUtt == u) m_sweepStopUtt = -1;
         if (m_sweepAfterUtt == u) m_sweepAfterUtt = -1;
         m_sweepWatchUtt = -1;
@@ -3665,7 +3665,7 @@ bool TranscriptEditorViewModel::sweepDecide(int row, const QString& action, int 
     return true;
 }
 
-// ---- szakaszok -------------------------------------------------------------------------------
+// ---- sections -------------------------------------------------------------------------------
 
 void TranscriptEditorViewModel::setSweepSectionLimits(int maxMs, int maxUncertain)
 {
@@ -3751,7 +3751,7 @@ void TranscriptEditorViewModel::sweepEndSection(int index)
 {
     if (index < 0 || index >= m_sweepSectionList.size()) return;
     m_sweepDone.insert(index);
-    releasePendingMarkers();            // a szakasz végén a függő jelölők megjelennek
+    releasePendingMarkers();            // at the section end the pending markers appear
     const SweepSection& sec = m_sweepSectionList[index];
     auto countIn = [&](const QSet<QString>& ids) {
         int n = 0;
@@ -3766,7 +3766,7 @@ void TranscriptEditorViewModel::sweepEndSection(int index)
         const int i = m_uttIndex.value(id, -1);
         if (i >= sec.firstUtt && i <= sec.lastUtt && m_utts[i].uncertain) ++later;
     }
-    // Új minták beszélőnként (a szakasz eleje óta).
+    // New samples per speaker (since the section start).
     const QHash<QString, int> now = sweepSampleSnapshot();
     QStringList parts;
     for (const QVariant& v : m_sampleStats) {
@@ -3819,7 +3819,7 @@ int TranscriptEditorViewModel::sweepReviewBehind()
     for (const QString& id : std::as_const(m_sweepRebehind)) {
         const int i = m_uttIndex.value(id, -1);
         if (i >= 0 && (first < 0 || i < first)) first = i;
-        m_sweepHandled.remove(id);          // újra megálló
+        m_sweepHandled.remove(id);          // stops again
     }
     emit sweepSectionsChanged();
     emit sweepMarkersChanged();
@@ -3854,7 +3854,7 @@ void TranscriptEditorViewModel::dismissSweepSummary()
     emit sweepSectionsChanged();
 }
 
-// ---- a dokk söprés-rétege --------------------------------------------------------------------
+// ---- the dock's sweep layer --------------------------------------------------------------------
 
 void TranscriptEditorViewModel::sweepScheduleDock()
 {
@@ -3901,14 +3901,14 @@ void TranscriptEditorViewModel::sweepRebuildDock()
     emit sweepDockChanged();
 }
 
-// ---- demó-állapotok (képernyőkép; a kitalált „v3” meetingen) ---------------------------------
+// ---- demo states (screenshot; on the fictional "v3" meeting) ---------------------------------
 
 int TranscriptEditorViewModel::stageSweepDemo(const QString& state)
 {
     if (!m_editor || m_utts.size() < 12) return -1;
     setRailVisible(true);
     setSweepActive(true);
-    // A kitalált meeting rövid: négy egyforma időszelet.
+    // The fictional meeting is short: four equal time slices.
     setSweepSectionLimits(int(std::max<qint64>(60000, m_durationMs / 4 + 1)), 1000);
     QVector<int> stops;
     for (int i = 0; i < m_utts.size(); ++i)
@@ -3916,7 +3916,7 @@ int TranscriptEditorViewModel::stageSweepDemo(const QString& state)
     if (stops.size() < 3) return -1;
     auto rowOf = [this](int u) { return m_rows->rowOfUtterance(u); };
     if (state == QLatin1String("sweepStop")) {
-        // Az első kétes sor már eldőlt (Jó így), a második javaslatos kétes sorban áll a lejátszás.
+        // The first doubtful row is already decided (Looks right), playback is on the second doubtful row, which has a suggestion.
         sweepDecide(rowOf(stops[0]), QStringLiteral("confirm"));
         int at = stops[1];
         for (int k = 1; k < stops.size() && k < 6; ++k)
@@ -3928,8 +3928,8 @@ int TranscriptEditorViewModel::stageSweepDemo(const QString& state)
     if (state == QLatin1String("sweepContinuous")) {
         setSweepContinuous(true);
         sweepDecide(rowOf(stops[0]), QStringLiteral("confirm"));
-        // Olyan kétes sor, amely után a következő sor az utólagos ablakon belül indul: a futó sor
-        // már a következő, a billentyűk célpontja még ez (két külön kiemelés).
+        // A doubtful row after which the next row starts within the after window: the running row is
+        // already the next one, the keys' target is still this one (two separate highlights).
         int at = stops[1];
         for (int k = 1; k < stops.size(); ++k) {
             const int u = stops[k];
@@ -3945,13 +3945,13 @@ int TranscriptEditorViewModel::stageSweepDemo(const QString& state)
                             std::min(m_utts[at].endMs + kSweepAfterMs - 400, nextStart + 400)));
     }
     if (state == QLatin1String("sweepSectionDone")) {
-        // Az első szakasz döntései (kitalált): Jó így, áthelyezés a javaslathoz, nem azonosítható,
-        // Később; a háttér két korábbi sort újra kétesnek jelölt.
+        // The first section's decisions (fictional): Looks right, move to the suggestion, cannot be
+        // identified, Later; the background marked two earlier rows doubtful again.
         const SweepSection sec = m_sweepSectionList.value(0);
         QVector<int> in;
         for (int u : std::as_const(stops))
             if (u <= sec.lastUtt) in << u;
-        const int keep = in.size() >= 5 ? 2 : 0;       // az utolsó kettő: „újra kétes” (kitalált)
+        const int keep = in.size() >= 5 ? 2 : 0;       // the last two: "doubtful again" (fictional)
         for (int k = 0; k < in.size() - keep; ++k) {
             const QString action = k % 4 == 2 ? QStringLiteral("ignore") : k % 4 == 3 ? QStringLiteral("later")
                                                                                   : QStringLiteral("default");

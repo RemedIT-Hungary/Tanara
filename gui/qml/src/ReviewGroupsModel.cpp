@@ -171,7 +171,7 @@ QVector<ReviewGroupsModel::Row> ReviewGroupsModel::compute()
         alive.insert(v.id);
         out.append(Row{Group, g, QString(), QStringLiteral("g:") + v.id});
         if (m_expanded.contains(v.id)) {
-            // A már megjelenített (ragadós) sorok + a csoport mostani sorai, időrendben.
+            // The already shown (sticky) rows + the group's current rows, in time order.
             QStringList ids = m_shown.value(v.id);
             for (const QString& id : v.ids)
                 if (!ids.contains(id)) ids << id;
@@ -188,7 +188,7 @@ QVector<ReviewGroupsModel::Row> ReviewGroupsModel::compute()
             out.append(Row{More, g, QString(), QStringLiteral("m:") + v.id});
         }
     }
-    // Megszűnt csoport: a kinyitás és a ragadós sorai is mennek.
+    // A vanished group: the expansion and its sticky rows go too.
     for (auto it = m_shown.begin(); it != m_shown.end();)
         it = alive.contains(it.key()) ? std::next(it) : m_shown.erase(it);
     for (auto it = m_expanded.begin(); it != m_expanded.end();)
@@ -203,7 +203,7 @@ void ReviewGroupsModel::apply(const QVector<Row>& target)
     QHash<QString, int> targetPos;
     for (int i = 0; i < target.size(); ++i) targetPos.insert(target[i].key, i);
 
-    // A közös sorok sorrendje egyezik? Ha nem, teljes újraépítés.
+    // Is the order of the common rows the same? If not, a full rebuild.
     int last = -1;
     bool ordered = true;
     for (const Row& r : std::as_const(m_rows)) {
@@ -220,7 +220,7 @@ void ReviewGroupsModel::apply(const QVector<Row>& target)
         return;
     }
     const int before = int(m_rows.size());
-    // 1) Törlés hátulról, összefüggő futamonként.
+    // 1) Removal from the back, per contiguous run.
     for (int r = int(m_rows.size()) - 1; r >= 0;) {
         if (targetKeys.contains(m_rows[r].key)) { --r; continue; }
         int first = r;
@@ -230,10 +230,10 @@ void ReviewGroupsModel::apply(const QVector<Row>& target)
         endRemoveRows();
         r = first - 1;
     }
-    // 2) Beszúrás elölről.
+    // 2) Insertion from the front.
     for (int t = 0; t < target.size();) {
         if (t < m_rows.size() && m_rows[t].key == target[t].key) {
-            m_rows[t] = target[t];      // a csoport-index változhatott
+            m_rows[t] = target[t];      // the group index may have changed
             ++t;
             continue;
         }
@@ -324,9 +324,9 @@ QString ReviewGroupsModel::groupAt(int row) const
 
 int ReviewGroupsModel::stepLine(int fromRow, int direction)
 {
-    // A döntésre váró sorok sorrendje: a csoportok sorrendjében, csoporton belül időrendben.
+    // The order of rows awaiting a decision: in the groups' order, within a group in time order.
     const auto& views = m_vm->reviewViews();
-    QVector<QPair<QString, QString>> order;     // (csoport, sor)
+    QVector<QPair<QString, QString>> order;     // (group, row)
     for (const auto& v : views) {
         if (!v.actionable) continue;
         for (const QString& id : v.ids) order.append({v.id, id});
@@ -339,7 +339,7 @@ int ReviewGroupsModel::stepLine(int fromRow, int direction)
             if (order[i].second == fromId) { pos = i; break; }
     }
     if (pos < 0 && fromRow >= 0) {
-        // Csoport-fejlécről / sor nélkül: a csoport első sora előtt állunk.
+        // From a group header / without a row: we stand before the group's first row.
         const QString g = groupAt(fromRow);
         for (int i = 0; i < order.size(); ++i)
             if (order[i].first == g) { pos = direction < 0 ? i : i - 1; break; }

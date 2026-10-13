@@ -16,7 +16,7 @@ using namespace tanara;
 
 namespace {
 
-// A forrás-megbeszélés címkéinek nevei (a kártya mini chipjeihez), a megbeszélés sorrendjében.
+// The source meeting's tag names (for the card's mini chips), in the meeting's order.
 QStringList tagNamesOf(AppController* c, const QString& meetingId)
 {
     QStringList out;
@@ -49,10 +49,10 @@ void MeetingNoteModel::setMeetingId(const QString& id)
 {
     if (id == m_meetingId)
         return;
-    // A még el nem mentett megjegyzés a RÉGI megbeszélésé: a váltás előtt oda írjuk ki.
+    // The not-yet-saved note belongs to the OLD meeting: we write it there before the switch.
     commitDraft();
     m_meetingId = id;
-    reload();                 // előbb az új adatok, hogy a jelre már az új megjegyzés látsszon
+    reload();                 // new data first, so the signal already shows the new note
     emit meetingIdChanged();
 }
 
@@ -76,7 +76,7 @@ void MeetingNoteModel::commitDraft()
         setNote(text);
         return;
     }
-    // A piszkozat egy már nem kijelölt megbeszélésé: közvetlenül oda mentjük.
+    // The draft belongs to a meeting that is no longer selected: we save it directly there.
     AppController* c = app();
     if (!jobsupport::demoMode(c) && !target.isEmpty())
         c->setMeetingContextNote(target, text);
@@ -89,9 +89,9 @@ void MeetingNoteModel::setNote(const QString& note)
     m_note = note;
     AppController* c = app();
     if (!jobsupport::demoMode(c) && !m_meetingId.isEmpty())
-        c->setMeetingContextNote(m_meetingId, note);   // → meetingUpdated → a tulajdonos reload()-ja
+        c->setMeetingContextNote(m_meetingId, note);   // -> meetingUpdated -> the owner's reload()
     emit noteChanged();
-    reloadSuggestions();   // a most bemásolt / beírt megjegyzés már nem javaslat
+    reloadSuggestions();   // the note just pasted / typed is no longer a suggestion
 }
 
 void MeetingNoteModel::applySuggestion(const QString& suggestion, const QString& mode)
@@ -99,7 +99,7 @@ void MeetingNoteModel::applySuggestion(const QString& suggestion, const QString&
     const QString text = suggestion.trimmed();
     if (text.isEmpty())
         return;
-    // A közben gépelt, még nem mentett szöveg is a „meglévő” része.
+    // The text typed meanwhile and not yet saved is part of the "existing" too.
     commitDraft();
     const QString current = m_note.trimmed();
     if (mode == QLatin1String("append") && !current.isEmpty())
@@ -112,7 +112,7 @@ void MeetingNoteModel::reload()
 {
     AppController* c = app();
     if (jobsupport::demoMode(c))
-        return;   // a demó-tartalmat a tulajdonos adja (setDemoContent)
+        return;   // the owner provides the demo content (setDemoContent)
     const QString oldNote = m_note;
     const QString oldApp = m_detectedCallApp;
     if (m_meetingId.isEmpty()) {
@@ -134,7 +134,7 @@ void MeetingNoteModel::reloadSuggestions()
 {
     AppController* c = app();
     if (jobsupport::demoMode(c)) {
-        // Demóban is tűnjön el a már bemásolt javaslat (a képernyőkép-állapotokhoz elég).
+        // In the demo too, an already pasted suggestion should disappear (enough for the screenshot states).
         QVariantList keep;
         for (const QVariant& v : std::as_const(m_suggestions))
             if (v.toMap().value(QStringLiteral("note")).toString().simplified() != m_note.simplified())
@@ -185,7 +185,7 @@ QString MeetingNoteModel::previewOf(const QString& note)
     return s;
 }
 
-// Kitalált sablon-javaslatok (demó): a „Nordvik heti meeting” korábbi alkalmai.
+// Fictional template suggestions (demo): earlier occurrences of the "Nordvik weekly meeting".
 QVariantList MeetingNoteModel::demoSuggestions()
 {
     auto item = [](const QString& title, const QString& date, const QString& note) {

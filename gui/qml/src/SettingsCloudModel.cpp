@@ -44,7 +44,7 @@ void SettingsCloudModel::attach()
     m_connections << connect(acc, &CloudAccount::balanceChanged, this, &SettingsCloudModel::accountChanged);
     m_connections << connect(acc, &CloudAccount::loggedIn, this, [this] {
         emit accountChanged();
-        m_vm->touch();   // a „Szolgáltatások” pöttye a bejelentkezéstől is függ
+        m_vm->touch();   // the "Services" dot depends on sign-in too
     });
     m_connections << connect(acc, &CloudAccount::loggedOut, this, [this] {
         m_lastError = {};
@@ -58,7 +58,7 @@ void SettingsCloudModel::attach()
         if (!m_waitBusy) return;
         m_waitBusy = false;
         m_waitError.clear();
-        // A feliratkozás ténye azonnal mentődik (nem a piszkozat része — már megtörtént).
+        // The fact of the signup is saved immediately (not part of the draft: it already happened).
         if (AppController* app = m_vm->controller()) {
             AppSettings s = app->settings()->settings();
             s.waitlistEmail = email;
@@ -84,7 +84,7 @@ void SettingsCloudModel::attach()
     });
 }
 
-// ---- fiók ------------------------------------------------------------------------------
+// ---- account ------------------------------------------------------------------------------
 
 bool SettingsCloudModel::loggedIn() const
 {
@@ -104,7 +104,7 @@ QString SettingsCloudModel::email() const
 
 QString SettingsCloudModel::balanceText() const
 {
-    if (m_demo)   // kitalált fiók — a formázás ugyanaz, mint az élő adatnál
+    if (m_demo)   // fictional account: the formatting is the same as for live data
         return m_demoLoggedIn ? formatMoney(Money{84'200'000, QStringLiteral("USD")}, MoneyStyle::Balance, lang())
                               : QString();
     AppController* c = m_vm->controller();
@@ -243,7 +243,7 @@ QString SettingsCloudModel::termsText() const
     return {};
 }
 
-// ---- minőség ---------------------------------------------------------------------------
+// ---- quality ---------------------------------------------------------------------------
 
 QString SettingsCloudModel::sttTier() const
 {
@@ -262,7 +262,7 @@ void SettingsCloudModel::setSttTier(const QString& tier)
     AppSettings& d = m_vm->draft();
     if (d.cloudSttTier == tier && d.cloudSttModel.isEmpty()) return;
     d.cloudSttTier = tier;
-    d.cloudSttModel.clear();     // a szint választása kilép az Expert-módból (mint a régi ablakban)
+    d.cloudSttModel.clear();     // choosing a tier leaves Expert mode (as in the old window)
     emit tiersChanged();
     m_vm->touch();
 }
@@ -287,7 +287,7 @@ QString SettingsCloudModel::expertName(bool stt) const
     const QVector<CloudModel> cat = c->cloud()->models();
     if (cat.isEmpty()) return id;
     const std::optional<CloudModel> m = findModel(cat, id);
-    if (!m || m->isVirtual) return {};   // kivezetett modell → a szint érvényes
+    if (!m || m->isVirtual) return {};   // a retired model -> the tier is valid
     return m->displayName.isEmpty() ? id : m->displayName;
 }
 
@@ -326,7 +326,7 @@ QString SettingsCloudModel::tierInfo(bool stt) const
         lines << tr("A korábban választott modell már nem érhető el; a szint modelljét használjuk.");
     if (!model) model = findTierModel(cat, kind, tier);
     if (!model) return lines.join(QLatin1Char(' '));
-    // Tájékoztató ár a katalógusból (a kliens nem számol — a becslés a gateway dolga).
+    // Informational price from the catalog (the client does not compute; the estimate is the gateway's job).
     if (stt && model->perHour.isValid())
         lines << tr("%1 / óra.").arg(formatMoney(model->perHour, MoneyStyle::Charge, lang()));
     if (stt && !model->diarization)
@@ -383,11 +383,11 @@ QVariantList SettingsCloudModel::meetingLanguages() const
         out << mk(l.first, QStringLiteral("%1 (%2)").arg(l.second, l.first));
         found = found || l.first == meetingLanguage();
     }
-    if (!found) out << mk(meetingLanguage(), meetingLanguage());   // kézzel beállított kód megőrzése
+    if (!found) out << mk(meetingLanguage(), meetingLanguage());   // keeps a manually set code
     return out;
 }
 
-// ---- műveletek -------------------------------------------------------------------------
+// ---- actions -------------------------------------------------------------------------
 
 void SettingsCloudModel::login()
 {
@@ -421,11 +421,11 @@ void SettingsCloudModel::refresh()
 
 void SettingsCloudModel::pickExpert(const QString& kind)
 {
-    // A Widgets-választó azonnal a beállításokba ír; a nézetmodell a settingsChanged jelre
-    // átveszi (az alap és a piszkozat is frissül, a többi mentetlen változás megmarad).
+    // The Widgets picker writes into the settings immediately; the view model picks it up on the
+    // settingsChanged signal (base and draft refresh too, other unsaved changes stay).
     if (SettingsDialogs* d = m_vm->dialogs()) {
         d->cloudPickModel(kind);
-        // A választó eredménye erősebb egy korábbi, még nem mentett szint-kattintásnál.
+        // The picker's result outranks an earlier, not yet saved tier click.
         if (AppController* c = m_vm->controller()) {
             const AppSettings s = c->settings()->settings();
             AppSettings& draft = m_vm->draft();
@@ -478,7 +478,7 @@ void SettingsCloudModel::noticeAction()
     }
 }
 
-// ---- várólista -------------------------------------------------------------------------
+// ---- waitlist -------------------------------------------------------------------------
 
 QString SettingsCloudModel::joinedEmail() const
 {

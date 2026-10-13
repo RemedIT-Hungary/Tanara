@@ -59,8 +59,7 @@ bool OnboardingWindowHost::ensureWindow()
     }
     connect(win, &QQuickWindow::visibleChanged, this, [this](bool visible) {
         if (visible) return;
-        // Bezárás bármelyik úton (Kész, Később, ×): a el nem fogadott lépés elvész, és többé
-        // nem nyílik meg magától.
+        // Closing by any route (Done, Later, x): the unaccepted step is lost, and it never opens by itself again.
         if (m_vm) {
             m_vm->discardPending();
             m_vm->markDone();

@@ -28,7 +28,7 @@ QString monogramOf(const QString& name)
     return out.isEmpty() ? QStringLiteral("?") : out;
 }
 
-// „Hasonló név”: ugyanaz / közeli kulcs, vagy az egyik kulcs a másik része („Nordvik AS”).
+// "Similar name": same / close key, or one key is part of the other ("Nordvik AS").
 bool similarName(const QString& a, const QString& b)
 {
     const QString ka = tagmatch::key(a), kb = tagmatch::key(b);
@@ -187,7 +187,7 @@ void TagsViewModel::rebuild()
     m_list.setRows(rows);
     emit listChanged();
 
-    // A kijelölés: ha eltűnt (törlés, összevonás), az első sor.
+    // The selection: if it vanished (delete, merge), the first row.
     if (!find(m_selected)) {
         m_selected = rows.isEmpty() ? QString() : rows.first().id;
         emit selectionChanged();
@@ -212,7 +212,7 @@ void TagsViewModel::refreshDetail()
         d.insert(QStringLiteral("id"), t->id);
         d.insert(QStringLiteral("name"), t->name);
         d.insert(QStringLiteral("meetingCount"), t->meetingCount);
-        // Személyek: a számláló szerint (felrakott és tanult együtt); az elutasított tanult kimarad.
+        // People: by count (attached and learned together); a rejected learned one is left out.
         QVector<PersonTagItem> stats = m_backend->peopleStats(t->id);
         stats.erase(std::remove_if(stats.begin(), stats.end(),
                                    [](const PersonTagItem& s) { return !s.manual && s.rejected; }),
@@ -247,7 +247,7 @@ void TagsViewModel::refreshDetail()
         d.insert(QStringLiteral("terms"), p.terms);
         QVariantList co;
         for (const auto& [id, n] : p.cooccurring) {
-            // Az egyszeri együttállás nem „gyakran együtt”.
+            // A single co-occurrence is not "often together".
             if (n < 2 || co.size() >= 6) continue;
             co << QVariantMap{{QStringLiteral("id"), id},
                               {QStringLiteral("name"), tagName(id)},
@@ -296,7 +296,7 @@ QVariantList TagsViewModel::mergeCandidates(const QString& id) const
     const TagItem* self = find(id);
     if (!self || !m_backend) return out;
     QStringList listed;
-    // 1. Hasonló nevűek (legfeljebb 3), gyakoriság szerint.
+    // 1. Similar names (at most 3), by frequency.
     QVector<const TagItem*> similar;
     for (const TagItem& t : m_all)
         if (t.id != id && similarName(self->name, t.name)) similar << &t;
@@ -310,7 +310,7 @@ QVariantList TagsViewModel::mergeCandidates(const QString& id) const
                            {QStringLiteral("name"), t->name},
                            {QStringLiteral("meta"), tr("%1 megbeszélés · hasonló név").arg(t->meetingCount)}};
     }
-    // 2. Gyakran együtt járók: a címke megbeszéléseinek legalább 40 %-án.
+    // 2. Frequent co-occurrers: on at least 40 % of the tag's meetings.
     const TagProfileItem p = m_backend->profile(id);
     for (const auto& [otherId, n] : p.cooccurring) {
         const TagItem* t = find(otherId);
@@ -336,7 +336,7 @@ QString TagsViewModel::mergeResultText(const QString& fromId, const QString& kee
         .arg(total)
         .arg(common)
         .arg(from->name.toHtmlEscaped(), tagArticle(keep->name), keep->name.toHtmlEscaped());
-    // A személyeken is egyesül (a két címke kézi viselőinek uniója).
+    // It merges on the people too (the union of the two tags' manual wearers).
     QStringList people = m_backend->peopleWith(fromId);
     for (const QString& n : m_backend->peopleWith(keepId))
         if (!people.contains(n, Qt::CaseInsensitive)) people << n;

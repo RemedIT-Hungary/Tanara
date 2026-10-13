@@ -1,17 +1,17 @@
 #pragma once
 //
-// LibrarySelectionModel — a könyvtár többes kijelölése és a közös címkézés (C05, T05).
+// LibrarySelectionModel: the library's multi-selection and bulk tagging.
 //
-//  - Kijelölés: Ctrl+kattintás → toggle(id), Shift+kattintás → rangeTo(id) (a horgonytól a
-//    lista látható sorrendjében), Esc → clear(). Az első Ctrl+kattintás a megnyitott
-//    megbeszélést (currentId) is a kijelölésbe veszi, így két elemmel indul.
-//  - A jobb oldali panel adatai: a kijelölt megbeszélések (cím, címkék, dátum) és a közös
-//    címkék sorai (mindegyiken / csak némelyiken, „3/3” / „1/3”).
-//  - Tömeges címkézés: addTagToAll / removeTagFromAll. Controllerrel a TagService-en át
-//    (beginGroup → bulkAdd / bulkRemove → endGroup), így EGY lépésben visszavonható;
-//    controller nélkül (demó) a mintakönyvtár memóriabeli címkéit módosítja.
+//  - Selection: Ctrl+click -> toggle(id), Shift+click -> rangeTo(id) (from the anchor, in the
+//    list's visible order), Esc -> clear(). The first Ctrl+click also takes the open meeting
+//    (currentId) into the selection, so it starts with two items.
+//  - The right panel's data: the selected meetings (title, tags, date) and the common tag
+//    rows (on all / only some, "3/3" / "1/3").
+//  - Bulk tagging: addTagToAll / removeTagFromAll. With a controller through the TagService
+//    (beginGroup -> bulkAdd / bulkRemove -> endGroup), so it is undoable in ONE step; without
+//    a controller (demo) it modifies the sample library's in-memory tags.
 //
-// A sorrendhez és a sorok adataihoz a LibraryListModel-t használja (`library`).
+// For the order and the rows' data it uses LibraryListModel (`library`).
 //
 #include "LibraryListModel.h"
 
@@ -32,22 +32,22 @@ class LibrarySelectionModel : public QObject {
     QML_ELEMENT
 
     Q_PROPERTY(LibraryListModel* library READ library WRITE setLibrary NOTIFY libraryChanged)
-    // A megnyitott megbeszélés (az első Ctrl+kattintás ezzel együtt jelöl ki).
+    // The open meeting (the first Ctrl+click selects it along with the clicked one).
     Q_PROPERTY(QString currentId READ currentId WRITE setCurrentId NOTIFY currentIdChanged)
     Q_PROPERTY(QStringList ids READ ids NOTIFY selectionChanged)
     Q_PROPERTY(int count READ count NOTIFY selectionChanged)
-    // A kijelölt megbeszélések a lista sorrendjében: [{ id, title, tagsText, dateText }].
+    // The selected meetings in list order: [{ id, title, tagsText, dateText }].
     Q_PROPERTY(QVariantList items READ items NOTIFY contentChanged)
-    // A közös címkék: [{ id, name, onCount, total, full, countText, note }]
-    //   full: mindegyiken rajta van; countText: „3/3” / „1/3”; note: a chip melletti magyarázat.
+    // The common tags: [{ id, name, onCount, total, full, countText, note }]
+    //   full: on all of them; countText: "3/3" / "1/3"; note: the explanation next to the chip.
     Q_PROPERTY(QVariantList tagRows READ tagRows NOTIFY contentChanged)
-    // A mindegyiken rajta lévő címkék (a beviteli mező ezeket már nem kínálja).
+    // The tags on all of them (the input field no longer offers these).
     Q_PROPERTY(QStringList fullTagIds READ fullTagIds NOTIFY contentChanged)
 
 public:
     explicit LibrarySelectionModel(QObject* parent = nullptr);
 
-    // A controller alapból az App-singletoné; tesztben injektálható.
+    // The controller defaults to the App singleton's; injectable in tests.
     void setController(tanara::AppController* controller);
 
     LibraryListModel* library() const { return m_library; }
@@ -64,9 +64,9 @@ public:
     Q_INVOKABLE void toggle(const QString& id);
     Q_INVOKABLE void rangeTo(const QString& id);
     Q_INVOKABLE void clear();
-    // Kijelölés kívülről (demó-állapot, teszt).
+    // Selection from outside (demo state, test).
     Q_INVOKABLE void selectIds(const QStringList& ids);
-    // Név vagy azonosító; név esetén szükség szerint létrehozza. Egy visszavonható lépés.
+    // Name or id; for a name, creates it if needed. One undoable step.
     Q_INVOKABLE void addTagToAll(const QString& nameOrId);
     Q_INVOKABLE void removeTagFromAll(const QString& tagId);
 
@@ -79,7 +79,7 @@ signals:
 private:
     void setIds(const QStringList& ids);
     void rebuild();
-    QStringList orderedIds() const;    // a lista sorrendjében (ami nem látszik, a végén)
+    QStringList orderedIds() const;    // in list order (what is not visible, last)
 
     QPointer<LibraryListModel> m_library;
     QPointer<tanara::AppController> m_controller;

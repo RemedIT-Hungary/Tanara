@@ -1,23 +1,24 @@
 #pragma once
 //
-// OnboardingViewModel — az „Első lépések” ablak (OnboardingWindow.qml, K14) nézetmodellje.
+// OnboardingViewModel: view model of the "Getting started" window (OnboardingWindow.qml).
 //
-// Hat lépés: welcome (Üdvözlés) → you (Te: név, nyelv, téma) → folders (Mappák) → providers
-// (Szolgáltatások: állapot + „Beállítás most”) → watcher (Hívásfigyelő: indítás bejelentkezéskor)
-// → done (Kész). SEMMI sem kötelező: minden lépésnek van „Kihagyom” gombja, az ablak bármikor
-// bezárható, és minden érték később a Beállításokban is módosítható.
+// Six steps: welcome -> you (name, language, theme) -> folders -> providers (status + "Set up
+// now") -> watcher (call watcher: start at sign-in) -> done. NOTHING is mandatory: every
+// step has a "Skip" button, the window can be closed any time, and every value can be changed
+// later in Settings.
 //
-// Piszkozat-modell, lépésenként: megnyitáskor (reload) a core beállításairól két másolat készül
-// — `alap` és `piszkozat`. A „Tovább” (next) az AKTUÁLIS lépés mezőinek KÜLÖNBSÉGÉT vezeti rá a
-// core éppen érvényes beállításaira (a többi mezőhöz nem nyúl — a Beállítások-ablak mintája),
-// a „Kihagyom” (skip) a lépés piszkozatát eldobja és továbblép. A név a core külön műveletén
-// megy (AppController::setUserSpeakerName — a személy-DB-t is átvezeti), a téma a futó
-// felületen azonnal látszik (előnézet), és csak a lépés elfogadásakor marad meg
-// (themeModeSaved — a főablak jegyzi meg). Bezáráskor a mentetlen lépés elvész (discardPending),
-// és az `onboardingDone` igazra áll (markDone) — így az ablak csak egyszer nyílik meg magától.
+// Draft model, per step: on opening (reload) two copies of the core's settings are made:
+// `base` and `draft`. "Next" applies the DIFFERENCE of the CURRENT step's fields onto the
+// core's currently effective settings (it touches no other field, like the Settings
+// window); "Skip" discards the step's draft and moves on. The name goes through the core's
+// separate operation (AppController::setUserSpeakerName, which updates the person DB too);
+// the theme shows immediately in the running UI (preview) and is kept only when the step is
+// accepted (themeModeSaved: the main window remembers it). On close the unsaved step is lost
+// (discardPending) and `onboardingDone` becomes true (markDone), so the window opens by
+// itself only once.
 //
-// Controller nélkül (--qml-shot, tesztek) KITALÁLT adatot ad; a `demoState`
-// ("welcome" | "you" | "folders" | "providers" | "watcher" | "done") a lépést állítja be.
+// Without a controller (--qml-shot, tests) it provides FICTIONAL data; `demoState`
+// ("welcome" | "you" | "folders" | "providers" | "watcher" | "done") sets the step.
 //
 #include "tanara/Types.h"
 
@@ -45,13 +46,13 @@ class OnboardingViewModel : public QObject {
     Q_PROPERTY(QString demoState READ demoState WRITE setDemoState NOTIFY demoStateChanged)
     Q_PROPERTY(bool demo READ demo NOTIFY controllerChanged)
 
-    // ---- lépések ----
-    // [{ key, label, icon }] — a sorrend a varázsló sorrendje.
+    // ---- steps ----
+    // [{ key, label, icon }]: the order is the wizard's order.
     Q_PROPERTY(QVariantList steps READ steps CONSTANT)
     Q_PROPERTY(QString step READ step WRITE setStep NOTIFY stepChanged)
     Q_PROPERTY(int stepIndex READ stepIndex NOTIFY stepChanged)
     Q_PROPERTY(int stepCount READ stepCount CONSTANT)
-    // Lépésenként: "" (még nem járt ott) | "done" (elfogadta) | "skipped" (kihagyta).
+    // Per step: "" (not visited yet) | "done" (accepted) | "skipped" (skipped).
     Q_PROPERTY(QVariantMap stepStatus READ stepStatus NOTIFY stepStatusChanged)
 
     // ---- Te ----
@@ -62,29 +63,29 @@ class OnboardingViewModel : public QObject {
     Q_PROPERTY(bool languageNeedsRestart READ languageNeedsRestart NOTIFY youChanged)
     Q_PROPERTY(QString themeMode READ themeMode WRITE setThemeMode NOTIFY youChanged)
 
-    // ---- Mappák ----
+    // ---- Folders ----
     // [{ key: audio|notes, label, hint, path, isDefault, defaultPath, locked }]
     Q_PROPERTY(QVariantList folders READ folders NOTIFY foldersChanged)
 
-    // ---- Szolgáltatások ----
+    // ---- Services ----
     Q_PROPERTY(QString sttStatus READ sttStatus NOTIFY readinessChanged)
     Q_PROPERTY(QString llmStatus READ llmStatus NOTIFY readinessChanged)
     Q_PROPERTY(bool sttReady READ sttReady NOTIFY readinessChanged)
     Q_PROPERTY(bool llmReady READ llmReady NOTIFY readinessChanged)
-    // Élő (bejelentkezős) Tanara Cloud-mód — csak ekkor választható a Cloud.
+    // Live (sign-in) Tanara Cloud mode: only then is Cloud selectable.
     Q_PROPERTY(bool cloudLive READ cloudLive NOTIFY readinessChanged)
-    // A felhasználó a Tanara Cloudot választotta (élő módban mindkét lépés a Cloudon fut):
-    // a lépés ilyenkor a saját kulcsos magyarázatot nem mutatja.
+    // The user chose Tanara Cloud (in live mode both steps run on the Cloud): the step then
+    // does not show the own-key explanation.
     Q_PROPERTY(bool cloudChosen READ cloudChosen NOTIFY readinessChanged)
 
-    // ---- Hívásfigyelő ----
+    // ---- Call watcher ----
     Q_PROPERTY(bool watcherAutostart READ watcherAutostart WRITE setWatcherAutostart NOTIFY watcherChanged)
     Q_PROPERTY(QString autostartNote READ autostartNote NOTIFY watcherChanged)
 
-    // ---- összesítés ----
-    // Az aktuális lépésnek van el nem fogadott változása.
+    // ---- summary ----
+    // The current step has an unaccepted change.
     Q_PROPERTY(bool stepDirty READ stepDirty NOTIFY dirtyChanged)
-    // Az ablak bezárása után már nem nyílik meg magától.
+    // After the window closes it no longer opens by itself.
     Q_PROPERTY(bool done READ isDone NOTIFY doneChanged)
 
 public:
@@ -134,32 +135,32 @@ public:
     bool stepDirty() const;
     bool isDone() const { return m_done; }
 
-    // ---- műveletek ----
-    // Az aktuális lépés elfogadása (különbség-mentés) és tovább. false: érvénytelen mező (üres
-    // név) — ilyenkor semmi nem íródik, a lépés marad. Az utolsó lépésen = finish().
+    // ---- actions ----
+    // Accepts the current step (difference save) and moves on. False: invalid field (empty
+    // name): nothing is written, the step stays. On the last step = finish().
     Q_INVOKABLE bool next();
-    // Az aktuális lépés piszkozatának eldobása és tovább (az utolsó lépésen = finish()).
+    // Discards the current step's draft and moves on (on the last step = finish()).
     Q_INVOKABLE void skip();
-    // Vissza az előző lépésre (a piszkozat megmarad).
+    // Back to the previous step (the draft is kept).
     Q_INVOKABLE void back();
-    // Kész: a jelző mentése és az ablak bezárása (closeRequested).
+    // Done: saves the flag and closes the window (closeRequested).
     Q_INVOKABLE void finish();
-    // Az ablak bezárásakor: a el nem fogadott lépés eldobása (a téma-előnézet is visszaáll).
+    // When the window closes: discards the unaccepted step (the theme preview reverts too).
     Q_INVOKABLE void discardPending();
-    // `onboardingDone` = true a core beállításaiban (ha még nem az). Más mezőhöz nem nyúl.
+    // `onboardingDone` = true in the core's settings (if not yet). Touches no other field.
     Q_INVOKABLE void markDone();
-    // Újratöltés a core-ból (megnyitáskor): piszkozat = alap, az első lépés, állapot-jelek törölve.
+    // Reload from the core (on opening): draft = base, the first step, state flags cleared.
     Q_INVOKABLE void reload();
 
     Q_INVOKABLE void browseFolder(const QString& key);
     Q_INVOKABLE void setFolder(const QString& key, const QString& path);
     Q_INVOKABLE void resetFolder(const QString& key);
-    // „Beállítás most”: a Beállítások › Szolgáltatások lap (openSettingsRequested("providers")).
+    // "Set up now": the Settings > Services page (openSettingsRequested("providers")).
     Q_INVOKABLE void openServices();
-    // A szolgáltatók állapot-sorának újraszámolása (a Beállítások mentése után a gazda hívja).
+    // Recomputes the providers' status rows (the host calls it after Settings saves).
     Q_INVOKABLE void refreshReadiness();
 
-    // Tesztekhez / a gazdának: a szolgáltató rövid neve („LM Studio · gemma-4-12b”).
+    // For tests / the host: the provider's short name ("LM Studio · gemma-4-12b").
     static QString providerLabel(const tanara::AppSettings& s, bool stt);
 
 signals:
@@ -175,13 +176,13 @@ signals:
     void dirtyChanged();
     void doneChanged();
 
-    // Az ablak bezárandó (Kész / az utolsó lépés).
+    // The window should close (Done / the last step).
     void closeRequested();
-    // A Beállítások egy lapja nyitandó ("providers").
+    // A Settings page should open ("providers").
     void openSettingsRequested(const QString& page);
-    // Elfogadott téma ("system" | "light" | "dark") — a befoglaló folyamat jegyzi meg.
+    // Accepted theme ("system" | "light" | "dark"): the enclosing process remembers it.
     void themeModeSaved(const QString& mode);
-    // A beállítások egy lépés elfogadásával változtak (a gazda a hídnak továbbadja).
+    // The settings changed by accepting a step (the host passes it on to the bridge).
     void saved();
 
 private:

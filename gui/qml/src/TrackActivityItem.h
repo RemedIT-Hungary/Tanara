@@ -1,13 +1,13 @@
 #pragma once
 //
-// Tanara QML — a beszéd-csík rajza (TrackActivityStrip): egy sáv idővonala a megbeszélés
-// teljes hosszán, képpont-oszloponként: nincs adat → üres; csend → vékony alapvonal; beszéd →
-// teljes magasságú sáv (az oszlop beszédes kereteinek arányában telítve). A TrackActivityModel
-// kereteiből C++-ban számol (nincs QML-tömb), az oszlopokat szélesség / adat-változásig
-// gyorsítótárazza — 2 óra × 50 ms-os keretsor is gyors. A lejátszás-fej és az egér-kezelés a
-// QML-ben van (nem rajzol újra mozgáskor).
+// Tanara QML: the speech strip's drawing (TrackActivityStrip): one track's timeline over the
+// meeting's whole length, per pixel column: no data -> empty; silence -> thin baseline;
+// speech -> full-height bar (filled in proportion to the column's speech frames). It
+// computes in C++ from the TrackActivityModel's frames (no QML array) and caches the columns
+// until the width / data changes, so even a 2 h x 50 ms frame series is fast. The playhead
+// and mouse handling are in QML (no repaint on movement).
 //   TrackActivityItem { model: activity; trackId: "mic"; color: Theme.speakerLine(0) }
-// Nincs adat (számol / nincs ilyen sáv): egyenletes, halvány (emptyColor) csík.
+// No data (computing / no such track): an even, dim (emptyColor) stripe.
 //
 #include "TrackActivityModel.h"
 
@@ -25,12 +25,12 @@ class TrackActivityItem : public QQuickPaintedItem {
 
     Q_PROPERTY(tanara_qml::TrackActivityModel* model READ model WRITE setModel NOTIFY modelChanged)
     Q_PROPERTY(QString trackId READ trackId WRITE setTrackId NOTIFY trackIdChanged)
-    // Az idővonal hossza (ms); <= 0 → a modell durationMs-e.
+    // The timeline's length (ms); <= 0 -> the model's durationMs.
     Q_PROPERTY(int durationMs READ durationMs WRITE setDurationMs NOTIFY durationMsChanged)
     Q_PROPERTY(QColor color READ color WRITE setColor NOTIFY colorsChanged)
     Q_PROPERTY(QColor quietColor READ quietColor WRITE setQuietColor NOTIFY colorsChanged)
     Q_PROPERTY(QColor emptyColor READ emptyColor WRITE setEmptyColor NOTIFY colorsChanged)
-    // Van-e rajzolható adat ehhez a sávhoz (a QML ezzel vált a „számol" állapotra).
+    // Whether there is drawable data for this track (QML switches to the "computing" state with it).
     Q_PROPERTY(bool hasData READ hasData NOTIFY hasDataChanged)
 
 public:
@@ -52,8 +52,8 @@ public:
     void setEmptyColor(const QColor& c);
     bool hasData() const;
 
-    // Oszloponként: -1 = nincs adat, különben a beszédes keretek aránya 0..1 (0 = csak csend).
-    // A rajz és a teszt közös számítása.
+    // Per column: -1 = no data, otherwise the share of speech frames 0..1 (0 = silence only).
+    // Shared computation of the drawing and the test.
     static QVector<qreal> columns(const QVector<qint8>& frames, qint64 originMs, int frameMs,
                                   qint64 durationMs, int count);
 
@@ -76,7 +76,7 @@ private:
     QColor m_emptyColor{Qt::lightGray};
     bool m_lastHasData = false;
 
-    // Gyorsítótár: az utoljára számolt oszlopok (szélesség + modell-revízió szerint).
+    // Cache: the columns last computed (by width + model revision).
     QVector<qreal> m_cols;
     int m_cacheWidth = -1;
     int m_cacheRevision = -1;

@@ -1,18 +1,19 @@
 #pragma once
 //
-// RecorderWindowHost — a lebegő QML-felvevő (RecorderWindow.qml) C++ gazdája.
+// RecorderWindowHost: the C++ host of the floating QML recorder (RecorderWindow.qml).
 //
-// Egy folyamatban EGY példány elég. Kétféleképp használható:
-//  - önállóan (`tanara --record …`): a main.cpp létrehozza, request()-tel átadja a
-//    parancssori kérést, és a closed() jelre kilép;
-//  - a főalkalmazásban: a gui/src ShellRecorderHost ugyanígy létrehozza (ott is saját
-//    motorral — a téma az `App` singletonon át közös), a „Felvétel” gombra show()-t, a
-//    továbbított `--record` kérésre request()-et hív.
+// ONE instance per process is enough. It can be used two ways:
+//  - standalone (`tanara --record ...`): main.cpp creates it, passes the command-line request
+//    with request(), and quits on the closed() signal;
+//  - in the main application: gui/src's ShellRecorderHost creates it the same way (with its
+//    own engine there too; the theme is shared through the `App` singleton), calls show() on
+//    the "Record" button and request() on a forwarded `--record` request.
 //
-// A gazda intézi, amit a QML nem tud: mindig-felül, pozíció megjegyzése képernyőnként,
-// a pirula él-illesztése, háttérbe küldés, a recording.lock, és hogy a felvétel-kérdés
-// (R06) rejtett / pirula ablaknál előhozza az ablakot és rendszerértesítést kérjen.
-// Widgets-függősége nincs (tálca-ikont, értesítést a befoglaló folyamat ad a jelekre).
+// The host handles what QML cannot: always-on-top, remembering the position per screen,
+// edge snapping of the pill, sending to the background, the recording.lock, and that the
+// recording question (R06) brings up the window and asks for a system notification when the
+// window is hidden / a pill. It has no Widgets dependency (the tray icon and the
+// notification come from the enclosing process on the signals).
 //
 #include <QList>
 #include <QObject>
@@ -33,63 +34,63 @@ namespace tanara_qml {
 
 class RecorderViewModel;
 
-// Egy felvevő-kérés (parancssor: --record [--title T | --app A] [--context C]
-// [--device IDX]… [--no-start] [--stop]).
+// A recorder request (command line: --record [--title T | --app A] [--context C]
+// [--device IDX]... [--no-start] [--stop]).
 struct RecorderRequest {
-    QString title;              // kifejezett cím (nem „automatikus név”)
-    QString appName;            // az észlelt hívás-app → automatikus név: „Teams-hívás · …”
-    QString context;            // a meeting kontextus-megjegyzése
-    QList<int> deviceIndexes;   // a capture-lista sorszámai; üres = a mentett kijelölés
-    bool start = true;          // azonnali indítás (ha üresjáratban van)
-    bool stop = false;          // a futó felvétel leállítása (ablak-előhozás nélkül)
+    QString title;              // explicit title (not the "automatic name")
+    QString appName;            // the detected call app -> automatic name: "Teams call · ..."
+    QString context;            // the meeting's context note
+    QList<int> deviceIndexes;   // the capture list's row numbers; empty = the saved selection
+    bool start = true;          // start immediately (if idle)
+    bool stop = false;          // stop the running recording (without bringing up the window)
 };
 
 class RecorderWindowHost : public QObject {
     Q_OBJECT
 public:
-    // engine: a QML-motor, amelyben az ablak létrejön; nullptr → saját motort készít.
+    // engine: the QML engine the window is created in; nullptr -> it makes its own engine.
     explicit RecorderWindowHost(tanara::AppController* controller, QQmlEngine* engine = nullptr,
                                 QObject* parent = nullptr);
     ~RecorderWindowHost() override;
 
-    // Az ablak megmutatása és előtérbe hozása (első hívásra létre is hozza). false: QML-hiba.
+    // Shows the window and brings it to the front (creating it on the first call). False: QML error.
     bool show();
     void hide();
     bool isVisible() const;
 
-    // Egy kérés végrehajtása: megmutat, címet / forrásokat állít, és (start) indít.
+    // Executes a request: shows, sets the title / sources, and (start) starts.
     void request(const RecorderRequest& request);
 
-    bool recording() const;                 // fut-e felvétel (vagy épp lezárul)
-    QQuickWindow* window() const;           // nullptr, amíg nem jött létre
+    bool recording() const;                 // whether a recording runs (or is closing)
+    QQuickWindow* window() const;           // nullptr until created
     RecorderViewModel* viewModel() const;
 
-    // Hamis: a „Háttérbe” gomb csak tálcára minimalizál (nincs, ami visszahozná az ablakot).
+    // False: the "To background" button only minimizes to the taskbar (nothing would bring the window back).
     void setHideToTrayEnabled(bool on) { m_hideEnabled = on; }
-    // A recording.lock kezelése (felvétel indulásakor felvesz, a végén elenged). Alapból be.
+    // Handling of recording.lock (taken when a recording starts, released at the end). On by default.
     void setManageLock(bool on) { m_manageLock = on; }
 
-    // Az önálló felvevő-folyamatban a QApplication ELŐTT hívandó: Qt Quick-beállítások
-    // (stílus, szövegrajzolás) + a TANARA_RECORDER_X11=1 kapcsoló (Wayland → XWayland).
+    // In the standalone recorder process, to call BEFORE the QApplication: Qt Quick settings
+    // (style, text rendering) + the TANARA_RECORDER_X11=1 switch (Wayland -> XWayland).
     static void prepareProcess();
 
-    // A platform engedi-e a kliensnek a mindig-felült és az ablak-pozicionálást
-    // (X11, Windows: igen; Wayland: nem — ott az ablakkezelő dönt).
+    // Whether the platform lets the client do always-on-top and window positioning (X11,
+    // Windows: yes; Wayland: no, there the window manager decides).
     static bool platformCanPosition();
 
 signals:
-    void closed();                               // a felhasználó bezárta (nem fut felvétel)
-    void hiddenToTray();                         // háttérbe küldve (a felvétel megy tovább)
+    void closed();                               // the user closed it (no recording running)
+    void hiddenToTray();                         // sent to the background (the recording goes on)
     void shown();
-    void openMeetingRequested(QString meetingId);   // „Megnyitás az elemzőben”
-    void settingsRequested();                    // „Rögzítés beállításai”
-    void notificationRequested(QString title, QString text);   // R06 rejtett/pirula ablaknál
+    void openMeetingRequested(QString meetingId);   // "Open in analyzer"
+    void settingsRequested();                    // "Recording settings"
+    void notificationRequested(QString title, QString text);   // R06 for a hidden / pill window
     void recordingStarted(QString meetingFolder);
     void recordingFinished(QString meetingId);
-    void stateChanged(QString state);            // a nézetmodell állapota (tálca-ikonhoz)
+    void stateChanged(QString state);            // the view model's state (for the tray icon)
 
 private slots:
-    // A RecorderWindow.qml jelei / property-változásai.
+    // RecorderWindow.qml's signals / property changes.
     void onHideRequested();
     void onCloseRequested();
     void onUserMoved();

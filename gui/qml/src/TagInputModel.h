@@ -1,14 +1,15 @@
 #pragma once
 //
-// TagInputModel — a címke-beviteli mező (C02, TagInput.qml) felugró listája.
+// TagInputModel: the popup list of the tag input field (TagInput.qml).
 //
-// text → rows: üres mezőn a legutóbb használt címkék, gépeléskor a találatok (ékezet- és
-// kisbetű-független, előbb a név eleje, aztán a szókezdet, aztán bárhol) + „Új címke: „…””,
-// nagyon hasonló névnél „HASONLÓ MÁR VAN” + „Mégis új: „…”” (szabályok: TagMatching.h).
-// A kijelölés a nyilakkal mozog; Enter = chooseSelected() → chosen(név, új-e).
+// text -> rows: on an empty field the recently used tags, when typing the hits
+// (accent- and case-insensitive, name start first, then word start, then anywhere) +
+// "New tag: "..."", for a very similar name "SIMILAR ALREADY EXISTS" + "Create new anyway:
+// "..."" (rules: TagMatching.h). The selection moves with the arrows; Enter =
+// chooseSelected() -> chosen(name, isNew).
 //
-// Adatforrás: TagBackend (controller nélkül a kitalált 12 címke). A `controller` property a
-// wave 2 bekötési pontja; tesztben setBackend()-del ál-backend adható.
+// Data source: TagBackend (without a controller the fictional 12 tags). The `controller`
+// property is the controller wiring point; in tests a fake backend can be given with setBackend().
 //
 #include "TagMatching.h"
 
@@ -31,12 +32,12 @@ class TagInputModel : public QObject {
     // [{ kind, id, name, count, matchStart, matchLen, before, match, after }]
     //   kind: "recent" | "match" | "new" | "nearDuplicate" | "forceNew"
     Q_PROPERTY(QVariantList rows READ rows NOTIFY rowsChanged)
-    // "recent" (üres mező) | "typing" | "similar" (nagyon hasonló név van) — a fejléchez
+    // "recent" (empty field) | "typing" | "similar" (a very similar name exists): for the header
     Q_PROPERTY(QString mode READ mode NOTIFY rowsChanged)
     Q_PROPERTY(int selectedRow READ selectedRow WRITE setSelectedRow NOTIFY selectedRowChanged)
-    // Legfeljebb ennyi meglévő címke (5; a felvevő kompakt listájában 3).
+    // At most this many existing tags (5; in the recorder's compact list 3).
     Q_PROPERTY(int limit READ limit WRITE setLimit NOTIFY limitChanged)
-    // A megbeszélésen már rajta lévő címkék (ezeket nem kínálja).
+    // The tags already on the meeting (not offered).
     Q_PROPERTY(QStringList excludeIds READ excludeIds WRITE setExcludeIds NOTIFY excludeIdsChanged)
 
 public:
@@ -44,7 +45,7 @@ public:
 
     QObject* controller() const { return m_controller; }
     void setController(QObject* controller);
-    // Tesztekhez / közös backendhez: nem veszi át a tulajdonjogot.
+    // For tests / a shared backend: does not take ownership.
     void setBackend(TagBackend* backend);
     TagBackend* backend() const { return m_backend; }
 
@@ -61,9 +62,9 @@ public:
 
     const QVector<tagmatch::InputRow>& rowData() const { return m_rows; }
 
-    // A kijelölés léptetése (körbe nem fordul).
+    // Moves the selection (does not wrap).
     Q_INVOKABLE void move(int delta);
-    // A kijelölt sor választása: chosen(név, új-e). false, ha nincs mit választani.
+    // Chooses the selected row: chosen(name, isNew). False if there is nothing to choose.
     Q_INVOKABLE bool chooseSelected();
     Q_INVOKABLE bool choose(int row);
 

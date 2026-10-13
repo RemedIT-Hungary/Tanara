@@ -1,16 +1,15 @@
 #pragma once
 //
-// SettingsCloudModel — a Beállítások Tanara Cloud panelje (B06) és a „Hamarosan”
-// várólista-ajánlat háttere.
+// SettingsCloudModel: Settings' Tanara Cloud panel and the backend of the "Coming soon"
+// waitlist offer.
 //
-// MINDEN, ami látszik, a tanara::CloudAccount-ból jön (e-mail, egyenleg, becsült órák, ÁFA,
-// értesítések, a szintek katalógus-ára) — a nézetmodell semmit nem számol és nem talál ki.
-// A szint (Gyors / Pontos) és a „költségbecslés indítás előtt” a SettingsViewModel
-// piszkozatába megy (mentéskor érvényes). A bejelentkezés, a feltöltés, az Expert-modell és
-// az ÁSZF a meglévő Widgets-folyamatokat nyitja (SettingsDialogs); a kijelentkezés és a
-// várólista-feliratkozás közvetlenül a CloudAccount hívása.
+// EVERYTHING shown comes from tanara::CloudAccount (email, balance, estimated hours, VAT,
+// notices, the tiers' catalog price); the view model computes and invents nothing. The tier
+// (Fast / Accurate) and "cost estimate before start" go into the SettingsViewModel draft
+// (effective on save). Sign-in, top-up, the Expert model and the ToS open the existing
+// Widgets flows (SettingsDialogs); sign-out and waitlist signup are direct CloudAccount calls.
 //
-// Controller nélkül (demó / képernyőkép) kitalált fiókot mutat.
+// Without a controller (demo / screenshot) it shows a fictional account.
 //
 #include "tanara/cloud/CloudTypes.h"
 
@@ -29,35 +28,35 @@ class SettingsCloudModel : public QObject {
     Q_OBJECT
     QML_ANONYMOUS
 
-    // ---- fiók (élő mód) ----
+    // ---- account (live mode) ----
     Q_PROPERTY(bool loggedIn READ loggedIn NOTIFY accountChanged)
     Q_PROPERTY(QString email READ email NOTIFY accountChanged)
-    // Az egyenleg a UI nyelvén formázva ("" = még nem ismert); state: ok | low | empty | unknown.
+    // The balance formatted in the UI language ("" = not known yet); state: ok | low | empty | unknown.
     Q_PROPERTY(QString balanceText READ balanceText NOTIFY accountChanged)
     Q_PROPERTY(QString balanceState READ balanceState NOTIFY accountChanged)
-    Q_PROPERTY(QString hoursText READ hoursText NOTIFY accountChanged)     // „≈ 31 óra Pontos · …”
+    Q_PROPERTY(QString hoursText READ hoursText NOTIFY accountChanged)     // "~ 31 hours Accurate · ..."
     Q_PROPERTY(QString vatText READ vatText NOTIFY accountChanged)
     Q_PROPERTY(QString topupLabel READ topupLabel NOTIFY accountChanged)
-    // Egy sornyi állapot a fiók alatt: { text, tone: info|warn|danger, action: ""|login|topup|update|web, actionLabel }
+    // A one-line status under the account: { text, tone: info|warn|danger, action: ""|login|topup|update|web, actionLabel }
     Q_PROPERTY(QVariantMap notice READ notice NOTIFY accountChanged)
-    // A gateway értesítései: [{ level, text, url }]
+    // The gateway's notices: [{ level, text, url }]
     Q_PROPERTY(QVariantList notices READ notices NOTIFY accountChanged)
     Q_PROPERTY(QString termsText READ termsText NOTIFY accountChanged)
     Q_PROPERTY(bool termsPending READ termsPending NOTIFY accountChanged)
 
-    // ---- minőség (a piszkozatból) ----
+    // ---- quality (from the draft) ----
     Q_PROPERTY(QString sttTier READ sttTier WRITE setSttTier NOTIFY tiersChanged)
     Q_PROPERTY(QString llmTier READ llmTier WRITE setLlmTier NOTIFY tiersChanged)
-    Q_PROPERTY(QString sttExpert READ sttExpert NOTIFY tiersChanged)   // Expert-modell neve ("" = nincs)
+    Q_PROPERTY(QString sttExpert READ sttExpert NOTIFY tiersChanged)   // name of the Expert model ("" = none)
     Q_PROPERTY(QString llmExpert READ llmExpert NOTIFY tiersChanged)
-    Q_PROPERTY(QString sttInfo READ sttInfo NOTIFY tiersChanged)       // ár + figyelmeztetések
+    Q_PROPERTY(QString sttInfo READ sttInfo NOTIFY tiersChanged)       // price + warnings
     Q_PROPERTY(QString llmInfo READ llmInfo NOTIFY tiersChanged)
     Q_PROPERTY(bool estimateBeforeRun READ estimateBeforeRun WRITE setEstimateBeforeRun NOTIFY tiersChanged)
-    // A megbeszélések nyelve az átíráshoz (AppSettings::languageHints első eleme; "" = automatikus).
+    // The meetings' language for transcription (AppSettings::languageHints first element; "" = automatic).
     Q_PROPERTY(QString meetingLanguage READ meetingLanguage WRITE setMeetingLanguage NOTIFY tiersChanged)
     Q_PROPERTY(QVariantList meetingLanguages READ meetingLanguages NOTIFY tiersChanged)
 
-    // ---- várólista (teaser mód) ----
+    // ---- waitlist (teaser mode) ----
     Q_PROPERTY(QString joinedEmail READ joinedEmail NOTIFY waitlistChanged)
     Q_PROPERTY(QString waitEmail READ waitEmail WRITE setWaitEmail NOTIFY waitlistChanged)
     Q_PROPERTY(QString waitUseCase READ waitUseCase WRITE setWaitUseCase NOTIFY waitlistChanged)
@@ -113,9 +112,9 @@ public:
     QString privacyUrl() const;
 
     Q_INVOKABLE void login();             // Widgets: CloudLoginDialog
-    Q_INVOKABLE void logout();            // a megerősítést a QML kéri
+    Q_INVOKABLE void logout();            // QML asks for the confirmation
     Q_INVOKABLE void topup();
-    Q_INVOKABLE void refresh();           // fiók + katalógus újrakérése
+    Q_INVOKABLE void refresh();           // re-request account + catalog
     Q_INVOKABLE void pickExpert(const QString& kind);   // Widgets: CloudModelPickerDialog
     Q_INVOKABLE void openTerms();
     Q_INVOKABLE void openDashboard();
@@ -124,9 +123,9 @@ public:
     Q_INVOKABLE void openLink(const QString& url);
     Q_INVOKABLE void toggleWaitLanguage(const QString& code);
     Q_INVOKABLE void submitWaitlist();
-    Q_INVOKABLE void resetWaitlist();     // „Másik címmel iratkozom fel”
+    Q_INVOKABLE void resetWaitlist();     // "Sign up with another address"
 
-    // A controller megváltozott / a piszkozat újratöltődött.
+    // The controller changed / the draft was reloaded.
     void attach();
     void notifyDraftChanged() { emit tiersChanged(); emit waitlistChanged(); }
     void loadDemo(const QString& state);
@@ -150,7 +149,7 @@ private:
     bool m_waitConsent = false;
     bool m_waitBusy = false;
 
-    // demó
+    // demo
     bool m_demo = false;
     bool m_demoLoggedIn = true;
     QString m_demoJoined;

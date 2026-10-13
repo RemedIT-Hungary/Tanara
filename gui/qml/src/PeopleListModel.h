@@ -1,9 +1,9 @@
 #pragma once
 //
-// PeopleListModel — a Személyek ablak bal oldali névsora (a PeopleViewModel.people adja).
-// Egy sor: név (a keresés találata három darabban a kiemeléshez), monogram, „te” jelző,
-// alsor (megbeszélés- és mintaszám), és — ha a sor új szakaszt kezd — a szakasz fejléce.
-// A szűrést és a rendezést a nézetmodell végzi; itt csak a kész sorok élnek.
+// PeopleListModel: the People window's left-hand name list (provided by PeopleViewModel.people).
+// A row: name (the search hit in three pieces for highlighting), monogram, "you" marker,
+// bottom line (meeting and sample count), and, if the row starts a new section, the section header.
+// Filtering and sorting are done by the view model; only the finished rows live here.
 //
 #include <QAbstractListModel>
 #include <QString>
@@ -17,12 +17,12 @@ struct PeopleListRow {
     QString monogram;
     bool    isSelf = false;
     bool    hasVoiceprint = false;
-    QString meta;       // „23 megbeszélés · 9 minta”
-    QString header;     // nem üres: e sor fölött szakasz-fejléc („Te”, „B” …)
-    QString before;     // a név a találat előtt (keresés nélkül a teljes név)
+    QString meta;       // "23 meetings · 9 samples"
+    QString header;     // non-empty: a section header above this row ("You", "B" ...)
+    QString before;     // the name before the hit (without a search the full name)
     QString match;
     QString after;
-    bool    tagHit = false; // a keresés a személy címkéjén talált (a meta: „címke: #Nordvik …”)
+    bool    tagHit = false; // the search matched the person's tag (the meta: "tag: #Nordvik ...")
 
     bool operator==(const PeopleListRow& o) const = default;
 };
@@ -44,8 +44,8 @@ public:
     QHash<int, QByteArray> roleNames() const override;
 
     int count() const { return int(m_rows.size()); }
-    // Új sorok. Ha a nevek sorrendje nem változott (pl. csak a statisztika töltődött be), a
-    // modell nem áll alaphelyzetbe: a lista nem ugrik, csak a megváltozott sorok frissülnek.
+    // New rows. If the order of names did not change (e.g. only the statistics loaded), the
+    // model does not reset: the list does not jump, only the changed rows refresh.
     void setRows(const QVector<PeopleListRow>& rows);
     const QVector<PeopleListRow>& rows() const { return m_rows; }
     Q_INVOKABLE int indexOfName(const QString& name) const;

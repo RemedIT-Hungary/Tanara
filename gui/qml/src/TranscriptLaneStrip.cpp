@@ -14,7 +14,7 @@ void TranscriptLaneStrip::paint(QPainter* p)
 {
     tanara::PerfScope perfScope("TranscriptLaneStrip::paint", 20);
     const qreal w = width(), h = height();
-    // A sáv 8 px magas, középen; a kiemelés túllóg rajta (ezért magasabb az elem).
+    // The band is 8 px high, centered; the highlight overhangs it (hence the item is taller).
     const qreal trackH = qMin<qreal>(8.0, h);
     const qreal top = (h - trackH) / 2.0;
     p->setRenderHint(QPainter::Antialiasing, true);

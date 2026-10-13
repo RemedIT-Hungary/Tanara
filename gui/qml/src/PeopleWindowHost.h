@@ -1,13 +1,13 @@
 #pragma once
 //
-// PeopleWindowHost — a QML Személyek-ablak (PeopleWindow.qml) C++ gazdája.
+// PeopleWindowHost: the C++ host of the QML People window (PeopleWindow.qml).
 //
-// Egy folyamatban EGY példány elég: a főalkalmazásban a QmlShellBridge hozza létre
-// (ShellActions.openPeople → open()), a főablak nélküli folyamatokban (önálló felvevő,
-// `tanara --settings`) a Beállítások „Személyek kezelése” hivatkozása a
-// SettingsWidgetsDialogs-on át. Saját QML-motorral dolgozik (ahogy a Beállítások gazdája), a
-// téma az `App` singletonon át közös. Az ablak nem modális: a főablak mellette használható,
-// és a műveletek hatása (átnevezés, összevonás …) azonnal látszik a nyitott átiraton.
+// ONE instance per process is enough: in the main application QmlShellBridge creates it
+// (ShellActions.openPeople -> open()), in processes without a main window (standalone
+// recorder, `tanara --settings`) Settings' "Manage people" link through
+// SettingsWidgetsDialogs. It uses its own QML engine (like Settings' host); the theme is
+// shared through the `App` singleton. The window is non-modal: the main window can be used
+// beside it, and the effect of actions (rename, merge ...) shows immediately on the open transcript.
 //
 #include <QObject>
 #include <QPointer>
@@ -31,16 +31,16 @@ public:
     explicit PeopleWindowHost(tanara::AppController* controller, QObject* parent = nullptr);
     ~PeopleWindowHost() override;
 
-    // Az ablak megnyitása / előtérbe hozása; person: ez a személy legyen kijelölve (üres: a
-    // korábbi kijelölés marad). Megnyitáskor a lista a lemez friss állapotát mutatja.
-    // section: erre a szakaszra görgetve ("tags"; üres: nincs kérés). false: QML-hiba.
+    // Opens / raises the window; person: select this person (empty: the earlier selection
+    // stays). On opening the list shows the fresh state from disk.
+    // section: scroll to this section ("tags"; empty: no request). False: QML error.
     bool open(const QString& person = QString(), const QString& section = QString());
     void closeNow();
     bool isVisible() const;
     QQuickWindow* window() const;
     PeopleViewModel* viewModel() const;
 
-    // Az ablak ehhez tartozzon az ablakkezelő szerint.
+    // The window should belong to this one per the window manager.
     void setTransientParent(QWindow* parent);
 
 signals:

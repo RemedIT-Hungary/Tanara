@@ -21,7 +21,7 @@ PlayerController::BackendFactory& backendFactory()
     return f;
 }
 
-// Néma, órával léptetett motor: demó, képernyőkép és teszt (nincs hangkimenet).
+// Silent, clock-stepped engine: demo, screenshot and test (no audio output).
 class SilentBackend : public PlayerBackend {
 public:
     explicit SilentBackend(QObject* parent) : PlayerBackend(parent)
@@ -89,10 +89,10 @@ private:
     bool m_playing = false;
 };
 
-// A megbeszélés hallgatható hangja: a lekeverés; ha nincs (régi felvétel, elmaradt keverés),
-// a legnagyobb AKTÍV, a felvétel elejétől tartó (startOffsetMs == 0) sáv — a szegmens-
-// időbélyegek megbeszélés-időben vannak, így csak egy ilyen sávon időhelyesek. Ha nincs ilyen,
-// a legnagyobb aktív sáv (eltolva szól, de legalább hallható).
+// The meeting's playable audio: the mixdown; if none (old recording, missing mix), the
+// largest ACTIVE track that runs from the recording's start (startOffsetMs == 0): segment
+// timestamps are in meeting time, so only such a track is time-correct. If there is none,
+// the largest active track (plays shifted, but at least audible).
 QString meetingAudioPath(const tanara::Meeting& m)
 {
     const QString mixdown = QDir(m.folder).filePath(
@@ -127,7 +127,7 @@ PlayerController::TrackSeek PlayerController::resolveTrackSeek(const QVector<tan
     for (int i = 0; i < tracks.size() && lead < 0; ++i)
         if (tracks.at(i).id == trackId) lead = seg.value(i).leader >= 0 ? seg.value(i).leader : i;
     if (lead < 0) return out;
-    // A logikai sáv szakaszai a kezdetük sorrendjében.
+    // The logical track's segments in order of their start.
     QVector<int> members;
     for (int i = 0; i < tracks.size(); ++i)
         if ((seg.value(i).leader >= 0 ? seg.value(i).leader : i) == lead) members << i;
@@ -190,8 +190,8 @@ void PlayerController::attach()
             m_attached->disconnect(this);
         m_attached = m_controller;
         if (m_controller) {
-            // Elkészült / megváltozott a lekeverés, vagy változtak a sávok → a forrás
-            // újra-feloldása (lejátszás közben a sáv-változás nem szakítja meg a hangot).
+            // The mixdown became ready / changed, or the tracks changed -> re-resolve the source
+            // (during playback a track change does not interrupt the audio).
             connect(m_controller, &tanara::AppController::mixdownUpdated, this,
                     [this](const QString& id, bool) { if (id == m_meetingId) reload(); });
             connect(m_controller, &tanara::AppController::tracksChanged, this,
@@ -245,7 +245,7 @@ void PlayerController::resolveSource()
     m_mixPath = path;
     if (pathChanged)
         m_mixLoaded = false;
-    // A motor által mért hossz pontosabb; amíg nincs betöltve, a meeting.json-beli érvényes.
+    // The length measured by the engine is more accurate; until it is loaded, the one in meeting.json is valid.
     if (!m_mixLoaded && duration != m_durationMs) {
         m_durationMs = duration;
         emit durationMsChanged();
@@ -300,7 +300,7 @@ void PlayerController::startMix()
     stopPreview();
     loadMix();
     if (m_durationMs > 0 && m_positionMs >= m_durationMs - 50) {
-        setPosition(0);          // a végéről újraindítva elölről
+        setPosition(0);          // restarted from the end: from the start
         m_backend->setPosition(0);
     }
     m_ended = false;
@@ -309,7 +309,7 @@ void PlayerController::startMix()
 
 void PlayerController::play()
 {
-    m_rangeEndMs = -1;           // a sima lejátszás folyamatos (kilép az egy-megszólalás módból)
+    m_rangeEndMs = -1;           // plain playback is continuous (leaves the single-utterance mode)
     startMix();
 }
 
@@ -334,7 +334,7 @@ void PlayerController::toggle()
 void PlayerController::seek(int ms)
 {
     const qint64 clamped = qBound(qint64(0), qint64(ms), qMax(qint64(0), m_durationMs));
-    m_rangeEndMs = -1;           // kézi ugrás megszakítja az egy-megszólalás módot
+    m_rangeEndMs = -1;           // a manual seek cancels the single-utterance mode
     m_ended = false;
     setPosition(clamped);
     if (m_backend && m_mixLoaded && m_previewPath.isEmpty())
@@ -366,7 +366,7 @@ void PlayerController::playFile(const QString& absolutePath)
 {
     if (absolutePath.isEmpty())
         return;
-    // Valódi motorral csak létező fájl játszható (a néma motor a demóban bármit „lejátszik”).
+    // With a real engine only an existing file can play (the silent engine "plays" anything in the demo).
     if (backendFactory() && !QFileInfo::exists(absolutePath)) {
         emit errorOccurred(tr("A hangfájl nem található: %1").arg(absolutePath));
         return;
@@ -374,7 +374,7 @@ void PlayerController::playFile(const QString& absolutePath)
     m_previewTrackId.clear();
     m_previewSegmentId.clear();
     m_previewOffsetMs = 0;
-    m_previewPath.clear();       // mindig újratöltjük (a fájl elejétől)
+    m_previewPath.clear();       // always reloaded (from the file's start)
     loadPreview(absolutePath, 0);
 }
 
@@ -383,14 +383,14 @@ void PlayerController::loadPreview(const QString& absolutePath, qint64 fileMs)
     ensureBackend();
     if (m_playing)
         m_backend->pause();
-    m_mixLoaded = false;         // a motor forrása mostantól az előnézet
+    m_mixLoaded = false;         // the engine's source is now the preview
     setPlaying(false);
     const bool samePath = absolutePath == m_previewPath;
     m_previewPath = absolutePath;
     m_previewPositionMs = fileMs;
     if (!samePath) {
         m_previewDurationMs = 0;
-        // Néma motor (demó / teszt): a hossz a megbeszélésé.
+        // Silent engine (demo / test): the length is the meeting's.
         m_backend->setSource(absolutePath, backendFactory() ? 0 : m_durationMs);
     }
     m_backend->setPosition(fileMs);
@@ -410,7 +410,7 @@ void PlayerController::playTrack(const QString& trackId, int meetingMs)
         const tanara::Meeting m = m_controller->store()->load(m_meetingId);
         qint64 at = meetingMs;
         if (at < 0) {
-            // Folytatás: ugyanaz a sáv → ahol abbahagyta; különben a sáv eleje.
+            // Resume: same track -> where it left off; otherwise the track's start.
             seek = resolveTrackSeek(m.tracks, trackId, 0);
             at = seek.leaderId == m_previewTrackId && !m_previewTrackId.isEmpty()
                      ? previewMeetingMs() : seek.offsetMs;
@@ -426,7 +426,7 @@ void PlayerController::playTrack(const QString& trackId, int meetingMs)
         }
         m_previewSegmentId = t.id;
     } else if (AppContext::instance()->demo() || !m_controller) {
-        // Demó: nincs fájl, a néma motor a megbeszélés hosszán „játszik".
+        // Demo: no file, the silent engine "plays" over the meeting's length.
         seek.leaderId = trackId;
         seek.fileMs = meetingMs >= 0 ? meetingMs
                     : (trackId == m_previewTrackId ? m_previewPositionMs : 0);
@@ -466,8 +466,7 @@ void PlayerController::stopPreview()
         emit previewPlayingChanged();
     }
     m_tick.stop();
-    // A lekeverés a következő lejátszáskor / ugráskor töltődik vissza (loadMix), a megőrzött
-    // pozícióval.
+    // The mixdown reloads on the next playback / seek (loadMix), with the preserved position.
 }
 
 void PlayerController::setRate(qreal rate)
@@ -539,7 +538,7 @@ void PlayerController::onBackendPlaying(bool playing)
     } else if (m_mixLoaded) {
         setPlaying(playing);
         if (!playing)
-            onTick();            // a megállás pontos pozíciója
+            onTick();            // the exact position of the stop
     }
     if (playing)
         m_tick.start();
@@ -565,7 +564,7 @@ void PlayerController::onBackendDuration(qint64 ms)
 void PlayerController::onBackendFinished()
 {
     if (!m_previewPath.isEmpty()) {
-        // Sáv-előnézet: a logikai sáv következő szakasza (ha van) folytatja.
+        // Track preview: the logical track's next segment (if any) continues.
         if (!m_previewTrackId.isEmpty() && m_controller && m_controller->store() && !m_meetingId.isEmpty()) {
             const tanara::Meeting m = m_controller->store()->load(m_meetingId);
             const qint64 here = m_previewOffsetMs;

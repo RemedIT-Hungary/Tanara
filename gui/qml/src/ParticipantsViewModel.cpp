@@ -59,7 +59,7 @@ int groupOf(ParticipantGroup g)
     return 1;
 }
 
-// Rövid modellnév a meta-sorhoz: „CAM++ (3D-Speaker)" → „CAM++".
+// Short model name for the meta line: "CAM++ (3D-Speaker)" -> "CAM++".
 QString shortModelName(const QString& id)
 {
     const auto spec = VoiceModelRegistry::spec(id);
@@ -67,7 +67,7 @@ QString shortModelName(const QString& id)
     return name.section(QLatin1Char(' '), 0, 0);
 }
 
-// „3 perce" / „2 órája" / „tegnap" / „okt. 1." — a hangelemzés kora.
+// "3 min ago" / "2 hours ago" / "yesterday" / "Oct 1": the age of the audio analysis.
 QString ageText(const QDateTime& at)
 {
     if (!at.isValid()) return {};
@@ -141,8 +141,8 @@ void ParticipantsViewModel::connectController()
     m_connections.clear();
     m_connected = c;
     if (!c) return;
-    // Az elemzés vége / a meeting résztvevőinek változása: a csoportok újraszámolása. A
-    // felhasználó jelölései megmaradnak (a munkapéldány id szerint visszaáll).
+    // End of the analysis / change of the meeting's participants: the groups are recomputed. The
+    // user's checks stay (the working copy is restored by id).
     auto refreshFor = [this](const QString& meetingId) {
         if (meetingId != m_meetingId || demo()) return;
         load();
@@ -163,7 +163,7 @@ void ParticipantsViewModel::reload()
 void ParticipantsViewModel::load()
 {
     AppController* c = app();
-    // A munkapéldány: a mostani jelölések / hozzáadások / elnevezések id szerint megmaradnak.
+    // The working copy: the current checks / additions / names are kept by id.
     const QVector<Row> previous = m_rows;
 
     m_rows.clear();
@@ -204,7 +204,7 @@ void ParticipantsViewModel::load()
             if (!l.rawLabel.isEmpty() && !m_rawLabels.contains(l.rawLabel)) m_rawLabels << l.rawLabel;
     }
 
-    // Volt már (nem kihagyott) döntés → az akkori jelölés; különben az alapértelmezés.
+    // If there was a (non-skipped) decision -> that check; otherwise the default.
     const bool decided = m.approval && !m.approval->skipped && !m.approval->solo;
     int color = 0;
     for (const Participant& p : m.participants) {
@@ -212,7 +212,7 @@ void ParticipantsViewModel::load()
         r.id = p.id;
         r.name = p.personName;
         r.group = groupOf(participants::participantGroup(p));
-        // A meghívott, de nem hallott jelölt alapból ki (V2): nincs kit a nevére kötni.
+        // An invited but not heard candidate is unchecked by default: there is nobody to bind the name to.
         r.checked = decided ? p.approved : (r.group != 2 && participants::defaultChecked(p));
         r.evidence = p.evidence;
         r.rawIds = p.rawSpeakerIds;
@@ -223,7 +223,7 @@ void ParticipantsViewModel::load()
         for (const Row& old : previous)
             if (old.id == r.id && !old.added) {
                 r.checked = old.checked;
-                if (r.name.isEmpty()) r.name = old.name;   // a párbeszédben elnevezett
+                if (r.name.isEmpty()) r.name = old.name;   // named in the dialog
             }
         m_rows.append(r);
     }
@@ -244,7 +244,7 @@ void ParticipantsViewModel::loadDemo()
     m_running = s == QLatin1String("running");
     m_hasTranscript = s != QLatin1String("noTranscriptYet") && !m_running;
     m_pending = !m_running;
-    // A modellnév a valóban használt modelleké (controller nélkül: az ajánlott alapállapot).
+    // The model name is of the models really used (without a controller: the recommended default).
     QStringList models;
     const AppController* c = app();
     for (const QString& id : c && !c->activeVoiceModelIds().isEmpty() ? c->activeVoiceModelIds()
@@ -280,7 +280,7 @@ void ParticipantsViewModel::loadDemo()
     };
     const QString mic = participants::kSideMic, loop = participants::kSideLoopback;
     if (m_running) {
-        // Elemzés közben csak a kézzel (az Áttekintésen) felvett résztvevők látszanak.
+        // During the analysis only participants added manually (on the Overview) show.
         row("m-lilla", demoName("Kovács Lilla"), 1, true, {ev(EvidenceKind::Manual, S, tr("kézzel felvéve"))}, {}, {});
         m_rows.last().manual = true;
         reloadTagSuggestions();
@@ -322,7 +322,7 @@ void ParticipantsViewModel::loadDemo()
     }
     if (s == QLatin1String("addPerson")) {
         reloadTagSuggestions();
-        acceptTagSuggestion(0);       // „+ Szabó Bence" a #Nordvik alapján
+        acceptTagSuggestion(0);       // "+ Alex Smith" based on #Nordvik
         addPerson(demoName("Kiss Anna"));
         return;
     }
@@ -330,7 +330,7 @@ void ParticipantsViewModel::loadDemo()
     emit changed();
 }
 
-// A jóváhagyás utáni kérdés kitalált mintája (képernyőkép, demó).
+// A fictional sample of the question after approval (screenshot, demo).
 void ParticipantsViewModel::loadDemoLearn()
 {
     if (m_demoState == QLatin1String("learnNewPerson")) {
@@ -362,7 +362,7 @@ void ParticipantsViewModel::reloadTagSuggestions()
     AppController* c = app();
     TagService* tags = c ? c->tags() : nullptr;
     if (!tags) return;
-    // Az első címke, amelyre van javaslat; legfeljebb 3 személy.
+    // The first tag that has a suggestion; at most 3 people.
     for (const QString& tagId : std::as_const(m_tagIds)) {
         const QVector<PersonTagStat> stats = tags->suggestPeopleForTag(tagId, names, 3);
         if (stats.isEmpty()) continue;
@@ -390,7 +390,7 @@ QVariantMap ParticipantsViewModel::rowMap(const Row& r) const
     const QString side = r.sides.size() == 1 ? r.sides.first() : QString();
     for (const Evidence& e : r.evidence) {
         QString text = e.text;
-        // A design rövid formái: „#Nordvik", „mikrofon-sáv".
+        // The design's short forms: "#Nordvik", "mic track".
         if (e.kind == EvidenceKind::Tag && text.startsWith(QStringLiteral("címke: "))) {
             text = QLatin1Char('#') + text.mid(7);
             const int more = int(e.detail.split(QStringLiteral(", "), Qt::SkipEmptyParts).size()) - 1;
@@ -574,7 +574,7 @@ void ParticipantsViewModel::nameRow(const QString& id, const QString& name)
     const int i = indexOf(id);
     const QString n = name.trimmed();
     if (i < 0 || n.isEmpty()) return;
-    // Már szerepel ilyen nevű sor: azt jelöljük, ezt nem nevezzük át (egy név, egy résztvevő).
+    // A row with this name is already there: we check it, this one is not renamed (one name, one participant).
     if (const int j = indexOfName(n); j >= 0 && j != i) {
         m_rows[j].checked = true;
         emit changed();
@@ -614,7 +614,7 @@ bool ParticipantsViewModel::approve()
         accepted.append(p);
     }
     if (!c->approveParticipants(m_meetingId, accepted)) return false;
-    // Tanulási kérdés (UX-terv 5.): egyszer, a jóváhagyott nevekre.
+    // Learning question: once, for the approved names.
     QVector<PersonTagQuestion> questions;
     if (TagService* tags = c->tags()) {
         QStringList names;
@@ -663,7 +663,7 @@ QString ParticipantsViewModel::answerLearnPair(int index, bool yes)
 {
     if (index < 0 || index >= m_learnPairs.size()) return {};
     const PersonTagQuestion pair = m_learnPairs.at(index);
-    // A pár kikerül a kérdésből (és az üres csoport is).
+    // The pair leaves the question (and the empty group too).
     QVector<PersonTagQuestion> rest = m_learn;
     for (PersonTagQuestion& q : rest)
         if (q.tagId == pair.tagId && q.newPeople == pair.newPeople) q.people.removeAll(pair.people.value(0));
@@ -696,7 +696,7 @@ bool ParticipantsViewModel::unbind(const QString& participantId)
     }
     AppController* c = app();
     if (!c || m_meetingId.isEmpty()) return false;
-    // A munkapéldányban is kivesszük (a participantsChanged utáni újratöltés megtartaná).
+    // Removed from the working copy too (the reload after participantsChanged would keep it).
     if (const int i = indexOf(participantId); i >= 0) m_rows[i].checked = false;
     return c->unbindParticipant(m_meetingId, participantId);
 }

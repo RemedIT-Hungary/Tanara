@@ -41,20 +41,20 @@ QString capitalized(QString text)
 const QString kTagsUndo = QStringLiteral("tags");
 const QString kPeopleUndo = QStringLiteral("people");
 
-// A címkés demó-állapotok (a design-csomagok további kitalált személyeivel).
+// The tag demo states (with the design packages' further fictional people).
 bool tagDemoState(const QString& state)
 {
     return state == QLatin1String("tagsSection") || state == QLatin1String("tagsSuggested")
         || state == QLatin1String("tagsSelf") || state == QLatin1String("tagsFocus");
 }
 
-// A minták modell-jelölését mutató demó-állapotok.
+// Demo states showing the samples' model labels.
 bool modelDemoState(const QString& state)
 {
     return state == QLatin1String("samplesModels") || state == QLatin1String("backfill");
 }
 
-// Monogram: a szavak kezdőbetűi (legfeljebb kettő); a név eleji rövidítés („B. Gergő”) kimarad.
+// Monogram: the words' initials (at most two); a leading abbreviation in the name ("B. Gergő") is skipped.
 QString monogramOf(const QString& name)
 {
     QStringList words = name.split(QLatin1Char(' '), Qt::SkipEmptyParts);
@@ -69,8 +69,8 @@ QString monogramOf(const QString& name)
     return out.isEmpty() ? QStringLiteral("?") : out;
 }
 
-// A névsor szakasza ABC-rendben: a kezdőbetű; a hosszú magánhangzó az alapbetűjéhez kerül
-// (Á → A, Ő → Ö), ahogy a magyar betűrend is együtt kezeli őket.
+// The name list's section in alphabetical order: the initial; a long vowel goes with its
+// base letter (Á with A, Ő with Ö), as Hungarian alphabetical order treats them together.
 QString initialOf(const QString& name)
 {
     for (const QChar c : name) {
@@ -98,8 +98,8 @@ QString sampleIcon(const QString& kind)
     return QStringLiteral("speaker");
 }
 
-// A keresett szöveg helye a NÉVBEN (ékezet- és kisbetű-függetlenül). A hajtogatott alak
-// karakterenként felel meg az eredetinek; ha nem (ritka, felbontott ékezetek), nincs kiemelés.
+// Where the searched text is in the NAME (accent- and case-insensitive). The folded form
+// matches the original character by character; if not (rare, decomposed accents), no highlight.
 bool matchRange(const QString& name, const QString& foldedNeedle, int* pos, int* len)
 {
     const QString folded = foldForSearch(name);
@@ -168,7 +168,7 @@ void PeopleViewModel::attach()
         m_connections << connect(m_stats, &PeopleStats::changed, this, dirty);
         m_connections << connect(c, &AppController::peopleChanged, this, &PeopleViewModel::scheduleRebuild);
         m_connections << connect(c, &AppController::voiceprintsChanged, this, dirty);
-        // A lenyomat-pótlás kezdetére nincs jel: modellváltáskor (ott indul) és a végén nézzük.
+        // There is no signal for the start of the backfill: we check on a model change (where it starts) and at the end.
         m_connections << connect(c, &AppController::voiceModelsChanged, this, [this, dirty] {
             dirty();
             QTimer::singleShot(0, this, &PeopleViewModel::refreshBackfill);
@@ -242,7 +242,7 @@ void PeopleViewModel::setDemoState(const QString& state)
         setSelectedName(demoName("Kovács Lilla"));
     else if (state != QStringLiteral("P06"))
         setSelectedName(demoName("Bárány Gergely"));
-    // P01: a második minta épp szól.
+    // P01: the second sample is playing.
     m_playingId = state == QStringLiteral("P01") ? QStringLiteral("demo-1") : QString();
     emit playingChanged();
     refreshBackfill();
@@ -308,7 +308,7 @@ void PeopleViewModel::rebuild()
         m_statsReady = true;
     }
 
-    // A kijelölés megtartása; ha a személy megszűnt, a helyén álló (vagy a saját) sor.
+    // Keeps the selection; if the person is gone, the row in its place (or the own one).
     const int previousRow = m_list.indexOfName(m_selected);
     const bool lost = !m_selected.isEmpty() && !find(m_selected);
     rebuildList();
@@ -323,7 +323,7 @@ void PeopleViewModel::rebuild()
         }
         if (next.isEmpty() && m_list.count() > 0) next = m_list.nameAt(0);
     } else if (const Person* p = find(m_selected)) {
-        next = p->name;   // a tárolt írásmód
+        next = p->name;   // the stored spelling
     }
     const bool selectionMoved = next != m_selected;
     m_selected = next;
@@ -346,7 +346,7 @@ void PeopleViewModel::rebuildList()
     const QString needle = foldForSearch(m_query.trimmed());
     struct Shown { const Person* p; int pos = 0; int len = 0; QString aliasHit; QString tagHit; };
     QVector<Shown> shown;
-    // Címkére is talál („nordvik” vagy „#nordvik”): a személy kézi címkéi közt.
+    // Also matches a tag ("nordvik" or "#nordvik"): among the person's manual tags.
     QString tagNeedle = needle;
     while (tagNeedle.startsWith(QLatin1Char('#'))) tagNeedle.remove(0, 1);
     QHash<QString, QString> tagNames;
@@ -355,7 +355,7 @@ void PeopleViewModel::rebuildList()
     for (const Person& p : std::as_const(m_persons)) {
         Shown s{&p};
         if (!needle.isEmpty() && !matchRange(p.name, needle, &s.pos, &s.len)) {
-            // A névben nincs: a becenevek közt az első egyező.
+            // Not in the name: the first matching nickname.
             for (const QString& a : p.aliases)
                 if (foldForSearch(a).contains(needle)) { s.aliasHit = a; break; }
             if (s.aliasHit.isEmpty() && !tagNames.isEmpty() && !p.isSelf) {
@@ -373,7 +373,7 @@ void PeopleViewModel::rebuildList()
     std::sort(shown.begin(), shown.end(), [&](const Shown& x, const Shown& y) {
         const Person* a = x.p;
         const Person* b = y.p;
-        if (a->isSelf != b->isSelf) return a->isSelf;       // a saját személy mindig elöl
+        if (a->isSelf != b->isSelf) return a->isSelf;       // the own person is always first
         if (m_sort == QLatin1String(kSortRecent)) {
             if (a->lastSeen != b->lastSeen) {
                 if (!a->lastSeen.isValid()) return false;
@@ -407,7 +407,7 @@ void PeopleViewModel::rebuildList()
         } else {
             r.before = s.p->name;
         }
-        // Szakaszok: „Te”, utána kezdőbetűk (ABC) vagy „Többiek”; keresés közben nincsenek.
+        // Sections: "You", then initials (alphabetical) or "Others"; none while searching.
         if (needle.isEmpty()) {
             const QString section = s.p->isSelf ? tr("Te")
                 : m_sort == QLatin1String(kSortAbc) ? initialOf(s.p->name) : tr("Többiek");
@@ -494,7 +494,7 @@ void PeopleViewModel::refreshDetail()
         : tr("%n minta", "", int(m_samples.size())) + QStringLiteral(" · ")
           + tr("%n forrásból", "", int(sources.size()));
 
-    // Ha a lejátszott minta már nincs a listában (törölték, más személy), a lejátszás leáll.
+    // If the sample being played is no longer in the list (deleted, another person), playback stops.
     if (!m_playingId.isEmpty() && !m_demo) {
         bool still = false;
         for (const QVariant& v : std::as_const(m_samples))
@@ -507,7 +507,7 @@ void PeopleViewModel::refreshDetail()
     refreshTags();
 }
 
-// A minta modell-jelölése: melyik használt hangmodellel van lenyomata (a testvér-csoportból).
+// The sample's model label: which used voice model has a voiceprint of it (from the sibling group).
 void PeopleViewModel::decorateSamples()
 {
     QStringList active;
@@ -529,12 +529,12 @@ void PeopleViewModel::decorateSamples()
             for (const Voiceprint& vp : prints->siblingsOf(sample.value(QStringLiteral("id")).toString()))
                 if (!have.contains(vp.model)) have << vp.model;
         } else {
-            // Demó: minden harmadik minta még csak az alapmodellel van meg.
+            // Demo: every third sample exists only with the base model.
             have = i % 3 == 2 ? QStringList{QStringLiteral("campplus")} : active;
         }
         QStringList present, missing;
         for (const QString& id : std::as_const(active)) (have.contains(id) ? present : missing) << id;
-        // Egy modellnél, ha megvan, nincs mit jelezni.
+        // With one model, if present, there is nothing to indicate.
         if (active.size() < 2 && missing.isEmpty()) continue;
         sample.insert(QStringLiteral("modelText"), tr("%1/%2 modell").arg(present.size()).arg(active.size()));
         sample.insert(QStringLiteral("modelComplete"), missing.isEmpty());
@@ -546,11 +546,11 @@ void PeopleViewModel::decorateSamples()
     }
 }
 
-// ---- címkék a személyen ----------------------------------------------------------
+// ---- tags on the person ----------------------------------------------------------
 
 bool PeopleViewModel::isPlaceholderName(const QString& name) const
 {
-    // A törlésnél mintatartóként létrejövő „Névtelen N” (PeopleService) nem címkézhető.
+    // The "Anonymous N" created as a sample holder on delete (PeopleService) cannot be tagged.
     const QString pattern = QCoreApplication::translate("tanara::PeopleService", "Névtelen %1");
     QStringList parts = pattern.split(QStringLiteral("%1"));
     for (QString& part : parts) part = QRegularExpression::escape(part);
@@ -660,7 +660,7 @@ void PeopleViewModel::rejectTagSuggestion(const QString& tagId)
     tagStep(label);
 }
 
-// ---- hanglenyomat nélküli személy ---------------------------------------------
+// ---- person without a voiceprint ---------------------------------------------
 
 void PeopleViewModel::refreshPlan()
 {
@@ -683,7 +683,7 @@ void PeopleViewModel::refreshPlan()
         emit planChanged();
         return;
     }
-    if (m_planFor == m_selected && m_planReady) return;   // nem változott, ami a tervet érinti
+    if (m_planFor == m_selected && m_planReady) return;   // nothing changed that affects the plan
     if (!m_statsReady) {
         m_planReady = false;
         emit planChanged();
@@ -693,8 +693,8 @@ void PeopleViewModel::refreshPlan()
     emit planChanged();
     const int generation = ++m_planGeneration;
     const QString name = m_selected;
-    // A megbeszélések átnézése (soronkénti anyag) pár tized másodperc lehet: a kijelölés
-    // előbb megjelenik, a terv utána.
+    // Reviewing the meetings (row-by-row material) can take a few tenths of a second: the
+    // selection shows first, the plan afterwards.
     QTimer::singleShot(0, this, [this, generation, name] {
         if (generation != m_planGeneration || !m_service) return;
         const VoiceprintPlan plan = m_service->voiceprintPlan(name);
@@ -746,8 +746,8 @@ void PeopleViewModel::createVoiceprint()
     QTimer::singleShot(30, this, &PeopleViewModel::runNextVoiceprint);
 }
 
-// Megbeszélésenként egy lépés (a hang dekódolása pár másodperc lehet): két megbeszélés
-// között a felület lélegzethez jut, és a haladás látszik.
+// One step per meeting (decoding the audio can take a few seconds): between two meetings
+// the UI gets room to breathe, and the progress shows.
 void PeopleViewModel::runNextVoiceprint()
 {
     if (!m_creating) return;
@@ -776,7 +776,7 @@ void PeopleViewModel::runNextVoiceprint()
     QTimer::singleShot(30, this, &PeopleViewModel::runNextVoiceprint);
 }
 
-// ---- lista-állapot ------------------------------------------------------------
+// ---- list state ------------------------------------------------------------
 
 void PeopleViewModel::setQuery(const QString& query)
 {
@@ -832,7 +832,7 @@ bool PeopleViewModel::selectPerson(const QString& name)
 {
     if (!find(name)) return false;
     setSelectedName(name);
-    // Ha a keresés miatt nem látszana a listában, a kereső kiürül.
+    // If the person would not show in the list because of the search, the search is cleared.
     if (m_list.indexOfName(m_selected) < 0) setQuery(QString());
     return true;
 }
@@ -851,14 +851,14 @@ bool PeopleViewModel::canUndo() const
     return m_service && m_service->canUndo();
 }
 
-// ---- műveletek ------------------------------------------------------------------
+// ---- actions ------------------------------------------------------------------
 
 QString PeopleViewModel::addPerson(const QString& name)
 {
     if (!m_service) return QString();
     const PeopleOpResult r = m_service->addPerson(name);
     rebuild();
-    // Létező névnél is a személy lesz kijelölve (a hívó a hibát megmutatja).
+    // For an existing name too, the person gets selected (the caller shows the error).
     if (!r.name.isEmpty()) selectPerson(r.name);
     return r.ok ? QString() : r.error;
 }
@@ -1013,7 +1013,7 @@ QVariantList PeopleViewModel::mergeCandidates(const QString& query) const
         }
         list.append(Candidate{&p, percent, aliasHit});
     }
-    // Hang-hasonlóság szerint (akinek nincs lenyomata, a végén), azonoson belül névsorban.
+    // By voice similarity (those without a voiceprint last), alphabetical within equal ones.
     QCollator collator(fmt::uiLocale());
     std::sort(list.begin(), list.end(), [&](const Candidate& a, const Candidate& b) {
         if (a.percent != b.percent) return a.percent > b.percent;
@@ -1022,7 +1022,7 @@ QVariantList PeopleViewModel::mergeCandidates(const QString& query) const
     QVariantList out;
     for (const Candidate& c : std::as_const(list)) {
         QString meta = rowMeta(*c.p, c.aliasHit);
-        // Százalék csak akkor, ha mindkét félnek van lenyomata; „hasonló” csak érdemi egyezésnél.
+        // A percentage only if both sides have a voiceprint; "similar" only for a meaningful match.
         if (c.percent >= 50) meta += QStringLiteral(" · ") + tr("hang alapján hasonló (%1%)").arg(c.percent);
         else if (c.percent >= 0) meta += QStringLiteral(" · ") + tr("hang-egyezés: %1%").arg(c.percent);
         out.append(QVariantMap{{QStringLiteral("name"), c.p->name},
@@ -1053,7 +1053,7 @@ QString PeopleViewModel::mergeResultText(const QString& other, bool keepSelected
     QString text = tr("Eredmény: <b>%1</b>, <b>%2</b>. „%3” becenév lesz.")
         .arg(tr("%n megbeszélés", "", meetingsN), tr("%n minta", "", samplesN), loser.toHtmlEscaped());
     if (stale > 0) text += QLatin1Char(' ') + tr("%n érintett összefoglaló elavultnak jelölődik.", "", stale);
-    // Ha mindkettőjüknek van címkéje: unió.
+    // If both have tags: the union.
     if (m_tagBackend) {
         const QStringList a = m_tagBackend->tagsOfPerson(m_selected);
         const QStringList b = m_tagBackend->tagsOfPerson(o->name);
@@ -1138,7 +1138,7 @@ QString PeopleViewModel::deletePerson(bool keepSamples)
 
 void PeopleViewModel::undo()
 {
-    // A frissebb lépés: ha az egy címke-művelet volt, a TagService vermén.
+    // The more recent step: if that was a tag action, on the TagService stack.
     if (!m_undoOrder.isEmpty() && m_undoOrder.last() == kTagsUndo) {
         m_undoOrder.removeLast();
         if (m_tagBackend && m_tagBackend->canUndo()) {
@@ -1167,7 +1167,7 @@ void PeopleViewModel::undo()
     emit toast(text, false);
 }
 
-// ---- minta meghallgatása ---------------------------------------------------------
+// ---- listening to a sample ---------------------------------------------------------
 
 void PeopleViewModel::ensureBackend()
 {
@@ -1215,7 +1215,7 @@ void PeopleViewModel::toggleSample(const QString& sampleId)
     const qint64 start = sample.value(QStringLiteral("startMs")).toLongLong();
     const qint64 end = sample.value(QStringLiteral("endMs")).toLongLong();
     m_playEndMs = end > start ? end : 0;
-    // A néma motor (teszt, demó) a megadott hosszig „játszik”; a valódi a fájlból tudja.
+    // The silent engine (test, demo) "plays" for the given length; the real one knows it from the file.
     m_backend->setSource(sample.value(QStringLiteral("path")).toString(), end > start ? end + 500 : 0);
     m_backend->setPosition(start);
     m_backend->play();
@@ -1224,7 +1224,7 @@ void PeopleViewModel::toggleSample(const QString& sampleId)
     emit playingChanged();
 }
 
-// ---- demó: kitalált személyek (design/handoff-people) -----------------------------
+// ---- demo: fictional people ---------------------------------------------------------
 
 void PeopleViewModel::loadDemo()
 {
@@ -1239,7 +1239,7 @@ void PeopleViewModel::loadDemo()
         {"Fazekas Ilona", 5, 2, false}, {"Gál Bence", 12, 7, false}, {"Halász Dóra", 9, 3, false},
         {"Szilágyi Bálint", 14, 5, false}, {"Tóth Eszter", 3, 0, false},
     };
-    // A címkés állapotokhoz a vault UX-tervének kitalált személyei is.
+    // For the tag states the fictional people of the UX plan too.
     static const Row tagRows[] = {
         {"Fehér Gábor", 16, 6, false}, {"Varga Árpád", 12, 4, false}, {"Szabó Bence", 8, 3, false},
         {"Molnár Eszter", 0, 0, false},
@@ -1312,7 +1312,7 @@ void PeopleViewModel::loadDemo()
         } else if (p.name == demoName("Gál Bence")) {
             p.aliases = {demoText("Gergő kollégája", "Greg's colleague")};
         }
-        // Tanult / kézi sáv-oldal („Jellemzően: …”).
+        // Learned / manual track side ("Usually: ...").
         if (p.name == demoName("Bárány Gergely") || p.name == demoName("Fehér Gábor"))
             p.defaultSide = QStringLiteral("remote");
         else if (p.name == demoName("Varga Árpád") || p.name == demoName("Dénes Zsófia")) {

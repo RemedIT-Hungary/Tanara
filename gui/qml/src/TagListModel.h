@@ -1,8 +1,8 @@
 #pragma once
 //
-// TagListModel — a Címkék ablak bal oldali listája (a TagsViewModel.tags adja). Egy sor:
-// id, név (a keresés találata három darabban a kiemeléshez), alsor („14 megbeszélés · okt. 2.”).
-// A szűrést és a rendezést a nézetmodell végzi; itt csak a kész sorok élnek.
+// TagListModel: the Tags window's left-hand list (provided by TagsViewModel.tags). A row:
+// id, name (the search hit in three pieces for highlighting), bottom line ("14 meetings · Oct 2").
+// Filtering and sorting are done by the view model; only the finished rows live here.
 //
 #include <QAbstractListModel>
 #include <QString>
@@ -15,7 +15,7 @@ struct TagListRow {
     QString id;
     QString name;
     QString meta;
-    QString before;     // a név a találat előtt (keresés nélkül a teljes név)
+    QString before;     // the name before the hit (without a search the full name)
     QString match;
     QString after;
 
@@ -38,7 +38,7 @@ public:
     QHash<int, QByteArray> roleNames() const override;
 
     int count() const { return int(m_rows.size()); }
-    // Ha az id-k sorrendje nem változott, nincs alaphelyzetbe állítás (a lista nem ugrik).
+    // If the order of ids did not change, there is no reset (the list does not jump).
     void setRows(const QVector<TagListRow>& rows);
     const QVector<TagListRow>& rows() const { return m_rows; }
     Q_INVOKABLE int indexOfId(const QString& id) const;

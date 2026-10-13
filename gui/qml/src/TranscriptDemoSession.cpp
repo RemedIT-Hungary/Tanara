@@ -26,8 +26,8 @@ namespace tanara_qml {
 
 namespace {
 
-// Egy forgatókönyv-sor: ki mondja (beszélő-index), kinek a HANGJÁN szól (voice; -1 = a
-// sajátján), mikor, meddig, mit.
+// A script line: who speaks (speaker index), whose VOICE it is (voice; -1 = their own),
+// when, until when, what.
 struct Line {
     qint64 startMs;
     qint64 durMs;
@@ -37,18 +37,18 @@ struct Line {
 };
 
 struct Cast {
-    QString raw;        // nyers diarizációs címke
-    QString person;     // üres = névtelen
+    QString raw;        // raw diarization label
+    QString person;     // empty = anonymous
     bool voiceprint;
-    double weight;      // a töltelék-sorok eloszlásához
+    double weight;      // for the filler lines' distribution
 };
 
-// A hamis embedder: a szelet közepe alapján adja a hang egységvektorát (beszélőnként
-// ortogonális), ahogy a core unit-tesztjei is teszik.
+// The fake embedder: returns the voice's unit vector from the slice's midpoint (orthogonal
+// per speaker), as the core's unit tests do.
 class DemoEmbedder : public IUtteranceEmbedder {
 public:
-    // noisy: a hang-vektor a beszélő tengelye mellett kis, determinisztikus zajt is kap (a v3
-    // változat bizonyíték-százalékai így nem mind 100% / 0%).
+    // noisy: the voice vector also gets small deterministic noise beside the speaker's axis (so
+    // the evidence percentages of the v3 variant are not all 100% / 0%).
     explicit DemoEmbedder(std::shared_ptr<const QVector<Line>> lines, int dim, bool noisy = false)
         : m_lines(std::move(lines)), m_dim(dim), m_noisy(noisy) {}
     bool open(const QString&) override { return true; }
@@ -85,10 +85,11 @@ private:
 
 qint64 ts(int min, int sec) { return (qint64(min) * 60 + sec) * 1000; }
 
-// A forgatókönyv-sorok angol párjai (angol UI-nál a szegmensekbe ez kerül). A sorok IDŐZÍTÉSE
-// mindig a magyar szövegből számolódik, így a két nyelv demo-állapotai sorra azonosak.
+// English counterparts of the script lines (the segments get these for an English UI). The
+// TIMING of the lines is always computed from the Hungarian text, so the demo states of the
+// two languages are identical line by line.
 const char* const kLineEn[][2] = {
-    // töltelék
+    // filler
     {"A következő kiadásba ez még belefér, ha a tesztelés időben végez.",
      "This still fits into the next release if testing finishes on time."},
     {"Szerintem előbb nézzük meg a számokat, utána döntsünk.",
@@ -128,7 +129,7 @@ const char* const kLineEn[][2] = {
     {"Igen, így jó lesz.", "Yes, that works."},
     {"A költségvetésnél még visszatérünk rá, addig nem ígérnék pontos dátumot.",
      "We'll come back to it with the budget; until then I wouldn't promise an exact date."},
-    // hosszú monológ
+    // long monologue
     {"Köszönöm, hogy ilyen sokan eljöttetek. Mielőtt belevágunk, szeretném egyben végigmondani, "
      "hol tartunk, mert az elmúlt hetekben sok minden változott, és nem mindenki volt ott minden "
      "egyeztetésen.",
@@ -138,7 +139,7 @@ const char* const kLineEn[][2] = {
      "marad idő a kérdésekre is.",
      "That's what I wanted to say up front; now let's go through the details, and there will be time for "
      "questions at the end."},
-    // négy beszélő
+    // four speakers
     {"Köszönöm, hogy ilyen sokan eljöttetek. Röviden végigmegyek a harmadik negyedéven, utána "
      "szívesen válaszolok a kérdésekre. Az első és legfontosabb: a támogatási jegyek száma "
      "harmadával csökkent, miközben az aktív felhasználók száma nagyjából tizenkét százalékkal "
@@ -182,7 +183,7 @@ const char* const kLineEn[][2] = {
      "Sure. I said we'd bring the help pages to billing as well, but Olivia is right that the process itself "
      "is too long there. So the plan has two steps: first we collect where most people get stuck, then we "
      "decide what to fix in the product and what in the docs."},
-    // két beszélő
+    // two speakers
     {"Akkor kezdjük az elején: mióta használjátok a jelenlegi jegykezelőt?",
      "Let's start at the beginning: how long have you been using your current ticketing system?"},
     {"Nagyjából három éve. Előtte e-mailből dolgoztunk, ami tíz ember fölött már követhetetlen volt.",
@@ -196,7 +197,7 @@ const char* const kLineEn[][2] = {
     {"Hm, talán a jobb keresés.", "Hm, better search, maybe."},
     {"Meg az, hogy a hívásokból ne nekünk kelljen kézzel jegyet írni. Ezért is néztük a Tanarát.",
      "And not having to write tickets by hand from our calls. That's partly why we looked at Tanara."},
-    // sok beszélő
+    // many speakers
     {"A második negyedévben a támogatási jegyek száma harmadával csökkent.",
      "In the second quarter, support tickets dropped by a third."},
     {"Ez az új súgóoldalaknak köszönhető, vagy annak, hogy kevesebb az ügyfél?",
@@ -234,7 +235,7 @@ const char* const kLineEn[][2] = {
     {"Aha.", "Uh-huh."},
 };
 
-// A sor szövege a demo-nyelven (ismeretlen sor változatlan).
+// The line's text in the demo language (an unknown line stays unchanged).
 QString lineText(const QString& hu)
 {
     if (!tanara_qml::demotext::english()) return hu;
@@ -246,7 +247,7 @@ QString lineText(const QString& hu)
     return map.value(hu, hu);
 }
 
-// Töltelék-mondatok (kitalált, általános termékcsapat-megbeszélés).
+// Filler sentences (fictional, generic product-team meeting).
 const QStringList& fillerPool()
 {
     static const QStringList pool{
@@ -277,7 +278,7 @@ const QStringList& fillerPool()
 
 QString longMonologue()
 {
-    // Nagyon hosszú megszólalás (~280 szó) a „hosszú monológ" állapothoz.
+    // A very long utterance (~280 words) for the "long monologue" state.
     QStringList parts;
     parts << QStringLiteral("Köszönöm, hogy ilyen sokan eljöttetek. Mielőtt belevágunk, szeretném egyben végigmondani, "
                             "hol tartunk, mert az elmúlt hetekben sok minden változott, és nem mindenki volt ott minden "
@@ -293,19 +294,19 @@ QString longMonologue()
 struct Scenario {
     QVector<Cast> cast;
     QVector<Line> lines;
-    int seedLine = -1;      // a javaslat-állapot „kézzel átrakandó" sora
+    int seedLine = -1;      // the suggestion state's "to be moved by hand" row
     int seedTarget = -1;
     qint64 durationMs = 0;
     bool transcript = true;
-    // v3 (a handoff-v3 nevei): sávok (mikrofon + hívás hangja) kitalált aktivitással, címkék,
-    // egy cast-on kívüli hang (az „új személy"), zajos hang-vektorok.
+    // v3: tracks (mic + call audio) with fictional activity, tags, a voice outside the cast (the
+    // "new person"), noisy voice vectors.
     bool v3 = false;
-    int voices = 0;     // a hang-dimenzió (0 = a cast mérete)
-    int localVoice = 0; // ennek a hangnak a sorai a mikrofonon szólnak (a többi a híváson)
+    int voices = 0;     // the voice dimension (0 = the cast size)
+    int localVoice = 0; // this voice's lines are on the mic (the others on the call)
 };
 
-// Töltelék: a megadott időtől a meeting végéig, súlyozott beszélő-sorrenddel. `stray`:
-// (beszélő, hang) párok, amelyek időnként „rossz hangon" szólalnak meg (bizonytalan sorok).
+// Filler: from the given time to the end of the meeting, with a weighted speaker order. `stray`:
+// (speaker, voice) pairs that occasionally speak in the "wrong voice" (uncertain rows).
 void fill(Scenario& sc, qint64 fromMs, qint64 untilMs, quint32 seed,
           const QVector<QPair<int, int>>& strayVoices, int strayEvery)
 {
@@ -326,7 +327,7 @@ void fill(Scenario& sc, qint64 fromMs, qint64 untilMs, quint32 seed,
             }
         } while (k == last && sc.cast.size() > 1);
         last = k;
-        // Egy fordulóban 1–3 megszólalás (bekezdés) ugyanattól a beszélőtől.
+        // Per turn 1-3 utterances (paragraphs) from the same speaker.
         const int paragraphs = 1 + int(rnd() * 2.4);
         for (int p = 0; p < paragraphs && t < untilMs - 8000; ++p) {
             const QString& text = pool[int(rnd() * pool.size()) % pool.size()];
@@ -378,7 +379,7 @@ Scenario fourSpeakers(bool longFirst)
          QStringLiteral("Az újaknál egyébként még jobb az arány, de ott kicsi a minta, ezért nem tettem fel a diára. "
                         "Ha érdekel, a végén megmutatom a bontást.")},
         {ts(1, 39), 1800, 3, 2, QStringLiteral("Mhm.")},
-        // Nyersen „Távoli 1", de hangra Fehér Ádám: a javaslat-állapot ezt rakja át.
+        // Raw "Remote 1", but by voice Fehér Ádám: the suggestion state moves this.
         {ts(1, 42), 3800, 3, 1, QStringLiteral("Ez egyezik azzal, amit a támogatás oldaláról látunk.")},
         {ts(2, 2), 12000, 2, -1,
          QStringLiteral("Egy kérdés a számlázáshoz: ott nem az a gond, hogy a súgó nem elég, hanem hogy maga a "
@@ -394,7 +395,7 @@ Scenario fourSpeakers(bool longFirst)
                         "mit a leírásban.")},
     };
     if (longFirst) {
-        // A hosszú monológ kitolja a többi sort.
+        // The long monologue pushes the other rows out.
         const qint64 shift = 95000;
         sc.lines[0].durMs += shift;
         for (int i = 1; i < sc.lines.size(); ++i) sc.lines[i].startMs += shift;
@@ -402,8 +403,8 @@ Scenario fourSpeakers(bool longFirst)
     sc.seedLine = 6;
     sc.seedTarget = 1;
     const qint64 from = sc.lines.last().startMs + sc.lines.last().durMs + 1500;
-    // A „Távoli 1" címke időnként Fehér Ádám hangján szól (ezekre jön a javaslat); Varga Nóra
-    // egy-egy sora pedig Kovács Lilla hangján (sima bizonytalan sor).
+    // The "Remote 1" label occasionally speaks in Fehér Ádám's voice (these get the suggestion);
+    // single rows of Varga Nóra are in Kovács Lilla's voice (plain uncertain rows).
     fill(sc, from, ts(30, 34), 7, {{3, 1}, {2, 0}}, 23);
     return sc;
 }
@@ -458,7 +459,7 @@ Scenario manySpeakers()
         {ts(0, 27), 3800, 5, -1, QStringLiteral("Ehhez kellene még egy fő a dokumentációra.")},
         {ts(0, 32), 2600, 6, -1, QStringLiteral("Ezt a költségvetésnél nézzük meg.")},
         {ts(0, 36), 1900, 2, 4, QStringLiteral("Rendben, felírom.")},
-        // Mindenki megszólal egyszer, hogy a 11 beszélő biztosan szerepeljen.
+        // Everyone speaks once so that the 11 speakers are certainly present.
         {ts(0, 40), 3000, 1, -1, QStringLiteral("Én a kiadás felől nézném: mi fér bele a mostani körbe?")},
         {ts(0, 44), 2600, 7, -1, QStringLiteral("A tesztkörnyezet felől nincs akadálya.")},
         {ts(0, 48), 2400, 8, -1, QStringLiteral("Halljátok? Most csatlakoztam.")},
@@ -468,15 +469,16 @@ Scenario manySpeakers()
     return sc;
 }
 
-// A handoff-v3 meetingje: Kovács Lilla a saját mikrofonján, a többiek a hívás hangján. A
-// forgatókönyv elején az E1–E4 sorai; utána töltelék, benne a csoportokhoz való „rossz" sorok:
-// Lilla nevén Gábor hangja a hívásról (sáv-ellentmondás), Gábor nevén Árpád hangja (mag-eltérés),
-// Gábor nevén egy cast-on kívüli hang (Nagy Péter, az E4 új személye), és rövid sorok.
+// The v3 meeting: Kovács Lilla on her own mic, the others on the call audio. At the start
+// of the script the rows for the new-person flow; then filler, including the "wrong" rows
+// for the groups: Gábor's voice from the call under Lilla's name (track contradiction),
+// Árpád's voice under Gábor's name (core deviation), a voice outside the cast under
+// Gábor's name (Nagy Péter, the new person), and short rows.
 Scenario v3Scenario()
 {
     Scenario sc;
     sc.v3 = true;
-    sc.voices = 7;          // 6 beszélő + Nagy Péter hangja (6)
+    sc.voices = 7;          // 6 speakers + Nagy Péter's voice (6)
     sc.localVoice = 0;
     sc.cast = {
         {QStringLiteral("Beszélő 1"), QStringLiteral("Kovács Lilla"), true, 1.2},
@@ -490,17 +492,17 @@ Scenario v3Scenario()
         {ts(0, 4), 6200, 0, -1,
          QStringLiteral("Igen, és ide tartozik még, hogy a számlázási rész lesz a következő; ott a legtöbb a visszakérdezés.")},
         {ts(0, 11), 1000, 1, -1, QStringLiteral("Pontosan.")},
-        // Lilla nevén, de Gábor hangja a hívásról: „bizonytalan · sáv".
+        // Under Lilla's name, but Gábor's voice from the call: "uncertain, track".
         {ts(0, 13), 7400, 0, 1,
          QStringLiteral("Igen, ezt mi is láttuk a partnerportálon, főleg a Nordvik-ügyfeleknél, ott a jegyek fele számlázási volt.")},
-        // Árpád nevén, Eszter hangja: a „markers" állapot kézzel átteszi (javítva). (Árpád nyers
-        // címkéje így Eszteré előtt jelenik meg: a színek sorrendje a handoffé.)
+        // Under Árpád's name, Eszter's voice: the "markers" state moves it by hand (fixed). (Árpád's
+        // raw label thus appears before Eszter's: the color order follows the handoff.)
         {ts(0, 22), 6600, 2, 3,
          QStringLiteral("A mi oldalunkon ez a negyedik negyedév elejére kellene, különben a megújításnál újra elő fog jönni.")},
         {ts(0, 30), 5200, 1, -1,
          QStringLiteral("Ezt a részt én vállalom, de kellene hozzá két hét a dokumentációs csapattól.")},
         {ts(0, 36), 900, 3, -1, QStringLiteral("Értem.")},
-        // Gábor nevén, de Nagy Péter hangja (E4: ez a három kerül az új személyhez).
+        // Under Gábor's name, but Nagy Péter's voice (these three go to the new person).
         {ts(0, 38), 3200, 1, 6,
          QStringLiteral("És mikorra várható a számlázási súgó? Az ügyfeleink már kérdezik.")},
         {ts(0, 42), 4400, 1, 6,
@@ -542,9 +544,9 @@ Scenario v3Scenario()
             } else {
                 l.text = pool[int(rnd() * pool.size()) % pool.size()];
                 l.durMs = qMax<qint64>(2200, qint64(l.text.size()) * 62);
-                if (k == 0 && own % 4 == 0) l.voice = 1;            // Lilla nevén Gábor (híváson)
-                else if (k == 1 && own % 5 == 0) l.voice = 2;       // Gábor nevén Árpád
-                else if (k == 1 && own % 11 == 0) l.voice = 6;      // Gábor nevén Nagy Péter
+                if (k == 0 && own % 4 == 0) l.voice = 1;            // Gábor under Lilla's name (on the call)
+                else if (k == 1 && own % 5 == 0) l.voice = 2;       // Árpád under Gábor's name
+                else if (k == 1 && own % 11 == 0) l.voice = 6;      // Nagy Péter under Gábor's name
             }
             sc.lines.append(l);
             t += l.durMs + 400 + qint64(rnd() * 2400);
@@ -554,8 +556,8 @@ Scenario v3Scenario()
     return sc;
 }
 
-// A kitalált sáv-aktivitás: a sor ideje alatt a mikrofon VAGY a hívás-sáv szól (a hang gazdája
-// szerint), a másik csendes.
+// The fictional track activity: during the row, the mic OR the call track sounds (by the
+// voice's owner), the other is quiet.
 MeetingActivity demoActivity(const Scenario& sc)
 {
     constexpr int frameMs = 50;
@@ -599,8 +601,8 @@ TranscriptDemoSession::TranscriptDemoSession(const QString& variant)
     else if (variant == QLatin1String("v3")) sc = v3Scenario();
     else sc = fourSpeakers(variant == QLatin1String("long"));
     if (variant == QLatin1String("none")) sc.transcript = false;
-    // Angol demo-nyelvnél a nevek és a nyers címkék angol párjai (a sorrend, a súlyok és a
-    // hang-indexek változatlanok; a sor-szövegek a szegmensek írásakor fordulnak).
+    // For the English demo language: English counterparts of the names and raw labels (order,
+    // weights and voice indices unchanged; the row texts are translated when segments are written).
     for (Cast& c : sc.cast) {
         c.raw = demoRaw(c.raw);
         c.person = demoName(c.person);
@@ -645,7 +647,7 @@ TranscriptDemoSession::TranscriptDemoSession(const QString& variant)
         m.hasTranscript = true;
     }
 
-    // Nevek + hanglenyomatok (a sáv-fejléc pöttyéhez) + egy hang-azonosítási pontszám.
+    // Names + voiceprints (for the lane header dot) + a voice-identification score.
     const int dim = sc.voices > 0 ? sc.voices : int(sc.cast.size());
     for (int k = 0; k < sc.cast.size(); ++k) {
         const Cast& c = sc.cast[k];
@@ -677,9 +679,9 @@ TranscriptDemoSession::TranscriptDemoSession(const QString& variant)
         m_personTags->insert(demoName("Molnár Eszter"), {QStringLiteral("piac")});
         const auto tags = m_personTags;
         m_editor->setPersonTagsProvider([tags](const QString& person) { return tags->value(person); });
-        // Címke-bizonyíték (UX-terv 4.) kitalált előzményekből: a #Nordvik 14 megbeszéléséből
-        // Gábor 11-en (kézi címkéje is), Árpád 6-on (csak tanult); Eszter kézi címkéje
-        // #Piackutatás, a #Nordvik-on sosem volt → ellentmond.
+        // Tag evidence from fictional history: of the 14 meetings tagged #Nordvik, Gábor was in 11
+        // (manual tag too), Árpád in 6 (learned only); Eszter's manual tag is
+        // #MarketResearch, she was never at a #Nordvik meeting -> contradicts.
         PersonTagSnapshot snap;
         QVector<PersonTagRow> rows;
         for (int i = 0; i < 14; ++i) {
@@ -695,8 +697,8 @@ TranscriptDemoSession::TranscriptDemoSession(const QString& variant)
         snap.tagNames = {{QStringLiteral("nordvik"), QStringLiteral("Nordvik")},
                          {QStringLiteral("piac"), demoText("Piackutatás", "Market research")}};
         snap.selfKey = persontags::personKey(demoName("Kovács Lilla"));
-        // A kézi címkék a demó élő térképéből jönnek (a gyors „+ #Címke" ide ír), a tanult
-        // statisztika a fenti kitalált előzményekből.
+        // The manual tags come from the demo's live map (the quick "+ #Tag" writes there), the
+        // learned statistics from the fictional history above.
         m_editor->setTagEvidenceProvider([snap, tags](const QString& person, const QStringList& meetingTags,
                                                       const QString& mid) {
             PersonTagSnapshot live = snap;
@@ -734,15 +736,15 @@ bool TranscriptDemoSession::addPersonTag(const QString& person, const QString& t
 
 TranscriptDemoSession::~TranscriptDemoSession()
 {
-    m_editor.reset();   // a háttérszál bevárása, mielőtt a store-ok megszűnnek
+    m_editor.reset();   // waiting for the background thread before the stores go away
 }
 
 bool TranscriptDemoSession::stageV3(const QString& state)
 {
     if (!m_v3 || !m_editor || m_editor->utteranceCount() != m_lineSpeaker.size()) return false;
-    constexpr int kScript = 9;      // a forgatókönyv eleji (E1–E4) sorok száma
+    constexpr int kScript = 9;      // number of rows at the script's start (new-person flow)
     auto id = [this](int i) { return m_editor->utteranceAt(i).id; };
-    // Megerősített mag: az elnevezett beszélők első 4 tiszta, saját hangú sora + az E1 első sora.
+    // Confirmed core: the named speakers' first 4 clean, own-voice rows + the first row of the new-person flow.
     QStringList confirm{id(0)};
     QHash<int, int> per;
     for (int i = kScript; i < m_lineSpeaker.size(); ++i) {
@@ -751,7 +753,7 @@ bool TranscriptDemoSession::stageV3(const QString& state)
         ++per[k];
         confirm << id(i);
     }
-    // A szennyezett mag (E2 banner): Gábor nevén két Árpád-hangú sor is „Jó így"-t kapott.
+    // The contaminated core (banner): two Árpád-voice rows under Gábor's name were also given "Looks right".
     if (state == QLatin1String("reviewGroups") || state == QLatin1String("reviewExpanded")
         || state == QLatin1String("contaminatedCore")) {
         int added = 0;
@@ -763,11 +765,11 @@ bool TranscriptDemoSession::stageV3(const QString& state)
     }
     m_editor->confirmUtterances(confirm);
     m_editor->setUtterancesNoisy({id(4)}, true);
-    // „javítva": Árpád nevén Eszter hangja → kézzel Eszterhez.
+    // "fixed": Eszter's voice under Árpád's name -> moved to Eszter by hand.
     if (state == QLatin1String("markers")) m_editor->moveUtterances({id(3)}, demoRaw(QStringLiteral("Beszélő 4")));
     if (state == QLatin1String("speakerWhy")) {
-        // E3: Gábor két sávon is beszél (kézi beosztás, több sáv), Árpádon még nincs #Nordvik
-        // (a „NEM Ő?" jelöltjén a gyors „+ #Nordvik" látszik).
+        // Gábor speaks on two tracks too (manual assignment, several tracks); Árpád has no #Nordvik
+        // yet (the quick "+ #Nordvik" shows on the "NOT them?" candidate).
         for (const EditorSpeaker& sp : m_editor->speakers())
             if (sp.personName == demoName("Fehér Gábor"))
                 m_editor->setTrackAssignment(sp.key, {QStringLiteral("mic"), QStringLiteral("loopback")});
@@ -779,7 +781,7 @@ bool TranscriptDemoSession::stageV3(const QString& state)
 
 QVector<PersonInfo> TranscriptDemoSession::people() const
 {
-    // Kitalált névlista a választókhoz; a meeting személyei a valódi lenyomat-állapotukkal.
+    // Fictional name list for the pickers; the meeting's people with their real voiceprint state.
     struct P { const char* name; bool vp; int meetings; };
     static const P extra[] = {
         {"Balogh Kata", true, 12}, {"Bálint Péter", false, 3}, {"Baranyi Zsófia", true, 7},
@@ -799,7 +801,7 @@ QVector<PersonInfo> TranscriptDemoSession::people() const
         out.append(i);
         seen << i.name;
     }
-    // A demóban felvett új személyek (people.json) is jelenjenek meg.
+    // People added in the demo (people.json) should show up too.
     for (const QString& name : m_people->names()) {
         if (seen.contains(name)) continue;
         PersonInfo i;

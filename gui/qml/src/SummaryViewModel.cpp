@@ -38,7 +38,7 @@ QVariantMap decisionMap(const QString& raw, qint64 durationMs)
 {
     QString rest;
     qint64 ms = SummaryViewModel::splitTimestamp(raw, &rest);
-    if (ms >= 0 && durationMs > 0 && ms > durationMs) {   // nem a felvételre mutat → nem hivatkozás
+    if (ms >= 0 && durationMs > 0 && ms > durationMs) {   // does not point into the recording -> not a link
         ms = -1;
         rest = raw;
     }
@@ -46,7 +46,7 @@ QVariantMap decisionMap(const QString& raw, qint64 durationMs)
             {QStringLiteral("stamp"), ms >= 0 ? jobsupport::formatDuration(ms) : QString()}};
 }
 
-// Egy memó-szakasz a nézetnek. Az időbélyeg a felvétel hosszán túl nem hivatkozás.
+// A memo section for the view. A timestamp beyond the recording's length is not a link.
 QVariantMap memoMap(const MemoSection& sec, qint64 durationMs)
 {
     qint64 start = sec.startMs, end = sec.endMs;
@@ -76,7 +76,7 @@ QVariantMap participantMap(const QString& name, int colorIndex, int percent)
 
 qint64 SummaryViewModel::splitTimestamp(const QString& text, QString* rest)
 {
-    // „[12:52] …”, „(1:02:10) …”, „12:52 – …” a sor elején.
+    // "[12:52] ...", "(1:02:10) ...", "12:52 - ..." at the start of the line.
     static const QRegularExpression re(QStringLiteral(
         R"(^\s*[\[(]?(\d{1,2}):(\d{2})(?::(\d{2}))?[\])]?\s*[-–—:]?\s+(\S.*)$)"),
         QRegularExpression::DotMatchesEverythingOption);
@@ -134,20 +134,20 @@ void SummaryViewModel::setMeetingId(const QString& id)
     if (id == m_meetingId)
         return;
     const bool switching = !m_meetingId.isEmpty();
-    // A még el nem mentett megjegyzés a RÉGI megbeszélésé: a váltás előtt oda kerül.
+    // The not-yet-saved note belongs to the OLD meeting: it goes there before the switch.
     m_note->setMeetingId(id);
     m_meetingId = id;
     emit meetingIdChanged();
-    // Másik meetingre váltva a munkaterület bezárul; ha az új meetingnek van téma-listája, de
-    // még nincs összefoglalója, megnyílik (a félbemaradt témánkénti elemzés onnan folytatható,
-    // ahol a lemezen tart). Az első beállításnál a kívülről kért topicsOpen megmarad.
+    // On switching to another meeting the workspace closes; if the new meeting has a topic list
+    // but no summary yet, it opens (an interrupted per-topic analysis can resume from where it
+    // stands on disk). On the first setting, an externally requested topicsOpen stays.
     AppController* c = app();
     if (switching) {
         m_topicsOpen = false;
         m_activeStatementId.clear();
         m_activeSection = -1;
         setNoteOpen(false);
-        if (m_section != QLatin1String("exec")) {   // új meetingnél mindig a rövid forma látszik
+        if (m_section != QLatin1String("exec")) {   // for a new meeting the short form always shows
             m_section = QStringLiteral("exec");
             emit sectionChanged();
         }
@@ -164,13 +164,13 @@ void SummaryViewModel::setDemoState(const QString& state)
         return;
     m_demoState = state;
     emit demoStateChanged();
-    // A memó-állapotok a memót mutatják (képernyőképhez); a többi a rövid formát.
+    // The memo demo states show the memo (for screenshots); the others the short form.
     const bool memo = state == QLatin1String("memo") || state == QLatin1String("memoShort")
                    || state == QLatin1String("oldMemo");
     const bool memoV3 = state == QLatin1String("memoSections");
     setSection(memo || memoV3 ? QStringLiteral("memo") : QStringLiteral("exec"));
     setNoteOpen(state == QLatin1String("noteOpen"));
-    // v3: a kijelölt állítás / szakasz és a Források kapcsoló a képernyőképekhez.
+    // The selected statement / section and the Sources switch, for screenshots.
     m_sourcesVisible = state != QLatin1String("sourcesOff");
     m_activeStatementId = state == QLatin1String("sourcesOn") || state == QLatin1String("sourcePopover")
         ? QStringLiteral("s1") : QString();
@@ -255,7 +255,7 @@ void SummaryViewModel::connectController()
     m_connections << connect(c, &AppController::summaryReady, this,
                              [this, mine](const QString& id, const QString&) {
         if (!mine(id)) return;
-        m_topicsOpen = false;          // elkészült → az összefoglalót mutatjuk, a rövid formát
+        m_topicsOpen = false;          // finished -> we show the summary, the short form
         if (m_section != QLatin1String("exec")) {
             m_section = QStringLiteral("exec");
             emit sectionChanged();
@@ -266,7 +266,7 @@ void SummaryViewModel::connectController()
     m_connections << connect(c, &AppController::topicsReady, this,
                              [this, mine](const QString& id, const QVector<SummaryTopic>&) {
         if (!mine(id)) return;
-        m_topicsOpen = true;           // megjöttek a javasolt témák → szerkesztő
+        m_topicsOpen = true;           // the suggested topics arrived -> editor
         reload();
     });
     m_connections << connect(c, &AppController::summaryStaleChanged, this,
@@ -279,7 +279,7 @@ void SummaryViewModel::connectController()
                              [this, mine](const QString& id) { if (mine(id)) reloadParticipants(); });
     m_connections << connect(c->settings(), &SettingsManager::settingsChanged, this,
                              &SummaryViewModel::reload);
-    // A megjegyzés (és az észlelt hívás) a meeting.json-ban: mentés / másik nézet szerkesztése után.
+    // The note (and the detected call) live in meeting.json: after saving / editing from another view.
     m_connections << connect(c->store(), &MeetingStore::meetingUpdated, this,
                              [this, mine](const QString& id) { if (mine(id)) m_note->reload(); });
     if (CloudAccount* acc = c->cloud()) {
@@ -312,7 +312,7 @@ int SummaryViewModel::speakerIndexFor(const QString& name) const
     for (const SpeakerRef& s : m_speakers)
         if (s.name.compare(n, Qt::CaseInsensitive) == 0 || s.personName.compare(n, Qt::CaseInsensitive) == 0)
             return s.colorIndex;
-    // A modell gyakran csak a keresztnevet / vezetéknevet írja: egyértelmű szó-egyezés is jó.
+    // The model often writes only the first / last name: an unambiguous word match is fine too.
     int found = -1, hits = 0;
     for (const SpeakerRef& s : m_speakers) {
         const QStringList words = s.name.split(QLatin1Char(' '), Qt::SkipEmptyParts);
@@ -323,13 +323,13 @@ int SummaryViewModel::speakerIndexFor(const QString& name) const
     return hits == 1 ? found : -1;
 }
 
-// „A, B és C” → külön chipek, mindegyik a saját beszélő-színében (ha a meeting beszélője).
+// "A, B and C" -> separate chips, each in its own speaker color (if the meeting's speaker).
 QVariantList SummaryViewModel::ownerList(const QString& owner) const
 {
     static const QRegularExpression sep(QStringLiteral("\\s*(?:,|;|/|&|\\bés\\b|\\band\\b)\\s*"),
                                         QRegularExpression::UseUnicodePropertiesOption);
     QVariantList out;
-    // Ha az egész szöveg egy beszélő neve, nem daraboljuk.
+    // If the whole text is one speaker's name, we do not split it.
     const int whole = speakerIndexFor(owner);
     const QStringList parts = whole >= 0 ? QStringList{owner.trimmed()}
                                          : owner.split(sep, Qt::SkipEmptyParts);
@@ -361,8 +361,8 @@ void SummaryViewModel::reloadParticipants()
         ? tr("Az átirat kész.")
         : tr("Az átirat kész, %1 beszélő, %2 megszólalás.").arg(m_speakers.size()).arg(utterances);
 
-    // Résztvevők: a meeting beszélői beszédidő szerint; az összefoglalóban említett, de a
-    // beszélők közt nem szereplő nevek a végén, arány nélkül.
+    // Participants: the meeting's speakers by speaking time; names mentioned in the summary but
+    // not among the speakers go last, without a share.
     QVector<SpeakerRef> sorted = m_speakers;
     std::stable_sort(sorted.begin(), sorted.end(),
                      [](const SpeakerRef& a, const SpeakerRef& b) { return a.share > b.share; });
@@ -374,7 +374,7 @@ void SummaryViewModel::reloadParticipants()
             list << participantMap(p.trimmed(), -1, -1);
     m_participants = list;
 
-    // A felelős-chipek színe a beszélőkből jön → a teendők újraszíneződnek.
+    // The owner chips' color comes from the speakers -> the action items get recolored.
     QVariantList actions;
     for (const QVariant& v : std::as_const(m_actions)) {
         QVariantMap a = v.toMap();
@@ -385,8 +385,8 @@ void SummaryViewModel::reloadParticipants()
     }
     m_actions = actions;
 
-    // A memó-szakaszok beszélői és az állítások felelősei is a beszélő-színeket kapják.
-    buildStatements(m_rawStatements, m_affectedUtterances);   // + a memó-szakaszok (rebuildMemo)
+    // The memo sections' speakers and the statements' owners get the speaker colors too.
+    buildStatements(m_rawStatements, m_affectedUtterances);   // + the memo sections (rebuildMemo)
     emit participantsChanged();
     emit changed();
     emit marksChanged();
@@ -413,7 +413,7 @@ void SummaryViewModel::reloadJobs()
     emit jobChanged();
 }
 
-// Az összefoglaló szakaszai (a feladat-sáv ugyanezt a leképezést használja).
+// The summary's phases (the task bar uses the same mapping).
 void SummaryViewModel::applyJob(const JobProgress& job)
 {
     const SummaryProgress p = SummaryProgress::from(job);
@@ -508,7 +508,7 @@ void SummaryViewModel::reload()
     m_topics->bind(c, m_meetingId);
     m_note->reload();
 
-    // Kapuzás + szolgáltató.
+    // Gating + provider.
     const ReadinessResult r = c->canRun(WorkflowStep::Summarize, m_meetingId);
     m_canRun = r.runnable;
     m_blocker = jobsupport::blockerInfo(c, WorkflowStep::Summarize, r);
@@ -521,7 +521,7 @@ void SummaryViewModel::reload()
                          : s.cloudLlmTier == QLatin1String("fast") ? tr("Gyors szint") : tr("Pontos szint");
     }
 
-    // Megmaradt hiba (az utolsó összefoglaló-kísérlet).
+    // Leftover error (the last summary attempt).
     const MeetingProcessingState ps = c->jobs()->state(m);
     if (ps.summaryError.isValid()) {
         m_errorMessage = ps.summaryError.message;
@@ -530,12 +530,12 @@ void SummaryViewModel::reload()
         m_fixActionLabel = fix.label;
         m_fixActionPage = fix.page;
         m_fixReloadContext = fix.reloadContext;
-        // A kész részek jegyzetei a gyorsítótárban: az újrapróbálás csak a hiányzókat futtatja.
+        // Notes of the finished parts in the cache: a retry runs only the missing ones.
         m_errorKeptParts = !m.folder.isEmpty()
             && QFileInfo::exists(QDir(m.folder).filePath(SummaryService::cacheFileName()));
     }
 
-    // Az összefoglaló strukturáltan (új: summary.json; régi: a summary.md-ből visszanyerve).
+    // The summary, structured (new: summary.json; old: recovered from summary.md).
     const SummaryDocument doc = c->summaryDocument(m_meetingId);
     m_hasSummary = doc.exists;
     if (doc.exists) {
@@ -582,8 +582,8 @@ void SummaryViewModel::reload()
             m_stale = st.stale;
             m_staleCount = st.correctedSpeakers;
         } else {
-            // Forrásos gyors összefoglaló: a célzott elavulás és a mostani beszélő-állapot
-            // szerinti állítások (staleBecause) — két kis fájl-olvasás.
+            // Quick summary with sources: the targeted staleness and the statements per the current
+            // speaker state (staleBecause): two small file reads.
             const SummaryStaleInfo st = c->summaryStale(m_meetingId);
             m_stale = st.stale;
             m_staleCount = st.correctedSpeakers;
@@ -596,7 +596,7 @@ void SummaryViewModel::reload()
         }
     }
 
-    reloadParticipants();   // beszélők → résztvevők, felelős-színek, átirat-sor (+ changed)
+    reloadParticipants();   // speakers -> participants, owner colors, transcript row (+ changed)
     reloadJobs();
     emit noteHintChanged();
 }
@@ -605,8 +605,8 @@ QString SummaryViewModel::markdownFor(const QString& part) const
 {
     if (!m_hasSummary)
         return QString();
-    // A részenkénti másolás csak a strukturált gyors összefoglalónál értelmes; témánkénti
-    // vagy memó nélküli összefoglalónál mindig a teljes szöveg megy.
+    // Per-part copying makes sense only for a structured quick summary; for a per-topic or
+    // memo-less summary the full text always goes.
     if (part == QLatin1String("exec") && memoState() == QLatin1String("ready")) {
         Summary s = m_summary;
         s.memo.clear();
@@ -657,7 +657,7 @@ void SummaryViewModel::clearError()
         c->jobs()->clearError(m_meetingId, JobKind::Summarize);
 }
 
-// Kitalált mintaadat (a tervrajz M06–M08 képernyőinek megfelelően).
+// Fictional sample data (matching the design's three summary screens).
 void SummaryViewModel::loadDemo()
 {
     const QString st = m_demoState.isEmpty() ? QStringLiteral("stale") : m_demoState;
@@ -681,8 +681,8 @@ void SummaryViewModel::loadDemo()
         return;
     }
 
-    // A megjegyzés: kitalált, a helyesírás-javításokkal; az „emptyNote” / „noteOpen” állapot a
-    // korábbi, hasonló című megbeszélések javaslataival.
+    // The note: fictional, with spelling fixes; the "emptyNote" / "noteOpen" state with
+    // suggestions from earlier, similarly titled meetings.
     const QString demoNote = tr("Negyedéves partner-egyeztetés: támogatási igény, súgóoldalak, számlázás. "
                                 "A „Szúgó Pont” helyesen: SúgóPont.");
     if (st == QLatin1String("emptyNote"))
@@ -704,7 +704,7 @@ void SummaryViewModel::loadDemo()
         m_topicsOpen = false;
     }
 
-    // Futó összefoglaló a core szakaszaival (a leképezés ugyanaz, mint élesben).
+    // A running summary with the core's phases (the mapping is the same as live).
     auto demoJob = [this](const QString& kind) {
         JobProgress job;
         job.meetingId = QStringLiteral("demo");
@@ -755,7 +755,7 @@ void SummaryViewModel::loadDemo()
             m_errorDetail = QStringLiteral("HTTP 500 · server_error · model crashed");
             m_errorKeptParts = true;
         } else if (st == QLatin1String("emptyErrorContext")) {
-            // A besorolt kontextus-hiba (LM Studio): javító gombok a tipp szerint.
+            // The classified context error (LM Studio): fix buttons per the hint.
             JobError e;
             e.message = tr("A modell 4096 tokenes kontextussal van betöltve, a kérés 6042 token volt — nem fér bele. "
                            "A Tanara újra tudja tölteni az LM Studióban legalább 16 384 tokenes kontextussal, és újraindítja a feladatot.");
@@ -771,7 +771,7 @@ void SummaryViewModel::loadDemo()
         return;
     }
 
-    // --- kész összefoglaló ---
+    // --- finished summary ---
     m_hasSummary = true;
     m_speakers = {
         {demoName("Kovács Lilla"), demoName("Kovács Lilla"), 0, 0.34}, {demoName("Tóth Bence"), demoName("Tóth Bence"), 1, 0.22},
@@ -781,7 +781,7 @@ void SummaryViewModel::loadDemo()
     for (const SpeakerRef& s : std::as_const(m_speakers))
         m_participants << participantMap(s.name, s.colorIndex, int(s.share * 100.0 + 0.5));
 
-    // Régi (memó előtti) összefoglaló: nincs memó, nincsenek nyitott kérdések, modell-adat sincs.
+    // Old (pre-memo) summary: no memo, no open questions, no model data either.
     const bool old = st == QLatin1String("oldSummary") || st == QLatin1String("oldMemo");
     m_summary.execSummary = tr("A partnerek megerősítették, hogy a harmadik negyedévben a támogatási igény "
                                "harmadával csökkent, főként az új súgóoldalak miatt. A súgót a többi termékre "
@@ -853,7 +853,7 @@ void SummaryViewModel::loadDemo()
     }
 }
 
-// A demó memója: egy 76 perces megbeszélés 24 szakasza, vagy (rövid változat) az első négy.
+// The demo's memo: 24 sections of a 76-minute meeting, or (short variant) the first four.
 void SummaryViewModel::loadDemoMemo(bool longForm)
 {
     struct Row { qint64 from; qint64 to; QString title; QStringList points; };
@@ -926,7 +926,7 @@ void SummaryViewModel::loadDemoMemo(bool longForm)
         m_summary.memo.append({rows[i].title, rows[i].from, rows[i].to, rows[i].points});
 }
 
-// ---- forrás-hivatkozások (v3: S1–S3) -------------------------------------------------------
+// ---- source links -------------------------------------------------------
 
 QVariantList SummaryViewModel::speakerChips(const QStringList& names) const
 {
@@ -954,7 +954,7 @@ void SummaryViewModel::rebuildMemo()
 QVariantMap SummaryViewModel::memoMapFor(const MemoSection& sec, int index) const
 {
     QVariantMap map = memoMap(sec, m_durationMs);
-    // Állítás-sorok: a memó-állítás, ha van („i<n>.<k>” / „m<n>.<k>”), különben a puszta szöveg.
+    // Statement rows: the memo statement if there is one ("i<n>.<k>" / "m<n>.<k>"), else the bare text.
     const QString n = QString::number(index + 1) + QLatin1Char('.');
     auto plainRow = [](const QString& text) {
         StatementListModel::Row r;
@@ -1026,7 +1026,7 @@ void SummaryViewModel::buildStatements(const QVector<SummaryStatement>& statemen
             r.spans << span;
         }
         if (!r.ownerStale.isEmpty()) {
-            // „X → Y?”: az új felelős (Y) színe a pöttyön.
+            // "X -> Y?": the new owner's (Y) color on the dot.
             QString to = r.ownerStale.section(QStringLiteral("→"), 1).trimmed();
             if (to.endsWith(QLatin1Char('?'))) to.chop(1);
             r.ownerStaleIndex = speakerIndexFor(to.trimmed());
@@ -1044,7 +1044,7 @@ void SummaryViewModel::buildStatements(const QVector<SummaryStatement>& statemen
             r.kind = QStringLiteral("todo");
             r.owner = st.owner.trimmed();
             r.owners = ownerList(r.owner);
-            // A teendők sorrendje az actionItems-ével egyezik: onnan a határidő.
+            // The action items' order matches actionItems': the due date comes from there.
             if (todoIndex < m_summary.actionItems.size()) {
                 const ActionItem& a = m_summary.actionItems.at(todoIndex);
                 r.due = a.due;
@@ -1077,7 +1077,7 @@ void SummaryViewModel::buildStatements(const QVector<SummaryStatement>& statemen
     m_todoItems->setRows(todos);
     m_questionItems->setRows(questions);
     m_memoItems->setRows(memo);
-    rebuildMemo();   // a szakaszok sorai a memó-állításokból
+    rebuildMemo();   // the sections' rows from the memo statements
 }
 
 void SummaryViewModel::setSourcesVisible(bool on)
@@ -1109,9 +1109,9 @@ QVariantList SummaryViewModel::sourceMarks() const
 {
     if (!m_hasStatements || !m_sourcesVisible)
         return {};
-    // Kiemelés: a kijelölt állítás forrásai; kijelölés nélkül elavultnál az érintett források,
-    // a memóban (kijelölés nélkül) a kiemelt szakasz állításaié. A memó-nézet a memó-állítások
-    // forrásait mutatja, a vezetői nézet a többiét.
+    // Highlight: the selected statement's sources; with no selection and a stale summary, the
+    // affected sources; in the memo (no selection) the highlighted section's statements. The memo
+    // view shows the memo statements' sources, the executive view the others'.
     const bool memoView = m_section == QLatin1String("memo") && memoState() == QLatin1String("ready");
     const bool staleMode = m_activeStatementId.isEmpty() && m_stale && m_staleTargeted;
     const QString activeSec = m_activeSection >= 0 ? QString::number(m_activeSection + 1) + QLatin1Char('.')
@@ -1168,7 +1168,7 @@ QVariantList SummaryViewModel::sectionBands() const
         if (start < 0)
             continue;
         qint64 end = sec.value(QStringLiteral("endMs")).toLongLong();
-        if (end < start) {   // ismeretlen vég: a következő szakasz eleje (vagy a felvétel vége)
+        if (end < start) {   // unknown end: the next section's start (or the recording's end)
             end = i + 1 < m_memo.size() ? m_memo.at(i + 1).toMap().value(QStringLiteral("startMs")).toLongLong()
                                         : m_durationMs;
             end = qMax(end, start);
@@ -1279,7 +1279,7 @@ QVariantMap SummaryViewModel::sourceDetails(const QString& statementId) const
                                   {QStringLiteral("text"), q.text},
                                   {QStringLiteral("affected"), sp.affected}};
         }
-        if (!any)   // csak idő (a megszólalás nem található): a tartomány maga
+        if (!any)   // time only (the utterance is not found): the range itself
             quotes << QVariantMap{{QStringLiteral("utteranceId"), QString()}, {QStringLiteral("name"), QString()},
                                   {QStringLiteral("colorIndex"), -1},
                                   {QStringLiteral("startMs"), sp.startMs}, {QStringLiteral("endMs"), sp.endMs},
@@ -1303,18 +1303,18 @@ bool SummaryViewModel::flagStatement(const QString& statementId)
         if (m_meetingId.isEmpty() || !c->flagStatement(m_meetingId, statementId))
             return false;
     }
-    // Azonnal látsszon (élesben a summaryStatementsChanged úgyis újratölt).
+    // Show immediately (live, summaryStatementsChanged reloads anyway).
     bool found = false;
     for (StatementListModel* model : statementModels())
         found |= model->setFlagged(statementId, true);
     if (found && m_memoItems->indexOfId(statementId) >= 0) {
-        rebuildMemo();   // a szakaszok sorai másolatok: a jelzés ott is látsszon
+        rebuildMemo();   // the sections' rows are copies: the flag should show there too
         emit changed();
     }
     return found;
 }
 
-// v3 mintaadat (handoff-v3 S1–S3): „Negyedéves partnertalálkozó”, 2:11:04, öt beszélő.
+// Sample data: "Quarterly partner meeting", 2:11:04, five speakers.
 void SummaryViewModel::loadDemoSources(const QString& state)
 {
     auto t = [](int m, int s) { return qint64(m * 60 + s) * 1000; };
@@ -1334,10 +1334,10 @@ void SummaryViewModel::loadDemoSources(const QString& state)
         {demoRaw(QStringLiteral("Távoli 1")), QString(), 5, 0.07},
     };
     m_participants.clear();
-    for (const SpeakerRef& s : std::as_const(m_speakers))   // a design sorrendjében
+    for (const SpeakerRef& s : std::as_const(m_speakers))   // in the design's order
         m_participants << participantMap(s.name, s.colorIndex, int(s.share * 100.0 + 0.5));
 
-    // Kitalált megszólalások az idézetekhez (id: "u<startMs>").
+    // Fictional utterances for the quotes (id: "u<startMs>").
     struct Line { qint64 at; qint64 len; int speaker; QString text; };
     const QVector<Line> lines{
         {t(0, 4), 9000, 0, tr("Az első és legfontosabb: a támogatási jegyek száma harmadával csökkent, miközben az aktív felhasználók száma nagyjából tizenkét százalékkal nőtt.")},
@@ -1409,7 +1409,7 @@ void SummaryViewModel::loadDemoSources(const QString& state)
     };
 
     if (state == QLatin1String("staleTargeted")) {
-        // Varga Árpád egy sorát Fehér Gáborról javították: az érintett állítás és teendő.
+        // A line of Varga Árpád was corrected from Fehér Gábor: the affected statement and action item.
         m_stale = true;
         m_staleCount = 3;
         m_staleTargeted = true;
@@ -1422,7 +1422,7 @@ void SummaryViewModel::loadDemoSources(const QString& state)
         m_affectedUtterances = QStringList{QStringLiteral("u%1").arg(t(12, 41)), QStringLiteral("u%1").arg(t(13, 1))};
     }
 
-    // Nyitott kérdések (S2: állításként, forrás-chippel).
+    // Open questions (as a statement, with a source chip).
     m_summary.openQuestions = QStringList{
         tr("Ki adja a dokumentációs kapacitást, ha a csapat a negyedik negyedévben a súgó kiterjesztésén dolgozik?"),
         tr("Megéri-e elkészíteni a súgó nyomtatható változatát?"),
@@ -1430,7 +1430,7 @@ void SummaryViewModel::loadDemoSources(const QString& state)
     sts << statement(QStringLiteral("q1"), StatementKind::OpenQuestion, m_summary.openQuestions.at(0), {span({t(43, 30)})})
         << statement(QStringLiteral("q2"), StatementKind::OpenQuestion, m_summary.openQuestions.at(1), {span({t(50, 15)})});
 
-    // Memó: hét szakasz (a 3. a kiemelt), bevezetővel és alszakaszokkal (S2).
+    // Memo: seven sections (the 3rd highlighted), with an intro and subsections.
     struct Sec { qint64 from; qint64 to; QString title; QStringList speakers; QStringList points; };
     const QString lilla = demoName("Kovács Lilla"), gabor = demoName("Fehér Gábor"), arpad = demoName("Varga Árpád"),
                   eszter = demoName("Molnár Eszter"), tavoli = demoRaw(QStringLiteral("Távoli 1"));
@@ -1460,7 +1460,7 @@ void SummaryViewModel::loadDemoSources(const QString& state)
     };
     for (const Sec& s : secs)
         m_summary.memo.append({s.title, s.from, s.to, s.points, s.speakers});
-    // A 3. szakasz: kétmondatos bevezető, „Elhangzott érvek” és „Nyitott kérdés” alszakasz.
+    // The 3rd section: a two-sentence intro, "Arguments raised" and "Open question" subsections.
     MemoSection& third = m_summary.memo[2];
     third.intro = demoText("Kovács Lilla szerint a számlázási kérdések a jegyek felét teszik ki a Nordvik-ügyfeleknél, ezért a következő súgó-témának ezt javasolja.", "According to Emma Carter, billing questions make up half the tickets for Nordvik customers, so she suggests it as the next help topic.")
                 + QLatin1Char(' ')
@@ -1468,7 +1468,7 @@ void SummaryViewModel::loadDemoSources(const QString& state)
     third.pointGroups = QStringList{QStringLiteral("arguments"), QStringLiteral("arguments"),
                                     QStringLiteral("arguments"), QStringLiteral("open")};
     m_summary.memo[0].intro = tr("A negyedév számai jók, a számlázás külön napirendi pontot kapott.");
-    // A memó állításai (a pontok és a bevezető mondatai forrással; néhány pont forrás nélkül).
+    // The memo's statements (points and intro sentences with a source; a few points without one).
     auto memoSt = [&](const QString& id, StatementKind kind, const QString& text,
                       const QVector<SourceSpan>& spans) { sts << statement(id, kind, text, spans); };
     memoSt(QStringLiteral("i1.1"), StatementKind::MemoIntro, m_summary.memo[0].intro, {span({t(0, 4)})});
@@ -1505,7 +1505,7 @@ void SummaryViewModel::loadDemoSources(const QString& state)
     m_execSummary = m_summary.execSummary;
     m_markdown = m_summary.renderMarkdown();
 
-    // „noSources”: régi (forrás nélküli) összefoglaló — a mai nézet.
+    // "noSources": an old (source-less) summary, today's view.
     if (state != QLatin1String("noSources")) {
         m_summary.statements = sts;
         m_rawStatements = sts;

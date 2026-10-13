@@ -56,7 +56,7 @@ QVariantList LibraryPendingModel::build(const QVector<PendingItem>& pending)
     const int maxPerKind = 3;
     QVariantList out;
 
-    // 1) Átírásra váró felvételek — egy sorban, a legfrissebbet nyitja meg.
+    // 1) Recordings awaiting transcription: in one row, it opens the most recent.
     QVector<PendingItem> awaiting, stale, failed;
     for (const PendingItem& p : pending) {
         switch (p.kind) {
@@ -80,7 +80,7 @@ QVariantList LibraryPendingModel::build(const QVector<PendingItem>& pending)
             {QStringLiteral("tone"), QStringLiteral("accent")},
             {QStringLiteral("tab"), 0}});
     }
-    // 2) Elavult összefoglalók.
+    // 2) Stale summaries.
     for (int i = 0; i < stale.size() && i < maxPerKind; ++i) {
         const PendingItem& p = stale.at(i);
         out.append(QVariantMap{
@@ -91,9 +91,9 @@ QVariantList LibraryPendingModel::build(const QVector<PendingItem>& pending)
             {QStringLiteral("actionLabel"), tr("Frissítés")},
             {QStringLiteral("iconName"), QStringLiteral("sparkles")},
             {QStringLiteral("tone"), QStringLiteral("warn")},
-            {QStringLiteral("tab"), 2}});   // a Vezetői összefoglaló fül
+            {QStringLiteral("tab"), 2}});   // the Executive summary tab
     }
-    // 3) Sikertelen átírások.
+    // 3) Failed transcriptions.
     for (int i = 0; i < failed.size() && i < maxPerKind; ++i) {
         const PendingItem& p = failed.at(i);
         QString reason = p.error.message.trimmed();

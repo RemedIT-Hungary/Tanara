@@ -1,14 +1,14 @@
 #pragma once
 //
-// Tanara QML — az `App` singleton: a QML-felület és a C++ világ közös belépőpontja.
+// Tanara QML: the `App` singleton: the shared entry point of the QML UI and the C++ world.
 //
-//  - QML-ből:  App.dark / App.themeMode / App.demo / App.controller / App.bridge
-//  - C++-ból (nézetmodellek):  tanara_qml::AppContext::instance()->controller()
+//  - from QML:  App.dark / App.themeMode / App.demo / App.controller / App.bridge
+//  - from C++ (view models):  tanara_qml::AppContext::instance()->controller()
 //
-// A controller() lehet nullptr: képernyőkép- (--qml-shot), galéria- (--gallery) és demó-
-// (--demo) módban SZÁNDÉKOSAN nem jön létre AppController (ne nyúljunk a user adataihoz),
-// és a tests/ui tesztekben sem kötelező. A nézetmodelleknek ezt el kell viselniük; ha
-// App.demo igaz, beépített (kitalált) mintaadatot mutassanak.
+// controller() may be nullptr: in screenshot (--qml-shot), gallery (--gallery) and demo
+// (--demo) modes an AppController is INTENTIONALLY not created (so the user's data is not
+// touched), and in the tests/ui tests it is not mandatory either. View models must cope with
+// this; if App.demo is true, they should show built-in (fictional) sample data.
 //
 #include <QObject>
 #include <QPointer>
@@ -29,22 +29,22 @@ class AppContext : public QObject {
     QML_NAMED_ELEMENT(App)
     QML_SINGLETON
 
-    // A ténylegesen érvényes téma (themeMode + a rendszer színsémája). A Theme.dark ezt követi.
+    // The theme actually in effect (themeMode + the system's color scheme). Theme.dark follows it.
     Q_PROPERTY(bool dark READ dark NOTIFY darkChanged)
-    // "system" (alapértelmezés: a rendszer színsémáját követi) | "light" | "dark".
+    // "system" (default: follows the system's color scheme) | "light" | "dark".
     Q_PROPERTY(QString themeMode READ themeMode WRITE setThemeMode NOTIFY themeModeChanged)
-    // Igaz: nincs AppController, a nézetmodellek kitalált mintaadattal dolgoznak.
+    // True: there is no AppController, the view models work with fictional sample data.
     Q_PROPERTY(bool demo READ demo NOTIFY demoChanged)
-    // A program verziója (tanara::libraryVersion(), pl. "0.5.0a") — a Beállítások alján látszik.
+    // The program's version (tanara::libraryVersion(), e.g. "0.5.0a"): shown at the bottom of Settings.
     Q_PROPERTY(QString version READ version CONSTANT)
-    // A core egyetlen UI-felé néző objektuma (tanara::AppController) — QML-ből QObject-ként.
+    // The core's single UI-facing object (tanara::AppController): from QML as a QObject.
     Q_PROPERTY(QObject* controller READ controllerObject NOTIFY controllerChanged)
-    // A külön ablakokat (Beállítások, Személyek, felvevő) és a cloud Widgets-párbeszédablakait
-    // nyitó híd. A gui/src-ben él (az ismeri a Widgets-osztályokat), a main.cpp állítja be.
+    // The bridge that opens the separate windows (Settings, People, recorder) and the cloud
+    // Widgets dialogs. It lives in gui/src (it knows the Widgets classes); main.cpp sets it.
     Q_PROPERTY(QObject* bridge READ bridge NOTIFY bridgeChanged)
 
 public:
-    // Folyamat-szintű példány (a QML-motor is ezt kapja — lásd create()).
+    // Process-level instance (the QML engine gets this one too; see create()).
     static AppContext* instance();
     static AppContext* create(QQmlEngine*, QJSEngine*);
 
@@ -63,7 +63,7 @@ public:
     QObject* bridge() const { return m_bridge; }
     void setBridge(QObject* bridge);
 
-    // A "system" | "light" | "dark" érték normalizálása (ismeretlen → "system").
+    // Normalizes the "system" | "light" | "dark" value (unknown -> "system").
     static QString normalizedThemeMode(const QString& mode);
 
 signals:

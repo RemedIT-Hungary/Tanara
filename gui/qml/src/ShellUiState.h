@@ -1,9 +1,9 @@
 #pragma once
 //
-// ShellUiState — a főablak megjegyzett felület-állapota (ablakméret, kijelölt megbeszélés,
-// lejátszó hangereje / sebessége). A metaadat-mappában él (<TANARA_HOME vagy ~/.tanara>/
-// ui-state.json), így a TANARA_HOME-os homokozó a felhasználó valódi állapotát nem érinti.
-// Controller nélkül (demó, képernyőkép, teszt) csak memóriában tart, lemezre nem ír.
+// ShellUiState: the main window's remembered UI state (window size, selected meeting, player
+// volume / speed). It lives in the metadata folder (<TANARA_HOME or ~/.tanara>/ui-state.json),
+// so a TANARA_HOME sandbox does not touch the user's real state. Without a controller (demo,
+// screenshot, test) it only keeps it in memory and writes nothing to disk.
 //
 #include <QJsonObject>
 #include <QObject>
@@ -21,13 +21,13 @@ public:
     explicit ShellUiState(QObject* parent = nullptr);
     ~ShellUiState() override;
 
-    // Tesztben: explicit fájl (üres → nincs lemez).
+    // In a test: an explicit file (empty -> no disk).
     void setFilePath(const QString& path);
     QString filePath() const { return m_path; }
 
     Q_INVOKABLE QVariant value(const QString& key, const QVariant& fallback = QVariant()) const;
     Q_INVOKABLE void setValue(const QString& key, const QVariant& value);
-    // A függő módosítások azonnali kiírása (ablak bezárásakor).
+    // Writes the pending changes immediately (on closing the window).
     Q_INVOKABLE void flush();
 
 private:

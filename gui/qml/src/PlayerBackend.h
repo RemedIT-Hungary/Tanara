@@ -1,12 +1,12 @@
 #pragma once
 //
-// PlayerBackend — a PlayerController hang-motorjának absztrakciója.
+// PlayerBackend: the abstraction of PlayerController's audio engine.
 //
-// A QML-modul (tanara_qml) nem linkeli a Qt Multimediát; a valódi (QMediaPlayer-es) motor a
-// gui/src-ben él (MediaPlayerBackend), és a main.cpp regisztrálja a gyárát:
-//   PlayerController::setBackendFactory(…)
-// Gyár nélkül (demó, képernyőkép, tesztek) a PlayerController egy beépített, órával léptetett
-// néma motort használ — így a lejátszó logikája hang nélkül is végigjátszható.
+// The QML module (tanara_qml) does not link Qt Multimedia; the real (QMediaPlayer-based)
+// engine lives in gui/src (MediaPlayerBackend), and main.cpp registers its factory:
+//   PlayerController::setBackendFactory(...)
+// Without a factory (demo, screenshot, tests) PlayerController uses a built-in, clock-stepped
+// silent engine, so the player's logic can be played through without audio.
 //
 #include <QObject>
 #include <QString>
@@ -18,22 +18,22 @@ class PlayerBackend : public QObject {
 public:
     using QObject::QObject;
 
-    // A forrás betöltése (abszolút fájl-út; üres → kiürít). Nem indít lejátszást.
-    // knownDurationMs: a hívó által ismert hossz (a néma motor ezt használja).
+    // Loads the source (absolute file path; empty -> clears). Does not start playback.
+    // knownDurationMs: the length known to the caller (the silent engine uses it).
     virtual void setSource(const QString& path, qint64 knownDurationMs) = 0;
     virtual void play() = 0;
     virtual void pause() = 0;
     virtual void setPosition(qint64 ms) = 0;
     virtual qint64 position() const = 0;
-    virtual qint64 duration() const = 0;      // 0, amíg nem ismert
+    virtual qint64 duration() const = 0;      // 0 until known
     virtual bool isPlaying() const = 0;
     virtual void setRate(qreal rate) = 0;
-    virtual void setVolume(qreal volume) = 0; // 0…1, lineáris
+    virtual void setVolume(qreal volume) = 0; // 0..1, linear
 
 signals:
     void playingChanged(bool playing);
     void durationChanged(qint64 ms);
-    void finished();                          // a forrás végére ért
+    void finished();                          // reached the end of the source
     void errorOccurred(const QString& message);
 };
 

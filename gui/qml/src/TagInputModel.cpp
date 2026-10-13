@@ -84,7 +84,7 @@ void TagInputModel::rebuild()
         row.insert(QStringLiteral("count"), r.count);
         row.insert(QStringLiteral("matchStart"), r.matchStart);
         row.insert(QStringLiteral("matchLen"), r.matchLen);
-        // A kiemeléshez három darabban (a QML így rich text nélkül rajzolja).
+        // In three pieces for highlighting (so QML draws it without rich text).
         const bool hit = r.matchStart >= 0 && r.matchLen > 0 && r.matchStart + r.matchLen <= r.name.size();
         row.insert(QStringLiteral("before"), hit ? r.name.left(r.matchStart) : r.name);
         row.insert(QStringLiteral("match"), hit ? r.name.mid(r.matchStart, r.matchLen) : QString());
@@ -92,8 +92,8 @@ void TagInputModel::rebuild()
         m_rowsVariant << row;
     }
     emit rowsChanged();
-    // Mindig az első sor a kijelölt: a legutóbbi / a legjobb találat / a hasonló meglévő,
-    // vagy — ha nincs találat — az „Új címke” sor.
+    // The first row is always the selected one: the most recent / the best hit / the similar
+    // existing one, or, if there is no hit, the "New tag" row.
     const int selected = m_rows.isEmpty() ? -1 : 0;
     if (m_selected != selected) {
         m_selected = selected;

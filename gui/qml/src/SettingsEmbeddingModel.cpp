@@ -18,22 +18,22 @@ namespace tanara_qml {
 
 namespace {
 
-// A Tanara Cloud beágyazásának kredit-igénye megbeszélésenként. HELYŐRZŐ: a gateway még nem
-// közli az árat (a szerver-oldal külön feladat); addig ezzel a becsléssel írjuk a tájékoztatót.
+// Tanara Cloud embedding's credit need per meeting. PLACEHOLDER: the gateway does not state
+// the price yet (the server side is a separate task); until then the info text uses this estimate.
 constexpr int kCloudCreditsPerMeeting = 3;
-// Egy megbeszélés előkészítésének becsült ideje, amíg a futó előkészítésből nem mérhető.
+// Estimated time to prepare one meeting, until it can be measured from the running preparation.
 constexpr int kSecondsPerMeeting = 9;
 
-// „31 / 40-nél” / „31 / 30-nál”: a szám kiejtett utolsó tagja dönti el a toldalékot.
+// Hungarian suffix choice for "at 31 / 40" / "at 31 / 30": the spoken last part of the number decides.
 bool highVowelNumber(int n)
 {
     n = std::abs(n);
-    if (n == 0) return false;                                   // nulla
+    if (n == 0) return false;                                   // zero
     static const bool ones[10] = {false, true, true, false, true, true, false, true, false, true};
     static const bool tens[10] = {false, true, false, false, true, true, false, true, false, true};
-    if (n % 10) return ones[n % 10];                            // egy, kettő, négy, öt, hét, kilenc
-    if (n % 100) return tens[(n / 10) % 10];                    // tíz, negyven, ötven, hetven, kilencven
-    if (n % 1000) return false;                                 // száz
+    if (n % 10) return ones[n % 10];                            // one, two, four, five, seven, nine
+    if (n % 100) return tens[(n / 10) % 10];                    // ten, forty, fifty, seventy, ninety
+    if (n % 1000) return false;                                 // hundred
     return true;                                                // ezer
 }
 
@@ -44,7 +44,7 @@ SettingsEmbeddingModel::SettingsEmbeddingModel(QObject* parent) : QObject(parent
     m_vm = qobject_cast<SettingsViewModel*>(parent);
     if (m_vm) {
         m_card = new SettingsProviderModel(m_vm, ProviderKind::Embedding);
-        // A helyi végpont mezői / tesztje a pirulát és a figyelmeztetést is érinti.
+        // The local endpoint's fields / test also affect the pill and the warning.
         connect(m_card, &SettingsProviderModel::testChanged, this, &SettingsEmbeddingModel::changed);
         connect(m_card, &SettingsProviderModel::valuesChanged, this, &SettingsEmbeddingModel::changed);
     }
@@ -108,7 +108,7 @@ void SettingsEmbeddingModel::normalize(AppSettings& s) const
     if (!d.id.isEmpty()) m_card->fillDefaults(s.embeddingConfigs[s.embeddingProviderId], d);
 }
 
-// ---- mód ---------------------------------------------------------------------------------
+// ---- mode ---------------------------------------------------------------------------------
 
 QString SettingsEmbeddingModel::mode() const
 {
@@ -132,7 +132,7 @@ void SettingsEmbeddingModel::setMode(const QString& mode)
     AppSettings& d = m_vm->draft();
     d.embeddingProviderId = id;
     if (!id.isEmpty()) {
-        // A másik mód beállítása a térképben marad; az új az alapértelmezésekkel indul.
+        // The other mode's settings stay in the map; the new one starts with the defaults.
         ProviderConfig cfg = d.embeddingConfigs.value(id);
         m_card->fillDefaults(cfg, EmbeddingProviderRegistry::instance().descriptor(id));
         d.embeddingConfigs.insert(id, cfg);
@@ -151,7 +151,7 @@ QVariantList SettingsEmbeddingModel::modeOptions() const
     QVariantList out{opt(QStringLiteral("none"), tr("Nincs (alap)")),
                      opt(QStringLiteral("local"), tr("Helyi végpont"))};
     const QString availability = m_vm ? m_vm->cloudAvailability() : QStringLiteral("live");
-    if (availability == QLatin1String("none")) return out;   // Cloud nélküli build
+    if (availability == QLatin1String("none")) return out;   // a build without Cloud
     QString tip;
     if (availability == QLatin1String("teaser"))
         tip = tr("A Tanara Cloud hamarosan érkezik.");
@@ -195,7 +195,7 @@ QString SettingsEmbeddingModel::cloudHint() const
               "javaslatok az alap szinten működnek.");
 }
 
-// ---- állapot-pirula ------------------------------------------------------------------------
+// ---- status pill ------------------------------------------------------------------------
 
 QString SettingsEmbeddingModel::status() const
 {
@@ -214,19 +214,19 @@ QString SettingsEmbeddingModel::statusText() const
     const QString m = mode();
     if (m == QLatin1String("none")) return tr("Alap szint");
     if (m == QLatin1String("local") && m_card && !m_card->testState().isEmpty()) {
-        // A kártya „Kapcsolódva · 31 ms”-e — a fejlécben elég az állapot.
+        // The card's "Connected · 31 ms": the header only needs the state.
         return m_card->testState() == QLatin1String("ok") ? tr("Kapcsolódva") : m_card->statusText();
     }
     if (m == QLatin1String("cloud") && m_vm && !m_vm->cloud()->loggedIn()) return tr("Bejelentkezés kell");
     const QString prep = prepStatus();
     if (prep == QLatin1String("error")) return tr("Nem érhető el");
     if (m == QLatin1String("local") && m_card && !m_card->configured()) return tr("Hiányos");
-    // Az előkészítés már beszélt a végponttal → kapcsolódva; különben csak beállítva.
+    // The preparation already talked to the endpoint -> connected; otherwise only configured.
     const bool talked = (prep == QLatin1String("running") && prepState().prepared > 0) || prep == QLatin1String("done");
     return talked ? tr("Kapcsolódva") : tr("Beállítva");
 }
 
-// ---- KÖNYVTÁR ELŐKÉSZÍTÉSE ----------------------------------------------------------------
+// ---- LIBRARY PREPARATION ----------------------------------------------------------------
 
 EmbeddingState SettingsEmbeddingModel::prepState() const
 {
@@ -242,7 +242,7 @@ bool SettingsEmbeddingModel::prepVisible() const
 QString SettingsEmbeddingModel::prepStatus() const
 {
     if (mode() == QLatin1String("none")) return QString();
-    // A kiválasztott beágyazás még nincs elmentve: az előkészítés a mentés után indul.
+    // The selected embedding is not saved yet: the preparation starts after the save.
     if (m_vm && m_vm->base().embeddingProviderId.isEmpty()) return QStringLiteral("pending");
     const EmbeddingState s = prepState();
     switch (s.status) {
@@ -339,7 +339,7 @@ void SettingsEmbeddingModel::reprepare()
     startPreparation();
 }
 
-// ---- modellváltás ------------------------------------------------------------------------
+// ---- model change ------------------------------------------------------------------------
 
 bool SettingsEmbeddingModel::restartPending() const
 {
@@ -355,7 +355,7 @@ int SettingsEmbeddingModel::estimateMinutes(int meetings) const
     double perMeeting = kSecondsPerMeeting;
     const int left = s.total - s.prepared;
     if (s.status == EmbeddingState::Running && s.etaSec > 0 && left > 0)
-        perMeeting = double(s.etaSec) / left;              // a futó előkészítés mért üteme
+        perMeeting = double(s.etaSec) / left;              // the running preparation's measured pace
     return qMax(1, int(std::ceil(meetings * perMeeting / 60.0)));
 }
 
@@ -373,7 +373,7 @@ QString SettingsEmbeddingModel::restartWarning() const
                .arg(tr("%n megbeszélés", nullptr, total), tr("%n perc", nullptr, estimateMinutes(total)));
 }
 
-// ---- CÍMKEJAVASLATOK ----------------------------------------------------------------------
+// ---- TAG SUGGESTIONS ---------------------------------------------------------------------
 
 bool SettingsEmbeddingModel::tagSuggestions() const
 {
@@ -419,11 +419,11 @@ void SettingsEmbeddingModel::clearRejected()
     emit rejectedChanged();
 }
 
-// ---- demó --------------------------------------------------------------------------------
+// ---- demo --------------------------------------------------------------------------------
 
 void SettingsEmbeddingModel::setDemoState(const QString& state)
 {
-    if (controller()) return;                 // valódi adat mellett a demó nem hat
+    if (controller()) return;                 // with real data the demo has no effect
     loadDemo(state);
     if (m_vm) m_vm->touch();
     emit demoStateChanged();
@@ -457,7 +457,7 @@ void SettingsEmbeddingModel::loadDemo(const QString& state)
             s->tagSuggestions = true;
             s->llmTagSuggestions = true;
         }
-        // T15: a modellt átírták, még nincs elmentve.
+        // The model was edited, not saved yet.
         if (state == QLatin1String("modelChange"))
             draft.embeddingConfigs[embeddingproviders::LocalId].model = QStringLiteral("nomic-embed-text-v2-moe");
         if (m_card) m_card->reset();
@@ -479,7 +479,7 @@ void SettingsEmbeddingModel::loadDemo(const QString& state)
         m_demo.prepared = 40;
         m_demo.lastRun = QDateTime(QDate(2026, 10, 5), QTime(9, 12));
     } else if (local) {
-        m_demo.prepared = 12;                  // félbehagyott előkészítés: „Előkészítés” gomb
+        m_demo.prepared = 12;                  // interrupted preparation: "Prepare" button
     }
     m_demoRejected = 12;
     emit changed();

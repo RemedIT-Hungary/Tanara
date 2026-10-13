@@ -1,19 +1,19 @@
 #pragma once
 //
-// PersonListModel — az ismert személyek a választó panelekhez (K5: a „+" oszlop
-// személyválasztója és a teljes-beszélő popover „Másik személy" listája). Gépelésre szűr
-// (ékezet- és kisbetű-független, névrészletre is); üres keresőnél a gyakran szereplők
-// elöl. A lista a TranscriptEditorViewModel-től jön (éles: AppController::peopleDirectory,
-// demó: kitalált nevek).
+// PersonListModel: the known people for the picker panels (the "+" column's person picker
+// and the full-speaker popover's "Another person" list). Filters on typing (accent- and
+// case-insensitive, name fragments too); with an empty search the frequent ones come first.
+// The list comes from TranscriptEditorViewModel (live: AppController::peopleDirectory,
+// demo: fictional names).
 //
-// Címke-rangsor (vault UX-terv 2. fejezet, „Személyválasztó”): már résztvevő → közös
-// címkés (a megbeszélés címkéin kézzel rajta van, vagy a tanult kapcsolat eléri a küszöböt;
-// legfeljebb 5) → többi. A közös címkés sor `tagHint`-je: „#Nordvik · 11 / 14 · 12 megbeszélés”;
-// ha a lista legalább 6 soros, a csoport szakaszcíme `tagSectionTitle` („A #Nordvik alapján”),
-// a sorok `group` szerepe: "meeting" | "tag" | "other".
-// `tagId` mód (Címkék ablak „+ Személy”): a címke a viszonyítás, akin kézzel rajta van, kimarad;
-// ilyenkor editor / participants nélkül a teljes névsor (AppController::peopleDirectory, demóban
-// kitalált nevek) a forrás.
+// Tag ranking (UX plan, "Person picker"): already a participant -> shared tag (the person
+// has a tag of the meeting manually, or the learned relation reaches the threshold; at most
+// 5) -> the rest. The shared-tag row's `tagHint`: "#Nordvik · 11 / 14 · 12 meetings"; if the
+// list has at least 6 rows, the group's section title is `tagSectionTitle` ("Based on
+// #Nordvik"), the rows' `group` role: "meeting" | "tag" | "other".
+// `tagId` mode (Tags window "+ Person"): the tag is the reference, those who have it manually
+// are left out; then without editor / participants the full name list
+// (AppController::peopleDirectory, in the demo fictional names) is the source.
 //
 #include "ParticipantsViewModel.h"
 #include "TranscriptEditorViewModel.h"
@@ -33,24 +33,24 @@ class PersonListModel : public QAbstractListModel {
     Q_OBJECT
     QML_ELEMENT
     Q_PROPERTY(tanara_qml::TranscriptEditorViewModel* editor READ editor WRITE setEditor NOTIFY editorChanged)
-    // A „Ki volt ott?" párbeszéd forrása (az editor helyett): a személyek és a „már résztvevő".
+    // The source of the "Who was there?" dialog (instead of the editor): the people and "already a participant".
     Q_PROPERTY(tanara_qml::ParticipantsViewModel* participants READ participants WRITE setParticipants NOTIFY participantsChanged)
     Q_PROPERTY(QString query READ query WRITE setQuery NOTIFY queryChanged)
-    // Ez a név kimarad (a popoverben a beszélő mostani személye).
+    // This name is left out (in the popover the speaker's current person).
     Q_PROPERTY(QString excludeName READ excludeName WRITE setExcludeName NOTIFY excludeNameChanged)
-    // Üres keresőnél a meeting mostani résztvevői kimaradnak (nekik már van oszlopuk).
+    // With an empty search the meeting's current participants are left out (they already have a column).
     Q_PROPERTY(bool hideMeetingPeople READ hideMeetingPeople WRITE setHideMeetingPeople NOTIFY hideMeetingPeopleChanged)
-    // A meeting résztvevői kereséskor sem jelennek meg (a soronkénti panelen ők külön, a
-    // meeting beszélőiként szerepelnek).
+    // The meeting's participants do not show when searching either (in the per-row panel they
+    // appear separately, as the meeting's speakers).
     Q_PROPERTY(bool excludeMeetingPeople READ excludeMeetingPeople WRITE setExcludeMeetingPeople NOTIFY excludeMeetingPeopleChanged)
     Q_PROPERTY(int count READ count NOTIFY countChanged)
-    // Igaz, ha a beírt név még nem létezik → „Új személy: „…"" sor.
+    // True if the typed name does not exist yet -> a "New person: "..."" row.
     Q_PROPERTY(bool canCreate READ canCreate NOTIFY countChanged)
     Q_PROPERTY(QString tagId READ tagId WRITE setTagId NOTIFY tagIdChanged)
     Q_PROPERTY(QString tagSectionTitle READ tagSectionTitle NOTIFY countChanged)
 
 public:
-    // MatchedAliasRole: ha a találat becenévből jött (nem a névből), az a becenév; különben üres.
+    // MatchedAliasRole: if the hit came from a nickname (not the name), that nickname; otherwise empty.
     enum Role { NameRole = Qt::UserRole + 1, HasVoiceprintRole, MeetingCountRole, InMeetingRole, MatchedAliasRole,
                 TagHintRole, GroupRole };
 
@@ -77,10 +77,10 @@ public:
     QString tagId() const { return m_tagId; }
     void setTagId(const QString& id);
     QString tagSectionTitle() const { return m_tagSection; }
-    // Tesztekhez: a címke-adatforrás (nem veszi át).
+    // For tests: the tag data source (not taken over).
     void setTagBackend(TagBackend* backend);
 
-    // A személylista újraolvasása (a panel megnyitásakor).
+    // Re-reads the person list (when the panel opens).
     Q_INVOKABLE void refresh();
     Q_INVOKABLE QString nameAt(int row) const;
 

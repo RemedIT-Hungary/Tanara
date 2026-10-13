@@ -44,9 +44,9 @@ RecorderWindowHost::~RecorderWindowHost()
 
 void RecorderWindowHost::prepareProcess()
 {
-    // Wayland alatt a kliens nem kérhet mindig-felült és nem pozicionálhatja az ablakát.
-    // Aki ezt a felvevőnél mégis szeretné, a TANARA_RECORDER_X11=1 környezeti változóval az
-    // önálló felvevőt XWaylanden (xcb) futtathatja — ott mindkettő működik.
+    // Under Wayland a client cannot ask for always-on-top nor position its window. Whoever still
+    // wants that for the recorder can run the standalone recorder on XWayland (xcb) with the
+    // TANARA_RECORDER_X11=1 environment variable, where both work.
     if (qEnvironmentVariableIntValue("TANARA_RECORDER_X11") == 1
         && !qEnvironmentVariableIsSet("QT_QPA_PLATFORM")
         && qEnvironmentVariableIsSet("DISPLAY"))
@@ -62,7 +62,7 @@ bool RecorderWindowHost::platformCanPosition()
 
 QString RecorderWindowHost::iniPath() const
 {
-    // Controller nélkül (teszt / demó) nincs mit megjegyezni — és a user mappájához sem nyúlunk.
+    // Without a controller (test / demo) there is nothing to remember, and we do not touch the user's folder either.
     if (!m_controller)
         return {};
     const QString dir = paths::resolveMetadataDir(
@@ -100,7 +100,7 @@ bool RecorderWindowHost::ensureWindow()
     if (m_vm && m_controller)
         m_vm->setController(m_controller);
 
-    // QML-jelek (régi stílusú connect: a jeleket a QML-típus deklarálja).
+    // QML signals (old-style connect: the QML type declares the signals).
     connect(win, SIGNAL(hideRequested()), this, SLOT(onHideRequested()));
     connect(win, SIGNAL(closeRequested()), this, SLOT(onCloseRequested()));
     connect(win, SIGNAL(userMoved()), this, SLOT(onUserMoved()));
@@ -110,7 +110,7 @@ bool RecorderWindowHost::ensureWindow()
 
     if (m_vm) {
         connect(m_vm, &RecorderViewModel::askRaised, this, [this](const QString& title, const QString& text) {
-            // Rejtett / pirula / háttérben lévő ablaknál: elő az ablakkal + rendszerértesítés.
+            // For a hidden / pill / background window: bring the window up + system notification.
             const bool wasAway = !m_window || !m_window->isVisible() || !m_window->isActive()
                                  || m_window->property("pill").toBool();
             if (m_window) {
@@ -131,11 +131,11 @@ bool RecorderWindowHost::ensureWindow()
             if (m_lock) m_lock->release();
             emit recordingFinished(id);
         });
-        // Meghiúsult / megszakadt felvétel: a lock ne maradjon bent.
+        // Failed / interrupted recording: the lock must not stay.
         connect(m_vm, &RecorderViewModel::stateChanged, this, [this] {
             if (m_lock && !recording()) m_lock->release();
         });
-        // Ha a felvétel már fut (a gazda később jött létre), a lock most kerül fel.
+        // If the recording is already running (the host was created later), the lock is taken now.
         if (m_manageLock && m_lock && m_controller
             && m_controller->recordingState() == RecordingState::Recording)
             m_lock->acquire(m_controller->currentMeetingFolder());
@@ -151,13 +151,13 @@ void RecorderWindowHost::onHideRequested()
         m_window->hide();
         emit hiddenToTray();
     } else {
-        m_window->showMinimized();   // nincs tálca: legalább a tálcasorról visszahozható
+        m_window->showMinimized();   // no tray: at least restorable from the taskbar
     }
 }
 
 void RecorderWindowHost::onCloseRequested()
 {
-    if (recording()) return;         // felvétel közben a nézet a lapot nyitja, ide nem jutunk
+    if (recording()) return;         // during recording the view opens the page, we do not get here
     if (m_window) m_window->hide();
     emit closed();
 }
@@ -198,7 +198,7 @@ void RecorderWindowHost::restoreGeometry()
 
 void RecorderWindowHost::savePosition()
 {
-    // Wayland: a kliens nem ismeri az abszolút pozícióját → nincs mit menteni.
+    // Wayland: the client does not know its absolute position -> nothing to save.
     if (!m_window || !platformCanPosition() || !m_window->screen()) return;
     if (iniPath().isEmpty()) return;
     QSettings ini(iniPath(), QSettings::IniFormat);
@@ -209,8 +209,8 @@ void RecorderWindowHost::savePosition()
 
 void RecorderWindowHost::snapPill()
 {
-    // A pirula a képernyő széléhez tapad, ha 24 px-nél közelebb engedték el. Csak ott,
-    // ahol a kliens mozgathatja az ablakát (X11, Windows).
+    // The pill snaps to the screen edge if released closer than 24 px. Only where the client
+    // can move its window (X11, Windows).
     if (!m_window || !platformCanPosition() || !m_window->property("pill").toBool()) return;
     const QScreen* sc = m_window->screen();
     if (!sc) return;
@@ -232,8 +232,8 @@ bool RecorderWindowHost::show()
 {
     if (!ensureWindow()) return false;
     if (!m_positioned && platformCanPosition() && !iniPath().isEmpty()) {
-        // Utolsó pozíció képernyőnként — csak ha az ablak teljesen elfér azon a képernyőn
-        // (felbontásváltás / leválasztott monitor után marad az ablakkezelő elhelyezése).
+        // Last position per screen, only if the window fits entirely on that screen (after a
+        // resolution change / disconnected monitor the window manager's placement stays).
         m_positioned = true;
         QSettings ini(iniPath(), QSettings::IniFormat);
         const QString want = ini.value(QStringLiteral("window/screen")).toString();
@@ -267,13 +267,13 @@ void RecorderWindowHost::hide()
 void RecorderWindowHost::request(const RecorderRequest& r)
 {
     if (r.stop) {
-        // Kifejezett felhasználói kérés a tálca-menüből: leállítás (ablak nélkül is).
+        // Explicit user request from the tray menu: stop (without a window too).
         if (m_vm && m_vm->state() == QLatin1String("recording")) m_vm->stop();
         return;
     }
     if (!show() || !m_vm) return;
-    // Indítás-kérés az előző felvétel „Elmentve” állapotában: előbb új felvételre váltunk
-    // (különben a kérés indítás nélkül elveszne).
+    // Start request in the previous recording's "Saved" state: we first switch to a new
+    // recording (otherwise the request would be lost without a start).
     if (r.start && m_vm->state() == QLatin1String("done"))
         m_vm->newRecording();
     m_vm->applyRequest(r.title, r.appName, r.context, r.deviceIndexes);

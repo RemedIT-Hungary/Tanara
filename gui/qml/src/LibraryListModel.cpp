@@ -17,8 +17,8 @@ using tanara::StepState;
 
 namespace {
 
-// A találat előtti rész rövidítése: a keskeny oldalsávban a találatnak a sor elején kell
-// látszania („…a demó előtt még egyszer…”), ezért legfeljebb ~16 karakter marad előtte.
+// Shortening the part before the hit: in the narrow sidebar the hit must show at the start of
+// the line ("...once more before the demo..."), so at most ~16 characters stay before it.
 QString clipBefore(const QString& before)
 {
     const int keep = 16;
@@ -88,7 +88,7 @@ LibraryListModel::LibraryListModel(QObject* parent) : QAbstractListModel(parent)
         attach();
     });
     connect(ctx, &AppContext::demoChanged, this, [this] { refreshNow(); emit tagOptionsChanged(); });
-    // Demóban a tömeges címkézés a mintakönyvtár címkéit módosítja.
+    // In the demo, bulk tagging modifies the sample library's tags.
     connect(demo::tagNotifier(), &demo::DemoTagNotifier::changed, this, [this] {
         if (library()) return;
         refreshNow();
@@ -135,13 +135,13 @@ void LibraryListModel::attach()
                 emit peopleOptionsChanged();
                 emit tagOptionsChanged();
             });
-            // A készlet változott (átnevezés, törlés, összevonás): sorok, chipek, popover.
+            // The pool changed (rename, delete, merge): rows, chips, popover.
             connect(lib, &tanara::MeetingLibrary::tagsChanged, this, [this] {
                 scheduleRefresh();
                 emit tagOptionsChanged();
                 emit tagFilterItemsChanged();
             });
-            // Az előtöltés után a szöveges keresés találatai teljesek.
+            // After preloading, the text search's hits are complete.
             connect(lib, &tanara::MeetingLibrary::warmedUp, this, [this] {
                 if (!m_query.text.trimmed().isEmpty()) scheduleRefresh();
             });
@@ -255,7 +255,7 @@ void LibraryListModel::setSearchText(const QString& text)
     const bool wasFiltered = filtered();
     m_query.text = text;
     emit queryChanged();
-    // Gépelés közben nem keresünk minden leütésre; a szűrés be-/kikapcsolása azonnali.
+    // While typing we do not search on every keystroke; switching the filter on / off is immediate.
     scheduleRefresh(wasFiltered == filtered() ? 140 : 0);
 }
 
@@ -379,8 +379,7 @@ QVariantList LibraryListModel::tagOptionsMatching(const QString& text) const
         tags = lib->tagOptions();
     else if (!lib && !m_forceEmpty && AppContext::instance()->demo())
         tags = demo::tagOptions();
-    // A kiválasztott címkék elöl (a popover tetején látszik, mire szűrünk), a többi marad
-    // gyakoriság szerint.
+    // The selected tags first (the popover's top shows what we filter on), the rest stay by frequency.
     std::stable_partition(tags.begin(), tags.end(), [this](const tanara::TagUsage& u) {
         return m_query.tags.contains(u.tag.id);
     });
@@ -407,8 +406,8 @@ int LibraryListModel::untaggedCount() const
 
 QStringList LibraryListModel::tagLine(const QStringList& names)
 {
-    // A design szabálya (T04/T05): az első mindig, a többi addig, amíg a nevek hossza
-    // (+2 a közért) ~24 karakterbe fér; a maradék „+N”.
+    // The design's rule: the first always, the others as long as the names' length (+2 for the
+    // gap) fits ~24 characters; the rest "+N".
     const int budget = 24;
     QStringList out;
     int len = 0;
@@ -458,7 +457,7 @@ void LibraryListModel::setForceEmpty(bool on)
 QString LibraryListModel::resultText() const
 {
     if (!m_query.text.trimmed().isEmpty()) {
-        // „4 találat · címben, címkében, átiratban” — csak a ténylegesen előforduló helyek.
+        // "4 hits · in title, tag, transcript": only the places that actually occur.
         bool inTitle = false, inTag = false, inText = false;
         for (const LibraryEntry& e : m_entries) {
             inTitle = inTitle || e.titleMatch.isValid();
@@ -530,7 +529,7 @@ void LibraryListModel::warmUp()
 
 void LibraryListModel::scheduleRefresh(int delayMs)
 {
-    // Több jel egy eseményhurok-körben (pl. átirat kész: store + tracker) → egy lekérdezés.
+    // Several signals in one event-loop turn (e.g. transcript done: store + tracker) -> one query.
     if (!m_refreshTimer.isActive() || m_refreshTimer.remainingTime() > delayMs)
         m_refreshTimer.start(delayMs);
 }
@@ -554,10 +553,10 @@ void LibraryListModel::refreshNow()
 
 void LibraryListModel::onMeetingChanged(const QString& meetingId)
 {
-    // Szűrés nélkül egy meeting változása (cím, állapot-ikon, futó feladat) nem érinti a
-    // sorrendet (az a kezdési idő szerinti) → csak azt az egy sort frissítjük. Szűrt
-    // listában a tagság is változhat, ott újra lekérdezünk.
-    emit tagOptionsChanged();     // a címkék darabszáma változhatott
+    // Without filtering, a meeting's change (title, state icon, running task) does not affect the
+    // order (which is by start time) -> only that one row is refreshed. In a filtered list
+    // membership can change too, so we query again.
+    emit tagOptionsChanged();     // the tag counts may have changed
     tanara::MeetingLibrary* lib = library();
     const int row = indexOfMeeting(meetingId);
     if (!lib || filtered() || row < 0 || m_refreshTimer.isActive()) {
@@ -593,7 +592,7 @@ void LibraryListModel::apply(const tanara::LibraryResult& result)
         ++firstDiff;
 
     if (n == oldCount && firstDiff == n) {
-        // Ugyanazok a sorok: csak a ténylegesen megváltozottakat jelezzük.
+        // The same rows: only the really changed ones are signaled.
         for (int i = 0; i < n; ++i) {
             if (sameEntry(m_entries.at(i), fresh.at(i))) continue;
             m_entries[i] = fresh.at(i);

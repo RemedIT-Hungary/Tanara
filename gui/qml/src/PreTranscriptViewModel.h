@@ -1,24 +1,24 @@
 #pragma once
 //
-// Tanara QML — az „átirat előtti” nézet (PreTranscriptView.qml) nézetmodellje. Egy átirat
-// nélküli meeting három állapotát szolgálja ki a feldolgozási állapotból:
-//   "steps"   — M03 lépések: kontextus, előkészítés, átírás őszinte kapuzással (canRun);
-//   "running" — M04: az átírás-feladat szakaszai VALÓS haladással (JobProgress);
-//   "failed"  — M05: a megmaradt hiba emberi üzenete + technikai sora + javító művelet.
+// Tanara QML: view model of the pre-transcript view (PreTranscriptView.qml). It serves the
+// three states of a meeting without a transcript from the processing state:
+//   "steps"   : steps: context, preparation, transcription with honest gating (canRun);
+//   "running" : the transcription task's phases with REAL progress (JobProgress);
+//   "failed"  : the leftover error's human message + technical line + fix action.
 //
-// Az 1. lépés címkéi (C07, T07; átirat előtt a fejlécben nincs címkesor): `tags` (a mező
-// chipjei) és a javaslat-sor. A javaslat a megbeszélés rendes javaslataiból jön, ha vannak;
-// amíg nincs átirat, a cím alapján (AppController::draftTagSuggestions), a már felrakottak és
-// az elutasítottak nélkül. Elfogadás / elutasítás egy-egy visszavonható lépés (toast).
+// Step 1's tags (before a transcript the header has no tag row): `tags` (the field's chips)
+// and the suggestion row. The suggestion comes from the meeting's regular suggestions if there
+// are any; until there is a transcript, from the title (AppController::draftTagSuggestions),
+// without the already attached and the rejected ones. Accepting / rejecting is one undoable step each (toast).
 //
-// Az átírást NEM ez indítja (az a héj dolga: shell.startTranscription — kapuzás + cloud-
-// becslés); ez csak állapotot ad, és a meetinghez tartozó beállításokat menti (kontextus,
-// azonosítás kapcsoló, Tanara Cloud szint).
+// It does NOT start the transcription (that is the shell's job: shell.startTranscription:
+// gating + cloud estimate); it only provides state and saves the meeting's settings (context,
+// identification switch, Tanara Cloud tier).
 //
-// Controller nélkül vagy App.demo mellett beépített, KITALÁLT mintaadatot mutat; a
-// demoState választja ki, melyik állapotot ("steps" | "ready" | "cloud" | "running" |
-// "uploading" | "failed" | "note" — lépések sablon-javaslatokkal és észlelt hívással |
-// "readyNote" — indítható, sablon-javaslatokkal és észlelt hívással; az Áttekintés U6-demója).
+// Without a controller or with App.demo it shows built-in FICTIONAL sample data; demoState
+// selects the state ("steps" | "ready" | "cloud" | "running" | "uploading" | "failed" |
+// "note": steps with template suggestions and a detected call | "readyNote": can start, with
+// template suggestions and a detected call; the Overview's demo).
 //
 #include "MeetingNoteModel.h"
 #include "MeetingTagsModel.h"
@@ -43,45 +43,45 @@ class PreTranscriptViewModel : public QObject {
     Q_OBJECT
     QML_ELEMENT
 
-    // Alapból az App-singleton controllere; tesztben injektálható.
+    // Defaults to the App singleton's controller; injectable in tests.
     Q_PROPERTY(QObject* controller READ controllerObject WRITE setController NOTIFY controllerChanged)
     Q_PROPERTY(QString meetingId READ meetingId WRITE setMeetingId NOTIFY meetingIdChanged)
     Q_PROPERTY(QString demoState READ demoState WRITE setDemoState NOTIFY demoStateChanged)
     Q_PROPERTY(bool demo READ demo NOTIFY changed)
 
-    // "none" (nincs meeting) | "steps" | "running" | "failed"
+    // "none" (no meeting) | "steps" | "running" | "failed"
     Q_PROPERTY(QString state READ state NOTIFY changed)
 
-    // ---- M03 ----
-    // A megjegyzés szerkesztése (piszkozat, mentés, sablon-javaslatok, észlelt hívás) — a
-    // MeetingNoteEditor ezt kapja. A contextNote ennek a mentett értéke (rövidítés).
+    // ---- context ----
+    // Editing the note (draft, save, template suggestions, detected call): the
+    // MeetingNoteEditor gets this. contextNote is its saved value (shorthand).
     Q_PROPERTY(tanara_qml::MeetingNoteModel* note READ note CONSTANT)
     Q_PROPERTY(QString contextNote READ contextNote WRITE setContextNote NOTIFY contextNoteChanged)
-    // Az 1. lépés címkemezője (a megbeszélés címkéi).
+    // Step 1's tag field (the meeting's tags).
     Q_PROPERTY(tanara_qml::MeetingTagsModel* tags READ tags CONSTANT)
-    // A javaslat-sor: [{ index, id, name, isNew, source }] (legfeljebb 3).
+    // The suggestion row: [{ index, id, name, isNew, source }] (at most 3).
     Q_PROPERTY(QVariantList tagSuggestions READ tagSuggestions NOTIFY tagSuggestionsChanged)
-    // Rövid indok az első javaslathoz: „hasonló cím: „…”” | „közös résztvevő: …” | „közös kifejezések: …”.
+    // Short reason for the first suggestion: "similar title: "..."" | "shared participant: ..." | "shared terms: ...".
     Q_PROPERTY(QString tagSuggestionReason READ tagSuggestionReason NOTIFY tagSuggestionsChanged)
     Q_PROPERTY(bool identifyEnabled READ identifyEnabled WRITE setIdentifyEnabled NOTIFY changed)
     Q_PROPERTY(bool identifyAvailable READ identifyAvailable NOTIFY changed)
     // "ready" | "missing" | "stale" | "running"
     Q_PROPERTY(QString mixdownState READ mixdownState NOTIFY changed)
     Q_PROPERTY(int mixdownPercent READ mixdownPercent NOTIFY mixdownPercentChanged)
-    // Önálló lekeverés fut (megszakítható a shell.cancelJob(…, JobKinds.Mixdown)-nal).
+    // A standalone mixdown is running (cancelable with shell.cancelJob(..., JobKinds.Mixdown)).
     Q_PROPERTY(bool mixdownCancellable READ mixdownCancellable NOTIFY changed)
     Q_PROPERTY(bool canStart READ canStart NOTIFY changed)
-    // Üres, ha indítható; különben { title, text, actionLabel, actionPage, reason, kind }.
+    // Empty if it can start; otherwise { title, text, actionLabel, actionPage, reason, kind }.
     Q_PROPERTY(QVariantMap blocker READ blocker NOTIFY changed)
     Q_PROPERTY(QString providerLabel READ providerLabel NOTIFY changed)
 
-    // ---- Tanara Cloud (csak ha a build tartalmazza és az átírás szolgáltatója az) ----
-    Q_PROPERTY(bool cloudSelected READ cloudSelected NOTIFY changed)       // szint-választó látszik
+    // ---- Tanara Cloud (only if the build includes it and it is the transcription provider) ----
+    Q_PROPERTY(bool cloudSelected READ cloudSelected NOTIFY changed)       // tier selector visible
     Q_PROPERTY(QString cloudTier READ cloudTier WRITE setCloudTier NOTIFY changed)   // fast | accurate
-    Q_PROPERTY(QString cloudExpertName READ cloudExpertName NOTIFY changed)          // nem üres → Expert-modell
+    Q_PROPERTY(QString cloudExpertName READ cloudExpertName NOTIFY changed)          // non-empty -> Expert model
     Q_PROPERTY(QString cloudLanguageLabel READ cloudLanguageLabel NOTIFY changed)
     Q_PROPERTY(QString cloudWarning READ cloudWarning NOTIFY changed)
-    Q_PROPERTY(bool cloudTeaser READ cloudTeaser NOTIFY changed)           // „hamarosan” sor
+    Q_PROPERTY(bool cloudTeaser READ cloudTeaser NOTIFY changed)           // "coming soon" row
 
     // ---- M04 ----
     Q_PROPERTY(QString jobTitle READ jobTitle NOTIFY jobChanged)
@@ -114,16 +114,16 @@ public:
     MeetingNoteModel* note() const { return m_note; }
     QString contextNote() const { return m_note->note(); }
     void setContextNote(const QString& note);
-    // A mező gépelés közbeni tartalma: a megbeszéléssel EGYÜTT jegyezzük meg, amelyhez írták.
-    // A késleltetett mentés (és a megbeszélés-váltás) ezt írja ki — mindig a saját
-    // megbeszélésébe, akkor is, ha közben másik lett a kijelölt (pl. véget ért egy felvétel).
-    // (A MeetingNoteModel draft / commitDraft műveletei.)
+    // The field's content while typing: remembered TOGETHER WITH the meeting it was written for.
+    // The delayed save (and a meeting switch) writes it out, always into its own meeting, even
+    // if the selection changed meanwhile (e.g. a recording ended).
+    // (MeetingNoteModel's draft / commitDraft operations.)
     Q_INVOKABLE void draftContextNote(const QString& note) { m_note->draft(note); }
     Q_INVOKABLE void commitContextDraft() { m_note->commitDraft(); }
     MeetingTagsModel* tags() const { return m_tags; }
     QVariantList tagSuggestions() const;
     QString tagSuggestionReason() const;
-    // A javaslat-sor egy elemének felrakása / elutasítása (visszavonható lépés + toast).
+    // Attaching / rejecting one item of the suggestion row (undoable step + toast).
     Q_INVOKABLE void acceptTagSuggestion(int index);
     Q_INVOKABLE void rejectTagSuggestion(int index);
     bool identifyEnabled() const { return m_identifyEnabled; }
@@ -156,11 +156,11 @@ public:
     QString fixActionLabel() const { return m_fixActionLabel; }
     QString fixActionPage() const { return m_fixActionPage; }
 
-    // A kapuzás és az állapot újraolvasása (pl. a Beállítások bezárása után).
+    // Re-reads gating and state (e.g. after Settings closes).
     Q_INVOKABLE void refresh();
-    // Lekeverés indítása most (nem kell megvárni az átírást).
+    // Starts the mixdown now (no need to wait for the transcription).
     Q_INVOKABLE void startMixdown();
-    // A megmaradt hiba elengedése → vissza a lépésekhez (kontextus / előkészítés módosítása).
+    // Dismisses the leftover error -> back to the steps (change context / preparation).
     Q_INVOKABLE void clearError();
 
 signals:
@@ -169,7 +169,7 @@ signals:
     void demoStateChanged();
     void contextNoteChanged();
     void tagSuggestionsChanged();
-    // Értesítés egy címke-lépés után (a nézet a héj toastjával mutatja, „Visszavonás”-sal).
+    // Notice after a tag step (the view shows it with the shell's toast, with "Undo").
     void toast(const QString& text, bool undoable);
     void mixdownPercentChanged();
     void jobChanged();
@@ -193,9 +193,9 @@ private:
 
     MeetingNoteModel* m_note = nullptr;
     MeetingTagsModel* m_tags = nullptr;
-    QString m_title;                               // a vázlat-javaslathoz
-    QVector<TagSuggestionItem> m_tagSuggestions;   // a javaslat-sor
-    bool m_tagSuggestionsFromModel = false;        // a rendes javaslatok (nem a cím alapú vázlat)
+    QString m_title;                               // for the draft suggestion
+    QVector<TagSuggestionItem> m_tagSuggestions;   // the suggestion row
+    bool m_tagSuggestionsFromModel = false;        // the regular suggestions (not the title-based draft)
     bool m_identifyEnabled = true;
     bool m_identifyAvailable = true;
     QString m_mixdownState = QStringLiteral("ready");
@@ -216,7 +216,7 @@ private:
     QVariantList m_stages;
     bool m_cancellable = true;
     bool m_cancelling = false;
-    tanara::JobProgress m_job;      // az ETA-hoz (startedAt + becslés)
+    tanara::JobProgress m_job;      // for the ETA (startedAt + estimate)
     QString m_demoEta;
     QTimer m_etaTimer;
 

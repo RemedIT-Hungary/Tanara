@@ -1,24 +1,24 @@
 #pragma once
 //
-// ReviewQueueModel — az Átnézendő „A" koncepciójának (Fókusz-sor) munkalistája (S3). A
-// TranscriptEditorViewModel.reviewQueue adja; a fókusz-nézet (S4) és a nyitó-javaslat /
-// mintázat-ajánlat (S5) ebből dolgozik.
+// ReviewQueueModel: the worklist of the "To review" focus-queue concept. Exposed as
+// TranscriptEditorViewModel.reviewQueue; the focus view and the opening suggestion / pattern
+// offer work from it.
 //
-// Elv (koncepció-dokumentum 2.2–2.3): a munkalista egy FAGYASZTOTT, IDŐRENDI pillanatkép, amely
-// a belépéskor (start) vagy a kör-záráskor (startNextRound) készül a mostani kétes sorokból (a
-// döntést kérő ReviewView-k sorai + minden „uncertain" sor; a már eldöntött — megerősített,
-// javított, nem azonosítható — sorok nélkül). A háttér-elemzés (rebuildReview → syncFromReview)
-// SOSEM rendezi át:
-//  - a döntött sor a HELYÉN marad (`decided` / `ignored`), a kurzor a következő nyitott sorra lép;
-//  - az új kétes sorok egy külső „beérkező" halmazba kerülnek (incomingCount, „+N új vár"),
-//    és csak kérésre (admitIncoming) vagy kör-záráskor (startNextRound) jönnek a lista VÉGÉRE;
-//  - egy sorban álló sor javaslatának változása csak a soron jelzés (suggestionUpdated);
-//  - egy sorban álló sor, ami a háttérben már nem kétes, `alreadyDecided` lesz (nem tűnik el).
-// Sorrendet csak a later() (a sor a lista végére) és a bringToFront() (S5 „Egyenként") változtat.
+// Principle: the worklist is a FROZEN, CHRONOLOGICAL snapshot taken on entry (start) or at
+// round close (startNextRound) from the currently doubtful rows (rows of the ReviewViews that
+// ask for a decision + every "uncertain" row; without already decided rows: confirmed,
+// corrected, cannot be identified). The background analysis (rebuildReview -> syncFromReview)
+// NEVER reorders it:
+//  - a decided row STAYS in place (`decided` / `ignored`), the cursor moves to the next open row;
+//  - new doubtful rows go into an outer "incoming" set (incomingCount, "+N new waiting") and
+//    join the END of the list only on request (admitIncoming) or at round close (startNextRound);
+//  - a suggestion change for a listed row is only flagged on the row (suggestionUpdated);
+//  - a listed row that is no longer doubtful in the background becomes `alreadyDecided` (it does not vanish).
+// Only later() (row to the end of the list) and bringToFront() ("One by one") change the order.
 //
-// Az állapot a sor jelzőiből származik (nem tárolt döntés): ignored → `ignored`; confirmed /
-// manuallyCorrected → `decided`; Később-jel → `later`; már nem kétes → `alreadyDecided`;
-// különben `pending`. Így a visszavonás magától visszaállítja a sort (és a kurzor rá ugrik).
+// The state derives from the row's flags (no stored decision): ignored -> `ignored`; confirmed /
+// manuallyCorrected -> `decided`; Later flag -> `later`; no longer doubtful -> `alreadyDecided`;
+// otherwise `pending`. So an undo restores the row by itself (and the cursor jumps to it).
 //
 #include "TranscriptEditorViewModel.h"
 
@@ -37,30 +37,29 @@ class ReviewQueueModel : public QAbstractListModel {
     Q_OBJECT
     QML_ELEMENT
     QML_UNCREATABLE("A TranscriptEditorViewModel.reviewQueue adja")
-    // Fut-e munkalista (start után, stop / új munkamenet előtt).
+    // Whether a worklist is running (after start, before stop / a new session).
     Q_PROPERTY(bool active READ active NOTIFY activeChanged)
-    // A kör sorszáma (1-től).
+    // The round number (from 1).
     Q_PROPERTY(int round READ round NOTIFY roundChanged)
     Q_PROPERTY(int count READ count NOTIFY countsChanged)
-    // A kurzor (sor-index a listában; -1 = nincs: üres lista vagy kör vége).
+    // The cursor (row index in the list; -1 = none: empty list or round end).
     Q_PROPERTY(int currentIndex READ currentIndex NOTIFY currentChanged)
     Q_PROPERTY(QString currentUtterance READ currentUtterance NOTIFY currentChanged)
-    // A kurzor sora a szerepek nevével (lásd roleNames); üres map, ha nincs.
+    // The cursor row with the role names (see roleNames); empty map if none.
     Q_PROPERTY(QVariantMap current READ current NOTIFY currentChanged)
-    // Számlálók a haladás-sávhoz („N / M"): decided + ignored = eldöntve.
+    // Counters for the progress bar ("N / M"): decided + ignored = resolved.
     Q_PROPERTY(int decidedCount READ decidedCount NOTIFY countsChanged)
     Q_PROPERTY(int ignoredCount READ ignoredCount NOTIFY countsChanged)
     Q_PROPERTY(int laterCount READ laterCount NOTIFY countsChanged)
     Q_PROPERTY(int alreadyDecidedCount READ alreadyDecidedCount NOTIFY countsChanged)
-    // Nyitott sorok: csak a pending (S7: a magától eldőlt — alreadyDecided — sorokat a kurzor
-    // átugorja, azok nem nyitottak).
+    // Open rows: only pending (the cursor skips self-resolved alreadyDecided rows; they are not open).
     Q_PROPERTY(int openCount READ openCount NOTIFY countsChanged)
-    // S7 „Mind megerősítem”: a magától eldőlt sorok közül a legalább kMinEmbedMs hosszúak (ezek
-    // lennének minta; a rövideket a gomb nem bántja).
+    // "Confirm all": among self-resolved rows, those at least kMinEmbedMs long (these would be
+    // samples; the button leaves the short ones alone).
     Q_PROPERTY(int confirmableCount READ confirmableCount NOTIFY countsChanged)
-    // A kör kész: van munkalista, és nincs nyitott sora (a later sorok nem nyitottak).
+    // The round is done: there is a worklist and no open row (later rows are not open).
     Q_PROPERTY(bool roundComplete READ roundComplete NOTIFY countsChanged)
-    // A beérkező halmaz („+N új vár"): kétes sorok, amelyek nincsenek a munkalistán; időrendben.
+    // The incoming set ("+N new waiting"): doubtful rows not on the worklist; in time order.
     Q_PROPERTY(int incomingCount READ incomingCount NOTIFY incomingChanged)
     Q_PROPERTY(QStringList incomingIds READ incomingIds NOTIFY incomingChanged)
 
@@ -70,32 +69,32 @@ public:
 
     enum Role {
         UtteranceIdRole = Qt::UserRole + 1,
-        OrderRole,              // sor-index a listában (= a modell sora)
+        OrderRole,              // row index in the list (= the model row)
         StateRole,              // "pending" | "decided" | "later" | "ignored" | "alreadyDecided"
-        CurrentRole,            // a kurzor ezen a soron
-        ReasonKindRole,         // a csoport-fajta: "sideConflict" | "coreMismatch" | "similarToNewPerson" | "uncertain"
-        ReasonTitleRole,        // a csoport címe (ReviewView::title, már fordított)
-        ReasonsRole,            // a csoport bizonyítékai (evidence map-ek: kind, polarity, text, value, manual …)
-        GroupIdRole,            // a ReviewView id-je (a beemeléskori)
-        LikelyKeyRole,          // javasolt beszélő kulcsa (üres: meetingen kívüli személy / új beszélő / nincs)
-        LikelyNameRole,         // javasolt beszélő neve (a meetingen kívüli személyé is)
-        LikelyNewSideRole,      // a javaslat új beszélő ezen az oldalon: "local" | "remote" | ""
-        SuggestionUpdatedRole,  // a javaslat a beemelés óta változott (a fókuszban „javaslat frissült")
-        SpeakerKeyRole,         // a sor MOSTANI beszélője
+        CurrentRole,            // the cursor is on this row
+        ReasonKindRole,         // the group kind: "sideConflict" | "coreMismatch" | "similarToNewPerson" | "uncertain"
+        ReasonTitleRole,        // the group's title (ReviewView::title, already translated)
+        ReasonsRole,            // the group's evidence (evidence maps: kind, polarity, text, value, manual ...)
+        GroupIdRole,            // the ReviewView id (at admission)
+        LikelyKeyRole,          // suggested speaker's key (empty: person outside the meeting / new speaker / none)
+        LikelyNameRole,         // suggested speaker's name (also for a person outside the meeting)
+        LikelyNewSideRole,      // the suggestion is a new speaker on this side: "local" | "remote" | ""
+        SuggestionUpdatedRole,  // the suggestion changed since admission (focus shows "suggestion updated")
+        SpeakerKeyRole,         // the row's CURRENT speaker
         SpeakerNameRole,
         ColorIndexRole,
-        LaneRole,               // a beszélő oszlopa a sínen (-1 = összecsukva)
-        OriginalKeyRole,        // a beszélő a beemeléskor (a „jelenlegi" a mintázatban)
+        LaneRole,               // the speaker's rail column (-1 = collapsed)
+        OriginalKeyRole,        // the speaker at admission (the "current" in the pattern)
         OriginalNameRole,
         StartMsRole,
         EndMsRole,
-        TimeLabelRole,          // „12:58"
+        TimeLabelRole,          // "12:58"
         LineTextRole,
         DecidedKindRole,        // "corrected" | "confirmed" | "ignored" | ""
         SampleStateRole,        // "sample" | "noSample" | ""
-        AdmittedRole,           // a beérkező halmazból került be (admitIncoming / új kör)
-        ConsequenceRole,        // beemeléskor „a mostani döntéseid miatt" lett kétes
-        RoundRole,              // melyik körben került a listára
+        AdmittedRole,           // came from the incoming set (admitIncoming / new round)
+        ConsequenceRole,        // became doubtful at admission "because of your current decisions"
+        RoundRole,              // the round in which it joined the list
     };
     Q_ENUM(Role)
 
@@ -121,78 +120,78 @@ public:
     int incomingCount() const { return int(m_incoming.size()); }
     QStringList incomingIds() const { return m_incoming; }
 
-    // ---- munkalista ----
-    // Új pillanatkép a mostani kétes sorokból (1. kör); a kurzor az első nyitott sorra.
+    // ---- worklist ----
+    // New snapshot from the currently doubtful rows (round 1); the cursor goes to the first open row.
     Q_INVOKABLE void start();
-    // Kilépés: a lista kiürül, a szinkron leáll.
+    // Exit: the list empties, the sync stops.
     Q_INVOKABLE void stop();
-    // Kör-zárás után: új pillanatkép a beérkezőkből és / vagy a „később" sorokból (a még nyitott
-    // sorok is átkerülnek), időrendben; a kör-számláló nő, a mintázat-napló törlődik.
+    // After round close: a new snapshot from the incoming and / or "later" rows (still-open rows
+    // carry over too), in time order; the round counter grows, the pattern log is cleared.
     Q_INVOKABLE void startNextRound(bool includeIncoming = true, bool includeLater = true);
-    // A beérkezők a lista VÉGÉRE (egymás közt időrendben); a kurzor nem mozdul — ha a kör kész
-    // volt, az első beemelt sorra áll. Vissza: a beemelt sorok száma.
+    // Incoming rows go to the END of the list (chronological among themselves); the cursor does
+    // not move, or, if the round was done, lands on the first admitted row. Returns the number admitted.
     Q_INVOKABLE int admitIncoming();
 
-    // ---- kurzor ----
-    Q_INVOKABLE bool next();            // a következő sorra (bármilyen állapotú); a végén nem fordul
-    Q_INVOKABLE bool previous();        // az előző sorra (döntöttre is; ott újra dönthető); -1-ről az utolsóra
-    Q_INVOKABLE bool advance();         // a következő NYITOTT sorra (körbefordul); nincs: -1 (kör vége)
-    Q_INVOKABLE bool retreat();         // S7 (Shift+B): az előző NYITOTT sorra (körbefordul); nincs: false
-    // S7: a kurzor utáni következő nyitott sor indexe (körbefordul; a kurzor sora nem); -1: nincs.
+    // ---- cursor ----
+    Q_INVOKABLE bool next();            // to the next row (any state); does not wrap at the end
+    Q_INVOKABLE bool previous();        // to the previous row (decided too; it can be decided again there); from -1 to the last
+    Q_INVOKABLE bool advance();         // to the next OPEN row (wraps); none: -1 (round end)
+    Q_INVOKABLE bool retreat();         // (Shift+B): to the previous OPEN row (wraps); none: false
+    // Index of the next open row after the cursor (wraps; not the cursor's row); -1: none.
     Q_INVOKABLE int nextOpenIndex() const;
     Q_INVOKABLE bool jumpTo(int index);
-    // „Később": a kurzor (pending) sora a lista VÉGÉRE, `later` állapottal; a kurzor a következő
-    // nyitott sorra. alreadyDecided soron: tovább a következő nyitottra (a sor a helyén marad);
-    // döntött / later soron: next().
+    // "Later": the cursor's (pending) row goes to the END of the list with `later` state; the
+    // cursor goes to the next open row. On an alreadyDecided row: on to the next open one (the row
+    // stays in place); on a decided / later row: next().
     Q_INVOKABLE bool later();
-    // S5 „Egyenként": a megadott (nyitott) sorok a kurzor helyére, időrendben; a kurzor az elsőre.
+    // "One by one": the given (open) rows go to the cursor's place, in time order; the cursor to the first.
     Q_INVOKABLE int bringToFront(const QStringList& utteranceIds);
     Q_INVOKABLE int indexOf(const QString& utteranceId) const { return m_pos.value(utteranceId, -1); }
     Q_INVOKABLE QVariantMap get(int index) const;
-    // S7: a magától eldőlt, legalább kMinEmbedMs hosszú sorok (listasorrendben) — a „Mind
-    // megerősítem” ezeket erősíti meg (TranscriptEditorViewModel::confirmSettled).
+    // Self-resolved rows at least kMinEmbedMs long (in list order): "Confirm all" confirms
+    // these (TranscriptEditorViewModel::confirmSettled).
     Q_INVOKABLE QStringList confirmableIds() const;
 
-    // ---- összesítők ----
-    // Kör-zárás: { round, total, decided, ignored, later, alreadyDecided, confirmable, open,
-    //   sampleDelta: [{ key, name, colorIndex, delta }] (a kör eleje óta, csökkenő),
-    //   incoming, incomingIds, incomingInReviewed (a kör sorainak időszakán belül),
+    // ---- summaries ----
+    // Round close: { round, total, decided, ignored, later, alreadyDecided, confirmable, open,
+    //   sampleDelta: [{ key, name, colorIndex, delta }] (since the round start, descending),
+    //   incoming, incomingIds, incomingInReviewed (within the time span of the round's rows),
     //   incomingCausedByDecisions, causedIds }.
     Q_INVOKABLE QVariantMap roundSummary() const;
-    // Mintázat (S5): az utolsó 6 döntésből a leggyakoribb (ok, jelenlegi, javasolt) hármas, ha
-    // ≥ 4-szer szerepel: { key, reasonKind, currentKey, currentName, proposedKey, proposedName,
-    //   hits, window, sameAhead: [id] (a kurzor során KÍVÜL a nyitott, azonos hármasú sorok,
-    //   listasorrendben), currentMatches (a kurzor sora is ilyen) }. Üres map: nincs mintázat.
+    // Pattern: of the last 6 decisions, the most frequent (reason, current, proposed) triple, if
+    // it occurs >= 4 times: { key, reasonKind, currentKey, currentName, proposedKey, proposedName,
+    //   hits, window, sameAhead: [id] (open rows with the same triple OUTSIDE the cursor's row, in
+    //   list order), currentMatches (the cursor's row is such too) }. Empty map: no pattern.
     Q_INVOKABLE QVariantMap recentPattern() const;
-    // „Nem": ez a hármas ebben a körben nem ajánlódik újra.
+    // "No": this triple is not offered again in this round.
     Q_INVOKABLE void dismissPattern(const QString& key);
-    // Nyitó-javaslatok (S5) a kör elejéről: a ≥ 15 soros, erős (hang ≥ 75 % vagy sáv-ellentmondás
-    // kézi beosztással), javaslattal bíró csoportok: [{ groupId, kind, title, subtitle, ids,
-    //   count, pendingCount, currentKey, currentName, proposedKey, proposedName, newSide,
-    //   voicePct (-1: nincs), manualSide, spotIds (3 időben szórt sor), sampleCount (a még
-    //   nyitott sorokból a becsült minta-szám: elég hosszú, nem zajos) }].
+    // Opening suggestions from the round start: groups of >= 15 rows that are strong (voice >= 75 %
+    // or a track contradiction with a manual assignment) and have a suggestion: [{ groupId, kind,
+    // title, subtitle, ids, count, pendingCount, currentKey, currentName, proposedKey,
+    // proposedName, newSide, voicePct (-1: none), manualSide, spotIds (3 rows spread in time),
+    // sampleCount (estimated sample count from the still-open rows: long enough, not noisy) }].
     Q_INVOKABLE QVariantList openers() const;
 
-    // ---- a nézetmodell hívja ----
-    // A start() explicit bemenettel (teszt / beágyazás): a pillanatkép és a nyitó-javaslatok
-    // ezekből a csoportokból / sorokból (a sor-jelzők élőben a VM-ből).
+    // ---- called by the view model ----
+    // start() with explicit input (test / embedding): the snapshot and opening suggestions come
+    // from these groups / rows (row flags live from the VM).
     void startFrom(const QVector<TranscriptEditorViewModel::ReviewView>& views,
                    const QVector<tanara::EditorUtterance>& utterances);
-    // A háttér-elemzés eredménye (a VM rebuildReview-ja után): csak a beérkező halmaz, a
-    // javaslat-frissülések és az alreadyDecided állapot változik; sorrend soha.
+    // Result of the background analysis (after the VM's rebuildReview): only the incoming set,
+    // suggestion updates and the alreadyDecided state change; never the order.
     void syncFromReview();
-    // Ugyanez explicit bemenettel (teszt / beágyazás).
+    // The same with explicit input (test / embedding).
     void syncFromReview(const QVector<TranscriptEditorViewModel::ReviewView>& views,
                         const QVector<tanara::EditorUtterance>& utterances);
-    // A VM döntés-hívásai / visszavonás után: az érintett sorok állapota (sorrend nem változik).
-    // Döntés a kurzor során → a kurzor a következő nyitott sorra; visszavont döntés → a kurzor
-    // a visszaállt sorra.
+    // After the VM's decision calls / undo: the affected rows' state (the order does not change).
+    // A decision on the cursor's row -> the cursor goes to the next open row; an undone decision
+    // -> the cursor goes to the restored row.
     void refreshUtterances(const QVector<int>& utteranceIndices);
-    void refreshAll();                  // nevek / színek / oszlopok változtak
+    void refreshAll();                  // names / colors / columns changed
 
     static QString stateName(State s);
-    // A nyitó-javaslat küszöbei (alap: kOpenerMinLines / kOpenerMinVoice); a demó-állapotok a kis
-    // kitalált meetingen lazítják. A következő start / új kör számol vele.
+    // The opening suggestion's thresholds (default: kOpenerMinLines / kOpenerMinVoice); demo
+    // states loosen them on the small fictional meeting. The next start / new round uses them.
     void setOpenerThresholds(int minLines, double minVoice)
     {
         m_openerMinLines = minLines;
@@ -211,7 +210,7 @@ signals:
     void currentChanged();
     void incomingChanged();
     void patternChanged();
-    // Egy sorban álló sor javaslata a beemelés óta megváltozott (a SuggestionUpdatedRole is igaz).
+    // A listed row's suggestion changed since admission (SuggestionUpdatedRole is true too).
     void suggestionUpdated(const QString& utteranceId);
 
 private:
@@ -227,8 +226,8 @@ private:
     struct Item {
         QString id;
         QString originalKey;
-        Doubt reason;               // a beemeléskori ok (fagyasztva)
-        QString likelyKey;          // a javaslat (frissülhet, amíg a sor nyitott)
+        Doubt reason;               // the reason at admission (frozen)
+        QString likelyKey;          // the suggestion (may refresh while the row is open)
         QString likelyName;
         QString likelyNewSide;
         bool suggestionUpdated = false;
@@ -237,7 +236,7 @@ private:
         bool consequence = false;
         int round = 1;
         State state = Pending;
-        QString sig;                // a döntés-jelzők lenyomata (változás-észleléshez)
+        QString sig;                // fingerprint of the decision flags (to detect changes)
     };
     struct Opener {
         Doubt view;
@@ -248,7 +247,7 @@ private:
     };
     struct PatternEntry {
         QString id;
-        QString key;                // üres: nem áthelyezés (megerősítés, nem azonosítható, később)
+        QString key;                // empty: not a move (confirm, cannot be identified, later)
     };
 
     QHash<QString, Doubt> computeDoubt(const QVector<TranscriptEditorViewModel::ReviewView>& views,
@@ -260,7 +259,7 @@ private:
     void setItems(QVector<Item> items);
     void rebuildPos();
     void setCurrent(int index, bool force = false);
-    int nextOpen(int from) const;           // from-tól (bezárva) előre, körbe
+    int nextOpen(int from) const;           // forward from `from` (exclusive), wrapping
     bool isOpen(const Item& it) const;
     void updateIncoming();
     void computeOpeners(const QVector<TranscriptEditorViewModel::ReviewView>& views);
@@ -277,11 +276,11 @@ private:
     QVector<Item> m_items;
     QHash<QString, int> m_pos;
     int m_current = -1;
-    QHash<QString, Doubt> m_doubt;          // a legutóbbi szinkron kétes sorai
+    QHash<QString, Doubt> m_doubt;          // doubtful rows of the latest sync
     QStringList m_incoming;
-    QSet<QString> m_roundStartDoubt;        // a kör elején kétes sorok (a következmény-jelöléshez)
-    QHash<QString, int> m_roundStartSamples;    // beszélő → sessionAdded a kör elején
-    QVector<PatternEntry> m_log;            // a kör döntései (a legfrissebb a végén)
+    QSet<QString> m_roundStartDoubt;        // rows doubtful at the round start (for marking consequences)
+    QHash<QString, int> m_roundStartSamples;    // speaker -> sessionAdded at the round start
+    QVector<PatternEntry> m_log;            // the round's decisions (newest last)
     QSet<QString> m_dismissed;
     QVector<Opener> m_openers;
     int m_openerMinLines = kOpenerMinLines;

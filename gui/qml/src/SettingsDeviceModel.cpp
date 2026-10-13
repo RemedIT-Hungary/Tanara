@@ -16,14 +16,14 @@ using namespace tanara;
 namespace tanara_qml {
 
 namespace {
-constexpr qint64 kPeakHoldMs = 1500;   // csúcstartás ideje (mint a felvevőben)
+constexpr qint64 kPeakHoldMs = 1500;   // peak-hold time (as in the recorder)
 }
 
 SettingsDeviceModel::SettingsDeviceModel(SettingsViewModel* vm)
     : QAbstractListModel(vm), m_vm(vm)
 {
     m_clock.start();
-    m_tick.setInterval(33);   // ~30 Hz: a csúcstartás lecsengése
+    m_tick.setInterval(33);   // ~30 Hz: the peak hold's decay
     connect(&m_tick, &QTimer::timeout, this, &SettingsDeviceModel::tick);
 }
 
@@ -88,7 +88,7 @@ void SettingsDeviceModel::rebuild()
     const QVector<AudioDeviceInfo> present =
         c->devices() ? c->devices()->captureDevices() : QVector<AudioDeviceInfo>{};
 
-    // Ugyanaz a halmaz → a szintek maradnak, csak az alapértelmezett-jelölés frissül.
+    // Same set -> the levels stay, only the default marker refreshes.
     bool same = present.size() == m_rows.size();
     for (int k = 0; same && k < present.size(); ++k) same = rowOf(present.at(k).name) >= 0;
 
@@ -101,14 +101,14 @@ void SettingsDeviceModel::rebuild()
         r.group = d.kind == TrackKind::Mic ? 0 : d.kind == TrackKind::Loopback ? 1 : 2;
         rows.push_back(r);
     }
-    // A felvevő sorrendje: csoportonként, az alapértelmezett eszköz elöl.
+    // The recorder's order: per group, the default device first.
     std::stable_sort(rows.begin(), rows.end(), [](const Row& x, const Row& y) {
         if (x.group != y.group) return x.group < y.group;
         return x.info.isDefault && !y.info.isDefault;
     });
 
     for (int k = 0; same && k < rows.size(); ++k)
-        same = rows.at(k).info.name == m_rows.at(k).info.name;   // a sorrend is ugyanaz
+        same = rows.at(k).info.name == m_rows.at(k).info.name;   // the order is the same too
     if (same) {
         m_rows = rows;
         if (!m_rows.isEmpty())
@@ -144,7 +144,7 @@ void SettingsDeviceModel::rename(int row, const QString& name)
     const QString raw = m_rows.at(row).info.name;
     const QString n = name.simplified();
     QMap<QString, QString>& names = m_vm->draft().deviceNames;
-    // Üres, vagy épp a gyári rövid név → nincs saját név.
+    // Empty, or just the factory short name -> no own name.
     if (n.isEmpty() || n == devicenames::displayName(raw, {}))
         names.remove(raw);
     else
@@ -179,7 +179,7 @@ void SettingsDeviceModel::setTicking(bool on)
         return;
     }
     m_tick.stop();
-    // A lap eltűnt: a mérők ne fagyjanak be egy régi értéken.
+    // The page disappeared: the meters must not freeze on an old value.
     for (int i = 0; i < m_rows.size(); ++i) {
         Row& r = m_rows[i];
         if (r.demoFixed || (r.level == 0 && r.peakSeg < 0)) continue;
@@ -202,7 +202,7 @@ void SettingsDeviceModel::tick()
     }
 }
 
-// ---- demó: ugyanazok a kitalált eszközök, mint a felvevő demójában ---------------------
+// ---- demo: the same fictional devices as in the recorder's demo ---------------------
 
 void SettingsDeviceModel::loadDemo()
 {

@@ -102,8 +102,8 @@ QList<qreal> WaveformItem::barLevels(const QList<qreal>& peaks, int bars, qreal 
         ref = 1.0;
     const qsizetype n = peaks.size();
     for (int i = 0; i < bars; ++i) {
-        // Az oszlopra eső vödrök ÁTLAGA (nagyításnál ismétel). A max-tartás hosszú felvételnél
-        // mindent egyformán magasra húzna: egy oszlop 10–20 másodpercet fed le.
+        // The AVERAGE of the buckets falling on the column (repeats when zoomed in). Max-hold would
+        // pull everything equally high on a long recording: one column covers 10-20 seconds.
         const qsizetype a = qsizetype(i) * n / bars;
         const qsizetype b = std::max<qsizetype>(a + 1, qsizetype(i + 1) * n / bars);
         qreal sum = 0.0;
@@ -111,8 +111,8 @@ QList<qreal> WaveformItem::barLevels(const QList<qreal>& peaks, int bars, qreal 
         for (qsizetype k = a; k < b && k < n; ++k, ++cnt)
             sum += peaks.at(k);
         const qreal v = cnt > 0 ? sum / cnt : 0.0;
-        // Enyhe széthúzás (kitevő > 1): a hangos és a halk szakaszok különbsége a kis
-        // magasságú rajzon is látszik — így olvasható le, hol volt beszéd.
+        // Slight stretching (exponent > 1): the difference between loud and quiet parts shows even
+        // at a small drawn height, so you can read where there was speech.
         out.append(std::pow(std::clamp(v / ref, 0.0, 1.0), kLevelGamma));
     }
     return out;
@@ -133,7 +133,7 @@ void WaveformItem::paint(QPainter* painter)
 
     const bool dots = m_flat || m_loading || m_peaks.isEmpty();
     const QList<qreal> levels = dots ? QList<qreal>() : barLevels(m_peaks, bars, m_reference);
-    const qreal minBar = m_barWidth;                 // a csend is látszó pont
+    const qreal minBar = m_barWidth;                 // silence is a visible dot too
     const qreal loadingBar = std::min(h, 10.0);
     for (int i = 0; i < bars; ++i) {
         qreal bh;

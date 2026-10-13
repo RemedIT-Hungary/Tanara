@@ -11,8 +11,8 @@ namespace tanara_qml {
 
 AppContext::AppContext(QObject* parent) : QObject(parent)
 {
-    // A rendszer színsémájának követése (csak "system" módban számít). QGuiApplication
-    // nélkül (pl. QTEST_GUILESS_MAIN) nincs styleHints → világos marad.
+    // Following the system's color scheme (only matters in "system" mode). Without a
+    // QGuiApplication (e.g. QTEST_GUILESS_MAIN) there is no styleHints -> stays light.
     if (qobject_cast<QGuiApplication*>(QCoreApplication::instance())) {
         connect(QGuiApplication::styleHints(), &QStyleHints::colorSchemeChanged,
                 this, &AppContext::updateDark);
@@ -22,8 +22,8 @@ AppContext::AppContext(QObject* parent) : QObject(parent)
 
 AppContext* AppContext::instance()
 {
-    // Szándékosan nem kap szülőt és nem szabadul fel: a QML-motor leállása után is
-    // érvényes marad (a nézetmodellek destruktorai még hivatkozhatnak rá).
+    // Deliberately has no parent and is never freed: it stays valid after the QML engine shuts
+    // down (the view models' destructors may still refer to it).
     static AppContext* s_instance = new AppContext;
     return s_instance;
 }

@@ -160,7 +160,7 @@ QString ReviewQueueModel::currentUtterance() const
     return m_current >= 0 && m_current < m_items.size() ? m_items[m_current].id : QString();
 }
 
-// ---- állapot ----------------------------------------------------------------
+// ---- state ----------------------------------------------------------------
 
 ReviewQueueModel::State ReviewQueueModel::stateOf(const Item& it) const
 {
@@ -211,7 +211,7 @@ int ReviewQueueModel::openCount() const
     return int(std::count_if(m_items.cbegin(), m_items.cend(), [this](const Item& i) { return isOpen(i); }));
 }
 
-// ---- kétes sorok ------------------------------------------------------------
+// ---- doubtful rows ------------------------------------------------------------
 
 QHash<QString, ReviewQueueModel::Doubt> ReviewQueueModel::computeDoubt(
     const QVector<TranscriptEditorViewModel::ReviewView>& views, const QVector<EditorUtterance>& utts) const
@@ -220,7 +220,7 @@ QHash<QString, ReviewQueueModel::Doubt> ReviewQueueModel::computeDoubt(
     byId.reserve(utts.size());
     for (const EditorUtterance& u : utts) byId.insert(u.id, &u);
     QHash<QString, Doubt> out;
-    // 1) A döntést kérő csoportok sorai (egy sor az első csoportjában).
+    // 1) Rows of the groups asking for a decision (a row goes to its first group).
     for (const auto& v : views) {
         if (!v.actionable) continue;
         Doubt d{v.id, v.kind, v.title, v.evidence, v.proposedKey, v.proposedName, v.newSide};
@@ -230,7 +230,7 @@ QHash<QString, ReviewQueueModel::Doubt> ReviewQueueModel::computeDoubt(
             out.insert(id, d);
         }
     }
-    // 2) Minden más hangra kétes sor (pl. egy kihagyott csoport, a rövid sorok közül).
+    // 2) Every other voice-doubtful row (e.g. a skipped group, among the short rows).
     for (const EditorUtterance& u : utts) {
         if (!u.uncertain || flagged(u) || out.contains(u.id)) continue;
         Doubt d;
@@ -366,12 +366,12 @@ void ReviewQueueModel::computeOpeners(const QVector<TranscriptEditorViewModel::R
         o.manualSide = manual;
         m_openers.append(o);
     }
-    // Nagyobb csoport előbb.
+    // Larger group first.
     std::stable_sort(m_openers.begin(), m_openers.end(),
                      [](const Opener& a, const Opener& b) { return a.ids.size() > b.ids.size(); });
 }
 
-// ---- munkalista -------------------------------------------------------------
+// ---- worklist -------------------------------------------------------------
 
 void ReviewQueueModel::start()
 {
@@ -465,7 +465,7 @@ void ReviewQueueModel::startNextRound(bool includeIncoming, bool includeLater)
             items.append(it);
         } else {
             Item it = carry.value(id);
-            // A javaslat a mostani elemzésé.
+            // The suggestion is from the current analysis.
             const auto d = m_doubt.constFind(id);
             if (d != m_doubt.cend()) {
                 it.likelyKey = d->proposedKey;
@@ -511,7 +511,7 @@ int ReviewQueueModel::admitIncoming()
     return int(add.size());
 }
 
-// ---- kurzor -----------------------------------------------------------------
+// ---- cursor -----------------------------------------------------------------
 
 void ReviewQueueModel::setCurrent(int index, bool force)
 {
@@ -522,7 +522,7 @@ void ReviewQueueModel::setCurrent(int index, bool force)
     if (old >= 0 && old < m_items.size() && old != index) emit dataChanged(this->index(old), this->index(old), {CurrentRole});
     if (index >= 0) emit dataChanged(this->index(index), this->index(index), {CurrentRole});
     emit currentChanged();
-    emit patternChanged();      // a sameAhead a kurzor sorát kihagyja
+    emit patternChanged();      // sameAhead skips the cursor's row
 }
 
 int ReviewQueueModel::nextOpen(int from) const
@@ -607,8 +607,8 @@ bool ReviewQueueModel::later()
     const int cur = m_current;
     Item& it = m_items[cur];
     if (it.state == AlreadyDecided) {
-        // A magától eldőlt sor nem nyitott: tovább a következő nyitottra (a sor a helyén marad).
-        setCurrent(nextOpen(cur + 1), true);    // nincs több nyitott: -1 (kör vége)
+        // A self-resolved row is not open: on to the next open one (the row stays in place).
+        setCurrent(nextOpen(cur + 1), true);    // no more open: -1 (round end)
         return true;
     }
     if (it.state != Pending) return next();
@@ -625,7 +625,7 @@ bool ReviewQueueModel::later()
     } else {
         emitRow(cur);
     }
-    m_current = -1;     // a kurzor sora elmozdult: mindenképp jelezzük
+    m_current = -1;     // the cursor's row moved: signal in any case
     setCurrent(nextOpen(cur), true);
     emit countsChanged();
     return true;
@@ -642,7 +642,7 @@ int ReviewQueueModel::bringToFront(const QStringList& utteranceIds)
     if (want.isEmpty()) return 0;
     const int pos = m_current >= 0 ? m_current : 0;
     QVector<Item> moved, rest;
-    int before = 0;     // a pos előtti, elmozduló sorok
+    int before = 0;     // the rows before pos that move
     for (int i = 0; i < m_items.size(); ++i) {
         if (want.contains(m_items[i].id)) {
             moved.append(m_items[i]);
@@ -664,7 +664,7 @@ int ReviewQueueModel::bringToFront(const QStringList& utteranceIds)
     return int(moved.size());
 }
 
-// ---- szinkron ---------------------------------------------------------------
+// ---- sync ---------------------------------------------------------------
 
 void ReviewQueueModel::emitRow(int row)
 {
@@ -736,13 +736,13 @@ void ReviewQueueModel::refreshUtterances(const QVector<int>& utteranceIndices)
         const QString sig = sigOf(id);
         const State s = stateOf(it);
         if (sig != it.sig) {
-            // Csak a „nem minta" jelző változott (pl. az Imént sor „Legyen nem minta"): nem új döntés.
+            // Only the "not a sample" flag changed (e.g. the Just now row's "Make not a sample"): not a new decision.
             const bool noisyOnly = !sig.isEmpty() && !it.sig.isEmpty() && sig.chopped(1) == it.sig.chopped(1);
             it.sig = sig;
             if (noisyOnly && isDecidedState(s) && isDecidedState(old)) {
-                // a napló és a kurzor marad
+                // the log and the cursor stay
             } else if (isDecidedState(s)) {
-                // Egy döntés (vagy egy döntött sor újradöntése): a napló végére.
+                // A decision (or re-deciding a decided row): to the end of the log.
                 m_log.erase(std::remove_if(m_log.begin(), m_log.end(), [&](const PatternEntry& e) { return e.id == id; }),
                             m_log.end());
                 const EditorUtterance& u = m_vm->utterances()[ui];
@@ -753,7 +753,7 @@ void ReviewQueueModel::refreshUtterances(const QVector<int>& utteranceIndices)
                 pattern = true;
                 if (r == m_current) advanceCursor = true;
             } else if (isDecidedState(old)) {
-                // Visszavont döntés: a sor újra nyitott, a kurzor rá ugrik.
+                // Undone decision: the row is open again, the cursor jumps to it.
                 m_log.erase(std::remove_if(m_log.begin(), m_log.end(), [&](const PatternEntry& e) { return e.id == id; }),
                             m_log.end());
                 pattern = true;
@@ -769,8 +769,8 @@ void ReviewQueueModel::refreshUtterances(const QVector<int>& utteranceIndices)
         emitRow(r);
     }
     updateIncoming();
-    // Visszavonás: a kurzor a visszaállt nyitott sorra; egy magától eldőlt sorra csak akkor, ha
-    // egyetlen sor állt vissza (a „Mind megerősítem” visszavonása nem rángatja a kurzort).
+    // Undo: the cursor to the restored open row; to a self-resolved row only if a single row was
+    // restored (undoing "Confirm all" does not yank the cursor).
     if (undoneOpenRow >= 0) setCurrent(undoneOpenRow);
     else if (undoneRow >= 0 && undoneCount == 1) setCurrent(undoneRow);
     else if (advanceCursor) setCurrent(nextOpen(m_current + 1));
@@ -784,7 +784,7 @@ void ReviewQueueModel::refreshAll()
     emit currentChanged();
 }
 
-// ---- összesítők -------------------------------------------------------------
+// ---- summaries -------------------------------------------------------------
 
 QVariantMap ReviewQueueModel::roundSummary() const
 {
@@ -897,7 +897,7 @@ QVariantList ReviewQueueModel::openers() const
             const int r = m_pos.value(id, -1);
             if (r < 0 || m_items[r].state != Pending) continue;
             ++pending;
-            // Minta-becslés (a core minta-szabálya): elég hosszú, nem zajos sor.
+            // Sample estimate (the core's sample rule): a long enough, not noisy row.
             const EditorUtterance* u = utt(id);
             if (u && !u->noisy && u->endMs - u->startMs >= tanara::speakeredit::kMinEmbedMs) ++samples;
         }

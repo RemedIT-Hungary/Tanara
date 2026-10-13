@@ -1,12 +1,13 @@
 #pragma once
 //
-// CandidateListModel — jelöltek bizonyítékkal (handoff-v3 E1 „JAVASOLT", E3 „NEM Ő? VALÓJÁBAN…").
-// Egy sorra (utteranceId) a SpeakerEditor::lineCandidates, egy egész beszélőre (speakerKey, üres
-// utteranceId mellett) a speakerCandidates rangsora. Soronkénti módban a mostani beszélő a lista
-// végén áll („most ő", halványan, az ellene szóló bizonyítékkal); a másik sávon beszélő jelölt
-// halvány, de választható. A kézi sáv-beosztás szerint kizárt jelölt (G10, Candidate::vetoed) a
-// lista LEGALJÁN, halványan, „a sávja szerint nem ő" chippel — kézzel továbbra is választható,
-// gyorsbillentyűt nem kap. A háttér-elemzés végén magától frissül.
+// CandidateListModel: candidates with evidence ("SUGGESTED" for a row, "NOT THEM? ACTUALLY..."
+// for a speaker). For a row (utteranceId) the ranking of SpeakerEditor::lineCandidates, for a
+// whole speaker (speakerKey, with an empty utteranceId) speakerCandidates. In per-row mode the
+// current speaker is at the end of the list ("is them now", dim, with the evidence against);
+// a candidate speaking on the other track is dim but selectable. A candidate excluded by the
+// manual track assignment (Candidate::vetoed) is at the very BOTTOM, dim, with a "not them per
+// their track" chip; still selectable by hand, gets no shortcut key. It refreshes by itself at
+// the end of the background analysis.
 //
 //   CandidateListModel { editor: editorVm; utteranceId: "u12"; limit: 3; query: search.text }
 //
@@ -26,26 +27,26 @@ class CandidateListModel : public QAbstractListModel {
     Q_PROPERTY(tanara_qml::TranscriptEditorViewModel* editor READ editor WRITE setEditor NOTIFY editorChanged)
     Q_PROPERTY(QString utteranceId READ utteranceId WRITE setUtteranceId NOTIFY queryChanged)
     Q_PROPERTY(QString speakerKey READ speakerKey WRITE setSpeakerKey NOTIFY queryChanged)
-    // Szűrés névre (ékezet- és kisbetű-független). Nem üres keresőnél nincs darabszám-korlát.
+    // Filter by name (accent- and case-insensitive). With a non-empty search there is no count limit.
     Q_PROPERTY(QString query READ query WRITE setQuery NOTIFY queryChanged)
-    // Legfeljebb ennyi jelölt (a mostani beszélőn kívül); 0 = mind.
+    // At most this many candidates (besides the current speaker); 0 = all.
     Q_PROPERTY(int limit READ limit WRITE setLimit NOTIFY queryChanged)
     Q_PROPERTY(int count READ count NOTIFY countChanged)
 
 public:
     enum Role {
-        SpeakerKeyRole = Qt::UserRole + 1,  // üres: a meetingen kívüli ismert személy
+        SpeakerKeyRole = Qt::UserRole + 1,  // empty: a known person outside the meeting
         NameRole,
         PersonNameRole,
-        ColorIndexRole,                     // -1: a meetingen kívüli személy (semleges avatar)
-        SubTextRole,                        // „86 sor itt" / „most ő" / „12 megbeszélés"
+        ColorIndexRole,                     // -1: a person outside the meeting (neutral avatar)
+        SubTextRole,                        // "86 rows here" / "is them now" / "12 meetings"
         EvidenceRole,                       // [evidence map]
         OtherSideRole,
-        CurrentRole,                        // a sor mostani beszélője
-        DimmedRole,                         // halvány (másik sáv / kizárt / mostani beszélő)
-        KeyHintRole,                        // "1".."3" (gyorsbillentyű) vagy ""
+        CurrentRole,                        // the row's current speaker
+        DimmedRole,                         // dim (another track / excluded / current speaker)
+        KeyHintRole,                        // "1".."3" (shortcut key) or ""
         ScoreRole,
-        VetoedRole,                         // a kézi sáv-beosztás kizárja (G10): a lista alján
+        VetoedRole,                         // excluded by the manual track assignment: at the bottom of the list
     };
     Q_ENUM(Role)
 
@@ -67,9 +68,9 @@ public:
     void setLimit(int limit);
     int count() const { return int(m_items.size()); }
 
-    // A sor adatai (QML: választás billentyűvel / Enterrel).
+    // The row's data (QML: choosing by key / Enter).
     Q_INVOKABLE QVariantMap get(int row) const;
-    // A `keyHint` szerinti sor (1–3); -1 = nincs ilyen.
+    // The row for the given `keyHint` (1-3); -1 = none.
     Q_INVOKABLE int rowForKey(int key) const;
     Q_INVOKABLE void refresh();
 

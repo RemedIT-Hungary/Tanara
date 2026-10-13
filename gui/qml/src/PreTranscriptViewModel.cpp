@@ -36,16 +36,16 @@ QVariantMap stageMap(const QString& id, const QString& label, const QString& sta
 PreTranscriptViewModel::PreTranscriptViewModel(QObject* parent)
     : QObject(parent), m_note(new MeetingNoteModel(this)), m_tags(new MeetingTagsModel(this))
 {
-    // A címke-javaslat sor követi a mező címkéit, a rendes javaslatokat és a visszavonást.
+    // The tag suggestion row follows the field's tags, the regular suggestions and undo.
     connect(m_tags, &MeetingTagsModel::tagsChanged, this, &PreTranscriptViewModel::reloadTagSuggestions);
     connect(m_tags, &MeetingTagsModel::suggestionsChanged, this, &PreTranscriptViewModel::reloadTagSuggestions);
     connect(m_tags, &MeetingTagsModel::undoChanged, this, &PreTranscriptViewModel::reloadTagSuggestions);
     connect(m_tags, &MeetingTagsModel::toast, this, &PreTranscriptViewModel::toast);
     connect(m_note, &MeetingNoteModel::noteChanged, this, [this]() {
         emit contextNoteChanged();
-        emit changed();   // a futás-nézet lábléce is ebből idéz
+        emit changed();   // the run view's footer quotes from this too
     });
-    // A hátralévő idő a falióra szerint fogy — futás közben időnként újraszámoljuk.
+    // The remaining time ticks down by the wall clock: recomputed periodically while running.
     m_etaTimer.setInterval(10000);
     connect(&m_etaTimer, &QTimer::timeout, this, &PreTranscriptViewModel::jobChanged);
 
@@ -81,12 +81,12 @@ void PreTranscriptViewModel::setMeetingId(const QString& id)
 {
     if (id == m_meetingId)
         return;
-    // A még el nem mentett megjegyzés a RÉGI megbeszélésé: a váltás előtt oda írja ki.
+    // The not-yet-saved note belongs to the OLD meeting: it is written there before the switch.
     m_note->setMeetingId(id);
     m_meetingId = id;
-    // Demóban üres azonosító → a kitalált demó-megbeszélés címkéi.
+    // In the demo an empty id -> the fictional demo meeting's tags.
     m_tags->setMeetingId(jobsupport::demoMode(app()) ? QString() : id);
-    reload();                 // előbb az új adatok, hogy a jelre már az új megjegyzés látsszon
+    reload();                 // new data first, so the signal already shows the new note
     emit meetingIdChanged();
 }
 
@@ -114,7 +114,7 @@ void PreTranscriptViewModel::connectController()
     auto mine = [this](const QString& id) { return !m_meetingId.isEmpty() && id == m_meetingId; };
     m_connections << connect(c->jobs(), &MeetingJobTracker::stateChanged, this,
                              [this, mine](const QString& id) { if (mine(id)) reload(); });
-    // Haladás: csak a szakasz-lista frissül (nincs lemez-olvasás).
+    // Progress: only the phase list refreshes (no disk read).
     m_connections << connect(c->jobs(), &MeetingJobTracker::jobProgressChanged, this,
                              [this, mine](const QString& id, const JobProgress& p) {
         if (!mine(id) || p.kind != JobKind::Transcribe || m_state != QLatin1String("running"))
@@ -188,7 +188,7 @@ void PreTranscriptViewModel::reload()
         m_identifyAvailable = c->voiceIdentificationAvailable();
         m_identifyEnabled = m_identifyAvailable && c->identifyAfterTranscription(m_meetingId);
 
-        // Lekeverés: fut / kész / elavult / hiányzik.
+        // Mixdown: running / done / stale / missing.
         const QString mixPath = QDir(m.folder).filePath(
             m.mixdownFile.isEmpty() ? QStringLiteral("mixdown.mp3") : m.mixdownFile);
         if (ps.mixdownRunning) {
@@ -203,13 +203,13 @@ void PreTranscriptViewModel::reload()
                 m_mixdownState = m.mixdownDirty ? QStringLiteral("stale") : QStringLiteral("ready");
         }
 
-        // Kapuzás — ugyanabból az igazságforrásból, mint az AppController guardjai.
+        // Gating: from the same source of truth as the AppController's guards.
         const ReadinessResult r = c->canRun(WorkflowStep::Transcribe, m_meetingId);
         m_canStart = r.runnable;
         m_blocker = jobsupport::blockerInfo(c, WorkflowStep::Transcribe, r);
         m_cloudTeaser = !r.runnable && r.blockerKind == BlockerKind::ProviderConfig && c->cloudTeaser();
 
-        // Tanara Cloud: szint + nyelv a gomb fölött (bejelentkezve), ahogy a régi ablakban.
+        // Tanara Cloud: tier + language above the button (when signed in), as in the old window.
         if (c->usesCloud(WorkflowStep::Transcribe) && c->cloud() && c->cloud()->isLoggedIn()) {
             const AppSettings s = c->settings()->settings();
             m_cloudSelected = true;
@@ -325,7 +325,7 @@ void PreTranscriptViewModel::acceptTagSuggestion(int index)
 {
     TagBackend* b = m_tags->backend();
     if (!b || index < 0 || index >= m_tagSuggestions.size()) return;
-    if (m_tagSuggestionsFromModel) {   // a rendes javaslatok: a modell teszi fel (toast-tal)
+    if (m_tagSuggestionsFromModel) {   // the regular suggestions: the model asks (with a toast)
         m_tags->accept(index);
         return;
     }
@@ -366,16 +366,16 @@ void PreTranscriptViewModel::applyJob(const JobProgress& job)
     m_stages = list;
 }
 
-// Kitalált mintaadat (a tervrajz M03–M05 képernyőinek megfelelően).
+// Fictional sample data (matching the design's M03-M05 screens).
 void PreTranscriptViewModel::loadDemo()
 {
     const QString st = m_demoState.isEmpty() ? QStringLiteral("steps") : m_demoState;
-    // T07: egy felrakott címke, a javaslat a cím alapján (kitalált készlet).
+    // One attached tag, the suggestion comes from the title (fictional pool).
     m_tags->setDemoState(QStringLiteral("draft"));
     const QString note = demoText("Ügyféltámogatás átadása az új csapatnak. Érintett rendszerek: jegykezelő, "
                             "súgóoldalak, számlázás. Résztvevők: Molnár Eszter, Tóth Bence.", "Support handover to the new team. Systems involved: ticket system, help pages, billing. Participants: Sophie Bennett, Ryan Mitchell.");
     if (st == QLatin1String("note") || st == QLatin1String("readyNote")) {
-        // Sablon-javaslatok a korábbi, hasonló című megbeszélésekből + az észlelt hívás.
+        // Template suggestions from earlier meetings with a similar title + the detected call.
         m_note->setDemoContent(QString(), QStringLiteral("Microsoft Teams"), MeetingNoteModel::demoSuggestions());
     } else {
         m_note->setDemoContent(note, QString(), {});
@@ -403,7 +403,7 @@ void PreTranscriptViewModel::loadDemo()
             stageMap(QStringLiteral("identify"), tr("Résztvevők azonosítása"), QStringLiteral("waiting")),
         };
         if (!up)
-            m_stages.removeFirst();   // az M04 rajzon nincs lekeverés-szakasz (a keverék már megvolt)
+            m_stages.removeFirst();   // the sketch has no mixdown phase (the mix already existed)
     } else if (st == QLatin1String("failed")) {
         m_state = QStringLiteral("failed");
         m_errorMessage = tr("A szolgáltató nem fogadta el az API-kulcsot. Ellenőrizd vagy cseréld "
@@ -465,7 +465,7 @@ void PreTranscriptViewModel::setCloudTier(const QString& tier)
         reload();
         return;
     }
-    // Ugyanaz, mint a régi CloudTierWidget: a szint a beállításokba kerül, az Expert-modell törlődik.
+    // Same as the old CloudTierWidget: the tier goes into the settings, the Expert model is cleared.
     AppSettings s = c->settings()->settings();
     if (s.cloudSttTier == t && s.cloudSttModel.isEmpty())
         return;

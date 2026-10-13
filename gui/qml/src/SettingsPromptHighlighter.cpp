@@ -48,7 +48,7 @@ SettingsPromptHighlighter::SettingsPromptHighlighter(QObject* parent) : QObject(
 QVector<SettingsPromptHighlighter::Span> SettingsPromptHighlighter::spans(const QString& line,
                                                                           const QStringList& knownTokens)
 {
-    // {{NÉV}}: betűk (ékezetesek is), számok, aláhúzás — szóköz nélkül.
+    // {{NAME}}: letters (accented ones too), digits, underscore, no spaces.
     static const QRegularExpression re(QStringLiteral("\\{\\{[\\p{L}\\p{N}_]+\\}\\}"),
                                        QRegularExpression::UseUnicodePropertiesOption);
     QVector<Span> out;

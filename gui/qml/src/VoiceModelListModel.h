@@ -1,24 +1,25 @@
 #pragma once
 //
-// VoiceModelListModel — a beszélő-felismerő hangmodellek listája (Beállítások › Beszélők,
-// Első lépések): letöltés, bekapcsolás, a lenyomat-pótlás állapota.
+// VoiceModelListModel: the list of speaker-recognition voice models (Settings > Speakers,
+// Getting started): download, enabling, the voiceprint backfill state.
 //
-//  - sorok: a VoiceModelRegistry beépített leírói (név, egy mondat, licenc, forrás, méret,
-//    dimenzió) + állapot: missing | downloading | verifying | downloaded | bundled | error | offline;
-//  - ellenőrzés: letöltés után és a lap megnyitásakor (refresh) a core VoiceModelDownloader::verify
-//    (fájlméret); közben „verifying”, eltérésnél „error” + corrupt (Újra: lecseréli);
-//  - törlés: a LETÖLTÖTT fájl (<metaDir>/models) törlése (AppController::deleteVoiceModelFile),
-//    a csomagban lévőhöz nem nyúl; futó letöltés / ellenőrzés alatt tiltva;
-//  - újraolvasás (rescan): kézzel bemásolt modellfájl után (AppController::rescanVoiceModels);
-//  - letöltés: a core VoiceModelDownloader (azonnali, NEM piszkozat); sikeres letöltés után a
-//    modell a piszkozatban bekapcsolódik (Mentéssel lép életbe);
-//  - bekapcsolás: a Beállítások piszkozatába (setDraftAccess: a SettingsViewModel adja); a
-//    piszkozat nélküli (önálló) példány a core beállítását írja azonnal;
-//  - lenyomat-pótlás: AppController::voiceprintBackfillStarted / Progress / Finished (valódi
-//    „k / N”), a kimaradt minták listája az AppController::backfillSkippedSamples-ből
-//    (személy, minta, ok — mintánként egy tétel, akárhány modell hiányzik).
+//  - rows: the VoiceModelRegistry's built-in descriptors (name, one sentence, license, source,
+//    size, dimension) + state: missing | downloading | verifying | downloaded | bundled | error | offline;
+//  - verification: after a download and when the page opens (refresh), the core's
+//    VoiceModelDownloader::verify (file size); meanwhile "verifying", on a mismatch "error" +
+//    corrupt (Retry: replaces it);
+//  - delete: deletes the DOWNLOADED file (<metaDir>/models) (AppController::deleteVoiceModelFile),
+//    never touches a bundled one; disabled during a running download / verification;
+//  - rescan: after a manually copied model file (AppController::rescanVoiceModels);
+//  - download: the core's VoiceModelDownloader (immediate, NOT a draft); after a successful
+//    download the model is enabled in the draft (takes effect on Save);
+//  - enabling: into the Settings draft (setDraftAccess: provided by SettingsViewModel); a
+//    standalone instance without a draft writes the core's setting immediately;
+//  - backfill: AppController::voiceprintBackfillStarted / Progress / Finished (real "k / N"),
+//    the skipped-samples list from AppController::backfillSkippedSamples (person, sample,
+//    reason: one item per sample, however many models are missing).
 //
-// Controller nélkül (demó, --qml-shot) KITALÁLT adatot ad; demoState: B08 | B08download |
+// Without a controller (demo, --qml-shot) it provides FICTIONAL data; demoState: B08 | B08download |
 // B08none | B08fallback | B08error | B08offline | B08backfill | B08partial | B08bundled |
 // B08verify | B08delete.
 //
@@ -49,29 +50,29 @@ class VoiceModelListModel : public QAbstractListModel {
     Q_PROPERTY(QObject* controller READ controllerObject WRITE setControllerObject NOTIFY controllerChanged)
     Q_PROPERTY(QString demoState READ demoState WRITE setDemoState NOTIFY demoStateChanged)
     Q_PROPERTY(int count READ count NOTIFY summaryChanged)
-    // Van-e legalább egy használható (letöltött vagy csomagolt) modell.
+    // Whether there is at least one usable (downloaded or bundled) model.
     Q_PROPERTY(bool anyAvailable READ anyAvailable NOTIFY summaryChanged)
-    // Bekapcsolt ÉS meglévő modellek száma (a piszkozat szerint) — 0: a hangelemzés ki van kapcsolva.
+    // Number of enabled AND existing models (per the draft); 0: audio analysis is off.
     Q_PROPERTY(int activeCount READ activeCount NOTIFY summaryChanged)
     Q_PROPERTY(bool offline READ offline NOTIFY summaryChanged)
-    // Az ajánlott modell (WeSpeaker) — az onboarding és az üres állapot CTA-ja.
-    // Igaz, ha nincs használható bekapcsolt modell, és a CAM++ tartalék fut helyette.
+    // The recommended model (WeSpeaker): the onboarding and the empty state's CTA.
+    // True if there is no usable enabled model and the CAM++ fallback runs instead.
     Q_PROPERTY(bool fallbackActive READ fallbackActive NOTIFY summaryChanged)
     Q_PROPERTY(QString defaultState READ defaultState NOTIFY summaryChanged)
     Q_PROPERTY(QString defaultSizeText READ defaultSizeText CONSTANT)
     Q_PROPERTY(QString defaultProgressText READ defaultProgressText NOTIFY summaryChanged)
-    Q_PROPERTY(double defaultProgress READ defaultProgress NOTIFY summaryChanged)   // -1: ismeretlen
+    Q_PROPERTY(double defaultProgress READ defaultProgress NOTIFY summaryChanged)   // -1: unknown
     Q_PROPERTY(QString defaultErrorText READ defaultErrorText NOTIFY summaryChanged)
 
-    // ---- lenyomat-pótlás ----
-    // "" (nincs mit mutatni) | "running" | "done" | "partial" (maradt pótolhatatlan minta)
+    // ---- backfill ----
+    // "" (nothing to show) | "running" | "done" | "partial" (a sample that cannot be backfilled remains)
     Q_PROPERTY(QString backfillState READ backfillState NOTIFY backfillChanged)
     Q_PROPERTY(int backfillTotal READ backfillTotal NOTIFY backfillChanged)
     Q_PROPERTY(int backfillDone READ backfillDone NOTIFY backfillChanged)
     Q_PROPERTY(int backfillSkipped READ backfillSkipped NOTIFY backfillChanged)
-    Q_PROPERTY(double backfillProgress READ backfillProgress NOTIFY backfillChanged)   // -1: határozatlan
+    Q_PROPERTY(double backfillProgress READ backfillProgress NOTIFY backfillChanged)   // -1: indeterminate
     Q_PROPERTY(QString backfillText READ backfillText NOTIFY backfillChanged)
-    // A kimaradt minták: [{ person, sample, reason, models }] (személy szerint rendezve).
+    // The skipped samples: [{ person, sample, reason, models }] (sorted by person).
     Q_PROPERTY(QVariantList backfillSkips READ backfillSkips NOTIFY backfillChanged)
 
 public:
@@ -86,16 +87,16 @@ public:
         SizeTextRole,
         DimTextRole,
         StateRole,          // missing | downloading | verifying | downloaded | bundled | error | offline
-        ProgressRole,       // 0..1 (letöltés közben), -1 ha ismeretlen
-        ProgressTextRole,   // „12 / 27 MB”
+        ProgressRole,       // 0..1 (while downloading), -1 if unknown
+        ProgressTextRole,   // "12 / 27 MB"
         ErrorTextRole,
-        EnabledRole,        // a piszkozat szerint bekapcsolva
-        CanEnableRole,      // a fájl megvan (letöltött / csomagolt)
+        EnabledRole,        // enabled per the draft
+        CanEnableRole,      // the file is present (downloaded / bundled)
         RecommendedRole,
         NotRecommendedRole,
-        CorruptRole,        // a meglévő fájl mérete eltér a várttól („hiba (méret nem egyezik)”)
-        HasFileRole,        // van LETÖLTÖTT fájl (<metaDir>/models) — a menü „Törlés”-e ehhez kell
-        CanDeleteRole,      // törölhető most (van letöltött fájl, nem töltődik / ellenőrződik)
+        CorruptRole,        // the existing file's size differs from the expected ("error (size mismatch)")
+        HasFileRole,        // there is a DOWNLOADED file (<metaDir>/models); the menu's "Delete" needs it
+        CanDeleteRole,      // can be deleted now (a downloaded file exists, not downloading / verifying)
     };
     Q_ENUM(Role)
 
@@ -131,37 +132,37 @@ public:
     QString backfillText() const;
     QVariantList backfillSkips() const { return m_bfSkips; }
 
-    // ---- műveletek ----
-    // Letöltés indítása (offline-ban nem indul: az állapot „offline” lesz).
+    // ---- actions ----
+    // Starts a download (does not start offline: the state becomes "offline").
     Q_INVOKABLE void download(const QString& id);
-    // Újra: hiba után; sérült (eltérő méretű) fájlt is lecserél.
+    // Retry: after an error; also replaces a corrupt (wrong-size) file.
     Q_INVOKABLE void retry(const QString& id);
     Q_INVOKABLE void cancel(const QString& id);
-    // Bekapcsolás a piszkozatban (csak meglévő modellnél).
+    // Enabling in the draft (only for an existing model).
     Q_INVOKABLE void setEnabled(const QString& id, bool on);
-    // A forrás-lap (licenc, szerzők) megnyitása: openUrlRequested.
+    // Opens the source page (license, authors): openUrlRequested.
     Q_INVOKABLE void openSource(const QString& id);
-    // Az állapot újraolvasása (fájlok, hálózat, pótlás) és a meglévő fájlok ellenőrzése
-    // (a lap megnyitásakor is ez fut).
+    // Re-reads the state (files, network, backfill) and verifies existing files
+    // (this also runs when the page opens).
     Q_INVOKABLE void refresh();
-    // Egy modellfájl ellenőrzése (méret): közben „verifying”.
+    // Verifies one model file (size): "verifying" meanwhile.
     Q_INVOKABLE void verify(const QString& id);
-    // A letöltött modellfájl törlése. Üres: sikerült; különben emberi hibaüzenet.
+    // Deletes the downloaded model file. Empty: succeeded; otherwise a human error message.
     Q_INVOKABLE QString deleteModel(const QString& id);
-    // Kézzel bemásolt modellfájl után: a core újraszámolja a használt modelleket, a lista frissül.
+    // After a manually copied model file: the core recomputes the used models, the list refreshes.
     Q_INVOKABLE void rescan();
 
-    // ---- a SettingsViewModelnek ----
-    // A piszkozat elérése: get → bekapcsolt id-k, set → új lista (a vm számolja a változást).
+    // ---- for the SettingsViewModel ----
+    // Draft access: get -> enabled ids, set -> new list (the vm computes the change).
     void setDraftAccess(std::function<QStringList()> get, std::function<void(const QStringList&)> set);
-    // A piszkozat kívülről változott (betöltés, eldobás, mentés).
+    // The draft changed from outside (load, discard, save).
     void notifyDraftChanged();
-    // Demó: a kitalált állapot (a SettingsViewModel loadDemo-ja hívja).
+    // Demo: the fictional state (called by SettingsViewModel's loadDemo).
     void loadDemo(const QString& state);
 
     // ---- teszt-varratok ----
     tanara::VoiceModelDownloader* downloader() const { return m_downloader; }
-    // A leírók cseréje (pl. file:// letöltési URL-ekkel) és a mappák.
+    // Replaces the descriptors (e.g. with file:// download URLs) and the folders.
     void setSpecsForTest(const QVector<tanara::VoiceModelSpec>& specs);
     void setDirsForTest(const QString& metaDir, const QString& appDir);
 
@@ -171,9 +172,9 @@ signals:
     void summaryChanged();
     void backfillChanged();
     void openUrlRequested(const QString& url);
-    // Egy letöltés végzett (ok: sikerült).
+    // A download finished (ok: succeeded).
     void downloadFinished(const QString& id, bool ok);
-    // Egy ellenőrzés végzett (ok: a fájl használható).
+    // A verification finished (ok: the file is usable).
     void verifyFinished(const QString& id, bool ok);
 
 private:
@@ -182,8 +183,8 @@ private:
         QString state = QStringLiteral("missing");
         qint64 received = 0, total = 0;
         QString errorText;
-        bool corrupt = false;       // a meglévő fájl mérete eltér a várttól
-        bool hasFile = false;       // van letöltött fájl (<metaDir>/models)
+        bool corrupt = false;       // the existing file's size differs from the expected
+        bool hasFile = false;       // there is a downloaded file (<metaDir>/models)
     };
 
     void attach();
@@ -202,7 +203,7 @@ private:
     void onVerified(const QString& id, int result);
     void verifyAllFiles();
     QString userPath(const tanara::VoiceModelSpec& spec) const;
-    // A pótlás figyelése (a core jelei).
+    // Watching the backfill (the core's signals).
     void checkBackfill();
     void onBackfillStarted(int total);
     void onBackfillProgress(int done, int total);
@@ -231,10 +232,10 @@ private:
     QVariantList m_bfSkips;
 };
 
-// A Személyek ablak részleteinek jelzése (PeopleDetailPane): a kijelölt személy hány mintája
-// nem volt pótolható a legutóbbi lenyomat-pótlásban („1 minta nem pótolható: hiányzó felvétel”).
-// Az App.controller-hez magától kötődik; controller nélkül (demó) a „samplesModels” állapotban
-// egy kitalált kimaradt mintát mutat.
+// Indicates details in the People window (PeopleDetailPane): how many of the selected
+// person's samples could not be backfilled in the latest voiceprint backfill ("1 sample
+// cannot be backfilled: missing recording"). Binds to App.controller by itself; without a
+// controller (demo) the "samplesModels" state shows a fictional skipped sample.
 //   BackfillSkipNote { person: vm.selectedName; demoState: vm.demoState }
 class BackfillSkipNote : public QObject {
     Q_OBJECT
@@ -243,7 +244,7 @@ class BackfillSkipNote : public QObject {
     Q_PROPERTY(QString demoState READ demoState WRITE setDemoState NOTIFY changed)
     Q_PROPERTY(int count READ count NOTIFY changed)
     Q_PROPERTY(QString text READ text NOTIFY changed)
-    // A kimaradt minták részletei (tooltip): „Megbeszélés · 12:03–12:06 — hiányzó felvétel”.
+    // The skipped samples' details (tooltip): "Meeting · 12:03-12:06 - missing recording".
     Q_PROPERTY(QString detail READ detail NOTIFY changed)
 
 public:
@@ -255,7 +256,7 @@ public:
     int count() const { return m_entries.size(); }
     QString text() const;
     QString detail() const;
-    // Teszt-varrat (QML nélkül).
+    // Test seam (without QML).
     void setController(tanara::AppController* c);
 
 signals:

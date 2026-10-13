@@ -1,9 +1,8 @@
 #pragma once
 //
-// Tanara QML — KITALÁLT mintakönyvtár a héj demó- és képernyőkép-módjához (App.demo):
-// nincs AppController, a könyvtár-modell, az „Ezek várnak rád” lista, a fejléc és a
-// lejátszó ebből dolgozik. A nevek és szövegek fiktívek (a design-renderek M01/M02/M05
-// mintái); valódi adat ide SOHA nem kerülhet.
+// Tanara QML: FICTIONAL sample library for the shell's demo and screenshot mode (App.demo):
+// there is no AppController; the library model, the "Waiting for you" list, the header and
+// the player work from it. Names and texts are fictitious; real data must NEVER go here.
 //
 #include "tanara/library/MeetingLibrary.h"
 
@@ -16,41 +15,41 @@
 namespace tanara_qml::demo {
 
 struct DemoMeeting {
-    tanara::LibraryEntry entry;    // cím, idő, hossz, állapotok, résztvevők
-    QString text;                  // egy mondatnyi „átirat” a keresés kivonatához
-    int speakers = 0;              // beszélők száma (átirat után)
-    int tracks = 0;                // hangsávok száma
+    tanara::LibraryEntry entry;    // title, time, length, states, participants
+    QString text;                  // one sentence of "transcript" for the search snippet
+    int speakers = 0;              // number of speakers (after the transcript)
+    int tracks = 0;                // number of audio tracks
 };
 
-// A demó „mai napja” (rögzített, hogy a dátum-szekciók és a képernyőképek stabilak legyenek).
+// The demo's "today" (fixed, so the date sections and the screenshots are stable).
 QDateTime now();
 
 const QVector<DemoMeeting>& meetings();
 const DemoMeeting* find(const QString& meetingId);
 
-// Ugyanaz a szerződés, mint a MeetingLibrary::query / people / pendingItems.
+// The same contract as MeetingLibrary::query / people / pendingItems.
 tanara::LibraryResult query(const tanara::LibraryQuery& q);
 QVector<tanara::PersonPresence> people();
 QVector<tanara::PendingItem> pendingItems();
 
-// ---- címkék (kitalált készlet; a tömeges címkézés demója memóriában módosíthatja) ----
+// ---- tags (fictional pool; the bulk-tagging demo may modify it in memory) ----
 struct DemoTag {
     QString id;
     QString name;
 };
 QVector<DemoTag> tagCatalog();
-QString tagName(const QString& tagId);              // üres, ha nincs ilyen
-QString tagIdByName(const QString& name);           // tagKey-egyezés; üres, ha nincs ilyen
-QString createTag(const QString& name);             // a meglévőt adja, ha a név már foglalt
+QString tagName(const QString& tagId);              // empty if none
+QString tagIdByName(const QString& name);           // tagKey match; empty if none
+QString createTag(const QString& name);             // returns the existing one if the name is taken
 QStringList tagsOf(const QString& meetingId);
 void setTagsOf(const QString& meetingId, const QStringList& tagIds);
-void resetTags();                                   // vissza a kiinduló állapotba (tesztek)
-// Ugyanaz a szerződés, mint a MeetingLibrary::tagOptions / untaggedCount / entry.
+void resetTags();                                   // back to the initial state (tests)
+// The same contract as MeetingLibrary::tagOptions / untaggedCount / entry.
 QVector<tanara::TagUsage> tagOptions();
 int untaggedCount();
 tanara::LibraryEntry entry(const QString& meetingId);
 
-// A demó címkéinek változásáról szól (a könyvtár-modell erre frissül).
+// Signals a change in the demo's tags (the library model refreshes on it).
 class DemoTagNotifier : public QObject {
     Q_OBJECT
 public:
@@ -60,9 +59,9 @@ signals:
 };
 DemoTagNotifier* tagNotifier();
 
-// Az alapból megnyitott megbeszélés (van átirata és elavult összefoglalója).
+// The meeting opened by default (it has a transcript and a stale summary).
 QString defaultMeetingId();
-// Átirat nélküli (bukott átírású) megbeszélés — a „preTranscript” állapot képéhez.
+// A meeting without a transcript (failed transcription): for the "preTranscript" state's image.
 QString failedMeetingId();
 
 } // namespace tanara_qml::demo

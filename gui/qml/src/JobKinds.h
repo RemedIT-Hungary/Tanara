@@ -1,7 +1,7 @@
 #pragma once
 //
-// Tanara QML — a tanara::JobKind értékei QML-ből: `JobKinds.Transcribe` stb. A
-// shell.cancelJob(meetingId, kind) ezt a számot várja. Csak enum-hordozó (nem példányosítható).
+// Tanara QML: the values of tanara::JobKind from QML: `JobKinds.Transcribe` etc.
+// shell.cancelJob(meetingId, kind) expects this number. Only an enum carrier (not instantiable).
 //
 #include "tanara/jobs/JobTypes.h"
 

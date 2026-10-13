@@ -1,19 +1,19 @@
 #pragma once
 //
-// OverviewViewModel — az Áttekintés fül (design/handoff-v3 V1/V3/V5/V6) adatai egy
-// megbeszéléshez: miről szól (kézi leírás), kik voltak ott (résztvevők forrás-jelvényekkel,
-// beszédaránnyal, címke alapú javaslatokkal), a jóváhagyás-banner, a feldolgozás lépései és
-// a kész megbeszélés számai (ADATOK). A sávok listája a TrackListModel-é.
+// OverviewViewModel: data of the Overview tab for one meeting: what it is about (manual
+// description), who was there (participants with source badges, speaking share, tag-based
+// suggestions), the approval banner, the processing steps and the finished meeting's numbers
+// (DATA). The track list belongs to TrackListModel.
 //
-// Források: AppController::participants / participantApprovalPending /
-// participantAnalysisRunning, a SpeakerEditor (beszélők, megszólalások, átnézendők), a
-// MeetingJobTracker (futó átírás / lekeverés / összefoglaló), TagService::suggestPeopleForMeeting.
-// A core jeleire (participantsChanged, tracksChanged, transcriptReady, summaryReady,
-// jobProgressChanged …) késleltetve (egy körrel) újraszámol.
+// Sources: AppController::participants / participantApprovalPending /
+// participantAnalysisRunning, the SpeakerEditor (speakers, utterances, to-review), the
+// MeetingJobTracker (running transcription / mixdown / summary), TagService::suggestPeopleForMeeting.
+// It recomputes, delayed by one turn, on the core's signals (participantsChanged, tracksChanged,
+// transcriptReady, summaryReady, jobProgressChanged ...).
 //
-// Controller nélkül (App.demo, képernyőkép) kitalált adat: demoState = overviewProcessing (V1)
-// | overviewDone (V3) | overviewEmpty (V5) | overviewNobody (V6) | overviewRecorded (U6: felvétel
-// után, átírás előtt) | overviewRecordedError (U6: az átírás nem sikerült).
+// Without a controller (App.demo, screenshot) fictional data: demoState = overviewProcessing |
+// overviewDone | overviewEmpty | overviewNobody | overviewRecorded (after recording, before
+// transcription) | overviewRecordedError (the transcription failed).
 //
 #include <QObject>
 #include <QPointer>
@@ -37,46 +37,46 @@ class OverviewViewModel : public QObject {
     Q_PROPERTY(QString demoState READ demoState WRITE setDemoState NOTIFY demoStateChanged)
 
     Q_PROPERTY(bool hasTranscript READ hasTranscript NOTIFY changed)
-    // Fut-e az (első) átírás — átirat előtt ilyenkor az Áttekintés látszik a lépések helyett.
+    // Whether the (first) transcription runs: before a transcript, the Overview shows instead of the steps.
     Q_PROPERTY(bool transcribing READ transcribing NOTIFY changed)
-    // Minden lépés kész (felvétel … összefoglaló): a lépések és a sávok egy-egy sorba csukva.
+    // Every step is done (recording ... summary): the steps and tracks collapse to one row each.
     Q_PROPERTY(bool allDone READ allDone NOTIFY changed)
-    // A megbeszélés kézi leírása (Meeting::contextNote) — a „Miről szól” forrás-kártya.
+    // The meeting's manual description (Meeting::contextNote): the "What it is about" source card.
     Q_PROPERTY(QString contextNote READ contextNote NOTIFY changed)
-    // A megbeszélés címe (átírás előtt a cím alapú címke-javaslathoz: MeetingTagsModel.draftTitle).
+    // The meeting's title (before the transcript, for the title-based tag suggestion: MeetingTagsModel.draftTitle).
     Q_PROPERTY(QString title READ title NOTIFY changed)
 
-    // ---- kik voltak ott ----
-    // "list" (sorok) | "empty" (még senki: V5) | "nobody" (átirat van, de mindenki névtelen: V6)
+    // ---- who was there ----
+    // "list" (rows) | "empty" (nobody yet) | "nobody" (there is a transcript but everyone is anonymous)
     Q_PROPERTY(QString peopleState READ peopleState NOTIFY changed)
-    // Sorok: { id, name, monogram, colorIndex, sub, self, suggested, dimmed, removable, unheard,
-    //          talkShare (0..1, -1 = nincs), speakerKey (átirat után a beszélő kulcsa, különben ""),
-    //          anonymous (névtelen, elnevezhető), sources: [{ icon, text, negative, accent, detail }] }
-    // A jelvény detail-je a tooltip (a bizonyíték magyarázata). Átirat után a beszélők sorai után
-    // halványan a nem hallott / kézzel felvett résztvevők (unheard, „nem hallottuk” jelvény,
-    // AppController::unheardParticipants), utánuk legfeljebb 3 címke alapú javaslat.
+    // Rows: { id, name, monogram, colorIndex, sub, self, suggested, dimmed, removable, unheard,
+    //          talkShare (0..1, -1 = none), speakerKey (the speaker's key after the transcript, else ""),
+    //          anonymous (anonymous, can be named), sources: [{ icon, text, negative, accent, detail }] }
+    // The badge's detail is the tooltip (the evidence's explanation). After the transcript, after
+    // the speakers' rows come, dimmed, the participants not heard / added manually (unheard, "not
+    // heard" badge, AppController::unheardParticipants), then at most 3 tag-based suggestions.
     Q_PROPERTY(QVariantList participants READ participants NOTIFY changed)
-    // A V6 nyers beszélői: [{ name, share (0..1), colorIndex }]
+    // The raw speakers of the "nobody" state: [{ name, share (0..1), colorIndex }]
     Q_PROPERTY(QVariantList anonymousSpeakers READ anonymousSpeakers NOTIFY changed)
-    // A „KIK VOLTAK OTT” melletti halvány sor: források, ill. „jóváhagyva okt. 1. 16:40-kor”.
+    // The dim line next to "WHO WAS THERE": sources, or "approved Oct 1, 4:40 PM".
     Q_PROPERTY(QString peopleHint READ peopleHint NOTIFY changed)
     Q_PROPERTY(bool approved READ approved NOTIFY changed)
     Q_PROPERTY(bool approvalPending READ approvalPending NOTIFY changed)
     Q_PROPERTY(bool analysisRunning READ analysisRunning NOTIFY changed)
     Q_PROPERTY(int candidateCount READ candidateCount NOTIFY changed)
-    // A hanglenyomat-lépés „Újraelemzés” gombja (D4) látszhat-e: van hang és modell, nem fut,
-    // nem „csak én beszéltem”.
+    // Whether the voiceprint step's "Re-analyze" button may show: there is audio and a model, it
+    // is not running, not "only I spoke".
     Q_PROPERTY(bool canReanalyze READ canReanalyze NOTIFY changed)
-    // Sávonként, ki beszél rajta: { mic: "Kovács Lilla", loopback: "4 résztvevő" }
+    // Per track, who speaks on it: { mic: "Kovács Lilla", loopback: "4 participants" }
     Q_PROPERTY(QVariantMap sideWho READ sideWho NOTIFY changed)
 
-    // ---- feldolgozás ----
+    // ---- processing ----
     // [{ key, title, sub, state: done|attention|running|waiting, parallel, progress }]
-    // progress: 0..100, -1 = nincs csík, -2 = határozatlan csík.
+    // progress: 0..100, -1 = no bar, -2 = indeterminate bar.
     Q_PROPERTY(QVariantList steps READ steps NOTIFY changed)
-    // ADATOK csempék: [{ label, value, sub }]
+    // DATA tiles: [{ label, value, sub }]
     Q_PROPERTY(QVariantList stats READ stats NOTIFY changed)
-    // „Minden lépés kész” sor alszövege („felvétel · lekeverés · átirat · összefoglaló”).
+    // Subtext of the "All steps done" row ("recording · mixdown · transcript · summary").
     Q_PROPERTY(QString stepsSummary READ stepsSummary NOTIFY changed)
 
 public:
@@ -108,25 +108,25 @@ public:
     QVariantList stats() const { return m_stats; }
     QString stepsSummary() const { return m_stepsSummary; }
 
-    // „+ Résztvevő” / „Hozzáadás” (címke-javaslat): kézi résztvevő. Vissza: az id ("" = hiba).
+    // "+ Participant" / "Add" (tag suggestion): a manual participant. Returns the id ("" = error).
     Q_INVOKABLE QString addParticipant(const QString& name);
-    // ×: a résztvevő TARTÓS törlése (AppController::removeParticipant: a sorai névtelenek lesznek,
-    // a meeting közös visszavonásában egy lépés). Címke-javaslatnál (id "suggest:<név>") tartós,
-    // erre a megbeszélésre szóló elutasítás (TagService::rejectPersonForMeeting, egy lépés).
+    // x: PERMANENT removal of the participant (AppController::removeParticipant: their rows
+    // become anonymous, one step in the meeting's shared undo). For a tag suggestion (id
+    // "suggest:<name>") a permanent rejection for this meeting (TagService::rejectPersonForMeeting, one step).
     Q_INVOKABLE void removeParticipant(const QString& id);
-    // „Csak én beszéltem” (V5): setSoloMeeting. false: nincs saját név beállítva.
+    // "Only I spoke": setSoloMeeting. False: no own name is set.
     Q_INVOKABLE bool setSolo();
-    // „Újraelemzés” átirat előtt: a hangelemzés újra (AppController::analyzeParticipants). Átirat
-    // után a héj identifyParticipants-a fut (ugyanaz, mint a menü „Hanglenyomat-elemzés újra”-ja).
+    // "Re-analyze" before a transcript: the audio analysis again (AppController::analyzeParticipants).
+    // After a transcript the shell's identifyParticipants runs (same as the menu's "Voiceprint analysis again").
     Q_INVOKABLE bool reanalyze();
-    // Demóban a névtelen sor elnevezése helyben (true); valódi adaton false — ott a szerkesztő
-    // reassignSpeaker-e dolgozik (egy visszavonási lépés, változás-sáv).
+    // In the demo, naming an anonymous row in place (true); on real data false: the editor's
+    // reassignSpeaker does the work there (one undo step, change bar).
     Q_INVOKABLE bool nameSpeakerInDemo(const QString& speakerKey, const QString& name);
-    // A kézi leírás mentése (Meeting::contextNote).
+    // Saves the manual description (Meeting::contextNote).
     Q_INVOKABLE void setContextNote(const QString& note);
     Q_INVOKABLE void refresh();
 
-    // Monogram egy névből („Varga Árpád” → „VÁ”, „Távoli 1” → „T1”). Statikus: tesztelhető.
+    // Monogram from a name ("Varga Árpád" -> "VÁ", "Remote 1" -> "R1"). Static: testable.
     static QString monogramOf(const QString& name);
 
 signals:
@@ -151,7 +151,7 @@ private:
     QString m_demoState;
     QString m_demoLoadedFor;
 
-    // A hangelemzés haladása (participantAnalysisProgress): sáv k / N és százalék.
+    // The audio analysis progress (participantAnalysisProgress): track k / N and percent.
     struct AnalysisProgress {
         int done = 0;
         int total = 0;

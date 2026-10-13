@@ -1,18 +1,18 @@
 #pragma once
 //
-// SettingsWindowHost — a QML Beállítások-ablak (SettingsWindow.qml) C++ gazdája.
+// SettingsWindowHost: the C++ host of the QML Settings window (SettingsWindow.qml).
 //
-// Egy folyamatban EGY példány elég; három helyen él:
-//  - a főalkalmazásban a QmlShellBridge hozza létre (ShellActions.openSettings → open());
-//  - az önálló felvevőben (`tanara --record`, R10 „Rögzítés beállításai”);
-//  - a `tanara --settings [lap]` módban (a tálca-figyelő „Beállítások…” menüpontja), ha nem
-//    fut főablak, amelynek a kérést át lehetne adni.
-// Saját QML-motorral dolgozik (ahogy a felvevő gazdája), a téma az `App` singletonon át közös.
-// Widgets-függősége nincs: a natív mappaválasztót és a Tanara Cloud Widgets-ablakait a
-// SettingsDialogs felületen át kéri (gui/src: SettingsWidgetsDialogs).
+// ONE instance per process is enough; it lives in three places:
+//  - in the main application QmlShellBridge creates it (ShellActions.openSettings -> open());
+//  - in the standalone recorder (`tanara --record`, "Recording settings");
+//  - in `tanara --settings [page]` mode (the tray watcher's "Settings..." menu item), if no
+//    main window runs to pass the request to.
+// It uses its own QML engine (like the recorder's host); the theme is shared through the `App` singleton.
+// It has no Widgets dependency: the native folder picker and Tanara Cloud's Widgets windows
+// are requested through the SettingsDialogs interface (gui/src: SettingsWidgetsDialogs).
 //
-// Az ablak nem modális: a főablak mellette használható. A bezárás mentetlen változásnál
-// rákérdez (Mentés / Elvetés / Mégse) — ezt a QML intézi.
+// The window is non-modal: the main window can be used beside it. On closing with unsaved
+// changes it asks (Save / Discard / Cancel); QML handles that.
 //
 #include <QObject>
 #include <QPointer>
@@ -38,27 +38,27 @@ public:
                        QObject* parent = nullptr);
     ~SettingsWindowHost() override;
 
-    // Az ablak megnyitása / előtérbe hozása a megadott lapon. page: "" | "general" |
-    // "recording" | "watcher" | "providers" | "cloud" | "speakers" | "summary"; focusField: "" | "stt" |
-    // "llm" (B04). Ha az ablak zárva volt, a beállításokat újratölti. false: QML-hiba.
+    // Opens / raises the window on the given page. page: "" | "general" | "recording" |
+    // "watcher" | "providers" | "cloud" | "speakers" | "summary"; focusField: "" | "stt" | "llm".
+    // If the window was closed, it reloads the settings. False: QML error.
     bool open(const QString& page = QString(), const QString& focusField = QString());
-    // Bezárás kérdés nélkül (a folyamat leállásakor); a mentetlen piszkozat elvész.
+    // Closes without asking (when the process shuts down); the unsaved draft is lost.
     void closeNow();
     bool isVisible() const;
     QQuickWindow* window() const;
     SettingsViewModel* viewModel() const;
 
-    // Az ablak ehhez tartozzon az ablakkezelő szerint (fölötte marad, hozzá igazodik).
+    // The window should belong to this one per the window manager (stays above it, aligns to it).
     void setTransientParent(QWindow* parent);
-    // Hamis: a téma mentését a hívó intézi a themeModeSaved jelre (a főablak ui-state-je);
-    // igaz (alapértelmezés): a gazda maga írja a <metaadat-mappa>/ui-state.json-ba.
+    // False: the caller handles saving the theme on the themeModeSaved signal (the main window's
+    // ui-state); true (default): the host writes it to <meta folder>/ui-state.json itself.
     void setPersistTheme(bool on) { m_persistTheme = on; }
 
 signals:
-    void saved();                           // a beállítások mentődtek
+    void saved();                           // the settings were saved
     void themeModeSaved(const QString& mode);
-    void returnRequested();                 // B04: vissza a megbeszéléshez (az ablak már bezárult)
-    void closed();                          // az ablak bezárult (mentéssel vagy anélkül)
+    void returnRequested();                 // back to the meeting (the window has already closed)
+    void closed();                          // the window closed (with or without saving)
 
 private:
     bool ensureWindow();

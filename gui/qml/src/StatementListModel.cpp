@@ -86,7 +86,7 @@ QVariantList StatementListModel::rows() const
 
 void StatementListModel::setRows(const QVector<Row>& rows)
 {
-    // Változatlan tartalomnál nincs reset: a QML-elemek (és egy nyitott felugró) maradnak.
+    // With unchanged content there is no reset: the QML items (and an open popup) stay.
     if (rows.size() == m_rows.size()) {
         bool same = true;
         for (int i = 0; same && i < rows.size(); ++i)

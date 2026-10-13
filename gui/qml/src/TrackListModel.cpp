@@ -25,7 +25,7 @@ namespace {
 
 const QString kMixdownId = QStringLiteral("mixdown");
 
-// Kitalált, de „beszédszerű” hullámforma a demóhoz (determinisztikus).
+// A fictional but "speech-like" waveform for the demo (deterministic).
 QList<qreal> demoPeaks(int seed, qreal level)
 {
     QList<qreal> out;
@@ -69,7 +69,7 @@ void TrackListModel::setMeetingId(const QString& id)
 {
     if (id == m_meetingId)
         return;
-    // A régi meeting függő hullámforma-kéréseit eldobjuk (ne számoljon a háttérben feleslegesen).
+    // The old meeting's pending waveform requests are dropped (no needless background computing).
     if (AppController* c = app(); c && !m_meetingId.isEmpty() && !jobsupport::demoMode(c))
         c->waveforms()->cancel(m_meetingId);
     m_meetingId = id;
@@ -108,7 +108,7 @@ void TrackListModel::connectController()
     auto mine = [this](const QString& id) { return !m_meetingId.isEmpty() && id == m_meetingId; };
     m_connections << connect(c, &AppController::tracksChanged, this,
                              [this, mine](const QString& id) { if (mine(id)) reload(); });
-    // Az eszközök átnevezése (Beállítások) a sávok barátságos nevét is megváltoztatja.
+    // Renaming devices (Settings) also changes the tracks' friendly names.
     if (c->settings()) {
         m_deviceNames = c->settings()->settings().deviceNames;
         m_connections << connect(c->settings(), &tanara::SettingsManager::settingsChanged, this, [this] {
@@ -123,7 +123,7 @@ void TrackListModel::connectController()
     m_connections << connect(c, &AppController::mixdownUpdated, this,
                              [this, mine](const QString& id, bool ok) {
         if (!mine(id)) return;
-        if (ok) {                       // új keverék → a régi csúcsok érvénytelenek
+        if (ok) {                       // new mix -> the old peaks are invalid
             m_mixdownPeaks.clear();
             m_mixdownDurationMs = -1;
         }
@@ -185,12 +185,12 @@ QVariant TrackListModel::data(const QModelIndex& index, int role) const
     case FriendlyNameRole: return r.view.friendlyName;
     case RenamedRole:      return r.view.renamed;
     case RawNameRole: {
-        // Második sor: [N. szakasz · kezdete m:ss · ]nyers eszköznév · fájlnév.
+        // Second line: [segment N · starts m:ss · ]raw device name · file name.
         const QString file = QFileInfo(r.view.track.file).fileName();
         QStringList parts;
         if (r.view.segment > 0)
             parts << tr("%1. szakasz").arg(r.view.segment);
-        // Később kezdődő sáv: ennyivel a felvétel kezdete után indult (Track::startOffsetMs).
+        // A later-starting track: it started this long after the recording began (Track::startOffsetMs).
         if (r.view.track.startOffsetMs > 0)
             parts << tr("kezdete: %1").arg(jobsupport::formatDuration(r.view.track.startOffsetMs));
         if (!r.view.rawDeviceName.isEmpty()) parts << r.view.rawDeviceName;
@@ -202,7 +202,7 @@ QVariant TrackListModel::data(const QModelIndex& index, int role) const
     case MissingRole:      return r.view.fileMissing;
     case PathRole:         return r.view.absolutePath;
     case DurationTextRole:
-        // A fájl (a felvett szakasz) hossza; amíg nem ismert, a kezdetétől a megbeszélés végéig.
+        // The file's (recorded segment's) length; until known, from its start to the meeting's end.
         if (r.view.fileMissing) return QStringLiteral("–");
         return jobsupport::formatDuration(r.durationMs >= 0 ? r.durationMs
                                           : qMax<qint64>(0, m_meetingDurationMs - r.view.track.startOffsetMs));
@@ -278,8 +278,8 @@ int TrackListModel::droppedCount() const
                              [](const Row& r) { return !r.view.track.active; }));
 }
 
-// A rajzolt szintek: az effektív (RMS) szint, ha van — hosszú felvételnél a vödrönkénti csúcs
-// mindenhol közel maximális, az RMS viszont megmutatja, hol van beszéd és hol csend.
+// The drawn levels: the effective (RMS) level if there is one: for a long recording the
+// per-bucket peak is near maximum everywhere, while RMS shows where there is speech and where silence.
 QList<qreal> TrackListModel::levelsOf(const TrackPeaks& peaks)
 {
     return toList(peaks.rms.size() == peaks.peaks.size() && !peaks.rms.isEmpty() ? peaks.rms : peaks.peaks);
@@ -287,11 +287,11 @@ QList<qreal> TrackListModel::levelsOf(const TrackPeaks& peaks)
 
 qreal TrackListModel::peakReference() const
 {
-    // Közös skála a sávokra: a szintek felső percentilise (nem a maximum — egyetlen hangos
-    // pillanat ne nyomja össze az egész képet). A leghangosabb részek így telt magasságúak.
+    // Common scale for the tracks: the levels' upper percentile (not the maximum, so a single
+    // loud moment does not squash the whole picture). The loudest parts thus reach full height.
     QList<qreal> all;
     for (const Row& r : m_rows) all += r.peaks;
-    return std::max(WaveformItem::referenceLevel(all), 0.004);   // csendes felvételnél se nagyítsuk fel a zajt
+    return std::max(WaveformItem::referenceLevel(all), 0.004);   // do not amplify the noise on a quiet recording either
 }
 
 qreal TrackListModel::rowReference(int row) const
@@ -323,7 +323,7 @@ void TrackListModel::reload()
         if (!m.mixdownFile.isEmpty())
             m_mixdownPath = QDir(m.folder).filePath(m.mixdownFile);
         const QVector<TrackView> views = TrackCatalog::tracks(m);
-        QHash<QString, QString> groupOf;   // szakasz-id → a logikai sáv vezetőjének id-ja
+        QHash<QString, QString> groupOf;   // segment id -> the logical track's leading id
         const QVector<tracknames::SegmentInfo> seg = tracknames::segments(m.tracks);
         for (int i = 0; i < m.tracks.size(); ++i)
             groupOf.insert(m.tracks.at(i).id, m.tracks.at(seg.value(i).leader >= 0 ? seg.value(i).leader : i).id);
@@ -334,7 +334,7 @@ void TrackListModel::reload()
             row.groupId = groupOf.value(v.track.id, v.track.id);
             row.durationMs = v.durationMs;
             row.colorIndex = color++;
-            // A korábban betöltött csúcsok megmaradnak (ugyanaz a sáv, ugyanaz a fájl).
+            // Previously loaded peaks stay (same track, same file).
             const auto old = std::find_if(m_rows.cbegin(), m_rows.cend(), [&v](const Row& r) {
                 return r.view.track.id == v.track.id && r.view.absolutePath == v.absolutePath;
             });
@@ -343,7 +343,7 @@ void TrackListModel::reload()
                 row.peaksState = old->peaksState;
                 if (row.durationMs < 0) row.durationMs = old->durationMs;
             } else if (!v.fileMissing) {
-                // Érvényes gyorsítótár → azonnal megvan (kicsi fájl, szinkron olvasás).
+                // Valid cache -> available immediately (small file, synchronous read).
                 const TrackPeaks cached = WaveformService::loadCached(v.absolutePath);
                 if (cached.isValid()) {
                     row.peaks = levelsOf(cached);
@@ -380,7 +380,7 @@ void TrackListModel::reload()
     reloadMixdown();
     emit peaksChanged();
     emit changed();
-    // Új / megtalált fájl: ha a fül már kérte a csúcsokat, a hiányzókat most is kérjük.
+    // New / located file: if the tab already requested the peaks, we request the missing ones now too.
     if (m_waveformsRequested)
         requestWaveforms();
 }
@@ -436,7 +436,7 @@ void TrackListModel::applyPeaks(const QString& trackId, const TrackPeaks& peaks,
             r.durationMs = peaks.durationMs;
         }
         emit dataChanged(index(i), index(i), {PeaksRole, PeaksStateRole, DurationTextRole, WaveSpanRole});
-        emit peaksChanged();   // a közös skála is változhatott
+        emit peaksChanged();   // the common scale may have changed too
         return;
     }
 }
@@ -465,7 +465,7 @@ void TrackListModel::requestWaveforms()
         m_mixdownPeaksLoading = true;
         emit peaksChanged();
     }
-    // A szolgáltatás a már futó / váró kérést nem duplázza; a gyorsítótárazottak azonnal jönnek.
+    // The service does not duplicate an already running / waiting request; cached ones come immediately.
     if (any || mixMissing)
         c->requestWaveforms(m_meetingId);
 }
@@ -568,7 +568,7 @@ int TrackListModel::deleteDroppedIn(const QString& meetingId)
     AppController* c = app();
     if (jobsupport::demoMode(c))
         return deleteDropped();
-    // A megerősítés EHHEZ a megbeszéléshez szólt: ha közben másik lett a kijelölt, nem törlünk.
+    // The confirmation was for THIS meeting: if another became selected meanwhile, we do not delete.
     if (meetingId.isEmpty() || meetingId != m_meetingId)
         return -1;
     return c->tracks()->deleteDroppedTracks(meetingId);
@@ -602,13 +602,12 @@ void TrackListModel::refreshMixdown()
     c->regenerateMixdown(m_meetingId);
 }
 
-// Kitalált mintaadat (M09).
+// Fictional sample data.
 void TrackListModel::loadDemo()
 {
     const QString st = m_demoState.isEmpty() ? QStringLiteral("default") : m_demoState;
     const bool loading = st == QLatin1String("loading");
-    // Áttekintés (V1/V3): saját mikrofon + hívás + beszéd nélküli rendszerhang;
-    // „overviewTwo” (V5/V6): csak a két beszédes sáv.
+    // Overview: own mic + call + non-speech system audio; "overviewTwo": only the two speech tracks.
     const bool overview = st.startsWith(QLatin1String("overview"));
     m_meetingDurationMs = (30 * 60 + 34) * 1000;
 
@@ -641,7 +640,7 @@ void TrackListModel::loadDemo()
          << make("call", TrackRole::CallAudio, tr("Hívás hangja"),
                  QStringLiteral("Microsoft Teams · Monitor of Built-in Audio Analog Stereo"),
                  QStringLiteral("track-02.ogg"), true, false, 1, 0.9);
-    rows.last().view.track.startOffsetMs = 2 * 60 * 1000 + 30 * 1000;   // később bekapcsolva
+    rows.last().view.track.startOffsetMs = 2 * 60 * 1000 + 30 * 1000;   // enabled later
     rows[0].view.track.kind = tanara::TrackKind::Mic;
     rows[1].view.track.kind = tanara::TrackKind::Loopback;
     if (overview) {

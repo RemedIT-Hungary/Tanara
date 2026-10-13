@@ -1,23 +1,24 @@
 #pragma once
 //
-// PlayerController — a kijelölt megbeszélés lekeverésének lejátszója (gui/qml/CONTRACT.md).
+// PlayerController: player of the selected meeting's mixdown (gui/qml/CONTRACT.md).
 //
-// Egy példány él, a Main.qml birtokolja; a tartalom-komponensek `player` property-ként kapják.
-//  - meetingId beállítása betölti a megbeszélés hangját (lekeverés; ha nincs, a legnagyobb
-//    aktív sáv) és megállítja a lejátszást. A hang-motor LUSTÁN jön létre (az első
-//    lejátszáskor), hogy az indulás ne triggerelje a Qt Multimedia eszköz-próbáit.
-//  - positionMs lejátszás közben ~25×/mp frissül (az átirat-kiemeléshez).
-//  - playRange() egy megszólalást játszik le, majd szünetel.
-//  - playFile() egy másik fájlt (egy sávot) hallgat bele; közben a lekeverés pozíciója és
-//    a `playing` érintetlen (az előnézet állapota: previewPath / previewPlaying /
-//    previewPositionMs / previewDurationMs). stopPreview() visszatér a lekeveréshez.
-//    Az előnézet a sávfájlt ÖNMAGÁBAN játssza (fájl-idő, 0-tól): egy később kezdődő sáv
-//    (Track::startOffsetMs) előnézete a sáv saját elejétől szól, a megbeszélés-idő nem számít.
-//  - playTrack() / toggleTrack() egy SÁVOT hallgat MEGBESZÉLÉS-időben (a beszéd-csík ugrása):
-//    a logikai sáv (egy eszköz szakaszai) azon fájlja szól, amelyik a kért időt fedi, a fájl-idő
-//    = megbeszélés-idő − Track::startOffsetMs; a szakasz végén a következő szakasz jön. Ez is
-//    előnézet (previewPath), plusz previewTrackId (a vezető szakasz id-ja) és previewMeetingMs.
-//    A sáv-előnézet szüneteltethető (toggleTrack): a pozíció megmarad, a forrás nem ürül.
+// One instance lives, owned by Main.qml; content components get it as the `player` property.
+//  - Setting meetingId loads the meeting's audio (the mixdown; if none, the largest active
+//    track) and stops playback. The audio engine is created LAZILY (on first playback), so
+//    startup does not trigger Qt Multimedia's device probing.
+//  - positionMs updates ~25x/s during playback (for the transcript highlight).
+//  - playRange() plays one utterance, then pauses.
+//  - playFile() previews another file (a track); meanwhile the mixdown's position and
+//    `playing` stay untouched (the preview state: previewPath / previewPlaying /
+//    previewPositionMs / previewDurationMs). stopPreview() returns to the mixdown.
+//    The preview plays the track file BY ITSELF (file time, from 0): a later-starting track
+//    (Track::startOffsetMs) previews from the track's own start, meeting time is irrelevant.
+//  - playTrack() / toggleTrack() listen to a TRACK in MEETING time (the speech strip's seek):
+//    the file of the logical track (a device's segments) that covers the requested time plays,
+//    file time = meeting time - Track::startOffsetMs; at the segment end the next segment
+//    follows. This is a preview too (previewPath), plus previewTrackId (the leading segment's
+//    id) and previewMeetingMs. The track preview can be paused (toggleTrack): the position
+//    stays, the source is not emptied.
 //
 #include "PlayerBackend.h"
 
@@ -49,41 +50,41 @@ class PlayerController : public QObject {
     Q_PROPERTY(qreal rate READ rate WRITE setRate NOTIFY rateChanged)
     Q_PROPERTY(qreal volume READ volume WRITE setVolume NOTIFY volumeChanged)
     Q_PROPERTY(QString previewPath READ previewPath NOTIFY previewPathChanged)
-    // A szerződésen túli kényelmi állapot az előnézethez (Sávok fül).
+    // Convenience state beyond the contract, for the preview (Tracks tab).
     Q_PROPERTY(bool previewPlaying READ previewPlaying NOTIFY previewPlayingChanged)
     Q_PROPERTY(int previewPositionMs READ previewPositionMs NOTIFY previewPositionMsChanged)
     Q_PROPERTY(int previewDurationMs READ previewDurationMs NOTIFY previewDurationMsChanged)
-    // A lejátszott hangfájl (lekeverés vagy tartalék-sáv) abszolút útja; üres, ha nincs.
+    // Absolute path of the audio file being played (mixdown or fallback track); empty if none.
     Q_PROPERTY(QString audioPath READ audioPath NOTIFY availableChanged)
-    // A sáv-előnézet (playTrack): a logikai sáv vezető id-ja (üres = nem sáv szól) és a
-    // lejátszás-fej MEGBESZÉLÉS-időben.
+    // The track preview (playTrack): the logical track's leading id (empty = no track plays) and
+    // the playhead in MEETING time.
     Q_PROPERTY(QString previewTrackId READ previewTrackId NOTIFY previewPathChanged)
     Q_PROPERTY(int previewMeetingMs READ previewMeetingMs NOTIFY previewPositionMsChanged)
 
 public:
-    // Egy sáv megbeszélés-idejű pontja: melyik szakasz-fájl (a meeting.tracks indexe) és azon
-    // belül hol. index -1: nincs ilyen sáv. A kért idő előtti / szakaszok közti résben a
-    // következő szakasz eleje; az utolsó szakasz után az utolsó szakasz (a vége felé).
+    // A track's point in meeting time: which segment file (index into meeting.tracks) and where
+    // within it. index -1: no such track. In a gap before the requested time / between segments,
+    // the next segment's start; after the last segment, the last segment (towards its end).
     struct TrackSeek {
         int index = -1;
         QString leaderId;
         qint64 fileMs = 0;
-        qint64 offsetMs = 0;    // a szakasz Track::startOffsetMs-a
+        qint64 offsetMs = 0;    // the segment's Track::startOffsetMs
     };
     static TrackSeek resolveTrackSeek(const QVector<tanara::Track>& tracks, const QString& trackId,
                                       qint64 meetingMs);
 
     using BackendFactory = std::function<PlayerBackend*(QObject* parent)>;
-    // A valódi hang-motor gyára (a main.cpp állítja be). Üres → beépített néma motor.
+    // The real audio engine's factory (set by main.cpp). Empty -> the built-in silent engine.
     static void setBackendFactory(BackendFactory factory);
-    // Egy önálló hang-motor ugyanebből a gyárból (gyár nélkül a néma motor) — más ablak saját
-    // lejátszásához (Személyek: hangminta meghallgatása). A hívó a tulajdonosa (parent).
+    // A standalone audio engine from the same factory (the silent engine without a factory), for
+    // another window's own playback (People: listening to a voice sample). The caller owns it (parent).
     static PlayerBackend* createBackend(QObject* parent);
 
     explicit PlayerController(QObject* parent = nullptr);
     ~PlayerController() override;
 
-    // A controller alapból az App-singletoné; tesztben injektálható.
+    // The controller defaults to the App singleton's; injectable in tests.
     void setController(tanara::AppController* controller);
 
     QString meetingId() const { return m_meetingId; }
@@ -109,20 +110,20 @@ public:
     Q_INVOKABLE void toggle();
     Q_INVOKABLE void seek(int ms);
     Q_INVOKABLE void playRange(int startMs, int endMs);
-    // Egy sor lejátszása kPreRollMs elő- és kPostRollMs utó-futással, a szomszéd sorok határáig
-    // korlátozva: minStartMs = az előző sor vége, maxEndMs = a következő sor kezdete (< 0 = nincs
-    // korlát). A futás sosem rövidebb a [startMs, endMs] tartománynál.
+    // Plays a row with kPreRollMs lead-in and kPostRollMs tail, limited to the neighbor rows'
+    // bounds: minStartMs = the previous row's end, maxEndMs = the next row's start (< 0 = no
+    // limit). The run is never shorter than the [startMs, endMs] range.
     Q_INVOKABLE void playRange(int startMs, int endMs, int minStartMs, int maxEndMs);
     static constexpr int kPreRollMs = 150;
     static constexpr int kPostRollMs = 100;
     Q_INVOKABLE void playFile(const QString& absolutePath);
     Q_INVOKABLE void stopPreview();
-    // Sáv meghallgatása megbeszélés-időben: meetingMs < 0 → ahol abbahagyta (ugyanaz a sáv),
-    // különben a sáv eleje. A lekeverés pozíciója és `playing` érintetlen.
+    // Listen to a track in meeting time: meetingMs < 0 -> where it left off (same track),
+    // otherwise the track's start. The mixdown's position and `playing` stay untouched.
     Q_INVOKABLE void playTrack(const QString& trackId, int meetingMs = -1);
-    // Lejátszás / szünet a sávon (a szünet megtartja a forrást és a pozíciót).
+    // Play / pause on the track (pause keeps the source and the position).
     Q_INVOKABLE void toggleTrack(const QString& trackId);
-    // A forrás újra-feloldása (pl. elkészült a lekeverés) a pozíció megtartásával.
+    // Re-resolves the source (e.g. the mixdown became ready) keeping the position.
     Q_INVOKABLE void reload();
 
 signals:
@@ -153,26 +154,26 @@ private:
     void onBackendFinished();
 
     QPointer<tanara::AppController> m_controller;
-    QPointer<tanara::AppController> m_attached;     // akinek a jeleire épp rá vagyunk kötve
+    QPointer<tanara::AppController> m_attached;     // whose signals we are currently bound to
     bool m_controllerInjected = false;
     PlayerBackend* m_backend = nullptr;
     QTimer m_tick;
 
     QString m_meetingId;
-    QString m_mixPath;          // a megbeszélés hangja (üres: demó / nincs)
-    bool m_mixLoaded = false;   // a motorban épp a megbeszélés hangja van (nem előnézet)
+    QString m_mixPath;          // the meeting's audio (empty: demo / none)
+    bool m_mixLoaded = false;   // the engine currently holds the meeting's audio (not a preview)
     bool m_available = false;
     bool m_playing = false;
     qint64 m_positionMs = 0;
     qint64 m_durationMs = 0;
-    bool m_ended = false;       // a forrás végére ért (a motor ilyenkor 0-t is jelenthet)
-    qint64 m_rangeEndMs = -1;   // playRange vége; -1 = folyamatos lejátszás
+    bool m_ended = false;       // reached the end of the source (the engine may report 0 then)
+    qint64 m_rangeEndMs = -1;   // end of playRange; -1 = continuous playback
     qreal m_rate = 1.0;
     qreal m_volume = 1.0;
 
     void loadPreview(const QString& absolutePath, qint64 fileMs);
-    QString m_previewTrackId;   // sáv-előnézetnél a logikai sáv vezető id-ja
-    QString m_previewSegmentId; // a most szóló szakasz id-ja
+    QString m_previewTrackId;   // for a track preview, the logical track's leading id
+    QString m_previewSegmentId; // the id of the segment now playing
     qint64 m_previewOffsetMs = 0;
     QString m_previewPath;
     bool m_previewPlaying = false;
