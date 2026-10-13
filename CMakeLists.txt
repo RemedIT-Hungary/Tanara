@@ -17,8 +17,7 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   set(CMAKE_BUILD_TYPE Debug CACHE STRING "" FORCE)
 endif()
 
-find_package(Qt6 REQUIRED COMPONENTS Core Network Sql Widgets Multimedia MultimediaWidgets Test LinguistTools
-             OPTIONAL_COMPONENTS DBus)
+find_package(Qt6 6.8 REQUIRED COMPONENTS Core Network Sql Test LinguistTools)
 find_package(Threads REQUIRED)
 
 # third-party (header-only)
@@ -41,35 +40,26 @@ option(TANARA_BUILD_VOICEID "Build with ONNX-based voice fingerprinting" ON)
 option(TANARA_BUILD_CLOUD "Build the Tanara Cloud client (login, cloud providers)" ON)
 option(TANARA_CLOUD_TEASER "Build the Tanara Cloud 'coming soon' waitlist panel" ON)
 
-# For the Qt Quick / QML UI: gui/qml, URI "Tanara". Svg is needed for runtime tinting and
-# rasterizing of the Lucide icons (image provider).
-if(TANARA_BUILD_GUI)
-    find_package(Qt6 REQUIRED COMPONENTS Qml Quick QuickControls2 Svg)
-endif()
-
+# Each target asks for its own Qt components: gui/CMakeLists.txt (Widgets, Multimedia, Qml, Quick,
+# QuickControls2, Svg) and watcher/CMakeLists.txt (Widgets, optional DBus). The core + CLI need
+# neither Widgets nor Multimedia.
 if(TANARA_BUILD_VOICEID)
     # kaldi-native-fbank (vendored, Apache-2.0): Kaldi-accurate fbank for the speaker embedding.
     # The FFT comes from kissfft-float (knf's rfft.cc calls kiss_fftr with float).
-    if(WIN32)
-        # Windows has no pkg-config; kissfft-float is built from source (vendored,
-        # third_party/kissfft). The project is CXX-only by default, so C must be enabled for the
-        # .c files (otherwise CMake silently skips them).
-        enable_language(C)
-        set(KISSFFT_DIR ${CMAKE_SOURCE_DIR}/third_party/kissfft)
-        add_library(kissfft_float STATIC
-            ${KISSFFT_DIR}/kiss_fft.c
-            ${KISSFFT_DIR}/kiss_fftr.c)
-        target_include_directories(kissfft_float PUBLIC ${KISSFFT_DIR})
-        target_compile_definitions(kissfft_float PUBLIC kiss_fft_scalar=float)
-        set_target_properties(kissfft_float PROPERTIES
-            POSITION_INDEPENDENT_CODE ON
-            AUTOMOC OFF AUTOUIC OFF AUTORCC OFF)   # plain C lib, no MOC
-        add_library(tanara::kissfft ALIAS kissfft_float)
-    else()
-        find_package(PkgConfig REQUIRED)
-        pkg_check_modules(KISSFFT REQUIRED IMPORTED_TARGET kissfft-float)
-        add_library(tanara::kissfft ALIAS PkgConfig::KISSFFT)
-    endif()
+    # kissfft-float is built from the vendored source (third_party/kissfft) on every platform.
+    # The project is CXX-only by default, so C must be enabled for the .c files (otherwise
+    # CMake silently skips them).
+    enable_language(C)
+    set(KISSFFT_DIR ${CMAKE_SOURCE_DIR}/third_party/kissfft)
+    add_library(kissfft_float STATIC
+        ${KISSFFT_DIR}/kiss_fft.c
+        ${KISSFFT_DIR}/kiss_fftr.c)
+    target_include_directories(kissfft_float PUBLIC ${KISSFFT_DIR})
+    target_compile_definitions(kissfft_float PUBLIC kiss_fft_scalar=float)
+    set_target_properties(kissfft_float PROPERTIES
+        POSITION_INDEPENDENT_CODE ON
+        AUTOMOC OFF AUTOUIC OFF AUTORCC OFF)   # plain C lib, no MOC
+    add_library(tanara::kissfft ALIAS kissfft_float)
 
     file(GLOB KNF_SOURCES ${CMAKE_SOURCE_DIR}/third_party/kaldi-native-fbank/csrc/*.cc)
     add_library(kaldi_native_fbank STATIC ${KNF_SOURCES})
@@ -107,6 +97,9 @@ endfunction()
 
 add_subdirectory(core)
 add_subdirectory(cli)
+if(TANARA_BUILD_GUI OR TANARA_BUILD_WATCHER)
+    add_subdirectory(gui/common)    # header-only helpers shared by the GUI and the watcher
+endif()
 if(TANARA_BUILD_GUI)
     add_subdirectory(gui)
 endif()

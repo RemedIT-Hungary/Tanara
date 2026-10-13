@@ -88,7 +88,7 @@ QVariantMap speakerMap(const EditorSpeaker& s, int lane)
 } // namespace
 
 TranscriptEditorViewModel::TranscriptEditorViewModel(QObject* parent)
-    : QObject(parent), m_rows(new TranscriptListModel(this)), m_review(new ReviewGroupsModel(this))
+    : QObject(parent), m_rows(new TranscriptListModel(this))
 {
     m_overviewTimer.setSingleShot(true);
     m_overviewTimer.setInterval(0);
@@ -338,7 +338,6 @@ void TranscriptEditorViewModel::reloadAll()
     updateRecheckState();
     m_queue->stop();        // new session -> no worklist
     rebuildReview();
-    m_review->reset();
     qCDebug(lcPerf).noquote()
         << QStringLiteral("TranscriptEditorViewModel::reloadAll %1 sor: beszélők %2 ms, sorok %3 ms, "
                           "keresés %4 ms, áttekintés %5 ms, egyéb %6 ms, össz %7 ms")
@@ -408,7 +407,6 @@ void TranscriptEditorViewModel::onUtterancesChanged(const QStringList& ids)
     if (changed.isEmpty()) return;
     if (!listFilter().isEmpty()) m_rows->syncFilter();
     m_rows->notifyUtterances(changed);
-    m_review->refreshUtterances(changed);
     m_queue->refreshUtterances(changed);    // only the affected rows' state
     updatePlayingRow();
     scheduleOverview();
@@ -459,7 +457,6 @@ void TranscriptEditorViewModel::onSpeakersChanged()
             QTimer::singleShot(0, this, [this, key] { createVoiceprint(key); emit reviewChanged(); });
         }
     }
-    m_review->refreshAll();
     emit speakersChanged();
     emit reviewChanged();
     scheduleOverview();
@@ -563,7 +560,6 @@ void TranscriptEditorViewModel::setLanesExpanded(bool expanded)
     m_lanesExpanded = expanded;
     rebuildSpeakers(false);
     m_rows->notifyAll({TranscriptListModel::LaneRole});
-    m_review->refreshAll();     // the "To review" rows' rail column changes too
     emit speakersChanged();
     rebuildOverview();
 }
@@ -2477,7 +2473,6 @@ void TranscriptEditorViewModel::rebuildReview()
         emit speakersChanged();
     }
     if (conflictsChanged) m_rows->notifyAll({TranscriptListModel::SideConflictRole});
-    m_review->sync();
     m_queue->syncFromReview();      // only the incoming set + suggestion refresh (not the order)
     updateSimilar();
     emit reviewChanged();

@@ -19,3 +19,11 @@ CLAUDE.local.md
 
 # Letöltött ML-modellek (nagy, nem verziókövetett — ~/.tanara/models a futásidejű hely)
 models/
+
+# local scratch / IDE / drafts
+/*.log
+.idea/
+/cmake-build-*/
+/temp/
+/design/*.zip
+/readme.*.md

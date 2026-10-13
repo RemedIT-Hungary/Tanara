@@ -199,8 +199,7 @@ Item {
             width: body.width - x - 20
             spacing: 2
 
-            // Name line: name (clickable: whose line this is) · timestamp · markers. (The per-line decision
-            // buttons are in the "One by one" rows of the To review view: ReviewGroupsView.)
+            // Name line: name (clickable: whose line this is) · timestamp · markers.
             Item {
                 visible: row.head
                 width: parent.width

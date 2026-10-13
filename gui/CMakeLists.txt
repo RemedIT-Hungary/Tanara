@@ -1,3 +1,7 @@
+# Qt components of the GUI. Svg is needed for runtime tinting and rasterizing of the Lucide icons
+# (image provider).
+find_package(Qt6 6.8 REQUIRED COMPONENTS Widgets Multimedia Qml Quick QuickControls2 Svg)
+
 # Az új Qt Quick / QML felület (URI „Tanara”) — statikus modul, lásd gui/qml/README.md.
 add_subdirectory(qml)
 
@@ -20,7 +24,7 @@ target_link_libraries(tanara PRIVATE
     tanara_qmlplugin      # a statikus QML-modul plugin-oldala (típus-regisztráció + qmldir)
     Qt6::Widgets
     Qt6::Multimedia
-    Qt6::MultimediaWidgets
+    tanara_shell_common
 )
 
 tanara_copy_onnxruntime_dll(tanara)

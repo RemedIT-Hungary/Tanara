@@ -1,5 +1,5 @@
 #include "TrayWatcher.h"
-#include "RecorderTrayIcon.h"   // tanara_gui::makeTrayIcon (header-only, gui/src is on the include path)
+#include "RecorderTrayIcon.h"   // tanara_gui::makeTrayIcon (header-only, from gui/common via tanara_shell_common)
 
 #include "tanara/SettingsManager.h"
 #include "tanara/Paths.h"

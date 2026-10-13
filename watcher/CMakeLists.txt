@@ -2,6 +2,8 @@
 # Uses only the detector core (tanara_core) + QSystemTrayIcon (Qt6::Widgets); NO MainWindow /
 # Multimedia / AppController, so it is a minimal always-running process.
 
+find_package(Qt6 6.8 REQUIRED COMPONENTS Widgets OPTIONAL_COMPONENTS DBus)
+
 add_executable(tanara-watcher
     main.cpp
     TrayWatcher.cpp
@@ -11,7 +13,8 @@ add_executable(tanara-watcher
 # WIN32_EXECUTABLE: do not open a console window on Windows (background process).
 set_target_properties(tanara-watcher PROPERTIES WIN32_EXECUTABLE ON)
 
-target_link_libraries(tanara-watcher PRIVATE tanara_core Qt6::Widgets)
+target_link_libraries(tanara-watcher PRIVATE tanara_core Qt6::Widgets tanara_shell_common)
+# tanara_shell_common (gui/common): header-only AppIcon.h + RecorderTrayIcon.h (tray icon).
 tanara_copy_onnxruntime_dll(tanara-watcher)
 
 # On Linux the call notification goes through the freedesktop Notifications D-Bus API (with
@@ -21,8 +24,3 @@ if(UNIX AND NOT APPLE AND TARGET Qt6::DBus)
     target_link_libraries(tanara-watcher PRIVATE Qt6::DBus)
     target_compile_definitions(tanara-watcher PRIVATE TANARA_HAVE_DBUS)
 endif()
-
-# The app icon (makeTanaraIcon) comes from the header-only helper gui/src/AppIcon.h
-# (QtGui-only), for a consistent tray icon. We do not depend on the gui target, only reuse
-# this one header.
-target_include_directories(tanara-watcher PRIVATE ${CMAKE_SOURCE_DIR}/gui/src)

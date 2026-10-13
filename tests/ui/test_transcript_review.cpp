@@ -5,7 +5,6 @@
 // assignment, new person + similar lines. Runs without a display; it touches no user data.
 #include "CandidateListModel.h"
 #include "tanara/edit/PeopleDirectory.h"
-#include "ReviewGroupsModel.h"
 #include "TranscriptEditorViewModel.h"
 #include "TranscriptListModel.h"
 
@@ -77,20 +76,8 @@ private slots:
         QVERIFY(!vm.contaminated().isEmpty());
         QCOMPARE(vm.contaminated().value(QStringLiteral("name")).toString(), QStringLiteral("Fehér Gábor"));
 
-        // The group model: cards + under the active group the "... N lines" row.
-        ReviewGroupsModel* m = vm.reviewGroups();
-        QVERIFY(m->count() >= 4);
-        QCOMPARE(m->data(m->index(0), ReviewGroupsModel::RowKindRole).toString(), QStringLiteral("group"));
-        QCOMPARE(m->data(m->index(1), ReviewGroupsModel::RowKindRole).toString(), QStringLiteral("more"));
-
-        // "One by one": the group's lines under the card; B steps to the next line.
         const QString gid = side->id;
         const int n = int(side->ids.size());
-        m->setExpanded(gid, true);
-        QCOMPARE(m->data(m->index(1), ReviewGroupsModel::RowKindRole).toString(), QStringLiteral("line"));
-        const int first = m->rowOfLine(side->ids.first());
-        QCOMPARE(first, 1);
-        QCOMPARE(m->stepLine(first, 1), 2);
 
         // "All N to Fehér Gábor": one step, the change bar says so; after undo it comes back.
         const QString lilla = side->currentKey;

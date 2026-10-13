@@ -11,7 +11,6 @@
 //  - without (App.demo, --qml-shot, --demo):  built-in FICTIONAL meeting (TranscriptDemoSession)
 //  - tests:  setEditor() + setPeopleProvider() directly
 //
-#include "ReviewGroupsModel.h"
 #include "TranscriptListModel.h"
 
 #include "tanara/edit/SpeakerEditTypes.h"
@@ -143,9 +142,7 @@ class TranscriptEditorViewModel : public QObject, public QQmlParserStatus {
     Q_PROPERTY(int playingRow READ playingRow NOTIFY playingRowChanged)
 
     // ---- Fix mode: review groups, new person ----
-    // Rows of the "To review" view (group cards, rows of the expanded group, "... N lines" rows).
-    // The view appears on the `uncertainOnly` switch (the "To review N" chip).
-    Q_PROPERTY(tanara_qml::ReviewGroupsModel* reviewGroups READ reviewGroups CONSTANT)
+    // The "To review" view appears on the `uncertainOnly` switch (the "To review N" chip).
     // Number of lines to review: lines of the groups asking for a decision (without the short
     // lines' informational group and the contaminated core): the toolbar chip.
     Q_PROPERTY(int reviewCount READ reviewCount NOTIFY reviewChanged)
@@ -202,8 +199,7 @@ class TranscriptEditorViewModel : public QObject, public QQmlParserStatus {
     Q_PROPERTY(QString listFilter READ listFilter NOTIFY listFilterChanged)
 
     // ---- the "To review" worklist (focus queue; ReviewQueueModel.h) ----
-    // Frozen, chronological worklist with a cursor, an incoming set and round closing. The
-    // reviewGroups stay for the old view until it is replaced.
+    // Frozen, chronological worklist with a cursor, an incoming set and round closing.
     Q_PROPERTY(tanara_qml::ReviewQueueModel* reviewQueue READ reviewQueue CONSTANT)
     // Whether the worklist is running (after reviewQueue.start(), before stop() / a new session).
     Q_PROPERTY(bool queueActive READ queueActive NOTIFY queueActiveChanged)
@@ -348,7 +344,6 @@ public:
 
     int playingRow() const { return m_playingRow; }
 
-    ReviewGroupsModel* reviewGroups() const { return m_review; }
     int reviewCount() const { return m_reviewCount; }
     int reviewGroupCount() const { return m_reviewGroupCount; }
     bool reviewRunning() const;
@@ -914,7 +909,6 @@ private:
     QString m_pendingDemoState;
 
     // ---- v3 ----
-    ReviewGroupsModel* m_review = nullptr;
     QVector<ReviewView> m_reviewViews;
     QSet<QString> m_skippedGroups;
     int m_reviewCount = 0;

@@ -31,6 +31,7 @@ endforeach()
 # file; they link the tanara_qml lib (and the plugin, if the test also loads QML). They run
 # on the offscreen platform with a software renderer, so they work on CI / over ssh too.
 if(TARGET tanara_qml)
+    find_package(Qt6 6.8 REQUIRED COMPONENTS Widgets)
     file(GLOB TANARA_UI_TEST_FILES CONFIGURE_DEPENDS ui/*.cpp)
     foreach(testfile ${TANARA_UI_TEST_FILES})
         get_filename_component(tname ${testfile} NAME_WE)

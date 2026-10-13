@@ -4014,60 +4014,6 @@
     </message>
 </context>
 <context>
-    <name>ReviewGroupCard</name>
-    <message>
-        <source>új beszélő (hívás hangja)</source>
-        <translation>new speaker (call audio)</translation>
-    </message>
-    <message>
-        <source>új beszélő (mikrofon)</source>
-        <translation>new speaker (microphone)</translation>
-    </message>
-    <message numerus="yes">
-        <source>%n sor</source>
-        <translation>
-            <numerusform>%n line</numerusform>
-            <numerusform>%n lines</numerusform>
-        </translation>
-    </message>
-    <message>
-        <source>Mind az %1 → %2</source>
-        <translation>All %1 → %2</translation>
-    </message>
-    <message>
-        <source>Mind a %1 → %2</source>
-        <translation>All %1 → %2</translation>
-    </message>
-    <message>
-        <source>A csoport minden sora ide kerül: %1 — egy lépésben visszavonható (Ctrl+Z)</source>
-        <translation>Every line in the group goes here: %1 — undoable in one step (Ctrl+Z)</translation>
-    </message>
-    <message>
-        <source>Összecsukás</source>
-        <translation>Collapse</translation>
-    </message>
-    <message>
-        <source>Egyenként</source>
-        <translation>One by one</translation>
-    </message>
-    <message>
-        <source>Elrejtem</source>
-        <translation>Hide</translation>
-    </message>
-    <message>
-        <source>Megmutatom</source>
-        <translation>Show</translation>
-    </message>
-    <message>
-        <source>Kihagyom</source>
-        <translation>Skip</translation>
-    </message>
-    <message>
-        <source>Most nem foglalkozom vele: a csoport eltűnik a listából (a sorok maradnak, ahogy vannak)</source>
-        <translation>Not dealing with it now: the group disappears from the list (the lines stay as they are)</translation>
-    </message>
-</context>
-<context>
     <name>ReviewGroups</name>
     <message>
         <source>új résztvevő</source>
@@ -4187,92 +4133,6 @@
     <message>
         <source>Túl rövidek a hang-ellenőrzéshez — csak tájékoztató</source>
         <translation>Too short for the voice check — informational only</translation>
-    </message>
-</context>
-<context>
-    <name>ReviewGroupsView</name>
-    <message>
-        <source>Meghallgatom</source>
-        <translation>Listen</translation>
-    </message>
-    <message>
-        <source>%1 mondta</source>
-        <translation>%1 said it</translation>
-    </message>
-    <message>
-        <source>Jó így</source>
-        <translation>Looks right</translation>
-    </message>
-    <message>
-        <source>Jó így, de nem minta</source>
-        <translation>Fine, but not a sample</translation>
-    </message>
-    <message>
-        <source>Jó így, de ne használd mintának: a beszélő rendben van, de egymásra beszéltek, ezért a sor hangja nem lesz minta</source>
-        <translation>Fine, but don’t use it as a sample: the speaker is right, but there is cross-talk, so this line’s voice won’t be a sample</translation>
-    </message>
-    <message>
-        <source>Más…</source>
-        <translation>Other…</translation>
-    </message>
-    <message>
-        <source>Hangminta lett</source>
-        <translation>Became a voice sample</translation>
-    </message>
-    <message>
-        <source>Nem minta: a hangját nem használom</source>
-        <translation>Not a sample: its voice is not used</translation>
-    </message>
-    <message>
-        <source>A sor átkerül hozzá: %1 (1; Shift: nem minta)</source>
-        <translation>The line moves to %1 (1; Shift: not a sample)</translation>
-    </message>
-    <message>
-        <source>A beszélő rendben van: a sor többé nem kétes (J; Shift: nem minta)</source>
-        <translation>The speaker is right: the line is no longer doubtful (J; Shift: not a sample)</translation>
-    </message>
-    <message>
-        <source>Nem azonosítható</source>
-        <translation>Unidentifiable</translation>
-    </message>
-    <message>
-        <source>Nem tudni, ki mondta: a név marad, de a hangját semmire nem használom (0)</source>
-        <translation>No way to tell who said it: the name stays, but its voice is not used for anything (0)</translation>
-    </message>
-    <message>
-        <source>Csak ez a sor kerül át ahhoz, akit választasz (M)</source>
-        <translation>Only this line moves to the person you choose (M)</translation>
-    </message>
-    <message numerus="yes">
-        <source>··· %n sor ebben a csoportban</source>
-        <translation>
-            <numerusform>··· %n line in this group</numerusform>
-            <numerusform>··· %n lines in this group</numerusform>
-        </translation>
-    </message>
-    <message>
-        <source>Kinyitás</source>
-        <translation>Expand</translation>
-    </message>
-    <message>
-        <source>Átnézendők frissítése…</source>
-        <translation>Refresh items to review…</translation>
-    </message>
-    <message>
-        <source>Az átnézendő sorok keresése…</source>
-        <translation>Looking for lines to review…</translation>
-    </message>
-    <message>
-        <source>Nincs átnézendő sor — minden megszólalás beszélője rendben van.</source>
-        <translation>Nothing to review — every utterance has the right speaker.</translation>
-    </message>
-    <message>
-        <source>Beszélők újraellenőrzése…</source>
-        <translation>Re-check speakers…</translation>
-    </message>
-    <message>
-        <source>A megerősített és javított sorok hangjához mérem a többi sort</source>
-        <translation>Compares the other lines with the voice of the confirmed and corrected lines</translation>
     </message>
 </context>
 <context>
@@ -11346,21 +11206,6 @@
             <numerusform>The call track has been silent for %n minute. I won&apos;t stop on my own.</numerusform>
             <numerusform>The call track has been silent for %n minutes. I won&apos;t stop on my own.</numerusform>
         </translation>
-    </message>
-</context>
-<context>
-    <name>tanara_qml::ReviewGroupsModel</name>
-    <message>
-        <source>nem azonosítható</source>
-        <translation>unidentifiable</translation>
-    </message>
-    <message>
-        <source>javítva</source>
-        <translation>corrected</translation>
-    </message>
-    <message>
-        <source>jó így</source>
-        <translation>looks right</translation>
     </message>
 </context>
 <context>
