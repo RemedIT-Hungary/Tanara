@@ -1,15 +1,10 @@
 #include "ShellImportModel.h"
 
-#include "DemoText.h"
-
 #include "AppContext.h"
 #include "JobSupport.h"
 #include "ShellFormat.h"
 
-#include "TagDemoBackend.h"
-
-#include "tanara/app/AppController.h"
-#include "tanara/library/tags/TagService.h"
+#include "tanara/library/IImportFacade.h"
 
 #include <QFileInfo>
 #include <QRegularExpression>
@@ -35,45 +30,51 @@ QString channelsText(int channels)
 
 ShellImportModel::ShellImportModel(QObject* parent) : QObject(parent)
 {
+    init();
+    // Without an injected facade the model follows the App singleton's services.
+    AppContext* ctx = AppContext::instance();
+    const auto resolve = [this] {
+        if (m_injected) return;
+        m_facade = AppContext::instance()->services().import;
+        attach();
+    };
+    connect(ctx, &AppContext::controllerChanged, this, resolve);
+    connect(ctx, &AppContext::demoChanged, this, resolve);
+    m_facade = ctx->services().import;
+    attach();
+}
+
+ShellImportModel::ShellImportModel(tanara::library::IImportFacade* facade, QObject* parent)
+    : QObject(parent), m_facade(facade), m_injected(true)
+{
+    init();
+    attach();
+}
+
+void ShellImportModel::init()
+{
     // While typing the title we do not compute on every key.
     m_suggestTimer.setSingleShot(true);
     m_suggestTimer.setInterval(300);
     connect(&m_suggestTimer, &QTimer::timeout, this, &ShellImportModel::refreshSuggestions);
     connect(this, &ShellImportModel::titleChanged, this, [this] {
-        if (m_controller) m_suggestTimer.start();
+        if (m_facade && m_facade->live()) m_suggestTimer.start();
     });
-    AppContext* ctx = AppContext::instance();
-    m_controller = ctx->controller();
-    connect(ctx, &AppContext::controllerChanged, this, [this, ctx] {
-        if (m_controllerInjected) return;
-        m_controller = ctx->controller();
-        attach();
-    });
-    attach();
-}
-
-void ShellImportModel::setController(tanara::app::AppController* controller)
-{
-    m_controllerInjected = true;
-    m_controller = controller;
-    attach();
 }
 
 void ShellImportModel::attach()
 {
-    if (m_controller == m_attached)
+    using tanara::library::IImportFacade;
+    if (m_facade == m_attached)
         return;
-    if (m_attached) {
+    if (m_attached)
         m_attached->disconnect(this);
-        if (m_attached->importer()) m_attached->importer()->disconnect(this);
-    }
-    m_attached = m_controller;
-    tanara::app::AppController* c = m_controller;
-    if (!c)
+    m_attached = m_facade;
+    IImportFacade* f = m_facade;
+    if (!f)
         return;
-    tanara::library::AudioImporter* imp = c->importer();
-    connect(imp, &tanara::library::AudioImporter::probed, this, &ShellImportModel::onProbed);
-    connect(imp, &tanara::library::AudioImporter::progress, this,
+    connect(f, &IImportFacade::probed, this, &ShellImportModel::onProbed);
+    connect(f, &IImportFacade::progress, this,
             [this](const QString& id, int percent, int fileIndex, int fileCount) {
         if (id != m_importId) return;
         m_percent = percent;
@@ -81,7 +82,7 @@ void ShellImportModel::attach()
         m_fileTotal = fileCount;
         emit runChanged();
     });
-    connect(c, &tanara::app::AppController::importFinished, this, [this](const tanara::Meeting& m) {
+    connect(f, &IImportFacade::finished, this, [this](const tanara::Meeting& m) {
         if (m.id != m_importId) return;
         applyTags(m.id, m_runningTagIds);
         m_runningTagIds.clear();
@@ -91,7 +92,7 @@ void ShellImportModel::attach()
         reset();   // the next opening starts with an empty form
         emit imported(m.id);
     });
-    connect(c, &tanara::app::AppController::importFailed, this,
+    connect(f, &IImportFacade::failed, this,
             [this](const QString& id, const QString& message, const QString& detail) {
         if (id != m_importId) return;
         m_running = m_cancelling = false;
@@ -100,7 +101,7 @@ void ShellImportModel::attach()
         setError(message, detail);
         emit failed(message);
     });
-    connect(c, &tanara::app::AppController::importCancelled, this, [this](const QString& id) {
+    connect(f, &IImportFacade::cancelled, this, [this](const QString& id) {
         if (id != m_importId) return;
         // Cancelled: the form stays, the user can edit and restart.
         m_running = m_cancelling = false;
@@ -215,7 +216,7 @@ void ShellImportModel::setOwnTrack(int index)
 bool ShellImportModel::canStart() const
 {
     return !m_running && !m_rows.isEmpty() && !probing() && trackCount() > 0 && dateValid()
-        && (m_controller || !m_demoState.isEmpty());
+        && m_facade && m_facade->canStart(m_demoState);
 }
 
 int ShellImportModel::addFiles(const QVariantList& pathsOrUrls)
@@ -237,8 +238,8 @@ int ShellImportModel::addFiles(const QVariantList& pathsOrUrls)
         row.path = path;
         m_rows.append(row);
         ++added;
-        if (m_controller)
-            m_controller->importer()->probeAsync(path);
+        if (m_facade)
+            m_facade->probeAsync(path);
     }
     if (added > 0) {
         clearError();
@@ -360,14 +361,14 @@ QString ShellImportModel::progressText() const
 
 bool ShellImportModel::start()
 {
-    if (!m_controller || !canStart()) return false;
+    if (!m_facade || !m_facade->live() || !canStart()) return false;
     tanara::library::ImportRequest req;
     req.sources = sources(nullptr);
     req.title = m_title.trimmed();
     req.startedAt = parseDate(m_dateText);
     req.ownTrack = m_ownTrack;
     clearError();
-    const QString id = m_controller->importAudio(req);
+    const QString id = m_facade->start(req);
     if (id.isEmpty()) return false;
     m_importId = id;
     m_running = true;
@@ -387,8 +388,8 @@ void ShellImportModel::cancel()
     if (!m_running || m_cancelling) return;
     m_cancelling = true;
     emit runChanged();
-    if (m_controller)
-        m_controller->cancelJob(m_importId, tanara::JobKind::Import);
+    if (m_facade)
+        m_facade->cancel(m_importId);
 }
 
 void ShellImportModel::reset()
@@ -456,20 +457,10 @@ bool ShellImportModel::addTag(const QString& name)
 {
     const QString n = name.simplified();
     if (n.isEmpty()) return false;
-    TagRef ref;
-    if (m_controller) {
-        tanara::library::TagService* svc = m_controller->tags();
-        if (!svc) return false;
-        const tanara::Tag t = svc->create(n);     // for an existing key, the existing tag
-        if (!t.isValid()) return false;
-        ref = {t.id, t.name};
-    } else {
-        // Demo: the ids of the fictional pool.
-        TagDemoBackend demo(TagDemoBackend::Content::Sample, nullptr);
-        for (const TagItem& t : demo.tags())
-            if (t.name.compare(n, Qt::CaseInsensitive) == 0) ref = {t.id, t.name};
-        if (ref.id.isEmpty()) ref = {QStringLiteral("new-") + n, n};
-    }
+    if (!m_facade) return false;
+    const tanara::Tag t = m_facade->createTag(n);     // for an existing key, the existing tag
+    if (!t.isValid()) return false;
+    const TagRef ref{t.id, t.name};
     for (const TagRef& t : std::as_const(m_tags))
         if (t.id == ref.id) return false;
     m_tags.append(ref);
@@ -512,12 +503,12 @@ void ShellImportModel::dismissSuggestion(int index)
 void ShellImportModel::refreshSuggestions()
 {
     m_suggestTimer.stop();
-    if (!m_controller) return;                 // demo: the fictional suggestion stays
+    if (!m_facade || !m_facade->live()) return;   // demo: the fictional suggestion stays
     QVector<Suggestion> out;
     const QString title = m_title.trimmed();
     if (!title.isEmpty()) {
         const QStringList applied = tagIds();
-        for (const tanara::TagSuggestion& t : m_controller->draftTagSuggestions(title)) {
+        for (const tanara::TagSuggestion& t : m_facade->suggestionsFor(title)) {
             if ((!t.tagId.isEmpty() && applied.contains(t.tagId)) || m_dismissed.contains(t.name.toLower()))
                 continue;
             bool onIt = false;
@@ -557,13 +548,8 @@ void ShellImportModel::refreshSuggestions()
 
 void ShellImportModel::applyTags(const QString& meetingId, const QStringList& ids)
 {
-    if (!m_controller || ids.isEmpty() || !m_controller->tags()) return;
-    // A tag deleted meanwhile is not attached.
-    QStringList valid;
-    for (const QString& id : ids)
-        if (m_controller->tags()->tag(id).isValid()) valid << id;
-    if (!valid.isEmpty())
-        m_controller->tags()->setTags(meetingId, valid, tanara::TagSource::Manual);
+    if (m_facade && !ids.isEmpty())
+        m_facade->applyTags(meetingId, ids);
 }
 
 // ---- demo (screenshot) ------------------------------------------------------------------
@@ -573,77 +559,51 @@ void ShellImportModel::setDemoState(const QString& state)
     if (state == m_demoState) return;
     m_demoState = state;
     emit demoStateChanged();
-    if (!m_controller) loadDemo();
+    if (!m_facade) return;
+    // Only a fictional facade has a design state to serve.
+    if (const auto scenario = m_facade->scenario(m_demoState))
+        applyScenario(*scenario);
 }
 
-void ShellImportModel::loadDemo()
+void ShellImportModel::applyScenario(const tanara::library::ImportScenario& sc)
 {
-    const auto file = [](const QString& path, qint64 ms, int channels, qint64 bytes, bool video = false) {
-        Row r;
-        r.path = path;
-        r.probed = true;
-        r.info.path = path;
-        r.info.ok = true;
-        r.info.durationMs = ms;
-        r.info.channels = channels;
-        r.info.sizeBytes = bytes;
-        r.info.hasVideo = video;
-        r.info.modifiedAt = QDateTime(QDate(2026, 9, 24), QTime(10, 5));
-        return r;
-    };
     m_rows.clear();
-    m_ownTrack = -1;
+    for (const tanara::library::ImportScenarioFile& f : sc.files) {
+        Row r;
+        r.path = f.path;
+        r.probed = f.probed;
+        r.info = f.info;
+        r.split = f.split;
+        m_rows.append(r);
+    }
+    m_ownTrack = sc.ownTrack;
     m_error.clear();
     m_errorDetail.clear();
     m_running = m_cancelling = false;
     m_titleEdited = m_dateEdited = false;
-
-    const QString dir = demoText("/home/minta/Felvételek/", "/home/sample/Recordings/");
-    if (m_demoState == QLatin1String("split")) {
-        m_rows << file(dir + demoText("Interjú – Varga Nóra.wav", "Interview – Olivia Grant.wav"), 2538000, 2, 447000000);
-        m_rows.last().split = true;
-        m_ownTrack = 0;
-    } else if (m_demoState == QLatin1String("probing")) {
-        m_rows << file(dir + demoText("Fókuszcsoport 3 – terem.wav", "Focus group 3 – room.wav"), 4561000, 2, 803000000);
-        Row r;
-        r.path = dir + demoText("Fókuszcsoport 3 – moderátor.m4a", "Focus group 3 – moderator.m4a");
-        m_rows << r;
-    } else if (m_demoState == QLatin1String("error")) {
-        m_rows << file(dir + demoText("Fókuszcsoport 3 – terem.wav", "Focus group 3 – room.wav"), 4561000, 2, 803000000);
-        Row r;
-        r.path = dir + demoText("jegyzetek.pdf", "notes.pdf");
-        r.probed = true;
-        r.info.path = r.path;
-        r.info.error = tr("Nem hang- vagy videófájl (nem olvasható be): %1").arg(demoText("jegyzetek.pdf", "notes.pdf"));
-        m_rows << r;
-    } else if (!m_demoState.isEmpty()) {   // "files", "progress"
-        m_rows << file(dir + demoText("Fókuszcsoport 3 – terem.wav", "Focus group 3 – room.wav"), 4561000, 2, 803000000)
-               << file(dir + demoText("Fókuszcsoport 3 – moderátor.m4a", "Focus group 3 – moderator.m4a"), 4558000, 1, 36400000)
-               << file(dir + demoText("Fókuszcsoport 3 – kamera.mp4", "Focus group 3 – camera.mp4"), 4570000, 2, 1932000000, true);
-    }
     refreshDefaults();
-    // Fictional tag and suggestion.
     m_tags.clear();
     m_suggestions.clear();
     m_dismissed.clear();
-    if (m_demoState == QLatin1String("files") || m_demoState == QLatin1String("progress")) {
-        m_tags.append({QStringLiteral("t-kutatas"), demoText("Kutatás", "Research")});
+    for (const auto& t : sc.tags)
+        m_tags.append({t.id, t.name});
+    if (sc.suggestion) {
         Suggestion sug;
-        sug.name = demoText("Fókuszcsoportok 2026", "Focus groups 2026");
-        sug.id = QStringLiteral("t-fokusz2026");
-        sug.source = QStringLiteral("similar");
-        sug.reason = tr("hasonló cím: „%1”").arg(demoText("Fókuszcsoport 2", "Focus group 2"));
+        sug.name = sc.suggestion->name;
+        sug.id = sc.suggestion->id;
+        sug.source = sc.suggestion->source;
+        sug.reason = sc.suggestion->reason;
         m_suggestions.append(sug);
     }
     emit tagsChanged();
     emit suggestionsChanged();
-    if (m_demoState == QLatin1String("failed"))
-        m_error = tr("Nem sikerült beolvasni: %1").arg(demoText("Fókuszcsoport 3 – kamera.mp4", "Focus group 3 – camera.mp4"));
-    if (m_demoState == QLatin1String("progress")) {
+    if (!sc.error.isEmpty())
+        m_error = sc.error;
+    if (sc.running) {
         m_running = true;
-        m_percent = 42;
-        m_fileIndex = 1;
-        m_fileTotal = 3;
+        m_percent = sc.percent;
+        m_fileIndex = sc.fileIndex;
+        m_fileTotal = sc.fileTotal;
         m_runningTitle = m_title;
     }
     emit titleChanged();

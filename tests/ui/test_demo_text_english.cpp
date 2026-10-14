@@ -4,7 +4,7 @@
 // texts. The structure of the demo states (line count, timing, speaker-key order) is the same in both languages.
 #include "AppContext.h"
 #include "DemoText.h"
-#include "LibraryDemoData.h"
+#include "demo/LibraryDemoData.h"
 #include "OverviewViewModel.h"
 #include "TranscriptDemoSession.h"
 
@@ -73,23 +73,23 @@ private slots:
     void libraryIsEnglish()
     {
         demotext::setLanguageOverride(QStringLiteral("en"));
-        const auto& all = demo::meetings();
+        const auto& all = tanara_demo::meetings();
         QVERIFY(!all.isEmpty());
         const QString first = all.first().entry.title;
         QCOMPARE(first, QStringLiteral("Product team weekly sync"));
-        for (const demo::DemoMeeting& d : all) {
+        for (const tanara_demo::DemoMeeting& d : all) {
             QVERIFY2(!hasHungarianAccent(d.entry.title), qPrintable(d.entry.title));
             QVERIFY2(!hasHungarianAccent(d.text), qPrintable(d.text));
             for (const QString& p : d.entry.participants) QVERIFY2(!hasHungarianAccent(p), qPrintable(p));
         }
-        QCOMPARE(demo::entry(demo::defaultMeetingId()).title, QStringLiteral("Quarterly partner review"));
-        for (const QString& tag : demo::entry(demo::defaultMeetingId()).tagNames)
+        QCOMPARE(tanara_demo::entry(tanara_demo::defaultMeetingId()).title, QStringLiteral("Quarterly partner review"));
+        for (const QString& tag : tanara_demo::entry(tanara_demo::defaultMeetingId()).tagNames)
             QVERIFY2(!hasHungarianAccent(tag), qPrintable(tag));
 
         // In Hungarian it is the usual library (the per-language cache does not get mixed).
         demotext::setLanguageOverride(QStringLiteral("hu"));
-        QCOMPARE(demo::meetings().first().entry.title, QStringLiteral("Termékcsapat heti egyeztetés"));
-        QCOMPARE(demo::entry(demo::defaultMeetingId()).title, QStringLiteral("Negyedéves partnertalálkozó"));
+        QCOMPARE(tanara_demo::meetings().first().entry.title, QStringLiteral("Termékcsapat heti egyeztetés"));
+        QCOMPARE(tanara_demo::entry(tanara_demo::defaultMeetingId()).title, QStringLiteral("Negyedéves partnertalálkozó"));
     }
 
     void transcriptIsEnglishWithSameShape()

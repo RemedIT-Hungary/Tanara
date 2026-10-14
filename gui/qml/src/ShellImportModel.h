@@ -4,9 +4,9 @@
 // selected files with their data read in the background (length, channels, size), the
 // per-file "separate track per channel" switch, the list and number of the future tracks, the
 // "own microphone" choice, the title and the date (from the file by default, editable), then
-// the running import's progress and cancellation. The work belongs to the core
-// (tanara::AudioImporter via the AppController); without a controller (demo, screenshot) it
-// shows fictional sample data.
+// the running import's progress and cancellation. The work belongs to the core, behind a
+// tanara::library::IImportFacade (the real one, or the fictional one that serves the design
+// states of demo / screenshot mode); the model never branches on which.
 //
 #include "tanara/library/import/AudioImporter.h"
 
@@ -17,9 +17,7 @@
 #include <QVariantList>
 #include <QtQml/qqmlregistration.h>
 
-namespace tanara {
-namespace app { class AppController; }
-}
+namespace tanara::library { class IImportFacade; struct ImportScenario; }
 
 namespace tanara_qml {
 
@@ -67,10 +65,10 @@ class ShellImportModel : public QObject {
     Q_PROPERTY(QString demoState READ demoState WRITE setDemoState NOTIFY demoStateChanged)
 
 public:
+    // From QML: follows the App singleton's services (AppContext::services().import).
     explicit ShellImportModel(QObject* parent = nullptr);
-
-    // Defaults to the App singleton's controller; injectable in tests.
-    void setController(tanara::app::AppController* controller);
+    // With a given facade (tests, hosts); it is not taken over.
+    explicit ShellImportModel(tanara::library::IImportFacade* facade, QObject* parent = nullptr);
 
     QVariantList files() const;
     int fileCount() const { return int(m_rows.size()); }
@@ -154,15 +152,16 @@ private:
     QVector<tanara::library::ImportSource> sources(QVector<tanara::library::ImportFileInfo>* infos) const;
     QVector<tanara::library::ImportPlannedTrack> plan() const;
     void setError(const QString& message, const QString& detail = QString());
-    void loadDemo();
+    void init();
+    void applyScenario(const tanara::library::ImportScenario& scenario);
     void applyTags(const QString& meetingId, const QStringList& ids);
 
     struct TagRef { QString id, name; };
     struct Suggestion { QString id, name, source, reason; bool isNew = false; };
 
-    QPointer<tanara::app::AppController> m_controller;
-    QPointer<tanara::app::AppController> m_attached;
-    bool m_controllerInjected = false;
+    QPointer<tanara::library::IImportFacade> m_facade;
+    QPointer<tanara::library::IImportFacade> m_attached;
+    bool m_injected = false;
 
     QVector<Row> m_rows;
     int m_ownTrack = -1;

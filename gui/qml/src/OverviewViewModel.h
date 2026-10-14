@@ -5,15 +5,13 @@
 // suggestions), the approval banner, the processing steps and the finished meeting's numbers
 // (DATA). The track list belongs to TrackListModel.
 //
-// Sources: AppController::participants / participantApprovalPending /
-// participantAnalysisRunning, the SpeakerEditor (speakers, utterances, to-review), the
-// MeetingJobTracker (running transcription / mixdown / summary), TagService::suggestPeopleForMeeting.
-// It recomputes, delayed by one turn, on the core's signals (participantsChanged, tracksChanged,
-// transcriptReady, summaryReady, jobProgressChanged ...).
-//
-// Without a controller (App.demo, screenshot) fictional data: demoState = overviewProcessing |
-// overviewDone | overviewEmpty | overviewNobody | overviewRecorded (after recording, before
-// transcription) | overviewRecordedError (the transcription failed).
+// It shows the snapshot of a tanara::library::IOverviewFacade (the real one builds it from the
+// participants, the speaker editor, the job tracker and the tags; the fictional one serves a
+// design state) and recomputes, delayed by one turn, when the facade says it changed. The view
+// model never branches on which facade it has. demoState (the fictional facade's scenario):
+// overviewProcessing | overviewDone | overviewEmpty | overviewNobody | overviewRecorded (after
+// recording, before transcription) | overviewRecordedError (the transcription failed) |
+// overviewTranscribing.
 //
 #include <QObject>
 #include <QPointer>
@@ -22,9 +20,7 @@
 #include <QVariantMap>
 #include <QtQml/qqmlregistration.h>
 
-namespace tanara {
-namespace app { class AppController; }
-}
+namespace tanara::library { class IOverviewFacade; }
 
 namespace tanara_qml {
 
@@ -32,7 +28,6 @@ class OverviewViewModel : public QObject {
     Q_OBJECT
     QML_ELEMENT
 
-    Q_PROPERTY(QObject* controller READ controllerObject WRITE setController NOTIFY controllerChanged)
     Q_PROPERTY(QString meetingId READ meetingId WRITE setMeetingId NOTIFY meetingIdChanged)
     Q_PROPERTY(QString demoState READ demoState WRITE setDemoState NOTIFY demoStateChanged)
 
@@ -80,10 +75,10 @@ class OverviewViewModel : public QObject {
     Q_PROPERTY(QString stepsSummary READ stepsSummary NOTIFY changed)
 
 public:
+    // From QML: follows the App singleton's services (AppContext::services().overview).
     explicit OverviewViewModel(QObject* parent = nullptr);
-
-    QObject* controllerObject() const;
-    void setController(QObject* controller);
+    // With a given facade (tests, hosts); it is not taken over.
+    explicit OverviewViewModel(tanara::library::IOverviewFacade* facade, QObject* parent = nullptr);
     QString meetingId() const { return m_meetingId; }
     void setMeetingId(const QString& id);
     QString demoState() const { return m_demoState; }
@@ -130,34 +125,23 @@ public:
     static QString monogramOf(const QString& name);
 
 signals:
-    void controllerChanged();
     void meetingIdChanged();
     void demoStateChanged();
     void changed();
 
 private:
-    tanara::app::AppController* app() const;
-    void connectController();
+    void init();
+    void resolve();
+    void attach(tanara::library::IOverviewFacade* facade);
     void scheduleReload();
     void reload();
-    void loadDemo();
 
-    QPointer<QObject> m_injected;
-    QPointer<tanara::app::AppController> m_connected;
-    QList<QMetaObject::Connection> m_connections;
+    QPointer<tanara::library::IOverviewFacade> m_facade;
+    bool m_injected = false;
     QTimer m_reloadTimer;
 
     QString m_meetingId;
     QString m_demoState;
-    QString m_demoLoadedFor;
-
-    // The audio analysis progress (participantAnalysisProgress): track k / N and percent.
-    struct AnalysisProgress {
-        int done = 0;
-        int total = 0;
-        int percent = -1;
-    };
-    AnalysisProgress m_analysisProgress;
 
     bool m_hasTranscript = false;
     QString m_title;

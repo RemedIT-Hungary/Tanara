@@ -706,7 +706,11 @@ overview; `demoVariant="novoice"` shows the "no voice model" wording).
    `QML_ELEMENT` (or `QML_SINGLETON`) and `#include <QtQml/qqmlregistration.h>`. It is
    then usable in QML as `FooViewModel { id: vm }` — no registration call, no CMake edit.
 2. Reach the core through a **facade** handed to the constructor (P15; ported so far: the
-   recorder, the Settings device list, the track-activity strips):
+   recorder, the Settings device list, the track-activity strips, the library column
+   (`LibraryListModel`, `LibraryPendingModel`, `LibrarySelectionModel`: `ILibraryFacade`), the shell
+   (`ShellActions`, `ShellMeetingModel`: `editing::IShellFacade`), the import window
+   (`ShellImportModel`: `IImportFacade`) and the Overview tab (`OverviewViewModel`:
+   `IOverviewFacade`, whose demo instance is per view model, made by a factory)):
 
    ```cpp
    explicit FooViewModel(tanara::recording::IFooFacade* facade, QObject* parent = nullptr);
@@ -714,9 +718,13 @@ overview; `demoVariant="novoice"` shows the "no voice model" wording).
 
    The facade is an abstract interface in the module's public include
    (`tanara::recording::IRecorderFacade`), implemented by the real services
-   (`RecorderServicesFacade`, built from `app::Services` and the settings) and by a fictional
-   one in **`tanara_demo`** (`demo/`: `RecorderDemoFacade`, sample data, the `DemoText` language
-   switch). `AppContext::instance()->services()` hands out the set for the moment (the real one
+   (`RecorderServicesFacade`, built from `app::Services` and the settings; the shell / import /
+   overview ones still stand on the `AppController` and live in `ControllerFacades.h` /
+   `AppContext.cpp` as transitional adapters) and by a fictional one in **`tanara_demo`**
+   (`demo/`: `RecorderDemoFacade`, `LibraryDemoFacade` + `LibraryDemoData`, `ShellDemoFacade`,
+   `ImportDemoFacade`, `OverviewDemoFacade`, the `DemoText` language switch). A view model made
+   from QML (the default constructor) follows `services()` and re-resolves on
+   `controllerChanged` / `demoChanged`; tests and hosts pass a facade (`tests/ui/FacadeTestSupport.h`). `AppContext::instance()->services()` hands out the set for the moment (the real one
    of the process's controller, or the fictional one when there is no controller / `App.demo`);
    `servicesFor(controller)` is a given controller's set, `demoServices()` the fictional one.
    The view-model factories (`*WindowHost`, `QmlApp`, `App.createRecorderDemo(state)` for the

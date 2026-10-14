@@ -6,7 +6,8 @@
 //  - with a real AppController in an ISOLATED TANARA_HOME: a bulk change goes through
 //    TagService and is undone by ONE undo step.
 #include "AppContext.h"
-#include "LibraryDemoData.h"
+#include "FacadeTestSupport.h"
+#include "demo/LibraryDemoData.h"
 #include "LibraryListModel.h"
 #include "LibrarySelectionModel.h"
 #include "QmlApp.h"
@@ -44,7 +45,7 @@ private slots:
     {
         AppContext::instance()->setController(nullptr);
         AppContext::instance()->setDemo(true);
-        demo::resetTags();
+        tanara_demo::resetTags();
     }
 
     void ctrlClickStartsWithTheOpenMeeting()
@@ -132,27 +133,27 @@ private slots:
 
         // A partial tag is added to all of them on click (with its id).
         s.addTagToAll(QStringLiteral("t-partnerek"));
-        QVERIFY(tagRow(s, QStringLiteral("Partnerek")).value("full").toBool());
-        QCOMPARE(demo::tagsOf(QStringLiteral("demo-tamogatas")),
+        QTRY_VERIFY(tagRow(s, QStringLiteral("Partnerek")).value("full").toBool());   // the list refreshes on the next turn
+        QCOMPARE(tanara_demo::tagsOf(QStringLiteral("demo-tamogatas")),
                  (QStringList{QStringLiteral("t-nordvik"), QStringLiteral("t-partnerek")}));
         // The list rows update too.
         const int row = lib.indexOfMeeting(QStringLiteral("demo-tamogatas"));
-        QCOMPARE(lib.data(lib.index(row), LibraryListModel::TagNamesRole).toStringList(),
-                 (QStringList{QStringLiteral("Nordvik"), QStringLiteral("Partnerek")}));
+        QTRY_COMPARE(lib.data(lib.index(row), LibraryListModel::TagNamesRole).toStringList(),
+                     (QStringList{QStringLiteral("Nordvik"), QStringLiteral("Partnerek")}));
 
         // By name: uses the existing one (case / accents do not matter) ...
         s.addTagToAll(QStringLiteral("belso"));
-        QVERIFY(tagRow(s, QStringLiteral("Belső")).value("full").toBool());
+        QTRY_VERIFY(tagRow(s, QStringLiteral("Belső")).value("full").toBool());
         // ... a new tag for an unknown name.
         s.addTagToAll(QStringLiteral("Pilot 2027"));
-        QVERIFY(tagRow(s, QStringLiteral("Pilot 2027")).value("full").toBool());
-        QVERIFY(!demo::tagIdByName(QStringLiteral("Pilot 2027")).isEmpty());
+        QTRY_VERIFY(tagRow(s, QStringLiteral("Pilot 2027")).value("full").toBool());
+        QVERIFY(!tanara_demo::tagIdByName(QStringLiteral("Pilot 2027")).isEmpty());
 
         // x removes it from all of them.
         s.removeTagFromAll(QStringLiteral("t-nordvik"));
-        QVERIFY(tagRow(s, QStringLiteral("Nordvik")).isEmpty());
-        QVERIFY(!demo::tagsOf(QStringLiteral("demo-partner")).contains(QStringLiteral("t-nordvik")));
-        QVERIFY(demo::tagsOf(QStringLiteral("demo-partner")).contains(QStringLiteral("t-q4")));
+        QTRY_VERIFY(tagRow(s, QStringLiteral("Nordvik")).isEmpty());
+        QVERIFY(!tanara_demo::tagsOf(QStringLiteral("demo-partner")).contains(QStringLiteral("t-nordvik")));
+        QVERIFY(tanara_demo::tagsOf(QStringLiteral("demo-partner")).contains(QStringLiteral("t-q4")));
     }
 
     void sidebarClicksSelect()
@@ -242,10 +243,8 @@ private slots:
             tanara::library::TagService* tags = app.tags();
             const tanara::Tag alfa = tags->addTag(ids.at(0), QStringLiteral("Alfa"));
 
-            LibraryListModel lib;
-            lib.setController(&app);
-            LibrarySelectionModel s;
-            s.setController(&app);
+            LibraryListModel lib(facadetest::libraryOf(&app));
+            LibrarySelectionModel s(facadetest::libraryOf(&app));
             s.setLibrary(&lib);
             QTRY_COMPARE(lib.count(), 3);
             s.selectIds(ids);

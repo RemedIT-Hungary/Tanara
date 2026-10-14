@@ -1,12 +1,10 @@
 #include "LibrarySelectionModel.h"
 
 #include "AppContext.h"
-#include "LibraryDemoData.h"
 #include "LibraryListModel.h"
 #include "ShellFormat.h"
 
-#include "tanara/app/AppController.h"
-#include "tanara/library/tags/TagService.h"
+#include "tanara/library/ILibraryFacade.h"
 
 #include <QVariantMap>
 
@@ -16,24 +14,21 @@ namespace tanara_qml {
 
 LibrarySelectionModel::LibrarySelectionModel(QObject* parent) : QObject(parent)
 {
+    // Without an injected facade the model follows the App singleton's services.
     AppContext* ctx = AppContext::instance();
-    m_controller = ctx->controller();
-    connect(ctx, &AppContext::controllerChanged, this, [this, ctx] {
-        if (m_controllerInjected) return;
-        m_controller = ctx->controller();
+    const auto resolve = [this] {
+        if (m_injected) return;
+        m_facade = AppContext::instance()->services().library;
         rebuild();
-    });
-    // In the demo the tags change in the sample library.
-    connect(demo::tagNotifier(), &demo::DemoTagNotifier::changed, this, [this] {
-        if (!m_controller) rebuild();
-    });
+    };
+    connect(ctx, &AppContext::controllerChanged, this, resolve);
+    connect(ctx, &AppContext::demoChanged, this, resolve);
+    m_facade = ctx->services().library;
 }
 
-void LibrarySelectionModel::setController(tanara::app::AppController* controller)
+LibrarySelectionModel::LibrarySelectionModel(tanara::library::ILibraryFacade* facade, QObject* parent)
+    : QObject(parent), m_facade(facade), m_injected(true)
 {
-    m_controllerInjected = true;
-    m_controller = controller;
-    rebuild();
 }
 
 void LibrarySelectionModel::setLibrary(LibraryListModel* library)
@@ -213,42 +208,18 @@ void LibrarySelectionModel::rebuild()
 void LibrarySelectionModel::addTagToAll(const QString& nameOrId)
 {
     const QString key = nameOrId.trimmed();
-    if (key.isEmpty() || m_ids.isEmpty()) return;
-    if (m_controller) {
-        tanara::library::TagService* tags = m_controller->tags();
-        if (!tags) return;
-        // Creating and attaching together are one undoable step.
-        tanara::Tag t = tags->tag(key);
-        tags->beginGroup(tr("Címke hozzáadása %n megbeszéléshez", nullptr, count()));
-        if (!t.isValid()) t = tags->create(key);
-        if (t.isValid()) tags->bulkAdd(m_ids, t.id);
-        tags->endGroup();
-    } else if (AppContext::instance()->demo()) {
-        const QString id = demo::tagName(key).isEmpty() ? demo::createTag(key) : key;
-        if (id.isEmpty()) return;
-        for (const QString& m : std::as_const(m_ids)) {
-            QStringList t = demo::tagsOf(m);
-            if (!t.contains(id)) demo::setTagsOf(m, t << id);
-        }
-    }
+    if (key.isEmpty() || m_ids.isEmpty() || !m_facade) return;
+    // Creating and attaching together are one undoable step.
+    if (!m_facade->addTagToMeetings(m_ids, key, tr("Címke hozzáadása %n megbeszéléshez", nullptr, count())))
+        return;
     rebuild();
 }
 
 void LibrarySelectionModel::removeTagFromAll(const QString& tagId)
 {
-    if (tagId.isEmpty() || m_ids.isEmpty()) return;
-    if (m_controller) {
-        tanara::library::TagService* tags = m_controller->tags();
-        if (!tags) return;
-        tags->beginGroup(tr("Címke levétele %n megbeszélésről", nullptr, count()));
-        tags->bulkRemove(m_ids, tagId);
-        tags->endGroup();
-    } else if (AppContext::instance()->demo()) {
-        for (const QString& m : std::as_const(m_ids)) {
-            QStringList t = demo::tagsOf(m);
-            if (t.removeAll(tagId) > 0) demo::setTagsOf(m, t);
-        }
-    }
+    if (tagId.isEmpty() || m_ids.isEmpty() || !m_facade) return;
+    if (!m_facade->removeTagFromMeetings(m_ids, tagId, tr("Címke levétele %n megbeszélésről", nullptr, count())))
+        return;
     rebuild();
 }
 

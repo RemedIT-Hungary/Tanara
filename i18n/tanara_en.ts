@@ -8850,6 +8850,288 @@
     </message>
 </context>
 <context>
+    <name>tanara_demo::ImportDemoFacade</name>
+    <message>
+        <source>Nem hang- vagy videófájl (nem olvasható be): %1</source>
+        <translation>Not an audio or video file (cannot be read): %1</translation>
+    </message>
+    <message>
+        <source>hasonló cím: „%1”</source>
+        <translation>similar title: &quot;%1&quot;</translation>
+    </message>
+    <message>
+        <source>Nem sikerült beolvasni: %1</source>
+        <translation>Could not read: %1</translation>
+    </message>
+</context>
+<context>
+    <name>tanara_demo::OverviewDemoFacade</name>
+    <message>
+        <source>nem hallottuk</source>
+        <translation>not heard</translation>
+    </message>
+    <message>
+        <source>Az átiratban nem találtuk a hangját: nincs beszélő a nevén</source>
+        <translation>Their voice was not found in the transcript: no speaker carries their name</translation>
+    </message>
+    <message>
+        <source>kézi</source>
+        <translation>manual</translation>
+    </message>
+    <message>
+        <source>hívás</source>
+        <translation>call</translation>
+    </message>
+    <message>
+        <source>A hívás hangján (távoli oldal) beszél</source>
+        <translation>Speaks on the call audio (remote side)</translation>
+    </message>
+    <message>
+        <source>Közös címke: %1</source>
+        <translation>Tag in common: %1</translation>
+    </message>
+    <message>
+        <source>mikrofon</source>
+        <translation>microphone</translation>
+    </message>
+    <message>
+        <source>A saját mikrofon sávján beszél</source>
+        <translation>Speaks on your own microphone track</translation>
+    </message>
+    <message>
+        <source>névtelen · elnevezhető</source>
+        <translation>unnamed · can be named</translation>
+    </message>
+    <message>
+        <source>jóváhagyva %1-kor</source>
+        <translation>approved at %1</translation>
+    </message>
+    <message>
+        <source>te</source>
+        <translation>you</translation>
+    </message>
+    <message>
+        <source>hang 84%</source>
+        <translation>voice 84%</translation>
+    </message>
+    <message>
+        <source>A hangja 84%-ban hasonlít a mentett mintáihoz (2 modell)</source>
+        <translation>Their voice is 84% similar to their saved samples (2 models)</translation>
+    </message>
+    <message>
+        <source>hang 79%</source>
+        <translation>voice 79%</translation>
+    </message>
+    <message>
+        <source>hang 71%</source>
+        <translation>voice 71%</translation>
+    </message>
+    <message>
+        <source>javasolt</source>
+        <translation>suggested</translation>
+    </message>
+    <message>
+        <source>a #%1 alapján · %2 / %3</source>
+        <translation>based on #%1 · %2 / %3</translation>
+    </message>
+    <message>
+        <source>naptár · hang · címke · kézi</source>
+        <translation>calendar · voice · tag · manual</translation>
+    </message>
+    <message>
+        <source>Beszélő 1</source>
+        <translation>Speaker 1</translation>
+    </message>
+    <message>
+        <source>Beszélő 2</source>
+        <translation>Speaker 2</translation>
+    </message>
+    <message>
+        <source>Beszélő 3</source>
+        <translation>Speaker 3</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n résztvevő</source>
+        <translation>
+            <numerusform>%n participant</numerusform>
+            <numerusform>%n participants</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Felvétel</source>
+        <translation>Recording</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n sáv</source>
+        <translation>
+            <numerusform>%n track</numerusform>
+            <numerusform>%n tracks</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Sávok</source>
+        <translation>Tracks</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n aktív</source>
+        <translation>
+            <numerusform>%n active</numerusform>
+            <numerusform>%n active</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Lekeverés</source>
+        <translation>Mixdown</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n sávból</source>
+        <translation>
+            <numerusform>from %n track</numerusform>
+            <numerusform>from %n tracks</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Hanglenyomat-elemzés</source>
+        <translation>Voiceprint analysis</translation>
+    </message>
+    <message>
+        <source>nem futott</source>
+        <translation>did not run</translation>
+    </message>
+    <message>
+        <source>Átirat</source>
+        <translation>Transcript</translation>
+    </message>
+    <message>
+        <source>feltöltés</source>
+        <translation>upload</translation>
+    </message>
+    <message>
+        <source>Összefoglaló</source>
+        <translation>Summary</translation>
+    </message>
+    <message>
+        <source>az átirat után</source>
+        <translation>after the transcript</translation>
+    </message>
+    <message>
+        <source>nem sikerült</source>
+        <translation>failed</translation>
+    </message>
+    <message>
+        <source>még nem indult</source>
+        <translation>not started yet</translation>
+    </message>
+    <message>
+        <source>sáv</source>
+        <translation>track</translation>
+    </message>
+    <message numerus="yes">
+        <source>kb. %n perc</source>
+        <translation>
+            <numerusform>about %n minute</numerusform>
+            <numerusform>about %n minutes</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>nincs ismert hang</source>
+        <translation>no known voice</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n megszólalás</source>
+        <translation>
+            <numerusform>%n utterance</numerusform>
+            <numerusform>%n utterances</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>%n beszélő</source>
+        <translation>
+            <numerusform>%n speaker</numerusform>
+            <numerusform>%n speakers</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>még nem készült</source>
+        <translation>not created yet</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n kimaradt, nincs rajta beszéd</source>
+        <translation>
+            <numerusform>%n skipped, no speech</numerusform>
+            <numerusform>%n skipped, no speech</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>kész</source>
+        <translation>done</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n jelölt · jóváhagyásra vár</source>
+        <translation>
+            <numerusform>%n candidate · awaiting approval</numerusform>
+            <numerusform>%n candidates · awaiting approval</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>felvétel · lekeverés · átirat · összefoglaló</source>
+        <translation>recording · mixdown · transcript · summary</translation>
+    </message>
+    <message>
+        <source>HOSSZ</source>
+        <translation>LENGTH</translation>
+    </message>
+    <message>
+        <source>felvétel</source>
+        <translation>recording</translation>
+    </message>
+    <message>
+        <source>BESZÉD</source>
+        <translation>SPEECH</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n sávon</source>
+        <translation>
+            <numerusform>on %n track</numerusform>
+            <numerusform>on %n tracks</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>BESZÉLŐK</source>
+        <translation>SPEAKERS</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n névtelen</source>
+        <translation>
+            <numerusform>%n unnamed</numerusform>
+            <numerusform>%n unnamed</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>MEGSZÓLALÁS</source>
+        <translation>UTTERANCES</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n javítva</source>
+        <translation>
+            <numerusform>%n corrected</numerusform>
+            <numerusform>%n corrected</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>ÁTNÉZENDŐ</source>
+        <translation>TO REVIEW</translation>
+    </message>
+    <message>
+        <source>az Átirat fülön</source>
+        <translation>in the Transcript tab</translation>
+    </message>
+    <message>
+        <source>ÖSSZEFOGLALÓ</source>
+        <translation>SUMMARY</translation>
+    </message>
+</context>
+<context>
     <name>tanara_demo::RecorderDemoFacade</name>
     <message numerus="yes">
         <source>%n perce nincs jel</source>
@@ -8879,6 +9161,17 @@
             <numerusform>%n track</numerusform>
             <numerusform>%n tracks</numerusform>
         </translation>
+    </message>
+</context>
+<context>
+    <name>tanara_demo::ShellDemoFacade</name>
+    <message>
+        <source>LM Studio · saját kulcs</source>
+        <translation>LM Studio · own key</translation>
+    </message>
+    <message>
+        <source>Résztvevők azonosítása</source>
+        <translation>Identifying participants</translation>
     </message>
 </context>
 <context>
@@ -9296,7 +9589,7 @@
     </message>
 </context>
 <context>
-    <name>tanara_qml::OverviewViewModel</name>
+    <name>tanara_qml::OverviewControllerFacade</name>
     <message>
         <source>te</source>
         <translation>you</translation>
@@ -9332,6 +9625,10 @@
     <message>
         <source>A hívás hangján (távoli oldal) beszél</source>
         <translation>Speaks on the call audio (remote side)</translation>
+    </message>
+    <message>
+        <source>nem hallottuk</source>
+        <translation>not heard</translation>
     </message>
     <message>
         <source>Az átiratban nem találtuk a hangját: nincs beszélő a nevén</source>
@@ -9456,6 +9753,10 @@
         <translation>did not run</translation>
     </message>
     <message>
+        <source>nincs hangmodell</source>
+        <translation>no voice model</translation>
+    </message>
+    <message>
         <source>Hanglenyomat-elemzés</source>
         <translation>Voiceprint analysis</translation>
     </message>
@@ -9576,61 +9877,6 @@
     <message>
         <source>nincs</source>
         <translation>none</translation>
-    </message>
-    <message>
-        <source>Közös címke: %1</source>
-        <translation>Tag in common: %1</translation>
-    </message>
-    <message>
-        <source>hang 84%</source>
-        <translation>voice 84%</translation>
-    </message>
-    <message>
-        <source>A hangja 84%-ban hasonlít a mentett mintáihoz (2 modell)</source>
-        <translation>Their voice is 84% similar to their saved samples (2 models)</translation>
-    </message>
-    <message>
-        <source>hang 79%</source>
-        <translation>voice 79%</translation>
-    </message>
-    <message>
-        <source>hang 71%</source>
-        <translation>voice 71%</translation>
-    </message>
-    <message>
-        <source>nem hallottuk</source>
-        <translation>not heard</translation>
-    </message>
-    <message>
-        <source>nincs hangmodell</source>
-        <translation>no voice model</translation>
-    </message>
-    <message>
-        <source>Beszélő 1</source>
-        <translation>Speaker 1</translation>
-    </message>
-    <message>
-        <source>Beszélő 2</source>
-        <translation>Speaker 2</translation>
-    </message>
-    <message>
-        <source>Beszélő 3</source>
-        <translation>Speaker 3</translation>
-    </message>
-    <message numerus="yes">
-        <source>%n sáv</source>
-        <translation>
-            <numerusform>%n track</numerusform>
-            <numerusform>%n tracks</numerusform>
-        </translation>
-    </message>
-    <message>
-        <source>feltöltés</source>
-        <translation>upload</translation>
-    </message>
-    <message>
-        <source>sáv</source>
-        <translation>track</translation>
     </message>
 </context>
 <context>
@@ -11105,14 +11351,6 @@
         <source>közös kifejezések: %1</source>
         <translation>shared terms: %1</translation>
     </message>
-    <message>
-        <source>Nem hang- vagy videófájl (nem olvasható be): %1</source>
-        <translation>Not an audio or video file (cannot be read): %1</translation>
-    </message>
-    <message>
-        <source>Nem sikerült beolvasni: %1</source>
-        <translation>Could not read: %1</translation>
-    </message>
 </context>
 <context>
     <name>tanara_qml::ShellMeetingModel</name>
@@ -11161,10 +11399,6 @@
             <numerusform>%n track</numerusform>
             <numerusform>%n tracks</numerusform>
         </translation>
-    </message>
-    <message>
-        <source>LM Studio · saját kulcs</source>
-        <translation>LM Studio · own key</translation>
     </message>
     <message>
         <source>%1 / %2 beszélő</source>

@@ -2,17 +2,13 @@
 #include "tanara/providers/core/ProviderConfig.h"
 
 #include "AppContext.h"
-#include "LibraryDemoData.h"
 #include "PlayerController.h"
 #include "ShellBridge.h"
 
-#include "tanara/app/AppController.h"
-#include "tanara/library/store/PeopleStore.h"
+#include "tanara/editing/IShellFacade.h"
 #include "tanara/editing/undo/MeetingUndo.h"
 #include "tanara/editing/session/SpeakerEditor.h"
-#include "tanara/library/jobs/MeetingJobTracker.h"
 #include "tanara/library/store/MeetingArchive.h"
-#include "tanara/library/store/MeetingRepository.h"
 
 #include <QDesktopServices>
 #include <QDir>
@@ -30,28 +26,38 @@ using tanara::providers::WorkflowStep;
 
 ShellActions::ShellActions(QObject* parent) : QObject(parent)
 {
+    // Without an injected facade the shell follows the App singleton's services.
     AppContext* ctx = AppContext::instance();
-    m_controller = ctx->controller();
+    m_facade = ctx->services().shell;
     m_bridge = qobject_cast<ShellBridge*>(ctx->bridge());
-    connect(ctx, &AppContext::controllerChanged, this, [this, ctx] {
-        if (m_controllerInjected) return;
-        m_controller = ctx->controller();
-        attachController();
-    });
+    const auto resolve = [this] {
+        if (m_injected) return;
+        m_facade = AppContext::instance()->services().shell;
+        attachFacade();
+    };
+    connect(ctx, &AppContext::controllerChanged, this, resolve);
+    connect(ctx, &AppContext::demoChanged, this, resolve);
     connect(ctx, &AppContext::bridgeChanged, this, [this, ctx] {
         if (m_bridgeInjected) return;
         m_bridge = qobject_cast<ShellBridge*>(ctx->bridge());
         attachBridge();
     });
-    attachController();
+    attachFacade();
     attachBridge();
 }
 
-void ShellActions::setController(tanara::app::AppController* controller)
+ShellActions::ShellActions(tanara::editing::IShellFacade* facade, QObject* parent)
+    : QObject(parent), m_facade(facade), m_injected(true)
 {
-    m_controllerInjected = true;
-    m_controller = controller;
-    attachController();
+    AppContext* ctx = AppContext::instance();
+    m_bridge = qobject_cast<ShellBridge*>(ctx->bridge());
+    connect(ctx, &AppContext::bridgeChanged, this, [this, ctx] {
+        if (m_bridgeInjected) return;
+        m_bridge = qobject_cast<ShellBridge*>(ctx->bridge());
+        attachBridge();
+    });
+    attachFacade();
+    attachBridge();
 }
 
 void ShellActions::setBridge(ShellBridge* bridge)
@@ -66,54 +72,53 @@ ShellBridge* ShellActions::bridge() const
     return m_bridge.data();
 }
 
-void ShellActions::attachController()
+void ShellActions::attachFacade()
 {
-    if (m_controller == m_attachedController)
+    using tanara::editing::IShellFacade;
+    if (m_facade == m_attached)
         return;
-    if (m_attachedController) {
-        m_attachedController->disconnect(this);
+    if (m_attached) {
+        m_attached->disconnect(this);
         disconnect(m_undoStoreConn);
     }
-    m_attachedController = m_controller;
+    m_attached = m_facade;
     emit recordingChanged();
     attachMeetingUndo();
-    tanara::app::AppController* c = m_controller;
-    if (!c)
+    IShellFacade* f = m_facade;
+    if (!f)
         return;
     // The stack of a meeting that does not exist yet at selection time (new recording / import) comes later.
-    if (tanara::library::MeetingRepository* store = c->store())
-        m_undoStoreConn = connect(store, &tanara::library::MeetingRepository::meetingUpdated, this, [this](const QString& id) {
-            if (id == m_currentMeetingId && !m_meetingUndo) attachMeetingUndo();
-        });
+    m_undoStoreConn = connect(f, &IShellFacade::meetingUpdated, this, [this](const QString& id) {
+        if (id == m_currentMeetingId && !m_meetingUndo) attachMeetingUndo();
+    });
 
-    connect(c, &tanara::app::AppController::recordingStateChanged, this,
+    connect(f, &IShellFacade::recordingStateChanged, this,
             [this](tanara::RecordingState) { emit recordingChanged(); });
     // New recording: appears in the library (the model refreshes on the store's signal) and is selected.
-    connect(c, &tanara::app::AppController::recordingFinished, this, [this](const tanara::Meeting& m) {
+    connect(f, &IShellFacade::recordingFinished, this, [this](const tanara::Meeting& m) {
         showMeeting(m.id);
         toast(tr("Felvétel kész: %1").arg(m.title));
     });
     // Import done: like a new recording, it appears and is selected (with the pre-transcript
     // view; transcription does not start on its own).
-    connect(c, &tanara::app::AppController::importFinished, this, [this](const tanara::Meeting& m) {
+    connect(f, &IShellFacade::importFinished, this, [this](const tanara::Meeting& m) {
         showMeeting(m.id);
         setCurrentTab(0);
         toast(tr("Importálva: %1").arg(m.title));
     });
     // Transcript / summary done: notification; if this meeting is open, switches to the tab.
-    connect(c, &tanara::app::AppController::transcriptReady, this, [this](const QString& id, const QString&) {
+    connect(f, &IShellFacade::transcriptReady, this, [this](const QString& id) {
         toast(tr("Elkészült az átirat: %1").arg(meeting(id).title));
         if (id == m_currentMeetingId) setCurrentTab(0);
     });
-    connect(c, &tanara::app::AppController::summaryReady, this, [this](const QString& id, const QString&) {
+    connect(f, &IShellFacade::summaryReady, this, [this](const QString& id) {
         toast(tr("Elkészült az összefoglaló: %1").arg(meeting(id).title));
         if (id == m_currentMeetingId) setCurrentTab(1);
     });
-    connect(c, &tanara::app::AppController::topicsReady, this,
-            [this](const QString& id, const QVector<tanara::SummaryTopic>&) {
+    connect(f, &IShellFacade::topicsReady, this, [this](const QString& id) {
         if (id == m_currentMeetingId) setCurrentTab(1);
     });
-    connect(c, &tanara::app::AppController::topicAnalysisQueueFinished, this,
+    connect(f, &IShellFacade::topicAnalysisQueueFinished, this,
             [this](const QString&, int okCount, int failCount) {
         if (failCount == 0)
             toast(tr("%n téma elemzése kész.", nullptr, okCount));
@@ -122,15 +127,15 @@ void ShellActions::attachController()
                       .arg(tr("%n téma kész", nullptr, okCount), tr("%n hibázott", nullptr, failCount)));
     });
     // End of an archive operation (export: the task bar showed progress; import: selection).
-    connect(c, &tanara::app::AppController::archiveFinished, this,
-            [this](const QString& opId, bool ok, const QString& meetingId, const QString& path,
+    connect(f, &IShellFacade::archiveFinished, this,
+            [this](const QString& opId, bool ok, bool cancelled, const QString& meetingId, const QString& path,
                    const QString& message) {
         const bool isExport = opId.startsWith(QLatin1String("export:"));
         if (isExport) {
             if (ok)
                 emit toastRequested(tr("Exportálva: %1").arg(QDir::toNativeSeparators(path)), {}, {}, false,
                                     {}, path);
-            else if (message == tanara::app::AppController::tr("Megszakítva."))
+            else if (cancelled)
                 toast(tr("Az exportálás megszakítva."));
             else
                 emit toastRequested(tr("Az exportálás nem sikerült: %1").arg(message),
@@ -146,34 +151,30 @@ void ShellActions::attachController()
         setCurrentTab(0);
         toast(tr("Importálva archívumból: %1").arg(meeting(meetingId).title));
     });
-    connect(c, &tanara::app::AppController::mixdownUpdated, this, [this](const QString&, bool ok) {
+    connect(f, &IShellFacade::mixdownUpdated, this, [this](const QString&, bool ok) {
         if (!ok) emit toastRequested(tr("A lekeverés nem sikerült."), QStringLiteral("danger"), {}, false);
     });
     // Errors not tied to a task (recording, device ...). Task errors are kept by the tracker
     // (shown by the views' error card), but the text notice is visible here too, non-modally.
     // If the error already shows in the open meeting's error bar, it is not repeated in a toast.
-    connect(c, &tanara::app::AppController::errorOccurred, this, [this](const QString& message) {
+    connect(f, &IShellFacade::errorOccurred, this, [this](const QString& message) {
         if (!m_errorInBanner.isEmpty() && message.contains(m_errorInBanner))
             return;
         emit toastRequested(message, QStringLiteral("danger"), {}, false);
     });
-    if (tanara::library::MeetingJobTracker* jobs = c->jobs()) {
-        connect(jobs, &tanara::library::MeetingJobTracker::jobFinished, this, &ShellActions::onJobFinished);
-        connect(jobs, &tanara::library::MeetingJobTracker::errorChanged, this,
-                [this, jobs](const QString& meetingId, JobKind kind) {
-            if (meetingId != m_currentMeetingId) return;
-            const tanara::JobError e = jobs->lastError(meetingId, kind);
-            if (!e.isValid()) return;
-            m_errorInBanner = e.message;
-            QTimer::singleShot(0, this, [this] { m_errorInBanner.clear(); });
-        });
-    }
+    connect(f, &IShellFacade::jobFinished, this, &ShellActions::onJobFinished);
+    connect(f, &IShellFacade::jobErrorChanged, this, [this, f](const QString& meetingId, JobKind kind) {
+        if (meetingId != m_currentMeetingId) return;
+        const tanara::JobError e = f->lastJobError(meetingId, kind);
+        if (!e.isValid()) return;
+        m_errorInBanner = e.message;
+        QTimer::singleShot(0, this, [this] { m_errorInBanner.clear(); });
+    });
     // The selected meeting was deleted (from here or elsewhere) -> no selection.
-    if (tanara::library::MeetingRepository* store = c->store())
-        connect(store, &tanara::library::MeetingRepository::meetingRemoved, this, [this](const QString& id) {
-            m_participantGuesses.remove(id);
-            if (id == m_currentMeetingId) setCurrentMeetingId(QString());
-        });
+    connect(f, &IShellFacade::meetingRemoved, this, [this](const QString& id) {
+        m_participantGuesses.remove(id);
+        if (id == m_currentMeetingId) setCurrentMeetingId(QString());
+    });
 }
 
 void ShellActions::attachBridge()
@@ -201,7 +202,7 @@ void ShellActions::attachBridge()
 
 bool ShellActions::recording() const
 {
-    return m_controller && m_controller->recordingState() != tanara::RecordingState::Idle;
+    return m_facade && m_facade->recordingState() != tanara::RecordingState::Idle;
 }
 
 void ShellActions::bumpReadiness()
@@ -212,18 +213,12 @@ void ShellActions::bumpReadiness()
 
 tanara::Meeting ShellActions::meeting(const QString& meetingId) const
 {
-    if (m_controller && m_controller->store() && !meetingId.isEmpty())
-        return m_controller->store()->load(meetingId);
-    return {};
+    return m_facade ? m_facade->meeting(meetingId) : tanara::Meeting{};
 }
 
 bool ShellActions::meetingExists(const QString& meetingId) const
 {
-    if (meetingId.isEmpty())
-        return false;
-    if (m_controller)
-        return !meeting(meetingId).id.isEmpty();
-    return AppContext::instance()->demo() && demo::find(meetingId);
+    return !meetingId.isEmpty() && m_facade && m_facade->meetingExists(meetingId);
 }
 
 // ---- navigation -------------------------------------------------------------------------
@@ -241,8 +236,8 @@ void ShellActions::setCurrentMeetingId(const QString& id)
 
 void ShellActions::attachMeetingUndo()
 {
-    tanara::app::AppController* c = m_controller;
-    tanara::editing::MeetingUndoService* u = (c && !m_currentMeetingId.isEmpty()) ? c->meetingUndo(m_currentMeetingId) : nullptr;
+    tanara::editing::MeetingUndoService* u =
+        (m_facade && !m_currentMeetingId.isEmpty()) ? m_facade->meetingUndo(m_currentMeetingId) : nullptr;
     if (u == m_meetingUndo && (u || m_meetingUndoConns.isEmpty()))
         return;
     for (const QMetaObject::Connection& conn : std::as_const(m_meetingUndoConns))
@@ -441,7 +436,7 @@ QStringList ShellActions::pickAudioFiles()
 void ShellActions::openImport(const QVariantList& files)
 {
     QVariantList list = files;
-    const bool busy = m_controller && m_controller->importer() && m_controller->importer()->busy();
+    const bool busy = m_facade && m_facade->importBusy();
     if (list.isEmpty() && !busy && bridge()) {
         const QStringList picked = pickAudioFiles();
         if (picked.isEmpty())
@@ -456,7 +451,7 @@ void ShellActions::openImport(const QVariantList& files)
 void ShellActions::exportArchive(const QString& meetingId)
 {
     ShellBridge* b = bridge();
-    if (!m_controller || !b)
+    if (!m_facade || !m_facade->live() || !b)
         return;
     const tanara::Meeting m = meeting(meetingId);
     if (m.id.isEmpty())
@@ -474,7 +469,7 @@ void ShellActions::exportArchive(const QString& meetingId)
     if (!path.endsWith(QLatin1String(".zip"), Qt::CaseInsensitive))
         path += tanara::library::MeetingArchive::fileSuffix();
     m_lastArchiveDir = QFileInfo(path).absolutePath();
-    m_controller->exportMeetingArchive(meetingId, path);   // hiba: errorOccurred → toast
+    m_facade->exportArchive(meetingId, path);   // error: errorOccurred -> toast
 }
 
 namespace {
@@ -487,7 +482,7 @@ QString localPath(const QVariant& pathOrUrl)
 
 void ShellActions::importArchive(const QVariant& pathOrUrl)
 {
-    if (!m_controller)
+    if (!m_facade || !m_facade->live())
         return;
     QString file = localPath(pathOrUrl);
     if (file.isEmpty()) {
@@ -498,13 +493,13 @@ void ShellActions::importArchive(const QVariant& pathOrUrl)
         if (file.isEmpty())
             return;                       // cancelled
     }
-    if (!m_controller->importMeetingArchive(file).isEmpty())
+    if (m_facade->importArchive(file))
         toast(tr("Archívum importálása: %1…").arg(QFileInfo(file).fileName()));
 }
 
 void ShellActions::importFolder(const QVariant& pathOrUrl)
 {
-    if (!m_controller)
+    if (!m_facade || !m_facade->live())
         return;
     QString folder = localPath(pathOrUrl);
     if (folder.isEmpty()) {
@@ -515,7 +510,7 @@ void ShellActions::importFolder(const QVariant& pathOrUrl)
         if (folder.isEmpty())
             return;                       // cancelled
     }
-    if (!m_controller->importMeetingFolder(folder).isEmpty())
+    if (m_facade->importFolder(folder))
         toast(tr("Mappa importálása: %1…").arg(QFileInfo(folder).fileName()));
 }
 
@@ -540,9 +535,9 @@ void ShellActions::revealFile(const QString& path)
 
 bool ShellActions::gate(WorkflowStep step, const QString& meetingId)
 {
-    if (!m_controller || meetingId.isEmpty())
+    if (!m_facade || !m_facade->live() || meetingId.isEmpty())
         return false;
-    const tanara::providers::ReadinessResult r = m_controller->canRun(step, meetingId);
+    const tanara::providers::ReadinessResult r = m_facade->canRun(step, meetingId);
     if (r.runnable)
         return true;
     // Tanara Cloud is not offered in the UI yet: a cloud blocker has the same remedy as a missing
@@ -562,11 +557,11 @@ bool ShellActions::estimateOk(const QString& meetingId, const QString& task, con
 {
     Q_UNUSED(meetingId);
     Q_UNUSED(mode);
-    if (!m_controller)
+    if (!m_facade || !m_facade->live())
         return false;
     const WorkflowStep step = task == QLatin1String("transcribe") ? WorkflowStep::Transcribe
                                                                   : WorkflowStep::Summarize;
-    if (!m_controller->usesCloud(step))
+    if (!m_facade->usesCloud(step))
         return true;                      // own key: no estimate
     // A cloud run (a developer setting, TANARA_CLOUD=live) never starts from the UI: Tanara Cloud
     // is "coming soon" and the user is told so.
@@ -584,7 +579,7 @@ void ShellActions::startTranscription(const QString& meetingId)
         return;
     if (!estimateOk(meetingId, QStringLiteral("transcribe"), QString()))
         return;
-    m_controller->transcribeMeeting(meetingId);
+    m_facade->transcribe(meetingId);
 }
 
 void ShellActions::retranscribe(const QString& meetingId)
@@ -596,10 +591,10 @@ void ShellActions::retranscribe(const QString& meetingId)
 
 QVariantMap ShellActions::retranscribeImpact(const QString& meetingId) const
 {
-    int corrections = 23;                 // demo: the numbers of the sample
+    int corrections = 0;
     int named = 0;
-    if (m_controller) {
-        const tanara::editing::RetranscribeImpact imp = m_controller->retranscribeImpact(meetingId);
+    if (m_facade) {
+        const tanara::editing::RetranscribeImpact imp = m_facade->retranscribeImpact(meetingId);
         corrections = imp.manualCorrections();
         named = imp.namedSpeakers + imp.addedParticipants;
     }
@@ -624,7 +619,7 @@ void ShellActions::confirmRetranscribe(const QString& meetingId, bool keepBackup
         return;
     if (!estimateOk(meetingId, QStringLiteral("transcribe"), QString()))
         return;
-    m_controller->retranscribeMeeting(meetingId, keepBackup);
+    m_facade->retranscribe(meetingId, keepBackup);
 }
 
 void ShellActions::startQuickSummary(const QString& meetingId)
@@ -633,7 +628,7 @@ void ShellActions::startQuickSummary(const QString& meetingId)
         return;
     if (!estimateOk(meetingId, QStringLiteral("summarize"), QStringLiteral("quick")))
         return;
-    m_controller->summarizeMeeting(meetingId);
+    m_facade->summarize(meetingId);
 }
 
 void ShellActions::startTopicExtraction(const QString& meetingId)
@@ -641,18 +636,18 @@ void ShellActions::startTopicExtraction(const QString& meetingId)
     if (!gate(WorkflowStep::Summarize, meetingId))
         return;
     // If an (edited) topic list already exists, extraction calls no model -> no estimate.
-    const bool haveTopics = !m_controller->meetingTopics(meetingId).isEmpty();
+    const bool haveTopics = !m_facade->topics(meetingId).isEmpty();
     if (!haveTopics
         && !estimateOk(meetingId, QStringLiteral("summarize"), QStringLiteral("complex")))
         return;
-    m_controller->extractMeetingTopics(meetingId);
+    m_facade->extractTopics(meetingId);
 }
 
 void ShellActions::startTopicAnalysis(const QString& meetingId)
 {
     if (!gate(WorkflowStep::Summarize, meetingId))
         return;
-    const QVector<tanara::SummaryTopic> topics = m_controller->meetingTopics(meetingId);
+    const QVector<tanara::SummaryTopic> topics = m_facade->topics(meetingId);
     if (topics.isEmpty()) {
         toast(tr("Adj meg legalább egy témát."));
         return;
@@ -660,21 +655,21 @@ void ShellActions::startTopicAnalysis(const QString& meetingId)
     // Cloud: estimate for the remaining (not yet analyzed) topics + the closing summary.
     if (!estimateOk(meetingId, QStringLiteral("summarize"), QStringLiteral("complex")))
         return;
-    m_controller->generateComplexSummary(meetingId, topics);
+    m_facade->generateComplexSummary(meetingId, topics);
 }
 
 void ShellActions::analyzeTopic(const QString& meetingId, const QString& topicId)
 {
     if (!gate(WorkflowStep::Summarize, meetingId))
         return;
-    const QVector<tanara::SummaryTopic> topics = m_controller->meetingTopics(meetingId);
+    const QVector<tanara::SummaryTopic> topics = m_facade->topics(meetingId);
     for (const tanara::SummaryTopic& t : topics) {
         if (t.id != topicId) continue;
         if (t.title.trimmed().isEmpty()) {
             toast(tr("A témához cím kell az elemzéshez."));
             return;
         }
-        m_controller->analyzeTopic(meetingId, t);
+        m_facade->analyzeTopic(meetingId, t);
         return;
     }
     toast(tr("Ez a téma már nem létezik."));
@@ -682,27 +677,27 @@ void ShellActions::analyzeTopic(const QString& meetingId, const QString& topicId
 
 void ShellActions::identifyParticipants(const QString& meetingId)
 {
-    if (!m_controller || meetingId.isEmpty())
+    if (!m_facade || !m_facade->live() || meetingId.isEmpty())
         return;
     const tanara::Meeting m = meeting(meetingId);
     if (m.id.isEmpty())
         return;
     if (m.hasTranscript) {
         // After the transcript: async, shown in the task bar ("3 / 5 speakers"), cancelable.
-        if (m_controller->jobs() && m_controller->jobs()->isRunning(meetingId, JobKind::Identify))
+        if (m_facade->jobRunning(meetingId, JobKind::Identify))
             return;
-        if (m_controller->identifyMeetingAsync(meetingId)) {
+        if (m_facade->identifyAsync(meetingId)) {
             m_identifyRequested.insert(meetingId);
             return;
         }
         // Did not start: say WHY (the core only returns true/false).
-        if (m_controller->jobs() && m_controller->jobs()->isRunning(meetingId, JobKind::Transcribe)) {
+        if (m_facade->jobRunning(meetingId, JobKind::Transcribe)) {
             toast(tr("Az átírás még fut — a végén magától azonosítja a résztvevőket."));
             return;
         }
         bool anonymous = false;
         bool anySpeaker = false;
-        if (tanara::editing::SpeakerEditor* ed = m_controller->speakerEditor(meetingId))
+        if (tanara::editing::SpeakerEditor* ed = m_facade->speakerEditor(meetingId))
             for (const tanara::editing::EditorSpeaker& sp : ed->speakers()) {
                 if (sp.utteranceCount <= 0) continue;
                 anySpeaker = true;
@@ -714,7 +709,7 @@ void ShellActions::identifyParticipants(const QString& meetingId)
                        tr("Ebben a megbeszélésben már minden beszélőnek van neve. Újraellenőrizzem a "
                           "sorokat a megerősített és javított sorok hangja alapján? A kétséges sorokat "
                           "az Átnézendő szűrőbe teszem, hogy átnézhesd őket."));
-        } else if (!m_controller->voiceIdentificationAvailable()) {
+        } else if (!m_facade->voiceIdentificationAvailable()) {
             toast(tr("Az azonosításhoz nincs telepítve a hangmodell."));
         } else {
             toast(anonymous
@@ -747,9 +742,9 @@ void ShellActions::recheckSpeakers(const QString& meetingId)
 
 void ShellActions::runRecheck(const QString& meetingId, const QString& title, const QString& text)
 {
-    if (!m_controller || meetingId.isEmpty())
+    if (!m_facade || !m_facade->live() || meetingId.isEmpty())
         return;
-    tanara::editing::SpeakerEditor* ed = m_controller->speakerEditor(meetingId);
+    tanara::editing::SpeakerEditor* ed = m_facade->speakerEditor(meetingId);
     if (!ed || !ed->hasTranscript()) {
         toast(tr("Ennek a megbeszélésnek nincs szerkeszthető átirata."));
         return;
@@ -793,7 +788,7 @@ void ShellActions::openParticipants(const QString& meetingId)
 bool ShellActions::maybeOfferParticipants(const QString& meetingId)
 {
     if (meetingId.isEmpty() || m_participantsOffered.contains(meetingId)) return false;
-    if (!m_controller || !m_controller->participantApprovalPending(meetingId)) return false;
+    if (!m_facade || !m_facade->participantApprovalPending(meetingId)) return false;
     openParticipants(meetingId);
     return true;
 }
@@ -814,11 +809,9 @@ QString ShellActions::participantsGuess(const QString& meetingId) const
 QString ShellActions::speakerSummary(const QString& meetingId) const
 {
     const tanara::Meeting m = meeting(meetingId);
-    tanara::library::PeopleStore* people = m_controller ? m_controller->people() : nullptr;
-    if (people) people->refresh();
     QStringList named;
     for (auto it = m.speakerMap.constBegin(); it != m.speakerMap.constEnd(); ++it) {
-        const QString name = people ? people->displayName(it.value()) : QString();
+        const QString name = m_facade ? m_facade->personName(it.value()) : QString();
         if (!name.trimmed().isEmpty()) named << name.trimmed();
     }
     named.removeDuplicates();
@@ -840,13 +833,13 @@ void ShellActions::onJobFinished(const QString& meetingId, JobKind kind, tanara:
 
 void ShellActions::requestLlmContext(int tokens)
 {
-    if (m_controller) m_controller->requestLlmContext(tokens);
+    if (m_facade) m_facade->requestLlmContext(tokens);
 }
 
 void ShellActions::cancelJob(const QString& meetingId, int jobKind)
 {
-    if (m_controller)
-        m_controller->cancelJob(meetingId, static_cast<JobKind>(jobKind));
+    if (m_facade)
+        m_facade->cancelJob(meetingId, static_cast<JobKind>(jobKind));
 }
 
 void ShellActions::onRetry(const QString& meetingId, const QString& kind)
@@ -855,7 +848,7 @@ void ShellActions::onRetry(const QString& meetingId, const QString& kind)
     // parts; finished topic analyses are on disk). The target is ALWAYS the meeting the error
     // belongs to; if it is no longer selected (the selection changed under the error dialog), we
     // do not start a paid background run, as the old window did not either.
-    if (!m_controller || meetingId.isEmpty())
+    if (!m_facade || !m_facade->live() || meetingId.isEmpty())
         return;
     const tanara::Meeting m = meeting(meetingId);
     if (m.id.isEmpty())
@@ -891,10 +884,10 @@ void ShellActions::revealInFolder(const QString& meetingId)
 void ShellActions::renameMeeting(const QString& meetingId, const QString& title)
 {
     const QString trimmed = title.trimmed();
-    if (!m_controller || trimmed.isEmpty())
+    if (!m_facade || !m_facade->live() || trimmed.isEmpty())
         return;
     if (meeting(meetingId).title != trimmed)
-        m_controller->renameMeeting(meetingId, trimmed);
+        m_facade->renameMeeting(meetingId, trimmed);
 }
 
 void ShellActions::requestRename(const QString& meetingId)
@@ -909,32 +902,28 @@ void ShellActions::requestDelete(const QString& meetingId)
 {
     if (meetingId.isEmpty())
         return;
-    QString title = meeting(meetingId).title;
-    if (title.isEmpty())
-        if (const demo::DemoMeeting* d = demo::find(meetingId))
-            title = d->entry.title;
-    emit deleteDialogRequested(meetingId, title);
+    emit deleteDialogRequested(meetingId, m_facade ? m_facade->meetingTitle(meetingId) : QString());
 }
 
 void ShellActions::deleteMeeting(const QString& meetingId)
 {
-    if (!m_controller || meetingId.isEmpty())
+    if (!m_facade || !m_facade->live() || meetingId.isEmpty())
         return;
     // Before deleting, running tasks are cancelled (they must not write into the deleted
     // folder) and the player releases the audio file.
-    m_controller->cancelAllJobs(meetingId);
+    m_facade->cancelAllJobs(meetingId);
     if (m_player && m_player->meetingId() == meetingId)
         m_player->setMeetingId(QString());
-    m_controller->closeSpeakerEditor(meetingId);
+    m_facade->closeSpeakerEditor(meetingId);
     if (meetingId == m_currentMeetingId)
         setCurrentMeetingId(QString());
-    m_controller->deleteMeeting(meetingId);
+    m_facade->deleteMeeting(meetingId);
 }
 
 void ShellActions::stopRecording()
 {
-    if (m_controller && m_controller->recordingState() == tanara::RecordingState::Recording)
-        m_controller->stopRecording();
+    if (m_facade)
+        m_facade->stopRecording();
 }
 
 void ShellActions::activateWindow()

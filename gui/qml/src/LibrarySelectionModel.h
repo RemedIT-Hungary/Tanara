@@ -7,9 +7,9 @@
 //    (currentId) into the selection, so it starts with two items.
 //  - The right panel's data: the selected meetings (title, tags, date) and the common tag
 //    rows (on all / only some, "3/3" / "1/3").
-//  - Bulk tagging: addTagToAll / removeTagFromAll. With a controller through the TagService
-//    (beginGroup -> bulkAdd / bulkRemove -> endGroup), so it is undoable in ONE step; without
-//    a controller (demo) it modifies the sample library's in-memory tags.
+//  - Bulk tagging: addTagToAll / removeTagFromAll, through the library facade (the real one:
+//    the TagService, undoable in ONE step; the fictional one modifies the sample library's
+//    in-memory tags).
 //
 // For the order and the rows' data it uses LibraryListModel (`library`).
 //
@@ -21,9 +21,7 @@
 #include <QVariantList>
 #include <QtQml/qqmlregistration.h>
 
-namespace tanara {
-namespace app { class AppController; }
-}
+namespace tanara::library { class ILibraryFacade; }
 
 namespace tanara_qml {
 
@@ -45,10 +43,10 @@ class LibrarySelectionModel : public QObject {
     Q_PROPERTY(QStringList fullTagIds READ fullTagIds NOTIFY contentChanged)
 
 public:
+    // From QML: follows the App singleton's services (AppContext::services().library).
     explicit LibrarySelectionModel(QObject* parent = nullptr);
-
-    // The controller defaults to the App singleton's; injectable in tests.
-    void setController(tanara::app::AppController* controller);
+    // With a given facade (tests, hosts); it is not taken over.
+    explicit LibrarySelectionModel(tanara::library::ILibraryFacade* facade, QObject* parent = nullptr);
 
     LibraryListModel* library() const { return m_library; }
     void setLibrary(LibraryListModel* library);
@@ -82,8 +80,8 @@ private:
     QStringList orderedIds() const;    // in list order (what is not visible, last)
 
     QPointer<LibraryListModel> m_library;
-    QPointer<tanara::app::AppController> m_controller;
-    bool m_controllerInjected = false;
+    QPointer<tanara::library::ILibraryFacade> m_facade;   // bulk tagging
+    bool m_injected = false;
     QString m_currentId;
     QString m_anchor;
     QStringList m_ids;

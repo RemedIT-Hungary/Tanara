@@ -1,10 +1,9 @@
 #include "LibraryPendingModel.h"
 
 #include "AppContext.h"
-#include "LibraryDemoData.h"
 #include "ShellFormat.h"
 
-#include "tanara/app/AppController.h"
+#include "tanara/library/ILibraryFacade.h"
 
 namespace tanara_qml {
 
@@ -13,39 +12,45 @@ using tanara::library::PendingKind;
 
 LibraryPendingModel::LibraryPendingModel(QObject* parent) : QObject(parent)
 {
-    m_reloadTimer.setSingleShot(true);
-    m_reloadTimer.setInterval(0);
-    connect(&m_reloadTimer, &QTimer::timeout, this, &LibraryPendingModel::reload);
-
+    init();
+    // Without an injected facade the model follows the App singleton's services.
     AppContext* ctx = AppContext::instance();
-    m_controller = ctx->controller();
-    connect(ctx, &AppContext::controllerChanged, this, [this, ctx] {
-        if (m_controllerInjected) return;
-        m_controller = ctx->controller();
+    const auto resolve = [this] {
+        if (m_injected) return;
+        m_facade = AppContext::instance()->services().library;
         attach();
-    });
-    connect(ctx, &AppContext::demoChanged, this, &LibraryPendingModel::reload);
+    };
+    connect(ctx, &AppContext::controllerChanged, this, resolve);
+    connect(ctx, &AppContext::demoChanged, this, resolve);
+    m_facade = ctx->services().library;
     attach();
 }
 
-void LibraryPendingModel::setController(tanara::app::AppController* controller)
+LibraryPendingModel::LibraryPendingModel(tanara::library::ILibraryFacade* facade, QObject* parent)
+    : QObject(parent), m_facade(facade), m_injected(true)
 {
-    m_controllerInjected = true;
-    m_controller = controller;
+    init();
     attach();
+}
+
+void LibraryPendingModel::init()
+{
+    m_reloadTimer.setSingleShot(true);
+    m_reloadTimer.setInterval(0);
+    connect(&m_reloadTimer, &QTimer::timeout, this, &LibraryPendingModel::reload);
 }
 
 void LibraryPendingModel::attach()
 {
-    tanara::library::MeetingLibrary* lib = m_controller ? m_controller->library() : nullptr;
-    if (lib != m_library) {
-        if (m_library)
-            m_library->disconnect(this);
-        m_library = lib;
+    tanara::library::ILibraryFacade* lib = m_facade;
+    if (lib != m_attached) {
+        if (m_attached)
+            m_attached->disconnect(this);
+        m_attached = lib;
         if (lib) {
             const auto later = [this] { m_reloadTimer.start(); };
-            connect(lib, &tanara::library::MeetingLibrary::pendingItemsChanged, this, later);
-            connect(lib, &tanara::library::MeetingLibrary::reset, this, later);
+            connect(lib, &tanara::library::ILibraryFacade::pendingItemsChanged, this, later);
+            connect(lib, &tanara::library::ILibraryFacade::reset, this, later);
         }
     }
     reload();
@@ -115,11 +120,7 @@ QVariantList LibraryPendingModel::build(const QVector<PendingItem>& pending)
 
 void LibraryPendingModel::reload()
 {
-    QVector<PendingItem> pending;
-    if (m_library)
-        pending = m_library->pendingItems();
-    else if (!m_controller && AppContext::instance()->demo())
-        pending = demo::pendingItems();
+    const QVector<PendingItem> pending = m_facade ? m_facade->pendingItems() : QVector<PendingItem>{};
     const QVariantList items = build(pending);
     if (items == m_items)
         return;

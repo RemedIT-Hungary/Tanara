@@ -6,7 +6,7 @@
 //  - with a real AppController in an isolated TANARA_HOME: resolving the meeting's audio
 //    (the mixdown, failing that the largest active track).
 #include "AppContext.h"
-#include "LibraryDemoData.h"
+#include "demo/LibraryDemoData.h"
 #include "PlayerController.h"
 
 #include "tanara/app/AppController.h"
@@ -85,9 +85,9 @@ private slots:
     {
         PlayerController p;
         QSignalSpy positions(&p, &PlayerController::positionMsChanged);
-        p.setMeetingId(demo::defaultMeetingId());
+        p.setMeetingId(tanara_demo::defaultMeetingId());
         QVERIFY(p.available());
-        QCOMPARE(p.durationMs(), int(demo::find(demo::defaultMeetingId())->entry.durationMs));
+        QCOMPARE(p.durationMs(), int(tanara_demo::find(tanara_demo::defaultMeetingId())->entry.durationMs));
         QCOMPARE(p.positionMs(), 0);
 
         // seek does not change the playback state.
@@ -115,10 +115,10 @@ private slots:
 
         // Another meeting: stops and goes to the start.
         p.play();
-        p.setMeetingId(demo::failedMeetingId());
+        p.setMeetingId(tanara_demo::failedMeetingId());
         QVERIFY(!p.playing());
         QCOMPARE(p.positionMs(), 0);
-        QCOMPARE(p.durationMs(), int(demo::find(demo::failedMeetingId())->entry.durationMs));
+        QCOMPARE(p.durationMs(), int(tanara_demo::find(tanara_demo::failedMeetingId())->entry.durationMs));
         p.setMeetingId(QString());
         QVERIFY(!p.available());
     }
@@ -126,7 +126,7 @@ private slots:
     void playRangeStopsAtTheEndOfTheUtterance()
     {
         PlayerController p;
-        p.setMeetingId(demo::defaultMeetingId());
+        p.setMeetingId(tanara_demo::defaultMeetingId());
         p.playRange(5000, 5250);
         QVERIFY(p.playing());
         QVERIFY(p.positionMs() >= 5000);
@@ -143,7 +143,7 @@ private slots:
     void playRangeWithBoundsPadsAndClamps()
     {
         PlayerController p;
-        p.setMeetingId(demo::defaultMeetingId());
+        p.setMeetingId(tanara_demo::defaultMeetingId());
         // Without a limit: starts 150 ms earlier, stops 100 ms later.
         p.playRange(5000, 5250, -1, -1);
         QVERIFY(p.playing());
@@ -172,7 +172,7 @@ private slots:
     void rateSpeedsUpAndEndIsHandled()
     {
         PlayerController p;
-        p.setMeetingId(demo::defaultMeetingId());
+        p.setMeetingId(tanara_demo::defaultMeetingId());
         p.setRate(2.0);
         QCOMPARE(p.rate(), 2.0);
         p.seek(p.durationMs() - 400);
@@ -199,7 +199,7 @@ private slots:
             return FakeBackend::last = new FakeBackend(parent);
         });
         PlayerController p;
-        p.setMeetingId(demo::defaultMeetingId());
+        p.setMeetingId(tanara_demo::defaultMeetingId());
         p.setVolume(0.5);
         p.setRate(1.5);
         p.seek(30000);

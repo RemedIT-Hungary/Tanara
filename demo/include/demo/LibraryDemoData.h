@@ -1,8 +1,9 @@
 #pragma once
 //
-// Tanara QML: FICTIONAL sample library for the shell's demo and screenshot mode (App.demo):
-// there is no AppController; the library model, the "Waiting for you" list, the header and
-// the player work from it. Names and texts are fictitious; real data must NEVER go here.
+// tanara_demo: the FICTIONAL sample library of the shell's demo and screenshot mode (App.demo):
+// there is no AppController; the library list, the "Waiting for you" card, the header and the
+// player work from it (through LibraryDemoFacade / ShellDemoFacade). Names and texts are
+// fictitious; real data must NEVER go here.
 //
 #include "tanara/library/MeetingLibrary.h"
 
@@ -12,7 +13,7 @@
 #include <QStringList>
 #include <QVector>
 
-namespace tanara_qml::demo {
+namespace tanara_demo {
 
 struct DemoMeeting {
     tanara::library::LibraryEntry entry;    // title, time, length, states, participants
@@ -38,6 +39,8 @@ struct DemoTag {
     QString name;
 };
 QVector<DemoTag> tagCatalog();
+// The initial pool (without the tags the bulk-tagging demo created), in the demo language.
+QVector<DemoTag> tagPool();
 QString tagName(const QString& tagId);              // empty if none
 QString tagIdByName(const QString& name);           // tagKey match; empty if none
 QString createTag(const QString& name);             // returns the existing one if the name is taken
@@ -64,4 +67,4 @@ QString defaultMeetingId();
 // A meeting without a transcript (failed transcription): for the "preTranscript" state's image.
 QString failedMeetingId();
 
-} // namespace tanara_qml::demo
+} // namespace tanara_demo

@@ -4,6 +4,7 @@
 // the right page, then the start. NO real provider call (the task is canceled right after
 // starting; the provider address is a closed local port).
 #include "AppContext.h"
+#include "FacadeTestSupport.h"
 #include "PlayerController.h"
 #include "ShellActions.h"
 #include "ShellBridge.h"
@@ -190,8 +191,7 @@ private slots:
         m_app = std::make_unique<tanara::app::AppController>();
         QVERIFY(m_app->store()->audioDir().startsWith(m_home->path()));
         m_bridge = std::make_unique<FakeBridge>();
-        m_shell = std::make_unique<ShellActions>();
-        m_shell->setController(m_app.get());
+        m_shell = std::make_unique<ShellActions>(facadetest::shellOf(m_app.get()));
         m_shell->setBridge(m_bridge.get());
         m_toasts.clear();
         connect(m_shell.get(), &ShellActions::toastRequested, this,
@@ -475,8 +475,7 @@ private slots:
         tanara::library::TagService* tags = m_app->tags();
         tags->addTag(a.id, QStringLiteral("Nordvik"));
 
-        ShellMeetingModel model;
-        model.setController(m_app.get());
+        ShellMeetingModel model(facadetest::shellOf(m_app.get()));
         QVERIFY(model.tags());
         QSignalSpy computing(m_app.get(), &tanara::app::AppController::tagSuggestionsComputing);
 
@@ -590,8 +589,7 @@ private slots:
         qunsetenv("TANARA_CLOUD_URL");
         if (!m_app->cloudLive())
             QSKIP("A cloud-mód nincs befordítva ebbe a buildbe.");
-        m_shell = std::make_unique<ShellActions>();
-        m_shell->setController(m_app.get());
+        m_shell = std::make_unique<ShellActions>(facadetest::shellOf(m_app.get()));
         m_shell->setBridge(m_bridge.get());
         tanara::app::AppSettings s = m_app->settings()->settings();
         s.providers.stt.selectedId = tanara::cloud::ProviderId;
@@ -842,8 +840,7 @@ private slots:
         const tanara::Meeting plain = recording(QStringLiteral("Csak felvétel"));
         const tanara::Meeting done = transcribed(QStringLiteral("Átírt megbeszélés"));
 
-        ShellMeetingModel model;
-        model.setController(m_app.get());
+        ShellMeetingModel model(facadetest::shellOf(m_app.get()));
         QVERIFY(!model.exists());
         model.setMeetingId(plain.id);
         QVERIFY(model.exists());

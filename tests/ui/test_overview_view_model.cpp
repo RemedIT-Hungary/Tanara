@@ -4,6 +4,7 @@
 // transcript, the DATA tiles, the "nobody" state (only anonymous speakers), the tracks' speech
 // share and including them in the mixdown (TrackListModel). Demo data: the four screen states.
 #include "AppContext.h"
+#include "FacadeTestSupport.h"
 #include "OverviewViewModel.h"
 #include "ShellMeetingModel.h"
 #include "TrackListModel.h"
@@ -115,8 +116,7 @@ private slots:
     void beforeTranscript_participantsAndSteps()
     {
         const tanara::Meeting m = recording(QStringLiteral("Előtte"));
-        OverviewViewModel vm;
-        vm.setController(m_app.get());
+        OverviewViewModel vm(facadetest::overviewOf(m_app.get()));
         vm.setMeetingId(m.id);
         QVERIFY(!vm.hasTranscript());
         QVERIFY(!vm.transcribing());
@@ -156,8 +156,7 @@ private slots:
         QTRY_COMPARE(vm.peopleState(), QStringLiteral("empty"));
         QVERIFY(m_app->participants(m.id).isEmpty());
         {
-            OverviewViewModel fresh;
-            fresh.setController(m_app.get());
+            OverviewViewModel fresh(facadetest::overviewOf(m_app.get()));
             fresh.setMeetingId(m.id);
             QCOMPARE(fresh.peopleState(), QStringLiteral("empty"));
         }
@@ -178,8 +177,7 @@ private slots:
     void soloMeeting()
     {
         const tanara::Meeting m = recording(QStringLiteral("Egyedül"));
-        OverviewViewModel vm;
-        vm.setController(m_app.get());
+        OverviewViewModel vm(facadetest::overviewOf(m_app.get()));
         vm.setMeetingId(m.id);
         tanara::app::AppSettings s = m_app->settings()->settings();
         s.recording.userSpeakerName = QString();
@@ -199,8 +197,7 @@ private slots:
     void afterTranscript_nobodyAndStats()
     {
         const tanara::Meeting m = transcribed(QStringLiteral("Utána"));
-        OverviewViewModel vm;
-        vm.setController(m_app.get());
+        OverviewViewModel vm(facadetest::overviewOf(m_app.get()));
         vm.setMeetingId(m.id);
         QVERIFY(vm.hasTranscript());
         QCOMPARE(vm.peopleState(), QStringLiteral("nobody"));
@@ -231,8 +228,7 @@ private slots:
     void afterTranscript_unheardParticipant()
     {
         const tanara::Meeting m = transcribed(QStringLiteral("Nem hallott"));
-        OverviewViewModel vm;
-        vm.setController(m_app.get());
+        OverviewViewModel vm(facadetest::overviewOf(m_app.get()));
         vm.setMeetingId(m.id);
         QCOMPARE(vm.peopleState(), QStringLiteral("nobody"));
         const QString id = vm.addParticipant(QStringLiteral("Lantos Réka"));
@@ -281,8 +277,7 @@ private slots:
         m_app->store()->saveMeeting(m);
         tags->refreshPersonStatsNow();
 
-        OverviewViewModel vm;
-        vm.setController(m_app.get());
+        OverviewViewModel vm(facadetest::overviewOf(m_app.get()));
         vm.setMeetingId(m.id);
         auto suggested = [&vm] {
             QStringList out;
@@ -300,8 +295,7 @@ private slots:
         QCOMPARE(suggested().size(), 3);   // the fourth takes its place
         QVERIFY(tags->isPersonRejectedForMeeting(rejectedId, m.id));
         {
-            OverviewViewModel fresh;
-            fresh.setController(m_app.get());
+            OverviewViewModel fresh(facadetest::overviewOf(m_app.get()));
             fresh.setMeetingId(m.id);
             for (const QVariant& v : fresh.participants())
                 QVERIFY(v.toMap().value("name").toString() != rejected);
@@ -351,8 +345,7 @@ private slots:
     void shellMeetingTabState()
     {
         const tanara::Meeting m = transcribed(QStringLiteral("Fülek"));
-        ShellMeetingModel model;
-        model.setController(m_app.get());
+        ShellMeetingModel model(facadetest::shellOf(m_app.get()));
         model.setMeetingId(m.id);
         QVERIFY(model.hasTranscript());
         QVERIFY(!model.hasSummary());

@@ -3,6 +3,7 @@
 // (path / file:// URL, duplicates and a non-audio file), splitting, own track, start (a
 // finished meeting), and cancel (the form stays, no meeting is created). Tags in the window
 // (they go into the set), title-based suggestions, and applied to the finished meeting.
+#include "FacadeTestSupport.h"
 #include "ShellActions.h"
 #include "ShellImportModel.h"
 
@@ -133,10 +134,8 @@ private slots:
         text.write("nem hang");
         text.close();
 
-        ShellImportModel model;
-        model.setController(m_app.get());
-        ShellActions shell;
-        shell.setController(m_app.get());
+        ShellImportModel model(facadetest::importOf(m_app.get()));
+        ShellActions shell(facadetest::shellOf(m_app.get()));
         QSignalSpy imported(&model, &ShellImportModel::imported);
 
         // Path, file:// URL (the same file is added once), a non-audio file, a folder (skipped).
@@ -211,8 +210,7 @@ private slots:
         const tanara::Tag nordvik = svc->addTag(lib.nordvik1, QStringLiteral("Nordvik"));
         svc->addTag(lib.nordvik2, QStringLiteral("Nordvik"));
 
-        ShellImportModel model;
-        model.setController(m_app.get());
+        ShellImportModel model(facadetest::importOf(m_app.get()));
         QSignalSpy changed(&model, &ShellImportModel::suggestionsChanged);
         model.setTitle(QStringLiteral("Nordvik heti egyeztetés"));
         QVERIFY(model.suggestions().isEmpty());                   // computes with a delay
@@ -255,8 +253,7 @@ private slots:
         const QString big = src("hosszu.wav");
         QVERIFY(ffmpeg({"-f", "lavfi", "-i", "sine=frequency=440:duration=2400:sample_rate=16000", "-ac", "1", big}));
 
-        ShellImportModel model;
-        model.setController(m_app.get());
+        ShellImportModel model(facadetest::importOf(m_app.get()));
         QSignalSpy imported(&model, &ShellImportModel::imported);
         QSignalSpy failed(&model, &ShellImportModel::failed);
         model.addFiles({big});

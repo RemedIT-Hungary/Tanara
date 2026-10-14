@@ -3,7 +3,8 @@
 // ShellMeetingModel: the selected meeting's shell-level state: header (title, meta line),
 // whether it has a transcript (-> tabs or the pre-transcript view), whether its summary is
 // stale (-> pill on the tab), and its cancelable running tasks for the task bar
-// (MeetingJobTracker). Without a controller (App.demo) it works from the fictional sample library.
+// (MeetingJobTracker). The data comes from a tanara::editing::IShellFacade (the real one, or the fictional
+// sample library in demo mode); the model never branches on which.
 //
 // The header's tag row (TagRow) gets the `tags` model: the selected meeting's tags and
 // suggestions. It requests a suggestion when a transcribed meeting appears and when its
@@ -20,9 +21,7 @@
 #include <QVariantList>
 #include <QtQml/qqmlregistration.h>
 
-namespace tanara {
-namespace app { class AppController; }
-}
+namespace tanara::editing { class IShellFacade; }
 
 namespace tanara_qml {
 
@@ -57,9 +56,10 @@ class ShellMeetingModel : public QObject {
     Q_PROPERTY(bool demoTask READ demoTask WRITE setDemoTask NOTIFY tasksChanged)
 
 public:
+    // From QML: follows the App singleton's services (AppContext::services().shell).
     explicit ShellMeetingModel(QObject* parent = nullptr);
-
-    void setController(tanara::app::AppController* controller);
+    // With a given facade (tests, hosts); it is not taken over.
+    explicit ShellMeetingModel(tanara::editing::IShellFacade* facade, QObject* parent = nullptr);
 
     QString meetingId() const { return m_meetingId; }
     void setMeetingId(const QString& id);
@@ -94,10 +94,6 @@ private:
     void onMeetingTouched(const QString& id);
     void syncTags();
 
-    QPointer<tanara::app::AppController> m_controller;
-    QPointer<tanara::app::AppController> m_attached;
-    bool m_controllerInjected = false;
-
     QString m_meetingId;
     bool m_exists = false;
     QString m_title;
@@ -114,6 +110,9 @@ private:
     QVariantList m_tasks;
 
     MeetingTagsModel* m_tags = nullptr;
+    QPointer<tanara::editing::IShellFacade> m_facade;
+    QPointer<tanara::editing::IShellFacade> m_attached;
+    bool m_injected = false;
     QString m_tagsRequestedFor;   // a suggestion was already requested for this meeting (once per selection)
 };
 

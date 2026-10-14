@@ -1,6 +1,6 @@
 #pragma once
 //
-// LibraryListModel: list model of the library sidebar over the core MeetingLibrary.
+// LibraryListModel: list model of the library sidebar over the library facade.
 //
 //  - Rows: meetings newest first; date section, title, meta ("Oct 2 · 30 min"), the key of the
 //    three state icons (done | running | error | stale | missing) + tooltip, for a search
@@ -9,9 +9,10 @@
 //    tagsAll = AND / otherwise OR, untagged = those without a tag).
 //  - Tags on the row: the third line's text ("#Nordvik  #Partners  +1"), for a search the
 //    tag hit ("tag: #Nordvik"); the filter popover's list (tagOptions, untaggedCount).
-//  - Refresh: on the MeetingLibrary's signals INCREMENTALLY (one row dataChanged / insert /
+//  - Refresh: on the library facade's signals INCREMENTALLY (one row dataChanged / insert /
 //    remove); a full reset only if the hit list's structure changed.
-//  - Without a controller (App.demo) it works from the fictional sample library (LibraryDemoData).
+//  - The library comes from a tanara::library::ILibraryFacade (the real MeetingLibrary + TagService, or
+//    the fictional sample library in demo mode); the model never branches on which.
 //
 #include "tanara/library/MeetingLibrary.h"
 
@@ -22,9 +23,7 @@
 #include <QVariantList>
 #include <QtQml/qqmlregistration.h>
 
-namespace tanara {
-namespace app { class AppController; }
-}
+namespace tanara::library { class ILibraryFacade; }
 
 namespace tanara_qml {
 
@@ -82,10 +81,10 @@ public:
         TagMatchNameRole,       // the matching tag's name
     };
 
+    // From QML: follows the App singleton's services (AppContext::services().library).
     explicit LibraryListModel(QObject* parent = nullptr);
-
-    // The controller defaults to the App singleton's; injectable in tests.
-    void setController(tanara::app::AppController* controller);
+    // With a given facade (tests, hosts); it is not taken over.
+    explicit LibraryListModel(tanara::library::ILibraryFacade* facade, QObject* parent = nullptr);
 
     int rowCount(const QModelIndex& parent = {}) const override;
     QVariant data(const QModelIndex& index, int role) const override;
@@ -115,7 +114,7 @@ public:
     QVariantList peopleOptions() const;
 
     // A meeting's entry regardless of filtering (the bulk selection's panel works from this):
-    // with a controller from the MeetingLibrary, in the demo from the sample library.
+    // from the library facade.
     tanara::library::LibraryEntry entryFor(const QString& meetingId) const;
     // The row's third line: as many "#Name" as fit in ~24 characters, then "+N".
     static QStringList tagLine(const QStringList& names);
@@ -151,16 +150,16 @@ signals:
     void forceEmptyChanged();
 
 private:
+    void init();
     void attach();
     void scheduleRefresh(int delayMs = 0);
     void onMeetingChanged(const QString& meetingId);
     void apply(const tanara::library::LibraryResult& result);
     tanara::library::LibraryResult runQuery() const;
-    tanara::library::MeetingLibrary* library() const;
 
-    QPointer<tanara::app::AppController> m_controller;
-    QPointer<tanara::library::MeetingLibrary> m_library;     // the one we are currently bound to
-    bool m_controllerInjected = false;
+    QPointer<tanara::library::ILibraryFacade> m_facade;
+    QPointer<tanara::library::ILibraryFacade> m_attached;   // the one we are currently bound to
+    bool m_injected = false;
     tanara::library::LibraryQuery m_query;
     // The people filter as the QML side sees it (display names); m_query.people holds their PersonIds.
     QStringList m_peopleNames;

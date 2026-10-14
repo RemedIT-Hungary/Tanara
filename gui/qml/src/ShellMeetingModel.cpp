@@ -1,15 +1,10 @@
 #include "ShellMeetingModel.h"
 
 #include "AppContext.h"
-#include "LibraryDemoData.h"
-#include "JobSupport.h"
 #include "ShellFormat.h"
 #include "SummaryProgress.h"
 
-#include "tanara/app/AppController.h"
-#include "tanara/library/jobs/MeetingJobTracker.h"
-#include "tanara/library/store/MeetingRepository.h"
-#include "tanara/library/store/TranscriptRepository.h"
+#include "tanara/editing/IShellFacade.h"
 
 #include <QSet>
 
@@ -64,68 +59,56 @@ QString iconFor(JobKind kind)
 ShellMeetingModel::ShellMeetingModel(QObject* parent)
     : QObject(parent), m_tags(new MeetingTagsModel(this))
 {
+    // Without an injected facade the model follows the App singleton's services.
     AppContext* ctx = AppContext::instance();
-    m_controller = ctx->controller();
-    connect(ctx, &AppContext::controllerChanged, this, [this, ctx] {
-        if (m_controllerInjected) return;
-        m_controller = ctx->controller();
+    const auto resolve = [this] {
+        if (m_injected) return;
+        m_facade = AppContext::instance()->services().shell;
         attach();
-    });
+    };
+    connect(ctx, &AppContext::controllerChanged, this, resolve);
+    connect(ctx, &AppContext::demoChanged, this, resolve);
+    m_facade = ctx->services().shell;
     attach();
 }
 
-void ShellMeetingModel::setController(tanara::app::AppController* controller)
+ShellMeetingModel::ShellMeetingModel(tanara::editing::IShellFacade* facade, QObject* parent)
+    : QObject(parent), m_tags(new MeetingTagsModel(this)), m_facade(facade), m_injected(true)
 {
-    m_controllerInjected = true;
-    m_controller = controller;
     attach();
 }
 
 void ShellMeetingModel::attach()
 {
-    if (m_controller != m_attached) {
-        if (m_attached) {
+    using tanara::editing::IShellFacade;
+    if (m_facade != m_attached) {
+        if (m_attached)
             m_attached->disconnect(this);
-            if (m_attached->store()) m_attached->store()->disconnect(this);
-            if (m_attached->jobs()) m_attached->jobs()->disconnect(this);
-        }
-        m_attached = m_controller;
-        if (tanara::app::AppController* c = m_controller) {
-            if (tanara::library::MeetingRepository* store = c->store()) {
-                connect(store, &tanara::library::MeetingRepository::meetingUpdated, this,
-                        &ShellMeetingModel::onMeetingTouched);
-                connect(store, &tanara::library::MeetingRepository::meetingRemoved, this,
-                        &ShellMeetingModel::onMeetingTouched);
-            }
-            connect(c, &tanara::app::AppController::speakerMapChanged, this,
-                    &ShellMeetingModel::onMeetingTouched);
-            connect(c, &tanara::app::AppController::summaryStaleChanged, this,
-                    &ShellMeetingModel::onMeetingTouched);
-            connect(c, &tanara::app::AppController::tracksChanged, this,
-                    &ShellMeetingModel::onMeetingTouched);
-            connect(c, &tanara::app::AppController::transcriptReady, this,
-                    [this](const QString& id, const QString&) {
+        m_attached = m_facade;
+        if (IShellFacade* f = m_facade) {
+            connect(f, &IShellFacade::meetingUpdated, this, &ShellMeetingModel::onMeetingTouched);
+            connect(f, &IShellFacade::meetingRemoved, this, &ShellMeetingModel::onMeetingTouched);
+            connect(f, &IShellFacade::speakerMapChanged, this, &ShellMeetingModel::onMeetingTouched);
+            connect(f, &IShellFacade::summaryStaleChanged, this, &ShellMeetingModel::onMeetingTouched);
+            connect(f, &IShellFacade::tracksChanged, this, &ShellMeetingModel::onMeetingTouched);
+            connect(f, &IShellFacade::transcriptReady, this, [this](const QString& id) {
                 // New transcript -> new suggestions (the controller drops the old profile first).
                 if (id == m_meetingId) m_tagsRequestedFor.clear();
                 onMeetingTouched(id);
             });
-            connect(c, &tanara::app::AppController::summaryReady, this,
-                    [this](const QString& id, const QString&) { onMeetingTouched(id); });
-            if (tanara::library::MeetingJobTracker* jobs = c->jobs()) {
-                connect(jobs, &tanara::library::MeetingJobTracker::stateChanged, this,
-                        [this](const QString& id) {
-                    if (id != m_meetingId) return;
-                    // The state (e.g. the stale marker) and the running tasks may have changed too.
-                    reload();
-                });
-                connect(jobs, &tanara::library::MeetingJobTracker::jobProgressChanged, this,
-                        [this](const QString& id, const tanara::JobProgress&) {
-                    if (id == m_meetingId) reloadTasks();
-                });
-            }
+            connect(f, &IShellFacade::summaryReady, this, &ShellMeetingModel::onMeetingTouched);
+            connect(f, &IShellFacade::jobStateChanged, this, [this](const QString& id) {
+                if (id != m_meetingId) return;
+                // The state (e.g. the stale marker) and the running tasks may have changed too.
+                reload();
+            });
+            connect(f, &IShellFacade::jobProgressChanged, this, [this](const QString& id) {
+                if (id == m_meetingId) reloadTasks();
+            });
+            // The tag row works with the real pool (without one the fictional pool stays).
+            if (QObject* tags = f->tagController())
+                m_tags->setController(tags);
         }
-        // The tag row works with the real pool (without a controller the fictional one stays).
-        if (m_controller) m_tags->setController(m_controller.data());
         m_tagsRequestedFor.clear();
     }
     reload();
@@ -133,9 +116,10 @@ void ShellMeetingModel::attach()
 
 void ShellMeetingModel::syncTags()
 {
-    // In the demo (without a controller) an empty id -> the fictional demo meeting's tags.
-    m_tags->setMeetingId(m_controller ? m_meetingId : QString());
-    if (!m_controller || !m_exists || !m_hasTranscript || m_tagsRequestedFor == m_meetingId)
+    // In the demo an empty id -> the fictional demo meeting's tags.
+    const bool live = m_facade && m_facade->live();
+    m_tags->setMeetingId(live ? m_meetingId : QString());
+    if (!live || !m_exists || !m_hasTranscript || m_tagsRequestedFor == m_meetingId)
         return;
     m_tagsRequestedFor = m_meetingId;
     m_tags->requestSuggestions();
@@ -169,8 +153,8 @@ void ShellMeetingModel::reload()
     bool exists = false, hasTranscript = false, stale = false, canIdentify = false, hasSummary = false;
     QString title, meta, provider;
 
-    if (!m_meetingId.isEmpty() && m_controller && m_controller->store()) {
-        const tanara::Meeting m = m_controller->store()->load(m_meetingId);
+    if (!m_meetingId.isEmpty() && m_facade) {
+        const tanara::Meeting m = m_facade->meeting(m_meetingId);
         if (!m.id.isEmpty()) {
             exists = true;
             title = m.title;
@@ -181,28 +165,15 @@ void ShellMeetingModel::reload()
             canIdentify = activeTracks > 0;
             QString tail;
             if (hasTranscript) {
-                const int n = m_controller->transcripts()->speakerCount(m.folder);
+                const int n = m_facade->speakerCount(m);
                 if (n > 0) tail = tr("%n beszélő", nullptr, n);
             } else if (!m.tracks.isEmpty()) {
                 tail = tr("%n sáv", nullptr, int(m.tracks.size()));
             }
             meta = metaLine(m.startedAt, m.durationMs, tail);
-            stale = m.hasSummary && m_controller->summaryStale(m).stale;
+            stale = m.hasSummary && m_facade->summaryStale(m).stale;
             hasSummary = m.hasSummary;
-            provider = jobsupport::providerLabel(m_controller, tanara::providers::WorkflowStep::Summarize);
-        }
-    } else if (!m_meetingId.isEmpty() && !m_controller && AppContext::instance()->demo()) {
-        if (const demo::DemoMeeting* d = demo::find(m_meetingId)) {
-            exists = true;
-            title = d->entry.title;
-            hasTranscript = d->entry.hasTranscript;
-            canIdentify = true;
-            stale = d->entry.state.summaryStale;
-            hasSummary = d->entry.hasSummary;
-            provider = tr("LM Studio · saját kulcs");
-            meta = metaLine(d->entry.startedAt, d->entry.durationMs,
-                            hasTranscript ? tr("%n beszélő", nullptr, d->speakers)
-                                          : tr("%n sáv", nullptr, d->tracks));
+            provider = m_facade->providerLabel(tanara::providers::WorkflowStep::Summarize);
         }
     }
 
@@ -279,8 +250,8 @@ void ShellMeetingModel::reloadTasks()
     QVariantList tasks;
     bool identify = false;
     int transcribe = -1, summarize = -1;
-    if (m_exists && m_controller && m_controller->jobs()) {
-        const QVector<tanara::JobProgress> jobs = m_controller->processingState(m_meetingId).jobs;
+    if (m_exists && m_facade && m_facade->live()) {
+        const QVector<tanara::JobProgress> jobs = m_facade->processingState(m_meetingId).jobs;
         for (const tanara::JobProgress& job : jobs) {
             if (job.kind == JobKind::Identify) identify = true;
             // The tabs' pill: the running step's progress (0 if indeterminate).
@@ -293,15 +264,12 @@ void ShellMeetingModel::reloadTasks()
             if (job.kind == JobKind::Transcribe && !m_hasTranscript) continue;
             tasks.append(describeJob(job));
         }
-    } else if (m_demoTask && !m_controller) {
-        tanara::JobProgress job;
-        job.meetingId = m_meetingId.isEmpty() ? QStringLiteral("demo") : m_meetingId;
-        job.kind = JobKind::Identify;
-        job.title = tr("Résztvevők azonosítása");
-        job.done = 3;
-        job.total = 5;
-        tasks.append(describeJob(job));
-        identify = true;
+    } else if (m_demoTask && m_facade) {
+        // A design state's sample row of the bar.
+        for (const tanara::JobProgress& job : m_facade->sampleTasks(m_meetingId)) {
+            if (job.kind == JobKind::Identify) identify = true;
+            tasks.append(describeJob(job));
+        }
     }
     if (tasks == m_tasks && identify == m_identifyRunning && transcribe == m_transcribePercent
         && summarize == m_summarizePercent)

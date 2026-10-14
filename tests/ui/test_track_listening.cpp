@@ -9,7 +9,7 @@
 //    switch in both places; a click on the track chip toggles the binding.
 // With G6_SHOT_DIR set: screenshots of the compact rows + chips (light and dark) go there.
 #include "AppContext.h"
-#include "LibraryDemoData.h"
+#include "demo/LibraryDemoData.h"
 #include "ParticipantTrackBinder.h"
 #include "PlayerController.h"
 #include "QmlApp.h"
@@ -402,7 +402,7 @@ private slots:
     void detailsStripSeekAndSwitch()
     {
         PlayerController player;
-        player.setMeetingId(demo::defaultMeetingId());
+        player.setMeetingId(tanara_demo::defaultMeetingId());
         QVERIFY(player.durationMs() > 60000);
         QQmlApplicationEngine engine;
         watch(engine);
@@ -460,7 +460,7 @@ private slots:
     void compactRowsAndChips()
     {
         PlayerController player;
-        player.setMeetingId(demo::defaultMeetingId());
+        player.setMeetingId(tanara_demo::defaultMeetingId());
         QQmlEngine engine;
         watch(engine);
         setupEngine(engine);

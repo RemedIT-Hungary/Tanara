@@ -1,6 +1,6 @@
-#include "LibraryDemoData.h"
+#include "demo/LibraryDemoData.h"
 
-#include "DemoText.h"
+#include "demo/DemoText.h"
 
 #include "tanara/foundation/text/Text.h"
 #include "tanara/library/tags/TagNames.h"
@@ -9,7 +9,7 @@
 
 #include <algorithm>
 
-namespace tanara_qml::demo {
+namespace tanara_demo {
 
 using tanara::StepState;
 
@@ -327,6 +327,14 @@ QVector<DemoTag> tagCatalog()
     return tagState().catalog;
 }
 
+QVector<DemoTag> tagPool()
+{
+    QVector<DemoTag> out;
+    for (const auto& t : kTags)
+        out.append({QString::fromLatin1(t[0]), QString::fromUtf8(demotext::english() ? t[2] : t[1])});
+    return out;
+}
+
 QString tagName(const QString& tagId)
 {
     for (const DemoTag& t : std::as_const(tagState().catalog))
@@ -425,4 +433,4 @@ DemoTagNotifier* tagNotifier()
 QString defaultMeetingId() { return QStringLiteral("demo-partner"); }
 QString failedMeetingId() { return QStringLiteral("demo-bemutato"); }
 
-} // namespace tanara_qml::demo
+} // namespace tanara_demo

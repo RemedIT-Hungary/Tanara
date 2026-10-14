@@ -32,15 +32,11 @@ core/src/processing/analysis/ParticipantAnalysis.cpp -> tanara/editing/session/T
 # ---- P15 (43 lines) ----
 gui/qml/src/AppContext.cpp -> tanara/app/AppController.h   # GUI -> AppController.h -> P15
 gui/qml/src/JobSupport.cpp -> tanara/app/AppController.h   # GUI -> AppController.h -> P15
-gui/qml/src/LibraryListModel.cpp -> tanara/app/AppController.h   # GUI -> AppController.h -> P15
-gui/qml/src/LibraryPendingModel.cpp -> tanara/app/AppController.h   # GUI -> AppController.h -> P15
-gui/qml/src/LibrarySelectionModel.cpp -> tanara/app/AppController.h   # GUI -> AppController.h -> P15
 gui/qml/src/MeetingNoteModel.cpp -> tanara/app/AppController.h   # GUI -> AppController.h -> P15
 gui/qml/src/OnboardingViewModel.cpp -> platform:Q_OS_LINUX   # platform (gui) -> P15
 gui/qml/src/OnboardingViewModel.cpp -> platform:Q_OS_WIN   # platform (gui) -> P15
 gui/qml/src/OnboardingViewModel.cpp -> tanara/app/AppController.h   # GUI -> AppController.h -> P15
 gui/qml/src/OnboardingWindowHost.cpp -> tanara/app/AppController.h   # GUI -> AppController.h -> P15
-gui/qml/src/OverviewViewModel.cpp -> tanara/app/AppController.h   # GUI -> AppController.h -> P15
 gui/qml/src/ParticipantTrackBinder.cpp -> tanara/app/AppController.h   # GUI -> AppController.h -> P15
 gui/qml/src/ParticipantsViewModel.cpp -> tanara/app/AppController.h   # GUI -> AppController.h -> P15
 gui/qml/src/PeopleViewModel.cpp -> tanara/app/AppController.h   # GUI -> AppController.h -> P15
@@ -52,9 +48,6 @@ gui/qml/src/SettingsEmbeddingModel.cpp -> tanara/app/AppController.h   # GUI -> 
 gui/qml/src/SettingsProviderModel.cpp -> tanara/app/AppController.h   # GUI -> AppController.h -> P15
 gui/qml/src/SettingsViewModel.cpp -> tanara/app/AppController.h   # GUI -> AppController.h -> P15
 gui/qml/src/SettingsWindowHost.cpp -> tanara/app/AppController.h   # GUI -> AppController.h -> P15
-gui/qml/src/ShellActions.cpp -> tanara/app/AppController.h   # GUI -> AppController.h -> P15
-gui/qml/src/ShellImportModel.cpp -> tanara/app/AppController.h   # GUI -> AppController.h -> P15
-gui/qml/src/ShellMeetingModel.cpp -> tanara/app/AppController.h   # GUI -> AppController.h -> P15
 gui/qml/src/ShellUiState.cpp -> tanara/app/AppController.h   # GUI -> AppController.h -> P15
 gui/qml/src/SummaryViewModel.cpp -> tanara/app/AppController.h   # GUI -> AppController.h -> P15
 gui/qml/src/TagBackend.cpp -> tanara/app/AppController.h   # GUI -> AppController.h -> P15

@@ -3,7 +3,7 @@
 // ShellActions: the shell's action surface (gui/qml/CONTRACT.md): everything that needs a
 // Widgets window, a cloud estimate / sign-in / error path, or a content switch.
 //
-// Content components receive it as the `shell` property and NEVER call the AppController
+// Content components receive it as the `shell` property and NEVER call the application
 // processing starters directly: the gating runs here:
 //   canRun (ReadinessModel) -> cloud blocker (sign-in / upload / refresh) ->
 //   Settings on the right page -> estimate confirmation -> start.
@@ -24,7 +24,7 @@
 #include <QtQml/qqmlregistration.h>
 
 namespace tanara {
-namespace app { class AppController; }
+namespace editing { class IShellFacade; }
 namespace editing { class MeetingUndoService; }
 }
 
@@ -43,12 +43,12 @@ class ShellActions : public QObject {
     Q_PROPERTY(int currentTab READ currentTab WRITE setCurrentTab NOTIFY currentTabChanged)
     // Main.qml's player (seekTo drives it).
     Q_PROPERTY(tanara_qml::PlayerController* player READ player WRITE setPlayer NOTIFY playerChanged)
-    // Whether a recording is running (for close protection). Always false without a controller.
+    // Whether a recording is running (for close protection). Always false in the demo.
     Q_PROPERTY(bool recording READ recording NOTIFY recordingChanged)
     // Increases when step runnability may have changed (settings, cloud sign-in/out):
     // bound views can re-evaluate canRun.
     Q_PROPERTY(int readinessRevision READ readinessRevision NOTIFY readinessRevisionChanged)
-    // Shared undo stack of the selected meeting (AppController::meetingUndo ->
+    // Shared undo stack of the selected meeting (IShellFacade::meetingUndo ->
     // tanara::MeetingUndoService: editor, tag steps and participant actions, in time order).
     // Main's single Ctrl+Z and the change bar's "Undo" call undoMeeting. hasMeetingUndo: whether
     // such a stack exists (not without a controller / in the demo).
@@ -57,10 +57,12 @@ class ShellActions : public QObject {
     Q_PROPERTY(QString meetingUndoText READ meetingUndoText NOTIFY meetingUndoChanged)
 
 public:
+    // From QML: follows the App singleton's services (AppContext::services().shell) and bridge.
     explicit ShellActions(QObject* parent = nullptr);
+    // With a given facade (tests, hosts); it is not taken over.
+    explicit ShellActions(tanara::editing::IShellFacade* facade, QObject* parent = nullptr);
 
-    // Defaults to the App singleton's controller / bridge; injectable in tests.
-    void setController(tanara::app::AppController* controller);
+    // Defaults to the App singleton's bridge; injectable in tests.
     void setBridge(ShellBridge* bridge);
 
     QString currentMeetingId() const { return m_currentMeetingId; }
@@ -218,7 +220,7 @@ signals:
     void speakerWhyRequested(const QString& meetingId, const QString& speakerKey);
 
 private:
-    void attachController();
+    void attachFacade();
     void attachBridge();
     ShellBridge* bridge() const;
     tanara::Meeting meeting(const QString& meetingId) const;
@@ -234,11 +236,11 @@ private:
     void attachMeetingUndo();
     void checkMeetingUndo();
 
-    QPointer<tanara::app::AppController> m_controller;
-    QPointer<tanara::app::AppController> m_attachedController;
+    QPointer<tanara::editing::IShellFacade> m_facade;
+    QPointer<tanara::editing::IShellFacade> m_attached;
     QPointer<ShellBridge> m_bridge;
     QPointer<ShellBridge> m_attachedBridge;
-    bool m_controllerInjected = false;
+    bool m_injected = false;
     bool m_bridgeInjected = false;
     QPointer<PlayerController> m_player;
 

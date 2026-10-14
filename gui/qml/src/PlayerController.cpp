@@ -2,7 +2,7 @@
 #include "tanara/library/MeetingLayout.h"
 
 #include "AppContext.h"
-#include "LibraryDemoData.h"
+#include "demo/LibraryDemoData.h"
 
 #include "tanara/app/AppController.h"
 #include "tanara/library/tracks/TrackCatalog.h"
@@ -235,7 +235,7 @@ void PlayerController::resolveSource()
                 available = !path.isEmpty();
             }
         } else if (AppContext::instance()->demo()) {
-            if (const demo::DemoMeeting* d = demo::find(m_meetingId)) {
+            if (const tanara_demo::DemoMeeting* d = tanara_demo::find(m_meetingId)) {
                 duration = d->entry.durationMs;
                 available = true;
             }

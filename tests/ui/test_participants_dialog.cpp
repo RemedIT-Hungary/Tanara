@@ -7,6 +7,7 @@
 #include "AppContext.h"
 #include "ParticipantsViewModel.h"
 #include "QmlApp.h"
+#include "FacadeTestSupport.h"
 #include "ShellActions.h"
 
 #include "tanara/app/AppController.h"
@@ -330,8 +331,7 @@ private slots:
     void shellOffersOnce()
     {
         seedMeeting(true);
-        ShellActions shell;
-        shell.setController(m_app.get());
+        ShellActions shell(facadetest::shellOf(m_app.get()));
         QSignalSpy spy(&shell, &ShellActions::participantsDialogRequested);
         QVERIFY(shell.maybeOfferParticipants(m_meetingId));
         QCOMPARE(spy.count(), 1);

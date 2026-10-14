@@ -4,7 +4,8 @@
 //  - with a real AppController in an ISOLATED TANARA_HOME (QTemporaryDir): incremental updates
 //    on core signals (insert / one row changes / delete, without a full reset).
 #include "AppContext.h"
-#include "LibraryDemoData.h"
+#include "FacadeTestSupport.h"
+#include "demo/LibraryDemoData.h"
 #include "LibraryListModel.h"
 #include "LibraryPendingModel.h"
 
@@ -74,7 +75,7 @@ private slots:
     {
         AppContext::instance()->setController(nullptr);
         AppContext::instance()->setDemo(true);
-        demo::resetTags();
+        tanara_demo::resetTags();
     }
 
     void demoLibraryHasSectionsAndStates()
@@ -285,12 +286,13 @@ private slots:
         QVERIFY(m.peopleOptions().isEmpty());
     }
 
-    void noControllerAndNoDemoIsEmpty()
+    void noFacadeIsEmpty()
     {
-        AppContext::instance()->setDemo(false);
-        LibraryListModel m;
+        // Without a controller the App singleton's services are the fictional ones; a model given no
+        // facade at all shows nothing.
+        LibraryListModel m(static_cast<tanara::library::ILibraryFacade*>(nullptr));
         QCOMPARE(m.count(), 0);
-        LibraryPendingModel p;
+        LibraryPendingModel p(static_cast<tanara::library::ILibraryFacade*>(nullptr));
         QVERIFY(p.items().isEmpty());
     }
 
@@ -346,10 +348,8 @@ private slots:
             const tanara::Meeting first = addMeeting(app, QStringLiteral("Első megbeszélés"), true,
                                                      QStringLiteral("Az árajánlatot Ödön küldi el holnap."));
 
-            LibraryListModel m;
-            m.setController(&app);
-            LibraryPendingModel pending;
-            pending.setController(&app);
+            LibraryListModel m(facadetest::libraryOf(&app));
+            LibraryPendingModel pending(facadetest::libraryOf(&app));
             QCOMPARE(m.count(), 1);
             QCOMPARE(m.totalCount(), 1);
             QCOMPARE(text(m, 0, LibraryListModel::TranscriptStateRole), QStringLiteral("done"));
@@ -418,8 +418,7 @@ private slots:
             tags->addTag(b.id, QStringLiteral("Alfa Projekt"));
             const tanara::Tag beta = tags->addTag(b.id, QStringLiteral("Béta"));
 
-            LibraryListModel m;
-            m.setController(&app);
+            LibraryListModel m(facadetest::libraryOf(&app));
             QTRY_COMPARE(m.count(), 3);
             const int rowB = m.indexOfMeeting(b.id);
             QCOMPARE(list(m, rowB, LibraryListModel::TagNamesRole),
@@ -476,8 +475,7 @@ private slots:
             for (int i = 0; i < 300; ++i)
                 addMeeting(app, QStringLiteral("Megbeszélés %1").arg(i), i % 2 == 0,
                            QStringLiteral("A %1. alkalommal a költségvetésről beszéltünk.").arg(i));
-            LibraryListModel m;
-            m.setController(&app);
+            LibraryListModel m(facadetest::libraryOf(&app));
             QCOMPARE(m.count(), 300);
             QElapsedTimer t;
             t.start();

@@ -1,9 +1,8 @@
 #pragma once
 //
 // LibraryPendingModel: the rows of the "Pick a meeting / Waiting for you" card from
-// MeetingLibrary::pendingItems: recordings awaiting transcription (merged into one row), stale
+// ILibraryFacade::pendingItems: recordings awaiting transcription (merged into one row), stale
 // summaries and failed transcriptions (one row per meeting, at most a few).
-// Without a controller (App.demo) it works from the fictional sample library.
 //
 #include "tanara/library/MeetingLibrary.h"
 
@@ -13,9 +12,7 @@
 #include <QVariantList>
 #include <QtQml/qqmlregistration.h>
 
-namespace tanara {
-namespace app { class AppController; }
-}
+namespace tanara::library { class ILibraryFacade; }
 
 namespace tanara_qml {
 
@@ -28,9 +25,10 @@ class LibraryPendingModel : public QObject {
     Q_PROPERTY(QVariantList items READ items NOTIFY itemsChanged)
 
 public:
+    // From QML: follows the App singleton's services (AppContext::services().library).
     explicit LibraryPendingModel(QObject* parent = nullptr);
-
-    void setController(tanara::app::AppController* controller);
+    // With a given facade (tests, hosts); it is not taken over.
+    explicit LibraryPendingModel(tanara::library::ILibraryFacade* facade, QObject* parent = nullptr);
     QVariantList items() const { return m_items; }
 
     // Assembling the list from the core's items (static: testable).
@@ -40,12 +38,13 @@ signals:
     void itemsChanged();
 
 private:
+    void init();
     void attach();
     void reload();
 
-    QPointer<tanara::app::AppController> m_controller;
-    QPointer<tanara::library::MeetingLibrary> m_library;
-    bool m_controllerInjected = false;
+    QPointer<tanara::library::ILibraryFacade> m_facade;
+    QPointer<tanara::library::ILibraryFacade> m_attached;
+    bool m_injected = false;
     QVariantList m_items;
     QTimer m_reloadTimer;
 };
