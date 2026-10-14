@@ -10,6 +10,18 @@
 #include "tanara/recording/MixdownService.h"
 #include "tanara/recording/RecordingService.h"
 #include "tanara/watcher/CallMonitor.h"
+// --- P12d ---
+#include "tanara/editing/participants/ParticipantService.h"
+#include "tanara/editing/people/PeopleEditingAdapter.h"
+#include "tanara/editing/session/SpeakerEditor.h"
+#include "tanara/editing/session/SpeakerOverlay.h"
+#include "tanara/editing/undo/MeetingUndoRegistry.h"
+#include "tanara/library/people/PeopleService.h"
+#include "tanara/library/store/PeopleStore.h"
+#include "tanara/processing/analysis/ParticipantAnalysis.h"
+#include "tanara/processing/analysis/TrackActivity.h"
+#include "tanara/processing/analysis/VoiceAnalysisService.h"
+// --- end P12d ---
 // --- P16: detector registry ---
 #include "tanara/watcher/detect/DetectorRegistry.h"
 // --- end P16 ---
@@ -76,6 +88,107 @@ library::TagSuggestionService::Deps tagSuggestionDeps(const ServicesDeps& deps)
     return td;
 }
 
+// --- P12d ---
+// The participant operations' voice-analysis side (editing::ParticipantAnalysisPort) over the processing
+// module: the candidate context of the voice analysis, the participant-analysis file's clusters and the track
+// activity cache. Lives here because editing must not depend on processing (cleanup plan T 1.2).
+class ParticipantAnalysisAdapter final : public editing::ParticipantAnalysisPort {
+public:
+    explicit ParticipantAnalysisAdapter(processing::VoiceAnalysisService* voice) : m_voice(voice) {}
+
+    QVector<Evidence> evidence(const Participant& p, bool heard, double voiceScore, const Meeting& m) override
+    {
+        return processing::participants::participantEvidence(p, heard, voiceScore, m, m_voice->candidateContext());
+    }
+    ParticipantGroup group(const Participant& p) override { return processing::participants::participantGroup(p); }
+    QStringList analysisModelIds(const QString& meetingFolder) override
+    {
+        return processing::ParticipantAnalysisFile::load(meetingFolder).modelIds;
+    }
+    bool bindRawSpeakers(QVector<Participant>& participants, const QString& meetingFolder,
+                         const QVector<TranscriptLine>& lines) override
+    {
+        const processing::ParticipantAnalysisFile file = processing::ParticipantAnalysisFile::load(meetingFolder);
+        if (file.isEmpty()) return false;
+        return processing::participants::bindRawSpeakers(participants, file.clusters, lines);
+    }
+    QVector<SpeakerBinding> approvalBindings(const QVector<Participant>& all, const QStringList& acceptedIds,
+                                             const QVector<TranscriptLine>& lines, const Meeting& m,
+                                             bool trackVeto) override
+    {
+        const processing::ParticipantAnalysisFile file = processing::ParticipantAnalysisFile::load(m.folder);
+        const MeetingActivity act =
+            MeetingActivity::load(m.folder, processing::trackactivity::activityFingerprint(m, m.folder));
+        return processing::participants::approvalBindings(all, acceptedIds, lines, file.clusters,
+                                                          act.isEmpty() ? nullptr : &act, trackVeto ? &m : nullptr);
+    }
+    bool analysisRunning(const QString& meetingId) const override { return m_voice->analysisRunning(meetingId); }
+    void cancelAnalysis(const QString& meetingId) override { m_voice->cancelAnalysis(meetingId); }
+
+private:
+    processing::VoiceAnalysisService* m_voice;
+};
+
+processing::VoiceAnalysisService::Deps voiceDeps(const ServicesDeps& deps)
+{
+    processing::VoiceAnalysisService::Deps vd;
+    vd.store = deps.store;
+    vd.voiceprints = deps.voiceprints;
+    vd.people = deps.people;
+    vd.tags = deps.tags;
+    vd.jobs = deps.jobs;
+    vd.media = deps.media;
+    vd.modelsDir = deps.modelsDir;
+    vd.appDir = deps.appDir;
+    SettingsManager* st = deps.settings;
+    library::PeopleStore* people = deps.people;
+    vd.enabledModels = [st]() { return st ? st->enabledVoiceModels() : QStringList(); };
+    vd.self = [st, people]() {
+        SelfPerson self;
+        if (people) { people->refresh(); self.id = people->selfId(); }
+        if (st) self.name = st->settings().recording.userSpeakerName.trimmed();
+        return self;
+    };
+    vd.transcriptLines = [](const QString& folder) { return editing::speakeredit::loadTranscriptLines(folder); };
+    vd.transcriptStamp = deps.transcriptStamp;
+    vd.speechCheckPending = deps.speechCheckPending;
+    return vd;
+}
+
+editing::PeopleEditingAdapter::Deps peopleEditingDeps(const ServicesDeps& deps,
+                                                      processing::VoiceAnalysisService* voice)
+{
+    editing::PeopleEditingAdapter::Deps pd;
+    pd.store = deps.store;
+    pd.people = deps.people;
+    pd.voiceprints = deps.voiceprints;
+    pd.embedderFactory = [voice]() { return voice->utteranceEmbedderFactory(); };
+    pd.editorModelIds = [voice]() { return voice->editorModelIds(); };
+    return pd;
+}
+
+library::PeopleService::Deps peopleDeps(const ServicesDeps& deps, editing::PeopleEditingAdapter* editing)
+{
+    library::PeopleService::Deps pd;
+    pd.store = deps.store;
+    pd.people = deps.people;
+    pd.voiceprints = deps.voiceprints;
+    pd.stats = deps.peopleStats;
+    pd.tags = deps.tags;
+    pd.references = editing;
+    pd.material = editing;
+    SettingsManager* st = deps.settings;
+    pd.selfName = [st]() { return st ? st->settings().recording.userSpeakerName : QString(); };
+    pd.setSelfName = [st](const QString& name) {
+        if (!st) return;
+        AppSettings s = st->settings();
+        s.recording.userSpeakerName = name;
+        st->setSettings(s);
+    };
+    return pd;
+}
+// --- end P12d ---
+
 } // namespace
 
 Services::Services(const ServicesDeps& deps)
@@ -85,6 +198,16 @@ Services::Services(const ServicesDeps& deps)
     , m_recording(std::make_unique<recording::RecordingService>(recordingDeps(deps, m_callMonitor.get())))
     , m_mixdown(std::make_unique<recording::MixdownService>(deps.store, deps.jobs, deps.media))
     , m_tagSuggestions(std::make_unique<library::TagSuggestionService>(tagSuggestionDeps(deps)))
+    // --- P12d ---
+    , m_voiceAnalysis(std::make_unique<processing::VoiceAnalysisService>(voiceDeps(deps)))
+    , m_peopleEditing(std::make_unique<editing::PeopleEditingAdapter>(peopleEditingDeps(deps, m_voiceAnalysis.get())))
+    , m_people(std::make_unique<library::PeopleService>(peopleDeps(deps, m_peopleEditing.get())))
+    , m_meetingUndo(std::make_unique<editing::MeetingUndoRegistry>(deps.store, deps.tags, deps.existingEditor))
+    , m_participantAnalysis(std::make_unique<ParticipantAnalysisAdapter>(m_voiceAnalysis.get()))
+    , m_participants(std::make_unique<editing::ParticipantService>(editing::ParticipantService::Deps{
+          deps.store, deps.people, m_people.get(), m_meetingUndo.get(), m_participantAnalysis.get(),
+          deps.editorFor, deps.existingEditor}))
+    // --- end P12d ---
     // --- P16: detector registry ---
     , m_detectors(std::make_unique<watcher::MeetingDetectorRegistry>(watcher::MeetingDetectorRegistry::withBuiltins()))
     // --- end P16 ---

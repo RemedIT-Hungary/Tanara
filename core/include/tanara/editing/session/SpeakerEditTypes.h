@@ -10,6 +10,7 @@
 //    ("participant:N"). Can be bound to a person (a PersonId) or anonymous.
 #include "tanara/domain/Participant.h"
 #include "tanara/domain/Summary.h"
+#include "tanara/domain/Voice.h"
 
 #include <QDateTime>
 #include <QString>
@@ -134,23 +135,10 @@ struct PersonInfo {
     QDateTime lastSeen;             // the latest meeting they appear in (tells same-named people apart)
 };
 
-// How much material there is for a speaker's manual voiceprint in this meeting.
-struct VoiceprintMaterial {
-    int    usableLines = 0;     // number of lines that are long enough (and not uncertain)
-    qint64 usableMs = 0;        // their total usable length
-    qint64 missingMs = 0;       // how much is missing to the minimum (0 = enough)
-    bool   sufficient = false;
-};
-
-// Result of the manual voiceprint creation.
-struct VoiceprintResult {
-    bool    ok = false;
-    QString printId;            // id of the voiceprint created
-    QString error;              // human-readable error message if !ok
-    int     usedLines = 0;
-    qint64  usedMs = 0;
-    qint64  missingMs = 0;      // if there is not enough material: how much is missing
-};
+// The voiceprint material / result types live in domain/Voice.h (the People window's library service
+// uses them through the VoiceprintMaterialSource port); the editing names stay as aliases.
+using VoiceprintMaterial = tanara::VoiceprintMaterial;
+using VoiceprintResult = tanara::VoiceprintResult;
 
 // SummaryStaleInfo: domain/Summary.h.
 
@@ -169,8 +157,6 @@ Q_DECLARE_METATYPE(tanara::editing::EditorUtterance)
 Q_DECLARE_METATYPE(tanara::editing::EditorSpeaker)
 Q_DECLARE_METATYPE(tanara::editing::SpeakerSuggestion)
 Q_DECLARE_METATYPE(tanara::editing::PersonInfo)
-Q_DECLARE_METATYPE(tanara::editing::VoiceprintMaterial)
-Q_DECLARE_METATYPE(tanara::editing::VoiceprintResult)
 Q_DECLARE_METATYPE(tanara::editing::RetranscribeImpact)
 Q_DECLARE_METATYPE(tanara::editing::SampleDeviation)
 Q_DECLARE_METATYPE(tanara::editing::SpeakerSampleStats)

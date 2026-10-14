@@ -56,7 +56,35 @@ struct VoiceMatch {
     double score = -1.0;        // [-1..1] cosine; <0 = no match / empty DB
 };
 
+// A transcript speaker identified by voice: the raw label, the matched person and the score.
+struct SpeakerVoiceMatch {
+    QString  rawLabel;
+    PersonId personId;
+    double   score = -1.0;
+};
+
+// How much material there is for a speaker's manual voiceprint in a meeting.
+// (Shared by the editing session and the People window's library service.)
+struct VoiceprintMaterial {
+    int    usableLines = 0;     // number of lines that are long enough (and not uncertain)
+    qint64 usableMs = 0;        // their total usable length
+    qint64 missingMs = 0;       // how much is missing to the minimum (0 = enough)
+    bool   sufficient = false;
+};
+
+// Result of the manual voiceprint creation.
+struct VoiceprintResult {
+    bool    ok = false;
+    QString printId;            // id of the voiceprint created
+    QString error;              // human-readable error message if !ok
+    int     usedLines = 0;
+    qint64  usedMs = 0;
+    qint64  missingMs = 0;      // if there is not enough material: how much is missing
+};
+
 } // namespace tanara
 
 Q_DECLARE_METATYPE(tanara::Voiceprint)
 Q_DECLARE_METATYPE(tanara::VoiceMatch)
+Q_DECLARE_METATYPE(tanara::VoiceprintMaterial)
+Q_DECLARE_METATYPE(tanara::VoiceprintResult)

@@ -1,7 +1,7 @@
 #pragma once
 //
-// PersonMerge: what merging two people (AppController::mergePeople) changed, so the merge can be undone
-// exactly (AppController::undoMergePeople; PeopleService keeps it on its undo stack).
+// PersonMerge: what merging two people (PeopleService::mergeEverywhere) changed, so the merge can be undone
+// exactly (PeopleService::undoMergeEverywhere; PeopleService keeps it on its undo stack).
 //
 // Merging `drop` into `keep` rewrites the REFERENCES to `drop` (voiceprints.json, tags.json rejections,
 // every meeting's speakerMap / participants / approval candidates / speaker overlay) to `keep`, and folds

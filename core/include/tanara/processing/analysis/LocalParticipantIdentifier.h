@@ -7,7 +7,7 @@
 //   the candidate's score: the mean of these over the shared models (the probe has a vector AND the
 //   candidate has a voiceprint of the model); no shared model -> -1.
 // The best candidate becomes the guess's name if its score reaches the threshold
-// (kDefaultThreshold = AppController's voice-match threshold); otherwise the name stays empty.
+// (kDefaultThreshold = VoiceAnalysisService::kVoiceMatchThreshold); otherwise the name stays empty.
 // Pure computation, delivered in the next event-loop turn.
 #include "tanara/providers/voice/IParticipantIdentifier.h"
 

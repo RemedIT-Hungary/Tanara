@@ -16,14 +16,7 @@ core/src/library/tags/MeetingProfiles.cpp -> tanara/editing/session/SpeakerOverl
 
 # ---- P9 (0 lines) ----
 
-# ---- P12d (7 lines) ----
-core/include/tanara/library/people/PeopleService.h -> tanara/editing/session/SpeakerEditTypes.h   # library <- editing (VoiceprintMaterialSource) -> P12d
-core/include/tanara/library/people/PeopleService.h -> tanara/processing/analysis/UtteranceEmbeddings.h   # library <- editing (VoiceprintMaterialSource) -> P12d
-core/src/library/people/PeopleService.cpp -> tanara/app/AppController.h   # people -> AppController -> P12d
-core/src/library/people/PeopleService.cpp -> tanara/app/SettingsManager.h   # people -> SettingsManager -> P12d
-core/src/library/people/PeopleService.cpp -> tanara/editing/review/SideAnalysis.h   # library <- editing (VoiceprintMaterialSource) -> P12d
-core/src/library/people/PeopleService.cpp -> tanara/editing/session/SpeakerEditor.h   # library <- editing (VoiceprintMaterialSource) -> P12d
-core/src/library/people/PeopleService.cpp -> tanara/editing/session/SpeakerOverlay.h   # library <- editing (VoiceprintMaterialSource) -> P12d
+# ---- P12d (0 lines) ----
 
 # ---- P12b (1 lines) ----
 

@@ -4,6 +4,7 @@
 // It creates the services from their dependencies (constructor injection) and owns them; the
 // AppController owns the Services and hands it out through services().
 #include "tanara/library/tags/TagSuggestionService.h"
+#include "tanara/domain/Meeting.h"
 #include "tanara/media/MediaTool.h"
 
 #include <functional>
@@ -25,6 +26,22 @@ class MixdownService;
 class RecordingService;
 }
 namespace tanara::watcher { class CallMonitor; }
+// --- P12d: participants, people, voice analysis, shared undo ---
+namespace tanara::library {
+class PeopleService;
+class PeopleStats;
+class PeopleStore;
+class VoiceprintStore;
+}
+namespace tanara::editing {
+class MeetingUndoRegistry;
+class ParticipantAnalysisPort;
+class ParticipantService;
+class PeopleEditingAdapter;
+class SpeakerEditor;
+}
+namespace tanara::processing { class VoiceAnalysisService; }
+// --- end P12d ---
 // --- P16: detector registry ---
 namespace tanara::watcher { class MeetingDetectorRegistry; }
 // --- end P16 ---
@@ -48,6 +65,20 @@ struct ServicesDeps {
     // The LLM session of one run / the embedder of a provider id (the app owns the cloud ledger, secrets, http).
     std::function<library::TagSuggestionService::LlmSession(const QString&, QObject*)> tagLlm;
     std::function<providers::ITextEmbedder*(const QString&, QObject*)> embedder;
+
+    // ---- P12d: participants, people, voice analysis, shared undo ----
+    library::PeopleStore*     people = nullptr;
+    library::VoiceprintStore* voiceprints = nullptr;
+    library::PeopleStats*     peopleStats = nullptr;
+    QString modelsDir;          // AppPaths::modelsDir()
+    QString appDir;             // location of the packaged models
+    // The transcript-editor sessions (the app owns them until P12f): created on demand / only an open one.
+    std::function<editing::SpeakerEditor*(const QString&)> editorFor;
+    std::function<editing::SpeakerEditor*(const QString&)> existingEditor;
+    // The transcript's identity (the identification drops a result that belongs to an older transcript).
+    std::function<QString(const QString& meetingId, const QString& folder)> transcriptStamp;
+    // The tracks' speech check is still pending (running, or not yet done for a meeting that needs it).
+    std::function<bool(const Meeting&)> speechCheckPending;
 };
 
 class Services {
@@ -63,6 +94,12 @@ public:
     recording::RecordingService& recording() const   { return *m_recording; }
     recording::MixdownService&   mixdown() const     { return *m_mixdown; }
     library::TagSuggestionService& tagSuggestions() const { return *m_tagSuggestions; }   // P12c
+    // --- P12d ---
+    processing::VoiceAnalysisService& voiceAnalysis() const { return *m_voiceAnalysis; }
+    library::PeopleService&           people() const        { return *m_people; }
+    editing::ParticipantService&      participants() const  { return *m_participants; }
+    editing::MeetingUndoRegistry&     meetingUndo() const   { return *m_meetingUndo; }
+    // --- end P12d ---
     // --- P16: detector registry ---
     // This platform's meeting detectors (an instance, not a singleton; the call monitor uses it).
     watcher::MeetingDetectorRegistry& detectors() const { return *m_detectors; }
@@ -75,6 +112,14 @@ private:
     std::unique_ptr<recording::RecordingService> m_recording;
     std::unique_ptr<recording::MixdownService>   m_mixdown;
     std::unique_ptr<library::TagSuggestionService> m_tagSuggestions;   // P12c
+    // --- P12d --- (declaration order = construction order; destroyed in reverse)
+    std::unique_ptr<processing::VoiceAnalysisService> m_voiceAnalysis;
+    std::unique_ptr<editing::PeopleEditingAdapter>    m_peopleEditing;   // the library ports' editing side
+    std::unique_ptr<library::PeopleService>           m_people;
+    std::unique_ptr<editing::MeetingUndoRegistry>     m_meetingUndo;
+    std::unique_ptr<editing::ParticipantAnalysisPort> m_participantAnalysis;   // over the voice analysis
+    std::unique_ptr<editing::ParticipantService>      m_participants;
+    // --- end P12d ---
     // --- P16: detector registry ---
     std::unique_ptr<watcher::MeetingDetectorRegistry> m_detectors;
     // --- end P16 ---

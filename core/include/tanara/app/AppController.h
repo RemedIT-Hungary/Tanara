@@ -728,28 +728,15 @@ private:
     void startSpeechCheck(const QString& meetingId, bool thenMixdown);
     void finishSpeechCheck(const QString& meetingId, const tanara::MeetingActivity& activity,
                            bool thenMixdown);
-    void finishParticipantAnalysis(const QString& meetingId, tanara::ClusterSet clusters,
-                                   const QString& tracksKey);
-    void finishTrackActivity(const QString& meetingId, const tanara::MeetingActivity& activity);
-    // The speaker keys of a participant (id) or speaker key in the editor (after the transcript).
-    QStringList speakerKeysFor(const tanara::Meeting& m, const QString& id);
-    // When the transcript arrives: the participants' manual track binding into the still-empty speaker assignments.
-    void copyParticipantTracksToOverlay(const QString& meetingId);
     // The transcript arrived: binding + applying the decision (approve / "only me"). true if the
-    // decision covered the speakers (automatic identification is skipped).
+    // decision covered the speakers (automatic identification is skipped). (editing::ParticipantService)
     bool applyParticipantsToTranscript(const QString& meetingId);
-    // The bindings through the editor, in one undo step.
-    bool applySpeakerBindings(const QString& meetingId, const QVector<tanara::SpeakerBinding>& bindings,
-                              const QString& undoText);
     // Automatic identification after the transcript, as the last phase of the transcription task (asynchronous).
     bool startIdentify(const QString& meetingId, bool asTranscribeStage);
     // Recomputes the models in use (on a setting / loader change); backfill when it grows.
     void applyVoiceModels();
     // Error: a structured gateway error -> cloudError, otherwise errorOccurred(fallback).
     void failCloudRun(const CloudRunPtr& run, const QString& fallbackMessage);
-
-    // Shared undo step for participant operations (RAII, see app/AppController.cpp).
-    struct ParticipantUndoScope;
 
     struct Impl;
     std::unique_ptr<Impl> d;

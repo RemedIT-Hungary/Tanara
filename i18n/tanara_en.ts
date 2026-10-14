@@ -7935,10 +7935,6 @@
         <translation>Cancelled.</translation>
     </message>
     <message>
-        <source>%1 / %2 beszélő</source>
-        <translation>%1 / %2 speakers</translation>
-    </message>
-    <message>
         <source>Sáv beemelve</source>
         <translation>Track added back</translation>
     </message>
@@ -7946,6 +7942,9 @@
         <source>Sáv kivéve</source>
         <translation>Track removed</translation>
     </message>
+</context>
+<context>
+    <name>tanara::editing::ParticipantService</name>
     <message>
         <source>Csak én beszéltem</source>
         <translation>Only I spoke</translation>
@@ -8585,6 +8584,17 @@
     <message>
         <source>Az összefoglaló válasza nem értelmezhető: %1.</source>
         <translation>The summary response cannot be read: %1.</translation>
+    </message>
+</context>
+<context>
+    <name>tanara::processing::VoiceAnalysisService</name>
+    <message>
+        <source>%1 / %2 beszélő</source>
+        <translation>%1 / %2 speakers</translation>
+    </message>
+    <message>
+        <source>Résztvevők azonosítása</source>
+        <translation>Identifying participants</translation>
     </message>
 </context>
 <context>

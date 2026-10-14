@@ -1,15 +1,13 @@
 #include "tanara/library/people/PeopleService.h"
 
-#include "tanara/app/AppController.h"
-#include "tanara/app/SettingsManager.h"
-#include "tanara/library/tracks/TrackCatalog.h"
-#include "tanara/editing/review/SideAnalysis.h"
-#include "tanara/editing/session/SpeakerEditor.h"
-#include "tanara/editing/session/SpeakerOverlay.h"
+#include "tanara/library/people/PersonReferenceEditor.h"
 #include "tanara/library/people/PeopleStats.h"
 #include "tanara/library/store/MeetingRepository.h"
 #include "tanara/library/store/PeopleStore.h"
+#include "tanara/library/store/TranscriptRepository.h"
 #include "tanara/library/store/VoiceprintStore.h"
+#include "tanara/library/tags/TagService.h"
+#include "tanara/library/tracks/TrackCatalog.h"
 
 #include <QDir>
 #include <QFileInfo>
@@ -69,16 +67,32 @@ struct UndoStep {
 
 } // namespace
 
+void ensureSelfPerson(PeopleStore* people, const QString& selfName)
+{
+    if (!people || people->legacy()) return;
+    people->refresh();
+    if (!people->selfId().isNull() && people->contains(people->selfId())) return;
+    const QString name = selfName.trimmed();
+    if (name.isEmpty()) return;
+    const PersonId id = people->ensure(name);
+    if (!id.isNull()) people->setSelfId(id);
+}
+
 struct PeopleService::Private {
     PeopleService* q = nullptr;
-    app::AppController* controller = nullptr;
     MeetingRepository* store = nullptr;
     PeopleStore* people = nullptr;
     VoiceprintStore* voiceprints = nullptr;
     PeopleStats* stats = nullptr;
-    processing::UtteranceEmbedderFactory factory;
-    bool factoryInjected = false;
+    TagService* tags = nullptr;
+    PersonReferenceEditor* refs = nullptr;
+    VoiceprintMaterialSource* material = nullptr;
+    std::function<QString()> selfName;
+    std::function<void(const QString&)> setSelfName;
     QVector<UndoStep> undo;
+
+    QString settingsName() const { return selfName ? selfName() : QString(); }
+    void writeSettingsName(const QString& name) { if (setSelfName) setSelfName(name); }
 
     PersonId self() const { return people ? people->selfId() : PersonId(); }
     QString nameOf(const PersonId& person) const { return people ? people->displayName(person) : QString(); }
@@ -123,7 +137,7 @@ struct PeopleService::Private {
             if (!pm.hasSummary || pm.speakerKeys.isEmpty()) continue;
             const Meeting m = store->load(pm.meetingId);
             if (m.id.isEmpty() || !m.hasSummary) continue;
-            const QStringList added = editing::speakeredit::markSummaryStaleKeys(m, pm.speakerKeys);
+            const QStringList added = refs ? refs->markSummaryStaleKeys(m, pm.speakerKeys) : QStringList();
             if (!added.isEmpty()) marks.append(StaleMark{m.id, m.folder, added});
         }
         return marks;
@@ -132,40 +146,12 @@ struct PeopleService::Private {
     // refreshes the stale flag.
     void announceStale(const QVector<StaleMark>& marks)
     {
-        if (!controller) return;
         for (const StaleMark& mark : marks) {
-            emit controller->speakerMapChanged(mark.meetingId);
-            emit controller->summaryStaleChanged(mark.meetingId);
+            emit q->speakerMapChanged(mark.meetingId);
+            emit q->summaryStaleChanged(mark.meetingId);
         }
     }
-
-    processing::UtteranceEmbedderFactory embedderFactory() const
-    {
-        if (factoryInjected) return factory;
-        if (!controller || !controller->voiceIdentificationAvailable()) return {};
-        return controller->utteranceEmbedderFactory();
-    }
-
-    // A temporary editor for the voiceprint operations: with the models in use (with an injected factory
-    // the editor's default stays).
-    void configureEditor(editing::SpeakerEditor& ed, const processing::UtteranceEmbedderFactory& f) const
-    {
-        if (!factoryInjected && controller) {
-            const QStringList active = controller->activeVoiceModelIds();
-            ed.setVoiceModelIds(active.isEmpty() && controller->settings()
-                                    ? controller->settings()->enabledVoiceModels() : active);
-        }
-        if (f) ed.setEmbedderFactory(f);
-    }
-
-    // The person's speaker keys in an open editor.
-    static QStringList speakerKeysOf(const editing::SpeakerEditor& ed, const PersonId& person)
-    {
-        QStringList keys;
-        for (const editing::EditorSpeaker& s : ed.speakers())
-            if (!s.anonymous && s.personId == person) keys << s.key;
-        return keys;
-    }
+    bool unmarkStale(const StaleMark& mark) { return refs && refs->unmarkSummaryStale(mark.folder, mark.keys); }
 
     QString freeAnonymousName() const
     {
@@ -189,45 +175,80 @@ struct PeopleService::Private {
         return false;
     }
 
-    // A rename through the global route: the own person also updates the settings' name.
+    // A rename through the global route: the own person also updates the settings' name (the former
+    // AppController::setUserSpeakerName path: settings, then the record).
     void renameGlobally(const PersonId& person, const QString& name)
     {
-        if (!controller) {
-            if (people) people->rename(person, name);
-            return;
-        }
-        if (person == self()) controller->setUserSpeakerName(name);
-        else controller->renamePerson(person, name);
+        if (person == self()) q->setSelfName(name);
+        else q->renameEverywhere(person, name);
     }
 
     void finish(bool people_, bool prints)
     {
-        if (controller) {
-            if (prints) emit controller->voiceprintsChanged();
-            if (people_) emit controller->peopleChanged();
-        }
+        if (prints) emit q->voiceprintsChanged();
+        if (people_) emit q->peopleChanged();
         emit q->changed();
     }
 };
 
-PeopleService::PeopleService(app::AppController* controller, MeetingRepository* store, PeopleStore* people,
-                             VoiceprintStore* voiceprints, PeopleStats* stats, QObject* parent)
+PeopleService::PeopleService(const Deps& deps, QObject* parent)
     : QObject(parent), d(std::make_unique<Private>())
 {
     d->q = this;
-    d->controller = controller;
-    d->store = store;
-    d->people = people;
-    d->voiceprints = voiceprints;
-    d->stats = stats;
+    d->store = deps.store;
+    d->people = deps.people;
+    d->voiceprints = deps.voiceprints;
+    d->stats = deps.stats;
+    d->tags = deps.tags;
+    d->refs = deps.references;
+    d->material = deps.material;
+    d->selfName = deps.selfName;
+    d->setSelfName = deps.setSelfName;
 }
 
 PeopleService::~PeopleService() = default;
 
-void PeopleService::setEmbedderFactory(processing::UtteranceEmbedderFactory factory)
+void PeopleService::setEmbedderFactory(VoiceprintMaterialSource::EmbedderFactory factory)
 {
-    d->factory = std::move(factory);
-    d->factoryInjected = true;
+    if (d->material) d->material->setEmbedderFactory(std::move(factory));
+}
+
+SelfPerson PeopleService::selfPerson() const
+{
+    SelfPerson self;
+    if (d->people) { d->people->refresh(); self.id = d->people->selfId(); }
+    self.name = d->settingsName().trimmed();
+    return self;
+}
+
+void PeopleService::ensureSelf() { ensureSelfPerson(d->people, d->settingsName()); }
+
+void PeopleService::setSelfName(const QString& name)
+{
+    const QString n = name.trimmed();
+    if (n.isEmpty()) return;
+    if (d->settingsName().trimmed() != n) d->writeSettingsName(n);
+    // The own person's record: ONE field (renameEverywhere refreshes the meetings showing it).
+    ensureSelf();
+    const PersonId self = d->people ? d->people->selfId() : PersonId();
+    if (!self.isNull() && d->people->displayName(self) != n) renameEverywhere(self, n);
+    else emit peopleChanged();
+}
+
+PersonNames PeopleService::personNames() const
+{
+    if (!d->people) return {};
+    d->people->refresh();
+    return d->people->names();
+}
+
+QStringList PeopleService::knownNames() const
+{
+    QStringList out;
+    if (!d->people) return out;
+    d->people->refresh();
+    for (const Person& p : d->people->people()) out << p.displayName;
+    return out;
 }
 
 void PeopleService::reload()
@@ -493,13 +514,12 @@ bool PeopleService::setDefaultSide(const PersonId& person, const QString& side)
     return true;
 }
 
-int PeopleService::learnDefaultSides(const editing::SideReport& report)
+int PeopleService::learnDefaultSides(const QHash<PersonId, QString>& learned)
 {
     if (!d->people) return 0;
     int n = 0;
-    const QHash<PersonId, editing::Side> learned = editing::sides::learnedDefaults(report);
     for (auto it = learned.cbegin(); it != learned.cend(); ++it)
-        n += d->people->setDefaultSide(it.key(), sideName(it.value())) ? 1 : 0;
+        n += d->people->setDefaultSide(it.key(), it.value()) ? 1 : 0;
     if (n > 0) emit changed();
     return n;
 }
@@ -585,21 +605,14 @@ PeopleOpResult PeopleService::moveSample(const QString& printId, const PersonCho
 VoiceprintPlan PeopleService::voiceprintPlan(const PersonId& person) const
 {
     VoiceprintPlan plan;
-    const processing::UtteranceEmbedderFactory factory = d->embedderFactory();
-    plan.modelAvailable = bool(factory);
+    plan.modelAvailable = d->material && d->material->canCreate();
     if (!d->stats || !d->store) return plan;
     const PersonStats ps = d->stats->stats(person);
     for (const PersonMeetingStat& pm : ps.meetings) {
         if (pm.talkMs <= 0) continue;
         ++plan.meetingsWithLines;
         // The existing editor logic tells whether there is a sure (not doubtful), long line.
-        editing::SpeakerEditor ed(d->store, d->people, d->voiceprints, pm.meetingId);
-        d->configureEditor(ed, {});
-        qint64 best = 0;
-        for (const QString& key : Private::speakerKeysOf(ed, person)) {
-            const editing::VoiceprintMaterial material = ed.voiceprintMaterial(key);
-            if (material.sufficient) best = std::max(best, material.usableMs);
-        }
+        const qint64 best = d->material ? d->material->bestUsableMs(pm.meetingId, person) : 0;
         if (best <= 0) continue;
         plan.usableMeetingIds << pm.meetingId;
         plan.usableMs += best;
@@ -607,33 +620,23 @@ VoiceprintPlan PeopleService::voiceprintPlan(const PersonId& person) const
     return plan;
 }
 
-editing::VoiceprintResult PeopleService::createVoiceprintFromMeeting(const PersonId& person, const QString& meetingId)
+VoiceprintResult PeopleService::createVoiceprintFromMeeting(const PersonId& person, const QString& meetingId)
 {
-    editing::VoiceprintResult r;
-    const processing::UtteranceEmbedderFactory factory = d->embedderFactory();
-    if (!factory) {
+    VoiceprintResult r;
+    if (!d->material || !d->material->canCreate()) {
         r.error = tr("A hangmodell nincs telepítve, ezért nem készíthető hanglenyomat.");
         return r;
     }
     if (!d->store || !d->voiceprints) return r;
-    // Its own, temporary editor session: we do not touch the state (undo stack) of an editor possibly
-    // open in the main window; the voiceprint goes into the shared store.
-    editing::SpeakerEditor ed(d->store, d->people, d->voiceprints, meetingId);
-    d->configureEditor(ed, factory);
-    QString bestKey;
-    qint64 bestMs = 0;
-    for (const QString& key : Private::speakerKeysOf(ed, person)) {
-        const editing::VoiceprintMaterial material = ed.voiceprintMaterial(key);
-        if (material.sufficient && material.usableMs > bestMs) {
-            bestMs = material.usableMs;
-            bestKey = key;
-        }
-    }
-    if (bestKey.isEmpty()) {
+    // Its own, temporary editor session (in the port): we do not touch the state (undo stack) of an editor
+    // possibly open in the main window; the voiceprint goes into the shared store.
+    bool noMaterial = false;
+    r = d->material->createVoiceprint(meetingId, person, &noMaterial);
+    if (noMaterial) {
+        r = VoiceprintResult();
         r.error = tr("Ezen a megbeszélésen nincs elég hosszú, biztos sora.");
         return r;
     }
-    r = ed.createVoiceprint(bestKey);
     if (r.ok) d->finish(false, true);
     return r;
 }
@@ -660,7 +663,7 @@ PeopleOpResult PeopleService::merge(const PersonId& loser, const PersonId& survi
 {
     PeopleOpResult r;
     reload();
-    if (!d->known(loser) || !d->known(survivor) || loser == survivor || !d->controller) {
+    if (!d->known(loser) || !d->known(survivor) || loser == survivor) {
         r.error = tr("Az összevonáshoz két különböző, létező személy kell.");
         return r;
     }
@@ -677,7 +680,7 @@ PeopleOpResult PeopleService::merge(const PersonId& loser, const PersonId& survi
     step.other = loser;
     step.detail = loserName;
     step.marks = marks;
-    step.merge = d->controller->mergePeople(survivor, loser);
+    step.merge = mergeEverywhere(survivor, loser);
     if (!step.merge.isValid()) {
         r.error = tr("Az összevonáshoz két különböző, létező személy kell.");
         return r;
@@ -708,7 +711,7 @@ DeletePreview PeopleService::deletePreview(const PersonId& person) const
         if (!p.exampleLabel.isEmpty()) continue;
         // A raw label the speaker reverts to (from the newest meeting).
         for (const QString& key : m.speakerKeys)
-            if (!editing::speakeredit::isParticipantKey(key)) {
+            if (!d->refs || !d->refs->isParticipantKey(key)) {
                 p.exampleLabel = key;
                 break;
             }
@@ -740,8 +743,7 @@ PeopleOpResult PeopleService::removePerson(const PersonId& person, bool keepSamp
         r.person = d->people->create(r.name);
         d->voiceprints->merge(person, r.person);
     }
-    if (d->controller) d->controller->removePerson(person);
-    else if (d->people) d->people->remove(person);
+    removeEverywhere(person);
 
     d->clearUndo();
     if (d->stats) d->stats->refreshNow();
@@ -800,7 +802,7 @@ PeopleUndoInfo PeopleService::undo()
         }
         QVector<StaleMark> undone;
         for (const StaleMark& mark : s.marks)
-            if (editing::speakeredit::unmarkSummaryStale(mark.folder, mark.keys)) undone.append(mark);
+            if (d->unmarkStale(mark)) undone.append(mark);
         d->announceStale(undone);
         d->finish(true, true);
         break;
@@ -820,10 +822,10 @@ PeopleUndoInfo PeopleService::undo()
         break;
     }
     case PeopleUndoKind::Merged: {
-        if (d->controller) d->controller->undoMergePeople(s.merge);
+        undoMergeEverywhere(s.merge);
         QVector<StaleMark> undone;
         for (const StaleMark& mark : s.marks)
-            if (editing::speakeredit::unmarkSummaryStale(mark.folder, mark.keys)) undone.append(mark);
+            if (d->unmarkStale(mark)) undone.append(mark);
         d->announceStale(undone);
         if (d->stats) d->stats->refreshNow();
         info.person = s.other;   // the person who came back
@@ -835,6 +837,164 @@ PeopleUndoInfo PeopleService::undo()
     }
     emit undoChanged();
     return info;
+}
+
+// ---- global person operations (formerly AppController::renamePerson / removePerson / mergePeople /
+// undoMergePeople) ----------------------------------------------------------------------------
+
+bool PeopleService::meetingRefersTo(const Meeting& m, const PersonId& person) const
+{
+    if (person.isNull()) return false;
+    for (const PersonId& p : m.speakerMap) if (p == person) return true;
+    for (const Participant& p : m.participants) if (p.personId == person) return true;
+    if (m.approval)
+        for (const ParticipantApprovalEntry& c : m.approval->candidates) if (c.personId == person) return true;
+    if (m.folder.isEmpty() || !d->refs) return false;
+    return d->refs->overlayRefersTo(m.folder, person);
+}
+
+void PeopleService::refreshMeetingNames(const Meeting& m)
+{
+    if (d->refs) d->refs->rewriteTranscriptNames(m, personNames());
+    emit speakerMapChanged(m.id);
+}
+
+// A rename writes ONE field (people.json). transcript.md is a derived file with the names in it: the meetings
+// showing the person regenerate it, and their speakerMapChanged makes open views reread.
+void PeopleService::renameEverywhere(const PersonId& person, const QString& newName)
+{
+    const QString n = newName.trimmed();
+    if (person.isNull() || n.isEmpty() || !d->people) return;
+    if (!d->people->rename(person, n)) return;
+    if (d->setSelfName && d->people->selfId() == person) {
+        if (d->settingsName().trimmed() != n) d->writeSettingsName(n);
+    }
+    if (d->store)
+        for (const Meeting& idx : d->store->loadAll()) {
+            const Meeting m = d->store->load(idx.id);
+            if (meetingRefersTo(m, person)) refreshMeetingNames(m);
+        }
+    emit peopleChanged();
+}
+
+void PeopleService::removeEverywhere(const PersonId& person)
+{
+    if (person.isNull()) return;
+    if (d->people) d->people->remove(person);
+    if (d->tags) d->tags->forgetPerson(person);
+    if (d->voiceprints) { d->voiceprints->removePerson(person); emit voiceprintsChanged(); }
+
+    const QVector<Meeting> all = d->store ? d->store->loadAll() : QVector<Meeting>();
+    for (const Meeting& idx : all) {
+        Meeting m = d->store->load(idx.id);
+        bool changed = false;
+        const QList<QString> keys = m.speakerMap.keys();
+        for (const QString& key : keys)
+            if (m.speakerMap.value(key) == person) { m.speakerMap.remove(key); changed = true; }
+        for (Participant& p : m.participants)
+            if (p.personId == person) { p.personId = PersonId(); changed = true; }
+        if (m.approval)
+            for (ParticipantApprovalEntry& c : m.approval->candidates)
+                if (c.personId == person) { c.personId = PersonId(); changed = true; }
+        const bool overlay = d->refs && d->refs->removePersonFromOverlay(m.folder, person);
+        if (!changed && !overlay) continue;
+        if (changed) d->store->saveMeeting(m);
+        refreshMeetingNames(m);
+    }
+    emit peopleChanged();
+}
+
+PersonMergeUndo PeopleService::mergeEverywhere(const PersonId& keep, const PersonId& drop)
+{
+    PersonMergeUndo u;
+    if (!d->people || keep.isNull() || drop.isNull() || keep == drop) return u;
+    d->people->refresh();
+    if (!d->people->contains(keep) || !d->people->contains(drop)) return u;
+    u.keep = keep;
+    u.drop = drop;
+    u.keepBefore = d->people->person(keep);
+    u.dropBefore = d->people->person(drop);
+    u.selfWasDrop = d->people->selfId() == drop;
+    u.selfNameBefore = d->selfName ? d->settingsName() : QString();
+
+    // 1) The records: drop folds into keep (its name becomes a nickname; "self" moves to keep).
+    d->people->merge(keep, drop, /*dropNameAsAlias*/ true);
+    if (u.selfWasDrop && d->setSelfName) d->writeSettingsName(u.keepBefore.displayName);
+    // 2) Voiceprints and tag rejections.
+    if (d->voiceprints) u.movedPrintIds = d->voiceprints->merge(drop, keep);
+    if (d->tags) u.rejections = d->tags->movePersonRefs(drop, keep);
+    // 3) Every meeting's references.
+    if (d->store)
+        for (const Meeting& idx : d->store->loadAll()) {
+            Meeting m = d->store->load(idx.id);
+            PersonMergeMeeting mm;
+            mm.meetingId = m.id;
+            for (auto it = m.speakerMap.begin(); it != m.speakerMap.end(); ++it)
+                if (it.value() == drop) { it.value() = keep; mm.speakerMapKeys << it.key(); }
+            for (Participant& p : m.participants)
+                if (p.personId == drop) { p.personId = keep; mm.participantIds << p.id; }
+            if (m.approval)
+                for (ParticipantApprovalEntry& c : m.approval->candidates)
+                    if (c.personId == drop) { c.personId = keep; mm.approvalParticipantIds << c.participantId; }
+            if (d->refs) mm.overlay = d->refs->replacePersonInOverlay(m.folder, drop, keep);
+            if (mm.isEmpty()) continue;
+            if (!mm.speakerMapKeys.isEmpty() || !mm.participantIds.isEmpty() || !mm.approvalParticipantIds.isEmpty())
+                d->store->saveMeeting(m);
+            u.meetings.append(mm);
+            refreshMeetingNames(m);
+            emit participantsChanged(m.id);
+        }
+    emit voiceprintsChanged();
+    emit peopleChanged();
+    return u;
+}
+
+bool PeopleService::undoMergeEverywhere(const PersonMergeUndo& u)
+{
+    if (!u.isValid() || !d->people) return false;
+    // 1) The records as they were (the dropped person comes back with its id).
+    d->people->restore(u.dropBefore);
+    d->people->restore(u.keepBefore);
+    if (u.selfWasDrop) {
+        d->people->setSelfId(u.drop);
+        if (d->setSelfName) d->writeSettingsName(u.selfNameBefore);
+    }
+    // 2) Voiceprints and tag rejections.
+    if (d->voiceprints) {
+        d->voiceprints->refresh();
+        for (const QString& printId : u.movedPrintIds) {
+            PersonId owner;
+            Voiceprint vp;
+            if (!d->voiceprints->findPrint(printId, &owner, &vp) || owner != u.keep) continue;
+            d->voiceprints->removePrint(printId);
+            d->voiceprints->addPrint(u.drop, vp);
+        }
+    }
+    if (d->tags) d->tags->undoMovePersonRefs(u.keep, u.drop, u.rejections);
+    // 3) The recorded meeting references that still point to keep.
+    for (const PersonMergeMeeting& mm : u.meetings) {
+        if (!d->store) break;
+        Meeting m = d->store->load(mm.meetingId);
+        if (m.id.isEmpty()) continue;
+        bool changed = false;
+        for (const QString& key : mm.speakerMapKeys)
+            if (m.speakerMap.value(key) == u.keep) { m.speakerMap.insert(key, u.drop); changed = true; }
+        for (Participant& p : m.participants)
+            if (mm.participantIds.contains(p.id) && p.personId == u.keep) { p.personId = u.drop; changed = true; }
+        if (m.approval)
+            for (ParticipantApprovalEntry& c : m.approval->candidates)
+                if (mm.approvalParticipantIds.contains(c.participantId) && c.personId == u.keep) {
+                    c.personId = u.drop;
+                    changed = true;
+                }
+        if (changed) d->store->saveMeeting(m);
+        if (d->refs) d->refs->restorePersonInOverlay(m.folder, mm.overlay, u.keep, u.drop);
+        refreshMeetingNames(m);
+        emit participantsChanged(m.id);
+    }
+    emit voiceprintsChanged();
+    emit peopleChanged();
+    return true;
 }
 
 } // namespace tanara::library
