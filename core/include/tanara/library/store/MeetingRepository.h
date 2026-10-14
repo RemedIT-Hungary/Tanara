@@ -47,6 +47,9 @@ public:
     void setRoots(const QStringList& roots);
     // The root a meeting folder lies in (its parent folder), cleaned; empty for an empty folder.
     static QString rootOf(const QString& meetingFolder);
+    // How many times the index was rebuilt automatically (a root had meeting.json folders but no index
+    // rows: deleted index, restored backup). Mostly for tests.
+    int autoReindexCount() const { return m_autoReindexCount; }
     // Number of meeting folders (meeting.json or track files) directly in a root, from DISK.
     static int meetingFolderCount(const QString& root);
 
@@ -151,6 +154,9 @@ signals:
 
 private:
     void openDb();
+    // Rebuilds the index if any root holds meeting.json folders yet has 0 indexed rows; emits
+    // meetingAdded for every meeting then. true if it rebuilt.
+    bool reindexIfRootsUnindexed();
     void ensureSchema();
     void upsertIndex(const Meeting& m);
     Meeting meetingFromTrackFolder(const QString& folder) const;
@@ -164,6 +170,7 @@ private:
     QString m_metadataDir;
     QString m_connName;       // unique QSqlDatabase connection name
     media::MediaToolPtr m_media;
+    int m_autoReindexCount = 0;
 };
 
 } // namespace tanara::library

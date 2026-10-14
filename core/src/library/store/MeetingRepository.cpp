@@ -208,6 +208,7 @@ void MeetingRepository::setRoots(const QStringList& roots)
     m_roots = clean;
     if (!primaryRoot().isEmpty())
         QDir().mkpath(primaryRoot());
+    reindexIfRootsUnindexed();   // no-op until the index is open (constructor)
 }
 
 QString MeetingRepository::rootOf(const QString& meetingFolder)
@@ -250,6 +251,39 @@ void MeetingRepository::openDb()
         return;
     }
     ensureSchema();
+    reindexIfRootsUnindexed();
+}
+
+bool MeetingRepository::reindexIfRootsUnindexed()
+{
+    QSqlDatabase db = QSqlDatabase::database(m_connName, false);
+    if (!db.isOpen())
+        return false;
+    // Cheap check: a root with at least one meeting.json folder but no index row at all. No JSON is
+    // parsed; a legitimately empty root (no meeting folders) never triggers a rescan.
+    bool missing = false;
+    for (const QString& root : std::as_const(m_roots)) {
+        QSqlQuery q(db);
+        q.prepare(QStringLiteral("SELECT COUNT(*) FROM meetings WHERE root = :root"));
+        q.bindValue(QStringLiteral(":root"), root);
+        if (q.exec() && q.next() && q.value(0).toInt() > 0)
+            continue;
+        const QFileInfoList dirs = QDir(root).entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot);
+        for (const QFileInfo& fi : dirs) {
+            if (QFile::exists(meetingJsonPath(fi.absoluteFilePath()))) { missing = true; break; }
+        }
+        if (missing) break;
+    }
+    if (!missing)
+        return false;
+    reindex();
+    ++m_autoReindexCount;
+    const QVector<Meeting> all = loadAll();
+    qCInfo(lcStore).noquote() << "MeetingRepository: a felvétel-mappákban van meeting.json, de az index üres volt — újraépítve:"
+                              << all.size() << "megbeszélés";
+    for (const Meeting& m : all)
+        emit meetingAdded(m.id);
+    return true;
 }
 
 void MeetingRepository::ensureSchema()

@@ -57,6 +57,49 @@ QStringList folderNames(const QVector<Meeting>& ms)
 class MultiRootTest : public QObject {
     Q_OBJECT
 private slots:
+    void emptyIndexIsRebuiltFromRoots()
+    {
+        QTemporaryDir dir;
+        const QString root = dir.filePath(QStringLiteral("r1")), meta = dir.filePath(QStringLiteral("meta"));
+        for (const char* n : {"a", "b", "c"})
+            makeMeeting(root, QString::fromLatin1(n), QStringLiteral("id-") + QString::fromLatin1(n));
+        {
+            // A fresh (missing) index over three meeting folders: rebuilt on open.
+            MeetingRepository repo(QStringList{root}, meta);
+            QCOMPARE(repo.autoReindexCount(), 1);
+            QCOMPARE(repo.loadAll().size(), 3);
+        }
+        {
+            // The index already has them: no rescan.
+            MeetingRepository repo(QStringList{root}, meta);
+            QCOMPARE(repo.autoReindexCount(), 0);
+            QCOMPARE(repo.loadAll().size(), 3);
+        }
+        // Index deleted (restored backup): rebuilt again.
+        QVERIFY(QFile::remove(QDir(meta).filePath(QStringLiteral("index.db"))));
+        {
+            MeetingRepository repo(QStringList{root}, meta);
+            QCOMPARE(repo.autoReindexCount(), 1);
+            QCOMPARE(repo.loadAll().size(), 3);
+            // A further root with folders but no rows: rebuilt when it is added.
+            const QString r2 = dir.filePath(QStringLiteral("r2"));
+            makeMeeting(r2, QStringLiteral("d"), QStringLiteral("id-d"));
+            QSignalSpy added(&repo, &MeetingRepository::meetingAdded);
+            repo.setRoots({root, r2});
+            QCOMPARE(repo.autoReindexCount(), 2);
+            QCOMPARE(repo.loadAll().size(), 4);
+            QCOMPARE(added.count(), 4);
+        }
+    }
+    void emptyRootDoesNotRescan()
+    {
+        QTemporaryDir dir;
+        const QString root = dir.filePath(QStringLiteral("r1")), meta = dir.filePath(QStringLiteral("meta"));
+        QDir().mkpath(QDir(root).filePath(QStringLiteral("not-a-meeting")));   // a folder without meeting.json
+        MeetingRepository repo(QStringList{root}, meta);
+        QCOMPARE(repo.autoReindexCount(), 0);
+        QCOMPARE(repo.loadAll().size(), 0);
+    }
     void listsEveryRoot()
     {
         QTemporaryDir dir;
