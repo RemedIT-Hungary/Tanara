@@ -155,7 +155,7 @@ ProviderDescriptor whisperCompatDescriptor()
     baseUrl.required     = true;
     baseUrl.defaultValue = QStringLiteral("http://localhost:8000/v1");
     baseUrl.help         = QCoreApplication::translate("BuiltinProviders",
-        "Lokális whisper-szerver (faster-whisper-server, speaches) vagy az OpenAI API "
+        "Lokális whisper-szerver (faster-whisper-server, speaches, whisper.cpp) vagy az OpenAI API "
         "(https://api.openai.com/v1 — ott 25 MB a fájllimit).");
 
     ConfigField model;
@@ -185,7 +185,9 @@ ProviderDescriptor whisperCompatDescriptor()
     apiKey.secretKey = QStringLiteral("stt.whisper.apiKey");
 
     d.fields = {baseUrl, model, language, apiKey};
-    d.probe = { QStringLiteral("/models"), true };   // both the OpenAI API and local whisper servers provide it
+    // The OpenAI API and most local whisper servers provide /models; whisper.cpp's whisper-server does
+    // not, but has /health.
+    d.probe = { QStringLiteral("/models"), true, QStringLiteral("/health") };
     return d;
 }
 

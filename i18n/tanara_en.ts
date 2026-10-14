@@ -48,8 +48,8 @@
         <translation>Whisper (OpenAI-compatible)</translation>
     </message>
     <message>
-        <source>Lokális whisper-szerver (faster-whisper-server, speaches) vagy az OpenAI API (https://api.openai.com/v1 — ott 25 MB a fájllimit).</source>
-        <translation>A local whisper server (faster-whisper-server, speaches) or the OpenAI API (https://api.openai.com/v1 — with a 25 MB file limit).</translation>
+        <source>Lokális whisper-szerver (faster-whisper-server, speaches, whisper.cpp) vagy az OpenAI API (https://api.openai.com/v1 — ott 25 MB a fájllimit).</source>
+        <translation>A local whisper server (faster-whisper-server, speaches, whisper.cpp) or the OpenAI API (https://api.openai.com/v1 — with a 25 MB file limit).</translation>
     </message>
     <message>
         <source>Lokális szervernél a betöltött modell neve (pl. Systran/faster-whisper-large-v3), az OpenAI API-nál whisper-1.</source>
@@ -436,6 +436,10 @@
     <message>
         <source>Ehhez a szolgáltatóhoz nincs kapcsolat-teszt.</source>
         <translation>There is no connection test for this provider.</translation>
+    </message>
+    <message>
+        <source>Elérhető (whisper.cpp); a modell-listát ez a szerver nem adja.</source>
+        <translation>Reachable (whisper.cpp); this server does not provide a model list.</translation>
     </message>
     <message>
         <source>A cím válaszol, de nem a várt API-választ adja. Biztosan ez az API címe?</source>

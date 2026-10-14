@@ -21,6 +21,8 @@
 #include <QStringList>
 
 class QNetworkReply;
+class QNetworkRequest;
+class QUrl;
 namespace tanara::net { class HttpClient; }
 
 namespace tanara::providers {
@@ -84,6 +86,10 @@ signals:
 private:
     void onFinished(int id, QNetworkReply* reply, qint64 startedMs, const ProviderDescriptor& d,
                     const ProviderConfig& cfg);
+    // Second probe after a 404 / 405 (ConnectionProbe::originFallbackPath).
+    void startFallback(int id, const QUrl& url, qint64 startedMs, const ProviderDescriptor& d,
+                       const ProviderConfig& cfg, const ConnectionTestResult& primary);
+    QNetworkRequest makeRequest(const QUrl& url, const ProviderConfig& cfg) const;
 
     QPointer<net::HttpClient> m_http;
     QHash<int, QPointer<QNetworkReply>> m_replies;

@@ -80,6 +80,15 @@ providers::ProviderDescriptor probeDescriptor()
     return d;
 }
 
+// The whisper-compat shape: /models first, then /health on the origin when /models is 404 / 405.
+providers::ProviderDescriptor whisperDescriptor()
+{
+    providers::ProviderDescriptor d;
+    d.id = QStringLiteral("whisper-teszt");
+    d.probe = {QStringLiteral("/models"), true, QStringLiteral("/health")};
+    return d;
+}
+
 } // namespace
 
 class TestConnectionTester : public QObject {
@@ -175,6 +184,68 @@ private slots:
         QCOMPARE(r.status, providers::ConnectionTestResult::Status::NotAnApi);
         QCOMPARE(r.code, QStringLiteral("EBADRESPONSE"));
         QVERIFY(!r.ok());
+    }
+
+    void healthFallbackWhenModelsIs404()
+    {
+        FakeHttp http;
+        http.handler = [](const FakeRequest& rq) {
+            if (rq.path == QLatin1String("/health")) return FakeReply{200, "{\"status\":\"ok\"}"};
+            return FakeReply{404, "File Not Found"};
+        };
+        providers::ProviderConfig cfg;
+        cfg.baseUrl = http.base() + QStringLiteral("/");     // trailing slash, as typed by the user
+        cfg.model = QStringLiteral("not-in-any-list");
+        const providers::ConnectionTestResult r = run(whisperDescriptor(), cfg);
+        QVERIFY(r.ok());
+        QCOMPARE(r.httpStatus, 200);
+        QVERIFY(r.latencyMs >= 0);
+        QVERIFY(r.models.isEmpty());
+        QVERIFY(r.warning.contains(QStringLiteral("whisper.cpp")));   // the note; the model is not validated
+        QCOMPARE(http.log.size(), 2);
+        QCOMPARE(http.log.at(0).path, QStringLiteral("/v1/models"));  // no "//" despite the trailing slash
+        QCOMPARE(http.log.at(1).path, QStringLiteral("/health"));
+
+        // 405 on /models takes the same route.
+        http.log.clear();
+        http.handler = [](const FakeRequest& rq) {
+            if (rq.path == QLatin1String("/health")) return FakeReply{200, "{\"status\":\"ok\"}"};
+            return FakeReply{405, ""};
+        };
+        QVERIFY(run(whisperDescriptor(), cfg).ok());
+    }
+
+    void healthFallbackAlsoFailing()
+    {
+        FakeHttp http;
+        http.handler = [](const FakeRequest&) { return FakeReply{404, "File Not Found"}; };
+        providers::ProviderConfig cfg;
+        cfg.baseUrl = http.base();
+        const providers::ConnectionTestResult r = run(whisperDescriptor(), cfg);
+        QCOMPARE(r.status, providers::ConnectionTestResult::Status::NotAnApi);
+        QCOMPARE(r.code, QStringLiteral("HTTP 404"));
+        QVERIFY(!r.message.isEmpty());
+        QCOMPARE(http.log.size(), 2);
+
+        // Without a fallback path in the descriptor only one request goes out.
+        http.log.clear();
+        QCOMPARE(run(probeDescriptor(), cfg).status, providers::ConnectionTestResult::Status::NotAnApi);
+        QCOMPARE(http.log.size(), 1);
+    }
+
+    void modelsAnswersSoNoFallback()
+    {
+        FakeHttp http;
+        http.handler = [](const FakeRequest&) { return FakeReply{200, "{\"data\":[{\"id\":\"whisper-1\"}]}"}; };
+        providers::ProviderConfig cfg;
+        cfg.baseUrl = http.base() + QStringLiteral("/");
+        cfg.model = QStringLiteral("other");
+        const providers::ConnectionTestResult r = run(whisperDescriptor(), cfg);
+        QVERIFY(r.ok());
+        QCOMPARE(r.models, QStringList{QStringLiteral("whisper-1")});
+        QVERIFY(!r.warning.isEmpty());                 // the usual "model not in the list" warning
+        QVERIFY(!r.warning.contains(QStringLiteral("whisper.cpp")));
+        QCOMPARE(http.log.size(), 1);
     }
 
     void serverErrors()

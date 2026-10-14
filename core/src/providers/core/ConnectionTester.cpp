@@ -219,12 +219,7 @@ int ConnectionTester::test(const ProviderDescriptor& descriptor, const ProviderC
     }
 
     if (!m_http) m_http = new net::HttpClient(this);
-    QNetworkRequest req(url);
-    req.setTransferTimeout(m_timeoutMs);
-    req.setRawHeader(QByteArrayLiteral("Accept"), QByteArrayLiteral("application/json"));
-    if (!cfg.apiKey.trimmed().isEmpty())
-        req.setRawHeader(QByteArrayLiteral("Authorization"),
-                         QByteArrayLiteral("Bearer ") + cfg.apiKey.trimmed().toUtf8());
+    const QNetworkRequest req = makeRequest(url, cfg);
 
     const qint64 started = QDateTime::currentMSecsSinceEpoch();
     QNetworkReply* reply = m_http->get(req);
@@ -233,6 +228,41 @@ int ConnectionTester::test(const ProviderDescriptor& descriptor, const ProviderC
         onFinished(id, reply, started, descriptor, cfg);
     });
     return id;
+}
+
+QNetworkRequest ConnectionTester::makeRequest(const QUrl& url, const ProviderConfig& cfg) const
+{
+    QNetworkRequest req(url);
+    req.setTransferTimeout(m_timeoutMs);
+    req.setRawHeader(QByteArrayLiteral("Accept"), QByteArrayLiteral("application/json"));
+    if (!cfg.apiKey.trimmed().isEmpty())
+        req.setRawHeader(QByteArrayLiteral("Authorization"),
+                         QByteArrayLiteral("Bearer ") + cfg.apiKey.trimmed().toUtf8());
+    return req;
+}
+
+void ConnectionTester::startFallback(int id, const QUrl& url, qint64 startedMs, const ProviderDescriptor&,
+                                     const ProviderConfig& cfg, const ConnectionTestResult& primary)
+{
+    QNetworkReply* reply = m_http->get(makeRequest(url, cfg));
+    m_replies.insert(id, reply);
+    connect(reply, &QNetworkReply::finished, this, [this, id, reply, startedMs, primary] {
+        reply->deleteLater();
+        if (!m_replies.contains(id)) return;   // dropped (cancel)
+        m_replies.remove(id);
+        ConnectionTestResult r = primary;      // by default today's "not an API address" result
+        const int http = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        if (http >= 200 && http < 300) {
+            r = ConnectionTestResult();
+            r.status = ConnectionTestResult::Status::Ok;
+            r.httpStatus = http;
+            r.latencyMs = QDateTime::currentMSecsSinceEpoch() - startedMs;
+            // No model list on this server, so cfg.model is deliberately not validated.
+            r.warning = QCoreApplication::translate("ConnectionTester",
+                "Elérhető (whisper.cpp); a modell-listát ez a szerver nem adja.");
+        }
+        emit finished(id, r);
+    });
 }
 
 void ConnectionTester::onFinished(int id, QNetworkReply* reply, qint64 startedMs,
@@ -249,6 +279,18 @@ void ConnectionTester::onFinished(int id, QNetworkReply* reply, qint64 startedMs
     if (http > 0) {
         r.latencyMs = QDateTime::currentMSecsSinceEpoch() - startedMs;
         describeHttp(http, hadKey, local, &r);
+        if ((http == 404 || http == 405) && !d.probe.originFallbackPath.isEmpty()) {
+            // Origin = base without trailing slashes and a trailing "/v1".
+            QString origin = cfg.baseUrl.trimmed();
+            while (origin.endsWith(QLatin1Char('/'))) origin.chop(1);
+            if (origin.endsWith(QLatin1String("/v1"))) origin.chop(3);
+            while (origin.endsWith(QLatin1Char('/'))) origin.chop(1);
+            const QUrl fb(origin + d.probe.originFallbackPath);
+            if (fb.isValid() && !fb.host().isEmpty()) {
+                startFallback(id, fb, startedMs, d, cfg, r);
+                return;
+            }
+        }
         if (r.ok() && d.probe.listsModels) {
             bool parsed = false;
             r.models = parseModels(reply->readAll(), &parsed);

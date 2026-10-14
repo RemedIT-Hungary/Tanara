@@ -25,8 +25,8 @@ constexpr int kTransferTimeoutMs = 30 * 60 * 1000;
 
 QString defaultBaseUrl(const ProviderConfig& cfg)
 {
-    QString base = cfg.baseUrl.isEmpty() ? QStringLiteral("http://localhost:8000/v1")
-                                         : cfg.baseUrl;
+    QString base = cfg.baseUrl.trimmed().isEmpty() ? QStringLiteral("http://localhost:8000/v1")
+                                                   : cfg.baseUrl.trimmed();
     while (base.endsWith(QLatin1Char('/')))
         base.chop(1);
     return base;

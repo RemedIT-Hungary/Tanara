@@ -87,6 +87,10 @@ struct ConnectionProbe {
     // The response gives a model list ({"data":[{"id":...}]} or {"models":[{"id":...}]}): the tester checks
     // whether the configured model is in it, and the list can be passed to the UI too.
     bool listsModels = false;
+    // Optional second probe, tried only when the main one answers 404 / 405: GET <origin><path>, where
+    // origin = baseUrl without a trailing slash and a trailing "/v1" (e.g. "/health" for whisper.cpp's
+    // whisper-server, which has no /v1/models). A 2xx there counts as reachable, with no model list.
+    QString originFallbackPath;
     bool isValid() const { return !path.isEmpty(); }
 };
 
