@@ -9,13 +9,13 @@
 // the config's "language" field is empty.
 #include "tanara/providers/stt/ISttProvider.h"
 #include "tanara/providers/core/ProviderConfig.h"
+#include "tanara/providers/core/ProviderContext.h"
 #include "tanara/domain/Types.h"
 
 #include <QObject>
 #include <QPointer>
 #include <QString>
 
-class QNetworkAccessManager;
 class QNetworkReply;
 
 namespace tanara::providers {
@@ -23,7 +23,7 @@ namespace tanara::providers {
 class WhisperCompatJob : public SttJob {
     Q_OBJECT
 public:
-    WhisperCompatJob(ProviderConfig cfg, SttRequest req, QObject* parent = nullptr);
+    WhisperCompatJob(ProviderContext ctx, ProviderConfig cfg, SttRequest req, QObject* parent = nullptr);
     ~WhisperCompatJob() override;
 
     void start();              // the provider calls it after handing the job back
@@ -31,13 +31,14 @@ public:
 
 private:
     void parseResponse(const QByteArray& body);
-    void fail(const QString& error);
+    void fail(const QString& error, const Error& classified = Error{});
     void setState(SttJobState state);
 
+    ProviderContext m_ctx;
     ProviderConfig m_cfg;
     SttRequest     m_req;
 
-    QNetworkAccessManager* m_nam = nullptr;
+    net::HttpClient* m_http = nullptr;     // m_ctx.http, or an own one (child)
     QPointer<QNetworkReply> m_reply;
     SttJobState m_state = SttJobState::Idle;
     bool     m_finished = false;
@@ -47,6 +48,7 @@ class WhisperCompatProvider : public QObject, public ISttProvider {
     Q_OBJECT
 public:
     explicit WhisperCompatProvider(ProviderConfig cfg, QObject* parent = nullptr);
+    WhisperCompatProvider(ProviderContext ctx, ProviderConfig cfg, QObject* parent = nullptr);
 
     QString name() const override { return QStringLiteral("whisper-compat"); }
     bool supportsLive() const override { return false; }
@@ -54,6 +56,7 @@ public:
     SttJob* transcribe(const SttRequest& req) override;
 
 private:
+    ProviderContext m_ctx;
     ProviderConfig m_cfg;
 };
 

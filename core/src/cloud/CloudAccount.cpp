@@ -10,7 +10,6 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QLoggingCategory>
-#include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QNetworkRequest>
 #include <QSaveFile>
@@ -22,27 +21,6 @@ namespace tanara::cloud {
 
 Q_LOGGING_CATEGORY(lcCloud, "tanara.cloud")
 
-HttpExchange makeHttpExchange(QNetworkReply* reply, const QByteArray& body)
-{
-    HttpExchange ex;
-    if (!reply) return ex;
-    switch (reply->operation()) {
-    case QNetworkAccessManager::GetOperation:    ex.method = QByteArrayLiteral("GET"); break;
-    case QNetworkAccessManager::PostOperation:   ex.method = QByteArrayLiteral("POST"); break;
-    case QNetworkAccessManager::DeleteOperation: ex.method = QByteArrayLiteral("DELETE"); break;
-    case QNetworkAccessManager::PutOperation:    ex.method = QByteArrayLiteral("PUT"); break;
-    default: ex.method = reply->request().attribute(QNetworkRequest::CustomVerbAttribute).toByteArray(); break;
-    }
-    ex.path   = reply->request().url().path();
-    ex.status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
-    for (const auto& pair : reply->rawHeaderPairs())
-        ex.headers.insert(pair.first.toLower(), pair.second);
-    ex.body = body;
-    if (ex.status == 0)
-        ex.networkError = reply->errorString().isEmpty() ? QStringLiteral("network error") : reply->errorString();
-    return ex;
-}
-
 namespace {
 QString ts(const QDateTime& d) { return d.isValid() ? d.toString(Qt::ISODateWithMs) : QString(); }
 QDateTime fromTs(const QJsonValue& v) { return v.isString() ? QDateTime::fromString(v.toString(), Qt::ISODateWithMs) : QDateTime(); }
@@ -53,7 +31,7 @@ CloudAccount::CloudAccount(SecretStore* keys, const QString& dataDir, QObject* p
     , m_keys(keys)
     , m_statePath(QDir(dataDir).filePath(paths::files::CloudState))
     , m_baseUrl(cloud::DefaultBaseUrl)
-    , m_nam(new QNetworkAccessManager(this))
+    , m_http(new net::HttpClient(this))
     , m_pollTimer(new QTimer(this))
 {
     m_pollTimer->setSingleShot(true);
@@ -62,6 +40,11 @@ CloudAccount::CloudAccount(SecretStore* keys, const QString& dataDir, QObject* p
 }
 
 CloudAccount::~CloudAccount() = default;
+
+void CloudAccount::setHttpClient(net::HttpClient* http)
+{
+    if (http) m_http = http;
+}
 
 void CloudAccount::setBaseUrl(const QString& url)
 {
@@ -131,13 +114,13 @@ void CloudAccount::send(const QByteArray& method, const QString& path, const QJs
     QNetworkReply* reply = nullptr;
     if (body) {
         req.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
-        reply = m_nam->sendCustomRequest(req, method, QJsonDocument(*body).toJson(QJsonDocument::Compact));
+        reply = m_http->sendCustomRequest(req, method, QJsonDocument(*body).toJson(QJsonDocument::Compact));
     } else if (method == "GET") {
-        reply = m_nam->get(req);
+        reply = m_http->get(req);
     } else if (method == "DELETE") {
-        reply = m_nam->deleteResource(req);
+        reply = m_http->deleteResource(req);
     } else {
-        reply = m_nam->sendCustomRequest(req, method, QByteArray());
+        reply = m_http->sendCustomRequest(req, method, QByteArray());
     }
     connect(reply, &QNetworkReply::finished, this, [this, reply, done = std::move(done)]() {
         reply->deleteLater();

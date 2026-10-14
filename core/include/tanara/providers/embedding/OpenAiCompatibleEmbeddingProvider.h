@@ -2,15 +2,15 @@
 //
 // OpenAI-compatible embedding provider: POST {baseUrl}/embeddings {model, input:[...]} ->
 // data[].embedding. At most 16 texts per request (a longer list is sent in order, in several requests).
-// It uses the same ProviderConfig fields as the LLM path: baseUrl, model, apiKey, extraHeaders,
-// onExchange (the Tanara Cloud gateway hooks).
-#include "tanara/providers/embedding/IEmbeddingProvider.h"
+// It uses the same ProviderConfig fields as the LLM path (baseUrl, model, apiKey) and the same
+// ProviderContext hooks (auth, headers, observe: the Tanara Cloud gateway).
+#include "tanara/providers/embedding/ITextEmbedder.h"
 #include "tanara/providers/core/ProviderConfig.h"
+#include "tanara/providers/core/ProviderContext.h"
 #include "tanara/domain/Types.h"
 
 #include <QPointer>
 
-class QNetworkAccessManager;
 class QNetworkReply;
 
 namespace tanara::providers {
@@ -20,7 +20,7 @@ class OpenAiCompatibleEmbeddingJob : public EmbeddingJob {
 public:
     static constexpr int kBatchSize = 16;
 
-    OpenAiCompatibleEmbeddingJob(QNetworkAccessManager* nam, const ProviderConfig& cfg,
+    OpenAiCompatibleEmbeddingJob(net::HttpClient* http, const ProviderContext& ctx, const ProviderConfig& cfg,
                                  const EmbeddingRequest& req, QObject* parent = nullptr);
     ~OpenAiCompatibleEmbeddingJob() override;
 
@@ -31,7 +31,8 @@ private:
     void sendNext();
     void onReply();
 
-    QNetworkAccessManager* m_nam;   // not owned
+    QPointer<net::HttpClient> m_http;   // not owned
+    ProviderContext  m_ctx;
     ProviderConfig   m_cfg;
     EmbeddingRequest m_req;
     QVector<QVector<float>> m_out;
@@ -41,18 +42,21 @@ private:
     QPointer<QNetworkReply> m_reply;
 };
 
-class OpenAiCompatibleEmbeddingProvider : public QObject, public IEmbeddingProvider {
+class OpenAiCompatibleEmbeddingProvider : public QObject, public ITextEmbedder {
     Q_OBJECT
 public:
     explicit OpenAiCompatibleEmbeddingProvider(const ProviderConfig& cfg, QObject* parent = nullptr);
+    OpenAiCompatibleEmbeddingProvider(const ProviderContext& ctx, const ProviderConfig& cfg,
+                                      QObject* parent = nullptr);
     ~OpenAiCompatibleEmbeddingProvider() override;
 
     QString name() const override;   // "openai-compat-embedding"
     EmbeddingJob* embed(const EmbeddingRequest& req) override;
 
 private:
+    ProviderContext m_ctx;
     ProviderConfig m_cfg;
-    QNetworkAccessManager* m_nam;    // owned
+    net::HttpClient* m_http;         // m_ctx.http, or an own one (child)
 };
 
 } // namespace tanara::providers

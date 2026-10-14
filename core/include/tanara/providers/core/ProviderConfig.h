@@ -3,17 +3,10 @@
 // ProviderConfig: the configuration of one provider (STT / LLM / embedding). Persisted in the
 // "providers" settings section (ProviderSettings) WITHOUT the apiKey: secrets live in the
 // SecretStore (foundation/secrets).
-#include <QByteArray>
 #include <QJsonObject>
-#include <QList>
 #include <QMetaType>
-#include <QPair>
 #include <QString>
 #include <QVariantMap>
-
-#include <functional>
-
-namespace tanara::cloud { struct HttpExchange; }   // tanara/cloud/CloudTypes.h
 
 namespace tanara::providers {
 
@@ -39,14 +32,10 @@ struct ProviderConfig {
     int contextLength = 0;
     QVariantMap extra;
 
-    // --- runtime (NOT persisted) gateway hooks, filled only by the Tanara Cloud path ---
-    // Headers added to every request (X-Tanara-Client, Accept-Language, X-Tanara-Job-Id ...).
-    QList<QPair<QByteArray, QByteArray>> extraHeaders;
-    // Feedback of every HTTP response (success, error, network error) to the caller; the cloud
-    // layer reads the load, the write-back, the request id and the structured error from it.
-    std::function<void(const cloud::HttpExchange&)> onExchange;
+    // The runtime per-call hooks (request headers, response observer, auth source, cost, cancel) are
+    // NOT here: they travel in the ProviderContext (providers/core/ProviderContext.h).
 
-    // JSON without apiKey and without the runtime hooks.
+    // JSON without apiKey.
     QJsonObject toJson() const;
     static ProviderConfig fromJson(const QJsonObject& o);
 };

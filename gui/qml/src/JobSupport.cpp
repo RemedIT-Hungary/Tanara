@@ -153,8 +153,8 @@ QString providerLabel(tanara::app::AppController* controller, tanara::providers:
         return QStringLiteral("Tanara Cloud");
     const tanara::app::AppSettings s = controller->settings()->settings();
     const QString name = step == tanara::providers::WorkflowStep::Transcribe
-        ? tanara::providers::SttProviderRegistry::instance().descriptor(s.providers.stt.selectedId).displayName
-        : tanara::providers::LlmProviderRegistry::instance().descriptor(s.providers.llm.selectedId).displayName;
+        ? tanara::providers::ProviderRegistry::defaultInstance().descriptor(tanara::providers::CapabilityKind::Transcription, s.providers.stt.selectedId).displayName
+        : tanara::providers::ProviderRegistry::defaultInstance().descriptor(tanara::providers::CapabilityKind::Chat, s.providers.llm.selectedId).displayName;
     if (name.isEmpty())
         return trj("saját kulcs");
     return trj("%1 · saját kulcs").arg(name);

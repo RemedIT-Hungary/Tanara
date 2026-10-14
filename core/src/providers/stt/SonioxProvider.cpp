@@ -1,8 +1,6 @@
 #include "tanara/providers/stt/SonioxProvider.h"
 #include "tanara/providers/core/ProviderConfig.h"
-#include "tanara/cloud/CloudTypes.h"
 
-#include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QNetworkRequest>
 #include <QHttpMultiPart>
@@ -41,13 +39,17 @@ QString defaultBaseUrl(const ProviderConfig& cfg) {
 // ===================== SonioxProvider =====================
 
 SonioxProvider::SonioxProvider(ProviderConfig cfg, QObject* parent)
-    : QObject(parent), m_cfg(std::move(cfg)) {
+    : SonioxProvider(ProviderContext{}, std::move(cfg), parent) {}
+
+SonioxProvider::SonioxProvider(ProviderContext ctx, ProviderConfig cfg, QObject* parent)
+    : QObject(parent), m_ctx(std::move(ctx)), m_cfg(std::move(cfg)) {
     m_cfg.baseUrl = defaultBaseUrl(m_cfg);
     m_cfg.model   = defaultModel(m_cfg);
 }
 
 SttJob* SonioxProvider::transcribe(const SttRequest& req) {
-    auto* job = new SonioxJob(m_cfg, req);
+    auto* job = new SonioxJob(m_ctx, m_cfg, req);
+    m_ctx.cancel.onCancel([j = QPointer<SonioxJob>(job)]() { if (j) j->cancel(); });
     // Asynchronous start, so the caller connects the finished/failed signals first.
     QTimer::singleShot(0, job, &SonioxJob::start);
     return job;
@@ -55,9 +57,9 @@ SttJob* SonioxProvider::transcribe(const SttRequest& req) {
 
 // ===================== SonioxJob =====================
 
-SonioxJob::SonioxJob(ProviderConfig cfg, SttRequest req, QObject* parent)
-    : SttJob(parent), m_cfg(std::move(cfg)), m_req(std::move(req)) {
-    m_nam = new QNetworkAccessManager(this);
+SonioxJob::SonioxJob(ProviderContext ctx, ProviderConfig cfg, SttRequest req, QObject* parent)
+    : SttJob(parent), m_ctx(std::move(ctx)), m_cfg(std::move(cfg)), m_req(std::move(req)) {
+    m_http = m_ctx.http ? m_ctx.http.data() : new net::HttpClient(this);
     m_pollTimer = new QTimer(this);
     m_pollTimer->setInterval(kPollIntervalMs);
     connect(m_pollTimer, &QTimer::timeout, this, &SonioxJob::onPollTick);
@@ -70,16 +72,17 @@ SonioxJob::~SonioxJob() {
 QNetworkRequest SonioxJob::makeRequest(const QString& path) const {
     QNetworkRequest r{QUrl(m_cfg.baseUrl + path)};
     r.setRawHeader("Authorization",
-                   QByteArrayLiteral("Bearer ") + m_cfg.apiKey.toUtf8());
+                   QByteArrayLiteral("Bearer ") + m_ctx.bearer(m_cfg).toUtf8());
     // Gateway mode (Tanara Cloud): additive X-Tanara-* / Accept-Language headers.
-    for (const auto& h : m_cfg.extraHeaders)
-        r.setRawHeader(h.first, h.second);
+    m_ctx.applyHeaders(r);
     return r;
 }
 
-void SonioxJob::report(QNetworkReply* reply, const QByteArray& body) const {
-    if (m_cfg.onExchange)
-        m_cfg.onExchange(cloud::makeHttpExchange(reply, body));
+void SonioxJob::report(QNetworkReply* reply, const QByteArray& body) {
+    const net::HttpExchange ex = net::makeHttpExchange(reply, body);
+    m_ctx.report(ex);
+    const Error e = net::errorFromExchange(ex);
+    if (e.isError() && ex.method != "DELETE") m_lastFailure = e;
 }
 
 void SonioxJob::setState(SttJobState state) {
@@ -97,6 +100,15 @@ void SonioxJob::fail(const QString& error) {
     // We clean up after a failed/cancelled job too: the already uploaded file / created transcription
     // must not stay at Soniox until the 30-day eviction (storage quota + data).
     cleanup();
+    if (error == QLatin1String("cancelled")) {
+        m_error = Error::cancelled();
+    } else if (m_lastFailure.isError()) {
+        m_error = m_lastFailure;
+    } else {
+        m_error = Error{};
+        m_error.kind = Error::Kind::Service;
+        m_error.message = error;
+    }
     setState(SttJobState::Failed);
     emit failed(error);
 }
@@ -159,7 +171,7 @@ void SonioxJob::uploadFile() {
     multi->append(filePart);
 
     QNetworkRequest req = makeRequest(QStringLiteral("/files"));
-    QNetworkReply* reply = m_nam->post(req, multi);
+    QNetworkReply* reply = m_http->post(req, multi);
     multi->setParent(reply);    // the reply owns the multipart
     m_reply = reply;
     // Real upload progress for the structured process signal (the "Upload" stage).
@@ -244,7 +256,7 @@ void SonioxJob::createTranscription() {
     req.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
 
     QNetworkReply* reply =
-        m_nam->post(req, QJsonDocument(payload).toJson(QJsonDocument::Compact));
+        m_http->post(req, QJsonDocument(payload).toJson(QJsonDocument::Compact));
     m_reply = reply;
 
     connect(reply, &QNetworkReply::finished, this, [this, reply]() {
@@ -289,7 +301,7 @@ void SonioxJob::pollStatus() {
 
     QNetworkRequest req =
         makeRequest(QStringLiteral("/transcriptions/") + m_transcriptionId);
-    QNetworkReply* reply = m_nam->get(req);
+    QNetworkReply* reply = m_http->get(req);
     m_reply = reply;
 
     connect(reply, &QNetworkReply::finished, this, [this, reply]() {
@@ -341,7 +353,7 @@ void SonioxJob::fetchTranscript() {
     QNetworkRequest req = makeRequest(QStringLiteral("/transcriptions/") +
                                       m_transcriptionId +
                                       QStringLiteral("/transcript"));
-    QNetworkReply* reply = m_nam->get(req);
+    QNetworkReply* reply = m_http->get(req);
     m_reply = reply;
 
     connect(reply, &QNetworkReply::finished, this, [this, reply]() {
@@ -409,10 +421,10 @@ void SonioxJob::cleanup() {
     auto fireDelete = [this](const QString& path) {
         if (path.isEmpty())
             return;
-        QNetworkReply* r = m_nam->deleteResource(makeRequest(path));
+        QNetworkReply* r = m_http->deleteResource(makeRequest(path));
         // we ignore the error and only clean up (the gateway hook gets the response)
-        connect(r, &QNetworkReply::finished, r, [r, hook = m_cfg.onExchange]() {
-            if (hook) hook(cloud::makeHttpExchange(r, r->readAll()));
+        connect(r, &QNetworkReply::finished, r, [r, ctx = m_ctx]() {
+            ctx.report(net::makeHttpExchange(r, r->readAll()));
             r->deleteLater();
         });
     };

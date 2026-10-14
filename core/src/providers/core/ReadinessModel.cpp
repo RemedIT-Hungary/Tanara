@@ -78,9 +78,11 @@ ReadinessResult checkProviderConfig(const ProviderDescriptor& desc,
 
 } // namespace
 
-ReadinessModel::ReadinessModel(const ProviderSettings& settings, SecretProbe hasSecret)
+ReadinessModel::ReadinessModel(const ProviderSettings& settings, SecretProbe hasSecret,
+                               const ProviderRegistry* registry)
     : m_settings(settings)
     , m_hasSecret(std::move(hasSecret))
+    , m_registry(registry ? registry : &ProviderRegistry::defaultInstance())
 {
 }
 
@@ -113,7 +115,7 @@ ReadinessResult ReadinessModel::check(WorkflowStep step, const Meeting& meeting)
         const QString sttId = m_settings.stt.selectedId;
         // An unknown / unregistered provider: descriptor() would return an empty descriptor (the required
         // loop is skipped, authMode defaults to ApiKey), so it would wrongly be runnable.
-        if (!SttProviderRegistry::instance().has(sttId)) {
+        if (!m_registry->has(CapabilityKind::Transcription, sttId)) {
             ReadinessResult r;
             r.runnable      = false;
             r.blockerKind   = BlockerKind::ProviderConfig;
@@ -122,7 +124,7 @@ ReadinessResult ReadinessModel::check(WorkflowStep step, const Meeting& meeting)
             r.providerId    = sttId;
             return r;
         }
-        const ProviderDescriptor desc = SttProviderRegistry::instance().descriptor(sttId);
+        const ProviderDescriptor desc = m_registry->descriptor(CapabilityKind::Transcription, sttId);
         return checkProviderConfig(desc, sttId, m_settings.stt.selected(), m_hasSecret);
     }
 
@@ -140,7 +142,7 @@ ReadinessResult ReadinessModel::check(WorkflowStep step, const Meeting& meeting)
         // (b)+(c) config and auth check of the selected LLM provider.
         const QString llmId = m_settings.llm.selectedId;
         // An unknown / unregistered provider: see the reasoning of the Transcribe branch.
-        if (!LlmProviderRegistry::instance().has(llmId)) {
+        if (!m_registry->has(CapabilityKind::Chat, llmId)) {
             ReadinessResult r;
             r.runnable      = false;
             r.blockerKind   = BlockerKind::ProviderConfig;
@@ -149,7 +151,7 @@ ReadinessResult ReadinessModel::check(WorkflowStep step, const Meeting& meeting)
             r.providerId    = llmId;
             return r;
         }
-        const ProviderDescriptor desc = LlmProviderRegistry::instance().descriptor(llmId);
+        const ProviderDescriptor desc = m_registry->descriptor(CapabilityKind::Chat, llmId);
         return checkProviderConfig(desc, llmId, m_settings.llm.selected(), m_hasSecret);
     }
     }

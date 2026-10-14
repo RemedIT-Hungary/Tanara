@@ -11,7 +11,6 @@
 #include <QJsonObject>
 #include <QJsonParseError>
 #include <QMimeDatabase>
-#include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QNetworkRequest>
 #include <QTimer>
@@ -67,7 +66,12 @@ QHttpPart textPart(const QString& name, const QString& value)
 // ===================== WhisperCompatProvider =====================
 
 WhisperCompatProvider::WhisperCompatProvider(ProviderConfig cfg, QObject* parent)
-    : QObject(parent), m_cfg(std::move(cfg))
+    : WhisperCompatProvider(ProviderContext{}, std::move(cfg), parent)
+{
+}
+
+WhisperCompatProvider::WhisperCompatProvider(ProviderContext ctx, ProviderConfig cfg, QObject* parent)
+    : QObject(parent), m_ctx(std::move(ctx)), m_cfg(std::move(cfg))
 {
     m_cfg.baseUrl = defaultBaseUrl(m_cfg);
     m_cfg.model   = defaultModel(m_cfg);
@@ -75,7 +79,8 @@ WhisperCompatProvider::WhisperCompatProvider(ProviderConfig cfg, QObject* parent
 
 SttJob* WhisperCompatProvider::transcribe(const SttRequest& req)
 {
-    auto* job = new WhisperCompatJob(m_cfg, req);
+    auto* job = new WhisperCompatJob(m_ctx, m_cfg, req);
+    m_ctx.cancel.onCancel([j = QPointer<WhisperCompatJob>(job)]() { if (j) j->cancel(); });
     // Asynchronous start, so the caller connects the finished/failed signals first.
     QTimer::singleShot(0, job, &WhisperCompatJob::start);
     return job;
@@ -83,10 +88,10 @@ SttJob* WhisperCompatProvider::transcribe(const SttRequest& req)
 
 // ===================== WhisperCompatJob =====================
 
-WhisperCompatJob::WhisperCompatJob(ProviderConfig cfg, SttRequest req, QObject* parent)
-    : SttJob(parent), m_cfg(std::move(cfg)), m_req(std::move(req))
+WhisperCompatJob::WhisperCompatJob(ProviderContext ctx, ProviderConfig cfg, SttRequest req, QObject* parent)
+    : SttJob(parent), m_ctx(std::move(ctx)), m_cfg(std::move(cfg)), m_req(std::move(req))
 {
-    m_nam = new QNetworkAccessManager(this);
+    m_http = m_ctx.http ? m_ctx.http.data() : new net::HttpClient(this);
 }
 
 WhisperCompatJob::~WhisperCompatJob()
@@ -106,11 +111,16 @@ void WhisperCompatJob::setState(SttJobState state)
     emit stateChanged(state);
 }
 
-void WhisperCompatJob::fail(const QString& error)
+void WhisperCompatJob::fail(const QString& error, const Error& classified)
 {
     if (m_finished)
         return;
     m_finished = true;
+    m_error = classified;
+    if (!m_error.isError()) {
+        m_error.kind = Error::Kind::Service;
+        m_error.message = error;
+    }
     if (m_reply) {
         m_reply->disconnect(this);
         m_reply->abort();
@@ -125,7 +135,7 @@ void WhisperCompatJob::cancel()
 {
     if (m_finished)
         return;
-    fail(tr("Megszakítva."));
+    fail(tr("Megszakítva."), Error::cancelled());
 }
 
 void WhisperCompatJob::start()
@@ -164,15 +174,17 @@ void WhisperCompatJob::start()
         multi->append(textPart(QStringLiteral("prompt"), prompt));
 
     QNetworkRequest request{QUrl(m_cfg.baseUrl + QStringLiteral("/audio/transcriptions"))};
-    if (!m_cfg.apiKey.trimmed().isEmpty())
+    const QString bearer = m_ctx.bearer(m_cfg);
+    if (!bearer.trimmed().isEmpty())
         request.setRawHeader("Authorization",
-                             QByteArrayLiteral("Bearer ") + m_cfg.apiKey.toUtf8());
+                             QByteArrayLiteral("Bearer ") + bearer.toUtf8());
+    m_ctx.applyHeaders(request);
     request.setTransferTimeout(kTransferTimeoutMs);
 
     setState(SttJobState::Uploading);
     emit progress(0, tr("Hang feltöltése…"));
 
-    m_reply = m_nam->post(request, multi);
+    m_reply = m_http->post(request, multi);
     multi->setParent(m_reply);
 
     connect(m_reply, &QNetworkReply::uploadProgress, this,
@@ -193,14 +205,18 @@ void WhisperCompatJob::start()
         if (m_finished)
             return;
         const QByteArray body = reply->readAll();
+        // Not reported to ProviderContext::observe (as before P9): the job's own error text stays the
+        // remembered error's message; the classification goes into error().
         if (reply->error() != QNetworkReply::NoError) {
+            const Error classified = net::errorFromExchange(net::makeHttpExchange(reply, body));
             const int http =
                 reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
             qCWarning(lcStt).noquote()
                 << "[whisper] HTTP" << http << reply->errorString()
                 << "body:" << QString::fromUtf8(body.left(500));
             fail(http > 0 ? tr("A szerver hibát adott (HTTP %1).").arg(http)
-                          : tr("Hálózati hiba: %1").arg(reply->errorString()));
+                          : tr("Hálózati hiba: %1").arg(reply->errorString()),
+                 classified);
             return;
         }
         parseResponse(body);

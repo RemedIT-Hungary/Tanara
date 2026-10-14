@@ -20,7 +20,7 @@
 #include "tanara/watcher/detect/DetectorRegistry.h"
 #include "tanara/watcher/detect/IMeetingDetector.h"
 #include "tanara/watcher/PipeWireGraph.h"
-#include "tanara/providers/embedding/EmbeddingProviderRegistry.h"
+#include "tanara/providers/embedding/ITextEmbedder.h"
 #include "tanara/providers/core/ProviderRegistry.h"
 #include "tanara/library/store/JsonSerialization.h"
 #include "tanara/library/store/VoiceprintStore.h"
@@ -215,10 +215,9 @@ QString SettingsViewModel::formatBytes(qint64 bytes)
 
 SettingsViewModel::SettingsViewModel(QObject* parent) : QObject(parent)
 {
-    providers::registerBuiltinProviders();   // idempotent; needed for the cards even without a controller
     m_devices = new SettingsDeviceModel(this);
-    m_stt = new SettingsProviderModel(this, providers::ProviderKind::Stt);
-    m_llm = new SettingsProviderModel(this, providers::ProviderKind::Llm);
+    m_stt = new SettingsProviderModel(this, providers::CapabilityKind::Transcription);
+    m_llm = new SettingsProviderModel(this, providers::CapabilityKind::Chat);
     m_embedding = new SettingsEmbeddingModel(this);
     // Voice models: the enabled list is part of the draft; the download is immediate (not a draft).
     m_voiceModels = new VoiceModelListModel(this);
@@ -339,9 +338,9 @@ void SettingsViewModel::normalize(tanara::app::AppSettings& s) const
 {
     // The selected providers' empty fields get the descriptor's defaults (as the old window
     // filled them), so this does not count as a "change".
-    const providers::ProviderDescriptor sd = providers::SttProviderRegistry::instance().descriptor(s.providers.stt.selectedId);
+    const providers::ProviderDescriptor sd = providers::ProviderRegistry::defaultInstance().descriptor(providers::CapabilityKind::Transcription, s.providers.stt.selectedId);
     if (!sd.id.isEmpty()) m_stt->fillDefaults(s.providers.stt.configs[s.providers.stt.selectedId], sd);
-    const providers::ProviderDescriptor ld = providers::LlmProviderRegistry::instance().descriptor(s.providers.llm.selectedId);
+    const providers::ProviderDescriptor ld = providers::ProviderRegistry::defaultInstance().descriptor(providers::CapabilityKind::Chat, s.providers.llm.selectedId);
     if (!ld.id.isEmpty()) m_llm->fillDefaults(s.providers.llm.configs[s.providers.llm.selectedId], ld);
     m_embedding->normalize(s);
 }

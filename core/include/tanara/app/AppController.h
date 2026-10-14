@@ -27,7 +27,8 @@ namespace tanara::recording { class DeviceManager; }
 namespace tanara::library { class MeetingStore; }
 namespace tanara::library { class VoiceprintStore; }
 namespace tanara::editing { class SpeakerEditor; }
-namespace tanara::cloud { class CloudAccount; }
+namespace tanara::cloud { class CloudAccount; struct CloudRun; }
+namespace tanara::providers { struct ProviderContext; class ProviderRegistry; }
 namespace tanara::library { class MeetingJobTracker; }
 namespace tanara::library { class MeetingLibrary; }
 namespace tanara::library { class TrackCatalog; }
@@ -98,6 +99,8 @@ public:
     bool cloudLive() const;
     // The "Coming soon" (waitlist) panel is visible: compiled in (TANARA_CLOUD_TEASER) and the cloud is not live yet.
     bool cloudTeaser() const;
+    // This controller's provider registry (every capability; providers/core/ProviderRegistry.h).
+    providers::ProviderRegistry& providerRegistry() const;
     // The selected provider of the given step is Tanara Cloud.
     bool usesCloud(providers::WorkflowStep step) const;
     // The model id actually sent (the Expert model, otherwise the tier's virtual name).
@@ -697,17 +700,17 @@ private:
                               const QVector<tanara::SummaryTopic>& topics, bool reduceWhenDone);
     void startNextTopicJob();
 
-    // Tanara Cloud processing run (X-Tanara-Job-Id, charge totals, last error).
-    struct CloudRun;
-    using CloudRunPtr = std::shared_ptr<CloudRun>;
+    // Tanara Cloud processing run (X-Tanara-Job-Id, charge totals, last error): cloud/CloudRunLedger.h.
+    using CloudRunPtr = std::shared_ptr<cloud::CloudRun>;
     CloudRunPtr newCloudRun(const QString& meetingId, const QString& kind) const;
-    // The run's gateway config (baseUrl, key, model, X-Tanara-* headers, response hook).
-    providers::ProviderConfig cloudConfig(providers::WorkflowStep step, const CloudRunPtr& run,
-                               const QString& summaryMode) const;
+    // The step's gateway config (baseUrl, model, max tokens; the key comes from the context's auth).
+    providers::ProviderConfig cloudConfig(providers::WorkflowStep step) const;
+    // The provider context of a call: a cloud run -> the ledger's gateway context (auth, X-Tanara-*
+    // headers incl. summaryMode, response observer, cost sink); no run -> the shared HTTP client only.
+    providers::ProviderContext providerContext(const CloudRunPtr& run, const QString& summaryMode) const;
     // BYO: the selected LLM config + key (run stays null). Cloud: gateway config; if the run is
-    // still null, a new run starts (by kind / summaryMode).
-    providers::ProviderConfig llmConfigFor(CloudRunPtr& run, const QString& meetingId, const QString& kind,
-                                const QString& summaryMode) const;
+    // still null, a new run starts (by kind).
+    providers::ProviderConfig llmConfigFor(CloudRunPtr& run, const QString& meetingId, const QString& kind) const;
     void finishCloudRun(const CloudRunPtr& run);                       // cloudCharged
     // Per-track speech share (background thread), then applied to the finished meeting; thenMixdown = remix.
     void startSpeechCheck(const QString& meetingId, bool thenMixdown);

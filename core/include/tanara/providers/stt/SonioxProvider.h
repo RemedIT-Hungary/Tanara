@@ -1,11 +1,12 @@
 #pragma once
 //
 // Soniox async STT provider (https://soniox.com).
-// An asynchronous, QNetworkAccessManager-based flow:
+// An asynchronous flow over the shared HTTP client (ProviderContext::http; a private one if none):
 //   files (upload) -> transcriptions (create) -> poll -> transcript (fetch) -> cleanup.
 // Per-track use: if diarization=false, every token gets the track's fixed speaker.
 #include "tanara/providers/stt/ISttProvider.h"
 #include "tanara/providers/core/ProviderConfig.h"
+#include "tanara/providers/core/ProviderContext.h"
 #include "tanara/domain/Types.h"
 
 #include <QObject>
@@ -14,7 +15,6 @@
 #include <QElapsedTimer>
 #include <QNetworkRequest>
 
-class QNetworkAccessManager;
 class QNetworkReply;
 class QTimer;
 
@@ -24,7 +24,7 @@ namespace tanara::providers {
 class SonioxJob : public SttJob {
     Q_OBJECT
 public:
-    SonioxJob(ProviderConfig cfg, SttRequest req, QObject* parent = nullptr);
+    SonioxJob(ProviderContext ctx, ProviderConfig cfg, SttRequest req, QObject* parent = nullptr);
     ~SonioxJob() override;
 
     void start();              // the provider calls it after handing the job back
@@ -43,15 +43,17 @@ private:
 
     // --- helpers ---
     QNetworkRequest makeRequest(const QString& path) const;
-    void report(QNetworkReply* reply, const QByteArray& body) const;   // gateway-hook (onExchange)
+    void report(QNetworkReply* reply, const QByteArray& body);   // ProviderContext::observe + last failure
     void fail(const QString& error);
     void setState(SttJobState state);
     void abortInFlight();
 
+    ProviderContext m_ctx;
     ProviderConfig m_cfg;
     SttRequest     m_req;
 
-    QNetworkAccessManager* m_nam = nullptr;
+    net::HttpClient* m_http = nullptr;     // m_ctx.http, or an own one (child)
+    Error          m_lastFailure;          // the last failed (non-DELETE) HTTP exchange
     QPointer<QNetworkReply> m_reply;       // the request currently running
     QTimer*        m_pollTimer = nullptr;
 
@@ -68,6 +70,7 @@ class SonioxProvider : public QObject, public ISttProvider {
     Q_OBJECT
 public:
     explicit SonioxProvider(ProviderConfig cfg, QObject* parent = nullptr);
+    SonioxProvider(ProviderContext ctx, ProviderConfig cfg, QObject* parent = nullptr);
 
     QString name() const override { return QStringLiteral("soniox"); }
     bool supportsLive() const override { return false; }
@@ -75,6 +78,7 @@ public:
     SttJob* transcribe(const SttRequest& req) override;
 
 private:
+    ProviderContext m_ctx;
     ProviderConfig m_cfg;
 };
 

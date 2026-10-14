@@ -8,7 +8,8 @@
 
 #include "tanara/app/AppController.h"
 #include "tanara/library/index/EmbeddingIndex.h"
-#include "tanara/providers/embedding/EmbeddingProviderRegistry.h"
+#include "tanara/providers/embedding/ITextEmbedder.h"
+#include "tanara/providers/core/ProviderRegistry.h"
 #include "tanara/library/tags/TagService.h"
 
 #include <cmath>
@@ -41,7 +42,7 @@ SettingsEmbeddingModel::SettingsEmbeddingModel(QObject* parent) : QObject(parent
 {
     m_vm = qobject_cast<SettingsViewModel*>(parent);
     if (m_vm) {
-        m_card = new SettingsProviderModel(m_vm, providers::ProviderKind::Embedding);
+        m_card = new SettingsProviderModel(m_vm, providers::CapabilityKind::TextEmbedding);
         // The local endpoint's fields / test also affect the pill and the warning.
         connect(m_card, &SettingsProviderModel::testChanged, this, &SettingsEmbeddingModel::changed);
         connect(m_card, &SettingsProviderModel::valuesChanged, this, &SettingsEmbeddingModel::changed);
@@ -93,7 +94,7 @@ QString SettingsEmbeddingModel::providerFor(const QString& mode)
 QString SettingsEmbeddingModel::effectiveModel(const tanara::app::AppSettings& s)
 {
     const QString id = s.providers.embedding.selectedId;
-    if (!providers::EmbeddingProviderRegistry::instance().has(id)) return QString();
+    if (!providers::ProviderRegistry::defaultInstance().has(providers::CapabilityKind::TextEmbedding, id)) return QString();
     const QString model = s.providers.embedding.selected().model.trimmed();
     if (model.isEmpty() && id == providers::embeddingproviders::CloudId) return QStringLiteral("default");
     return model;
@@ -102,7 +103,7 @@ QString SettingsEmbeddingModel::effectiveModel(const tanara::app::AppSettings& s
 void SettingsEmbeddingModel::normalize(tanara::app::AppSettings& s) const
 {
     if (!m_card) return;
-    const providers::ProviderDescriptor d = providers::EmbeddingProviderRegistry::instance().descriptor(s.providers.embedding.selectedId);
+    const providers::ProviderDescriptor d = providers::ProviderRegistry::defaultInstance().descriptor(providers::CapabilityKind::TextEmbedding, s.providers.embedding.selectedId);
     if (!d.id.isEmpty()) m_card->fillDefaults(s.providers.embedding.configs[s.providers.embedding.selectedId], d);
 }
 
@@ -127,7 +128,7 @@ void SettingsEmbeddingModel::setMode(const QString& mode)
     if (!id.isEmpty()) {
         // The other mode's settings stay in the map; the new one starts with the defaults.
         providers::ProviderConfig cfg = d.providers.embedding.configs.value(id);
-        m_card->fillDefaults(cfg, providers::EmbeddingProviderRegistry::instance().descriptor(id));
+        m_card->fillDefaults(cfg, providers::ProviderRegistry::defaultInstance().descriptor(providers::CapabilityKind::TextEmbedding, id));
         d.providers.embedding.configs.insert(id, cfg);
     }
     m_card->reset();

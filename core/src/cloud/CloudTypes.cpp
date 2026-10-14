@@ -235,6 +235,45 @@ CloudError parseCloudError(int httpStatus, const QHash<QByteArray, QByteArray>& 
     return e;
 }
 
+Error toError(const CloudError& ce)
+{
+    Error e;
+    switch (ce.kind) {
+    case CloudErrorKind::None:                return e;
+    case CloudErrorKind::Network:             e.kind = Error::Kind::Transient; break;
+    case CloudErrorKind::Unauthorized:
+    case CloudErrorKind::TermsRequired:
+    case CloudErrorKind::Suspended:
+    case CloudErrorKind::DeviceFlow:          e.kind = Error::Kind::Auth; break;
+    case CloudErrorKind::InsufficientBalance:
+    case CloudErrorKind::SpendLimit:          e.kind = Error::Kind::Quota; break;
+    case CloudErrorKind::RateLimited:
+    case CloudErrorKind::Maintenance:
+    case CloudErrorKind::Upstream:            e.kind = Error::Kind::Transient; break;
+    case CloudErrorKind::ClientTooOld:        e.kind = Error::Kind::Unsupported; break;
+    case CloudErrorKind::Validation:
+    case CloudErrorKind::DisposableEmail:
+    case CloudErrorKind::NotFound:            e.kind = Error::Kind::Input; break;
+    case CloudErrorKind::Internal:
+    case CloudErrorKind::TopupUnavailable:
+    case CloudErrorKind::TopupLimit:
+    case CloudErrorKind::Other:               e.kind = Error::Kind::Service; break;
+    }
+    if (ce.kind == CloudErrorKind::Network) {
+        e.httpStatus = 0;
+        e.code = ce.code.isEmpty() ? QStringLiteral("network") : ce.code;
+        e.detail = ce.networkError;
+    } else {
+        e.httpStatus = ce.httpStatus;
+        e.code = ce.code;
+        e.detail = ce.networkError;
+    }
+    e.message = ce.message;
+    e.requestId = ce.requestId;
+    e.retryAfterSec = ce.retryAfterSec;
+    return e;
+}
+
 QString describeCloudError(const CloudError& e, const Money& charged, const QString& lang)
 {
     QStringList lines;

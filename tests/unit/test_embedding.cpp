@@ -10,7 +10,8 @@
 #include "tanara/editing/session/SpeakerOverlay.h"
 #include "tanara/library/index/EmbeddingIndex.h"
 #include "tanara/library/index/EmbeddingPreparer.h"
-#include "tanara/providers/embedding/EmbeddingProviderRegistry.h"
+#include "tanara/providers/core/ProviderRegistry.h"
+#include "tanara/providers/embedding/ITextEmbedder.h"
 #include "tanara/providers/embedding/OpenAiCompatibleEmbeddingProvider.h"
 #include "tanara/providers/core/ProviderRegistry.h"
 #include "tanara/library/store/MeetingStore.h"
@@ -94,12 +95,13 @@ library::EmbeddingPreparer::ProviderFactory EmbeddingTest::factory()
 
 void EmbeddingTest::registryDescriptors()
 {
-    providers::registerBuiltinProviders();
-    const auto& reg = providers::EmbeddingProviderRegistry::instance();
-    QVERIFY(reg.has(providers::embeddingproviders::LocalId));
-    QVERIFY(reg.has(providers::embeddingproviders::CloudId));
-    const providers::ProviderDescriptor local = reg.descriptor(providers::embeddingproviders::LocalId);
-    QCOMPARE(local.kind, providers::ProviderKind::Embedding);
+    providers::ProviderRegistry reg;
+    providers::registerBuiltinProviders(reg);
+    QVERIFY(reg.has(providers::CapabilityKind::TextEmbedding, providers::embeddingproviders::LocalId));
+    QVERIFY(reg.has(providers::CapabilityKind::TextEmbedding, providers::embeddingproviders::CloudId));
+    const providers::ProviderDescriptor local =
+        reg.descriptor(providers::CapabilityKind::TextEmbedding, providers::embeddingproviders::LocalId);
+    QCOMPARE(local.capability, providers::CapabilityKind::TextEmbedding);
     QCOMPARE(local.probe.path, QStringLiteral("/models"));
     QVERIFY(local.probe.listsModels);
     bool url = false, model = false;
@@ -108,11 +110,11 @@ void EmbeddingTest::registryDescriptors()
         if (f.key == "model") model = f.type == providers::ConfigFieldType::Combo && f.dynamicOptions;
     }
     QVERIFY(url && model);
-    const providers::ProviderDescriptor cloud = reg.descriptor(providers::embeddingproviders::CloudId);
+    const providers::ProviderDescriptor cloud = reg.descriptor(providers::CapabilityKind::TextEmbedding, providers::embeddingproviders::CloudId);
     QCOMPARE(cloud.authMode, providers::AuthMode::Login);
     QVERIFY(cloud.fields.isEmpty());
     std::unique_ptr<QObject> holder(new QObject);
-    QVERIFY(reg.create(providers::embeddingproviders::LocalId, providers::ProviderConfig{}, holder.get()));
+    QVERIFY(reg.create<providers::ITextEmbedder>(providers::embeddingproviders::LocalId, {}, providers::ProviderConfig{}, holder.get()));
 }
 
 void EmbeddingTest::providerBatchesAndOrder()

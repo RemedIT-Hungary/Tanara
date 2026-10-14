@@ -1,11 +1,9 @@
 #include "tanara/providers/embedding/OpenAiCompatibleEmbeddingProvider.h"
 #include "tanara/providers/core/ProviderConfig.h"
-#include "tanara/cloud/CloudTypes.h"
 
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
-#include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QNetworkRequest>
 #include <QTimer>
@@ -26,11 +24,12 @@ QUrl embeddingsUrl(const QString& baseUrl)
 
 } // namespace
 
-OpenAiCompatibleEmbeddingJob::OpenAiCompatibleEmbeddingJob(QNetworkAccessManager* nam,
+OpenAiCompatibleEmbeddingJob::OpenAiCompatibleEmbeddingJob(net::HttpClient* http,
+                                                           const ProviderContext& ctx,
                                                            const ProviderConfig& cfg,
                                                            const EmbeddingRequest& req,
                                                            QObject* parent)
-    : EmbeddingJob(parent), m_nam(nam), m_cfg(cfg), m_req(req)
+    : EmbeddingJob(parent), m_http(http), m_ctx(ctx), m_cfg(cfg), m_req(req)
 {
 }
 
@@ -53,6 +52,8 @@ void OpenAiCompatibleEmbeddingJob::start()
     }
     if (!embeddingsUrl(m_cfg.baseUrl).isValid() || m_cfg.baseUrl.trimmed().isEmpty()) {
         m_done = true;
+        m_error.kind = Error::Kind::Input;
+        m_error.code = QStringLiteral("missing_base_url");
         emit failed(tr("Hiányzik a beágyazó végpont címe."));
         return;
     }
@@ -81,12 +82,18 @@ void OpenAiCompatibleEmbeddingJob::sendNext()
 
     QNetworkRequest request(embeddingsUrl(m_cfg.baseUrl));
     request.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
-    if (!m_cfg.apiKey.trimmed().isEmpty())
+    const QString bearer = m_ctx.bearer(m_cfg).trimmed();
+    if (!bearer.isEmpty())
         request.setRawHeader(QByteArrayLiteral("Authorization"),
-                             QByteArrayLiteral("Bearer ") + m_cfg.apiKey.trimmed().toUtf8());
-    for (const auto& h : m_cfg.extraHeaders)
-        request.setRawHeader(h.first, h.second);
-    m_reply = m_nam->post(request, QJsonDocument(body).toJson(QJsonDocument::Compact));
+                             QByteArrayLiteral("Bearer ") + bearer.toUtf8());
+    m_ctx.applyHeaders(request);
+    if (!m_http) {
+        m_done = true;
+        m_error.kind = Error::Kind::Service;
+        emit failed(tr("Hálózati hiba: %1").arg(QStringLiteral("no HTTP client")));
+        return;
+    }
+    m_reply = m_http->post(request, QJsonDocument(body).toJson(QJsonDocument::Compact));
     connect(m_reply, &QNetworkReply::finished, this, &OpenAiCompatibleEmbeddingJob::onReply);
 }
 
@@ -97,13 +104,14 @@ void OpenAiCompatibleEmbeddingJob::onReply()
     if (!reply || m_done) return;
     reply->deleteLater();
     const QByteArray data = reply->readAll();
-    if (m_cfg.onExchange)
-        m_cfg.onExchange(cloud::makeHttpExchange(reply, data));
+    const net::HttpExchange ex = net::makeHttpExchange(reply, data);
+    m_ctx.report(ex);
     const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
 
     if (reply->error() != QNetworkReply::NoError) {
         m_done = true;
         m_errorStatus = status;
+        m_error = net::errorFromExchange(ex);
         // Both a Tanara Cloud structured error (error.code/message) and the OpenAI shape carry the human
         // sentence in error.message.
         QString apiMsg;
@@ -126,6 +134,9 @@ void OpenAiCompatibleEmbeddingJob::onReply()
     const QJsonArray arr = doc.object().value(QStringLiteral("data")).toArray();
     if (arr.size() != m_batch) {
         m_done = true;
+        m_error.kind = Error::Kind::Service;
+        m_error.httpStatus = status;
+        m_error.code = QStringLiteral("bad_response");
         emit failed(tr("Érvénytelen beágyazási válasz (%1 vektor jött %2 szövegre).")
                         .arg(arr.size()).arg(m_batch));
         return;
@@ -138,6 +149,9 @@ void OpenAiCompatibleEmbeddingJob::onReply()
         const QJsonArray emb = o.value(QStringLiteral("embedding")).toArray();
         if (idx < 0 || idx >= m_batch || emb.isEmpty()) {
             m_done = true;
+            m_error.kind = Error::Kind::Service;
+            m_error.httpStatus = status;
+            m_error.code = QStringLiteral("bad_response");
             emit failed(tr("Érvénytelen beágyazási válasz (hiányzó vektor)."));
             return;
         }
@@ -160,7 +174,15 @@ void OpenAiCompatibleEmbeddingJob::onReply()
 
 OpenAiCompatibleEmbeddingProvider::OpenAiCompatibleEmbeddingProvider(const ProviderConfig& cfg,
                                                                      QObject* parent)
-    : QObject(parent), m_cfg(cfg), m_nam(new QNetworkAccessManager(this))
+    : OpenAiCompatibleEmbeddingProvider(ProviderContext{}, cfg, parent)
+{
+}
+
+OpenAiCompatibleEmbeddingProvider::OpenAiCompatibleEmbeddingProvider(const ProviderContext& ctx,
+                                                                     const ProviderConfig& cfg,
+                                                                     QObject* parent)
+    : QObject(parent), m_ctx(ctx), m_cfg(cfg),
+      m_http(ctx.http ? ctx.http.data() : new net::HttpClient(this))
 {
 }
 
@@ -173,7 +195,8 @@ QString OpenAiCompatibleEmbeddingProvider::name() const
 
 EmbeddingJob* OpenAiCompatibleEmbeddingProvider::embed(const EmbeddingRequest& req)
 {
-    auto* job = new OpenAiCompatibleEmbeddingJob(m_nam, m_cfg, req, this);
+    auto* job = new OpenAiCompatibleEmbeddingJob(m_http, m_ctx, m_cfg, req, this);
+    m_ctx.cancel.onCancel([j = QPointer<OpenAiCompatibleEmbeddingJob>(job)]() { if (j) j->cancel(); });
     // The start goes into the event loop so the caller connects the signals first.
     QTimer::singleShot(0, job, [job]() { job->start(); });
     return job;

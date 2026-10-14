@@ -18,7 +18,7 @@
 
 #include <functional>
 
-namespace tanara::providers { class IEmbeddingProvider; }
+#include "tanara/providers/embedding/IEmbeddingProvider.h"   // the text-embedding port (old name, TODO(P15))
 namespace tanara::providers { class EmbeddingJob; }
 
 namespace tanara::library {

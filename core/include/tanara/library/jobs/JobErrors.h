@@ -2,22 +2,19 @@
 //
 // A failed background task -> a displayable error (human explanation + a technical line).
 // Pure functions (no state, no I/O); AppController calls them with the provider's last failed
-// HTTP response (providers::ProviderConfig::onExchange) and the raw error text.
+// HTTP response (observed through providers::ProviderContext::observe) and the raw error text, or
+// with a classified error (foundation/error/Error.h).
 #include "tanara/domain/Job.h"
-#include "tanara/providers/core/ProviderConfig.h"
-#include "tanara/providers/chat/LlmContext.h"
+#include "tanara/foundation/error/Error.h"
+#include "tanara/foundation/net/HttpClient.h"
 
-namespace tanara::cloud { struct HttpExchange; }
-namespace tanara::cloud { struct CloudError; }
+namespace tanara::providers::llmctx { struct ContextOverflow; }
 
 namespace tanara::library {
 
-
 // The technical line of a failed HTTP exchange: "HTTP 401 | invalid_api_key | <message>".
-// For a network error (no HTTP response): "network | <Qt error text>". From the body it recognizes
-// the Soniox ({error_type, message}), the OpenAI-compatible ({error:{code|type, message}}) and the
-// Tanara gateway ({error:{code, message, request_id}}) shapes.
-QString httpFailureDetail(const cloud::HttpExchange& ex);
+// For a network error (no HTTP response): "network | <Qt error text>". (= net::failureDetail.)
+QString httpFailureDetail(const net::HttpExchange& ex);
 
 // A displayable error from the raw error text and (if any) the last failed HTTP exchange.
 //  - message: a human explanation based on the status code (401/403 key, 402 balance, 429 quota,
@@ -42,7 +39,7 @@ int contextFixTokens(const QString& fixActionHint);
 bool isReloadContextHint(const QString& fixActionHint);
 
 JobError describeJobFailure(JobKind kind, const QString& rawMessage,
-                            const cloud::HttpExchange* failedExchange = nullptr,
+                            const net::HttpExchange* failedExchange = nullptr,
                             const ContextFailureHint* context = nullptr);
 
 // Human description of a context overflow: "The model is loaded with a 4096-token context, the
@@ -52,7 +49,8 @@ JobError describeJobFailure(JobKind kind, const QString& rawMessage,
 JobError describeContextOverflow(JobKind kind, const providers::llmctx::ContextOverflow& overflow,
                                  const ContextFailureHint& hint, int httpStatus = 0);
 
-// From a Tanara Cloud structured error (the gateway's message is already in the user's language).
-JobError describeCloudFailure(JobKind kind, const cloud::CloudError& error);
+// From a Tanara Cloud error (cloud::toError() of the gateway's structured error; the gateway's message
+// is already in the user's language). httpStatus 0 = the cloud was not reachable.
+JobError describeCloudFailure(JobKind kind, const Error& error);
 
 } // namespace tanara::library

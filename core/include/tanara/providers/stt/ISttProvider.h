@@ -1,9 +1,11 @@
 #pragma once
 //
-// STT plugin contract. Async, signal-based (fits the Qt event loop), and
+// STT port (CapabilityKind::Transcription). Async, signal-based (fits the Qt event loop), and
 // prepared for a later live/streaming mode (startLive()).
 #include "tanara/domain/Transcript.h"
 #include "tanara/domain/Job.h"
+#include "tanara/foundation/error/Error.h"
+#include "tanara/providers/core/ProviderDescriptor.h"
 #include <QObject>
 
 namespace tanara::providers {
@@ -15,6 +17,8 @@ public:
     explicit SttJob(QObject* parent = nullptr) : QObject(parent) {}
     ~SttJob() override = default;
     virtual void cancel() = 0;
+    // The classified error (filled before the failed signal).
+    const Error& error() const { return m_error; }
 
 signals:
     void stateChanged(tanara::SttJobState state);
@@ -24,6 +28,9 @@ signals:
     void uploadProgress(qint64 bytesSent, qint64 bytesTotal);
     void finished(const tanara::TrackTranscript& result);
     void failed(const QString& error);
+
+protected:
+    Error m_error;
 };
 
 struct SttRequest {
@@ -55,6 +62,10 @@ public:
 
     // Future live mode: none by default; a provider opts in later.
     virtual SttJob* startLive(const SttRequest& /*req*/) { return nullptr; }
+};
+
+template <> struct ProviderTraits<ISttProvider> {
+    static constexpr CapabilityKind kind = CapabilityKind::Transcription;
 };
 
 } // namespace tanara::providers

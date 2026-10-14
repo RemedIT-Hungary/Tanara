@@ -2,14 +2,14 @@
 //
 // OpenAI-compatible LLM provider (LM Studio / Ollama / OpenAI / Claude proxy).
 // MVP: non-streaming, a single /chat/completions POST.
-#include "tanara/providers/chat/ILlmProvider.h"
+#include "tanara/providers/chat/IChatProvider.h"
 #include "tanara/providers/core/ProviderConfig.h"
+#include "tanara/providers/core/ProviderContext.h"
 #include "tanara/domain/Types.h"
 
 #include <QObject>
 #include <QPointer>
 
-class QNetworkAccessManager;
 class QNetworkReply;
 class QJsonObject;
 
@@ -34,12 +34,18 @@ QJsonObject buildChatCompletionBody(const ProviderConfig& cfg, const LlmRequest&
 // thinking, no answer).
 QString stripThinking(const QString& content);
 
+// The classified error of a failed chat call: a "does not fit the model's context" answer (any
+// server's form, providers/chat/LlmContext.h) -> Input with code "context_overflow"; otherwise by the
+// HTTP status / body (net::errorFromExchange).
+Error classifyChatFailure(const net::HttpExchange& ex, const QString& errorText);
+
 // A job representing a single chat request. The finished(content) / failed(error) signals are
-// declared by the ILlmProvider::LlmJob base.
+// declared by the LlmJob base.
 class OpenAiCompatibleJob : public LlmJob {
     Q_OBJECT
 public:
-    OpenAiCompatibleJob(QNetworkAccessManager* nam,
+    OpenAiCompatibleJob(net::HttpClient* http,
+                        const ProviderContext& ctx,
                         const ProviderConfig& cfg,
                         const LlmRequest& req,
                         QObject* parent = nullptr);
@@ -52,17 +58,19 @@ private slots:
     void onFinished();
 
 private:
-    QNetworkAccessManager* m_nam;   // not owned
+    QPointer<net::HttpClient> m_http;   // not owned
+    ProviderContext m_ctx;
     ProviderConfig m_cfg;
     LlmRequest m_req;
     QPointer<QNetworkReply> m_reply;
     bool m_done = false;
 };
 
-class OpenAiCompatibleProvider : public QObject, public ILlmProvider {
+class OpenAiCompatibleProvider : public QObject, public IChatProvider {
     Q_OBJECT
 public:
     explicit OpenAiCompatibleProvider(const ProviderConfig& cfg, QObject* parent = nullptr);
+    OpenAiCompatibleProvider(const ProviderContext& ctx, const ProviderConfig& cfg, QObject* parent = nullptr);
     ~OpenAiCompatibleProvider() override;
 
     QString name() const override;            // "openai-compat"
@@ -70,8 +78,9 @@ public:
     LlmJob* chat(const LlmRequest& req) override;
 
 private:
+    ProviderContext m_ctx;
     ProviderConfig m_cfg;
-    QNetworkAccessManager* m_nam;  // owned (this as parent)
+    net::HttpClient* m_http;       // m_ctx.http, or an own one (this as parent)
 };
 
 } // namespace tanara::providers

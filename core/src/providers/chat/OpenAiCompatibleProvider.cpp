@@ -1,8 +1,7 @@
 #include "tanara/providers/chat/OpenAiCompatibleProvider.h"
 #include "tanara/providers/core/ProviderConfig.h"
-#include "tanara/cloud/CloudTypes.h"
+#include "tanara/providers/chat/LlmContext.h"
 
-#include <QNetworkAccessManager>
 #include <QNetworkRequest>
 #include <QNetworkReply>
 #include <QJsonDocument>
@@ -100,14 +99,34 @@ QString stripThinking(const QString& content)
     return s;
 }
 
+Error classifyChatFailure(const net::HttpExchange& ex, const QString& errorText)
+{
+    const llmctx::ContextOverflow ov = llmctx::parseContextOverflow(ex.body, errorText);
+    Error e = net::errorFromExchange(ex);
+    if (ov.matched) {
+        e.kind = Error::Kind::Input;
+        e.code = QStringLiteral("context_overflow");
+        if (e.message.isEmpty()) e.message = errorText;
+        return e;
+    }
+    if (!e.isError()) {                 // a 2xx answer that could not be used
+        e.kind = Error::Kind::Service;
+        e.httpStatus = ex.status;
+        e.message = errorText;
+    }
+    return e;
+}
+
 // ---- OpenAiCompatibleJob ---------------------------------------------------
 
-OpenAiCompatibleJob::OpenAiCompatibleJob(QNetworkAccessManager* nam,
+OpenAiCompatibleJob::OpenAiCompatibleJob(net::HttpClient* http,
+                                         const ProviderContext& ctx,
                                          const ProviderConfig& cfg,
                                          const LlmRequest& req,
                                          QObject* parent)
     : LlmJob(parent)
-    , m_nam(nam)
+    , m_http(http)
+    , m_ctx(ctx)
     , m_cfg(cfg)
     , m_req(req)
 {
@@ -122,16 +141,22 @@ void OpenAiCompatibleJob::start()
     QNetworkRequest request(chatCompletionsUrl(m_cfg.baseUrl));
     request.setHeader(QNetworkRequest::ContentTypeHeader,
                       QStringLiteral("application/json"));
-    if (!m_cfg.apiKey.isEmpty()) {
-        const QByteArray auth = QByteArrayLiteral("Bearer ") + m_cfg.apiKey.toUtf8();
+    const QString bearer = m_ctx.bearer(m_cfg);
+    if (!bearer.isEmpty()) {
+        const QByteArray auth = QByteArrayLiteral("Bearer ") + bearer.toUtf8();
         request.setRawHeader(QByteArrayLiteral("Authorization"), auth);
     }
     // Gateway mode (Tanara Cloud): additive X-Tanara-* / Accept-Language headers.
-    for (const auto& h : m_cfg.extraHeaders)
-        request.setRawHeader(h.first, h.second);
+    m_ctx.applyHeaders(request);
 
+    if (!m_http) {
+        m_done = true;
+        m_error.kind = Error::Kind::Service;
+        emit failed(tr("Nincs hálózati válasz (reply == null)."));
+        return;
+    }
     const QByteArray payload = QJsonDocument(body).toJson(QJsonDocument::Compact);
-    m_reply = m_nam->post(request, payload);
+    m_reply = m_http->post(request, payload);
     connect(m_reply, &QNetworkReply::finished, this, &OpenAiCompatibleJob::onFinished);
 }
 
@@ -149,14 +174,20 @@ void OpenAiCompatibleJob::onFinished()
 
     QNetworkReply* reply = m_reply;
     if (!reply) {
+        m_error.kind = Error::Kind::Service;
         emit failed(tr("Nincs hálózati válasz (reply == null)."));
         return;
     }
     reply->deleteLater();
 
     const QByteArray data = reply->readAll();   // we also read the error body
-    if (m_cfg.onExchange)                        // gateway hook: charge / structured error
-        m_cfg.onExchange(cloud::makeHttpExchange(reply, data));
+    const net::HttpExchange ex = net::makeHttpExchange(reply, data);
+    m_ctx.report(ex);                            // gateway hook: charge / structured error
+    // Every failure below gets the classified error too (Input/context_overflow, Auth, Quota ...).
+    auto failWith = [this, &ex](const QString& text) {
+        m_error = classifyChatFailure(ex, text);
+        emit failed(text);
+    };
     if (reply->error() != QNetworkReply::NoError) {
         QString apiMsg;
         const QJsonDocument edoc = QJsonDocument::fromJson(data);
@@ -168,7 +199,7 @@ void OpenAiCompatibleJob::onFinished()
         const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
         m_errorStatus = status;
         m_errorBody = data;
-        emit failed(apiMsg.isEmpty()
+        failWith(apiMsg.isEmpty()
             ? tr("Hálózati hiba: %1").arg(reply->errorString())
             : tr("LLM hiba (HTTP %1): %2").arg(status).arg(apiMsg));
         return;
@@ -177,14 +208,14 @@ void OpenAiCompatibleJob::onFinished()
     QJsonParseError perr{};
     const QJsonDocument doc = QJsonDocument::fromJson(data, &perr);
     if (perr.error != QJsonParseError::NoError || !doc.isObject()) {
-        emit failed(tr("Érvénytelen JSON válasz: %1").arg(perr.errorString()));
+        failWith(tr("Érvénytelen JSON válasz: %1").arg(perr.errorString()));
         return;
     }
 
     const QJsonObject root = doc.object();
     const QJsonArray choices = root.value(QStringLiteral("choices")).toArray();
     if (choices.isEmpty()) {
-        emit failed(tr("A válasz nem tartalmaz 'choices' tömböt."));
+        failWith(tr("A válasz nem tartalmaz 'choices' tömböt."));
         return;
     }
 
@@ -209,7 +240,7 @@ void OpenAiCompatibleJob::onFinished()
         << " content=" << content.trimmed().size() << "ch"
         << " thinking=" << thinking << "ch";
     if (content.trimmed().isEmpty()) {
-        emit failed(thinking > 0
+        failWith(thinking > 0
             ? tr("A modell nem adott választ, csak „gondolkodott” (%1 karakter, finish=%2). "
                  "Kapcsold ki a gondolkodást a modell beállításainál, vagy növeld a max. tokenszámot.")
                   .arg(thinking).arg(finish)
@@ -225,9 +256,16 @@ void OpenAiCompatibleJob::onFinished()
 // ---- OpenAiCompatibleProvider ----------------------------------------------
 
 OpenAiCompatibleProvider::OpenAiCompatibleProvider(const ProviderConfig& cfg, QObject* parent)
+    : OpenAiCompatibleProvider(ProviderContext{}, cfg, parent)
+{
+}
+
+OpenAiCompatibleProvider::OpenAiCompatibleProvider(const ProviderContext& ctx, const ProviderConfig& cfg,
+                                                   QObject* parent)
     : QObject(parent)
+    , m_ctx(ctx)
     , m_cfg(cfg)
-    , m_nam(new QNetworkAccessManager(this))
+    , m_http(ctx.http ? ctx.http.data() : new net::HttpClient(this))
 {
 }
 
@@ -245,7 +283,8 @@ bool OpenAiCompatibleProvider::supportsStreaming() const
 
 LlmJob* OpenAiCompatibleProvider::chat(const LlmRequest& req)
 {
-    auto* job = new OpenAiCompatibleJob(m_nam, m_cfg, req, this);
+    auto* job = new OpenAiCompatibleJob(m_http, m_ctx, m_cfg, req, this);
+    m_ctx.cancel.onCancel([j = QPointer<OpenAiCompatibleJob>(job)]() { if (j) j->cancel(); });
     // We push the start of the request into the event loop so the caller can connect the signals
     // before finished/failed (even for a fast / cached response).
     QTimer::singleShot(0, job, [job]() { job->start(); });

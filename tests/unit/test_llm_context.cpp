@@ -225,7 +225,7 @@ void LlmContextTest::classifiedMessage()
     // The incident through the provider-error path: a human message with the two numbers, no raw
     // JSON, the technical line is different (not the same text twice).
     for (const char* body : {kLmStudioIncident, kLlamaCpp}) {
-        cloud::HttpExchange ex;
+        net::HttpExchange ex;
         ex.status = 400;
         ex.body = body;
         const QString raw = QStringLiteral("LLM hiba (HTTP 400): Engine protocol predict request returned 400: {…}");
@@ -246,7 +246,7 @@ void LlmContextTest::classifiedMessage()
         QCOMPARE(library::contextFixTokens(e.fixActionHint), 16384);
     }
     // Another server (no native API): the minimum in the text, the hint leads to Settings.
-    cloud::HttpExchange ex;
+    net::HttpExchange ex;
     ex.status = 400;
     ex.body = kOpenAi;
     library::ContextFailureHint hint;
@@ -271,7 +271,7 @@ void LlmContextTest::cloudOverflowHasNoReload()
     ce.code = QStringLiteral("context_length_exceeded");
     ce.message = QStringLiteral("A kérés túl hosszú.");
     ce.requestId = QStringLiteral("req_1");
-    const JobError e = library::describeCloudFailure(JobKind::Summarize, ce);
+    const JobError e = library::describeCloudFailure(JobKind::Summarize, cloud::toError(ce));
     QCOMPARE(e.fixActionHint, QStringLiteral("cloud"));
     QVERIFY(e.detail.contains(QStringLiteral("req_1")));
     QVERIFY(!library::isReloadContextHint(e.fixActionHint));
@@ -564,7 +564,7 @@ void LlmContextTest::connectionTestReportsServer()
     };
     providers::ProviderDescriptor d;
     d.id = QStringLiteral("openai-compat");
-    d.kind = providers::ProviderKind::Llm;
+    d.capability = providers::CapabilityKind::Chat;
     d.authMode = providers::AuthMode::None;
     d.probe = {QStringLiteral("/models"), true};
     providers::ConnectionTester tester;

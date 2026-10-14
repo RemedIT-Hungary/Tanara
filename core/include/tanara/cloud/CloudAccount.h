@@ -5,8 +5,9 @@
 // terms acceptance, topup link, waitlist, and the write-back check of interrupted transcriptions.
 //
 // STT/LLM processing does NOT run here: that is the existing SonioxProvider /
-// OpenAiCompatibleProvider with the gateway config (see AppController). They report every HTTP
-// response (HttpExchange) back here too (observeExchange), so min-client and the balance update in one place.
+// OpenAiCompatibleProvider with the gateway config and a ProviderContext from the CloudRunLedger. They
+// report every HTTP response (HttpExchange) back here too (observeExchange), so min-client and the
+// balance update in one place.
 //
 // State: the API key in the SecretStore (tanara.cloud.apiKey), the rest in
 // <data>/cloud-state.json (email, last known account/catalog, pending transcriptions,
@@ -21,7 +22,6 @@
 
 #include <functional>
 
-class QNetworkAccessManager;
 class QNetworkReply;
 class QTimer;
 
@@ -36,6 +36,10 @@ public:
     // keys: the caller's (AppController), its lifetime >= this one's. dataDir: AppPaths::dataDir() (cloud-state.json).
     CloudAccount(SecretStore* keys, const QString& dataDir, QObject* parent = nullptr);
     ~CloudAccount() override;
+
+    // The shared HTTP client (not owned; it must outlive the account). Default: an own one.
+    void    setHttpClient(net::HttpClient* http);
+    net::HttpClient* httpClient() const { return m_http; }
 
     // Gateway base URL (WITHOUT /v1), e.g. https://api.tanara.remedit.hu or http://127.0.0.1:8300.
     void    setBaseUrl(const QString& url);
@@ -129,7 +133,7 @@ private:
     QString     m_statePath;
     QString     m_baseUrl;
     QString     m_lang = QStringLiteral("hu");
-    QNetworkAccessManager* m_nam = nullptr;
+    QPointer<net::HttpClient> m_http;
 
     QString     m_email;
     AccountInfo m_account;

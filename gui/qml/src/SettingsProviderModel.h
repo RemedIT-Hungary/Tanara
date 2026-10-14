@@ -88,7 +88,7 @@ class SettingsProviderModel : public QObject {
     Q_PROPERTY(QString summaryText READ summaryText NOTIFY valuesChanged)
 
 public:
-    SettingsProviderModel(SettingsViewModel* vm, tanara::providers::ProviderKind kind);
+    SettingsProviderModel(SettingsViewModel* vm, tanara::providers::CapabilityKind kind);
 
     QString kindName() const;
     QVariantList providers() const;
@@ -178,7 +178,7 @@ private:
     void onFinished(int id, const tanara::providers::ConnectionTestResult& result);
 
     SettingsViewModel* m_vm;
-    tanara::providers::ProviderKind m_kind;
+    tanara::providers::CapabilityKind m_kind;
     tanara::providers::ConnectionTester* m_tester = nullptr;
     bool m_advancedOpen = false;
     bool m_expanded = true;

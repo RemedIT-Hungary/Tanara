@@ -9,8 +9,49 @@
 
 namespace tanara::providers {
 
-// Embedding: an embedding model for the tag suggestions (providers/embedding/EmbeddingProviderRegistry.h).
-enum class ProviderKind { Stt, Llm, Embedding };
+// The capability a provider gives (one registry key part; providers/core/ProviderRegistry.h).
+// Transcription / Chat / TextEmbedding / LocalModelServer have ports and providers today; the others
+// are prepared for the next slices (P10: VoiceEmbedding, Summarization, TagSuggestion,
+// ParticipantIdentification, ModelCatalog).
+enum class CapabilityKind {
+    Transcription,              // ISttProvider (providers/stt)
+    Chat,                       // IChatProvider (providers/chat)
+    TextEmbedding,              // ITextEmbedder (providers/embedding): the tag suggestions' related-topic level
+    VoiceEmbedding,             // P10: IVoiceEmbedder
+    Summarization,              // P10: ISummarizer
+    TagSuggestion,              // P10: ITagSuggester
+    ParticipantIdentification,  // P10: IParticipantIdentifier
+    ModelCatalog,               // P10: IModelCatalog
+    LocalModelServer,           // optional: ILocalModelServer (LM Studio model preparation), keyed by the chat id
+};
+// Stable machine name ("transcription", "chat", ...): logs, tests, the CLI.
+QString capabilityName(CapabilityKind kind);
+
+// Port <-> capability: every port header specializes it (`static constexpr CapabilityKind kind`), so
+// ProviderRegistry::add<Port>() / create<Port>() can only meet under the same capability.
+template <class Port> struct ProviderTraits;
+
+// Where the provider runs, from the user's point of view:
+//  Local          - on this machine, inside Tanara (ONNX models ...);
+//  Cloud          - ONLY the Tanara Cloud (sign-in, metered by Tanara);
+//  CustomEndpoint - a service reached with the user's own key / address: Soniox with a BYO key,
+//                   OpenAI, LM Studio, Ollama, a Whisper server - local or remote alike.
+enum class Origin { Local, Cloud, CustomEndpoint };
+
+// What a provider consumes (Traits::inputs).
+enum class InputKind { AudioFile, AudioClip, Pcm, Text };
+
+// Declarative properties the UI and the gating can read without creating the provider.
+struct Traits {
+    // The user's data leaves the machine with the DEFAULT configuration (Soniox: yes; LM Studio on
+    // localhost: no). A custom endpoint's real address decides at run time (isLocalEndpoint()).
+    bool dataLeavesDevice = true;
+    bool metered = false;           // the calls cost money per use
+    bool worksOffline = false;      // works without internet (a local server / model)
+    bool needsModelFile = false;    // needs a downloaded model file (ONNX ...)
+    QVector<InputKind> inputs;
+};
+
 enum class AuthMode { None, ApiKey, Login };          // Login = a future hosted "sign-in"
 enum class ConfigFieldType { Text, Secret, Number, Combo, Url };
 
@@ -55,7 +96,10 @@ struct ConnectionProbe {
 struct ProviderDescriptor {
     QString id;                         // stable id: "soniox", "openai-compat", "tanara-hosted"
     QString displayName;                // human-readable name
-    ProviderKind kind = ProviderKind::Stt;
+    CapabilityKind capability = CapabilityKind::Transcription;   // set by ProviderRegistry::add<Port>()
+    Origin origin = Origin::CustomEndpoint;
+    Traits traits;
+    QString catalogRef;                 // which IModelCatalog lists the models (P10; empty = none)
     AuthMode authMode = AuthMode::ApiKey;
     bool supportsLive = false;          // STT live/streaming
     bool supportsStreaming = false;     // LLM streaming

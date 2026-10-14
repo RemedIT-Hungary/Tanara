@@ -1,5 +1,5 @@
 #include "tanara/library/jobs/JobErrors.h"
-#include "tanara/cloud/CloudTypes.h"
+#include "tanara/providers/chat/LlmContext.h"
 
 #include <QCoreApplication>
 #include <QJsonDocument>
@@ -17,35 +17,6 @@ QString oneLine(const QString& s, int maxLen = 200)
     if (t.size() > maxLen)
         t = t.left(maxLen - 1) + QChar(0x2026);
     return t;
-}
-
-// From the error body a machine code + message (the shapes of several providers).
-void parseErrorBody(const QByteArray& body, QString* code, QString* message)
-{
-    const QJsonDocument doc = QJsonDocument::fromJson(body);
-    if (!doc.isObject())
-        return;
-    const QJsonObject root = doc.object();
-    const QJsonValue ev = root.value(QStringLiteral("error"));
-    if (ev.isObject()) {                       // OpenAI-compatible / Tanara gateway
-        const QJsonObject e = ev.toObject();
-        *code = e.value(QStringLiteral("code")).toVariant().toString();
-        if (code->isEmpty())
-            *code = e.value(QStringLiteral("type")).toString();
-        *message = e.value(QStringLiteral("message")).toString();
-        return;
-    }
-    if (ev.isString())
-        *message = ev.toString();
-    // Soniox: { status_code, error_type, message }
-    if (code->isEmpty())
-        *code = root.value(QStringLiteral("error_type")).toString();
-    if (message->isEmpty())
-        *message = root.value(QStringLiteral("message")).toString();
-    if (message->isEmpty())
-        *message = root.value(QStringLiteral("error_message")).toString();
-    if (message->isEmpty())
-        *message = root.value(QStringLiteral("detail")).toString();
 }
 
 QString settingsHint(JobKind kind)
@@ -132,26 +103,12 @@ JobError describeContextOverflow(JobKind kind, const providers::llmctx::ContextO
     return e;
 }
 
-QString httpFailureDetail(const cloud::HttpExchange& ex)
+QString httpFailureDetail(const net::HttpExchange& ex)
 {
-    if (ex.status <= 0) {
-        const QString net = oneLine(ex.networkError);
-        return net.isEmpty() ? QCoreApplication::translate("JobErrors", "hálózat · nincs válasz")
-                             : QCoreApplication::translate("JobErrors", "hálózat · %1").arg(net);
-    }
-    QString code, message;
-    parseErrorBody(ex.body, &code, &message);
-    QStringList parts{QStringLiteral("HTTP %1").arg(ex.status)};
-    if (!code.isEmpty())
-        parts << oneLine(code, 80);
-    if (!message.isEmpty())
-        parts << oneLine(message);
-    else if (code.isEmpty() && !ex.body.trimmed().isEmpty())
-        parts << oneLine(QString::fromUtf8(ex.body), 160);
-    return parts.join(QStringLiteral(" · "));
+    return net::failureDetail(ex);
 }
 
-JobError describeJobFailure(JobKind kind, const QString& rawMessage, const cloud::HttpExchange* ex,
+JobError describeJobFailure(JobKind kind, const QString& rawMessage, const net::HttpExchange* ex,
                             const ContextFailureHint* context)
 {
     JobError e;
@@ -211,15 +168,15 @@ JobError describeJobFailure(JobKind kind, const QString& rawMessage, const cloud
     return e;
 }
 
-JobError describeCloudFailure(JobKind kind, const cloud::CloudError& ce)
+JobError describeCloudFailure(JobKind kind, const Error& ce)
 {
     JobError e;
     e.kind = kind;
     e.when = QDateTime::currentDateTime();
-    if (ce.kind == cloud::CloudErrorKind::Network || ce.httpStatus <= 0) {
+    if (ce.httpStatus <= 0) {
         e.message = QCoreApplication::translate("JobErrors", "Nem sikerült elérni a Tanara Cloudot. Ellenőrizd a hálózati kapcsolatot.");
-        e.detail = ce.networkError.isEmpty() ? QCoreApplication::translate("JobErrors", "hálózat · nincs válasz")
-                                             : QCoreApplication::translate("JobErrors", "hálózat · %1").arg(oneLine(ce.networkError));
+        e.detail = ce.detail.isEmpty() ? QCoreApplication::translate("JobErrors", "hálózat · nincs válasz")
+                                       : QCoreApplication::translate("JobErrors", "hálózat · %1").arg(oneLine(ce.detail));
         return e;
     }
     const providers::llmctx::ContextOverflow ov =

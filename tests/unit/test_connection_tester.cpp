@@ -269,19 +269,20 @@ private slots:
 
     void builtinProvidersDeclareAProbe()
     {
-        providers::registerBuiltinProviders();
+        providers::ProviderRegistry reg;
+        providers::registerBuiltinProviders(reg);
         // Every built-in (own-key) provider says what can be asked of it for free.
-        for (const providers::ProviderDescriptor& d : providers::SttProviderRegistry::instance().all()) {
+        for (const providers::ProviderDescriptor& d : reg.descriptors(providers::CapabilityKind::Transcription)) {
             if (d.authMode == providers::AuthMode::Login) continue;
             QVERIFY2(d.probe.isValid(), qPrintable(d.id));
             QVERIFY2(d.probe.path.startsWith(QLatin1Char('/')), qPrintable(d.id));
         }
-        for (const providers::ProviderDescriptor& d : providers::LlmProviderRegistry::instance().all()) {
+        for (const providers::ProviderDescriptor& d : reg.descriptors(providers::CapabilityKind::Chat)) {
             if (d.authMode == providers::AuthMode::Login) continue;
             QVERIFY2(d.probe.isValid(), qPrintable(d.id));
         }
         // The "Advanced" fields come from the descriptor.
-        const providers::ProviderDescriptor llm = providers::LlmProviderRegistry::instance().descriptor(QStringLiteral("openai-compat"));
+        const providers::ProviderDescriptor llm = reg.descriptor(providers::CapabilityKind::Chat, QStringLiteral("openai-compat"));
         int advanced = 0;
         for (const providers::ConfigField& f : llm.fields)
             if (f.advanced) ++advanced;

@@ -96,10 +96,12 @@ class ReadinessTests : public QObject {
 private slots:
 
     // The descriptors' (Soniox / OpenAI-compat) required fields need the built-in providers: we
-    // ensure registration before every test (idempotent, see registerBuiltinProviders()).
+    // ensure registration before every test (idempotent, see the built-in registration).
     void initTestCase()
     {
-        providers::registerBuiltinProviders();
+        // The readiness model reads the default registry (it has the built-ins on first use).
+        QVERIFY(providers::ProviderRegistry::defaultInstance().has(providers::CapabilityKind::Transcription,
+                                                                   QStringLiteral("soniox")));
     }
 
     // Transcribe blocks if there is NO (active) audio track: the recording has not happened yet.
@@ -207,7 +209,7 @@ private slots:
     // the descriptor's loginSecretKey (tanara.cloud.apiKey).
     void cloud_blocksUntilLoggedIn()
     {
-        providers::registerCloudProviders();
+        providers::registerCloudProviders(providers::ProviderRegistry::defaultInstance());
         tanara::app::AppSettings s = makeSettings();
         s.providers.stt.selectedId = QStringLiteral("tanara-cloud");
         s.providers.llm.selectedId = QStringLiteral("tanara-cloud");

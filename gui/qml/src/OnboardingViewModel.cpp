@@ -68,8 +68,8 @@ Line readinessLine(const tanara::app::AppSettings& s, bool stt, const providers:
     }
     // A missing secret (API key) or another required field?
     bool secret = false;
-    const providers::ProviderDescriptor d = stt ? providers::SttProviderRegistry::instance().descriptor(r.providerId)
-                                     : providers::LlmProviderRegistry::instance().descriptor(r.providerId);
+    const providers::ProviderDescriptor d = stt ? providers::ProviderRegistry::defaultInstance().descriptor(providers::CapabilityKind::Transcription, r.providerId)
+                                     : providers::ProviderRegistry::defaultInstance().descriptor(providers::CapabilityKind::Chat, r.providerId);
     for (const providers::ConfigField& f : d.fields)
         if (f.key == r.missingFieldKey) secret = f.isSecret;
     out.text = head + QStringLiteral(": ")
@@ -83,7 +83,6 @@ Line readinessLine(const tanara::app::AppSettings& s, bool stt, const providers:
 
 OnboardingViewModel::OnboardingViewModel(QObject* parent) : QObject(parent)
 {
-    providers::registerBuiltinProviders();   // idempotent; needed for the provider names even without a controller
     m_baseTheme = m_draftTheme = AppContext::instance()->themeMode();
     // App.controller binds in the next event-loop turn, if by then the caller has not given its
     // own and has not asked for a demo state.
@@ -531,8 +530,8 @@ void OnboardingViewModel::browseFolder(const QString& key)
 QString OnboardingViewModel::providerLabel(const tanara::app::AppSettings& s, bool stt)
 {
     const QString id = stt ? s.providers.stt.selectedId : s.providers.llm.selectedId;
-    const providers::ProviderDescriptor d = stt ? providers::SttProviderRegistry::instance().descriptor(id)
-                                     : providers::LlmProviderRegistry::instance().descriptor(id);
+    const providers::ProviderDescriptor d = stt ? providers::ProviderRegistry::defaultInstance().descriptor(providers::CapabilityKind::Transcription, id)
+                                     : providers::ProviderRegistry::defaultInstance().descriptor(providers::CapabilityKind::Chat, id);
     if (d.id.isEmpty()) return id;
     const providers::ProviderConfig cfg = stt ? s.providers.stt.selected() : s.providers.llm.selected();
     QString label = d.displayName;

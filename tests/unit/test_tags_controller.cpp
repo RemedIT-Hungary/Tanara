@@ -12,7 +12,7 @@
 #include "tanara/app/SettingsManager.h"
 #include "tanara/library/index/EmbeddingIndex.h"
 #include "tanara/library/index/EmbeddingPreparer.h"
-#include "tanara/providers/embedding/EmbeddingProviderRegistry.h"
+#include "tanara/providers/embedding/ITextEmbedder.h"
 #include "tanara/library/MeetingLibrary.h"
 #include "tanara/library/store/JsonSerialization.h"
 #include "tanara/library/store/MeetingStore.h"

@@ -24,7 +24,8 @@
 #include "tanara/processing/voiceid/VoiceEmbedderSet.h"
 #include "tanara/processing/voiceid/VoiceModelRegistry.h"
 #include "tanara/providers/stt/ISttProvider.h"
-#include "tanara/providers/chat/ILlmProvider.h"
+#include "tanara/providers/chat/IChatProvider.h"
+#include "tanara/providers/chat/ILocalModelServer.h"
 #include "tanara/providers/chat/LlmServer.h"
 #include "tanara/providers/core/ProviderRegistry.h"
 #include "tanara/processing/summary/SummaryService.h"
@@ -32,6 +33,8 @@
 #include "tanara/processing/summary/TranscriptMerger.h"
 #include "tanara/foundation/i18n/Localization.h"
 #include "tanara/cloud/CloudAccount.h"
+#include "tanara/cloud/CloudRunLedger.h"
+#include "tanara/foundation/net/HttpClient.h"
 #include "tanara/library/jobs/MeetingJobTracker.h"
 #include "tanara/library/jobs/JobErrors.h"
 #include "tanara/library/jobs/JobStats.h"
@@ -54,8 +57,7 @@
 #include "tanara/processing/analysis/LlmTagSuggester.h"
 #include "tanara/library/index/EmbeddingIndex.h"
 #include "tanara/library/index/EmbeddingPreparer.h"
-#include "tanara/providers/embedding/EmbeddingProviderRegistry.h"
-#include "tanara/providers/embedding/IEmbeddingProvider.h"
+#include "tanara/providers/embedding/ITextEmbedder.h"
 #include "tanara/editing/undo/MeetingUndo.h"
 #include "tanara/library/store/JsonSerialization.h"
 #include "tanara/processing/voiceid/VoiceModelDownloader.h"
@@ -483,14 +485,14 @@ QString slugify(const QString& s) {
 }
 
 // The last FAILED HTTP exchange of a provider call (for the remembered error's technical line).
-struct FailureSink { bool has = false; cloud::HttpExchange ex; };
+struct FailureSink { bool has = false; net::HttpExchange ex; };
 using FailureSinkPtr = std::shared_ptr<FailureSink>;
 
-// Extends the config's response hook: besides the existing (cloud) hook, non-2xx responses and network
-// errors are also stored in the sink. The failure of cleanup DELETEs does not count.
-void captureFailures(providers::ProviderConfig& cfg, const FailureSinkPtr& sink) {
-    const auto prev = cfg.onExchange;
-    cfg.onExchange = [prev, sink](const cloud::HttpExchange& ex) {
+// Extends the context's response observer: besides the existing (cloud) observer, non-2xx responses and
+// network errors are also stored in the sink. The failure of cleanup DELETEs does not count.
+void captureFailures(providers::ProviderContext& ctx, const FailureSinkPtr& sink) {
+    const auto prev = ctx.observe;
+    ctx.observe = [prev, sink](const net::HttpExchange& ex) {
         if (prev) prev(ex);
         const bool ok = ex.status >= 200 && ex.status < 300;
         if (!ok && ex.method != "DELETE") { sink->has = true; sink->ex = ex; }
@@ -603,6 +605,9 @@ struct AppController::Impl {
 
     // Tanara Cloud.
     cloud::CloudAccount* cloud = nullptr;
+    cloud::CloudRunLedger* cloudLedger = nullptr;   // cloud run bookkeeping (cloud/CloudRunLedger.h)
+    net::HttpClient* http = nullptr;                 // the shared HTTP client of providers + cloud
+    providers::ProviderRegistry providerRegistry;    // this controller's providers (not a singleton)
     bool cloudLive = false;
     bool cloudTeaser = false;
     // Per meeting the cloud run of the open complex summary (topic gathering -> topic analyses -> reduce):
@@ -670,7 +675,7 @@ struct AppController::Impl {
     // A running LLM call (summary / topic gathering / combining / the active topic analysis).
     struct LlmRun {
         QPointer<QObject> svc; QPointer<QObject> provider; CloudRunPtr cloudRun;
-        QPointer<providers::LlmModelPreparer> preparer;   // the model preparation (LM Studio) while it lasts
+        QPointer<providers::ILocalModelServer> preparer;   // the model preparation (LM Studio) while it lasts
     };
     QHash<QString, LlmRun> llmRuns;            // llmKey(meetingId, kind) -> run
     LlmRun activeTopicRun;
@@ -695,7 +700,7 @@ struct AppController::Impl {
     // Preparing the model before an LLM task. For Cloud (and if there is nothing to do) `go` runs at once;
     // for LM Studio, if needed, a load / reload as the task's "model" stage. The caller binds the returned
     // preparer to the run (for cancelling).
-    providers::LlmModelPreparer* prepareLlm(const QString& meetingId, JobKind kind, const providers::ProviderConfig& cfg,
+    providers::ILocalModelServer* prepareLlm(const QString& meetingId, JobKind kind, const providers::ProviderConfig& cfg,
                                  bool cloud, const LlmContextPtr& ctx, std::function<void()> go,
                                  std::function<void(const JobError&)> onFail);
 
@@ -823,33 +828,6 @@ struct AppController::ParticipantUndoScope {
     }
 };
 
-// State of a cloud processing run. Filled by the providers' response hook (onExchange).
-struct AppController::CloudRun {
-    QString meetingId;
-    QString kind;            // transcribe | summary | topics | complex
-    QString jobId;           // X-Tanara-Job-Id: a new random value per run
-    qint64  chargedMicros = 0;
-    QString currency;
-    int     calls = 0;       // successful charging calls
-    cloud::Money   balance;         // the last known balance (after a charge / write-back)
-    QString vatMode;
-    cloud::CloudError lastError;    // the last non-2xx (non-DELETE) response
-    bool    refunded = false;
-    cloud::Money   refund;
-    QString fileId, transcriptionId;
-    QString lastRequestId;
-
-    cloud::Money charged() const { return cloud::Money{ chargedMicros, currency.isEmpty() ? QStringLiteral("USD") : currency }; }
-    void addCharge(const cloud::ChargeInfo& c) {
-        if (!c.valid) return;
-        chargedMicros += c.charge.micros;
-        if (currency.isEmpty()) currency = c.charge.currency;
-        if (c.balance.isValid()) balance = c.balance;
-        if (!c.vatMode.isEmpty()) vatMode = c.vatMode;
-        ++calls;
-    }
-};
-
 bool AppController::Impl::voiceModelUsable() const
 {
     if (voiceSet.isEmpty()) return false;
@@ -902,7 +880,7 @@ JobError AppController::Impl::describeLlmFailure(JobKind kind, const QString& ra
                                                  const LlmContextPtr& ctx) const
 {
     if (run && run->lastError.isError())
-        return library::describeCloudFailure(kind, run->lastError);
+        return library::describeCloudFailure(kind, cloud::toError(run->lastError));
     library::ContextFailureHint hint;
     hint.cloud = bool(run);
     if (ctx) {
@@ -912,17 +890,23 @@ JobError AppController::Impl::describeLlmFailure(JobKind kind, const QString& ra
     return describeJobFailure(kind, raw, (sink && sink->has) ? &sink->ex : nullptr, &hint);
 }
 
-providers::LlmModelPreparer* AppController::Impl::prepareLlm(const QString& meetingId, JobKind kind,
+providers::ILocalModelServer* AppController::Impl::prepareLlm(const QString& meetingId, JobKind kind,
                                                   const providers::ProviderConfig& cfg, bool cloud,
                                                   const LlmContextPtr& ctx, std::function<void()> go,
                                                   std::function<void(const JobError&)> onFail)
 {
     // Behind Tanara Cloud there is no native API: neither a probe nor a load.
     if (cloud) { go(); return nullptr; }
-    auto* prep = new providers::LlmModelPreparer(cfg, q);
+    // The selected chat provider's local-server handler (LM Studio for "openai-compat"); none = nothing
+    // to prepare.
+    providers::ProviderContext pctx;
+    pctx.http = http;
+    auto* prep = providerRegistry.create<providers::ILocalModelServer>(
+        settings->settings().providers.llm.selectedId, pctx, cfg, q);
+    if (!prep) { go(); return nullptr; }
     prep->setBusyCheck([this] { return otherLlmBusy(); });
     const int floor = contextFloor.take(serverKey(cfg));
-    QObject::connect(prep, &providers::LlmModelPreparer::loadingStarted, prep, [this, prep, meetingId, kind](int ctxLen) {
+    QObject::connect(prep, &providers::ILocalModelServer::loadingStarted, prep, [this, prep, meetingId, kind](int ctxLen) {
         // Visible first stage: "Loading the model" (cancellable like the rest of the task).
         QVector<JobStage> stages = jobs->job(meetingId, kind).stages;
         const QStringList others = prep->serverInfo().otherLoaded;
@@ -935,7 +919,7 @@ providers::LlmModelPreparer* AppController::Impl::prepareLlm(const QString& meet
         emit q->jobProgress(meetingId, AppController::tr("Modell betöltése (%1 tokenes kontextus)…")
                                            .arg(QStringLiteral("%L1").arg(ctxLen)));
     });
-    QObject::connect(prep, &providers::LlmModelPreparer::ready, prep, [this, prep, meetingId, kind, ctx, go] {
+    QObject::connect(prep, &providers::ILocalModelServer::ready, prep, [this, prep, meetingId, kind, ctx, go] {
         ctx->lmStudio = prep->serverInfo().isLmStudio();
         ctx->loadedContext = prep->loadedContext();
         if (jobs->job(meetingId, kind).stage(QStringLiteral("model")))
@@ -943,7 +927,7 @@ providers::LlmModelPreparer* AppController::Impl::prepareLlm(const QString& meet
         prep->deleteLater();
         go();
     });
-    QObject::connect(prep, &providers::LlmModelPreparer::failed, prep, [this, prep, meetingId, kind, onFail](JobError e) {
+    QObject::connect(prep, &providers::ILocalModelServer::failed, prep, [this, prep, meetingId, kind, onFail](JobError e) {
         e.kind = kind;
         if (jobs->job(meetingId, kind).stage(QStringLiteral("model")))
             jobs->setStage(meetingId, kind, QStringLiteral("model"), StageState::Failed);
@@ -1007,7 +991,7 @@ AppController::AppController(QObject* parent)
     : QObject(parent), d(std::make_unique<Impl>())
 {
     d->q = this;
-    providers::registerBuiltinProviders();
+    providers::registerBuiltinProviders(d->providerRegistry);
 
     d->settings = new SettingsManager(QString(), this);
     const AppSettings s = d->settings->settings();
@@ -1019,8 +1003,12 @@ AppController::AppController(QObject* parent)
         const bool wantLive = mode == QLatin1String("live") || (mode.isEmpty() && s.cloud.enabled);
         d->cloudLive   = !off && cloud::clientCompiled() && wantLive;
         d->cloudTeaser = !off && !d->cloudLive && cloud::teaserCompiled();
-        if (d->cloudLive)
-            providers::registerCloudProviders();   // feature flag: without it the "tanara-cloud" id does not even exist
+        if (d->cloudLive) {
+            // Feature flag: without it the "tanara-cloud" id does not even exist. The default registry
+            // (GUI listing, TODO(P15): remove) gets it too.
+            providers::registerCloudProviders(d->providerRegistry);
+            providers::registerCloudProviders(providers::ProviderRegistry::defaultInstance());
+        }
     }
     // Every location from AppPaths (platform convention / "paths" section / TANARA_HOME).
     const paths::AppPaths& ap = d->settings->paths();
@@ -1043,15 +1031,21 @@ AppController::AppController(QObject* parent)
                 if (!desc.loginSecretKey.isEmpty() && !known.contains(desc.loginSecretKey)) known << desc.loginSecretKey;
             }
         };
-        collect(providers::SttProviderRegistry::instance().all());
-        collect(providers::LlmProviderRegistry::instance().all());
-        collect(providers::EmbeddingProviderRegistry::instance().all());
+        collect(d->providerRegistry.descriptors(providers::CapabilityKind::Transcription));
+        collect(d->providerRegistry.descriptors(providers::CapabilityKind::Chat));
+        collect(d->providerRegistry.descriptors(providers::CapabilityKind::TextEmbedding));
         secrets::OpenResult opened = secrets::open(s.secrets, ap.dataFile(paths::files::Secrets), known);
         d->secrets = std::move(opened.store);
         d->secretsWarning = opened.warning;
     }
 
+    d->http = new net::HttpClient(this);
     d->cloud = new cloud::CloudAccount(d->secrets.get(), d->metaDir, this);
+    d->cloud->setHttpClient(d->http);
+    d->cloudLedger = new cloud::CloudRunLedger(d->cloud, this);
+    connect(d->cloudLedger, &cloud::CloudRunLedger::charged, this, &AppController::cloudCharged);
+    connect(d->cloudLedger, &cloud::CloudRunLedger::refunded, this, &AppController::cloudRefunded);
+    connect(d->cloudLedger, &cloud::CloudRunLedger::failed, this, &AppController::cloudError);
     {
         const QString envUrl = qEnvironmentVariable("TANARA_CLOUD_URL").trimmed();
         d->cloud->setBaseUrl(!envUrl.isEmpty() ? envUrl : s.cloud.baseUrl);
@@ -2400,7 +2394,8 @@ providers::ReadinessResult AppController::canRun(providers::WorkflowStep step, c
 {
     const Meeting meeting = d->store->load(meetingId);
     providers::ReadinessModel model(d->settings->settings().providers,
-                         [this](const QString& k) { return !d->secrets->get(k).isEmpty(); });
+                         [this](const QString& k) { return !d->secrets->get(k).isEmpty(); },
+                         &d->providerRegistry);
     providers::ReadinessResult r = model.check(step, meeting);
     if (!r.runnable || !usesCloud(step))
         return r;
@@ -2430,6 +2425,7 @@ providers::ReadinessResult AppController::canRun(providers::WorkflowStep step, c
 
 cloud::CloudAccount* AppController::cloud() const { return d->cloud; }
 bool AppController::cloudLive() const { return d->cloudLive; }
+providers::ProviderRegistry& AppController::providerRegistry() const { return d->providerRegistry; }
 bool AppController::cloudTeaser() const { return d->cloudTeaser; }
 
 bool AppController::usesCloud(providers::WorkflowStep step) const
@@ -2535,72 +2531,24 @@ cloud::EstimateRequest AppController::makeEstimateRequest(const QString& meeting
 
 AppController::CloudRunPtr AppController::newCloudRun(const QString& meetingId, const QString& kind) const
 {
-    auto run = std::make_shared<CloudRun>();
-    run->meetingId = meetingId;
-    run->kind = kind;
-    run->jobId = QUuid::createUuid().toString(QUuid::WithoutBraces);
-    return run;
+    return d->cloudLedger->newRun(meetingId, kind);
 }
 
-providers::ProviderConfig AppController::cloudConfig(providers::WorkflowStep step, const CloudRunPtr& run,
-                                          const QString& summaryMode) const
+providers::ProviderConfig AppController::cloudConfig(providers::WorkflowStep step) const
 {
-    providers::ProviderConfig cfg;
-    cfg.type = cloud::ProviderId;
-    cfg.baseUrl = d->cloud->apiBase();
-    cfg.apiKey = d->cloud->apiKey();
-    cfg.model = cloudModelFor(step);
-    cfg.temperature = 0.2;
-    cfg.maxTokens = kCloudMaxTokens;
-    cfg.extraHeaders = d->cloud->requestHeaders(run ? run->jobId : QString(),
-                                                step == providers::WorkflowStep::Summarize ? summaryMode : QString());
-    QPointer<cloud::CloudAccount> acc = d->cloud;
-    cfg.onExchange = [acc, run](const cloud::HttpExchange& ex) {
-        if (acc) acc->observeExchange(ex);
-        if (!run) return;
-        const QString rid = QString::fromUtf8(ex.headers.value(QByteArrayLiteral("x-tanara-request-id")));
-        if (!rid.isEmpty()) run->lastRequestId = rid;
-        const bool ok = ex.status >= 200 && ex.status < 300;
-        if (!ok) {
-            if (ex.method != "DELETE")   // the failure of cleanup DELETEs must not overwrite the real error
-                run->lastError = cloud::parseCloudError(ex.status, ex.headers, ex.body, ex.networkError);
-            return;
-        }
-        const QJsonObject o = QJsonDocument::fromJson(ex.body).object();
-        static const QRegularExpression statusPath(QStringLiteral("/transcriptions/[^/]+$"));
-        if (ex.method == "POST" && ex.path.endsWith(QLatin1String("/files"))) {
-            run->fileId = o.value(QStringLiteral("id")).toString();
-        } else if (ex.method == "POST" && ex.path.endsWith(QLatin1String("/transcriptions"))) {
-            run->transcriptionId = o.value(QStringLiteral("id")).toString();
-            cloud::ChargeInfo c = cloud::chargeInfoFromJson(o.value(QStringLiteral("tanara")).toObject());
-            if (!c.valid) c = cloud::chargeInfoFromHeaders(ex.headers);
-            run->addCharge(c);
-            // The id of the transcription in progress (for the startup write-back check).
-            if (acc) acc->addPendingTranscription(run->transcriptionId, run->fileId);
-        } else if (ex.method == "POST" && ex.path.endsWith(QLatin1String("/chat/completions"))) {
-            cloud::ChargeInfo c = cloud::chargeInfoFromJson(o.value(QStringLiteral("usage")).toObject()
-                                                  .value(QStringLiteral("tanara_charge")).toObject());
-            if (!c.valid) c = cloud::chargeInfoFromHeaders(ex.headers);
-            run->addCharge(c);
-        } else if (ex.method == "GET" && statusPath.match(ex.path).hasMatch()) {
-            // The write-back shows in the response that first gives status: error; the provider sends the DELETE
-            // ONLY after that (we read out the tanara field first).
-            const cloud::TranscriptionJobInfo j = cloud::transcriptionJobInfoFromJson(o);
-            if (j.refunded) {
-                run->refunded = true;
-                run->refund = j.refund;
-                if (j.balance.isValid()) {
-                    run->balance = j.balance;
-                    if (acc) emit acc->balanceChanged(j.balance);
-                }
-            }
-        }
-    };
-    return cfg;
+    return d->cloudLedger->configFor(cloudModelFor(step), kCloudMaxTokens);
+}
+
+providers::ProviderContext AppController::providerContext(const CloudRunPtr& run, const QString& summaryMode) const
+{
+    if (run) return d->cloudLedger->contextFor(run, summaryMode, d->http);
+    providers::ProviderContext ctx;   // own key / address: the config's apiKey, no hooks
+    ctx.http = d->http;
+    return ctx;
 }
 
 providers::ProviderConfig AppController::llmConfigFor(CloudRunPtr& run, const QString& meetingId,
-                                           const QString& kind, const QString& summaryMode) const
+                                           const QString& kind) const
 {
     if (!usesCloud(providers::WorkflowStep::Summarize)) {
         providers::ProviderConfig cfg = d->settings->settings().providers.llm.selected();
@@ -2608,37 +2556,18 @@ providers::ProviderConfig AppController::llmConfigFor(CloudRunPtr& run, const QS
         return cfg;
     }
     if (!run) run = newCloudRun(meetingId, kind);
-    return cloudConfig(providers::WorkflowStep::Summarize, run, summaryMode);
+    return cloudConfig(providers::WorkflowStep::Summarize);
 }
 
 void AppController::finishCloudRun(const CloudRunPtr& run)
 {
-    if (!run) return;
-    if (!run->transcriptionId.isEmpty())
-        d->cloud->removePendingTranscription(run->transcriptionId);
-    if (run->calls > 0)
-        emit cloudCharged(run->meetingId, run->kind, run->charged(), run->calls, run->balance, run->vatMode);
-    if (run->balance.isValid() || run->calls > 0)
-        d->cloud->refreshAccount();   // refreshing low_balance / hours_left / notices
+    d->cloudLedger->finish(run);   // cloudCharged (forwarded)
 }
 
 void AppController::failCloudRun(const CloudRunPtr& run, const QString& fallbackMessage)
 {
-    if (run && !run->transcriptionId.isEmpty())
-        d->cloud->removePendingTranscription(run->transcriptionId);
-    if (run && run->refunded) {
-        emit cloudRefunded(run->meetingId, run->refund, run->balance, run->lastRequestId);
-        d->cloud->refreshAccount();
-        return;
-    }
-    if (run && run->lastError.isError()) {
-        if (run->lastError.kind == cloud::CloudErrorKind::ClientTooOld)
-            emit d->cloud->clientTooOldDetected(run->lastError.minClient);
-        emit cloudError(run->meetingId, run->kind, run->lastError, run->charged());
-        if (run->calls > 0) d->cloud->refreshAccount();
-        return;
-    }
-    emit errorOccurred(fallbackMessage);
+    if (!d->cloudLedger->fail(run))   // cloudRefunded / cloudError (forwarded)
+        emit errorOccurred(fallbackMessage);
 }
 
 void AppController::transcribeMeeting(const QString& meetingId)
@@ -2781,13 +2710,14 @@ void AppController::transcribeFromMixdown(const QString& meetingId)
     bool cloudDiarization = true;
     if (usesCloud(providers::WorkflowStep::Transcribe)) {
         run = newCloudRun(meetingId, QStringLiteral("transcribe"));
-        cfg = cloudConfig(providers::WorkflowStep::Transcribe, run, QString());
+        cfg = cloudConfig(providers::WorkflowStep::Transcribe);
         const std::optional<cloud::CloudModel> cm = findModel(d->cloud->models(), cfg.model);
         cloudDiarization = !cm.has_value() || cm->diarization;
     } else {
         // The API key's slot is provider-dependent: the descriptor's secretKey tells it (soniox.apiKey /
         // stt.whisper.apiKey / ...); we do not hardcode it to Soniox.
-        const providers::ProviderDescriptor sttDesc = providers::SttProviderRegistry::instance().descriptor(sttId);
+        const providers::ProviderDescriptor sttDesc =
+            d->providerRegistry.descriptor(providers::CapabilityKind::Transcription, sttId);
         for (const providers::ConfigField& f : sttDesc.fields)
             if (f.isSecret && !f.secretKey.isEmpty()) {
                 cfg.apiKey = d->secrets->get(f.secretKey);
@@ -2797,9 +2727,11 @@ void AppController::transcribeFromMixdown(const QString& meetingId)
     // Remembering the last failed HTTP exchange (in own-key mode too): this becomes the remembered error's
     // technical line ("HTTP 401 | invalid_api_key").
     const auto sink = std::make_shared<FailureSink>();
-    captureFailures(cfg, sink);
+    providers::ProviderContext pctx = providerContext(run, QString());
+    captureFailures(pctx, sink);
 
-    providers::ISttProvider* provider = providers::SttProviderRegistry::instance().create(sttId, cfg, this);
+    providers::ISttProvider* provider =
+        d->providerRegistry.create<providers::ISttProvider>(sttId, pctx, cfg, this);
     if (!provider) {
         abortJob(tr("Ismeretlen STT-provider: %1.").arg(sttId));
         return;
@@ -2989,7 +2921,7 @@ void AppController::transcribeFromMixdown(const QString& meetingId)
             return;
         }
         JobError je = (run && run->lastError.isError())
-            ? library::describeCloudFailure(JobKind::Transcribe, run->lastError)
+            ? library::describeCloudFailure(JobKind::Transcribe, cloud::toError(run->lastError))
             : library::describeJobFailure(JobKind::Transcribe, e, sink->has ? &sink->ex : nullptr);
         d->jobs->fail(meetingId, JobKind::Transcribe, je);
         failCloudRun(run, tr("Átírás-hiba: %1").arg(e));
@@ -3033,10 +2965,11 @@ void AppController::summarizeMeeting(const QString& meetingId)
     const AppSettings s = d->settings->settings();
     const QString llmId = s.providers.llm.selectedId;
     CloudRunPtr run;   // cloud: ONE run (one job id) for all the note and merge calls
-    providers::ProviderConfig cfg = llmConfigFor(run, meetingId, QStringLiteral("summary"), QStringLiteral("quick"));
+    providers::ProviderConfig cfg = llmConfigFor(run, meetingId, QStringLiteral("summary"));
     const auto sink = std::make_shared<FailureSink>();
-    captureFailures(cfg, sink);
-    providers::ILlmProvider* provider = providers::LlmProviderRegistry::instance().create(llmId, cfg, this);
+    providers::ProviderContext pctx = providerContext(run, QStringLiteral("quick"));
+    captureFailures(pctx, sink);
+    providers::IChatProvider* provider = d->providerRegistry.create<providers::IChatProvider>(llmId, pctx, cfg, this);
     if (!provider) {
         emit errorOccurred(tr("Ismeretlen LLM-provider: %1.").arg(llmId));
         return;
@@ -3170,7 +3103,7 @@ void AppController::summarizeMeeting(const QString& meetingId)
     });
 
     // Preparing the model (LM Studio: loading with the needed context), then it starts.
-    providers::LlmModelPreparer* prep = d->prepareLlm(meetingId, JobKind::Summarize, cfg, bool(run), ctx,
+    providers::ILocalModelServer* prep = d->prepareLlm(meetingId, JobKind::Summarize, cfg, bool(run), ctx,
         [this, svc = QPointer<processing::SummaryService>(svc), req, ctx, cfg, clock]() mutable {
             if (!svc) return;
             clock->restart();   // the model load does not count in the run's speed (estimate)
@@ -3238,10 +3171,12 @@ void AppController::extractMeetingTopics(const QString& meetingId)
 
     const AppSettings s = d->settings->settings();
     CloudRunPtr run;
-    providers::ProviderConfig cfg = llmConfigFor(run, meetingId, QStringLiteral("topics"), QStringLiteral("complex"));
+    providers::ProviderConfig cfg = llmConfigFor(run, meetingId, QStringLiteral("topics"));
     const auto sink = std::make_shared<FailureSink>();
-    captureFailures(cfg, sink);
-    providers::ILlmProvider* provider = providers::LlmProviderRegistry::instance().create(s.providers.llm.selectedId, cfg, this);
+    providers::ProviderContext pctx = providerContext(run, QStringLiteral("complex"));
+    captureFailures(pctx, sink);
+    providers::IChatProvider* provider =
+        d->providerRegistry.create<providers::IChatProvider>(s.providers.llm.selectedId, pctx, cfg, this);
     if (!provider) { emit errorOccurred(tr("Ismeretlen LLM-provider: %1.").arg(s.providers.llm.selectedId)); return; }
     QObject* providerObj = dynamic_cast<QObject*>(provider);
     auto* svc = new processing::ComplexSummaryService(provider, this);
@@ -3293,7 +3228,7 @@ void AppController::extractMeetingTopics(const QString& meetingId)
         failCloudRun(run, tr("Téma-kinyerés hiba: %1").arg(je.message));
     });
 
-    providers::LlmModelPreparer* prep = d->prepareLlm(m.id, JobKind::ExtractTopics, cfg, bool(run), ctx,
+    providers::ILocalModelServer* prep = d->prepareLlm(m.id, JobKind::ExtractTopics, cfg, bool(run), ctx,
         [svc = QPointer<processing::ComplexSummaryService>(svc), transcriptMd, note = m.contextNote.trimmed(),
          topicPrompt, cfg, clock]() {
             clock->restart();   // the model load does not count in the run's speed (estimate)
@@ -3484,10 +3419,12 @@ void AppController::startNextTopicJob()
         d->complexRuns.insert(m.id, run);
     }
     if (run) run->kind = QStringLiteral("complex");   // after topic gathering, the analysis stage
-    providers::ProviderConfig cfg = llmConfigFor(run, m.id, QStringLiteral("complex"), QStringLiteral("complex"));
+    providers::ProviderConfig cfg = llmConfigFor(run, m.id, QStringLiteral("complex"));
     const auto sink = std::make_shared<FailureSink>();
-    captureFailures(cfg, sink);
-    providers::ILlmProvider* provider = providers::LlmProviderRegistry::instance().create(s.providers.llm.selectedId, cfg, this);
+    providers::ProviderContext pctx = providerContext(run, QStringLiteral("complex"));
+    captureFailures(pctx, sink);
+    providers::IChatProvider* provider =
+        d->providerRegistry.create<providers::IChatProvider>(s.providers.llm.selectedId, pctx, cfg, this);
     if (!provider) { failEarly(tr("Ismeretlen LLM-provider: %1.").arg(s.providers.llm.selectedId)); return; }
     QObject* providerObj = dynamic_cast<QObject*>(provider);
     auto* svc = new processing::ComplexSummaryService(provider, this);
@@ -3564,7 +3501,7 @@ void AppController::startNextTopicJob()
         startNextTopicJob();
     });
 
-    providers::LlmModelPreparer* prep = d->prepareLlm(m.id, JobKind::AnalyzeTopics, cfg, bool(run), ctx,
+    providers::ILocalModelServer* prep = d->prepareLlm(m.id, JobKind::AnalyzeTopics, cfg, bool(run), ctx,
         [svc = QPointer<processing::ComplexSummaryService>(svc), transcriptMd, topic = job.topic,
          note = m.contextNote.trimmed(), analysisPrompt, cfg]() {
             if (svc) svc->requestTopicAnalysis(transcriptMd, topic, note, analysisPrompt,
@@ -3603,10 +3540,12 @@ void AppController::finalizeComplexSummary(const QString& meetingId)
 
     const AppSettings s = d->settings->settings();
     CloudRunPtr run = d->complexRuns.take(meetingId);   // the batch's run (if any) continues
-    providers::ProviderConfig cfg = llmConfigFor(run, meetingId, QStringLiteral("complex"), QStringLiteral("complex"));
+    providers::ProviderConfig cfg = llmConfigFor(run, meetingId, QStringLiteral("complex"));
     const auto sink = std::make_shared<FailureSink>();
-    captureFailures(cfg, sink);
-    providers::ILlmProvider* provider = providers::LlmProviderRegistry::instance().create(s.providers.llm.selectedId, cfg, this);
+    providers::ProviderContext pctx = providerContext(run, QStringLiteral("complex"));
+    captureFailures(pctx, sink);
+    providers::IChatProvider* provider =
+        d->providerRegistry.create<providers::IChatProvider>(s.providers.llm.selectedId, pctx, cfg, this);
     if (!provider) { emit errorOccurred(tr("Ismeretlen LLM-provider: %1.").arg(s.providers.llm.selectedId)); return; }
     QObject* providerObj = dynamic_cast<QObject*>(provider);
     auto* svc = new processing::ComplexSummaryService(provider, this);
@@ -3695,7 +3634,7 @@ void AppController::finalizeComplexSummary(const QString& meetingId)
         finishCloudRun(run);   // "The summary cost $0.46 (12 parts)."
     });
 
-    providers::LlmModelPreparer* prep = d->prepareLlm(meetingId, JobKind::Summarize, cfg, bool(run), ctx,
+    providers::ILocalModelServer* prep = d->prepareLlm(meetingId, JobKind::Summarize, cfg, bool(run), ctx,
         [svc = QPointer<processing::ComplexSummaryService>(svc), ordered, note = m.contextNote.trimmed(), cfg]() {
             if (svc) svc->requestReduce(ordered, note, cfg.model, cfg.temperature, cfg.maxTokens);
         },
@@ -4134,8 +4073,9 @@ void AppController::startLlmTagSuggestions(const QString& meetingId, const QVect
         if (!prev.isEmpty() && prev != meetingId) publishTagSuggestions(prev, d->pendingTags.value(prev));
     }
     CloudRunPtr run;
-    const providers::ProviderConfig cfg = llmConfigFor(run, meetingId, QStringLiteral("tags"), QStringLiteral("quick"));
-    providers::ILlmProvider* provider = providers::LlmProviderRegistry::instance().create(s.providers.llm.selectedId, cfg, this);
+    const providers::ProviderConfig cfg = llmConfigFor(run, meetingId, QStringLiteral("tags"));
+    providers::IChatProvider* provider = d->providerRegistry.create<providers::IChatProvider>(
+        s.providers.llm.selectedId, providerContext(run, QStringLiteral("quick")), cfg, this);
     if (!provider) {
         publishTagSuggestions(meetingId, d->pendingTags.value(meetingId));
         return;
@@ -4184,7 +4124,7 @@ void AppController::setEmbeddingProvider(const QString& providerId, const provid
 void AppController::applyEmbeddingSettings(bool restart)
 {
     const AppSettings s = d->settings->settings();
-    const QString id = providers::EmbeddingProviderRegistry::instance().has(s.providers.embedding.selectedId)
+    const QString id = d->providerRegistry.has(providers::CapabilityKind::TextEmbedding, s.providers.embedding.selectedId)
         ? s.providers.embedding.selectedId : QString();
     providers::ProviderConfig base = s.providers.embedding.selected();
     // The Tanara Cloud variant has no model field: the gateway's default model.
@@ -4200,21 +4140,20 @@ void AppController::applyEmbeddingSettings(bool restart)
 
     library::EmbeddingPreparer::ProviderFactory factory;
     if (!key.isEmpty()) {
-        factory = [this, id](QObject* parent) -> providers::IEmbeddingProvider* {
+        factory = [this, id](QObject* parent) -> providers::ITextEmbedder* {
             const AppSettings cur = d->settings->settings();
             providers::ProviderConfig cfg = cur.providers.embedding.configs.value(id);
             cfg.type = id;
+            providers::ProviderContext pctx;
+            pctx.http = d->http;
             if (id == providers::embeddingproviders::CloudId) {
-                // The same sign-in and header set as on the LLM path (/v1/embeddings).
+                // The same sign-in and header set as on the LLM path (/v1/embeddings), outside any run.
                 cfg.baseUrl = d->cloud->apiBase();
-                cfg.apiKey = d->cloud->apiKey();
-                cfg.extraHeaders = d->cloud->requestHeaders(QUuid::createUuid().toString(QUuid::WithoutBraces));
-                QPointer<cloud::CloudAccount> acc = d->cloud;
-                cfg.onExchange = [acc](const cloud::HttpExchange& ex) { if (acc) acc->observeExchange(ex); };
+                pctx = d->cloudLedger->contextFor(nullptr, QString(), d->http);
             } else {
                 cfg.apiKey = d->secrets->get(providers::embeddingproviders::ApiKeySecret);
             }
-            return providers::EmbeddingProviderRegistry::instance().create(id, cfg, parent);
+            return d->providerRegistry.create<providers::ITextEmbedder>(id, pctx, cfg, parent);
         };
     }
     // A model change: the old embeddings cannot be compared to the new ones, so start over.

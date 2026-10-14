@@ -8,7 +8,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
-#include <QNetworkAccessManager>
+#include "tanara/foundation/net/HttpClient.h"
 #include <QNetworkReply>
 #include <QNetworkRequest>
 #include <QTimer>
@@ -218,7 +218,7 @@ int ConnectionTester::test(const ProviderDescriptor& descriptor, const ProviderC
         return id;
     }
 
-    if (!m_nam) m_nam = new QNetworkAccessManager(this);
+    if (!m_http) m_http = new net::HttpClient(this);
     QNetworkRequest req(url);
     req.setTransferTimeout(m_timeoutMs);
     req.setRawHeader(QByteArrayLiteral("Accept"), QByteArrayLiteral("application/json"));
@@ -227,7 +227,7 @@ int ConnectionTester::test(const ProviderDescriptor& descriptor, const ProviderC
                          QByteArrayLiteral("Bearer ") + cfg.apiKey.trimmed().toUtf8());
 
     const qint64 started = QDateTime::currentMSecsSinceEpoch();
-    QNetworkReply* reply = m_nam->get(req);
+    QNetworkReply* reply = m_http->get(req);
     m_replies.insert(id, reply);
     connect(reply, &QNetworkReply::finished, this, [this, id, reply, started, descriptor, cfg] {
         onFinished(id, reply, started, descriptor, cfg);
@@ -267,8 +267,9 @@ void ConnectionTester::onFinished(int id, QNetworkReply* reply, qint64 startedMs
     }
     // An LLM with your own key: the native server API (LM Studio): loaded context, parallelism.
     // Read-only (GET); if there is no such API, the result is unchanged.
-    if (r.ok() && d.kind == ProviderKind::Llm && d.authMode != AuthMode::Login) {
+    if (r.ok() && d.capability == CapabilityKind::Chat && d.authMode != AuthMode::Login) {
         auto* probe = new LlmServerProbe(this);
+        probe->setHttpClient(m_http);
         probe->setTimeoutMs(qMin(m_timeoutMs, 3000));
         m_probes.insert(id, probe);
         connect(probe, &LlmServerProbe::finished, this, [this, id, probe, r](const llmctx::LlmServerInfo& info) mutable {

@@ -339,7 +339,7 @@ void JobTrackerTest::removedMeetingForgotten()
 
 void JobTrackerTest::describeHttp401()
 {
-    cloud::HttpExchange ex;
+    net::HttpExchange ex;
     ex.method = "POST";
     ex.path = QStringLiteral("/v1/files");
     ex.status = 401;
@@ -362,7 +362,7 @@ void JobTrackerTest::describeHttp401()
 
 void JobTrackerTest::describeNetworkAndServerErrors()
 {
-    cloud::HttpExchange net;
+    net::HttpExchange net;
     net.method = "POST";
     net.status = 0;
     net.networkError = QStringLiteral("Connection refused");
@@ -370,14 +370,14 @@ void JobTrackerTest::describeNetworkAndServerErrors()
     QVERIFY(e.message.contains(QStringLiteral("elérni")));
     QVERIFY(e.detail.contains(QStringLiteral("Connection refused")));
 
-    cloud::HttpExchange srv;
+    net::HttpExchange srv;
     srv.status = 503;
     srv.body = "upstream down";
     const JobError e5 = library::describeJobFailure(JobKind::Transcribe, QStringLiteral("x"), &srv);
     QCOMPARE(e5.detail, QStringLiteral("HTTP 503 · upstream down"));
     QVERIFY(e5.fixActionHint.isEmpty());
 
-    cloud::HttpExchange rate;
+    net::HttpExchange rate;
     rate.status = 429;
     QCOMPARE(library::describeJobFailure(JobKind::Transcribe, QStringLiteral("x"), &rate).detail, QStringLiteral("HTTP 429"));
 }
@@ -396,7 +396,7 @@ void JobTrackerTest::describeCloud()
     const cloud::CloudError ce = cloud::parseCloudError(402, {},
         R"({"error":{"code":"insufficient_balance","message":"Nincs elég egyenleg.","request_id":"req_1"}})");
     QVERIFY(ce.isError());
-    const JobError e = library::describeCloudFailure(JobKind::Transcribe, ce);
+    const JobError e = library::describeCloudFailure(JobKind::Transcribe, cloud::toError(ce));
     QCOMPARE(e.message, QStringLiteral("Nincs elég egyenleg."));
     QCOMPARE(e.detail, QStringLiteral("HTTP 402 · insufficient_balance · req_1"));
 }

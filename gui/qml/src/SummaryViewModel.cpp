@@ -555,7 +555,7 @@ void SummaryViewModel::reload()
         if (doc.meta.providerId == cloud::ProviderId) {
             meta << (m_metaProvider = QStringLiteral("Tanara Cloud"));
         } else if (!doc.meta.providerId.isEmpty()) {
-            const QString name = providers::LlmProviderRegistry::instance().descriptor(doc.meta.providerId).displayName;
+            const QString name = providers::ProviderRegistry::defaultInstance().descriptor(providers::CapabilityKind::Chat, doc.meta.providerId).displayName;
             meta << (m_metaProvider = name.isEmpty() ? tr("saját kulcs") : tr("%1 · saját kulcs").arg(name));
         }
         m_metaLine = meta.join(QStringLiteral(" · "));

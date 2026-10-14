@@ -6,7 +6,7 @@
 #include "tanara/providers/stt/SonioxProvider.h"
 #include "tanara/providers/stt/WhisperCompatProvider.h"
 #include "tanara/providers/chat/OpenAiCompatibleProvider.h"
-#include "tanara/providers/embedding/EmbeddingProviderRegistry.h"
+#include "tanara/providers/chat/LlmServer.h"
 #include "tanara/providers/embedding/OpenAiCompatibleEmbeddingProvider.h"
 
 #include <QCoreApplication>
@@ -16,13 +16,38 @@ namespace tanara::providers {
 
 namespace {
 
+// Origin (see ProviderDescriptor.h): Cloud = ONLY the Tanara Cloud; every service reached with the
+// user's own key / address (Soniox BYO, OpenAI, LM Studio, Ollama, a Whisper server) = CustomEndpoint;
+// Local = runs inside Tanara on this machine. dataLeavesDevice reflects the DEFAULT address.
+Traits remoteTraits(InputKind input, bool metered)
+{
+    Traits t;
+    t.dataLeavesDevice = true;
+    t.metered = metered;
+    t.worksOffline = false;
+    t.inputs = {input};
+    return t;
+}
+
+Traits localServerTraits(InputKind input)
+{
+    Traits t;
+    t.dataLeavesDevice = false;   // the default address is localhost
+    t.metered = false;
+    t.worksOffline = true;
+    t.inputs = {input};
+    return t;
+}
+
 // --- Soniox STT descriptor ---
 ProviderDescriptor sonioxDescriptor()
 {
     ProviderDescriptor d;
     d.id                  = QStringLiteral("soniox");
     d.displayName         = QStringLiteral("Soniox");
-    d.kind                = ProviderKind::Stt;
+    d.capability          = CapabilityKind::Transcription;
+    d.origin              = Origin::CustomEndpoint;   // BYO key
+    d.traits              = remoteTraits(InputKind::AudioFile, /*metered*/ true);
     d.authMode            = AuthMode::ApiKey;
     d.supportsDiarization = true;
     d.networkRequired     = true;
@@ -60,7 +85,9 @@ ProviderDescriptor openAiCompatDescriptor()
     ProviderDescriptor d;
     d.id                = QStringLiteral("openai-compat");
     d.displayName       = QCoreApplication::translate("BuiltinProviders", "OpenAI-kompatibilis végpont");
-    d.kind              = ProviderKind::Llm;
+    d.capability        = CapabilityKind::Chat;
+    d.origin            = Origin::CustomEndpoint;     // LM Studio / Ollama / OpenAI
+    d.traits            = localServerTraits(InputKind::Text);
     d.authMode          = AuthMode::ApiKey;
     d.supportsStreaming = false;
 
@@ -115,8 +142,10 @@ ProviderDescriptor whisperCompatDescriptor()
     d.id          = QStringLiteral("whisper-compat");
     d.displayName = QCoreApplication::translate("BuiltinProviders",
                                                 "Whisper (OpenAI-kompatibilis)");
-    d.kind     = ProviderKind::Stt;
-    d.authMode = AuthMode::ApiKey;
+    d.capability = CapabilityKind::Transcription;
+    d.origin     = Origin::CustomEndpoint;            // a local whisper server or the OpenAI API
+    d.traits     = localServerTraits(InputKind::AudioFile);
+    d.authMode   = AuthMode::ApiKey;
     d.supportsDiarization = false;   // every token is "Speaker 1"; the name comes from voice ID
 
     ConfigField baseUrl;
@@ -161,12 +190,16 @@ ProviderDescriptor whisperCompatDescriptor()
 }
 
 // --- Tanara Cloud (STT and LLM with the same id, separately in the two registries) ---
-ProviderDescriptor tanaraCloudDescriptor(ProviderKind kind)
+ProviderDescriptor tanaraCloudDescriptor(CapabilityKind kind)
 {
     ProviderDescriptor d;
     d.id                  = QStringLiteral("tanara-cloud");
     d.displayName         = QCoreApplication::translate("BuiltinProviders", "Tanara Cloud — bejelentkezés");
-    d.kind                = kind;
+    d.capability          = kind;
+    d.origin              = Origin::Cloud;
+    d.traits              = remoteTraits(kind == CapabilityKind::Transcription ? InputKind::AudioFile
+                                                                               : InputKind::Text,
+                                         /*metered*/ true);
     d.authMode            = AuthMode::Login;
     d.loginSecretKey      = QStringLiteral("tanara.cloud.apiKey");
     d.supportsDiarization = true;    // the Accurate tier diarizes; Fast does not (catalog metadata)
@@ -182,7 +215,9 @@ ProviderDescriptor openAiCompatEmbeddingDescriptor()
     ProviderDescriptor d;
     d.id          = embeddingproviders::LocalId;
     d.displayName = QCoreApplication::translate("BuiltinProviders", "Helyi végpont");
-    d.kind        = ProviderKind::Embedding;
+    d.capability  = CapabilityKind::TextEmbedding;
+    d.origin      = Origin::CustomEndpoint;
+    d.traits      = localServerTraits(InputKind::Text);
     d.authMode    = AuthMode::ApiKey;
     d.networkRequired = false;
 
@@ -224,71 +259,83 @@ ProviderDescriptor tanaraHostedEmbeddingDescriptor()
     ProviderDescriptor d;
     d.id              = embeddingproviders::CloudId;
     d.displayName     = QCoreApplication::translate("BuiltinProviders", "Tanara Cloud");
-    d.kind            = ProviderKind::Embedding;
+    d.capability      = CapabilityKind::TextEmbedding;
+    d.origin          = Origin::Cloud;
+    d.traits          = remoteTraits(InputKind::Text, /*metered*/ true);
     d.authMode        = AuthMode::Login;
     d.loginSecretKey  = QStringLiteral("tanara.cloud.apiKey");
     d.networkRequired = true;
     return d;
 }
 
+// --- LM Studio: the local model server handler of the OpenAI-compatible chat provider ---
+ProviderDescriptor lmStudioServerDescriptor()
+{
+    ProviderDescriptor d;
+    d.id              = QStringLiteral("openai-compat");   // the chat provider it belongs to
+    d.displayName     = QStringLiteral("LM Studio");
+    d.capability      = CapabilityKind::LocalModelServer;
+    d.origin          = Origin::CustomEndpoint;
+    d.traits          = localServerTraits(InputKind::Text);
+    d.authMode        = AuthMode::ApiKey;
+    d.networkRequired = false;
+    return d;
+}
+
 } // namespace
 
-void registerCloudProviders()
+void registerCloudProviders(ProviderRegistry& registry)
 {
-    static bool registered = false;
-    if (registered)
-        return;
-    registered = true;
-
-    SttProviderRegistry::instance().registerProvider(
-        tanaraCloudDescriptor(ProviderKind::Stt),
-        [](const ProviderConfig& c, QObject* p) -> ISttProvider* {
-            return new SonioxProvider(c, p);           // the gateway is Soniox-shaped
+    registry.add<ISttProvider>(
+        tanaraCloudDescriptor(CapabilityKind::Transcription),
+        [](const ProviderContext& ctx, const ProviderConfig& c, QObject* p) -> ISttProvider* {
+            return new SonioxProvider(ctx, c, p);           // the gateway is Soniox-shaped
         });
-    LlmProviderRegistry::instance().registerProvider(
-        tanaraCloudDescriptor(ProviderKind::Llm),
-        [](const ProviderConfig& c, QObject* p) -> ILlmProvider* {
-            return new OpenAiCompatibleProvider(c, p); // the gateway is OpenAI-shaped
+    registry.add<IChatProvider>(
+        tanaraCloudDescriptor(CapabilityKind::Chat),
+        [](const ProviderContext& ctx, const ProviderConfig& c, QObject* p) -> IChatProvider* {
+            return new OpenAiCompatibleProvider(ctx, c, p); // the gateway is OpenAI-shaped
         });
 }
 
-void registerBuiltinProviders()
+void registerBuiltinProviders(ProviderRegistry& registry)
 {
-    // Idempotent: repeated calls (e.g. several AppControllers) must not duplicate.
-    static bool registered = false;
-    if (registered)
-        return;
-    registered = true;
-
-    SttProviderRegistry::instance().registerProvider(
+    registry.add<ISttProvider>(
         sonioxDescriptor(),
-        [](const ProviderConfig& c, QObject* p) -> ISttProvider* {
-            return new SonioxProvider(c, p);
+        [](const ProviderContext& ctx, const ProviderConfig& c, QObject* p) -> ISttProvider* {
+            return new SonioxProvider(ctx, c, p);
         });
 
-    SttProviderRegistry::instance().registerProvider(
+    registry.add<ISttProvider>(
         whisperCompatDescriptor(),
-        [](const ProviderConfig& c, QObject* p) -> ISttProvider* {
-            return new WhisperCompatProvider(c, p);
+        [](const ProviderContext& ctx, const ProviderConfig& c, QObject* p) -> ISttProvider* {
+            return new WhisperCompatProvider(ctx, c, p);
         });
 
-    LlmProviderRegistry::instance().registerProvider(
+    registry.add<IChatProvider>(
         openAiCompatDescriptor(),
-        [](const ProviderConfig& c, QObject* p) -> ILlmProvider* {
-            return new OpenAiCompatibleProvider(c, p);
+        [](const ProviderContext& ctx, const ProviderConfig& c, QObject* p) -> IChatProvider* {
+            return new OpenAiCompatibleProvider(ctx, c, p);
+        });
+    // The optional local-server handler of the same chat provider (LM Studio's native API; for another
+    // server it reports "unknown" and the task starts without preparation).
+    registry.add<ILocalModelServer>(
+        lmStudioServerDescriptor(),
+        [](const ProviderContext& ctx, const ProviderConfig& c, QObject* p) -> ILocalModelServer* {
+            return new LlmModelPreparer(ctx, c, p);
         });
 
     // Embedding (tag suggestions): both descriptors are always registered; the Tanara Cloud variant stops
     // with a structured gateway error without sign-in (the UI offers the login).
-    EmbeddingProviderRegistry::instance().registerProvider(
+    registry.add<ITextEmbedder>(
         openAiCompatEmbeddingDescriptor(),
-        [](const ProviderConfig& c, QObject* p) -> IEmbeddingProvider* {
-            return new OpenAiCompatibleEmbeddingProvider(c, p);
+        [](const ProviderContext& ctx, const ProviderConfig& c, QObject* p) -> ITextEmbedder* {
+            return new OpenAiCompatibleEmbeddingProvider(ctx, c, p);
         });
-    EmbeddingProviderRegistry::instance().registerProvider(
+    registry.add<ITextEmbedder>(
         tanaraHostedEmbeddingDescriptor(),
-        [](const ProviderConfig& c, QObject* p) -> IEmbeddingProvider* {
-            return new OpenAiCompatibleEmbeddingProvider(c, p);   // the gateway is OpenAI-shaped
+        [](const ProviderContext& ctx, const ProviderConfig& c, QObject* p) -> ITextEmbedder* {
+            return new OpenAiCompatibleEmbeddingProvider(ctx, c, p);   // the gateway is OpenAI-shaped
         });
 }
 

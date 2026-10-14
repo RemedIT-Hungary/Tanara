@@ -1,6 +1,8 @@
 #pragma once
 // Minimal in-process fake HTTP server for the tests (NO real network / LM Studio call): logs
 // every request, the handler gives the reply. The pattern of test_llm_context.cpp.
+// The providers reach it through the common HTTP client (tanara::net::HttpClient, given in the
+// ProviderContext or created by the provider); test_http_client.cpp tests the client itself here.
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QObject>
@@ -14,7 +16,12 @@
 namespace fakehttp {
 
 struct Request { QByteArray method; QString path; QByteArray head; QByteArray body; };
-struct Reply { int status = 200; QByteArray body = "{}"; bool hold = false; };
+struct Reply {
+    int status = 200;
+    QByteArray body = "{}";
+    bool hold = false;            // never answer (timeout tests)
+    QByteArray headers;           // extra raw header lines, each ending in "\r\n"
+};
 
 class Server : public QObject {
 public:
@@ -67,7 +74,8 @@ private:
         const Reply rep = handler ? handler(req) : Reply{};
         if (rep.hold) return;
         s->write("HTTP/1.1 " + QByteArray::number(rep.status) + " X\r\nContent-Type: application/json\r\n"
-                 "Content-Length: " + QByteArray::number(rep.body.size()) + "\r\nConnection: close\r\n\r\n"
+                 + rep.headers
+                 + "Content-Length: " + QByteArray::number(rep.body.size()) + "\r\nConnection: close\r\n\r\n"
                  + rep.body);
         s->disconnectFromHost();
     }

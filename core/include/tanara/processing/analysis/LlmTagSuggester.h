@@ -17,7 +17,7 @@
 #include <QObject>
 #include <QPointer>
 
-namespace tanara::providers { class ILlmProvider; }
+#include "tanara/providers/chat/ILlmProvider.h"   // the chat port (old name, TODO(P15))
 namespace tanara::providers { class LlmJob; }
 namespace tanara::library { class TagService; }
 

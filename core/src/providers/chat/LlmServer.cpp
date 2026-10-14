@@ -1,14 +1,13 @@
 #include "tanara/providers/chat/LlmServer.h"
 #include "tanara/providers/core/ProviderConfig.h"
-#include "tanara/cloud/CloudTypes.h"
-#include "tanara/library/jobs/JobErrors.h"
+#include "tanara/foundation/error/Error.h"
+#include "tanara/foundation/net/HttpClient.h"
 
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QHash>
 #include <QJsonDocument>
 #include <QJsonObject>
-#include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QNetworkRequest>
 #include <QTimer>
@@ -29,11 +28,11 @@ QHash<QString, ProbeCacheEntry>& probeCache()
     return cache;
 }
 
-void authorize(QNetworkRequest& req, const ProviderConfig& cfg)
+void authorize(QNetworkRequest& req, const QString& key)
 {
-    if (!cfg.apiKey.trimmed().isEmpty())
+    if (!key.trimmed().isEmpty())
         req.setRawHeader(QByteArrayLiteral("Authorization"),
-                         QByteArrayLiteral("Bearer ") + cfg.apiKey.trimmed().toUtf8());
+                         QByteArrayLiteral("Bearer ") + key.trimmed().toUtf8());
 }
 
 QString groupedTokens(int n) { return QStringLiteral("%L1").arg(n); }
@@ -50,6 +49,12 @@ LlmServerProbe::LlmServerProbe(QObject* parent) : QObject(parent)
 LlmServerProbe::~LlmServerProbe()
 {
     cancel();
+}
+
+net::HttpClient* LlmServerProbe::client()
+{
+    if (!m_http) m_http = new net::HttpClient(this);
+    return m_http;
 }
 
 void LlmServerProbe::invalidateCache(const QString& baseUrl)
@@ -99,12 +104,11 @@ void LlmServerProbe::probe(const ProviderConfig& cfg, bool useCache)
             return;
         }
     }
-    if (!m_nam) m_nam = new QNetworkAccessManager(this);
     QNetworkRequest req(url);
     req.setTransferTimeout(m_timeoutMs);
     req.setRawHeader(QByteArrayLiteral("Accept"), QByteArrayLiteral("application/json"));
-    authorize(req, cfg);
-    QNetworkReply* reply = m_nam->get(req);
+    authorize(req, cfg.apiKey);
+    QNetworkReply* reply = client()->get(req);
     m_reply = reply;
     connect(reply, &QNetworkReply::finished, this, [this, reply, gen, root, model] {
         reply->deleteLater();
@@ -130,7 +134,12 @@ void LlmServerProbe::probe(const ProviderConfig& cfg, bool useCache)
 // ---- LlmModelPreparer -----------------------------------------------------------------------
 
 LlmModelPreparer::LlmModelPreparer(const ProviderConfig& cfg, QObject* parent)
-    : QObject(parent), m_cfg(cfg)
+    : LlmModelPreparer(ProviderContext{}, cfg, parent)
+{
+}
+
+LlmModelPreparer::LlmModelPreparer(const ProviderContext& ctx, const ProviderConfig& cfg, QObject* parent)
+    : ILocalModelServer(parent), m_ctx(ctx), m_cfg(cfg), m_http(ctx.http)
 {
 }
 
@@ -161,9 +170,12 @@ void LlmModelPreparer::start(int need, int floor)
     m_need = need;
     m_floor = floor;
     m_probe = new LlmServerProbe(this);
+    m_probe->setHttpClient(m_http);
     m_probe->setTimeoutMs(m_probeTimeoutMs);
     connect(m_probe, &LlmServerProbe::finished, this, &LlmModelPreparer::onProbed);
-    m_probe->probe(m_cfg);
+    ProviderConfig probeCfg = m_cfg;
+    probeCfg.apiKey = m_ctx.bearer(m_cfg);
+    m_probe->probe(probeCfg);
 }
 
 void LlmModelPreparer::onProbed(const LlmServerInfo& info)
@@ -205,12 +217,12 @@ void LlmModelPreparer::onProbed(const LlmServerInfo& info)
 
 QNetworkReply* LlmModelPreparer::post(const QString& path, const QByteArray& json, int timeoutMs)
 {
-    if (!m_nam) m_nam = new QNetworkAccessManager(this);
+    if (!m_http) m_http = new net::HttpClient(this);
     QNetworkRequest req(QUrl(nativeApiRoot(m_cfg.baseUrl) + path));
     req.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
     req.setTransferTimeout(timeoutMs);
-    authorize(req, m_cfg);
-    QNetworkReply* reply = m_nam->post(req, json);
+    authorize(req, m_ctx.bearer(m_cfg));
+    QNetworkReply* reply = m_http->post(req, json);
     m_reply = reply;
     return reply;
 }
@@ -238,7 +250,7 @@ void LlmModelPreparer::unloadNext()
         }
         fail(QCoreApplication::translate("LlmServer", "Nem sikerült kivenni a(z) „%1” modell régi példányát az LM Studióból, ezért "
                  "nem tölthető be újra nagyobb kontextussal.").arg(id),
-             QCoreApplication::translate("LlmServer", "kivétel · %1").arg(library::httpFailureDetail(cloud::makeHttpExchange(reply, data))),
+             QCoreApplication::translate("LlmServer", "kivétel · %1").arg(net::failureDetail(net::makeHttpExchange(reply, data))),
              QStringLiteral("settings:llm-context"));
     });
 }
@@ -263,7 +275,7 @@ void LlmModelPreparer::load()
         LlmServerProbe::invalidateCache(m_cfg.baseUrl);
         const QByteArray data = reply->readAll();
         const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
-        const cloud::HttpExchange ex = cloud::makeHttpExchange(reply, data);
+        const net::HttpExchange ex = net::makeHttpExchange(reply, data);
         if (status >= 200 && status < 300) {
             const QJsonObject root = QJsonDocument::fromJson(data).object();
             const int got = root.value(QStringLiteral("load_config")).toObject()
@@ -279,7 +291,7 @@ void LlmModelPreparer::load()
             emit ready();
             return;
         }
-        const QString detail = QCoreApplication::translate("LlmServer", "betöltés · %1").arg(library::httpFailureDetail(ex));
+        const QString detail = QCoreApplication::translate("LlmServer", "betöltés · %1").arg(net::failureDetail(ex));
         if (status <= 0) {
             fail(QCoreApplication::translate("LlmServer", "Az LM Studio nem válaszolt a(z) „%1” modell betöltése közben.").arg(m_info.modelKey),
                  detail, QStringLiteral("settings:llm-context"));

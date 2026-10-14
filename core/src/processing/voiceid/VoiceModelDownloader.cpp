@@ -4,7 +4,7 @@
 #include <QFile>
 #include <QTimer>
 #include <QFileInfo>
-#include <QNetworkAccessManager>
+#include "tanara/foundation/net/HttpClient.h"
 #include <QNetworkInformation>
 #include <QNetworkReply>
 #include <QNetworkRequest>
@@ -44,13 +44,13 @@ VoiceModelDownloader::~VoiceModelDownloader()
     m_jobs.clear();
 }
 
-void VoiceModelDownloader::setNetworkAccessManager(QNetworkAccessManager* nam) { m_nam = nam; }
+void VoiceModelDownloader::setHttpClient(net::HttpClient* http) { m_http = http; }
 
-QNetworkAccessManager* VoiceModelDownloader::nam()
+net::HttpClient* VoiceModelDownloader::http()
 {
-    if (m_nam) return m_nam;
-    if (!m_ownNam) m_ownNam = new QNetworkAccessManager(this);
-    return m_ownNam;
+    if (m_http) return m_http;
+    if (!m_ownHttp) m_ownHttp = new net::HttpClient(this);
+    return m_ownHttp;
 }
 
 QString VoiceModelDownloader::targetPath(const VoiceModelSpec& spec, const QString& modelsDir)
@@ -134,7 +134,7 @@ bool VoiceModelDownloader::start(const VoiceModelSpec& spec, const QString& targ
 
     QNetworkRequest req{url};
     req.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
-    QNetworkReply* reply = nam()->get(req);
+    QNetworkReply* reply = http()->get(req);
     job->reply = reply;
 
     connect(reply, &QNetworkReply::readyRead, this, [this, id]() {

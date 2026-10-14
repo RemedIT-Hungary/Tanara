@@ -17,12 +17,13 @@
 
 #include <QHash>
 #include <QObject>
+#include <QPointer>
 #include <QString>
 #include <QStringList>
 
 #include <optional>
 
-class QNetworkAccessManager;
+namespace tanara::net { class HttpClient; }
 
 namespace tanara::processing {
 
@@ -55,8 +56,8 @@ public:
     explicit VoiceModelDownloader(QObject* parent = nullptr);
     ~VoiceModelDownloader() override;
 
-    // The NAM in use (not owned; nullptr = its own instance). Test seam.
-    void setNetworkAccessManager(QNetworkAccessManager* nam);
+    // The HTTP client in use (not owned; nullptr = its own instance). Test seam / the shared client.
+    void setHttpClient(net::HttpClient* http);
 
     // The download target: <modelsDir>/<fileName> (the first resolution place of VoiceModelRegistry).
     static QString targetPath(const VoiceModelSpec& spec, const QString& modelsDir);
@@ -111,10 +112,10 @@ private:
     struct Job;
     void finishJob(const QString& id);
     void fail(const QString& id, Failure why, const QString& error);
-    QNetworkAccessManager* nam();
+    net::HttpClient* http();
 
-    QNetworkAccessManager* m_nam = nullptr;
-    QNetworkAccessManager* m_ownNam = nullptr;
+    QPointer<net::HttpClient> m_http;
+    net::HttpClient* m_ownHttp = nullptr;
     QHash<QString, Job*> m_jobs;
     QHash<QString, Failure> m_last;
     std::optional<bool> m_reachableOverride;

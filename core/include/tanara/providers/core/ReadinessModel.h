@@ -12,6 +12,8 @@
 
 namespace tanara::providers {
 
+class ProviderRegistry;
+
 enum class WorkflowStep { Record, Transcribe, Summarize };   // Identify is SOFT: not here
 // Cloud = a Tanara Cloud-specific obstacle (client too old, out of balance):
 // fixActionHint: "cloud:update" | "cloud:topup". AppController::canRun adds it.
@@ -32,13 +34,17 @@ public:
     // So the ReadinessModel does not depend on the SecretStore's concrete type / constness.
     using SecretProbe = std::function<bool(const QString& secretKey)>;
 
-    ReadinessModel(const ProviderSettings& settings, SecretProbe hasSecret);
+    // registry: where the selected providers' descriptors come from (not owned; must outlive the
+    // model); nullptr = ProviderRegistry::defaultInstance() (TODO(P15): required).
+    ReadinessModel(const ProviderSettings& settings, SecretProbe hasSecret,
+                   const ProviderRegistry* registry = nullptr);
 
     ReadinessResult check(WorkflowStep step, const Meeting& meeting) const;
 
 private:
     ProviderSettings m_settings;     // a value type, a copy is enough
     SecretProbe m_hasSecret;
+    const ProviderRegistry* m_registry = nullptr;
 };
 
 } // namespace tanara::providers

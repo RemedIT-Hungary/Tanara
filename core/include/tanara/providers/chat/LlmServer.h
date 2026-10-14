@@ -13,18 +13,20 @@
 //    is not running another request on it. At most ONE load attempt per task; failure gives an
 //    understandable error.
 //
-// The Tanara Cloud path does not use these (it has no native API).
+// LlmModelPreparer is the ILocalModelServer handler of the "openai-compat" chat provider
+// (registerBuiltinProviders()). The Tanara Cloud path does not use these (it has no native API).
 #include "tanara/domain/Types.h"
 #include "tanara/providers/core/ProviderConfig.h"
+#include "tanara/providers/core/ProviderContext.h"
 #include "tanara/domain/Job.h"
 #include "tanara/providers/chat/LlmContext.h"
+#include "tanara/providers/chat/ILocalModelServer.h"
 
 #include <QObject>
 #include <QPointer>
 
 #include <functional>
 
-class QNetworkAccessManager;
 class QNetworkReply;
 
 namespace tanara::providers {
@@ -36,6 +38,9 @@ public:
 
     explicit LlmServerProbe(QObject* parent = nullptr);
     ~LlmServerProbe() override;
+
+    // The HTTP client to use (not owned); none = an own one.
+    void setHttpClient(net::HttpClient* http) { m_http = http; }
 
     void setTimeoutMs(int ms) { m_timeoutMs = ms; }
     // Query; the result comes in the finished signal (asynchronous even on a cache hit).
@@ -49,41 +54,38 @@ signals:
     void finished(const tanara::providers::llmctx::LlmServerInfo& info);
 
 private:
-    QNetworkAccessManager* m_nam = nullptr;
+    net::HttpClient* client();
+
+    QPointer<net::HttpClient> m_http;
     QPointer<QNetworkReply> m_reply;
     int m_timeoutMs = 3000;
     quint64 m_generation = 0;
 };
 
-class LlmModelPreparer : public QObject {
+class LlmModelPreparer : public ILocalModelServer {
     Q_OBJECT
 public:
     explicit LlmModelPreparer(const ProviderConfig& cfg, QObject* parent = nullptr);
+    LlmModelPreparer(const ProviderContext& ctx, const ProviderConfig& cfg, QObject* parent = nullptr);
     ~LlmModelPreparer() override;
 
     // True if Tanara is currently running ANOTHER LLM request (then we do not unload the model).
-    void setBusyCheck(std::function<bool()> busy) { m_busy = std::move(busy); }
+    void setBusyCheck(std::function<bool()> busy) override { m_busy = std::move(busy); }
     void setProbeTimeoutMs(int ms) { m_probeTimeoutMs = ms; }
     void setLoadTimeoutMs(int ms) { m_loadTimeoutMs = ms; }
 
     // need: the task's estimated context need; floor: the requested minimum (0 = none).
-    void start(int need, int floor = 0);
+    void start(int need, int floor = 0) override;
     // Drops the running query / unload / load; no signal follows.
-    void cancel();
+    void cancel() override;
 
-    const llmctx::LlmServerInfo& serverInfo() const { return m_info; }
+    const llmctx::LlmServerInfo& serverInfo() const override { return m_info; }
     const llmctx::PreloadDecision& decision() const { return m_decision; }
     // The model's context after ready (-1: unknown, e.g. not LM Studio).
-    int loadedContext() const { return m_loadedContext; }
+    int loadedContext() const override { return m_loadedContext; }
     bool didLoad() const { return m_didLoad; }
 
-signals:
-    // A load / reload begins (the task's "Loading the model..." stage).
-    void loadingStarted(int contextLength);
-    // The task may start.
-    void ready();
-    // Preparation failed (the caller sets the kind).
-    void failed(const tanara::JobError& error);
+    // (signals loadingStarted / ready / failed: ILocalModelServer)
 
 private:
     void onProbed(const llmctx::LlmServerInfo& info);
@@ -92,8 +94,9 @@ private:
     QNetworkReply* post(const QString& path, const QByteArray& json, int timeoutMs);
     void fail(const QString& message, const QString& detail, const QString& hint);
 
+    ProviderContext m_ctx;
     ProviderConfig m_cfg;
-    QNetworkAccessManager* m_nam = nullptr;
+    QPointer<net::HttpClient> m_http;      // m_ctx.http, or an own one (lazily)
     LlmServerProbe* m_probe = nullptr;
     QPointer<QNetworkReply> m_reply;
     std::function<bool()> m_busy;

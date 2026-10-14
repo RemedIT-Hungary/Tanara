@@ -21,6 +21,7 @@
 
 #include "tanara/domain/Types.h"
 #include "tanara/cloud/CloudAccount.h"
+#include "tanara/cloud/CloudRunLedger.h"
 #include "tanara/cloud/CloudTypes.h"
 #include "tanara/providers/chat/OpenAiCompatibleProvider.h"
 #include "tanara/foundation/secrets/SecretStore.h"
@@ -53,7 +54,8 @@ private slots:
 private:
     void mockConfig(const QJsonObject& cfg);
     QJsonObject mockState();
-    providers::ProviderConfig gatewayConfig(const QString& model, QVector<cloud::HttpExchange>* log);
+    providers::ProviderConfig gatewayConfig(const QString& model) const;
+    providers::ProviderContext gatewayContext(QVector<net::HttpExchange>* log);
 
     QProcess m_mock;
     int m_port = 0;
@@ -61,6 +63,8 @@ private:
     QTemporaryDir m_dir;
     std::unique_ptr<FileSecretStore> m_keys;
     std::unique_ptr<cloud::CloudAccount> m_acc;
+    std::unique_ptr<cloud::CloudRunLedger> m_ledger;
+    cloud::CloudRunPtr m_run;   // the run of the last gatewayContext()
     QNetworkAccessManager m_nam;
 };
 
@@ -90,6 +94,7 @@ void TestCloudGateway::initTestCase()
 
     m_keys = std::make_unique<FileSecretStore>(m_dir.filePath("secrets.json"));
     m_acc = std::make_unique<cloud::CloudAccount>(m_keys.get(), m_dir.path());
+    m_ledger = std::make_unique<cloud::CloudRunLedger>(m_acc.get());
     m_acc->setBaseUrl(m_base + "/v1/");      // the /v1 and the trailing / are trimmed
     QCOMPARE(m_acc->apiBase(), m_base + "/v1");
     m_acc->setLanguage("hu");
@@ -122,19 +127,21 @@ QJsonObject TestCloudGateway::mockState()
     return QJsonDocument::fromJson(rep->readAll()).object();
 }
 
-// The same gateway config that AppController builds for the "tanara-cloud" provider.
-providers::ProviderConfig TestCloudGateway::gatewayConfig(const QString& model, QVector<cloud::HttpExchange>* log)
+// The same gateway config + context that AppController gets from the CloudRunLedger for the
+// "tanara-cloud" provider (one run, job id "job-test-1", summary mode "quick").
+providers::ProviderConfig TestCloudGateway::gatewayConfig(const QString& model) const
 {
-    providers::ProviderConfig cfg;
-    cfg.type = cloud::ProviderId;
-    cfg.baseUrl = m_acc->apiBase();
-    cfg.apiKey = m_acc->apiKey();
-    cfg.model = model;
-    cfg.maxTokens = 4000;
-    cfg.extraHeaders = m_acc->requestHeaders(QStringLiteral("job-test-1"), QStringLiteral("quick"));
-    cloud::CloudAccount* acc = m_acc.get();
-    cfg.onExchange = [acc, log](const cloud::HttpExchange& ex) { acc->observeExchange(ex); log->append(ex); };
-    return cfg;
+    return m_ledger->configFor(model, 4000);
+}
+
+providers::ProviderContext TestCloudGateway::gatewayContext(QVector<net::HttpExchange>* log)
+{
+    m_run = m_ledger->newRun(QStringLiteral("m1"), QStringLiteral("test"));
+    m_run->jobId = QStringLiteral("job-test-1");
+    providers::ProviderContext ctx = m_ledger->contextFor(m_run, QStringLiteral("quick"), nullptr);
+    const net::ExchangeObserver ledgerObserver = ctx.observe;
+    ctx.observe = [ledgerObserver, log](const net::HttpExchange& ex) { ledgerObserver(ex); log->append(ex); };
+    return ctx;
 }
 
 void TestCloudGateway::waitlist_acceptedAndErrors()
@@ -399,8 +406,8 @@ void TestCloudGateway::stt_throughGateway_chargeAndRefund()
     }
     for (const bool refund : { false, true }) {
         mockConfig({ { "refund", refund } });
-        QVector<cloud::HttpExchange> log;
-        providers::SonioxProvider p(gatewayConfig(QStringLiteral("tanara/stt-accurate"), &log));
+        QVector<net::HttpExchange> log;
+        providers::SonioxProvider p(gatewayContext(&log), gatewayConfig(QStringLiteral("tanara/stt-accurate")));
         providers::SttRequest req;
         req.audioFilePath = audio;
         req.trackId = "mixdown";
@@ -410,12 +417,27 @@ void TestCloudGateway::stt_throughGateway_chargeAndRefund()
         QSignalSpy fail(job, &providers::SttJob::failed);
         QTRY_VERIFY_WITH_TIMEOUT(fin.count() + fail.count() > 0, 15000);
         QTest::qWait(300);   // feedback of the cleanup DELETEs
+        // The app closes the run through the ledger (AppController::finishCloudRun / failCloudRun):
+        // charged on success, refunded on the written-back failure; the pending id goes away.
+        QVERIFY(!m_run->transcriptionId.isEmpty());
+        if (fin.count() > 0) {
+            QSignalSpy charged(m_ledger.get(), &cloud::CloudRunLedger::charged);
+            m_ledger->finish(m_run);
+            QCOMPARE(charged.count(), 1);
+            QVERIFY(m_run->chargedMicros > 0);
+        } else {
+            QSignalSpy refunded(m_ledger.get(), &cloud::CloudRunLedger::refunded);
+            QVERIFY(m_ledger->fail(m_run));
+            QCOMPARE(refunded.count(), 1);
+            QVERIFY(m_run->refunded);
+        }
+        QVERIFY(!m_acc->pendingTranscriptions().contains(m_run->transcriptionId));
 
         // Every request went with the shared headers, and every response has a request id.
         QVERIFY(!log.isEmpty());
-        for (const cloud::HttpExchange& ex : log)
+        for (const net::HttpExchange& ex : log)
             QVERIFY2(ex.headers.contains("x-tanara-request-id"), qPrintable(ex.path));
-        const auto create = std::find_if(log.cbegin(), log.cend(), [](const cloud::HttpExchange& ex) {
+        const auto create = std::find_if(log.cbegin(), log.cend(), [](const net::HttpExchange& ex) {
             return ex.method == "POST" && ex.path.endsWith("/transcriptions"); });
         QVERIFY(create != log.cend());
         const cloud::ChargeInfo ch = cloud::chargeInfoFromJson(QJsonDocument::fromJson(create->body).object().value("tanara").toObject());
@@ -423,7 +445,7 @@ void TestCloudGateway::stt_throughGateway_chargeAndRefund()
         QVERIFY(ch.charge.micros > 0);
         QCOMPARE(cloud::chargeInfoFromHeaders(create->headers).charge.micros, ch.charge.micros);
         QCOMPARE(ch.jobId, QStringLiteral("job-test-1"));
-        QVERIFY(std::any_of(log.cbegin(), log.cend(), [](const cloud::HttpExchange& ex) {
+        QVERIFY(std::any_of(log.cbegin(), log.cend(), [](const net::HttpExchange& ex) {
             return ex.method == "DELETE" && ex.path.contains("/transcriptions/"); }));
 
         if (!refund) {
@@ -454,8 +476,8 @@ void TestCloudGateway::stt_throughGateway_chargeAndRefund()
 
 void TestCloudGateway::llm_throughGateway_charge_and402()
 {
-    QVector<cloud::HttpExchange> log;
-    providers::OpenAiCompatibleProvider p(gatewayConfig(QStringLiteral("tanara/summary-fast"), &log));
+    QVector<net::HttpExchange> log;
+    providers::OpenAiCompatibleProvider p(gatewayContext(&log), gatewayConfig(QStringLiteral("tanara/summary-fast")));
     providers::LlmRequest req;
     req.messages = { { "system", "Összefoglaló." }, { "user", "Rövid átirat." } };
     req.maxTokens = 4000;
@@ -467,6 +489,9 @@ void TestCloudGateway::llm_throughGateway_charge_and402()
     const cloud::ChargeInfo c = cloud::chargeInfoFromJson(usage.value("tanara_charge").toObject());
     QVERIFY(c.valid && c.charge.micros > 0);
     QCOMPARE(c.jobId, QStringLiteral("job-test-1"));
+    // The ledger booked the charge into the run (through the context's cost sink).
+    QCOMPARE(m_run->calls, 1);
+    QCOMPARE(m_run->chargedMicros, c.charge.micros);
     // The mock's log: the summary mode and the job id in the usage record (grouping).
     const QJsonObject last = mockState().value("usage").toArray().last().toObject();
     QCOMPARE(last.value("summary_mode").toString(), QStringLiteral("quick"));
@@ -490,14 +515,14 @@ void TestCloudGateway::pending_refundAtStartup()
 {
     // A "half-finished" transcription: the client saved the id, then quit.
     mockConfig({ { "refund", true } });
-    QVector<cloud::HttpExchange> log;
+    QVector<net::HttpExchange> log;
     const QString audio = m_dir.filePath("mixdown.mp3");
-    providers::SonioxProvider p(gatewayConfig(QStringLiteral("tanara/stt-accurate"), &log));
+    providers::SonioxProvider p(gatewayContext(&log), gatewayConfig(QStringLiteral("tanara/stt-accurate")));
     providers::SttRequest req; req.audioFilePath = audio; req.trackId = "mixdown";
     providers::SttJob* job = p.transcribe(req);
-    QTRY_VERIFY_WITH_TIMEOUT(std::any_of(log.cbegin(), log.cend(), [](const cloud::HttpExchange& ex) {
+    QTRY_VERIFY_WITH_TIMEOUT(std::any_of(log.cbegin(), log.cend(), [](const net::HttpExchange& ex) {
         return ex.method == "POST" && ex.path.endsWith("/transcriptions"); }), 8000);
-    const auto create = std::find_if(log.cbegin(), log.cend(), [](const cloud::HttpExchange& ex) {
+    const auto create = std::find_if(log.cbegin(), log.cend(), [](const net::HttpExchange& ex) {
         return ex.method == "POST" && ex.path.endsWith("/transcriptions"); });
     const QString trId = QJsonDocument::fromJson(create->body).object().value("id").toString();
     delete job;   // "quit": it no longer polled the status

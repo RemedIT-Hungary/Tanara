@@ -10,7 +10,7 @@
 
 #include "tanara/app/AppController.h"
 #include "tanara/app/SettingsManager.h"
-#include "tanara/providers/embedding/EmbeddingProviderRegistry.h"
+#include "tanara/providers/embedding/ITextEmbedder.h"
 #include "tanara/library/tags/TagService.h"
 
 #include "../unit/fake_http.h"

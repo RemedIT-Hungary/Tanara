@@ -21,8 +21,8 @@
 #include <QPointer>
 #include <QStringList>
 
-class QNetworkAccessManager;
 class QNetworkReply;
+namespace tanara::net { class HttpClient; }
 
 namespace tanara::providers {
 
@@ -63,6 +63,8 @@ public:
     explicit ConnectionTester(QObject* parent = nullptr);
     ~ConnectionTester() override;
 
+    // The HTTP client to use (not owned); none = an own one.
+    void setHttpClient(net::HttpClient* http) { m_http = http; }
     void setTimeoutMs(int ms) { m_timeoutMs = ms; }
     int timeoutMs() const { return m_timeoutMs; }
 
@@ -84,7 +86,7 @@ private:
     void onFinished(int id, QNetworkReply* reply, qint64 startedMs, const ProviderDescriptor& d,
                     const ProviderConfig& cfg);
 
-    QNetworkAccessManager* m_nam = nullptr;
+    QPointer<net::HttpClient> m_http;
     QHash<int, QPointer<QNetworkReply>> m_replies;
     QHash<int, QPointer<QObject>> m_probes;   // the native server probe (LLM) while running
     int m_nextId = 1;

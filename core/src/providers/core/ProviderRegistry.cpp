@@ -1,98 +1,78 @@
 #include "tanara/providers/core/ProviderRegistry.h"
-#include "tanara/providers/core/ProviderConfig.h"
 
 namespace tanara::providers {
 
-// ── SttProviderRegistry ───────────────────────────────────────────────────
-
-SttProviderRegistry& SttProviderRegistry::instance()
+QString capabilityName(CapabilityKind kind)
 {
-    static SttProviderRegistry s_instance;
-    return s_instance;
+    switch (kind) {
+    case CapabilityKind::Transcription:             return QStringLiteral("transcription");
+    case CapabilityKind::Chat:                      return QStringLiteral("chat");
+    case CapabilityKind::TextEmbedding:             return QStringLiteral("text-embedding");
+    case CapabilityKind::VoiceEmbedding:            return QStringLiteral("voice-embedding");
+    case CapabilityKind::Summarization:             return QStringLiteral("summarization");
+    case CapabilityKind::TagSuggestion:             return QStringLiteral("tag-suggestion");
+    case CapabilityKind::ParticipantIdentification: return QStringLiteral("participant-identification");
+    case CapabilityKind::ModelCatalog:              return QStringLiteral("model-catalog");
+    case CapabilityKind::LocalModelServer:          return QStringLiteral("local-model-server");
+    }
+    return QString();
 }
 
-void SttProviderRegistry::registerProvider(const ProviderDescriptor& desc, Factory factory)
+ProviderRegistry& ProviderRegistry::defaultInstance()
 {
-    m_map.insert(desc.id, qMakePair(desc, std::move(factory)));
+    static ProviderRegistry* s_instance = [] {
+        auto* r = new ProviderRegistry;   // intentionally leaked: no static-destruction order issues
+        registerBuiltinProviders(*r);
+        return r;
+    }();
+    return *s_instance;
 }
 
-QVector<ProviderDescriptor> SttProviderRegistry::all() const
+void ProviderRegistry::addErased(const ProviderDescriptor& desc, ErasedFactory factory)
 {
-    QVector<ProviderDescriptor> result;
-    result.reserve(m_map.size());
-    for (auto it = m_map.constBegin(); it != m_map.constEnd(); ++it)
-        result.append(it.value().first);
-    return result;
+    const Key key{int(desc.capability), desc.id};
+    if (!m_entries.contains(key)) m_order.append(key);
+    m_entries.insert(key, Entry{desc, std::move(factory)});
 }
 
-bool SttProviderRegistry::has(const QString& id) const
+void* ProviderRegistry::createErased(CapabilityKind kind, const QString& id, const ProviderContext& ctx,
+                                     const ProviderConfig& cfg, QObject* parent) const
 {
-    return m_map.contains(id);
+    const auto it = m_entries.constFind(Key{int(kind), id});
+    if (it == m_entries.constEnd() || !it->factory) return nullptr;
+    return it->factory(ctx, cfg, parent);
 }
 
-ProviderDescriptor SttProviderRegistry::descriptor(const QString& id) const
+QVector<ProviderDescriptor> ProviderRegistry::descriptors(CapabilityKind kind) const
 {
-    auto it = m_map.constFind(id);
-    if (it == m_map.constEnd())
-        return ProviderDescriptor{};
-    return it.value().first;
+    QVector<ProviderDescriptor> out;
+    for (const Key& key : m_order)
+        if (key.first == int(kind)) out.append(m_entries.value(key).desc);
+    return out;
 }
 
-ISttProvider* SttProviderRegistry::create(const QString& id, const ProviderConfig& cfg, QObject* parent) const
+bool ProviderRegistry::has(CapabilityKind kind, const QString& id) const
 {
-    auto it = m_map.constFind(id);
-    if (it == m_map.constEnd())
-        return nullptr;
-    const Factory& factory = it.value().second;
-    if (!factory)
-        return nullptr;
-    return factory(cfg, parent);
+    return m_entries.contains(Key{int(kind), id});
 }
 
-// ── LlmProviderRegistry ───────────────────────────────────────────────────
-
-LlmProviderRegistry& LlmProviderRegistry::instance()
+ProviderDescriptor ProviderRegistry::descriptor(CapabilityKind kind, const QString& id) const
 {
-    static LlmProviderRegistry s_instance;
-    return s_instance;
+    const auto it = m_entries.constFind(Key{int(kind), id});
+    return it == m_entries.constEnd() ? ProviderDescriptor{} : it->desc;
 }
 
-void LlmProviderRegistry::registerProvider(const ProviderDescriptor& desc, Factory factory)
+void ProviderRegistry::remove(CapabilityKind kind, const QString& id)
 {
-    m_map.insert(desc.id, qMakePair(desc, std::move(factory)));
+    const Key key{int(kind), id};
+    m_entries.remove(key);
+    m_order.removeAll(key);
 }
 
-QVector<ProviderDescriptor> LlmProviderRegistry::all() const
+void ProviderRegistry::clear()
 {
-    QVector<ProviderDescriptor> result;
-    result.reserve(m_map.size());
-    for (auto it = m_map.constBegin(); it != m_map.constEnd(); ++it)
-        result.append(it.value().first);
-    return result;
-}
-
-bool LlmProviderRegistry::has(const QString& id) const
-{
-    return m_map.contains(id);
-}
-
-ProviderDescriptor LlmProviderRegistry::descriptor(const QString& id) const
-{
-    auto it = m_map.constFind(id);
-    if (it == m_map.constEnd())
-        return ProviderDescriptor{};
-    return it.value().first;
-}
-
-ILlmProvider* LlmProviderRegistry::create(const QString& id, const ProviderConfig& cfg, QObject* parent) const
-{
-    auto it = m_map.constFind(id);
-    if (it == m_map.constEnd())
-        return nullptr;
-    const Factory& factory = it.value().second;
-    if (!factory)
-        return nullptr;
-    return factory(cfg, parent);
+    m_entries.clear();
+    m_order.clear();
 }
 
 } // namespace tanara::providers

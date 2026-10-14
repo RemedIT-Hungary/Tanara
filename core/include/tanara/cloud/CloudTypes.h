@@ -8,6 +8,9 @@
 // the label ("VAT included" / "VAT excluded, reverse charge").
 //
 // Headless (core): no Widgets dependency.
+#include "tanara/foundation/error/Error.h"
+#include "tanara/foundation/net/HttpClient.h"
+
 #include <QByteArray>
 #include <QDateTime>
 #include <QHash>
@@ -18,8 +21,6 @@
 #include <QVector>
 
 #include <optional>
-
-class QNetworkReply;
 
 namespace tanara::cloud {
 
@@ -111,6 +112,13 @@ struct CloudError {
 // Header keys are lowercase. A non-empty networkError -> Network (no HTTP response).
 CloudError parseCloudError(int httpStatus, const QHash<QByteArray, QByteArray>& headers,
                            const QByteArray& body, const QString& networkError = QString());
+
+// The common, classified error (foundation/error/Error.h) of a gateway error: the job layer describes
+// it (library::describeCloudFailure). Network -> Transient with httpStatus 0 and code "network";
+// 401 / terms / suspended / device flow -> Auth; balance / spend limit -> Quota; rate limit /
+// maintenance / upstream -> Transient; client too old -> Unsupported; validation / not found -> Input;
+// the rest -> Service. kind None -> an empty Error.
+Error toError(const CloudError& error);
 
 // Human-readable, multi-line description of an error (for the CLI; the texts follow the cloud
 // error-handling spec). chargedSoFar > 0 -> a partial failure ("the parts completed so far are
@@ -282,20 +290,12 @@ QJsonObject waitlistToJson(const WaitlistSignup& s);
 // field ("email" | "consent"). The server is the final judge (400 validation_error / disposable_email).
 QString validateWaitlist(const WaitlistSignup& s);
 
-// ---- HTTP exchange (for the providers' gateway hook) --------------------------------------
-// Result of one gateway call: the cloud layer reads from it the headers (min-client, request id,
-// charge), the error and the additive `tanara` fields.
-struct HttpExchange {
-    QByteArray method;
-    QString    path;                       // e.g. "/transcriptions" (the part after baseUrl)
-    int        status = 0;                 // 0 = no HTTP response (network error)
-    QHash<QByteArray, QByteArray> headers; // lowercase keys
-    QByteArray body;
-    QString    networkError;               // empty if there was an HTTP response
-};
-// From a finished QNetworkReply (the caller already read the body). path = the URL's full
-// path (e.g. "/v1/transcriptions/tr_1").
-HttpExchange makeHttpExchange(QNetworkReply* reply, const QByteArray& body);
+// ---- HTTP exchange --------------------------------------------------------------------
+// The result of one gateway call is the common net::HttpExchange (foundation/net/HttpClient.h):
+// the cloud layer reads from it the headers (min-client, request id, charge), the error and the
+// additive `tanara` fields.
+using net::HttpExchange;
+using net::makeHttpExchange;
 
 // ---- configuration --------------------------------------------------------------------
 inline const QString ProviderId     = QStringLiteral("tanara-cloud");

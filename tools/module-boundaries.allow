@@ -17,13 +17,7 @@ core/src/library/store/JsonSerialization.cpp -> tanara/processing/summary/Summar
 core/src/library/summary/SummaryStore.cpp -> tanara/processing/summary/SummaryPipeline.h   # K3 -> P8
 core/src/library/summary/SummaryStore.cpp -> tanara/processing/summary/SummarySources.h   # K3 -> P8
 
-# ---- P9 (6 lines) ----
-core/src/providers/embedding/OpenAiCompatibleEmbeddingProvider.cpp -> tanara/cloud/CloudTypes.h   # providers -> cloud (CloudTypes) -> P9
-core/src/library/jobs/JobErrors.cpp -> tanara/cloud/CloudTypes.h   # K8 -> P9
-core/src/providers/chat/LlmServer.cpp -> tanara/cloud/CloudTypes.h   # providers -> cloud (CloudTypes) -> P9
-core/src/providers/chat/LlmServer.cpp -> tanara/library/jobs/JobErrors.h   # K8 -> P9
-core/src/providers/chat/OpenAiCompatibleProvider.cpp -> tanara/cloud/CloudTypes.h   # providers -> cloud (CloudTypes) -> P9
-core/src/providers/stt/SonioxProvider.cpp -> tanara/cloud/CloudTypes.h   # providers -> cloud (CloudTypes) -> P9
+# ---- P9 (0 lines) ----
 
 # ---- P12d (7 lines) ----
 core/include/tanara/library/people/PeopleService.h -> tanara/editing/session/SpeakerEditTypes.h   # library <- editing (VoiceprintMaterialSource) -> P12d
