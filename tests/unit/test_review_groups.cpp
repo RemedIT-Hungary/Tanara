@@ -1,5 +1,6 @@
 // Candidate ranking (CandidateRanker) and review queue groups (ReviewGroups) on MADE-UP data:
 // the "voices" are low-dimensional unit vectors, the track activity is synthetic (no audio, no I/O).
+#include "tanara/domain/EvidenceText.h"
 #include <QtTest>
 
 #include <cmath>
@@ -200,11 +201,11 @@ private slots:
         // The chip and the explanation.
         for (const Evidence& e : ca->evidence)
             if (e.kind == EvidenceKind::Tag) {
-                QCOMPARE(e.text, QStringLiteral("#Projekt X"));
-                QVERIFY(e.detail.contains(QStringLiteral("0 / 5")));
+                QCOMPARE(evidenceText(e), QStringLiteral("#Projekt X"));
+                QVERIFY(evidenceDetail(e).contains(QStringLiteral("0 / 5")));
             }
         for (const Evidence& e : cb->evidence)
-            if (e.kind == EvidenceKind::Tag) QCOMPARE(e.text, QStringLiteral("más címkék"));
+            if (e.kind == EvidenceKind::Tag) QCOMPARE(evidenceText(e), QStringLiteral("más címkék"));
         // A young tag (< 5 meetings) does not penalize: no tag evidence.
         QVector<library::PersonTagRow> young = rows.mid(0, 2);
         snap.stats = std::make_shared<library::PersonTagStats>(library::PersonTagStats::compute(young, PersonId()));

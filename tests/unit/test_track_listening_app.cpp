@@ -5,6 +5,7 @@
 // (the same one the "Why them?" chips write), the inferred side without a manual binding, and
 // when the transcript arrives the participant's binding moves into the speaker's assignment.
 // Synthetic tracks (ffmpeg lavfi), ISOLATED TANARA_HOME, without Soniox / LLM. Without ffmpeg QSKIP.
+#include "tanara/domain/EvidenceText.h"
 #include <QtTest>
 #include <QSignalSpy>
 #include <QTemporaryDir>
@@ -313,7 +314,7 @@ void TrackListeningAppTest::manualTracksSteerClusterMatchAndEvidence()
     QCOMPARE(bela->tracks, QStringList{"loop"});                 // the re-analysis keeps it
     bool manualSide = false;
     for (const Evidence& e : bela->evidence)
-        if (e.kind == EvidenceKind::Side && e.text == QStringLiteral("kézzel: hívás")
+        if (e.kind == EvidenceKind::Side && evidenceText(e) == QStringLiteral("kézzel: hívás")
             && e.polarity == Polarity::Support)
             manualSide = true;
     QVERIFY(manualSide);
@@ -322,7 +323,7 @@ void TrackListeningAppTest::manualTracksSteerClusterMatchAndEvidence()
     QVERIFY(m_app->setParticipantTracks(m.id, "v1", {"mic", "loop"}));
     bool both = false;
     for (const Evidence& e : m_app->participants(m.id).at(0).evidence)
-        both = both || (e.kind == EvidenceKind::Side && e.text == QStringLiteral("kézzel: mikrofon és hívás"));
+        both = both || (e.kind == EvidenceKind::Side && evidenceText(e) == QStringLiteral("kézzel: mikrofon és hívás"));
     QVERIFY(both);
 }
 

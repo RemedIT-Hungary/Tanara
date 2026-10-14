@@ -58,3 +58,8 @@ foreach(t test_cli_voice_models test_cli_track_sides test_cli_person_tags test_c
         set_tests_properties(${t} PROPERTIES TIMEOUT 180)
     endif()
 endforeach()
+
+# The evidence-text test checks the English renderings against the shipped i18n/tanara_en.ts.
+if(TARGET test_evidence_text)
+    target_compile_definitions(test_evidence_text PRIVATE TANARA_EN_TS="${CMAKE_SOURCE_DIR}/i18n/tanara_en.ts")
+endif()

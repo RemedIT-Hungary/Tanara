@@ -4,6 +4,7 @@
 // running analysis's result), the approval-pending banner, the speaker -> track binding before the
 // transcript, the unheard participants, and committing a voice identification. Error paths: unknown meeting,
 // no own name, nothing to commit. Made-up names, ISOLATED TANARA_HOME; no Soniox / LLM / network / ffmpeg.
+#include "tanara/domain/EvidenceText.h"
 #include <QtTest>
 #include <QSignalSpy>
 #include <QTemporaryDir>
@@ -210,7 +211,7 @@ void ParticipantServiceTest::addRemoveAsUndoSteps()
     QVector<Participant> ps = m_svc->participants(m.id);
     QCOMPARE(ps.size(), 1);
     QCOMPARE(ps.first().source, ParticipantSource::Manual);
-    QCOMPARE(ps.first().evidence.value(0).text, QStringLiteral("nincs lenyomata"));
+    QCOMPARE(evidenceText(ps.first().evidence.value(0)), QStringLiteral("nincs lenyomata"));
 
     editing::MeetingUndoService* undo = m_undo->forMeeting(m.id);
     QVERIFY(undo && undo->canUndo());

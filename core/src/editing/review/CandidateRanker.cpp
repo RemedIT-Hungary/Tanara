@@ -1,4 +1,5 @@
 #include "tanara/editing/review/CandidateRanker.h"
+#include "tanara/domain/EvidenceKeys.h"
 
 #include <QCoreApplication>
 
@@ -336,38 +337,26 @@ QString polarityName(Polarity p)
 bool tagEvidenceOf(const library::TagEvidence& tag, const QString& personName, Evidence* out)
 {
     if (tag.isEmpty() || tag.items.isEmpty()) return false;
-    auto hashed = [](const QString& name) { return QStringLiteral("#") + name; };
     const library::TagEvidenceItem& f = tag.items.first();
     Evidence e;
     e.kind = EvidenceKind::Tag;
     e.fixTarget = QStringLiteral("tags");
     e.value = tag.items.size();
+    // Key + params only; the chip and the tooltip are rendered at display time (domain/EvidenceText.h).
+    QVariantList items;
+    for (const library::TagEvidenceItem& it : tag.items)
+        items << QVariantMap{{QStringLiteral("name"), it.name}, {QStringLiteral("shared"), it.shared},
+                             {QStringLiteral("total"), it.total}, {QStringLiteral("manual"), it.manual}};
+    e.params.insert(evidencekeys::kParamItems, items);
     if (tag.isSupport()) {
         e.polarity = Polarity::Support;
-        e.text = tag.text;
-        e.detail = f.manual && !personName.trimmed().isEmpty()
-            ? QCoreApplication::translate("CandidateRanker", "%1 címkéje: %2 (%3 / %4 megbeszélésen volt ott).")
-                  .arg(personName.trimmed(), hashed(f.name)).arg(f.shared).arg(f.total)
-            : QCoreApplication::translate("CandidateRanker", "A %1 megbeszéléseken szokott lenni (%2 / %3).").arg(hashed(f.name)).arg(f.shared).arg(f.total);
-        if (tag.items.size() > 1) {
-            QStringList all;
-            for (const library::TagEvidenceItem& it : tag.items)
-                all << QStringLiteral("%1 %2 / %3").arg(hashed(it.name)).arg(it.shared).arg(it.total);
-            e.detail += QLatin1Char(' ') + QCoreApplication::translate("CandidateRanker", "Közös címkék: %1.").arg(all.join(QStringLiteral(", ")));
-        }
+        e.key = evidencekeys::kTagMatch;
+        e.params.insert(evidencekeys::kParamChip, tag.text);
+        if (f.manual && !personName.trimmed().isEmpty()) e.params.insert(evidencekeys::kParamPerson, personName.trimmed());
     } else {
         e.polarity = Polarity::Contradict;
-        e.text = QCoreApplication::translate("CandidateRanker", "más címkék");
-        QStringList meeting;
-        for (const library::TagEvidenceItem& it : tag.items) meeting << hashed(it.name);
-        QStringList other;
-        for (const QString& n : tag.personTagNames) other << hashed(n);
-        const QString none = tag.items.size() == 1
-            ? QCoreApplication::translate("CandidateRanker", "A %1 %2 megbeszéléséből egyiken sem volt.").arg(meeting.first()).arg(f.total)
-            : QCoreApplication::translate("CandidateRanker", "A %1 megbeszélésein egyiken sem volt.").arg(meeting.join(QStringLiteral(", ")));
-        e.detail = other.isEmpty() ? none
-                                   : QCoreApplication::translate("CandidateRanker", "Más címkéken szokott lenni: %1.").arg(other.join(QStringLiteral(", ")))
-                                         + QLatin1Char(' ') + none;
+        e.key = evidencekeys::kTagOther;
+        e.params.insert(evidencekeys::kParamElsewhere, tag.personTagNames);
     }
     *out = e;
     return true;

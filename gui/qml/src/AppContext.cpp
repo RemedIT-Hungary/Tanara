@@ -1,4 +1,5 @@
 #include "tanara/domain/Activity.h"
+#include "tanara/domain/EvidenceText.h"
 #include "tanara/domain/Job.h"
 #include "tanara/domain/Meeting.h"
 #include "tanara/domain/Summary.h"
@@ -436,23 +437,23 @@ QVariantList sourcesOf(const Participant& p, bool self)
         switch (e.kind) {
         case EvidenceKind::Manual:
             if (!self) out << source(QStringLiteral("user"), OverviewControllerFacade::tr("kézi"), false, false,
-                                     e.detail.isEmpty() ? OverviewControllerFacade::tr("Kézzel adtad hozzá") : e.detail);
+                                     evidenceDetail(e).isEmpty() ? OverviewControllerFacade::tr("Kézzel adtad hozzá") : evidenceDetail(e));
             break;
         case EvidenceKind::Voice:
-            out << source(QStringLiteral("fingerprint"), e.text, neg, false, e.detail);
+            out << source(QStringLiteral("fingerprint"), evidenceText(e), neg, false, evidenceDetail(e));
             break;
         case EvidenceKind::Side:
-            out << source(e.text.contains(QStringLiteral("mikrofon")) ? QStringLiteral("mic")
-                                                                       : QStringLiteral("phone"),
-                          e.text, neg, false, e.detail);
+            out << source(evidenceSides(e).contains(QStringLiteral("mic")) ? QStringLiteral("mic")
+                                                                           : QStringLiteral("phone"),
+                          evidenceText(e), neg, false, evidenceDetail(e));
             break;
         case EvidenceKind::Tag:
             // The chip ("#Nordvik", "#Nordvik +1"); the explanation is in detail (ranking::tagEvidenceOf).
-            out << source(QStringLiteral("tag"), e.text, neg);
+            out << source(QStringLiteral("tag"), evidenceText(e), neg);
             break;
         case EvidenceKind::Calendar:
-            out << source(QStringLiteral("calendar"), e.text.isEmpty() ? OverviewControllerFacade::tr("naptár") : e.text,
-                          neg, false, e.detail);
+            out << source(QStringLiteral("calendar"), evidenceText(e).isEmpty() ? OverviewControllerFacade::tr("naptár") : evidenceText(e),
+                          neg, false, evidenceDetail(e));
             break;
         default:
             break;

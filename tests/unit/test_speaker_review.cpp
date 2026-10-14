@@ -3,6 +3,7 @@
 // learned track side and the candidates. In a temporary folder, with MADE-UP data: the
 // embeddings go straight into the cache, the track activity is synthetic
 // (setActivityProvider); no audio, no ffmpeg.
+#include "tanara/domain/EvidenceText.h"
 #include <QtTest>
 #include <QSignalSpy>
 #include <QTemporaryDir>
@@ -291,7 +292,7 @@ private slots:
         bool tagContra = false;
         for (const Evidence& e : ed->speakerEvidence("A"))
             tagContra |= e.kind == EvidenceKind::Tag && e.polarity == Polarity::Contradict && e.fixTarget == "tags"
-                         && e.text == QStringLiteral("más címkék") && e.detail.contains(QStringLiteral("#Marketing"));
+                         && evidenceText(e) == QStringLiteral("más címkék") && evidenceDetail(e).contains(QStringLiteral("#Marketing"));
         QVERIFY(tagContra);
     }
 };

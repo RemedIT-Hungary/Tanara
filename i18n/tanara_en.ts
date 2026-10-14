@@ -169,34 +169,6 @@
         <source>ismeretlen</source>
         <translation>unknown</translation>
     </message>
-    <message>
-        <source>%1 címkéje: %2 (%3 / %4 megbeszélésen volt ott).</source>
-        <translation>Tag of %1: %2 (was there in %3 of %4 meetings).</translation>
-    </message>
-    <message>
-        <source>A %1 megbeszéléseken szokott lenni (%2 / %3).</source>
-        <translation>Usually attends the %1 meetings (%2 / %3).</translation>
-    </message>
-    <message>
-        <source>Közös címkék: %1.</source>
-        <translation>Tags in common: %1.</translation>
-    </message>
-    <message>
-        <source>más címkék</source>
-        <translation>other tags</translation>
-    </message>
-    <message>
-        <source>A %1 %2 megbeszéléséből egyiken sem volt.</source>
-        <translation>Was not at any of the %2 meetings of %1.</translation>
-    </message>
-    <message>
-        <source>A %1 megbeszélésein egyiken sem volt.</source>
-        <translation>Was not at any of the meetings of %1.</translation>
-    </message>
-    <message>
-        <source>Más címkéken szokott lenni: %1.</source>
-        <translation>Usually attends meetings with other tags: %1.</translation>
-    </message>
 </context>
 <context>
     <name>CandidateRow</name>
@@ -529,6 +501,77 @@
     <message>
         <source>Egy kattintás, visszavonható</source>
         <translation>One click, undoable</translation>
+    </message>
+</context>
+<context>
+    <name>EvidenceText</name>
+    <message>
+        <source>mikrofon</source>
+        <translation>microphone</translation>
+    </message>
+    <message>
+        <source>hívás</source>
+        <translation>call</translation>
+    </message>
+    <message>
+        <source> és </source>
+        <translation> and </translation>
+    </message>
+    <message>
+        <source>hang %1%</source>
+        <translation>voice %1%</translation>
+    </message>
+    <message>
+        <source>ismeretlen hang</source>
+        <translation>unknown voice</translation>
+    </message>
+    <message>
+        <source>nem hallottuk</source>
+        <translation>not heard</translation>
+    </message>
+    <message>
+        <source>nincs lenyomata</source>
+        <translation>no voiceprint</translation>
+    </message>
+    <message>
+        <source>csak a hívás hangján</source>
+        <translation>only on the call audio</translation>
+    </message>
+    <message>
+        <source>kézzel: %1</source>
+        <translation>by hand: %1</translation>
+    </message>
+    <message>
+        <source>kézzel felvéve</source>
+        <translation>added by hand</translation>
+    </message>
+    <message>
+        <source>más címkék</source>
+        <translation>other tags</translation>
+    </message>
+    <message>
+        <source>%1 címkéje: %2 (%3 / %4 megbeszélésen volt ott).</source>
+        <translation>Tag of %1: %2 (was there in %3 of %4 meetings).</translation>
+    </message>
+    <message>
+        <source>A %1 megbeszéléseken szokott lenni (%2 / %3).</source>
+        <translation>Usually attends the %1 meetings (%2 / %3).</translation>
+    </message>
+    <message>
+        <source>Közös címkék: %1.</source>
+        <translation>Tags in common: %1.</translation>
+    </message>
+    <message>
+        <source>A %1 %2 megbeszéléséből egyiken sem volt.</source>
+        <translation>Was not at any of the %2 meetings of %1.</translation>
+    </message>
+    <message>
+        <source>A %1 megbeszélésein egyiken sem volt.</source>
+        <translation>Was not at any of the meetings of %1.</translation>
+    </message>
+    <message>
+        <source>Más címkéken szokott lenni: %1.</source>
+        <translation>Usually attends meetings with other tags: %1.</translation>
     </message>
 </context>
 <context>
@@ -2142,26 +2185,6 @@
     <message>
         <source>hívás</source>
         <translation>call</translation>
-    </message>
-    <message>
-        <source>kézzel felvéve</source>
-        <translation>added by hand</translation>
-    </message>
-    <message>
-        <source>hang %1%</source>
-        <translation>voice %1%</translation>
-    </message>
-    <message>
-        <source>ismeretlen hang</source>
-        <translation>unknown voice</translation>
-    </message>
-    <message>
-        <source>kézzel: %1</source>
-        <translation>by hand: %1</translation>
-    </message>
-    <message>
-        <source> és </source>
-        <translation> and </translation>
     </message>
 </context>
 <context>

@@ -7,6 +7,7 @@
 #include "ReviewQueueModel.h"
 #include "TagLearning.h"
 
+#include "tanara/domain/EvidenceText.h"
 #include "tanara/foundation/log/Logging.h"
 #include "tanara/editing/session/PeopleDirectory.h"
 #include "tanara/editing/review/SideAnalysis.h"
@@ -2037,8 +2038,12 @@ QString TranscriptEditorViewModel::tagLabel(const QString& id) const
     return name.isEmpty() ? id : name;
 }
 
-QVariantMap TranscriptEditorViewModel::evidenceMap(const Evidence& e, const QString& sideContext, bool forLine) const
+QVariantMap TranscriptEditorViewModel::evidenceMap(const Evidence& evidence, const QString& sideContext, bool forLine) const
 {
+    // Render the language-neutral evidence (key + params) in the active language; the rest works on the texts.
+    Evidence e = evidence;
+    e.text = evidenceText(evidence);
+    e.detail = evidenceDetail(evidence);
     QString kind;
     switch (e.kind) {
     case EvidenceKind::Voice: kind = QStringLiteral("voice"); break;

@@ -4,6 +4,7 @@
 #include <QCoreApplication>
 
 #include "tanara/library/tracks/TrackCatalog.h"
+#include "tanara/domain/EvidenceKeys.h"
 #include "tanara/domain/Meeting.h"
 #include "tanara/editing/review/CandidateRanker.h"
 #include "tanara/editing/review/SideAnalysis.h"
@@ -105,8 +106,6 @@ bool hasPolarity(const Participant& p, Polarity pol, EvidenceKind kind, bool any
         if (e.polarity == pol && (anyKind || e.kind == kind)) return true;
     return false;
 }
-
-QString percent(double v) { return QString::number(qRound(std::clamp(v, 0.0, 1.0) * 100.0)); }
 
 } // namespace
 
@@ -299,26 +298,36 @@ ClusterSet computeVoiceClusters(const Meeting& m, const MeetingActivity& activit
 QVector<Evidence> participantEvidence(const Participant& p, bool heard, double score,
                                       const Meeting& m, const CandidateContext& ctx)
 {
+    // Persisted evidence: a key + params only; the text is rendered at display time (domain/EvidenceText.h).
+    auto make = [](EvidenceKind kind, Polarity pol, double value, const QLatin1String& key,
+                   const QString& fix, const QVariantMap& params = {}) {
+        Evidence e;
+        e.kind = kind;
+        e.polarity = pol;
+        e.value = value;
+        e.key = key;
+        e.fixTarget = fix;
+        e.params = params;
+        return e;
+    };
+    const QString samples = QStringLiteral("samples");
+    const QString tracks = QStringLiteral("tracks");
     QVector<Evidence> ev;
     const bool named = !p.personId.isNull();
     if (p.source == ParticipantSource::Manual)
-        ev.append({EvidenceKind::Manual, Polarity::Support, 1.0, QCoreApplication::translate("ParticipantAnalysis", "kézzel felvéve"), {}, {}});
+        ev.append(make(EvidenceKind::Manual, Polarity::Support, 1.0, evidencekeys::kManualAdded, {}));
 
     // Voice.
     if (heard && named) {
-        ev.append({EvidenceKind::Voice, Polarity::Support, score,
-                   QCoreApplication::translate("ParticipantAnalysis", "hang %1%").arg(percent(score)), {}, QStringLiteral("samples")});
+        ev.append(make(EvidenceKind::Voice, Polarity::Support, score, evidencekeys::kVoiceScore, samples));
     } else if (heard) {
-        ev.append({EvidenceKind::Voice, Polarity::Neutral, score, QCoreApplication::translate("ParticipantAnalysis", "ismeretlen hang"),
-                   {}, QStringLiteral("samples")});
+        ev.append(make(EvidenceKind::Voice, Polarity::Neutral, score, evidencekeys::kVoiceUnknown, samples));
     } else if (named) {
         const bool prints = ctx.hasVoiceprint && ctx.hasVoiceprint(p.personId);
         if (prints)
-            ev.append({EvidenceKind::Voice, Polarity::Contradict, score, QStringLiteral("nem hallottuk"),
-                       {}, QStringLiteral("samples")});
+            ev.append(make(EvidenceKind::Voice, Polarity::Contradict, score, evidencekeys::kVoiceNotHeard, samples));
         else
-            ev.append({EvidenceKind::Voice, Polarity::Neutral, 0.0, QStringLiteral("nincs lenyomata"),
-                       {}, QStringLiteral("samples")});
+            ev.append(make(EvidenceKind::Voice, Polarity::Neutral, 0.0, evidencekeys::kVoiceNoVoiceprint, samples));
     }
 
     // Track side: the manual track binding (Participant::tracks) is the truth, if present.
@@ -328,26 +337,20 @@ QVector<Evidence> participantEvidence(const Participant& p, bool heard, double s
             if (p.tracks.contains(t.id) && sideOf(t.kind) == side && !manualSides.contains(side))
                 manualSides << side;
     if (!manualSides.isEmpty()) {
-        QStringList labels;
-        for (const QString& s : manualSides) labels << sideLabel(s);
-        ev.append({EvidenceKind::Side, Polarity::Support, 1.0,
-                   QCoreApplication::translate("ParticipantAnalysis", "kézzel: %1").arg(labels.join(QCoreApplication::translate("ParticipantAnalysis", " és "))), {},
-                   QStringLiteral("tracks")});
+        ev.append(make(EvidenceKind::Side, Polarity::Support, 1.0, evidencekeys::kManualTracks, tracks,
+                       {{evidencekeys::kParamSides, manualSides}}));
     }
     // Otherwise the heard side: the user's own voice is expected on the microphone.
     else if (heard && !p.sides.isEmpty()) {
-        QStringList labels;
-        for (const QString& s : p.sides) labels << sideLabel(s);
-        const QString text = labels.join(QCoreApplication::translate("ParticipantAnalysis", " és "));
+        const QVariantMap sideParams{{evidencekeys::kParamSides, p.sides}};
         const bool self = ctx.self.is(p.personId);
         const bool onMic = p.sides.contains(kSideMic);
         if (self && onMic)
-            ev.append({EvidenceKind::Side, Polarity::Support, 1.0, text, {}, QStringLiteral("tracks")});
+            ev.append(make(EvidenceKind::Side, Polarity::Support, 1.0, evidencekeys::kSideHeard, tracks, sideParams));
         else if (self)
-            ev.append({EvidenceKind::Side, Polarity::Contradict, 0.0,
-                       QStringLiteral("csak a hívás hangján"), {}, QStringLiteral("tracks")});
+            ev.append(make(EvidenceKind::Side, Polarity::Contradict, 0.0, evidencekeys::kSideCallOnly, tracks));
         else
-            ev.append({EvidenceKind::Side, Polarity::Neutral, 0.0, text, {}, QStringLiteral("tracks")});
+            ev.append(make(EvidenceKind::Side, Polarity::Neutral, 0.0, evidencekeys::kSideHeard, tracks, sideParams));
     }
 
     // Tag (UX plan rule 4): a manual tag OR a learned association supports; a contradiction only informs

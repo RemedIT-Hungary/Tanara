@@ -1,7 +1,10 @@
 #include "tanara/library/store/ParticipantJson.h"
 
+#include "tanara/domain/EvidenceKeys.h"
+
 #include <QJsonArray>
 #include <QJsonValue>
+#include <QRegularExpression>
 
 namespace tanara::library {
 
@@ -94,6 +97,63 @@ Polarity polarityFromName(const QString& s)
     return Polarity::Neutral;
 }
 
+// An evidence read from an old file that has only the display text (written in the language active when
+// the analysis ran): map the known Hungarian / English texts to the key + params they were made from. Anything
+// else keeps its text verbatim under the "legacy" key.
+void mapLegacyText(Evidence& e, const QString& text)
+{
+    namespace K = evidencekeys;
+    auto setKey = [&e](const QLatin1String& key) { e.key = key; };
+    static const QRegularExpression score(QStringLiteral("^(hang|voice) \\d+%$"));
+    auto sideOfLabel = [](const QString& l) {
+        if (l == QStringLiteral("mikrofon") || l == QStringLiteral("microphone")) return QStringLiteral("mic");
+        if (l == QStringLiteral("hívás") || l == QStringLiteral("call")) return QStringLiteral("loopback");
+        return QString();
+    };
+    auto sidesOf = [&](const QString& labels) {
+        QStringList sides;
+        for (const QString& part : labels.split(QRegularExpression(QStringLiteral(" (és|and) ")))) {
+            const QString s = sideOfLabel(part.trimmed());
+            if (s.isEmpty()) return QStringList();
+            sides << s;
+        }
+        return sides;
+    };
+    switch (e.kind) {
+    case EvidenceKind::Manual:
+        if (text == QStringLiteral("kézzel felvéve") || text == QStringLiteral("added by hand")) { setKey(K::kManualAdded); return; }
+        break;
+    case EvidenceKind::Voice:
+        if (score.match(text).hasMatch()) { setKey(K::kVoiceScore); return; }
+        if (text == QStringLiteral("ismeretlen hang") || text == QStringLiteral("unknown voice")) { setKey(K::kVoiceUnknown); return; }
+        if (text == QStringLiteral("nem hallottuk")) { setKey(K::kVoiceNotHeard); return; }
+        if (text == QStringLiteral("nincs lenyomata")) { setKey(K::kVoiceNoVoiceprint); return; }
+        break;
+    case EvidenceKind::Side: {
+        if (text == QStringLiteral("csak a hívás hangján")) { setKey(K::kSideCallOnly); return; }
+        QString labels = text;
+        bool manual = false;
+        for (const QString& prefix : {QStringLiteral("kézzel: "), QStringLiteral("by hand: ")})
+            if (text.startsWith(prefix)) { labels = text.mid(prefix.size()); manual = true; }
+        const QStringList sides = sidesOf(labels);
+        if (!sides.isEmpty()) {
+            setKey(manual ? K::kManualTracks : K::kSideHeard);
+            e.params.insert(K::kParamSides, sides);
+            return;
+        }
+        break;
+    }
+    case EvidenceKind::Tag:
+        if (text == QStringLiteral("más címkék") || text == QStringLiteral("other tags")) { setKey(K::kTagOther); return; }
+        if (text.startsWith(QLatin1Char('#'))) { setKey(K::kTagMatch); e.params.insert(K::kParamChip, text); return; }
+        break;
+    default:
+        break;
+    }
+    setKey(K::kLegacy);
+    e.params.insert(K::kParamText, text);
+}
+
 } // namespace
 
 QJsonObject toJson(const Evidence& e)
@@ -102,7 +162,13 @@ QJsonObject toJson(const Evidence& e)
     o[QStringLiteral("kind")]     = evidenceKindName(e.kind);
     o[QStringLiteral("polarity")] = polarityName(e.polarity);
     o[QStringLiteral("value")]    = e.value;
-    o[QStringLiteral("text")]     = e.text;
+    // A keyed evidence is language-neutral: key + params, no text (it is rendered at display time).
+    if (!e.key.isEmpty()) {
+        o[QStringLiteral("key")] = e.key;
+        if (!e.params.isEmpty()) o[QStringLiteral("params")] = QJsonObject::fromVariantMap(e.params);
+    } else {
+        o[QStringLiteral("text")] = e.text;
+    }
     if (!e.detail.isEmpty())    o[QStringLiteral("detail")] = e.detail;
     if (!e.fixTarget.isEmpty()) o[QStringLiteral("fixTarget")] = e.fixTarget;
     return o;
@@ -114,9 +180,14 @@ Evidence evidenceFromJson(const QJsonObject& o)
     e.kind      = evidenceKindFromName(o.value(QStringLiteral("kind")).toString());
     e.polarity  = polarityFromName(o.value(QStringLiteral("polarity")).toString());
     e.value     = o.value(QStringLiteral("value")).toDouble();
-    e.text      = o.value(QStringLiteral("text")).toString();
     e.detail    = o.value(QStringLiteral("detail")).toString();
     e.fixTarget = o.value(QStringLiteral("fixTarget")).toString();
+    if (o.contains(QStringLiteral("key"))) {
+        e.key    = o.value(QStringLiteral("key")).toString();
+        e.params = o.value(QStringLiteral("params")).toObject().toVariantMap();
+    } else {
+        mapLegacyText(e, o.value(QStringLiteral("text")).toString());
+    }
     return e;
 }
 

@@ -3,6 +3,7 @@
 // a background thread with a fake embedder (the audio's frequency is the "voice"), matching
 // with the voiceprints; binding to the raw speakers; approval and renaming in one undo step;
 // "Was not there"; "Only me". ISOLATED TANARA_HOME, without Soniox / LLM. Without ffmpeg QSKIP.
+#include "tanara/domain/EvidenceText.h"
 #include <QtTest>
 #include <QSignalSpy>
 #include <QTemporaryDir>
@@ -314,7 +315,7 @@ void ParticipantsAppTest::manualParticipantKeptThroughAnalysis()
     QCOMPARE(cili->source, ParticipantSource::Manual);
     bool noPrint = false;
     for (const Evidence& e : cili->evidence)
-        if (e.kind == EvidenceKind::Voice && e.text == QStringLiteral("nincs lenyomata")) noPrint = true;
+        if (e.kind == EvidenceKind::Voice && evidenceText(e) == QStringLiteral("nincs lenyomata")) noPrint = true;
     QVERIFY(noPrint);
     QVERIFY(byName(ps, PersonId()));   // unknown voice (Ádám's voiceprint is not here)
 

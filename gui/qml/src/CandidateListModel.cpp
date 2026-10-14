@@ -2,6 +2,7 @@
 
 #include "TranscriptEditorViewModel.h"
 
+#include "tanara/domain/EvidenceText.h"
 #include "tanara/editing/session/PeopleDirectory.h"
 
 #include <QTimer>
@@ -179,7 +180,7 @@ void CandidateListModel::refresh()
             for (Evidence e : c.evidence) {
                 if (it.current && e.polarity != Polarity::Contradict) continue;
                 if (c.vetoed && e.kind == EvidenceKind::Manual && e.polarity == Polarity::Contradict) {
-                    e.detail = e.text + QStringLiteral(" · ") + e.detail;
+                    e.detail = evidenceText(e) + QStringLiteral(" · ") + evidenceDetail(e);
                     e.text = tr("a sávja szerint nem ő");
                 }
                 ev.append(e);

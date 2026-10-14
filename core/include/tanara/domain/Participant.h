@@ -7,6 +7,7 @@
 #include <QMetaType>
 #include <QString>
 #include <QStringList>
+#include <QVariantMap>
 #include <QVector>
 
 #include <optional>
@@ -24,9 +25,13 @@ struct Evidence {
     EvidenceKind kind = EvidenceKind::Voice;
     Polarity polarity = Polarity::Neutral;
     double value = 0.0;
-    QString text;       // Hungarian, short, e.g. "voice 82%"
-    QString detail;
+    QString text;       // transient display text (Hungarian source) of an Evidence made and shown within one run; empty when key is set
+    QString detail;     // likewise (the tooltip)
     QString fixTarget;  // "tracks" | "samples" | "tags" | "pair:<key>" | ""
+    // Language-neutral identity + parameters (EvidenceKeys.h). A persisted evidence has a key and no text:
+    // evidenceText()/evidenceDetail() (EvidenceText.h) render it at display time in the active language.
+    QString key;
+    QVariantMap params;
 };
 
 struct Candidate {

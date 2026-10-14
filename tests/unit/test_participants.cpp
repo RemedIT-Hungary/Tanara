@@ -3,6 +3,7 @@
 // candidates, one matched to a voiceprint), evidence and groups, binding to the raw speakers
 // by time overlap (a two-sided raw speaker split in two), the approval's bindings, and
 // meeting.json both ways. Without I/O and ffmpeg.
+#include "tanara/domain/EvidenceText.h"
 #include <QtTest>
 #include <QTemporaryDir>
 
@@ -221,7 +222,7 @@ void ParticipantsTest::analysisTwoClustersOneMatched()
     QCOMPARE(processing::participants::participantGroup(*bela), ParticipantGroup::Doubt);
     QVERIFY(processing::participants::defaultChecked(*bela));
     QVERIFY(!processing::participants::defaultChecked(*unknown));
-    QCOMPARE(bela->evidence.first().text, QStringLiteral("hang 100%"));
+    QCOMPARE(evidenceText(bela->evidence.first()), QStringLiteral("hang 100%"));
 
     // A shared tag gives Sure.
     Meeting tagged = m;
@@ -240,8 +241,8 @@ void ParticipantsTest::analysisTwoClustersOneMatched()
     QCOMPARE(processing::participants::participantGroup(ps2.first()), ParticipantGroup::Sure);
     bool tagEv = false;
     for (const Evidence& e : ps2.first().evidence)
-        if (e.kind == EvidenceKind::Tag && e.text == QStringLiteral("#Projekt") && e.polarity == Polarity::Support
-            && e.detail.contains(QStringLiteral("0 / 0")))
+        if (e.kind == EvidenceKind::Tag && evidenceText(e) == QStringLiteral("#Projekt") && e.polarity == Polarity::Support
+            && evidenceDetail(e).contains(QStringLiteral("0 / 0")))
             tagEv = true;
     QVERIFY(tagEv);
 }
@@ -290,7 +291,7 @@ void ParticipantsTest::manualParticipantBoostAndEvidence()
     const QVector<Evidence> ev = processing::participants::participantEvidence(ghost, false, -1.0, m, ctx);
     bool noPrint = false;
     for (const Evidence& e : ev)
-        if (e.kind == EvidenceKind::Voice && e.polarity == Polarity::Neutral && e.text == QStringLiteral("nincs lenyomata")
+        if (e.kind == EvidenceKind::Voice && e.polarity == Polarity::Neutral && evidenceText(e) == QStringLiteral("nincs lenyomata")
             && e.fixTarget == QStringLiteral("samples"))
             noPrint = true;
     QVERIFY(noPrint);

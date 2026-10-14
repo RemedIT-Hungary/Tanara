@@ -5,6 +5,7 @@
 #include "AppContext.h"
 #include "TagLearning.h"
 
+#include "tanara/domain/EvidenceText.h"
 #include "tanara/editing/participants/IParticipantsFacade.h"
 #include "tanara/processing/analysis/ParticipantAnalysis.h"
 #include "tanara/processing/voiceid/VoiceModelRegistry.h"
@@ -265,11 +266,11 @@ QVariantMap ParticipantsViewModel::rowMap(const Row& r) const
     QVariantList evs;
     const QString side = r.sides.size() == 1 ? r.sides.first() : QString();
     for (const Evidence& e : r.evidence) {
-        QString text = e.text;
+        QString text = evidenceText(e);
         // The design's short forms: "#Nordvik", "mic track".
         if (e.kind == EvidenceKind::Tag && text.startsWith(QStringLiteral("címke: "))) {
             text = QLatin1Char('#') + text.mid(7);
-            const int more = int(e.detail.split(QStringLiteral(", "), Qt::SkipEmptyParts).size()) - 1;
+            const int more = int(evidenceDetail(e).split(QStringLiteral(", "), Qt::SkipEmptyParts).size()) - 1;
             if (more > 0) text += QStringLiteral(" +%1").arg(more);
         } else if (e.kind == EvidenceKind::Side && e.polarity != Polarity::Contradict && !side.isEmpty()) {
             text = processing::participants::sideLabel(side) + tr("-sáv");
