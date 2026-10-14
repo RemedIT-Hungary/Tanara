@@ -10,7 +10,7 @@
 #include "tanara/editing/session/SpeakerEditor.h"
 #include "tanara/editing/session/SpeakerOverlay.h"
 #include "tanara/processing/analysis/UtteranceEmbeddings.h"
-#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/store/MeetingRepository.h"
 #include "tanara/library/store/PeopleStore.h"
 #include "tanara/library/store/VoiceprintStore.h"
 
@@ -77,14 +77,14 @@ public:
 
 struct Fixture {
     QTemporaryDir dir;
-    std::unique_ptr<tanara::library::MeetingStore> store;
+    std::unique_ptr<tanara::library::MeetingRepository> store;
     std::unique_ptr<tanara::library::PeopleStore> people;
     std::unique_ptr<tanara::library::VoiceprintStore> prints;
     tanara::Meeting meeting;
 
     Fixture()
     {
-        store = std::make_unique<tanara::library::MeetingStore>(dir.filePath(QStringLiteral("rec")),
+        store = std::make_unique<tanara::library::MeetingRepository>(dir.filePath(QStringLiteral("rec")),
                                                        dir.filePath(QStringLiteral("meta")));
         people = std::make_unique<tanara::library::PeopleStore>(dir.filePath(QStringLiteral("meta/people.json")));
         prints = std::make_unique<tanara::library::VoiceprintStore>(dir.filePath(QStringLiteral("meta/vp.json")));

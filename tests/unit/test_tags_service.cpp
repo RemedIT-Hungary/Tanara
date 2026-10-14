@@ -8,7 +8,7 @@
 #include <QJsonObject>
 #include <QJsonArray>
 
-#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/store/MeetingRepository.h"
 #include "tanara/library/tags/TagNames.h"
 #include "tanara/library/tags/TagService.h"
 
@@ -39,14 +39,14 @@ private:
     std::unique_ptr<library::TagService> makeService();
 
     std::unique_ptr<QTemporaryDir> m_dir;
-    std::unique_ptr<library::MeetingStore> m_store;
+    std::unique_ptr<library::MeetingRepository> m_store;
 };
 
 void TagsServiceTest::init()
 {
     m_dir = std::make_unique<QTemporaryDir>();
     QVERIFY(m_dir->isValid());
-    m_store = std::make_unique<library::MeetingStore>(m_dir->filePath("rec"), m_dir->filePath("meta"));
+    m_store = std::make_unique<library::MeetingRepository>(m_dir->filePath("rec"), m_dir->filePath("meta"));
 }
 
 void TagsServiceTest::cleanup()

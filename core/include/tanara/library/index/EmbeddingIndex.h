@@ -22,7 +22,7 @@ namespace tanara { struct TranscriptLine; }
 
 namespace tanara::library {
 
-class MeetingStore;
+class MeetingRepository;
 class MeetingProfiles;
 
 struct EmbeddingChunk {
@@ -38,7 +38,7 @@ public:
     static constexpr int kChunkChars = 1500;
     static const QString kFileName;   // "text.embeddings.bin"
 
-    explicit EmbeddingIndex(MeetingStore* store, QObject* parent = nullptr);
+    explicit EmbeddingIndex(MeetingRepository* store, QObject* parent = nullptr);
     ~EmbeddingIndex() override;
 
     // For the shared phrases of the "Why?" explanation (without it the explanation is empty).
@@ -48,7 +48,7 @@ public:
     void setModel(const QString& model);
     QString model() const;
 
-    // The folder is looked up from the index (MeetingStore): only from the owner (main) thread.
+    // The folder is looked up from the index (MeetingRepository): only from the owner (main) thread.
     bool has(const QString& meetingId) const;
     QVector<SimilarHit> similar(const QString& meetingId, int limit = 8) const;
     // Thread-safe variants with known folders (id -> folder, e.g. MeetingProfiles::folders()):
@@ -82,7 +82,7 @@ private:
     // The meeting's mean vector if its index is valid and of the current model; otherwise empty.
     QVector<float> meanFor(const QString& meetingId, const QString& folder) const;
 
-    MeetingStore* m_store = nullptr;
+    MeetingRepository* m_store = nullptr;
     MeetingProfiles* m_profiles = nullptr;
     mutable QMutex m_mutex;                     // m_model, m_cache, m_folders
     QString m_model;

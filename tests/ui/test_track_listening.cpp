@@ -17,7 +17,7 @@
 #include "TrackActivityModel.h"
 
 #include "tanara/app/AppController.h"
-#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/store/MeetingRepository.h"
 
 #include <QQmlApplicationEngine>
 #include <QQmlComponent>

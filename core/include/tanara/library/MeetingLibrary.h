@@ -25,7 +25,7 @@
 
 namespace tanara::library {
 
-class MeetingStore;
+class MeetingRepository;
 class MeetingJobTracker;
 class TagService;
 
@@ -103,7 +103,7 @@ class MeetingLibrary : public QObject {
     Q_OBJECT
 public:
     // tracker may be nullptr (then the state consists only of the hasTranscript/hasSummary flags).
-    explicit MeetingLibrary(MeetingStore* store, MeetingJobTracker* tracker = nullptr,
+    explicit MeetingLibrary(MeetingRepository* store, MeetingJobTracker* tracker = nullptr,
                             QObject* parent = nullptr);
     ~MeetingLibrary() override;
 

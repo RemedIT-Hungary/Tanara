@@ -14,9 +14,9 @@
 #include "tanara/editing/session/SpeakerEditor.h"
 #include "tanara/library/jobs/MeetingJobTracker.h"
 #include "tanara/providers/core/ProviderRegistry.h"
-#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/store/MeetingRepository.h"
 #include "tanara/processing/summary/SummaryService.h"
-#include "tanara/library/summary/SummaryStore.h"
+#include "tanara/library/summary/SummaryRepository.h"
 
 #include <QClipboard>
 #include <QDir>
@@ -280,7 +280,7 @@ void SummaryViewModel::connectController()
     m_connections << connect(c->settings(), &app::SettingsManager::settingsChanged, this,
                              &SummaryViewModel::reload);
     // The note (and the detected call) live in meeting.json: after saving / editing from another view.
-    m_connections << connect(c->store(), &library::MeetingStore::meetingUpdated, this,
+    m_connections << connect(c->store(), &library::MeetingRepository::meetingUpdated, this,
                              [this, mine](const QString& id) { if (mine(id)) m_note->reload(); });
 }
 
@@ -526,7 +526,7 @@ void SummaryViewModel::reload()
     m_hasSummary = doc.exists;
     if (doc.exists) {
         m_markdown = doc.markdown;
-        m_mode = library::summarystore::modeToString(doc.meta.mode);
+        m_mode = library::SummaryRepository::modeToString(doc.meta.mode);
         m_summary = doc.summary;
         m_execSummary = doc.summary.execSummary.trimmed();
         m_summaryParticipants = doc.summary.participants;

@@ -7,7 +7,7 @@
 #include "tanara/recording/audio/DeviceManager.h"
 #include "tanara/foundation/Version.h"
 #include "tanara/foundation/log/Logging.h"
-#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/store/MeetingRepository.h"
 
 #include <QSysInfo>
 #include <QtGlobal>

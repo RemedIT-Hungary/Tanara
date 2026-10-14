@@ -13,7 +13,7 @@
 #include "tanara/app/SettingsManager.h"
 #include "tanara/editing/session/SpeakerEditor.h"
 #include "tanara/editing/session/SpeakerOverlay.h"
-#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/store/MeetingRepository.h"
 
 #include <memory>
 

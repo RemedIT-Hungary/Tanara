@@ -3,7 +3,7 @@
 #include "tanara/library/tags/TagNames.h"
 #include "tanara/library/MeetingLibrary.h"
 #include "tanara/foundation/text/Text.h"
-#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/store/MeetingRepository.h"
 #include "tanara/library/store/PeopleStore.h"
 #include "tanara/foundation/SharedFile.h"
 
@@ -86,7 +86,7 @@ bool samePerson(const QString& a, const QString& b)
 
 struct TagService::Impl {
     TagService*   q = nullptr;
-    MeetingStore* store = nullptr;
+    MeetingRepository* store = nullptr;
     MeetingProfiles* profiles = nullptr;
     PeopleStore*  people = nullptr;
     std::function<QString()> selfProvider;
@@ -350,7 +350,7 @@ struct TagService::Impl {
     static QVector<PersonTagRow> readRows(const QVector<QPair<QString, QString>>& folders) {
         QVector<PersonTagRow> out;
         for (const auto& f : folders) {
-            const Meeting m = MeetingStore::readMeetingFolder(f.second);
+            const Meeting m = MeetingRepository::readMeetingFolder(f.second);
             if (m.id.isEmpty() && m.title.isEmpty()) continue;
             out.append(PersonTagRow{ f.first, m.startedAt, m.tagIds, namedParticipants(m) });
         }
@@ -449,7 +449,7 @@ private:
     TagService* m_s;
 };
 
-TagService::TagService(MeetingStore* store, const QString& tagsFile, QObject* parent)
+TagService::TagService(MeetingRepository* store, const QString& tagsFile, QObject* parent)
     : QObject(parent), d(std::make_unique<Impl>())
 {
     d->q = this;
@@ -458,9 +458,9 @@ TagService::TagService(MeetingStore* store, const QString& tagsFile, QObject* pa
     d->load();
     if (store) {
         auto refresh = [this](const QString& id) { d->reloadRow(id); };
-        connect(store, &MeetingStore::meetingUpdated, this, refresh);
-        connect(store, &MeetingStore::meetingAdded, this, refresh);
-        connect(store, &MeetingStore::meetingRemoved, this, [this](const QString& id) {
+        connect(store, &MeetingRepository::meetingUpdated, this, refresh);
+        connect(store, &MeetingRepository::meetingAdded, this, refresh);
+        connect(store, &MeetingRepository::meetingRemoved, this, [this](const QString& id) {
             const bool had = d->rowsLoaded && d->rows.remove(id) > 0;
             d->invalidateStats();
             const auto before = d->rejected.size();

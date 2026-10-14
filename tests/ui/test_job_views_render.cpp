@@ -10,7 +10,7 @@
 
 #include "tanara/app/AppController.h"
 #include "tanara/foundation/paths/AppPaths.h"
-#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/store/MeetingRepository.h"
 
 #include <QDir>
 #include <QQmlApplicationEngine>

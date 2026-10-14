@@ -2,7 +2,7 @@
 #include "tanara/editing/session/SpeakerOverlay.h"
 #include "tanara/library/index/EmbeddingIndex.h"
 #include "tanara/providers/embedding/IEmbeddingProvider.h"
-#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/store/MeetingRepository.h"
 
 #include <QDateTime>
 #include <QDir>
@@ -16,7 +16,7 @@
 
 namespace tanara::library {
 
-EmbeddingPreparer::EmbeddingPreparer(MeetingStore* store, EmbeddingIndex* index,
+EmbeddingPreparer::EmbeddingPreparer(MeetingRepository* store, EmbeddingIndex* index,
                                      const QString& stateFile, QObject* parent)
     : QObject(parent), m_store(store), m_index(index), m_stateFile(stateFile)
 {

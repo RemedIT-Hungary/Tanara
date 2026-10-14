@@ -97,7 +97,7 @@ Signal `transcriptPositionRequested(int ms)`: the Editor scrolls to the utteranc
 - Tracks and waveforms: `tracks()`, `waveforms()`, `requestWaveforms(id)`
   (`core/include/tanara/audio/TrackCatalog.h`, `WaveformService.h`).
 - Summary: `summaryDocument(id)`, `meetingTopics(id)`, `setMeetingTopics`, `topicStatuses(id)`,
-  `topicAnalyses(id)` (`core/include/tanara/summary/SummaryStore.h`).
+  `topicAnalyses(id)` (`core/include/tanara/summary/SummaryRepository.h`).
 - Readiness: `canRun(step, meetingId)` (`providers/core/ReadinessModel.h`).
 
 ## Known limits to design around

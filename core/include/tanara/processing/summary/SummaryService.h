@@ -13,6 +13,7 @@
 // The provider is NOT owned (never deleted).
 #include "tanara/domain/Transcript.h"
 #include "tanara/domain/Summary.h"
+#include "tanara/library/MeetingLayout.h"
 #include "tanara/providers/chat/ILlmProvider.h"
 #include "tanara/providers/chat/LlmContext.h"
 #include "tanara/processing/summary/SummaryPipeline.h"
@@ -84,7 +85,7 @@ public:
     static QString defaultSystemPrompt();
 
     // The usual cache file name in the meeting's folder.
-    static QString cacheFileName() { return QStringLiteral("summary.notes.json"); }
+    static QString cacheFileName() { return library::MeetingLayout::summaryNotesCache(); }
 
 signals:
     // Progress. stage: "notes" (done / total parts finished), "merge" (0/1), "single" (0/1).

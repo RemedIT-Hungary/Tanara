@@ -96,6 +96,9 @@ class SettingsViewModel : public QObject {
     Q_PROPERTY(QString themeMode READ themeMode WRITE setThemeMode NOTIFY themeModeChanged)
     // [{ key: audio|notes|meta, label, path, usage, hint, error, locked }]
     Q_PROPERTY(QVariantList folders READ folders NOTIFY foldersChanged)
+    // The further recording roots besides the primary one (the "audio" folder row):
+    // [{ path, meetings, removable }]; removable only while the root holds no meeting.
+    Q_PROPERTY(QVariantList recordingRoots READ recordingRoots NOTIFY foldersChanged)
     // The "Getting started" window can be reopened from here too (only in the main window's process; shown in the demo).
     Q_PROPERTY(bool onboardingAvailable READ onboardingAvailable NOTIFY dialogsChanged)
 
@@ -195,6 +198,7 @@ public:
     QString themeMode() const { return m_draftTheme; }
     void setThemeMode(const QString& mode);
     QVariantList folders() const;
+    QVariantList recordingRoots() const;
     bool onboardingAvailable() const;
 
     QAbstractItemModel* devicesModel() const;
@@ -267,6 +271,11 @@ public:
     Q_INVOKABLE void browseFolder(const QString& key);
     Q_INVOKABLE void setFolder(const QString& key, const QString& path);
     Q_INVOKABLE void openFolder(const QString& key);
+    // Further recording roots (take effect after a restart, like the other folders).
+    Q_INVOKABLE void addRecordingRoot();                       // folder picker
+    Q_INVOKABLE void addRecordingRootPath(const QString& path);
+    Q_INVOKABLE void makePrimaryRecordingRoot(const QString& path);
+    Q_INVOKABLE void removeRecordingRoot(const QString& path);  // only an empty root
     Q_INVOKABLE void openPeople();
     // The People window on the given person (from the list of skipped samples).
     Q_INVOKABLE void openPerson(const QString& person);

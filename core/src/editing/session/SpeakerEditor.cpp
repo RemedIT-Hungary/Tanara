@@ -1,4 +1,5 @@
 #include "tanara/editing/session/SpeakerEditor.h"
+#include "tanara/library/MeetingLayout.h"
 #include "tanara/foundation/log/Logging.h"
 
 #include "tanara/editing/review/CandidateRanker.h"
@@ -6,7 +7,7 @@
 #include "tanara/editing/review/SpeakerAnalysis.h"
 #include "tanara/editing/session/SpeakerOverlay.h"
 #include "tanara/processing/analysis/TrackActivity.h"
-#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/store/MeetingRepository.h"
 #include "tanara/library/store/PeopleStore.h"
 #include "tanara/library/store/VoiceprintStore.h"
 #include "tanara/processing/voiceid/VoiceModelRegistry.h"
@@ -158,7 +159,7 @@ MeetingActivity defaultActivity(const Meeting& m)
 
 struct SpeakerEditor::Private {
     SpeakerEditor* q = nullptr;
-    library::MeetingStore* store = nullptr;
+    library::MeetingRepository* store = nullptr;
     library::PeopleStore* people = nullptr;
     library::VoiceprintStore* voiceprints = nullptr;
     QString meetingId;
@@ -240,7 +241,7 @@ struct SpeakerEditor::Private {
         meetingTags = m.tagIds;
         tagEvidenceCache.clear();
         audioPath = m.folder.isEmpty() ? QString() : mixdownPath(m);
-        audioRel = m.mixdownFile.isEmpty() ? QStringLiteral("mixdown.mp3") : m.mixdownFile;
+        audioRel = library::MeetingLayout::mixdownOf(m);
         const qint64 tMeeting = perf.elapsed();
 
         lines = folder.isEmpty() ? QVector<TranscriptLine>() : loadTranscriptLines(folder);
@@ -1601,7 +1602,7 @@ struct SpeakerEditor::Private {
 
 // =============================================================================
 
-SpeakerEditor::SpeakerEditor(library::MeetingStore* store, library::PeopleStore* people, library::VoiceprintStore* voiceprints,
+SpeakerEditor::SpeakerEditor(library::MeetingRepository* store, library::PeopleStore* people, library::VoiceprintStore* voiceprints,
                              const QString& meetingId, QObject* parent)
     : QObject(parent), d(std::make_unique<Private>())
 {

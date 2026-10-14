@@ -27,8 +27,9 @@
 #include "tanara/cloud/CloudTypes.h"
 #include "tanara/watcher/detect/Autostart.h"
 #include "tanara/watcher/detect/IMeetingDetector.h"
-#include "tanara/library/store/JsonSerialization.h"
-#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/store/detail/MeetingJson.h"
+#include "tanara/library/store/ParticipantJson.h"
+#include "tanara/library/store/MeetingRepository.h"
 
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -491,6 +492,41 @@ private slots:
         QCOMPARE(vm.folders().at(2).toMap().value("locked").toBool(), true);
         vm.setFolder(QStringLiteral("meta"), QStringLiteral("/máshova"));
         QVERIFY(!vm.dirty());
+    }
+
+    void recordingRootsList()
+    {
+        startApp();
+        const QString primary = m_app->settings()->paths().primaryRecordingRoot();
+        const QString extra = m_home->filePath(QStringLiteral("archivum"));
+        const QString busy = m_home->filePath(QStringLiteral("teli"));
+        QVERIFY(QDir(busy).mkpath(QStringLiteral("m1")));
+        QFile f(QDir(busy).filePath(QStringLiteral("m1/meeting.json")));
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write("{}");
+        f.close();
+        FakeDialogs dialogs;
+        dialogs.folderAnswer = extra;
+        SettingsViewModel vm;
+        vm.setDialogsObject(&dialogs);
+        vm.setController(m_app.get());
+        QVERIFY(vm.recordingRoots().isEmpty());
+        vm.addRecordingRoot();                       // via the folder picker
+        vm.addRecordingRootPath(busy);
+        vm.addRecordingRootPath(extra);              // twice: ignored
+        QCOMPARE(vm.recordingRoots().size(), 2);
+        QCOMPARE(vm.recordingRoots().at(0).toMap().value("removable").toBool(), true);
+        QCOMPARE(vm.recordingRoots().at(1).toMap().value("meetings").toInt(), 1);
+        vm.removeRecordingRoot(busy);                // holds a meeting: stays
+        QCOMPARE(vm.recordingRoots().size(), 2);
+        vm.makePrimaryRecordingRoot(extra);          // the old primary becomes a further root
+        QCOMPARE(vm.folders().at(0).toMap().value("path").toString(), extra);
+        QCOMPARE(vm.recordingRoots().size(), 2);
+        vm.removeRecordingRoot(primary);             // the old (empty) primary can go now
+        QCOMPARE(vm.recordingRoots().size(), 1);
+        QVERIFY(vm.save());
+        // Inside the sandbox every root counts; the first is the primary.
+        QCOMPARE(m_app->settings()->paths().recordingRoots(), (QStringList{extra, busy}));
     }
 
     void foldersBrowseAndUsage()

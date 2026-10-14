@@ -16,7 +16,7 @@
 #include "tanara/editing/session/SpeakerEditor.h"
 #include "tanara/editing/session/SpeakerOverlay.h"
 #include "tanara/processing/analysis/UtteranceEmbeddings.h"
-#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/store/MeetingRepository.h"
 #include "tanara/library/store/PeopleStore.h"
 #include "tanara/library/store/VoiceprintStore.h"
 
@@ -61,7 +61,7 @@ void SpeakerSandboxTest::measure()
     QVERIFY2(!QDir(home).absolutePath().startsWith(QDir::homePath() + QStringLiteral("/.tanara")),
              "a sandbox nem mutathat a valódi ~/.tanara-ra");
 
-    library::MeetingStore store(rec, home);
+    library::MeetingRepository store(rec, home);
     store.rebuildIndexFromDisk();
     library::PeopleStore people(QDir(home).filePath(QStringLiteral("people.json")));
     library::VoiceprintStore prints(QDir(home).filePath(QStringLiteral("voiceprints.json")));

@@ -1,4 +1,6 @@
 #include "TranscriptEditorViewModel.h"
+#include "tanara/library/store/TranscriptRepository.h"
+#include "tanara/library/store/UiStateRepository.h"
 
 #include "DemoText.h"
 
@@ -15,7 +17,7 @@
 #include "tanara/editing/review/SideAnalysis.h"
 #include "tanara/editing/review/SpeakerAnalysis.h"
 #include "tanara/editing/session/SpeakerEditor.h"
-#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/store/MeetingRepository.h"
 #include "tanara/library/tags/TagService.h"
 
 #include <QClipboard>
@@ -181,7 +183,7 @@ void TranscriptEditorViewModel::resolveSession()
         connect(m_controller, &app::AppController::voiceprintsChanged,
                 this, &TranscriptEditorViewModel::peopleChanged, Qt::UniqueConnection);
         if (!m_uiStatePathSet)
-            m_uiStatePath = m_controller->settings()->paths().stateFile(paths::files::UiTranscript);
+            m_uiStatePath = m_controller->uiState()->filePath();
         m_demoSession.reset();
         editing::SpeakerEditor* ed = m_meetingId.isEmpty() ? nullptr : m_controller->speakerEditor(m_meetingId);
         const Meeting meeting = ed ? m_controller->store()->load(m_meetingId) : Meeting();
@@ -189,12 +191,9 @@ void TranscriptEditorViewModel::resolveSession()
         m_legacyText.clear();
         if (m_legacyTranscript) {
             // An old transcript stays readable: the text of transcript.md (with an upper limit).
-            QFile md(QDir(meeting.folder).filePath(QStringLiteral("transcript.md")));
-            if (md.open(QIODevice::ReadOnly)) {
-                m_legacyText = QString::fromUtf8(md.read(4 * 1024 * 1024));
-                // Shown as plain text: without Markdown markers (`[00:06]`, **Name**).
-                m_legacyText.remove(QLatin1Char('`')).remove(QStringLiteral("**"));
-            }
+            m_legacyText = library::TranscriptRepository::readMarkdown(meeting.folder, 4 * 1024 * 1024);
+            // Shown as plain text: without Markdown markers (`[00:06]`, **Name**).
+            m_legacyText.remove(QLatin1Char('`')).remove(QStringLiteral("**"));
         }
         if (ed == m_editor && ed) return;
         detach();
@@ -648,30 +647,13 @@ void TranscriptEditorViewModel::rebuildOverview()
 bool TranscriptEditorViewModel::loadRailState() const
 {
     if (m_uiStatePath.isEmpty() || !m_editor) return false;
-    QFile f(m_uiStatePath);
-    if (!f.open(QIODevice::ReadOnly)) return false;
-    return QJsonDocument::fromJson(f.readAll()).object()
-        .value(QStringLiteral("rail")).toObject().value(m_editor->meetingId()).toBool(false);
+    return library::UiStateRepository(m_uiStatePath).railVisible(m_editor->meetingId());
 }
 
 void TranscriptEditorViewModel::saveRailState() const
 {
     if (m_uiStatePath.isEmpty() || !m_editor || m_demoSession) return;
-    QJsonObject root;
-    {
-        QFile f(m_uiStatePath);
-        if (f.open(QIODevice::ReadOnly)) root = QJsonDocument::fromJson(f.readAll()).object();
-    }
-    QJsonObject rail = root.value(QStringLiteral("rail")).toObject();
-    // The default is the hidden rail: only the switched-on ones are stored.
-    if (m_railVisible) rail.insert(m_editor->meetingId(), true);
-    else rail.remove(m_editor->meetingId());
-    root.insert(QStringLiteral("rail"), rail);
-    QDir().mkpath(QFileInfo(m_uiStatePath).absolutePath());
-    QSaveFile out(m_uiStatePath);
-    if (!out.open(QIODevice::WriteOnly)) return;
-    out.write(QJsonDocument(root).toJson());
-    out.commit();
+    library::UiStateRepository(m_uiStatePath).setRailVisible(m_editor->meetingId(), m_railVisible);
 }
 
 void TranscriptEditorViewModel::setRailVisible(bool visible)

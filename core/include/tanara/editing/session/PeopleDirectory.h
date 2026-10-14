@@ -8,7 +8,7 @@
 #include <QString>
 #include <QVector>
 
-namespace tanara::library { class MeetingStore; }
+namespace tanara::library { class MeetingRepository; }
 namespace tanara::library { class PeopleStore; }
 namespace tanara::library { class VoiceprintStore; }
 
@@ -21,7 +21,7 @@ bool matchesSearch(const QString& text, const QString& needle);
 // meetingCount: by a speakerMap value, the mic track's fixed name or a manually added participant.
 // The nicknames come from the people.json records (also for someone who has only a voiceprint).
 QVector<PersonInfo> listPeople(const library::PeopleStore* people, const library::VoiceprintStore* voiceprints,
-                               library::MeetingStore* store);
+                               library::MeetingRepository* store);
 
 // Filtering the list by the search field's text; those matching first (name start / word start) come first.
 // It also searches the nicknames: someone matching only by nickname comes after the name matches, and

@@ -7,7 +7,7 @@
 #include "tanara/editing/review/SpeakerAnalysis.h"
 #include "tanara/editing/session/SpeakerOverlay.h"
 #include "tanara/processing/analysis/UtteranceEmbeddings.h"
-#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/store/MeetingRepository.h"
 #include "tanara/processing/voiceid/VoiceEmbedderSet.h"
 #include "tanara/processing/voiceid/VoiceEval.h"
 #include "tanara/processing/voiceid/VoiceModelDownloader.h"
@@ -303,7 +303,7 @@ int runVoiceEvalCommand(const QStringList& args)
     const processing::VoiceEmbedderSet set(entries);
 
     // READ-only: meeting.json, transcript lines, overlay; the cache is neither loaded nor written.
-    Meeting m = library::MeetingStore::readMeetingFolder(folder);
+    Meeting m = library::MeetingRepository::readMeetingFolder(folder);
     if (m.id.isEmpty()) { err() << "Not a meeting folder (no readable meeting.json): " << folder << "\n"; return 1; }
     m.folder = folder;
     const QVector<TranscriptLine> lines = editing::speakeredit::loadTranscriptLines(folder);

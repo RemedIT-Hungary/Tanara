@@ -31,7 +31,7 @@
 #include "tanara/app/SettingsManager.h"
 #include "tanara/cloud/CloudAccount.h"
 #include "tanara/cloud/CloudTypes.h"
-#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/store/MeetingRepository.h"
 
 #include <memory>
 

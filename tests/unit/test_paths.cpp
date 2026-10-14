@@ -19,7 +19,7 @@
 #include "tanara/app/AppController.h"
 #include "tanara/library/store/PeopleStore.h"
 #include "tanara/library/store/VoiceprintStore.h"
-#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/store/MeetingRepository.h"
 
 using namespace tanara;
 
@@ -262,7 +262,7 @@ void PathsTest::storesDefaultIntoOverride()
     QCOMPARE(sm.paths().dataDir(), sb);
     QCOMPARE(sm.paths().primaryRecordingRoot(), sb + QStringLiteral("/recordings"));
 
-    library::MeetingStore store(sm.paths().primaryRecordingRoot(), sm.paths().dataDir());
+    library::MeetingRepository store(sm.paths().primaryRecordingRoot(), sm.paths().dataDir());
     QCOMPARE(store.metadataDir(), sb);
     QVERIFY(QFile::exists(sb + QStringLiteral("/index.db")));
 

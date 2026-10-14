@@ -32,7 +32,7 @@
 #include "tanara/foundation/log/Logging.h"
 #include "tanara/foundation/paths/AppPaths.h"
 #include "tanara/app/SettingsManager.h"
-#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/store/MeetingRepository.h"
 #include "tanara/foundation/ProcessLock.h"   // watcherLockPath()
 
 #include "AppContext.h"

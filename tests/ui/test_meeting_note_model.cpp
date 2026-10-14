@@ -7,7 +7,7 @@
 #include "PreTranscriptViewModel.h"
 #include "SummaryViewModel.h"
 
-#include "tanara/library/summary/SummaryStore.h"
+#include "tanara/library/summary/SummaryRepository.h"
 
 #include <QSignalSpy>
 #include <QtTest>
@@ -210,7 +210,7 @@ private slots:
         // Old summary (summary.json does not know what it was made with): no indicator.
         library::SummaryDocument old = doc;
         old.meta.contextNoteKnown = false;
-        QVERIFY(library::summarystore::save(sb.app->store()->load(m.id).folder, old));
+        QVERIFY(library::SummaryRepository::save(sb.app->store()->load(m.id).folder, old));
         vm.refresh();
         vm.note()->setNote(QStringLiteral("Egészen más."));
         QVERIFY(!vm.noteChangedSinceSummary());

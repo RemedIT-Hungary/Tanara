@@ -10,7 +10,7 @@
 #include "tanara/app/SettingsManager.h"
 #include "tanara/processing/analysis/ParticipantAnalysis.h"
 #include "tanara/editing/session/SpeakerOverlay.h"
-#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/store/MeetingRepository.h"
 #include "tanara/library/tags/TagService.h"
 #include "tanara/processing/voiceid/VoiceModelRegistry.h"
 

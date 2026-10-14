@@ -7,7 +7,7 @@
 #include "tanara/library/jobs/MeetingJobTracker.h"
 #include "tanara/library/jobs/JobErrors.h"
 #include "tanara/library/jobs/JobStats.h"
-#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/store/MeetingRepository.h"
 #include "tanara/cloud/CloudTypes.h"
 
 using namespace tanara;
@@ -40,7 +40,7 @@ private slots:
 
 private:
     std::unique_ptr<QTemporaryDir> m_dir;
-    std::unique_ptr<library::MeetingStore> m_store;
+    std::unique_ptr<library::MeetingRepository> m_store;
     Meeting newMeeting(const QString& title = QStringLiteral("Teszt")) {
         return m_store->createMeeting(title);
     }
@@ -52,7 +52,7 @@ void JobTrackerTest::init()
 {
     m_dir = std::make_unique<QTemporaryDir>();
     QVERIFY(m_dir->isValid());
-    m_store = std::make_unique<library::MeetingStore>(m_dir->filePath("rec"), m_dir->filePath("meta"));
+    m_store = std::make_unique<library::MeetingRepository>(m_dir->filePath("rec"), m_dir->filePath("meta"));
 }
 
 void JobTrackerTest::cleanup()
@@ -163,7 +163,7 @@ void JobTrackerTest::failurePersistsAcrossRestart()
     }
     QVERIFY(QFile::exists(QDir(m.folder).filePath(library::MeetingJobTracker::stateFileName())));
     // "Restart": a new tracker (and a new store) on the same disk.
-    library::MeetingStore store2(m_dir->filePath("rec"), m_dir->filePath("meta"));
+    library::MeetingRepository store2(m_dir->filePath("rec"), m_dir->filePath("meta"));
     library::MeetingJobTracker t2(&store2);
     const MeetingProcessingState s = t2.state(m.id);
     QCOMPARE(s.transcriptState, StepState::Failed);

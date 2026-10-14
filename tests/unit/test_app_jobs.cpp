@@ -23,7 +23,7 @@
 #include "tanara/library/tracks/TrackCatalog.h"
 #include "tanara/library/jobs/MeetingJobTracker.h"
 #include "tanara/library/MeetingLibrary.h"
-#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/store/MeetingRepository.h"
 #include "tanara/editing/session/SpeakerEditor.h"
 #include "tanara/editing/session/SpeakerOverlay.h"
 #include "tanara/library/jobs/JobErrors.h"

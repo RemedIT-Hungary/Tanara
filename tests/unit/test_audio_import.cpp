@@ -16,7 +16,7 @@
 #include "tanara/library/tracks/TrackCatalog.h"
 #include "tanara/library/import/AudioImporter.h"
 #include "tanara/library/jobs/MeetingJobTracker.h"
-#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/store/MeetingRepository.h"
 
 using namespace tanara;
 
@@ -88,7 +88,7 @@ private:
     Meeting importAndWait(library::AudioImporter& imp, const library::ImportRequest& req);
 
     std::unique_ptr<QTemporaryDir> m_dir;
-    std::unique_ptr<library::MeetingStore> m_store;
+    std::unique_ptr<library::MeetingRepository> m_store;
     bool m_ffmpeg = false;
     media::MediaToolPtr m_media = media::FfmpegMediaTool::fromSettings({});
 };
@@ -105,7 +105,7 @@ void AudioImportTest::init()
     m_dir = std::make_unique<QTemporaryDir>();
     QVERIFY(m_dir->isValid());
     QVERIFY(QDir().mkpath(m_dir->filePath("src")));
-    m_store = std::make_unique<library::MeetingStore>(m_dir->filePath("rec"), m_dir->filePath("meta"));
+    m_store = std::make_unique<library::MeetingRepository>(m_dir->filePath("rec"), m_dir->filePath("meta"));
 }
 
 void AudioImportTest::cleanup()
@@ -288,7 +288,7 @@ void AudioImportTest::importsMonoFile()
     imp.setOpusBitrateKbps(32);
     QSignalSpy started(&imp, &library::AudioImporter::started);
     QSignalSpy progress(&imp, &library::AudioImporter::progress);
-    QSignalSpy updated(m_store.get(), &library::MeetingStore::meetingUpdated);
+    QSignalSpy updated(m_store.get(), &library::MeetingRepository::meetingUpdated);
     library::ImportRequest req;
     req.sources = {{file, false}};
     const Meeting m = importAndWait(imp, req);
@@ -547,7 +547,7 @@ void AudioImportTest::controllerRunsImportAsJob()
     QSignalSpy imported(&app, &app::AppController::importFinished);
     QSignalSpy jobFinished(app.jobs(), &library::MeetingJobTracker::jobFinished);
     QSignalSpy mixed(&app, &app::AppController::mixdownUpdated);
-    QSignalSpy added(app.store(), &library::MeetingStore::meetingUpdated);
+    QSignalSpy added(app.store(), &library::MeetingRepository::meetingUpdated);
     library::ImportRequest req;
     req.sources = {{file, true}};
     const QString id = app.importAudio(req);

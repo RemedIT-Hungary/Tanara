@@ -1,9 +1,9 @@
 #include "tanara/library/people/PeopleStats.h"
+#include "tanara/library/MeetingLayout.h"
 
 #include "tanara/foundation/log/Logging.h"
 #include "tanara/editing/session/SpeakerOverlay.h"
-#include "tanara/library/store/JsonSerialization.h"
-#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/store/MeetingRepository.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -94,7 +94,7 @@ MeetingPeople scanMeetingPeople(const Meeting& m)
     return out;
 }
 
-PeopleStats::PeopleStats(MeetingStore* store, QObject* parent)
+PeopleStats::PeopleStats(MeetingRepository* store, QObject* parent)
     : QObject(parent), m_store(store), m_alive(std::make_shared<std::atomic_bool>(true))
 {
 }
@@ -117,7 +117,7 @@ QVector<MeetingPeople> PeopleStats::meetings() const
 PeopleStats::Stamp PeopleStats::stampOf(const QString& folder)
 {
     Stamp s;
-    s.meeting = FileStamp::of(QDir(folder).filePath(QStringLiteral("meeting.json")));
+    s.meeting = FileStamp::of(MeetingLayout::path(folder, MeetingLayout::meetingJson()));
     s.segments = FileStamp::of(editing::speakeredit::segmentsPath(folder));
     s.overlay = FileStamp::of(editing::speakeredit::overlayPath(folder));
     return s;
@@ -147,17 +147,13 @@ PeopleStats::Result PeopleStats::compute(const QVector<Job>& jobs, const QHash<Q
         Scanned s;
         s.id = job.id;
         s.stamp = stamp;
-        QFile f(QDir(job.folder).filePath(QStringLiteral("meeting.json")));
-        if (f.open(QIODevice::ReadOnly)) {
-            const QJsonDocument doc = QJsonDocument::fromJson(f.readAll());
-            if (doc.isObject()) {
-                Meeting m = meetingFromJson(doc.object());
-                m.folder = job.folder;   // the index's folder is the valid one (a moved library)
-                if (m.id.isEmpty()) m.id = job.id;
-                s.people = scanMeetingPeople(m);
-                s.people.meetingId = job.id;
-                s.valid = true;
-            }
+        // The index's folder is the valid one (a moved library); the reader fills it in.
+        Meeting m = MeetingRepository::readMeetingFolder(job.folder);
+        if (!m.folder.isEmpty()) {
+            if (m.id.isEmpty()) m.id = job.id;
+            s.people = scanMeetingPeople(m);
+            s.people.meetingId = job.id;
+            s.valid = true;
         }
         r.changed.append(s);
     }

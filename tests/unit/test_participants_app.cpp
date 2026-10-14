@@ -17,7 +17,7 @@
 #include "tanara/editing/undo/MeetingUndo.h"
 #include "tanara/editing/session/SpeakerEditor.h"
 #include "tanara/editing/session/TrackSpeech.h"
-#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/store/MeetingRepository.h"
 #include "tanara/library/store/VoiceprintStore.h"
 #include "tanara/processing/voiceid/VoiceModelRegistry.h"
 

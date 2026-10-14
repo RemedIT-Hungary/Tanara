@@ -18,7 +18,7 @@
 #include "tanara/foundation/ProcessLock.h"
 #include "tanara/foundation/secrets/SecretStore.h"
 #include "tanara/foundation/paths/AppPaths.h"
-#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/store/MeetingRepository.h"
 #include "tanara/library/store/PeopleStore.h"
 #include "tanara/foundation/SharedFile.h"
 #include "tanara/library/store/VoiceprintStore.h"
@@ -112,7 +112,7 @@ QString DataSafetyTest::orphanFolder(const QString& name)
 
 void DataSafetyTest::orphanRecoverySkipsLiveLockFolder()
 {
-    library::MeetingStore store(m_audio, m_meta);
+    library::MeetingRepository store(m_audio, m_meta);
     const QString live = orphanFolder("2026-01-05_1000_Elo-felvetel");
     const QString crashed = orphanFolder("2026-01-04_0900_Osszeomlott");
 
@@ -143,7 +143,7 @@ void DataSafetyTest::orphanRecoverySkipsLiveLockFolder()
 
 void DataSafetyTest::orphanRecoverySkipsFreshTracks()
 {
-    library::MeetingStore store(m_audio, m_meta);
+    library::MeetingRepository store(m_audio, m_meta);
     const QString folder = QDir(m_audio).filePath("2026-01-05_1000_Most-irjak");
     writeFile(QDir(folder).filePath("track_mic.ogg"), "regi");
     backdate(QDir(folder).filePath("track_mic.ogg"), 3600);
@@ -162,12 +162,12 @@ void DataSafetyTest::orphanRecoverySkipsFreshTracks()
 
 void DataSafetyTest::indexNeverListsFolderTwice()
 {
-    library::MeetingStore analyzer(m_audio, m_meta);
+    library::MeetingRepository analyzer(m_audio, m_meta);
     Meeting a = analyzer.createMeeting("Helyreállított");
 
     // Another process (the recorder) writes meeting.json with a NEW id into the same folder.
     {
-        library::MeetingStore recorder(m_audio, m_meta);
+        library::MeetingRepository recorder(m_audio, m_meta);
         Meeting b = a;
         b.id = "felvevo-id";
         b.title = "A valódi felvétel";
@@ -184,10 +184,11 @@ void DataSafetyTest::indexNeverListsFolderTwice()
         db.setDatabaseName(QDir(m_meta).filePath("index.db"));
         QVERIFY(db.open());
         QSqlQuery q(db);
-        q.prepare("INSERT INTO meetings (id, title, folder, startedAt, durationMs, hasTranscript, hasSummary)"
-                  " VALUES (:id, 'Árva sor', :folder, '2099-01-01T00:00:00.000', 0, 0, 0)");
+        q.prepare("INSERT INTO meetings (id, title, root, dir, startedAt, durationMs, hasTranscript, hasSummary)"
+                  " VALUES (:id, 'Árva sor', :root, :dir, '2099-01-01T00:00:00.000', 0, 0, 0)");
         q.bindValue(":id", a.id);
-        q.bindValue(":folder", a.folder);
+        q.bindValue(":root", QFileInfo(a.folder).absolutePath());   // index v2: (root, dir)
+        q.bindValue(":dir", QFileInfo(a.folder).fileName());
         QVERIFY(q.exec());
         db.close();
     }
@@ -203,7 +204,7 @@ void DataSafetyTest::indexNeverListsFolderTwice()
 
 void DataSafetyTest::deleteKeepsFolderOfAnotherMeeting()
 {
-    library::MeetingStore store(m_audio, m_meta);
+    library::MeetingRepository store(m_audio, m_meta);
     Meeting a = store.createMeeting("Helyreállított");
     writeFile(QDir(a.folder).filePath("track_mic.ogg"), "felvetel");
 
@@ -217,17 +218,18 @@ void DataSafetyTest::deleteKeepsFolderOfAnotherMeeting()
         db.setDatabaseName(QDir(m_meta).filePath("index.db"));
         QVERIFY(db.open());
         QSqlQuery q(db);
-        q.prepare("INSERT INTO meetings (id, title, folder, startedAt, durationMs, hasTranscript, hasSummary)"
-                  " VALUES (:id, 'A valódi felvétel', :folder, '2026-01-01T00:00:00.000', 0, 0, 0)");
+        q.prepare("INSERT INTO meetings (id, title, root, dir, startedAt, durationMs, hasTranscript, hasSummary)"
+                  " VALUES (:id, 'A valódi felvétel', :root, :dir, '2026-01-01T00:00:00.000', 0, 0, 0)");
         q.bindValue(":id", b.id);
-        q.bindValue(":folder", a.folder);
+        q.bindValue(":root", QFileInfo(a.folder).absolutePath());   // index v2: (root, dir)
+        q.bindValue(":dir", QFileInfo(a.folder).fileName());
         QVERIFY(q.exec());
         db.close();
     }
     QSqlDatabase::removeDatabase("teszt-masik-sor");
 
     // Deleting the "(recovered)" entry must NOT take the other meeting's folder.
-    QSignalSpy removed(&store, &library::MeetingStore::meetingRemoved);
+    QSignalSpy removed(&store, &library::MeetingRepository::meetingRemoved);
     QVERIFY(store.deleteMeeting(a.id));
     QCOMPARE(removed.count(), 1);
     QVERIFY(QDir(a.folder).exists());
@@ -244,7 +246,7 @@ void DataSafetyTest::deleteKeepsFolderOfAnotherMeeting()
 
 void DataSafetyTest::deleteKeepsLiveRecordingFolder()
 {
-    library::MeetingStore store(m_audio, m_meta);
+    library::MeetingRepository store(m_audio, m_meta);
     const Meeting a = store.createMeeting("Felvétel alatt");
     writeFile(QDir(a.folder).filePath("track_mic.ogg"), "epp-irodik");
     RecordingLock lock(recordingLockPath());
@@ -258,7 +260,7 @@ void DataSafetyTest::deleteKeepsLiveRecordingFolder()
 
 void DataSafetyTest::meetingJsonWrittenAtomically()
 {
-    library::MeetingStore store(m_audio, m_meta);
+    library::MeetingRepository store(m_audio, m_meta);
     Meeting m = store.createMeeting("Atomikus");
     m.speakerMap.insert("Beszélő 1", "Ödön");
     m.hasTranscript = true;
@@ -432,7 +434,7 @@ void DataSafetyTest::replaceFileKeepsOldOnFailure()
 
 void DataSafetyTest::relocateRejectsMixdownAndNonAudio()
 {
-    library::MeetingStore store(m_audio, m_meta);
+    library::MeetingRepository store(m_audio, m_meta);
     Meeting m = store.createMeeting("Sávok");
     Track mic; mic.id = "mic"; mic.kind = TrackKind::Mic; mic.file = "track_mic.ogg"; mic.active = true;
     Track sys; sys.id = "sys"; sys.kind = TrackKind::Loopback; sys.file = "track_sys.ogg"; sys.active = true;
@@ -471,7 +473,7 @@ void DataSafetyTest::relocateRejectsMixdownAndNonAudio()
 void DataSafetyTest::deletingTracksNeverDeletesMixdown()
 {
     // An old meeting.json (made before the fix): a dropped track points to the mixdown file.
-    library::MeetingStore store(m_audio, m_meta);
+    library::MeetingRepository store(m_audio, m_meta);
     Meeting m = store.createMeeting("Régi hiba");
     Track mic; mic.id = "mic"; mic.kind = TrackKind::Mic; mic.file = "track_mic.ogg"; mic.active = true;
     Track bad; bad.id = "sys"; bad.kind = TrackKind::Loopback; bad.file = "mixdown.mp3"; bad.active = false;

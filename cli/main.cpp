@@ -5,6 +5,11 @@
 //   list                             meetings
 //   adopt <folder>                   adopt a recording folder (from another machine, a USB stick)
 //   reindex                          rebuild the index from the folders on disk
+//   library roots                    recording roots (first = primary) with their meeting counts
+//   library add-root <path>          add a further recording root (listed, not recorded into)
+//   library set-primary <path>       new recordings go into this root (added if needed)
+//   library move-root <from> <to> [--dry-run]   move every meeting folder of a root (Ctrl+C stops;
+//                                    run it again to continue)
 //   export <id> [<archive.zip>]      pack a meeting into a *.tanara.zip archive
 //   import-archive <archive.zip>     adopt an archive (as if recorded here)
 //   import <file>... [--title T] [--date ISO] [--split-channels] [--own-track N]
@@ -47,7 +52,8 @@
 #include "tanara/recording/audio/DeviceManager.h"
 #include "tanara/library/import/AudioImporter.h"
 #include "tanara/library/store/MeetingArchive.h"
-#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/store/MeetingRepository.h"
+#include "tanara/foundation/paths/AppPaths.h"
 #include "tanara/library/store/VoiceprintStore.h"
 #include "tanara/library/tags/TagService.h"
 #include "tanara/processing/voiceid/VoiceEmbedder.h"
@@ -64,6 +70,8 @@
 #include <QHash>
 #include <QFileInfo>
 
+#include <atomic>
+#include <csignal>
 #include <memory>
 
 using namespace tanara;
@@ -103,6 +111,124 @@ static int cmdList(app::AppController& app) {
             << (m.hasSummary ? "  [summary]" : "") << "\n";
     out.flush();
     return 0;
+}
+
+// ---- library roots (P8) ------------------------------------------------------------------------
+
+static std::atomic<bool> g_moveCancel{false};
+static void onMoveSigint(int) { g_moveCancel.store(true); }
+
+static bool sameRoot(const QString& a, const QString& b) {
+    return paths::normalize(a) == paths::normalize(b);
+}
+
+// Writes the roots into the settings (first = primary) and hands them to the running repository.
+static void storeRoots(app::AppController& app, const QStringList& roots) {
+    app::AppSettings s = app.settings()->settings();
+    s.paths.recordingRoots.clear();
+    for (int i = 0; i < roots.size(); ++i)
+        s.paths.recordingRoots << paths::RecordingRoot{roots.at(i), i == 0};
+    app.settings()->setSettings(s);
+    app.store()->setRoots(app.settings()->paths().recordingRoots());
+}
+
+static int cmdLibrary(app::AppController& app, const QStringList& args) {
+    const QString sub = args.value(2);
+    const bool sandbox = app.settings()->paths().sandboxed();
+    auto warnSandbox = [&](const QString& path) {
+        if (sandbox && !paths::normalize(path).startsWith(paths::homeOverride()))
+            err << "note: TANARA_HOME is set; a root outside the sandbox is ignored.\n";
+    };
+    QStringList roots = app.settings()->paths().recordingRoots();
+    if (sub == "roots") {
+        QHash<QString, int> indexed;
+        for (const Meeting& m : app.store()->loadAll())
+            ++indexed[library::MeetingRepository::rootOf(m.folder)];
+        for (int i = 0; i < roots.size(); ++i) {
+            const QString r = QDir::cleanPath(roots.at(i));
+            out << (i == 0 ? "* " : "  ") << QDir::toNativeSeparators(r) << "  "
+                << plural(library::MeetingRepository::meetingFolderCount(r), "%n meeting folder", "%n meeting folders")
+                << ", " << indexed.value(r) << " indexed" << (QDir(r).exists() ? "" : "  (missing)") << "\n";
+        }
+        out << "(* = primary: new recordings go here)\n";
+        out.flush();
+        return 0;
+    }
+    if (sub == "add-root" || sub == "set-primary") {
+        const QString path = paths::normalize(args.value(3), QDir::currentPath());
+        if (path.isEmpty()) { err << "Usage: library " << sub << " <path>\n"; return 2; }
+        warnSandbox(path);
+        QStringList next;
+        for (const QString& r : std::as_const(roots))
+            if (!sameRoot(r, path)) next << r;
+        if (sub == "add-root") {
+            if (next.size() != roots.size()) { out << "Already a root: " << QDir::toNativeSeparators(path) << "\n"; return 0; }
+            next << path;
+        } else {
+            next.prepend(path);
+        }
+        QDir().mkpath(path);
+        storeRoots(app, next);
+        app.store()->reindex();
+        out << (sub == "add-root" ? "Root added: " : "Primary root: ") << QDir::toNativeSeparators(path) << "\n"
+            << QStringLiteral("Index: %1 meetings.").arg(app.store()->loadAll().size()) << "\n";
+        out.flush();
+        return 0;
+    }
+    if (sub == "move-root") {
+        const QString from = paths::normalize(args.value(3), QDir::currentPath());
+        const QString to = paths::normalize(args.value(4), QDir::currentPath());
+        if (from.isEmpty() || to.isEmpty()) { err << "Usage: library move-root <from> <to> [--dry-run]\n"; return 2; }
+        warnSandbox(to);
+        const library::MeetingRepository::MovePlan plan = app.store()->planMove(from, to);
+        out << QStringLiteral("Move %1 → %2: %3").arg(QDir::toNativeSeparators(from), QDir::toNativeSeparators(to),
+                                                      plural(plan.folders.size(), "%n meeting folder", "%n meeting folders"));
+        if (!plan.skipped.isEmpty()) out << QStringLiteral(", %1 skipped (live recording)").arg(plan.skipped.size());
+        out << "\n" << (plan.sameFileSystem ? QStringLiteral("Same file system: folders are renamed.")
+                                            : QStringLiteral("Copy + verify + delete: %1 MB, free at target: %2 MB.")
+                                                  .arg(plan.bytes / (1024 * 1024)).arg(plan.bytesAvailable / (1024 * 1024)))
+            << "\n";
+        if (!plan.error.isEmpty()) { err << "ERROR: " << plan.error << "\n"; return 1; }
+        if (args.contains(QStringLiteral("--dry-run"))) {
+            for (const QString& f : plan.folders) out << "  " << f << "\n";
+            out << "(dry run: nothing changed)\n";
+            out.flush();
+            return 0;
+        }
+        out.flush();
+        g_moveCancel.store(false);
+        std::signal(SIGINT, onMoveSigint);
+        const library::MeetingRepository::MoveResult res =
+            app.store()->moveMeetings(from, to, &g_moveCancel, [](int done, int total, const QString& name) {
+                out << "\r  " << done << "/" << total << "  " << name.left(60).leftJustified(60); out.flush();
+            });
+        std::signal(SIGINT, SIG_DFL);
+        out << "\n";
+        // The settings follow: the target becomes a root (in the source's place, keeping the primary
+        // role); the source stays listed while anything is left in it.
+        QStringList next;
+        const bool sourceEmpty = library::MeetingRepository::meetingFolderCount(from) == 0;
+        bool placed = false;
+        for (const QString& r : std::as_const(roots)) {
+            if (sameRoot(r, to)) { if (!placed) { next << r; placed = true; } continue; }
+            if (sameRoot(r, from)) {
+                if (!placed) { next << to; placed = true; }
+                if (!sourceEmpty) next << r;
+                continue;
+            }
+            next << r;
+        }
+        if (!placed) next << to;
+        storeRoots(app, next);
+        out << QStringLiteral("Moved: %1, skipped: %2, failed: %3.").arg(res.moved.size()).arg(res.skipped.size()).arg(res.failed.size()) << "\n";
+        for (const QString& f : res.failed) err << "  " << f << "\n";
+        if (!res.error.isEmpty()) err << "ERROR: " << res.error << "\n";
+        if (res.cancelled) out << "Stopped. Run the same command again to continue.\n";
+        out.flush();
+        return res.ok() ? 0 : 1;
+    }
+    err << "Usage: library roots | add-root <path> | set-primary <path> | move-root <from> <to> [--dry-run]\n";
+    return 2;
 }
 
 int main(int argc, char** argv) {
@@ -229,7 +355,7 @@ int main(int argc, char** argv) {
 
     if (cmd == "adopt") {
         // Adopts a recording folder (from another machine, a USB stick): copies it into the recordings
-        // and adds ONLY that one to the index. See MeetingStore::adoptMeetingFolder.
+        // and adds ONLY that one to the index. See MeetingRepository::adoptMeetingFolder.
         if (args.size() < 3) { err << "Usage: adopt <folder>\n"; return 2; }
         QString error;
         const Meeting m = app.store()->adoptMeetingFolder(args.at(2), &error);
@@ -290,6 +416,8 @@ int main(int argc, char** argv) {
         out.flush();
         return 0;
     }
+
+    if (cmd == "library") return cmdLibrary(app, args);
 
     if (cmd == "detect") {
         // Smoke test: the watcher ENGINE without a separate process or tray. A single poll, or a

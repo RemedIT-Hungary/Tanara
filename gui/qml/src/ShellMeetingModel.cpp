@@ -8,14 +8,9 @@
 
 #include "tanara/app/AppController.h"
 #include "tanara/library/jobs/MeetingJobTracker.h"
-#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/store/MeetingRepository.h"
+#include "tanara/library/store/TranscriptRepository.h"
 
-#include <QDir>
-#include <QFile>
-#include <QFileInfo>
-#include <QJsonArray>
-#include <QJsonDocument>
-#include <QJsonObject>
 #include <QSet>
 
 namespace tanara_qml {
@@ -23,38 +18,6 @@ namespace tanara_qml {
 using tanara::JobKind;
 
 namespace {
-
-// Number of (raw) speaker labels in the transcript; 0 if none / unreadable.
-int speakerCount(const tanara::Meeting& m)
-{
-    // A one-element cache: task-progress signals reload the header often, while the transcript
-    // does not change meanwhile (identified by path + modification time + size).
-    static QString cachedKey;
-    static int cachedCount = 0;
-    const QFileInfo fi(QDir(m.folder).filePath(QStringLiteral("transcript.segments.json")));
-    if (!fi.exists())
-        return 0;
-    const QString key = fi.absoluteFilePath() + QLatin1Char('|')
-                        + QString::number(fi.lastModified().toMSecsSinceEpoch())
-                        + QLatin1Char('|') + QString::number(fi.size());
-    if (key == cachedKey)
-        return cachedCount;
-    QFile f(fi.absoluteFilePath());
-    if (!f.open(QIODevice::ReadOnly))
-        return 0;
-    const QJsonDocument doc = QJsonDocument::fromJson(f.readAll());
-    const QJsonArray segments = doc.isArray() ? doc.array()
-                                              : doc.object().value(QStringLiteral("segments")).toArray();
-    QSet<QString> speakers;
-    for (const QJsonValue& v : segments) {
-        const QString s = v.toObject().value(QStringLiteral("speaker")).toString();
-        if (!s.isEmpty())
-            speakers.insert(s);
-    }
-    cachedKey = key;
-    cachedCount = int(speakers.size());
-    return cachedCount;
-}
 
 QString metaLine(const QDateTime& startedAt, qint64 durationMs, const QString& tail)
 {
@@ -128,10 +91,10 @@ void ShellMeetingModel::attach()
         }
         m_attached = m_controller;
         if (tanara::app::AppController* c = m_controller) {
-            if (tanara::library::MeetingStore* store = c->store()) {
-                connect(store, &tanara::library::MeetingStore::meetingUpdated, this,
+            if (tanara::library::MeetingRepository* store = c->store()) {
+                connect(store, &tanara::library::MeetingRepository::meetingUpdated, this,
                         &ShellMeetingModel::onMeetingTouched);
-                connect(store, &tanara::library::MeetingStore::meetingRemoved, this,
+                connect(store, &tanara::library::MeetingRepository::meetingRemoved, this,
                         &ShellMeetingModel::onMeetingTouched);
             }
             connect(c, &tanara::app::AppController::speakerMapChanged, this,
@@ -218,7 +181,7 @@ void ShellMeetingModel::reload()
             canIdentify = activeTracks > 0;
             QString tail;
             if (hasTranscript) {
-                const int n = speakerCount(m);
+                const int n = m_controller->transcripts()->speakerCount(m.folder);
                 if (n > 0) tail = tr("%n beszélő", nullptr, n);
             } else if (!m.tracks.isEmpty()) {
                 tail = tr("%n sáv", nullptr, int(m.tracks.size()));

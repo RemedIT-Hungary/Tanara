@@ -4,7 +4,7 @@
 #include <QTemporaryDir>
 
 #include "tanara/app/AppController.h"
-#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/store/MeetingRepository.h"
 #include "tanara/library/tags/TagService.h"
 
 using namespace tanara;

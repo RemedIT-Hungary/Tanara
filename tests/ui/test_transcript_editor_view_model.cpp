@@ -58,7 +58,7 @@ int laneOf(const TranscriptEditorViewModel& vm, const QString& key)
 // otherwise the two voices are orthogonal.
 struct PairScene {
     QTemporaryDir dir;
-    std::unique_ptr<library::MeetingStore> store;
+    std::unique_ptr<library::MeetingRepository> store;
     std::unique_ptr<library::PeopleStore> people;
     std::unique_ptr<library::VoiceprintStore> prints;
     Meeting meeting;
@@ -72,7 +72,7 @@ struct PairScene {
         const QVector<QPair<QString, char>> rows{
             {kB1, 'a'}, {kB2, 'b'}, {kB1, 'a'}, {kB1, 'b'}, {kB2, 'b'}, {kB1, 'a'},
             {kB1, 'b'}, {kB2, 'b'}, {kB1, 'a'}, {kB2, 'b'}, {kB1, 'b'}, {kB2, 'b'}};
-        store = std::make_unique<library::MeetingStore>(dir.filePath(QStringLiteral("rec")),
+        store = std::make_unique<library::MeetingRepository>(dir.filePath(QStringLiteral("rec")),
                                                dir.filePath(QStringLiteral("meta")));
         people = std::make_unique<library::PeopleStore>(dir.filePath(QStringLiteral("meta/people.json")));
         prints = std::make_unique<library::VoiceprintStore>(dir.filePath(QStringLiteral("meta/vp.json")));

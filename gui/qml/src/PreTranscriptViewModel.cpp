@@ -1,4 +1,5 @@
 #include "PreTranscriptViewModel.h"
+#include "tanara/library/MeetingLayout.h"
 #include "tanara/providers/core/ProviderConfig.h"
 
 #include "DemoText.h"
@@ -10,7 +11,7 @@
 #include "tanara/app/AppController.h"
 #include "tanara/app/SettingsManager.h"
 #include "tanara/library/jobs/MeetingJobTracker.h"
-#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/store/MeetingRepository.h"
 
 #include <QDir>
 #include <QFileInfo>
@@ -131,7 +132,7 @@ void PreTranscriptViewModel::connectController()
                              [this, mine](const QString& id, bool) { if (mine(id)) reload(); });
     m_connections << connect(c, &app::AppController::tracksChanged, this,
                              [this, mine](const QString& id) { if (mine(id)) reload(); });
-    m_connections << connect(c->store(), &library::MeetingStore::meetingUpdated, this,
+    m_connections << connect(c->store(), &library::MeetingRepository::meetingUpdated, this,
                              [this, mine](const QString& id) { if (mine(id)) reload(); });
     m_connections << connect(c->settings(), &app::SettingsManager::settingsChanged, this,
                              &PreTranscriptViewModel::reload);
@@ -177,8 +178,7 @@ void PreTranscriptViewModel::reload()
         m_identifyEnabled = m_identifyAvailable && c->identifyAfterTranscription(m_meetingId);
 
         // Mixdown: running / done / stale / missing.
-        const QString mixPath = QDir(m.folder).filePath(
-            m.mixdownFile.isEmpty() ? QStringLiteral("mixdown.mp3") : m.mixdownFile);
+        const QString mixPath = QDir(m.folder).filePath(tanara::library::MeetingLayout::mixdownOf(m));
         if (ps.mixdownRunning) {
             m_mixdownState = QStringLiteral("running");
             m_mixdownPercent = ps.mixdownPercent;

@@ -19,8 +19,9 @@
 
 #include "tanara/domain/Types.h"
 #include "tanara/app/SettingsManager.h"
-#include "tanara/library/store/JsonSerialization.h"
-#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/store/detail/MeetingJson.h"
+#include "tanara/library/store/ParticipantJson.h"
+#include "tanara/library/store/MeetingRepository.h"
 #include "tanara/foundation/secrets/SecretStore.h"
 #include "tanara/app/LegacySettings.h"
 
@@ -421,7 +422,7 @@ private slots:
         const QString audio = tmp.filePath(QStringLiteral("recordings"));
         const QString meta  = tmp.filePath(QStringLiteral("meta"));
 
-        library::MeetingStore store(audio, meta);
+        library::MeetingRepository store(audio, meta);
         const Meeting m = store.createMeeting(QStringLiteral("Heti sync"));
 
         QVERIFY(!m.id.isEmpty());
@@ -458,7 +459,7 @@ private slots:
         const QString audio = tmp.filePath(QStringLiteral("recordings"));
         const QString meta  = tmp.filePath(QStringLiteral("meta"));
 
-        library::MeetingStore store(audio, meta);
+        library::MeetingRepository store(audio, meta);
         store.createMeeting(QStringLiteral("A"));
         store.createMeeting(QStringLiteral("B"));
         QCOMPARE(store.loadAll().size(), 2);

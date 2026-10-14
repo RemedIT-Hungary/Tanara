@@ -14,7 +14,7 @@
 #include "tanara/app/AppController.h"
 #include "tanara/app/SettingsManager.h"
 #include "tanara/library/people/PeopleService.h"
-#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/store/MeetingRepository.h"
 #include "tanara/library/store/PeopleStore.h"
 #include "tanara/library/tags/PersonTags.h"
 #include "tanara/library/tags/TagService.h"
@@ -83,7 +83,7 @@ private:
     void makeService();
 
     std::unique_ptr<QTemporaryDir> m_dir;
-    std::unique_ptr<library::MeetingStore> m_store;
+    std::unique_ptr<library::MeetingRepository> m_store;
     std::unique_ptr<library::PeopleStore> m_people;
     std::unique_ptr<library::TagService> m_tags;
 };
@@ -92,7 +92,7 @@ void PersonTagsTest::init()
 {
     m_dir = std::make_unique<QTemporaryDir>();
     QVERIFY(m_dir->isValid());
-    m_store = std::make_unique<library::MeetingStore>(m_dir->filePath("rec"), m_dir->filePath("meta"));
+    m_store = std::make_unique<library::MeetingRepository>(m_dir->filePath("rec"), m_dir->filePath("meta"));
     m_people = std::make_unique<library::PeopleStore>(m_dir->filePath("meta/people.json"));
     makeService();
 }

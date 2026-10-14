@@ -1,6 +1,7 @@
 #include "tanara/library/MeetingLibrary.h"
+#include "tanara/library/MeetingLayout.h"
 #include "tanara/library/jobs/MeetingJobTracker.h"
-#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/store/MeetingRepository.h"
 #include "tanara/library/tags/TagService.h"
 
 #include <QCoreApplication>
@@ -30,7 +31,7 @@ struct MeetingLibrary::TextDoc {
 };
 
 struct MeetingLibrary::Impl {
-    MeetingStore*      store = nullptr;
+    MeetingRepository*      store = nullptr;
     MeetingJobTracker* tracker = nullptr;
     TagService*        tags = nullptr;
     bool               loaded = false;
@@ -46,23 +47,23 @@ struct MeetingLibrary::Impl {
         for (int i = 0; i < meetings.size(); ++i) index.insert(meetings.at(i).id, i);
     }
     static QString segmentsPath(const Meeting& m) {
-        return QDir(m.folder).filePath(QStringLiteral("transcript.segments.json"));
+        return MeetingLayout::path(m.folder, MeetingLayout::segmentsJson());
     }
 };
 
-MeetingLibrary::MeetingLibrary(MeetingStore* store, MeetingJobTracker* tracker, QObject* parent)
+MeetingLibrary::MeetingLibrary(MeetingRepository* store, MeetingJobTracker* tracker, QObject* parent)
     : QObject(parent), d(new Impl)
 {
     d->store = store;
     d->tracker = tracker;
     if (store) {
-        connect(store, &MeetingStore::meetingUpdated, this, [this](const QString& id) {
+        connect(store, &MeetingRepository::meetingUpdated, this, [this](const QString& id) {
             const bool known = !d->loaded || d->index.contains(id);
             reloadMeeting(id);
             if (known) emit meetingChanged(id); else emit meetingAdded(id);
             emit pendingItemsChanged();
         });
-        connect(store, &MeetingStore::meetingAdded, this, [this](const QString& id) {
+        connect(store, &MeetingRepository::meetingAdded, this, [this](const QString& id) {
             // On createMeeting the store first emits meetingUpdated (saveMeeting): if we already picked it up
             // from there, there is nothing to do here.
             if (d->loaded && d->index.contains(id)) return;
@@ -70,7 +71,7 @@ MeetingLibrary::MeetingLibrary(MeetingStore* store, MeetingJobTracker* tracker, 
             emit meetingAdded(id);
             emit pendingItemsChanged();
         });
-        connect(store, &MeetingStore::meetingRemoved, this, [this](const QString& id) {
+        connect(store, &MeetingRepository::meetingRemoved, this, [this](const QString& id) {
             if (d->loaded) {
                 const int i = d->index.value(id, -1);
                 if (i >= 0) { d->meetings.removeAt(i); d->reindex(); }

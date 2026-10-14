@@ -1,11 +1,11 @@
-// SummaryStore: structured access to the summary: summary.json (new summaries, with
+// SummaryRepository: structured access to the summary: summary.json (new summaries, with
 // metadata) and reading back the old markdown-only summaries.
 #include <QtTest>
 #include <QTemporaryDir>
 #include <QJsonDocument>
 #include <QJsonObject>
 
-#include "tanara/library/summary/SummaryStore.h"
+#include "tanara/library/summary/SummaryRepository.h"
 #include "tanara/domain/Types.h"
 
 using namespace tanara;
@@ -49,7 +49,7 @@ void SummaryStoreTest::quickMarkdownRoundTrip()
 {
     // The output of Summary::renderMarkdown can be read back without loss.
     const Summary s = sample();
-    const library::SummaryDocument doc = library::summarystore::parseMarkdown(s.renderMarkdown());
+    const library::SummaryDocument doc = library::SummaryRepository::parseMarkdown(s.renderMarkdown());
     QVERIFY(doc.exists);
     QVERIFY(doc.fromMarkdown);
     QCOMPARE(doc.meta.mode, library::SummaryMode::Quick);
@@ -86,7 +86,7 @@ void SummaryStoreTest::topicsMarkdownParsed()
     md += QStringLiteral("### 1. %1\n\n").arg(a1.title) + a1.renderMarkdown();
     md += QStringLiteral("### 2. %1\n\n").arg(a2.title) + a2.renderMarkdown();
 
-    const library::SummaryDocument doc = library::summarystore::parseMarkdown(md);
+    const library::SummaryDocument doc = library::SummaryRepository::parseMarkdown(md);
     QCOMPARE(doc.meta.mode, library::SummaryMode::Topics);
     QCOMPARE(doc.summary.execSummary, QStringLiteral("Röviden: jól haladunk."));
     QCOMPARE(doc.summary.actionItems.size(), 1);
@@ -132,7 +132,7 @@ void SummaryStoreTest::tolerantParsing()
         "## Résztvevők\r\n"
         "- Ödön\r\n"
         "- Lilla, Ádám\r\n");
-    const library::SummaryDocument doc = library::summarystore::parseMarkdown(md);
+    const library::SummaryDocument doc = library::SummaryRepository::parseMarkdown(md);
     QVERIFY(doc.exists);
     QVERIFY(doc.summary.execSummary.startsWith(QStringLiteral("Bevezető megjegyzés a fájl elején.")));
     QVERIFY(doc.summary.execSummary.contains(QStringLiteral("Első bekezdés,\nkét sorban.")));
@@ -151,7 +151,7 @@ void SummaryStoreTest::tolerantParsing()
 
 void SummaryStoreTest::emptyMarkdown()
 {
-    const library::SummaryDocument doc = library::summarystore::parseMarkdown(QStringLiteral("  \n\n"));
+    const library::SummaryDocument doc = library::SummaryRepository::parseMarkdown(QStringLiteral("  \n\n"));
     QVERIFY(!doc.exists);
     QVERIFY(doc.summary.execSummary.isEmpty());
 }
@@ -159,9 +159,9 @@ void SummaryStoreTest::emptyMarkdown()
 void SummaryStoreTest::loadNothing()
 {
     QTemporaryDir dir;
-    QVERIFY(!library::summarystore::load(dir.path()).exists);
-    QVERIFY(!library::summarystore::load(QString()).exists);
-    QVERIFY(!library::summarystore::save(dir.filePath("nincs-ilyen-mappa"), library::SummaryDocument{}));
+    QVERIFY(!library::SummaryRepository::load(dir.path()).exists);
+    QVERIFY(!library::SummaryRepository::load(QString()).exists);
+    QVERIFY(!library::SummaryRepository::save(dir.filePath("nincs-ilyen-mappa"), library::SummaryDocument{}));
 }
 
 void SummaryStoreTest::loadLegacyMarkdownOnly()
@@ -169,8 +169,8 @@ void SummaryStoreTest::loadLegacyMarkdownOnly()
     // Old meeting: only summary.md exists.
     QTemporaryDir dir;
     const Summary s = sample();
-    write(library::summarystore::markdownPath(dir.path()), s.renderMarkdown());
-    const library::SummaryDocument doc = library::summarystore::load(dir.path());
+    write(library::SummaryRepository::markdownPath(dir.path()), s.renderMarkdown());
+    const library::SummaryDocument doc = library::SummaryRepository::load(dir.path());
     QVERIFY(doc.exists);
     QVERIFY(doc.fromMarkdown);
     QCOMPARE(doc.summary.decisions, s.decisions);
@@ -204,11 +204,11 @@ void SummaryStoreTest::saveAndLoadJsonWithMeta()
     doc.meta.model = QStringLiteral("google/gemma-4-12b");
     doc.meta.mode = library::SummaryMode::Topics;
 
-    write(library::summarystore::markdownPath(dir.path()), doc.summary.renderMarkdown());
-    QVERIFY(library::summarystore::save(dir.path(), doc));
-    QVERIFY(QFile::exists(library::summarystore::jsonPath(dir.path())));
+    write(library::SummaryRepository::markdownPath(dir.path()), doc.summary.renderMarkdown());
+    QVERIFY(library::SummaryRepository::save(dir.path(), doc));
+    QVERIFY(QFile::exists(library::SummaryRepository::jsonPath(dir.path())));
 
-    const library::SummaryDocument back = library::summarystore::load(dir.path());
+    const library::SummaryDocument back = library::SummaryRepository::load(dir.path());
     QVERIFY(back.exists);
     QVERIFY(!back.fromMarkdown);
     QCOMPARE(back.meta.createdAt, doc.meta.createdAt);
@@ -226,8 +226,8 @@ void SummaryStoreTest::saveAndLoadJsonWithMeta()
     QCOMPARE(back.topics[0].actionItems[0].owner, QStringLiteral("y"));
     QCOMPARE(back.markdown, doc.summary.renderMarkdown());
 
-    QCOMPARE(library::summarystore::modeFromString(library::summarystore::modeToString(library::SummaryMode::Quick)), library::SummaryMode::Quick);
-    QCOMPARE(library::summarystore::modeFromString(QStringLiteral("ismeretlen")), library::SummaryMode::Unknown);
+    QCOMPARE(library::SummaryRepository::modeFromString(library::SummaryRepository::modeToString(library::SummaryMode::Quick)), library::SummaryMode::Quick);
+    QCOMPARE(library::SummaryRepository::modeFromString(QStringLiteral("ismeretlen")), library::SummaryMode::Unknown);
 }
 
 void SummaryStoreTest::editedMarkdownWins()
@@ -240,19 +240,19 @@ void SummaryStoreTest::editedMarkdownWins()
     doc.meta.providerId = QStringLiteral("openai-compat");
     doc.meta.model = QStringLiteral("m");
     doc.meta.mode = library::SummaryMode::Quick;
-    write(library::summarystore::markdownPath(dir.path()), doc.summary.renderMarkdown());
-    QVERIFY(library::summarystore::save(dir.path(), doc));
+    write(library::SummaryRepository::markdownPath(dir.path()), doc.summary.renderMarkdown());
+    QVERIFY(library::SummaryRepository::save(dir.path(), doc));
 
     // The user later rewrites summary.md by hand (materially newer than the json).
     Summary edited = sample();
     edited.decisions = {QStringLiteral("Kézzel átírt döntés.")};
-    write(library::summarystore::markdownPath(dir.path()), edited.renderMarkdown());
-    QFile md(library::summarystore::markdownPath(dir.path()));
+    write(library::SummaryRepository::markdownPath(dir.path()), edited.renderMarkdown());
+    QFile md(library::SummaryRepository::markdownPath(dir.path()));
     QVERIFY(md.open(QIODevice::ReadWrite));
     QVERIFY(md.setFileTime(QDateTime::currentDateTime().addSecs(60), QFileDevice::FileModificationTime));
     md.close();
 
-    const library::SummaryDocument back = library::summarystore::load(dir.path());
+    const library::SummaryDocument back = library::SummaryRepository::load(dir.path());
     QVERIFY(back.fromMarkdown);
     QCOMPARE(back.summary.decisions, QStringList({"Kézzel átírt döntés."}));
     QCOMPARE(back.meta.model, QStringLiteral("m"));            // the creation data stays
@@ -270,7 +270,7 @@ void SummaryStoreTest::memoAndOpenQuestionsRoundTrip()
 
     // Markdown to structure to markdown: without loss.
     const QString md = s.renderMarkdown();
-    const library::SummaryDocument doc = library::summarystore::parseMarkdown(md);
+    const library::SummaryDocument doc = library::SummaryRepository::parseMarkdown(md);
     QCOMPARE(doc.summary.openQuestions, s.openQuestions);
     QCOMPARE(doc.summary.memo.size(), 2);
     QCOMPARE(doc.summary.memo[0].title, QStringLiteral("Pilot állása"));
@@ -289,15 +289,15 @@ void SummaryStoreTest::memoAndOpenQuestionsRoundTrip()
     out.summary = s;
     out.meta.mode = library::SummaryMode::Quick;
     out.meta.createdAt = QDateTime(QDate(2026, 10, 4), QTime(12, 0));
-    write(library::summarystore::markdownPath(dir.path()), md);
-    QVERIFY(library::summarystore::save(dir.path(), out));
-    const library::SummaryDocument back = library::summarystore::load(dir.path());
+    write(library::SummaryRepository::markdownPath(dir.path()), md);
+    QVERIFY(library::SummaryRepository::save(dir.path(), out));
+    const library::SummaryDocument back = library::SummaryRepository::load(dir.path());
     QVERIFY(!back.fromMarkdown);
     QCOMPARE(back.summary.openQuestions, s.openQuestions);
     QCOMPARE(back.summary.memo.size(), 2);
     QCOMPARE(back.summary.memo[1].endMs, 101 * 60000 + 30000);
     QCOMPARE(back.summary.memo[1].points, s.memo[1].points);
-    QFile jf(library::summarystore::jsonPath(dir.path()));
+    QFile jf(library::SummaryRepository::jsonPath(dir.path()));
     QVERIFY(jf.open(QIODevice::ReadOnly));
     QCOMPARE(QJsonDocument::fromJson(jf.readAll()).object().value("version").toInt(), 4);
 }
@@ -306,11 +306,11 @@ void SummaryStoreTest::oldJsonWithoutNewFieldsLoads()
 {
     // An earlier build's summary.json (version 1, without openQuestions and memo).
     QTemporaryDir dir;
-    write(library::summarystore::jsonPath(dir.path()), QStringLiteral(
+    write(library::SummaryRepository::jsonPath(dir.path()), QStringLiteral(
         R"({"version":1,"mode":"quick","createdAt":"2026-09-01T10:00:00","providerId":"openai-compat",)"
         R"("model":"m","summary":{"execSummary":"Régi.","decisions":["d"],)"
         R"("actionItems":[{"text":"t","owner":"o","due":""}],"participants":["Ádám"]}})"));
-    const library::SummaryDocument doc = library::summarystore::load(dir.path());
+    const library::SummaryDocument doc = library::SummaryRepository::load(dir.path());
     QVERIFY(doc.exists);
     QVERIFY(!doc.fromMarkdown);
     QCOMPARE(doc.summary.execSummary, QStringLiteral("Régi."));
@@ -318,7 +318,7 @@ void SummaryStoreTest::oldJsonWithoutNewFieldsLoads()
     QVERIFY(doc.summary.openQuestions.isEmpty());
     QVERIFY(doc.summary.memo.isEmpty());
     // The old markdown without open questions and memo loads too (the sample is like that).
-    QCOMPARE(library::summarystore::parseMarkdown(sample().renderMarkdown()).summary.memo.size(), 0);
+    QCOMPARE(library::SummaryRepository::parseMarkdown(sample().renderMarkdown()).summary.memo.size(), 0);
 }
 
 void SummaryStoreTest::topicOpenQuestionsParsed()
@@ -330,7 +330,7 @@ void SummaryStoreTest::topicOpenQuestionsParsed()
     a.openQuestions = {QStringLiteral("Lesz-e pótkeret?")};
     a.actionItems = {{QStringLiteral("Kalkuláció"), QStringLiteral("Ödön"), QString()}};
     const QString md = QStringLiteral("## Vezetői összefoglaló\n\nX\n\n## Témák\n\n### 1. Keret\n\n") + a.renderMarkdown();
-    const library::SummaryDocument doc = library::summarystore::parseMarkdown(md);
+    const library::SummaryDocument doc = library::SummaryRepository::parseMarkdown(md);
     QCOMPARE(doc.meta.mode, library::SummaryMode::Topics);
     QCOMPARE(doc.topics.size(), 1);
     QCOMPARE(doc.topics[0].decisions, a.decisions);

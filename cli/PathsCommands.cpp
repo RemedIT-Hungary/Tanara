@@ -110,7 +110,7 @@ int pathsShow()
                      .arg(paths::sourceName(p.source(role)), -13).arg(native(p.dir(role)));
     const QStringList roots = p.recordingRoots();
     for (int i = 1; i < roots.size(); ++i)
-        out() << QStringLiteral("%1%2%3  (not used yet)\n").arg(QString(), -12).arg(QString(), -13).arg(native(roots.at(i)));
+        out() << QStringLiteral("%1%2%3  (further root)\n").arg(QString(), -12).arg(QString(), -13).arg(native(roots.at(i)));
     out() << "\nsecrets:       backend setting \"" << s.secrets.backend << "\""
           << (secrets::keychainAllowed() ? QString() : QStringLiteral(" (keychain not available here: file)"))
           << "; file fallback " << native(p.dataFile(paths::files::Secrets)) << "\n";

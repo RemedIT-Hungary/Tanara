@@ -18,7 +18,7 @@
 #include "tanara/processing/analysis/UtteranceEmbeddings.h"
 #include "tanara/library/jobs/MeetingJobTracker.h"
 #include "tanara/library/store/MeetingArchive.h"
-#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/store/MeetingRepository.h"
 #include "tanara/library/tags/TagService.h"
 
 #include <QJsonArray>

@@ -38,7 +38,7 @@
 
 namespace tanara::library {
 
-class MeetingStore;
+class MeetingRepository;
 
 namespace tagtext {
 
@@ -57,7 +57,7 @@ QVector<QPair<QString, QString>> terms(const QString& text);
 class MeetingProfiles : public QObject {
     Q_OBJECT
 public:
-    explicit MeetingProfiles(MeetingStore* store, QObject* parent = nullptr);
+    explicit MeetingProfiles(MeetingRepository* store, QObject* parent = nullptr);
     ~MeetingProfiles() override;
 
     // Loading the rows and building missing / stale profiles on the background thread (non-blocking;

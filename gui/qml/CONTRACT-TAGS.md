@@ -31,7 +31,7 @@ view, Tags window and Settings.
 
 | Slice | Owns |
 |---|---|
-| **core** (wave 1) | `core/include/tanara/tags/**`, `core/src/tags/**`, `core/include/tanara/embedding/**`, `core/src/embedding/**`, additive changes in `domain/Types.h`, `AppController`, `MeetingStore`, `MeetingLibrary`, `SettingsManager`, `ProviderRegistry`/`ProviderDescriptor`, `ReadinessModel`, `PromptLibrary`, `SummaryService` (post-summary hook), `tests/unit/test_tags*.cpp`, `test_embedding*.cpp`, `test_library.cpp` additions |
+| **core** (wave 1) | `core/include/tanara/tags/**`, `core/src/tags/**`, `core/include/tanara/embedding/**`, `core/src/embedding/**`, additive changes in `domain/Types.h`, `AppController`, `MeetingRepository`, `MeetingLibrary`, `SettingsManager`, `ProviderRegistry`/`ProviderDescriptor`, `ReadinessModel`, `PromptLibrary`, `SummaryService` (post-summary hook), `tests/unit/test_tags*.cpp`, `test_embedding*.cpp`, `test_library.cpp` additions |
 | **controls** (wave 1) | `gui/qml/Tag*.qml`, `gui/qml/Tags*.qml`, `gui/qml/src/Tag*`, `gui/qml/src/Tags*`, a "Címkék" section in `Gallery.qml`, `Theme.radiusTag`, `tests/ui/test_tag*.cpp`, `tests/ui/test_tags*.cpp` |
 | wave 2 (later) | `MeetingHeader.qml`, `LibrarySidebar.qml`, `LibraryItem.qml`, `LibraryListModel`, `ShellActions`, `ShellBridge`, `Main.qml`, `PreTranscriptView.qml`, `ShellImportDialog.qml`, `Recorder*.qml`/`RecorderViewModel`, `Settings*`, `gui/src/**`, plus wiring inside the controls' view-models |
 
@@ -90,7 +90,7 @@ same key, or Damerau-Levenshtein ≤ 1 on keys of length ≥ 5 (≤ 2 for length
 
 Storage: `<metadataDir>/tags.json` `{ "version": 1, "tags": [{id,name,createdAt}], "rejected": [{meetingId, tagId?, name?}] }`
 written atomically (same pattern as `PeopleStore`). Per-meeting assignment lives in
-`meeting.json` (`Meeting::tagIds`) and goes through `MeetingStore::saveMeeting`.
+`meeting.json` (`Meeting::tagIds`) and goes through `MeetingRepository::saveMeeting`.
 
 | Member | Meaning |
 |---|---|

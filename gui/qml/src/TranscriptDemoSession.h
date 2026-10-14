@@ -26,7 +26,7 @@
 #include <memory>
 
 namespace tanara {
-namespace library { class MeetingStore; }
+namespace library { class MeetingRepository; }
 namespace library { class PeopleStore; }
 namespace library { class VoiceprintStore; }
 namespace editing { class SpeakerEditor; }
@@ -62,7 +62,7 @@ public:
 
 private:
     QTemporaryDir m_dir;
-    std::unique_ptr<tanara::library::MeetingStore> m_store;
+    std::unique_ptr<tanara::library::MeetingRepository> m_store;
     std::unique_ptr<tanara::library::PeopleStore> m_people;
     std::unique_ptr<tanara::library::VoiceprintStore> m_prints;
     std::unique_ptr<tanara::editing::SpeakerEditor> m_editor;

@@ -13,6 +13,7 @@
 // UI-independent (QtCore). List models can update incrementally on the signals.
 #include "tanara/domain/Meeting.h"
 #include "tanara/domain/Job.h"
+#include "tanara/library/MeetingLayout.h"
 
 #include <QObject>
 #include <QHash>
@@ -20,12 +21,12 @@
 
 namespace tanara::library {
 
-class MeetingStore;
+class MeetingRepository;
 
 class MeetingJobTracker : public QObject {
     Q_OBJECT
 public:
-    explicit MeetingJobTracker(MeetingStore* store, QObject* parent = nullptr);
+    explicit MeetingJobTracker(MeetingRepository* store, QObject* parent = nullptr);
     ~MeetingJobTracker() override;
 
     // ---- query (any time, cheap) -------------------------------------------------
@@ -54,7 +55,7 @@ public:
     void setSummaryStaleProbe(StaleProbe probe) { m_staleProbe = std::move(probe); }
 
     // Name of the state file in the meeting folder.
-    static QString stateFileName() { return QStringLiteral("processing.json"); }
+    static QString stateFileName() { return MeetingLayout::processingJson(); }
 
 public slots:
     // Dismisses the remembered error (e.g. an "OK" button). stateChanged + errorChanged signal.
@@ -113,7 +114,7 @@ private:
     void closeJob(const QString& meetingId, JobKind kind, JobOutcome outcome);
     QString folderFor(const QString& meetingId) const;
 
-    MeetingStore* m_store = nullptr;
+    MeetingRepository* m_store = nullptr;
     StaleProbe    m_staleProbe;
     QVector<JobProgress> m_jobs;                       // in start order
     mutable QHash<QString, Persisted*> m_persisted;    // meetingId -> on-disk state (lazy)

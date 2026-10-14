@@ -194,7 +194,15 @@ AppPaths AppPaths::resolve(const PlatformBase& base, const PathSettings& setting
         p.m_logs = join(H, QStringLiteral("logs"));
         p.m_models = join(H, QStringLiteral("models"));
         p.m_notes = join(H, QStringLiteral("notes"));
-        p.m_roots = {join(H, QStringLiteral("recordings"))};
+        // The recording roots of the "paths" section count only INSIDE the sandbox (a relative path is
+        // taken relative to it), so a sandbox can try out several roots but never reaches real data.
+        auto inSandbox = [&H](const QString& v) { return v == H || v.startsWith(H + QLatin1Char('/')); };
+        const QString primary = normalizeWith(settings.primaryRecordingRoot(), base.home, H);
+        p.m_roots = {inSandbox(primary) ? primary : join(H, QStringLiteral("recordings"))};
+        for (const RecordingRoot& r : settings.recordingRoots) {
+            const QString v = normalizeWith(r.path, base.home, H);
+            if (!v.isEmpty() && inSandbox(v) && !p.m_roots.contains(v)) p.m_roots << v;
+        }
         p.m_dataSrc = p.m_modelsSrc = p.m_notesSrc = p.m_rootsSrc = Source::TanaraHome;
         return p;
     }

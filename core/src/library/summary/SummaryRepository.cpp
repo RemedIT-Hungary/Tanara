@@ -1,9 +1,9 @@
-#include "tanara/library/summary/SummaryStore.h"
+#include "tanara/library/summary/SummaryRepository.h"
+#include "tanara/library/MeetingLayout.h"
 #include "tanara/library/MeetingNotes.h"
-#include "tanara/processing/summary/SummaryPipeline.h"
-#include "tanara/processing/summary/SummarySources.h"
+#include "tanara/library/summary/SummaryFormat.h"
+#include "tanara/library/summary/detail/SummaryJson.h"
 #include "tanara/foundation/text/Text.h"
-#include "tanara/library/store/JsonSerialization.h"
 
 #include <QDir>
 #include <QFile>
@@ -14,7 +14,6 @@
 #include <QSaveFile>
 
 namespace tanara::library {
-namespace summarystore {
 
 namespace {
 
@@ -102,17 +101,17 @@ void appendParagraph(QString& target, const QStringList& lines)
 
 } // namespace
 
-QString jsonPath(const QString& meetingFolder)
+QString SummaryRepository::jsonPath(const QString& meetingFolder)
 {
-    return QDir(meetingFolder).filePath(QStringLiteral("summary.json"));
+    return QDir(meetingFolder).filePath(MeetingLayout::summaryJson());
 }
 
-QString markdownPath(const QString& meetingFolder)
+QString SummaryRepository::markdownPath(const QString& meetingFolder)
 {
-    return QDir(meetingFolder).filePath(QStringLiteral("summary.md"));
+    return QDir(meetingFolder).filePath(MeetingLayout::summaryMd());
 }
 
-QString modeToString(SummaryMode m)
+QString SummaryRepository::modeToString(SummaryMode m)
 {
     switch (m) {
     case SummaryMode::Quick:   return QStringLiteral("quick");
@@ -122,14 +121,14 @@ QString modeToString(SummaryMode m)
     return QStringLiteral("unknown");
 }
 
-SummaryMode modeFromString(const QString& s)
+SummaryMode SummaryRepository::modeFromString(const QString& s)
 {
     if (s == QLatin1String("quick"))  return SummaryMode::Quick;
     if (s == QLatin1String("topics")) return SummaryMode::Topics;
     return SummaryMode::Unknown;
 }
 
-SummaryDocument parseMarkdown(const QString& markdown)
+SummaryDocument SummaryRepository::parseMarkdown(const QString& markdown)
 {
     static const QRegularExpression h12(QStringLiteral("^\\s{0,3}#{1,2}\\s+(.+?)\\s*#*\\s*$"));
     static const QRegularExpression h3(QStringLiteral("^\\s{0,3}#{3,6}\\s+(.+?)\\s*#*\\s*$"));
@@ -192,8 +191,8 @@ SummaryDocument parseMarkdown(const QString& markdown)
                 QString title = m3.captured(1).trimmed();
                 const QRegularExpressionMatch rm = memoRange.match(title);
                 if (rm.hasMatch()) {
-                    ms.startMs = processing::summarypipe::parseTimestamp(rm.captured(1));
-                    ms.endMs = rm.captured(2).isEmpty() ? -1 : processing::summarypipe::parseTimestamp(rm.captured(2));
+                    ms.startMs = summaryformat::parseTimestamp(rm.captured(1));
+                    ms.endMs = rm.captured(2).isEmpty() ? -1 : summaryformat::parseTimestamp(rm.captured(2));
                     title = title.left(rm.capturedStart()).trimmed();
                 }
                 ms.title = title;
@@ -265,7 +264,7 @@ SummaryDocument parseMarkdown(const QString& markdown)
             // "**Arguments made:**" / "**Open question:**" -> a subsection.
             const QRegularExpressionMatch bl = boldLabel.match(t);
             if (bl.hasMatch()) {
-                memoGroup = processing::summarysrc::memoGroupKey(bl.captured(1));
+                memoGroup = summaryformat::memoGroupKey(bl.captured(1));
                 memoGroupFresh = true;
                 break;
             }
@@ -323,13 +322,13 @@ SummaryDocument parseMarkdown(const QString& markdown)
         for (const TopicAnalysis& a : std::as_const(doc.topics))
             for (const QString& q : a.openQuestions)
                 if (!doc.summary.openQuestions.contains(q)
-                    && doc.summary.openQuestions.size() < processing::summarypipe::kMaxOpenQuestions)
+                    && doc.summary.openQuestions.size() < summaryformat::kMaxOpenQuestions)
                     doc.summary.openQuestions << q;
     }
     return doc;
 }
 
-QJsonObject toJson(const SummaryDocument& doc)
+QJsonObject SummaryRepository::toJson(const SummaryDocument& doc)
 {
     QJsonObject o;
     o[QStringLiteral("version")]   = kVersion;
@@ -348,7 +347,7 @@ QJsonObject toJson(const SummaryDocument& doc)
     return o;
 }
 
-SummaryDocument fromJson(const QJsonObject& o)
+SummaryDocument SummaryRepository::fromJson(const QJsonObject& o)
 {
     SummaryDocument doc;
     doc.exists = true;
@@ -368,7 +367,7 @@ SummaryDocument fromJson(const QJsonObject& o)
     return doc;
 }
 
-SummaryDocument load(const QString& meetingFolder)
+SummaryDocument SummaryRepository::load(const QString& meetingFolder)
 {
     SummaryDocument doc;
     if (meetingFolder.isEmpty()) return doc;
@@ -429,7 +428,7 @@ SummaryDocument load(const QString& meetingFolder)
     return doc;
 }
 
-bool save(const QString& meetingFolder, const SummaryDocument& doc)
+bool SummaryRepository::save(const QString& meetingFolder, const SummaryDocument& doc)
 {
     if (meetingFolder.isEmpty() || !QDir(meetingFolder).exists()) return false;
     QSaveFile f(jsonPath(meetingFolder));
@@ -438,7 +437,8 @@ bool save(const QString& meetingFolder, const SummaryDocument& doc)
     return f.commit();
 }
 
-bool setStatementFlagged(const QString& meetingFolder, const QString& statementId, bool flagged)
+bool SummaryRepository::setStatementFlagged(const QString& meetingFolder, const QString& statementId,
+                                            bool flagged)
 {
     if (meetingFolder.isEmpty() || statementId.isEmpty()) return false;
     const QString path = jsonPath(meetingFolder);
@@ -474,5 +474,122 @@ bool setStatementFlagged(const QString& meetingFolder, const QString& statementI
     return true;
 }
 
-} // namespace summarystore
+// ---- writing helpers ---------------------------------------------------------------------------
+
+namespace {
+
+// Always LF line endings (WITHOUT QIODevice::Text): on Windows the Text mode would write CRLF, but
+// the readback reads raw, so a \r would end up in the text.
+bool writeBytes(const QString& path, const QByteArray& data)
+{
+    QSaveFile f(path);
+    if (!f.open(QIODevice::WriteOnly)) return false;
+    f.write(data);
+    return f.commit();
+}
+
+QJsonArray readArray(const QString& path)
+{
+    QFile f(path);
+    if (!f.open(QIODevice::ReadOnly)) return {};
+    return QJsonDocument::fromJson(f.readAll()).array();
+}
+
+} // namespace
+
+bool SummaryRepository::writeMarkdown(const QString& meetingFolder, const QString& markdown)
+{
+    if (meetingFolder.isEmpty()) return false;
+    return writeBytes(markdownPath(meetingFolder), markdown.toUtf8());
+}
+
+bool SummaryRepository::writeNoteCopy(const QString& notesDir, const QString& fileName, const QString& markdown)
+{
+    if (notesDir.isEmpty() || fileName.isEmpty()) return false;
+    QDir().mkpath(notesDir);
+    return writeBytes(QDir(notesDir).filePath(fileName), markdown.toUtf8());
+}
+
+// ---- per-topic mode files ----------------------------------------------------------------------
+
+QVector<SummaryTopic> SummaryRepository::readTopics(const QString& meetingFolder)
+{
+    if (meetingFolder.isEmpty()) return {};
+    return topicsFromJson(readArray(MeetingLayout::path(meetingFolder, MeetingLayout::topicsJson())));
+}
+
+bool SummaryRepository::writeTopics(const QString& meetingFolder, const QVector<SummaryTopic>& topics)
+{
+    if (meetingFolder.isEmpty()) return false;
+    return writeBytes(MeetingLayout::path(meetingFolder, MeetingLayout::topicsJson()),
+                      QJsonDocument(topicsToJson(topics)).toJson(QJsonDocument::Indented));
+}
+
+QVector<TopicAnalysis> SummaryRepository::readAnalyses(const QString& meetingFolder)
+{
+    if (meetingFolder.isEmpty()) return {};
+    return analysesFromJson(readArray(MeetingLayout::path(meetingFolder, MeetingLayout::analysesJson())));
+}
+
+bool SummaryRepository::writeAnalyses(const QString& meetingFolder, const QVector<TopicAnalysis>& analyses)
+{
+    if (meetingFolder.isEmpty()) return false;
+    return writeBytes(MeetingLayout::path(meetingFolder, MeetingLayout::analysesJson()),
+                      QJsonDocument(analysesToJson(analyses)).toJson(QJsonDocument::Indented));
+}
+
+bool SummaryRepository::upsertAnalysis(const QString& meetingFolder, const TopicAnalysis& a)
+{
+    if (meetingFolder.isEmpty() || !QDir(meetingFolder).exists()) return false;
+    QVector<TopicAnalysis> all = readAnalyses(meetingFolder);
+    bool replaced = false;
+    for (TopicAnalysis& existing : all)
+        if (existing.topicId == a.topicId) { existing = a; replaced = true; break; }
+    if (!replaced) all.append(a);
+    return writeAnalyses(meetingFolder, all);
+}
+
+QStringList SummaryRepository::openQuestionsOf(const QVector<TopicAnalysis>& topics)
+{
+    QStringList out;
+    for (const TopicAnalysis& a : topics)
+        for (const QString& q : a.openQuestions)
+            if (!out.contains(q) && out.size() < summaryformat::kMaxOpenQuestions) out << q;
+    return out;
+}
+
+QString SummaryRepository::renderComplexMarkdown(const QString& execSummary, const QVector<ActionItem>& items,
+                                                 const QVector<TopicAnalysis>& topics)
+{
+    auto renderItem = [](const ActionItem& ai) {
+        QString s = QStringLiteral("- [ ] ") + ai.text;
+        if (!ai.owner.isEmpty()) s += QStringLiteral(" — ") + ai.owner;
+        if (!ai.due.isEmpty())   s += QStringLiteral(" (") + ai.due + QStringLiteral(")");
+        return s + QStringLiteral("\n");
+    };
+    QString md;
+    if (!execSummary.isEmpty())
+        md += QStringLiteral("## Vezetői összefoglaló\n\n") + execSummary + QStringLiteral("\n\n");
+    const QStringList open = openQuestionsOf(topics);
+    if (!open.isEmpty()) {
+        md += QStringLiteral("## Nyitott kérdések\n\n");
+        for (const QString& q : open) md += QStringLiteral("- ") + q + QStringLiteral("\n");
+        md += QStringLiteral("\n");
+    }
+    if (!items.isEmpty()) {
+        md += QStringLiteral("## Teendők (összevont)\n\n");
+        for (const ActionItem& ai : items) md += renderItem(ai);
+        md += QStringLiteral("\n");
+    }
+    if (!topics.isEmpty()) {
+        md += QStringLiteral("## Témák\n\n");
+        int n = 1;
+        for (const TopicAnalysis& t : topics) {
+            md += QStringLiteral("### %1. %2\n\n").arg(n++).arg(t.title);
+            md += t.renderMarkdown();   // detail + decisions + action items (domain/Summary.h)
+        }
+    }
+    return md;
+}
+
 } // namespace tanara::library

@@ -15,7 +15,7 @@
 #include "tanara/editing/session/SpeakerOverlay.h"
 #include "tanara/processing/analysis/TrackActivity.h"
 #include "tanara/processing/analysis/UtteranceEmbeddings.h"
-#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/store/MeetingRepository.h"
 #include "tanara/library/store/PeopleStore.h"
 #include "tanara/library/store/VoiceprintStore.h"
 
@@ -41,7 +41,7 @@ struct Spec { QString raw; char side; int axis; bool confirmed = false; };
 
 struct Fixture {
     QTemporaryDir dir;
-    std::unique_ptr<library::MeetingStore> store;
+    std::unique_ptr<library::MeetingRepository> store;
     std::unique_ptr<library::PeopleStore> people;
     std::unique_ptr<library::VoiceprintStore> prints;
     Meeting meeting;
@@ -50,7 +50,7 @@ struct Fixture {
 
     Fixture(const QVector<Spec>& s, const QMap<QString, QString>& names) : specs(s)
     {
-        store = std::make_unique<library::MeetingStore>(dir.filePath("rec"), dir.filePath("meta"));
+        store = std::make_unique<library::MeetingRepository>(dir.filePath("rec"), dir.filePath("meta"));
         people = std::make_unique<library::PeopleStore>(dir.filePath("meta/people.json"));
         prints = std::make_unique<library::VoiceprintStore>(dir.filePath("meta/vp.json"));
         meeting = store->createMeeting("Átnézendő");

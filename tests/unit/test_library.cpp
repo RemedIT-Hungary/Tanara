@@ -11,7 +11,7 @@
 #include "tanara/library/MeetingLibrary.h"
 #include "tanara/foundation/text/Text.h"
 #include "tanara/library/jobs/MeetingJobTracker.h"
-#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/store/MeetingRepository.h"
 #include "tanara/library/tags/TagService.h"
 
 using namespace tanara;
@@ -49,7 +49,7 @@ private:
     void writeSegments(const Meeting& m, const QVector<Seg>& segs);
 
     std::unique_ptr<QTemporaryDir> m_dir;
-    std::unique_ptr<library::MeetingStore> m_store;
+    std::unique_ptr<library::MeetingRepository> m_store;
     const QDateTime m_now{QDate(2026, 10, 1), QTime(15, 0)};   // Thursday
 };
 
@@ -57,7 +57,7 @@ void LibraryTest::init()
 {
     m_dir = std::make_unique<QTemporaryDir>();
     QVERIFY(m_dir->isValid());
-    m_store = std::make_unique<library::MeetingStore>(m_dir->filePath("rec"), m_dir->filePath("meta"));
+    m_store = std::make_unique<library::MeetingRepository>(m_dir->filePath("rec"), m_dir->filePath("meta"));
 }
 
 void LibraryTest::cleanup()

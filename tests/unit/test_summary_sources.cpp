@@ -21,7 +21,7 @@
 #include "tanara/providers/chat/ILlmProvider.h"
 #include "tanara/processing/summary/SummaryPipeline.h"
 #include "tanara/processing/summary/SummarySources.h"
-#include "tanara/library/summary/SummaryStore.h"
+#include "tanara/library/summary/SummaryRepository.h"
 
 using namespace tanara;
 using namespace tanara::processing::summarysrc;
@@ -598,8 +598,8 @@ void SummarySourcesTest::storeRoundTrip()
     doc.exists = true;
     doc.summary = s;
     doc.meta.mode = library::SummaryMode::Quick;
-    QVERIFY(library::summarystore::save(dir.path(), doc));
-    const library::SummaryDocument back = library::summarystore::load(dir.path());
+    QVERIFY(library::SummaryRepository::save(dir.path(), doc));
+    const library::SummaryDocument back = library::SummaryRepository::load(dir.path());
     QCOMPARE(back.summary.statements.size(), 4);              // s1, s2, t1, m1.1
     const SummaryStatement& b0 = back.summary.statements[0];
     QCOMPARE(b0.id, QStringLiteral("s1"));
@@ -628,15 +628,15 @@ void SummarySourcesTest::oldJsonLoadsWithoutStatements()
                     {"memo", QJsonArray{QJsonObject{{"title", "Tárgy"}, {"startMs", 0}, {"endMs", 60000},
                                                     {"points", QJsonArray{"Pont"}}}}}};
     QJsonObject root{{"version", 2}, {"mode", "quick"}, {"summary", sum}};
-    QVERIFY(writeJson(library::summarystore::jsonPath(dir.path()), QJsonDocument(root)));
-    const library::SummaryDocument back = library::summarystore::load(dir.path());
+    QVERIFY(writeJson(library::SummaryRepository::jsonPath(dir.path()), QJsonDocument(root)));
+    const library::SummaryDocument back = library::SummaryRepository::load(dir.path());
     QVERIFY(back.exists);
     QCOMPARE(back.summary.execSummary, QStringLiteral("Régi összefoglaló."));
     QVERIFY(back.summary.statements.isEmpty());
     QVERIFY(back.summary.sourceSpeakers.isEmpty());
     QVERIFY(back.summary.memo.value(0).speakers.isEmpty());
     // Nothing to mark.
-    QVERIFY(!library::summarystore::setStatementFlagged(dir.path(), QStringLiteral("s1")));
+    QVERIFY(!library::SummaryRepository::setStatementFlagged(dir.path(), QStringLiteral("s1")));
 }
 
 void SummarySourcesTest::flagStatementKeepsJsonMtime()
@@ -649,8 +649,8 @@ void SummarySourcesTest::flagStatementKeepsJsonMtime()
     library::SummaryDocument doc;
     doc.exists = true;
     doc.summary = s;
-    QVERIFY(library::summarystore::save(dir.path(), doc));
-    const QString path = library::summarystore::jsonPath(dir.path());
+    QVERIFY(library::SummaryRepository::save(dir.path(), doc));
+    const QString path = library::SummaryRepository::jsonPath(dir.path());
     {
         // An older modification time (as if summary.md had been hand-edited since).
         QFile f(path);
@@ -658,12 +658,12 @@ void SummarySourcesTest::flagStatementKeepsJsonMtime()
         QVERIFY(f.setFileTime(QDateTime::currentDateTime().addSecs(-3600), QFileDevice::FileModificationTime));
     }
     const QDateTime before = QFileInfo(path).lastModified();
-    QVERIFY(library::summarystore::setStatementFlagged(dir.path(), QStringLiteral("s2")));
+    QVERIFY(library::SummaryRepository::setStatementFlagged(dir.path(), QStringLiteral("s2")));
     QCOMPARE(QFileInfo(path).lastModified().toSecsSinceEpoch(), before.toSecsSinceEpoch());
-    const library::SummaryDocument back = library::summarystore::load(dir.path());
+    const library::SummaryDocument back = library::SummaryRepository::load(dir.path());
     QVERIFY(!back.summary.statements[0].flagged);
     QVERIFY(back.summary.statements[1].flagged);
-    QVERIFY(!library::summarystore::setStatementFlagged(dir.path(), QStringLiteral("nincs-ilyen")));
+    QVERIFY(!library::SummaryRepository::setStatementFlagged(dir.path(), QStringLiteral("nincs-ilyen")));
 }
 
 void SummarySourcesTest::handEditedMarkdownKeepsMatchingStatements()
@@ -676,18 +676,18 @@ void SummarySourcesTest::handEditedMarkdownKeepsMatchingStatements()
     library::SummaryDocument doc;
     doc.exists = true;
     doc.summary = s;
-    QVERIFY(library::summarystore::save(dir.path(), doc));
+    QVERIFY(library::SummaryRepository::save(dir.path(), doc));
     {
-        QFile f(library::summarystore::jsonPath(dir.path()));
+        QFile f(library::SummaryRepository::jsonPath(dir.path()));
         QVERIFY(f.open(QIODevice::ReadWrite));
         QVERIFY(f.setFileTime(QDateTime::currentDateTime().addSecs(-3600), QFileDevice::FileModificationTime));
     }
     // In the hand-edited markdown only the first sentence stayed unchanged.
-    QFile md(library::summarystore::markdownPath(dir.path()));
+    QFile md(library::SummaryRepository::markdownPath(dir.path()));
     QVERIFY(md.open(QIODevice::WriteOnly));
     md.write(QStringLiteral("## Vezetői összefoglaló\n\nElső mondat. Átírt második.\n").toUtf8());
     md.close();
-    const library::SummaryDocument back = library::summarystore::load(dir.path());
+    const library::SummaryDocument back = library::SummaryRepository::load(dir.path());
     QVERIFY(back.fromMarkdown);
     QCOMPARE(back.summary.statements.size(), 1);
     QCOMPARE(back.summary.statements[0].id, QStringLiteral("s1"));
@@ -776,7 +776,7 @@ void SummarySourcesTest::targetedStalenessFromOverlay()
     library::SummaryDocument doc;
     doc.exists = true;
     doc.summary = s;
-    QVERIFY(library::summarystore::save(dir.path(), doc));
+    QVERIFY(library::SummaryRepository::save(dir.path(), doc));
 
     // Without a fix: targeted, but nothing is affected.
     SummaryStaleInfo info0 = editing::speakeredit::summaryStale(m);
@@ -849,14 +849,14 @@ void SummarySourcesTest::memoStatementsRoundTrip()
     doc.exists = true;
     doc.summary = s;
     doc.meta.mode = library::SummaryMode::Quick;
-    QVERIFY(library::summarystore::save(dir.path(), doc));
+    QVERIFY(library::SummaryRepository::save(dir.path(), doc));
 
-    QFile f(library::summarystore::jsonPath(dir.path()));
+    QFile f(library::SummaryRepository::jsonPath(dir.path()));
     QVERIFY(f.open(QIODevice::ReadOnly));
     const QJsonObject root = QJsonDocument::fromJson(f.readAll()).object();
     QCOMPARE(root.value(QStringLiteral("version")).toInt(), 4);
 
-    const library::SummaryDocument back = library::summarystore::load(dir.path());
+    const library::SummaryDocument back = library::SummaryRepository::load(dir.path());
     QCOMPARE(back.summary.statements.size(), 6);              // s1, q1, i1.1, m1.1–m1.3
     QStringList ids;
     for (const SummaryStatement& st : back.summary.statements) ids << st.id;
@@ -872,10 +872,10 @@ void SummarySourcesTest::memoStatementsRoundTrip()
     QCOMPARE(bm.points, QStringList({QStringLiteral("Az ár 100 euró."), QStringLiteral("Drága."),
                                      QStringLiteral("Ki dönt?")}));
     QCOMPARE(bm.pointGroups, m.pointGroups);
-    QVERIFY(library::summarystore::setStatementFlagged(dir.path(), QStringLiteral("q1")));
+    QVERIFY(library::SummaryRepository::setStatementFlagged(dir.path(), QStringLiteral("q1")));
 
     // Read back from summary.md the memo is the same too (hand edit / old path).
-    const library::SummaryDocument md = library::summarystore::parseMarkdown(back.summary.renderMarkdown());
+    const library::SummaryDocument md = library::SummaryRepository::parseMarkdown(back.summary.renderMarkdown());
     QCOMPARE(md.summary.memo.size(), 1);
     QCOMPARE(md.summary.memo[0].intro, bm.intro);
     QCOMPARE(md.summary.memo[0].points, bm.points);

@@ -8,7 +8,7 @@
 #include "tanara/app/AppController.h"
 #include "tanara/app/SettingsManager.h"
 #include "tanara/library/jobs/MeetingJobTracker.h"
-#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/store/MeetingRepository.h"
 
 #include <QDir>
 #include <QFileInfo>

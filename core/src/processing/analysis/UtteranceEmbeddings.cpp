@@ -1,4 +1,5 @@
 #include "tanara/processing/analysis/UtteranceEmbeddings.h"
+#include "tanara/library/MeetingLayout.h"
 
 #include "tanara/processing/voiceid/VoiceEmbedder.h"
 #include "tanara/processing/voiceid/VoiceModelRegistry.h"
@@ -191,7 +192,7 @@ bool UtteranceEmbeddingCache::isEmpty() const
 
 QString UtteranceEmbeddingCache::filePath(const QString& meetingFolder)
 {
-    return QDir(meetingFolder).filePath(QStringLiteral("transcript.embeddings.bin"));
+    return library::MeetingLayout::path(meetingFolder, library::MeetingLayout::utteranceEmbeddings());
 }
 
 UtteranceEmbeddingCache UtteranceEmbeddingCache::load(const QString& meetingFolder,

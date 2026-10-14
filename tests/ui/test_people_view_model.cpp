@@ -23,7 +23,7 @@
 #include "tanara/processing/analysis/UtteranceEmbeddings.h"
 #include "tanara/library/people/PeopleService.h"
 #include "tanara/library/people/PeopleStats.h"
-#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/store/MeetingRepository.h"
 #include "tanara/library/store/PeopleStore.h"
 #include "tanara/library/store/VoiceprintStore.h"
 #include "tanara/library/tags/TagService.h"

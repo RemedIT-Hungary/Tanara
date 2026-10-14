@@ -7,7 +7,7 @@
 #include "tanara/editing/session/SpeakerEditor.h"
 #include "tanara/editing/session/SpeakerOverlay.h"
 #include "tanara/library/people/PeopleStats.h"
-#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/store/MeetingRepository.h"
 #include "tanara/library/store/PeopleStore.h"
 #include "tanara/library/store/VoiceprintStore.h"
 
@@ -70,7 +70,7 @@ struct UndoStep {
 struct PeopleService::Private {
     PeopleService* q = nullptr;
     app::AppController* controller = nullptr;
-    MeetingStore* store = nullptr;
+    MeetingRepository* store = nullptr;
     PeopleStore* people = nullptr;
     VoiceprintStore* voiceprints = nullptr;
     PeopleStats* stats = nullptr;
@@ -225,7 +225,7 @@ struct PeopleService::Private {
     }
 };
 
-PeopleService::PeopleService(app::AppController* controller, MeetingStore* store, PeopleStore* people,
+PeopleService::PeopleService(app::AppController* controller, MeetingRepository* store, PeopleStore* people,
                              VoiceprintStore* voiceprints, PeopleStats* stats, QObject* parent)
     : QObject(parent), d(std::make_unique<Private>())
 {

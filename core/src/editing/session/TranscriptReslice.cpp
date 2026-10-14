@@ -1,7 +1,8 @@
 #include "tanara/editing/session/TranscriptReslice.h"
+#include "tanara/library/MeetingLayout.h"
 
 #include "tanara/processing/analysis/UtteranceEmbeddings.h"
-#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/store/MeetingRepository.h"
 #include "tanara/processing/stt/SonioxTiming.h"
 #include "tanara/domain/Summary.h"
 
@@ -21,11 +22,11 @@ namespace tanara::editing::reslice {
 
 namespace {
 
-const QString kTokens   = QStringLiteral("transcript.tokens.json");
-const QString kSegments = QStringLiteral("transcript.segments.json");
-const QString kSpeakers = QStringLiteral("transcript.speakers.json");
-const QString kSummary  = QStringLiteral("summary.json");
-const QString kMarkdown = QStringLiteral("transcript.md");
+const QString kTokens   = library::MeetingLayout::tokensJson();
+const QString kSegments = library::MeetingLayout::segmentsJson();
+const QString kSpeakers = library::MeetingLayout::overlayJson();
+const QString kSummary  = library::MeetingLayout::summaryJson();
+const QString kMarkdown = library::MeetingLayout::transcriptMd();
 
 QString pathIn(const QString& folder, const QString& name) { return QDir(folder).filePath(name); }
 
@@ -331,7 +332,7 @@ ApplyResult apply(const QString& folder, const Plan& p)
 
     // 7) transcript.md (timestamps) with the resolved names, if there was one.
     if (QFile::exists(pathIn(folder, kMarkdown))) {
-        Meeting m = library::MeetingStore::readMeetingFolder(folder);
+        Meeting m = library::MeetingRepository::readMeetingFolder(folder);
         if (!m.id.isEmpty()) {
             m.folder = folder;
             res.markdownRegenerated = speakeredit::regenerateTranscriptMarkdown(m);

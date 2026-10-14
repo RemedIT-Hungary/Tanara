@@ -26,7 +26,7 @@
 #include <functional>
 #include <memory>
 
-namespace tanara::library { class MeetingStore; }
+namespace tanara::library { class MeetingRepository; }
 namespace tanara::library { class PeopleStore; }
 namespace tanara::library { class VoiceprintStore; }
 
@@ -37,7 +37,7 @@ class SpeakerEditor : public QObject {
     Q_OBJECT
 public:
     // people / voiceprints may be nullptr (the person-list / voiceprint operations are then skipped).
-    SpeakerEditor(library::MeetingStore* store, library::PeopleStore* people, library::VoiceprintStore* voiceprints,
+    SpeakerEditor(library::MeetingRepository* store, library::PeopleStore* people, library::VoiceprintStore* voiceprints,
                   const QString& meetingId, QObject* parent = nullptr);
     ~SpeakerEditor() override;
 

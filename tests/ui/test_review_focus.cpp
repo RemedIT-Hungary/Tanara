@@ -12,7 +12,8 @@
 #include "ReviewQueueModel.h"
 #include "TranscriptEditorViewModel.h"
 #include "TranscriptListModel.h"
-#include "tanara/library/store/JsonSerialization.h"
+#include "tanara/library/store/detail/MeetingJson.h"
+#include "tanara/library/store/ParticipantJson.h"
 
 #include <QGuiApplication>
 #include <QQmlComponent>

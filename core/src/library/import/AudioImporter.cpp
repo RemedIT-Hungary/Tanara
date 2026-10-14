@@ -1,6 +1,7 @@
 #include "tanara/library/import/AudioImporter.h"
-#include "tanara/library/store/JsonSerialization.h"
-#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/MeetingLayout.h"
+#include "tanara/library/store/detail/MeetingJson.h"
+#include "tanara/library/store/MeetingRepository.h"
 #include "tanara/foundation/log/Logging.h"
 #include "tanara/foundation/text/Text.h"
 
@@ -219,7 +220,7 @@ QDateTime defaultStart(const QVector<ImportFileInfo>& files)
 
 struct AudioImporter::Impl {
     AudioImporter* q = nullptr;
-    MeetingStore*  store = nullptr;
+    MeetingRepository*  store = nullptr;
     media::MediaToolPtr tool;
     int            kbps = 64;
     QString        userName;
@@ -255,7 +256,7 @@ struct AudioImporter::Impl {
     media::TranscodeSpec transcodeSpec(int sourceIndex) const;
 };
 
-AudioImporter::AudioImporter(MeetingStore* store, media::MediaToolPtr media, QObject* parent)
+AudioImporter::AudioImporter(MeetingRepository* store, media::MediaToolPtr media, QObject* parent)
     : QObject(parent), d(std::make_unique<Impl>())
 {
     d->q = this;
@@ -400,7 +401,7 @@ void AudioImporter::Impl::beginEncode()
         while (used.contains(slug)) slug = base + QLatin1Char('-') + QString::number(n++);
         used << slug;
         r.trackIds << slug;
-        r.trackFiles << QStringLiteral("track_") + slug + QStringLiteral(".ogg");
+        r.trackFiles << MeetingLayout::trackFilePrefix() + slug + QStringLiteral(".ogg");
     }
     r.encodedMs.fill(0, r.req.sources.size());
     r.encodeIndex = -1;
@@ -530,7 +531,7 @@ void AudioImporter::Impl::finalize()
     // meeting.json is made while still in the hidden folder, so after the rename the folder is already
     // complete (if the process stopped right there, the index rebuild finds it properly).
     const QByteArray json = QJsonDocument(toJson(m)).toJson(QJsonDocument::Indented);
-    QSaveFile f(QDir(r.stagingDir).filePath(QStringLiteral("meeting.json")));
+    QSaveFile f(MeetingLayout::path(r.stagingDir, MeetingLayout::meetingJson()));
     const bool written = f.open(QIODevice::WriteOnly) && f.write(json) == json.size() && f.commit();
     if (!written || !QDir().rename(r.stagingDir, m.folder)) {
         close(End::Failed, AudioImporter::tr("Nem sikerült elmenteni az importált felvételt."),

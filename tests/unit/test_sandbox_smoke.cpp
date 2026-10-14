@@ -18,7 +18,7 @@
 #include "tanara/library/tracks/WaveformService.h"
 #include "tanara/library/jobs/MeetingJobTracker.h"
 #include "tanara/library/MeetingLibrary.h"
-#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/store/MeetingRepository.h"
 
 using namespace tanara;
 
@@ -164,7 +164,7 @@ void SandboxSmoke::summariesAndTopics()
             QVERIFY(!doc.summary.execSummary.isEmpty());
             QVERIFY(doc.meta.createdAt.isValid());
             qInfo("összefoglaló: mód=%s, döntés=%d, teendő=%d, résztvevő=%d, téma=%d",
-                  qPrintable(library::summarystore::modeToString(doc.meta.mode)), int(doc.summary.decisions.size()),
+                  qPrintable(library::SummaryRepository::modeToString(doc.meta.mode)), int(doc.summary.decisions.size()),
                   int(doc.summary.actionItems.size()), int(doc.summary.participants.size()),
                   int(doc.topics.size()));
         }

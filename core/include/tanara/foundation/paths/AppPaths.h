@@ -16,7 +16,8 @@
 // The "paths" settings section (PathSettings) overrides data / models / recordings / notes.
 // TANARA_HOME=<H> overrides EVERYTHING (the settings too): config, data and state are <H>, logs
 // <H>/logs, models <H>/models, recordings <H>/recordings, notes <H>/notes. This keeps test runs and
-// sandboxes completely away from the user's real data.
+// sandboxes completely away from the user's real data. (Exception: recording roots of the settings
+// that lie INSIDE <H> are kept, so several roots can be tried in a sandbox.)
 //
 // The folders do not depend on QCoreApplication's organization / application name: the platform
 // base folders (generic locations, %APPDATA%, %LOCALAPPDATA%) get a fixed "tanara"/"Tanara" suffix,

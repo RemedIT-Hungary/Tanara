@@ -7,8 +7,9 @@
 #include "tanara/processing/analysis/ParticipantAnalysis.h"
 #include "tanara/editing/session/SpeakerOverlay.h"
 #include "tanara/processing/analysis/TrackActivity.h"
-#include "tanara/library/store/JsonSerialization.h"
-#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/store/ParticipantJson.h"
+#include "tanara/library/store/MeetingRepository.h"
+#include "tanara/library/store/MeetingRepository.h"
 #include "tanara/library/store/VoiceprintStore.h"
 #include "tanara/processing/voiceid/VoiceEmbedderSet.h"
 
@@ -117,9 +118,7 @@ int removeParticipant(Meeting& m, const QString& id, bool json)
         c.erase(std::remove_if(c.begin(), c.end(), [&id](const ParticipantApprovalEntry& e) { return e.participantId == id; }),
                 c.end());
     }
-    QSaveFile f(QDir(m.folder).filePath(QStringLiteral("meeting.json")));
-    if (!f.open(QIODevice::WriteOnly)
-        || f.write(QJsonDocument(library::toJson(m)).toJson(QJsonDocument::Indented)) < 0 || !f.commit()) {
+    if (!library::MeetingRepository::writeMeetingFile(m)) {
         err() << "Cannot write meeting.json in " << m.folder << "\n";
         return 1;
     }
@@ -157,7 +156,7 @@ int runParticipantsCommand(const QStringList& args)
         return 2;
     }
     folder = QFileInfo(folder).absoluteFilePath();
-    Meeting m = library::MeetingStore::readMeetingFolder(folder);
+    Meeting m = library::MeetingRepository::readMeetingFolder(folder);
     if (m.id.isEmpty()) { err() << "Not a meeting folder (no readable meeting.json): " << folder << "\n"; return 1; }
     m.folder = folder;
     if (!removeId.isEmpty()) return removeParticipant(m, removeId, json);
@@ -206,9 +205,7 @@ int runParticipantsCommand(const QStringList& args)
             if (!fromCache && !act.save(folder))
                 err() << "warning: cannot write " << MeetingActivity::filePath(folder) << "\n";
             if (!file.save(folder)) { err() << "Cannot write " << processing::ParticipantAnalysisFile::filePath(folder) << "\n"; return 1; }
-            QSaveFile f(QDir(folder).filePath(QStringLiteral("meeting.json")));
-            if (!f.open(QIODevice::WriteOnly)
-                || f.write(QJsonDocument(library::toJson(m)).toJson(QJsonDocument::Indented)) < 0 || !f.commit()) {
+            if (!library::MeetingRepository::writeMeetingFile(m)) {
                 err() << "Cannot write meeting.json in " << folder << "\n";
                 return 1;
             }

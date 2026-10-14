@@ -17,7 +17,6 @@ namespace summarypipe {
 
 namespace {
 
-
 // Time of day: m:ss, mm:ss, mmm:ss or h:mm:ss.
 const QString kTime = QStringLiteral("\\d{1,3}:\\d{2}(?::\\d{2})?");
 
@@ -490,17 +489,6 @@ QVector<TranscriptPart> splitTranscriptByChars(const QVector<Utterance>& segment
         parts.append(p);
     }
     return parts;
-}
-
-qint64 parseTimestamp(const QString& s)
-{
-    static const QRegularExpression re(QStringLiteral("^\\s*(\\d{1,3}):(\\d{2})(?::(\\d{2}))?\\s*$"));
-    const QRegularExpressionMatch m = re.match(s);
-    if (!m.hasMatch()) return -1;
-    if (!m.captured(3).isEmpty())
-        return (m.captured(1).toLongLong() * 3600 + m.captured(2).toLongLong() * 60
-                + m.captured(3).toLongLong()) * 1000;
-    return (m.captured(1).toLongLong() * 60 + m.captured(2).toLongLong()) * 1000;
 }
 
 QString formatTimestamp(qint64 ms)

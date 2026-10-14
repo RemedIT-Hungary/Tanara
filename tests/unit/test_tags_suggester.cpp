@@ -9,7 +9,7 @@
 #include <atomic>
 
 #include "tanara/library/index/EmbeddingIndex.h"
-#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/store/MeetingRepository.h"
 #include "tanara/library/tags/MeetingProfiles.h"
 #include "tanara/library/tags/TagService.h"
 #include "tanara/library/tags/TagSuggester.h"
@@ -35,7 +35,7 @@ private slots:
 private:
     static QStringList names(const QVector<TagSuggestion>& list);
     std::unique_ptr<QTemporaryDir> m_dir;
-    std::unique_ptr<library::MeetingStore> m_store;
+    std::unique_ptr<library::MeetingRepository> m_store;
     std::unique_ptr<library::TagService> m_tags;
     std::unique_ptr<library::MeetingProfiles> m_profiles;
     tagsfixture::Library m_lib;
@@ -52,7 +52,7 @@ void TagsSuggesterTest::init()
 {
     m_dir = std::make_unique<QTemporaryDir>();
     QVERIFY(m_dir->isValid());
-    m_store = std::make_unique<library::MeetingStore>(m_dir->filePath("rec"), m_dir->filePath("meta"));
+    m_store = std::make_unique<library::MeetingRepository>(m_dir->filePath("rec"), m_dir->filePath("meta"));
     m_lib = tagsfixture::buildLibrary(*m_store);
     m_tags = std::make_unique<library::TagService>(m_store.get(), m_dir->filePath("meta/tags.json"));
     m_profiles = std::make_unique<library::MeetingProfiles>(m_store.get());

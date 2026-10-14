@@ -12,6 +12,7 @@
 //   - targeted staleness: which statements' source lines have a speaker that changed since.
 #include "tanara/domain/Summary.h"
 #include "tanara/domain/Transcript.h"
+#include "tanara/library/summary/SummaryFormat.h"
 
 #include <QHash>
 #include <QMap>
@@ -67,16 +68,13 @@ void fillMemoSpeakers(QVector<MemoSection>& memo, const QVector<tanara::summarys
 // empty without a marker are dropped.
 void attachSources(Summary& s, const QVector<tanara::summarysrc::SourceLine>& lines);
 
-// "statement" | "decision" | "todo" | "openQuestion" | "intro" | "memoPoint"
-QString kindToString(StatementKind k);
-StatementKind kindFromString(const QString& s);
+// The stored names of the statement kinds and the memo subsection keys belong to the summary
+// format (library/summary/SummaryFormat.h); re-exported here for the summarizer.
+using library::summaryformat::kindToString;
+using library::summaryformat::kindFromString;
+using library::summaryformat::memoGroupKey;
+using library::summaryformat::memoGroupLabel;
 
-// Memo subsection: the canonical key from a subheading (English or Hungarian, accent- and
-// case-insensitive, without decoration such as #, **, colon): "arguments" (Arguments), "open" (Unresolved /
-// Open question), otherwise the title itself. Empty = "".
-QString memoGroupKey(const QString& heading);
-// The key's Hungarian caption for summary.md ("Arguments made", "Open question"; others: itself).
-QString memoGroupLabel(const QString& key);
 // Indexes of a section's points per subsection: the body ("") first, then the subsections in order of
 // first occurrence. [(key, [point indexes])]
 QVector<QPair<QString, QVector<int>>> memoGroups(const MemoSection& m);

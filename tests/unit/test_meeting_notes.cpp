@@ -12,10 +12,11 @@
 #include "tanara/processing/summary/PromptLibrary.h"
 #include "tanara/library/MeetingLibrary.h"
 #include "tanara/library/MeetingNotes.h"
-#include "tanara/library/store/JsonSerialization.h"
-#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/store/detail/MeetingJson.h"
+#include "tanara/library/store/ParticipantJson.h"
+#include "tanara/library/store/MeetingRepository.h"
 #include "tanara/providers/stt/ISttProvider.h"
-#include "tanara/library/summary/SummaryStore.h"
+#include "tanara/library/summary/SummaryRepository.h"
 
 using namespace tanara;
 using namespace tanara::library::meetingnotes;
@@ -117,7 +118,7 @@ private slots:
     void legacyNoteInterpretedOnLoadAndRewritten()
     {
         QTemporaryDir dir;
-        library::MeetingStore store(dir.filePath("rec"), dir.filePath("meta"));
+        library::MeetingRepository store(dir.filePath("rec"), dir.filePath("meta"));
         Meeting m = store.createMeeting(QStringLiteral("Teams-hívás · okt. 3. 14:02"));
         m.contextNote = QStringLiteral("Automatikusan észlelt hívás: Microsoft Teams");
         store.saveMeeting(m);
@@ -192,16 +193,16 @@ private slots:
         doc.exists = true;
         doc.meta.contextNote = QStringLiteral("A „Nordwig” helyesen: Nordvik.");
         doc.meta.contextNoteKnown = true;
-        library::SummaryDocument back = library::summarystore::fromJson(library::summarystore::toJson(doc));
+        library::SummaryDocument back = library::SummaryRepository::fromJson(library::SummaryRepository::toJson(doc));
         QVERIFY(back.meta.contextNoteKnown);
         QCOMPARE(back.meta.contextNote, doc.meta.contextNote);
         // Old summary.json: no key, so unknown (no "changed since" indicator).
-        QJsonObject o = library::summarystore::toJson(doc);
+        QJsonObject o = library::SummaryRepository::toJson(doc);
         o.remove(QStringLiteral("contextNote"));
-        QVERIFY(!library::summarystore::fromJson(o).meta.contextNoteKnown);
+        QVERIFY(!library::SummaryRepository::fromJson(o).meta.contextNoteKnown);
         // A summary made with an empty note: known, empty.
         doc.meta.contextNote.clear();
-        back = library::summarystore::fromJson(library::summarystore::toJson(doc));
+        back = library::SummaryRepository::fromJson(library::SummaryRepository::toJson(doc));
         QVERIFY(back.meta.contextNoteKnown);
         QVERIFY(back.meta.contextNote.isEmpty());
     }
@@ -219,7 +220,7 @@ private slots:
     void librarySuggestionsCachedAndCheap()
     {
         QTemporaryDir dir;
-        library::MeetingStore store(dir.filePath("rec"), dir.filePath("meta"));
+        library::MeetingRepository store(dir.filePath("rec"), dir.filePath("meta"));
         auto add = [&](const QString& title, int dayOfMonth, const QString& note) {
             Meeting m = store.createMeeting(title);
             m.startedAt = day(dayOfMonth);

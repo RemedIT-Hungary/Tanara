@@ -1,4 +1,5 @@
 #include "tanara/processing/analysis/ParticipantAnalysis.h"
+#include "tanara/library/MeetingLayout.h"
 
 #include <QCoreApplication>
 
@@ -7,7 +8,6 @@
 #include "tanara/editing/review/CandidateRanker.h"
 #include "tanara/editing/review/SideAnalysis.h"
 #include "tanara/editing/session/TrackSpeech.h"
-#include "tanara/library/store/JsonSerialization.h"
 #include "tanara/library/store/VoiceprintStore.h"
 #include "tanara/processing/voiceid/VoiceEmbedder.h"
 #include "tanara/processing/voiceid/VoiceEmbedderSet.h"
@@ -32,7 +32,7 @@ namespace tanara::processing {
 
 QString ParticipantAnalysisFile::filePath(const QString& meetingFolder)
 {
-    return QDir(meetingFolder).filePath(QStringLiteral("participants.analysis.json"));
+    return library::MeetingLayout::path(meetingFolder, library::MeetingLayout::participantsAnalysisJson());
 }
 
 ParticipantAnalysisFile ParticipantAnalysisFile::load(const QString& meetingFolder)

@@ -9,7 +9,7 @@
 #include "tanara/editing/session/SpeakerEditTypes.h"
 #include "tanara/cloud/CloudTypes.h"
 #include "tanara/domain/Job.h"
-#include "tanara/library/summary/SummaryStore.h"
+#include "tanara/library/summary/SummaryRepository.h"
 #include "tanara/library/import/AudioImporter.h"
 #include "tanara/domain/Tag.h"
 #include "tanara/processing/analysis/UtteranceEmbeddings.h"
@@ -24,7 +24,9 @@
 #include <functional>
 
 namespace tanara::recording { class DeviceManager; }
-namespace tanara::library { class MeetingStore; }
+namespace tanara::library { class MeetingRepository; }
+namespace tanara::library { class TranscriptRepository; }
+namespace tanara::library { class UiStateRepository; }
 namespace tanara::library { class VoiceprintStore; }
 namespace tanara::editing { class SpeakerEditor; }
 namespace tanara::cloud { class CloudAccount; struct CloudRun; }
@@ -56,7 +58,11 @@ public:
     // Sub-components (the UI can bind models/views to these).
     SettingsManager* settings() const;
     recording::DeviceManager*   devices() const;
-    library::MeetingStore*    store() const;
+    library::MeetingRepository*    store() const;
+    // The transcript files (+ cached facts, invalidated on transcriptReady / speakerMapChanged) and
+    // the editor's per-meeting view state. (P15 moves these getters to Services.)
+    library::TranscriptRepository* transcripts() const;
+    library::UiStateRepository*    uiState() const;
     library::VoiceprintStore* voiceprints() const;   // voiceprint DB (voice ID)
 
     // ---- backend of the redesigned main window (structured layer) -------------------------
@@ -360,7 +366,7 @@ public slots:
     // an archive operation is already running.
     QString exportMeetingArchive(const QString& meetingId, const QString& zipPath);
     // Import on a background thread: unpack into an .import-* folder under the recordings
-    // folder, then (on the main thread) MeetingStore::adoptMeetingFolder + resolve the tags to the
+    // folder, then (on the main thread) MeetingRepository::adoptMeetingFolder + resolve the tags to the
     // local tag set (same id = that one; otherwise by name, created if needed).
     // Returns an operation id ("import:<uuid>"); empty + errorOccurred if one is already running.
     // The end is archiveFinished (on success meetingId = the new meeting).

@@ -603,7 +603,7 @@
       "core/src/import/AudioImporter.cpp (ffprobe + ffmpeg libopus)",
       "core/src/voiceid/VoiceEmbedder.cpp",
       "core/src/edit/UtteranceEmbeddings.cpp",
-      "core/src/store/MeetingStore.cpp (ffprobe length)",
+      "core/src/store/MeetingRepository.cpp (ffprobe length)",
       "packaging/windows/README.md (Copy-Item ffmpeg.exe, ffprobe.exe dist)",
       "packaging/windows/OLVASSEL.md",
       "packaging/windows/tanara.iss (header comment lists ffmpeg.exe in DistDir)"

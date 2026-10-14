@@ -138,6 +138,65 @@ Column {
                     cssLineHeight: 1.45
                     wrapMode: Text.Wrap
                 }
+                // Further recording roots (only on the recordings row): the library lists every root;
+                // new recordings go into the primary one (the row above).
+                Column {
+                    id: extraRoots
+                    visible: folder.modelData.key === "audio" && !folder.modelData.locked
+                    width: parent.width
+                    spacing: 6
+                    Repeater {
+                        model: extraRoots.visible && root.vm ? root.vm.recordingRoots : []
+                        RowLayout {
+                            id: rootRow
+                            required property var modelData
+                            width: extraRoots.width
+                            spacing: 6
+                            Rectangle {
+                                Layout.fillWidth: true
+                                implicitHeight: Theme.controlHeight
+                                radius: Theme.radiusControl
+                                color: Theme.sunken
+                                border.width: 1
+                                border.color: Theme.border
+                                TLabel {
+                                    x: 10
+                                    width: parent.width - 20
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    text: rootRow.modelData.path
+                                    mono: true
+                                    font.pixelSize: Theme.fontSmall
+                                    elide: Text.ElideMiddle
+                                }
+                            }
+                            TLabel {
+                                text: qsTr("%n megbeszélés", "", rootRow.modelData.meetings)
+                                muted: true
+                                font.pixelSize: Theme.fontCaption
+                            }
+                            TButton {
+                                objectName: "makePrimaryRootButton"
+                                text: qsTr("Legyen elsődleges")
+                                font.pixelSize: Theme.fontSmall
+                                onClicked: root.vm.makePrimaryRecordingRoot(rootRow.modelData.path)
+                            }
+                            TIconButton {
+                                objectName: "removeRootButton"
+                                iconName: "x"
+                                iconSize: 15
+                                visible: rootRow.modelData.removable
+                                toolTipText: qsTr("Eltávolítás a listából (a mappa üres)")
+                                onClicked: root.vm.removeRecordingRoot(rootRow.modelData.path)
+                            }
+                        }
+                    }
+                    TButton {
+                        objectName: "addRecordingRootButton"
+                        text: qsTr("Újabb felvétel-mappa…")
+                        font.pixelSize: Theme.fontSmall
+                        onClicked: root.vm.addRecordingRoot()
+                    }
+                }
                 TBanner {
                     visible: folder.modelData.warning !== ""
                     width: parent.width

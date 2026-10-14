@@ -10,7 +10,7 @@
 #include "tanara/editing/session/SpeakerOverlay.h"
 #include "tanara/processing/analysis/TrackActivity.h"
 #include "tanara/processing/analysis/UtteranceEmbeddings.h"
-#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/store/MeetingRepository.h"
 #include "tanara/library/store/PeopleStore.h"
 #include "tanara/library/store/VoiceprintStore.h"
 #include "tanara/processing/voiceid/EmbeddingSet.h"
@@ -96,7 +96,7 @@ int runReviewCommand(const QStringList& args)
     }
     folder = QFileInfo(folder).absoluteFilePath();
 
-    Meeting m = library::MeetingStore::readMeetingFolder(folder);
+    Meeting m = library::MeetingRepository::readMeetingFolder(folder);
     if (m.id.isEmpty()) { err() << "Not a meeting folder (no readable meeting.json): " << folder << "\n"; return 1; }
     m.folder = folder;
     const QVector<TranscriptLine> lines = editing::speakeredit::loadTranscriptLines(folder);
@@ -312,7 +312,7 @@ int runLinesCommand(const QStringList& args)
     if (folder.isEmpty() || (edit && ids.isEmpty())) { err() << usage; return 2; }
     folder = QFileInfo(folder).absoluteFilePath();
 
-    Meeting m = library::MeetingStore::readMeetingFolder(folder);
+    Meeting m = library::MeetingRepository::readMeetingFolder(folder);
     if (m.id.isEmpty()) { err() << "Not a meeting folder (no readable meeting.json): " << folder << "\n"; return 1; }
     const QVector<TranscriptLine> lines = editing::speakeredit::loadTranscriptLines(folder);
     if (lines.isEmpty()) { err() << "No transcript (transcript.segments.json) in " << folder << "\n"; return 1; }

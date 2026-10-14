@@ -27,8 +27,8 @@ namespace summarypipe {
 
 // Target length of a part and the minimum of the last part (a shorter last part merges into the previous one).
 constexpr qint64 kDefaultPartMs = 15 * 60 * 1000;
-// Upper limit of open questions after the summary (a long list hurts, per measurement).
-constexpr int kMaxOpenQuestions = 5;
+// Upper limit of open questions after the summary (part of the stored format: SummaryFormat.h).
+using library::summaryformat::kMaxOpenQuestions;
 // Consecutive memo sections on the same subject merge up to at most this length.
 constexpr qint64 kMaxMemoJoinMs = 20 * 60 * 1000;
 
@@ -63,8 +63,8 @@ struct PartNotes {
     bool isEmpty() const { return topics.isEmpty() && decisions.isEmpty() && open.isEmpty() && actions.isEmpty(); }
 };
 
-// "mm:ss" / "h:mm:ss" (or "mmm:ss") -> ms; unparseable -> -1.
-qint64 parseTimestamp(const QString& s);
+// "mm:ss" / "h:mm:ss" (or "mmm:ss") -> ms; unparseable -> -1 (SummaryFormat.h).
+using library::summaryformat::parseTimestamp;
 // ms -> "mm:ss" (the minutes do not roll over into hours; the transcript writes it this way too).
 QString formatTimestamp(qint64 ms);
 

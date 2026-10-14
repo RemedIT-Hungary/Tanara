@@ -12,8 +12,9 @@
 #include "tanara/library/tracks/TrackCatalog.h"
 #include "tanara/media/FfmpegMediaTool.h"
 #include "tanara/library/tracks/WaveformService.h"
-#include "tanara/library/store/MeetingStore.h"
-#include "tanara/library/store/JsonSerialization.h"
+#include "tanara/library/store/MeetingRepository.h"
+#include "tanara/library/store/detail/MeetingJson.h"
+#include "tanara/library/store/ParticipantJson.h"
 
 using namespace tanara;
 
@@ -87,14 +88,14 @@ private slots:
 private:
     Meeting makeMeeting(const QVector<Track>& tracks, bool createFiles = true);
     std::unique_ptr<QTemporaryDir> m_dir;
-    std::unique_ptr<library::MeetingStore> m_store;
+    std::unique_ptr<library::MeetingRepository> m_store;
 };
 
 void TracksTest::init()
 {
     m_dir = std::make_unique<QTemporaryDir>();
     QVERIFY(m_dir->isValid());
-    m_store = std::make_unique<library::MeetingStore>(m_dir->filePath("rec"), m_dir->filePath("meta"));
+    m_store = std::make_unique<library::MeetingRepository>(m_dir->filePath("rec"), m_dir->filePath("meta"));
 }
 
 void TracksTest::cleanup()
@@ -303,7 +304,7 @@ void TracksTest::renamePersists()
     QVERIFY(!cat.renameTrack(m.id, "nincs", "x"));
 
     // A new store + catalog (a restart): the name comes from meeting.json.
-    library::MeetingStore store2(m_dir->filePath("rec"), m_dir->filePath("meta"));
+    library::MeetingRepository store2(m_dir->filePath("rec"), m_dir->filePath("meta"));
     library::TrackCatalog cat2(&store2);
     library::TrackView v = cat2.tracks(m.id).first();
     QCOMPARE(v.displayName, QStringLiteral("Tárgyaló asztali mikrofon"));

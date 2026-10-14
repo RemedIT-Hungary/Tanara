@@ -10,8 +10,8 @@
 #include "tanara/app/SettingsManager.h"
 #include "tanara/editing/session/SpeakerEditor.h"
 #include "tanara/library/jobs/MeetingJobTracker.h"
-#include "tanara/library/store/MeetingStore.h"
-#include "tanara/library/summary/SummaryStore.h"
+#include "tanara/library/store/MeetingRepository.h"
+#include "tanara/library/summary/SummaryRepository.h"
 #include "tanara/library/tags/TagService.h"
 
 #include <QFileInfo>
@@ -219,8 +219,8 @@ void OverviewViewModel::connectController()
                   << connect(c, &app::AppController::summaryReady, this,
                              [mine](const QString& id, const QString&) { mine(id); })
                   << connect(c, &app::AppController::summaryStaleChanged, this, mine);
-    if (library::MeetingStore* store = c->store())
-        m_connections << connect(store, &library::MeetingStore::meetingUpdated, this, mine);
+    if (library::MeetingRepository* store = c->store())
+        m_connections << connect(store, &library::MeetingRepository::meetingUpdated, this, mine);
     if (library::MeetingJobTracker* jobs = c->jobs()) {
         m_connections << connect(jobs, &library::MeetingJobTracker::stateChanged, this, mine)
                       << connect(jobs, &library::MeetingJobTracker::jobProgressChanged, this,
@@ -585,7 +585,7 @@ void OverviewViewModel::reload()
     }
     QDateTime summaryAt;
     if (m.hasSummary)
-        summaryAt = QFileInfo(library::summarystore::markdownPath(m.folder)).lastModified();
+        summaryAt = QFileInfo(library::SummaryRepository::markdownPath(m.folder)).lastModified();
     if (summaryJob) {
         const int pct = ShellMeetingModel::describeJob(*summaryJob).value(QStringLiteral("percent")).toInt();
         steps << step(QStringLiteral("summary"), tr("Összefoglaló"), pct >= 0 ? QStringLiteral("%1%").arg(pct) : tr("fut"),

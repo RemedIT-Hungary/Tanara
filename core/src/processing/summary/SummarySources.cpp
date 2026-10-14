@@ -389,32 +389,6 @@ void attachSources(Summary& s, const QVector<summarysrc::SourceLine>& lines)
     fillMemoSpeakers(s.memo, lines);
 }
 
-QString memoGroupKey(const QString& heading)
-{
-    QString t = heading.trimmed();
-    static const QRegularExpression deco(QStringLiteral("^[#*_\\s]+|[#*_:\\s]+$"));
-    t.remove(deco);
-    if (t.isEmpty()) return QString();
-    const QString f = text::foldQuery(t).trimmed();
-    static const QStringList args{QStringLiteral("arguments"), QStringLiteral("argument"),
-                                  QStringLiteral("arguments raised"), QStringLiteral("pros and cons"),
-                                  QStringLiteral("elhangzott ervek"), QStringLiteral("ervek")};
-    static const QStringList open{QStringLiteral("unresolved"), QStringLiteral("open question"),
-                                  QStringLiteral("open questions"), QStringLiteral("open"),
-                                  QStringLiteral("nyitott kerdes"), QStringLiteral("nyitott kerdesek"),
-                                  QStringLiteral("nyitott")};
-    if (args.contains(f)) return QStringLiteral("arguments");
-    if (open.contains(f)) return QStringLiteral("open");
-    return t;
-}
-
-QString memoGroupLabel(const QString& key)
-{
-    if (key == QLatin1String("arguments")) return QStringLiteral("Elhangzott érvek");
-    if (key == QLatin1String("open"))      return QStringLiteral("Nyitott kérdés");
-    return key;
-}
-
 QVector<QPair<QString, QVector<int>>> memoGroups(const MemoSection& m)
 {
     QVector<QPair<QString, QVector<int>>> out;
@@ -427,29 +401,6 @@ QVector<QPair<QString, QVector<int>>> memoGroups(const MemoSection& m)
     }
     if (out.first().second.isEmpty()) out.removeFirst();
     return out;
-}
-
-QString kindToString(StatementKind k)
-{
-    switch (k) {
-    case StatementKind::Decision:     return QStringLiteral("decision");
-    case StatementKind::Todo:         return QStringLiteral("todo");
-    case StatementKind::OpenQuestion: return QStringLiteral("openQuestion");
-    case StatementKind::MemoIntro:    return QStringLiteral("intro");
-    case StatementKind::MemoPoint:    return QStringLiteral("memoPoint");
-    case StatementKind::Statement: break;
-    }
-    return QStringLiteral("statement");
-}
-
-StatementKind kindFromString(const QString& s)
-{
-    if (s == QLatin1String("decision"))     return StatementKind::Decision;
-    if (s == QLatin1String("todo"))         return StatementKind::Todo;
-    if (s == QLatin1String("openQuestion")) return StatementKind::OpenQuestion;
-    if (s == QLatin1String("intro"))        return StatementKind::MemoIntro;
-    if (s == QLatin1String("memoPoint"))    return StatementKind::MemoPoint;
-    return StatementKind::Statement;
 }
 
 } // namespace summarysrc

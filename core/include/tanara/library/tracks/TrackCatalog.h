@@ -14,7 +14,7 @@
 
 namespace tanara::library {
 
-class MeetingStore;
+class MeetingRepository;
 
 // The device's role in the recording; the friendly name comes from it.
 enum class TrackRole {
@@ -106,7 +106,7 @@ QStringList friendlyNames(const QVector<Track>& all);
 class TrackCatalog : public QObject {
     Q_OBJECT
 public:
-    explicit TrackCatalog(MeetingStore* store, QObject* parent = nullptr);
+    explicit TrackCatalog(MeetingRepository* store, QObject* parent = nullptr);
 
     // The meeting's tracks ready for display: per logical track (in order of first occurrence), within
     // it the spans by offset. Without spans = the meeting.json order.
@@ -138,7 +138,7 @@ signals:
     void tracksChanged(QString meetingId);
 
 private:
-    MeetingStore* m_store = nullptr;
+    MeetingRepository* m_store = nullptr;
 };
 
 } // namespace tanara::library

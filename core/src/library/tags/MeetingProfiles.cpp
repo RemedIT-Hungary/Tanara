@@ -1,11 +1,12 @@
 #include "tanara/library/tags/MeetingProfiles.h"
+#include "tanara/library/MeetingLayout.h"
 #include "tanara/library/tags/TagNames.h"
 #include "tanara/foundation/log/Logging.h"
 #include "tanara/editing/session/SpeakerOverlay.h"
 #include "tanara/library/MeetingLibrary.h"
 #include "tanara/library/MeetingNotes.h"
 #include "tanara/foundation/text/Text.h"
-#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/store/MeetingRepository.h"
 #include "tanara/foundation/SharedFile.h"
 
 #include <QDir>
@@ -143,7 +144,7 @@ constexpr int kMaxTerms = 60;
 constexpr double kWeightParticipants = 0.45;
 constexpr double kWeightTerms = 0.40;
 constexpr double kWeightTitle = 0.15;
-const QString kProfileFile = QStringLiteral("profile.json");
+const QString kProfileFile = MeetingLayout::profileJson();
 
 // A meeting's raw phrase counts: stem -> (occurrences, most frequent word form).
 struct RawTerms {
@@ -153,7 +154,7 @@ struct RawTerms {
 
 QString segmentsPath(const QString& folder)
 {
-    return QDir(folder).filePath(QStringLiteral("transcript.segments.json"));
+    return MeetingLayout::path(folder, MeetingLayout::segmentsJson());
 }
 
 RawTerms countTerms(const QString& folder)
@@ -263,11 +264,11 @@ public:
 //    recomputes; one computation runs at a time (`computeMutex`). The main thread does not wait for a
 //    computation running on another thread: meanwhile it gets the earlier snapshot.
 //  - Disk I/O (meeting.json, profile.json, transcript) runs on the "tanara-profiles" thread; the main
-//    thread only does the index query (MeetingStore::loadAll / folderOf, SQLite), because the database
+//    thread only does the index query (MeetingRepository::loadAll / folderOf, SQLite), because the database
 //    connection is bound to the main thread.
 struct MeetingProfiles::Impl {
     MeetingProfiles* q = nullptr;
-    MeetingStore* store = nullptr;
+    MeetingRepository* store = nullptr;
     QThread thread;
     ProfileWorker* worker = nullptr;
 
@@ -318,7 +319,7 @@ struct MeetingProfiles::Impl {
                     m.folder, m.hasTranscript };
     }
     static Row rowFromIndex(const Meeting& idx) {
-        Meeting m = MeetingStore::readMeetingFolder(idx.folder);
+        Meeting m = MeetingRepository::readMeetingFolder(idx.folder);
         if (m.id.isEmpty()) m = idx;
         if (m.folder.isEmpty()) m.folder = idx.folder;
         return rowOf(m);
@@ -357,7 +358,7 @@ struct MeetingProfiles::Impl {
         if (folder.isEmpty() && store) folder = store->folderOf(id);
         QMetaObject::invokeMethod(worker, [this, id, folder]() {
             if (worker->stop) return;
-            const Meeting m = MeetingStore::readMeetingFolder(folder);
+            const Meeting m = MeetingRepository::readMeetingFolder(folder);
             QMutexLocker lock(&mutex);
             if (m.id.isEmpty()) {
                 if (!rows.contains(id) && !built.contains(id)) return;
@@ -671,7 +672,7 @@ struct MeetingProfiles::Impl {
     }
 };
 
-MeetingProfiles::MeetingProfiles(MeetingStore* store, QObject* parent)
+MeetingProfiles::MeetingProfiles(MeetingRepository* store, QObject* parent)
     : QObject(parent), d(std::make_unique<Impl>())
 {
     d->q = this;
@@ -683,9 +684,9 @@ MeetingProfiles::MeetingProfiles(MeetingStore* store, QObject* parent)
     d->thread.start(QThread::LowPriority);
     if (store) {
         auto refresh = [this](const QString& id) { d->reloadRow(id); };
-        connect(store, &MeetingStore::meetingUpdated, this, refresh);
-        connect(store, &MeetingStore::meetingAdded, this, refresh);
-        connect(store, &MeetingStore::meetingRemoved, this, [this](const QString& id) { d->removeMeeting(id); });
+        connect(store, &MeetingRepository::meetingUpdated, this, refresh);
+        connect(store, &MeetingRepository::meetingAdded, this, refresh);
+        connect(store, &MeetingRepository::meetingRemoved, this, [this](const QString& id) { d->removeMeeting(id); });
     }
 }
 

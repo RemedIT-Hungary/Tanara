@@ -11,7 +11,7 @@
 
 #include "tanara/app/AppController.h"
 #include "tanara/app/SettingsManager.h"
-#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/store/MeetingRepository.h"
 #include "tanara/library/store/VoiceprintStore.h"
 #include "tanara/processing/voiceid/VoiceModelDownloader.h"
 #include "tanara/processing/voiceid/VoiceModelRegistry.h"

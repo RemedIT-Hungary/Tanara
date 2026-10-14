@@ -20,7 +20,7 @@
 #include "tanara/editing/session/SpeakerEditor.h"
 #include "tanara/editing/session/SpeakerOverlay.h"
 #include "tanara/processing/analysis/UtteranceEmbeddings.h"
-#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/store/MeetingRepository.h"
 #include "tanara/library/store/PeopleStore.h"
 #include "tanara/library/store/VoiceprintStore.h"
 
@@ -90,14 +90,14 @@ public:
 
 struct Fixture {
     QTemporaryDir dir;
-    std::unique_ptr<library::MeetingStore> store;
+    std::unique_ptr<library::MeetingRepository> store;
     std::unique_ptr<library::PeopleStore> people;
     std::unique_ptr<library::VoiceprintStore> prints;
     Meeting meeting;
 
     explicit Fixture(bool withCache = true)
     {
-        store = std::make_unique<library::MeetingStore>(dir.filePath(QStringLiteral("rec")),
+        store = std::make_unique<library::MeetingRepository>(dir.filePath(QStringLiteral("rec")),
                                                dir.filePath(QStringLiteral("meta")));
         people = std::make_unique<library::PeopleStore>(dir.filePath(QStringLiteral("meta/people.json")));
         prints = std::make_unique<library::VoiceprintStore>(dir.filePath(QStringLiteral("meta/vp.json")));
@@ -231,14 +231,14 @@ const QVector<float>& pairVec(char v)
 
 struct PairFixture {
     QTemporaryDir dir;
-    std::unique_ptr<library::MeetingStore> store;
+    std::unique_ptr<library::MeetingRepository> store;
     std::unique_ptr<library::PeopleStore> people;
     std::unique_ptr<library::VoiceprintStore> prints;
     Meeting meeting;
 
     PairFixture()
     {
-        store = std::make_unique<library::MeetingStore>(dir.filePath(QStringLiteral("rec")),
+        store = std::make_unique<library::MeetingRepository>(dir.filePath(QStringLiteral("rec")),
                                                dir.filePath(QStringLiteral("meta")));
         people = std::make_unique<library::PeopleStore>(dir.filePath(QStringLiteral("meta/people.json")));
         prints = std::make_unique<library::VoiceprintStore>(dir.filePath(QStringLiteral("meta/vp.json")));

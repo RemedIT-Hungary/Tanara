@@ -35,7 +35,7 @@ namespace tanara::editing { struct SideReport; }
 
 namespace tanara::library {
 
-class MeetingStore;
+class MeetingRepository;
 class PeopleStore;
 class PeopleStats;
 class VoiceprintStore;
@@ -107,7 +107,7 @@ struct PeopleUndoInfo {
 class PeopleService : public QObject {
     Q_OBJECT
 public:
-    PeopleService(app::AppController* controller, MeetingStore* store, PeopleStore* people,
+    PeopleService(app::AppController* controller, MeetingRepository* store, PeopleStore* people,
                   VoiceprintStore* voiceprints, PeopleStats* stats, QObject* parent = nullptr);
     ~PeopleService() override;
 

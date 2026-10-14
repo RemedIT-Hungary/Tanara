@@ -30,7 +30,7 @@
 
 namespace tanara::library {
 
-class MeetingStore;
+class MeetingRepository;
 
 // ffprobe result of one source file.
 struct ImportFileInfo {
@@ -99,7 +99,7 @@ QString channelName(int channel, int channelCount);
 class AudioImporter : public QObject {
     Q_OBJECT
 public:
-    AudioImporter(MeetingStore* store, media::MediaToolPtr media, QObject* parent = nullptr);
+    AudioImporter(MeetingRepository* store, media::MediaToolPtr media, QObject* parent = nullptr);
     ~AudioImporter() override;
 
     // The tracks' Opus bitrate (kbps) and the speaker name of the "own microphone" track.

@@ -12,7 +12,7 @@
 #include "tanara/foundation/log/Logging.h"
 #include "tanara/app/SettingsManager.h"
 #include "tanara/library/MeetingLibrary.h"
-#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/store/MeetingRepository.h"
 
 #include <QApplication>
 #include <QCoreApplication>

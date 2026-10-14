@@ -22,7 +22,7 @@
 
 namespace tanara::library {
 
-class MeetingStore;
+class MeetingRepository;
 
 // One person at one meeting.
 struct MeetingPerson {
@@ -65,7 +65,7 @@ MeetingPeople scanMeetingPeople(const Meeting& meeting);
 class PeopleStats : public QObject {
     Q_OBJECT
 public:
-    explicit PeopleStats(MeetingStore* store, QObject* parent = nullptr);
+    explicit PeopleStats(MeetingRepository* store, QObject* parent = nullptr);
     ~PeopleStats() override;
 
     // Whether a full computation has happened yet (before that every statistic is empty).
@@ -111,7 +111,7 @@ private:
     void apply(const Result& result);
     void rebuild();
 
-    MeetingStore* m_store = nullptr;
+    MeetingRepository* m_store = nullptr;
     QHash<QString, Stamp> m_stamps;
     QHash<QString, MeetingPeople> m_cache;          // meetingId -> participants
     QHash<QString, PersonStats> m_byPerson;         // lowercased name -> statistics

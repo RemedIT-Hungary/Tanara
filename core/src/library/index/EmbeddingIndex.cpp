@@ -1,6 +1,7 @@
 #include "tanara/library/index/EmbeddingIndex.h"
+#include "tanara/library/MeetingLayout.h"
 #include "tanara/domain/Overlay.h"
-#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/store/MeetingRepository.h"
 #include "tanara/foundation/SharedFile.h"
 #include "tanara/library/tags/MeetingProfiles.h"
 
@@ -22,7 +23,7 @@ const QByteArray kMagic = QByteArrayLiteral("TNEMB1");
 
 QString segmentsPath(const QString& folder)
 {
-    return QDir(folder).filePath(QStringLiteral("transcript.segments.json"));
+    return MeetingLayout::path(folder, MeetingLayout::segmentsJson());
 }
 
 void normalizeVec(QVector<float>& v)
@@ -36,13 +37,13 @@ void normalizeVec(QVector<float>& v)
 
 } // namespace
 
-const QString EmbeddingIndex::kFileName = QStringLiteral("text.embeddings.bin");
+const QString EmbeddingIndex::kFileName = MeetingLayout::textEmbeddings();
 
-EmbeddingIndex::EmbeddingIndex(MeetingStore* store, QObject* parent)
+EmbeddingIndex::EmbeddingIndex(MeetingRepository* store, QObject* parent)
     : QObject(parent), m_store(store)
 {
     if (store) {
-        connect(store, &MeetingStore::meetingRemoved, this, [this](const QString& id) {
+        connect(store, &MeetingRepository::meetingRemoved, this, [this](const QString& id) {
             QMutexLocker lock(&m_mutex);
             m_cache.remove(id);
             m_folders.remove(id);

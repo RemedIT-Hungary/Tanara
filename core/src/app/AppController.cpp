@@ -11,7 +11,7 @@
 #include "tanara/recording/audio/DeviceManager.h"
 #include "tanara/recording/audio/DeviceMonitor.h"
 #include "tanara/recording/audio/RecordingSession.h"
-#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/store/MeetingRepository.h"
 #include "tanara/library/store/MeetingArchive.h"
 #include "tanara/foundation/secrets/SecretStore.h"
 #include "tanara/foundation/paths/AppPaths.h"
@@ -59,7 +59,10 @@
 #include "tanara/library/index/EmbeddingPreparer.h"
 #include "tanara/providers/embedding/ITextEmbedder.h"
 #include "tanara/editing/undo/MeetingUndo.h"
-#include "tanara/library/store/JsonSerialization.h"
+#include "tanara/library/store/ParticipantJson.h"
+#include "tanara/library/store/TranscriptRepository.h"
+#include "tanara/library/store/UiStateRepository.h"
+#include "tanara/library/MeetingLayout.h"
 #include "tanara/processing/voiceid/VoiceModelDownloader.h"
 
 #include <QCoreApplication>
@@ -90,213 +93,11 @@ namespace tanara::app {
 namespace {
 
 
-// Always LF line endings (WITHOUT QIODevice::Text): on Windows the Text mode would write CRLF, but
-// the readback (SummaryStore, transcript) reads raw, so a \r would end up in the text.
-bool writeTextFile(const QString& path, const QString& text) {
-    QSaveFile f(path);
-    if (!f.open(QIODevice::WriteOnly)) return false;
-    f.write(text.toUtf8());
-    return f.commit();
-}
-
-void writeTokensJson(const QString& path, const MergedTranscript& mt) {
-    QJsonArray arr;
-    for (const auto& t : mt.tokens) {
-        QJsonObject o;
-        o["text"] = t.text;
-        o["speaker"] = t.speaker;
-        o["startMs"] = double(t.startMs);
-        o["endMs"] = double(t.endMs);
-        o["confidence"] = t.confidence;
-        o["trackId"] = t.trackId;
-        arr.append(o);
-    }
-    QJsonObject root;
-    root["language"] = mt.language;
-    if (mt.emissionTiming) root["timing"] = QStringLiteral("emission");   // the lines need padding (Soniox)
-    root["tokens"] = arr;
-    QSaveFile f(path);
-    if (f.open(QIODevice::WriteOnly)) {
-        f.write(QJsonDocument(root).toJson(QJsonDocument::Compact));
-        f.commit();
-    }
-}
-
-void writeSegmentsJson(const QString& path, const QVector<Utterance>& segs) {
-    QJsonArray arr;
-    for (const auto& u : segs) {
-        QJsonObject o;
-        o["startMs"] = double(u.startMs);
-        o["endMs"]   = double(u.endMs);
-        o["speaker"] = u.speaker;
-        o["text"]    = u.text;
-        arr.append(o);
-    }
-    QSaveFile f(path);
-    if (f.open(QIODevice::WriteOnly)) { f.write(QJsonDocument(arr).toJson(QJsonDocument::Indented)); f.commit(); }
-}
-
-// Putting the names onto the transcript: speakeredit::applyResolvedSpeakers(mt, meeting) applies the
-// manual line corrections (transcript.speakers.json) in addition to the speakerMap.
-
-MergedTranscript readTokensJson(const QString& path) {
-    MergedTranscript mt;
-    QFile f(path);
-    if (!f.open(QIODevice::ReadOnly)) return mt;
-    const auto root = QJsonDocument::fromJson(f.readAll()).object();
-    mt.language = root["language"].toString();
-    mt.emissionTiming = root["timing"].toString() == QLatin1String("emission");
-    for (const auto& v : root["tokens"].toArray()) {
-        const auto o = v.toObject();
-        TranscriptToken t;
-        t.text = o["text"].toString();
-        t.speaker = o["speaker"].toString();
-        t.startMs = qint64(o["startMs"].toDouble());
-        t.endMs = qint64(o["endMs"].toDouble());
-        t.confidence = o["confidence"].toDouble();
-        t.trackId = o["trackId"].toString();
-        mt.tokens.append(t);
-    }
-    return mt;
-}
-
-// The EDITABLE topic list of the complex summary's pass 1 (summary.topics.json).
-void writeTopicsJson(const QString& path, const QVector<SummaryTopic>& topics) {
-    QJsonArray arr;
-    for (const auto& t : topics) {
-        QJsonObject o;
-        o["id"]      = t.id;
-        o["title"]   = t.title;
-        o["summary"] = t.summary;
-        arr.append(o);
-    }
-    QSaveFile f(path);
-    if (f.open(QIODevice::WriteOnly)) {
-        f.write(QJsonDocument(arr).toJson(QJsonDocument::Indented));
-        f.commit();
-    }
-}
-
-QVector<SummaryTopic> readTopicsJson(const QString& path) {
-    QVector<SummaryTopic> topics;
-    QFile f(path);
-    if (!f.open(QIODevice::ReadOnly)) return topics;
-    for (const auto& v : QJsonDocument::fromJson(f.readAll()).array()) {
-        const auto o = v.toObject();
-        SummaryTopic t;
-        t.id      = o["id"].toString();
-        t.title   = o["title"].toString();
-        t.summary = o["summary"].toString();
-        if (!t.title.trimmed().isEmpty())
-            topics.append(t);
-    }
-    return topics;
-}
-
-// The FINISHED analyses of the complex summary's pass 2 (summary.analyses.json), persisted per topic
-// IMMEDIATELY, so work already paid for is not lost after a cancel/error.
-void writeAnalysesJson(const QString& path, const QVector<TopicAnalysis>& analyses) {
-    QJsonArray arr;
-    for (const auto& a : analyses) {
-        QJsonObject o;
-        o["topicId"] = a.topicId;
-        o["title"]   = a.title;
-        o["detail"]  = a.detail;
-        o["decisions"] = QJsonArray::fromStringList(a.decisions);
-        QJsonArray items;
-        for (const ActionItem& ai : a.actionItems) {
-            QJsonObject io;
-            io["text"] = ai.text; io["owner"] = ai.owner; io["due"] = ai.due;
-            items.append(io);
-        }
-        o["actionItems"] = items;
-        arr.append(o);
-    }
-    QSaveFile f(path);
-    if (f.open(QIODevice::WriteOnly)) {
-        f.write(QJsonDocument(arr).toJson(QJsonDocument::Indented));
-        f.commit();
-    }
-}
-
-QVector<TopicAnalysis> readAnalysesJson(const QString& path) {
-    QVector<TopicAnalysis> analyses;
-    QFile f(path);
-    if (!f.open(QIODevice::ReadOnly)) return analyses;
-    for (const auto& v : QJsonDocument::fromJson(f.readAll()).array()) {
-        const auto o = v.toObject();
-        TopicAnalysis a;
-        a.topicId = o["topicId"].toString();
-        a.title   = o["title"].toString();
-        a.detail  = o["detail"].toString();
-        for (const auto& dv : o["decisions"].toArray()) a.decisions << dv.toString();
-        for (const auto& iv : o["actionItems"].toArray()) {
-            const auto io = iv.toObject();
-            ActionItem ai;
-            ai.text = io["text"].toString(); ai.owner = io["owner"].toString();
-            ai.due = io["due"].toString();
-            a.actionItems.append(ai);
-        }
-        if (!a.topicId.isEmpty())
-            analyses.append(a);
-    }
-    return analyses;
-}
-
-// Writing/overwriting a finished analysis into summary.analyses.json (by topicId).
-void upsertAnalysisJson(const QString& path, const TopicAnalysis& a) {
-    QVector<TopicAnalysis> all = readAnalysesJson(path);
-    bool replaced = false;
-    for (TopicAnalysis& existing : all)
-        if (existing.topicId == a.topicId) { existing = a; replaced = true; break; }
-    if (!replaced) all.append(a);
-    writeAnalysesJson(path, all);
-}
-
-// The union of the topics' open questions (in order, without repeats, at most 5).
-QStringList openQuestionsOf(const QVector<TopicAnalysis>& topics) {
-    QStringList out;
-    for (const TopicAnalysis& a : topics)
-        for (const QString& q : a.openQuestions)
-            if (!out.contains(q) && out.size() < processing::summarypipe::kMaxOpenQuestions) out << q;
-    return out;
-}
-
-// The complex summary's markdown: a global head (executive summary + merged action items) +
-// per-topic sections (summary + decisions + action items). It follows Summary::renderMarkdown's style
-// (`- [ ]` action-item checklists).
-QString renderComplexMarkdown(const QString& execSummary, const QVector<ActionItem>& items,
-                              const QVector<TopicAnalysis>& topics) {
-    auto renderItem = [](const ActionItem& ai) {
-        QString s = QStringLiteral("- [ ] ") + ai.text;
-        if (!ai.owner.isEmpty()) s += QStringLiteral(" — ") + ai.owner;
-        if (!ai.due.isEmpty())   s += QStringLiteral(" (") + ai.due + QStringLiteral(")");
-        return s + QStringLiteral("\n");
-    };
-    QString md;
-    if (!execSummary.isEmpty())
-        md += QStringLiteral("## Vezetői összefoglaló\n\n") + execSummary + QStringLiteral("\n\n");
-    const QStringList open = openQuestionsOf(topics);
-    if (!open.isEmpty()) {
-        md += QStringLiteral("## Nyitott kérdések\n\n");
-        for (const QString& q : open) md += QStringLiteral("- ") + q + QStringLiteral("\n");
-        md += QStringLiteral("\n");
-    }
-    if (!items.isEmpty()) {
-        md += QStringLiteral("## Teendők (összevont)\n\n");
-        for (const ActionItem& ai : items) md += renderItem(ai);
-        md += QStringLiteral("\n");
-    }
-    if (!topics.isEmpty()) {
-        md += QStringLiteral("## Témák\n\n");
-        int n = 1;
-        for (const TopicAnalysis& t : topics) {
-            md += QStringLiteral("### %1. %2\n\n").arg(n++).arg(t.title);
-            md += t.renderMarkdown();   // detail + decisions + action items (Types/SummaryService)
-        }
-    }
-    return md;
-}
+// The transcript / summary files are read and written through the library repositories
+// (library::TranscriptRepository, library::SummaryRepository; names: library::MeetingLayout).
+using library::MeetingLayout;
+using library::SummaryRepository;
+using library::TranscriptRepository;
 
 // Which track to take audio from for a raw speaker label:
 //  - an exact match with a track's fixed speaker (mic) -> that track;
@@ -436,8 +237,7 @@ struct VoiceSource { QString absPath; QString fileRel; QString trackId; QString 
                      qint64 offsetMs = 0; };   // the file's start in the meeting
 VoiceSource resolveVoiceSource(const Meeting& m, const MergedTranscript& mt,
                                const QString& rawLabel) {
-    const QString mixRel = m.mixdownFile.isEmpty() ? QStringLiteral("mixdown.mp3")
-                                                   : m.mixdownFile;
+    const QString mixRel = MeetingLayout::mixdownOf(m);
     const QString mixAbs = QDir(m.folder).filePath(mixRel);
     if (QFile::exists(mixAbs))
         return { mixAbs, mixRel, QStringLiteral("mixdown"), QString() };
@@ -504,7 +304,9 @@ void captureFailures(providers::ProviderContext& ctx, const FailureSinkPtr& sink
 struct AppController::Impl {
     SettingsManager* settings = nullptr;
     recording::DeviceManager*   devices  = nullptr;
-    library::MeetingStore*    store    = nullptr;
+    library::MeetingRepository*    store    = nullptr;
+    std::unique_ptr<library::TranscriptRepository> transcripts;   // + the UI's cached transcript facts
+    std::unique_ptr<library::UiStateRepository>    uiState;       // the editor's per-meeting view state
     recording::RecordingSession* session = nullptr;
     recording::RecordingSession::EngineFactory recordingEngineFactory;   // test seam; empty = the real one
     recording::DeviceMonitor*   monitor = nullptr;
@@ -709,7 +511,7 @@ struct AppController::Impl {
     // The transcript's state at the start of an identification (see startIdentify): if it differs at the
     // end, the result refers to the labels of the OLD transcript, so we drop it.
     QString transcriptStamp(const QString& meetingId, const QString& folder) const {
-        const FileStamp fs = FileStamp::of(QDir(folder).filePath(QStringLiteral("transcript.tokens.json")));
+        const FileStamp fs = FileStamp::of(TranscriptRepository::tokensPath(folder));
         return QStringLiteral("%1/%2/%3").arg(transcriptGen.value(meetingId)).arg(fs.mtimeMs).arg(fs.size);
     }
     QHash<QString, IdentifyRun> identifyRuns;
@@ -953,7 +755,7 @@ void AppController::Impl::applyIdentification(
         if (matchSpeaker(m, pair.first, pair.second)) identified << pair.first;
     }
     if (identified.isEmpty()) return;
-    commitIdentification(m, readTokensJson(QDir(m.folder).filePath(QStringLiteral("transcript.tokens.json"))),
+    commitIdentification(m, TranscriptRepository::readTokens(m.folder),
                          identified);
 }
 
@@ -981,7 +783,7 @@ void AppController::Impl::commitIdentification(const Meeting& m, MergedTranscrip
     store->saveMeeting(m);
     if (!merged.tokens.isEmpty()) {
         editing::speakeredit::applyResolvedSpeakers(merged, m);
-        writeTextFile(QDir(m.folder).filePath(QStringLiteral("transcript.md")), merged.renderMarkdown());
+        TranscriptRepository::writeMarkdown(m.folder, merged.renderMarkdown());
     }
     if (editing::speakeredit::markSummaryStale(m, identifiedLabels)) emit q->summaryStaleChanged(m.id);
     emit q->speakerMapChanged(m.id);
@@ -1053,19 +855,16 @@ AppController::AppController(QObject* parent)
     }
     d->devices = new recording::DeviceManager(this);
     d->media   = media::FfmpegMediaTool::fromSettings(s.media);
-    d->store   = new library::MeetingStore(d->audioDir, d->metaDir, this);
+    // Every recording root (the first is the primary: new recordings, imports).
+    d->store   = new library::MeetingRepository(ap.recordingRoots(), d->metaDir, this);
     d->store->setMediaTool(d->media);   // the track lengths of recovered folders
     // Bringing orphaned recordings left after a crash (tracks without meeting.json) back into the list.
     d->store->recoverOrphanRecordings();
-    // Temporary folders of an interrupted archive import (e.g. quitting during unpacking). Only older ones:
-    // the folder of a currently running (e.g. CLI) import is left alone.
-    {
-        const QDir root(d->store->audioDir());
-        const QDateTime cutoff = QDateTime::currentDateTime().addSecs(-6 * 3600);
-        for (const QFileInfo& fi : root.entryInfoList({library::MeetingArchive::tempDirPrefix() + QLatin1Char('*')},
-                                                      QDir::Dirs | QDir::Hidden | QDir::NoDotAndDotDot))
-            if (fi.lastModified() < cutoff) QDir(fi.absoluteFilePath()).removeRecursively();
-    }
+    // Temporary folders of an interrupted archive import / root move (e.g. quitting during unpacking). Only
+    // older ones: the folder of a currently running (e.g. CLI) import is left alone.
+    d->store->removeStaleImportFolders(6 * 3600);
+    d->transcripts = std::make_unique<library::TranscriptRepository>();
+    d->uiState = std::make_unique<library::UiStateRepository>(ap.stateFile(paths::files::UiTranscript));
 
     // Structured layer: processing state, library queries, tracks, waveform.
     d->jobs      = new library::MeetingJobTracker(d->store, this);
@@ -1148,9 +947,16 @@ AppController::AppController(QObject* parent)
     // Whatever affects participants or speaking time affects the statistics too (refreshed coalesced).
     connect(this, &AppController::speakerMapChanged, d->peopleStats, &library::PeopleStats::scheduleRefresh);
     connect(this, &AppController::transcriptReady, d->peopleStats, &library::PeopleStats::scheduleRefresh);
-    connect(d->store, &library::MeetingStore::meetingAdded, d->peopleStats, &library::PeopleStats::scheduleRefresh);
-    connect(d->store, &library::MeetingStore::meetingUpdated, d->peopleStats, &library::PeopleStats::scheduleRefresh);
-    connect(d->store, &library::MeetingStore::meetingRemoved, d->peopleStats, &library::PeopleStats::scheduleRefresh);
+    connect(d->store, &library::MeetingRepository::meetingAdded, d->peopleStats, &library::PeopleStats::scheduleRefresh);
+    connect(d->store, &library::MeetingRepository::meetingUpdated, d->peopleStats, &library::PeopleStats::scheduleRefresh);
+    connect(d->store, &library::MeetingRepository::meetingRemoved, d->peopleStats, &library::PeopleStats::scheduleRefresh);
+    // The transcript repository's cached facts (e.g. the speaker count of the meeting header) are
+    // dropped when a transcript or its names change.
+    auto dropTranscriptCache = [this](const QString& meetingId) {
+        d->transcripts->invalidate(d->store->folderOf(meetingId));
+    };
+    connect(this, &AppController::transcriptReady, this, dropTranscriptCache);
+    connect(this, &AppController::speakerMapChanged, this, dropTranscriptCache);
 
     // Tags: the set + per-meeting tags, classic similarity (profiles built on a background thread),
     // embeddings and library preparation, an LLM suggestion after the summary.
@@ -1305,7 +1111,9 @@ AppController::~AppController()
 
 SettingsManager* AppController::settings() const { return d->settings; }
 recording::DeviceManager*   AppController::devices()  const { return d->devices; }
-library::MeetingStore*    AppController::store()     const { return d->store; }
+library::MeetingRepository*    AppController::store()     const { return d->store; }
+library::TranscriptRepository* AppController::transcripts() const { return d->transcripts.get(); }
+library::UiStateRepository*    AppController::uiState()    const { return d->uiState.get(); }
 library::VoiceprintStore* AppController::voiceprints() const { return d->voiceprints.get(); }
 library::PeopleService*   AppController::peopleService() const { return d->peopleService; }
 library::PeopleStats*     AppController::peopleStats() const { return d->peopleStats; }
@@ -1513,10 +1321,10 @@ void AppController::renameSpeaker(const QString& meetingId, const QString& rawLa
     // Regenerating transcript.md with the FULL mapping (from the raw tokens).
     // segments.json STAYS RAW so the UI can relabel any time.
     MergedTranscript merged =
-        readTokensJson(QDir(m.folder).filePath(QStringLiteral("transcript.tokens.json")));
+        TranscriptRepository::readTokens(m.folder);
     if (!merged.tokens.isEmpty()) {
         editing::speakeredit::applyResolvedSpeakers(merged, m);
-        writeTextFile(QDir(m.folder).filePath(QStringLiteral("transcript.md")), merged.renderMarkdown());
+        TranscriptRepository::writeMarkdown(m.folder, merged.renderMarkdown());
     }
     if (editing::speakeredit::markSummaryStale(m, {rawLabel})) emit summaryStaleChanged(meetingId);
     emit speakerMapChanged(meetingId);
@@ -1535,7 +1343,7 @@ void AppController::enrollSpeaker(const QString& meetingId, const QString& rawLa
     if (!d->voiceModelUsable() || !d->voiceSet.ensureLoaded()) return;
 
     const MergedTranscript merged =
-        readTokensJson(QDir(m.folder).filePath(QStringLiteral("transcript.tokens.json")));
+        TranscriptRepository::readTokens(m.folder);
     if (merged.tokens.isEmpty()) return;
     const VoiceSource src = resolveVoiceSource(m, merged, rawLabel);
     if (src.absPath.isEmpty()) return;
@@ -1563,7 +1371,7 @@ void AppController::autoIdentifyMeeting(const QString& meetingId,
     if (!d->voiceModelUsable() || !d->voiceSet.ensureLoaded()) return;
 
     const MergedTranscript merged =
-        readTokensJson(QDir(m.folder).filePath(QStringLiteral("transcript.tokens.json")));
+        TranscriptRepository::readTokens(m.folder);
     if (merged.tokens.isEmpty()) return;
 
     // Distinct raw speaker labels.
@@ -1603,7 +1411,7 @@ VoiceMatch AppController::testSpeakerMatch(const QString& meetingId, const QStri
     if (m.id.isEmpty()) return none;
     if (!d->voiceModelUsable() || !d->voiceSet.ensureLoaded()) return none;
     const MergedTranscript merged =
-        readTokensJson(QDir(m.folder).filePath(QStringLiteral("transcript.tokens.json")));
+        TranscriptRepository::readTokens(m.folder);
     if (merged.tokens.isEmpty()) return none;
     const VoiceSource src = resolveVoiceSource(m, merged, rawLabel);
     if (src.absPath.isEmpty()) return none;
@@ -1772,10 +1580,10 @@ void AppController::renamePerson(const QString& oldName, const QString& newName)
 
         if (!changed) continue;
         d->store->saveMeeting(m);
-        MergedTranscript merged = readTokensJson(QDir(m.folder).filePath(QStringLiteral("transcript.tokens.json")));
+        MergedTranscript merged = TranscriptRepository::readTokens(m.folder);
         if (!merged.tokens.isEmpty()) {
             editing::speakeredit::applyResolvedSpeakers(merged, m);
-            writeTextFile(QDir(m.folder).filePath(QStringLiteral("transcript.md")), merged.renderMarkdown());
+            TranscriptRepository::writeMarkdown(m.folder, merged.renderMarkdown());
         }
         emit speakerMapChanged(m.id);
     }
@@ -1799,10 +1607,10 @@ void AppController::removePerson(const QString& name) {
         if (editing::speakeredit::removePersonFromOverlay(m.folder, nm)) changed = true;
         if (!changed) continue;
         d->store->saveMeeting(m);
-        MergedTranscript merged = readTokensJson(QDir(m.folder).filePath(QStringLiteral("transcript.tokens.json")));
+        MergedTranscript merged = TranscriptRepository::readTokens(m.folder);
         if (!merged.tokens.isEmpty()) {
             editing::speakeredit::applyResolvedSpeakers(merged, m);
-            writeTextFile(QDir(m.folder).filePath(QStringLiteral("transcript.md")), merged.renderMarkdown());
+            TranscriptRepository::writeMarkdown(m.folder, merged.renderMarkdown());
         }
         emit speakerMapChanged(m.id);
     }
@@ -1902,7 +1710,7 @@ void AppController::regenerateMixdown(const QString& meetingId) {
     if (m.id.isEmpty()) return;
 
     d->mixdownFailReason.remove(meetingId);
-    const QString outRel = QStringLiteral("mixdown.mp3");
+    const QString outRel = MeetingLayout::mixdownFile();
     const QString outPath = QDir(m.folder).filePath(outRel);
 
     // Only the active tracks that exist on disk go into the mix, those starting later shifted into place
@@ -1930,7 +1738,7 @@ void AppController::regenerateMixdown(const QString& meetingId) {
 
     // We mix into a half-made file and replace the old one only after SUCCESS: on cancel or error the
     // earlier (still playable) mix stays untouched.
-    const QString partPath = QDir(m.folder).filePath(QStringLiteral("mixdown.part.mp3"));
+    const QString partPath = QDir(m.folder).filePath(MeetingLayout::mixdownPartFile());
 
     const QStringList args = plan.ffmpegArgs(partPath);
     const qint64 totalMs = m.durationMs;   // the denominator of the percentage
@@ -2479,7 +2287,7 @@ cloud::EstimateRequest AppController::makeEstimateRequest(const QString& meeting
         // The actual input: system prompt + context + transcript (markdown).
         MergedTranscript merged = d->mergedCache.value(meetingId);
         if (merged.tokens.isEmpty() && !m.folder.isEmpty())
-            merged = readTokensJson(QDir(m.folder).filePath(QStringLiteral("transcript.tokens.json")));
+            merged = TranscriptRepository::readTokens(m.folder);
         if (!merged.tokens.isEmpty()) {
             editing::speakeredit::applyResolvedSpeakers(merged, m);
             const int transcript = merged.renderMarkdown().size() + m.contextNote.size();
@@ -2490,13 +2298,13 @@ cloud::EstimateRequest AppController::makeEstimateRequest(const QString& meeting
                 // The topic count is unknown before extraction (null -> the gateway's statistics); if an edited topic
                 // list already exists, we request only the not-yet-analyzed ones.
                 const QVector<SummaryTopic> topics =
-                    readTopicsJson(QDir(m.folder).filePath(QStringLiteral("summary.topics.json")));
+                    SummaryRepository::readTopics(m.folder);
                 if (topics.isEmpty()) {
                     r.llmCalls.append({ 1, topicIn, kCloudMaxTokens });
                     r.llmCalls.append({ -1, analysisIn, kCloudMaxTokens });
                 } else {
                     QSet<QString> done;
-                    for (const TopicAnalysis& a : readAnalysesJson(QDir(m.folder).filePath(QStringLiteral("summary.analyses.json"))))
+                    for (const TopicAnalysis& a : SummaryRepository::readAnalyses(m.folder))
                         done.insert(a.topicId);
                     int missing = 0;
                     for (const SummaryTopic& t : topics) if (!done.contains(t.id)) ++missing;
@@ -2600,8 +2408,7 @@ void AppController::transcribeMeeting(const QString& meetingId)
     // merging/duplication, 1x Soniox cost instead of ~Nx). If the mixdown is missing or stale, we make it first
     // and start the transcription on the mixdownUpdated signal.
     const QString mixPath =
-        QDir(m.folder).filePath(m.mixdownFile.isEmpty() ? QStringLiteral("mixdown.mp3")
-                                                        : m.mixdownFile);
+        QDir(m.folder).filePath(MeetingLayout::mixdownOf(m));
     const bool needMix = m.mixdownFile.isEmpty() || m.mixdownDirty || !QFile::exists(mixPath);
 
     // Structured task: the stage list. The mixdown is a stage only if needed; identification only if there
@@ -2740,8 +2547,7 @@ void AppController::transcribeFromMixdown(const QString& meetingId)
     emit jobProgress(m.id, tr("Átírás indítása…"));
 
     const QString mixPath =
-        QDir(m.folder).filePath(m.mixdownFile.isEmpty() ? QStringLiteral("mixdown.mp3")
-                                                        : m.mixdownFile);
+        QDir(m.folder).filePath(MeetingLayout::mixdownOf(m));
 
     // A SINGLE request with the mixdown. Speaker separation comes from Soniox diarization ("Speaker N"
     // labels); the NAME is resolved afterwards by voice ID / manual rename.
@@ -2851,7 +2657,7 @@ void AppController::transcribeFromMixdown(const QString& meetingId)
         }
         // Whether there was a transcript BEFORE the run (independent of the flag; see below).
         const bool hadTranscript = mm.hasTranscript
-            || QFile::exists(QDir(mm.folder).filePath(QStringLiteral("transcript.tokens.json")));
+            || TranscriptRepository::hasTokens(mm.folder);
 
         TrackTranscript res = result;
         // We translate Soniox's diarization ids (1,2,...) into a neutral "Speaker N" label.
@@ -2862,10 +2668,9 @@ void AppController::transcribeFromMixdown(const QString& meetingId)
 
         QVector<TrackTranscript> single{res};
         MergedTranscript merged = processing::mergeTranscripts(single);
-        const QString mdPath = QDir(mm.folder).filePath(QStringLiteral("transcript.md"));
-        writeTextFile(mdPath, merged.renderMarkdown());
-        writeTokensJson(QDir(mm.folder).filePath(QStringLiteral("transcript.tokens.json")), merged);
-        writeSegmentsJson(QDir(mm.folder).filePath(QStringLiteral("transcript.segments.json")), merged.segments());
+        TranscriptRepository::writeMarkdown(mm.folder, merged.renderMarkdown());
+        TranscriptRepository::writeTokens(mm.folder, merged);
+        TranscriptRepository::writeSegments(mm.folder, merged.segments());
         d->mergedCache.insert(mm.id, merged);
         ++d->transcriptGen[meetingId];   // a new transcript: the running identifications' results are stale
         // Re-transcription: the new diarization's "Speaker N" labels may mean OTHER people, so the old
@@ -2887,7 +2692,7 @@ void AppController::transcribeFromMixdown(const QString& meetingId)
             d->jobs->setStage(meetingId, k, QStringLiteral("diarize"), StageState::Done);
         d->jobs->markIdentified(meetingId, false);   // identification has not run on the new transcript yet
 
-        emit transcriptReady(mm.id, mdPath);
+        emit transcriptReady(mm.id, TranscriptRepository::markdownPath(mm.folder));
         finishCloudRun(run);   // "This transcription cost $0.41." (cloud runs only)
         // Voice ID: auto-matching the diarized speakers against the voiceprint DB, on a background thread, as
         // the last stage of the transcription task (the UI stays usable, cancellable). (If the user skipped it
@@ -2952,7 +2757,7 @@ void AppController::summarizeMeeting(const QString& meetingId)
 
     MergedTranscript merged = d->mergedCache.value(meetingId);
     if (merged.tokens.isEmpty())
-        merged = readTokensJson(QDir(m.folder).filePath(QStringLiteral("transcript.tokens.json")));
+        merged = TranscriptRepository::readTokens(m.folder);
     // A content guard: canRun(Summarize) gates on the meeting.hasTranscript flag, but if tokens.json is
     // missing/empty (deleted by hand, a partial write, a wrongly copied meeting), no summary should start on
     // an empty transcript; this mirrors the original content-based guard.
@@ -3066,8 +2871,7 @@ void AppController::summarizeMeeting(const QString& meetingId)
             return;
         }
         const QString md = sum.renderMarkdown();
-        const QString mdPath = QDir(mm.folder).filePath(QStringLiteral("summary.md"));
-        writeTextFile(mdPath, md);
+        SummaryRepository::writeMarkdown(mm.folder, md);
         // The structured form + the provenance (summary.json); the summary view draws from this.
         library::SummaryDocument doc;
         doc.exists = true;
@@ -3079,17 +2883,16 @@ void AppController::summarizeMeeting(const QString& meetingId)
         doc.meta.mode = library::SummaryMode::Quick;
         doc.meta.contextNote = note;            // the note it was made with
         doc.meta.contextNoteKnown = true;
-        library::summarystore::save(mm.folder, doc);
+        library::SummaryRepository::save(mm.folder, doc);
         // a copy into the notes (vault) folder
-        QDir().mkpath(d->notesDir);
         const QString noteName = QStringLiteral("%1 %2.md")
             .arg(mm.startedAt.toString(QStringLiteral("yyyy-MM-dd")), slugify(mm.title));
-        writeTextFile(QDir(d->notesDir).filePath(noteName), md);
+        SummaryRepository::writeNoteCopy(d->notesDir, noteName, md);
         mm.hasSummary = true;
         d->store->saveMeeting(mm);
         d->jobStats->addSample(statsKey, double(clock->elapsed()) / 1000.0, units);
         d->jobs->finish(meetingId, JobKind::Summarize);
-        emit summaryReady(mm.id, mdPath);
+        emit summaryReady(mm.id, SummaryRepository::markdownPath(mm.folder));
         finishCloudRun(run);
     });
     connect(svc, &processing::SummaryService::summaryFailed, this,
@@ -3155,8 +2958,7 @@ void AppController::extractMeetingTopics(const QString& meetingId)
     if (m.id.isEmpty()) { emit errorOccurred(tr("Ismeretlen meeting: %1").arg(meetingId)); return; }
 
     // If a (possibly edited) topic list already exists, we return that; no re-extraction.
-    const QString topicsPath = QDir(m.folder).filePath(QStringLiteral("summary.topics.json"));
-    const QVector<SummaryTopic> existing = readTopicsJson(topicsPath);
+    const QVector<SummaryTopic> existing = SummaryRepository::readTopics(m.folder);
     if (!existing.isEmpty()) { emit topicsReady(m.id, existing); return; }
 
     providers::ReadinessResult res = canRun(providers::WorkflowStep::Summarize, meetingId);
@@ -3164,7 +2966,7 @@ void AppController::extractMeetingTopics(const QString& meetingId)
 
     MergedTranscript merged = d->mergedCache.value(meetingId);
     if (merged.tokens.isEmpty())
-        merged = readTokensJson(QDir(m.folder).filePath(QStringLiteral("transcript.tokens.json")));
+        merged = TranscriptRepository::readTokens(m.folder);
     if (merged.tokens.isEmpty()) { emit errorOccurred(tr("Nincs átirat — előbb futtass átírást.")); return; }
     editing::speakeredit::applyResolvedSpeakers(merged, m);
     const QString transcriptMd = merged.renderMarkdown();
@@ -3194,11 +2996,11 @@ void AppController::extractMeetingTopics(const QString& meetingId)
     clock->start();
 
     connect(svc, &processing::ComplexSummaryService::topicsReady, this,
-            [this, id = m.id, topicsPath, providerObj, svc, run, key, statsKey, units, clock]
+            [this, id = m.id, folder = m.folder, providerObj, svc, run, key, statsKey, units, clock]
             (const QVector<SummaryTopic>& topics) {
         d->llmRuns.remove(key);
-        if (QFileInfo(topicsPath).absoluteDir().exists())   // (the meeting may have been deleted meanwhile)
-            writeTopicsJson(topicsPath, topics);
+        if (QDir(folder).exists())   // (the meeting may have been deleted meanwhile)
+            SummaryRepository::writeTopics(folder, topics);
         if (providerObj) providerObj->deleteLater();
         svc->deleteLater();
         // Cloud: topic gathering is the FIRST part of the complex run; the run (and the X-Tanara-Job-Id) stays
@@ -3249,7 +3051,7 @@ QVector<TopicAnalysis> AppController::topicAnalyses(const QString& meetingId) co
 {
     const Meeting m = d->store->load(meetingId);
     if (m.id.isEmpty()) return {};
-    return readAnalysesJson(QDir(m.folder).filePath(QStringLiteral("summary.analyses.json")));
+    return SummaryRepository::readAnalyses(m.folder);
 }
 
 void AppController::generateComplexSummary(const QString& meetingId, const QVector<SummaryTopic>& topics)
@@ -3259,14 +3061,14 @@ void AppController::generateComplexSummary(const QString& meetingId, const QVect
     if (topics.isEmpty()) { emit errorOccurred(tr("Nincs téma a komplex összefoglalóhoz.")); return; }
 
     // Persisting the (edited) topic list: it stays resumable.
-    writeTopicsJson(QDir(m.folder).filePath(QStringLiteral("summary.topics.json")), topics);
+    SummaryRepository::writeTopics(m.folder, topics);
     emit topicsChanged(meetingId);
 
     // Only the topics NOT YET ANALYZED go into the queue (finished analyses are on disk), so after a
     // cancel/error a restart resumes where it stopped. Rerunning an already finished topic can be requested
     // with the card's own button (analyzeTopic).
     const QVector<TopicAnalysis> existing =
-        readAnalysesJson(QDir(m.folder).filePath(QStringLiteral("summary.analyses.json")));
+        SummaryRepository::readAnalyses(m.folder);
     QSet<QString> doneIds;
     for (const TopicAnalysis& a : existing) doneIds.insert(a.topicId);
 
@@ -3300,13 +3102,12 @@ void AppController::analyzeTopic(const QString& meetingId, const SummaryTopic& t
     }
 
     // Carrying the (edited) topic into topics.json: the reduce's order/content comes from there.
-    const QString topicsPath = QDir(m.folder).filePath(QStringLiteral("summary.topics.json"));
-    QVector<SummaryTopic> topics = readTopicsJson(topicsPath);
+    QVector<SummaryTopic> topics = SummaryRepository::readTopics(m.folder);
     bool found = false;
     for (SummaryTopic& t : topics)
         if (t.id == topic.id) { t = topic; found = true; break; }
     if (!found) topics.append(topic);
-    writeTopicsJson(topicsPath, topics);
+    SummaryRepository::writeTopics(m.folder, topics);
     emit topicsChanged(meetingId);
 
     enqueueTopicAnalyses(meetingId, { topic }, /*reduceWhenDone*/ false);
@@ -3408,7 +3209,7 @@ void AppController::startNextTopicJob()
 
     MergedTranscript merged = d->mergedCache.value(m.id);
     if (merged.tokens.isEmpty())
-        merged = readTokensJson(QDir(m.folder).filePath(QStringLiteral("transcript.tokens.json")));
+        merged = TranscriptRepository::readTokens(m.folder);
     if (merged.tokens.isEmpty()) { failEarly(tr("Nincs átirat — előbb futtass átírást.")); return; }
     editing::speakeredit::applyResolvedSpeakers(merged, m);
 
@@ -3439,16 +3240,14 @@ void AppController::startNextTopicJob()
     emit topicStatusChanged(m.id, job.topic.id);
     emit jobProgress(m.id, tr("„%1” téma elemzése…").arg(job.topic.title));
 
-    const QString analysesPath = QDir(m.folder).filePath(QStringLiteral("summary.analyses.json"));
     auto cleanup = [providerObj, svc]() {
         if (providerObj) providerObj->deleteLater();
         svc->deleteLater();
     };
 
     connect(svc, &processing::ComplexSummaryService::topicAnalysisReady, this,
-            [this, meetingId = m.id, analysesPath, cleanup](const TopicAnalysis& a) {
-        if (QFileInfo(analysesPath).absoluteDir().exists())
-            upsertAnalysisJson(analysesPath, a);   // IMMEDIATELY to disk: the work must not be lost
+            [this, meetingId = m.id, folder = m.folder, cleanup](const TopicAnalysis& a) {
+        SummaryRepository::upsertAnalysis(folder, a);   // IMMEDIATELY to disk: the work must not be lost
         d->jobCounts[meetingId].first++;
         cleanup();
         // The topic is no longer "running": the state query (topicStatuses) now gives "done".
@@ -3526,9 +3325,9 @@ void AppController::finalizeComplexSummary(const QString& meetingId)
     // The analyses on disk, in the (edited) order of topics.json; orphan analyses (belonging to a deleted
     // topic) are left out.
     const QVector<SummaryTopic> topics =
-        readTopicsJson(QDir(m.folder).filePath(QStringLiteral("summary.topics.json")));
+        SummaryRepository::readTopics(m.folder);
     const QVector<TopicAnalysis> all =
-        readAnalysesJson(QDir(m.folder).filePath(QStringLiteral("summary.analyses.json")));
+        SummaryRepository::readAnalyses(m.folder);
     QVector<TopicAnalysis> ordered;
     for (const SummaryTopic& t : topics)
         for (const TopicAnalysis& a : all)
@@ -3593,7 +3392,7 @@ void AppController::finalizeComplexSummary(const QString& meetingId)
                 seen.insert(norm);
                 mergedItems.append(ai);
             }
-        const QString md = renderComplexMarkdown(execSummary, mergedItems, ordered);
+        const QString md = SummaryRepository::renderComplexMarkdown(execSummary, mergedItems, ordered);
         Meeting mm = d->store->load(m.id);
         if (mm.id.isEmpty()) {   // the meeting was deleted meanwhile
             cleanup();
@@ -3601,8 +3400,7 @@ void AppController::finalizeComplexSummary(const QString& meetingId)
             finishCloudRun(run);
             return;
         }
-        const QString mdPath = QDir(mm.folder).filePath(QStringLiteral("summary.md"));
-        writeTextFile(mdPath, md);
+        SummaryRepository::writeMarkdown(mm.folder, md);
         // Structured form + metadata (summary.json): executive summary, merged action items, the union of the
         // topics' decisions, and the topic analyses themselves, in order.
         library::SummaryDocument doc;
@@ -3613,7 +3411,7 @@ void AppController::finalizeComplexSummary(const QString& meetingId)
         for (const TopicAnalysis& a : ordered)
             for (const QString& dec : a.decisions)
                 if (!doc.summary.decisions.contains(dec)) doc.summary.decisions << dec;
-        doc.summary.openQuestions = openQuestionsOf(ordered);
+        doc.summary.openQuestions = SummaryRepository::openQuestionsOf(ordered);
         doc.topics = ordered;
         doc.meta.createdAt = QDateTime::currentDateTime();
         doc.meta.providerId = llmId;
@@ -3621,16 +3419,15 @@ void AppController::finalizeComplexSummary(const QString& meetingId)
         doc.meta.mode = library::SummaryMode::Topics;
         doc.meta.contextNote = m.contextNote.trimmed();   // at the start of the final merge
         doc.meta.contextNoteKnown = true;
-        library::summarystore::save(mm.folder, doc);
-        QDir().mkpath(d->notesDir);
+        library::SummaryRepository::save(mm.folder, doc);
         const QString noteName = QStringLiteral("%1 %2.md")
             .arg(mm.startedAt.toString(QStringLiteral("yyyy-MM-dd")), slugify(mm.title));
-        writeTextFile(QDir(d->notesDir).filePath(noteName), md);
+        SummaryRepository::writeNoteCopy(d->notesDir, noteName, md);
         mm.hasSummary = true;
         d->store->saveMeeting(mm);
         cleanup();
         d->jobs->finish(mm.id, JobKind::Summarize);
-        emit summaryReady(mm.id, mdPath);
+        emit summaryReady(mm.id, SummaryRepository::markdownPath(mm.folder));
         finishCloudRun(run);   // "The summary cost $0.46 (12 parts)."
     });
 
@@ -3675,44 +3472,6 @@ QString AppController::importAudio(const library::ImportRequest& request)
 
 // ---- meeting archive ---------------------------------------------------------------
 
-namespace {
-
-QVector<Tag> archiveTags(library::TagService* tags, const Meeting& m)
-{
-    QVector<Tag> out;
-    for (const QString& id : m.tagIds) {
-        const Tag t = tags ? tags->tag(id) : Tag{};
-        if (t.isValid()) out.append(t);
-    }
-    return out;
-}
-
-// Pulling in the unpacked folder + resolving the tags to the local set. Runs on the main thread.
-Meeting adoptArchiveFolder(library::MeetingStore* store, library::TagService* tags, const QString& folder,
-                           const library::ArchiveManifest& manifest, QString* error)
-{
-    Meeting m = store->adoptMeetingFolder(folder, error);
-    if (m.id.isEmpty() || !tags) return m;
-    QStringList ids;
-    QStringList pending = m.tagIds;   // identifiers not in the manifest but known locally
-    for (const Tag& t : manifest.tags) {
-        Tag local = tags->tag(t.id);
-        if (!local.isValid()) local = tags->byName(t.name);
-        if (!local.isValid()) local = tags->create(t.name);
-        if (local.isValid() && !ids.contains(local.id)) ids << local.id;
-        pending.removeAll(t.id);
-    }
-    for (const QString& id : pending)
-        if (tags->tag(id).isValid() && !ids.contains(id)) ids << id;
-    if (ids != m.tagIds) {
-        tags->setTags(m.id, ids, TagSource::Bulk);
-        m.tagIds = ids;
-    }
-    return m;
-}
-
-} // namespace
-
 bool AppController::archiveBusy() const { return d->archiveThread != nullptr; }
 
 bool AppController::exportMeetingArchiveNow(const QString& meetingId, const QString& zipPath,
@@ -3728,7 +3487,7 @@ bool AppController::exportMeetingArchiveNow(const QString& meetingId, const QStr
         if (error) *error = tr("Felvétel közben a megbeszélés nem exportálható.");
         return false;
     }
-    return library::MeetingArchive::exportMeeting(m, zipPath, error, std::move(progress), archiveTags(d->tags, m));
+    return library::MeetingArchive::exportMeeting(m, zipPath, error, std::move(progress), library::MeetingArchive::tagsOf(d->tags, m));
 }
 
 Meeting AppController::importMeetingArchiveNow(const QString& zipPath, QString* error,
@@ -3739,7 +3498,7 @@ Meeting AppController::importMeetingArchiveNow(const QString& zipPath, QString* 
     library::ArchiveManifest manifest;
     const QString folder = library::MeetingArchive::importArchive(zipPath, root, error, std::move(progress), &manifest);
     if (folder.isEmpty()) return {};
-    return adoptArchiveFolder(d->store, d->tags, folder, manifest, error);
+    return library::MeetingArchive::adoptFolder(d->store, d->tags, folder, manifest, error);
 }
 
 QString AppController::exportMeetingArchive(const QString& meetingId, const QString& zipPath)
@@ -3758,7 +3517,7 @@ QString AppController::exportMeetingArchive(const QString& meetingId, const QStr
         emit errorOccurred(tr("Felvétel közben a megbeszélés nem exportálható."));
         return {};
     }
-    const QVector<Tag> tags = archiveTags(d->tags, m);
+    const QVector<Tag> tags = library::MeetingArchive::tagsOf(d->tags, m);
     const QString opId = QStringLiteral("export:") + meetingId;
     auto cancel = std::make_shared<std::atomic<bool>>(false);
     auto ok = std::make_shared<bool>(false);
@@ -3821,7 +3580,7 @@ QString AppController::importMeetingFolder(const QString& folderIn)
     const bool inPlace = QFileInfo(folder).dir().absolutePath() == root;
 
     QPointer<AppController> self(this);
-    library::MeetingStore* store = d->store;
+    library::MeetingRepository* store = d->store;
     QThread* th = QThread::create([self, folder, inPlace, store, staged, error, opId]() {
         if (inPlace) { *staged = folder; return; }
         *staged = store->stageFolderForImport(folder, error.get());
@@ -3839,7 +3598,7 @@ QString AppController::importMeetingFolder(const QString& folderIn)
         QString message = *error;
         Meeting m;
         if (!staged->isEmpty())
-            m = adoptArchiveFolder(d->store, d->tags, *staged, library::ArchiveManifest{}, &message);
+            m = library::MeetingArchive::adoptFolder(d->store, d->tags, *staged, library::ArchiveManifest{}, &message);
         if (m.id.isEmpty())
             emit archiveFinished(opId, false, QString(), folder, message);
         else
@@ -3880,7 +3639,7 @@ QString AppController::importMeetingArchive(const QString& zipPath)
         QString message = *error;
         Meeting m;
         if (!folder->isEmpty())
-            m = adoptArchiveFolder(d->store, d->tags, *folder, *manifest, &message);
+            m = library::MeetingArchive::adoptFolder(d->store, d->tags, *folder, *manifest, &message);
         if (m.id.isEmpty())
             emit archiveFinished(opId, false, QString(), zipPath, message);
         else
@@ -4167,14 +3926,14 @@ library::SummaryDocument AppController::summaryDocument(const QString& meetingId
 {
     const Meeting m = d->store->load(meetingId);
     if (m.id.isEmpty()) return {};
-    return library::summarystore::load(m.folder);
+    return library::SummaryRepository::load(m.folder);
 }
 
 QVector<SummaryTopic> AppController::meetingTopics(const QString& meetingId) const
 {
     const Meeting m = d->store->load(meetingId);
     if (m.id.isEmpty()) return {};
-    return readTopicsJson(QDir(m.folder).filePath(QStringLiteral("summary.topics.json")));
+    return SummaryRepository::readTopics(m.folder);
 }
 
 QVector<TopicStatus> AppController::topicStatuses(const QString& meetingId) const
@@ -4183,9 +3942,9 @@ QVector<TopicStatus> AppController::topicStatuses(const QString& meetingId) cons
     const Meeting m = d->store->load(meetingId);
     if (m.id.isEmpty()) return out;
     const QVector<SummaryTopic> topics =
-        readTopicsJson(QDir(m.folder).filePath(QStringLiteral("summary.topics.json")));
+        SummaryRepository::readTopics(m.folder);
     QSet<QString> done;
-    for (const TopicAnalysis& a : readAnalysesJson(QDir(m.folder).filePath(QStringLiteral("summary.analyses.json"))))
+    for (const TopicAnalysis& a : SummaryRepository::readAnalyses(m.folder))
         done.insert(a.topicId);
     const QHash<QString, JobError> errors = d->jobs->topicErrors(meetingId);
 
@@ -4233,14 +3992,13 @@ QVector<SummaryTopic> AppController::setMeetingTopics(const QString& meetingId,
         ids.insert(t.id);
         saved.append(t);
     }
-    const QString topicsPath = QDir(m.folder).filePath(QStringLiteral("summary.topics.json"));
     // The deleted topics: out of the queue / the running one cancelled, their remembered error cleared.
-    for (const SummaryTopic& old : readTopicsJson(topicsPath)) {
+    for (const SummaryTopic& old : SummaryRepository::readTopics(m.folder)) {
         if (ids.contains(old.id)) continue;
         cancelTopicAnalysis(meetingId, old.id);
         d->jobs->clearTopicError(meetingId, old.id);
     }
-    writeTopicsJson(topicsPath, saved);
+    SummaryRepository::writeTopics(m.folder, saved);
     emit topicsChanged(meetingId);
     return saved;
 }
@@ -4443,7 +4201,7 @@ bool AppController::startIdentify(const QString& meetingId, bool asStage)
     const Meeting m = d->store->load(meetingId);
     if (m.id.isEmpty()) return false;
     const MergedTranscript merged =
-        readTokensJson(QDir(m.folder).filePath(QStringLiteral("transcript.tokens.json")));
+        TranscriptRepository::readTokens(m.folder);
     if (merged.tokens.isEmpty()) return false;
 
     // The still anonymous (unmapped) raw speaker labels and their audio source.
@@ -4631,7 +4389,7 @@ bool AppController::flagStatement(const QString& meetingId, const QString& state
 {
     const Meeting m = d->store->load(meetingId);
     if (m.id.isEmpty() || m.folder.isEmpty()) return false;
-    if (!library::summarystore::setStatementFlagged(m.folder, statementId, true)) return false;
+    if (!library::SummaryRepository::setStatementFlagged(m.folder, statementId, true)) return false;
     emit summaryStatementsChanged(meetingId);
     return true;
 }
@@ -5390,7 +5148,7 @@ editing::MeetingUndoService* AppController::meetingUndo(const QString& meetingId
     u->attachTagService(d->tags);
     if (editing::SpeakerEditor* ed = d->speakerEditors.value(meetingId)) u->attachSpeakerEditor(ed);
     d->undoServices.insert(meetingId, u);
-    connect(d->store, &library::MeetingStore::meetingRemoved, u, [this, u](const QString& id) {
+    connect(d->store, &library::MeetingRepository::meetingRemoved, u, [this, u](const QString& id) {
         if (id != u->meetingId()) return;
         d->undoServices.remove(id);
         u->deleteLater();

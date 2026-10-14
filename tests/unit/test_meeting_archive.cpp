@@ -1,8 +1,8 @@
 // Meeting archive (store/MeetingArchive) and adopting a recording folder
-// (MeetingStore::adoptMeetingFolder), only in temporary folders, with made-up data:
+// (MeetingRepository::adoptMeetingFolder), only in temporary folders, with made-up data:
 //  - export: manifest, the skipped files (lock, *.tmp, transcript-backup-*, embedding,
 //    profile.json) are not in it, the rest are;
-//  - import into another store: meeting.json is identical except for the folder field, the
+//  - import into another store: meeting.json is identical (no folder field), the
 //    tags, transcript, summary exist, the temporary .import-* folder disappears;
 //  - rejection: missing manifest, wrong version, a "../" entry, two top-level folders, an
 //    already existing folder name, an already existing id;
@@ -21,9 +21,10 @@
 
 #include "tanara/app/AppController.h"
 #include "tanara/library/jobs/MeetingJobTracker.h"
-#include "tanara/library/store/JsonSerialization.h"
+#include "tanara/library/store/detail/MeetingJson.h"
+#include "tanara/library/store/ParticipantJson.h"
 #include "tanara/library/store/MeetingArchive.h"
-#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/store/MeetingRepository.h"
 #include "tanara/library/tags/TagService.h"
 
 using namespace tanara;
@@ -109,12 +110,6 @@ QByteArray manifest(int version = 1)
         .toJson();
 }
 
-QJsonObject withoutFolder(QJsonObject o)
-{
-    o.remove(QStringLiteral("folder"));
-    return o;
-}
-
 } // namespace
 
 class MeetingArchiveTest : public QObject {
@@ -146,20 +141,20 @@ private slots:
 
 private:
     // A made-up meeting in the source store, with every kind of file.
-    Meeting makeFixture(library::MeetingStore& store, const QString& title = QStringLiteral("Ügyfél-egyeztetés"));
+    Meeting makeFixture(library::MeetingRepository& store, const QString& title = QStringLiteral("Ügyfél-egyeztetés"));
     QString recDir(const char* name) const { return m_dir->filePath(QString::fromLatin1(name)); }
 
     std::unique_ptr<QTemporaryDir> m_dir;
-    std::unique_ptr<library::MeetingStore> m_src;
-    std::unique_ptr<library::MeetingStore> m_dst;
+    std::unique_ptr<library::MeetingRepository> m_src;
+    std::unique_ptr<library::MeetingRepository> m_dst;
 };
 
 void MeetingArchiveTest::init()
 {
     m_dir = std::make_unique<QTemporaryDir>();
     QVERIFY(m_dir->isValid());
-    m_src = std::make_unique<library::MeetingStore>(recDir("src-rec"), recDir("src-meta"));
-    m_dst = std::make_unique<library::MeetingStore>(recDir("dst-rec"), recDir("dst-meta"));
+    m_src = std::make_unique<library::MeetingRepository>(recDir("src-rec"), recDir("src-meta"));
+    m_dst = std::make_unique<library::MeetingRepository>(recDir("dst-rec"), recDir("dst-meta"));
 }
 
 void MeetingArchiveTest::cleanup()
@@ -169,7 +164,7 @@ void MeetingArchiveTest::cleanup()
     m_dir.reset();
 }
 
-Meeting MeetingArchiveTest::makeFixture(library::MeetingStore& store, const QString& title)
+Meeting MeetingArchiveTest::makeFixture(library::MeetingRepository& store, const QString& title)
 {
     Meeting m = store.createMeeting(title);
     const QDir dir(m.folder);
@@ -277,11 +272,11 @@ void MeetingArchiveTest::exportImportRoundTrip()
     QCOMPARE(imported.tracks.at(1).startOffsetMs, qint64(57200));
     QCOMPARE(imported.tracks.at(0).startOffsetMs, qint64(0));
 
-    // meeting.json: identical except for the folder field.
+    // meeting.json: identical (it does not store the folder: that is where the file is).
     const QJsonObject a = readJson(QDir(m.folder).filePath("meeting.json"));
     const QJsonObject b = readJson(QDir(folder).filePath("meeting.json"));
-    QCOMPARE(withoutFolder(b), withoutFolder(a));
-    QCOMPARE(b.value("folder").toString(), folder);
+    QCOMPARE(b, a);
+    QVERIFY(!b.contains("folder"));
 
     for (const char* f : {"transcript.md", "transcript.speakers.json", "summary.md", "mixdown.mp3",
                           "track_mic.ogg", "track_loopback.ogg"})
@@ -437,7 +432,7 @@ void MeetingArchiveTest::adoptInPlace()
 {
     const Meeting m = makeFixture(*m_src);
     // Without an index (e.g. a hand-copied folder): a new store on the same folder.
-    library::MeetingStore fresh(m_src->audioDir(), recDir("fresh-meta"));
+    library::MeetingRepository fresh(m_src->audioDir(), recDir("fresh-meta"));
     QString err;
     const Meeting a = fresh.adoptMeetingFolder(m.folder, &err);
     QVERIFY2(!a.id.isEmpty(), qPrintable(err));

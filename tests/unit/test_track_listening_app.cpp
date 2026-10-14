@@ -16,8 +16,9 @@
 #include "tanara/processing/analysis/ParticipantAnalysis.h"
 #include "tanara/editing/session/SpeakerEditor.h"
 #include "tanara/processing/analysis/TrackActivity.h"
-#include "tanara/library/store/JsonSerialization.h"
-#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/store/detail/MeetingJson.h"
+#include "tanara/library/store/ParticipantJson.h"
+#include "tanara/library/store/MeetingRepository.h"
 
 #include <memory>
 

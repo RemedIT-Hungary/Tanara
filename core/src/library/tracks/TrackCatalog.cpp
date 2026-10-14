@@ -1,6 +1,7 @@
 #include "tanara/library/tracks/TrackCatalog.h"
+#include "tanara/library/MeetingLayout.h"
 #include "tanara/library/tracks/WaveformService.h"
-#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/store/MeetingRepository.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -243,7 +244,7 @@ QStringList friendlyNames(const QVector<Track>& all)
 
 } // namespace tracknames
 
-TrackCatalog::TrackCatalog(MeetingStore* store, QObject* parent)
+TrackCatalog::TrackCatalog(MeetingRepository* store, QObject* parent)
     : QObject(parent), m_store(store)
 {
     qRegisterMetaType<tanara::library::TrackView>();
@@ -379,7 +380,7 @@ bool TrackCatalog::relocateTrack(const QString& meetingId, const QString& trackI
 #else
             Qt::CaseSensitive;
 #endif
-        const QString mixName = m.mixdownFile.isEmpty() ? QStringLiteral("mixdown.mp3") : m.mixdownFile;
+        const QString mixName = MeetingLayout::mixdownOf(m);
         if (rel.compare(mixName, cs) == 0 || rel.startsWith(QStringLiteral("mixdown."), cs))
             return fail(tr("A lekeverés fájlja nem választható sávnak."));
         for (const Track& t : std::as_const(m.tracks))
@@ -390,7 +391,7 @@ bool TrackCatalog::relocateTrack(const QString& meetingId, const QString& trackI
         // track file name if the extension matches and the spot is free; otherwise with the source's
         // extension, numbered on collision.
         QString base = QFileInfo(track->file).completeBaseName();
-        if (base.isEmpty()) base = QStringLiteral("track_") + track->id;
+        if (base.isEmpty()) base = MeetingLayout::trackFilePrefix() + track->id;
         const QString ext = src.suffix().isEmpty() ? QStringLiteral("ogg") : src.suffix().toLower();
         rel = QStringLiteral("%1.%2").arg(base, ext);
         for (int n = 2; folder.exists(rel); ++n)

@@ -7,7 +7,7 @@
 
 #include "tanara/app/AppController.h"
 #include "tanara/library/MeetingLibrary.h"
-#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/store/MeetingRepository.h"
 #include "tanara/library/tags/TagService.h"
 
 namespace tanara_qml {

@@ -10,7 +10,7 @@
 #include "PlayerController.h"
 
 #include "tanara/app/AppController.h"
-#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/store/MeetingRepository.h"
 
 #include <QSignalSpy>
 #include <QTemporaryDir>

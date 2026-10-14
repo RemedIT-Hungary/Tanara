@@ -6,7 +6,7 @@
 #include "tanara/app/AppController.h"
 #include "tanara/library/tracks/TrackCatalog.h"
 #include "tanara/editing/review/SideAnalysis.h"
-#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/store/MeetingRepository.h"
 
 #include <algorithm>
 #include <cmath>

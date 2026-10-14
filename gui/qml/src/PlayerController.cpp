@@ -1,11 +1,12 @@
 #include "PlayerController.h"
+#include "tanara/library/MeetingLayout.h"
 
 #include "AppContext.h"
 #include "LibraryDemoData.h"
 
 #include "tanara/app/AppController.h"
 #include "tanara/library/tracks/TrackCatalog.h"
-#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/store/MeetingRepository.h"
 
 #include <QDir>
 #include <QElapsedTimer>
@@ -95,8 +96,7 @@ private:
 // the largest active track (plays shifted, but at least audible).
 QString meetingAudioPath(const tanara::Meeting& m)
 {
-    const QString mixdown = QDir(m.folder).filePath(
-        m.mixdownFile.isEmpty() ? QStringLiteral("mixdown.mp3") : m.mixdownFile);
+    const QString mixdown = QDir(m.folder).filePath(tanara::library::MeetingLayout::mixdownOf(m));
     if (QFileInfo::exists(mixdown))
         return mixdown;
     QString best;

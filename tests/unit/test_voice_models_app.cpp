@@ -14,7 +14,7 @@
 #include "tanara/app/SettingsManager.h"
 #include "tanara/editing/session/SpeakerEditor.h"
 #include "tanara/library/people/PeopleService.h"
-#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/store/MeetingRepository.h"
 #include "tanara/library/store/VoiceprintStore.h"
 #include "tanara/processing/voiceid/VoiceModelRegistry.h"
 

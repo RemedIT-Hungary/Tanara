@@ -7,7 +7,7 @@
 #include "tanara/editing/session/SpeakerOverlay.h"
 #include "tanara/processing/analysis/TrackActivity.h"
 #include "tanara/processing/analysis/UtteranceEmbeddings.h"
-#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/store/MeetingRepository.h"
 #include "tanara/library/store/PeopleStore.h"
 #include "tanara/library/store/VoiceprintStore.h"
 
@@ -608,7 +608,7 @@ TranscriptDemoSession::TranscriptDemoSession(const QString& variant)
         c.person = demoName(c.person);
     }
 
-    m_store = std::make_unique<library::MeetingStore>(m_dir.filePath(QStringLiteral("rec")),
+    m_store = std::make_unique<library::MeetingRepository>(m_dir.filePath(QStringLiteral("rec")),
                                              m_dir.filePath(QStringLiteral("meta")));
     m_people = std::make_unique<library::PeopleStore>(m_dir.filePath(QStringLiteral("meta/people.json")));
     m_prints = std::make_unique<library::VoiceprintStore>(m_dir.filePath(QStringLiteral("meta/voiceprints.json")));

@@ -9,7 +9,7 @@
 #include "tanara/app/AppController.h"
 #include "tanara/foundation/paths/AppPaths.h"
 #include "tanara/app/SettingsManager.h"
-#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/store/MeetingRepository.h"
 #include "tanara/library/store/VoiceprintStore.h"
 #include "tanara/processing/voiceid/BackfillReport.h"
 #include "tanara/processing/voiceid/VoiceModelDownloader.h"

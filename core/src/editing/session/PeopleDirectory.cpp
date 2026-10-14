@@ -1,7 +1,7 @@
 #include "tanara/editing/session/PeopleDirectory.h"
 
 #include "tanara/editing/session/SpeakerOverlay.h"
-#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/store/MeetingRepository.h"
 #include "tanara/library/store/PeopleStore.h"
 #include "tanara/library/store/VoiceprintStore.h"
 
@@ -21,7 +21,7 @@ bool matchesSearch(const QString& text, const QString& needle)
 }
 
 QVector<PersonInfo> listPeople(const library::PeopleStore* people, const library::VoiceprintStore* voiceprints,
-                               library::MeetingStore* store)
+                               library::MeetingRepository* store)
 {
     // Name merging case-insensitively (people.json and the voiceprint DB treat it this way).
     QVector<PersonInfo> out;

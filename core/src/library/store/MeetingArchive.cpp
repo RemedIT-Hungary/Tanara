@@ -1,5 +1,9 @@
 #include "tanara/library/store/MeetingArchive.h"
 #include "tanara/foundation/Version.h"
+#include "tanara/foundation/paths/AppPaths.h"
+#include "tanara/library/MeetingLayout.h"
+#include "tanara/library/store/MeetingRepository.h"
+#include "tanara/library/tags/TagService.h"
 #include "tanara/foundation/log/Logging.h"
 
 #include <miniz.h>
@@ -184,11 +188,11 @@ bool MeetingArchive::isExcluded(const QString& relativePath)
 {
     const QStringList parts = relativePath.split(QLatin1Char('/'), Qt::SkipEmptyParts);
     for (int i = 0; i + 1 < parts.size(); ++i)
-        if (parts.at(i).startsWith(QLatin1String("transcript-backup-"))) return true;
+        if (parts.at(i).startsWith(MeetingLayout::transcriptBackupPrefix())) return true;
     const QString name = parts.isEmpty() ? relativePath : parts.last();
-    return name == QLatin1String("recording.lock") || name.endsWith(QLatin1String(".tmp"))
-        || name.endsWith(QLatin1String(".embeddings.bin")) || name == QLatin1String("profile.json")
-        || name.startsWith(QLatin1String("transcript-backup-"));
+    return name == paths::files::RecordingLock || name.endsWith(QLatin1String(".tmp"))
+        || name.endsWith(MeetingLayout::embeddingCacheSuffix()) || name == MeetingLayout::profileJson()
+        || name.startsWith(MeetingLayout::transcriptBackupPrefix());
 }
 
 bool MeetingArchive::exportMeeting(const Meeting& m, const QString& zipPath, QString* error,
@@ -334,8 +338,8 @@ QString MeetingArchive::importArchive(const QString& zipPath, const QString& tem
                             .arg(topDir, top));
         if (st.m_is_directory) continue;
         const QString rel = name.mid(slash + 1);
-        if (rel == QLatin1String("meeting.json")) hasMeetingJson = true;
-        if (!rel.contains(QLatin1Char('/')) && rel.startsWith(QLatin1String("track_"))
+        if (rel == MeetingLayout::meetingJson()) hasMeetingJson = true;
+        if (!rel.contains(QLatin1Char('/')) && rel.startsWith(MeetingLayout::trackFilePrefix())
             && rel.endsWith(QLatin1String(".ogg")))
             hasTrack = true;
         entries.append({i, rel});
@@ -391,6 +395,41 @@ QString MeetingArchive::importArchive(const QString& zipPath, const QString& tem
     if (manifestOut) *manifestOut = manifest;
     qCInfo(lcStore).noquote() << "Archívum kicsomagolva:" << zipPath << "→" << target;
     return target;
+}
+
+// ---- adoption into the library (main thread) ---------------------------------------------------
+
+QVector<Tag> MeetingArchive::tagsOf(const TagService* tags, const Meeting& m)
+{
+    QVector<Tag> out;
+    for (const QString& id : m.tagIds) {
+        const Tag t = tags ? tags->tag(id) : Tag{};
+        if (t.isValid()) out.append(t);
+    }
+    return out;
+}
+
+Meeting MeetingArchive::adoptFolder(MeetingRepository* repo, TagService* tags, const QString& folder,
+                                    const ArchiveManifest& manifest, QString* error)
+{
+    Meeting m = repo->adoptMeetingFolder(folder, error);
+    if (m.id.isEmpty() || !tags) return m;
+    QStringList ids;
+    QStringList pending = m.tagIds;   // identifiers not in the manifest but known locally
+    for (const Tag& t : manifest.tags) {
+        Tag local = tags->tag(t.id);
+        if (!local.isValid()) local = tags->byName(t.name);
+        if (!local.isValid()) local = tags->create(t.name);
+        if (local.isValid() && !ids.contains(local.id)) ids << local.id;
+        pending.removeAll(t.id);
+    }
+    for (const QString& id : pending)
+        if (tags->tag(id).isValid() && !ids.contains(id)) ids << id;
+    if (ids != m.tagIds) {
+        tags->setTags(m.id, ids, TagSource::Bulk);
+        m.tagIds = ids;
+    }
+    return m;
 }
 
 } // namespace tanara::library

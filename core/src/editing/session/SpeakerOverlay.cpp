@@ -1,7 +1,9 @@
 #include "tanara/editing/session/SpeakerOverlay.h"
+#include "tanara/library/store/TranscriptRepository.h"
+#include "tanara/library/MeetingLayout.h"
 
 #include "tanara/processing/analysis/UtteranceEmbeddings.h"
-#include "tanara/library/summary/SummaryStore.h"
+#include "tanara/library/summary/SummaryRepository.h"
 
 #include <QCoreApplication>
 #include <QCryptographicHash>
@@ -34,30 +36,6 @@ bool writeFile(const QString& path, const QByteArray& data)
     return f.commit();
 }
 
-// Reading transcript.tokens.json (the same format AppController writes).
-MergedTranscript readTokens(const QString& path)
-{
-    MergedTranscript mt;
-    QFile f(path);
-    if (!f.open(QIODevice::ReadOnly)) return mt;
-    const QJsonObject root = QJsonDocument::fromJson(f.readAll()).object();
-    mt.language = root.value(QStringLiteral("language")).toString();
-    mt.emissionTiming = root.value(QStringLiteral("timing")).toString() == QLatin1String("emission");
-    const QJsonArray arr = root.value(QStringLiteral("tokens")).toArray();
-    mt.tokens.reserve(arr.size());
-    for (const QJsonValue& v : arr) {
-        const QJsonObject o = v.toObject();
-        TranscriptToken t;
-        t.text       = o.value(QStringLiteral("text")).toString();
-        t.speaker    = o.value(QStringLiteral("speaker")).toString();
-        t.startMs    = qint64(o.value(QStringLiteral("startMs")).toDouble());
-        t.endMs      = qint64(o.value(QStringLiteral("endMs")).toDouble());
-        t.confidence = o.value(QStringLiteral("confidence")).toDouble();
-        t.trackId    = o.value(QStringLiteral("trackId")).toString();
-        mt.tokens.append(t);
-    }
-    return mt;
-}
 
 void appendUnique(QStringList& list, const QString& s)
 {
@@ -70,18 +48,17 @@ void appendUnique(QStringList& list, const QString& s)
 
 QString overlayPath(const QString& meetingFolder)
 {
-    return QDir(meetingFolder).filePath(QStringLiteral("transcript.speakers.json"));
+    return library::MeetingLayout::path(meetingFolder, library::MeetingLayout::overlayJson());
 }
 
 QString segmentsPath(const QString& meetingFolder)
 {
-    return QDir(meetingFolder).filePath(QStringLiteral("transcript.segments.json"));
+    return library::TranscriptRepository::segmentsPath(meetingFolder);
 }
 
 QString mixdownPath(const Meeting& m)
 {
-    return QDir(m.folder).filePath(m.mixdownFile.isEmpty() ? QStringLiteral("mixdown.mp3")
-                                                           : m.mixdownFile);
+    return QDir(m.folder).filePath(library::MeetingLayout::mixdownOf(m));
 }
 
 QVector<TranscriptLine> loadTranscriptLines(const QString& meetingFolder)
@@ -369,12 +346,10 @@ void applyResolvedSpeakers(MergedTranscript& mt, const Meeting& m)
 
 bool regenerateTranscriptMarkdown(const Meeting& m)
 {
-    MergedTranscript mt =
-        readTokens(QDir(m.folder).filePath(QStringLiteral("transcript.tokens.json")));
+    MergedTranscript mt = library::TranscriptRepository::readTokens(m.folder);
     if (mt.tokens.isEmpty()) return false;
     applyResolvedSpeakers(mt, m);
-    return writeFile(QDir(m.folder).filePath(QStringLiteral("transcript.md")),
-                     mt.renderMarkdown().toUtf8());
+    return library::TranscriptRepository::writeMarkdown(m.folder, mt.renderMarkdown());
 }
 
 // ---- summary staleness -----------------------------------------------
@@ -460,7 +435,7 @@ void fillTargetedStale(const Meeting& m, SummaryStaleInfo& info, QVector<Summary
 {
     if (statements) statements->clear();
     if (!m.hasSummary || m.folder.isEmpty()) return;
-    const library::SummaryDocument doc = library::summarystore::load(m.folder);
+    const library::SummaryDocument doc = library::SummaryRepository::load(m.folder);
     QVector<SummaryStatement> sts = doc.summary.statements;
     if (sts.isEmpty()) return;
     QHash<QString, SourceSpeaker> now;
@@ -548,16 +523,15 @@ QString backupTranscript(const Meeting& m)
     regenerateTranscriptMarkdown(m);
     QDir folder(m.folder);
     const QString stamp = QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd-HHmmss"));
-    QString name = QStringLiteral("transcript-backup-%1").arg(stamp);
+    const QString prefix = library::MeetingLayout::transcriptBackupPrefix();
+    QString name = prefix + stamp;
     for (int i = 2; folder.exists(name); ++i)
-        name = QStringLiteral("transcript-backup-%1-%2").arg(stamp).arg(i);
+        name = prefix + QStringLiteral("%1-%2").arg(stamp).arg(i);
     if (!folder.mkpath(name)) return {};
     const QDir dest(folder.filePath(name));
 
     int copied = 0;
-    const QStringList files{
-        QStringLiteral("transcript.md"), QStringLiteral("transcript.tokens.json"),
-        QStringLiteral("transcript.segments.json"), QStringLiteral("transcript.speakers.json")};
+    const QStringList files = library::MeetingLayout::transcriptFiles();
     for (const QString& f : files)
         if (folder.exists(f) && QFile::copy(folder.filePath(f), dest.filePath(f)))
             ++copied;
@@ -573,7 +547,7 @@ QString backupTranscript(const Meeting& m)
     QJsonObject root;
     root[QStringLiteral("speakerMap")] = sm;
     root[QStringLiteral("createdAt")] = QDateTime::currentDateTime().toString(Qt::ISODate);
-    writeFile(dest.filePath(QStringLiteral("speakerMap.json")),
+    writeFile(dest.filePath(library::MeetingLayout::backupSpeakerMapJson()),
               QJsonDocument(root).toJson(QJsonDocument::Indented));
     return dest.absolutePath();
 }

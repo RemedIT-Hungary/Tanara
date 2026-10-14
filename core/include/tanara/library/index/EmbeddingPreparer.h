@@ -23,7 +23,7 @@ namespace tanara::providers { class EmbeddingJob; }
 
 namespace tanara::library {
 
-class MeetingStore;
+class MeetingRepository;
 class EmbeddingIndex;
 
 struct EmbeddingState {
@@ -43,7 +43,7 @@ class EmbeddingPreparer : public QObject {
 public:
     using ProviderFactory = std::function<providers::IEmbeddingProvider*(QObject* parent)>;
 
-    EmbeddingPreparer(MeetingStore* store, EmbeddingIndex* index, const QString& stateFile,
+    EmbeddingPreparer(MeetingRepository* store, EmbeddingIndex* index, const QString& stateFile,
                       QObject* parent = nullptr);
     ~EmbeddingPreparer() override;
 
@@ -72,7 +72,7 @@ private:
     void persist();
     QStringList pending() const;
 
-    MeetingStore*   m_store = nullptr;
+    MeetingRepository*   m_store = nullptr;
     EmbeddingIndex* m_index = nullptr;
     QString         m_stateFile;
     ProviderFactory m_factory;

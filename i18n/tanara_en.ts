@@ -1555,7 +1555,7 @@
     </message>
 </context>
 <context>
-    <name>MeetingStore</name>
+    <name>MeetingRepository</name>
     <message>
         <source>Nincs ilyen mappa: %1</source>
         <translation>No such folder: %1</translation>
@@ -1567,6 +1567,46 @@
     <message>
         <source>A meeting.json nem olvasható: %1</source>
         <translation>meeting.json could not be read: %1</translation>
+    </message>
+    <message>
+        <source>Hiányzó mappa.</source>
+        <translation>Missing folder.</translation>
+    </message>
+    <message>
+        <source>A cél nem lehet a forrás mappán belül (vagy fordítva): %1 → %2</source>
+        <translation>The target cannot be inside the source folder (or the other way round): %1 → %2</translation>
+    </message>
+    <message>
+        <source>A cél nem mappa: %1</source>
+        <translation>The target is not a folder: %1</translation>
+    </message>
+    <message>
+        <source>Nincs elég hely a célon: kell %1 MB, szabad %2 MB.</source>
+        <translation>Not enough space at the target: %1 MB needed, %2 MB free.</translation>
+    </message>
+    <message>
+        <source>A cél mappa nem hozható létre: %1</source>
+        <translation>Cannot create the target folder: %1</translation>
+    </message>
+    <message>
+        <source>%1: a célban már van ilyen nevű, eltérő mappa</source>
+        <translation>%1: the target already has a different folder with this name</translation>
+    </message>
+    <message>
+        <source>%1: a másolás nem sikerült</source>
+        <translation>%1: copying failed</translation>
+    </message>
+    <message>
+        <source>%1: a másolat nem egyezik a forrással</source>
+        <translation>%1: the copy does not match the source</translation>
+    </message>
+    <message>
+        <source>%1: a másolat nem nevezhető át</source>
+        <translation>%1: the copy cannot be renamed</translation>
+    </message>
+    <message>
+        <source>%1: a forrás mappa nem törölhető (a másolat a célban van)</source>
+        <translation>%1: cannot delete the source folder (the copy is at the target)</translation>
     </message>
     <message>
         <source>Már van ilyen nevű felvétel: %1 — a meglévőt nem írom felül.</source>
@@ -3958,6 +3998,25 @@
     <message>
         <source>Megnyitás a fájlkezelőben</source>
         <translation>Open in the file manager</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n megbeszélés</source>
+        <translation>
+            <numerusform>%n meeting</numerusform>
+            <numerusform>%n meetings</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Legyen elsődleges</source>
+        <translation>Make primary</translation>
+    </message>
+    <message>
+        <source>Eltávolítás a listából (a mappa üres)</source>
+        <translation>Remove from the list (the folder is empty)</translation>
+    </message>
+    <message>
+        <source>Újabb felvétel-mappa…</source>
+        <translation>Add recordings folder…</translation>
     </message>
     <message>
         <source>Az első indításkor látott bevezető:</source>
@@ -10483,6 +10542,10 @@
     <message>
         <source>Belső adatok mappája</source>
         <translation>Internal data folder</translation>
+    </message>
+    <message>
+        <source>Újabb felvétel-mappa</source>
+        <translation>Another recordings folder</translation>
     </message>
     <message>
         <source>Takarékos</source>

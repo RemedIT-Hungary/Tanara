@@ -1,4 +1,5 @@
 #include "tanara/library/tracks/WaveformService.h"
+#include "tanara/library/MeetingLayout.h"
 
 #include <cmath>
 #include <QFile>
@@ -116,7 +117,7 @@ WaveformService::~WaveformService()
 
 QString WaveformService::cachePath(const QString& audioPath)
 {
-    return audioPath + QStringLiteral(".peaks.json");
+    return MeetingLayout::waveformCache(audioPath);
 }
 
 void WaveformService::removeCache(const QString& audioPath)

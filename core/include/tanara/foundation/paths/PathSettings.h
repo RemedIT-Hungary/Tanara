@@ -24,7 +24,7 @@ struct PathSettings {
     QString dataDir;                    // people, voiceprints, tags, index.db, cloud-state, prompts, secrets.json
     QString modelsDir;                  // speaker-embedding models (*.onnx)
     QString notesDir;                   // Markdown copies of the summaries
-    QList<RecordingRoot> recordingRoots; // only the primary one is used for now (more roots: P8)
+    QList<RecordingRoot> recordingRoots; // every root is listed; new recordings go into the primary
 
     // The primary root's path (the first marked primary, else the first one); empty = default.
     QString primaryRecordingRoot() const;

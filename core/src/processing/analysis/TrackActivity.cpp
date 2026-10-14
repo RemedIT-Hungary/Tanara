@@ -1,4 +1,5 @@
 #include "tanara/processing/analysis/TrackActivity.h"
+#include "tanara/library/MeetingLayout.h"
 
 #include "tanara/foundation/log/Logging.h"
 #include "tanara/library/tracks/TrackCatalog.h"
@@ -150,12 +151,12 @@ bool readTrack(QDataStream& in, TrackActivity& t)
 
 QString MeetingActivity::filePath(const QString& meetingFolder)
 {
-    return QDir(meetingFolder).filePath(QStringLiteral("tracks.activity.bin"));
+    return library::MeetingLayout::path(meetingFolder, library::MeetingLayout::trackActivity());
 }
 
 QString MeetingActivity::viewFilePath(const QString& meetingFolder)
 {
-    return QDir(meetingFolder).filePath(QStringLiteral("tracks.activity.view.bin"));
+    return library::MeetingLayout::path(meetingFolder, library::MeetingLayout::trackActivityView());
 }
 
 MeetingActivity MeetingActivity::load(const QString& meetingFolder, const QString& fingerprint,

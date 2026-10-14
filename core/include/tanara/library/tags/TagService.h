@@ -13,7 +13,7 @@
 //    (the x of the participant suggestion, rejectPersonForMeeting).
 //    written atomically, under an inter-process lock (the recorder process may write it too; see
 //    store/SharedFile.h). "aliases" are the old names of merged tags: typing one offers the kept tag.
-//  - the assignment: "tags" in meeting.json (Meeting::tagIds), via MeetingStore::saveMeeting.
+//  - the assignment: "tags" in meeting.json (Meeting::tagIds), via MeetingRepository::saveMeeting.
 //
 // Undo: every modifying call is one step (a group, beginGroup/endGroup, is one step together). A
 // step is the "before" snapshot of the affected state (set + rejections + the affected meetings'
@@ -41,7 +41,7 @@
 
 namespace tanara::library {
 
-class MeetingStore;
+class MeetingRepository;
 class MeetingProfiles;
 class PeopleStore;
 
@@ -51,7 +51,7 @@ public:
     enum class Sort { LastUsed, Alpha, MostUsed };
 
     // tagsFile: path of tags.json (typically <metadataDir>/tags.json).
-    TagService(MeetingStore* store, const QString& tagsFile, QObject* parent = nullptr);
+    TagService(MeetingRepository* store, const QString& tagsFile, QObject* parent = nullptr);
     ~TagService() override;
 
     // For the tag profile's characteristic phrases (without it topTerms is empty).

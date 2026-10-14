@@ -22,8 +22,8 @@
 #include "tanara/watcher/PipeWireGraph.h"
 #include "tanara/providers/embedding/ITextEmbedder.h"
 #include "tanara/providers/core/ProviderRegistry.h"
-#include "tanara/library/store/JsonSerialization.h"
 #include "tanara/library/store/VoiceprintStore.h"
+#include "tanara/library/store/MeetingRepository.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -823,6 +823,75 @@ void SettingsViewModel::openFolder(const QString& key)
     if (!path.isEmpty() && QDir(path).exists()) m_dialogs->openFolder(path);
 }
 
+// ---- further recording roots ------------------------------------------------------------------
+
+QVariantList SettingsViewModel::recordingRoots() const
+{
+    QVariantList out;
+    const QString primary = paths::normalize(folderPath(QStringLiteral("audio")));
+    for (const paths::RecordingRoot& r : m_draft.paths.recordingRoots) {
+        const QString path = paths::normalize(r.path);
+        if (path.isEmpty() || path == primary) continue;
+        const int meetings = m_controller ? library::MeetingRepository::meetingFolderCount(path) : 0;
+        out << QVariantMap{{QStringLiteral("path"), r.path},
+                           {QStringLiteral("meetings"), meetings},
+                           {QStringLiteral("removable"), meetings == 0}};
+    }
+    return out;
+}
+
+void SettingsViewModel::addRecordingRoot()
+{
+    if (!m_dialogs) return;
+    const QString dir = m_dialogs->pickFolder(tr("Újabb felvétel-mappa"), QDir::homePath());
+    if (!dir.isEmpty()) addRecordingRootPath(dir);
+}
+
+void SettingsViewModel::addRecordingRootPath(const QString& path)
+{
+    const QString p = paths::normalize(path);
+    if (p.isEmpty() || p == paths::normalize(folderPath(QStringLiteral("audio")))) return;
+    for (const paths::RecordingRoot& r : std::as_const(m_draft.paths.recordingRoots))
+        if (paths::normalize(r.path) == p) return;
+    // Keeping the effective primary explicit: with only the default primary there is no entry for it yet.
+    if (m_draft.paths.primaryRecordingRoot().isEmpty() && m_controller)
+        m_draft.paths.recordingRoots.prepend(paths::RecordingRoot{defaultFolder(QStringLiteral("audio")), true});
+    m_draft.paths.recordingRoots << paths::RecordingRoot{path.trimmed(), false};
+    emit foldersChanged();
+    touch();
+}
+
+void SettingsViewModel::makePrimaryRecordingRoot(const QString& path)
+{
+    const QString p = paths::normalize(path);
+    const QString oldPrimary = folderPath(QStringLiteral("audio"));
+    if (p.isEmpty() || p == paths::normalize(oldPrimary)) return;
+    QList<paths::RecordingRoot> roots{paths::RecordingRoot{path.trimmed(), true}};
+    if (!oldPrimary.trimmed().isEmpty()) roots << paths::RecordingRoot{oldPrimary.trimmed(), false};
+    for (const paths::RecordingRoot& r : std::as_const(m_draft.paths.recordingRoots)) {
+        const QString n = paths::normalize(r.path);
+        if (n == p || n == paths::normalize(oldPrimary)) continue;
+        roots << paths::RecordingRoot{r.path, false};
+    }
+    m_draft.paths.recordingRoots = roots;
+    m_folderUsage.remove(QStringLiteral("audio"));
+    emit foldersChanged();
+    touch();
+    refreshFolderUsage();
+}
+
+void SettingsViewModel::removeRecordingRoot(const QString& path)
+{
+    const QString p = paths::normalize(path);
+    if (p.isEmpty() || p == paths::normalize(folderPath(QStringLiteral("audio")))) return;   // not the primary
+    if (library::MeetingRepository::meetingFolderCount(p) > 0) return;   // only an empty root
+    const auto before = m_draft.paths.recordingRoots.size();
+    m_draft.paths.recordingRoots.removeIf([&p](const paths::RecordingRoot& r) { return paths::normalize(r.path) == p; });
+    if (m_draft.paths.recordingRoots.size() == before) return;
+    emit foldersChanged();
+    touch();
+}
+
 void SettingsViewModel::openPeople()
 {
     // The link sits next to the own-voiceprint row: the own person gets selected.
@@ -1375,6 +1444,7 @@ void SettingsViewModel::loadDemo()
     tanara::app::AppSettings s;
     s.recording.userSpeakerName = demoName("Kovács Lilla");
     s.paths.setPrimaryRecordingRoot(demoText("/home/lilla/Tanara/felvetelek", "/home/emma/Tanara/recordings"));
+    s.paths.recordingRoots << paths::RecordingRoot{demoText("/media/lilla/archivum/Tanara", "/media/emma/archive/Tanara"), false};
     s.paths.notesDir = demoText("/home/lilla/Tanara/jegyzetek", "/home/emma/Tanara/notes");
     s.paths.dataDir = demoText("/home/lilla/.tanara", "/home/emma/.tanara");
     s.paths.modelsDir = demoText("/home/lilla/.tanara/models", "/home/emma/.tanara/models");

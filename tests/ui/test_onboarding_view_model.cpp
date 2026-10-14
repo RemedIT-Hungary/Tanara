@@ -16,7 +16,8 @@
 #include "tanara/app/AppController.h"
 #include "tanara/foundation/paths/AppPaths.h"
 #include "tanara/app/SettingsManager.h"
-#include "tanara/library/store/JsonSerialization.h"
+#include "tanara/library/store/detail/MeetingJson.h"
+#include "tanara/library/store/ParticipantJson.h"
 
 #include <QJsonDocument>
 #include <QJsonObject>

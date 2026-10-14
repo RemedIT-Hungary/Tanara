@@ -11,7 +11,7 @@
 #include "tanara/editing/session/SpeakerEditor.h"
 #include "tanara/library/jobs/MeetingJobTracker.h"
 #include "tanara/library/store/MeetingArchive.h"
-#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/store/MeetingRepository.h"
 
 #include <QDesktopServices>
 #include <QDir>
@@ -80,8 +80,8 @@ void ShellActions::attachController()
     if (!c)
         return;
     // The stack of a meeting that does not exist yet at selection time (new recording / import) comes later.
-    if (tanara::library::MeetingStore* store = c->store())
-        m_undoStoreConn = connect(store, &tanara::library::MeetingStore::meetingUpdated, this, [this](const QString& id) {
+    if (tanara::library::MeetingRepository* store = c->store())
+        m_undoStoreConn = connect(store, &tanara::library::MeetingRepository::meetingUpdated, this, [this](const QString& id) {
             if (id == m_currentMeetingId && !m_meetingUndo) attachMeetingUndo();
         });
 
@@ -168,8 +168,8 @@ void ShellActions::attachController()
         });
     }
     // The selected meeting was deleted (from here or elsewhere) -> no selection.
-    if (tanara::library::MeetingStore* store = c->store())
-        connect(store, &tanara::library::MeetingStore::meetingRemoved, this, [this](const QString& id) {
+    if (tanara::library::MeetingRepository* store = c->store())
+        connect(store, &tanara::library::MeetingRepository::meetingRemoved, this, [this](const QString& id) {
             m_participantGuesses.remove(id);
             if (id == m_currentMeetingId) setCurrentMeetingId(QString());
         });

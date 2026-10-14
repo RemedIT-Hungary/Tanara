@@ -14,7 +14,7 @@
 #include "tanara/providers/embedding/ITextEmbedder.h"
 #include "tanara/providers/embedding/OpenAiCompatibleEmbeddingProvider.h"
 #include "tanara/providers/core/ProviderRegistry.h"
-#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/store/MeetingRepository.h"
 #include "fake_http.h"
 #include "tags_fixture.h"
 
@@ -59,7 +59,7 @@ private slots:
 private:
     library::EmbeddingPreparer::ProviderFactory factory();
     std::unique_ptr<QTemporaryDir> m_dir;
-    std::unique_ptr<library::MeetingStore> m_store;
+    std::unique_ptr<library::MeetingRepository> m_store;
     std::unique_ptr<fakehttp::Server> m_http;
 };
 
@@ -67,7 +67,7 @@ void EmbeddingTest::init()
 {
     m_dir = std::make_unique<QTemporaryDir>();
     QVERIFY(m_dir->isValid());
-    m_store = std::make_unique<library::MeetingStore>(m_dir->filePath("rec"), m_dir->filePath("meta"));
+    m_store = std::make_unique<library::MeetingRepository>(m_dir->filePath("rec"), m_dir->filePath("meta"));
     m_http = std::make_unique<fakehttp::Server>();
     m_http->handler = [](const fakehttp::Request& r) -> fakehttp::Reply {
         if (r.path.endsWith("/embeddings")) return { 200, embeddingsReply(r.body) };

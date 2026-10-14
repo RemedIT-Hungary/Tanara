@@ -1,5 +1,5 @@
 #include "tanara/library/jobs/MeetingJobTracker.h"
-#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/store/MeetingRepository.h"
 
 #include <QDir>
 #include <QFile>
@@ -94,7 +94,7 @@ struct MeetingJobTracker::Persisted {
     bool isEmpty() const { return errors.isEmpty() && topics.isEmpty() && !identifiedAt.isValid(); }
 };
 
-MeetingJobTracker::MeetingJobTracker(MeetingStore* store, QObject* parent)
+MeetingJobTracker::MeetingJobTracker(MeetingRepository* store, QObject* parent)
     : QObject(parent), m_store(store)
 {
     qRegisterMetaType<tanara::JobKind>();
@@ -104,7 +104,7 @@ MeetingJobTracker::MeetingJobTracker(MeetingStore* store, QObject* parent)
     qRegisterMetaType<tanara::MeetingProcessingState>();
     if (m_store) {
         // A deleted meeting: drop the cache and any still-registered tasks.
-        connect(m_store, &MeetingStore::meetingRemoved, this, [this](const QString& id) {
+        connect(m_store, &MeetingRepository::meetingRemoved, this, [this](const QString& id) {
             delete m_persisted.take(id);
             for (int i = m_jobs.size() - 1; i >= 0; --i)
                 if (m_jobs.at(i).meetingId == id) m_jobs.removeAt(i);

@@ -19,7 +19,7 @@
 #include "tanara/editing/review/SpeakerAnalysis.h"
 #include "tanara/editing/session/SpeakerEditor.h"
 #include "tanara/editing/session/SpeakerOverlay.h"
-#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/store/MeetingRepository.h"
 #include "tanara/library/store/PeopleStore.h"
 #include "tanara/library/store/VoiceprintStore.h"
 
@@ -151,7 +151,7 @@ QString readText(const QString& path)
 // A test environment: temporary audio/metadata folders, stores, a transcribed meeting.
 struct Fixture {
     QTemporaryDir dir;
-    std::unique_ptr<library::MeetingStore> store;
+    std::unique_ptr<library::MeetingRepository> store;
     std::unique_ptr<library::PeopleStore> people;
     std::unique_ptr<library::VoiceprintStore> prints;
     std::shared_ptr<FakeWorld> world = std::make_shared<FakeWorld>();
@@ -159,7 +159,7 @@ struct Fixture {
 
     Fixture()
     {
-        store = std::make_unique<library::MeetingStore>(dir.filePath(QStringLiteral("rec")),
+        store = std::make_unique<library::MeetingRepository>(dir.filePath(QStringLiteral("rec")),
                                                dir.filePath(QStringLiteral("meta")));
         people = std::make_unique<library::PeopleStore>(dir.filePath(QStringLiteral("meta/people.json")));
         prints = std::make_unique<library::VoiceprintStore>(dir.filePath(QStringLiteral("meta/vp.json")));

@@ -7,7 +7,7 @@
 #include "tanara/editing/review/SideAnalysis.h"
 #include "tanara/editing/session/SpeakerOverlay.h"
 #include "tanara/processing/analysis/TrackActivity.h"
-#include "tanara/library/store/MeetingStore.h"
+#include "tanara/library/store/MeetingRepository.h"
 
 #include <QFileInfo>
 #include <QHash>
@@ -207,7 +207,7 @@ int runTrackSidesCommand(const QStringList& args)
     }
     folder = QFileInfo(folder).absoluteFilePath();
 
-    Meeting m = library::MeetingStore::readMeetingFolder(folder);
+    Meeting m = library::MeetingRepository::readMeetingFolder(folder);
     if (m.id.isEmpty()) { err() << "Not a meeting folder (no readable meeting.json): " << folder << "\n"; return 1; }
     m.folder = folder;
     const QVector<TranscriptLine> lines = editing::speakeredit::loadTranscriptLines(folder);

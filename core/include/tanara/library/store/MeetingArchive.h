@@ -12,10 +12,9 @@
 // summary, waveform cache, processing.json.
 //
 // The tag set lives per machine (<metadataDir>/tags.json), so the manifest also carries the
-// NAMES of the meeting's tags; the layer doing the import (AppController) resolves / creates the
-// local tags from them.
+// NAMES of the meeting's tags; adoptFolder resolves / creates the local tags from them.
 //
-// The import only unpacks + validates; MeetingStore::adoptMeetingFolder puts it among the recordings
+// The import only unpacks + validates; MeetingRepository::adoptMeetingFolder puts it among the recordings
 // (moved from the temporary .import-* folder, which is then cleaned up).
 //
 // UI-independent, thread-safe (no QObject, no shared state), so it can run on a worker thread.
@@ -30,6 +29,9 @@
 #include <functional>
 
 namespace tanara::library {
+
+class MeetingRepository;
+class TagService;
 
 struct ArchiveManifest {
     int       version = 0;
@@ -71,6 +73,15 @@ public:
 
     // Prefix of the temporary unpack folders (a hidden folder under the recordings folder).
     static QString tempDirPrefix() { return QStringLiteral(".import-"); }
+
+    // ---- adoption (main thread: touches the index and the tag set) ----
+    // The meeting's tags as full values (for the manifest); unknown ids are left out.
+    static QVector<Tag> tagsOf(const TagService* tags, const Meeting& m);
+    // Pulls an unpacked / staged folder into the library (MeetingRepository::adoptMeetingFolder) and
+    // resolves the tags to the local set: by id, else by name, else a new tag; local ids not in the
+    // manifest are kept if known. Error: an empty Meeting + *error.
+    static Meeting adoptFolder(MeetingRepository* repo, TagService* tags, const QString& folder,
+                               const ArchiveManifest& manifest, QString* error);
 };
 
 } // namespace tanara::library
