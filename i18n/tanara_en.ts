@@ -4191,10 +4191,6 @@
         <source>Az elutasított javaslatokat újra felajánlhatjuk</source>
         <translation>Dismissed suggestions can be offered again</translation>
     </message>
-    <message>
-        <source>A kulcsokat a Tanara a belső adatok mappájában, csak neked olvasható fájlban tárolja; a beállítás-fájlba nem kerülnek.</source>
-        <translation>Tanara stores the keys in the internal data folder, in a file only you can read; they never go into the settings file.</translation>
-    </message>
 </context>
 <context>
     <name>SettingsSpeakersPage</name>
@@ -7608,7 +7604,41 @@
     </message>
 </context>
 <context>
-    <name>tanara::AppController</name>
+    <name>tanara::PeopleService</name>
+    <message>
+        <source>Névtelen %1</source>
+        <translation>Anonymous %1</translation>
+    </message>
+</context>
+<context>
+    <name>tanara::SpeakerEditor</name>
+    <message>
+        <source>Új beszélő %1</source>
+        <translation>New speaker %1</translation>
+    </message>
+</context>
+<context>
+    <name>tanara::app::AppController</name>
+    <message>
+        <source>%1 tokenes kontextus, egy szálon</source>
+        <translation>%1-token context, single-threaded</translation>
+    </message>
+    <message>
+        <source> · a szerveren más modell is betöltve: %1</source>
+        <translation> · another model is also loaded on the server: %1</translation>
+    </message>
+    <message>
+        <source>Modell betöltése</source>
+        <translation>Loading model</translation>
+    </message>
+    <message>
+        <source>Modell betöltése…</source>
+        <translation>Loading model…</translation>
+    </message>
+    <message>
+        <source>Modell betöltése (%1 tokenes kontextus)…</source>
+        <translation>Loading model (%1-token context)…</translation>
+    </message>
     <message>
         <source>Importálás</source>
         <translation>Import</translation>
@@ -7616,6 +7646,10 @@
     <message>
         <source>Ismeretlen meeting: %1</source>
         <translation>Unknown meeting: %1</translation>
+    </message>
+    <message>
+        <source>Leírás módosítva</source>
+        <translation>Description changed</translation>
     </message>
     <message>
         <source>Hiányzik a(z) „%1” sáv hangfájlja — a meglévő lekeverés megmaradt. Keresd meg a fájlt a Sávok fülön, vagy dobd el a sávot, és keverd újra.</source>
@@ -7729,34 +7763,11 @@
         <source>Összefoglalás</source>
         <translation>Summarising</translation>
     </message>
-    <message>
-        <source>Jegyzetelés részenként</source>
-        <translation>Notes part by part</translation>
-    </message>
     <message numerus="yes">
         <source>%n rész</source>
         <translation>
             <numerusform>%n part</numerusform>
             <numerusform>%n parts</numerusform>
-        </translation>
-    </message>
-    <message>
-        <source>Összegzés</source>
-        <translation>Summing up</translation>
-    </message>
-    <message>
-        <source>Összefoglaló készítése</source>
-        <translation>Creating summary</translation>
-    </message>
-    <message>
-        <source>%1/%2. rész</source>
-        <translation>Part %1/%2</translation>
-    </message>
-    <message numerus="yes">
-        <source>%n rész kész</source>
-        <translation>
-            <numerusform>%n part done</numerusform>
-            <numerusform>%n parts done</numerusform>
         </translation>
     </message>
     <message numerus="yes">
@@ -7767,34 +7778,33 @@
         </translation>
     </message>
     <message>
-        <source>%1 tokenes kontextus, egy szálon</source>
-        <translation>%1-token context, single-threaded</translation>
+        <source>Jegyzetelés részenként</source>
+        <translation>Notes part by part</translation>
     </message>
     <message>
-        <source> · a szerveren más modell is betöltve: %1</source>
-        <translation> · another model is also loaded on the server: %1</translation>
+        <source>Összegzés</source>
+        <translation>Summing up</translation>
     </message>
     <message>
-        <source>Modell betöltése</source>
-        <translation>Loading model</translation>
-    </message>
-    <message>
-        <source>Modell betöltése…</source>
-        <translation>Loading model…</translation>
-    </message>
-    <message>
-        <source>Modell betöltése (%1 tokenes kontextus)…</source>
-        <translation>Loading model (%1-token context)…</translation>
-    </message>
-    <message>
-        <source>Leírás módosítva</source>
-        <translation>Description changed</translation>
+        <source>Összefoglaló készítése</source>
+        <translation>Writing the summary</translation>
     </message>
     <message numerus="yes">
         <source>%n rész (a modell kontextusához igazítva)</source>
         <translation>
             <numerusform>%n part (fitted to the model&apos;s context)</numerusform>
             <numerusform>%n parts (fitted to the model&apos;s context)</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>%1/%2. rész</source>
+        <translation>Part %1/%2</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n rész kész</source>
+        <translation>
+            <numerusform>%n part done</numerusform>
+            <numerusform>%n parts done</numerusform>
         </translation>
     </message>
     <message>
@@ -7867,7 +7877,7 @@
     </message>
     <message>
         <source>Összegzés készítése</source>
-        <translation>Creating the overall summary</translation>
+        <translation>Composing the digest</translation>
     </message>
     <message>
         <source>Komplex összefoglaló hiba: %1</source>
@@ -7947,297 +7957,7 @@
     </message>
 </context>
 <context>
-    <name>tanara::AudioImporter</name>
-    <message>
-        <source>Nincs importálható fájl.</source>
-        <translation>No file to import.</translation>
-    </message>
-    <message>
-        <source>Nem hozható létre mappa a felvételek helyén.</source>
-        <translation>Could not create a folder in the recordings location.</translation>
-    </message>
-    <message>
-        <source>Nem sikerült beolvasni: %1</source>
-        <translation>Could not read: %1</translation>
-    </message>
-    <message>
-        <source>Nem sikerült elmenteni az importált felvételt.</source>
-        <translation>Could not save the imported recording.</translation>
-    </message>
-</context>
-<context>
-    <name>tanara::ComplexSummaryService</name>
-    <message>
-        <source>Nincs beállított LLM provider.</source>
-        <translation>No LLM provider configured.</translation>
-    </message>
-    <message>
-        <source>A provider nem adott vissza jobot.</source>
-        <translation>The provider did not return a job.</translation>
-    </message>
-    <message>
-        <source>Nem sikerült témát kinyerni a válaszból (sem `## cím` szakasz, sem JSON).</source>
-        <translation>Could not extract topics from the response (no `## title` sections and no JSON).</translation>
-    </message>
-    <message>
-        <source>Nem sikerült a téma-elemzést értelmezni („%1”).</source>
-        <translation>Could not parse the topic analysis (&quot;%1&quot;).</translation>
-    </message>
-    <message>
-        <source>Nem sikerült az összegzést értelmezni.</source>
-        <translation>Could not parse the synthesis.</translation>
-    </message>
-</context>
-<context>
-    <name>tanara::EmbeddingPreparer</name>
-    <message>
-        <source>A beágyazó szolgáltató nem hozható létre.</source>
-        <translation>The embedding provider could not be created.</translation>
-    </message>
-    <message>
-        <source>A beágyazási válasz hiányos.</source>
-        <translation>The embedding response is incomplete.</translation>
-    </message>
-    <message>
-        <source>A beágyazás nem menthető (%1).</source>
-        <translation>The embedding could not be saved (%1).</translation>
-    </message>
-</context>
-<context>
-    <name>tanara::LlmTagSuggester</name>
-    <message>
-        <source>Nincs nyelvi modell beállítva.</source>
-        <translation>No language model configured.</translation>
-    </message>
-</context>
-<context>
-    <name>tanara::MeetingLibrary</name>
-    <message>
-        <source>Ma</source>
-        <translation>Today</translation>
-    </message>
-    <message>
-        <source>Tegnap</source>
-        <translation>Yesterday</translation>
-    </message>
-    <message>
-        <source>Ezen a héten</source>
-        <translation>This week</translation>
-    </message>
-    <message>
-        <source>Korábban</source>
-        <translation>Earlier</translation>
-    </message>
-</context>
-<context>
-    <name>tanara::OpenAiCompatibleEmbeddingJob</name>
-    <message>
-        <source>Hiányzik a beágyazó végpont címe.</source>
-        <translation>The embedding endpoint address is missing.</translation>
-    </message>
-    <message>
-        <source>Hálózati hiba: %1</source>
-        <translation>Network error: %1</translation>
-    </message>
-    <message>
-        <source>Beágyazási hiba (HTTP %1): %2</source>
-        <translation>Embedding error (HTTP %1): %2</translation>
-    </message>
-    <message>
-        <source>Beágyazási hiba (HTTP %1).</source>
-        <translation>Embedding error (HTTP %1).</translation>
-    </message>
-    <message>
-        <source>Érvénytelen beágyazási válasz (%1 vektor jött %2 szövegre).</source>
-        <translation>Invalid embedding response (%1 vectors for %2 texts).</translation>
-    </message>
-    <message>
-        <source>Érvénytelen beágyazási válasz (hiányzó vektor).</source>
-        <translation>Invalid embedding response (missing vector).</translation>
-    </message>
-</context>
-<context>
-    <name>tanara::OpenAiCompatibleJob</name>
-    <message>
-        <source>Nincs hálózati válasz (reply == null).</source>
-        <translation>No network response (reply == null).</translation>
-    </message>
-    <message>
-        <source>Hálózati hiba: %1</source>
-        <translation>Network error: %1</translation>
-    </message>
-    <message>
-        <source>LLM hiba (HTTP %1): %2</source>
-        <translation>LLM error (HTTP %1): %2</translation>
-    </message>
-    <message>
-        <source>Érvénytelen JSON válasz: %1</source>
-        <translation>Invalid JSON response: %1</translation>
-    </message>
-    <message>
-        <source>A válasz nem tartalmaz &apos;choices&apos; tömböt.</source>
-        <translation>The response contains no &apos;choices&apos; array.</translation>
-    </message>
-    <message>
-        <source>A modell nem adott választ, csak „gondolkodott” (%1 karakter, finish=%2). Kapcsold ki a gondolkodást a modell beállításainál, vagy növeld a max. tokenszámot.</source>
-        <translation>The model gave no answer, it only “reasoned” (%1 characters, finish=%2). Switch reasoning off in the model settings, or raise the max. tokens.</translation>
-    </message>
-    <message>
-        <source>Üres LLM-válasz (finish=%1).</source>
-        <translation>Empty LLM response (finish=%1).</translation>
-    </message>
-</context>
-<context>
-    <name>tanara::PeopleService</name>
-    <message>
-        <source>Névtelen %1</source>
-        <translation>Anonymous %1</translation>
-    </message>
-    <message>
-        <source>Adj meg egy nevet.</source>
-        <translation>Enter a name.</translation>
-    </message>
-    <message>
-        <source>Ilyen nevű személy már van.</source>
-        <translation>A person with this name already exists.</translation>
-    </message>
-    <message>
-        <source>Ez a személy már nem létezik.</source>
-        <translation>This person no longer exists.</translation>
-    </message>
-    <message>
-        <source>A név nem lehet üres.</source>
-        <translation>The name cannot be empty.</translation>
-    </message>
-    <message>
-        <source>Ilyen nevű személy már van. Ha ugyanaz az ember, használd az Összevonást.</source>
-        <translation>A person with this name already exists. If it is the same human, use Merge.</translation>
-    </message>
-    <message>
-        <source>Adj meg egy becenevet.</source>
-        <translation>Enter an alias.</translation>
-    </message>
-    <message>
-        <source>Ez a személy neve — becenévnek mást adj meg.</source>
-        <translation>This is the person&apos;s name — enter something else as an alias.</translation>
-    </message>
-    <message>
-        <source>Ez a becenév már szerepel.</source>
-        <translation>This alias is already listed.</translation>
-    </message>
-    <message>
-        <source>Ez a minta már nincs meg.</source>
-        <translation>This sample no longer exists.</translation>
-    </message>
-    <message>
-        <source>A minta már ennél a személynél van.</source>
-        <translation>The sample already belongs to this person.</translation>
-    </message>
-    <message>
-        <source>A hangmodell nincs telepítve, ezért nem készíthető hanglenyomat.</source>
-        <translation>The voice model is not installed, so a voiceprint cannot be created.</translation>
-    </message>
-    <message>
-        <source>Ezen a megbeszélésen nincs elég hosszú, biztos sora.</source>
-        <translation>There is no long enough, confident line of theirs in this meeting.</translation>
-    </message>
-    <message>
-        <source>Az összevonáshoz két különböző, létező személy kell.</source>
-        <translation>Merging needs two different, existing people.</translation>
-    </message>
-    <message>
-        <source>A saját személyed nem törölhető.</source>
-        <translation>Your own person cannot be deleted.</translation>
-    </message>
-</context>
-<context>
-    <name>tanara::RecordingSession</name>
-    <message>
-        <source>RecordingSession már fut vagy nem üresjáratban van.</source>
-        <translation>RecordingSession is already running or not idle.</translation>
-    </message>
-    <message>
-        <source>Nincs felvételre kijelölt eszköz.</source>
-        <translation>No device selected for recording.</translation>
-    </message>
-    <message>
-        <source>Nem hozható létre a meeting-mappa: </source>
-        <translation>Cannot create the meeting folder: </translation>
-    </message>
-    <message>
-        <source>Az audio motor nem indult el (nincs elérhető eszköz/backend).</source>
-        <translation>The audio engine did not start (no available device/backend).</translation>
-    </message>
-    <message>
-        <source>Nem indult el az ffmpeg encoder.</source>
-        <translation>The ffmpeg encoder did not start.</translation>
-    </message>
-    <message>
-        <source>Nincs futó felvétel a leállításhoz.</source>
-        <translation>No running recording to stop.</translation>
-    </message>
-</context>
-<context>
-    <name>tanara::SonioxJob</name>
-    <message>
-        <source>Fájl feltöltése…</source>
-        <translation>Uploading file…</translation>
-    </message>
-    <message>
-        <source>Nem nyitható meg az audiofájl: %1</source>
-        <translation>Cannot open the audio file: %1</translation>
-    </message>
-    <message>
-        <source>Feltöltés hiba: %1</source>
-        <translation>Upload error: %1</translation>
-    </message>
-    <message>
-        <source>Nincs file id a válaszban: %1</source>
-        <translation>No file id in the response: %1</translation>
-    </message>
-    <message>
-        <source>Átírás indítása…</source>
-        <translation>Starting transcription…</translation>
-    </message>
-    <message>
-        <source>Átírás létrehozási hiba: %1</source>
-        <translation>Transcription creation error: %1</translation>
-    </message>
-    <message>
-        <source>Nincs transcription id a válaszban: %1</source>
-        <translation>No transcription id in the response: %1</translation>
-    </message>
-    <message>
-        <source>Feldolgozás…</source>
-        <translation>Processing…</translation>
-    </message>
-    <message>
-        <source>Státusz lekérdezési hiba: %1</source>
-        <translation>Status query error: %1</translation>
-    </message>
-    <message>
-        <source>Átirat letöltése…</source>
-        <translation>Downloading transcript…</translation>
-    </message>
-    <message>
-        <source>ismeretlen Soniox hiba</source>
-        <translation>unknown Soniox error</translation>
-    </message>
-    <message>
-        <source>Feldolgozás (%1)… %2 · %3. életjel</source>
-        <translation>Processing (%1)… %2 · heartbeat %3</translation>
-    </message>
-    <message>
-        <source>Átirat letöltési hiba: %1</source>
-        <translation>Transcript download error: %1</translation>
-    </message>
-    <message>
-        <source>Kész</source>
-        <translation>Done</translation>
-    </message>
-</context>
-<context>
-    <name>tanara::SpeakerEditor</name>
+    <name>tanara::editing::SpeakerEditor</name>
     <message>
         <source>Új beszélő %1</source>
         <translation>New speaker %1</translation>
@@ -8499,38 +8219,123 @@
     </message>
 </context>
 <context>
-    <name>tanara::SummaryService</name>
+    <name>tanara::library::AudioImporter</name>
     <message>
-        <source>Nincs beállított LLM provider.</source>
-        <translation>No LLM provider configured.</translation>
+        <source>Nincs importálható fájl.</source>
+        <translation>No file to import.</translation>
     </message>
     <message>
-        <source>Az átirat üres — nincs mit összefoglalni.</source>
-        <translation>The transcript is empty — there is nothing to summarise.</translation>
+        <source>Nem hozható létre mappa a felvételek helyén.</source>
+        <translation>Could not create a folder in the recordings location.</translation>
     </message>
     <message>
-        <source>A provider nem adott vissza jobot.</source>
-        <translation>The provider did not return a job.</translation>
+        <source>Nem sikerült beolvasni: %1</source>
+        <translation>Could not read: %1</translation>
     </message>
     <message>
-        <source>A(z) %1/%2. rész jegyzete üres vagy nem értelmezhető.</source>
-        <translation>The notes of part %1/%2 are empty or cannot be read.</translation>
-    </message>
-    <message>
-        <source>Az összegzés válasza nem értelmezhető: %1. A részjegyzetek megmaradtak — újrapróbáláskor csak az összegzés fut le újra.</source>
-        <translation>The summing-up response cannot be read: %1. The part notes are kept — a retry runs only the summing-up again.</translation>
-    </message>
-    <message>
-        <source>Az összefoglaló válasza nem értelmezhető: %1. A jegyzet megmaradt — újrapróbáláskor csak az összegzés fut le újra.</source>
-        <translation>The summary response cannot be read: %1. The notes are kept — a retry runs only the summing-up again.</translation>
-    </message>
-    <message>
-        <source>Az összefoglaló válasza nem értelmezhető: %1.</source>
-        <translation>The summary response cannot be read: %1.</translation>
+        <source>Nem sikerült elmenteni az importált felvételt.</source>
+        <translation>Could not save the imported recording.</translation>
     </message>
 </context>
 <context>
-    <name>tanara::TagService</name>
+    <name>tanara::library::EmbeddingPreparer</name>
+    <message>
+        <source>A beágyazó szolgáltató nem hozható létre.</source>
+        <translation>The embedding provider could not be created.</translation>
+    </message>
+    <message>
+        <source>A beágyazási válasz hiányos.</source>
+        <translation>The embedding response is incomplete.</translation>
+    </message>
+    <message>
+        <source>A beágyazás nem menthető (%1).</source>
+        <translation>The embedding could not be saved (%1).</translation>
+    </message>
+</context>
+<context>
+    <name>tanara::library::MeetingLibrary</name>
+    <message>
+        <source>Ma</source>
+        <translation>Today</translation>
+    </message>
+    <message>
+        <source>Tegnap</source>
+        <translation>Yesterday</translation>
+    </message>
+    <message>
+        <source>Ezen a héten</source>
+        <translation>This week</translation>
+    </message>
+    <message>
+        <source>Korábban</source>
+        <translation>Earlier</translation>
+    </message>
+</context>
+<context>
+    <name>tanara::library::PeopleService</name>
+    <message>
+        <source>Névtelen %1</source>
+        <translation>Anonymous %1</translation>
+    </message>
+    <message>
+        <source>Adj meg egy nevet.</source>
+        <translation>Enter a name.</translation>
+    </message>
+    <message>
+        <source>Ilyen nevű személy már van.</source>
+        <translation>A person with this name already exists.</translation>
+    </message>
+    <message>
+        <source>Ez a személy már nem létezik.</source>
+        <translation>This person no longer exists.</translation>
+    </message>
+    <message>
+        <source>A név nem lehet üres.</source>
+        <translation>The name cannot be empty.</translation>
+    </message>
+    <message>
+        <source>Ilyen nevű személy már van. Ha ugyanaz az ember, használd az Összevonást.</source>
+        <translation>A person with this name already exists. If it is the same human, use Merge.</translation>
+    </message>
+    <message>
+        <source>Adj meg egy becenevet.</source>
+        <translation>Enter an alias.</translation>
+    </message>
+    <message>
+        <source>Ez a személy neve — becenévnek mást adj meg.</source>
+        <translation>This is the person&apos;s name — enter something else as an alias.</translation>
+    </message>
+    <message>
+        <source>Ez a becenév már szerepel.</source>
+        <translation>This alias is already listed.</translation>
+    </message>
+    <message>
+        <source>Ez a minta már nincs meg.</source>
+        <translation>This sample no longer exists.</translation>
+    </message>
+    <message>
+        <source>A minta már ennél a személynél van.</source>
+        <translation>The sample already belongs to this person.</translation>
+    </message>
+    <message>
+        <source>A hangmodell nincs telepítve, ezért nem készíthető hanglenyomat.</source>
+        <translation>The voice model is not installed, so a voiceprint cannot be created.</translation>
+    </message>
+    <message>
+        <source>Ezen a megbeszélésen nincs elég hosszú, biztos sora.</source>
+        <translation>There is no long enough, confident line of theirs in this meeting.</translation>
+    </message>
+    <message>
+        <source>Az összevonáshoz két különböző, létező személy kell.</source>
+        <translation>Merging needs two different, existing people.</translation>
+    </message>
+    <message>
+        <source>A saját személyed nem törölhető.</source>
+        <translation>Your own person cannot be deleted.</translation>
+    </message>
+</context>
+<context>
+    <name>tanara::library::TagService</name>
     <message>
         <source>Címke létrehozása</source>
         <translation>Create tag</translation>
@@ -8603,7 +8408,7 @@
     </message>
 </context>
 <context>
-    <name>tanara::TrackCatalog</name>
+    <name>tanara::library::TrackCatalog</name>
     <message>
         <source>Nincs meeting-tár.</source>
         <translation>No meeting store.</translation>
@@ -8642,7 +8447,7 @@
     </message>
 </context>
 <context>
-    <name>tanara::WaveformService</name>
+    <name>tanara::library::WaveformService</name>
     <message>
         <source>A hangfájl nem található.</source>
         <translation>The audio file was not found.</translation>
@@ -8657,7 +8462,185 @@
     </message>
 </context>
 <context>
-    <name>tanara::WhisperCompatJob</name>
+    <name>tanara::processing::ComplexSummaryService</name>
+    <message>
+        <source>Nincs beállított LLM provider.</source>
+        <translation>No LLM provider configured.</translation>
+    </message>
+    <message>
+        <source>A provider nem adott vissza jobot.</source>
+        <translation>The provider did not return a job.</translation>
+    </message>
+    <message>
+        <source>Nem sikerült témát kinyerni a válaszból (sem `## cím` szakasz, sem JSON).</source>
+        <translation>Could not extract topics from the response (no `## title` sections and no JSON).</translation>
+    </message>
+    <message>
+        <source>Nem sikerült a téma-elemzést értelmezni („%1”).</source>
+        <translation>Could not parse the topic analysis (&quot;%1&quot;).</translation>
+    </message>
+    <message>
+        <source>Nem sikerült az összegzést értelmezni.</source>
+        <translation>Could not parse the synthesis.</translation>
+    </message>
+</context>
+<context>
+    <name>tanara::processing::LlmTagSuggester</name>
+    <message>
+        <source>Nincs nyelvi modell beállítva.</source>
+        <translation>No language model configured.</translation>
+    </message>
+</context>
+<context>
+    <name>tanara::processing::SummaryService</name>
+    <message>
+        <source>Nincs beállított LLM provider.</source>
+        <translation>No LLM provider configured.</translation>
+    </message>
+    <message>
+        <source>Az átirat üres — nincs mit összefoglalni.</source>
+        <translation>The transcript is empty — there is nothing to summarise.</translation>
+    </message>
+    <message>
+        <source>A provider nem adott vissza jobot.</source>
+        <translation>The provider did not return a job.</translation>
+    </message>
+    <message>
+        <source>A(z) %1/%2. rész jegyzete üres vagy nem értelmezhető.</source>
+        <translation>The notes of part %1/%2 are empty or cannot be read.</translation>
+    </message>
+    <message>
+        <source>Az összegzés válasza nem értelmezhető: %1. A részjegyzetek megmaradtak — újrapróbáláskor csak az összegzés fut le újra.</source>
+        <translation>The summing-up response cannot be read: %1. The part notes are kept — a retry runs only the summing-up again.</translation>
+    </message>
+    <message>
+        <source>Az összefoglaló válasza nem értelmezhető: %1. A jegyzet megmaradt — újrapróbáláskor csak az összegzés fut le újra.</source>
+        <translation>The summary response cannot be read: %1. The notes are kept — a retry runs only the summing-up again.</translation>
+    </message>
+    <message>
+        <source>Az összefoglaló válasza nem értelmezhető: %1.</source>
+        <translation>The summary response cannot be read: %1.</translation>
+    </message>
+</context>
+<context>
+    <name>tanara::providers::OpenAiCompatibleEmbeddingJob</name>
+    <message>
+        <source>Hiányzik a beágyazó végpont címe.</source>
+        <translation>The embedding endpoint address is missing.</translation>
+    </message>
+    <message>
+        <source>Hálózati hiba: %1</source>
+        <translation>Network error: %1</translation>
+    </message>
+    <message>
+        <source>Beágyazási hiba (HTTP %1): %2</source>
+        <translation>Embedding error (HTTP %1): %2</translation>
+    </message>
+    <message>
+        <source>Beágyazási hiba (HTTP %1).</source>
+        <translation>Embedding error (HTTP %1).</translation>
+    </message>
+    <message>
+        <source>Érvénytelen beágyazási válasz (%1 vektor jött %2 szövegre).</source>
+        <translation>Invalid embedding response (%1 vectors for %2 texts).</translation>
+    </message>
+    <message>
+        <source>Érvénytelen beágyazási válasz (hiányzó vektor).</source>
+        <translation>Invalid embedding response (missing vector).</translation>
+    </message>
+</context>
+<context>
+    <name>tanara::providers::OpenAiCompatibleJob</name>
+    <message>
+        <source>Nincs hálózati válasz (reply == null).</source>
+        <translation>No network response (reply == null).</translation>
+    </message>
+    <message>
+        <source>Hálózati hiba: %1</source>
+        <translation>Network error: %1</translation>
+    </message>
+    <message>
+        <source>LLM hiba (HTTP %1): %2</source>
+        <translation>LLM error (HTTP %1): %2</translation>
+    </message>
+    <message>
+        <source>Érvénytelen JSON válasz: %1</source>
+        <translation>Invalid JSON response: %1</translation>
+    </message>
+    <message>
+        <source>A válasz nem tartalmaz &apos;choices&apos; tömböt.</source>
+        <translation>The response contains no &apos;choices&apos; array.</translation>
+    </message>
+    <message>
+        <source>A modell nem adott választ, csak „gondolkodott” (%1 karakter, finish=%2). Kapcsold ki a gondolkodást a modell beállításainál, vagy növeld a max. tokenszámot.</source>
+        <translation>The model gave no answer, it only “reasoned” (%1 characters, finish=%2). Switch reasoning off in the model settings, or raise the max. tokens.</translation>
+    </message>
+    <message>
+        <source>Üres LLM-válasz (finish=%1).</source>
+        <translation>Empty LLM response (finish=%1).</translation>
+    </message>
+</context>
+<context>
+    <name>tanara::providers::SonioxJob</name>
+    <message>
+        <source>Fájl feltöltése…</source>
+        <translation>Uploading file…</translation>
+    </message>
+    <message>
+        <source>Nem nyitható meg az audiofájl: %1</source>
+        <translation>Cannot open the audio file: %1</translation>
+    </message>
+    <message>
+        <source>Feltöltés hiba: %1</source>
+        <translation>Upload error: %1</translation>
+    </message>
+    <message>
+        <source>Nincs file id a válaszban: %1</source>
+        <translation>No file id in the response: %1</translation>
+    </message>
+    <message>
+        <source>Átírás indítása…</source>
+        <translation>Starting transcription…</translation>
+    </message>
+    <message>
+        <source>Átírás létrehozási hiba: %1</source>
+        <translation>Transcription creation error: %1</translation>
+    </message>
+    <message>
+        <source>Nincs transcription id a válaszban: %1</source>
+        <translation>No transcription id in the response: %1</translation>
+    </message>
+    <message>
+        <source>Feldolgozás…</source>
+        <translation>Processing…</translation>
+    </message>
+    <message>
+        <source>Státusz lekérdezési hiba: %1</source>
+        <translation>Status query error: %1</translation>
+    </message>
+    <message>
+        <source>Átirat letöltése…</source>
+        <translation>Downloading transcript…</translation>
+    </message>
+    <message>
+        <source>ismeretlen Soniox hiba</source>
+        <translation>unknown Soniox error</translation>
+    </message>
+    <message>
+        <source>Feldolgozás (%1)… %2 · %3. életjel</source>
+        <translation>Processing (%1)… %2 · heartbeat %3</translation>
+    </message>
+    <message>
+        <source>Átirat letöltési hiba: %1</source>
+        <translation>Transcript download error: %1</translation>
+    </message>
+    <message>
+        <source>Kész</source>
+        <translation>Done</translation>
+    </message>
+</context>
+<context>
+    <name>tanara::providers::WhisperCompatJob</name>
     <message>
         <source>Megszakítva.</source>
         <translation>Cancelled.</translation>
@@ -8693,6 +8676,33 @@
     <message>
         <source>Kész</source>
         <translation>Done</translation>
+    </message>
+</context>
+<context>
+    <name>tanara::recording::RecordingSession</name>
+    <message>
+        <source>RecordingSession már fut vagy nem üresjáratban van.</source>
+        <translation>RecordingSession is already running or not idle.</translation>
+    </message>
+    <message>
+        <source>Nincs felvételre kijelölt eszköz.</source>
+        <translation>No device selected for recording.</translation>
+    </message>
+    <message>
+        <source>Nem hozható létre a meeting-mappa: </source>
+        <translation>Cannot create the meeting folder: </translation>
+    </message>
+    <message>
+        <source>Az audio motor nem indult el (nincs elérhető eszköz/backend).</source>
+        <translation>The audio engine did not start (no available device/backend).</translation>
+    </message>
+    <message>
+        <source>Nem indult el az ffmpeg encoder.</source>
+        <translation>The ffmpeg encoder did not start.</translation>
+    </message>
+    <message>
+        <source>Nincs futó felvétel a leállításhoz.</source>
+        <translation>No running recording to stop.</translation>
     </message>
 </context>
 <context>
@@ -10432,14 +10442,6 @@
         <translation>This folder looks like it is synced to the cloud. Do not sync the internal data: two computers would write it at the same time and it could get corrupted.</translation>
     </message>
     <message>
-        <source>Hanglenyomatok, beállítások és index. Ezt a mappát most a TANARA_HOME környezeti változó rögzíti.</source>
-        <translation>Voiceprints, settings and the index. This folder is currently fixed by the TANARA_HOME environment variable.</translation>
-    </message>
-    <message>
-        <source>Hanglenyomatok, beállítások és index. Ne szinkronizáld felhőtárhellyel. A váltás újraindítás után érvényes; a meglévő adatokat nem költözteti át.</source>
-        <translation>Voiceprints, settings and the index. Do not sync it with cloud storage. The change takes effect after a restart; existing data is not moved.</translation>
-    </message>
-    <message>
         <source>Felvételek</source>
         <translation>Recordings</translation>
     </message>
@@ -10596,7 +10598,7 @@
     </message>
     <message>
         <source>A TANARA_HOME be van állítva: amíg él, a homokozó saját mappája érvényes, nem ez.</source>
-        <translation>TANARA_HOME is set: while it is, the sandbox's own folder is used, not this one.</translation>
+        <translation>TANARA_HOME is set: while it is, the sandbox&apos;s own folder is used, not this one.</translation>
     </message>
     <message>
         <source>Hangmodellek</source>
