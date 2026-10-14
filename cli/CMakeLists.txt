@@ -1,7 +1,7 @@
-add_executable(tanara-cli main.cpp CloudCommands.cpp CloudCommands.h VoiceCommands.cpp VoiceCommands.h
-    TrackSidesCommand.cpp TrackSidesCommand.h TagPeopleCommands.cpp TagPeopleCommands.h
-    ParticipantsCommand.cpp ParticipantsCommand.h ReviewCommand.cpp ReviewCommand.h
-    ResliceCommand.cpp ResliceCommand.h PathsCommands.cpp PathsCommands.h
-    MigrateCommands.cpp MigrateCommands.h legacy/LegacyPeople.cpp legacy/LegacyPeople.h)
+# One source list: the registry, the per-module command files (commands/) and the legacy-people helper.
+file(GLOB TANARA_CLI_COMMAND_SOURCES CONFIGURE_DEPENDS commands/*.cpp commands/*.h)
+add_executable(tanara-cli main.cpp CommandRegistry.cpp CommandRegistry.h ${TANARA_CLI_COMMAND_SOURCES}
+    legacy/LegacyPeople.cpp legacy/LegacyPeople.h)
+target_include_directories(tanara-cli PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(tanara-cli PRIVATE tanara_core)
 tanara_copy_onnxruntime_dll(tanara-cli)

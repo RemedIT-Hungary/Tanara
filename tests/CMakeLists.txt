@@ -51,7 +51,7 @@ endif()
 
 # The CLI voice-models / voice-eval / track-sides commands are tested by running tanara-cli (QProcess).
 foreach(t test_cli_voice_models test_cli_track_sides test_cli_person_tags test_cli_participants test_cli_review test_cli_reslice
-          test_migrate_person_ids)
+          test_migrate_person_ids test_cli_help test_cli_new_commands)
     if(TARGET ${t} AND TARGET tanara-cli)
         add_dependencies(${t} tanara-cli)
         target_compile_definitions(${t} PRIVATE TANARA_CLI_EXE="$<TARGET_FILE:tanara-cli>")
