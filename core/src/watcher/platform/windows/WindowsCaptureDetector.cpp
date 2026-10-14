@@ -1,7 +1,4 @@
-#include <QtGlobal>
-#if defined(Q_OS_WIN)
-
-#include "tanara/watcher/detect/WindowsCaptureDetector.h"
+#include "tanara/watcher/platform/windows/WindowsCaptureDetector.h"
 #include "tanara/watcher/detect/detail/WinCaptureRules.h"
 
 #ifndef NOMINMAX
@@ -339,4 +336,3 @@ MeetingSignal WindowsCaptureDetector::poll()
 }
 
 } // namespace tanara::watcher
-#endif // Q_OS_WIN

@@ -3,6 +3,7 @@
 
 #include "tanara/app/SettingsManager.h"
 #include "tanara/foundation/paths/AppPaths.h"
+#include "tanara/foundation/platform/Platform.h"
 #include "tanara/watcher/detect/Autostart.h"
 #include "tanara/watcher/detect/DetectorRegistry.h"
 #include "tanara/watcher/detect/IMeetingDetector.h"
@@ -51,14 +52,12 @@ TrayWatcher::~TrayWatcher()
 
 bool TrayWatcher::start()
 {
-    tanara::watcher::registerBuiltinDetectors();   // idempotent
-
     const tanara::app::AppSettings s = m_settings->settings();
 
     // Detector: the settings detectorId, or the first available one. None: nothing to watch.
     m_detector = s.watcher.detectorId.isEmpty()
-        ? tanara::watcher::MeetingDetectorRegistry::instance().createBest()
-        : tanara::watcher::MeetingDetectorRegistry::instance().create(s.watcher.detectorId);
+        ? m_detectors.createBest()
+        : m_detectors.create(s.watcher.detectorId);
     if (!m_detector)
         return false;
     m_detector->configure(s.watcher.knownCallApps, QStringLiteral("tanara"));
@@ -326,11 +325,7 @@ void TrayWatcher::quitRequested()
 QString TrayWatcher::tanaraBinary() const
 {
     const QString dir = QCoreApplication::applicationDirPath();
-#if defined(Q_OS_WIN)
-    const QString exe = QStringLiteral("tanara.exe");
-#else
-    const QString exe = QStringLiteral("tanara");
-#endif
+    const QString exe = tanara::platform::executableName(QStringLiteral("tanara"));
     // 1) installed: next to the watcher; 2) developer build: ../gui/; 3) PATH.
     for (const QString& cand : { QDir(dir).filePath(exe),
                                  QDir(dir).filePath(QStringLiteral("../gui/") + exe) }) {

@@ -16,8 +16,10 @@
 #include "tanara/app/SettingsManager.h"
 #include "tanara/recording/audio/DeviceManager.h"
 #include "tanara/cloud/CloudTypes.h"
+#include "tanara/app/Services.h"
 #include "tanara/watcher/detect/Autostart.h"
 #include "tanara/watcher/detect/DetectorRegistry.h"
+#include "tanara/watcher/RunningApps.h"
 #include "tanara/watcher/detect/IMeetingDetector.h"
 #include "tanara/watcher/PipeWireGraph.h"
 #include "tanara/providers/embedding/ITextEmbedder.h"
@@ -1076,22 +1078,7 @@ QVariantList SettingsViewModel::runningApps() const
         names = {QStringLiteral("signal-desktop"), QStringLiteral("telegram-desktop"),
                  QStringLiteral("thunderbird"), QStringLiteral("zoom")};
     } else {
-#if defined(Q_OS_LINUX)
-        // Names of running processes from /proc (kernel threads have no command line, so they are skipped).
-        const QDir proc(QStringLiteral("/proc"));
-        const QStringList pids = proc.entryList(QDir::Dirs | QDir::NoDotAndDotDot);
-        for (const QString& pid : pids) {
-            bool isNumber = false;
-            pid.toLongLong(&isNumber);
-            if (!isNumber) continue;
-            QFile cmd(proc.filePath(pid + QStringLiteral("/cmdline")));
-            if (!cmd.open(QIODevice::ReadOnly)) continue;
-            const QByteArray first = cmd.readAll().split('\0').value(0);
-            if (first.isEmpty()) continue;
-            const QString name = QFileInfo(QString::fromLocal8Bit(first)).fileName().toLower();
-            if (!name.isEmpty() && !names.contains(name)) names << name;
-        }
-#endif
+        names = watcher::RunningApps::names();
     }
     names.sort();
     QVariantList out;
@@ -1127,12 +1114,12 @@ void SettingsViewModel::setDetectorForTest(watcher::IMeetingDetector* detector)
 void SettingsViewModel::pollDetector()
 {
     if (!m_watching) return;
-    if (!m_detector && !m_detectorTried && m_controller) {
+    if (!m_detector && !m_detectorTried && m_controller && m_controller->services()) {
         m_detectorTried = true;
-        watcher::registerBuiltinDetectors();   // idempotent
+        const watcher::MeetingDetectorRegistry& reg = m_controller->services()->detectors();
         m_detector.reset(m_draft.watcher.detectorId.isEmpty()
-                             ? watcher::MeetingDetectorRegistry::instance().createBest()
-                             : watcher::MeetingDetectorRegistry::instance().create(m_draft.watcher.detectorId));
+                             ? reg.createBest()
+                             : reg.create(m_draft.watcher.detectorId));
     }
     const bool available = m_detector && m_detector->isAvailable();
     watcher::MeetingSignal sig;

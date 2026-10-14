@@ -127,8 +127,7 @@ private slots:
     void detectorRegisteredAndPolls()
     {
 #if defined(Q_OS_WIN)
-        registerBuiltinDetectors();
-        auto& reg = watcher::MeetingDetectorRegistry::instance();
+        const watcher::MeetingDetectorRegistry reg = watcher::MeetingDetectorRegistry::withBuiltins();
         QVERIFY(reg.has(QStringLiteral("windows-wasapi")));
         const watcher::DetectorDescriptor desc = reg.descriptor(QStringLiteral("windows-wasapi"));
         QCOMPARE(desc.platform, QStringLiteral("windows"));

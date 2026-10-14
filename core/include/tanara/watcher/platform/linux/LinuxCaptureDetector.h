@@ -2,14 +2,10 @@
 //
 // LinuxCaptureDetector: a PipeWire (`pw-dump`) based meeting detector for Linux.
 // An active microphone-holding stream from a known call app = a call is going on (the signal is
-// evaluated by PwDumpParser's pure function). The whole content is under Q_OS_LINUX so it is an
-// empty translation unit on other platforms (core's CMakeLists uses GLOB).
+// evaluated by PwDumpParser's pure function). It lives in platform/linux/: core's CMakeLists compiles
+// it only on Linux.
 //
-// NOT a QObject: poll() is synchronous, no signal/slot, so no moc dependency (AUTOMOC would not
-// process a Q_OBJECT behind an #if reliably).
-#include <QtGlobal>
-#if defined(Q_OS_LINUX)
-
+// NOT a QObject: poll() is synchronous, no signal/slot, so no moc dependency.
 #include "tanara/watcher/detect/IMeetingDetector.h"
 
 #include <QString>
@@ -32,4 +28,3 @@ private:
 };
 
 } // namespace tanara::watcher
-#endif // Q_OS_LINUX

@@ -17,6 +17,7 @@
 namespace tanara::watcher {
 
 class IMeetingDetector;
+class MeetingDetectorRegistry;
 
 class CallMonitor : public QObject {
     Q_OBJECT
@@ -27,7 +28,10 @@ public:
     explicit CallMonitor(QObject* parent = nullptr);
     ~CallMonitor() override;
 
-    // Test seam: empty = the built-in detectors (MeetingDetectorRegistry).
+    // Where the detectors come from: the registry (app::Services hands in its own; not owned, it must
+    // outlive the monitor's watching). Null = no detector, start() fails.
+    void setDetectorRegistry(const MeetingDetectorRegistry* registry);
+    // Test seam: non-empty = this factory instead of the registry.
     void setDetectorFactory(DetectorFactory factory);
     // Polls only while this returns true (e.g. while the recording is in the Recording state).
     // Empty = always.

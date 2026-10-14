@@ -1,17 +1,12 @@
 #include "tanara/watcher/PlaybackRouting.h"
 
-#include "tanara/library/tracks/TrackCatalog.h"
+#include "tanara/domain/AudioDeviceNames.h"
 #include "tanara/watcher/PipeWireGraph.h"
 
 #include <QHash>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
-#include <QProcess>
-#include <QElapsedTimer>
-#include "tanara/foundation/log/Logging.h"
-#include <QRegularExpression>
-#include <QStandardPaths>
 #include <QTimer>
 
 #include <algorithm>
@@ -19,17 +14,6 @@
 namespace tanara::watcher {
 
 namespace {
-
-// "Monitor of X" / "Loopback of X" -> "X" (the output's description).
-QString stripMonitorPrefix(const QString& name)
-{
-    static const QRegularExpression prefix(
-        QStringLiteral("^(monitor of|monitor:|loopback of|loopback:)\\s*"),
-        QRegularExpression::CaseInsensitiveOption);
-    QString n = name.trimmed();
-    n.remove(prefix);
-    return n;
-}
 
 bool sameRoutes(const QVector<PlaybackRoute>& a, const QVector<PlaybackRoute>& b)
 {
@@ -45,7 +29,8 @@ bool sameRoutes(const QVector<PlaybackRoute>& a, const QVector<PlaybackRoute>& b
 
 QString AudioGraphSnapshot::appForOutput(const QString& captureDeviceName) const
 {
-    const QString want = stripMonitorPrefix(captureDeviceName);
+    // "Monitor of X" / "Loopback of X" -> "X" (the output's description).
+    const QString want = audionames::stripMonitorPrefix(captureDeviceName);
     if (want.isEmpty()) return {};
     QString fallback;
     for (const PlaybackRoute& r : routes) {
@@ -145,54 +130,58 @@ AudioGraphSnapshot parsePwDumpGraph(const QByteArray& json)
 
 } // namespace detail
 
-static QString pwDumpBinary()
+namespace {
+
+// No source on this platform: available() false, empty snapshots.
+class UnsupportedPlaybackRouting final : public IPlaybackRouting {
+public:
+    bool available() const override { return false; }
+    AudioGraphSnapshot query(int) override { return {}; }
+    bool queryAsync(Done) override { return false; }
+    bool busy() const override { return false; }
+    void cancel() override {}
+};
+
+} // namespace
+
+std::unique_ptr<IPlaybackRouting> createUnsupportedPlaybackRouting()
 {
-#if defined(Q_OS_LINUX)
-    return QStandardPaths::findExecutable(QStringLiteral("pw-dump"));
-#else
-    return {};
-#endif
+    return std::make_unique<UnsupportedPlaybackRouting>();
 }
 
 AudioGraphSnapshot queryAudioGraph(int timeoutMs)
 {
-    const QString bin = pwDumpBinary();
-    if (bin.isEmpty()) return {};
-    QProcess proc;
-    proc.start(bin, QStringList{});
-    if (!proc.waitForStarted(500)) return {};
-    if (!proc.waitForFinished(timeoutMs)) {
-        proc.kill();
-        proc.waitForFinished(200);
-        return {};
-    }
-    return detail::parsePwDumpGraph(proc.readAllStandardOutput());
+    return createPlatformPlaybackRouting()->query(timeoutMs);
 }
 
 struct PlaybackRouteMonitor::Impl {
     QTimer timer;
-    QProcess* proc = nullptr;
+    std::unique_ptr<IPlaybackRouting> routing;
     AudioGraphSnapshot snap;
     bool first = true;
-    QString bin;
 };
 
 PlaybackRouteMonitor::PlaybackRouteMonitor(QObject* parent)
+    : PlaybackRouteMonitor(createPlatformPlaybackRouting(), parent)
+{
+}
+
+PlaybackRouteMonitor::PlaybackRouteMonitor(std::unique_ptr<IPlaybackRouting> routing, QObject* parent)
     : QObject(parent), d(std::make_unique<Impl>())
 {
-    d->bin = pwDumpBinary();
+    d->routing = routing ? std::move(routing) : createUnsupportedPlaybackRouting();
     connect(&d->timer, &QTimer::timeout, this, &PlaybackRouteMonitor::poll);
 }
 
 PlaybackRouteMonitor::~PlaybackRouteMonitor() { stop(); }
 
-bool PlaybackRouteMonitor::available() { return !pwDumpBinary().isEmpty(); }
+bool PlaybackRouteMonitor::available() { return createPlatformPlaybackRouting()->available(); }
 
 AudioGraphSnapshot PlaybackRouteMonitor::snapshot() const { return d->snap; }
 
 void PlaybackRouteMonitor::start(int intervalMs)
 {
-    if (d->bin.isEmpty()) return;
+    if (!d->routing->available()) return;
     d->timer.start(qMax(500, intervalMs));
     poll();
 }
@@ -200,31 +189,14 @@ void PlaybackRouteMonitor::start(int intervalMs)
 void PlaybackRouteMonitor::stop()
 {
     d->timer.stop();
-    if (d->proc) {
-        d->proc->disconnect(this);
-        d->proc->kill();
-        d->proc->waitForFinished(300);
-        delete d->proc;
-        d->proc = nullptr;
-    }
+    d->routing->cancel();
 }
 
 void PlaybackRouteMonitor::poll()
 {
-    if (d->proc || d->bin.isEmpty()) return;   // the previous one is still running
-    auto* proc = new QProcess(this);
-    d->proc = proc;
-    connect(proc, &QProcess::finished, this, [this, proc](int code, QProcess::ExitStatus st) {
-        const QByteArray out = proc->readAllStandardOutput();
-        proc->deleteLater();
-        if (d->proc == proc) d->proc = nullptr;
-        if (st != QProcess::NormalExit || code != 0) return;
-        QElapsedTimer perfTimer;
-        perfTimer.start();
-        const AudioGraphSnapshot next = detail::parsePwDumpGraph(out);
+    if (d->routing->busy()) return;   // the previous one is still running
+    d->routing->queryAsync([this](const AudioGraphSnapshot& next) {
         const bool devs = next.deviceKeys != d->snap.deviceKeys;
-        qCDebug(lcPerf).noquote() << QStringLiteral("pw-dump feldolgozás: %1 KB, %2 ms, eszközkészlet változott: %3")
-                                     .arg(out.size() / 1024).arg(perfTimer.elapsed()).arg(devs);
         const bool routes = !sameRoutes(next.routes, d->snap.routes);
         const bool first = d->first;
         d->first = false;
@@ -232,12 +204,6 @@ void PlaybackRouteMonitor::poll()
         if (routes) emit routesChanged();
         if (devs && !first) emit deviceSetChanged();
     });
-    connect(proc, &QProcess::errorOccurred, this, [this, proc](QProcess::ProcessError e) {
-        if (e != QProcess::FailedToStart) return;
-        proc->deleteLater();
-        if (d->proc == proc) d->proc = nullptr;
-    });
-    proc->start(d->bin, QStringList{});
 }
 
 } // namespace tanara::watcher

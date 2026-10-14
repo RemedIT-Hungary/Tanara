@@ -4,10 +4,12 @@
 // audio devices set (a hot-plug signal). The recorder uses it to print e.g. "> Microsoft Teams"
 // under a device row, and to learn cheaply whether the devices must be re-enumerated.
 //
+// The OS source is a port, IPlaybackRouting, implemented in core/src/watcher/platform/<os>/:
 // Linux: PipeWire (`pw-dump`): Stream/Output/Audio node -> Link -> Audio/Sink node. This graph also
 // lives under the PulseAudio-compatible layer (pipewire-pulse).
-// Windows / macOS: not implemented (WASAPI audio sessions would be per endpoint): available() is
-// false, the snapshot is empty; the caller then simply does not print an app.
+// Windows / macOS: the "unsupported" implementation (WASAPI audio sessions would be per endpoint;
+// macOS: see docs/macos.md): available() is false, the snapshot is empty; the caller then simply
+// does not print an app.
 //
 // Headless (core); does NOT link Qt Gui/Widgets.
 #include <QByteArray>
@@ -16,6 +18,7 @@
 #include <QStringList>
 #include <QVector>
 
+#include <functional>
 #include <memory>
 
 namespace tanara::watcher {
@@ -47,6 +50,30 @@ namespace detail {
 AudioGraphSnapshot parsePwDumpGraph(const QByteArray& json);
 } // namespace detail
 
+// The platform port: where the playback graph comes from.
+class IPlaybackRouting {
+public:
+    using Done = std::function<void(const AudioGraphSnapshot&)>;
+    virtual ~IPlaybackRouting() = default;
+
+    // Whether there is a source on this host (Linux: pw-dump on the PATH).
+    virtual bool available() const = 0;
+    // One SYNCHRONOUS query; empty on failure or timeout.
+    virtual AudioGraphSnapshot query(int timeoutMs) = 0;
+    // Starts one NON-blocking query; `done` runs later in the event loop, only on success. false if
+    // none could be started (unavailable, or the previous one is still running).
+    virtual bool queryAsync(Done done) = 0;
+    // Whether an asynchronous query is running.
+    virtual bool busy() const = 0;
+    // Aborts the running asynchronous query; its `done` will not run.
+    virtual void cancel() = 0;
+};
+
+// This platform's implementation (core/src/watcher/platform/<os>/).
+std::unique_ptr<IPlaybackRouting> createPlatformPlaybackRouting();
+// The "not supported" implementation (no source, empty snapshots); platforms without one use it.
+std::unique_ptr<IPlaybackRouting> createUnsupportedPlaybackRouting();
+
 // One-time, SYNCHRONOUS query (for the watcher's notification). Empty on an unavailable platform.
 AudioGraphSnapshot queryAudioGraph(int timeoutMs = 1500);
 
@@ -54,10 +81,11 @@ AudioGraphSnapshot queryAudioGraph(int timeoutMs = 1500);
 class PlaybackRouteMonitor : public QObject {
     Q_OBJECT
 public:
-    explicit PlaybackRouteMonitor(QObject* parent = nullptr);
+    explicit PlaybackRouteMonitor(QObject* parent = nullptr);   // the platform's routing
+    explicit PlaybackRouteMonitor(std::unique_ptr<IPlaybackRouting> routing, QObject* parent = nullptr);
     ~PlaybackRouteMonitor() override;
 
-    // Whether there is an implementation on this host (Linux + pw-dump on the PATH).
+    // Whether the platform's routing has a source on this host (Linux + pw-dump on the PATH).
     static bool available();
 
     AudioGraphSnapshot snapshot() const;

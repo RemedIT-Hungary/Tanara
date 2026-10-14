@@ -63,7 +63,6 @@ gui/qml/src/RecorderWindowHost.cpp -> tanara/app/AppController.h   # GUI -> AppC
 gui/qml/src/SettingsDeviceModel.cpp -> tanara/app/AppController.h   # GUI -> AppController.h -> P15
 gui/qml/src/SettingsEmbeddingModel.cpp -> tanara/app/AppController.h   # GUI -> AppController.h -> P15
 gui/qml/src/SettingsProviderModel.cpp -> tanara/app/AppController.h   # GUI -> AppController.h -> P15
-gui/qml/src/SettingsViewModel.cpp -> platform:Q_OS_LINUX   # platform (gui) -> P15
 gui/qml/src/SettingsViewModel.cpp -> tanara/app/AppController.h   # GUI -> AppController.h -> P15
 gui/qml/src/SettingsWindowHost.cpp -> tanara/app/AppController.h   # GUI -> AppController.h -> P15
 gui/qml/src/ShellActions.cpp -> tanara/app/AppController.h   # GUI -> AppController.h -> P15
@@ -82,7 +81,6 @@ gui/qml/src/TranscriptEditorViewModelQueue.cpp -> tanara/app/AppController.h   #
 gui/qml/src/VoiceModelListModel.cpp -> tanara/app/AppController.h   # GUI -> AppController.h -> P15
 gui/src/AnalyzerSingleton.h -> platform:Q_OS_WIN   # platform (gui) -> P15
 gui/src/QmlShellBridge.cpp -> tanara/app/AppController.h   # GUI -> AppController.h -> P15
-gui/src/RecorderSingleton.cpp -> platform:Q_OS_WIN   # platform (gui) -> P15
 gui/src/SettingsWidgetsDialogs.cpp -> tanara/app/AppController.h   # GUI -> AppController.h -> P15
 gui/src/ShellQaHook.h -> tanara/app/AppController.h   # GUI -> AppController.h -> P15
 gui/src/ShellRecorderHost.cpp -> tanara/app/AppController.h   # GUI -> AppController.h -> P15
@@ -90,27 +88,6 @@ gui/src/main.cpp -> platform:Q_OS_LINUX   # platform (gui) -> P15
 gui/src/main.cpp -> tanara/app/AppController.h   # GUI -> AppController.h -> P15
 
 # ---- P16 (24 lines) ----
-core/include/tanara/watcher/detect/LinuxCaptureDetector.h -> platform:Q_OS_LINUX   # platform -> P16
-core/include/tanara/watcher/detect/WindowsCaptureDetector.h -> platform:Q_OS_WIN   # platform -> P16
-core/src/app/SettingsManager.cpp -> platform:Q_OS_WIN   # platform -> P16
-core/src/recording/audio/AudioEngine.cpp -> platform:_WIN32   # platform -> P16
-core/src/recording/audio/DeviceManager.cpp -> platform:_WIN32   # platform -> P16
-core/src/watcher/PlaybackRouting.cpp -> platform:Q_OS_LINUX   # platform -> P16
-core/src/watcher/PlaybackRouting.cpp -> tanara/library/tracks/TrackCatalog.h   # PlaybackRouting <-> TrackCatalog -> P16
-core/src/library/tracks/TrackCatalog.cpp -> platform:Q_OS_MACOS   # platform -> P16
-core/src/library/tracks/TrackCatalog.cpp -> platform:Q_OS_WIN   # platform -> P16
-core/src/cloud/CloudTypes.cpp -> platform:Q_OS_LINUX   # platform -> P16
-core/src/cloud/CloudTypes.cpp -> platform:Q_OS_MACOS   # platform -> P16
-core/src/cloud/CloudTypes.cpp -> platform:Q_OS_WIN   # platform -> P16
-core/src/watcher/detect/Autostart.cpp -> platform:Q_OS_LINUX   # platform -> P16
-core/src/watcher/detect/Autostart.cpp -> platform:Q_OS_WIN   # platform -> P16
-core/src/watcher/detect/BuiltinDetectors.cpp -> platform:Q_OS_LINUX   # platform -> P16
-core/src/watcher/detect/BuiltinDetectors.cpp -> platform:Q_OS_WIN   # platform -> P16
-core/src/watcher/detect/LinuxCaptureDetector.cpp -> platform:Q_OS_LINUX   # platform -> P16
-core/src/foundation/ProcessLock.cpp -> platform:Q_OS_WIN   # platform (moved by P4 from detect/RecordingLock.cpp) -> P16
-core/src/watcher/detect/WindowsCaptureDetector.cpp -> platform:Q_OS_WIN   # platform -> P16
-core/src/processing/voiceid/VoiceEmbedder.cpp -> platform:_WIN32   # platform -> P16
-watcher/TrayWatcher.cpp -> platform:Q_OS_WIN   # platform (watcher exe) -> P16
+core/src/processing/voiceid/VoiceEmbedder.cpp -> platform:_WIN32   # compiler/ABI, not OS: MinGW SAL shims + ORTCHAR_T path type for onnxruntime (kept, justified by P16)
 watcher/TrayWatcher.cpp -> tanara/app/SettingsManager.h   # watcher exe -> SettingsManager/TrackCatalog -> P16
 watcher/TrayWatcher.cpp -> tanara/library/tracks/TrackCatalog.h   # watcher exe -> SettingsManager/TrackCatalog -> P16
-core/src/foundation/log/Logging.cpp -> platform:Q_OS_WIN   # platform (moved by P4 from core/src/Logging.cpp) -> P16

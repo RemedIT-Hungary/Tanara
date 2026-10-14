@@ -14,11 +14,8 @@
 //
 // Self-exclusion: our own PID and every process with an image name "tanara" / "tanara-*" is left out.
 //
-// The whole content is under Q_OS_WIN (core's CMakeLists uses GLOB, so it is an empty translation unit
-// elsewhere). NOT a QObject (synchronous poll, no moc dependency); it follows the LinuxCaptureDetector pattern.
-#include <QtGlobal>
-#if defined(Q_OS_WIN)
-
+// It lives in platform/windows/: core's CMakeLists compiles it only on Windows. NOT a QObject
+// (synchronous poll, no moc dependency); it follows the LinuxCaptureDetector pattern.
 #include "tanara/watcher/detect/IMeetingDetector.h"
 
 #include <QString>
@@ -46,4 +43,3 @@ private:
 };
 
 } // namespace tanara::watcher
-#endif // Q_OS_WIN

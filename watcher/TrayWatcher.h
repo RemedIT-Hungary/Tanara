@@ -7,6 +7,8 @@
 // The tray icon has three states: Watching, Call detected, Recording. The balloon shows the
 // app, or the elapsed time; during a recording the menu also gets a header ("Recording ·
 // 00:12:47") and a stop item. "Quit..." asks for confirmation during a recording.
+#include "tanara/watcher/detect/DetectorRegistry.h"
+
 #include <QDateTime>
 #include <QObject>
 #include <QString>
@@ -68,6 +70,8 @@ private:
     void applySettings();
 
     tanara::app::SettingsManager*  m_settings = nullptr;
+    // The watcher executable's own detector registry (this platform's built-in detectors).
+    tanara::watcher::MeetingDetectorRegistry m_detectors = tanara::watcher::MeetingDetectorRegistry::withBuiltins();
     tanara::watcher::IMeetingDetector* m_detector = nullptr;   // owned (deleted in the dtor)
     QSystemTrayIcon* m_tray = nullptr;
     QTimer*          m_timer = nullptr;

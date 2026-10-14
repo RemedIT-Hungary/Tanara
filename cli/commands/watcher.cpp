@@ -2,17 +2,15 @@
 #include "Commands.h"
 
 #include "tanara/app/AppController.h"
+#include "tanara/app/Services.h"
 #include "tanara/app/SettingsManager.h"
 #include "tanara/watcher/detect/Autostart.h"
 #include "tanara/watcher/detect/DetectorRegistry.h"
 #include "tanara/watcher/detect/IMeetingDetector.h"
+#include "tanara/watcher/RunningApps.h"
 
 #include <QCoreApplication>
-#include <QDir>
-#include <QFile>
 #include <QMap>
-#include <QOperatingSystemVersion>
-#include <QProcess>
 #include <QTimer>
 
 #include <memory>
@@ -27,12 +25,12 @@ int cmdDetect(CliContext& ctx, const QStringList& args)
     QCoreApplication& qapp = ctx.qapp();
     // Smoke test: the watcher ENGINE without a separate process or tray. A single poll, or a
     // timed one with --watch (using the settings interval or --interval N seconds).
-    watcher::registerBuiltinDetectors();
     const app::AppSettings s = app.settings()->settings();
+    const watcher::MeetingDetectorRegistry& registry = app.services()->detectors();
     std::unique_ptr<watcher::IMeetingDetector> det(
         s.watcher.detectorId.isEmpty()
-            ? watcher::MeetingDetectorRegistry::instance().createBest()
-            : watcher::MeetingDetectorRegistry::instance().create(s.watcher.detectorId));
+            ? registry.createBest()
+            : registry.create(s.watcher.detectorId));
     if (!det) {
         err() << QStringLiteral("No meeting detector available on this platform (pw-dump?).") << "\n";
         err().flush();
@@ -114,45 +112,14 @@ int cmdAutostart(CliContext& ctx, const QStringList& args)
 
 using ProcessMap = QMap<QString, qint64>;   // lowercase name -> one pid
 
-// /proc (Linux); empty where there is none.
-ProcessMap procfsProcesses()
-{
-    ProcessMap names;
-    const QStringList pids = QDir(QStringLiteral("/proc")).entryList(QDir::Dirs | QDir::NoDotAndDotDot);
-    for (const QString& pid : pids) {
-        bool numeric = false;
-        const qint64 n = pid.toLongLong(&numeric);
-        if (!numeric) continue;
-        QFile f(QStringLiteral("/proc/%1/comm").arg(pid));
-        if (!f.open(QIODevice::ReadOnly)) continue;
-        const QString name = QString::fromLocal8Bit(f.readAll()).trimmed().toLower();
-        if (!name.isEmpty() && !names.contains(name)) names.insert(name, n);
-    }
-    return names;
-}
-
-// `tasklist` (Windows).
-ProcessMap tasklistProcesses()
-{
-    ProcessMap names;
-    QProcess p;
-    p.start(QStringLiteral("tasklist"), {QStringLiteral("/fo"), QStringLiteral("csv"), QStringLiteral("/nh")});
-    if (!p.waitForFinished(10000)) return names;
-    for (const QString& line : QString::fromLocal8Bit(p.readAllStandardOutput()).split('\n')) {
-        const QStringList cols = line.trimmed().split(QStringLiteral("\",\""));
-        if (cols.size() < 2) continue;
-        QString name = cols.at(0);
-        name.remove(QLatin1Char('"'));
-        names.insert(name.toLower(), cols.at(1).toLongLong());
-    }
-    return names;
-}
-
-// The running processes; empty if the platform has no source (no platform macros: a runtime check).
+// The running processes (watcher::RunningApps: /proc on Linux, Toolhelp32 on Windows); empty if
+// the platform has no source.
 ProcessMap runningProcesses()
 {
-    return QOperatingSystemVersion::currentType() == QOperatingSystemVersion::Windows ? tasklistProcesses()
-                                                                                       : procfsProcesses();
+    ProcessMap names;
+    for (const watcher::RunningProcess& p : watcher::RunningApps::processes())
+        if (!names.contains(p.name)) names.insert(p.name, p.pid);
+    return names;
 }
 
 int cmdRunningApps(CliContext& ctx, const QStringList&)

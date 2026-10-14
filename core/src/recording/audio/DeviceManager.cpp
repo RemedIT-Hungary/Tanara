@@ -1,5 +1,6 @@
 #include "tanara/recording/audio/DeviceManager.h"
 #include "tanara/foundation/log/Logging.h"
+#include "tanara/recording/audio/SystemAudioSource.h"
 #include <QElapsedTimer>
 
 #include "miniaudio.h"
@@ -12,29 +13,6 @@ struct DeviceManagerPrivate {
     QVector<AudioDeviceInfo> capture;
     std::optional<QVector<AudioDeviceInfo>> override;   // test seam
 };
-
-namespace {
-
-// Heuristic: on Linux (PulseAudio/PipeWire) the outputs' "monitor" sources also show up as capture
-// devices. We classify these as Loopback, line-in/AUX-like inputs as Other (a real capture, but NOT a
-// microphone, so auto-record skips it by default; see autoRecordDevices()), the rest as Mic.
-TrackKind classifyByName(const QString& nameLower) {
-    if (nameLower.contains(QStringLiteral("monitor")) ||
-        nameLower.contains(QStringLiteral("loopback"))) {
-        return TrackKind::Loopback;
-    }
-    // Line-in / AUX: typically nothing is plugged in (it would record silence), so it is not a
-    // microphone. It can still be checked by hand in the recorder's "Other" group.
-    if (nameLower.contains(QStringLiteral("line-in")) ||
-        nameLower.contains(QStringLiteral("line in")) ||
-        nameLower.contains(QStringLiteral("vonalbemenet")) ||
-        nameLower.contains(QStringLiteral("aux"))) {
-        return TrackKind::Other;
-    }
-    return TrackKind::Mic;
-}
-
-} // namespace
 
 DeviceManager::DeviceManager(QObject* parent)
     : QObject(parent), d_(std::make_unique<DeviceManagerPrivate>()) {
@@ -87,6 +65,7 @@ void DeviceManager::refresh() {
 
     if (ma_context_get_devices(&context, &playbackInfos, &playbackCount,
                                &captureInfos, &captureCount) == MA_SUCCESS) {
+        const ISystemAudioSource& sysAudio = systemAudioSource();
         for (ma_uint32 i = 0; i < captureCount; ++i) {
             const ma_device_info& info = captureInfos[i];
 
@@ -96,7 +75,8 @@ void DeviceManager::refresh() {
             // to reopen (AudioEngine looks up the actual ma_device_id itself from the enumeration).
             dev.id = QString::number(i) + QStringLiteral(":") + dev.name;
             dev.isDefault = info.isDefault ? true : false;
-            dev.kind = classifyByName(dev.name.toLower());
+            // Mic / Loopback (e.g. a Linux "Monitor of ..." source) / Other: the platform's adapter decides.
+            dev.kind = sysAudio.classifyCapture(dev.name);
 
             // At enumeration nativeDataFormats is not guaranteed to be filled; we work with a fixed 48 kHz and
             // (if known) the first native channel count, otherwise mono. The recording will be s16 / 48 kHz anyway.
@@ -110,33 +90,20 @@ void DeviceManager::refresh() {
             result.push_back(dev);
         }
 
-#if defined(_WIN32)
-        // Windows (WASAPI): system audio ("loopback") does NOT appear as a capture device (unlike the
-        // PulseAudio/PipeWire monitor sources). We take the output (playback) devices as Loopback; AudioEngine
-        // opens them with ma_device_type_loopback (it records the playback device's sound). That way the remote
-        // participants' audio gets a track too.
+        // System audio derived from the outputs (Windows: WASAPI loopback; elsewhere none, the
+        // monitors are already among the captures).
+        QVector<PlaybackEndpoint> playback;
+        playback.reserve(int(playbackCount));
         for (ma_uint32 i = 0; i < playbackCount; ++i) {
             const ma_device_info& info = playbackInfos[i];
-
-            AudioDeviceInfo dev;
-            dev.name = QString::fromUtf8(info.name);
-            // The "loopback:" prefix is human-readable + does not collide with capture ids.
-            // (AudioEngine matches by name from the playback list; the id is only a key.)
-            dev.id = QStringLiteral("loopback:") + QString::number(i) +
-                     QStringLiteral(":") + dev.name;
-            dev.isDefault = info.isDefault ? true : false;
-            dev.kind = TrackKind::Loopback;
-
-            dev.sampleRate = 48000;
-            dev.channels = 2;   // system audio is typically stereo
-            if (info.nativeDataFormatCount > 0 &&
-                info.nativeDataFormats[0].channels > 0) {
-                dev.channels = static_cast<int>(info.nativeDataFormats[0].channels);
-            }
-
-            result.push_back(dev);
+            PlaybackEndpoint ep;
+            ep.name = QString::fromUtf8(info.name);
+            ep.isDefault = info.isDefault ? true : false;
+            if (info.nativeDataFormatCount > 0 && info.nativeDataFormats[0].channels > 0)
+                ep.nativeChannels = static_cast<int>(info.nativeDataFormats[0].channels);
+            playback.push_back(ep);
         }
-#endif
+        result += sysAudio.loopbackDevices(playback);
     }
 
     ma_context_uninit(&context);

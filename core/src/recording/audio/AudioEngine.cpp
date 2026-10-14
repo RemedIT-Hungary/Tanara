@@ -1,5 +1,6 @@
 #include "tanara/recording/audio/AudioEngine.h"
 #include "tanara/recording/audio/DetachedJob.h"
+#include "tanara/recording/audio/SystemAudioSource.h"
 #include "tanara/foundation/log/Logging.h"
 
 #include "miniaudio.h"
@@ -156,17 +157,15 @@ struct AudioEngine::Impl {
 
         // On Windows loopback (system audio) devices are captured by opening a PLAYBACK device in
         // ma_device_type_loopback mode, so we match from the playback list. Everything else (mic, or a Linux
-        // monitor) is capture.
+        // monitor) is capture. Which one: the platform's ISystemAudioSource.
         ma_device_type devType = ma_device_type_capture;
         const ma_device_info* matchInfos = captureInfos;
         ma_uint32 matchCount = captureCount;
-#if defined(_WIN32)
-        if (want.kind == TrackKind::Loopback) {
+        if (systemAudioSource().opensFromPlayback(want.kind)) {
             devType = ma_device_type_loopback;
             matchInfos = playbackInfos;
             matchCount = playbackCount;
         }
-#endif
         const ma_device_id* matchedId = nullptr;
         if (matchInfos) {
             for (ma_uint32 i = 0; i < matchCount; ++i) {

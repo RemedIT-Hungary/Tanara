@@ -1,7 +1,4 @@
-#include <QtGlobal>
-#if defined(Q_OS_LINUX)
-
-#include "tanara/watcher/detect/LinuxCaptureDetector.h"
+#include "tanara/watcher/platform/linux/LinuxCaptureDetector.h"
 #include "tanara/watcher/PipeWireGraph.h"
 
 #include <QProcess>
@@ -54,4 +51,3 @@ MeetingSignal LinuxCaptureDetector::poll()
 }
 
 } // namespace tanara::watcher
-#endif // Q_OS_LINUX

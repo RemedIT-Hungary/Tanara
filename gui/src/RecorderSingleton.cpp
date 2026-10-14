@@ -1,14 +1,12 @@
 #include "RecorderSingleton.h"
 #include "tanara/foundation/log/Logging.h"
 #include "tanara/foundation/ProcessLock.h"
+#include "tanara/foundation/platform/Platform.h"
 
 #include <QDataStream>
 #include <QLocalServer>
 #include <QLocalSocket>
 
-#if !defined(Q_OS_WIN)
-#include <unistd.h>
-#endif
 
 namespace tanara_gui {
 
@@ -18,11 +16,8 @@ QString RecorderSingleton::serverName()
     // (tanara::instanceScopeSuffix), so a sandbox instance and the user's real recorder NEVER
     // see each other: no request forwarding and no name clash in either direction.
     const QString scope = tanara::instanceScopeSuffix();
-#if defined(Q_OS_WIN)
-    return QStringLiteral("tanara-recorder") + scope;
-#else
-    return QStringLiteral("tanara-recorder-%1").arg(getuid()) + scope;
-#endif
+    // Per user: "-<uid>" on POSIX (one shared socket namespace), nothing on Windows.
+    return QStringLiteral("tanara-recorder") + tanara::platform::perUserSuffix() + scope;
 }
 
 bool RecorderSingleton::forwardToExisting(const QStringList& args, int timeoutMs)

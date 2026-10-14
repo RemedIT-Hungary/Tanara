@@ -19,6 +19,9 @@ class MixdownService;
 class RecordingService;
 }
 namespace tanara::watcher { class CallMonitor; }
+// --- P16: detector registry ---
+namespace tanara::watcher { class MeetingDetectorRegistry; }
+// --- end P16 ---
 
 namespace tanara::app {
 
@@ -44,6 +47,10 @@ public:
     watcher::CallMonitor&        callMonitor() const { return *m_callMonitor; }
     recording::RecordingService& recording() const   { return *m_recording; }
     recording::MixdownService&   mixdown() const     { return *m_mixdown; }
+    // --- P16: detector registry ---
+    // This platform's meeting detectors (an instance, not a singleton; the call monitor uses it).
+    watcher::MeetingDetectorRegistry& detectors() const { return *m_detectors; }
+    // --- end P16 ---
 
 private:
     std::unique_ptr<library::ArchiveService>     m_archive;
@@ -51,6 +58,9 @@ private:
     std::unique_ptr<watcher::CallMonitor>        m_callMonitor;   // before the recording (it subscribes)
     std::unique_ptr<recording::RecordingService> m_recording;
     std::unique_ptr<recording::MixdownService>   m_mixdown;
+    // --- P16: detector registry ---
+    std::unique_ptr<watcher::MeetingDetectorRegistry> m_detectors;
+    // --- end P16 ---
 };
 
 } // namespace tanara::app

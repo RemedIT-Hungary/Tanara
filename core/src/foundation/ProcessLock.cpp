@@ -1,6 +1,7 @@
 #include "tanara/foundation/ProcessLock.h"
 
 #include "tanara/foundation/paths/AppPaths.h"
+#include "tanara/foundation/platform/Platform.h"
 
 #include <QCoreApplication>
 #include <QCryptographicHash>
@@ -12,12 +13,6 @@
 #include <QJsonObject>
 #include <QSaveFile>
 
-#if defined(Q_OS_WIN)
-#  include <windows.h>
-#else
-#  include <csignal>
-#  include <cerrno>
-#endif
 
 namespace tanara {
 
@@ -26,21 +21,7 @@ namespace {
 // Is the process with the given PID still alive? (Stale-lock detection.)
 bool pidAlive(qint64 pid)
 {
-    if (pid <= 0)
-        return false;
-#if defined(Q_OS_WIN)
-    HANDLE h = OpenProcess(SYNCHRONIZE, FALSE, static_cast<DWORD>(pid));
-    if (!h)
-        return false;
-    const DWORD r = WaitForSingleObject(h, 0);
-    CloseHandle(h);
-    return r == WAIT_TIMEOUT;   // still running (not signaled)
-#else
-    // kill(pid,0): 0 = exists and we have permission; EPERM = exists, but under another user.
-    if (::kill(static_cast<pid_t>(pid), 0) == 0)
-        return true;
-    return errno == EPERM;
-#endif
+    return platform::processAlive(pid);
 }
 
 } // namespace

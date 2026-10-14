@@ -2,20 +2,12 @@
 #include "tanara/providers/core/ProviderConfig.h"
 #include "tanara/foundation/settings/SettingsStore.h"
 #include "tanara/foundation/log/Logging.h"
+#include "tanara/foundation/platform/Platform.h"
 #include "tanara/library/tracks/TrackCatalog.h"
 #include "tanara/processing/voiceid/VoiceModelRegistry.h"
 
 #include <QDir>
 #include <QFile>
-#if defined(Q_OS_WIN)
-#  define SECURITY_WIN32
-#  include <windows.h>
-#  include <security.h>
-#else
-#  include <pwd.h>
-#  include <unistd.h>
-#endif
-#include <iterator>
 
 namespace tanara::app {
 
@@ -35,23 +27,7 @@ namespace {
 // first start and in Settings any time.
 QString defaultUserSpeakerName()
 {
-    QString name;
-#if defined(Q_OS_WIN)
-    wchar_t buf[256];
-    ULONG len = ULONG(std::size(buf));
-    if (GetUserNameExW(NameDisplay, buf, &len) && len > 0)
-        name = QString::fromWCharArray(buf, int(len));
-    if (name.trimmed().isEmpty())
-        name = qEnvironmentVariable("USERNAME");
-#else
-    if (const passwd* pw = getpwuid(getuid())) {
-        const QString gecos = QString::fromLocal8Bit(pw->pw_gecos).section(QLatin1Char(','), 0, 0);
-        name = gecos.trimmed().isEmpty() ? QString::fromLocal8Bit(pw->pw_name) : gecos;
-    }
-    if (name.trimmed().isEmpty())
-        name = qEnvironmentVariable("USER");
-#endif
-    name = name.trimmed();
+    QString name = platform::userDisplayName().trimmed();
     if (name.isEmpty())
         return QStringLiteral("Én");
     // Login name (all lowercase): capitalized so it looks like a name.

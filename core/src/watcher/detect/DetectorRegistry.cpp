@@ -3,10 +3,11 @@
 
 namespace tanara::watcher {
 
-MeetingDetectorRegistry& MeetingDetectorRegistry::instance()
+MeetingDetectorRegistry MeetingDetectorRegistry::withBuiltins()
 {
-    static MeetingDetectorRegistry s_instance;
-    return s_instance;
+    MeetingDetectorRegistry registry;
+    registerBuiltinDetectors(registry);
+    return registry;
 }
 
 void MeetingDetectorRegistry::registerDetector(const DetectorDescriptor& desc, Factory factory)

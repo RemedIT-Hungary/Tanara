@@ -1,6 +1,7 @@
 #include "tanara/cloud/CloudTypes.h"
 #include "tanara/foundation/time/TimeFormat.h"
 #include "tanara/foundation/Version.h"
+#include "tanara/foundation/platform/Platform.h"
 
 #include <QCoreApplication>
 #include <QJsonArray>
@@ -142,15 +143,7 @@ bool semverLess(const QString& a, const QString& b)
 
 QString clientPlatform()
 {
-#if defined(Q_OS_LINUX)
-    return QStringLiteral("linux");
-#elif defined(Q_OS_WIN)
-    return QStringLiteral("windows");
-#elif defined(Q_OS_MACOS)
-    return QStringLiteral("macos");
-#else
-    return QStringLiteral("unknown");
-#endif
+    return platform::osId();
 }
 
 QString clientHeaderValue()

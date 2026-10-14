@@ -10,6 +10,7 @@ namespace tanara::watcher {
 
 struct CallMonitor::Impl {
     DetectorFactory factory;
+    const MeetingDetectorRegistry* registry = nullptr;
     std::function<bool()> gate;
     std::unique_ptr<IMeetingDetector> detector;
     QTimer* timer = nullptr;
@@ -22,6 +23,8 @@ CallMonitor::CallMonitor(QObject* parent) : QObject(parent), d(std::make_unique<
 
 CallMonitor::~CallMonitor() = default;
 
+void CallMonitor::setDetectorRegistry(const MeetingDetectorRegistry* registry) { d->registry = registry; }
+
 void CallMonitor::setDetectorFactory(DetectorFactory factory) { d->factory = std::move(factory); }
 
 void CallMonitor::setPollGate(std::function<bool()> gate) { d->gate = std::move(gate); }
@@ -33,11 +36,10 @@ bool CallMonitor::start(const WatcherSettings& s)
     stop();
     if (d->factory) {
         d->detector = d->factory(s.detectorId);
-    } else {
-        registerBuiltinDetectors();
+    } else if (d->registry) {
         d->detector.reset(s.detectorId.isEmpty()
-            ? MeetingDetectorRegistry::instance().createBest()
-            : MeetingDetectorRegistry::instance().create(s.detectorId));
+            ? d->registry->createBest()
+            : d->registry->create(s.detectorId));
     }
     if (!d->detector) {
         qCDebug(lcApp) << "Hívás-vég figyelés: nincs elérhető detektor ezen a platformon.";

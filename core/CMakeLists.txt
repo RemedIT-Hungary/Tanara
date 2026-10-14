@@ -5,6 +5,28 @@
 file(GLOB_RECURSE TANARA_CORE_SOURCES CONFIGURE_DEPENDS src/*.cpp)
 file(GLOB_RECURSE TANARA_CORE_HEADERS CONFIGURE_DEPENDS include/*.h)
 
+# Platform adapters: every */platform/<os>/ folder holds one platform's implementation of a port
+# (no `#if Q_OS_*` in the common code, see tools/check_modules.py). Only the current platform's
+# folders are compiled:
+#   Linux: linux + posix | Windows: windows | otherwise (macOS until docs/macos.md): posix + unsupported
+if(WIN32)
+    set(TANARA_PLATFORM_DIRS windows)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    set(TANARA_PLATFORM_DIRS linux posix)
+else()
+    set(TANARA_PLATFORM_DIRS posix unsupported)
+endif()
+foreach(_list TANARA_CORE_SOURCES TANARA_CORE_HEADERS)
+    set(_all ${${_list}})
+    list(FILTER ${_list} EXCLUDE REGEX "/platform/[^/]+/")
+    foreach(_dir IN LISTS TANARA_PLATFORM_DIRS)
+        set(_mine ${_all})
+        list(FILTER _mine INCLUDE REGEX "/platform/${_dir}/")
+        list(APPEND ${_list} ${_mine})
+    endforeach()
+endforeach()
+message(STATUS "Tanara: platform adapter folders: ${TANARA_PLATFORM_DIRS}")
+
 add_library(tanara_core STATIC ${TANARA_CORE_SOURCES} ${TANARA_CORE_HEADERS})
 
 target_include_directories(tanara_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)

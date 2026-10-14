@@ -5,7 +5,6 @@
 #include "tanara/foundation/i18n/Localization.h"
 #include "tanara/foundation/log/Logging.h"
 #include "tanara/foundation/paths/AppPaths.h"
-#include "tanara/watcher/detect/DetectorRegistry.h"
 #include "tanara/foundation/ProcessLock.h"
 #include "RecorderTrayIcon.h"
 
@@ -58,8 +57,6 @@ int main(int argc, char** argv)
 
     // UI language (settings.json uiLanguage), before the tray menu / notification strings.
     tanara::installAppTranslator(tanara_watcher::TrayWatcher::configuredUiLanguage());
-
-    tanara::watcher::registerBuiltinDetectors();
 
     tanara_watcher::TrayWatcher watcher;
     if (!watcher.start()) {

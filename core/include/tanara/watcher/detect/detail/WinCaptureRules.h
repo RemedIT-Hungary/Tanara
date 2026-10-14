@@ -4,7 +4,7 @@
 // normalizing the process image name, self-exclusion, call-app matching (app id + pretty name),
 // interpreting the registry key name of the microphone consent, and the FILETIME "currently using"
 // logic. No COM, no registry call, no Windows header, so it compiles on every platform and is
-// unit-testable (the COM/registry part is in WindowsCaptureDetector.cpp, under Q_OS_WIN).
+// unit-testable (the COM/registry part is in platform/windows/WindowsCaptureDetector.cpp).
 #include <QString>
 #include <QStringList>
 #include <QtGlobal>

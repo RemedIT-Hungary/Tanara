@@ -14,7 +14,14 @@
 #include "tanara/processing/summary/PromptLibrary.h"
 #include "tanara/app/SettingsManager.h"
 #include "tanara/library/tracks/TrackCatalog.h"
+#include "tanara/foundation/platform/Platform.h"
 #include "tanara/watcher/detect/Autostart.h"
+#if defined(Q_OS_LINUX)
+#  include "tanara/watcher/platform/linux/XdgAutostart.h"
+#endif
+#if defined(Q_OS_WIN)
+#  include "tanara/watcher/platform/windows/RunKey.h"
+#endif
 #include "tanara/app/LegacySettings.h"
 #include <QJsonArray>
 
@@ -276,6 +283,9 @@ private slots:
 
     void autostartEntryIsWrittenOnlyWhereAsked()
     {
+#if !defined(Q_OS_LINUX)
+        QSKIP("XDG autostart entry: Linux only.");
+#else
         QTemporaryDir dir;
         QVERIFY(dir.isValid());
         const QString entry = dir.filePath(QStringLiteral("autostart/tanara-watcher.desktop"));
@@ -288,6 +298,25 @@ private slots:
         // An empty executable path: does not write.
         QVERIFY(!watcher::autostart::writeEntry(dir.filePath(QStringLiteral("x.desktop")), QString()));
         QVERIFY(!QFile::exists(dir.filePath(QStringLiteral("x.desktop"))));
+#endif
+    }
+
+    // The guard sits above every IAutostart: in a sandbox even a fully working implementation is
+    // never called.
+    void autostartGuardWrapsAnyImplementation()
+    {
+        struct Fake : watcher::IAutostart {
+            int writes = 0;
+            QString entryPath() const override { return QStringLiteral("/fake/entry"); }
+            bool isEnabled() const override { return false; }
+            bool enable(const QString&) override { ++writes; return true; }
+            bool disable() override { ++writes; return true; }
+        } fake;
+        QVERIFY(!qEnvironmentVariableIsEmpty("TANARA_HOME"));
+        QVERIFY(!watcher::autostart::managed(fake));
+        QVERIFY(!watcher::autostart::applyWatcher(fake, true, QStringLiteral("/opt/tanara/tanara-watcher")));
+        QVERIFY(!watcher::autostart::applyWatcher(fake, false, QString()));
+        QCOMPARE(fake.writes, 0);
     }
 
     void autostartIsNeverTouchedInASandbox()
@@ -343,8 +372,7 @@ private slots:
         // The entry path is a human-readable registry path.
         QVERIFY(watcher::autostart::watcherEntryPath().endsWith(QStringLiteral("\\Run\\Tanara Watcher")));
 #else
-        QVERIFY(watcher::autostart::readRunValue(QStringLiteral("x"), QStringLiteral("y")).isEmpty());
-        QVERIFY(!watcher::autostart::writeRunValue(QStringLiteral("x"), QStringLiteral("y"), QStringLiteral("z")));
+        QSKIP("HKCU Run key: Windows only.");
 #endif
     }
 
@@ -355,11 +383,7 @@ private slots:
         QVERIFY(watcher::autostart::findWatcherExecutable(dir.path()).isEmpty());
         QVERIFY(QDir(dir.path()).mkpath(QStringLiteral("gui")));
         QVERIFY(QDir(dir.path()).mkpath(QStringLiteral("watcher")));
-#if defined(Q_OS_WIN)
-        const QString exe = QStringLiteral("tanara-watcher.exe");
-#else
-        const QString exe = QStringLiteral("tanara-watcher");
-#endif
+        const QString exe = platform::executableName(QStringLiteral("tanara-watcher"));
         QFile f(dir.filePath(QStringLiteral("watcher/") + exe));
         QVERIFY(f.open(QIODevice::WriteOnly));
         f.close();

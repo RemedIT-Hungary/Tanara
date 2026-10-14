@@ -1,5 +1,6 @@
 #include "tanara/foundation/log/Logging.h"
 #include "tanara/foundation/paths/AppPaths.h"
+#include "tanara/foundation/platform/Platform.h"
 
 
 #include <QCoreApplication>
@@ -13,9 +14,6 @@
 
 #include <cstdio>
 
-#ifdef Q_OS_WIN
-#  include <windows.h>
-#endif
 
 namespace tanara {
 
@@ -91,9 +89,7 @@ void messageHandler(QtMsgType type, const QMessageLogContext& ctx, const QString
     if (type == QtWarningMsg || type == QtCriticalMsg || type == QtFatalMsg)
         writeTo(g_errFile, u8);
 
-#ifdef Q_OS_WIN
-    OutputDebugStringW(reinterpret_cast<const wchar_t*>((line + QLatin1Char('\n')).utf16()));
-#endif
+    platform::debugOutput(line);
 
     if (type == QtFatalMsg) {
         if (g_logFile) g_logFile->flush();

@@ -7,6 +7,9 @@
 #include "tanara/recording/MixdownService.h"
 #include "tanara/recording/RecordingService.h"
 #include "tanara/watcher/CallMonitor.h"
+// --- P16: detector registry ---
+#include "tanara/watcher/detect/DetectorRegistry.h"
+// --- end P16 ---
 
 namespace tanara::app {
 
@@ -39,9 +42,21 @@ Services::Services(const ServicesDeps& deps)
     , m_callMonitor(std::make_unique<watcher::CallMonitor>())
     , m_recording(std::make_unique<recording::RecordingService>(recordingDeps(deps, m_callMonitor.get())))
     , m_mixdown(std::make_unique<recording::MixdownService>(deps.store, deps.jobs, deps.media))
+    // --- P16: detector registry ---
+    , m_detectors(std::make_unique<watcher::MeetingDetectorRegistry>(watcher::MeetingDetectorRegistry::withBuiltins()))
+    // --- end P16 ---
 {
+    // --- P16: detector registry ---
+    m_callMonitor->setDetectorRegistry(m_detectors.get());
+    // --- end P16 ---
 }
 
-Services::~Services() = default;
+Services::~Services()
+{
+    // --- P16: detector registry ---
+    // The registry is the last member, so it is destroyed first: unhook it from the call monitor.
+    m_callMonitor->setDetectorRegistry(nullptr);
+    // --- end P16 ---
+}
 
 } // namespace tanara::app

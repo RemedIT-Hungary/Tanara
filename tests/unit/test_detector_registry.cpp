@@ -22,19 +22,36 @@ private slots:
     // registerBuiltinDetectors() is idempotent: repeated calls do not duplicate or crash.
     void registerIsIdempotent()
     {
-        watcher::registerBuiltinDetectors();
-        const int n1 = watcher::MeetingDetectorRegistry::instance().all().size();
-        watcher::registerBuiltinDetectors();
-        const int n2 = watcher::MeetingDetectorRegistry::instance().all().size();
+        watcher::MeetingDetectorRegistry reg;
+        watcher::registerBuiltinDetectors(reg);
+        const int n1 = reg.all().size();
+        watcher::registerBuiltinDetectors(reg);
+        const int n2 = reg.all().size();
         QCOMPARE(n1, n2);
+        QCOMPARE(watcher::MeetingDetectorRegistry::withBuiltins().all().size(), n1);
+    }
+
+    // Instances, not a singleton: each registry has only what was registered into it.
+    void registriesAreIndependent()
+    {
+        watcher::MeetingDetectorRegistry empty;
+        QVERIFY(empty.all().isEmpty());
+        QVERIFY(empty.createBest() == nullptr);
+
+        watcher::MeetingDetectorRegistry own;
+        watcher::DetectorDescriptor desc;
+        desc.id = QStringLiteral("test-only");
+        own.registerDetector(desc, [] { return static_cast<watcher::IMeetingDetector*>(nullptr); });
+        QVERIFY(own.has(QStringLiteral("test-only")));
+        QVERIFY(!empty.has(QStringLiteral("test-only")));
+        QVERIFY(!watcher::MeetingDetectorRegistry::withBuiltins().has(QStringLiteral("test-only")));
     }
 
     // For an unknown id create() returns nullptr (does not throw or crash).
     void createUnknownReturnsNull()
     {
-        watcher::registerBuiltinDetectors();
-        std::unique_ptr<watcher::IMeetingDetector> d(
-            watcher::MeetingDetectorRegistry::instance().create(QStringLiteral("nonexistent")));
+        const watcher::MeetingDetectorRegistry reg = watcher::MeetingDetectorRegistry::withBuiltins();
+        std::unique_ptr<watcher::IMeetingDetector> d(reg.create(QStringLiteral("nonexistent")));
         QVERIFY(d == nullptr);
     }
 
@@ -43,8 +60,7 @@ private slots:
     // correctly named instance, parented to the given QObject.
     void linuxCaptureRegistered()
     {
-        watcher::registerBuiltinDetectors();
-        auto& reg = watcher::MeetingDetectorRegistry::instance();
+        const watcher::MeetingDetectorRegistry reg = watcher::MeetingDetectorRegistry::withBuiltins();
         QVERIFY(reg.has(QStringLiteral("linux-capture")));
         QVERIFY(!reg.all().isEmpty());
 

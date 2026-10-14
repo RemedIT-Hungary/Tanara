@@ -1,4 +1,6 @@
 #include "tanara/library/tracks/TrackCatalog.h"
+#include "tanara/domain/AudioDeviceNames.h"
+#include "tanara/foundation/platform/Platform.h"
 #include "tanara/library/MeetingLayout.h"
 #include "tanara/library/tracks/WaveformService.h"
 #include "tanara/library/store/MeetingRepository.h"
@@ -84,11 +86,7 @@ bool looksLikeCallDevice(const QString& deviceName)
 
 QString shortDeviceName(const QString& deviceName)
 {
-    QString n = deviceName.trimmed();
-    static const QRegularExpression monitorPrefix(
-        QStringLiteral("^(monitor of|monitor:|loopback of|loopback:)\\s*"),
-        QRegularExpression::CaseInsensitiveOption);
-    n.remove(monitorPrefix);
+    QString n = audionames::stripMonitorPrefix(deviceName);
     // "Vendor Model - Profile" -> "Vendor Model".
     const int dash = n.indexOf(QStringLiteral(" - "));
     if (dash > 0) n = n.left(dash);
@@ -375,11 +373,7 @@ bool TrackCatalog::relocateTrack(const QString& meetingId, const QString& trackI
         // nor is the MIXDOWN: as a track it would later be deleted with a track delete, and the mix with it.
         rel = src.fileName();
         const Qt::CaseSensitivity cs =
-#if defined(Q_OS_WIN) || defined(Q_OS_MACOS)
-            Qt::CaseInsensitive;
-#else
-            Qt::CaseSensitive;
-#endif
+            paths::caseSensitiveFileSystem() ? Qt::CaseSensitive : Qt::CaseInsensitive;
         const QString mixName = MeetingLayout::mixdownOf(m);
         if (rel.compare(mixName, cs) == 0 || rel.startsWith(QStringLiteral("mixdown."), cs))
             return fail(tr("A lekeverés fájlja nem választható sávnak."));
