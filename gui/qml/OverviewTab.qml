@@ -65,6 +65,11 @@ Item {
         for (const s of vm.steps) if (s.key === "voice") return s.state
         return ""
     }
+    // Settings page that fixes a blocked voice step (no voice model installed), "" = not blocked.
+    readonly property string voiceFixTarget: {
+        for (const s of vm.steps) if (s.key === "voice") return s.fixTarget || ""
+        return ""
+    }
     readonly property bool identifyShown: root.beforeTranscription && pre.identifyAvailable
     readonly property bool reanalyzeShown: vm.canReanalyze && (root.voiceState === "done" || root.voiceState === "attention"
                                                                || root.voiceState === "waiting")
@@ -677,7 +682,7 @@ Item {
                                            ? transcribeStep : null
                         mixdownContent: root.beforeTranscription && (pre.mixdownState === "missing" || pre.mixdownState === "stale")
                                         ? mixdownStep : null
-                        voiceContent: root.identifyShown || root.reanalyzeShown ? voiceStep : null
+                        voiceContent: root.identifyShown || root.reanalyzeShown || root.voiceFixTarget !== "" ? voiceStep : null
                     }
 
                     // ---- tracks ----
@@ -749,6 +754,15 @@ Item {
                     font.pixelSize: 12
                     wrapMode: Text.Wrap
                 }
+            }
+            TButton {
+                objectName: "voiceFixButton"
+                visible: root.voiceFixTarget !== "" && !!root.shell
+                text: qsTr("Beállítások megnyitása")
+                size: "small"
+                iconName: "settings"
+                iconSize: 14
+                onClicked: root.shell.openSettings(root.voiceFixTarget)
             }
             TButton {
                 objectName: "reanalyzeButton"

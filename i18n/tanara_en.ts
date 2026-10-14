@@ -2097,6 +2097,10 @@
         <translation>Skipped: the speakers stay anonymous</translation>
     </message>
     <message>
+        <source>Beállítások megnyitása</source>
+        <translation>Open Settings</translation>
+    </message>
+    <message>
         <source>Újraelemzés</source>
         <translation>Re-analyze</translation>
     </message>
@@ -2741,13 +2745,6 @@
     <message>
         <source>Mindegyik javaslat felrakása</source>
         <translation>Apply all suggestions</translation>
-    </message>
-</context>
-<context>
-    <name>PipelineSteps</name>
-    <message>
-        <source>‖ párhuzamosan</source>
-        <translation>‖ in parallel</translation>
     </message>
 </context>
 <context>
@@ -10508,6 +10505,10 @@
     <message>
         <source>nincs hangmodell</source>
         <translation>no voice model</translation>
+    </message>
+    <message>
+        <source>Nincs hangmodell. Töltsd le a Beállításokban (Beszélők).</source>
+        <translation>No voice model. Download one in Settings (Speakers).</translation>
     </message>
     <message>
         <source>Hanglenyomat-elemzés</source>

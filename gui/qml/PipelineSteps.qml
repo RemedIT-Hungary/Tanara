@@ -3,8 +3,8 @@ import QtQuick.Layouts
 
 // PROCESSING steps: 22 px circle - done = successSoft + check; needs attention = warnSoft "!", row
 // raised + warnLine border; running = 2 px accent ring + 4 px progress bar; waiting = dashed
-// borderStrong circle. Parallel steps get a mono "|| in parallel" label.
-// steps: [{ key, title, sub, state, parallel, progress }] (OverviewViewModel.steps).
+// borderStrong circle. The model's `parallel` flag is not shown (developer hint).
+// steps: [{ key, title, sub, state, parallel, progress, fixTarget? }] (OverviewViewModel.steps).
 // mixdownContent / voiceContent / transcriptContent: content embedded below the step (before the
 // transcript, "Start transcription" in the "transcript" step; "Start mixdown" for manual mixdown).
 ColumnLayout {
@@ -86,22 +86,6 @@ ColumnLayout {
                         color: stepRow.state === "waiting" && !stepRow.extra ? Theme.textMuted : Theme.text
                         font.pixelSize: 13
                         font.weight: Theme.weightSemiBold
-                    }
-                    Rectangle {
-                        visible: stepRow.modelData.parallel === true
-                        implicitWidth: parLabel.implicitWidth + 10
-                        implicitHeight: 15
-                        radius: 3
-                        color: Theme.sunken
-                        TLabel {
-                            id: parLabel
-                            anchors.centerIn: parent
-                            text: qsTr("‖ párhuzamosan")
-                            mono: true
-                            muted: true
-                            font.pixelSize: 10
-                            font.weight: Theme.weightMedium
-                        }
                     }
                     Item { Layout.fillWidth: true }
                 }

@@ -849,7 +849,7 @@ Item {
                     }
                 }
                 Shown {
-                    caption: DemoText.t("PipelineSteps · done · running (haladás) · attention · waiting · párhuzamos", "PipelineSteps · done · running (progress) · attention · waiting · parallel")
+                    caption: DemoText.t("PipelineSteps · done · running (haladás) · attention · waiting", "PipelineSteps · done · running (progress) · attention · waiting")
                     PipelineSteps {
                         width: 340
                         steps: [{ key: "recording", title: DemoText.t("Felvétel", "Recording"), sub: DemoText.t("2:11:04 · 3 sáv", "2:11:04 · 3 tracks"), state: "done", parallel: false, progress: -1 },

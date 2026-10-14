@@ -769,7 +769,7 @@ tanara::library::OverviewSnapshot OverviewControllerFacade::snapshot(const QStri
                   : m.mixdownDirty ? QStringLiteral("attention")
                   : mixReady ? QStringLiteral("done") : QStringLiteral("waiting"),
                   false, mixRunning ? qMax(0, proc.mixdownPercent) : -1);
-    QString voiceSub, voiceState;
+    QString voiceSub, voiceState, voiceFixTarget;
     int voiceProgress = -1;
     if (s.analysisRunning) {
         // "track k / N" (per the core's participantAnalysisProgress signal); "running" until the first signal.
@@ -794,9 +794,18 @@ tanara::library::OverviewSnapshot OverviewControllerFacade::snapshot(const QStri
     } else {
         voiceSub = c->voiceIdentificationAvailable() ? tr("nem futott") : tr("nincs hangmodell");
         voiceState = m.hasTranscript ? QStringLiteral("done") : QStringLiteral("waiting");
+        // No usable voice model before the transcript: like the transcript step's blocker, warn and
+        // point to the Settings page that lists the downloadable models.
+        if (!m.hasTranscript && !c->voiceIdentificationAvailable()) {
+            voiceSub = tr("Nincs hangmodell. Töltsd le a Beállításokban (Beszélők).");
+            voiceState = QStringLiteral("attention");
+            voiceFixTarget = QStringLiteral("speakers");
+        }
     }
-    steps << step(QStringLiteral("voice"), tr("Hanglenyomat-elemzés"), voiceSub, voiceState, true,
-                  voiceProgress);
+    QVariantMap voiceStep = step(QStringLiteral("voice"), tr("Hanglenyomat-elemzés"), voiceSub, voiceState,
+                                 true, voiceProgress);
+    if (!voiceFixTarget.isEmpty()) voiceStep.insert(QStringLiteral("fixTarget"), voiceFixTarget);
+    steps << voiceStep;
     if (transcribeJob) {
         const QVariantMap d = ShellMeetingModel::describeJob(*transcribeJob);
         const int pct = d.value(QStringLiteral("percent")).toInt();

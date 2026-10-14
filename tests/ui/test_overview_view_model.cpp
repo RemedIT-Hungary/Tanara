@@ -128,6 +128,11 @@ private slots:
                  QStringLiteral("1 aktív · 1 kimaradt, nincs rajta beszéd"));
         QCOMPARE(stepOf(vm, QStringLiteral("transcript")).value("state").toString(), QStringLiteral("waiting"));
         QVERIFY(stepOf(vm, QStringLiteral("transcript")).value("parallel").toBool());
+        // Without a voice model the voice step is blocked like the transcript step: warning + the Settings page to fix it.
+        QCOMPARE(stepOf(vm, QStringLiteral("voice")).value("state").toString(), QStringLiteral("attention"));
+        QCOMPARE(stepOf(vm, QStringLiteral("voice")).value("fixTarget").toString(), QStringLiteral("speakers"));
+        QCOMPARE(stepOf(vm, QStringLiteral("voice")).value("sub").toString(),
+                 QStringLiteral("Nincs hangmodell. Töltsd le a Beállításokban (Beszélők)."));
         QCOMPARE(stepOf(vm, QStringLiteral("summary")).value("sub").toString(), QStringLiteral("az átirat után"));
         QVERIFY(!vm.allDone());
         QVERIFY(vm.stats().isEmpty());
