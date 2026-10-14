@@ -16,6 +16,9 @@
 #include <QQuickItem>
 #include <QQuickStyle>
 #include <QQuickWindow>
+#include <QGuiApplication>
+#include <QScreen>
+#include <cmath>
 #include <QTimer>
 
 namespace tanara_qml {
@@ -106,22 +109,50 @@ void prepareProcess(const QmlOptions& opts)
     // Our controls are built on Qt Quick Templates; where a stock control still shows
     // (ApplicationWindow, Overlay), it gets the neutral Basic style, not the desktop theme.
     QQuickStyle::setStyle(QStringLiteral("Basic"));
-    // Native (FreeType/DirectWrite) text rendering: sharper at small sizes, and a screenshot
-    // made with the software renderer then shows the same as the live window.
-    QQuickWindow::setTextRenderType(QQuickWindow::NativeTextRendering);
 
     if (opts.shotMode()) {
         // Without a visible window: the offscreen platform + software (QPainter) renderer. The module
         // uses no shaders (icons / shadows come from the image provider), so this gives a faithful image.
-        qputenv("QT_QPA_PLATFORM", "offscreen");
-        QQuickWindow::setGraphicsApi(QSGRendererInterface::Software);
+        if (!qEnvironmentVariableIsSet("TANARA_SHOT_GPU"))
+            qputenv("QT_QPA_PLATFORM", "offscreen");
+        // TANARA_SHOT_GPU=1: the real (OpenGL) scene graph on the platform from QT_QPA_PLATFORM / the
+        // session (a window shows briefly) instead, to check how the GPU renderer draws text (the
+        // software renderer ignores the text render type).
+        if (!qEnvironmentVariableIsSet("TANARA_SHOT_GPU"))
+            QQuickWindow::setGraphicsApi(QSGRendererInterface::Software);
         if (!qFuzzyCompare(opts.scale, 1.0))
             qputenv("QT_SCALE_FACTOR", QByteArray::number(opts.scale));
     }
 }
 
+void applyTextRendering()
+{
+    // Native (FreeType/DirectWrite) rendering is sharper at small sizes, and a software-renderer
+    // screenshot then matches the live window -- but its hinted glyphs are bitmap-resampled when the
+    // item lands on a fractional device pixel, which smears the text at a non-integer scale
+    // (KDE 1.15, Windows 125%). Qt's distance-field rendering is scale-invariant, so use it there.
+    // The render type is a process-wide default read when an item is created, i.e. before any window
+    // knows its own scale, so the decision comes from the primary screen. Wayland rounds a
+    // fractional scale UP for QScreen (1.15 -> 2): only a screen DPR of exactly 1 is trustworthy
+    // there, anything else may be fractional.
+    // TANARA_TEXT_RENDER=native|qt|auto overrides (auto = decide as described).
+    const QString mode = qEnvironmentVariable("TANARA_TEXT_RENDER", QStringLiteral("auto")).toLower();
+    const QScreen* screen = QGuiApplication::primaryScreen();
+    const qreal dpr = screen ? screen->devicePixelRatio() : 1.0;
+    const bool integerDpr = qFuzzyCompare(dpr, std::round(dpr));
+    const bool wayland = QGuiApplication::platformName().contains(QLatin1String("wayland"));
+    const bool safeNative = integerDpr && (!wayland || qFuzzyCompare(dpr, 1.0));
+    const bool native = mode == QLatin1String("native") || (mode != QLatin1String("qt") && safeNative);
+    QQuickWindow::setTextRenderType(native ? QQuickWindow::NativeTextRendering
+                                           : QQuickWindow::QtTextRendering);
+    qCInfo(lcQmlApp).noquote() << QStringLiteral("Szövegrenderelés: %1 (DPR %2, platform: %3, mód: %4)")
+                                      .arg(native ? QStringLiteral("native") : QStringLiteral("qt"))
+                                      .arg(dpr).arg(QGuiApplication::platformName(), mode);
+}
+
 void applyOptions(const QmlOptions& opts)
 {
+    applyTextRendering();
     AppContext* ctx = AppContext::instance();
     QString theme = opts.theme;
     if (theme.isEmpty())

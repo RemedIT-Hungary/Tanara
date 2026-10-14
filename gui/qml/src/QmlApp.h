@@ -44,9 +44,13 @@ struct QmlOptions {
 
 QmlOptions parseQmlOptions(const QStringList& args);
 
-// To call BEFORE constructing the Q(Gui)Application: Qt Quick settings (style, native text
-// rendering); in screenshot mode the offscreen platform + software renderer.
+// To call BEFORE constructing the Q(Gui)Application: Qt Quick settings (style); in screenshot mode the offscreen platform + software renderer.
 void prepareProcess(const QmlOptions& opts);
+
+// Picks the Qt Quick text render type from the primary screen's device pixel ratio (native at an
+// integer DPR, distance-field at a fractional one); TANARA_TEXT_RENDER=native|qt|auto overrides.
+// After the QGuiApplication, before any window; applyOptions() calls it.
+void applyTextRendering();
 
 // Sets up the App singleton from the switches (theme, demo). To call AFTER the QApplication.
 void applyOptions(const QmlOptions& opts);

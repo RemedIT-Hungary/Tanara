@@ -294,7 +294,7 @@ int main(int argc, char** argv) {
            "optikai eszköz formátum-egyeztetés). Ezek NEM hibák.";
 #endif
 
-    // Qt Quick settings (style, text rendering; offscreen platform in screenshot mode), BEFORE QApplication.
+    // Qt Quick settings (style; offscreen platform in screenshot mode), BEFORE QApplication.
     if (qmlMode)
         tanara_qml::prepareProcess(qmlOpts);
     else
