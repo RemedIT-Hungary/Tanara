@@ -1,6 +1,7 @@
 #include "ParticipantsServicesFacade.h"
 
 #include "ControllerEvents.h"
+#include "ParticipantSample.h"
 
 #include "tanara/app/SettingsManager.h"
 #include "tanara/editing/participants/ParticipantService.h"
@@ -65,8 +66,10 @@ ParticipantsState ParticipantsServicesFacade::state(const QString& meetingId) co
         st.analysisModelIds = file.modelIds;
         st.analysisAt = QDateTime::fromString(file.at, Qt::ISODate);
     }
+    QVector<TranscriptLine> lines;
     if (st.hasTranscript) {
-        for (const TranscriptLine& l : editing::speakeredit::loadTranscriptLines(m.folder))
+        lines = editing::speakeredit::loadTranscriptLines(m.folder);
+        for (const TranscriptLine& l : std::as_const(lines))
             if (!l.rawLabel.isEmpty() && !st.rawLabels.contains(l.rawLabel)) st.rawLabels << l.rawLabel;
     }
 
@@ -85,6 +88,23 @@ ParticipantsState ParticipantsServicesFacade::state(const QString& meetingId) co
         c.evidence = p.evidence;
         c.rawIds = p.rawSpeakerIds;
         c.sides = p.sides;
+        // The listenable sample: before the transcript the voice cluster's, after it the longest line
+        // of the bound raw speakers (on the track of the participant's cluster).
+        if (!c.manual) {
+            if (!st.hasTranscript) {
+                c.sample = tanara_qml::participantsample::clusterSample(file.clusters, p.id);
+            } else {
+                const TranscriptLine* longest = nullptr;
+                for (const TranscriptLine& l : std::as_const(lines)) {
+                    bool mine = false;
+                    for (const QString& raw : p.rawSpeakerIds)
+                        mine = mine || processing::participants::rawLabelOf(raw) == l.rawLabel;
+                    if (mine && (!longest || l.endMs - l.startMs > longest->endMs - longest->startMs)) longest = &l;
+                }
+                if (longest)
+                    c.sample = tanara_qml::participantsample::lineSample(file.clusters, p.id, longest->startMs, longest->endMs);
+            }
+        }
         st.candidates.append(c);
     }
     return st;

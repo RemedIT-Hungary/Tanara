@@ -264,6 +264,99 @@ private slots:
         p.pause();
     }
 
+    // playRange(trackId, startMs, endMs): a participant's voice sample. It plays the track from
+    // the span's start (meeting time -> file time via the track offset), stops itself at the end
+    // and the mixdown source / position come back; a second call for the same range stops it.
+    void trackRangePlaysStopsAndRestoresTheMixdown()
+    {
+        QTemporaryDir home;
+        QVERIFY(home.isValid());
+        qputenv("TANARA_HOME", home.path().toUtf8());
+        qputenv("TANARA_CLOUD", "off");
+        AppContext::instance()->setDemo(false);
+        PlayerController::setBackendFactory([](QObject* parent) -> PlayerBackend* {
+            ++FakeBackend::created;
+            return FakeBackend::last = new FakeBackend(parent);
+        });
+        {
+            tanara::app::AppController app;
+            tanara::Meeting m = app.store()->createMeeting(QStringLiteral("Minta"));
+            auto write = [&m](const QString& name) {
+                QFile f(QDir(m.folder).filePath(name));
+                if (f.open(QIODevice::WriteOnly)) f.write(QByteArray(100, 'x'));
+            };
+            tanara::Track late;
+            late.id = "late"; late.file = "track_late.ogg"; late.active = true;
+            late.startOffsetMs = 20000;
+            write(late.file);
+            write(QStringLiteral("mixdown.mp3"));
+            m.tracks = {late};
+            m.mixdownFile = QStringLiteral("mixdown.mp3");
+            m.durationMs = 60000;
+            app.store()->saveMeeting(m);
+
+            PlayerController p;
+            p.setFacade(tanara_qml::AppContext::instance()->servicesFor(&app).tracks(QString(), nullptr));
+            p.setMeetingId(m.id);
+            p.seek(7000);
+            p.play();
+            FakeBackend* b = FakeBackend::last;
+            QVERIFY(b);
+            const QString mixSource = b->sources.last();
+            QVERIFY(mixSource.endsWith(QLatin1String("mixdown.mp3")));
+
+            QSignalSpy playingSpy(&p, &PlayerController::rangePlayingChanged);
+            p.playRange(QStringLiteral("late"), 25000, 28000);
+            const QString key = QStringLiteral("late#25000-28000");
+            QCOMPARE(p.rangeKey(), key);
+            QVERIFY(p.rangePlaying());
+            QVERIFY(!p.playing());                       // the mixdown stops
+            QVERIFY(b->sources.last().endsWith(QLatin1String("track_late.ogg")));
+            QCOMPARE(b->pos, 5000);                      // meeting 25 s - the track offset 20 s
+            QCOMPARE(p.previewMeetingMs(), 25000);
+            QVERIFY(playingSpy.count() >= 1);
+
+            // Still inside the range: keeps playing.
+            b->pos = 7500;                               // meeting 27.5 s
+            QTest::qWait(80);
+            QVERIFY(p.rangePlaying());
+
+            // At endMs it stops by itself; the mixdown comes back at its old position.
+            b->pos = 8000;                               // meeting 28 s
+            QTRY_VERIFY(!p.rangePlaying());
+            QCOMPARE(p.rangeKey(), QString());
+            QCOMPARE(p.previewPath(), QString());
+            QCOMPARE(p.positionMs(), 7000);
+            p.play();
+            QCOMPARE(b->sources.last(), mixSource);
+            QCOMPARE(b->pos, 7000);
+            p.pause();
+
+            // A second call while it plays stops it; a different range switches over.
+            p.playRange(QStringLiteral("late"), 25000, 28000);
+            QVERIFY(p.rangePlaying());
+            p.playRange(QStringLiteral("late"), 25000, 28000);
+            QVERIFY(!p.rangePlaying());
+            QCOMPARE(p.rangeKey(), QString());
+            p.playRange(QStringLiteral("late"), 25000, 28000);
+            p.playRange(QStringLiteral("late"), 30000, 33000);
+            QCOMPARE(p.rangeKey(), QStringLiteral("late#30000-33000"));
+            QCOMPARE(b->pos, 10000);
+            // A plain track preview ends the sample mode (no stop at the old end).
+            p.playTrack(QStringLiteral("late"), 22000);
+            QCOMPARE(p.rangeKey(), QString());
+            QVERIFY(!p.rangePlaying());
+            QVERIFY(p.previewPlaying());
+            // Unknown track / bad range: nothing starts.
+            p.stopPreview();
+            p.playRange(QStringLiteral("nincs"), 1000, 2000);
+            p.playRange(QStringLiteral("late"), 5000, 5000);
+            QCOMPARE(p.rangeKey(), QString());
+            QVERIFY(!p.previewPlaying());
+        }
+        qunsetenv("TANARA_HOME");
+    }
+
     void realMeetingResolvesMixdownOrLargestTrack()
     {
         QTemporaryDir home;

@@ -2689,6 +2689,10 @@
         <translation>Search name</translation>
     </message>
     <message>
+        <source>Hallgasd meg a hangot</source>
+        <translation>Listen to the voice</translation>
+    </message>
+    <message>
         <source>„%1”</source>
         <translation>&quot;%1&quot;</translation>
     </message>
@@ -3994,6 +3998,17 @@
     <message>
         <source>Túl rövidek a hang-ellenőrzéshez — csak tájékoztató</source>
         <translation>Too short for the voice check — informational only</translation>
+    </message>
+</context>
+<context>
+    <name>SampleButton</name>
+    <message>
+        <source>Minta leállítása</source>
+        <translation>Stop sample</translation>
+    </message>
+    <message>
+        <source>Minta meghallgatása (%1 s)</source>
+        <translation>Listen to the sample (%1 s)</translation>
     </message>
 </context>
 <context>

@@ -16,7 +16,9 @@ import QtQuick.Templates as T
 // ("nameable") can be named by click or the right-hand "Name..." button (nameRequested).
 // Track chips: after the source badges come the speaker's tracks (ParticipantTrackChips; a click
 // toggles the binding; same data as the "Why them?" WHICH TRACK DOES THEY SPEAK ON? chips).
-// people: OverviewViewModel.participants · trackBinder: ParticipantTrackBinder
+// Voice sample: a round play / stop button at the row's left when the row carries a sample
+// (sampleTrackId / sampleStartMs / sampleEndMs; SampleButton, PlayerController.playRange).
+// people: OverviewViewModel.participants · trackBinder: ParticipantTrackBinder · player: PlayerController
 Rectangle {
     id: root
 
@@ -25,6 +27,10 @@ Rectangle {
     property bool canExplain: true
     // Speaker -> track binding: ParticipantTrackBinder; null -> no track chips.
     property var trackBinder: null
+    // PlayerController: the round play button at a row's left (the voice sample); null -> none.
+    property var player: null
+    readonly property bool anySample: player !== null && (people || []).some(
+        p => (p.sampleTrackId || "") !== "" && p.sampleStartMs >= 0 && p.sampleEndMs > p.sampleStartMs)
 
     signal addRequested(string name)
     signal removeRequested(string id)
@@ -143,6 +149,16 @@ Rectangle {
                               leftMargin: 12; rightMargin: 12 }
                     spacing: 10
 
+                    // The voice sample (reserved on every row once any row has one: the avatars align).
+                    Item {
+                        visible: root.anySample
+                        implicitWidth: 26; implicitHeight: 26
+                        SampleButton {
+                            anchors.fill: parent
+                            player: root.player
+                            row: row.modelData
+                        }
+                    }
                     Item {
                         implicitWidth: 26; implicitHeight: 26
                         TAvatar {

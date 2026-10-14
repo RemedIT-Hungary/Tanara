@@ -14,6 +14,7 @@
 #include "tanara/library/store/PeopleStore.h"
 #include "tanara/library/store/MeetingRepository.h"
 #include "tanara/library/tags/TagService.h"
+#include "tanara/processing/analysis/ParticipantAnalysis.h"
 
 #include <QQmlComponent>
 #include <QQmlEngine>
@@ -247,6 +248,30 @@ private slots:
         QVERIFY(rowOf(vm, "v1").value("mappingPending").toBool());
         QCOMPARE(rowOf(vm, "c1").value("mapping").toString(), QString());   // not heard
         QVERIFY(vm.infoText().contains(QStringLiteral("átirat")));
+    }
+
+    // The rows carry the voice cluster's sample (sampleTrackId / sampleStartMs / sampleEndMs, parsed from
+    // sampleRef); a candidate without a cluster (invited, not heard) has none.
+    void rowsCarryTheClusterSample()
+    {
+        seedMeeting(false);
+        tanara::processing::ParticipantAnalysisFile file;
+        file.at = QStringLiteral("2026-10-14T10:00:00Z");
+        tanara::VoiceCluster c;
+        c.trackId = QStringLiteral("mic");
+        c.participantId = QStringLiteral("v1");
+        c.windows = {{20000, 26000}};
+        c.sampleRef = QStringLiteral("track_mic.ogg#20500-26500");
+        file.clusters = {c};
+        QVERIFY(file.save(m_app->store()->load(m_meetingId).folder));
+        ParticipantsViewModel vm(services());
+        vm.setMeetingId(m_meetingId);
+        QCOMPARE(rowOf(vm, "v1").value("sampleTrackId").toString(), QStringLiteral("mic"));
+        QCOMPARE(rowOf(vm, "v1").value("sampleStartMs").toLongLong(), 20500);
+        QCOMPARE(rowOf(vm, "v1").value("sampleEndMs").toLongLong(), 26500);
+        QCOMPARE(rowOf(vm, "v2").value("sampleTrackId").toString(), QString());
+        QCOMPARE(rowOf(vm, "v2").value("sampleStartMs").toLongLong(), -1);
+        QCOMPARE(rowOf(vm, "c1").value("sampleEndMs").toLongLong(), -1);
     }
 
     void workingCopyThenApprove()

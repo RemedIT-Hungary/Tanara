@@ -45,7 +45,18 @@ QVariantMap personRow(const QString& id, const QString& name, int colorIndex, co
             {QStringLiteral("self"), self}, {QStringLiteral("suggested"), suggested},
             {QStringLiteral("dimmed"), dimmed}, {QStringLiteral("removable"), removable},
             {QStringLiteral("speakerKey"), QString()}, {QStringLiteral("anonymous"), false},
-            {QStringLiteral("unheard"), false}};
+            {QStringLiteral("unheard"), false},
+            {QStringLiteral("sampleTrackId"), QString()}, {QStringLiteral("sampleStartMs"), qint64(-1)},
+            {QStringLiteral("sampleEndMs"), qint64(-1)}};
+}
+
+// A fictional 6 s sample on the demo's mic / call track (the silent demo engine "plays" it).
+QVariantMap withSample(QVariantMap row, const QString& trackId, qint64 startMs)
+{
+    row.insert(QStringLiteral("sampleTrackId"), trackId);
+    row.insert(QStringLiteral("sampleStartMs"), startMs);
+    row.insert(QStringLiteral("sampleEndMs"), startMs + 6000);
+    return row;
 }
 
 // A participant not tied to a speaker (added manually, never spoke): a dim row with a "not heard"
@@ -217,6 +228,17 @@ tanara::library::OverviewSnapshot OverviewDemoFacade::build() const
                           -1.0, false, true, false, true);
         s.peopleState = QStringLiteral("list");
         s.peopleHint = tr("naptár · hang · címke · kézi");
+    }
+    // Fictional samples: every heard row (not the dim / suggested ones) can be listened to.
+    if (done || (!empty && !recorded && !transcribingOnly && !nobody)) {
+        const QStringList heard = {QStringLiteral("p1"), QStringLiteral("p2"), QStringLiteral("p3"),
+                                   QStringLiteral("p4"), QStringLiteral("S5")};
+        for (QVariant& v : rows) {
+            const QVariantMap row = v.toMap();
+            const int n = int(heard.indexOf(row.value(QStringLiteral("id")).toString()));
+            if (n >= 0 && !row.value(QStringLiteral("dimmed")).toBool())
+                v = withSample(row, n == 0 ? QStringLiteral("mic") : QStringLiteral("call"), 42000 + 31000 * n);
+        }
     }
     s.participants = rows;
     s.anonymousSpeakers.clear();

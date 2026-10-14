@@ -23,6 +23,16 @@
 
 namespace tanara::editing {
 
+// A listenable sample of a participant: one span of one track, in MEETING time (what
+// PlayerController::playRange(trackId, startMs, endMs) takes). Before the transcript it is the
+// voice cluster's representative window; after it, the speaker's longest line.
+struct ParticipantSample {
+    QString trackId;
+    qint64 startMs = -1;
+    qint64 endMs = -1;
+    bool isValid() const { return !trackId.isEmpty() && startMs >= 0 && endMs > startMs; }
+};
+
 // One candidate of the meeting as the dialog starts from it.
 struct ParticipantCandidate {
     QString id;                         // the participant's id within the meeting
@@ -36,6 +46,7 @@ struct ParticipantCandidate {
     QVector<Evidence> evidence;
     QStringList rawIds;                 // the bound raw speakers
     QStringList sides;                  // "mic" | "loopback": heard on
+    ParticipantSample sample;           // invalid: nothing to listen to (manual, no audio)
 };
 
 struct ParticipantsState {

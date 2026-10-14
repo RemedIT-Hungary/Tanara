@@ -200,6 +200,7 @@ void ParticipantsViewModel::load()
         r.evidence = c.evidence;
         r.rawIds = c.rawIds;
         r.sides = c.sides;
+        r.sample = c.sample;
         r.heard = !c.sides.isEmpty();
         r.manual = c.manual;
         r.colorIndex = color++;
@@ -307,7 +308,10 @@ QVariantMap ParticipantsViewModel::rowMap(const Row& r) const
             {QStringLiteral("evidence"), evs},
             {QStringLiteral("mapping"), mapping},
             {QStringLiteral("mappingPending"), pending},
-            {QStringLiteral("mappingDoubt"), doubt}};
+            {QStringLiteral("mappingDoubt"), doubt},
+            {QStringLiteral("sampleTrackId"), r.sample.isValid() ? r.sample.trackId : QString()},
+            {QStringLiteral("sampleStartMs"), r.sample.isValid() ? r.sample.startMs : qint64(-1)},
+            {QStringLiteral("sampleEndMs"), r.sample.isValid() ? r.sample.endMs : qint64(-1)}};
 }
 
 QVariantList ParticipantsViewModel::groups() const

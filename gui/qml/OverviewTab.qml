@@ -151,6 +151,7 @@ Item {
             return
         }
         namePicker.speakerKey = row.speakerKey
+        namePicker.sampleRow = row
         const p = anchor.mapToItem(root, 0, anchor.height)
         namePicker.x = Math.max(8, Math.min(root.width - namePicker.width - 8, p.x + anchor.width - namePicker.width))
         namePicker.y = p.y + 6
@@ -444,6 +445,7 @@ Item {
                         people: vm.participants
                         canExplain: vm.hasTranscript
                         trackBinder: trackBinder
+                        player: root.player
                         onAddRequested: (name) => vm.addParticipant(name)
                         onRemoveRequested: (id) => vm.removeParticipant(id)
                         onWhyRequested: (key) => root.explainSpeaker(key)
@@ -792,6 +794,7 @@ Item {
         id: namePicker
         objectName: "overviewNamePicker"
         property string speakerKey: ""
+        player: root.player
         editor: root.editor
         anonymousText: ""
         hintText: qsTr("A beszélő minden sora a választott névre kerül; Ctrl+Z visszavonja.")

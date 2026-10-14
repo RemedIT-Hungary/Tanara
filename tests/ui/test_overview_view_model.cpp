@@ -16,6 +16,7 @@
 #include "tanara/library/store/MeetingRepository.h"
 #include "tanara/library/store/PeopleStore.h"
 #include "tanara/library/tags/TagService.h"
+#include "tanara/processing/analysis/ParticipantAnalysis.h"
 
 #include <QFile>
 #include <QJsonArray>
@@ -197,6 +198,104 @@ private slots:
         QVERIFY(after.approval->solo);
         QTRY_COMPARE(vm.peopleHint(), QStringLiteral("csak én beszéltem"));
         QCOMPARE(stepOf(vm, QStringLiteral("voice")).value("sub").toString(), QStringLiteral("csak én beszéltem"));
+    }
+
+    // The row carries the voice sample to listen to (sampleTrackId / sampleStartMs / sampleEndMs, meeting
+    // time): before the transcript the participant's cluster sample (parsed from sampleRef), a manual
+    // participant has none; after the transcript the speaker's longest line on the cluster's track.
+    void rowsCarryTheVoiceSample()
+    {
+        const tanara::Meeting m = recording(QStringLiteral("Minta"));
+        tanara::Participant voice;
+        voice.id = QStringLiteral("p-voice");
+        voice.source = tanara::ParticipantSource::Voice;
+        voice.sides = {QStringLiteral("mic")};
+        tanara::Participant manual;
+        manual.id = QStringLiteral("p-manual");
+        manual.source = tanara::ParticipantSource::Manual;
+        tanara::Meeting saved = m_app->store()->load(m.id);
+        saved.participants = {voice, manual};
+        m_app->store()->saveMeeting(saved);
+        tanara::processing::ParticipantAnalysisFile file;
+        file.at = QStringLiteral("2026-10-14T10:00:00Z");
+        tanara::VoiceCluster small, big, other;
+        small.trackId = QStringLiteral("system");
+        small.participantId = QStringLiteral("p-voice");
+        small.windows = {{1000, 4000}};
+        small.sampleRef = QStringLiteral("track_system.wav#1000-4000");
+        big.trackId = QStringLiteral("mic");
+        big.participantId = QStringLiteral("p-voice");
+        big.windows = {{10000, 16000}, {20000, 26000}};
+        big.sampleRef = QStringLiteral("track_mic.wav#12500-18500");
+        other.trackId = QStringLiteral("mic");
+        other.participantId = QStringLiteral("p-else");
+        other.windows = {{0, 9000}};
+        other.sampleRef = QStringLiteral("track_mic.wav#0-6000");
+        file.clusters = {small, big, other};
+        QVERIFY(file.save(m.folder));
+
+        OverviewViewModel vm(facadetest::overviewOf(m_app.get()));
+        vm.setMeetingId(m.id);
+        QCOMPARE(vm.participants().size(), 2);
+        const QVariantMap v = vm.participants().at(0).toMap();
+        QCOMPARE(v.value("id").toString(), QStringLiteral("p-voice"));
+        QCOMPARE(v.value("sampleTrackId").toString(), QStringLiteral("mic"));   // the larger cluster
+        QCOMPARE(v.value("sampleStartMs").toLongLong(), 12500);
+        QCOMPARE(v.value("sampleEndMs").toLongLong(), 18500);
+        const QVariantMap mn = vm.participants().at(1).toMap();
+        QCOMPARE(mn.value("sampleTrackId").toString(), QString());
+        QCOMPARE(mn.value("sampleStartMs").toLongLong(), -1);
+        QCOMPARE(mn.value("sampleEndMs").toLongLong(), -1);
+    }
+
+    void rowsCarryTheLongestLineAfterTheTranscript()
+    {
+        tanara::Meeting m = transcribed(QStringLiteral("Hosszú sor"));
+        QFile seg(QDir(m.folder).filePath(QStringLiteral("transcript.segments.json")));
+        QVERIFY(seg.open(QIODevice::WriteOnly | QIODevice::Truncate));
+        seg.write(QJsonDocument(QJsonArray{
+            QJsonObject{{"startMs", 0}, {"endMs", 900}, {"speaker", "Beszélő 1"}, {"text", "Rövid."}},
+            QJsonObject{{"startMs", 5000}, {"endMs", 8000}, {"speaker", "Beszélő 1"}, {"text", "Ez a hosszabb."}},
+            QJsonObject{{"startMs", 30000}, {"endMs", 60000}, {"speaker", "Beszélő 2"}, {"text", "Nagyon hosszú."}}}).toJson());
+        seg.close();
+        tanara::Participant p;
+        p.id = QStringLiteral("p-one");
+        p.source = tanara::ParticipantSource::Voice;
+        p.rawSpeakerIds = {QStringLiteral("Beszélő 1")};
+        m = m_app->store()->load(m.id);
+        m.participants = {p};
+        m_app->store()->saveMeeting(m);
+        tanara::processing::ParticipantAnalysisFile file;
+        file.at = QStringLiteral("2026-10-14T10:00:00Z");
+        tanara::VoiceCluster mic, sys;
+        mic.trackId = QStringLiteral("mic");
+        mic.participantId = QStringLiteral("p-one");
+        mic.windows = {{0, 900}};
+        mic.sampleRef = QStringLiteral("track_mic.wav#0-900");
+        sys.trackId = QStringLiteral("system");
+        sys.participantId = QStringLiteral("p-one");
+        sys.windows = {{4500, 8500}};
+        sys.sampleRef = QStringLiteral("track_system.wav#4500-8500");
+        file.clusters = {mic, sys};
+        QVERIFY(file.save(m.folder));
+
+        OverviewViewModel vm(facadetest::overviewOf(m_app.get()));
+        vm.setMeetingId(m.id);
+        QVERIFY(vm.hasTranscript());
+        bool found = false;
+        for (const QVariant& v : vm.participants()) {
+            const QVariantMap row = v.toMap();
+            if (row.value("id").toString() != QLatin1String("p-one")) continue;
+            found = true;
+            QCOMPARE(row.value("sampleTrackId").toString(), QStringLiteral("system"));   // overlaps the line most
+            QCOMPARE(row.value("sampleStartMs").toLongLong(), 5000);
+            QCOMPARE(row.value("sampleEndMs").toLongLong(), 8000);
+        }
+        QVERIFY(found);
+        // A speaker with no participant record (no cluster): nothing to play.
+        for (const QVariant& v : vm.participants())
+            if (v.toMap().value("id").toString() != QLatin1String("p-one"))
+                QCOMPARE(v.toMap().value("sampleTrackId").toString(), QString());
     }
 
     // After the transcript, with only anonymous speakers: "nobody" + the raw speakers with their share; DATA tiles.
@@ -406,6 +505,18 @@ private slots:
         }
         QVERIFY(found);
         QCOMPARE(unheard, 1);
+        // The heard rows carry a fictional sample; the dim (not heard) row does not.
+        int withSample = 0;
+        for (const QVariant& v : vm.participants()) {
+            const QVariantMap row = v.toMap();
+            const bool has = !row.value("sampleTrackId").toString().isEmpty();
+            QCOMPARE(has, !row.value("unheard").toBool());
+            if (has) {
+                ++withSample;
+                QCOMPARE(row.value("sampleEndMs").toLongLong() - row.value("sampleStartMs").toLongLong(), 6000);
+            }
+        }
+        QVERIFY(withSample >= 4);
         QVERIFY(names(vm).contains(QStringLiteral("Szabó Bence")));
         QVERIFY(vm.canReanalyze());
 

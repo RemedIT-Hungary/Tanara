@@ -62,6 +62,9 @@ class PlayerController : public QObject {
     // the playhead in MEETING time.
     Q_PROPERTY(QString previewTrackId READ previewTrackId NOTIFY previewPathChanged)
     Q_PROPERTY(int previewMeetingMs READ previewMeetingMs NOTIFY previewPositionMsChanged)
+    // The track range being listened to (playRange(trackId, startMs, endMs)); see there.
+    Q_PROPERTY(bool rangePlaying READ rangePlaying NOTIFY rangePlayingChanged)
+    Q_PROPERTY(QString rangeKey READ rangeKey NOTIFY rangeKeyChanged)
 
 public:
     // A track's point in meeting time: which segment file (index into meeting.tracks) and where
@@ -108,6 +111,8 @@ public:
     bool sourceIsMixdown() const { return m_sourceIsMixdown; }
     QString previewTrackId() const { return m_previewTrackId; }
     int previewMeetingMs() const { return int(m_previewOffsetMs + m_previewPositionMs); }
+    bool rangePlaying() const { return !m_trackRangeKey.isEmpty() && m_previewPlaying; }
+    QString rangeKey() const { return m_trackRangeKey; }
 
     Q_INVOKABLE void play();
     Q_INVOKABLE void pause();
@@ -129,6 +134,13 @@ public:
     Q_INVOKABLE void toggleTrack(const QString& trackId);
     // Re-resolves the source (e.g. the mixdown became ready) keeping the position.
     Q_INVOKABLE void reload();
+    // Listen to one span of a TRACK in meeting time (a participant's voice sample): a track
+    // preview that starts at startMs and stops itself at endMs (stopPreview: the mixdown source
+    // and position are restored as after any preview). Calling it again for the SAME range while
+    // it plays stops it. rangeKey identifies the active range, "<trackId>#<startMs>-<endMs>" (empty
+    // when none); rangePlaying is true while it sounds (a row shows a stop icon).
+    Q_INVOKABLE void playRange(const QString& trackId, qint64 startMs, qint64 endMs);
+    static QString rangeKeyOf(const QString& trackId, qint64 startMs, qint64 endMs);
 
 signals:
     void meetingIdChanged();
@@ -144,6 +156,8 @@ signals:
     void previewPlayingChanged();
     void previewPositionMsChanged();
     void previewDurationMsChanged();
+    void rangePlayingChanged();
+    void rangeKeyChanged();
     void errorOccurred(const QString& message);
 
 private:
@@ -184,6 +198,9 @@ private:
     qreal m_volume = 1.0;
 
     void loadPreview(const QString& absolutePath, qint64 fileMs);
+    void clearTrackRange();
+    QString m_trackRangeKey;        // active playRange(trackId, ...) key; empty = none
+    qint64 m_trackRangeEndMs = -1;  // its end in meeting time
     QString m_previewTrackId;   // for a track preview, the logical track's leading id
     QString m_previewSegmentId; // the id of the segment now playing
     qint64 m_previewOffsetMs = 0;

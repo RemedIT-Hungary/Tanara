@@ -19,6 +19,10 @@ TPopover {
     // Label of the anonymous option (empty -> no such row).
     property string anonymousText: qsTr("Névtelen résztvevő")
     // The bottom help row.
+    // Optional voice sample to listen to before naming: the Overview row (sampleTrackId /
+    // sampleStartMs / sampleEndMs) + the PlayerController; no sample -> no row.
+    property var sampleRow: null
+    property var player: null
     property string hintText: qsTr("A beszélő névtelenül is maradhat; később is elnevezheted.")
 
     signal personChosen(string name)
@@ -82,6 +86,31 @@ TPopover {
                 Keys.onReturnPressed: control.choose(control.currentIndex)
                 Keys.onEnterPressed: control.choose(control.currentIndex)
                 Keys.onEscapePressed: control.close()
+            }
+            TDivider { anchors.bottom: parent.bottom; width: parent.width }
+        }
+
+        // The voice sample (naming an unknown voice): listen first.
+        Item {
+            visible: sampleButton.visible
+            width: parent.width
+            height: visible ? 40 : 0
+            Row {
+                x: 14
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: 10
+                SampleButton {
+                    id: sampleButton
+                    anchors.verticalCenter: parent.verticalCenter
+                    player: control.player
+                    row: control.sampleRow
+                }
+                TLabel {
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: qsTr("Hallgasd meg a hangot")
+                    muted: true
+                    font.pixelSize: Theme.fontCaption
+                }
             }
             TDivider { anchors.bottom: parent.bottom; width: parent.width }
         }

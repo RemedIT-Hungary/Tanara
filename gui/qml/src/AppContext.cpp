@@ -14,6 +14,7 @@
 #include "RecorderViewModel.h"
 #include "ShellMeetingModel.h"
 #include "SummaryServicesFacade.h"
+#include "ParticipantSample.h"
 #include "TrackActivitySource.h"
 #include "TranscribeStepServicesFacade.h"
 #include "TranscriptEditorServicesFacade.h"
@@ -43,6 +44,7 @@
 #include "tanara/library/summary/SummaryRepository.h"
 #include "tanara/library/store/TranscriptRepository.h"
 #include "tanara/library/tags/TagService.h"
+#include "tanara/processing/analysis/ParticipantAnalysis.h"
 // --- P15-6a ---
 #include "MeetingNoteServicesFacade.h"
 #include "SettingsServicesFacade.h"
@@ -479,7 +481,20 @@ QVariantMap personRow(const QString& id, const QString& name, int colorIndex, co
             {QStringLiteral("self"), self}, {QStringLiteral("suggested"), suggested},
             {QStringLiteral("dimmed"), dimmed}, {QStringLiteral("removable"), removable},
             {QStringLiteral("speakerKey"), QString()}, {QStringLiteral("anonymous"), false},
-            {QStringLiteral("unheard"), false}};
+            {QStringLiteral("unheard"), false},
+            {QStringLiteral("sampleTrackId"), QString()}, {QStringLiteral("sampleStartMs"), qint64(-1)},
+            {QStringLiteral("sampleEndMs"), qint64(-1)}};
+}
+
+// The row's listenable sample (meeting time; PlayerController::playRange(trackId, startMs, endMs)).
+QVariantMap withSample(QVariantMap row, const tanara::editing::ParticipantSample& sample)
+{
+    if (sample.isValid()) {
+        row.insert(QStringLiteral("sampleTrackId"), sample.trackId);
+        row.insert(QStringLiteral("sampleStartMs"), sample.startMs);
+        row.insert(QStringLiteral("sampleEndMs"), sample.endMs);
+    }
+    return row;
 }
 
 // After the transcript, a participant not tied to a speaker (never spoke / added manually):
@@ -626,6 +641,12 @@ tanara::library::OverviewSnapshot OverviewControllerFacade::snapshot(const QStri
     editing::SpeakerEditSession* ed = m.hasTranscript ? c->editSession(m.id) : nullptr;
     const QVector<editing::EditorSpeaker> speakers = ed ? ed->speakers() : QVector<editing::EditorSpeaker>();
 
+    // The voice analysis' clusters: the samples to listen to (the Participant record carries none).
+    const QVector<VoiceCluster> clusters = (m.id.isEmpty() || parts.isEmpty())
+        ? QVector<VoiceCluster>() : processing::ParticipantAnalysisFile::load(m.folder).clusters;
+    QVector<editing::EditorUtterance> utterances;
+    if (ed) utterances = ed->utterances();
+
     QVariantList rows;
     PersonIds names;            // the people already listed
     QVariantList anonymous;
@@ -650,12 +671,29 @@ tanara::library::OverviewSnapshot OverviewControllerFacade::snapshot(const QStri
             QString name = s.displayName;
             if (self) name = tr("%1 (te)").arg(name);
             const QVariantList src = match ? sourcesOf(*match, false) : QVariantList();
+            // The sample: the speaker's longest line (not a noisy / ignored one, if there is another),
+            // on the track of the participant's voice cluster.
+            editing::ParticipantSample sample;
+            if (match) {
+                const editing::EditorUtterance* longest = nullptr;
+                for (const editing::EditorUtterance& u : std::as_const(utterances)) {
+                    if (u.speakerKey != s.key) continue;
+                    const bool clean = !u.noisy && !u.ignored;
+                    const bool longer = !longest || (clean && (longest->noisy || longest->ignored))
+                                        || (clean == (!longest->noisy && !longest->ignored)
+                                            && u.endMs - u.startMs > longest->endMs - longest->startMs);
+                    if (longer) longest = &u;
+                }
+                if (longest)
+                    sample = participantsample::lineSample(clusters, match->id, longest->startMs, longest->endMs);
+            }
             // Removable: with a participant record, or without one too if it has a name (its rows
             // become anonymous: AppController::removeParticipant with the speaker key).
-            rows << withSpeaker(personRow(match ? match->id : s.key, name, s.colorIndex,
-                                          s.anonymous ? tr("névtelen · elnevezhető") : QString(), src,
-                                          s.talkShare, self, false, false, match != nullptr || !s.anonymous),
-                                s.key, s.anonymous);
+            rows << withSample(withSpeaker(personRow(match ? match->id : s.key, name, s.colorIndex,
+                                                     s.anonymous ? tr("névtelen · elnevezhető") : QString(), src,
+                                                     s.talkShare, self, false, false, match != nullptr || !s.anonymous),
+                                           s.key, s.anonymous),
+                               sample);
             if (!s.personId.isNull()) names << s.personId;
             anonymous << QVariantMap{{QStringLiteral("name"), s.displayName},
                                      {QStringLiteral("share"), s.talkShare},
@@ -679,11 +717,14 @@ tanara::library::OverviewSnapshot OverviewControllerFacade::snapshot(const QStri
             const bool self = !selfId.isNull() && p.personId == selfId;
             QString name = p.personId.isNull() ? tr("Ismeretlen hang %1").arg(i + 1) : nameOf(p.personId);
             if (self) name = tr("%1 (te)").arg(name);
-            rows << withSpeaker(personRow(p.id, name, i,
-                                          p.personId.isNull() ? tr("névtelen · elnevezhető") : QString(),
-                                          sourcesOf(p, self), p.talkShare > 0 ? p.talkShare : -1.0, self,
-                                          false, false, true),
-                                QString(), p.personId.isNull());
+            // Before the transcript: the participant's voice cluster sample (manual: none).
+            rows << withSample(withSpeaker(personRow(p.id, name, i,
+                                                     p.personId.isNull() ? tr("névtelen · elnevezhető") : QString(),
+                                                     sourcesOf(p, self), p.talkShare > 0 ? p.talkShare : -1.0, self,
+                                                     false, false, true),
+                                           QString(), p.personId.isNull()),
+                               p.source == ParticipantSource::Manual ? editing::ParticipantSample()
+                                                                     : participantsample::clusterSample(clusters, p.id));
             if (!p.personId.isNull()) names << p.personId;
             ++i;
         }

@@ -403,6 +403,7 @@ void PlayerController::playFile(const QString& absolutePath)
         emit errorOccurred(tr("A hangfájl nem található: %1").arg(absolutePath));
         return;
     }
+    clearTrackRange();
     m_previewTrackId.clear();
     m_previewSegmentId.clear();
     m_previewOffsetMs = 0;
@@ -436,6 +437,7 @@ void PlayerController::playTrack(const QString& trackId, int meetingMs)
 {
     if (trackId.isEmpty())
         return;
+    clearTrackRange();
     QString path;
     TrackSeek seek;
     if (live() && !m_meetingId.isEmpty()) {
@@ -472,8 +474,49 @@ void PlayerController::playTrack(const QString& trackId, int meetingMs)
     loadPreview(path, seek.fileMs);
 }
 
+QString PlayerController::rangeKeyOf(const QString& trackId, qint64 startMs, qint64 endMs)
+{
+    return QStringLiteral("%1#%2-%3").arg(trackId).arg(startMs).arg(endMs);
+}
+
+void PlayerController::clearTrackRange()
+{
+    if (m_trackRangeKey.isEmpty())
+        return;
+    const bool wasPlaying = rangePlaying();
+    m_trackRangeKey.clear();
+    m_trackRangeEndMs = -1;
+    emit rangeKeyChanged();
+    if (wasPlaying)
+        emit rangePlayingChanged();
+}
+
+void PlayerController::playRange(const QString& trackId, qint64 startMs, qint64 endMs)
+{
+    if (trackId.isEmpty() || startMs < 0 || endMs <= startMs)
+        return;
+    const QString key = rangeKeyOf(trackId, startMs, endMs);
+    if (key == m_trackRangeKey && m_previewPlaying) {
+        stopPreview();           // a second call while it plays: stop
+        return;
+    }
+    playTrack(trackId, int(startMs));        // clears any earlier range
+    // playTrack may refuse (missing file / unknown track): then nothing plays, no range.
+    if (m_previewPath.isEmpty() || m_previewTrackId.isEmpty())
+        return;
+    m_trackRangeKey = key;
+    m_trackRangeEndMs = endMs;
+    emit rangeKeyChanged();
+    if (m_previewPlaying)
+        emit rangePlayingChanged();
+}
+
 void PlayerController::toggleTrack(const QString& trackId)
 {
+    if (!m_trackRangeKey.isEmpty() && m_previewTrackId == trackId) {
+        stopPreview();           // a track button while its sample runs: end the sample
+        return;
+    }
     if (!m_previewTrackId.isEmpty() && m_previewTrackId == trackId && !m_previewPath.isEmpty() && m_backend) {
         if (m_previewPlaying) m_backend->pause();
         else m_backend->play();
@@ -488,6 +531,7 @@ void PlayerController::stopPreview()
         return;
     if (m_backend)
         m_backend->pause();
+    clearTrackRange();
     m_previewPath.clear();
     m_previewTrackId.clear();
     m_previewSegmentId.clear();
@@ -549,6 +593,8 @@ void PlayerController::onTick()
             m_previewPositionMs = pos;
             emit previewPositionMsChanged();
         }
+        if (m_trackRangeEndMs >= 0 && previewMeetingMs() >= m_trackRangeEndMs)
+            stopPreview();       // the sample's end: back to the mixdown
         return;
     }
     if (!m_mixLoaded || m_ended)
@@ -566,6 +612,8 @@ void PlayerController::onBackendPlaying(bool playing)
         if (playing != m_previewPlaying) {
             m_previewPlaying = playing;
             emit previewPlayingChanged();
+            if (!m_trackRangeKey.isEmpty())
+                emit rangePlayingChanged();
         }
     } else if (m_mixLoaded) {
         setPlaying(playing);
@@ -596,8 +644,8 @@ void PlayerController::onBackendDuration(qint64 ms)
 void PlayerController::onBackendFinished()
 {
     if (!m_previewPath.isEmpty()) {
-        // Track preview: the logical track's next segment (if any) continues.
-        if (!m_previewTrackId.isEmpty() && live() && !m_meetingId.isEmpty()) {
+        // Track preview: the logical track's next segment (if any) continues (not for a sample).
+        if (m_trackRangeKey.isEmpty() && !m_previewTrackId.isEmpty() && live() && !m_meetingId.isEmpty()) {
             const tanara::Meeting m = m_facade->meeting(m_meetingId);
             const qint64 here = m_previewOffsetMs;
             qint64 next = -1;

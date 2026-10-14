@@ -55,6 +55,12 @@ ParticipantsState ParticipantsDemoFacade::state(const QString& meetingId) const
         c.evidence = std::move(evs);
         c.rawIds = raw;
         c.sides = sides;
+        // A heard candidate has a fictional 6 s sample (the silent demo engine "plays" it).
+        if (!sides.isEmpty()) {
+            const qint64 start = 42000 + 31000 * st.candidates.size();
+            c.sample = {sides.contains(QStringLiteral("mic")) ? QStringLiteral("mic") : QStringLiteral("call"),
+                        start, start + 6000};
+        }
         st.candidates.append(c);
     };
     const QString mic = processing::participants::kSideMic, loop = processing::participants::kSideLoopback;

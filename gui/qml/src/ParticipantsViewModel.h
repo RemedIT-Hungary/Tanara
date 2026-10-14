@@ -28,6 +28,7 @@
 #include "tanara/domain/Participant.h"
 #include "tanara/domain/Tag.h"
 #include "tanara/domain/Person.h"
+#include "tanara/editing/participants/IParticipantsFacade.h"
 #include "tanara/editing/session/SpeakerEditTypes.h"
 #include "tanara/library/tags/PersonTags.h"
 
@@ -60,7 +61,8 @@ class ParticipantsViewModel : public QObject {
     Q_PROPERTY(QString metaText READ metaText NOTIFY changed)
     // [{ key: sure|doubt|invited|manual, label, hint, count, rows: [row] }]; no empty group.
     // row: { id, name, displayName, colorIndex, checked, checkable, anonymous, added,
-    //        evidence: [{ kind, polarity, text, side }], mapping, mappingPending, mappingDoubt }
+    //        evidence: [{ kind, polarity, text, side }], mapping, mappingPending, mappingDoubt,
+    //        sampleTrackId, sampleStartMs, sampleEndMs }   (sample*: a listenable span in meeting time; "" / -1 = none)
     Q_PROPERTY(QVariantList groups READ groups NOTIFY changed)
     Q_PROPERTY(int rowCount READ rowCount NOTIFY changed)
     Q_PROPERTY(int checkedCount READ checkedCount NOTIFY changed)
@@ -152,6 +154,7 @@ private:
         QVector<tanara::Evidence> evidence;
         QStringList rawIds;
         QStringList sides;
+        tanara::editing::ParticipantSample sample;
         int colorIndex = 0;
     };
 
