@@ -1,5 +1,6 @@
 // tanara-cli track-sides. All output is English, no tr().
 #include "TrackSidesCommand.h"
+#include "tanara/media/FfmpegMediaTool.h"
 #include "tanara/foundation/time/TimeFormat.h"
 
 #include "tanara/app/SettingsManager.h"
@@ -226,7 +227,7 @@ int runTrackSidesCommand(const QStringList& args)
     if (!fromCache) {
         err() << "Decoding tracks…\n";
         err().flush();
-        act = processing::computeMeetingActivity(m, folder, QStringLiteral("ffmpeg"), frameMs);
+        act = processing::computeMeetingActivity(m, folder, *media::FfmpegMediaTool::fromSettings(sm.settings().media), frameMs);
         if (writeCache && !act.save(folder))
             err() << "warning: cannot write " << MeetingActivity::filePath(folder) << "\n";
     }

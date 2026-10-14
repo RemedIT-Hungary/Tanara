@@ -15,6 +15,7 @@
 #include <cmath>
 #include <memory>
 
+#include "tanara/media/FfmpegMediaTool.h"
 #include "tanara/recording/audio/AudioEngine.h"
 #include "tanara/recording/audio/RecordingSession.h"
 #include "tanara/recording/audio/TrackTiming.h"
@@ -110,7 +111,7 @@ void RecordingSessionTest::lateAndToggledTracksGetOffsets()
     QTemporaryDir dir;
     FakeEngine* engine = nullptr;
     std::shared_ptr<std::atomic<bool>> alive;
-    recording::RecordingSession rec(dir.path(), QStringLiteral("Szakaszok"));
+    recording::RecordingSession rec(media::FfmpegMediaTool::fromSettings({}), dir.path(), QStringLiteral("Szakaszok"));
     rec.setEngineFactory([&engine, &alive] { auto e = std::make_unique<FakeEngine>(); engine = e.get();
         alive = engine->alive; return e; });
     QSignalSpy finished(&rec, &recording::RecordingSession::finished);
@@ -170,7 +171,7 @@ void RecordingSessionTest::silentLoopbackGapsAreFilled()
     QTemporaryDir dir;
     FakeEngine* engine = nullptr;
     std::shared_ptr<std::atomic<bool>> alive;
-    recording::RecordingSession rec(dir.path(), QStringLiteral("Néma loopback"));
+    recording::RecordingSession rec(media::FfmpegMediaTool::fromSettings({}), dir.path(), QStringLiteral("Néma loopback"));
     rec.setFillCaptureGaps(true);   // explicitly on (it is the default for loopback anyway)
     rec.setEngineFactory([&engine, &alive] {
         auto e = std::make_unique<FakeEngine>();
@@ -213,7 +214,7 @@ void RecordingSessionTest::unpluggedDeviceClosesOnlyItsTrack()
     QTemporaryDir dir;
     FakeEngine* engine = nullptr;
     std::shared_ptr<std::atomic<bool>> alive;
-    recording::RecordingSession rec(dir.path(), QStringLiteral("Kihúzás"));
+    recording::RecordingSession rec(media::FfmpegMediaTool::fromSettings({}), dir.path(), QStringLiteral("Kihúzás"));
     rec.setEngineFactory([&engine, &alive] { auto e = std::make_unique<FakeEngine>(); engine = e.get();
         alive = engine->alive; return e; });
     QSignalSpy finished(&rec, &recording::RecordingSession::finished);

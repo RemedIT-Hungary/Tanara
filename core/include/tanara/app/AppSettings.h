@@ -6,6 +6,7 @@
 //   { "version": 2,
 //     "paths":      PathSettings        (foundation/paths)
 //     "recording":  RecordingSettings   (recording)
+//     "media":      MediaSettings       (media: ffmpeg / ffprobe location)
 //     "watcher":    WatcherSettings     (watcher)
 //     "processing": ProcessingSettings  (processing)
 //     "providers":  ProviderSettings    (providers)
@@ -17,6 +18,7 @@
 #include "tanara/cloud/CloudSettings.h"
 #include "tanara/foundation/paths/PathSettings.h"
 #include "tanara/foundation/secrets/SecretStore.h"
+#include "tanara/media/MediaSettings.h"
 #include "tanara/processing/ProcessingSettings.h"
 #include "tanara/providers/core/ProviderSettings.h"
 #include "tanara/recording/RecordingSettings.h"
@@ -45,6 +47,7 @@ struct UiSettings {
 struct AppSettings {
     paths::PathSettings paths;
     recording::RecordingSettings recording;
+    media::MediaSettings media;
     watcher::WatcherSettings watcher;
     processing::ProcessingSettings processing;
     providers::ProviderSettings providers;

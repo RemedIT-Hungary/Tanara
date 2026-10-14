@@ -8,6 +8,7 @@
 #include <QStandardPaths>
 #include <QTemporaryDir>
 
+#include "tanara/media/FfmpegMediaTool.h"
 #include "tanara/processing/analysis/UtteranceEmbeddings.h"
 #include "tanara/library/store/VoiceprintStore.h"
 #include "tanara/processing/voiceid/EmbeddingSet.h"
@@ -212,7 +213,7 @@ private slots:
 
         const processing::EmbedderConfig cfg;
         auto emb = voiceUtteranceEmbedderFactory(QVector<processing::UtteranceModel>{
-            {"a", model, cfg}, {"b", model, cfg}, {"missing", dir.filePath("nincs.onnx"), cfg}})();
+            {"a", model, cfg}, {"b", model, cfg}, {"missing", dir.filePath("nincs.onnx"), cfg}}, media::FfmpegMediaTool::fromSettings({}))();
         if (!emb->open(wav)) QSKIP(qPrintable(QStringLiteral("Voice-ID nélküli build vagy modellhiba: ") + emb->lastError()));
         const EmbeddingSet s = emb->embedAll(500, 3500, {"a", "b", "missing"});
         QCOMPARE(s.keys(), QStringList({"a", "b"}));
@@ -224,7 +225,7 @@ private slots:
         QVERIFY(tiny.contains("a") && tiny.value("a").isEmpty());
 
         // The single-model factory gives the same under the default model's key.
-        auto single = processing::voiceUtteranceEmbedderFactory(model)();
+        auto single = processing::voiceUtteranceEmbedderFactory(model, media::FfmpegMediaTool::fromSettings({}))();
         QVERIFY(single->open(wav));
         QVERIFY(cosine(single->embed(500, 3500), s.value("a")) > 0.9999);
         QCOMPARE(single->embedAll(500, 3500, {"campplus"}).keys(), QStringList{"campplus"});

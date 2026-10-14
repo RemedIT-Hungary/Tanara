@@ -138,8 +138,9 @@ qint64 sampleRefStartMs(const QString& ref)
     return ok ? start : -1;
 }
 
-// The default track-activity source (on a background thread): the cache; if absent and there are both a
-// mic and a loopback track, computed and saved.
+// The default track-activity source (on a background thread): only the tracks.activity.bin cache. Computing
+// a missing one needs the media tool: the owner installs that provider (setActivityProvider, e.g.
+// processing::loadOrComputeSideActivity in AppController).
 MeetingActivity defaultActivity(const Meeting& m)
 {
     if (m.folder.isEmpty()) return {};
@@ -150,13 +151,7 @@ MeetingActivity defaultActivity(const Meeting& m)
         loop |= t.kind == TrackKind::Loopback;
     }
     if (!mic || !loop) return {};
-    const QString fp = processing::trackactivity::activityFingerprint(m, m.folder);
-    MeetingActivity act = MeetingActivity::load(m.folder, fp);
-    if (act.isEmpty()) {
-        act = processing::computeMeetingActivity(m, m.folder);
-        if (!act.isEmpty()) act.save(m.folder);
-    }
-    return act;
+    return MeetingActivity::load(m.folder, processing::trackactivity::activityFingerprint(m, m.folder));
 }
 
 } // namespace

@@ -17,6 +17,7 @@
 #include "tanara/processing/analysis/ParticipantAnalysis.h"
 #include "tanara/processing/analysis/TrackActivity.h"
 #include "tanara/processing/voiceid/BackfillReport.h"
+#include "tanara/media/MediaTool.h"
 #include <QObject>
 #include <QVector>
 #include <memory>
@@ -69,6 +70,8 @@ public:
     library::WaveformService*   waveforms() const;
     // Audio file import engine (file info: probeAsync; start: importAudio).
     library::AudioImporter*     importer() const;
+    // The media port (ffmpeg / ffprobe, resolved once at startup from settings.media).
+    media::MediaToolPtr         mediaTool() const;
     // Convenience: jobs()->state(meetingId).
     MeetingProcessingState processingState(const QString& meetingId) const;
 
@@ -329,7 +332,7 @@ public slots:
     void deleteTrack(const QString& meetingId, const QString& trackId);
 
     // Remixes mixdown.mp3 from the meeting's ACTIVE tracks (after track changes the mixdown
-    // becomes "dirty"; this refreshes it). Asynchronous (ffmpeg QProcess, non-blocking):
+    // becomes "dirty"; this refreshes it). Asynchronous (a media::MediaJob, ffmpeg; non-blocking):
     // at the end emits mixdownUpdated(meetingId, ok) + tracksChanged. Also emits jobProgress
     // with the state. No-op if there is no active track or a mix is already running.
     void regenerateMixdown(const QString& meetingId);

@@ -1,12 +1,13 @@
 #pragma once
 //
 // Control of one recording session:
-//   capture (AudioEngine) -> per device an ffmpeg (QProcess) raw PCM stdin -> Opus,
+//   capture (AudioEngine) -> per device an encoder (media::MediaTool::startEncoder, ffmpeg) raw PCM stdin -> Opus,
 //   then at stop the per-track encoders are closed and a finished tanara::Meeting is produced.
 //   The mixed .mp3 (mixdown) is NOT made here; AppController makes it asynchronously so that
 //   stopping does not freeze the UI (see AppController::regenerateMixdown()).
 #include "tanara/domain/Audio.h"
 #include "tanara/domain/Meeting.h"
+#include "tanara/media/MediaTool.h"
 
 #include <QObject>
 #include <QString>
@@ -26,7 +27,9 @@ public:
     // title: the meeting's title (for the folder name slug and Meeting.title).
     // userSpeakerName: the fixed speaker name of the first mic track (e.g. "Adam").
     // opusKbps: per-track Opus bitrate (from the audio quality setting; see opusBitrateKbps()).
-    explicit RecordingSession(QString audioDir,
+    // media: the encoders' tool (shared; it must not be null).
+    RecordingSession(media::MediaToolPtr media,
+                              QString audioDir,
                               QString title,
                               QString userSpeakerName = QStringLiteral("Beszélő 1"),
                               int opusKbps = 64,

@@ -1,6 +1,7 @@
 // tanara-cli participants. All output is English, no tr().
 #include "ParticipantsCommand.h"
 
+#include "tanara/media/FfmpegMediaTool.h"
 #include "tanara/foundation/paths/AppPaths.h"
 #include "tanara/app/SettingsManager.h"
 #include "tanara/processing/analysis/ParticipantAnalysis.h"
@@ -165,6 +166,7 @@ int runParticipantsCommand(const QStringList& args)
     processing::ParticipantAnalysisFile file = processing::ParticipantAnalysisFile::load(folder);
     if (analyze) {
         const app::SettingsManager sm;
+        const media::MediaToolPtr media = media::FfmpegMediaTool::fromSettings(sm.settings().media);
         const QString meta = sm.paths().modelsDir();
         const QString appDir = QCoreApplication::instance() ? QCoreApplication::applicationDirPath() : QString();
         const processing::VoiceEmbedderSet set = processing::VoiceEmbedderSet::fromSettings(sm.enabledVoiceModels(), meta, appDir);
@@ -178,11 +180,11 @@ int runParticipantsCommand(const QStringList& args)
         if (!fromCache) {
             err() << "Decoding tracks…\n";
             err().flush();
-            act = processing::computeMeetingActivity(m, folder);
+            act = processing::computeMeetingActivity(m, folder, *media);
         }
         err() << "Embedding speech windows…\n";
         err().flush();
-        ClusterSet cs = processing::participants::computeVoiceClusters(m, act, set, processing::participants::filePcmReader(m));
+        ClusterSet cs = processing::participants::computeVoiceClusters(m, act, set, processing::participants::filePcmReader(m, media));
         if (!cs.error.isEmpty()) { err() << "Analysis failed: " << cs.error << "\n"; return 1; }
 
         const library::VoiceprintStore prints(QDir(meta).filePath(QStringLiteral("voiceprints.json")));

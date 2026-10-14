@@ -6,7 +6,6 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
-#include <QProcess>
 #include <QSaveFile>
 #include <QTimer>
 #include <algorithm>
@@ -61,7 +60,7 @@ struct WaveformService::Job {
     QString meetingId;
     QString trackId;
     QString audioPath;
-    QProcess* proc = nullptr;
+    media::MediaJob* proc = nullptr;
     QByteArray carry;            // odd byte at a chunk boundary
     QVector<float> fine;         // peaks of 50 ms windows
     QVector<float> fineSq;       // mean squares (0..1) of 50 ms windows, for the RMS
@@ -96,7 +95,8 @@ struct WaveformService::Job {
     }
 };
 
-WaveformService::WaveformService(QObject* parent) : QObject(parent)
+WaveformService::WaveformService(media::MediaToolPtr media, QObject* parent)
+    : QObject(parent), m_media(std::move(media))
 {
     qRegisterMetaType<tanara::library::TrackPeaks>();
 }
@@ -106,8 +106,7 @@ WaveformService::~WaveformService()
     for (Job* j : std::as_const(m_running)) {
         if (j->proc) {
             j->proc->disconnect(this);
-            j->proc->kill();
-            j->proc->waitForFinished(1000);
+            j->proc->abort(1000);
             delete j->proc;
         }
         delete j;
@@ -202,7 +201,7 @@ void WaveformService::cancel(const QString& meetingId)
     for (Job* j : std::as_const(m_running))
         if (j->meetingId == meetingId && !j->cancelled) {
             j->cancelled = true;
-            if (j->proc) j->proc->kill();   // the finished branch cleans up (without a signal)
+            if (j->proc) j->proc->cancel();   // the finished branch cleans up (without a signal)
         }
 }
 
@@ -214,31 +213,28 @@ void WaveformService::startNext()
         job->srcSize = src.size();
         job->srcMtimeMs = src.lastModified().toMSecsSinceEpoch();
 
-        auto* proc = new QProcess(this);
+        media::DecodeSpec spec;
+        spec.path = job->audioPath;
+        spec.format = media::PcmFormat{kRate, 1, media::SampleFormat::S16};
+        media::MediaJob* proc = m_media ? m_media->startDecode(spec, this) : nullptr;
+        if (!proc) {
+            m_running.append(job);
+            QTimer::singleShot(0, this, [this, job] { finishJob(job, false, tr("Az ffmpeg nem indítható.")); });
+            continue;
+        }
         job->proc = proc;
         m_running.append(job);
-        proc->setProgram(m_ffmpeg);
-        proc->setArguments({QStringLiteral("-hide_banner"), QStringLiteral("-v"), QStringLiteral("error"),
-                            QStringLiteral("-i"), job->audioPath, QStringLiteral("-vn"),
-                            QStringLiteral("-ac"), QStringLiteral("1"),
-                            QStringLiteral("-ar"), QString::number(kRate),
-                            QStringLiteral("-f"), QStringLiteral("s16le"), QStringLiteral("pipe:1")});
-        connect(proc, &QProcess::readyReadStandardOutput, this, [job, proc]() {
-            job->consume(proc->readAllStandardOutput());
-        });
-        connect(proc, &QProcess::errorOccurred, this, [this, job, proc](QProcess::ProcessError err) {
-            if (err != QProcess::FailedToStart) return;   // in other cases finished comes
-            finishJob(job, false, tr("Az ffmpeg nem indítható."));
+        connect(proc, &media::MediaJob::output, this, [job](const QByteArray& data) { job->consume(data); });
+        connect(proc, &media::MediaJob::finished, this, [this, job, proc](const media::MediaResult& r) {
+            job->proc = nullptr;
             proc->deleteLater();
-        });
-        connect(proc, &QProcess::finished, this,
-                [this, job, proc](int code, QProcess::ExitStatus status) {
-            job->consume(proc->readAllStandardOutput());
-            const bool ok = status == QProcess::NormalExit && code == 0 && job->samples > 0;
-            const QString err = ok ? QString()
-                : QString::fromUtf8(proc->readAllStandardError()).trimmed().left(300);
+            if (!r.started) {
+                finishJob(job, false, tr("Az ffmpeg nem indítható."));
+                return;
+            }
+            const bool ok = r.ok() && job->samples > 0;
+            const QString err = ok ? QString() : r.errorText().left(300);
             finishJob(job, ok, err.isEmpty() ? tr("A hullámforma számítása nem sikerült.") : err);
-            proc->deleteLater();
         });
         proc->start();
     }

@@ -1,5 +1,6 @@
 // tanara-cli review. All output is English, no tr() (the Hungarian group labels are omitted).
 #include "ReviewCommand.h"
+#include "tanara/media/FfmpegMediaTool.h"
 #include "tanara/foundation/time/TimeFormat.h"
 
 #include "tanara/app/SettingsManager.h"
@@ -143,7 +144,7 @@ int runReviewCommand(const QStringList& args)
     if (!fromCache && mic && loop) {
         err() << "Decoding tracks…\n";
         err().flush();
-        act = processing::computeMeetingActivity(m, folder);
+        act = processing::computeMeetingActivity(m, folder, *media::FfmpegMediaTool::fromSettings(sm.settings().media));
     }
 
     const editing::ReviewResult r = analyzeReview(in, act);

@@ -62,7 +62,6 @@
 #include <QDateTime>
 #include <QDir>
 #include <QHash>
-#include <QProcess>
 #include <QFileInfo>
 
 #include <memory>
@@ -185,13 +184,10 @@ int main(int argc, char** argv) {
                    "      at the START. A track with a gap in the middle (a loopback stream that stopped\n"
                    "      for a while) or one that ended early gets a WRONG offset: check the alignment\n"
                    "      by listening, and use --track <id>=<ms> (or repair the track file) if needed.\n";
-        auto probe = [](const QString& path) -> qint64 {
-            QProcess p;
-            p.start(QStringLiteral("ffprobe"), {QStringLiteral("-v"), QStringLiteral("error"),
-                QStringLiteral("-show_entries"), QStringLiteral("format=duration"),
-                QStringLiteral("-of"), QStringLiteral("csv=p=0"), path});
-            if (!p.waitForFinished(10000)) { p.kill(); return 0; }
-            return qint64(QString::fromUtf8(p.readAllStandardOutput()).trimmed().toDouble() * 1000.0);
+        const media::MediaToolPtr media = app.mediaTool();
+        auto probe = [&media](const QString& path) -> qint64 {
+            const media::MediaResult r = media->probe(path, 10000);
+            return r.info ? r.info->durationMs() : 0;
         };
         QHash<QString, qint64> durations;
         qint64 longest = 0;
@@ -432,7 +428,7 @@ int main(int argc, char** argv) {
         // Pre-check: every file must contain audio (with a clear error message).
         QVector<library::ImportFileInfo> infos;
         for (library::ImportSource& s : req.sources) {
-            const library::ImportFileInfo info = library::audioimport::probe(s.path);
+            const library::ImportFileInfo info = library::audioimport::probe(*app.mediaTool(), s.path);
             if (!info.ok) { err << QStringLiteral("ERROR: %1").arg(info.error) << "\n"; err.flush(); return 1; }
             s.splitChannels = split && info.channels >= 2;
             infos.append(info);
@@ -671,7 +667,7 @@ int main(int argc, char** argv) {
         if (args.size() > 8) cfg.snipEdges = args.value(8).toInt() != 0;
         processing::VoiceEmbedder emb(model, cfg);
         if (!emb.isValid()) { err << QStringLiteral("ERROR: %1").arg(emb.lastError()) << "\n"; err.flush(); return 1; }
-        const QVector<float> v = emb.embedFile(path, s, e);
+        const QVector<float> v = emb.embedFile(*app.mediaTool(), path, s, e);
         if (v.isEmpty()) { err << QStringLiteral("ERROR: %1").arg(emb.lastError()) << "\n"; err.flush(); return 1; }
         QStringList parts; for (float x : v) parts << QString::number(x, 'g', 8);
         out << parts.join(QLatin1Char(' ')) << "\n"; out.flush();

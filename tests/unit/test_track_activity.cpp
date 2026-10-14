@@ -8,6 +8,8 @@
 
 #include <cmath>
 
+#include "fake_media_tool.h"
+#include "tanara/media/FfmpegMediaTool.h"
 #include "tanara/processing/analysis/TrackActivity.h"
 
 using namespace tanara;
@@ -143,7 +145,7 @@ private slots:
         files["track_loop.wav"] = cat({tone(1000, 0.0), tone(1000, 0.2)});
         files["track_off.wav"] = tone(1000, 0.5);
         QStringList calls;
-        const MeetingActivity a = processing::computeMeetingActivity(m, dir.path(), "ffmpeg", 50, fakeDecoder(files, &calls));
+        const MeetingActivity a = processing::computeMeetingActivity(m, dir.path(), fakeDecoder(files, &calls), 50);
 
         QVERIFY(!calls.contains("track_off.wav"));
         QVERIFY(!calls.contains("track_gone.wav"));
@@ -180,7 +182,7 @@ private slots:
         touch(QDir(dir.path()).filePath("track_mic.wav"));
         touch(QDir(dir.path()).filePath("track_loop.wav"));
         QHash<QString, QVector<qint16>> files{{"track_mic.wav", tone(300, 0.3)}, {"track_loop.wav", tone(300, 0.0)}};
-        MeetingActivity a = processing::computeMeetingActivity(m, dir.path(), "ffmpeg", 50, fakeDecoder(files));
+        MeetingActivity a = processing::computeMeetingActivity(m, dir.path(), fakeDecoder(files), 50);
         a.tracks[0].dbAboveFloor[2] = std::numeric_limits<float>::quiet_NaN();
         QVERIFY(a.save(dir.path()));
         QVERIFY(QFileInfo::exists(MeetingActivity::filePath(dir.path())));
@@ -209,6 +211,37 @@ private slots:
         QVERIFY(MeetingActivity::load(dir.path(), a.fingerprint).isEmpty());
     }
 
+    // The same computation through the media port with a fake tool (no ffmpeg): the 16 kHz mono s16
+    // request, and the side-check helper (cache, else compute + save; only with a mic + loopback pair).
+    void fakeMediaToolDecodeAndSideActivity()
+    {
+        QTemporaryDir dir;
+        Meeting m;
+        m.folder = dir.path();
+        m.tracks = {mk("mic", "Mic", TrackKind::Mic), mk("loop", "Out", TrackKind::Loopback, 250)};
+        touch(QDir(dir.path()).filePath("track_mic.wav"));
+        touch(QDir(dir.path()).filePath("track_loop.wav"));
+        testing::FakeMediaTool tool;
+        tool.pcm["track_mic.wav"] = cat({tone(500, 0.0), tone(500, 0.5)});
+        tool.pcm["track_loop.wav"] = tone(1000, 0.2);
+        const MeetingActivity a = processing::computeMeetingActivity(m, dir.path(), tool);
+        QCOMPARE(a.tracks.size(), 2);
+        QCOMPARE(a.tracks[0].dbAboveFloor.size(), 20);
+        QVERIFY(*windowEnergyDb(a.tracks[0], 600, 900) > 70.0f);
+        QCOMPARE(tool.decodes().size(), 2);
+        QCOMPARE(tool.decodes().first().format, media::PcmFormat(kSr, 1, media::SampleFormat::S16));
+
+        QVERIFY(!QFileInfo::exists(MeetingActivity::filePath(dir.path())));
+        const MeetingActivity side = processing::loadOrComputeSideActivity(m, tool);
+        QCOMPARE(side.tracks.size(), 2);
+        QVERIFY(QFileInfo::exists(MeetingActivity::filePath(dir.path())));   // saved
+        processing::loadOrComputeSideActivity(m, tool);                      // from the cache
+        QCOMPARE(tool.decodes().size(), 4);
+        Meeting micOnly = m;
+        micOnly.tracks.removeLast();
+        QVERIFY(processing::loadOrComputeSideActivity(micOnly, tool).isEmpty());
+    }
+
     void realFfmpegDecode()
     {
         if (QStandardPaths::findExecutable("ffmpeg").isEmpty()) QSKIP("nincs ffmpeg");
@@ -224,7 +257,7 @@ private slots:
         Meeting m;
         m.tracks = {mk("mic", "Mic", TrackKind::Mic)};
         m.tracks[0].file = "track_mic.ogg";
-        const MeetingActivity a = processing::computeMeetingActivity(m, dir.path());
+        const MeetingActivity a = processing::computeMeetingActivity(m, dir.path(), *media::FfmpegMediaTool::fromSettings({}));
         QCOMPARE(a.tracks.size(), 1);
         const TrackActivity& t = a.tracks[0];
         QVERIFY(std::abs(t.dbAboveFloor.size() - 60) <= 2);

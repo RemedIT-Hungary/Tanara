@@ -272,8 +272,9 @@ public:
     bool setTrackAssignment(const QString& speakerKey, const QStringList& trackIds);
 
     // ---- evidence, candidates, "To review" groups ----------------
-    // Source of the track activity (called on a background thread!). Default: the tracks.activity.bin
-    // cache; if absent and there are both a mic and a loopback track, computes it (ffmpeg) and saves it.
+    // Source of the track activity (called on a background thread!). Default: only the tracks.activity.bin
+    // cache (with both a mic and a loopback track). AppController installs the computing source
+    // (processing::loadOrComputeSideActivity: cache, else decode via the media tool and save).
     using ActivityProvider = std::function<MeetingActivity(const Meeting&)>;
     void setActivityProvider(ActivityProvider provider);
     // The person's MANUAL tags (TagService::tagsOfPerson), only for the quick "+ #Tag" offer;

@@ -79,6 +79,12 @@ void logStartupDiagnostics(const AppController& app)
                                                    d.isDefault ? QStringLiteral(", default") : QString());
     }
 
+    // The media tools (resolved once at startup; the version runs `ffmpeg -version` once).
+    if (const media::MediaToolPtr mt = app.mediaTool())
+        qCInfo(lcAudio).noquote() << QStringLiteral("Médiaeszközök: ffmpeg=%1 ffprobe=%2 (%3)")
+                                         .arg(mt->ffmpegPath(), mt->ffprobePath(),
+                                              mt->available() ? mt->version() : QStringLiteral("NEM ELÉRHETŐ"));
+
     if (auto* st = app.store())
         qCDebug(lcStore).noquote() << QStringLiteral("Meetingek a tárban: %1").arg(st->loadAll().size());
 }

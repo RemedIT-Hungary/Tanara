@@ -4,6 +4,8 @@
 // -> ONNX model (3D-Speaker CAM++) -> an L2-normalized embedding vector. UI-independent (core).
 // The fbank/normalization parameters are tunable (empirically tuned for an exact kaldi match).
 
+#include "tanara/media/MediaTool.h"
+
 #include <QString>
 #include <QVector>
 #include <memory>
@@ -40,16 +42,14 @@ public:
     // 16 kHz mono float PCM ([-1,1]) -> an L2-normalized embedding. An empty vector = error.
     QVector<float> embedPcm(const QVector<float>& mono16k) const;
 
-    // Audio file (or its segment) -> embedding. Decodes with ffmpeg to 16 kHz mono f32.
-    // endMs<=0 = the whole file. ffmpegPath: from the PATH by default.
-    QVector<float> embedFile(const QString& audioPath,
-                             qint64 startMs = 0, qint64 endMs = 0,
-                             const QString& ffmpegPath = QStringLiteral("ffmpeg")) const;
+    // Audio file (or its segment) -> embedding. Decodes with the media tool to 16 kHz mono f32.
+    // endMs<=0 = the whole file.
+    QVector<float> embedFile(const media::MediaTool& media, const QString& audioPath,
+                             qint64 startMs = 0, qint64 endMs = 0) const;
 
-    // Helper: decodes an audio-file segment to 16 kHz mono float PCM (ffmpeg, QProcess).
-    static QVector<float> decodePcm16kMono(const QString& audioPath,
-                                           qint64 startMs, qint64 endMs,
-                                           const QString& ffmpegPath = QStringLiteral("ffmpeg"));
+    // Helper: decodes an audio-file segment to 16 kHz mono float PCM (media::MediaTool::decodeMonoF32).
+    static QVector<float> decodePcm16kMono(const media::MediaTool& media, const QString& audioPath,
+                                           qint64 startMs, qint64 endMs);
 
 private:
     struct Impl;

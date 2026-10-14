@@ -4,7 +4,8 @@
 // external interface": one track per source or, on request, a multichannel file split into one track
 // per channel. UI-independent (QtCore).
 //
-//  - It does NOT touch the source files (only reads them); the tracks go through ffmpeg into the
+//  - It does NOT touch the source files (only reads them); the tracks go through the media tool
+//    (media::MediaTool, ffmpeg) into the
 //    same on-disk form as recorded tracks: track_<slug>.ogg, Opus, 48 kHz, at the configured
 //    bitrate (opusBitrateKbps). So TrackCatalog, the mixdown, the waveform, voice identification
 //    and the transcript editor work unchanged.
@@ -21,6 +22,7 @@
 //  - The importer does NOT make a mixdown: the caller (AppController) starts it per mixdownMode,
 //    exactly as at the end of a recording.
 #include "tanara/domain/Meeting.h"
+#include "tanara/media/MediaTool.h"
 
 #include <QObject>
 #include <QVector>
@@ -71,8 +73,8 @@ struct ImportRequest {
 
 namespace audioimport {
 
-// ffprobe, BLOCKING (CLI, tests). The UI uses AudioImporter::probeAsync.
-ImportFileInfo probe(const QString& path, int timeoutMs = 20000);
+// ffprobe through the media tool, BLOCKING (CLI, tests). The UI uses AudioImporter::probeAsync.
+ImportFileInfo probe(const media::MediaTool& media, const QString& path, int timeoutMs = 20000);
 
 // Whether to split into channels by default: yes for an AUDIO file with more than two channels (a
 // multichannel interface recording); no for plain stereo and for video (the user decides).
@@ -97,7 +99,7 @@ QString channelName(int channel, int channelCount);
 class AudioImporter : public QObject {
     Q_OBJECT
 public:
-    explicit AudioImporter(MeetingStore* store, QObject* parent = nullptr);
+    AudioImporter(MeetingStore* store, media::MediaToolPtr media, QObject* parent = nullptr);
     ~AudioImporter() override;
 
     // The tracks' Opus bitrate (kbps) and the speaker name of the "own microphone" track.

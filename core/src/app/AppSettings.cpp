@@ -20,7 +20,7 @@ UiSettings UiSettings::fromJson(const QJsonObject& o)
 
 QStringList AppSettings::sectionNames()
 {
-    return {QStringLiteral("paths"), QStringLiteral("recording"), QStringLiteral("watcher"),
+    return {QStringLiteral("paths"), QStringLiteral("recording"), QStringLiteral("media"), QStringLiteral("watcher"),
             QStringLiteral("processing"), QStringLiteral("providers"), QStringLiteral("cloud"),
             QStringLiteral("ui"), QStringLiteral("secrets")};
 }
@@ -29,6 +29,7 @@ QJsonObject AppSettings::sectionJson(const QString& name) const
 {
     if (name == QLatin1String("paths"))      return paths.toJson();
     if (name == QLatin1String("recording"))  return recording.toJson();
+    if (name == QLatin1String("media"))      return media.toJson();
     if (name == QLatin1String("watcher"))    return watcher.toJson();
     if (name == QLatin1String("processing")) return processing.toJson();
     if (name == QLatin1String("providers"))  return providers.toJson();
@@ -42,6 +43,7 @@ void AppSettings::setSectionJson(const QString& name, const QJsonObject& o)
 {
     if (name == QLatin1String("paths"))           paths = paths::PathSettings::fromJson(o);
     else if (name == QLatin1String("recording"))  recording = recording::RecordingSettings::fromJson(o);
+    else if (name == QLatin1String("media"))      media = media::MediaSettings::fromJson(o);
     else if (name == QLatin1String("watcher"))    watcher = watcher::WatcherSettings::fromJson(o);
     else if (name == QLatin1String("processing")) processing = processing::ProcessingSettings::fromJson(o);
     else if (name == QLatin1String("providers"))  providers = providers::ProviderSettings::fromJson(o);

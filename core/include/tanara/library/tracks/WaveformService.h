@@ -2,11 +2,13 @@
 //
 // WaveformService: per-track waveform peaks for drawing.
 //
-// Asynchronous: ffmpeg decodes the audio file (QProcess, like the rest of the code), the PCM is
+// Asynchronous: the media tool (ffmpeg) decodes the audio file (media::MediaJob), the PCM is
 // processed in chunks in the event loop, so the UI thread NEVER blocks. The result is cached in the
 // meeting's folder (<audio file>.peaks.json), so the next open is instant; the cache is tied to the
 // source file's size + modification time (recomputed if the file changes). Decoding also yields the
 // track's EXACT length (durationMs).
+#include "tanara/media/MediaTool.h"
+
 #include <QObject>
 #include <QString>
 #include <QVector>
@@ -30,7 +32,7 @@ class WaveformService : public QObject {
 public:
     static constexpr int kBuckets = 400;   // the cached resolution ("a few hundred buckets")
 
-    explicit WaveformService(QObject* parent = nullptr);
+    explicit WaveformService(media::MediaToolPtr media, QObject* parent = nullptr);
     ~WaveformService() override;
 
     // ---- cache (synchronous, small file) -------------------------------------------
@@ -50,8 +52,6 @@ public:
     void cancel(const QString& meetingId);
     bool isPending(const QString& audioPath) const;
 
-    void setFfmpegPath(const QString& path) { m_ffmpeg = path; }
-
 signals:
     void peaksReady(QString meetingId, QString trackId, tanara::library::TrackPeaks peaks);
     void peaksFailed(QString meetingId, QString trackId, QString error);
@@ -61,7 +61,7 @@ private:
     void startNext();
     void finishJob(Job* job, bool ok, const QString& error);
 
-    QString m_ffmpeg{QStringLiteral("ffmpeg")};
+    media::MediaToolPtr m_media;
     QVector<Job*> m_queue;     // waiting
     QVector<Job*> m_running;   // running (max 2)
 };

@@ -9,7 +9,6 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QHash>
-#include <QProcess>
 #include <QSaveFile>
 
 #include <algorithm>
@@ -61,44 +60,6 @@ private:
 } // namespace
 
 namespace trackactivity {
-
-PcmDecoder ffmpegDecoder(const QString& ffmpegPath)
-{
-    return [ffmpegPath](const QString& path, const PcmSink& sink, QString* error) -> bool {
-        auto fail = [error](const QString& msg) {
-            if (error) *error = msg;
-            return false;
-        };
-        QProcess proc;
-        proc.start(ffmpegPath, {QStringLiteral("-v"), QStringLiteral("error"),
-                                QStringLiteral("-i"), path,
-                                QStringLiteral("-ac"), QStringLiteral("1"),
-                                QStringLiteral("-ar"), QString::number(kSampleRate),
-                                QStringLiteral("-f"), QStringLiteral("s16le"), QStringLiteral("-")});
-        if (!proc.waitForStarted(5000)) return fail(QStringLiteral("Az ffmpeg nem indítható."));
-        // Streaming read: the PCM does not accumulate in memory, only an odd byte carries over.
-        QByteArray carry;
-        qint64 total = 0;
-        auto pump = [&]() {
-            QByteArray chunk = proc.readAllStandardOutput();
-            if (chunk.isEmpty()) return;
-            if (!carry.isEmpty()) { chunk.prepend(carry); carry.clear(); }
-            const qsizetype usable = chunk.size() & ~qsizetype(1);
-            if (usable < chunk.size()) carry = chunk.right(1);
-            sink(reinterpret_cast<const qint16*>(chunk.constData()), usable / 2);
-            total += usable;
-        };
-        while (proc.state() != QProcess::NotRunning) {
-            proc.waitForReadyRead(200);
-            pump();
-        }
-        pump();
-        if (proc.exitStatus() != QProcess::NormalExit || proc.exitCode() != 0 || total < 2)
-            return fail(QStringLiteral("ffmpeg dekódolás sikertelen: %1 (%2)")
-                            .arg(path, QString::fromUtf8(proc.readAllStandardError()).trimmed()));
-        return true;
-    };
-}
 
 QVector<float> frameDb(const QVector<qint16>& pcm, int frameMs)
 {
@@ -240,13 +201,37 @@ bool MeetingActivity::save(const QString& meetingFolder, const QString& path) co
 
 namespace tanara::processing {
 
+MeetingActivity computeMeetingActivity(const Meeting& m, const QString& folder, const media::MediaTool& tool,
+                                       int frameMs)
+{
+    return computeMeetingActivity(m, folder, tool.monoS16Decoder(trackactivity::kSampleRate), frameMs);
+}
+
+MeetingActivity loadOrComputeSideActivity(const Meeting& m, const media::MediaTool& tool)
+{
+    if (m.folder.isEmpty()) return {};
+    bool mic = false, loop = false;
+    for (const Track& t : m.tracks) {
+        if (!t.active) continue;
+        mic |= t.kind == TrackKind::Mic;
+        loop |= t.kind == TrackKind::Loopback;
+    }
+    if (!mic || !loop) return {};
+    const QString fp = trackactivity::activityFingerprint(m, m.folder);
+    MeetingActivity act = MeetingActivity::load(m.folder, fp);
+    if (act.isEmpty()) {
+        act = computeMeetingActivity(m, m.folder, tool);
+        if (!act.isEmpty()) act.save(m.folder);
+    }
+    return act;
+}
+
 MeetingActivity computeMeetingActivity(const Meeting& m, const QString& folder,
-                                       const QString& ffmpegPath, int frameMs,
-                                       const trackactivity::PcmDecoder& decoder)
+                                       const trackactivity::PcmDecoder& decode, int frameMs)
 {
     PerfScope perf("computeMeetingActivity", 50);
+    if (!decode) return {};
     frameMs = std::max(1, frameMs);
-    const trackactivity::PcmDecoder decode = decoder ? decoder : trackactivity::ffmpegDecoder(ffmpegPath);
     MeetingActivity out;
     out.fingerprint = trackactivity::activityFingerprint(m, folder, frameMs);
 

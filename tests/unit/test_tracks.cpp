@@ -8,7 +8,9 @@
 #include <QtEndian>
 #include <cmath>
 
+#include "fake_media_tool.h"
 #include "tanara/library/tracks/TrackCatalog.h"
+#include "tanara/media/FfmpegMediaTool.h"
 #include "tanara/library/tracks/WaveformService.h"
 #include "tanara/library/store/MeetingStore.h"
 #include "tanara/library/store/JsonSerialization.h"
@@ -80,6 +82,7 @@ private slots:
     void peaksInvalidatedWhenFileChanges();
     void peaksFailForBrokenFile();
     void resample();
+    void peaksWithFakeMediaTool();
 
 private:
     Meeting makeMeeting(const QVector<Track>& tracks, bool createFiles = true);
@@ -414,7 +417,7 @@ void TracksTest::peaksComputedCachedAndReused()
     writeWav(path, 30, 0.5);
 
     QVERIFY(!library::WaveformService::loadCached(path).isValid());
-    library::WaveformService svc;
+    library::WaveformService svc(media::FfmpegMediaTool::fromSettings({}));
     QSignalSpy ready(&svc, &library::WaveformService::peaksReady);
     QSignalSpy failed(&svc, &library::WaveformService::peaksFailed);
     QElapsedTimer clock;
@@ -464,7 +467,7 @@ void TracksTest::peaksInvalidatedWhenFileChanges()
     const Meeting m = makeMeeting({mk("mic", "Mic", TrackKind::Mic)}, false);
     const QString path = QDir(m.folder).filePath("track_mic.wav");
     writeWav(path, 4, 0.25);
-    library::WaveformService svc;
+    library::WaveformService svc(media::FfmpegMediaTool::fromSettings({}));
     QSignalSpy ready(&svc, &library::WaveformService::peaksReady);
     svc.request(m.id, "mic", path);
     QVERIFY(ready.wait(20000));
@@ -485,7 +488,7 @@ void TracksTest::peaksInvalidatedWhenFileChanges()
 void TracksTest::peaksFailForBrokenFile()
 {
     if (!haveFfmpeg()) QSKIP("ffmpeg nem található");
-    library::WaveformService svc;
+    library::WaveformService svc(media::FfmpegMediaTool::fromSettings({}));
     QSignalSpy ready(&svc, &library::WaveformService::peaksReady);
     QSignalSpy failed(&svc, &library::WaveformService::peaksFailed);
     // Missing file.
@@ -522,6 +525,42 @@ void TracksTest::resample()
     QCOMPARE(library::WaveformService::resample(src, 12).size(), 12);
     QCOMPARE(library::WaveformService::resample(src, 12).at(2), 0.9f);
     QVERIFY(library::WaveformService::resample({}, 10).isEmpty());
+}
+
+// The waveform without ffmpeg: the media port is a fake (preset 8 kHz PCM).
+void TracksTest::peaksWithFakeMediaTool()
+{
+    auto tool = std::make_shared<testing::FakeMediaTool>();
+    QVector<qint16> pcm(8000 * 4, 0);                 // 4 s: 2 s silence, 2 s at half scale
+    for (int i = 8000 * 2; i < pcm.size(); ++i) pcm[i] = (i % 2) ? 16384 : -16384;
+    tool->pcm["track_mic.ogg"] = pcm;
+    const Meeting m = makeMeeting({mk("mic", "Mic", TrackKind::Mic)}, false);
+    const QString path = QDir(m.folder).filePath("track_mic.ogg");
+    QFile f(path);
+    QVERIFY(f.open(QIODevice::WriteOnly));
+    f.write("x");
+    f.close();
+    library::WaveformService svc(tool);
+    QSignalSpy ready(&svc, &library::WaveformService::peaksReady);
+    QSignalSpy failed(&svc, &library::WaveformService::peaksFailed);
+    svc.request(m.id, "mic", path);
+    QVERIFY(ready.wait(5000));
+    QCOMPARE(failed.count(), 0);
+    const library::TrackPeaks p = ready.at(0).at(2).value<library::TrackPeaks>();
+    QCOMPARE(p.durationMs, qint64(4000));
+    QCOMPARE(p.peaks.size(), 80);                     // 4 s of 50 ms windows (fewer than kBuckets)
+    QVERIFY(p.peaks.first() < 0.01f);
+    QVERIFY(qAbs(p.peaks.last() - 0.5f) < 0.01f);
+    QCOMPARE(tool->decodes().size(), 1);
+    QCOMPARE(tool->decodes().first().format.sampleRate, 8000);
+    // An undecodable file fails (the fake knows no such PCM).
+    const QString other = QDir(m.folder).filePath("track_x.ogg");
+    QFile g(other);
+    QVERIFY(g.open(QIODevice::WriteOnly));
+    g.write("x");
+    g.close();
+    svc.request(m.id, "x", other);
+    QVERIFY(failed.wait(5000));
 }
 
 QTEST_GUILESS_MAIN(TracksTest)

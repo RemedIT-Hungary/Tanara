@@ -10,7 +10,6 @@
 #include <QDebug>
 #include <QElapsedTimer>
 #include <QFileInfo>
-#include <QProcess>
 #include <QRegularExpression>
 #include <QString>
 #include <QStringList>
@@ -41,8 +40,8 @@ QString slugify(const QString& in) {
     return s;
 }
 
-// A track's on-disk metadata (the QProcess does NOT live here: the worker owns it on its own
-// thread, so there is no cross-thread QProcess access).
+// A track's on-disk metadata (the encoder does NOT live here: the worker owns it on its own
+// thread, so there is no cross-thread process access).
 struct TrackMeta {
     int engineIndex = 0;
     QString fileName;          // e.g. "track_mic.ogg" (relative)
@@ -61,7 +60,7 @@ constexpr int kSampleRate = 48000;
 
 } // namespace
 
-// The drain worker lives on a separate QThread. It creates EVERY ffmpeg QProcess, writes to it and
+// The drain worker lives on a separate QThread. It creates EVERY encoder (media::EncoderHandle), writes to it and
 // closes it, all on the same thread, so there is no "QSocketNotifier from another thread" problem
 // and no risk of data loss. It keeps ITS OWN copy of the tracks (EncTrack) and never touches the
 // main thread's list.
@@ -73,21 +72,19 @@ constexpr int kSampleRate = 48000;
 class DrainWorker : public QObject {
     Q_OBJECT
 public:
-    DrainWorker(AudioEngine* engine, QString folder, int opusKbps, QElapsedTimer clock,
-                std::optional<bool> fillGaps)
-        : engine_(engine), folder_(std::move(folder)), opusKbps_(opusKbps), clock_(clock),
-          fillGaps_(fillGaps) {}
+    DrainWorker(media::MediaToolPtr media, AudioEngine* engine, QString folder, int opusKbps,
+                QElapsedTimer clock, std::optional<bool> fillGaps)
+        : media_(std::move(media)), engine_(engine), folder_(std::move(folder)), opusKbps_(opusKbps),
+          clock_(clock), fillGaps_(fillGaps) {}
 
-    ~DrainWorker() override {
-        for (EncTrack& t : tracks_) delete t.proc;
-    }
+    ~DrainWorker() override = default;   // the encoder handles kill + reap still running encoders
 
     // Run on the worker's thread (called with BlockingQueuedConnection). Creates + starts the encoders;
     // true if all started. On failure it cleans up.
     bool startEncoders(const std::vector<TrackMeta>& metas) {
         for (const TrackMeta& m : metas) {
             if (!openEncoder(m)) {
-                for (EncTrack& t : tracks_) { if (t.proc) { t.proc->kill(); delete t.proc; t.proc = nullptr; } }
+                for (EncTrack& t : tracks_) { if (t.proc) { t.proc->kill(); t.proc.reset(); } }
                 tracks_.clear();
                 return false;
             }
@@ -151,7 +148,7 @@ private:
         int engineIndex = 0;
         QString fileName;
         int channels = 1;
-        QProcess* proc = nullptr;
+        std::shared_ptr<media::EncoderHandle> proc;   // lives on the worker thread
         qint64 openedAtMs = 0;     // the track's open per the recording clock
         qint64 lastDataMs = 0;     // when data last came from the device (recording clock)
         qint64 framesWritten = 0;  // frames written to the file (real audio + filled silence)
@@ -162,27 +159,18 @@ private:
     };
 
     bool openEncoder(const TrackMeta& t) {
-        auto* proc = new QProcess(this);          // lives on the worker thread
-        const QString outPath = QDir(folder_).absoluteFilePath(t.fileName);
-        const QStringList args{
-            QStringLiteral("-hide_banner"), QStringLiteral("-loglevel"), QStringLiteral("error"),
-            QStringLiteral("-f"), QStringLiteral("s16le"),
-            QStringLiteral("-ar"), QString::number(kSampleRate),
-            QStringLiteral("-ac"), QString::number(t.channels),
-            QStringLiteral("-i"), QStringLiteral("pipe:0"),
-            QStringLiteral("-c:a"), QStringLiteral("libopus"),
-            QStringLiteral("-b:a"), QString::number(opusKbps_) + QStringLiteral("k"),
-            QStringLiteral("-y"), outPath};
-        proc->start(QStringLiteral("ffmpeg"), args);
-        if (!proc->waitForStarted(5000)) {
-            delete proc;
-            return false;
-        }
+        // Created on the worker thread (the encoder's process lives here).
+        media::EncodeSpec spec;
+        spec.input = media::PcmFormat{kSampleRate, t.channels, media::SampleFormat::S16};
+        spec.outputPath = QDir(folder_).absoluteFilePath(t.fileName);
+        spec.bitrateKbps = opusKbps_;
+        std::shared_ptr<media::EncoderHandle> proc = media_ ? media_->startEncoder(spec) : nullptr;
+        if (!proc) return false;
         EncTrack e;
         e.engineIndex = t.engineIndex;
         e.fileName = t.fileName;
         e.channels = t.channels;
-        e.proc = proc;
+        e.proc = std::move(proc);
         e.openedAtMs = t.startOffsetMs;
         e.lastDataMs = t.startOffsetMs;
         e.fillGaps = fillGaps_.value_or(tracktiming::fillsCaptureGaps(t.kind));
@@ -191,7 +179,7 @@ private:
     }
 
     void writePcm(EncTrack& t, const char* data, qint64 bytes) {
-        if (t.proc->state() == QProcess::Running) t.proc->write(data, bytes);
+        t.proc->write(data, bytes);   // ignored once the encoder stopped
         t.framesWritten += bytes / (qint64(sizeof(int16_t)) * t.channels);
     }
 
@@ -234,13 +222,12 @@ private:
         if (t.closed || !t.proc) return;
         fillGap(t);   // the silent stretch at the track's end (for a fillGaps track)
         t.closed = true;
-        t.proc->closeWriteChannel();
-        if (!t.proc->waitForFinished(30000)) { t.proc->kill(); t.proc->waitForFinished(2000); }
+        const bool exitedOk = t.proc->finish(30000);   // closes the input, waits (killed after 30 s)
         const QFileInfo fi(QDir(folder_).absoluteFilePath(t.fileName));
-        t.ok = t.proc->exitStatus() == QProcess::NormalExit && t.proc->exitCode() == 0
-               && fi.exists() && fi.size() > 0;
+        t.ok = exitedOk && fi.exists() && fi.size() > 0;
     }
 
+    media::MediaToolPtr media_;
     AudioEngine* engine_ = nullptr;
     QString folder_;
     int opusKbps_ = 64;          // per-track Opus bitrate (from the audio quality setting)
@@ -253,6 +240,7 @@ private:
 };
 
 struct RecordingSession::Impl {
+    media::MediaToolPtr media;
     QString audioDir;
     QString title;
     QString userSpeakerName;
@@ -283,7 +271,7 @@ struct RecordingSession::Impl {
             workerThread->quit();
             workerThread->wait(3000);
         }
-        delete worker; worker = nullptr;          // the destructor deletes the QProcesses
+        delete worker; worker = nullptr;          // the destructor releases the encoders
         delete workerThread; workerThread = nullptr;
     }
 
@@ -308,9 +296,10 @@ struct RecordingSession::Impl {
     }
 };
 
-RecordingSession::RecordingSession(QString audioDir, QString title,
+RecordingSession::RecordingSession(media::MediaToolPtr media, QString audioDir, QString title,
                                    QString userSpeakerName, int opusKbps, QObject* parent)
     : QObject(parent), impl_(std::make_unique<Impl>()) {
+    impl_->media = std::move(media);
     impl_->audioDir = std::move(audioDir);
     impl_->title = std::move(title);
     impl_->userSpeakerName = std::move(userSpeakerName);
@@ -374,7 +363,7 @@ void RecordingSession::start(const QVector<AudioDeviceInfo>& devices) {
         return;
     }
 
-    // 3) Track metadata (WITHOUT the QProcess; the worker creates that on its own thread).
+    // 3) Track metadata (WITHOUT the encoder; the worker creates that on its own thread).
     const int n = impl_->engine->count();
     impl_->usedSlugs.clear();
     for (int i = 0; i < n; ++i)
@@ -383,7 +372,7 @@ void RecordingSession::start(const QVector<AudioDeviceInfo>& devices) {
     // 4) Worker thread: it creates + starts the encoders (on its own thread).
     impl_->trackPeak = QVector<float>(static_cast<int>(impl_->tracks.size()), 0.0f);
     impl_->workerThread = new QThread(this);
-    impl_->worker = new DrainWorker(impl_->engine.get(), impl_->folder, impl_->opusKbps,
+    impl_->worker = new DrainWorker(impl_->media, impl_->engine.get(), impl_->folder, impl_->opusKbps,
                                     impl_->wall, impl_->fillGaps);
     impl_->worker->moveToThread(impl_->workerThread);
     connect(impl_->worker, &DrainWorker::meter, this,

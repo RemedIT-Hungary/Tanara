@@ -11,6 +11,7 @@
 #include <QElapsedTimer>
 #include <QSignalSpy>
 
+#include "tanara/media/FfmpegMediaTool.h"
 #include "tanara/editing/review/SpeakerAnalysis.h"
 #include "tanara/editing/session/SpeakerEditor.h"
 #include "tanara/editing/session/SpeakerOverlay.h"
@@ -75,7 +76,7 @@ void SpeakerSandboxTest::measure()
         if (fresh) processing::UtteranceEmbeddingCache::remove(m.folder);
 
         editing::SpeakerEditor ed(&store, &people, &prints, m.id);
-        ed.setEmbedderFactory(processing::voiceUtteranceEmbedderFactory(model));
+        ed.setEmbedderFactory(processing::voiceUtteranceEmbedderFactory(model, media::FfmpegMediaTool::fromSettings({})));
         QSignalSpy done(&ed, &editing::SpeakerEditor::embeddingFinished);
         QElapsedTimer timer;
         timer.start();

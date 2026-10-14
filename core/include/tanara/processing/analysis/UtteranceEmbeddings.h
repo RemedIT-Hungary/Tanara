@@ -4,9 +4,10 @@
 // factory of the real (VoiceEmbedder / ONNX) implementation, and the per-model cache living in the
 // meeting folder (transcript.embeddings.bin, v2).
 //
-// The real implementation decodes the audio ONCE to 16 kHz mono (one ffmpeg run) and slices from it:
+// The real implementation decodes the audio ONCE to 16 kHz mono (one media-tool / ffmpeg run) and slices from it:
 // an ffmpeg per utterance would be too slow at 400-1500 lines. Even with several models there is one
 // decode: every model computes from the same PCM.
+#include "tanara/media/MediaTool.h"
 #include "tanara/processing/voiceid/EmbeddingSet.h"
 #include "tanara/processing/voiceid/VoiceEmbedder.h"
 #include "tanara/processing/voiceid/VoiceModelRegistry.h"
@@ -54,17 +55,17 @@ struct UtteranceModel {
 // unloadable model is missing from the embedAll() result. In a build without voice ID
 // (TANARA_BUILD_VOICEID=OFF) open() is false.
 UtteranceEmbedderFactory voiceUtteranceEmbedderFactory(
-    const QVector<UtteranceModel>& models, const QString& ffmpegPath = QStringLiteral("ffmpeg"));
+    const QVector<UtteranceModel>& models, media::MediaToolPtr media);
 // The same from a model set (including its loader: a fake model in a test). An empty set -> an empty factory.
 // Every embedder created gets the set's own unloaded copy.
 UtteranceEmbedderFactory voiceUtteranceEmbedderFactory(
-    const VoiceEmbedderSet& set, const QString& ffmpegPath = QStringLiteral("ffmpeg"));
+    const VoiceEmbedderSet& set, media::MediaToolPtr media);
 // The given model descriptors (e.g. VoiceModelRegistry::active()) with their resolved file paths.
 QVector<UtteranceModel> utteranceModelsFor(const QVector<VoiceModelSpec>& specs,
                                            const QString& modelsDir, const QString& appDir);
 // Single-model shorthand: the base model (VoiceModelRegistry::defaultModelId()) from the given file.
 UtteranceEmbedderFactory voiceUtteranceEmbedderFactory(
-    const QString& modelPath, const QString& ffmpegPath = QStringLiteral("ffmpeg"));
+    const QString& modelPath, media::MediaToolPtr media);
 
 // Model -> (utterance id -> embedding), persisted in the meeting folder (v2). Tied to the
 // transcript's fingerprint: another transcript -> an empty cache. A v1 (single-model) file is

@@ -10,6 +10,7 @@
 #include <QTemporaryDir>
 #include <QtEndian>
 
+#include "tanara/media/FfmpegMediaTool.h"
 #include "tanara/app/AppController.h"
 #include "tanara/app/SettingsManager.h"
 #include "tanara/library/tracks/TrackCatalog.h"
@@ -89,6 +90,7 @@ private:
     std::unique_ptr<QTemporaryDir> m_dir;
     std::unique_ptr<library::MeetingStore> m_store;
     bool m_ffmpeg = false;
+    media::MediaToolPtr m_media = media::FfmpegMediaTool::fromSettings({});
 };
 
 void AudioImportTest::initTestCase()
@@ -152,7 +154,7 @@ void AudioImportTest::probeReadsAudioFiles()
     const QString s = stereoLeftOnly("ketto.flac", 1);
     QVERIFY(!m.isEmpty() && !s.isEmpty());
 
-    const library::ImportFileInfo mi = library::audioimport::probe(m);
+    const library::ImportFileInfo mi = library::audioimport::probe(*m_media, m);
     QVERIFY2(mi.ok, qPrintable(mi.error));
     QCOMPARE(mi.channels, 1);
     QCOMPARE(mi.sampleRate, 16000);
@@ -164,14 +166,14 @@ void AudioImportTest::probeReadsAudioFiles()
     QCOMPARE(mi.bestDate(), mi.modifiedAt);
     QVERIFY(!library::audioimport::splitByDefault(mi));
 
-    const library::ImportFileInfo si = library::audioimport::probe(s);
+    const library::ImportFileInfo si = library::audioimport::probe(*m_media, s);
     QVERIFY(si.ok);
     QCOMPARE(si.channels, 2);
     QCOMPARE(si.codec, QStringLiteral("flac"));
     QVERIFY(!library::audioimport::splitByDefault(si));   // plain stereo: the user decides
 
     // The same in the background (the UI's path).
-    library::AudioImporter imp(m_store.get());
+    library::AudioImporter imp(m_store.get(), m_media);
     QSignalSpy probed(&imp, &library::AudioImporter::probed);
     imp.probeAsync(s);
     imp.probeAsync(src("nincs-ilyen.wav"));
@@ -192,18 +194,18 @@ void AudioImportTest::probeRejectsNonAudio()
     QVERIFY(text.open(QIODevice::WriteOnly));
     text.write("ez nem hang\n");
     text.close();
-    const library::ImportFileInfo ti = library::audioimport::probe(text.fileName());
+    const library::ImportFileInfo ti = library::audioimport::probe(*m_media, text.fileName());
     QVERIFY(!ti.ok);
     QVERIFY(ti.error.contains("jegyzet.txt"));
 
     // A video without audio: a recognizable file, but there is no audio in it.
     const QString silentVideo = src("nema.mkv");
     QVERIFY(ffmpeg({"-f", "lavfi", "-i", "testsrc=duration=1:size=64x64:rate=5", "-c:v", "mjpeg", silentVideo}));
-    const library::ImportFileInfo vi = library::audioimport::probe(silentVideo);
+    const library::ImportFileInfo vi = library::audioimport::probe(*m_media, silentVideo);
     QVERIFY(!vi.ok);
     QVERIFY2(vi.error.contains("nincs hang"), qPrintable(vi.error));
 
-    const library::ImportFileInfo missing = library::audioimport::probe(src("nincs.wav"));
+    const library::ImportFileInfo missing = library::audioimport::probe(*m_media, src("nincs.wav"));
     QVERIFY(!missing.ok);
     QVERIFY(missing.error.contains("nem található"));
 }
@@ -282,7 +284,7 @@ void AudioImportTest::importsMonoFile()
     }
     const qint64 sizeBefore = QFileInfo(file).size();
 
-    library::AudioImporter imp(m_store.get());
+    library::AudioImporter imp(m_store.get(), m_media);
     imp.setOpusBitrateKbps(32);
     QSignalSpy started(&imp, &library::AudioImporter::started);
     QSignalSpy progress(&imp, &library::AudioImporter::progress);
@@ -320,7 +322,7 @@ void AudioImportTest::importsMonoFile()
     QCOMPARE(t.startOffsetMs, qint64(0));   // imported file: from the start of the meeting
 
     // The track is Opus/ogg, 48 kHz: the same form as the recorded tracks.
-    const library::ImportFileInfo out = library::audioimport::probe(QDir(stored.folder).filePath(t.file));
+    const library::ImportFileInfo out = library::audioimport::probe(*m_media, QDir(stored.folder).filePath(t.file));
     QVERIFY(out.ok);
     QCOMPARE(out.codec, QStringLiteral("opus"));
     QCOMPARE(out.sampleRate, 48000);
@@ -358,7 +360,7 @@ void AudioImportTest::stereoKeptOrSplit()
     if (!m_ffmpeg) QSKIP("ffmpeg / ffprobe nincs telepítve");
     const QString file = stereoLeftOnly("ketmikrofon.wav", 2);
     QVERIFY(!file.isEmpty());
-    library::AudioImporter imp(m_store.get());
+    library::AudioImporter imp(m_store.get(), m_media);
 
     // Without splitting: one stereo track; given title and date.
     library::ImportRequest whole;
@@ -371,7 +373,7 @@ void AudioImportTest::stereoKeptOrSplit()
     QCOMPARE(a.startedAt, whole.startedAt);
     QCOMPARE(a.tracks.size(), 1);
     QCOMPARE(a.tracks[0].channels, 2);
-    QCOMPARE(library::audioimport::probe(QDir(a.folder).filePath(a.tracks[0].file)).channels, 2);
+    QCOMPARE(library::audioimport::probe(*m_media, QDir(a.folder).filePath(a.tracks[0].file)).channels, 2);
 
     // Split: two mono tracks; the left plays, the right is silent (the channels do not mix).
     library::ImportRequest split = whole;
@@ -386,7 +388,7 @@ void AudioImportTest::stereoKeptOrSplit()
     for (const Track& t : b.tracks) {
         QCOMPARE(t.channels, 1);
         QCOMPARE(t.kind, TrackKind::Other);
-        QCOMPARE(library::audioimport::probe(QDir(b.folder).filePath(t.file)).channels, 1);
+        QCOMPARE(library::audioimport::probe(*m_media, QDir(b.folder).filePath(t.file)).channels, 1);
     }
     QVERIFY(peakOf(QDir(b.folder).filePath(b.tracks[0].file)) > 0.2);
     QVERIFY(peakOf(QDir(b.folder).filePath(b.tracks[1].file)) < 0.01);
@@ -401,7 +403,7 @@ void AudioImportTest::multipleFilesWithOwnTrack()
     const QString theirs = stereoLeftOnly("Kutatás 7 - terem.ogg", 3);
     QVERIFY(!mine.isEmpty() && !theirs.isEmpty());
 
-    library::AudioImporter imp(m_store.get());
+    library::AudioImporter imp(m_store.get(), m_media);
     imp.setUserSpeakerName(QStringLiteral("Minta Márta"));
     QSignalSpy progress(&imp, &library::AudioImporter::progress);
     library::ImportRequest req;
@@ -443,13 +445,13 @@ void AudioImportTest::videoContainerUsesEmbeddedDate()
                     "-f", "lavfi", "-i", "sine=frequency=330:duration=2",
                     "-c:v", "mjpeg", "-c:a", "pcm_s16le", "-shortest",
                     "-metadata", "creation_time=2024-03-05T10:20:30Z", video}));
-    const library::ImportFileInfo info = library::audioimport::probe(video);
+    const library::ImportFileInfo info = library::audioimport::probe(*m_media, video);
     QVERIFY2(info.ok, qPrintable(info.error));
     QVERIFY(info.hasVideo);
     QVERIFY(info.createdAt.isValid());
     QCOMPARE(info.createdAt.toUTC(), QDateTime(QDate(2024, 3, 5), QTime(10, 20, 30), QTimeZone::UTC));
 
-    library::AudioImporter imp(m_store.get());
+    library::AudioImporter imp(m_store.get(), m_media);
     library::ImportRequest req;
     req.sources = {{video, false}};
     const Meeting m = importAndWait(imp, req);
@@ -457,7 +459,7 @@ void AudioImportTest::videoContainerUsesEmbeddedDate()
     QCOMPARE(m.startedAt.toUTC(), info.createdAt.toUTC());   // the embedded time, not the file's
     QCOMPARE(m.tracks.size(), 1);
     // Only the audio went in.
-    const library::ImportFileInfo out = library::audioimport::probe(QDir(m.folder).filePath(m.tracks[0].file));
+    const library::ImportFileInfo out = library::audioimport::probe(*m_media, QDir(m.folder).filePath(m.tracks[0].file));
     QVERIFY(out.ok);
     QVERIFY(!out.hasVideo);
     QCOMPARE(out.codec, QStringLiteral("opus"));
@@ -472,7 +474,7 @@ void AudioImportTest::nonAudioFileFailsCleanly()
     text.write("ez nem hang\n");
     text.close();
 
-    library::AudioImporter imp(m_store.get());
+    library::AudioImporter imp(m_store.get(), m_media);
     QSignalSpy failed(&imp, &library::AudioImporter::failed);
     QSignalSpy finished(&imp, &library::AudioImporter::finished);
     library::ImportRequest req;
@@ -502,7 +504,7 @@ void AudioImportTest::cancelLeavesNothing()
     const QString big = mono("hosszu.wav", 2400);
     QVERIFY(!big.isEmpty());
 
-    library::AudioImporter imp(m_store.get());
+    library::AudioImporter imp(m_store.get(), m_media);
     QSignalSpy progress(&imp, &library::AudioImporter::progress);
     QSignalSpy cancelled(&imp, &library::AudioImporter::cancelled);
     QSignalSpy finished(&imp, &library::AudioImporter::finished);

@@ -7,6 +7,7 @@
 // containing meeting.json (JsonSerialization). <metadataDir>/index.db (Qt6::Sql,
 // SQLite) only caches the metadata for fast listing and can be rebuilt from disk any time.
 #include "tanara/domain/Meeting.h"
+#include "tanara/media/MediaTool.h"
 #include <QObject>
 #include <QVector>
 
@@ -73,6 +74,10 @@ public:
     QString audioDir() const { return m_audioDir; }
     QString metadataDir() const { return m_metadataDir; }
 
+    // The media tool for the track lengths of recovered folders (probe). Without one the recovered
+    // meeting's length is 0 (the tracks still play).
+    void setMediaTool(media::MediaToolPtr media) { m_media = std::move(media); }
+
 signals:
     void meetingAdded(QString id);
     void meetingUpdated(QString id);
@@ -91,6 +96,7 @@ private:
     QString m_audioDir;
     QString m_metadataDir;
     QString m_connName;   // unique QSqlDatabase connection name
+    media::MediaToolPtr m_media;
 };
 
 } // namespace tanara::library

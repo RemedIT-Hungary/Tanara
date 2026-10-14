@@ -8,11 +8,13 @@
 // processing; the PCM does not stay in memory). Gaps between spans (and the part before the track's start /
 // after its end) are NaN: the track has no data there.
 //
-// The decoder is replaceable (PcmDecoder); unit tests compute with a fake decoder.
+// The decoding goes through the media port (media::MediaTool); unit tests compute with a fake decoder
+// or a fake tool.
 // The cache is in the meeting folder: tracks.activity.bin (tied to the track files' fingerprint).
 // The value types (TrackActivity, MeetingActivity) are in domain/Activity.h.
 #include "tanara/domain/Activity.h"
 #include "tanara/domain/Meeting.h"
+#include "tanara/media/MediaTool.h"
 
 #include <QString>
 #include <QVector>
@@ -31,13 +33,9 @@ inline constexpr float kMinDb = -90.0f;
 // The noise floor is this percentile of the frame dBs.
 inline constexpr double kFloorPercentile = 0.10;
 
-// The decoded PCM arrives continuously (16 kHz mono s16): the decoder calls this piece by piece.
-using PcmSink = std::function<void(const qint16* samples, qsizetype count)>;
-// Decoding one file into the sink. false = failed (*error filled, if not null).
-using PcmDecoder = std::function<bool(const QString& absPath, const PcmSink& sink, QString* error)>;
-
-// The real decoder: ffmpeg -> s16le 16 kHz mono, QProcess, continuous reading.
-PcmDecoder ffmpegDecoder(const QString& ffmpegPath = QStringLiteral("ffmpeg"));
+// The decoder types of the media port (16 kHz mono s16 here: media::MediaTool::monoS16Decoder).
+using PcmSink = media::PcmSink;
+using PcmDecoder = media::PcmDecoder;
 
 // Frame RMS -> dBFS (clamped to kMinDb). The pure, chunking-independent computation (for tests too).
 QVector<float> frameDb(const QVector<qint16>& pcm, int frameMs);
@@ -56,11 +54,18 @@ std::optional<float> windowEnergyDb(const TrackActivity& t, qint64 startMs, qint
 } // namespace trackactivity
 
 // Activity of the meeting's active tracks. One TrackActivity per logical track; an inactive span is
-// left out, a missing / undecodable file is left out (logged). Empty decoder = ffmpegDecoder(ffmpegPath).
+// left out, a missing / undecodable file is left out (logged). Decoded by the media tool (16 kHz mono s16).
+MeetingActivity computeMeetingActivity(const Meeting& m, const QString& folder, const media::MediaTool& tool,
+                                       int frameMs = trackactivity::kDefaultFrameMs);
+// The same with an explicit decoder (tests).
 MeetingActivity computeMeetingActivity(const Meeting& m, const QString& folder,
-                                       const QString& ffmpegPath = QStringLiteral("ffmpeg"),
-                                       int frameMs = trackactivity::kDefaultFrameMs,
-                                       const trackactivity::PcmDecoder& decoder = {});
+                                       const trackactivity::PcmDecoder& decoder,
+                                       int frameMs = trackactivity::kDefaultFrameMs);
+
+// The track activity of the side check: the tracks.activity.bin cache; if absent and there are both an
+// active mic and an active loopback track, computed (with the tool) and saved. Without a mic + loopback
+// pair: empty. Blocking (call it on a background thread).
+MeetingActivity loadOrComputeSideActivity(const Meeting& m, const media::MediaTool& tool);
 
 using trackactivity::windowEnergyDb;
 

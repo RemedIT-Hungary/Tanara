@@ -18,6 +18,7 @@
 #include "tanara/domain/Voice.h"
 #include "tanara/domain/Activity.h"
 #include "tanara/domain/Overlay.h"
+#include "tanara/media/MediaTool.h"
 #include "tanara/processing/analysis/TrackActivity.h"
 #include "tanara/library/tags/PersonTags.h"
 #include "tanara/processing/voiceid/EmbeddingSet.h"
@@ -86,8 +87,8 @@ QVector<int> clusterEmbeddings(const QVector<QVector<float>>& embs, double merge
 
 // Audio of a logical track's [startMs, endMs) span (16 kHz mono, [-1,1]); empty = none.
 using PcmReader = std::function<QVector<float>(const QString& trackId, qint64 startMs, qint64 endMs)>;
-// The real reader: from the track's (span) file, with the offset (tracktiming), via ffmpeg.
-PcmReader filePcmReader(const Meeting& m);
+// The real reader: from the track's (span) file, with the offset (tracktiming), via the media tool.
+PcmReader filePcmReader(const Meeting& m, media::MediaToolPtr media);
 
 // Step 1 (background thread). From the included tracks' activity: windows -> embedding -> per-track
 // clusters (a one-window cluster counts as noise if there is another). progress(done,total) returning false cancels.

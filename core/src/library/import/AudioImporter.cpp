@@ -12,7 +12,6 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QPointer>
-#include <QProcess>
 #include <QRegularExpression>
 #include <QSaveFile>
 #include <QTimer>
@@ -91,48 +90,30 @@ ImportFileInfo baseInfo(const QString& path)
     return info;
 }
 
-QStringList probeArgs(const QString& path)
-{
-    return {QStringLiteral("-v"), QStringLiteral("error"),
-            QStringLiteral("-print_format"), QStringLiteral("json"),
-            QStringLiteral("-show_format"), QStringLiteral("-show_streams"), path};
-}
-
-// The data from ffprobe's JSON output (the FIRST audio stream counts).
-void parseProbe(ImportFileInfo& info, bool exitedOk, const QByteArray& json)
+// The data from the probe (the FIRST audio stream counts).
+void parseProbe(ImportFileInfo& info, const media::MediaResult& r)
 {
     const QString name = QFileInfo(info.path).fileName();
-    const QJsonObject root = QJsonDocument::fromJson(json).object();
-    const QJsonArray streams = root.value(QStringLiteral("streams")).toArray();
-    if (!exitedOk || streams.isEmpty()) {
+    if (!r.ok() || !r.info || r.info->streams.isEmpty()) {
         info.error = trImport("Nem hang- vagy videófájl (nem olvasható be): %1").arg(name);
         return;
     }
-    QJsonObject audio;
-    for (const QJsonValue& v : streams) {
-        const QJsonObject s = v.toObject();
-        const QString type = s.value(QStringLiteral("codec_type")).toString();
-        if (type == QLatin1String("audio") && audio.isEmpty()) audio = s;
-        // Cover art (attached_pic) is not video.
-        if (type == QLatin1String("video")
-            && s.value(QStringLiteral("disposition")).toObject()
-                   .value(QStringLiteral("attached_pic")).toInt() == 0)
-            info.hasVideo = true;
-    }
-    if (audio.isEmpty() || audio.value(QStringLiteral("channels")).toInt() <= 0) {
+    const media::MediaInfo& mi = *r.info;
+    info.hasVideo = mi.hasVideo();   // cover art (attached_pic) is not video
+    const media::MediaStream* audio = mi.firstAudio();
+    if (!audio || audio->channels <= 0) {
         info.error = trImport("Ebben a fájlban nincs hang: %1").arg(name);
         return;
     }
-    const QJsonObject format = root.value(QStringLiteral("format")).toObject();
-    info.channels   = audio.value(QStringLiteral("channels")).toInt();
-    info.sampleRate = audio.value(QStringLiteral("sample_rate")).toString().toInt();
-    info.codec      = audio.value(QStringLiteral("codec_name")).toString();
-    double secs = format.value(QStringLiteral("duration")).toString().toDouble();
-    if (secs <= 0.0) secs = audio.value(QStringLiteral("duration")).toString().toDouble();
+    info.channels   = audio->channels;
+    info.sampleRate = audio->sampleRate;
+    info.codec      = audio->codecName;
+    double secs = mi.durationSec;
+    if (secs <= 0.0) secs = audio->durationSec;
     info.durationMs = secs > 0.0 ? qint64(secs * 1000.0 + 0.5) : 0;
-    info.createdAt = embeddedDate(format.value(QStringLiteral("tags")).toObject());
+    info.createdAt = embeddedDate(mi.formatTags);
     if (!info.createdAt.isValid())
-        info.createdAt = embeddedDate(audio.value(QStringLiteral("tags")).toObject());
+        info.createdAt = embeddedDate(audio->tags);
     info.ok = true;
 }
 
@@ -147,25 +128,16 @@ QString ffmpegMissing()
 
 namespace audioimport {
 
-ImportFileInfo probe(const QString& path, int timeoutMs)
+ImportFileInfo probe(const media::MediaTool& media, const QString& path, int timeoutMs)
 {
     ImportFileInfo info = baseInfo(path);
     if (!info.error.isEmpty()) return info;
-    QProcess p;
-    p.start(QStringLiteral("ffprobe"), probeArgs(info.path));
-    if (!p.waitForStarted(5000)) {
+    const media::MediaResult r = media.probe(info.path, timeoutMs);
+    if (!r.started) {
         info.error = ffmpegMissing();
         return info;
     }
-    if (!p.waitForFinished(timeoutMs)) {
-        p.kill();
-        p.waitForFinished(2000);
-        info.error = trImport("Nem hang- vagy videófájl (nem olvasható be): %1")
-                         .arg(QFileInfo(info.path).fileName());
-        return info;
-    }
-    parseProbe(info, p.exitStatus() == QProcess::NormalExit && p.exitCode() == 0,
-               p.readAllStandardOutput());
+    parseProbe(info, r);   // a timeout counts as unreadable
     return info;
 }
 
@@ -248,6 +220,7 @@ QDateTime defaultStart(const QVector<ImportFileInfo>& files)
 struct AudioImporter::Impl {
     AudioImporter* q = nullptr;
     MeetingStore*  store = nullptr;
+    media::MediaToolPtr tool;
     int            kbps = 64;
     QString        userName;
 
@@ -264,8 +237,7 @@ struct AudioImporter::Impl {
         int probeIndex = 0;
         int encodeIndex = -1;
         QVector<qint64> encodedMs;       // per source, the length written by ffmpeg
-        QPointer<QProcess> proc;
-        QByteArray outBuf;
+        QPointer<media::MediaJob> proc;
         bool cancelled = false;
         int lastPercent = -2;
     };
@@ -274,20 +246,21 @@ struct AudioImporter::Impl {
     void probeNext();
     void beginEncode();
     void encodeNext();
-    void onProgressOutput();
+    void onProgress(qint64 outMs);
     void finalize();
     enum class End { Done, Failed, Cancelled };
     void close(End end, const QString& message = {}, const QString& detail = {},
                const Meeting& meeting = {});
     void sweepStaleStaging() const;
-    QStringList encodeArgs(int sourceIndex) const;
+    media::TranscodeSpec transcodeSpec(int sourceIndex) const;
 };
 
-AudioImporter::AudioImporter(MeetingStore* store, QObject* parent)
+AudioImporter::AudioImporter(MeetingStore* store, media::MediaToolPtr media, QObject* parent)
     : QObject(parent), d(std::make_unique<Impl>())
 {
     d->q = this;
     d->store = store;
+    d->tool = std::move(media);
     qRegisterMetaType<tanara::library::ImportFileInfo>();
     qRegisterMetaType<tanara::library::ImportRequest>();
 }
@@ -296,10 +269,9 @@ AudioImporter::~AudioImporter()
 {
     // Exit during an import: no ffmpeg and no half-made folder may be left.
     if (d->run) {
-        if (QProcess* p = d->run->proc) {
+        if (media::MediaJob* p = d->run->proc) {
             p->disconnect(this);
-            p->kill();
-            p->waitForFinished(3000);
+            p->abort(3000);
         }
         if (!d->run->stagingDir.isEmpty())
             QDir(d->run->stagingDir).removeRecursively();
@@ -318,23 +290,14 @@ void AudioImporter::probeAsync(const QString& path)
         QTimer::singleShot(0, this, [this, info] { emit probed(info); });
         return;
     }
-    auto* p = new QProcess(this);
-    auto done = std::make_shared<bool>(false);
-    connect(p, &QProcess::finished, this, [this, p, info, done](int code, QProcess::ExitStatus st) mutable {
-        if (*done) return;
-        *done = true;
-        parseProbe(info, st == QProcess::NormalExit && code == 0, p->readAllStandardOutput());
+    media::MediaJob* p = d->tool->startProbe(info.path, this);
+    connect(p, &media::MediaJob::finished, this, [this, p, info](const media::MediaResult& r) mutable {
         p->deleteLater();
+        if (!r.started) info.error = ffmpegMissing();
+        else parseProbe(info, r);
         emit probed(info);
     });
-    connect(p, &QProcess::errorOccurred, this, [this, p, info, done](QProcess::ProcessError e) mutable {
-        if (e != QProcess::FailedToStart || *done) return;
-        *done = true;
-        info.error = ffmpegMissing();
-        p->deleteLater();
-        emit probed(info);
-    });
-    p->start(QStringLiteral("ffprobe"), probeArgs(info.path));
+    p->start();
 }
 
 QString AudioImporter::start(const ImportRequest& request)
@@ -369,9 +332,9 @@ void AudioImporter::cancel()
 {
     if (!d->run || d->run->cancelled) return;
     d->run->cancelled = true;
-    if (QProcess* p = d->run->proc) {
-        if (p->state() != QProcess::NotRunning) {
-            p->kill();   // the finished branch closes
+    if (media::MediaJob* p = d->run->proc) {
+        if (p->isRunning()) {
+            p->cancel();   // the finished branch closes
             return;
         }
     }
@@ -398,30 +361,21 @@ void AudioImporter::Impl::probeNext()
     ImportFileInfo info = baseInfo(r.req.sources.at(r.probeIndex).path);
     if (!info.error.isEmpty()) { close(End::Failed, info.error); return; }
 
-    auto* p = new QProcess(q);
+    media::MediaJob* p = tool->startProbe(info.path, q);
     r.proc = p;
     const QString id = r.id;
-    auto done = std::make_shared<bool>(false);
-    QObject::connect(p, &QProcess::finished, q,
-                     [this, p, id, info, done](int code, QProcess::ExitStatus st) mutable {
-        if (*done) return;
-        *done = true;
+    QObject::connect(p, &media::MediaJob::finished, q, [this, p, id, info](const media::MediaResult& res) mutable {
         p->deleteLater();
         if (!run || run->id != id) return;
+        if (!res.started) { close(End::Failed, ffmpegMissing()); return; }
         if (run->cancelled) { close(End::Cancelled); return; }
-        parseProbe(info, st == QProcess::NormalExit && code == 0, p->readAllStandardOutput());
+        parseProbe(info, res);
         if (!info.ok) { close(End::Failed, info.error); return; }
         run->files.append(info);
         ++run->probeIndex;
         probeNext();
     });
-    QObject::connect(p, &QProcess::errorOccurred, q, [this, p, id, done](QProcess::ProcessError e) {
-        if (e != QProcess::FailedToStart || *done) return;
-        *done = true;
-        p->deleteLater();
-        if (run && run->id == id) close(End::Failed, ffmpegMissing());
-    });
-    p->start(QStringLiteral("ffprobe"), probeArgs(info.path));
+    p->start();
 }
 
 void AudioImporter::Impl::beginEncode()
@@ -453,42 +407,22 @@ void AudioImporter::Impl::beginEncode()
     encodeNext();
 }
 
-// One source's ffmpeg command: the first audio stream -> Opus/ogg, 48 kHz. For splitting, a single
-// ffmpeg with several outputs (one mono track per channel): we read the source through once.
-QStringList AudioImporter::Impl::encodeArgs(int sourceIndex) const
+// One source's transcode: the first audio stream -> Opus/ogg, 48 kHz. For splitting, a single
+// ffmpeg with several outputs (one mono track per channel): we read the source through once
+// (the command line: media::ffmpegargs::transcode).
+media::TranscodeSpec AudioImporter::Impl::transcodeSpec(int sourceIndex) const
 {
     const Run& r = *run;
-    const QString bitrate = QString::number(kbps) + QLatin1Char('k');
-    QStringList args{QStringLiteral("-hide_banner"), QStringLiteral("-loglevel"), QStringLiteral("error"),
-                     QStringLiteral("-nostdin"), QStringLiteral("-y"),
-                     QStringLiteral("-progress"), QStringLiteral("pipe:1"), QStringLiteral("-nostats"),
-                     QStringLiteral("-i"), r.req.sources.at(sourceIndex).path};
-    QVector<int> mine;
-    for (int i = 0; i < r.plan.size(); ++i)
-        if (r.plan.at(i).sourceIndex == sourceIndex) mine.append(i);
-    const auto output = [&](int planIndex) {
-        args << QStringLiteral("-map_metadata") << QStringLiteral("-1")
-             << QStringLiteral("-ar") << QStringLiteral("48000")
-             << QStringLiteral("-c:a") << QStringLiteral("libopus")
-             << QStringLiteral("-b:a") << bitrate
-             << QDir(r.stagingDir).filePath(r.trackFiles.at(planIndex));
-    };
-    if (mine.size() == 1 && r.plan.at(mine.first()).channel < 0) {
-        args << QStringLiteral("-map") << QStringLiteral("0:a:0")
-             << QStringLiteral("-ac") << QString::number(r.plan.at(mine.first()).channels);
-        output(mine.first());
-        return args;
+    media::TranscodeSpec spec;
+    spec.inputPath = r.req.sources.at(sourceIndex).path;
+    spec.bitrateKbps = kbps;
+    spec.sampleRate = 48000;
+    for (int i = 0; i < r.plan.size(); ++i) {
+        const ImportPlannedTrack& t = r.plan.at(i);
+        if (t.sourceIndex != sourceIndex) continue;
+        spec.outputs.append({QDir(r.stagingDir).filePath(r.trackFiles.at(i)), t.channel, t.channels});
     }
-    QString graph = QStringLiteral("[0:a:0]asplit=%1").arg(mine.size());
-    for (int k = 0; k < mine.size(); ++k) graph += QStringLiteral("[s%1]").arg(k);
-    for (int k = 0; k < mine.size(); ++k)
-        graph += QStringLiteral(";[s%1]pan=mono|c0=c%2[o%1]").arg(k).arg(r.plan.at(mine.at(k)).channel);
-    args << QStringLiteral("-filter_complex") << graph;
-    for (int k = 0; k < mine.size(); ++k) {
-        args << QStringLiteral("-map") << QStringLiteral("[o%1]").arg(k);
-        output(mine.at(k));
-    }
-    return args;
+    return spec;
 }
 
 void AudioImporter::Impl::encodeNext()
@@ -498,32 +432,25 @@ void AudioImporter::Impl::encodeNext()
     ++r.encodeIndex;
     if (r.encodeIndex >= r.req.sources.size()) { finalize(); return; }
 
-    auto* p = new QProcess(q);
+    media::MediaJob* p = tool->startTranscode(transcodeSpec(r.encodeIndex), q);
     r.proc = p;
-    r.outBuf.clear();
     const QString id = r.id;
     const int index = r.encodeIndex;
-    auto done = std::make_shared<bool>(false);
-    QObject::connect(p, &QProcess::readyReadStandardOutput, q, [this, p, id] {
+    QObject::connect(p, &media::MediaJob::progress, q, [this, p, id](qint64 outMs) {
         if (!run || run->id != id || run->proc != p) return;
-        run->outBuf += p->readAllStandardOutput();
-        onProgressOutput();
+        onProgress(outMs);
     });
-    QObject::connect(p, &QProcess::finished, q,
-                     [this, p, id, index, done](int code, QProcess::ExitStatus st) {
-        if (*done) return;
-        *done = true;
+    QObject::connect(p, &media::MediaJob::finished, q, [this, p, id, index](const media::MediaResult& res) {
         p->deleteLater();
         if (!run || run->id != id) return;
+        if (!res.started) { close(End::Failed, ffmpegMissing()); return; }
         if (run->cancelled) { close(End::Cancelled); return; }
         const QString name = QFileInfo(run->req.sources.at(index).path).fileName();
-        if (st != QProcess::NormalExit || code != 0) {
+        if (!res.normalExit || res.exitCode != 0) {
             close(End::Failed, AudioImporter::tr("Nem sikerült beolvasni: %1").arg(name),
-                  QString::fromUtf8(p->readAllStandardError()).simplified().left(300));
+                  QString::fromUtf8(res.stdErr).simplified().left(300));
             return;
         }
-        run->outBuf += p->readAllStandardOutput();
-        onProgressOutput();
         // Every track must exist (an empty / missing output = an error).
         for (int i = 0; i < run->plan.size(); ++i) {
             if (run->plan.at(i).sourceIndex != index) continue;
@@ -536,31 +463,14 @@ void AudioImporter::Impl::encodeNext()
             run->encodedMs[index] = run->files.at(index).durationMs;
         encodeNext();
     });
-    QObject::connect(p, &QProcess::errorOccurred, q, [this, p, id, done](QProcess::ProcessError e) {
-        if (e != QProcess::FailedToStart || *done) return;
-        *done = true;
-        p->deleteLater();
-        if (run && run->id == id) close(End::Failed, ffmpegMissing());
-    });
     emit q->progress(r.id, qMax(r.lastPercent, -1), r.encodeIndex, int(r.req.sources.size()));
-    p->start(QStringLiteral("ffmpeg"), encodeArgs(index));
+    p->start();
 }
 
-// The ffmpeg `-progress` output: key=value lines; out_time_us = the length already written.
-void AudioImporter::Impl::onProgressOutput()
+// The transcode's progress (ffmpeg `-progress`, parsed by the media tool): the length already written.
+void AudioImporter::Impl::onProgress(qint64 outMs)
 {
     Run& r = *run;
-    qint64 outMs = -1;
-    int nl;
-    while ((nl = r.outBuf.indexOf('\n')) >= 0) {
-        const QByteArray line = r.outBuf.left(nl).trimmed();
-        r.outBuf.remove(0, nl + 1);
-        if (line.startsWith("out_time_us=") || line.startsWith("out_time_ms=")) {
-            bool ok = false;
-            const qint64 us = line.mid(12).toLongLong(&ok);   // (out_time_ms is in fact microseconds too)
-            if (ok && us >= 0) outMs = us / 1000;
-        }
-    }
     if (outMs < 0) return;
     r.encodedMs[r.encodeIndex] = qMax(r.encodedMs.at(r.encodeIndex), outMs);
 

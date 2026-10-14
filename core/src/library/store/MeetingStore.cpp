@@ -14,7 +14,6 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QUuid>
-#include <QProcess>
 #include <QDateTime>
 #include <QRegularExpression>
 #include <QSqlDatabase>
@@ -385,14 +384,11 @@ QVector<Meeting> MeetingStore::loadAll()
 }
 
 namespace {
-qint64 probeDurationMs(const QString& path)
+qint64 probeDurationMs(const media::MediaTool* media, const QString& path)
 {
-    QProcess p;
-    p.start(QStringLiteral("ffprobe"), {QStringLiteral("-v"), QStringLiteral("error"),
-        QStringLiteral("-show_entries"), QStringLiteral("format=duration"),
-        QStringLiteral("-of"), QStringLiteral("csv=p=0"), path});
-    if (!p.waitForFinished(5000)) { p.kill(); return 0; }
-    return qint64(QString::fromUtf8(p.readAllStandardOutput()).trimmed().toDouble() * 1000.0);
+    if (!media) return 0;
+    const media::MediaResult r = media->probe(path, 5000);
+    return r.info ? r.info->durationMs() : 0;
 }
 } // namespace
 
@@ -426,7 +422,7 @@ Meeting MeetingStore::meetingFromTrackFolder(const QString& folder) const
         t.speakerLabel = loop ? QStringLiteral("Rendszer")
                               : QStringLiteral("Mikrofon ") + QString::number(micNo++);
         t.active = true;
-        m.durationMs = qMax(m.durationMs, probeDurationMs(QDir(folder).filePath(f)));
+        m.durationMs = qMax(m.durationMs, probeDurationMs(m_media.get(), QDir(folder).filePath(f)));
         m.tracks.append(t);
     }
     return m;

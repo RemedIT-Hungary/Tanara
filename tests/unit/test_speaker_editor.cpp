@@ -13,6 +13,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 
+#include "tanara/media/FfmpegMediaTool.h"
 #include "tanara/domain/Types.h"
 #include "tanara/editing/session/PeopleDirectory.h"
 #include "tanara/editing/review/SpeakerAnalysis.h"
@@ -878,7 +879,7 @@ void SpeakerEditorTest::embedding_gracefulWithoutModel()
     QVERIFY(!ed->isEmbeddingRunning());
 
     // The real factory with a missing model: open() false, no crash.
-    auto real = processing::voiceUtteranceEmbedderFactory(QStringLiteral("/nincs/ilyen/modell.onnx"))();
+    auto real = processing::voiceUtteranceEmbedderFactory(QStringLiteral("/nincs/ilyen/modell.onnx"), media::FfmpegMediaTool::fromSettings({}))();
     QVERIFY(real);
     QVERIFY(!real->open(QStringLiteral("/nincs/ilyen/hang.mp3")));
     QVERIFY(real->embed(0, 3000).isEmpty());

@@ -2,7 +2,6 @@
 
 #include "tanara/foundation/log/Logging.h"
 
-#include <QProcess>
 #include <QFileInfo>
 
 #include <cstring>
@@ -11,7 +10,7 @@
 // The speaker embedding (fbank + ONNX) is compiled only if voice ID is enabled
 // (TANARA_BUILD_VOICEID=ON -> TANARA_HAVE_VOICEID). Otherwise a stub: isValid()==false, an empty
 // embedding, so AppController/CLI automatically skip speaker labeling.
-// decodePcm16kMono (pure ffmpeg/QProcess) is available in BOTH builds.
+// decodePcm16kMono (the media port) is available in BOTH builds.
 #ifdef TANARA_HAVE_VOICEID
 #include "tanara/library/store/VoiceprintStore.h"   // l2normalize
 #include "kaldi-native-fbank/csrc/online-feature.h"
@@ -256,10 +255,9 @@ QVector<float> VoiceEmbedder::embedPcm(const QVector<float>& mono16k) const {
     return library::VoiceprintStore::l2normalize(embedding);
 }
 
-QVector<float> VoiceEmbedder::embedFile(const QString& audioPath,
-                                        qint64 startMs, qint64 endMs,
-                                        const QString& ffmpegPath) const {
-    const QVector<float> pcm = decodePcm16kMono(audioPath, startMs, endMs, ffmpegPath);
+QVector<float> VoiceEmbedder::embedFile(const media::MediaTool& media, const QString& audioPath,
+                                        qint64 startMs, qint64 endMs) const {
+    const QVector<float> pcm = decodePcm16kMono(media, audioPath, startMs, endMs);
     if (pcm.isEmpty()) {
         d->error = QStringLiteral("ffmpeg dekódolás sikertelen: %1").arg(audioPath);
         return {};
@@ -293,44 +291,15 @@ EmbedderConfig VoiceEmbedder::config() const { return d->cfg; }
 
 QVector<float> VoiceEmbedder::embedPcm(const QVector<float>& /*mono16k*/) const { return {}; }
 
-QVector<float> VoiceEmbedder::embedFile(const QString& /*audioPath*/,
-                                        qint64 /*startMs*/, qint64 /*endMs*/,
-                                        const QString& /*ffmpegPath*/) const { return {}; }
+QVector<float> VoiceEmbedder::embedFile(const media::MediaTool& /*media*/, const QString& /*audioPath*/,
+                                        qint64 /*startMs*/, qint64 /*endMs*/) const { return {}; }
 
 #endif // TANARA_HAVE_VOICEID
 
-// --- Shared (both builds): audio-file segment -> 16 kHz mono float PCM (ffmpeg) -----
-QVector<float> VoiceEmbedder::decodePcm16kMono(const QString& audioPath,
-                                               qint64 startMs, qint64 endMs,
-                                               const QString& ffmpegPath) {
-    QStringList args;
-    args << QStringLiteral("-v") << QStringLiteral("error");
-    // INPUT seek: -ss BEFORE -i, so decoding starts at the sought position (fast, constant even for a
-    // long file), not from 0. The length is limited with -t.
-    if (startMs > 0)
-        args << QStringLiteral("-ss") << QString::number(startMs / 1000.0, 'f', 3);
-    args << QStringLiteral("-i") << audioPath;
-    if (endMs > startMs)
-        args << QStringLiteral("-t") << QString::number((endMs - startMs) / 1000.0, 'f', 3);
-    args << QStringLiteral("-ac") << QStringLiteral("1")
-         << QStringLiteral("-ar") << QStringLiteral("16000")
-         << QStringLiteral("-f")  << QStringLiteral("f32le")
-         << QStringLiteral("-");
-
-    QProcess proc;
-    proc.start(ffmpegPath, args);
-    if (!proc.waitForStarted(5000))
-        return {};
-    if (!proc.waitForFinished(120000))
-        return {};
-    const QByteArray raw = proc.readAllStandardOutput();
-    if (raw.isEmpty())
-        return {};
-
-    const int n = raw.size() / static_cast<int>(sizeof(float));
-    QVector<float> pcm(n);
-    std::memcpy(pcm.data(), raw.constData(), static_cast<size_t>(n) * sizeof(float));
-    return pcm;
+// --- Shared (both builds): audio-file segment -> 16 kHz mono float PCM (the media port) -----
+QVector<float> VoiceEmbedder::decodePcm16kMono(const media::MediaTool& media, const QString& audioPath,
+                                               qint64 startMs, qint64 endMs) {
+    return media.decodeMonoF32(audioPath, startMs, endMs, 16000);
 }
 
 } // namespace tanara::processing

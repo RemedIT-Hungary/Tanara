@@ -41,6 +41,7 @@
 #include "tanara/recording/audio/TrackTiming.h"
 #include "tanara/library/tracks/TrackCatalog.h"
 #include "tanara/library/tracks/WaveformService.h"
+#include "tanara/media/FfmpegMediaTool.h"
 #include "tanara/editing/session/PeopleDirectory.h"
 #include "tanara/editing/session/SpeakerEditor.h"
 #include "tanara/editing/session/SpeakerOverlay.h"
@@ -62,7 +63,6 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QFile>
-#include <QProcess>
 #include <QSaveFile>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -325,7 +325,8 @@ const Track* resolveTrackForLabel(const Meeting& m, const MergedTranscript& mt,
 // file's start in the meeting (Track::startOffsetMs for a track file, 0 for the mixdown); the part before
 // the file is dropped. refs (optional): the spans used in "fileRel#start-end" form (meeting time), the
 // voiceprint's sourceRefs.
-EmbeddingSet embeddingForLabel(const processing::VoiceEmbedderSet& set, const QString& audioPath, qint64 offsetMs,
+EmbeddingSet embeddingForLabel(const media::MediaTool& media, const processing::VoiceEmbedderSet& set,
+                               const QString& audioPath, qint64 offsetMs,
                                const MergedTranscript& mt, const QString& rawLabel,
                                const QString& fileRel = QString(), QStringList* refs = nullptr) {
     QVector<Utterance> utts;
@@ -341,7 +342,7 @@ EmbeddingSet embeddingForLabel(const processing::VoiceEmbedderSet& set, const QS
         if (accMs >= 3000 || pcm.size() > 16000 * 12) break;
         const tanara::tracktiming::FileRange r = tanara::tracktiming::meetingToFileRange(offsetMs, u.startMs, u.endMs);
         if (!r.valid()) continue;   // the track was not sounding yet at this time
-        const QVector<float> part = processing::VoiceEmbedder::decodePcm16kMono(path, r.startMs, r.endMs);
+        const QVector<float> part = processing::VoiceEmbedder::decodePcm16kMono(media, path, r.startMs, r.endMs);
         if (part.isEmpty()) continue;
         pcm += part;
         accMs += (r.endMs - r.startMs);
@@ -371,7 +372,8 @@ bool parseRangeRef(const QString& ref, QString* file, qint64* startMs, qint64* e
 // enrollSpeaker's voiceprint is made (embeddingForLabel); this differs slightly from the editor's
 // weighted per-line average, but is self-consistent per model. The spans are in meeting time: for a track
 // file the track's offset is subtracted. missingAudio: the referenced file is missing.
-QVector<float> embedPrintSource(const processing::VoiceEmbedderSet& set, const QString& modelId, const Meeting& m,
+QVector<float> embedPrintSource(const media::MediaTool& media, const processing::VoiceEmbedderSet& set,
+                                const QString& modelId, const Meeting& m,
                                 const Voiceprint& vp, bool* missingAudio) {
     *missingAudio = false;
     const QStringList refs = vp.sourceRefs.isEmpty() ? QStringList{vp.sampleRef} : vp.sourceRefs;
@@ -387,7 +389,7 @@ QVector<float> embedPrintSource(const processing::VoiceEmbedderSet& set, const Q
             if (t.file == file) { offset = t.startOffsetMs; break; }
         const tanara::tracktiming::FileRange r = tanara::tracktiming::meetingToFileRange(offset, s, e);
         if (!r.valid()) continue;
-        pcm += processing::VoiceEmbedder::decodePcm16kMono(abs, r.startMs, r.endMs);
+        pcm += processing::VoiceEmbedder::decodePcm16kMono(media, abs, r.startMs, r.endMs);
     }
     if (pcm.isEmpty()) return {};
     return set.embedPcmWith(pcm, {modelId}).value(modelId);
@@ -615,6 +617,7 @@ struct AppController::Impl {
     library::TrackCatalog*      tracks = nullptr;
     library::WaveformService*   waveforms = nullptr;
     library::AudioImporter*     importer = nullptr;
+    media::MediaToolPtr         media;      // ffmpeg / ffprobe port (created once in the constructor)
     std::unique_ptr<library::JobStats> jobStats;      // speed of earlier runs (for estimates)
 
     // ---- tags ----
@@ -657,7 +660,7 @@ struct AppController::Impl {
     // toggle). A process-wide (not persisted) choice.
     QSet<QString> skipIdentifyAfterTranscribe;
 
-    QHash<QString, QPointer<QProcess>> mixdownProcs;   // meetingId -> running ffmpeg
+    QHash<QString, QPointer<media::MediaJob>> mixdownProcs;   // meetingId -> running mixdown (ffmpeg)
     QSet<QString> mixdownCancelled;
     QHash<QString, QString> mixdownFailReason;   // the reason of the last mix that did not even start (missing track)
     // Per meeting the transcript's "generation": every new transcript write increments it. The background
@@ -1055,7 +1058,9 @@ AppController::AppController(QObject* parent)
         d->cloud->setLanguage(activeUiLanguage());
     }
     d->devices = new recording::DeviceManager(this);
+    d->media   = media::FfmpegMediaTool::fromSettings(s.media);
     d->store   = new library::MeetingStore(d->audioDir, d->metaDir, this);
+    d->store->setMediaTool(d->media);   // the track lengths of recovered folders
     // Bringing orphaned recordings left after a crash (tracks without meeting.json) back into the list.
     d->store->recoverOrphanRecordings();
     // Temporary folders of an interrupted archive import (e.g. quitting during unpacking). Only older ones:
@@ -1072,8 +1077,8 @@ AppController::AppController(QObject* parent)
     d->jobs      = new library::MeetingJobTracker(d->store, this);
     d->library   = new library::MeetingLibrary(d->store, d->jobs, this);
     d->tracks    = new library::TrackCatalog(d->store, this);
-    d->waveforms = new library::WaveformService(this);
-    d->importer  = new library::AudioImporter(d->store, this);
+    d->waveforms = new library::WaveformService(d->media, this);
+    d->importer  = new library::AudioImporter(d->store, d->media, this);
     // Import -> a structured task under the FUTURE meeting's id (there is no such meeting in the library
     // yet; the shell shows it from activeJobs() / the signals).
     connect(d->importer, &library::AudioImporter::started, this, [this](const QString& id, const QString& title) {
@@ -1323,7 +1328,7 @@ processing::VoiceEmbedderSet AppController::voiceEmbedderSet() const { return d-
 processing::UtteranceEmbedderFactory AppController::utteranceEmbedderFactory() const
 {
     if (!d->voiceModelUsable()) return {};
-    return voiceUtteranceEmbedderFactory(d->voiceSet);
+    return voiceUtteranceEmbedderFactory(d->voiceSet, d->media);
 }
 
 void AppController::setVoiceEmbedderLoader(processing::PcmEmbedderLoader loader)
@@ -1410,12 +1415,13 @@ void AppController::backfillVoiceprints()
     const processing::VoiceEmbedderSet proto = d->voiceSet.freshCopy();
     const auto cancel = d->backfillCancel;
     QPointer<AppController> self(this);
-    d->backfillPool.start([self, jobs, proto, cancel]() {
+    const media::MediaToolPtr media = d->media;
+    d->backfillPool.start([self, jobs, proto, cancel, media]() {
         const processing::VoiceEmbedderSet emb = proto.freshCopy();   // the thread's own model instances
         for (const Impl::BackfillJob& job : jobs) {
             if (cancel->load()) break;
             bool missing = false;
-            const QVector<float> vec = embedPrintSource(emb, job.model, job.meeting, job.print, &missing);
+            const QVector<float> vec = embedPrintSource(*media, emb, job.model, job.meeting, job.print, &missing);
             QMetaObject::invokeMethod(qApp, [self, job, vec, missing]() {
                 if (self) self->d->finishBackfillJob(job, vec, missing);
             }, Qt::QueuedConnection);
@@ -1541,7 +1547,7 @@ void AppController::enrollSpeaker(const QString& meetingId, const QString& rawLa
     if (src.absPath.isEmpty()) return;
 
     QStringList refs;
-    const EmbeddingSet set = embeddingForLabel(d->voiceSet, src.absPath, src.offsetMs, merged, rawLabel,
+    const EmbeddingSet set = embeddingForLabel(*d->media, d->voiceSet, src.absPath, src.offsetMs, merged, rawLabel,
                                                src.fileRel, &refs);
     if (set.isEmpty()) return;
 
@@ -1585,7 +1591,7 @@ void AppController::autoIdentifyMeeting(const QString& meetingId,
             continue;   // already named (by hand or an earlier match)
         const VoiceSource src = resolveVoiceSource(m, merged, label);
         if (src.absPath.isEmpty()) continue;
-        const EmbeddingSet e = embeddingForLabel(d->voiceSet, src.absPath, src.offsetMs, merged, label);
+        const EmbeddingSet e = embeddingForLabel(*d->media, d->voiceSet, src.absPath, src.offsetMs, merged, label);
         if (e.isEmpty()) continue;
         if (d->matchSpeaker(m, label, e)) {
             identified << label;
@@ -1607,7 +1613,7 @@ VoiceMatch AppController::testSpeakerMatch(const QString& meetingId, const QStri
     if (merged.tokens.isEmpty()) return none;
     const VoiceSource src = resolveVoiceSource(m, merged, rawLabel);
     if (src.absPath.isEmpty()) return none;
-    const EmbeddingSet e = embeddingForLabel(d->voiceSet, src.absPath, src.offsetMs, merged, rawLabel);
+    const EmbeddingSet e = embeddingForLabel(*d->media, d->voiceSet, src.absPath, src.offsetMs, merged, rawLabel);
     if (e.isEmpty()) return none;
     return d->voiceprints->bestMatch(e, e.keys());
 }
@@ -1654,7 +1660,7 @@ QVector<ParticipantGuess> AppController::identifyParticipants(
             // is empty (skipped).
             const tanara::tracktiming::FileRange fr = tanara::tracktiming::fileRange(t, s, s + kWinMs);
             if (!fr.valid()) continue;
-            QVector<float> pcm = processing::VoiceEmbedder::decodePcm16kMono(path, fr.startMs, fr.endMs);
+            QVector<float> pcm = processing::VoiceEmbedder::decodePcm16kMono(*d->media, path, fr.startMs, fr.endMs);
             if (pcm.isEmpty()) continue;
             double sum = 0.0;
             for (float x : pcm) sum += static_cast<double>(x) * x;
@@ -1731,7 +1737,7 @@ void AppController::enrollVoiceprintFromSample(const QString& name, const QStrin
     const tanara::tracktiming::FileRange fr = tanara::tracktiming::fileRange(*track, startMs, endMs);
     if (!fr.valid()) return;
     const EmbeddingSet set =
-        d->voiceSet.embedPcm(processing::VoiceEmbedder::decodePcm16kMono(path, fr.startMs, fr.endMs));
+        d->voiceSet.embedPcm(processing::VoiceEmbedder::decodePcm16kMono(*d->media, path, fr.startMs, fr.endMs));
     if (set.isEmpty()) return;
 
     Voiceprint tmpl;
@@ -1935,47 +1941,30 @@ void AppController::regenerateMixdown(const QString& meetingId) {
     const QStringList args = plan.ffmpegArgs(partPath);
     const qint64 totalMs = m.durationMs;   // the denominator of the percentage
 
-    // An asynchronous QProcess: it does NOT block the UI (even a 90-minute mix may run), nor does it block
-    // starting a new recording (a separate child process + a separate capture engine).
-    auto* proc = new QProcess(this);
-    proc->setProgram(QStringLiteral("ffmpeg"));
-    proc->setArguments(args);
+    // An asynchronous media job (ffmpeg): it does NOT block the UI (even a 90-minute mix may run), nor does
+    // it block starting a new recording (a separate child process + a separate capture engine).
+    media::MediaJob* proc = d->media->runFilterGraph(media::FilterGraphSpec{args}, this);
     d->mixdownProcs.insert(meetingId, proc);
     // Structured state: a standalone mix is its own (cancellable) task; a mix running as part of a
     // transcription moves the transcription task's "mixdown" stage (see reportMixdownPercent).
     if (!d->transcribeInMixPhase(meetingId))
         d->jobs->begin(meetingId, JobKind::Mixdown, tr("Lekeverés"));
 
-    // Parsing stdout: out_time_us=<microseconds> -> a percentage relative to the recording's length.
-    connect(proc, &QProcess::readyReadStandardOutput, this,
-            [this, proc, meetingId, totalMs]() {
-        if (totalMs <= 0) return;
-        const QByteArray chunk = proc->readAllStandardOutput();
-        int lastPct = -1;
-        for (const QByteArray& line : chunk.split('\n')) {
-            const int eq = line.indexOf('=');
-            if (eq < 0) continue;
-            const QByteArray key = line.left(eq).trimmed();
-            const QByteArray val = line.mid(eq + 1).trimmed();
-            qint64 outMs = -1;
-            if (key == "out_time_us")      outMs = val.toLongLong() / 1000;
-            else if (key == "out_time_ms") outMs = val.toLongLong() / 1000;  // (ffmpeg: actually microseconds)
-            if (outMs >= 0) {
-                const qint64 p = outMs * 100 / totalMs;
-                lastPct = static_cast<int>(p < 0 ? 0 : (p > 99 ? 99 : p));
-            }
-        }
-        if (lastPct >= 0) {
-            emit mixdownProgress(meetingId, lastPct);
-            d->reportMixdownPercent(meetingId, lastPct);
-        }
+    // The written length (ffmpeg -progress, parsed by the media port) -> a percentage of the recording's length.
+    connect(proc, &media::MediaJob::progress, this, [this, meetingId, totalMs](qint64 outMs) {
+        if (totalMs <= 0 || outMs < 0) return;
+        const qint64 p = outMs * 100 / totalMs;
+        const int pct = static_cast<int>(p < 0 ? 0 : (p > 99 ? 99 : p));
+        emit mixdownProgress(meetingId, pct);
+        d->reportMixdownPercent(meetingId, pct);
     });
     // The closing in ONE place (normal exit, error, cancel, an ffmpeg that did not even start).
-    auto done = [this, proc, meetingId, outRel, outPath, partPath](bool exitedOk) {
+    connect(proc, &media::MediaJob::finished, this,
+            [this, proc, meetingId, outRel, outPath, partPath](const media::MediaResult& result) {
         if (d->mixdownProcs.value(meetingId) != proc) return;   // we already closed it
         d->mixdownProcs.remove(meetingId);
         const bool cancelled = d->mixdownCancelled.remove(meetingId);
-        bool ok = exitedOk && !cancelled;
+        bool ok = result.ok() && !cancelled;
         // Replacing so the old mix survives a failure (not "delete, then rename").
         if (ok)
             ok = replaceFile(partPath, outPath);
@@ -1998,7 +1987,7 @@ void AppController::regenerateMixdown(const QString& meetingId) {
             else {
                 JobError je;
                 je.message = tr("A lekeverés nem sikerült.");
-                je.detail = QString::fromUtf8(proc->readAllStandardError()).simplified().left(200);
+                je.detail = QString::fromUtf8(result.stdErr).simplified().left(200);
                 d->jobs->fail(meetingId, JobKind::Mixdown, je);
             }
         }
@@ -2008,12 +1997,6 @@ void AppController::regenerateMixdown(const QString& meetingId) {
         // The pre-transcript voice analysis works from the raw tracks, independent of the mixdown; we try here
         // only because a mix can also run after a track change (an excluded track).
         if (ok) maybeAnalyzeParticipants(meetingId);
-    };
-    connect(proc, &QProcess::finished, this, [done](int code, QProcess::ExitStatus status) {
-        done(status == QProcess::NormalExit && code == 0);
-    });
-    connect(proc, &QProcess::errorOccurred, this, [done](QProcess::ProcessError err) {
-        if (err == QProcess::FailedToStart) done(false);   // (no finished signal then)
     });
 
     // Progress is signaled by mixdownProgress (0..100) to the non-modal UI, NOT jobProgress (that would turn
@@ -2222,7 +2205,7 @@ void AppController::startRecording(const QString& title, const QVector<AudioDevi
 
     d->recordingTagIds.clear();   // the previous recording's tags are not inherited
     const AppSettings s = d->settings->settings();
-    auto* sess = new recording::RecordingSession(d->audioDir, title, s.recording.userSpeakerName,
+    auto* sess = new recording::RecordingSession(d->media, d->audioDir, title, s.recording.userSpeakerName,
                                       opusBitrateKbps(s.recording.audioQuality), this);
     if (d->recordingEngineFactory) sess->setEngineFactory(d->recordingEngineFactory);
     d->session = sess;
@@ -3737,6 +3720,7 @@ library::MeetingLibrary*    AppController::library() const   { return d->library
 library::TrackCatalog*      AppController::tracks() const    { return d->tracks; }
 library::WaveformService*   AppController::waveforms() const { return d->waveforms; }
 library::AudioImporter*     AppController::importer() const  { return d->importer; }
+media::MediaToolPtr         AppController::mediaTool() const { return d->media; }
 
 QString AppController::importAudio(const library::ImportRequest& request)
 {
@@ -4381,9 +4365,9 @@ bool AppController::cancelJob(const QString& meetingId, JobKind kind)
             d->transcribeRuns.erase(it);
             d->clearSpeakersOnTranscript.remove(meetingId);
             if (owns) {
-                if (QProcess* proc = d->mixdownProcs.value(meetingId)) {
+                if (media::MediaJob* proc = d->mixdownProcs.value(meetingId)) {
                     d->mixdownCancelled.insert(meetingId);
-                    proc->kill();
+                    proc->cancel();
                 }
             }
             d->jobs->cancelled(meetingId, kind);
@@ -4451,11 +4435,11 @@ bool AppController::cancelJob(const QString& meetingId, JobKind kind)
         return true;
     }
     case JobKind::Mixdown: {
-        QProcess* proc = d->mixdownProcs.value(meetingId);
+        media::MediaJob* proc = d->mixdownProcs.value(meetingId);
         if (!proc || !d->jobs->isRunning(meetingId, kind)) return false;
         d->jobs->setCancelling(meetingId, kind);
         d->mixdownCancelled.insert(meetingId);
-        proc->kill();   // the finished branch closes: the half-made file is deleted, the old mix stays
+        proc->cancel();   // the finished branch closes: the half-made file is deleted, the old mix stays
         return true;
     }
     case JobKind::Import: {
@@ -4556,14 +4540,15 @@ bool AppController::startIdentify(const QString& meetingId, bool asStage)
     auto results = std::make_shared<QVector<QPair<QString, EmbeddingSet>>>();
     const processing::VoiceEmbedderSet proto = d->voiceSet.freshCopy();
     QPointer<AppController> self(this);
+    const media::MediaToolPtr media = d->media;
     QThread* th = QThread::create([self, items, merged, proto, cancel, results, meetingId,
-                                   total, kind, asStage]() {
+                                   total, kind, asStage, media]() {
         const processing::VoiceEmbedderSet emb = proto.freshCopy();   // the thread's own model instances
         if (!emb.ensureLoaded()) return;
         int done = 0;
         for (const Item& it : items) {
             if (cancel->load()) break;
-            const EmbeddingSet e = embeddingForLabel(emb, it.audioPath, it.offsetMs, merged, it.label);
+            const EmbeddingSet e = embeddingForLabel(*media, emb, it.audioPath, it.offsetMs, merged, it.label);
             ++done;
             // The result + real count progress back to the main thread.
             QMetaObject::invokeMethod(qApp, [self, results, label = it.label, e, meetingId,
@@ -4639,6 +4624,10 @@ editing::SpeakerEditor* AppController::speakerEditor(const QString& meetingId)
     // uncertainty and suggestions.
     ed->setVoiceModelIds(d->editorModelIds(d->settings));
     ed->setEmbedderFactory(utteranceEmbedderFactory());
+    // The track activity of the side check: cache, else decoded via the media port and saved.
+    ed->setActivityProvider([media = d->media](const Meeting& mm) {
+        return processing::loadOrComputeSideActivity(mm, *media);
+    });
     // The tag evidence for the candidate ranking (manual tag + learned association).
     ed->setTagEvidenceProvider(d->candidateContext().tagEvidence);
     // Manual tags for the quick "+ #Tag" offer (the test seam, otherwise the TagService).
@@ -4792,12 +4781,12 @@ void AppController::startSpeechCheck(const QString& meetingId, bool thenMixdown)
     const QString folder = m.folder;
     const auto stop = d->analysisShutdown;
     QPointer<AppController> self(this);
-    d->analysisPool.start([self, m, folder, stop, meetingId, thenMixdown]() {
+    d->analysisPool.start([self, m, folder, stop, meetingId, thenMixdown, media = d->media]() {
         if (stop->load()) return;
         const QString fp = processing::trackactivity::activityFingerprint(m, folder);
         MeetingActivity act = MeetingActivity::load(folder, fp);
         if (act.isEmpty()) {
-            act = processing::computeMeetingActivity(m, folder);
+            act = processing::computeMeetingActivity(m, folder, *media);
             if (!act.isEmpty()) act.save(folder);
         }
         QMetaObject::invokeMethod(qApp, [self, meetingId, act, thenMixdown]() {
@@ -4920,11 +4909,11 @@ MeetingActivity AppController::trackActivity(const QString& meetingId)
         const auto stop = d->analysisShutdown;
         QPointer<AppController> self(this);
         const QString folder = m.folder;
-        d->analysisPool.start([self, all, folder, fp, stop, meetingId]() {
+        d->analysisPool.start([self, all, folder, fp, stop, meetingId, media = d->media]() {
             MeetingActivity act;
             act.fingerprint = fp;
             if (!stop->load()) {
-                act = processing::computeMeetingActivity(all, folder);
+                act = processing::computeMeetingActivity(all, folder, *media);
                 act.fingerprint = fp;
                 if (!act.isEmpty()) act.save(folder, MeetingActivity::viewFilePath(folder));
             }
@@ -5147,13 +5136,13 @@ bool AppController::analyzeParticipants(const QString& meetingId)
     const processing::VoiceEmbedderSet proto = d->voiceSet.freshCopy();
     const auto stop = d->analysisShutdown;
     QPointer<AppController> self(this);
-    d->analysisPool.start([self, m, proto, cancel, stop, meetingId]() {
+    d->analysisPool.start([self, m, proto, cancel, stop, meetingId, media = d->media]() {
         const QString fp = processing::trackactivity::activityFingerprint(m, m.folder);
         ClusterSet cs;
         if (!stop->load() && !cancel->load()) {
             MeetingActivity act = MeetingActivity::load(m.folder, fp);
             if (act.isEmpty()) {
-                act = processing::computeMeetingActivity(m, m.folder);
+                act = processing::computeMeetingActivity(m, m.folder, *media);
                 if (!act.isEmpty()) act.save(m.folder);
             }
             const processing::VoiceEmbedderSet emb = proto.freshCopy();   // the thread's own model instances
@@ -5182,7 +5171,7 @@ bool AppController::analyzeParticipants(const QString& meetingId)
                 }, Qt::QueuedConnection);
             };
             cs = processing::participants::computeVoiceClusters(
-                m, act, emb, processing::participants::filePcmReader(m),
+                m, act, emb, processing::participants::filePcmReader(m, media),
                 [cancel, stop, report](int done, int total) {
                     report(done, total);
                     return !cancel->load() && !stop->load();

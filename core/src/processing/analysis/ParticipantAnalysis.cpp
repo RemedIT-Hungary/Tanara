@@ -192,7 +192,7 @@ QVector<int> clusterEmbeddings(const QVector<QVector<float>>& embs, double merge
     return label;
 }
 
-PcmReader filePcmReader(const Meeting& m)
+PcmReader filePcmReader(const Meeting& m, media::MediaToolPtr media)
 {
     // Per logical track the spans (in ascending offset order).
     QHash<QString, QVector<Track>> parts;
@@ -205,7 +205,7 @@ PcmReader filePcmReader(const Meeting& m)
         std::sort(it->begin(), it->end(),
                   [](const Track& a, const Track& b) { return a.startOffsetMs < b.startOffsetMs; });
     const QString folder = m.folder;
-    return [parts, folder](const QString& trackId, qint64 startMs, qint64 endMs) -> QVector<float> {
+    return [parts, folder, media](const QString& trackId, qint64 startMs, qint64 endMs) -> QVector<float> {
         const QVector<Track> list = parts.value(trackId);
         const Track* use = nullptr;   // the span sounding at the start (the latest started)
         for (const Track& t : list)
@@ -213,7 +213,8 @@ PcmReader filePcmReader(const Meeting& m)
         if (!use || use->file.isEmpty()) return {};
         const tanara::tracktiming::FileRange fr = tanara::tracktiming::fileRange(*use, startMs, endMs);
         if (!fr.valid()) return {};
-        return VoiceEmbedder::decodePcm16kMono(QDir(folder).filePath(use->file), fr.startMs, fr.endMs);
+        if (!media) return {};
+        return VoiceEmbedder::decodePcm16kMono(*media, QDir(folder).filePath(use->file), fr.startMs, fr.endMs);
     };
 }
 

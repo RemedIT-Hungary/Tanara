@@ -1,6 +1,7 @@
 // tanara-cli voice-models / voice-eval. All output is English, no tr().
 #include "VoiceCommands.h"
 
+#include "tanara/media/FfmpegMediaTool.h"
 #include "tanara/foundation/paths/AppPaths.h"
 #include "tanara/app/SettingsManager.h"
 #include "tanara/editing/review/SpeakerAnalysis.h"
@@ -328,7 +329,7 @@ int runVoiceEvalCommand(const QStringList& args)
     }
     const QVector<bool> autoNoisy = editing::speakeredit::computeOverlapNoisy(timed);
 
-    auto embedder = voiceUtteranceEmbedderFactory(set)();
+    auto embedder = voiceUtteranceEmbedderFactory(set, media::FfmpegMediaTool::fromSettings(sm.settings().media))();
     if (!embedder || !embedder->open(audio)) {
         err() << "Cannot open audio / models: " << (embedder ? embedder->lastError() : QString()) << "\n";
         return 1;

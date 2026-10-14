@@ -6,6 +6,8 @@
 #include <QtTest>
 #include <QTemporaryDir>
 
+#include "fake_media_tool.h"
+#include "tanara/media/FfmpegMediaTool.h"
 #include "tanara/processing/analysis/UtteranceEmbeddings.h"
 #include "tanara/processing/voiceid/VoiceEmbedder.h"
 #include "tanara/processing/voiceid/VoiceEmbedderSet.h"
@@ -209,14 +211,46 @@ private slots:
         auto calls = std::make_shared<int>(0);
         const processing::VoiceEmbedderSet set({{fakeSpec("alpha", 3), "/x/a"}, {fakeSpec("beta", 5), "/x/b"}},
                                    fakeLoader(calls));
-        const processing::UtteranceEmbedderFactory f = voiceUtteranceEmbedderFactory(set);
+        const processing::UtteranceEmbedderFactory f = voiceUtteranceEmbedderFactory(set, media::FfmpegMediaTool::fromSettings({}));
         QVERIFY(f);
         auto e = f();
         QVERIFY(e->open(wav));
         const EmbeddingSet got = e->embedAll(0, 2000, {"beta", "alpha", "gamma"});
         QCOMPARE(got.keys(), QStringList({"alpha", "beta"}));
         QCOMPARE(got.value("beta").size(), 5);
-        QVERIFY(!voiceUtteranceEmbedderFactory(processing::VoiceEmbedderSet()));   // an empty set gives an empty factory
+        QVERIFY(!voiceUtteranceEmbedderFactory(processing::VoiceEmbedderSet(), media::FfmpegMediaTool::fromSettings({})));   // an empty set gives an empty factory
+    }
+
+    void utteranceFactory_fakeMediaTool()
+    {
+        // The same without ffmpeg: the media port is a fake (preset PCM), one decode for every model.
+        auto tool = std::make_shared<testing::FakeMediaTool>();
+        QVector<qint16> pcm(16000 * 3);
+        for (int i = 0; i < pcm.size(); ++i) pcm[i] = qint16(8000.0 * std::sin(2.0 * M_PI * 300.0 * i / 16000.0));
+        tool->pcm["a.ogg"] = pcm;
+        QTemporaryDir dir;
+        const QString audio = dir.filePath("a.ogg");
+        QFile f(audio);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.close();
+        auto calls = std::make_shared<int>(0);
+        const processing::VoiceEmbedderSet set({{fakeSpec("alpha", 3), "/x/a"}, {fakeSpec("beta", 5), "/x/b"}},
+                                   fakeLoader(calls));
+        auto e = voiceUtteranceEmbedderFactory(set, tool)();
+        QVERIFY(e->open(audio));
+        const EmbeddingSet got = e->embedAll(0, 2000, {"beta", "alpha"});
+        QCOMPARE(got.keys(), QStringList({"alpha", "beta"}));
+        QCOMPARE(got.value("beta").size(), 5);
+        QCOMPARE(tool->decodes().size(), 1);
+        QCOMPARE(tool->decodes().first().format, media::PcmFormat(16000, 1, media::SampleFormat::S16));
+        // An undecodable file: open() fails with an error.
+        const QString other = dir.filePath("b.ogg");
+        QFile g(other);
+        QVERIFY(g.open(QIODevice::WriteOnly));
+        g.close();
+        auto e2 = voiceUtteranceEmbedderFactory(set, tool)();
+        QVERIFY(!e2->open(other));
+        QVERIFY(!e2->lastError().isEmpty());
     }
 
     void realOnnx_campplusDimAndWarning()

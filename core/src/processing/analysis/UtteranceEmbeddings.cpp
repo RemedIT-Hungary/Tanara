@@ -8,7 +8,6 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
-#include <QProcess>
 #include <QSaveFile>
 
 #include <algorithm>
@@ -25,8 +24,8 @@ constexpr int kSampleRate = 16000;
 // ONE ffmpeg run), the utterances are sliced from it, and every loaded model computes from the same slice.
 class VoiceUtteranceEmbedder final : public IUtteranceEmbedder {
 public:
-    VoiceUtteranceEmbedder(VoiceEmbedderSet set, const QString& ffmpegPath)
-        : m_set(std::move(set)), m_ffmpeg(ffmpegPath) {}
+    VoiceUtteranceEmbedder(VoiceEmbedderSet set, media::MediaToolPtr media)
+        : m_set(std::move(set)), m_media(std::move(media)) {}
 
     bool open(const QString& audioPath) override
     {
@@ -37,23 +36,23 @@ public:
         }
         if (!loadModels()) return false;
 
-        QProcess proc;
-        proc.start(m_ffmpeg, {QStringLiteral("-v"), QStringLiteral("error"),
-                              QStringLiteral("-i"), audioPath,
-                              QStringLiteral("-ac"), QStringLiteral("1"),
-                              QStringLiteral("-ar"), QString::number(kSampleRate),
-                              QStringLiteral("-f"), QStringLiteral("s16le"), QStringLiteral("-")});
-        if (!proc.waitForStarted(5000)) {
+        if (!m_media) {
             m_error = QStringLiteral("Az ffmpeg nem indítható.");
             return false;
         }
-        // We read the output continuously (an hour of audio is ~115 MB: it must not sit in the pipe buffer).
-        while (proc.state() != QProcess::NotRunning) {
-            proc.waitForReadyRead(200);
-            m_pcm += proc.readAllStandardOutput();
+        // The whole audio is kept (an hour is ~115 MB); the tool streams it in.
+        media::DecodeSpec spec;
+        spec.path = audioPath;
+        spec.format = media::PcmFormat{kSampleRate, 1, media::SampleFormat::S16};
+        const media::MediaResult r = m_media->decodePcm(spec, [this](const char* data, qsizetype bytes) {
+            m_pcm.append(data, bytes);
+        });
+        if (!r.started) {
+            m_error = QStringLiteral("Az ffmpeg nem indítható.");
+            m_pcm.clear();
+            return false;
         }
-        m_pcm += proc.readAllStandardOutput();
-        if (proc.exitStatus() != QProcess::NormalExit || m_pcm.size() < 2) {
+        if (!r.normalExit || m_pcm.size() < 2) {
             m_error = QStringLiteral("ffmpeg dekódolás sikertelen: %1").arg(audioPath);
             m_pcm.clear();
             return false;
@@ -99,7 +98,7 @@ private:
     }
 
     VoiceEmbedderSet m_set;   // loaded lazily per model (the background thread's own instance)
-    QString m_ffmpeg;
+    media::MediaToolPtr m_media;
     QString m_error;
     QByteArray m_pcm;   // s16le mono 16 kHz
 };
@@ -115,7 +114,7 @@ EmbeddingSet IUtteranceEmbedder::embedAll(qint64 startMs, qint64 endMs, const QS
 }
 
 UtteranceEmbedderFactory voiceUtteranceEmbedderFactory(const QVector<UtteranceModel>& models,
-                                                       const QString& ffmpegPath)
+                                                       media::MediaToolPtr media)
 {
     QVector<VoiceModelEntry> entries;
     for (const UtteranceModel& m : models) {
@@ -126,25 +125,25 @@ UtteranceEmbedderFactory voiceUtteranceEmbedderFactory(const QVector<UtteranceMo
         spec.dim = m.dim;
         entries.append({spec, m.path});
     }
-    return voiceUtteranceEmbedderFactory(VoiceEmbedderSet(entries), ffmpegPath);
+    return voiceUtteranceEmbedderFactory(VoiceEmbedderSet(entries), std::move(media));
 }
 
 UtteranceEmbedderFactory voiceUtteranceEmbedderFactory(const VoiceEmbedderSet& set,
-                                                       const QString& ffmpegPath)
+                                                       media::MediaToolPtr media)
 {
     if (set.isEmpty()) return {};
     const VoiceEmbedderSet proto = set.freshCopy();
-    return [proto, ffmpegPath]() -> std::unique_ptr<IUtteranceEmbedder> {
-        return std::make_unique<VoiceUtteranceEmbedder>(proto.freshCopy(), ffmpegPath);
+    return [proto, media]() -> std::unique_ptr<IUtteranceEmbedder> {
+        return std::make_unique<VoiceUtteranceEmbedder>(proto.freshCopy(), media);
     };
 }
 
 UtteranceEmbedderFactory voiceUtteranceEmbedderFactory(const QString& modelPath,
-                                                       const QString& ffmpegPath)
+                                                       media::MediaToolPtr media)
 {
     const auto spec = VoiceModelRegistry::spec(VoiceModelRegistry::defaultModelId());
     return voiceUtteranceEmbedderFactory(
-        QVector<UtteranceModel>{{spec->id, modelPath, spec->features, spec->dim}}, ffmpegPath);
+        QVector<UtteranceModel>{{spec->id, modelPath, spec->features, spec->dim}}, std::move(media));
 }
 
 QVector<UtteranceModel> utteranceModelsFor(const QVector<VoiceModelSpec>& specs,
