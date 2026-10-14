@@ -4,13 +4,11 @@
 #include "tanara/foundation/log/Logging.h"
 #include "tanara/foundation/text/Text.h"
 #include "tanara/processing/summary/PromptLibrary.h"
-#include "tanara/watcher/detect/DetectorRegistry.h"
-#include "tanara/watcher/detect/IMeetingDetector.h"
 #include <QTimer>
 #include "tanara/app/SettingsManager.h"
 #include "tanara/recording/audio/DeviceManager.h"
-#include "tanara/recording/audio/DeviceMonitor.h"
-#include "tanara/recording/audio/RecordingSession.h"
+#include "tanara/recording/MixdownService.h"
+#include "tanara/recording/RecordingService.h"
 #include "tanara/library/store/MeetingRepository.h"
 #include "tanara/app/Services.h"
 #include "tanara/library/import/ImportService.h"
@@ -45,7 +43,6 @@
 #include "tanara/library/jobs/JobStats.h"
 #include "tanara/library/MeetingLibrary.h"
 #include "tanara/library/MeetingNotes.h"
-#include "tanara/recording/audio/MixdownPlan.h"
 #include "tanara/recording/audio/TrackTiming.h"
 #include "tanara/library/tracks/TrackCatalog.h"
 #include "tanara/library/tracks/WaveformService.h"
@@ -73,7 +70,6 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QFile>
-#include <QSaveFile>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
@@ -256,24 +252,6 @@ using processing::participants::clusterEmbeddings;   // agglomerative clustering
 // Cosine threshold for auto-identification (validation: same 0.77, cross <= 0.35).
 constexpr double kVoiceMatchThreshold = 0.5;
 
-QStringList loadLastDevices(const QString& path) {
-    QFile f(path);
-    if (!f.open(QIODevice::ReadOnly)) return {};
-    const auto root = QJsonDocument::fromJson(f.readAll()).object();
-    QStringList out;
-    for (const auto& v : root["lastDevices"].toArray()) out << v.toString();
-    return out;
-}
-
-void saveLastDevices(const QString& path, const QStringList& names) {
-    QJsonArray arr;
-    for (const auto& n : names) arr.append(n);
-    QJsonObject root;
-    root["lastDevices"] = arr;
-    QSaveFile f(path);
-    if (f.open(QIODevice::WriteOnly)) { f.write(QJsonDocument(root).toJson(QJsonDocument::Compact)); f.commit(); }
-}
-
 QString sttPhase(SttJobState s) {
     switch (s) {
     case SttJobState::Uploading:  return QCoreApplication::translate("AppController", "Hang feltöltése…");
@@ -308,13 +286,9 @@ void captureFailures(providers::ProviderContext& ctx, const FailureSinkPtr& sink
 
 struct AppController::Impl {
     SettingsManager* settings = nullptr;
-    recording::DeviceManager*   devices  = nullptr;
     library::MeetingRepository*    store    = nullptr;
     std::unique_ptr<library::TranscriptRepository> transcripts;   // + the UI's cached transcript facts
     std::unique_ptr<library::UiStateRepository>    uiState;       // the editor's per-meeting view state
-    recording::RecordingSession* session = nullptr;
-    recording::RecordingSession::EngineFactory recordingEngineFactory;   // test seam; empty = the real one
-    recording::DeviceMonitor*   monitor = nullptr;
     std::unique_ptr<SecretStore> secrets;   // keychain or file (foundation/secrets)
     QString          secretsWarning;
     std::unique_ptr<library::PeopleStore> people;
@@ -383,39 +357,15 @@ struct AppController::Impl {
     void refreshMeetingNames(const Meeting& m);
     void finishBackfillJob(const BackfillJob& job, const QVector<float>& vec, bool missingAudio);
     void finishBackfill();
-    RecordingState   state = RecordingState::Idle;
-    QString          audioDir;
     QString          metaDir;     // AppPaths::dataDir()
     QString          modelsDir;   // AppPaths::modelsDir()
     QString          notesDir;
-    QString          statePath;
-    QStringList      lastDevices;
-    QString          currentFolder;
 
-    // Level monitoring + track handling during recording (for the floating recorder).
-    bool        monitorWanted = false;          // the UI requested level monitoring
-    bool        monitorLegacy = false;          // the start/stopLevelMonitoring (recorder) request
-    QHash<QObject*, QMetaObject::Connection> monitorHolders;   // consumers of retainLevelMonitoring (Settings)
-    QStringList monitorNames;                   // the monitor's current device set
-    QStringList recNames;                       // the recording's tracks (index -> device name)
-    QStringList recClosed;                      // devices detached mid-run
-    QStringList recOff;                         // switched off by the user mid-run
-    QHash<QString, int> recMissing;             // in how many consecutive enumerations it was missing
-    QHash<QString, int> recReturning;           // detached device: in how many consecutive enumerations it is present again
-    bool        autoMixdown = true;             // automatic mixdown after recording
+    // The recording and the mixdown: services()->recording() / mixdown().
+    recording::RecordingService* recording = nullptr;
+    recording::MixdownService*   mixdown = nullptr;
+    bool        autoMixdown = true;             // automatic mixdown after recording / import
     QHash<QString, MergedTranscript> mergedCache;
-
-    // Call-end watching during recording (see startCallEndMonitor).
-    std::unique_ptr<watcher::IMeetingDetector> callDetector;
-    QTimer* callTimer = nullptr;
-    bool    callSeenActive = false;   // whether we saw an active call during the recording
-    int     callInactivePolls = 0;    // consecutive inactive polls after the active one
-    QString callAppName;
-
-    // Silence watch during recording (silenceAskMinutes).
-    QTimer* silenceTimer = nullptr;
-    qint64  lastLoudMs = 0;        // timestamp of the last "loud" RMS (monotonic)
-    bool    silenceAsked = false;  // we already asked for this silent stretch
 
     // Topic-analysis job queue (complex pass 2): ONE LLM call runs at a time (local model, parallel=1),
     // the other topics wait in line. Each topic can be (re)started separately.
@@ -477,7 +427,6 @@ struct AppController::Impl {
     quint64            tagDataGen = 0;
     QThreadPool        tagPool;                  // 1 thread; ~AppController waits for it
     QString            embeddingKey;             // provider|baseUrl|model, to detect a model change
-    QStringList        recordingTagIds;          // tags given during recording
 
     // A running transcription: the connection of the job / the mixdown chain, for cancelling.
     struct TranscribeRun {
@@ -493,9 +442,6 @@ struct AppController::Impl {
     // toggle). A process-wide (not persisted) choice.
     QSet<QString> skipIdentifyAfterTranscribe;
 
-    QHash<QString, QPointer<media::MediaJob>> mixdownProcs;   // meetingId -> running mixdown (ffmpeg)
-    QSet<QString> mixdownCancelled;
-    QHash<QString, QString> mixdownFailReason;   // the reason of the last mix that did not even start (missing track)
     // Per meeting the transcript's "generation": every new transcript write increments it. The background
     // identification uses it (and the tokens file's state) to see that a new transcript arrived meanwhile.
     QHash<QString, int> transcriptGen;
@@ -550,7 +496,6 @@ struct AppController::Impl {
         return it != transcribeRuns.constEnd() && it->mixPhase;
     }
     bool voiceModelUsable() const;
-    void reportMixdownPercent(const QString& meetingId, int pct);
     void updateTopicCounts(const QString& meetingId);
     void abortLlmRun(const LlmRun& run);
     JobError describeLlmFailure(JobKind kind, const QString& raw, const CloudRunPtr& run,
@@ -660,17 +605,6 @@ bool AppController::Impl::voiceModelUsable() const
 #else
     return bool(voiceLoader);   // the build has no voice ID; only with the test loader
 #endif
-}
-
-// The running ffmpeg's real percentage into the structured state: for a standalone mix the Mixdown
-// task, as part of a transcription the transcription task's "mixdown" stage.
-void AppController::Impl::reportMixdownPercent(const QString& meetingId, int pct)
-{
-    if (jobs->isRunning(meetingId, JobKind::Mixdown))
-        jobs->setPercent(meetingId, JobKind::Mixdown, pct);
-    if (transcribeInMixPhase(meetingId))
-        jobs->setStage(meetingId, JobKind::Transcribe, QStringLiteral("mixdown"),
-                       StageState::Running, pct);
 }
 
 void AppController::Impl::updateTopicCounts(const QString& meetingId)
@@ -826,11 +760,10 @@ AppController::AppController(QObject* parent)
 
     // Every location from AppPaths (platform convention / "paths" section / TANARA_HOME).
     const paths::AppPaths& ap = d->settings->paths();
-    d->audioDir  = ap.primaryRecordingRoot();
     d->metaDir   = ap.dataDir();
     d->modelsDir = ap.modelsDir();
     d->notesDir  = ap.notesDir();
-    QDir().mkpath(d->audioDir);
+    QDir().mkpath(ap.primaryRecordingRoot());
     QDir().mkpath(d->metaDir);
 
     {
@@ -873,7 +806,6 @@ AppController::AppController(QObject* parent)
         cloud::registerInto(d->providerRegistry, *d->cloud, deps);
         cloud::registerInto(providers::ProviderRegistry::defaultInstance(), *d->cloud, deps);
     }
-    d->devices = new recording::DeviceManager(this);
     d->media   = media::FfmpegMediaTool::fromSettings(s.media);
     // Every recording root (the first is the primary: new recordings, imports).
     d->store   = new library::MeetingRepository(ap.recordingRoots(), d->metaDir, this);
@@ -900,14 +832,6 @@ AppController::AppController(QObject* parent)
         return info.stale ? info.correctedSpeakers : -1;
     });
     connect(this, &AppController::summaryStaleChanged, d->jobs, &library::MeetingJobTracker::notifyStateChanged);
-
-    connect(d->devices, &recording::DeviceManager::devicesChanged, this, &AppController::handleDeviceSetChange);
-    connect(d->devices, &recording::DeviceManager::devicesChanged, this, &AppController::devicesChanged);
-
-    d->statePath = ap.stateFile(paths::files::State);
-    d->lastDevices = loadLastDevices(d->statePath);
-    d->monitor = new recording::DeviceMonitor(this);
-    connect(d->monitor, &recording::DeviceMonitor::levelPeak, this, &AppController::deviceLevelPeak);
 
     d->people = std::make_unique<library::PeopleStore>(ap.dataFile(paths::files::People));
     d->ensureSelf();
@@ -951,12 +875,16 @@ AppController::AppController(QObject* parent)
         sd.tags  = d->tags;
         sd.jobs  = d->jobs;
         sd.media = d->media;
+        sd.settings = d->settings;
         d->services = std::make_unique<app::Services>(sd);
+        d->recording = &d->services->recording();
+        d->mixdown = &d->services->mixdown();
         // Facade: the services' signals are re-emitted unchanged.
         library::ArchiveService& arch = d->services->archive();
         arch.setRecordingGuard([this](const Meeting& m) {
-            return d->state != RecordingState::Idle && !d->currentFolder.isEmpty()
-                && QDir(d->currentFolder).absolutePath() == QDir(m.folder).absolutePath();
+            const QString folder = d->recording->currentFolder();
+            return d->recording->state() != RecordingState::Idle && !folder.isEmpty()
+                && QDir(folder).absolutePath() == QDir(m.folder).absolutePath();
         });
         connect(&arch, &library::ArchiveService::rejected, this, &AppController::errorOccurred);
         connect(&arch, &library::ArchiveService::progress, this, &AppController::archiveProgress);
@@ -965,7 +893,7 @@ AppController::AppController(QObject* parent)
         connect(&imp, &library::ImportService::rejected, this, &AppController::errorOccurred);
         connect(&imp, &library::ImportService::finished, this, [this](const Meeting& m) {
             emit importFinished(m);
-            // Mixdown: exactly as at the end of a recording (see the RecordingSession::finished branch): first the
+            // Mixdown: exactly as at the end of a recording (see the RecordingService::readyForProcessing handler): first the
             // tracks' speech check (a speechless track is left out of the mix).
             if (d->autoMixdown) {
                 const bool mix = d->settings->settings().recording.mixdownMode != QStringLiteral("manual");
@@ -975,6 +903,57 @@ AppController::AppController(QObject* parent)
         });
         connect(&imp, &library::ImportService::failed, this, &AppController::importFailed);
         connect(&imp, &library::ImportService::cancelled, this, &AppController::importCancelled);
+
+        // Recording: devices, levels, tracks, state, the call-end and silence questions.
+        recording::RecordingService& rec = *d->recording;
+        connect(rec.devices(), &recording::DeviceManager::devicesChanged, this, &AppController::devicesChanged);
+        connect(&rec, &recording::RecordingService::levelPeak, this, &AppController::deviceLevelPeak);
+        connect(&rec, &recording::RecordingService::trackAdded, this, &AppController::recordingTrackAdded);
+        connect(&rec, &recording::RecordingService::trackClosed, this, &AppController::recordingTrackClosed);
+        connect(&rec, &recording::RecordingService::deviceReturned, this, &AppController::recordingDeviceReturned);
+        connect(&rec, &recording::RecordingService::stateChanged, this, &AppController::recordingStateChanged);
+        connect(&rec, &recording::RecordingService::elapsedChanged, this, &AppController::elapsedChanged);
+        connect(&rec, &recording::RecordingService::finished, this, &AppController::recordingFinished);
+        connect(&rec, &recording::RecordingService::error, this, &AppController::errorOccurred);
+        connect(&rec, &recording::RecordingService::callEnded, this, &AppController::callEnded);
+        connect(&rec, &recording::RecordingService::silenceDetected, this, &AppController::silenceDetected);
+        connect(&rec, &recording::RecordingService::readyForProcessing, this, [this](const Meeting& m) {
+            // The mixdown is decoupled from stop(): we start it here ASYNCHRONOUSLY, only if the setting is "auto".
+            // It does not block, so a new recording can start at once. In manual mode the user starts it with the
+            // review panel's "Mix" button. (The mixdown is needed only for listening; for transcription the per-track
+            // .ogg files suffice.)
+            // In the standalone recorder process (setAutoMixdownAfterRecording(false)) it does not start: that process
+            // exits after recording, and the analyzer makes the mix when needed.
+            // Before it, the tracks' speech check (on a background thread): a speechless track is left out of the mix
+            // (Track::excludedReason "noSpeech"); the mix starts at the end of the measurement.
+            if (d->autoMixdown) {
+                const bool mix = d->settings->settings().recording.mixdownMode != QStringLiteral("manual")
+                    && m.mixdownFile.isEmpty();
+                if (editing::trackspeech::needsSpeechCheck(m)) startSpeechCheck(m.id, mix);
+                else if (mix) regenerateMixdown(m.id);
+                // The pre-transcript voice analysis from the raw tracks, right after the recording (if the speech
+                // measurement is still pending, its end starts it).
+                maybeAnalyzeParticipants(m.id);
+            }
+        });
+
+        // Mixdown: a mix running as a transcription's stage moves that task's "mixdown" stage instead of its own task.
+        recording::MixdownService& mix = *d->mixdown;
+        mix.setTranscriptionStageProbe([this](const QString& id) { return d->transcribeInMixPhase(id); });
+        connect(&mix, &recording::MixdownService::progress, this, [this](const QString& id, int pct) {
+            emit mixdownProgress(id, pct);
+            // (100 is only the UI's "done" tick; the stage is closed by the transcription chain.)
+            if (pct < 100 && d->transcribeInMixPhase(id))
+                d->jobs->setStage(id, JobKind::Transcribe, QStringLiteral("mixdown"), StageState::Running, pct);
+        });
+        connect(&mix, &recording::MixdownService::error, this, &AppController::errorOccurred);
+        connect(&mix, &recording::MixdownService::finished, this, &AppController::mixdownUpdated);
+        connect(&mix, &recording::MixdownService::runEnded, this, [this](const QString& id, bool ok) {
+            emit tracksChanged(id);   // the view should refresh (button state, mixdownFile)
+            // The pre-transcript voice analysis works from the raw tracks, independent of the mixdown; we try here
+            // only because a mix can also run after a track change (an excluded track).
+            if (ok) maybeAnalyzeParticipants(id);
+        });
     }
     d->profiles = new library::MeetingProfiles(d->store, this);
     d->tags->setProfiles(d->profiles);
@@ -1118,7 +1097,7 @@ AppController::~AppController()
 }
 
 SettingsManager* AppController::settings() const { return d->settings; }
-recording::DeviceManager*   AppController::devices()  const { return d->devices; }
+recording::DeviceManager*   AppController::devices()  const { return d->recording->devices(); }
 library::MeetingRepository*    AppController::store()     const { return d->store; }
 library::TranscriptRepository* AppController::transcripts() const { return d->transcripts.get(); }
 library::UiStateRepository*    AppController::uiState()    const { return d->uiState.get(); }
@@ -1293,20 +1272,20 @@ void AppController::Impl::finishBackfill()
         q->backfillVoiceprints();
     }
 }
-RecordingState   AppController::recordingState() const { return d->state; }
-QString AppController::currentMeetingFolder() const { return d->currentFolder; }
+// ---- recording (recording::RecordingService) ------------------------------------------------
+RecordingState   AppController::recordingState() const { return d->recording->state(); }
+QString AppController::currentMeetingFolder() const { return d->recording->currentFolder(); }
 
-void AppController::refreshDevices() { d->devices->refresh(); }
+void AppController::refreshDevices() { d->recording->devices()->refresh(); }
 
 void AppController::setRecordingEngineFactory(std::function<std::unique_ptr<recording::AudioEngine>()> factory) {
-    d->recordingEngineFactory = std::move(factory);
+    d->recording->setEngineFactory(std::move(factory));
 }
 
-QStringList AppController::lastUsedDeviceNames() const { return d->lastDevices; }
+QStringList AppController::lastUsedDeviceNames() const { return d->recording->lastUsedDeviceNames(); }
 
 void AppController::setLastUsedDeviceNames(const QStringList& names) {
-    d->lastDevices = names;
-    saveLastDevices(d->statePath, names);
+    d->recording->setLastUsedDeviceNames(names);
 }
 
 QStringList AppController::knownPeople() const {
@@ -1832,112 +1811,7 @@ void AppController::deleteTrack(const QString& meetingId, const QString& trackId
     emit tracksChanged(meetingId);
 }
 
-void AppController::regenerateMixdown(const QString& meetingId) {
-    // A mix is already running on this meeting: a no-op (the running one's result will do for everyone).
-    if (d->mixdownProcs.contains(meetingId)) return;
-
-    Meeting m = d->store->load(meetingId);
-    if (m.id.isEmpty()) return;
-
-    d->mixdownFailReason.remove(meetingId);
-    const QString outRel = MeetingLayout::mixdownFile();
-    const QString outPath = QDir(m.folder).filePath(outRel);
-
-    // Only the active tracks that exist on disk go into the mix, those starting later shifted into place
-    // (startOffsetMs -> adelay). The filter graph: MixdownPlan.
-    const recording::MixdownPlan plan = recording::MixdownPlan::fromMeeting(m);
-    const QStringList& missing = plan.missing;
-    // With an active track missing we do not replace the EXISTING (complete) mix with a partial one, neither
-    // for a manual remix nor for the automatic one before transcription.
-    const bool haveMixdown = QFileInfo(outPath).isFile()
-        || (!m.mixdownFile.isEmpty() && QFileInfo(QDir(m.folder).filePath(m.mixdownFile)).isFile());
-    if (!missing.isEmpty() && haveMixdown) {
-        const QString msg = tr("Hiányzik a(z) „%1” sáv hangfájlja — a meglévő lekeverés megmaradt. "
-                               "Keresd meg a fájlt a Sávok fülön, vagy dobd el a sávot, és keverd újra.")
-                                .arg(missing.join(QStringLiteral("”, „")));
-        d->mixdownFailReason.insert(meetingId, msg);
-        emit errorOccurred(msg);
-        emit mixdownUpdated(meetingId, false);
-        return;
-    }
-    if (plan.inputs.isEmpty()) {
-        emit errorOccurred(tr("Nincs aktív hangsáv a lekeveréshez."));
-        emit mixdownUpdated(meetingId, false);
-        return;
-    }
-
-    // We mix into a half-made file and replace the old one only after SUCCESS: on cancel or error the
-    // earlier (still playable) mix stays untouched.
-    const QString partPath = QDir(m.folder).filePath(MeetingLayout::mixdownPartFile());
-
-    const QStringList args = plan.ffmpegArgs(partPath);
-    const qint64 totalMs = m.durationMs;   // the denominator of the percentage
-
-    // An asynchronous media job (ffmpeg): it does NOT block the UI (even a 90-minute mix may run), nor does
-    // it block starting a new recording (a separate child process + a separate capture engine).
-    media::MediaJob* proc = d->media->runFilterGraph(media::FilterGraphSpec{args}, this);
-    d->mixdownProcs.insert(meetingId, proc);
-    // Structured state: a standalone mix is its own (cancellable) task; a mix running as part of a
-    // transcription moves the transcription task's "mixdown" stage (see reportMixdownPercent).
-    if (!d->transcribeInMixPhase(meetingId))
-        d->jobs->begin(meetingId, JobKind::Mixdown, tr("Lekeverés"));
-
-    // The written length (ffmpeg -progress, parsed by the media port) -> a percentage of the recording's length.
-    connect(proc, &media::MediaJob::progress, this, [this, meetingId, totalMs](qint64 outMs) {
-        if (totalMs <= 0 || outMs < 0) return;
-        const qint64 p = outMs * 100 / totalMs;
-        const int pct = static_cast<int>(p < 0 ? 0 : (p > 99 ? 99 : p));
-        emit mixdownProgress(meetingId, pct);
-        d->reportMixdownPercent(meetingId, pct);
-    });
-    // The closing in ONE place (normal exit, error, cancel, an ffmpeg that did not even start).
-    connect(proc, &media::MediaJob::finished, this,
-            [this, proc, meetingId, outRel, outPath, partPath](const media::MediaResult& result) {
-        if (d->mixdownProcs.value(meetingId) != proc) return;   // we already closed it
-        d->mixdownProcs.remove(meetingId);
-        const bool cancelled = d->mixdownCancelled.remove(meetingId);
-        bool ok = result.ok() && !cancelled;
-        // Replacing so the old mix survives a failure (not "delete, then rename").
-        if (ok)
-            ok = replaceFile(partPath, outPath);
-        if (!ok) QFile::remove(partPath);   // no half-made file stays in the folder
-        if (ok) {
-            // A fresh meeting (it may have changed meanwhile) -> set mixdownFile + clear dirty.
-            Meeting mm = d->store->load(meetingId);
-            if (!mm.id.isEmpty()) {
-                mm.mixdownFile  = outRel;
-                mm.mixdownDirty = false;
-                d->store->saveMeeting(mm);
-            }
-            emit mixdownProgress(meetingId, 100);
-        } else if (!cancelled) {
-            emit errorOccurred(tr("A lekeverés (ffmpeg) sikertelen."));
-        }
-        if (d->jobs->isRunning(meetingId, JobKind::Mixdown)) {
-            if (ok) d->jobs->finish(meetingId, JobKind::Mixdown);
-            else if (cancelled) d->jobs->cancelled(meetingId, JobKind::Mixdown);
-            else {
-                JobError je;
-                je.message = tr("A lekeverés nem sikerült.");
-                je.detail = QString::fromUtf8(result.stdErr).simplified().left(200);
-                d->jobs->fail(meetingId, JobKind::Mixdown, je);
-            }
-        }
-        emit mixdownUpdated(meetingId, ok);
-        emit tracksChanged(meetingId);   // the view should refresh (button state, mixdownFile)
-        proc->deleteLater();
-        // The pre-transcript voice analysis works from the raw tracks, independent of the mixdown; we try here
-        // only because a mix can also run after a track change (an excluded track).
-        if (ok) maybeAnalyzeParticipants(meetingId);
-    });
-
-    // Progress is signaled by mixdownProgress (0..100) to the non-modal UI, NOT jobProgress (that would turn
-    // on the global busy flag, which would needlessly disable the action buttons during a background
-    // mixdown). Starting 0%:
-    emit mixdownProgress(meetingId, 0);
-    d->reportMixdownPercent(meetingId, 0);
-    proc->start();
-}
+void AppController::regenerateMixdown(const QString& meetingId) { d->mixdown->regenerate(meetingId); }
 
 void AppController::setUserSpeakerName(const QString& name) {
     const QString n = name.trimmed();
@@ -1954,142 +1828,23 @@ void AppController::setUserSpeakerName(const QString& name) {
     else emit peopleChanged();
 }
 
-void AppController::startLevelMonitoring() {
-    d->monitorLegacy = true;
-    beginLevelMonitoring();
-}
+void AppController::startLevelMonitoring() { d->recording->startLevelMonitoring(); }
 
-void AppController::stopLevelMonitoring() {
-    d->monitorLegacy = false;
-    if (!d->monitorHolders.isEmpty()) return;   // another consumer (retain) still requests it
-    endLevelMonitoring();
-}
+void AppController::stopLevelMonitoring() { d->recording->stopLevelMonitoring(); }
 
-void AppController::retainLevelMonitoring(QObject* owner) {
-    if (!owner || d->monitorHolders.contains(owner)) return;
-    // When the consumer goes away, its request goes too: the microphone must not stay open afterwards.
-    d->monitorHolders.insert(owner, connect(owner, &QObject::destroyed, this,
-                                            [this, owner] { releaseLevelMonitoring(owner); }));
-    if (!(d->monitorWanted && d->monitor && d->monitor->active()))
-        beginLevelMonitoring();
-}
+void AppController::retainLevelMonitoring(QObject* owner) { d->recording->retainLevelMonitoring(owner); }
 
-void AppController::releaseLevelMonitoring(QObject* owner) {
-    if (!d->monitorHolders.contains(owner)) return;
-    disconnect(d->monitorHolders.take(owner));
-    if (d->monitorHolders.isEmpty() && !d->monitorLegacy)
-        endLevelMonitoring();
-}
-
-void AppController::beginLevelMonitoring() {
-    d->monitorWanted = true;
-    if (d->state == RecordingState::Stopping || d->state == RecordingState::Encoding) return;
-    d->devices->refresh();
-    restartLevelMonitor(/*force*/ true);
-}
-
-void AppController::endLevelMonitoring() {
-    d->monitorWanted = false;
-    d->monitorNames.clear();
-    if (d->monitor) d->monitor->stop();
-}
+void AppController::releaseLevelMonitoring(QObject* owner) { d->recording->releaseLevelMonitoring(owner); }
 
 void AppController::setAutoMixdownAfterRecording(bool on) { d->autoMixdown = on; }
 
-void AppController::restartLevelMonitor(bool force) {
-    if (!d->monitor || !d->monitorWanted) return;
-    const bool recording = d->state == RecordingState::Recording;
-    if (d->state != RecordingState::Idle && !recording) return;
-    QVector<AudioDeviceInfo> list;
-    QStringList names;
-    for (const AudioDeviceInfo& dev : d->devices->captureDevices()) {
-        // During recording the devices on a track are owned and measured by the RecordingSession.
-        if (recording && d->recNames.contains(dev.name) && !d->recClosed.contains(dev.name)
-            && !d->recOff.contains(dev.name))
-            continue;
-        list.push_back(dev);
-        names << dev.name;
-    }
-    if (!force && d->monitor->active() && names == d->monitorNames) return;
-    QElapsedTimer perfTimer;
-    perfTimer.start();
-    const QStringList before = d->monitorNames;
-    d->monitorNames = names;
-    d->monitor->start(list);   // for an empty list it stops; the open runs on the monitor's background thread
-    qCDebug(lcPerf).noquote() << QStringLiteral("szintmérő újraindítás kérve (%1 → %2 eszköz, force=%3): %4 ms a fő szálon")
-                                 .arg(before.size()).arg(names.size()).arg(force).arg(perfTimer.elapsed());
-}
+QStringList AppController::recordingDeviceNames() const { return d->recording->liveDeviceNames(); }
 
-void AppController::handleDeviceSetChange() {
-    const QVector<AudioDeviceInfo> present = d->devices->captureDevices();
-    if (d->state == RecordingState::Recording && d->session && !present.isEmpty()) {
-        // Hot-plug during recording: the track of a recorded device missing from the enumeration TWICE in a row
-        // is safely closed (a single transient absence must not close a track; and an empty list, an unreachable
-        // audio system, closes nothing).
-        bool recheck = false;
-        const QStringList rec = d->recNames;
-        for (const QString& name : rec) {
-            if (d->recClosed.contains(name) || d->recOff.contains(name)) continue;
-            bool found = false;
-            for (const AudioDeviceInfo& dev : present)
-                if (dev.name == name) { found = true; break; }
-            if (found) { d->recMissing.remove(name); continue; }
-            if (++d->recMissing[name] >= 2) {
-                qCWarning(lcApp).noquote() << "Rögzített eszköz leválasztva, a sávja lezárul:" << name;
-                d->recMissing.remove(name);
-                d->session->closeTrack(name);
-            } else {
-                recheck = true;
-            }
-        }
-        // A re-plugged device: one that the detach closed (not switched off by the user) and that is present again
-        // in the enumeration TWICE in a row (looks stable), is recorded again by itself: a new span starts, the
-        // recording so far stays untouched. The user rightly expects not to have to switch it back on by hand
-        // after a short USB dropout.
-        const QStringList closedNow = d->recClosed;
-        for (const QString& name : closedNow) {
-            const AudioDeviceInfo* dev = nullptr;
-            for (const AudioDeviceInfo& cand : present)
-                if (cand.name == name) { dev = &cand; break; }
-            if (!dev) { d->recReturning.remove(name); continue; }
-            if (++d->recReturning[name] < 2) { recheck = true; continue; }
-            d->recReturning.remove(name);
-            qCInfo(lcApp).noquote() << "Leválasztott eszköz visszatért, a rögzítése folytatódik (új szakasz):" << name;
-            emit recordingDeviceReturned(name);
-            if (!d->session->addDevice(*dev))
-                qCWarning(lcApp).noquote() << "A visszatért eszköz sávja nem indult el:" << name;
-        }
-        if (recheck)
-            QTimer::singleShot(1200, this, [this] {
-                if (d->state == RecordingState::Recording) d->devices->refresh();
-            });
-    }
-    if (d->monitorWanted && d->monitor && d->monitor->active())
-        restartLevelMonitor(/*force*/ false);
-}
+QStringList AppController::disconnectedRecordingDeviceNames() const { return d->recording->disconnectedDeviceNames(); }
 
-QStringList AppController::recordingDeviceNames() const {
-    QStringList out;
-    for (const QString& n : d->recNames)
-        if (!d->recClosed.contains(n) && !d->recOff.contains(n) && !out.contains(n)) out << n;
-    return out;
-}
+bool AppController::addRecordingDevice(const AudioDeviceInfo& device) { return d->recording->addDevice(device); }
 
-QStringList AppController::disconnectedRecordingDeviceNames() const { return d->recClosed; }
-
-bool AppController::addRecordingDevice(const AudioDeviceInfo& device) {
-    if (d->state != RecordingState::Recording || !d->session) return false;
-    return d->session->addDevice(device);
-}
-
-bool AppController::stopRecordingDevice(const QString& deviceName) {
-    if (d->state != RecordingState::Recording || !d->session) return false;
-    const QStringList open = recordingDeviceNames();
-    if (!open.contains(deviceName) || open.size() < 2) return false;   // the last open track stays
-    if (!d->recOff.contains(deviceName)) d->recOff << deviceName;
-    d->session->closeTrack(deviceName);   // → trackClosed → recordingTrackClosed
-    return true;
-}
+bool AppController::stopRecordingDevice(const QString& deviceName) { return d->recording->stopDevice(deviceName); }
 
 void AppController::setSecret(const QString& name, const QString& value) { d->secrets->set(name, value); }
 bool AppController::hasSecret(const QString& name) const { return !d->secrets->get(name).isEmpty(); }
@@ -2099,223 +1854,10 @@ QString AppController::secretBackendWarning() const { return d->secretsWarning; 
 
 void AppController::startRecording(const QString& title, const QVector<AudioDeviceInfo>& devices)
 {
-    if (d->state == RecordingState::Recording || d->state == RecordingState::Stopping) {
-        emit errorOccurred(tr("Már folyik felvétel."));
-        return;
-    }
-    // The monitor releases the devices before recording (the request, monitorWanted, stays: during recording it
-    // restarts on the devices not on a track). The shutdown runs asynchronously on the monitor's background
-    // thread: for a short time a device may be open in parallel with the recording (in shared mode that is no obstacle).
-    d->monitorNames.clear();
-    if (d->monitor) d->monitor->stop();
-    d->recNames.clear();
-    d->recClosed.clear();
-    d->recOff.clear();
-    d->recMissing.clear();
-    d->recReturning.clear();
-    QVector<AudioDeviceInfo> use = devices;
-    if (use.isEmpty()) {
-        d->devices->refresh();
-        use = d->devices->autoRecordDevices();   // line-in/AUX left out of the auto set
-    }
-    if (use.isEmpty()) {
-        emit errorOccurred(tr("Nincs felvehető hangeszköz."));
-        return;
-    }
-
-    // We remember the devices used (to pre-check at startup).
-    QStringList usedNames;
-    for (const auto& dvc : use) usedNames << dvc.name;
-    setLastUsedDeviceNames(usedNames);
-
-    d->recordingTagIds.clear();   // the previous recording's tags are not inherited
-    const AppSettings s = d->settings->settings();
-    auto* sess = new recording::RecordingSession(d->media, d->audioDir, title, s.recording.userSpeakerName,
-                                      opusBitrateKbps(s.recording.audioQuality), this);
-    if (d->recordingEngineFactory) sess->setEngineFactory(d->recordingEngineFactory);
-    d->session = sess;
-
-    connect(sess, &recording::RecordingSession::stateChanged, this, [this, sess](RecordingState st) {
-        d->state = st;
-        // The meeting folder already exists in start(), so it is available at the START of the recording (not
-        // only at finished). Needed for the --record lock and currentMeetingFolder().
-        if (st == RecordingState::Recording) {
-            d->currentFolder = sess->folder();
-            d->recNames.clear();
-            for (const AudioDeviceInfo& dev : sess->trackDevices()) d->recNames << dev.name;
-            startCallEndMonitor();
-            restartLevelMonitor(/*force*/ true);   // only if the UI requested it (monitorWanted)
-        } else if (st == RecordingState::Stopping) {
-            // During the shutdown the monitor also stops; at the recording's end (if needed) it restarts.
-            d->monitorNames.clear();
-            if (d->monitor) d->monitor->stop();
-        } else if (st == RecordingState::Idle) {
-            stopCallEndMonitor();
-        }
-        emit recordingStateChanged(st);
-    });
-    connect(sess, &recording::RecordingSession::trackLevel, this, [this](int idx, float rms, float peak) {
-        if (idx >= 0 && idx < d->recNames.size())
-            emit deviceLevelPeak(d->recNames.at(idx), rms, peak);
-    });
-    connect(sess, &recording::RecordingSession::trackAdded, this, [this](int, const QString& name) {
-        d->recNames << name;
-        d->recClosed.removeAll(name);   // a re-plugged, re-recorded device
-        d->recOff.removeAll(name);      // a re-enabled device: a new span
-        if (!d->lastDevices.contains(name)) {
-            QStringList names = d->lastDevices;
-            names << name;
-            setLastUsedDeviceNames(names);
-        }
-        restartLevelMonitor(/*force*/ false);
-        emit recordingTrackAdded(name);
-    });
-    connect(sess, &recording::RecordingSession::trackClosed, this, [this](int, const QString& name) {
-        // Switched off by the user, so not "detached"; the monitor measures its level again.
-        if (!d->recOff.contains(name) && !d->recClosed.contains(name)) d->recClosed << name;
-        restartLevelMonitor(/*force*/ false);
-        emit recordingTrackClosed(name);
-    });
-    // Silence watch: if any track's RMS at speech level is "loud", the timestamp refreshes and the silence
-    // question re-arms. The threshold is in line with RecordingSession's kSilencePeak.
-    connect(sess, &recording::RecordingSession::levelMeterUpdated, this, [this](int, float rms) {
-        if (rms >= 0.008f) {
-            d->lastLoudMs = QDateTime::currentMSecsSinceEpoch();
-            d->silenceAsked = false;
-        }
-    });
-    {
-        const int minutes = d->settings->settings().watcher.silenceAskMinutes;
-        if (d->silenceTimer) { d->silenceTimer->stop(); d->silenceTimer->deleteLater(); d->silenceTimer = nullptr; }
-        if (minutes > 0) {
-            d->lastLoudMs = QDateTime::currentMSecsSinceEpoch();
-            d->silenceAsked = false;
-            d->silenceTimer = new QTimer(this);
-            connect(d->silenceTimer, &QTimer::timeout, this, [this, minutes]() {
-                if (d->state != RecordingState::Recording || d->silenceAsked) return;
-                const qint64 quiet = QDateTime::currentMSecsSinceEpoch() - d->lastLoudMs;
-                if (quiet >= qint64(minutes) * 60000) {
-                    d->silenceAsked = true;
-                    qCInfo(lcApp) << "Csend felvétel közben:" << minutes << "perc → rákérdezés";
-                    emit silenceDetected(minutes);
-                }
-            });
-            d->silenceTimer->start(10000);
-        }
-    }
-    connect(sess, &recording::RecordingSession::elapsedChanged, this, &AppController::elapsedChanged);
-    connect(sess, &recording::RecordingSession::failed, this, [this](QString e) {
-        stopCallEndMonitor();
-        emit errorOccurred(e);
-        if (d->session) { d->session->deleteLater(); d->session = nullptr; }
-        d->state = RecordingState::Idle;
-        d->recNames.clear();
-        d->recClosed.clear();
-        d->recOff.clear();
-        emit recordingStateChanged(d->state);
-        restartLevelMonitor(/*force*/ true);
-    });
-    connect(sess, &recording::RecordingSession::finished, this, [this](Meeting m) {
-        stopCallEndMonitor();
-        d->currentFolder = m.folder;
-        // The tags given during recording (the meeting enters the store only now).
-        for (const QString& id : std::as_const(d->recordingTagIds))
-            if (d->tags->tag(id).isValid() && !m.tagIds.contains(id)) m.tagIds << id;
-        d->recordingTagIds.clear();
-        d->store->saveMeeting(m);
-        if (d->session) { d->session->deleteLater(); d->session = nullptr; }
-        d->state = RecordingState::Idle;
-        d->recNames.clear();
-        d->recClosed.clear();
-        d->recOff.clear();
-        emit recordingFinished(m);
-        emit recordingStateChanged(d->state);
-        restartLevelMonitor(/*force*/ true);
-        // The mixdown is decoupled from stop(): we start it here ASYNCHRONOUSLY, only if the setting is "auto".
-        // It does not block, so a new recording can start at once. In manual mode the user starts it with the
-        // review panel's "Mix" button. (The mixdown is needed only for listening; for transcription the per-track
-        // .ogg files suffice.)
-        // In the standalone recorder process (setAutoMixdownAfterRecording(false)) it does not start: that process
-        // exits after recording, and the analyzer makes the mix when needed.
-        // Before it, the tracks' speech check (on a background thread): a speechless track is left out of the mix
-        // (Track::excludedReason "noSpeech"); the mix starts at the end of the measurement.
-        if (d->autoMixdown) {
-            const bool mix = d->settings->settings().recording.mixdownMode != QStringLiteral("manual")
-                && m.mixdownFile.isEmpty();
-            if (editing::trackspeech::needsSpeechCheck(m)) startSpeechCheck(m.id, mix);
-            else if (mix) regenerateMixdown(m.id);
-            // The pre-transcript voice analysis from the raw tracks, right after the recording (if the speech
-            // measurement is still pending, its end starts it).
-            maybeAnalyzeParticipants(m.id);
-        }
-    });
-
-    sess->start(use);
+    d->recording->start(title, devices);
 }
 
-// ---- call-end watching during recording ---------------------------------------------
-// The same detector core the tanara-watcher uses. The detector excludes our own capture by selfBinary.
-// It only SIGNALS (callEnded); the user decides about stopping.
-void AppController::startCallEndMonitor()
-{
-    stopCallEndMonitor();
-    const AppSettings s = d->settings->settings();
-    if (!s.watcher.askStopOnCallEnd)
-        return;
-    watcher::registerBuiltinDetectors();
-    d->callDetector.reset(s.watcher.detectorId.isEmpty()
-        ? watcher::MeetingDetectorRegistry::instance().createBest()
-        : watcher::MeetingDetectorRegistry::instance().create(s.watcher.detectorId));
-    if (!d->callDetector) {
-        qCDebug(lcApp) << "Hívás-vég figyelés: nincs elérhető detektor ezen a platformon.";
-        return;
-    }
-    d->callDetector->configure(s.watcher.knownCallApps, QStringLiteral("tanara"));
-    d->callSeenActive = false;
-    d->callInactivePolls = 0;
-    d->callAppName.clear();
-    d->callTimer = new QTimer(this);
-    connect(d->callTimer, &QTimer::timeout, this, &AppController::pollCallEnd);
-    d->callTimer->start(qMax(1, s.watcher.detectorIntervalSec) * 1000);
-    pollCallEnd();
-}
-
-void AppController::stopCallEndMonitor()
-{
-    if (d->silenceTimer) { d->silenceTimer->stop(); d->silenceTimer->deleteLater(); d->silenceTimer = nullptr; }
-    if (d->callTimer) { d->callTimer->stop(); d->callTimer->deleteLater(); d->callTimer = nullptr; }
-    d->callDetector.reset();
-    d->callSeenActive = false;
-    d->callInactivePolls = 0;
-}
-
-void AppController::pollCallEnd()
-{
-    if (!d->callDetector || d->state != RecordingState::Recording)
-        return;
-    const watcher::MeetingSignal sig = d->callDetector->poll();
-    if (sig.active) {
-        d->callSeenActive = true;
-        d->callInactivePolls = 0;
-        if (!sig.appName.isEmpty()) d->callAppName = sig.appName;
-        return;
-    }
-    if (!d->callSeenActive)
-        return;   // we have not even seen a call yet (a manual recording without a call): nothing to signal
-    // Debounce: 2 consecutive inactive polls (a momentary microphone release must not ask).
-    if (++d->callInactivePolls >= 2) {
-        const QString app = d->callAppName;
-        d->callSeenActive = false;   // it re-arms if the call becomes active again later
-        d->callInactivePolls = 0;
-        qCInfo(lcApp).noquote() << "Hívás véget ért felvétel közben:" << app;
-        emit callEnded(app);
-    }
-}
-
-void AppController::stopRecording()
-{
-    if (d->session) d->session->stop();
-}
+void AppController::stopRecording() { d->recording->stop(); }
 
 static QString resolvedPrompt(const AppSettings& s, const QString& userOverride, const char* id);
 static processing::SummaryRequest summaryRequestFor(const AppSettings& s, const MergedTranscript& merged,
@@ -2545,7 +2087,7 @@ void AppController::transcribeMeeting(const QString& meetingId)
                 const QString msg = tr("A lekeverés sikertelen — az átírás nem indult.");
                 JobError je;
                 je.message = msg;
-                je.detail = d->mixdownFailReason.take(meetingId);   // e.g. which track's file is missing
+                je.detail = d->mixdown->takeFailReason(meetingId);   // e.g. which track's file is missing
                 d->jobs->fail(meetingId, JobKind::Transcribe, je);
                 emit errorOccurred(msg);
             });
@@ -2553,7 +2095,7 @@ void AppController::transcribeMeeting(const QString& meetingId)
         tr_.mixPhase = true;
         tr_.mixConn = conn;
         // If a standalone mix was already running, we wait for it; on cancel we do not stop that one.
-        tr_.ownsMixdown = !d->mixdownProcs.contains(meetingId);
+        tr_.ownsMixdown = !d->mixdown->running(meetingId);
         d->jobs->setStage(meetingId, JobKind::Transcribe, QStringLiteral("mixdown"),
                           StageState::Running, 0);
         emit jobProgress(m.id, tr("Lekeverés az átíráshoz…"));
@@ -3796,14 +3338,9 @@ QVector<TagSuggestion> AppController::draftTagSuggestions(const QString& title) 
     return suggester.suggestForDraft(title);
 }
 
-void AppController::setRecordingTags(const QStringList& tagIds)
-{
-    d->recordingTagIds.clear();
-    for (const QString& id : tagIds)
-        if (!id.isEmpty() && !d->recordingTagIds.contains(id)) d->recordingTagIds << id;
-}
+void AppController::setRecordingTags(const QStringList& tagIds) { d->recording->setTags(tagIds); }
 
-QStringList AppController::recordingTags() const { return d->recordingTagIds; }
+QStringList AppController::recordingTags() const { return d->recording->tags(); }
 
 void AppController::setEmbeddingProvider(const QString& providerId, const providers::ProviderConfig& config)
 {
@@ -3999,12 +3536,7 @@ bool AppController::cancelJob(const QString& meetingId, JobKind kind)
             const bool owns = it->ownsMixdown;
             d->transcribeRuns.erase(it);
             d->clearSpeakersOnTranscript.remove(meetingId);
-            if (owns) {
-                if (media::MediaJob* proc = d->mixdownProcs.value(meetingId)) {
-                    d->mixdownCancelled.insert(meetingId);
-                    proc->cancel();
-                }
-            }
+            if (owns) d->mixdown->cancelProcess(meetingId);
             d->jobs->cancelled(meetingId, kind);
             return true;
         }
@@ -4069,14 +3601,8 @@ bool AppController::cancelJob(const QString& meetingId, JobKind kind)
             startNextTopicJob();   // other meetings' topics go on
         return true;
     }
-    case JobKind::Mixdown: {
-        media::MediaJob* proc = d->mixdownProcs.value(meetingId);
-        if (!proc || !d->jobs->isRunning(meetingId, kind)) return false;
-        d->jobs->setCancelling(meetingId, kind);
-        d->mixdownCancelled.insert(meetingId);
-        proc->cancel();   // the finished branch closes: the half-made file is deleted, the old mix stays
-        return true;
-    }
+    case JobKind::Mixdown:
+        return d->mixdown->cancel(meetingId);
     case JobKind::Import:
         return d->services->import().cancel(meetingId);
     case JobKind::Export:

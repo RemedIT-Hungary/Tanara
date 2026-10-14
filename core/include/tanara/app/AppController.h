@@ -83,7 +83,8 @@ public:
     library::AudioImporter*     importer() const;
     // The media port (ffmpeg / ffprobe, resolved once at startup from settings.media).
     media::MediaToolPtr         mediaTool() const;
-    // The services split out of the controller (archive, import; more with the P12 slices).
+    // The services split out of the controller (archive, import, recording, mixdown, call monitor;
+    // more with the P12 slices).
     app::Services*              services() const;
     // Convenience: jobs()->state(meetingId).
     MeetingProcessingState processingState(const QString& meetingId) const;
@@ -699,17 +700,6 @@ signals:
     void errorOccurred(QString message);
 
 private:
-    // Call-end watching during recording (askStopOnCallEnd), using the watcher's detector core.
-    void startCallEndMonitor();
-    void stopCallEndMonitor();
-    void pollCallEnd();
-    // (Re)starts the level monitor with the right device set; without force only if the set
-    // changed. During recording the recorded devices are left out.
-    void restartLevelMonitor(bool force);
-    void beginLevelMonitoring();
-    void endLevelMonitoring();
-    // After a device re-enumeration: during recording, closes the track of a recorded device that disappeared.
-    void handleDeviceSetChange();
     // Transcribes the finished (fresh) mixdown with a single Soniox request; transcribeMeeting
     // chains the mixdown's completion to it. Speaker separation comes from Soniox diarization
     // ("Speaker N" labels); the name is resolved afterwards by voice ID / manual rename.

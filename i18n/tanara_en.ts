@@ -7723,32 +7723,8 @@
         <translation>Description changed</translation>
     </message>
     <message>
-        <source>Hiányzik a(z) „%1” sáv hangfájlja — a meglévő lekeverés megmaradt. Keresd meg a fájlt a Sávok fülön, vagy dobd el a sávot, és keverd újra.</source>
-        <translation>The audio file of track &quot;%1&quot; is missing — the existing mixdown was kept. Locate the file on the Tracks tab, or discard the track and mix down again.</translation>
-    </message>
-    <message>
-        <source>Nincs aktív hangsáv a lekeveréshez.</source>
-        <translation>No active audio track for mixdown.</translation>
-    </message>
-    <message>
         <source>Lekeverés</source>
         <translation>Mixdown</translation>
-    </message>
-    <message>
-        <source>A lekeverés (ffmpeg) sikertelen.</source>
-        <translation>Mixdown (ffmpeg) failed.</translation>
-    </message>
-    <message>
-        <source>A lekeverés nem sikerült.</source>
-        <translation>The mixdown failed.</translation>
-    </message>
-    <message>
-        <source>Már folyik felvétel.</source>
-        <translation>A recording is already in progress.</translation>
-    </message>
-    <message>
-        <source>Nincs felvehető hangeszköz.</source>
-        <translation>No recordable audio device.</translation>
     </message>
     <message>
         <source>A Tanara Cloudhoz frissítés kell (legalább %1).</source>
@@ -8765,6 +8741,40 @@
     <message>
         <source>Kész</source>
         <translation>Done</translation>
+    </message>
+</context>
+<context>
+    <name>tanara::recording::MixdownService</name>
+    <message>
+        <source>Hiányzik a(z) „%1” sáv hangfájlja — a meglévő lekeverés megmaradt. Keresd meg a fájlt a Sávok fülön, vagy dobd el a sávot, és keverd újra.</source>
+        <translation>The audio file of track &quot;%1&quot; is missing — the existing mixdown was kept. Locate the file on the Tracks tab, or discard the track and mix down again.</translation>
+    </message>
+    <message>
+        <source>Nincs aktív hangsáv a lekeveréshez.</source>
+        <translation>No active audio track for mixdown.</translation>
+    </message>
+    <message>
+        <source>Lekeverés</source>
+        <translation>Mixdown</translation>
+    </message>
+    <message>
+        <source>A lekeverés (ffmpeg) sikertelen.</source>
+        <translation>Mixdown (ffmpeg) failed.</translation>
+    </message>
+    <message>
+        <source>A lekeverés nem sikerült.</source>
+        <translation>The mixdown failed.</translation>
+    </message>
+</context>
+<context>
+    <name>tanara::recording::RecordingService</name>
+    <message>
+        <source>Már folyik felvétel.</source>
+        <translation>A recording is already in progress.</translation>
+    </message>
+    <message>
+        <source>Nincs felvehető hangeszköz.</source>
+        <translation>No recordable audio device.</translation>
     </message>
 </context>
 <context>
