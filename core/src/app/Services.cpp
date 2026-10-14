@@ -25,6 +25,9 @@
 // --- P16: detector registry ---
 #include "tanara/watcher/detect/DetectorRegistry.h"
 // --- end P16 ---
+// --- P12e: summary and topic queue ---
+#include "tanara/processing/summary/SummarizationService.h"
+// --- end P12e ---
 
 namespace tanara::app {
 
@@ -189,6 +192,28 @@ library::PeopleService::Deps peopleDeps(const ServicesDeps& deps, editing::Peopl
 }
 // --- end P12d ---
 
+// --- P12e: summary and topic queue ---
+// The speaker names of the summary come from the people service (the editing module's overlay resolves them).
+processing::SummarizationService::Deps summarizationDeps(const ServicesDeps& deps, library::PeopleService* people)
+{
+    processing::SummarizationService::Deps sd;
+    sd.store = deps.store;
+    sd.jobs = deps.jobs;
+    sd.jobStats = deps.jobStats;
+    sd.registry = deps.registry;
+    sd.llm = deps.summaryLlm;
+    sd.notesDir = deps.notesDir;
+    sd.cachedTranscript = deps.cachedTranscript;
+    sd.resolveSpeakers = [people](MergedTranscript& merged, const Meeting& m) {
+        editing::speakeredit::applyResolvedSpeakers(merged, m, people->personNames());
+    };
+    sd.sourceLines = [people](const Meeting& m) {
+        return editing::speakeredit::resolvedSourceLines(m, people->personNames());
+    };
+    return sd;
+}
+// --- end P12e ---
+
 } // namespace
 
 Services::Services(const ServicesDeps& deps)
@@ -211,6 +236,9 @@ Services::Services(const ServicesDeps& deps)
     // --- P16: detector registry ---
     , m_detectors(std::make_unique<watcher::MeetingDetectorRegistry>(watcher::MeetingDetectorRegistry::withBuiltins()))
     // --- end P16 ---
+    // --- P12e: summary and topic queue ---
+    , m_summarization(std::make_unique<processing::SummarizationService>(summarizationDeps(deps, m_people.get())))
+    // --- end P12e ---
 {
     // --- P16: detector registry ---
     m_callMonitor->setDetectorRegistry(m_detectors.get());

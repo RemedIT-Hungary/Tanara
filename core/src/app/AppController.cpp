@@ -2,7 +2,6 @@
 #include "tanara/providers/core/ProviderConfig.h"
 
 #include "tanara/foundation/log/Logging.h"
-#include "tanara/foundation/text/Text.h"
 #include "tanara/processing/summary/PromptLibrary.h"
 #include <QTimer>
 #include "tanara/app/SettingsManager.h"
@@ -29,7 +28,9 @@
 #include "tanara/providers/chat/LlmServer.h"
 #include "tanara/providers/core/ProviderRegistry.h"
 #include "tanara/processing/summary/SummaryService.h"
-#include "tanara/processing/summary/ComplexSummaryService.h"
+#include "tanara/processing/summary/SummarizationService.h"
+#include "tanara/processing/summary/TopicQueue.h"
+#include "tanara/processing/ProviderFailureSink.h"
 #include "tanara/processing/summary/TranscriptMerger.h"
 #include "tanara/foundation/i18n/Localization.h"
 #include "tanara/cloud/CloudSession.h"
@@ -83,7 +84,6 @@
 #include <QDateTime>
 #include <QPointer>
 #include <QRegularExpression>
-#include <QUuid>
 #include <QElapsedTimer>
 #include <QThread>
 #include <QThreadPool>
@@ -115,24 +115,9 @@ QString sttPhase(SttJobState s) {
     }
 }
 
-QString slugify(const QString& s) {
-    return text::slug(s, QStringLiteral("meeting"));
-}
-
 // The last FAILED HTTP exchange of a provider call (for the remembered error's technical line).
-struct FailureSink { bool has = false; net::HttpExchange ex; };
-using FailureSinkPtr = std::shared_ptr<FailureSink>;
-
-// Extends the context's response observer: besides the existing (cloud) observer, non-2xx responses and
-// network errors are also stored in the sink. The failure of cleanup DELETEs does not count.
-void captureFailures(providers::ProviderContext& ctx, const FailureSinkPtr& sink) {
-    const auto prev = ctx.observe;
-    ctx.observe = [prev, sink](const net::HttpExchange& ex) {
-        if (prev) prev(ex);
-        const bool ok = ex.status >= 200 && ex.status < 300;
-        if (!ok && ex.method != "DELETE") { sink->has = true; sink->ex = ex; }
-    };
-}
+using processing::FailureSink;
+using processing::captureFailures;
 
 } // namespace
 
@@ -169,15 +154,10 @@ struct AppController::Impl {
     bool        autoMixdown = true;             // automatic mixdown after recording / import
     QHash<QString, MergedTranscript> mergedCache;
 
-    // Topic-analysis job queue (complex pass 2): ONE LLM call runs at a time (local model, parallel=1),
-    // the other topics wait in line. Each topic can be (re)started separately.
-    struct TopicJob { QString meetingId; SummaryTopic topic; };
-    QVector<TopicJob> topicJobQueue;
-    bool    topicJobActive = false;
-    QString activeTopicMeetingId;   // addressee of the running job (dedup + lifecycle signals)
-    QString activeTopicId;
-    QSet<QString> reduceWhenDone;             // meetingIds where an auto-reduce follows at the end of the queue
-    QHash<QString, QPair<int,int>> jobCounts; // meetingId -> (ok, fail) in the current batch
+    // ---- P12e: the summary and the topic queue (processing::SummarizationService, app::Services) ----
+    processing::SummarizationService* summaries = nullptr;
+    struct SummaryLlmAdapter;   // the summarization's SummaryLlmPort (settings, key, Tanara Cloud runs)
+    std::unique_ptr<SummaryLlmAdapter> summaryLlm;
 
     // Transcript-editor sessions (one per meeting; see speakerEditor()).
     QHash<QString, QPointer<editing::SpeakerEditor>> speakerEditors;
@@ -190,10 +170,6 @@ struct AppController::Impl {
     net::HttpClient* http = nullptr;                 // the shared HTTP client of providers + cloud
     providers::ProviderRegistry providerRegistry;    // this controller's providers (not a singleton)
     cloud::CloudMode cloudMode;                      // live / teaser / base URL (cloud/CloudMode.h)
-    // Per meeting the cloud run of the open complex summary (topic gathering -> topic analyses -> reduce):
-    // ONE X-Tanara-Job-Id, the per-call charges summed up (the "12 parts" case).
-    // On completion (done / error / cancel) it is removed from here; a continuation is thus a new run.
-    QHash<QString, CloudRunPtr> complexRuns;
 
     // ---- structured layer (redesigned main window) ----------------------------------
     AppController*     q = nullptr;
@@ -229,38 +205,6 @@ struct AppController::Impl {
     // identification uses it (and the tokens file's state) to see that a new transcript arrived meanwhile.
     QHash<QString, int> transcriptGen;
 
-    // A running LLM call (summary / topic gathering / combining / the active topic analysis).
-    struct LlmRun {
-        QPointer<QObject> svc; QPointer<QObject> provider; CloudRunPtr cloudRun;
-        QPointer<providers::ILocalModelServer> preparer;   // the model preparation (LM Studio) while it lasts
-    };
-    QHash<QString, LlmRun> llmRuns;            // llmKey(meetingId, kind) -> run
-    LlmRun activeTopicRun;
-    QHash<QString, int> topicBatchTotal;       // meetingId -> number of topics queued into the current batch
-
-    // ---- LLM context (see providers/chat/LlmContext.h, providers/chat/LlmServer.h) ----
-    // A run's context knowledge for classifying errors: the estimated need, and what the server probe / the
-    // load said.
-    struct LlmContextState { int need = 0; bool lmStudio = false; int loadedContext = -1; };
-    using LlmContextPtr = std::shared_ptr<LlmContextState>;
-    // The minimum requested by the user ("Load with a larger context"): the next preparation uses it ONCE.
-    // Key: server root|model.
-    QHash<QString, int> contextFloor;
-    // For a server without a native API, the context learned from the error message: the next summary
-    // already adapts the parts to it (in memory only).
-    QHash<QString, int> learnedContext;
-    static QString serverKey(const providers::ProviderConfig& cfg) {
-        return providers::llmctx::nativeApiRoot(cfg.baseUrl) + QLatin1Char('|') + cfg.model.trimmed();
-    }
-    // Tanara is currently running ANOTHER LLM request too (then we do not unload the model).
-    bool otherLlmBusy() const { return llmRuns.size() + (topicJobActive ? 1 : 0) > 1; }
-    // Preparing the model before an LLM task. For Cloud (and if there is nothing to do) `go` runs at once;
-    // for LM Studio, if needed, a load / reload as the task's "model" stage. The caller binds the returned
-    // preparer to the run (for cancelling).
-    providers::ILocalModelServer* prepareLlm(const QString& meetingId, JobKind kind, const providers::ProviderConfig& cfg,
-                                 bool cloud, const LlmContextPtr& ctx, std::function<void()> go,
-                                 std::function<void(const JobError&)> onFail);
-
     // The transcript's state at the start of an identification (see startIdentify): if it differs at the
     // end, the result refers to the labels of the OLD transcript, so it is dropped.
     QString transcriptStamp(const QString& meetingId, const QString& folder) const {
@@ -268,113 +212,85 @@ struct AppController::Impl {
         return QStringLiteral("%1/%2/%3").arg(transcriptGen.value(meetingId)).arg(fs.mtimeMs).arg(fs.size);
     }
 
-    static QString llmKey(const QString& meetingId, JobKind kind) {
-        return meetingId + QLatin1Char('|') + QString::number(int(kind));
-    }
     bool transcribeInMixPhase(const QString& meetingId) const {
         const auto it = transcribeRuns.constFind(meetingId);
         return it != transcribeRuns.constEnd() && it->mixPhase;
     }
     bool voiceModelUsable() const { return voice && voice->usable(); }
-    void updateTopicCounts(const QString& meetingId);
-    void abortLlmRun(const LlmRun& run);
-    JobError describeLlmFailure(JobKind kind, const QString& raw, const CloudRunPtr& run,
-                                const FailureSinkPtr& sink,
-                                const std::shared_ptr<LlmContextState>& ctx = nullptr) const;
     // Tag suggestions (P12c): the LLM run's session (cloud bookkeeping) and the embedder factory, handed to
     // library::TagSuggestionService through app::Services.
     library::TagSuggestionService::LlmSession tagLlmSession(const QString& meetingId, QObject* parent);
     providers::ITextEmbedder* makeEmbedder(const QString& providerId, QObject* parent);
 };
 
-void AppController::Impl::updateTopicCounts(const QString& meetingId)
-{
-    if (!jobs->isRunning(meetingId, JobKind::AnalyzeTopics)) return;
-    const QPair<int, int> c = jobCounts.value(meetingId);
-    jobs->setCounts(meetingId, JobKind::AnalyzeTopics, c.first + c.second,
-                    topicBatchTotal.value(meetingId));
-}
+// P12e: the summarization's app side (processing::SummaryLlmPort): the settings, the LLM key and the Tanara
+// Cloud run bookkeeping, through the same facade members as before the split (canRun, llmConfigFor,
+// providerContext, finishCloudRun, the ledger's fail). A cloud run travels as an opaque handle.
+struct AppController::Impl::SummaryLlmAdapter final : processing::SummaryLlmPort {
+    struct CloudRunHandle final : RunHandle { CloudRunPtr run; };
 
-// Cancelling a running LLM call: we detach the service's signals, delete the provider (with it the job
-// and the network request); the connection to the provider breaks, no result arrives.
-void AppController::Impl::abortLlmRun(const LlmRun& run)
-{
-    if (run.preparer) {
-        run.preparer->cancel();   // the query / load request is dropped (no signal comes)
-        run.preparer->deleteLater();
-    }
-    if (auto* summary = qobject_cast<processing::SummaryService*>(run.svc.data()))
-        summary->cancel();   // the running call is cancelled, the next one does not start (the part notes stay)
-    if (run.svc) {
-        run.svc->disconnect(q);
-        run.svc->deleteLater();
-    }
-    if (run.provider) run.provider->deleteLater();
-}
+    explicit SummaryLlmAdapter(AppController* owner) : q(owner) {}
 
-JobError AppController::Impl::describeLlmFailure(JobKind kind, const QString& raw,
-                                                 const CloudRunPtr& run,
-                                                 const FailureSinkPtr& sink,
-                                                 const LlmContextPtr& ctx) const
-{
-    if (run && run->lastError.isError())
-        return library::describeCloudFailure(kind, cloud::toError(run->lastError));
-    library::ContextFailureHint hint;
-    hint.cloud = bool(run);
-    if (ctx) {
-        hint.lmStudio = ctx->lmStudio && !run;
-        if (ctx->need > 0) hint.recommendedContext = providers::llmctx::contextStepFor(ctx->need);
+    static CloudRunPtr unwrap(const Run& run)
+    {
+        const auto* h = static_cast<const CloudRunHandle*>(run.get());
+        return h ? h->run : CloudRunPtr();
     }
-    return describeJobFailure(kind, raw, (sink && sink->has) ? &sink->ex : nullptr, &hint);
-}
+    static Run wrap(const CloudRunPtr& run)
+    {
+        if (!run) return {};
+        auto h = std::make_shared<CloudRunHandle>();
+        h->run = run;
+        return h;
+    }
 
-providers::ILocalModelServer* AppController::Impl::prepareLlm(const QString& meetingId, JobKind kind,
-                                                  const providers::ProviderConfig& cfg, bool cloud,
-                                                  const LlmContextPtr& ctx, std::function<void()> go,
-                                                  std::function<void(const JobError&)> onFail)
-{
-    // Behind Tanara Cloud there is no native API: neither a probe nor a load.
-    if (cloud) { go(); return nullptr; }
-    // The selected chat provider's local-server handler (LM Studio for "openai-compat"); none = nothing
-    // to prepare.
-    providers::ProviderContext pctx;
-    pctx.http = http;
-    auto* prep = providerRegistry.create<providers::ILocalModelServer>(
-        settings->settings().providers.llm.selectedId, pctx, cfg, q);
-    if (!prep) { go(); return nullptr; }
-    prep->setBusyCheck([this] { return otherLlmBusy(); });
-    const int floor = contextFloor.take(serverKey(cfg));
-    QObject::connect(prep, &providers::ILocalModelServer::loadingStarted, prep, [this, prep, meetingId, kind](int ctxLen) {
-        // Visible first stage: "Loading the model" (cancellable like the rest of the task).
-        QVector<JobStage> stages = jobs->job(meetingId, kind).stages;
-        const QStringList others = prep->serverInfo().otherLoaded;
-        QString detail = AppController::tr("%1 tokenes kontextus, egy szálon").arg(QStringLiteral("%L1").arg(ctxLen));
-        if (!others.isEmpty())
-            detail += AppController::tr(" · a szerveren más modell is betöltve: %1").arg(others.join(QStringLiteral(", ")));
-        stages.prepend({ QStringLiteral("model"), AppController::tr("Modell betöltése"), StageState::Running, -1, detail });
-        jobs->setStages(meetingId, kind, stages);
-        jobs->setMessage(meetingId, kind, AppController::tr("Modell betöltése…"));
-        emit q->jobProgress(meetingId, AppController::tr("Modell betöltése (%1 tokenes kontextus)…")
-                                           .arg(QStringLiteral("%L1").arg(ctxLen)));
-    });
-    QObject::connect(prep, &providers::ILocalModelServer::ready, prep, [this, prep, meetingId, kind, ctx, go] {
-        ctx->lmStudio = prep->serverInfo().isLmStudio();
-        ctx->loadedContext = prep->loadedContext();
-        if (jobs->job(meetingId, kind).stage(QStringLiteral("model")))
-            jobs->setStage(meetingId, kind, QStringLiteral("model"), StageState::Done);
-        prep->deleteLater();
-        go();
-    });
-    QObject::connect(prep, &providers::ILocalModelServer::failed, prep, [this, prep, meetingId, kind, onFail](JobError e) {
-        e.kind = kind;
-        if (jobs->job(meetingId, kind).stage(QStringLiteral("model")))
-            jobs->setStage(meetingId, kind, QStringLiteral("model"), StageState::Failed);
-        prep->deleteLater();
-        onFail(e);
-    });
-    prep->start(ctx->need, floor);
-    return prep;
-}
+    providers::ReadinessResult readiness(const QString& meetingId) const override
+    {
+        return q->canRun(providers::WorkflowStep::Summarize, meetingId);
+    }
+    processing::ProcessingSettings processingSettings() const override { return q->d->settings->settings().processing; }
+    QString chatProviderId() const override { return q->d->settings->settings().providers.llm.selectedId; }
+    providers::ProviderConfig localConfig() const override { return q->d->settings->settings().providers.llm.selected(); }
+    bool cloudSelected() const override { return q->usesCloud(providers::WorkflowStep::Summarize); }
+
+    Run newRun(const QString& meetingId, const QString& kind) override { return wrap(q->newCloudRun(meetingId, kind)); }
+    void setRunKind(const Run& run, const QString& kind) override
+    {
+        if (const CloudRunPtr r = unwrap(run)) r->kind = kind;
+    }
+    providers::ProviderConfig config(Run& run, const QString& meetingId, const QString& kind) override
+    {
+        CloudRunPtr r = unwrap(run);
+        const providers::ProviderConfig cfg = q->llmConfigFor(r, meetingId, kind);
+        if (!run && r) run = wrap(r);
+        return cfg;
+    }
+    providers::ProviderContext context(const Run& run, const QString& summaryMode) const override
+    {
+        return q->providerContext(unwrap(run), summaryMode);
+    }
+    void finishRun(const Run& run) override { q->finishCloudRun(unwrap(run)); }
+    bool failRun(const Run& run) override { return q->d->cloudLedger->fail(unwrap(run)); }
+    bool runError(const Run& run, Error* out) const override
+    {
+        const CloudRunPtr r = unwrap(run);
+        if (!r || !r->lastError.isError()) return false;
+        if (out) *out = cloud::toError(r->lastError);
+        return true;
+    }
+    QString runErrorMessage(const Run& run) const override
+    {
+        const CloudRunPtr r = unwrap(run);
+        return r ? r->lastError.message : QString();
+    }
+    void refreshAccount(const Run& run) override
+    {
+        const CloudRunPtr r = unwrap(run);
+        if (r && (r->balance.isValid() || r->calls > 0)) q->d->cloud->refreshAccount();
+    }
+
+    AppController* q;
+};
 
 AppController::AppController(QObject* parent)
     : QObject(parent), d(std::make_unique<Impl>())
@@ -527,6 +443,12 @@ AppController::AppController(QObject* parent)
             return d->speechCheckRunning.contains(m.id)
                 || (!m.hasTranscript && editing::trackspeech::needsSpeechCheck(m) && !d->speechChecked.contains(m.id));
         };
+        // P12e: the summary and the topic queue (the app side: settings, key, Tanara Cloud runs).
+        d->summaryLlm = std::make_unique<Impl::SummaryLlmAdapter>(this);
+        sd.summaryLlm = d->summaryLlm.get();
+        sd.jobStats = d->jobStats.get();
+        sd.notesDir = d->notesDir;
+        sd.cachedTranscript = [this](const QString& id) { return d->mergedCache.value(id); };
         d->services = std::make_unique<app::Services>(sd);
         d->voice = &d->services->voiceAnalysis();
         d->peopleSvc = &d->services->people();
@@ -670,6 +592,29 @@ AppController::AppController(QObject* parent)
         connect(&undo, &editing::MeetingUndoRegistry::participantsChanged, this, &AppController::participantsChanged);
         connect(&undo, &editing::MeetingUndoRegistry::tracksChanged, this, &AppController::tracksChanged);
         connect(&undo, &editing::MeetingUndoRegistry::remixRequested, this, &AppController::regenerateMixdown);
+    }
+
+    // P12e facade: the summarization's and the topic queue's signals are re-emitted unchanged.
+    {
+        d->summaries = &d->services->summarization();
+        processing::SummarizationService& sum = *d->summaries;
+        connect(&sum, &processing::SummarizationService::summaryReady, this, &AppController::summaryReady);
+        connect(&sum, &processing::SummarizationService::summaryStatementsChanged, this,
+                &AppController::summaryStatementsChanged);
+        connect(&sum, &processing::SummarizationService::jobProgress, this, &AppController::jobProgress);
+        connect(&sum, &processing::SummarizationService::errorOccurred, this, &AppController::errorOccurred);
+        processing::TopicQueue& topics = sum.topics();
+        connect(&topics, &processing::TopicQueue::topicsReady, this, &AppController::topicsReady);
+        connect(&topics, &processing::TopicQueue::topicAnalysisQueued, this, &AppController::topicAnalysisQueued);
+        connect(&topics, &processing::TopicQueue::topicAnalysisStarted, this, &AppController::topicAnalysisStarted);
+        connect(&topics, &processing::TopicQueue::topicAnalysisReady, this, &AppController::topicAnalysisReady);
+        connect(&topics, &processing::TopicQueue::topicAnalysisFailed, this, &AppController::topicAnalysisFailed);
+        connect(&topics, &processing::TopicQueue::topicAnalysisQueueFinished, this,
+                &AppController::topicAnalysisQueueFinished);
+        connect(&topics, &processing::TopicQueue::topicsChanged, this, &AppController::topicsChanged);
+        connect(&topics, &processing::TopicQueue::topicStatusChanged, this, &AppController::topicStatusChanged);
+        connect(&topics, &processing::TopicQueue::jobProgress, this, &AppController::jobProgress);
+        connect(&topics, &processing::TopicQueue::errorOccurred, this, &AppController::errorOccurred);
     }
 
     // Speaker models: the set per the settings now, again on change (backfill when it grows).
@@ -962,10 +907,6 @@ void AppController::startRecording(const QString& title, const QVector<AudioDevi
 
 void AppController::stopRecording() { d->recording->stop(); }
 
-static QString resolvedPrompt(const AppSettings& s, const QString& userOverride, const char* id);
-static processing::SummaryRequest summaryRequestFor(const AppSettings& s, const MergedTranscript& merged,
-                                        const Meeting& m, const QString& model, int maxTokens);
-
 providers::ReadinessResult AppController::canRun(providers::WorkflowStep step, const QString& meetingId) const
 {
     const Meeting meeting = d->store->load(meetingId);
@@ -1045,8 +986,10 @@ cloud::EstimateRequest AppController::makeEstimateRequest(const QString& meeting
             in.transcriptChars = int(merged.renderMarkdown().size() + m.contextNote.size());
             in.contextNoteChars = int(m.contextNote.size());
             if (summaryMode == QLatin1String("complex")) {
-                in.topicPromptChars = int(resolvedPrompt(s, s.processing.topicExtractionPrompt, "topic").size());
-                in.analysisPromptChars = int(resolvedPrompt(s, s.processing.topicAnalysisPrompt, "analysis").size());
+                in.topicPromptChars = int(processing::SummarizationService::resolvedPrompt(
+                    s.processing, s.processing.topicExtractionPrompt, "topic").size());
+                in.analysisPromptChars = int(processing::SummarizationService::resolvedPrompt(
+                    s.processing, s.processing.topicAnalysisPrompt, "analysis").size());
                 const QVector<SummaryTopic> topics =
                     SummaryRepository::readTopics(m.folder);
                 in.topicsKnown = !topics.isEmpty();
@@ -1057,7 +1000,8 @@ cloud::EstimateRequest AppController::makeEstimateRequest(const QString& meeting
                     for (const SummaryTopic& t : topics) if (!done.contains(t.id)) ++in.missingAnalyses;
                 }
             } else {
-                const processing::SummaryRequest req = summaryRequestFor(s, merged, m, in.llmModel, kCloudMaxTokens);
+                const processing::SummaryRequest req =
+                    processing::SummarizationService::requestFor(s.processing, merged, m, in.llmModel, kCloudMaxTokens);
                 const processing::SummaryPlan plan = processing::SummaryService::plan(req);
                 in.singleCall = plan.singleCall;
                 in.parts = plan.parts;
@@ -1469,718 +1413,28 @@ void AppController::transcribeFromMixdown(const QString& meetingId)
     });
 }
 
-// The system prompt actually to be sent: settings override -> file override
-// (<data>/prompts/<id>.md) -> built-in default (PromptLibrary), finally with the target language
-// applied ({{NYELV}} placeholder / directive).
-static QString resolvedPrompt(const AppSettings& s, const QString& userOverride, const char* id)
-{
-    const QString base = userOverride.trimmed().isEmpty()
-        ? processing::promptDefault(QLatin1String(id))   // the current data folder
-        : userOverride;
-    return processing::applySummaryLanguage(base, s.processing.summaryLanguage);
-}
+// ---- summary and topic queue (processing::SummarizationService / TopicQueue) -----------------------
 
-void AppController::summarizeMeeting(const QString& meetingId)
-{
-    if (d->jobs->isRunning(meetingId, JobKind::Summarize))
-        return;   // already running
+void AppController::summarizeMeeting(const QString& meetingId) { d->summaries->summarize(meetingId); }
 
-    Meeting m = d->store->load(meetingId);
-    if (m.id.isEmpty()) { emit errorOccurred(tr("Ismeretlen meeting: %1").arg(meetingId)); return; }
-
-    providers::ReadinessResult res = canRun(providers::WorkflowStep::Summarize, meetingId);
-    if (!res.runnable) { emit errorOccurred(res.detail); return; }
-
-    MergedTranscript merged = d->mergedCache.value(meetingId);
-    if (merged.tokens.isEmpty())
-        merged = TranscriptRepository::readTokens(m.folder);
-    // A content guard: canRun(Summarize) gates on the meeting.hasTranscript flag, but if tokens.json is
-    // missing/empty (deleted by hand, a partial write, a wrongly copied meeting), no summary should start on
-    // an empty transcript; this mirrors the original content-based guard.
-    if (merged.tokens.isEmpty()) {
-        emit errorOccurred(tr("Nincs átirat — előbb futtass átírást."));
-        return;
-    }
-    editing::speakeredit::applyResolvedSpeakers(merged, m, d->personNames());   // Gemma should see the real names
-
-    const AppSettings s = d->settings->settings();
-    const QString llmId = s.providers.llm.selectedId;
-    CloudRunPtr run;   // cloud: ONE run (one job id) for all the note and merge calls
-    providers::ProviderConfig cfg = llmConfigFor(run, meetingId, QStringLiteral("summary"));
-    const auto sink = std::make_shared<FailureSink>();
-    providers::ProviderContext pctx = providerContext(run, QStringLiteral("quick"));
-    captureFailures(pctx, sink);
-    providers::IChatProvider* provider = d->providerRegistry.create<providers::IChatProvider>(llmId, pctx, cfg, this);
-    if (!provider) {
-        emit errorOccurred(tr("Ismeretlen LLM-provider: %1.").arg(llmId));
-        return;
-    }
-    QObject* providerObj = dynamic_cast<QObject*>(provider);
-    auto* svc = new processing::SummaryService(provider, this);
-    emit jobProgress(meetingId, run ? tr("Összefoglalás a Tanara Cloudban…")
-                                    : tr("Összefoglalás a helyi modellel…"));
-
-    processing::SummaryRequest req = summaryRequestFor(s, merged, m, cfg.model, cfg.maxTokens);
-    req.temperature = cfg.temperature;
-    // For the source references: the utterances with their current (resolved) speaker; this becomes the
-    // summary's speaker snapshot (the targeted staleness compares against it).
-    req.sourceLines = editing::speakeredit::resolvedSourceLines(m, d->personNames());
-    req.adaptToContext = !run;   // with Tanara Cloud the context is the gateway's business
-    const processing::SummaryPlan plan = processing::SummaryService::plan(req);
-    const auto ctx = std::make_shared<Impl::LlmContextState>();
-    ctx->need = processing::SummaryService::contextNeed(req);
-
-    // Structured task: for a short meeting one stage (one call), for a longer one "Notes per part" (k / n
-    // parts) + "Summarizing". The estimate comes only from earlier runs measured with the same model (unit:
-    // the transcript's length).
-    const QString key = Impl::llmKey(meetingId, JobKind::Summarize);
-    const QString statsKey = QStringLiteral("summary-notes/%1/%2").arg(llmId, cfg.model);
-    const double units = double(merged.renderMarkdown().size());
-    QVector<JobStage> stages;
-    if (plan.singleCall) {
-        stages.append({ QStringLiteral("single"), tr("Összefoglalás"), StageState::Waiting, -1, QString() });
-    } else {
-        // Parts finished in an earlier run are visible at startup (during the model load too).
-        QString notesDetail = tr("%n rész", nullptr, plan.parts);
-        if (plan.cachedParts > 0) notesDetail += tr(" · %n korábbi futásból", nullptr, plan.cachedParts);
-        stages.append({ QStringLiteral("notes"), tr("Jegyzetelés részenként"), StageState::Waiting, -1,
-                        notesDetail });
-        stages.append({ QStringLiteral("merge"), tr("Összegzés"), StageState::Waiting, -1, QString() });
-    }
-    d->jobs->begin(meetingId, JobKind::Summarize, tr("Összefoglaló készítése"), stages);
-    if (!plan.singleCall)
-        d->jobs->setCounts(meetingId, JobKind::Summarize, plan.cachedParts, plan.parts);
-    d->jobs->setEstimate(meetingId, JobKind::Summarize, d->jobStats->estimateSec(statsKey, units));
-    d->llmRuns.insert(key, Impl::LlmRun{svc, providerObj, run});
-    auto clock = std::make_shared<QElapsedTimer>();
-    clock->start();
-
-    // Context-adapted re-split: the stages switch to per-part notes.
-    connect(svc, &processing::SummaryService::partsChanged, this, [this, meetingId](int parts, int cached) {
-        if (!d->jobs->isRunning(meetingId, JobKind::Summarize)) return;
-        QVector<JobStage> stages;
-        if (const JobStage* model = d->jobs->job(meetingId, JobKind::Summarize).stage(QStringLiteral("model")))
-            stages.append(*model);
-        stages.append({ QStringLiteral("notes"), tr("Jegyzetelés részenként"), StageState::Waiting, -1,
-                        tr("%n rész (a modell kontextusához igazítva)", nullptr, parts) });
-        stages.append({ QStringLiteral("merge"), tr("Összegzés"), StageState::Waiting, -1, QString() });
-        d->jobs->setStages(meetingId, JobKind::Summarize, stages);
-        d->jobs->setCounts(meetingId, JobKind::Summarize, cached, parts);
-    });
-    connect(svc, &processing::SummaryService::contextLimitDetected, this, [this, cfg, ctx](int tokens) {
-        if (!ctx->lmStudio) d->learnedContext.insert(Impl::serverKey(cfg), tokens);
-    });
-    connect(svc, &processing::SummaryService::progress, this,
-            [this, meetingId, cached = plan.cachedParts](const QString& stage, int done, int total) {
-        if (!d->jobs->isRunning(meetingId, JobKind::Summarize)) return;
-        if (stage == QLatin1String("single")) {
-            d->jobs->setStage(meetingId, JobKind::Summarize, stage, StageState::Running);
-            return;
-        }
-        if (stage == QLatin1String("notes")) {
-            QString detail = done < total ? tr("%1/%2. rész").arg(done + 1).arg(total)
-                                          : tr("%n rész kész", nullptr, total);
-            if (cached > 0) detail += tr(" · %n korábbi futásból", nullptr, cached);
-            d->jobs->setStage(meetingId, JobKind::Summarize, stage,
-                              done < total ? StageState::Running : StageState::Done, -1, detail);
-            d->jobs->setCounts(meetingId, JobKind::Summarize, done, total);
-            if (done < total)
-                emit jobProgress(meetingId, tr("Jegyzetelés: %1/%2. rész…").arg(done + 1).arg(total));
-            return;
-        }
-        if (stage == QLatin1String("merge")) {
-            d->jobs->setStage(meetingId, JobKind::Summarize, QStringLiteral("merge"), StageState::Running);
-            emit jobProgress(meetingId, tr("Összegzés a részjegyzetekből…"));
-        }
-    });
-    connect(svc, &processing::SummaryService::summaryReady, this,
-            [this, meetingId, providerObj, svc, run, key, statsKey, units, clock, llmId,
-             model = cfg.model, note = req.contextNotes](const Summary& sum) {
-        d->llmRuns.remove(key);
-        if (providerObj) providerObj->deleteLater();
-        svc->deleteLater();
-        // A FRESH meeting (it may have changed / been deleted during the summarization).
-        Meeting mm = d->store->load(meetingId);
-        if (mm.id.isEmpty()) {
-            d->jobs->cancelled(meetingId, JobKind::Summarize);
-            finishCloudRun(run);
-            return;
-        }
-        const QString md = sum.renderMarkdown();
-        SummaryRepository::writeMarkdown(mm.folder, md);
-        // The structured form + the provenance (summary.json); the summary view draws from this.
-        library::SummaryDocument doc;
-        doc.exists = true;
-        doc.summary = sum;
-        doc.markdown = md;
-        doc.meta.createdAt = QDateTime::currentDateTime();
-        doc.meta.providerId = llmId;
-        doc.meta.model = model;
-        doc.meta.mode = library::SummaryMode::Quick;
-        doc.meta.contextNote = note;            // the note it was made with
-        doc.meta.contextNoteKnown = true;
-        library::SummaryRepository::save(mm.folder, doc);
-        // a copy into the notes (vault) folder
-        const QString noteName = QStringLiteral("%1 %2.md")
-            .arg(mm.startedAt.toString(QStringLiteral("yyyy-MM-dd")), slugify(mm.title));
-        SummaryRepository::writeNoteCopy(d->notesDir, noteName, md);
-        mm.hasSummary = true;
-        d->store->saveMeeting(mm);
-        d->jobStats->addSample(statsKey, double(clock->elapsed()) / 1000.0, units);
-        d->jobs->finish(meetingId, JobKind::Summarize);
-        emit summaryReady(mm.id, SummaryRepository::markdownPath(mm.folder));
-        finishCloudRun(run);
-    });
-    connect(svc, &processing::SummaryService::summaryFailed, this,
-            [this, meetingId, providerObj, svc, run, key, sink, ctx](const QString& e) {
-        d->llmRuns.remove(key);
-        if (providerObj) providerObj->deleteLater();
-        svc->deleteLater();
-        const JobError je = d->describeLlmFailure(JobKind::Summarize, e, run, sink, ctx);
-        d->jobs->fail(meetingId, JobKind::Summarize, je);
-        failCloudRun(run, tr("Összefoglaló hiba: %1").arg(je.message));
-    });
-
-    // Preparing the model (LM Studio: loading with the needed context), then it starts.
-    providers::ILocalModelServer* prep = d->prepareLlm(meetingId, JobKind::Summarize, cfg, bool(run), ctx,
-        [this, svc = QPointer<processing::SummaryService>(svc), req, ctx, cfg, clock]() mutable {
-            if (!svc) return;
-            clock->restart();   // the model load does not count in the run's speed (estimate)
-            req.contextLimit = ctx->loadedContext > 0 ? ctx->loadedContext
-                                                      : d->learnedContext.value(Impl::serverKey(cfg));
-            svc->summarize(req);
-        },
-        [this, meetingId, providerObj = QPointer<QObject>(providerObj),
-         svc = QPointer<processing::SummaryService>(svc), key](const JobError& je) {
-            d->llmRuns.remove(key);
-            if (providerObj) providerObj->deleteLater();
-            if (svc) svc->deleteLater();
-            d->jobs->fail(meetingId, JobKind::Summarize, je);
-            emit errorOccurred(tr("Összefoglaló hiba: %1").arg(je.message));
-        });
-    if (prep && d->llmRuns.contains(key)) d->llmRuns[key].preparer = prep;
-}
-
-// The quick summary request from the settings: the three prompts (override -> file -> built-in, with the
-// target language), the context and the part-note cache path. model / maxTokens come from the provider
-// config actually used (cloud: a moderate max_tokens because of the coverage rule).
-static processing::SummaryRequest summaryRequestFor(const AppSettings& s, const MergedTranscript& merged,
-                                        const Meeting& m, const QString& model, int maxTokens)
-{
-    constexpr int kNotesMaxTokens = 3000;   // one part note fits well within it
-    processing::SummaryRequest req;
-    req.transcript = merged;
-    req.contextNotes = m.contextNote.trimmed();
-    req.singlePrompt = resolvedPrompt(s, s.processing.summaryPrompt, "single");
-    req.notesPrompt = resolvedPrompt(s, s.processing.notesPrompt, "notes");
-    req.mergePrompt = resolvedPrompt(s, s.processing.mergePrompt, "merge");
-    req.language = s.processing.summaryLanguage;
-    req.model = model;
-    req.maxTokens = maxTokens > 0 ? maxTokens : 8000;
-    req.notesMaxTokens = qMin(req.maxTokens, kNotesMaxTokens);
-    if (!m.folder.isEmpty())
-        req.cachePath = QDir(m.folder).filePath(processing::SummaryService::cacheFileName());
-    return req;
-}
-
-// ---- complex (multi-pass) summary ------------------------------------------
-
-void AppController::extractMeetingTopics(const QString& meetingId)
-{
-    if (d->jobs->isRunning(meetingId, JobKind::ExtractTopics))
-        return;   // already running
-
-    Meeting m = d->store->load(meetingId);
-    if (m.id.isEmpty()) { emit errorOccurred(tr("Ismeretlen meeting: %1").arg(meetingId)); return; }
-
-    // If a (possibly edited) topic list already exists, we return that; no re-extraction.
-    const QVector<SummaryTopic> existing = SummaryRepository::readTopics(m.folder);
-    if (!existing.isEmpty()) { emit topicsReady(m.id, existing); return; }
-
-    providers::ReadinessResult res = canRun(providers::WorkflowStep::Summarize, meetingId);
-    if (!res.runnable) { emit errorOccurred(res.detail); return; }
-
-    MergedTranscript merged = d->mergedCache.value(meetingId);
-    if (merged.tokens.isEmpty())
-        merged = TranscriptRepository::readTokens(m.folder);
-    if (merged.tokens.isEmpty()) { emit errorOccurred(tr("Nincs átirat — előbb futtass átírást.")); return; }
-    editing::speakeredit::applyResolvedSpeakers(merged, m, d->personNames());
-    const QString transcriptMd = merged.renderMarkdown();
-
-    const AppSettings s = d->settings->settings();
-    CloudRunPtr run;
-    providers::ProviderConfig cfg = llmConfigFor(run, meetingId, QStringLiteral("topics"));
-    const auto sink = std::make_shared<FailureSink>();
-    providers::ProviderContext pctx = providerContext(run, QStringLiteral("complex"));
-    captureFailures(pctx, sink);
-    providers::IChatProvider* provider =
-        d->providerRegistry.create<providers::IChatProvider>(s.providers.llm.selectedId, pctx, cfg, this);
-    if (!provider) { emit errorOccurred(tr("Ismeretlen LLM-provider: %1.").arg(s.providers.llm.selectedId)); return; }
-    QObject* providerObj = dynamic_cast<QObject*>(provider);
-    auto* svc = new processing::ComplexSummaryService(provider, this);
-    svc->setLanguage(s.processing.summaryLanguage);
-    emit jobProgress(meetingId, run ? tr("Témák kigyűjtése a Tanara Cloudban…")
-                                    : tr("Témák kigyűjtése a helyi modellel…"));
-
-    const QString key = Impl::llmKey(meetingId, JobKind::ExtractTopics);
-    const QString statsKey = QStringLiteral("topics/%1/%2").arg(s.providers.llm.selectedId, cfg.model);
-    const double units = double(transcriptMd.size());
-    d->jobs->begin(meetingId, JobKind::ExtractTopics, tr("Témák javaslása"));
-    d->jobs->setEstimate(meetingId, JobKind::ExtractTopics, d->jobStats->estimateSec(statsKey, units));
-    d->llmRuns.insert(key, Impl::LlmRun{svc, providerObj, run});
-    auto clock = std::make_shared<QElapsedTimer>();
-    clock->start();
-
-    connect(svc, &processing::ComplexSummaryService::topicsReady, this,
-            [this, id = m.id, folder = m.folder, providerObj, svc, run, key, statsKey, units, clock]
-            (const QVector<SummaryTopic>& topics) {
-        d->llmRuns.remove(key);
-        if (QDir(folder).exists())   // (the meeting may have been deleted meanwhile)
-            SummaryRepository::writeTopics(folder, topics);
-        if (providerObj) providerObj->deleteLater();
-        svc->deleteLater();
-        // Cloud: topic gathering is the FIRST part of the complex run; the run (and the X-Tanara-Job-Id) stays
-        // open, the topic analyses and the merge use the same one; at the end of the run the total is shown
-        // (one run = one id). Here only the balance chip refreshes.
-        if (run) {
-            d->complexRuns.insert(id, run);
-            if (run->balance.isValid() || run->calls > 0)
-                d->cloud->refreshAccount();
-        }
-        d->jobStats->addSample(statsKey, double(clock->elapsed()) / 1000.0, units);
-        d->jobs->finish(id, JobKind::ExtractTopics);
-        emit topicsChanged(id);
-        emit topicsReady(id, topics);
-    });
-    const QString topicPrompt = resolvedPrompt(s, s.processing.topicExtractionPrompt, "topic");
-    const auto ctx = std::make_shared<Impl::LlmContextState>();
-    ctx->need = providers::llmctx::callContextNeed(topicPrompt.size() + transcriptMd.size()
-                                        + m.contextNote.size() + 300, cfg.maxTokens);
-    connect(svc, &processing::ComplexSummaryService::failed, this,
-            [this, id = m.id, providerObj, svc, run, key, sink, ctx](const QString& e) {
-        d->llmRuns.remove(key);
-        if (providerObj) providerObj->deleteLater();
-        svc->deleteLater();
-        const JobError je = d->describeLlmFailure(JobKind::ExtractTopics, e, run, sink, ctx);
-        d->jobs->fail(id, JobKind::ExtractTopics, je);
-        failCloudRun(run, tr("Téma-kinyerés hiba: %1").arg(je.message));
-    });
-
-    providers::ILocalModelServer* prep = d->prepareLlm(m.id, JobKind::ExtractTopics, cfg, bool(run), ctx,
-        [svc = QPointer<processing::ComplexSummaryService>(svc), transcriptMd, note = m.contextNote.trimmed(),
-         topicPrompt, cfg, clock]() {
-            clock->restart();   // the model load does not count in the run's speed (estimate)
-            if (svc) svc->requestTopics(transcriptMd, note, topicPrompt, cfg.model, cfg.temperature, cfg.maxTokens);
-        },
-        [this, id = m.id, providerObj = QPointer<QObject>(providerObj),
-         svc = QPointer<processing::ComplexSummaryService>(svc), key](const JobError& je) {
-            d->llmRuns.remove(key);
-            if (providerObj) providerObj->deleteLater();
-            if (svc) svc->deleteLater();
-            d->jobs->fail(id, JobKind::ExtractTopics, je);
-            emit errorOccurred(tr("Téma-kinyerés hiba: %1").arg(je.message));
-        });
-    if (prep && d->llmRuns.contains(key)) d->llmRuns[key].preparer = prep;
-}
+void AppController::extractMeetingTopics(const QString& meetingId) { d->summaries->topics().extractTopics(meetingId); }
 
 QVector<TopicAnalysis> AppController::topicAnalyses(const QString& meetingId) const
 {
-    const Meeting m = d->store->load(meetingId);
-    if (m.id.isEmpty()) return {};
-    return SummaryRepository::readAnalyses(m.folder);
+    return d->summaries->topics().analyses(meetingId);
 }
 
 void AppController::generateComplexSummary(const QString& meetingId, const QVector<SummaryTopic>& topics)
 {
-    Meeting m = d->store->load(meetingId);
-    if (m.id.isEmpty()) { emit errorOccurred(tr("Ismeretlen meeting: %1").arg(meetingId)); return; }
-    if (topics.isEmpty()) { emit errorOccurred(tr("Nincs téma a komplex összefoglalóhoz.")); return; }
-
-    // Persisting the (edited) topic list: it stays resumable.
-    SummaryRepository::writeTopics(m.folder, topics);
-    emit topicsChanged(meetingId);
-
-    // Only the topics NOT YET ANALYZED go into the queue (finished analyses are on disk), so after a
-    // cancel/error a restart resumes where it stopped. Rerunning an already finished topic can be requested
-    // with the card's own button (analyzeTopic).
-    const QVector<TopicAnalysis> existing =
-        SummaryRepository::readAnalyses(m.folder);
-    QSet<QString> doneIds;
-    for (const TopicAnalysis& a : existing) doneIds.insert(a.topicId);
-
-    QVector<SummaryTopic> missing;
-    for (const SummaryTopic& t : topics)
-        if (!doneIds.contains(t.id)) missing.append(t);
-
-    // Cloud: the complex summary (topic gathering + topic analyses + reduce) is ONE run with one
-    // X-Tanara-Job-Id. If the topic-gathering run (or an already running batch) is still open, we continue it;
-    // otherwise (e.g. continuing after a cancel / error, where the run has already closed) a new run starts
-    // with a new id.
-    if (usesCloud(providers::WorkflowStep::Summarize)) {
-        CloudRunPtr run = d->complexRuns.value(meetingId);
-        if (!run) {
-            run = newCloudRun(meetingId, QStringLiteral("complex"));
-            d->complexRuns.insert(meetingId, run);
-        }
-        run->kind = QStringLiteral("complex");
-    }
-    if (missing.isEmpty()) { finalizeComplexSummary(meetingId); return; }
-    enqueueTopicAnalyses(meetingId, missing, /*reduceWhenDone*/ true);
+    d->summaries->topics().generate(meetingId, topics);
 }
 
 void AppController::analyzeTopic(const QString& meetingId, const SummaryTopic& topic)
 {
-    Meeting m = d->store->load(meetingId);
-    if (m.id.isEmpty()) { emit errorOccurred(tr("Ismeretlen meeting: %1").arg(meetingId)); return; }
-    if (topic.id.isEmpty() || topic.title.trimmed().isEmpty()) {
-        emit errorOccurred(tr("A témához cím kell az elemzéshez."));
-        return;
-    }
-
-    // Carrying the (edited) topic into topics.json: the reduce's order/content comes from there.
-    QVector<SummaryTopic> topics = SummaryRepository::readTopics(m.folder);
-    bool found = false;
-    for (SummaryTopic& t : topics)
-        if (t.id == topic.id) { t = topic; found = true; break; }
-    if (!found) topics.append(topic);
-    SummaryRepository::writeTopics(m.folder, topics);
-    emit topicsChanged(meetingId);
-
-    enqueueTopicAnalyses(meetingId, { topic }, /*reduceWhenDone*/ false);
+    d->summaries->topics().analyze(meetingId, topic);
 }
 
-void AppController::enqueueTopicAnalyses(const QString& meetingId,
-                                         const QVector<SummaryTopic>& topics, bool reduceWhenDone)
-{
-    if (reduceWhenDone) d->reduceWhenDone.insert(meetingId);
-    if (!d->jobCounts.contains(meetingId)) d->jobCounts.insert(meetingId, {0, 0});
-
-    int added = 0;
-    for (const SummaryTopic& t : topics) {
-        // Dedup: if the same topic is already running or queued, it does not go in again.
-        if (d->topicJobActive && d->activeTopicMeetingId == meetingId && d->activeTopicId == t.id)
-            continue;
-        const bool queued = std::any_of(d->topicJobQueue.cbegin(), d->topicJobQueue.cend(),
-            [&](const Impl::TopicJob& j) { return j.meetingId == meetingId && j.topic.id == t.id; });
-        if (queued)
-            continue;
-        d->topicJobQueue.append({ meetingId, t });
-        ++added;
-        d->jobs->clearTopicError(meetingId, t.id);   // a new attempt: the old error loses its validity
-        emit topicAnalysisQueued(meetingId, t.id);
-        emit topicStatusChanged(meetingId, t.id);
-    }
-    // Structured task: ONE "Analyzing topics" per meeting (with count progress).
-    if (added > 0 || d->jobs->isRunning(meetingId, JobKind::AnalyzeTopics)) {
-        d->topicBatchTotal[meetingId] += added;
-        if (!d->jobs->isRunning(meetingId, JobKind::AnalyzeTopics))
-            d->jobs->begin(meetingId, JobKind::AnalyzeTopics, tr("Témák elemzése"));
-        d->updateTopicCounts(meetingId);
-    }
-    if (!d->topicJobActive)
-        startNextTopicJob();
-}
-
-void AppController::startNextTopicJob()
-{
-    // Did we reach the end of the queue? We close the batch per meeting: queueFinished + (if requested and
-    // nothing failed) auto-reduce. Jobs of several meetings may in principle mix in the queue, so we close a
-    // meeting only when no job is waiting for it.
-    if (d->topicJobQueue.isEmpty()) {
-        d->topicJobActive = false;
-        d->activeTopicMeetingId.clear();
-        d->activeTopicId.clear();
-        d->activeTopicRun = {};
-        const auto counts = d->jobCounts;
-        d->jobCounts.clear();
-        for (auto it = counts.cbegin(); it != counts.cend(); ++it) {
-            const QString& id = it.key();
-            const int ok = it.value().first, fail = it.value().second;
-            // Structured closing: a failed topic -> the summary step's error (the per-topic details are in
-            // topicStatuses); otherwise done.
-            d->topicBatchTotal.remove(id);
-            if (d->jobs->isRunning(id, JobKind::AnalyzeTopics)) {
-                if (fail > 0) {
-                    JobError je;
-                    je.message = tr("%1 téma elemzése nem sikerült.").arg(fail);
-                    d->jobs->fail(id, JobKind::AnalyzeTopics, je);
-                } else {
-                    d->jobs->finish(id, JobKind::AnalyzeTopics);
-                }
-            }
-            emit topicAnalysisQueueFinished(id, ok, fail);
-            const bool wantReduce = d->reduceWhenDone.remove(id);
-            if (wantReduce && fail == 0) {
-                finalizeComplexSummary(id);   // the cloud run continues with the reduce
-                continue;
-            }
-            if (wantReduce)
-                emit jobProgress(id, tr(
-                    "%1 téma elemzése nem sikerült — futtasd újra a kártyáján, majd kérd a végső összegzést.")
-                    .arg(fail));
-            // A cloud run closing without a reduce (rerunning one topic, or a non-cloud error): the sum of the
-            // charges so far goes to the cost feedback.
-            const CloudRunPtr run = d->complexRuns.take(id);
-            if (run && !run->lastError.isError())
-                finishCloudRun(run);
-        }
-        return;
-    }
-
-    const Impl::TopicJob job = d->topicJobQueue.takeFirst();
-    // An early (pre-provider-call) failure: a remembered topic error + the queue goes on.
-    auto failEarly = [this, &job](const QString& msg) {
-        d->jobCounts[job.meetingId].second++;
-        JobError je;
-        je.message = msg;
-        d->jobs->setTopicError(job.meetingId, job.topic.id, je);
-        d->updateTopicCounts(job.meetingId);
-        emit topicAnalysisFailed(job.meetingId, job.topic.id, msg);
-        emit topicStatusChanged(job.meetingId, job.topic.id);
-        startNextTopicJob();
-    };
-
-    Meeting m = d->store->load(job.meetingId);
-    if (m.id.isEmpty()) { failEarly(tr("Ismeretlen meeting.")); return; }
-
-    MergedTranscript merged = d->mergedCache.value(m.id);
-    if (merged.tokens.isEmpty())
-        merged = TranscriptRepository::readTokens(m.folder);
-    if (merged.tokens.isEmpty()) { failEarly(tr("Nincs átirat — előbb futtass átírást.")); return; }
-    editing::speakeredit::applyResolvedSpeakers(merged, m, d->personNames());
-
-    const AppSettings s = d->settings->settings();
-    CloudRunPtr run = d->complexRuns.value(m.id);
-    if (usesCloud(providers::WorkflowStep::Summarize) && !run) {   // rerunning one topic without a batch
-        run = newCloudRun(m.id, QStringLiteral("complex"));
-        d->complexRuns.insert(m.id, run);
-    }
-    if (run) run->kind = QStringLiteral("complex");   // after topic gathering, the analysis stage
-    providers::ProviderConfig cfg = llmConfigFor(run, m.id, QStringLiteral("complex"));
-    const auto sink = std::make_shared<FailureSink>();
-    providers::ProviderContext pctx = providerContext(run, QStringLiteral("complex"));
-    captureFailures(pctx, sink);
-    providers::IChatProvider* provider =
-        d->providerRegistry.create<providers::IChatProvider>(s.providers.llm.selectedId, pctx, cfg, this);
-    if (!provider) { failEarly(tr("Ismeretlen LLM-provider: %1.").arg(s.providers.llm.selectedId)); return; }
-    QObject* providerObj = dynamic_cast<QObject*>(provider);
-    auto* svc = new processing::ComplexSummaryService(provider, this);
-    svc->setLanguage(s.processing.summaryLanguage);
-
-    d->topicJobActive = true;
-    d->activeTopicMeetingId = m.id;
-    d->activeTopicId = job.topic.id;
-    d->activeTopicRun = Impl::LlmRun{svc, providerObj, run};
-    d->jobs->setMessage(m.id, JobKind::AnalyzeTopics, tr("„%1” téma elemzése…").arg(job.topic.title));
-    emit topicAnalysisStarted(m.id, job.topic.id);
-    emit topicStatusChanged(m.id, job.topic.id);
-    emit jobProgress(m.id, tr("„%1” téma elemzése…").arg(job.topic.title));
-
-    auto cleanup = [providerObj, svc]() {
-        if (providerObj) providerObj->deleteLater();
-        svc->deleteLater();
-    };
-
-    connect(svc, &processing::ComplexSummaryService::topicAnalysisReady, this,
-            [this, meetingId = m.id, folder = m.folder, cleanup](const TopicAnalysis& a) {
-        SummaryRepository::upsertAnalysis(folder, a);   // IMMEDIATELY to disk: the work must not be lost
-        d->jobCounts[meetingId].first++;
-        cleanup();
-        // The topic is no longer "running": the state query (topicStatuses) now gives "done".
-        d->activeTopicId.clear();
-        d->activeTopicRun = {};
-        d->jobs->clearTopicError(meetingId, a.topicId);
-        d->updateTopicCounts(meetingId);
-        emit topicAnalysisReady(meetingId, a);
-        emit topicStatusChanged(meetingId, a.topicId);
-        startNextTopicJob();
-    });
-    const QString transcriptMd = merged.renderMarkdown();
-    const QString analysisPrompt = resolvedPrompt(s, s.processing.topicAnalysisPrompt, "analysis");
-    const auto ctx = std::make_shared<Impl::LlmContextState>();
-    const auto prepError = std::make_shared<JobError>();   // the preparation's error (if that failed)
-    ctx->need = providers::llmctx::callContextNeed(analysisPrompt.size() + transcriptMd.size() + m.contextNote.size()
-                                        + job.topic.title.size() + job.topic.summary.size() + 400,
-                                        cfg.maxTokens);
-    connect(svc, &processing::ComplexSummaryService::failed, this,
-            [this, meetingId = m.id, topicId = job.topic.id, cleanup, run, sink, ctx, prepError](const QString& raw) {
-        d->jobCounts[meetingId].second++;
-        cleanup();
-        d->activeTopicId.clear();
-        d->activeTopicRun = {};
-        const JobError je = prepError->isValid()
-            ? *prepError : d->describeLlmFailure(JobKind::AnalyzeTopics, raw, run, sink, ctx);
-        const QString e = je.message;
-        d->jobs->setTopicError(meetingId, topicId, je);
-        if (run && run->lastError.isError()) {
-            // Cloud error (402 / 403 / 426 / 429 / 503 ...): the meeting's remaining topics would get the same, so we
-            // take them out of the queue; the partial-failure dialog shows the amount charged so far and "Continue"
-            // (it pays only for the remaining parts).
-            emit topicAnalysisFailed(meetingId, topicId, run->lastError.message.isEmpty() ? e : run->lastError.message);
-            emit topicStatusChanged(meetingId, topicId);
-            for (int i = d->topicJobQueue.size() - 1; i >= 0; --i) {
-                if (d->topicJobQueue.at(i).meetingId != meetingId) continue;
-                const QString dropped = d->topicJobQueue.takeAt(i).topic.id;
-                d->jobCounts[meetingId].second++;
-                emit topicAnalysisFailed(meetingId, dropped, tr("Megszakítva"));
-                emit topicStatusChanged(meetingId, dropped);
-            }
-            d->reduceWhenDone.remove(meetingId);
-            d->complexRuns.remove(meetingId);
-            failCloudRun(run, e);
-        } else {
-            emit topicAnalysisFailed(meetingId, topicId, e);   // the other topics go on
-            emit topicStatusChanged(meetingId, topicId);
-        }
-        d->updateTopicCounts(meetingId);
-        startNextTopicJob();
-    });
-
-    providers::ILocalModelServer* prep = d->prepareLlm(m.id, JobKind::AnalyzeTopics, cfg, bool(run), ctx,
-        [svc = QPointer<processing::ComplexSummaryService>(svc), transcriptMd, topic = job.topic,
-         note = m.contextNote.trimmed(), analysisPrompt, cfg]() {
-            if (svc) svc->requestTopicAnalysis(transcriptMd, topic, note, analysisPrompt,
-                                               cfg.model, cfg.temperature, cfg.maxTokens);
-        },
-        [svc = QPointer<processing::ComplexSummaryService>(svc), prepError](const JobError& je) {
-            // The same path as for a provider error: the topic's error is remembered, the queue goes on.
-            *prepError = je;
-            if (svc) emit svc->failed(je.message);
-        });
-    if (prep) d->activeTopicRun.preparer = prep;
-}
-
-void AppController::finalizeComplexSummary(const QString& meetingId)
-{
-    if (d->jobs->isRunning(meetingId, JobKind::Summarize))
-        return;   // a merge is already running
-
-    Meeting m = d->store->load(meetingId);
-    if (m.id.isEmpty()) { emit errorOccurred(tr("Ismeretlen meeting: %1").arg(meetingId)); return; }
-
-    // The analyses on disk, in the (edited) order of topics.json; orphan analyses (belonging to a deleted
-    // topic) are left out.
-    const QVector<SummaryTopic> topics =
-        SummaryRepository::readTopics(m.folder);
-    const QVector<TopicAnalysis> all =
-        SummaryRepository::readAnalyses(m.folder);
-    QVector<TopicAnalysis> ordered;
-    for (const SummaryTopic& t : topics)
-        for (const TopicAnalysis& a : all)
-            if (a.topicId == t.id) { ordered.append(a); break; }
-    if (ordered.isEmpty()) {
-        emit errorOccurred(tr("Nincs kész téma-elemzés — előbb futtasd a témánkénti elemzést."));
-        return;
-    }
-
-    const AppSettings s = d->settings->settings();
-    CloudRunPtr run = d->complexRuns.take(meetingId);   // the batch's run (if any) continues
-    providers::ProviderConfig cfg = llmConfigFor(run, meetingId, QStringLiteral("complex"));
-    const auto sink = std::make_shared<FailureSink>();
-    providers::ProviderContext pctx = providerContext(run, QStringLiteral("complex"));
-    captureFailures(pctx, sink);
-    providers::IChatProvider* provider =
-        d->providerRegistry.create<providers::IChatProvider>(s.providers.llm.selectedId, pctx, cfg, this);
-    if (!provider) { emit errorOccurred(tr("Ismeretlen LLM-provider: %1.").arg(s.providers.llm.selectedId)); return; }
-    QObject* providerObj = dynamic_cast<QObject*>(provider);
-    auto* svc = new processing::ComplexSummaryService(provider, this);
-    svc->setLanguage(s.processing.summaryLanguage);
-    svc->setReducePrompt(resolvedPrompt(s, QString(), "reduce"));
-    emit jobProgress(meetingId, tr("Összegzés (vezetői összefoglaló + teendők)…"));
-
-    const QString key = Impl::llmKey(meetingId, JobKind::Summarize);
-    d->jobs->begin(meetingId, JobKind::Summarize, tr("Összegzés készítése"));
-    d->llmRuns.insert(key, Impl::LlmRun{svc, providerObj, run});
-
-    auto cleanup = [providerObj, svc]() {
-        if (providerObj) providerObj->deleteLater();
-        svc->deleteLater();
-    };
-
-    const auto ctx = std::make_shared<Impl::LlmContextState>();
-    {
-        qint64 chars = resolvedPrompt(s, QString(), "reduce").size() + m.contextNote.size() + 400;
-        for (const TopicAnalysis& a : ordered) chars += a.renderMarkdown().size() + a.title.size() + 40;
-        ctx->need = providers::llmctx::callContextNeed(chars, cfg.maxTokens);
-    }
-    connect(svc, &processing::ComplexSummaryService::failed, this,
-            [this, meetingId, cleanup, run, key, sink, ctx](const QString& e) {
-        d->llmRuns.remove(key);
-        cleanup();
-        const JobError je = d->describeLlmFailure(JobKind::Summarize, e, run, sink, ctx);
-        d->jobs->fail(meetingId, JobKind::Summarize, je);
-        failCloudRun(run, tr("Komplex összefoglaló hiba: %1").arg(je.message));
-    });
-    connect(svc, &processing::ComplexSummaryService::reduceReady, this,
-            [this, m, ordered, cleanup, run, key, llmId = s.providers.llm.selectedId, model = cfg.model]
-            (const QString& execSummary, const QVector<ActionItem>&) {
-        d->llmRuns.remove(key);
-        // Action items from CODE (not from the LLM): we collect the per-topic analyses' action items with a
-        // normalized-text dedup. Deterministic, model-independent; only the executive summary is left to the LLM
-        // reduce (less room for "thinking out loud").
-        QVector<ActionItem> mergedItems;
-        QSet<QString> seen;
-        for (const TopicAnalysis& a : ordered)
-            for (const ActionItem& ai : a.actionItems) {
-                const QString norm = ai.text.simplified().toLower();
-                if (norm.isEmpty() || seen.contains(norm))
-                    continue;
-                seen.insert(norm);
-                mergedItems.append(ai);
-            }
-        const QString md = SummaryRepository::renderComplexMarkdown(execSummary, mergedItems, ordered);
-        Meeting mm = d->store->load(m.id);
-        if (mm.id.isEmpty()) {   // the meeting was deleted meanwhile
-            cleanup();
-            d->jobs->cancelled(m.id, JobKind::Summarize);
-            finishCloudRun(run);
-            return;
-        }
-        SummaryRepository::writeMarkdown(mm.folder, md);
-        // Structured form + metadata (summary.json): executive summary, merged action items, the union of the
-        // topics' decisions, and the topic analyses themselves, in order.
-        library::SummaryDocument doc;
-        doc.exists = true;
-        doc.markdown = md;
-        doc.summary.execSummary = execSummary;
-        doc.summary.actionItems = mergedItems;
-        for (const TopicAnalysis& a : ordered)
-            for (const QString& dec : a.decisions)
-                if (!doc.summary.decisions.contains(dec)) doc.summary.decisions << dec;
-        doc.summary.openQuestions = SummaryRepository::openQuestionsOf(ordered);
-        doc.topics = ordered;
-        doc.meta.createdAt = QDateTime::currentDateTime();
-        doc.meta.providerId = llmId;
-        doc.meta.model = model;
-        doc.meta.mode = library::SummaryMode::Topics;
-        doc.meta.contextNote = m.contextNote.trimmed();   // at the start of the final merge
-        doc.meta.contextNoteKnown = true;
-        library::SummaryRepository::save(mm.folder, doc);
-        const QString noteName = QStringLiteral("%1 %2.md")
-            .arg(mm.startedAt.toString(QStringLiteral("yyyy-MM-dd")), slugify(mm.title));
-        SummaryRepository::writeNoteCopy(d->notesDir, noteName, md);
-        mm.hasSummary = true;
-        d->store->saveMeeting(mm);
-        cleanup();
-        d->jobs->finish(mm.id, JobKind::Summarize);
-        emit summaryReady(mm.id, SummaryRepository::markdownPath(mm.folder));
-        finishCloudRun(run);   // "The summary cost $0.46 (12 parts)."
-    });
-
-    providers::ILocalModelServer* prep = d->prepareLlm(meetingId, JobKind::Summarize, cfg, bool(run), ctx,
-        [svc = QPointer<processing::ComplexSummaryService>(svc), ordered, note = m.contextNote.trimmed(), cfg]() {
-            if (svc) svc->requestReduce(ordered, note, cfg.model, cfg.temperature, cfg.maxTokens);
-        },
-        [this, meetingId, key, providerObj = QPointer<QObject>(providerObj),
-         svc = QPointer<processing::ComplexSummaryService>(svc)](const JobError& je) {
-            d->llmRuns.remove(key);
-            if (providerObj) providerObj->deleteLater();
-            if (svc) svc->deleteLater();
-            d->jobs->fail(meetingId, JobKind::Summarize, je);
-            emit errorOccurred(tr("Komplex összefoglaló hiba: %1").arg(je.message));
-        });
-    if (prep && d->llmRuns.contains(key)) d->llmRuns[key].preparer = prep;
-}
+void AppController::finalizeComplexSummary(const QString& meetingId) { d->summaries->topics().finalize(meetingId); }
 
 // =========================================================================================
 // Structured layer for the redesigned main window: state queries, cancel, topics, asynchronous
@@ -2320,121 +1574,31 @@ void AppController::setEmbeddingProvider(const QString& providerId, const provid
 
 library::SummaryDocument AppController::summaryDocument(const QString& meetingId) const
 {
-    const Meeting m = d->store->load(meetingId);
-    if (m.id.isEmpty()) return {};
-    return library::SummaryRepository::load(m.folder);
+    return d->summaries->document(meetingId);
 }
 
 QVector<SummaryTopic> AppController::meetingTopics(const QString& meetingId) const
 {
-    const Meeting m = d->store->load(meetingId);
-    if (m.id.isEmpty()) return {};
-    return SummaryRepository::readTopics(m.folder);
+    return d->summaries->topics().topics(meetingId);
 }
 
 QVector<TopicStatus> AppController::topicStatuses(const QString& meetingId) const
 {
-    QVector<TopicStatus> out;
-    const Meeting m = d->store->load(meetingId);
-    if (m.id.isEmpty()) return out;
-    const QVector<SummaryTopic> topics =
-        SummaryRepository::readTopics(m.folder);
-    QSet<QString> done;
-    for (const TopicAnalysis& a : SummaryRepository::readAnalyses(m.folder))
-        done.insert(a.topicId);
-    const QHash<QString, JobError> errors = d->jobs->topicErrors(meetingId);
-
-    out.reserve(topics.size());
-    for (const SummaryTopic& t : topics) {
-        TopicStatus st;
-        st.topicId = t.id;
-        const bool running = d->topicJobActive && d->activeTopicMeetingId == meetingId
-                             && d->activeTopicId == t.id;
-        const bool queued = std::any_of(d->topicJobQueue.cbegin(), d->topicJobQueue.cend(),
-            [&](const Impl::TopicJob& j) { return j.meetingId == meetingId && j.topic.id == t.id; });
-        if (running) {
-            st.state = TopicState::Running;
-        } else if (queued) {
-            st.state = TopicState::Queued;
-        } else if (errors.contains(t.id)) {
-            // The LAST attempt failed (this shows even if a finished analysis exists from earlier; that stays on
-            // disk; a new successful run or a retry clears the error).
-            st.state = TopicState::Failed;
-            st.error = errors.value(t.id).message;
-            st.errorDetail = errors.value(t.id).detail;
-            st.fixActionHint = errors.value(t.id).fixActionHint;
-        } else if (done.contains(t.id)) {
-            st.state = TopicState::Done;
-        }
-        out.append(st);
-    }
-    return out;
+    return d->summaries->topics().statuses(meetingId);
 }
 
 QVector<SummaryTopic> AppController::setMeetingTopics(const QString& meetingId,
                                                       const QVector<SummaryTopic>& topics)
 {
-    const Meeting m = d->store->load(meetingId);
-    if (m.id.isEmpty()) { emit errorOccurred(tr("Ismeretlen meeting: %1").arg(meetingId)); return {}; }
-
-    QVector<SummaryTopic> saved;
-    QSet<QString> ids;
-    for (SummaryTopic t : topics) {
-        t.title = t.title.trimmed();
-        t.summary = t.summary.trimmed();
-        if (t.title.isEmpty()) continue;                      // a topic without a title cannot be saved
-        if (t.id.isEmpty() || ids.contains(t.id))             // a new (or duplicate-id) topic
-            t.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
-        ids.insert(t.id);
-        saved.append(t);
-    }
-    // The deleted topics: out of the queue / the running one cancelled, their remembered error cleared.
-    for (const SummaryTopic& old : SummaryRepository::readTopics(m.folder)) {
-        if (ids.contains(old.id)) continue;
-        cancelTopicAnalysis(meetingId, old.id);
-        d->jobs->clearTopicError(meetingId, old.id);
-    }
-    SummaryRepository::writeTopics(m.folder, saved);
-    emit topicsChanged(meetingId);
-    return saved;
+    return d->summaries->topics().setTopics(meetingId, topics);
 }
 
 bool AppController::cancelTopicAnalysis(const QString& meetingId, const QString& topicId)
 {
-    bool any = false;
-    for (int i = d->topicJobQueue.size() - 1; i >= 0; --i) {
-        const Impl::TopicJob& j = d->topicJobQueue.at(i);
-        if (j.meetingId != meetingId || j.topic.id != topicId) continue;
-        d->topicJobQueue.removeAt(i);
-        if (d->topicBatchTotal.value(meetingId) > 0) d->topicBatchTotal[meetingId]--;
-        any = true;
-    }
-    const bool active = d->topicJobActive && d->activeTopicMeetingId == meetingId
-                        && d->activeTopicId == topicId;
-    if (active) {
-        d->abortLlmRun(d->activeTopicRun);
-        d->activeTopicRun = {};
-        d->activeTopicId.clear();
-        if (d->topicBatchTotal.value(meetingId) > 0) d->topicBatchTotal[meetingId]--;
-        any = true;
-    }
-    if (!any) return false;
-    // After removing a topic the batch is no longer complete, so there is no automatic final summary.
-    d->reduceWhenDone.remove(meetingId);
-    d->updateTopicCounts(meetingId);
-    emit topicAnalysisFailed(meetingId, topicId, tr("Megszakítva"));
-    emit topicStatusChanged(meetingId, topicId);
-    if (active)
-        startNextTopicJob();   // the queue goes on (or closes)
-    return true;
+    return d->summaries->topics().cancelTopic(meetingId, topicId);
 }
 
-void AppController::requestLlmContext(int tokens)
-{
-    if (tokens <= 0 || usesCloud(providers::WorkflowStep::Summarize)) return;
-    const providers::ProviderConfig cfg = d->settings->settings().providers.llm.selected();
-    d->contextFloor.insert(Impl::serverKey(cfg), tokens);
-}
+void AppController::requestLlmContext(int tokens) { d->summaries->requestLlmContext(tokens); }
 
 bool AppController::cancelJob(const QString& meetingId, JobKind kind)
 {
@@ -2469,55 +1633,9 @@ bool AppController::cancelJob(const QString& meetingId, JobKind kind)
         return true;
     }
     case JobKind::Summarize:
-    case JobKind::ExtractTopics: {
-        const QString key = Impl::llmKey(meetingId, kind);
-        const auto it = d->llmRuns.find(key);
-        if (it == d->llmRuns.end()) return false;
-        const Impl::LlmRun run = *it;
-        d->llmRuns.erase(it);
-        d->abortLlmRun(run);
-        // Cloud: there is no charge for the cancelled call; the run's charges so far (e.g. topic gathering +
-        // analyses) go summed to the cost feedback.
-        if (run.cloudRun && !run.cloudRun->lastError.isError())
-            finishCloudRun(run.cloudRun);
-        d->jobs->cancelled(meetingId, kind);
-        return true;
-    }
-    case JobKind::AnalyzeTopics: {
-        bool any = false;
-        for (int i = d->topicJobQueue.size() - 1; i >= 0; --i) {
-            if (d->topicJobQueue.at(i).meetingId != meetingId) continue;
-            const QString dropped = d->topicJobQueue.takeAt(i).topic.id;
-            emit topicAnalysisFailed(meetingId, dropped, tr("Megszakítva"));
-            emit topicStatusChanged(meetingId, dropped);
-            any = true;
-        }
-        const bool activeMine = d->topicJobActive && d->activeTopicMeetingId == meetingId
-                                && !d->activeTopicId.isEmpty();
-        if (activeMine) {
-            const QString tid = d->activeTopicId;
-            d->abortLlmRun(d->activeTopicRun);
-            d->activeTopicRun = {};
-            d->activeTopicId.clear();
-            emit topicAnalysisFailed(meetingId, tid, tr("Megszakítva"));
-            emit topicStatusChanged(meetingId, tid);
-            any = true;
-        }
-        if (!any && !d->jobs->isRunning(meetingId, kind)) return false;
-        // Closing the batch: no auto-summary, no "N topics failed" message; the analyses already finished stay on
-        // disk, a continuation picks up from there.
-        const QPair<int, int> counts = d->jobCounts.take(meetingId);
-        d->reduceWhenDone.remove(meetingId);
-        d->topicBatchTotal.remove(meetingId);
-        const CloudRunPtr run = d->complexRuns.take(meetingId);
-        if (run && !run->lastError.isError())
-            finishCloudRun(run);
-        emit topicAnalysisQueueFinished(meetingId, counts.first, counts.second);
-        d->jobs->cancelled(meetingId, kind);
-        if (activeMine)
-            startNextTopicJob();   // other meetings' topics go on
-        return true;
-    }
+    case JobKind::ExtractTopics:
+    case JobKind::AnalyzeTopics:
+        return d->summaries->cancel(meetingId, kind);   // the LLM call / the topic batch
     case JobKind::Mixdown:
         return d->mixdown->cancel(meetingId);
     case JobKind::Import:
@@ -2663,11 +1781,7 @@ QVector<SummaryStatement> AppController::summaryStatements(const QString& meetin
 
 bool AppController::flagStatement(const QString& meetingId, const QString& statementId)
 {
-    const Meeting m = d->store->load(meetingId);
-    if (m.id.isEmpty() || m.folder.isEmpty()) return false;
-    if (!library::SummaryRepository::setStatementFlagged(m.folder, statementId, true)) return false;
-    emit summaryStatementsChanged(meetingId);
-    return true;
+    return d->summaries->flagStatement(meetingId, statementId);   // summaryStatementsChanged (forwarded)
 }
 
 // The same for an already loaded meeting (the library calls it per row; no further disk read for meeting.json).

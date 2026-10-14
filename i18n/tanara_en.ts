@@ -7695,26 +7695,6 @@
 <context>
     <name>tanara::app::AppController</name>
     <message>
-        <source>%1 tokenes kontextus, egy szálon</source>
-        <translation>%1-token context, single-threaded</translation>
-    </message>
-    <message>
-        <source> · a szerveren más modell is betöltve: %1</source>
-        <translation> · another model is also loaded on the server: %1</translation>
-    </message>
-    <message>
-        <source>Modell betöltése</source>
-        <translation>Loading model</translation>
-    </message>
-    <message>
-        <source>Modell betöltése…</source>
-        <translation>Loading model…</translation>
-    </message>
-    <message>
-        <source>Modell betöltése (%1 tokenes kontextus)…</source>
-        <translation>Loading model (%1-token context)…</translation>
-    </message>
-    <message>
         <source>Ismeretlen meeting: %1</source>
         <translation>Unknown meeting: %1</translation>
     </message>
@@ -7789,146 +7769,6 @@
     <message>
         <source>Átírás-hiba: %1</source>
         <translation>Transcription error: %1</translation>
-    </message>
-    <message>
-        <source>Nincs átirat — előbb futtass átírást.</source>
-        <translation>No transcript — run transcription first.</translation>
-    </message>
-    <message>
-        <source>Ismeretlen LLM-provider: %1.</source>
-        <translation>Unknown LLM provider: %1.</translation>
-    </message>
-    <message>
-        <source>Összefoglalás a Tanara Cloudban…</source>
-        <translation>Summarizing in Tanara Cloud…</translation>
-    </message>
-    <message>
-        <source>Összefoglalás a helyi modellel…</source>
-        <translation>Summarising with the local model…</translation>
-    </message>
-    <message>
-        <source>Összefoglalás</source>
-        <translation>Summarising</translation>
-    </message>
-    <message numerus="yes">
-        <source>%n rész</source>
-        <translation>
-            <numerusform>%n part</numerusform>
-            <numerusform>%n parts</numerusform>
-        </translation>
-    </message>
-    <message numerus="yes">
-        <source> · %n korábbi futásból</source>
-        <translation>
-            <numerusform> · %n from an earlier run</numerusform>
-            <numerusform> · %n from an earlier run</numerusform>
-        </translation>
-    </message>
-    <message>
-        <source>Jegyzetelés részenként</source>
-        <translation>Notes part by part</translation>
-    </message>
-    <message>
-        <source>Összegzés</source>
-        <translation>Summing up</translation>
-    </message>
-    <message>
-        <source>Összefoglaló készítése</source>
-        <translation>Writing the summary</translation>
-    </message>
-    <message numerus="yes">
-        <source>%n rész (a modell kontextusához igazítva)</source>
-        <translation>
-            <numerusform>%n part (fitted to the model&apos;s context)</numerusform>
-            <numerusform>%n parts (fitted to the model&apos;s context)</numerusform>
-        </translation>
-    </message>
-    <message>
-        <source>%1/%2. rész</source>
-        <translation>Part %1/%2</translation>
-    </message>
-    <message numerus="yes">
-        <source>%n rész kész</source>
-        <translation>
-            <numerusform>%n part done</numerusform>
-            <numerusform>%n parts done</numerusform>
-        </translation>
-    </message>
-    <message>
-        <source>Jegyzetelés: %1/%2. rész…</source>
-        <translation>Taking notes: part %1/%2…</translation>
-    </message>
-    <message>
-        <source>Összegzés a részjegyzetekből…</source>
-        <translation>Summing up the part notes…</translation>
-    </message>
-    <message>
-        <source>Összefoglaló hiba: %1</source>
-        <translation>Summary error: %1</translation>
-    </message>
-    <message>
-        <source>Témák kigyűjtése a Tanara Cloudban…</source>
-        <translation>Collecting topics in Tanara Cloud…</translation>
-    </message>
-    <message>
-        <source>Témák kigyűjtése a helyi modellel…</source>
-        <translation>Extracting topics with the local model…</translation>
-    </message>
-    <message>
-        <source>Témák javaslása</source>
-        <translation>Suggesting topics</translation>
-    </message>
-    <message>
-        <source>Téma-kinyerés hiba: %1</source>
-        <translation>Topic extraction error: %1</translation>
-    </message>
-    <message>
-        <source>Nincs téma a komplex összefoglalóhoz.</source>
-        <translation>No topics for the complex summary.</translation>
-    </message>
-    <message>
-        <source>A témához cím kell az elemzéshez.</source>
-        <translation>The topic needs a title for analysis.</translation>
-    </message>
-    <message>
-        <source>Témák elemzése</source>
-        <translation>Analysing topics</translation>
-    </message>
-    <message>
-        <source>%1 téma elemzése nem sikerült.</source>
-        <translation>The analysis of %1 topic(s) failed.</translation>
-    </message>
-    <message>
-        <source>%1 téma elemzése nem sikerült — futtasd újra a kártyáján, majd kérd a végső összegzést.</source>
-        <translation>Analysis failed for %1 topics — rerun them on their cards, then request the final synthesis.</translation>
-    </message>
-    <message>
-        <source>Ismeretlen meeting.</source>
-        <translation>Unknown meeting.</translation>
-    </message>
-    <message>
-        <source>„%1” téma elemzése…</source>
-        <translation>Analyzing topic &quot;%1&quot;…</translation>
-    </message>
-    <message>
-        <source>Megszakítva</source>
-        <translation>Cancelled</translation>
-    </message>
-    <message>
-        <source>Nincs kész téma-elemzés — előbb futtasd a témánkénti elemzést.</source>
-        <translation>No completed topic analysis — run the per-topic analysis first.</translation>
-    </message>
-    <message>
-        <source>Összegzés (vezetői összefoglaló + teendők)…</source>
-        <translation>Synthesis (executive summary + action items)…</translation>
-    </message>
-    <message>
-        <source>Összegzés készítése</source>
-        <translation>Composing the digest</translation>
-    </message>
-    <message>
-        <source>Komplex összefoglaló hiba: %1</source>
-        <translation>Complex summary error: %1</translation>
     </message>
     <message>
         <source>Megszakítva.</source>
@@ -8556,6 +8396,109 @@
     </message>
 </context>
 <context>
+    <name>tanara::processing::SummarizationService</name>
+    <message>
+        <source>%1 tokenes kontextus, egy szálon</source>
+        <translation>%1-token context, single-threaded</translation>
+    </message>
+    <message>
+        <source> · a szerveren más modell is betöltve: %1</source>
+        <translation> · another model is also loaded on the server: %1</translation>
+    </message>
+    <message>
+        <source>Modell betöltése</source>
+        <translation>Loading model</translation>
+    </message>
+    <message>
+        <source>Modell betöltése…</source>
+        <translation>Loading model…</translation>
+    </message>
+    <message>
+        <source>Modell betöltése (%1 tokenes kontextus)…</source>
+        <translation>Loading model (%1-token context)…</translation>
+    </message>
+    <message>
+        <source>Ismeretlen meeting: %1</source>
+        <translation>Unknown meeting: %1</translation>
+    </message>
+    <message>
+        <source>Nincs átirat — előbb futtass átírást.</source>
+        <translation>No transcript — run transcription first.</translation>
+    </message>
+    <message>
+        <source>Ismeretlen LLM-provider: %1.</source>
+        <translation>Unknown LLM provider: %1.</translation>
+    </message>
+    <message>
+        <source>Összefoglalás a Tanara Cloudban…</source>
+        <translation>Summarizing in Tanara Cloud…</translation>
+    </message>
+    <message>
+        <source>Összefoglalás a helyi modellel…</source>
+        <translation>Summarising with the local model…</translation>
+    </message>
+    <message>
+        <source>Összefoglalás</source>
+        <translation>Summarising</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n rész</source>
+        <translation>
+            <numerusform>%n part</numerusform>
+            <numerusform>%n parts</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source> · %n korábbi futásból</source>
+        <translation>
+            <numerusform> · %n from an earlier run</numerusform>
+            <numerusform> · %n from an earlier run</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Jegyzetelés részenként</source>
+        <translation>Notes part by part</translation>
+    </message>
+    <message>
+        <source>Összegzés</source>
+        <translation>Summing up</translation>
+    </message>
+    <message>
+        <source>Összefoglaló készítése</source>
+        <translation>Writing the summary</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n rész (a modell kontextusához igazítva)</source>
+        <translation>
+            <numerusform>%n part (fitted to the model&apos;s context)</numerusform>
+            <numerusform>%n parts (fitted to the model&apos;s context)</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>%1/%2. rész</source>
+        <translation>Part %1/%2</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n rész kész</source>
+        <translation>
+            <numerusform>%n part done</numerusform>
+            <numerusform>%n parts done</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Jegyzetelés: %1/%2. rész…</source>
+        <translation>Taking notes: part %1/%2…</translation>
+    </message>
+    <message>
+        <source>Összegzés a részjegyzetekből…</source>
+        <translation>Summing up the part notes…</translation>
+    </message>
+    <message>
+        <source>Összefoglaló hiba: %1</source>
+        <translation>Summary error: %1</translation>
+    </message>
+</context>
+<context>
     <name>tanara::processing::SummaryService</name>
     <message>
         <source>Nincs beállított LLM provider.</source>
@@ -8584,6 +8527,85 @@
     <message>
         <source>Az összefoglaló válasza nem értelmezhető: %1.</source>
         <translation>The summary response cannot be read: %1.</translation>
+    </message>
+</context>
+<context>
+    <name>tanara::processing::TopicQueue</name>
+    <message>
+        <source>Ismeretlen meeting: %1</source>
+        <translation>Unknown meeting: %1</translation>
+    </message>
+    <message>
+        <source>Nincs átirat — előbb futtass átírást.</source>
+        <translation>No transcript — run transcription first.</translation>
+    </message>
+    <message>
+        <source>Ismeretlen LLM-provider: %1.</source>
+        <translation>Unknown LLM provider: %1.</translation>
+    </message>
+    <message>
+        <source>Témák kigyűjtése a Tanara Cloudban…</source>
+        <translation>Collecting topics in Tanara Cloud…</translation>
+    </message>
+    <message>
+        <source>Témák kigyűjtése a helyi modellel…</source>
+        <translation>Extracting topics with the local model…</translation>
+    </message>
+    <message>
+        <source>Témák javaslása</source>
+        <translation>Suggesting topics</translation>
+    </message>
+    <message>
+        <source>Téma-kinyerés hiba: %1</source>
+        <translation>Topic extraction error: %1</translation>
+    </message>
+    <message>
+        <source>Nincs téma a komplex összefoglalóhoz.</source>
+        <translation>No topics for the complex summary.</translation>
+    </message>
+    <message>
+        <source>A témához cím kell az elemzéshez.</source>
+        <translation>The topic needs a title for analysis.</translation>
+    </message>
+    <message>
+        <source>Témák elemzése</source>
+        <translation>Analysing topics</translation>
+    </message>
+    <message>
+        <source>%1 téma elemzése nem sikerült.</source>
+        <translation>The analysis of %1 topic(s) failed.</translation>
+    </message>
+    <message>
+        <source>%1 téma elemzése nem sikerült — futtasd újra a kártyáján, majd kérd a végső összegzést.</source>
+        <translation>Analysis failed for %1 topics — rerun them on their cards, then request the final synthesis.</translation>
+    </message>
+    <message>
+        <source>Ismeretlen meeting.</source>
+        <translation>Unknown meeting.</translation>
+    </message>
+    <message>
+        <source>„%1” téma elemzése…</source>
+        <translation>Analyzing topic &quot;%1&quot;…</translation>
+    </message>
+    <message>
+        <source>Megszakítva</source>
+        <translation>Cancelled</translation>
+    </message>
+    <message>
+        <source>Nincs kész téma-elemzés — előbb futtasd a témánkénti elemzést.</source>
+        <translation>No completed topic analysis — run the per-topic analysis first.</translation>
+    </message>
+    <message>
+        <source>Összegzés (vezetői összefoglaló + teendők)…</source>
+        <translation>Synthesis (executive summary + action items)…</translation>
+    </message>
+    <message>
+        <source>Összegzés készítése</source>
+        <translation>Composing the digest</translation>
+    </message>
+    <message>
+        <source>Komplex összefoglaló hiba: %1</source>
+        <translation>Complex summary error: %1</translation>
     </message>
 </context>
 <context>

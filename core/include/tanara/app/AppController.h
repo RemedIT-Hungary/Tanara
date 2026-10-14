@@ -705,13 +705,6 @@ private:
     // ("Speaker N" labels); the name is resolved afterwards by voice ID / manual rename.
     void transcribeFromMixdown(const QString& meetingId);
 
-    // Topic-analysis job queue: topics are queued (topicAnalysisQueued), ONE runs at a time
-    // (local model), the finished result is persisted immediately. A topic's failure does not
-    // stop the queue. reduceWhenDone=true: when the queue empties (if nothing failed) finalize.
-    void enqueueTopicAnalyses(const QString& meetingId,
-                              const QVector<tanara::SummaryTopic>& topics, bool reduceWhenDone);
-    void startNextTopicJob();
-
     // Tanara Cloud processing run (X-Tanara-Job-Id, charge totals, last error): cloud/CloudRunLedger.h.
     using CloudRunPtr = std::shared_ptr<cloud::CloudRun>;
     CloudRunPtr newCloudRun(const QString& meetingId, const QString& kind) const;

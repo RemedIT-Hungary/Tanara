@@ -5,6 +5,7 @@
 // AppController owns the Services and hands it out through services().
 #include "tanara/library/tags/TagSuggestionService.h"
 #include "tanara/domain/Meeting.h"
+#include "tanara/domain/Transcript.h"   // P12e
 #include "tanara/media/MediaTool.h"
 
 #include <functional>
@@ -45,6 +46,13 @@ namespace tanara::processing { class VoiceAnalysisService; }
 // --- P16: detector registry ---
 namespace tanara::watcher { class MeetingDetectorRegistry; }
 // --- end P16 ---
+// --- P12e: summary and topic queue ---
+namespace tanara::library { class JobStats; }
+namespace tanara::processing {
+class SummarizationService;
+class SummaryLlmPort;
+}
+// --- end P12e ---
 
 namespace tanara::app {
 
@@ -79,6 +87,13 @@ struct ServicesDeps {
     std::function<QString(const QString& meetingId, const QString& folder)> transcriptStamp;
     // The tracks' speech check is still pending (running, or not yet done for a meeting that needs it).
     std::function<bool(const Meeting&)> speechCheckPending;
+
+    // ---- P12e: summary and topic queue ----
+    processing::SummaryLlmPort* summaryLlm = nullptr;   // settings, LLM key, Tanara Cloud runs (the app)
+    library::JobStats*          jobStats = nullptr;     // speed of earlier runs (estimates)
+    QString notesDir;                                   // AppPaths::notesDir() (the summary's copy)
+    // The in-memory transcript of a fresh transcription (empty: read from disk).
+    std::function<MergedTranscript(const QString& meetingId)> cachedTranscript;
 };
 
 class Services {
@@ -104,6 +119,10 @@ public:
     // This platform's meeting detectors (an instance, not a singleton; the call monitor uses it).
     watcher::MeetingDetectorRegistry& detectors() const { return *m_detectors; }
     // --- end P16 ---
+    // --- P12e: summary and topic queue ---
+    // The quick summary, and (topics()) the complex summary's topic flow.
+    processing::SummarizationService& summarization() const { return *m_summarization; }
+    // --- end P12e ---
 
 private:
     std::unique_ptr<library::ArchiveService>     m_archive;
@@ -123,6 +142,9 @@ private:
     // --- P16: detector registry ---
     std::unique_ptr<watcher::MeetingDetectorRegistry> m_detectors;
     // --- end P16 ---
+    // --- P12e: summary and topic queue ---
+    std::unique_ptr<processing::SummarizationService> m_summarization;
+    // --- end P12e ---
 };
 
 } // namespace tanara::app
