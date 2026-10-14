@@ -173,7 +173,7 @@ void TestCloudGateway::waitlist_acceptedAndErrors()
     const QJsonArray wl = mockState().value("waitlist").toArray();
     QCOMPARE(wl.size(), 1);
     QCOMPARE(wl[0].toObject().value("source").toString(), QStringLiteral("client"));
-    QCOMPARE(wl[0].toObject().value("platform").toString(), QStringLiteral("linux"));
+    QCOMPARE(wl[0].toObject().value("platform").toString(), cloud::clientPlatform());
     QCOMPARE(wl[0].toObject().value("client_version").toString(), libraryVersion());
 
     s.email = "spam@mailinator.com";
@@ -219,7 +219,7 @@ void TestCloudGateway::deviceFlow_login_account_models()
     QVERIFY(m_keys->get(cloud::ApiKeySecret).startsWith("tk_"));
     // The mock received the device's data (the web approver shows it).
     const QJsonObject info = mockState().value("devices").toArray().last().toObject().value("info").toObject();
-    QCOMPARE(info.value("platform").toString(), QStringLiteral("linux"));
+    QCOMPARE(info.value("platform").toString(), cloud::clientPlatform());
     QCOMPARE(info.value("client_version").toString(), libraryVersion());
 
     QVERIFY(account.count() > 0 || account.wait(5000));

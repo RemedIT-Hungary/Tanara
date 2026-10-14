@@ -856,6 +856,7 @@ void SummarySourcesTest::memoStatementsRoundTrip()
     QFile f(library::SummaryRepository::jsonPath(dir.path()));
     QVERIFY(f.open(QIODevice::ReadOnly));
     const QJsonObject root = QJsonDocument::fromJson(f.readAll()).object();
+    f.close();   // Windows: setStatementFlagged() below replaces the file, which an open handle blocks
     QCOMPARE(root.value(QStringLiteral("version")).toInt(), 4);
 
     const library::SummaryDocument back = library::SummaryRepository::load(dir.path());

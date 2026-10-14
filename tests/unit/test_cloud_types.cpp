@@ -88,7 +88,7 @@ void TestCloudTypes::semver_and_client_header()
 #if defined(Q_OS_LINUX)
     QCOMPARE(cloud::clientPlatform(), QStringLiteral("linux"));
 #elif defined(Q_OS_WIN)
-    QCOMPARE(clientPlatform(), QStringLiteral("windows"));
+    QCOMPARE(cloud::clientPlatform(), QStringLiteral("windows"));
 #endif
 }
 

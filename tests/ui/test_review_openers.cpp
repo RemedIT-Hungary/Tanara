@@ -471,7 +471,7 @@ private slots:
 
         // No: disappears; it does not come back even after another identical decision.
         click(visual("reviewOfferNo"));
-        QVERIFY(!visual("reviewFocusOffer"));
+        QTRY_VERIFY(!visual("reviewFocusOffer"));
         const QString key_ = view()->property("offerData").toMap().value(QStringLiteral("key")).toString();
         QVERIFY(key_.isEmpty());
         ahead = m_queue->recentPattern().value(QStringLiteral("sameAhead")).toStringList();

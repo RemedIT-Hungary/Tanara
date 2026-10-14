@@ -15,6 +15,14 @@ using namespace tanara::media;
 
 namespace {
 
+#if defined(Q_OS_WIN)
+constexpr bool kWindows = true;
+const QString kExe = QStringLiteral(".exe");
+#else
+constexpr bool kWindows = false;
+const QString kExe;
+#endif
+
 QString makeExe(const QString& dir, const QString& name)
 {
     QDir().mkpath(dir);
@@ -124,11 +132,13 @@ private slots:
         const QString app = tmp.filePath("app/bin");
         const QString appimage = tmp.filePath("appimage");
         const QString pathDir = tmp.filePath("path");
-        const QString configured = makeExe(tmp.filePath("custom"), "my-ffmpeg");
-        makeExe(app, "ffmpeg");
-        makeExe(QDir(appimage).filePath("usr/bin"), "ffmpeg");
-        makeExe(pathDir, "ffmpeg");
+        const QString ffmpegName = QStringLiteral("ffmpeg") + kExe;
+        const QString configured = makeExe(tmp.filePath("custom"), QStringLiteral("my-ffmpeg") + kExe);
+        makeExe(app, ffmpegName);
+        makeExe(QDir(appimage).filePath("usr/bin"), ffmpegName);
+        makeExe(pathDir, ffmpegName);
         LocatorEnv env;
+        env.windows = kWindows;   // the Windows rule: only <tool>.exe counts as executable
         env.appDir = app;
         env.appImageDir = appimage;
         env.pathDirs = {pathDir};
@@ -138,30 +148,32 @@ private slots:
         QCOMPARE(r.source, ToolSource::Settings);
         QCOMPARE(r.path, configured);
         // a configured path that does not exist: falls through to 2. the app folder
-        r = MediaToolLocator::locate("ffmpeg", tmp.filePath("nope/ffmpeg"), env);
+        r = MediaToolLocator::locate("ffmpeg", tmp.filePath("nope/ffmpeg") + kExe, env);
         QCOMPARE(r.source, ToolSource::AppDir);
-        QCOMPARE(r.path, QDir(app).filePath("ffmpeg"));
+        QCOMPARE(r.path, QDir(app).filePath(ffmpegName));
         // 3. bundle (AppImage)
-        QFile::remove(QDir(app).filePath("ffmpeg"));
+        QFile::remove(QDir(app).filePath(ffmpegName));
         r = MediaToolLocator::locate("ffmpeg", {}, env);
         QCOMPARE(r.source, ToolSource::Bundle);
-        QCOMPARE(r.path, QDir(appimage).filePath("usr/bin/ffmpeg"));
+        QCOMPARE(r.path, QDir(appimage).filePath(QStringLiteral("usr/bin/") + ffmpegName));
         // 4. PATH
         env.appImageDir.clear();
         r = MediaToolLocator::locate("ffmpeg", {}, env);
         QCOMPARE(r.source, ToolSource::Path);
-        QCOMPARE(QFileInfo(r.path).canonicalFilePath(), QFileInfo(QDir(pathDir).filePath("ffmpeg")).canonicalFilePath());
+        QCOMPARE(QFileInfo(r.path).canonicalFilePath(), QFileInfo(QDir(pathDir).filePath(ffmpegName)).canonicalFilePath());
         // not found anywhere
-        QFile::remove(QDir(pathDir).filePath("ffmpeg"));
+        QFile::remove(QDir(pathDir).filePath(ffmpegName));
         env.pathDirs = {tmp.filePath("empty")};
         r = MediaToolLocator::locate("ffmpeg", {}, env);
         QVERIFY(!r.found());
-        // a non-executable file does not count
-        QFile plain(QDir(app).filePath("ffmpeg"));
+        // a non-executable file does not count (on Windows executability is the extension, not a mode bit)
+#if !defined(Q_OS_WIN)
+        QFile plain(QDir(app).filePath(ffmpegName));
         QVERIFY(plain.open(QIODevice::WriteOnly));
         plain.close();
         plain.setPermissions(QFile::ReadOwner | QFile::WriteOwner);
         QVERIFY(!MediaToolLocator::locate("ffmpeg", {}, env).found());
+#endif
     }
 
     void locatorBundlesAndWindows()

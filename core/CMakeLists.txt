@@ -96,11 +96,19 @@ if(TANARA_USE_KEYCHAIN)
         set(BUILD_WITH_QT6 ON CACHE BOOL "" FORCE)
         set(BUILD_TRANSLATIONS OFF CACHE BOOL "" FORCE)
         set(BUILD_TEST_APPLICATION OFF CACHE BOOL "" FORCE)
-        set(QTKEYCHAIN_STATIC ON CACHE BOOL "" FORCE)
+        # Plain (directory-scoped) variables, so they affect only the fetched project and not our own
+        # targets. Static library; no BUILD_TESTING: QtKeychain's own autotest would register in our
+        # ctest and hit the real credential store.
+        set(_tanara_kc_saved_shared "${BUILD_SHARED_LIBS}")
+        set(_tanara_kc_saved_testing "${BUILD_TESTING}")
+        set(BUILD_SHARED_LIBS OFF)
+        set(BUILD_TESTING OFF)
         FetchContent_Declare(qtkeychain
             GIT_REPOSITORY https://github.com/frankosterfeld/qtkeychain.git
             GIT_TAG 0.16.0)   # same as Fedora 44 qtkeychain-qt6
         FetchContent_MakeAvailable(qtkeychain)
+        set(BUILD_SHARED_LIBS "${_tanara_kc_saved_shared}")
+        set(BUILD_TESTING "${_tanara_kc_saved_testing}")
         if(TARGET qt6keychain AND NOT TARGET Qt6Keychain::Qt6Keychain)
             add_library(Qt6Keychain::Qt6Keychain ALIAS qt6keychain)
         endif()
