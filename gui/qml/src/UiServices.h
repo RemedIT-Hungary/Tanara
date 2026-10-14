@@ -20,6 +20,7 @@ namespace tanara::editing { class IShellFacade; }
 namespace tanara::library { class IOverviewFacade; }
 namespace tanara::library { class IPeopleFacade; class TagBackend; }
 namespace tanara::editing { class IParticipantsFacade; }
+namespace tanara::processing { class ISummaryFacade; }
 
 namespace tanara_qml {
 
@@ -49,6 +50,9 @@ struct UiServices {
     std::function<tanara::library::IPeopleFacade*(QObject* parent)> people;
     // The participants side ("Who was there?", the speaker -> track chips, the pickers): the same.
     std::function<tanara::editing::IParticipantsFacade*(QObject* parent)> participants;
+    // The Summary tab's facade. A factory: the demo facade is a fixture of the asking view model's
+    // demoState (it lives under `parent`); the real facade is shared (one per controller).
+    std::function<tanara::processing::ISummaryFacade*(const QString& scenario, QObject* parent)> summary;
 };
 
 } // namespace tanara_qml

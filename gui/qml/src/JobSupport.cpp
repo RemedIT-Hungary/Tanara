@@ -16,6 +16,33 @@ namespace tanara_qml::jobsupport {
 
 namespace {
 QString trj(const char* text) { return QCoreApplication::translate("JobSupport", text); }
+
+// lupdate does not see through trj(): the strings it translates are listed here, so they reach the .ts
+// (without this the English UI shows them in Hungarian).
+[[maybe_unused]] const char* const kTranslatable[] = {
+    QT_TRANSLATE_NOOP("JobSupport", "kevesebb mint 1 perc van hátra"),
+    QT_TRANSLATE_NOOP("JobSupport", "kb. %1 perc van hátra"),
+    QT_TRANSLATE_NOOP("JobSupport", "Tanara Cloud fiók"),
+    QT_TRANSLATE_NOOP("JobSupport", "Kulcs módosítása"),
+    QT_TRANSLATE_NOOP("JobSupport", "Szolgáltató beállítása"),
+    QT_TRANSLATE_NOOP("JobSupport", "Nincs beállítva átíró szolgáltató"),
+    QT_TRANSLATE_NOOP("JobSupport", "Nincs beállítva összefoglaló szolgáltató"),
+    QT_TRANSLATE_NOOP("JobSupport", "Add meg a saját szolgáltatód adatait a Beállításokban."),
+    QT_TRANSLATE_NOOP("JobSupport", "A szolgáltató beállítása után indítható."),
+    QT_TRANSLATE_NOOP("JobSupport", "A Tanara Cloud még nem érhető el"),
+    QT_TRANSLATE_NOOP("JobSupport", "Nincs bejelentkezve a szolgáltatóhoz"),
+    QT_TRANSLATE_NOOP("JobSupport", "Válts saját kulcsos szolgáltatóra a Beállításokban."),
+    QT_TRANSLATE_NOOP("JobSupport", "Bejelentkezés"),
+    QT_TRANSLATE_NOOP("JobSupport", "Bejelentkezés után indítható."),
+    QT_TRANSLATE_NOOP("JobSupport", "Nincs aktív hangsáv"),
+    QT_TRANSLATE_NOOP("JobSupport", "Ennek a felvételnek minden sávja eldobott vagy hiányzik, ezért nincs mit átírni."),
+    QT_TRANSLATE_NOOP("JobSupport", "Aktív hangsáv nélkül nem indítható."),
+    QT_TRANSLATE_NOOP("JobSupport", "Még nincs átirat"),
+    QT_TRANSLATE_NOOP("JobSupport", "Az összefoglaló az átiratból készül; előbb az átírást kell lefuttatni."),
+    QT_TRANSLATE_NOOP("JobSupport", "Az átirat elkészülte után indítható."),
+    QT_TRANSLATE_NOOP("JobSupport", "saját kulcs"),
+    QT_TRANSLATE_NOOP("JobSupport", "%1 · saját kulcs"),
+};
 } // namespace
 
 tanara::app::AppController* resolveController(QObject* injected)

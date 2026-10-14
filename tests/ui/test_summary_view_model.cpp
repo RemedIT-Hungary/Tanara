@@ -1,11 +1,14 @@
 // SummaryViewModel + TopicListModel: the states of the Summary tab on an isolated TANARA_HOME
 // with a fake LLM server (no real provider call).
+#include "AppContext.h"
 #include "JobTestSupport.h"
 #include "tanara/app/AppSettings.h"
 #include "ShellMeetingModel.h"
 #include "SummaryProgress.h"
 #include "SummaryViewModel.h"
 #include "TopicListModel.h"
+
+#include "demo/SummaryDemoFacade.h"
 
 #include "tanara/editing/session/SpeakerEditor.h"
 
@@ -18,6 +21,14 @@ using tanara_qml::ShellMeetingModel;
 using tanara_qml::SummaryProgress;
 using tanara_qml::SummaryViewModel;
 using tanara_qml::TopicListModel;
+
+namespace {
+// The real summary facade of a sandbox controller (what the hosts hand to the view model).
+tanara::processing::ISummaryFacade* summaryFacade(tanara::app::AppController* c)
+{
+    return tanara_qml::AppContext::instance()->servicesFor(c).summary(QString(), nullptr);
+}
+} // namespace
 
 namespace {
 
@@ -225,8 +236,7 @@ private slots:
         jobtest::Sandbox sb;
         const Meeting m = sb.transcribedLong("Hosszú megbeszélés", 40);   // 3 parts
         const Meeting other = sb.transcribed("Másik");
-        SummaryViewModel vm;
-        vm.setController(sb.app.get());
+        SummaryViewModel vm(summaryFacade(sb.app.get()));
         vm.setMeetingId(m.id);
         QCOMPARE(vm.view(), QStringLiteral("empty"));
 
@@ -353,8 +363,7 @@ private slots:
         jobtest::Sandbox sb;
         const Meeting m = sb.transcribed("Ajánlat");
 
-        SummaryViewModel vm;
-        vm.setController(sb.app.get());
+        SummaryViewModel vm(summaryFacade(sb.app.get()));
         QCOMPARE(vm.view(), QStringLiteral("none"));
         vm.setMeetingId(m.id);
         QVERIFY(!vm.demo());
@@ -450,8 +459,7 @@ private slots:
         m.hasSummary = true;
         sb.app->store()->saveMeeting(m);
 
-        SummaryViewModel vm;
-        vm.setController(sb.app.get());
+        SummaryViewModel vm(summaryFacade(sb.app.get()));
         vm.setMeetingId(m.id);
         QCOMPARE(vm.view(), QStringLiteral("summary"));
         QVERIFY(vm.execSummary().contains("ütemtervet"));
@@ -478,8 +486,7 @@ private slots:
         jobtest::Sandbox sb;
         const Meeting m = sb.transcribed("Témák");
 
-        auto vm = std::make_unique<SummaryViewModel>();
-        vm->setController(sb.app.get());
+        auto vm = std::make_unique<SummaryViewModel>(summaryFacade(sb.app.get()));
         vm->setMeetingId(m.id);
         TopicListModel* topics = vm->topics();
         QAbstractItemModelTester tester(topics, QAbstractItemModelTester::FailureReportingMode::QtTest);
@@ -549,8 +556,7 @@ private slots:
         // "Restart": a new view model on the same meeting continues from disk (the workspace is
         // open, the finished and the failed topic states are there).
         vm.reset();
-        vm = std::make_unique<SummaryViewModel>();
-        vm->setController(sb.app.get());
+        vm = std::make_unique<SummaryViewModel>(summaryFacade(sb.app.get()));
         vm->setMeetingId(m.id);
         topics = vm->topics();
         QCOMPARE(vm->view(), QStringLiteral("topics"));
@@ -593,8 +599,7 @@ private slots:
     {
         jobtest::Sandbox sb;
         const Meeting m = sb.transcribed("Kontextus");
-        SummaryViewModel vm;
-        vm.setController(sb.app.get());
+        SummaryViewModel vm(summaryFacade(sb.app.get()));
         vm.setMeetingId(m.id);
         QCOMPARE(vm.fixReloadContext(), 0);
 
@@ -638,6 +643,70 @@ private slots:
         QTRY_VERIFY_WITH_TIMEOUT(!vm.errorMessage().isEmpty() && !vm.jobRunning(), 10000);
         QCOMPARE(vm.fixReloadContext(), 0);
     }
+    // The fictional facade is a working fixture: the topic workspace edits, the stale marker and the
+    // error dismissal, the flag and the source quotes survive a reload (no reset to the sample data).
+    void demoFacadeFixture()
+    {
+        tanara_demo::SummaryDemoFacade topicsFacade(QStringLiteral("topics"));
+        SummaryViewModel vm(&topicsFacade);
+        QVERIFY(vm.demo());
+        QCOMPARE(vm.view(), QStringLiteral("topics"));
+        TopicListModel* topics = vm.topics();
+        QCOMPARE(topics->count(), 5);
+        QVERIFY(topics->addTopic(QStringLiteral("Új téma"), QString()));
+        QCOMPARE(topics->count(), 6);
+        topics->removeTopic(0);
+        vm.refresh();
+        QCOMPARE(topics->count(), 5);
+        QCOMPARE(topicTitle(topics, 4), QStringLiteral("Új téma"));
+        QCOMPARE(topicState(topics, 0), QStringLiteral("done"));
+
+        tanara_demo::SummaryDemoFacade staleFacade(QStringLiteral("stale"));
+        SummaryViewModel stale(&staleFacade);
+        QVERIFY(stale.stale());
+        stale.dismissStale();
+        QVERIFY(!stale.stale());
+        stale.refresh();
+        QVERIFY(!stale.stale());
+
+        tanara_demo::SummaryDemoFacade errFacade(QStringLiteral("emptyError"));
+        SummaryViewModel err(&errFacade);
+        QVERIFY(!err.errorMessage().isEmpty());
+        err.clearError();
+        QVERIFY(err.errorMessage().isEmpty());
+
+        tanara_demo::SummaryDemoFacade srcFacade(QStringLiteral("sourcesOn"));
+        SummaryViewModel src(&srcFacade);
+        QVERIFY(src.hasStatements());
+        QVERIFY(src.flagStatement(QStringLiteral("s2")));
+        src.refresh();
+        QVERIFY(src.sentences()->items().at(1).flagged);
+        const QVariantMap details = src.sourceDetails(QStringLiteral("s1"));
+        QCOMPARE(details.value("quotes").toList().size(), 2);
+        QVERIFY(!details.value("quotes").toList().at(0).toMap().value("text").toString().isEmpty());
+        QCOMPARE(src.activeStatementId(), QString());   // the preset applies on setDemoState only
+    }
+
+    // A QML-created view model takes the fixture of its demoState and swaps it when the state changes.
+    void demoStateSwapsTheFixture()
+    {
+        SummaryViewModel vm;
+        QCOMPARE(vm.view(), QStringLiteral("summary"));
+        vm.setDemoState(QStringLiteral("emptyBlocked"));
+        QCOMPARE(vm.view(), QStringLiteral("empty"));
+        QVERIFY(!vm.canRun());
+        QVERIFY(!vm.blocker().isEmpty());
+        QVERIFY(!vm.cloudSoon());
+        QVERIFY(vm.transcriptLine().contains("4 beszélő"));
+        vm.setDemoState(QStringLiteral("topics"));
+        QCOMPARE(vm.view(), QStringLiteral("topics"));
+        QCOMPARE(vm.topics()->count(), 5);
+        vm.setDemoState(QStringLiteral("sourcesOn"));
+        QCOMPARE(vm.view(), QStringLiteral("summary"));
+        QCOMPARE(vm.activeStatementId(), QStringLiteral("s1"));
+        QCOMPARE(vm.topics()->count(), 0);
+    }
+
     // Demo states: claims, chips, map rows, quotes, targeted staleness.
     void sourcesDemoStates()
     {
@@ -779,8 +848,7 @@ private slots:
     {
         jobtest::Sandbox sb;
         const Meeting m = sb.transcribed("Forrásos");
-        SummaryViewModel vm;
-        vm.setController(sb.app.get());
+        SummaryViewModel vm(summaryFacade(sb.app.get()));
         vm.setMeetingId(m.id);
         sb.http->handler = [](const jobtest::FakeRequest& r) -> jobtest::FakeReply {
             if (r.path.endsWith("/chat/completions")) return {200, jobtest::chat(QString::fromUtf8(kSourcedJson))};

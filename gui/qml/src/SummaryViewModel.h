@@ -10,7 +10,7 @@
 // small actions (clipboard, dismissing the stale marker, dismissing a leftover error).
 //
 // Participants' speaking-time share and the owner chips' colors come from the speaker
-// editor's (SpeakerEditor) speaker list. A timestamp link exists only where the decision's
+// list of the facade (the speaker editor's speakers). A timestamp link exists only where the decision's
 // text really starts with a timestamp (today's summaries contain none).
 //
 // A finished quick summary has TWO forms: the executive summary (short: overview, decisions,
@@ -19,7 +19,13 @@
 // For an old (pre-memo) summary memoState is "missing"; in per-topic mode "none" (there the
 // topics are the long form).
 //
-// Without a controller or with App.demo, fictional sample data; demoState: "stale" (default) |
+// It reaches the summary side through ONE injected facade (tanara::processing::ISummaryFacade):
+// the real one (SummaryServicesFacade) or the fictional one of tanara_demo (--qml-shot / --demo /
+// --gallery, tests: sample data, see demoState). The view model does not know which one it has.
+// Created from QML it asks AppContext::services() for the facade of the moment (demoState picks the
+// fixture); the explicit constructor is for the hosts and the tests.
+//
+// The fictional states (demoState): "stale" (default) |
 // "done" | "memo" (many sections) | "memoShort" | "oldSummary" (no memo) | "oldMemo" (same,
 // the memo's place is visible) | "running" (regeneration running) | "topicsDoc" | "empty" |
 // "emptyBlocked" | "emptyRunning" | "emptyRunningParts" | "emptyRunningMerge" | "emptyError" |
@@ -31,7 +37,7 @@
 // "memoSections" (memo with table of contents, 3rd section) | "staleTargeted" (targeted
 // staleness) | "noSources" (the same without statements: the old view).
 //
-// Source links: the quick summary's statements (AppController::summaryStatements) in five
+// Source links: the quick summary's statements (SummaryData::statements) in five
 // StatementListModels (sentences, decisions, open questions, action items, memo); the source
 // quotes come from the speaker editor's utterances (sourceDetails). The map dock's rows:
 // sourceMarks (the statements' sources, active = selected / affected by staleness) and
@@ -48,6 +54,7 @@
 
 #include "tanara/domain/Types.h"
 #include "tanara/domain/Job.h"
+#include "tanara/processing/summary/ISummaryFacade.h"
 
 #include <QHash>
 #include <QObject>
@@ -57,10 +64,6 @@
 #include <QVariantMap>
 #include <QtQml/qqmlregistration.h>
 
-namespace tanara {
-namespace app { class AppController; }
-namespace editing { class SpeakerEditor; }
-}
 
 namespace tanara_qml {
 
@@ -68,7 +71,6 @@ class SummaryViewModel : public QObject {
     Q_OBJECT
     QML_ELEMENT
 
-    Q_PROPERTY(QObject* controller READ controllerObject WRITE setController NOTIFY controllerChanged)
     Q_PROPERTY(QString meetingId READ meetingId WRITE setMeetingId NOTIFY meetingIdChanged)
     Q_PROPERTY(QString demoState READ demoState WRITE setDemoState NOTIFY demoStateChanged)
     Q_PROPERTY(bool demo READ demo NOTIFY changed)
@@ -191,10 +193,10 @@ class SummaryViewModel : public QObject {
     Q_PROPERTY(bool noteChangedSinceSummary READ noteChangedSinceSummary NOTIFY noteHintChanged)
 
 public:
+    // From QML: the facade of the moment (AppContext::services(), follows the App.demo switch).
     explicit SummaryViewModel(QObject* parent = nullptr);
-
-    QObject* controllerObject() const;
-    void setController(QObject* controller);
+    // With a given facade (not owned): the hosts and the tests.
+    explicit SummaryViewModel(tanara::processing::ISummaryFacade* facade, QObject* parent = nullptr);
     QString meetingId() const { return m_meetingId; }
     void setMeetingId(const QString& id);
     QString demoState() const { return m_demoState; }
@@ -293,7 +295,7 @@ public:
     // name, colorIndex (-1: unknown), startMs, endMs, stamp, text }] }: one utterance per quote
     // from the source ranges, in time order. Unknown statement -> empty map.
     Q_INVOKABLE QVariantMap sourceDetails(const QString& statementId) const;
-    // "Not how it was said? Report": AppController::flagStatement (in memory in the demo).
+    // "Not how it was said? Report": ISummaryFacade::flagStatement.
     Q_INVOKABLE bool flagStatement(const QString& statementId);
 
     // Splits the timestamp off the start of a decision: "[12:52] text" -> ms + text.
@@ -301,7 +303,6 @@ public:
     static qint64 splitTimestamp(const QString& text, QString* rest);
 
 signals:
-    void controllerChanged();
     void meetingIdChanged();
     void demoStateChanged();
     void sectionChanged();
@@ -317,15 +318,15 @@ signals:
     void summaryArrived();
 
 private:
-    tanara::app::AppController* app() const;
-    void connectController();
+    void init();
+    void resolveFacade();
+    void connectFacade();
+    void applyPreset();
     void reload();
     void reloadJobs();
     void reloadParticipants();
-    void loadDemo();
-    void loadDemoMemo(bool longForm);
-    void loadDemoSources(const QString& state);
-    void reloadStatements();
+    void applySpeakers(const tanara::processing::SummarySpeakers& speakers);
+    void applyJobs(const tanara::processing::SummaryJobs& jobs);
     void buildStatements(const QVector<tanara::SummaryStatement>& statements,
                          const QStringList& affectedUtterances);
     QVariantMap memoMapFor(const tanara::MemoSection& sec, int index) const;
@@ -333,15 +334,13 @@ private:
     QList<StatementListModel*> statementModels() const;
     QVariantList speakerChips(const QStringList& names) const;
     void applyJob(const tanara::JobProgress& job);
-    void watchEditor(tanara::editing::SpeakerEditor* editor);
     int speakerIndexFor(const QString& name) const;
     QVariantList ownerList(const QString& owner) const;
+    QString providerLabelFor(const tanara::processing::SummaryData& data) const;
 
-    QPointer<QObject> m_injected;
-    QPointer<tanara::app::AppController> m_connected;
+    QPointer<tanara::processing::ISummaryFacade> m_facade;
+    bool m_explicitFacade = false;
     QList<QMetaObject::Connection> m_connections;
-    QPointer<tanara::editing::SpeakerEditor> m_editor;
-    QMetaObject::Connection m_editorConn;
 
     TopicListModel* m_topics = nullptr;
     MeetingNoteModel* m_note = nullptr;
@@ -422,10 +421,6 @@ private:
     // the speakers load, for the owner colors).
     QVector<tanara::SummaryStatement> m_rawStatements;
     QStringList m_affectedUtterances;          // the meeting's utterances ("from 1298 utterances")
-    // An utterance for the quote (fictional in the demo; live from the speaker editor).
-    struct QuoteLine { qint64 startMs = 0; qint64 endMs = 0; QString text; QString name; int colorIndex = -1; };
-    QHash<QString, QuoteLine> m_demoLines;
-    QuoteLine quoteLine(const QString& utteranceId) const;
 };
 
 } // namespace tanara_qml

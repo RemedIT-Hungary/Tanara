@@ -644,6 +644,94 @@
 <context>
     <name>JobSupport</name>
     <message>
+        <source>kevesebb mint 1 perc van hátra</source>
+        <translation>less than 1 minute left</translation>
+    </message>
+    <message>
+        <source>kb. %1 perc van hátra</source>
+        <translation>about %1 minutes left</translation>
+    </message>
+    <message>
+        <source>Tanara Cloud fiók</source>
+        <translation>Tanara Cloud account</translation>
+    </message>
+    <message>
+        <source>Kulcs módosítása</source>
+        <translation>Change key</translation>
+    </message>
+    <message>
+        <source>Szolgáltató beállítása</source>
+        <translation>Set up provider</translation>
+    </message>
+    <message>
+        <source>Nincs beállítva átíró szolgáltató</source>
+        <translation>No transcription provider is set up</translation>
+    </message>
+    <message>
+        <source>Nincs beállítva összefoglaló szolgáltató</source>
+        <translation>No summary provider is set up</translation>
+    </message>
+    <message>
+        <source>Add meg a saját szolgáltatód adatait a Beállításokban.</source>
+        <translation>Enter your own provider details in Settings.</translation>
+    </message>
+    <message>
+        <source>A szolgáltató beállítása után indítható.</source>
+        <translation>Can be started once a provider is set up.</translation>
+    </message>
+    <message>
+        <source>A Tanara Cloud még nem érhető el</source>
+        <translation>Tanara Cloud is not available yet</translation>
+    </message>
+    <message>
+        <source>Nincs bejelentkezve a szolgáltatóhoz</source>
+        <translation>Not signed in to the provider</translation>
+    </message>
+    <message>
+        <source>Válts saját kulcsos szolgáltatóra a Beállításokban.</source>
+        <translation>Switch to a provider with your own key in Settings.</translation>
+    </message>
+    <message>
+        <source>Bejelentkezés</source>
+        <translation>Sign in</translation>
+    </message>
+    <message>
+        <source>Bejelentkezés után indítható.</source>
+        <translation>Can be started after signing in.</translation>
+    </message>
+    <message>
+        <source>Nincs aktív hangsáv</source>
+        <translation>No active audio track</translation>
+    </message>
+    <message>
+        <source>Ennek a felvételnek minden sávja eldobott vagy hiányzik, ezért nincs mit átírni.</source>
+        <translation>Every track of this recording is discarded or missing, so there is nothing to transcribe.</translation>
+    </message>
+    <message>
+        <source>Aktív hangsáv nélkül nem indítható.</source>
+        <translation>Cannot be started without an active audio track.</translation>
+    </message>
+    <message>
+        <source>Még nincs átirat</source>
+        <translation>No transcript yet</translation>
+    </message>
+    <message>
+        <source>Az összefoglaló az átiratból készül; előbb az átírást kell lefuttatni.</source>
+        <translation>The summary is made from the transcript; run the transcription first.</translation>
+    </message>
+    <message>
+        <source>Az átirat elkészülte után indítható.</source>
+        <translation>Can be started once the transcript is ready.</translation>
+    </message>
+    <message>
+        <source>saját kulcs</source>
+        <translation>own key</translation>
+    </message>
+    <message>
+        <source>%1 · saját kulcs</source>
+        <translation>%1 · own key</translation>
+    </message>
+    <message>
         <source>Beállítások</source>
         <translation>Settings</translation>
     </message>
@@ -9175,6 +9263,571 @@
     </message>
 </context>
 <context>
+    <name>tanara_demo::SummaryDemoFacade</name>
+    <message>
+        <source>Az első és legfontosabb: a támogatási jegyek száma harmadával csökkent, miközben az aktív felhasználók száma nagyjából tizenkét százalékkal nőtt.</source>
+        <translation>First and most important: the number of support tickets fell by a third while the number of active users grew by about twelve percent.</translation>
+    </message>
+    <message>
+        <source>Az összesre. Az újaknál még jobb az arány, de ott kicsi a minta.</source>
+        <translation>On the total. The ratio is even better for new users, but the sample is small there.</translation>
+    </message>
+    <message>
+        <source>A súgóoldalak júliusban mentek élesbe, és az első hat hétben a keresések kétharmada ott ért véget.</source>
+        <translation>The help pages went live in July, and in the first six weeks two thirds of searches ended there.</translation>
+    </message>
+    <message>
+        <source>Nálunk a beállítási kérdések szinte eltűntek, a számlázásiak viszont maradtak, főleg a Nordvik-ügyfeleknél.</source>
+        <translation>On our side, setup questions have almost disappeared, but the billing ones remain, mainly with Nordvik customers.</translation>
+    </message>
+    <message>
+        <source>Az első változatot megcsinálom a dokumentációs csapattal, október közepére.</source>
+        <translation>I&apos;ll do the first version with the documentation team, by mid-October.</translation>
+    </message>
+    <message>
+        <source>A negyedik negyedév elejére kell, különben a megújításnál újra előjön.</source>
+        <translation>It&apos;s needed by the start of the fourth quarter, otherwise it will come up again at the renewal.</translation>
+    </message>
+    <message>
+        <source>Akkor a súgóoldalakat a többi termékre is kiterjesztjük.</source>
+        <translation>Then we&apos;ll extend the help pages to the other products too.</translation>
+    </message>
+    <message>
+        <source>Én a számlázást javasolnám következő súgó-témának, ott a jegyek fele számlázási.</source>
+        <translation>I&apos;d suggest billing as the next help topic; half the tickets there are about billing.</translation>
+    </message>
+    <message>
+        <source>Vállalom, de két hét dokumentációs kapacitás kell hozzá.</source>
+        <translation>I&apos;ll take it, but it needs two weeks of documentation capacity.</translation>
+    </message>
+    <message>
+        <source>A számlázási kérdések felét a díjbekérők adják; ha azokat külön kezeljük, a maradék is eltűnhet.</source>
+        <translation>Half of the billing questions come from proforma invoices; if we handle those separately, the rest may disappear too.</translation>
+    </message>
+    <message>
+        <source>Ha a súgó nem lesz kész a negyedév elejére, a megújításnál újra előjön ugyanez.</source>
+        <translation>If the help center is not ready by the start of the quarter, the same issue will come up again at renewal.</translation>
+    </message>
+    <message>
+        <source>A Nordvik-tárgyalás pont akkor indul, addig kell valami kézzelfogható.</source>
+        <translation>The Nordvik negotiation starts right then, so we need something tangible by that time.</translation>
+    </message>
+    <message>
+        <source>A partnerportálon a leggyakoribb keresés a „számla letöltése”.</source>
+        <translation>The most common search on the partner portal is &quot;download invoice&quot;.</translation>
+    </message>
+    <message>
+        <source>És ki adja a dokumentációs kapacitást, ha közben a kiterjesztésen dolgoztok?</source>
+        <translation>And who provides the documentation capacity if you are working on the extension in the meantime?</translation>
+    </message>
+    <message>
+        <source>A díjbekérős kérdéseket érdemes lenne külön kezelni a súgóban.</source>
+        <translation>It would be worth handling the proforma invoice questions separately in the help.</translation>
+    </message>
+    <message>
+        <source>A nyomtatható változatot többen kérdezték, de nem tudom, megéri-e.</source>
+        <translation>Several people asked about the printable version, but I am not sure it is worth it.</translation>
+    </message>
+    <message>
+        <source>A létszámról a költségvetési tervezésnél döntünk.</source>
+        <translation>We&apos;ll decide on headcount during budget planning.</translation>
+    </message>
+    <message>
+        <source>Támogatási igény alakulása</source>
+        <translation>Support demand trend</translation>
+    </message>
+    <message>
+        <source>Jegyszám, felhasználónkénti arány, okok</source>
+        <translation>Ticket count, per-user ratio, causes</translation>
+    </message>
+    <message>
+        <source>A jegyek száma harmadával csökkent, miközben az aktív felhasználók 12%-kal nőttek. A csökkenés fő oka a termékbe épített súgó; a partnerek ugyanezt tapasztalják.</source>
+        <translation>Tickets dropped by a third while active users grew by 12%. The main reason for the drop is the help built into the product; the partners are seeing the same.</translation>
+    </message>
+    <message>
+        <source>A súgóoldalakat a többi termékre is kiterjesztik.</source>
+        <translation>The help pages are extended to the other products.</translation>
+    </message>
+    <message>
+        <source>Legyen-e nyomtatható változata a súgóoldalaknak?</source>
+        <translation>Should the help pages have a printable version?</translation>
+    </message>
+    <message>
+        <source>Súgóoldalak kiterjesztése</source>
+        <translation>Extending the help pages</translation>
+    </message>
+    <message>
+        <source>Melyik termékre, milyen sorrendben</source>
+        <translation>Which products, in what order</translation>
+    </message>
+    <message>
+        <source>A beállítási oldalak mintáját viszik tovább. A számlázás előtt a folyamatot egyszerűsítik.</source>
+        <translation>The pattern of the settings pages is carried over. For billing, the process is simplified first.</translation>
+    </message>
+    <message>
+        <source>Számlázási folyamat</source>
+        <translation>Billing process</translation>
+    </message>
+    <message>
+        <source>Termék vagy dokumentáció a gond?</source>
+        <translation>Is the problem the product or the documentation?</translation>
+    </message>
+    <message>
+        <source>Dokumentációs kapacitás</source>
+        <translation>Documentation capacity</translation>
+    </message>
+    <message>
+        <source>Létszámigény és költségvetés</source>
+        <translation>Headcount need and budget</translation>
+    </message>
+    <message>
+        <source>A szolgáltató időtúllépés miatt megszakította.</source>
+        <translation>The provider aborted it due to a timeout.</translation>
+    </message>
+    <message>
+        <source>Következő negyedév mérőszámai</source>
+        <translation>Next quarter&apos;s metrics</translation>
+    </message>
+    <message>
+        <source>Mit és hogyan mérünk</source>
+        <translation>What we measure and how</translation>
+    </message>
+    <message>
+        <source>Negyedéves partner-egyeztetés: támogatási igény, súgóoldalak, számlázás. A „Szúgó Pont” helyesen: SúgóPont.</source>
+        <translation>Quarterly partner sync: support demand, help pages, billing. “Shoe Go Point” is really SúgóPont.</translation>
+    </message>
+    <message>
+        <source>Összefoglaló készítése</source>
+        <translation>Creating summary</translation>
+    </message>
+    <message>
+        <source>Összefoglalás</source>
+        <translation>Summarising</translation>
+    </message>
+    <message>
+        <source>Jegyzetelés részenként</source>
+        <translation>Notes part by part</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n rész kész</source>
+        <translation>
+            <numerusform>%n part done</numerusform>
+            <numerusform>%n parts done</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>%1/%2. rész</source>
+        <translation>Part %1/%2</translation>
+    </message>
+    <message numerus="yes">
+        <source> · %n korábbi futásból</source>
+        <translation>
+            <numerusform> · %n from an earlier run</numerusform>
+            <numerusform> · %n from an earlier run</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Összegzés</source>
+        <translation>Summing up</translation>
+    </message>
+    <message>
+        <source>Hiányzik: Cím (URL) (OpenAI-kompatibilis)</source>
+        <translation>Missing: Address (URL) (OpenAI-compatible)</translation>
+    </message>
+    <message>
+        <source>A szolgáltató nem válaszolt időben. Próbáld újra.</source>
+        <translation>The provider did not respond in time. Try again.</translation>
+    </message>
+    <message>
+        <source>A szolgáltatónál hiba történt. Próbáld újra később.</source>
+        <translation>The provider reported an error. Try again later.</translation>
+    </message>
+    <message>
+        <source>A modell 4096 tokenes kontextussal van betöltve, a kérés 6042 token volt — nem fér bele. A Tanara újra tudja tölteni az LM Studióban legalább 16 384 tokenes kontextussal, és újraindítja a feladatot.</source>
+        <translation>The model is loaded with a 4096-token context, the request was 6042 tokens — it does not fit. Tanara can reload it in LM Studio with a context of at least 16,384 tokens and restart the job.</translation>
+    </message>
+    <message>
+        <source>kérés 6042 token · kontextus 4096 token</source>
+        <translation>request 6042 tokens · context 4096 tokens</translation>
+    </message>
+    <message>
+        <source>Nyitás, napirend</source>
+        <translation>Opening, agenda</translation>
+    </message>
+    <message>
+        <source>A partnerek kérték, hogy a számlázás külön napirendi pont legyen.</source>
+        <translation>The partners asked for billing to be a separate agenda item.</translation>
+    </message>
+    <message>
+        <source>Támogatási jegyek alakulása</source>
+        <translation>Support tickets</translation>
+    </message>
+    <message>
+        <source>A jegyek száma harmadával csökkent az előző negyedévhez képest.</source>
+        <translation>The number of tickets fell by a third compared with the previous quarter.</translation>
+    </message>
+    <message>
+        <source>Az aktív felhasználók száma közben 12%-kal nőtt.</source>
+        <translation>Meanwhile the number of active users grew by 12%.</translation>
+    </message>
+    <message>
+        <source>A csökkenés nagyobb része a beállítási kérdéseknél jelentkezett.</source>
+        <translation>Most of the drop came from setup questions.</translation>
+    </message>
+    <message>
+        <source>A súgóoldalak hatása</source>
+        <translation>Effect of the help pages</translation>
+    </message>
+    <message>
+        <source>A partnerek ugyanezt tapasztalják a saját ügyfélszolgálatukon.</source>
+        <translation>The partners see the same at their own support desks.</translation>
+    </message>
+    <message>
+        <source>A súgót a többi termékre is kiterjesztik.</source>
+        <translation>The help is extended to the other products.</translation>
+    </message>
+    <message>
+        <source>A kiterjesztés sorrendje</source>
+        <translation>Order of the rollout</translation>
+    </message>
+    <message>
+        <source>Elsőként a riportmodul kap súgóoldalakat, utána az integrációk.</source>
+        <translation>The reporting module gets help pages first, then the integrations.</translation>
+    </message>
+    <message>
+        <source>Számlázási panaszok</source>
+        <translation>Billing complaints</translation>
+    </message>
+    <message>
+        <source>A számlázási jegyek száma nem csökkent; a panaszok fele a számla módosításáról szól.</source>
+        <translation>Billing tickets did not decrease; half of the complaints are about changing an invoice.</translation>
+    </message>
+    <message>
+        <source>Folyamat vagy dokumentáció</source>
+        <translation>Process or documentation</translation>
+    </message>
+    <message>
+        <source>Két partner a lépések számát tartja a fő gondnak.</source>
+        <translation>Two partners see the number of steps as the main problem.</translation>
+    </message>
+    <message>
+        <source>Abban maradtak, hogy előbb a folyamatot egyszerűsítik, utána a leírást.</source>
+        <translation>They agreed to simplify the process first, then the documentation.</translation>
+    </message>
+    <message>
+        <source>Elakadási pontok gyűjtése</source>
+        <translation>Collecting the sticking points</translation>
+    </message>
+    <message>
+        <source>A gyűjtéshez a jegyek címkéit és a munkamenet-felvételeket használják.</source>
+        <translation>They use the ticket tags and the session recordings for this.</translation>
+    </message>
+    <message>
+        <source>Új ügyfelek bevezetése</source>
+        <translation>Onboarding new customers</translation>
+    </message>
+    <message>
+        <source>Az új ügyfelek az első két hétben háromszor annyi jegyet nyitnak.</source>
+        <translation>New customers open three times as many tickets in their first two weeks.</translation>
+    </message>
+    <message>
+        <source>Bevezető levelek</source>
+        <translation>Welcome emails</translation>
+    </message>
+    <message>
+        <source>A bevezető levelek megnyitási aránya 40% alatt van.</source>
+        <translation>The open rate of the welcome emails is below 40%.</translation>
+    </message>
+    <message>
+        <source>Javaslat: a levelek a súgóoldalakra mutassanak, ne a dokumentációra.</source>
+        <translation>Proposal: the emails should link to the help pages, not the documentation.</translation>
+    </message>
+    <message>
+        <source>Partneri visszajelzések</source>
+        <translation>Partner feedback</translation>
+    </message>
+    <message>
+        <source>A partnerek a keresőt dicsérték, a nyomtatható változatot hiányolják.</source>
+        <translation>The partners praised the search and miss a printable version.</translation>
+    </message>
+    <message>
+        <source>Nyomtatható súgó</source>
+        <translation>Printable help</translation>
+    </message>
+    <message>
+        <source>Nem döntöttek; a nyomtatható változat igényét előbb felmérik.</source>
+        <translation>No decision; they first find out how much a printable version is needed.</translation>
+    </message>
+    <message>
+        <source>A dokumentációs csapat két fővel dolgozik, ez a kiterjesztéshez kevés.</source>
+        <translation>The documentation team has two people, which is not enough for the rollout.</translation>
+    </message>
+    <message>
+        <source>Költségvetési keret</source>
+        <translation>Budget</translation>
+    </message>
+    <message>
+        <source>A létszámbővítés legkorábban a jövő évi tervben szerepelhet.</source>
+        <translation>More staff can be in next year’s plan at the earliest.</translation>
+    </message>
+    <message>
+        <source>Döntés a létszámról</source>
+        <translation>Decision on staffing</translation>
+    </message>
+    <message>
+        <source>A dokumentációs létszámról a költségvetési tervezés dönt.</source>
+        <translation>Budget planning decides on documentation staffing.</translation>
+    </message>
+    <message>
+        <source>Külső szövegíró</source>
+        <translation>Outside writer</translation>
+    </message>
+    <message>
+        <source>Átmeneti megoldásként felmerült egy külső szövegíró; nem döntöttek.</source>
+        <translation>An outside writer came up as a temporary solution; no decision.</translation>
+    </message>
+    <message>
+        <source>Mérőszámok</source>
+        <translation>Metrics</translation>
+    </message>
+    <message>
+        <source>A jegyszám mellett a megoldási időt is mérik; ez nem javult.</source>
+        <translation>Besides the ticket count they also measure resolution time; it did not improve.</translation>
+    </message>
+    <message>
+        <source>A következő negyedév céljai</source>
+        <translation>Goals for next quarter</translation>
+    </message>
+    <message>
+        <source>Cél a számlázási jegyek 20%-os csökkentése.</source>
+        <translation>The goal is 20% fewer billing tickets.</translation>
+    </message>
+    <message>
+        <source>Riportok a partnereknek</source>
+        <translation>Reports for the partners</translation>
+    </message>
+    <message>
+        <source>A partnerek havi bontású riportot kérnek a jegyekről.</source>
+        <translation>The partners ask for a monthly ticket report.</translation>
+    </message>
+    <message>
+        <source>A riport formája</source>
+        <translation>Report format</translation>
+    </message>
+    <message>
+        <source>A riport táblázatként megy ki, grafikon nélkül.</source>
+        <translation>The report goes out as a table, without charts.</translation>
+    </message>
+    <message>
+        <source>Partnerportál</source>
+        <translation>Partner portal</translation>
+    </message>
+    <message>
+        <source>A partnerportál frissítése a következő negyedévre csúszik.</source>
+        <translation>The partner portal update slips to next quarter.</translation>
+    </message>
+    <message>
+        <source>Kapcsolattartók</source>
+        <translation>Contacts</translation>
+    </message>
+    <message>
+        <source>Minden partnernél egy állandó kapcsolattartó lesz.</source>
+        <translation>Each partner gets one permanent contact person.</translation>
+    </message>
+    <message>
+        <source>Új-ügyfél bontás</source>
+        <translation>New-customer breakdown</translation>
+    </message>
+    <message>
+        <source>Nyitva maradt ügyek</source>
+        <translation>Open items</translation>
+    </message>
+    <message>
+        <source>Nyitva maradt a nyomtatható súgó és a külső szövegíró kérdése.</source>
+        <translation>The printable help and the outside writer remain open.</translation>
+    </message>
+    <message>
+        <source>Zárás</source>
+        <translation>Closing</translation>
+    </message>
+    <message>
+        <source>A következő partnertalálkozó januárban lesz.</source>
+        <translation>The next partner meeting is in January.</translation>
+    </message>
+    <message>
+        <source>A partnerek megerősítették, hogy a harmadik negyedévben a támogatási igény harmadával csökkent, főként az új súgóoldalak miatt. A súgót a többi termékre is kiterjesztik, de a számlázásnál előbb a folyamatot egyszerűsítik. A dokumentációs létszámbővítésről a költségvetés dönt.</source>
+        <translation>The partners confirmed that support demand dropped by a third in the third quarter, mainly thanks to the new help pages. The help pages will be extended to the other products, but for billing the process is simplified first. The documentation headcount increase is decided in the budget.</translation>
+    </message>
+    <message>
+        <source>[12:52] A súgóoldalakat a többi termékre is kiterjesztik.</source>
+        <translation>[12:52] The help pages are extended to the other products.</translation>
+    </message>
+    <message>
+        <source>[31:10] A számlázásnál előbb a folyamatot egyszerűsítik, utána a leírást.</source>
+        <translation>[31:10] For billing, the process is simplified first, then the documentation.</translation>
+    </message>
+    <message>
+        <source>[58:40] A dokumentációs létszámról a költségvetési tervezés dönt.</source>
+        <translation>[58:40] Documentation headcount is decided during budget planning.</translation>
+    </message>
+    <message>
+        <source>[43:30] Legyen-e nyomtatható változata a súgóoldalaknak?</source>
+        <translation>[43:30] Should the help pages have a printable version?</translation>
+    </message>
+    <message>
+        <source>[58:40] Bevonjanak-e átmenetileg külső szövegírót a dokumentációhoz?</source>
+        <translation>[58:40] Should an outside writer help with the documentation for a while?</translation>
+    </message>
+    <message>
+        <source>Mikorra frissül a partnerportál?</source>
+        <translation>When will the partner portal be updated?</translation>
+    </message>
+    <message>
+        <source>A súgóoldalak kiterjesztése a további termékekre: ütemterv</source>
+        <translation>Extending the help pages to the other products: schedule</translation>
+    </message>
+    <message>
+        <source>okt. 15.</source>
+        <translation>Oct 15</translation>
+    </message>
+    <message>
+        <source>Számlázási elakadási pontok összegyűjtése</source>
+        <translation>Collect the points where people get stuck in billing</translation>
+    </message>
+    <message>
+        <source>okt. 10.</source>
+        <translation>Oct 10</translation>
+    </message>
+    <message>
+        <source>Dokumentációs létszámigény a költségvetési tervbe</source>
+        <translation>Add documentation headcount to the budget plan</translation>
+    </message>
+    <message>
+        <source>okt. 20.</source>
+        <translation>Oct 20</translation>
+    </message>
+    <message>
+        <source>Új-ügyfél bontás elküldése a partnereknek</source>
+        <translation>Send the new-customer breakdown to the partners</translation>
+    </message>
+    <message>
+        <source>okt. 4.</source>
+        <translation>Oct 4</translation>
+    </message>
+    <message>
+        <source>Negyedéves partner-egyeztetés: támogatási igény, súgóoldalak, számlázás.</source>
+        <translation>Quarterly partner sync: support demand, help pages, billing.</translation>
+    </message>
+    <message>
+        <source>A jegyek száma harmadával csökkent, miközben az aktív felhasználók 12%-kal nőttek. A csökkenés fő oka a termékbe épített súgó.</source>
+        <translation>Tickets dropped by a third while active users grew by 12%. The main reason for the drop is the help built into the product.</translation>
+    </message>
+    <message>
+        <source>Ütemterv a kiterjesztéshez</source>
+        <translation>Schedule for the rollout</translation>
+    </message>
+    <message>
+        <source>A partnerek szerint a gond nem a leírás, hanem maga a folyamat: túl sok lépés, kevés visszajelzés.</source>
+        <translation>According to the partners the problem is not the documentation but the process itself: too many steps, too little feedback.</translation>
+    </message>
+    <message>
+        <source>A harmadik negyedévben a támogatási jegyek száma harmadával csökkent, miközben az aktív felhasználók száma 12%-kal nőtt.</source>
+        <translation>In the third quarter the number of support tickets fell by a third while the number of active users grew by 12%.</translation>
+    </message>
+    <message>
+        <source>A javulás fő oka a júliusban élesített súgóoldalak: az első hat hétben a keresések kétharmada ott ért véget.</source>
+        <translation>The main reason for the improvement is the help pages that went live in July: in the first six weeks two thirds of searches ended there.</translation>
+    </message>
+    <message>
+        <source>A partnerek oldalán a beállítási kérdések szinte eltűntek, a számlázási kérdések viszont maradtak, főleg a Nordvik-ügyfeleknél.</source>
+        <translation>On the partners&apos; side, setup questions have almost disappeared, but billing questions remain, mainly with Nordvik customers.</translation>
+    </message>
+    <message>
+        <source>A számlázási súgónak a negyedik negyedév elejére el kell készülnie, különben a megújításnál újra előjön a probléma.</source>
+        <translation>The billing help must be ready by the start of the fourth quarter, otherwise the problem will come up again at the renewal.</translation>
+    </message>
+    <message>
+        <source>A számlázásnál előbb a folyamatot egyszerűsítik, utána a leírást.</source>
+        <translation>For billing, the process is simplified first, then the documentation.</translation>
+    </message>
+    <message>
+        <source>Számlázási súgó első változata a dokumentációs csapattal</source>
+        <translation>First version of the billing help with the documentation team</translation>
+    </message>
+    <message>
+        <source>Díjbekérő-kérdések külön kezelése a súgóban</source>
+        <translation>Handle proforma invoice questions separately in the help</translation>
+    </message>
+    <message>
+        <source>okt. 22.</source>
+        <translation>Oct 22</translation>
+    </message>
+    <message>
+        <source>Ki adja a dokumentációs kapacitást, ha a csapat a negyedik negyedévben a súgó kiterjesztésén dolgozik?</source>
+        <translation>Who provides the documentation capacity if the team works on extending the help center in the fourth quarter?</translation>
+    </message>
+    <message>
+        <source>Megéri-e elkészíteni a súgó nyomtatható változatát?</source>
+        <translation>Is it worth producing a printable version of the help center?</translation>
+    </message>
+    <message>
+        <source>Nyitás, Q3 számok</source>
+        <translation>Opening, Q3 numbers</translation>
+    </message>
+    <message>
+        <source>Súgóoldalak</source>
+        <translation>Help pages</translation>
+    </message>
+    <message>
+        <source>A júliusban élesített súgóoldalak az első hat hétben a keresések kétharmadát lezárták.</source>
+        <translation>The help pages that went live in July closed two thirds of searches in the first six weeks.</translation>
+    </message>
+    <message>
+        <source>Számlázási súgó és a Nordvik-megújítás</source>
+        <translation>Billing help and the Nordvik renewal</translation>
+    </message>
+    <message>
+        <source>A díjbekérőkkel kapcsolatos kérdések a számlázási kérdések felét adják; külön kezelve a maradék is eltűnhet.</source>
+        <translation>Questions about proforma invoices make up half of the billing questions; handled separately, the rest may disappear too.</translation>
+    </message>
+    <message>
+        <source>Ha a súgó nem készül el a negyedév elejére, a megújítási tárgyalásokon újra előjön a probléma.</source>
+        <translation>If the help isn&apos;t ready by the start of the quarter, the problem will come up again in the renewal talks.</translation>
+    </message>
+    <message>
+        <source>A partnerportál keresési adatai alapján a „számla letöltése” a leggyakoribb keresés.</source>
+        <translation>According to the partner portal search data, &quot;download invoice&quot; is the most common search.</translation>
+    </message>
+    <message>
+        <source>A díjbekérős kérdéseket külön kezelik a súgóban.</source>
+        <translation>Proforma invoice questions will be handled separately in the help.</translation>
+    </message>
+    <message>
+        <source>Nordvik-megújítás</source>
+        <translation>Nordvik renewal</translation>
+    </message>
+    <message>
+        <source>A Nordvik-szerződés megújítása a számlázási súgón múlik.</source>
+        <translation>Renewing the Nordvik contract depends on the billing help.</translation>
+    </message>
+    <message>
+        <source>A tárgyalás a negyedik negyedév elején indul.</source>
+        <translation>Negotiations start at the beginning of the fourth quarter.</translation>
+    </message>
+    <message>
+        <source>Költségvetés</source>
+        <translation>Budget</translation>
+    </message>
+    <message>
+        <source>Lezárás, teendők</source>
+        <translation>Wrap-up, action items</translation>
+    </message>
+    <message>
+        <source>A negyedév számai jók, a számlázás külön napirendi pontot kapott.</source>
+        <translation>The quarter&apos;s numbers are good; billing got a separate agenda item.</translation>
+    </message>
+</context>
+<context>
     <name>tanara_gui::QmlShellBridge</name>
     <message>
         <source>Hangfájl kiválasztása</source>
@@ -11447,376 +12100,6 @@
         <translation>%1 · own key</translation>
     </message>
     <message>
-        <source>Nincs beállítva összefoglaló szolgáltató</source>
-        <translation>No summary provider is set up</translation>
-    </message>
-    <message>
-        <source>Hiányzik: Cím (URL) (OpenAI-kompatibilis). Add meg a saját szolgáltatód adatait a Beállításokban.</source>
-        <translation>Missing: Address (URL) (OpenAI-compatible). Enter your own provider&apos;s details in Settings.</translation>
-    </message>
-    <message>
-        <source>Szolgáltató beállítása</source>
-        <translation>Set up provider</translation>
-    </message>
-    <message>
-        <source>A szolgáltató beállítása után indítható.</source>
-        <translation>Can be started once a provider is set up.</translation>
-    </message>
-    <message>
-        <source>Összefoglaló készítése</source>
-        <translation>Creating summary</translation>
-    </message>
-    <message>
-        <source>Negyedéves partner-egyeztetés: támogatási igény, súgóoldalak, számlázás. A „Szúgó Pont” helyesen: SúgóPont.</source>
-        <translation>Quarterly partner sync: support demand, help pages, billing. “Shoe Go Point” is really SúgóPont.</translation>
-    </message>
-    <message>
-        <source>Negyedéves partner-egyeztetés: támogatási igény, súgóoldalak, számlázás.</source>
-        <translation>Quarterly partner sync: support demand, help pages, billing.</translation>
-    </message>
-    <message>
-        <source>Összefoglalás</source>
-        <translation>Summarising</translation>
-    </message>
-    <message>
-        <source>Jegyzetelés részenként</source>
-        <translation>Notes part by part</translation>
-    </message>
-    <message numerus="yes">
-        <source>%n rész kész</source>
-        <translation>
-            <numerusform>%n part done</numerusform>
-            <numerusform>%n parts done</numerusform>
-        </translation>
-    </message>
-    <message>
-        <source>%1/%2. rész</source>
-        <translation>Part %1/%2</translation>
-    </message>
-    <message numerus="yes">
-        <source> · %n korábbi futásból</source>
-        <translation>
-            <numerusform> · %n from an earlier run</numerusform>
-            <numerusform> · %n from an earlier run</numerusform>
-        </translation>
-    </message>
-    <message>
-        <source>Összegzés</source>
-        <translation>Summing up</translation>
-    </message>
-    <message>
-        <source>A szolgáltató nem válaszolt időben. Próbáld újra.</source>
-        <translation>The provider did not respond in time. Try again.</translation>
-    </message>
-    <message>
-        <source>A szolgáltatónál hiba történt. Próbáld újra később.</source>
-        <translation>The provider reported an error. Try again later.</translation>
-    </message>
-    <message>
-        <source>A modell 4096 tokenes kontextussal van betöltve, a kérés 6042 token volt — nem fér bele. A Tanara újra tudja tölteni az LM Studióban legalább 16 384 tokenes kontextussal, és újraindítja a feladatot.</source>
-        <translation>The model is loaded with a 4096-token context, the request was 6042 tokens — it does not fit. Tanara can reload it in LM Studio with a context of at least 16,384 tokens and restart the job.</translation>
-    </message>
-    <message>
-        <source>kérés 6042 token · kontextus 4096 token</source>
-        <translation>request 6042 tokens · context 4096 tokens</translation>
-    </message>
-    <message>
-        <source>A partnerek megerősítették, hogy a harmadik negyedévben a támogatási igény harmadával csökkent, főként az új súgóoldalak miatt. A súgót a többi termékre is kiterjesztik, de a számlázásnál előbb a folyamatot egyszerűsítik. A dokumentációs létszámbővítésről a költségvetés dönt.</source>
-        <translation>The partners confirmed that support demand dropped by a third in the third quarter, mainly thanks to the new help pages. The help pages will be extended to the other products, but for billing the process is simplified first. The documentation headcount increase is decided in the budget.</translation>
-    </message>
-    <message>
-        <source>[12:52] A súgóoldalakat a többi termékre is kiterjesztik.</source>
-        <translation>[12:52] The help pages are extended to the other products.</translation>
-    </message>
-    <message>
-        <source>[31:10] A számlázásnál előbb a folyamatot egyszerűsítik, utána a leírást.</source>
-        <translation>[31:10] For billing, the process is simplified first, then the documentation.</translation>
-    </message>
-    <message>
-        <source>[58:40] A dokumentációs létszámról a költségvetési tervezés dönt.</source>
-        <translation>[58:40] Documentation headcount is decided during budget planning.</translation>
-    </message>
-    <message>
-        <source>[43:30] Legyen-e nyomtatható változata a súgóoldalaknak?</source>
-        <translation>[43:30] Should the help pages have a printable version?</translation>
-    </message>
-    <message>
-        <source>[58:40] Bevonjanak-e átmenetileg külső szövegírót a dokumentációhoz?</source>
-        <translation>[58:40] Should an outside writer help with the documentation for a while?</translation>
-    </message>
-    <message>
-        <source>Mikorra frissül a partnerportál?</source>
-        <translation>When will the partner portal be updated?</translation>
-    </message>
-    <message>
-        <source>A súgóoldalak kiterjesztése a további termékekre: ütemterv</source>
-        <translation>Extending the help pages to the other products: schedule</translation>
-    </message>
-    <message>
-        <source>okt. 15.</source>
-        <translation>Oct 15</translation>
-    </message>
-    <message>
-        <source>Számlázási elakadási pontok összegyűjtése</source>
-        <translation>Collect the points where people get stuck in billing</translation>
-    </message>
-    <message>
-        <source>okt. 10.</source>
-        <translation>Oct 10</translation>
-    </message>
-    <message>
-        <source>Dokumentációs létszámigény a költségvetési tervbe</source>
-        <translation>Add documentation headcount to the budget plan</translation>
-    </message>
-    <message>
-        <source>okt. 20.</source>
-        <translation>Oct 20</translation>
-    </message>
-    <message>
-        <source>Új-ügyfél bontás elküldése a partnereknek</source>
-        <translation>Send the new-customer breakdown to the partners</translation>
-    </message>
-    <message>
-        <source>okt. 4.</source>
-        <translation>Oct 4</translation>
-    </message>
-    <message>
-        <source>Támogatási igény alakulása</source>
-        <translation>Support demand trend</translation>
-    </message>
-    <message>
-        <source>A jegyek száma harmadával csökkent, miközben az aktív felhasználók 12%-kal nőttek. A csökkenés fő oka a termékbe épített súgó.</source>
-        <translation>Tickets dropped by a third while active users grew by 12%. The main reason for the drop is the help built into the product.</translation>
-    </message>
-    <message>
-        <source>A súgóoldalakat a többi termékre is kiterjesztik.</source>
-        <translation>The help pages are extended to the other products.</translation>
-    </message>
-    <message>
-        <source>Legyen-e nyomtatható változata a súgóoldalaknak?</source>
-        <translation>Should the help pages have a printable version?</translation>
-    </message>
-    <message>
-        <source>Ütemterv a kiterjesztéshez</source>
-        <translation>Schedule for the rollout</translation>
-    </message>
-    <message>
-        <source>Számlázási folyamat</source>
-        <translation>Billing process</translation>
-    </message>
-    <message>
-        <source>A partnerek szerint a gond nem a leírás, hanem maga a folyamat: túl sok lépés, kevés visszajelzés.</source>
-        <translation>According to the partners the problem is not the documentation but the process itself: too many steps, too little feedback.</translation>
-    </message>
-    <message>
-        <source>Nyitás, napirend</source>
-        <translation>Opening, agenda</translation>
-    </message>
-    <message>
-        <source>A partnerek kérték, hogy a számlázás külön napirendi pont legyen.</source>
-        <translation>The partners asked for billing to be a separate agenda item.</translation>
-    </message>
-    <message>
-        <source>Támogatási jegyek alakulása</source>
-        <translation>Support tickets</translation>
-    </message>
-    <message>
-        <source>A jegyek száma harmadával csökkent az előző negyedévhez képest.</source>
-        <translation>The number of tickets fell by a third compared with the previous quarter.</translation>
-    </message>
-    <message>
-        <source>Az aktív felhasználók száma közben 12%-kal nőtt.</source>
-        <translation>Meanwhile the number of active users grew by 12%.</translation>
-    </message>
-    <message>
-        <source>A csökkenés nagyobb része a beállítási kérdéseknél jelentkezett.</source>
-        <translation>Most of the drop came from setup questions.</translation>
-    </message>
-    <message>
-        <source>A súgóoldalak hatása</source>
-        <translation>Effect of the help pages</translation>
-    </message>
-    <message>
-        <source>A partnerek ugyanezt tapasztalják a saját ügyfélszolgálatukon.</source>
-        <translation>The partners see the same at their own support desks.</translation>
-    </message>
-    <message>
-        <source>A súgót a többi termékre is kiterjesztik.</source>
-        <translation>The help is extended to the other products.</translation>
-    </message>
-    <message>
-        <source>A kiterjesztés sorrendje</source>
-        <translation>Order of the rollout</translation>
-    </message>
-    <message>
-        <source>Elsőként a riportmodul kap súgóoldalakat, utána az integrációk.</source>
-        <translation>The reporting module gets help pages first, then the integrations.</translation>
-    </message>
-    <message>
-        <source>Számlázási panaszok</source>
-        <translation>Billing complaints</translation>
-    </message>
-    <message>
-        <source>A számlázási jegyek száma nem csökkent; a panaszok fele a számla módosításáról szól.</source>
-        <translation>Billing tickets did not decrease; half of the complaints are about changing an invoice.</translation>
-    </message>
-    <message>
-        <source>Folyamat vagy dokumentáció</source>
-        <translation>Process or documentation</translation>
-    </message>
-    <message>
-        <source>Két partner a lépések számát tartja a fő gondnak.</source>
-        <translation>Two partners see the number of steps as the main problem.</translation>
-    </message>
-    <message>
-        <source>Abban maradtak, hogy előbb a folyamatot egyszerűsítik, utána a leírást.</source>
-        <translation>They agreed to simplify the process first, then the documentation.</translation>
-    </message>
-    <message>
-        <source>Elakadási pontok gyűjtése</source>
-        <translation>Collecting the sticking points</translation>
-    </message>
-    <message>
-        <source>A gyűjtéshez a jegyek címkéit és a munkamenet-felvételeket használják.</source>
-        <translation>They use the ticket tags and the session recordings for this.</translation>
-    </message>
-    <message>
-        <source>Új ügyfelek bevezetése</source>
-        <translation>Onboarding new customers</translation>
-    </message>
-    <message>
-        <source>Az új ügyfelek az első két hétben háromszor annyi jegyet nyitnak.</source>
-        <translation>New customers open three times as many tickets in their first two weeks.</translation>
-    </message>
-    <message>
-        <source>Bevezető levelek</source>
-        <translation>Welcome emails</translation>
-    </message>
-    <message>
-        <source>A bevezető levelek megnyitási aránya 40% alatt van.</source>
-        <translation>The open rate of the welcome emails is below 40%.</translation>
-    </message>
-    <message>
-        <source>Javaslat: a levelek a súgóoldalakra mutassanak, ne a dokumentációra.</source>
-        <translation>Proposal: the emails should link to the help pages, not the documentation.</translation>
-    </message>
-    <message>
-        <source>Partneri visszajelzések</source>
-        <translation>Partner feedback</translation>
-    </message>
-    <message>
-        <source>A partnerek a keresőt dicsérték, a nyomtatható változatot hiányolják.</source>
-        <translation>The partners praised the search and miss a printable version.</translation>
-    </message>
-    <message>
-        <source>Nyomtatható súgó</source>
-        <translation>Printable help</translation>
-    </message>
-    <message>
-        <source>Nem döntöttek; a nyomtatható változat igényét előbb felmérik.</source>
-        <translation>No decision; they first find out how much a printable version is needed.</translation>
-    </message>
-    <message>
-        <source>Dokumentációs kapacitás</source>
-        <translation>Documentation capacity</translation>
-    </message>
-    <message>
-        <source>A dokumentációs csapat két fővel dolgozik, ez a kiterjesztéshez kevés.</source>
-        <translation>The documentation team has two people, which is not enough for the rollout.</translation>
-    </message>
-    <message>
-        <source>Költségvetési keret</source>
-        <translation>Budget</translation>
-    </message>
-    <message>
-        <source>A létszámbővítés legkorábban a jövő évi tervben szerepelhet.</source>
-        <translation>More staff can be in next year’s plan at the earliest.</translation>
-    </message>
-    <message>
-        <source>Döntés a létszámról</source>
-        <translation>Decision on staffing</translation>
-    </message>
-    <message>
-        <source>A dokumentációs létszámról a költségvetési tervezés dönt.</source>
-        <translation>Budget planning decides on documentation staffing.</translation>
-    </message>
-    <message>
-        <source>Külső szövegíró</source>
-        <translation>Outside writer</translation>
-    </message>
-    <message>
-        <source>Átmeneti megoldásként felmerült egy külső szövegíró; nem döntöttek.</source>
-        <translation>An outside writer came up as a temporary solution; no decision.</translation>
-    </message>
-    <message>
-        <source>Mérőszámok</source>
-        <translation>Metrics</translation>
-    </message>
-    <message>
-        <source>A jegyszám mellett a megoldási időt is mérik; ez nem javult.</source>
-        <translation>Besides the ticket count they also measure resolution time; it did not improve.</translation>
-    </message>
-    <message>
-        <source>A következő negyedév céljai</source>
-        <translation>Goals for next quarter</translation>
-    </message>
-    <message>
-        <source>Cél a számlázási jegyek 20%-os csökkentése.</source>
-        <translation>The goal is 20% fewer billing tickets.</translation>
-    </message>
-    <message>
-        <source>Riportok a partnereknek</source>
-        <translation>Reports for the partners</translation>
-    </message>
-    <message>
-        <source>A partnerek havi bontású riportot kérnek a jegyekről.</source>
-        <translation>The partners ask for a monthly ticket report.</translation>
-    </message>
-    <message>
-        <source>A riport formája</source>
-        <translation>Report format</translation>
-    </message>
-    <message>
-        <source>A riport táblázatként megy ki, grafikon nélkül.</source>
-        <translation>The report goes out as a table, without charts.</translation>
-    </message>
-    <message>
-        <source>Partnerportál</source>
-        <translation>Partner portal</translation>
-    </message>
-    <message>
-        <source>A partnerportál frissítése a következő negyedévre csúszik.</source>
-        <translation>The partner portal update slips to next quarter.</translation>
-    </message>
-    <message>
-        <source>Kapcsolattartók</source>
-        <translation>Contacts</translation>
-    </message>
-    <message>
-        <source>Minden partnernél egy állandó kapcsolattartó lesz.</source>
-        <translation>Each partner gets one permanent contact person.</translation>
-    </message>
-    <message>
-        <source>Új-ügyfél bontás</source>
-        <translation>New-customer breakdown</translation>
-    </message>
-    <message>
-        <source>Nyitva maradt ügyek</source>
-        <translation>Open items</translation>
-    </message>
-    <message>
-        <source>Nyitva maradt a nyomtatható súgó és a külső szövegíró kérdése.</source>
-        <translation>The printable help and the outside writer remain open.</translation>
-    </message>
-    <message>
-        <source>Zárás</source>
-        <translation>Closing</translation>
-    </message>
-    <message>
-        <source>A következő partnertalálkozó januárban lesz.</source>
-        <translation>The next partner meeting is in January.</translation>
-    </message>
-    <message>
         <source>Elhangzott érvek</source>
         <translation>Arguments raised</translation>
     </message>
@@ -11864,170 +12147,6 @@
             <numerusform>from %n utterance</numerusform>
             <numerusform>from %n utterances</numerusform>
         </translation>
-    </message>
-    <message>
-        <source>Az első és legfontosabb: a támogatási jegyek száma harmadával csökkent, miközben az aktív felhasználók száma nagyjából tizenkét százalékkal nőtt.</source>
-        <translation>First and most important: the number of support tickets fell by a third while the number of active users grew by about twelve percent.</translation>
-    </message>
-    <message>
-        <source>Az összesre. Az újaknál még jobb az arány, de ott kicsi a minta.</source>
-        <translation>On the total. The ratio is even better for new users, but the sample is small there.</translation>
-    </message>
-    <message>
-        <source>A súgóoldalak júliusban mentek élesbe, és az első hat hétben a keresések kétharmada ott ért véget.</source>
-        <translation>The help pages went live in July, and in the first six weeks two thirds of searches ended there.</translation>
-    </message>
-    <message>
-        <source>Nálunk a beállítási kérdések szinte eltűntek, a számlázásiak viszont maradtak, főleg a Nordvik-ügyfeleknél.</source>
-        <translation>On our side, setup questions have almost disappeared, but the billing ones remain, mainly with Nordvik customers.</translation>
-    </message>
-    <message>
-        <source>Az első változatot megcsinálom a dokumentációs csapattal, október közepére.</source>
-        <translation>I&apos;ll do the first version with the documentation team, by mid-October.</translation>
-    </message>
-    <message>
-        <source>A negyedik negyedév elejére kell, különben a megújításnál újra előjön.</source>
-        <translation>It&apos;s needed by the start of the fourth quarter, otherwise it will come up again at the renewal.</translation>
-    </message>
-    <message>
-        <source>Akkor a súgóoldalakat a többi termékre is kiterjesztjük.</source>
-        <translation>Then we&apos;ll extend the help pages to the other products too.</translation>
-    </message>
-    <message>
-        <source>Én a számlázást javasolnám következő súgó-témának, ott a jegyek fele számlázási.</source>
-        <translation>I&apos;d suggest billing as the next help topic; half the tickets there are about billing.</translation>
-    </message>
-    <message>
-        <source>Vállalom, de két hét dokumentációs kapacitás kell hozzá.</source>
-        <translation>I&apos;ll take it, but it needs two weeks of documentation capacity.</translation>
-    </message>
-    <message>
-        <source>A számlázási kérdések felét a díjbekérők adják; ha azokat külön kezeljük, a maradék is eltűnhet.</source>
-        <translation>Half of the billing questions come from proforma invoices; if we handle those separately, the rest may disappear too.</translation>
-    </message>
-    <message>
-        <source>Ha a súgó nem lesz kész a negyedév elejére, a megújításnál újra előjön ugyanez.</source>
-        <translation>If the help center is not ready by the start of the quarter, the same issue will come up again at renewal.</translation>
-    </message>
-    <message>
-        <source>A Nordvik-tárgyalás pont akkor indul, addig kell valami kézzelfogható.</source>
-        <translation>The Nordvik negotiation starts right then, so we need something tangible by that time.</translation>
-    </message>
-    <message>
-        <source>A partnerportálon a leggyakoribb keresés a „számla letöltése”.</source>
-        <translation>The most common search on the partner portal is &quot;download invoice&quot;.</translation>
-    </message>
-    <message>
-        <source>És ki adja a dokumentációs kapacitást, ha közben a kiterjesztésen dolgoztok?</source>
-        <translation>And who provides the documentation capacity if you are working on the extension in the meantime?</translation>
-    </message>
-    <message>
-        <source>A díjbekérős kérdéseket érdemes lenne külön kezelni a súgóban.</source>
-        <translation>It would be worth handling the proforma invoice questions separately in the help.</translation>
-    </message>
-    <message>
-        <source>A nyomtatható változatot többen kérdezték, de nem tudom, megéri-e.</source>
-        <translation>Several people asked about the printable version, but I am not sure it is worth it.</translation>
-    </message>
-    <message>
-        <source>A létszámról a költségvetési tervezésnél döntünk.</source>
-        <translation>We&apos;ll decide on headcount during budget planning.</translation>
-    </message>
-    <message>
-        <source>A harmadik negyedévben a támogatási jegyek száma harmadával csökkent, miközben az aktív felhasználók száma 12%-kal nőtt.</source>
-        <translation>In the third quarter the number of support tickets fell by a third while the number of active users grew by 12%.</translation>
-    </message>
-    <message>
-        <source>A javulás fő oka a júliusban élesített súgóoldalak: az első hat hétben a keresések kétharmada ott ért véget.</source>
-        <translation>The main reason for the improvement is the help pages that went live in July: in the first six weeks two thirds of searches ended there.</translation>
-    </message>
-    <message>
-        <source>A partnerek oldalán a beállítási kérdések szinte eltűntek, a számlázási kérdések viszont maradtak, főleg a Nordvik-ügyfeleknél.</source>
-        <translation>On the partners&apos; side, setup questions have almost disappeared, but billing questions remain, mainly with Nordvik customers.</translation>
-    </message>
-    <message>
-        <source>A számlázási súgónak a negyedik negyedév elejére el kell készülnie, különben a megújításnál újra előjön a probléma.</source>
-        <translation>The billing help must be ready by the start of the fourth quarter, otherwise the problem will come up again at the renewal.</translation>
-    </message>
-    <message>
-        <source>A számlázásnál előbb a folyamatot egyszerűsítik, utána a leírást.</source>
-        <translation>For billing, the process is simplified first, then the documentation.</translation>
-    </message>
-    <message>
-        <source>Számlázási súgó első változata a dokumentációs csapattal</source>
-        <translation>First version of the billing help with the documentation team</translation>
-    </message>
-    <message>
-        <source>Díjbekérő-kérdések külön kezelése a súgóban</source>
-        <translation>Handle proforma invoice questions separately in the help</translation>
-    </message>
-    <message>
-        <source>okt. 22.</source>
-        <translation>Oct 22</translation>
-    </message>
-    <message>
-        <source>Ki adja a dokumentációs kapacitást, ha a csapat a negyedik negyedévben a súgó kiterjesztésén dolgozik?</source>
-        <translation>Who provides the documentation capacity if the team works on extending the help center in the fourth quarter?</translation>
-    </message>
-    <message>
-        <source>Megéri-e elkészíteni a súgó nyomtatható változatát?</source>
-        <translation>Is it worth producing a printable version of the help center?</translation>
-    </message>
-    <message>
-        <source>Nyitás, Q3 számok</source>
-        <translation>Opening, Q3 numbers</translation>
-    </message>
-    <message>
-        <source>Súgóoldalak</source>
-        <translation>Help pages</translation>
-    </message>
-    <message>
-        <source>A júliusban élesített súgóoldalak az első hat hétben a keresések kétharmadát lezárták.</source>
-        <translation>The help pages that went live in July closed two thirds of searches in the first six weeks.</translation>
-    </message>
-    <message>
-        <source>Számlázási súgó és a Nordvik-megújítás</source>
-        <translation>Billing help and the Nordvik renewal</translation>
-    </message>
-    <message>
-        <source>A partnerportál keresési adatai alapján a „számla letöltése” a leggyakoribb keresés.</source>
-        <translation>According to the partner portal search data, &quot;download invoice&quot; is the most common search.</translation>
-    </message>
-    <message>
-        <source>A negyedév számai jók, a számlázás külön napirendi pontot kapott.</source>
-        <translation>The quarter&apos;s numbers are good; billing got a separate agenda item.</translation>
-    </message>
-    <message>
-        <source>A díjbekérőkkel kapcsolatos kérdések a számlázási kérdések felét adják; külön kezelve a maradék is eltűnhet.</source>
-        <translation>Questions about proforma invoices make up half of the billing questions; handled separately, the rest may disappear too.</translation>
-    </message>
-    <message>
-        <source>Ha a súgó nem készül el a negyedév elejére, a megújítási tárgyalásokon újra előjön a probléma.</source>
-        <translation>If the help isn&apos;t ready by the start of the quarter, the problem will come up again in the renewal talks.</translation>
-    </message>
-    <message>
-        <source>A díjbekérős kérdéseket külön kezelik a súgóban.</source>
-        <translation>Proforma invoice questions will be handled separately in the help.</translation>
-    </message>
-    <message>
-        <source>Nordvik-megújítás</source>
-        <translation>Nordvik renewal</translation>
-    </message>
-    <message>
-        <source>A Nordvik-szerződés megújítása a számlázási súgón múlik.</source>
-        <translation>Renewing the Nordvik contract depends on the billing help.</translation>
-    </message>
-    <message>
-        <source>A tárgyalás a negyedik negyedév elején indul.</source>
-        <translation>Negotiations start at the beginning of the fourth quarter.</translation>
-    </message>
-    <message>
-        <source>Költségvetés</source>
-        <translation>Budget</translation>
-    </message>
-    <message>
-        <source>Lezárás, teendők</source>
-        <translation>Wrap-up, action items</translation>
     </message>
 </context>
 <context>
@@ -12186,66 +12305,6 @@
     <message>
         <source>%1 vár</source>
         <translation>%1 waiting</translation>
-    </message>
-    <message>
-        <source>Támogatási igény alakulása</source>
-        <translation>Support demand trend</translation>
-    </message>
-    <message>
-        <source>Jegyszám, felhasználónkénti arány, okok</source>
-        <translation>Ticket count, per-user ratio, causes</translation>
-    </message>
-    <message>
-        <source>A jegyek száma harmadával csökkent, miközben az aktív felhasználók 12%-kal nőttek. A csökkenés fő oka a termékbe épített súgó; a partnerek ugyanezt tapasztalják.</source>
-        <translation>Tickets dropped by a third while active users grew by 12%. The main reason for the drop is the help built into the product; the partners are seeing the same.</translation>
-    </message>
-    <message>
-        <source>A súgóoldalakat a többi termékre is kiterjesztik.</source>
-        <translation>The help pages are extended to the other products.</translation>
-    </message>
-    <message>
-        <source>Legyen-e nyomtatható változata a súgóoldalaknak?</source>
-        <translation>Should the help pages have a printable version?</translation>
-    </message>
-    <message>
-        <source>Súgóoldalak kiterjesztése</source>
-        <translation>Extending the help pages</translation>
-    </message>
-    <message>
-        <source>Melyik termékre, milyen sorrendben</source>
-        <translation>Which products, in what order</translation>
-    </message>
-    <message>
-        <source>A beállítási oldalak mintáját viszik tovább. A számlázás előtt a folyamatot egyszerűsítik.</source>
-        <translation>The pattern of the settings pages is carried over. For billing, the process is simplified first.</translation>
-    </message>
-    <message>
-        <source>Számlázási folyamat</source>
-        <translation>Billing process</translation>
-    </message>
-    <message>
-        <source>Termék vagy dokumentáció a gond?</source>
-        <translation>Is the problem the product or the documentation?</translation>
-    </message>
-    <message>
-        <source>Dokumentációs kapacitás</source>
-        <translation>Documentation capacity</translation>
-    </message>
-    <message>
-        <source>Létszámigény és költségvetés</source>
-        <translation>Headcount need and budget</translation>
-    </message>
-    <message>
-        <source>A szolgáltató időtúllépés miatt megszakította.</source>
-        <translation>The provider aborted it due to a timeout.</translation>
-    </message>
-    <message>
-        <source>Következő negyedév mérőszámai</source>
-        <translation>Next quarter&apos;s metrics</translation>
-    </message>
-    <message>
-        <source>Mit és hogyan mérünk</source>
-        <translation>What we measure and how</translation>
     </message>
 </context>
 <context>

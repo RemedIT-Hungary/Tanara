@@ -8,6 +8,7 @@
 #include "RecorderServicesFacade.h"
 #include "RecorderViewModel.h"
 #include "ShellMeetingModel.h"
+#include "SummaryServicesFacade.h"
 #include "TrackActivitySource.h"
 
 #include "demo/ImportDemoFacade.h"
@@ -22,6 +23,7 @@
 #include "demo/ParticipantsDemoFacade.h"
 #include "demo/PeopleDemoFacade.h"
 #include "demo/TagDemoBackend.h"
+#include "demo/SummaryDemoFacade.h"
 
 #include "tanara/app/AppController.h"
 #include "tanara/app/Services.h"
@@ -951,6 +953,9 @@ const UiServices& AppContext::demoServices()
         m_demoServices->participants = [](QObject* parent) -> tanara::editing::IParticipantsFacade* {
             return new tanara_demo::ParticipantsDemoFacade(parent);
         };
+        m_demoServices->summary = [](const QString& scenario, QObject* parent) -> tanara::processing::ISummaryFacade* {
+            return new tanara_demo::SummaryDemoFacade(scenario, parent);
+        };
     }
     return *m_demoServices;
 }
@@ -1027,6 +1032,27 @@ const UiServices& AppContext::servicesFor(tanara::app::AppController* c)
     auto* participants = new ParticipantsServicesFacade(qd, c);
     set.participants = [participants](QObject*) -> tanara::editing::IParticipantsFacade* { return participants; };
 
+    // The summary tab. What is still on the controller facade (gating, speaker editor, stale
+    // information, targeted statements) comes in as hooks; its remaining signals are forwarded here.
+    SummaryServicesFacade::Deps sd;
+    sd.summaries = &sv->summarization();
+    sd.jobs = c->jobs();
+    sd.store = c->store();
+    sd.settings = c->settings();
+    sd.noteController = c;
+    sd.hooks.canRun = [c](const QString& id) { return c->canRun(tanara::providers::WorkflowStep::Summarize, id); };
+    sd.hooks.usesCloud = [c] { return c->usesCloud(tanara::providers::WorkflowStep::Summarize); };
+    sd.hooks.speakerEditor = [c](const QString& id) { return c->speakerEditor(id); };
+    sd.hooks.staleOfMeeting = [c](const tanara::Meeting& m) { return c->summaryStale(m); };
+    sd.hooks.staleOfId = [c](const QString& id) { return c->summaryStale(id); };
+    sd.hooks.statements = [c](const QString& id) { return c->summaryStatements(id); };
+    sd.hooks.dismissStale = [c](const QString& id) { c->dismissSummaryStale(id); };
+    auto* summary = new SummaryServicesFacade(sd, c);
+    connect(c, &tanara::app::AppController::summaryStaleChanged, summary, &SummaryServicesFacade::reportChanged);
+    connect(c, &tanara::app::AppController::transcriptReady, summary,
+            [summary](const QString& id, const QString&) { summary->reportChanged(id); });
+    connect(c, &tanara::app::AppController::speakerMapChanged, summary, &SummaryServicesFacade::reportSpeakersChanged);
+    set.summary = [summary](const QString&, QObject*) -> tanara::processing::ISummaryFacade* { return summary; };
     connect(c, &QObject::destroyed, this, [this, c] { m_realServices.erase(c); });
     return m_realServices.emplace(c, std::move(set)).first->second;
 }

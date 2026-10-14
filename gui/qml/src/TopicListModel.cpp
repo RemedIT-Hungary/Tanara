@@ -2,10 +2,7 @@
 
 #include "JobSupport.h"
 
-#include "tanara/app/AppController.h"
-
 #include <QHash>
-#include <QUuid>
 
 namespace tanara_qml {
 
@@ -149,22 +146,22 @@ void TopicListModel::clear()
     emit countsChanged();
 }
 
-void TopicListModel::bind(app::AppController* controller, const QString& meetingId)
+void TopicListModel::bind(processing::ISummaryFacade* facade, const QString& meetingId)
 {
-    if (controller != m_controller) {
+    if (facade != m_facade) {
         for (const QMetaObject::Connection& c : std::as_const(m_connections))
             disconnect(c);
         m_connections.clear();
-        m_controller = controller;
-        if (controller) {
-            auto mine = [this](const QString& id) { return !m_meetingId.isEmpty() && id == m_meetingId; };
-            m_connections << connect(controller, &app::AppController::topicsChanged, this,
+        m_facade = facade;
+        if (facade) {
+            auto mine = [this](const QString& id) { return id == m_meetingId; };
+            m_connections << connect(facade, &processing::ISummaryFacade::topicsChanged, this,
                                      [this, mine](const QString& id) { if (mine(id)) sync(); });
-            m_connections << connect(controller, &app::AppController::topicStatusChanged, this,
+            m_connections << connect(facade, &processing::ISummaryFacade::topicStatusChanged, this,
                                      [this, mine](const QString& id, const QString&) { if (mine(id)) sync(); });
-            m_connections << connect(controller, &app::AppController::topicAnalysisReady, this,
+            m_connections << connect(facade, &processing::ISummaryFacade::topicAnalysisReady, this,
                                      [this, mine](const QString& id, const TopicAnalysis&) { if (mine(id)) sync(); });
-            m_connections << connect(controller, &app::AppController::topicAnalysisFailed, this,
+            m_connections << connect(facade, &processing::ISummaryFacade::topicAnalysisFailed, this,
                                      [this, mine](const QString& id, const QString&, const QString&) { if (mine(id)) sync(); });
         }
     }
@@ -182,13 +179,13 @@ void TopicListModel::bind(app::AppController* controller, const QString& meeting
 void TopicListModel::sync()
 {
     QVector<Item> fresh;
-    if (m_controller && !m_meetingId.isEmpty()) {
-        const QVector<SummaryTopic> topics = m_controller->meetingTopics(m_meetingId);
+    if (m_facade) {
+        const QVector<SummaryTopic> topics = m_facade->topics(m_meetingId);
         QHash<QString, TopicStatus> statuses;
-        for (const TopicStatus& s : m_controller->topicStatuses(m_meetingId))
+        for (const TopicStatus& s : m_facade->topicStatuses(m_meetingId))
             statuses.insert(s.topicId, s);
         QHash<QString, TopicAnalysis> analyses;
-        for (const TopicAnalysis& a : m_controller->topicAnalyses(m_meetingId))
+        for (const TopicAnalysis& a : m_facade->topicAnalyses(m_meetingId))
             analyses.insert(a.topicId, a);
         fresh.reserve(topics.size());
         for (const SummaryTopic& t : topics) {
@@ -251,8 +248,8 @@ QVector<SummaryTopic> TopicListModel::topicList() const
 
 void TopicListModel::persist()
 {
-    if (m_controller && !m_meetingId.isEmpty())
-        m_controller->setMeetingTopics(m_meetingId, topicList());   // → topicsChanged → sync()
+    if (m_facade)
+        m_facade->setTopics(m_meetingId, topicList());   // → topicsChanged → sync()
     else
         emit countsChanged();
 }
@@ -262,22 +259,14 @@ bool TopicListModel::addTopic(const QString& title, const QString& summary)
     const QString t = title.trimmed();
     if (t.isEmpty())
         return false;
+    if (!m_facade)
+        return false;
     SummaryTopic topic;
     topic.title = t;
     topic.summary = summary.trimmed();
-    if (m_controller && !m_meetingId.isEmpty()) {
-        QVector<SummaryTopic> list = topicList();
-        list.append(topic);                               // the core provides the id
-        m_controller->setMeetingTopics(m_meetingId, list);
-        return true;
-    }
-    topic.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
-    beginInsertRows(QModelIndex(), int(m_items.size()), int(m_items.size()));
-    Item it;
-    it.topic = topic;
-    m_items.append(it);
-    endInsertRows();
-    emit countsChanged();
+    QVector<SummaryTopic> list = topicList();
+    list.append(topic);                               // the facade provides the id
+    m_facade->setTopics(m_meetingId, list);
     return true;
 }
 
@@ -312,9 +301,9 @@ void TopicListModel::removeTopic(int row)
     if (row < 0 || row >= m_items.size())
         return;
     // The running / queued analysis is stopped first, so no call goes to the deleted topic.
-    if (m_controller && (m_items[row].state == TopicState::Running
-                         || m_items[row].state == TopicState::Queued))
-        m_controller->cancelTopicAnalysis(m_meetingId, m_items[row].topic.id);
+    if (m_facade && (m_items[row].state == TopicState::Running
+                     || m_items[row].state == TopicState::Queued))
+        m_facade->cancelTopic(m_meetingId, m_items[row].topic.id);
     beginRemoveRows(QModelIndex(), row, row);
     m_items.removeAt(row);
     endRemoveRows();
@@ -334,58 +323,14 @@ void TopicListModel::moveTopic(int from, int to)
 
 void TopicListModel::cancelTopic(int row)
 {
-    if (row < 0 || row >= m_items.size() || !m_controller)
+    if (row < 0 || row >= m_items.size() || !m_facade)
         return;
-    m_controller->cancelTopicAnalysis(m_meetingId, m_items[row].topic.id);
+    m_facade->cancelTopic(m_meetingId, m_items[row].topic.id);
 }
 
 QString TopicListModel::topicIdAt(int row) const
 {
     return row >= 0 && row < m_items.size() ? m_items[row].topic.id : QString();
-}
-
-// Fictional sample data.
-void TopicListModel::loadDemo()
-{
-    for (const QMetaObject::Connection& c : std::as_const(m_connections))
-        disconnect(c);
-    m_connections.clear();
-    m_controller = nullptr;
-    m_meetingId.clear();
-
-    auto make = [](const char* id, const QString& title, const QString& summary, TopicState st) {
-        Item it;
-        it.topic = SummaryTopic{QString::fromLatin1(id), title, summary};
-        it.state = st;
-        return it;
-    };
-    QVector<Item> items;
-    Item a = make("demo-1", tr("Támogatási igény alakulása"),
-                  tr("Jegyszám, felhasználónkénti arány, okok"), TopicState::Done);
-    a.hasResult = true;
-    a.result.detail = tr("A jegyek száma harmadával csökkent, miközben az aktív felhasználók 12%-kal "
-                         "nőttek. A csökkenés fő oka a termékbe épített súgó; a partnerek ugyanezt "
-                         "tapasztalják.");
-    a.result.decisions = QStringList{tr("A súgóoldalakat a többi termékre is kiterjesztik.")};
-    a.result.openQuestions = QStringList{tr("Legyen-e nyomtatható változata a súgóoldalaknak?")};
-    Item b = make("demo-2", tr("Súgóoldalak kiterjesztése"),
-                  tr("Melyik termékre, milyen sorrendben"), TopicState::Done);
-    b.hasResult = true;
-    b.result.detail = tr("A beállítási oldalak mintáját viszik tovább. A számlázás előtt a folyamatot "
-                         "egyszerűsítik.");
-    Item c = make("demo-3", tr("Számlázási folyamat"), tr("Termék vagy dokumentáció a gond?"),
-                  TopicState::Running);
-    Item d = make("demo-4", tr("Dokumentációs kapacitás"), tr("Létszámigény és költségvetés"),
-                  TopicState::Failed);
-    d.error = tr("A szolgáltató időtúllépés miatt megszakította.");
-    Item e = make("demo-5", tr("Következő negyedév mérőszámai"), tr("Mit és hogyan mérünk"),
-                  TopicState::Waiting);
-    items << a << b << c << d << e;
-
-    beginResetModel();
-    m_items = items;
-    endResetModel();
-    emit countsChanged();
 }
 
 } // namespace tanara_qml

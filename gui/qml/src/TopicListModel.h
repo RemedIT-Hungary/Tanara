@@ -5,24 +5,21 @@
 //
 // The disk is the truth (summary.topics.json + summary.analyses.json + the leftover errors),
 // so after a restart it continues where it left off. Every edit (add, rewrite, delete,
-// reorder) persists immediately through AppController::setMeetingTopics. On the core's
-// signals (topicsChanged / topicStatusChanged / topicAnalysisReady) it refreshes PER ROW:
-// with an unchanged topic order only dataChanged goes out, a full reset only on an unknown reorder.
+// reorder) persists immediately through ISummaryFacade::setTopics. On the facade's signals
+// (topicsChanged / topicStatusChanged / topicAnalysisReady) it refreshes PER ROW: with an
+// unchanged topic order only dataChanged goes out, a full reset only on an unknown reorder.
 //
-// SummaryViewModel owns it (from QML: summaryVm.topics); without a controller it works with
-// fictional sample data, and editing then happens in memory only.
+// SummaryViewModel owns it (from QML: summaryVm.topics); with the fictional facade it works with
+// sample data, and editing then happens in the fixture's memory.
 //
 #include "tanara/domain/Types.h"
 #include "tanara/domain/Job.h"
+#include "tanara/processing/summary/ISummaryFacade.h"
 
 #include <QAbstractListModel>
 #include <QPointer>
 #include <QVector>
 #include <QtQml/qqmlregistration.h>
-
-namespace tanara {
-namespace app { class AppController; }
-}
 
 namespace tanara_qml {
 
@@ -71,9 +68,8 @@ public:
     int doneCount() const;
     bool busy() const;
 
-    // Sets the source: real (controller + meeting) or demo (controller == nullptr).
-    void bind(tanara::app::AppController* controller, const QString& meetingId);
-    void loadDemo();
+    // Sets the source: the facade and the meeting (nullptr facade: no topics).
+    void bind(tanara::processing::ISummaryFacade* facade, const QString& meetingId);
     void clear();
 
     // Editing: all persist immediately. With an empty title nothing happens (false).
@@ -108,7 +104,7 @@ private:
     void persist();              // saves the current order (setMeetingTopics)
     QVector<tanara::SummaryTopic> topicList() const;
 
-    QPointer<tanara::app::AppController> m_controller;
+    QPointer<tanara::processing::ISummaryFacade> m_facade;
     QList<QMetaObject::Connection> m_connections;
     QString m_meetingId;
     QVector<Item> m_items;

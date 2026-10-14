@@ -9,7 +9,7 @@
 // (--demo) modes an AppController is INTENTIONALLY not created (so the user's data is not
 // touched), and in the tests/ui tests it is not mandatory either. services() then (and with
 // App.demo) hands out the fictional facades of tanara_demo, so view models never branch on it.
-// View models ported to facades (the recorder, the people / tag / participant models) take them in
+// View models ported to facades (the recorder, the people / tag / participant models, the Summary tab) take them in
 // their constructor (the QML default constructors take services()); the rest still read
 // controller() until their P15 sub-slice.
 //

@@ -2,6 +2,7 @@
 // on an isolated TANARA_HOME with a fake LLM server (no real provider call): saving into its own
 // meeting even on a selection change, template suggestions, replace / append, the "the note
 // changed since" indicator, detected call. All names and words are made up.
+#include "AppContext.h"
 #include "JobTestSupport.h"
 #include "MeetingNoteModel.h"
 #include "PreTranscriptViewModel.h"
@@ -16,6 +17,14 @@ using namespace tanara;
 using tanara_qml::MeetingNoteModel;
 using tanara_qml::PreTranscriptViewModel;
 using tanara_qml::SummaryViewModel;
+
+namespace {
+// The real summary facade of a sandbox controller (what the hosts hand to the view model).
+tanara::processing::ISummaryFacade* summaryFacade(tanara::app::AppController* c)
+{
+    return tanara_qml::AppContext::instance()->servicesFor(c).summary(QString(), nullptr);
+}
+} // namespace
 
 namespace {
 
@@ -73,8 +82,7 @@ private slots:
         const Meeting a = sb.transcribed(QStringLiteral("Nordvik heti meeting"));
         const Meeting b = sb.transcribed(QStringLiteral("Lantos árazás"));
 
-        SummaryViewModel vm;
-        vm.setController(sb.app.get());
+        SummaryViewModel vm(summaryFacade(sb.app.get()));
         vm.setMeetingId(a.id);
         MeetingNoteModel* note = vm.note();
         QCOMPARE(note->meetingId(), a.id);
@@ -173,8 +181,7 @@ private slots:
         const Meeting m = sb.transcribed(QStringLiteral("Nordvik heti meeting"));
         sb.app->setMeetingContextNote(m.id, QStringLiteral("A „Nordwig” helyesen: Nordvik."));
 
-        SummaryViewModel vm;
-        vm.setController(sb.app.get());
+        SummaryViewModel vm(summaryFacade(sb.app.get()));
         vm.setMeetingId(m.id);
         QCOMPARE(vm.view(), QStringLiteral("empty"));
         QVERIFY(!vm.noteChangedSinceSummary());
