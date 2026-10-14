@@ -297,6 +297,11 @@ private slots:
             QCOMPARE(p.durationMs(), 42000);
             // No mixdown: the largest ACTIVE track (a dropped one does not count).
             QCOMPARE(QFileInfo(p.audioPath()).fileName(), QStringLiteral("track_loop.ogg"));
+            // The bar names the fallback track and says there is no mixdown.
+            QVERIFY(!p.sourceIsMixdown());
+            QVERIFY2(p.sourceLabel().endsWith(QStringLiteral(" · nincs lekeverés")), qPrintable(p.sourceLabel()));
+            QVERIFY(p.sourceLabel().size() > QStringLiteral(" · nincs lekeverés").size());
+            QSignalSpy labelSpy(&p, &PlayerController::sourceLabelChanged);
 
             // The mixdown is finished: the source switches to it.
             write(QStringLiteral("mixdown.mp3"), 300);
@@ -305,11 +310,16 @@ private slots:
             emit app.mixdownUpdated(m.id, true);
             QCOMPARE(QFileInfo(p.audioPath()).fileName(), QStringLiteral("mixdown.mp3"));
             QVERIFY(availability.count() >= 2);
+            QVERIFY(p.sourceIsMixdown());
+            QCOMPARE(p.sourceLabel(), QStringLiteral("lekevert hang"));
+            QCOMPARE(labelSpy.count(), 1);
 
             // A meeting without audio: not playable.
             const tanara::Meeting empty = app.store()->createMeeting(QStringLiteral("Üres"));
             p.setMeetingId(empty.id);
             QVERIFY(!p.available());
+            QCOMPARE(p.sourceLabel(), QStringLiteral("nincs hang"));
+            QVERIFY(!p.sourceIsMixdown());
             p.play();
             QVERIFY(!p.playing());
         }

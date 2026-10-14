@@ -10,7 +10,7 @@ Item {
     id: root
 
     property var player: null                // PlayerController or null
-    property string label: qsTr("lekevert hang")
+    property string label: qsTr("lekevert hang")   // standalone default; with a player, its sourceLabel wins
     property bool showSlider: true
     property string hint: ""
     property bool lineSteps: false
@@ -19,6 +19,9 @@ Item {
 
     readonly property bool available: player ? player.available : true
     readonly property bool playing: player ? player.playing : false
+    readonly property string sourceLabel: player && player.sourceLabel !== undefined && player.sourceLabel !== ""
+                                          ? player.sourceLabel : label
+    readonly property bool sourceIsMixdown: player && player.sourceIsMixdown !== undefined ? player.sourceIsMixdown : true
     readonly property int positionMs: player ? player.positionMs : 0
     readonly property int durationMs: player ? player.durationMs : 1834000
     // Map dock tests may pass a simple fake player: missing fields fall back to defaults.
@@ -78,11 +81,17 @@ Item {
         }
         TLabel {
             visible: text !== ""
-            text: root.player && root.player.previewPath ? qsTr("sáv-előnézet") : root.showSlider ? root.label : root.hint
+            text: root.player && root.player.previewPath ? qsTr("sáv-előnézet") : root.showSlider ? root.sourceLabel : root.hint
             Layout.fillWidth: !root.showSlider
             elide: Text.ElideRight
             muted: true
             font.pixelSize: Theme.fontCaption
+            HoverHandler { id: sourceHover }
+            TToolTip {
+                visible: sourceHover.hovered && root.showSlider && !root.sourceIsMixdown && root.available
+                delay: 300
+                text: qsTr("Ehhez a megbeszéléshez nincs lekevert hang, ezért egyetlen sáv szól.")
+            }
         }
         ShellSlider {
             id: seek

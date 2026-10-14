@@ -2781,6 +2781,10 @@
         <translation>track preview</translation>
     </message>
     <message>
+        <source>Ehhez a megbeszéléshez nincs lekevert hang, ezért egyetlen sáv szól.</source>
+        <translation>This meeting has no mixed audio, so a single track plays instead.</translation>
+    </message>
+    <message>
         <source>Pozíció</source>
         <translation>Position</translation>
     </message>
@@ -11133,6 +11137,18 @@
 </context>
 <context>
     <name>tanara_qml::PlayerController</name>
+    <message>
+        <source>lekevert hang</source>
+        <translation>mixed audio</translation>
+    </message>
+    <message>
+        <source>nincs hang</source>
+        <translation>no audio</translation>
+    </message>
+    <message>
+        <source>%1 · nincs lekeverés</source>
+        <translation>%1 · no mix</translation>
+    </message>
     <message>
         <source>A hangfájl nem található: %1</source>
         <translation>Audio file not found: %1</translation>

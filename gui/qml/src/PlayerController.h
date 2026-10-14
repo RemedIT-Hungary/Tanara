@@ -54,6 +54,10 @@ class PlayerController : public QObject {
     Q_PROPERTY(int previewDurationMs READ previewDurationMs NOTIFY previewDurationMsChanged)
     // Absolute path of the audio file being played (mixdown or fallback track); empty if none.
     Q_PROPERTY(QString audioPath READ audioPath NOTIFY availableChanged)
+    // What the bar says is playing: "lekevert hang" (mixdown), "<track name> · nincs lekeverés"
+    // (fallback track) or "nincs hang"; sourceIsMixdown is false for the latter two.
+    Q_PROPERTY(QString sourceLabel READ sourceLabel NOTIFY sourceLabelChanged)
+    Q_PROPERTY(bool sourceIsMixdown READ sourceIsMixdown NOTIFY sourceIsMixdownChanged)
     // The track preview (playTrack): the logical track's leading id (empty = no track plays) and
     // the playhead in MEETING time.
     Q_PROPERTY(QString previewTrackId READ previewTrackId NOTIFY previewPathChanged)
@@ -100,6 +104,8 @@ public:
     int previewPositionMs() const { return int(m_previewPositionMs); }
     int previewDurationMs() const { return int(m_previewDurationMs); }
     QString audioPath() const { return m_mixPath; }
+    QString sourceLabel() const { return m_sourceLabel; }
+    bool sourceIsMixdown() const { return m_sourceIsMixdown; }
     QString previewTrackId() const { return m_previewTrackId; }
     int previewMeetingMs() const { return int(m_previewOffsetMs + m_previewPositionMs); }
 
@@ -127,6 +133,8 @@ public:
 signals:
     void meetingIdChanged();
     void availableChanged();
+    void sourceLabelChanged();
+    void sourceIsMixdownChanged();
     void playingChanged();
     void positionMsChanged();
     void durationMsChanged();
@@ -163,6 +171,8 @@ private:
 
     QString m_meetingId;
     QString m_mixPath;          // the meeting's audio (empty: demo / none)
+    QString m_sourceLabel = QStringLiteral("lekevert hang");   // replaced by the tr() text in resolveSource()
+    bool m_sourceIsMixdown = true;
     bool m_mixLoaded = false;   // the engine currently holds the meeting's audio (not a preview)
     bool m_available = false;
     bool m_playing = false;

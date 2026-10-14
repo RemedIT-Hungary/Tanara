@@ -93,12 +93,17 @@ private:
 // largest ACTIVE track that runs from the recording's start (startOffsetMs == 0): segment
 // timestamps are in meeting time, so only such a track is time-correct. If there is none,
 // the largest active track (plays shifted, but at least audible).
-QString meetingAudioPath(const tanara::Meeting& m)
+struct AudioSource {
+    QString path;
+    QString trackId;    // empty: the mixdown (or no source)
+};
+
+AudioSource meetingAudioSource(const tanara::Meeting& m)
 {
     const QString mixdown = QDir(m.folder).filePath(tanara::library::MeetingLayout::mixdownOf(m));
     if (QFileInfo::exists(mixdown))
-        return mixdown;
-    QString best;
+        return {mixdown, QString()};
+    QString best, bestId;
     qint64 bestSize = -1;
     bool bestAligned = false;
     for (const tanara::Track& t : m.tracks) {
@@ -110,9 +115,10 @@ QString meetingAudioPath(const tanara::Meeting& m)
             bestSize = fi.size();
             bestAligned = aligned;
             best = fi.absoluteFilePath();
+            bestId = t.id;
         }
     }
-    return best;
+    return {best, bestId};
 }
 
 } // namespace
@@ -231,6 +237,8 @@ void PlayerController::setMeetingId(const QString& id)
 void PlayerController::resolveSource()
 {
     QString path;
+    QString label = tr("lekevert hang");
+    bool mixdown = true;
     qint64 duration = 0;
     bool available = false;
     if (!m_meetingId.isEmpty()) {
@@ -238,12 +246,32 @@ void PlayerController::resolveSource()
         if (!m.id.isEmpty()) {
             duration = m.durationMs;
             if (live()) {
-                path = meetingAudioPath(m);
+                const AudioSource src = meetingAudioSource(m);
+                path = src.path;
                 available = !path.isEmpty();
+                if (!available) {
+                    label = tr("nincs hang");
+                    mixdown = false;
+                } else if (!src.trackId.isEmpty()) {
+                    // No mixdown: name the track that plays instead, as the Tracks tab does.
+                    QString name = src.trackId;
+                    for (const tanara::library::TrackView& v : tanara::library::TrackCatalog::tracks(m))
+                        if (v.track.id == src.trackId) { name = v.displayName; break; }
+                    label = tr("%1 · nincs lekeverés").arg(name);
+                    mixdown = false;
+                }
             } else {
                 available = true;   // fictional: the silent engine "plays" over the meeting's length
             }
         }
+    }
+    if (label != m_sourceLabel) {
+        m_sourceLabel = label;
+        emit sourceLabelChanged();
+    }
+    if (mixdown != m_sourceIsMixdown) {
+        m_sourceIsMixdown = mixdown;
+        emit sourceIsMixdownChanged();
     }
     const bool pathChanged = path != m_mixPath;
     m_mixPath = path;
