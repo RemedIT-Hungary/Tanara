@@ -105,11 +105,11 @@ private slots:
         const auto camp = *processing::VoiceModelRegistry::spec(QStringLiteral("campplus"));
         const QStringList enabled{"wespeaker-resnet34-lm", "campplus", "nincs-ilyen"};
         QVERIFY(processing::VoiceModelRegistry::active(enabled, meta.path(), QString()).isEmpty());
-        touch(QDir(meta.path()).filePath("models/" + we.fileName));
+        touch(QDir(meta.path()).filePath(we.fileName));
         QCOMPARE(processing::VoiceModelRegistry::active(enabled, meta.path(), QString()).size(), 1);
-        touch(QDir(meta.path()).filePath("models/" + camp.fileName));
+        touch(QDir(meta.path()).filePath(camp.fileName));
         // eres2netv2's file exists but it is not switched on, so it is left out.
-        touch(QDir(meta.path()).filePath("models/3dspeaker_speech_eres2netv2_sv_zh-cn_16k-common.onnx"));
+        touch(QDir(meta.path()).filePath("3dspeaker_speech_eres2netv2_sv_zh-cn_16k-common.onnx"));
         const auto act = processing::VoiceModelRegistry::active(enabled, meta.path(), QString());
         QCOMPARE(act.size(), 2);
         QCOMPARE(act[0].id, QStringLiteral("campplus"));           // alphabetical order
@@ -135,13 +135,13 @@ private slots:
         QVERIFY(processing::VoiceModelRegistry::active(enabled, meta.path(), QString()).isEmpty());
         QVERIFY(!processing::VoiceModelRegistry::isFallbackActive(enabled, meta.path(), QString()));
         // Only the campplus file exists: ["campplus"] as a fallback.
-        touch(QDir(meta.path()).filePath("models/" + processing::VoiceModelRegistry::spec("campplus")->fileName));
+        touch(QDir(meta.path()).filePath(processing::VoiceModelRegistry::spec("campplus")->fileName));
         const auto fb = processing::VoiceModelRegistry::active(enabled, meta.path(), QString());
         QCOMPARE(fb.size(), 1);
         QCOMPARE(fb[0].id, QStringLiteral("campplus"));
         QVERIFY(processing::VoiceModelRegistry::isFallbackActive(enabled, meta.path(), QString()));
         // WeSpeaker arrives: it runs alone, the fallback switches off.
-        touch(QDir(meta.path()).filePath("models/" + processing::VoiceModelRegistry::spec("wespeaker-resnet34-lm")->fileName));
+        touch(QDir(meta.path()).filePath(processing::VoiceModelRegistry::spec("wespeaker-resnet34-lm")->fileName));
         const auto ok = processing::VoiceModelRegistry::active(enabled, meta.path(), QString());
         QCOMPARE(ok.size(), 1);
         QCOMPARE(ok[0].id, QStringLiteral("wespeaker-resnet34-lm"));

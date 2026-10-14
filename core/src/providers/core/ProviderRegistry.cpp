@@ -1,4 +1,5 @@
 #include "tanara/providers/core/ProviderRegistry.h"
+#include "tanara/providers/core/ProviderConfig.h"
 
 namespace tanara::providers {
 

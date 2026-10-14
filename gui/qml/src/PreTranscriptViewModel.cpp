@@ -1,4 +1,5 @@
 #include "PreTranscriptViewModel.h"
+#include "tanara/providers/core/ProviderConfig.h"
 
 #include "DemoText.h"
 

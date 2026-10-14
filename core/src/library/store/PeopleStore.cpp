@@ -1,6 +1,6 @@
 #include "tanara/library/store/PeopleStore.h"
 #include "tanara/foundation/log/Logging.h"
-#include "tanara/foundation/paths/Paths.h"
+#include "tanara/foundation/paths/AppPaths.h"
 
 #include <QDateTime>
 #include <QDir>
@@ -95,7 +95,7 @@ bool setAsideAs(const QString& path, const QString& suffix)
 PeopleStore::PeopleStore(const QString& filePath)
 {
     m_filePath = filePath.isEmpty()
-        ? paths::metadataFile(QStringLiteral("people.json"))
+        ? paths::current().dataFile(paths::files::People)
         : filePath;
     load();
     migrateIfNeeded();

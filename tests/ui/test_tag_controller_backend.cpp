@@ -39,7 +39,7 @@ private slots:
         QVERIFY(m_home->isValid());
         qputenv("TANARA_HOME", m_home->path().toUtf8());
         m_app = std::make_unique<tanara::app::AppController>();
-        QVERIFY(m_app->settings()->settings().audioDir.startsWith(m_home->path()));
+        QVERIFY(m_app->settings()->paths().primaryRecordingRoot().startsWith(m_home->path()));
         m_lib = tagsfixture::buildLibrary(*m_app->store());
         m_backend.reset(createTagBackend(m_app.get(), nullptr));
         QVERIFY(dynamic_cast<TagControllerBackend*>(m_backend.get()));

@@ -29,6 +29,8 @@
 //   lines <meeting-folder> [--json] | lines ignore|unignore <meeting-folder> <id...>
 //                                                      lines with markers; "ignored" marking (ReviewCommand.cpp)
 //   reslice <meeting-folder> [--dry-run] [--json]   re-pad Soniox lines, carrying ids over (ResliceCommand.cpp)
+//   paths show | paths adopt-legacy [--from <dir>] [--dry-run]   folders and their source (PathsCommands.cpp)
+//   settings import-legacy [--from <file>] [--dry-run]           old flat settings.json -> v2 sections
 #include "tanara/app/AppController.h"
 #include "tanara/app/StartupDiagnostics.h"
 #include "CloudCommands.h"
@@ -38,6 +40,7 @@
 #include "TagPeopleCommands.h"
 #include "TrackSidesCommand.h"
 #include "VoiceCommands.h"
+#include "PathsCommands.h"
 #include "tanara/cloud/CloudAccount.h"
 #include "tanara/foundation/log/Logging.h"
 #include "tanara/app/SettingsManager.h"
@@ -113,6 +116,8 @@ int main(int argc, char** argv) {
     tanara::initLogging(tanara::parseLogOptions(rawArgs));
 
     QCoreApplication qapp(argc, argv);
+    QCoreApplication::setApplicationName(QStringLiteral("Tanara"));
+    QCoreApplication::setOrganizationName(QStringLiteral("Tanara"));
     // CLI output is ALWAYS English, regardless of the configured UI language. Its own strings
     // are plain English literals; the English translation is loaded for error messages that
     // come from core (Hungarian source strings).
@@ -134,6 +139,9 @@ int main(int argc, char** argv) {
     if (cmd == "review")       return tanara::cli::runReviewCommand(args);
     if (cmd == "lines")        return tanara::cli::runLinesCommand(args);
     if (cmd == "reslice")      return tanara::cli::runResliceCommand(args);
+    // One-time helpers of the folder / settings format change (P6): no AppController, no side effects.
+    if (cmd == "paths")        return tanara::cli::runPathsCommand(args);
+    if (cmd == "settings")     return tanara::cli::runSettingsCommand(args);
 
     app::AppController app;
 
@@ -291,19 +299,19 @@ int main(int argc, char** argv) {
         // Smoke test: the watcher ENGINE without a separate process or tray. A single poll, or a
         // timed one with --watch (using the settings interval or --interval N seconds).
         watcher::registerBuiltinDetectors();
-        const AppSettings s = app.settings()->settings();
+        const tanara::app::AppSettings s = app.settings()->settings();
         std::unique_ptr<watcher::IMeetingDetector> det(
-            s.detectorId.isEmpty()
+            s.watcher.detectorId.isEmpty()
                 ? watcher::MeetingDetectorRegistry::instance().createBest()
-                : watcher::MeetingDetectorRegistry::instance().create(s.detectorId));
+                : watcher::MeetingDetectorRegistry::instance().create(s.watcher.detectorId));
         if (!det) {
             err << QStringLiteral("No meeting detector available on this platform (pw-dump?).") << "\n";
             err.flush();
             return 1;
         }
         bool watch = false;
-        int interval = s.detectorIntervalSec;
-        QStringList apps = s.knownCallApps;
+        int interval = s.watcher.detectorIntervalSec;
+        QStringList apps = s.watcher.knownCallApps;
         for (int i = 2; i < args.size(); ++i) {
             if (args[i] == "--watch") watch = true;
             else if (args[i] == "--interval" && i + 1 < args.size()) interval = args[++i].toInt();
@@ -680,7 +688,8 @@ int main(int argc, char** argv) {
            "voice-models [enable|disable|fetch|verify|delete <id>] | voice-eval <folder> [--models a,b --min-ms N --json] | "
            "track-sides <folder> [--frame-ms N --json --no-cache --write-cache --legacy] | "
            "participants <folder> [--analyze [--write] | --remove <id>] [--json] | review <folder> [--json --models a,b] | "
-           "reslice <folder> [--dry-run --json]"
+           "reslice <folder> [--dry-run --json] | paths show | paths adopt-legacy [--from <dir> --dry-run] | "
+           "settings import-legacy [--from <file> --dry-run]"
         << "\n";
     out.flush();
     return 0;

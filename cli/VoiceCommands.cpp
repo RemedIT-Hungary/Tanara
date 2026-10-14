@@ -1,7 +1,7 @@
 // tanara-cli voice-models / voice-eval. All output is English, no tr().
 #include "VoiceCommands.h"
 
-#include "tanara/foundation/paths/Paths.h"
+#include "tanara/foundation/paths/AppPaths.h"
 #include "tanara/app/SettingsManager.h"
 #include "tanara/editing/review/SpeakerAnalysis.h"
 #include "tanara/editing/session/SpeakerOverlay.h"
@@ -34,16 +34,16 @@ QString appDir()
     return QCoreApplication::instance() ? QCoreApplication::applicationDirPath() : QString();
 }
 
-QString metaDirOf(const app::SettingsManager& sm)
+QString modelsDirOf(const app::SettingsManager& sm)
 {
-    return paths::resolveMetadataDir(sm.settings().metadataDir);
+    return sm.paths().modelsDir();
 }
 
 QString pad(const QString& s, int w) { return s.leftJustified(w, QLatin1Char(' ')); }
 
 int listModels(const app::SettingsManager& sm)
 {
-    const QString meta = metaDirOf(sm);
+    const QString meta = modelsDirOf(sm);
     const QStringList enabled = sm.enabledVoiceModels();
     const QStringList head{"ID", "NAME", "ENABLED", "FILE", "DIM", "LICENSE", "SOURCE"};
     QVector<QStringList> rows;
@@ -90,7 +90,7 @@ int setEnabled(app::SettingsManager& sm, const QString& id, bool on)
           << "Enabled models: " << (sm.enabledVoiceModels().isEmpty() ? QStringLiteral("(none)")
                                                                      : sm.enabledVoiceModels().join(", "))
           << "\n";
-    const QString path = processing::VoiceModelRegistry::resolvePath(*processing::VoiceModelRegistry::spec(id), metaDirOf(sm), appDir());
+    const QString path = processing::VoiceModelRegistry::resolvePath(*processing::VoiceModelRegistry::spec(id), modelsDirOf(sm), appDir());
     if (on && !QFileInfo::exists(path))
         out() << "Note: the model file is missing (" << QDir::toNativeSeparators(path)
               << "); fetch it with: tanara-cli voice-models fetch " << id << "\n";
@@ -109,7 +109,7 @@ int fetchModel(const app::SettingsManager& sm, const QString& id, bool force)
         err() << "No download URL for " << id << "\n";
         return 1;
     }
-    const QString target = processing::VoiceModelDownloader::targetPath(*spec, metaDirOf(sm));
+    const QString target = processing::VoiceModelDownloader::targetPath(*spec, modelsDirOf(sm));
     out() << "Model:    " << spec->displayName << " (" << spec->id << ")\n"
           << "License:  " << spec->license << "\n"
           << "Source:   " << spec->sourceUrl << "\n"
@@ -159,7 +159,7 @@ int verifyModel(const app::SettingsManager& sm, const QString& id)
 {
     const auto spec = processing::VoiceModelRegistry::spec(id);
     if (!spec) { err() << "Unknown voice model: " << id << "\n"; return 1; }
-    const QString path = processing::VoiceModelRegistry::resolvePath(*spec, metaDirOf(sm), appDir());
+    const QString path = processing::VoiceModelRegistry::resolvePath(*spec, modelsDirOf(sm), appDir());
     QString detail;
     const processing::VoiceModelDownloader::VerifyResult r = processing::VoiceModelDownloader::verifyFile(*spec, path, &detail);
     out() << "File:   " << QDir::toNativeSeparators(path) << "\n";
@@ -188,13 +188,13 @@ int deleteModel(const app::SettingsManager& sm, const QString& id)
     const auto spec = processing::VoiceModelRegistry::spec(id);
     if (!spec) { err() << "Unknown voice model: " << id << "\n"; return 1; }
     QString error;
-    if (!processing::VoiceModelDownloader::deleteModelFile(*spec, metaDirOf(sm), &error)) {
+    if (!processing::VoiceModelDownloader::deleteModelFile(*spec, modelsDirOf(sm), &error)) {
         err() << error << "\n";
         err().flush();
         return 1;
     }
-    out() << "Deleted " << QDir::toNativeSeparators(processing::VoiceModelDownloader::targetPath(*spec, metaDirOf(sm))) << "\n";
-    const QString still = processing::VoiceModelRegistry::resolvePath(*spec, metaDirOf(sm), appDir());
+    out() << "Deleted " << QDir::toNativeSeparators(processing::VoiceModelDownloader::targetPath(*spec, modelsDirOf(sm))) << "\n";
+    const QString still = processing::VoiceModelRegistry::resolvePath(*spec, modelsDirOf(sm), appDir());
     if (QFileInfo::exists(still))
         out() << "Note: a bundled copy is still used: " << QDir::toNativeSeparators(still) << "\n";
     out().flush();
@@ -284,7 +284,7 @@ int runVoiceEvalCommand(const QStringList& args)
     folder = QFileInfo(folder).absoluteFilePath();
 
     app::SettingsManager sm;
-    const QString meta = metaDirOf(sm);
+    const QString meta = modelsDirOf(sm);
     if (models.isEmpty()) models = sm.enabledVoiceModels();
     models = processing::VoiceModelRegistry::normalizeIds(models);
     QVector<processing::VoiceModelEntry> entries;

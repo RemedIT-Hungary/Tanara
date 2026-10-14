@@ -30,7 +30,7 @@
 #include "tanara/app/StartupDiagnostics.h"
 #include "tanara/foundation/i18n/Localization.h"
 #include "tanara/foundation/log/Logging.h"
-#include "tanara/foundation/paths/Paths.h"
+#include "tanara/foundation/paths/AppPaths.h"
 #include "tanara/app/SettingsManager.h"
 #include "tanara/library/store/MeetingStore.h"
 #include "tanara/foundation/ProcessLock.h"   // watcherLockPath()
@@ -97,8 +97,7 @@ static void applySavedTheme(app::AppController& controller, const tanara_qml::Qm
 {
     if (!opts.theme.isEmpty() || qEnvironmentVariableIsSet("TANARA_THEME"))
         return;
-    QFile f(tanara::paths::metadataFile(QStringLiteral("ui-state.json"),
-                                        controller.settings()->settings().metadataDir));
+    QFile f(controller.settings()->paths().stateFile(tanara::paths::files::UiState));
     if (!f.open(QIODevice::ReadOnly))
         return;
     const QString mode = QJsonDocument::fromJson(f.readAll()).object()
@@ -318,11 +317,11 @@ int main(int argc, char** argv) {
         stall->start(16);
     }
     QApplication::setApplicationName(QStringLiteral("Tanara"));
-    QApplication::setOrganizationName(QStringLiteral("RemedIT"));
+    QApplication::setOrganizationName(QStringLiteral("Tanara"));   // folders: foundation/paths/AppPaths.h
     QApplication::setWindowIcon(tanara_gui::makeTanaraIcon());   // every window + the tray
 
     // UI language (settings.json uiLanguage), BEFORE any widget is constructed.
-    tanara::installAppTranslator(tanara::app::SettingsManager().settings().uiLanguage);
+    tanara::installAppTranslator(tanara::app::SettingsManager().settings().ui.language);
 
     // QML developer modes (screenshot / gallery / demo): WITHOUT AppController; the user's real
     // data (~/.tanara, ~/Tanara) is not touched, and the view models supply sample data.

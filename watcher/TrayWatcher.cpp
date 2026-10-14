@@ -2,7 +2,7 @@
 #include "RecorderTrayIcon.h"   // tanara_gui::makeTrayIcon (header-only, from gui/common via tanara_shell_common)
 
 #include "tanara/app/SettingsManager.h"
-#include "tanara/foundation/paths/Paths.h"
+#include "tanara/foundation/paths/AppPaths.h"
 #include "tanara/watcher/detect/Autostart.h"
 #include "tanara/watcher/detect/DetectorRegistry.h"
 #include "tanara/watcher/detect/IMeetingDetector.h"
@@ -53,18 +53,18 @@ bool TrayWatcher::start()
 {
     tanara::watcher::registerBuiltinDetectors();   // idempotent
 
-    const tanara::AppSettings s = m_settings->settings();
+    const tanara::app::AppSettings s = m_settings->settings();
 
     // Detector: the settings detectorId, or the first available one. None: nothing to watch.
-    m_detector = s.detectorId.isEmpty()
+    m_detector = s.watcher.detectorId.isEmpty()
         ? tanara::watcher::MeetingDetectorRegistry::instance().createBest()
-        : tanara::watcher::MeetingDetectorRegistry::instance().create(s.detectorId);
+        : tanara::watcher::MeetingDetectorRegistry::instance().create(s.watcher.detectorId);
     if (!m_detector)
         return false;
-    m_detector->configure(s.knownCallApps, QStringLiteral("tanara"));
+    m_detector->configure(s.watcher.knownCallApps, QStringLiteral("tanara"));
 
-    applyAutostart(s.watcherAutostart);
-    m_autostartApplied = s.watcherAutostart;
+    applyAutostart(s.watcher.autostart);
+    m_autostartApplied = s.watcher.autostart;
     m_settingsStamp = QFileInfo(m_settings->settingsFilePath()).lastModified();
 
     if (!QSystemTrayIcon::isSystemTrayAvailable())
@@ -127,8 +127,8 @@ bool TrayWatcher::start()
 
     // --- poll loop ---
     connect(m_timer, &QTimer::timeout, this, &TrayWatcher::poll);
-    const int interval = qMax(1, s.detectorIntervalSec) * 1000;
-    if (s.detectorEnabled) {
+    const int interval = qMax(1, s.watcher.detectorIntervalSec) * 1000;
+    if (s.watcher.detectorEnabled) {
         m_timer->start(interval);
         poll();   // do not wait for the first interval
     }
@@ -137,8 +137,8 @@ bool TrayWatcher::start()
 
 void TrayWatcher::poll()
 {
-    const tanara::AppSettings s = m_settings->settings();
-    if (!s.detectorEnabled || !m_detector)
+    const tanara::app::AppSettings s = m_settings->settings();
+    if (!s.watcher.detectorEnabled || !m_detector)
         return;
 
     const tanara::watcher::MeetingSignal sig = m_detector->poll();
@@ -180,15 +180,15 @@ void TrayWatcher::reloadSettingsIfChanged()
 
 void TrayWatcher::applySettings()
 {
-    const tanara::AppSettings s = m_settings->settings();
+    const tanara::app::AppSettings s = m_settings->settings();
     if (m_detector)
-        m_detector->configure(s.knownCallApps, QStringLiteral("tanara"));
-    if (s.watcherAutostart != m_autostartApplied) {
-        applyAutostart(s.watcherAutostart);
-        m_autostartApplied = s.watcherAutostart;
+        m_detector->configure(s.watcher.knownCallApps, QStringLiteral("tanara"));
+    if (s.watcher.autostart != m_autostartApplied) {
+        applyAutostart(s.watcher.autostart);
+        m_autostartApplied = s.watcher.autostart;
     }
-    const int interval = qMax(1, s.detectorIntervalSec) * 1000;
-    if (s.detectorEnabled) {
+    const int interval = qMax(1, s.watcher.detectorIntervalSec) * 1000;
+    if (s.watcher.detectorEnabled) {
         if (!m_timer->isActive() || m_timer->interval() != interval)
             m_timer->start(interval);
         poll();
@@ -203,7 +203,7 @@ void TrayWatcher::applySettings()
 
 QString TrayWatcher::configuredUiLanguage()
 {
-    return tanara::app::SettingsManager().settings().uiLanguage;
+    return tanara::app::SettingsManager().settings().ui.language;
 }
 
 QString TrayWatcher::formatElapsed(qint64 seconds)
@@ -343,8 +343,8 @@ QString TrayWatcher::tanaraBinary() const
 
 QString TrayWatcher::lockPath() const
 {
-    // In the metadata folder (with TANARA_HOME in the sandbox); see tanara::recordingLockPath.
-    return tanara::recordingLockPath(m_settings->settings().metadataDir);
+    // In the state folder (with TANARA_HOME in the sandbox); see tanara::recordingLockPath.
+    return tanara::recordingLockPath();
 }
 
 void TrayWatcher::launch(const QStringList& args) const

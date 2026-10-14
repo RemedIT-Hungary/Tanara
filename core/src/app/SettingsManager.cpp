@@ -1,15 +1,12 @@
 #include "tanara/app/SettingsManager.h"
-#include "tanara/library/store/JsonSerialization.h"
-#include "tanara/foundation/paths/Paths.h"
+#include "tanara/providers/core/ProviderConfig.h"
+#include "tanara/foundation/settings/SettingsStore.h"
 #include "tanara/foundation/log/Logging.h"
 #include "tanara/library/tracks/TrackCatalog.h"
 #include "tanara/processing/voiceid/VoiceModelRegistry.h"
 
-#include <QDateTime>
-#include <QSaveFile>
 #include <QDir>
 #include <QFile>
-#include <QFileInfo>
 #if defined(Q_OS_WIN)
 #  define SECURITY_WIN32
 #  include <windows.h>
@@ -19,26 +16,18 @@
 #  include <unistd.h>
 #endif
 #include <iterator>
-#include <QJsonArray>
-#include <QJsonDocument>
-#include <QJsonObject>
 
 namespace tanara::app {
 
-namespace {
-
-// The default of the metadata folder and the TANARA_HOME override in ONE place: tanara/Paths.h.
-QString defaultMetadataDir() { return paths::defaultMetadataDir(); }
-QString expandHome(const QString& path) { return paths::expandHome(path); }
-
-} // namespace
-
-SettingsManager::SettingsManager(const QString& metadataDir, QObject* parent)
+SettingsManager::SettingsManager(const QString& configDir, QObject* parent)
     : QObject(parent)
-    , m_metadataDir(metadataDir.isEmpty() ? defaultMetadataDir() : metadataDir)
+    , m_configDir(configDir.isEmpty() ? paths::AppPaths::system().configDir() : configDir)
 {
+    m_store = new SettingsStore(QDir(m_configDir).filePath(paths::files::Settings), this);
     load();
 }
+
+SettingsManager::~SettingsManager() = default;
 
 namespace {
 // Default name of the own microphone track: the OS account's display name (Windows: NameDisplay;
@@ -72,218 +61,143 @@ QString defaultUserSpeakerName()
 }
 } // namespace
 
-AppSettings SettingsManager::defaults(const QString& metadataDir)
+AppSettings SettingsManager::defaults()
 {
-    const QString meta = metadataDir.isEmpty() ? defaultMetadataDir() : metadataDir;
-
     AppSettings s;
-    s.audioDir        = paths::defaultAudioDir();   // with TANARA_HOME into the sandbox
-    s.notesDir        = paths::defaultNotesDir();
-    s.metadataDir     = meta;
-    s.userSpeakerName = defaultUserSpeakerName();
-    s.languageHints   = QStringList{QStringLiteral("hu")};
+    s.recording.userSpeakerName = defaultUserSpeakerName();
+    s.processing.languageHints  = QStringList{QStringLiteral("hu")};
 
     // STT: selected provider = "soniox", with its config.
-    s.sttProviderId = QStringLiteral("soniox");
+    s.providers.stt.selectedId = QStringLiteral("soniox");
     {
-        ProviderConfig stt;
+        providers::ProviderConfig stt;
         stt.type    = QStringLiteral("soniox");
         stt.baseUrl = QStringLiteral("https://api.soniox.com/v1");
         stt.model   = QStringLiteral("stt-async-v5");
-        s.sttConfigs.insert(s.sttProviderId, stt);
+        s.providers.stt.configs.insert(s.providers.stt.selectedId, stt);
     }
 
     // LLM: selected provider = "openai-compat" (a local LM Studio), the gemma default.
-    s.llmProviderId = QStringLiteral("openai-compat");
+    s.providers.llm.selectedId = QStringLiteral("openai-compat");
     {
-        ProviderConfig llm;
+        providers::ProviderConfig llm;
         llm.type        = QStringLiteral("openai-compat");
         llm.baseUrl     = QStringLiteral("http://localhost:1234/v1");
         llm.model       = QStringLiteral("google/gemma-4-12b"); // the gemma default STAYS
         llm.temperature = 0.2;
         llm.maxTokens   = 8000;
-        s.llmConfigs.insert(s.llmProviderId, llm);
+        s.providers.llm.configs.insert(s.providers.llm.selectedId, llm);
     }
 
     // Embedding: none by default (basic level); the local endpoint is prefilled if they turn it on.
-    s.embeddingProviderId.clear();
+    s.providers.embedding.selectedId.clear();
     {
-        ProviderConfig emb;
+        providers::ProviderConfig emb;
         emb.type    = QStringLiteral("openai-compat-embedding");
         emb.baseUrl = QStringLiteral("http://localhost:1234/v1");
         emb.model   = QStringLiteral("text-embedding-bge-m3");
-        s.embeddingConfigs.insert(emb.type, emb);
+        s.providers.embedding.configs.insert(emb.type, emb);
     }
-
     return s;
 }
 
 QString SettingsManager::settingsFilePath() const
 {
-    return QDir(m_metadataDir).filePath(QStringLiteral("settings.json"));
+    return m_store->filePath();
 }
 
-void SettingsManager::ensureDirs() const
+void SettingsManager::publishPaths()
 {
-    QDir().mkpath(m_metadataDir);
-    if (!m_settings.audioDir.isEmpty())
-        QDir().mkpath(expandHome(m_settings.audioDir));
-    if (!m_settings.notesDir.isEmpty())
-        QDir().mkpath(expandHome(m_settings.notesDir));
-    if (!m_settings.metadataDir.isEmpty())
-        QDir().mkpath(expandHome(m_settings.metadataDir));
+    m_paths = paths::AppPaths::system(m_settings.paths);
+    paths::setCurrent(m_paths);
+    library::devicenames::setOverrides(m_settings.recording.deviceNames);   // the single resolver of device names
 }
 
 void SettingsManager::load()
 {
-    const QString path = settingsFilePath();
-    QFile f(path);
-
     // First run: the process's FIRST SettingsManager creates the file (translator installation already
     // loads before AppController), so the flag is process-wide.
     static bool s_createdInThisProcess = false;
-    if (!f.exists()) s_createdInThisProcess = true;
+    const SettingsStore::LoadResult r = m_store->load();
+    if (r == SettingsStore::LoadResult::Missing) s_createdInThisProcess = true;
     m_firstRun = s_createdInThisProcess;
+    m_loadFailed = r == SettingsStore::LoadResult::Unreadable;
+    m_legacy = r == SettingsStore::LoadResult::OldFormat;
 
-    m_loadFailed = false;
-    if (!f.exists()) {
+    if (r == SettingsStore::LoadResult::Missing) {
         // No config yet: defaults + write to disk.
-        m_settings = defaults(m_metadataDir);
-        library::devicenames::setOverrides(m_settings.deviceNames);
+        m_settings = defaults();
+        publishPaths();
         save();
         return;
     }
-    if (!f.open(QIODevice::ReadOnly)) {
-        // A file EXISTS but cannot be opened: defaults in memory, we do NOT touch the file.
-        qCWarning(lcApp).noquote() << "settings.json nem olvasható — alapértelmezések a memóriában,"
-                                      " a fájl érintetlen:" << path << f.errorString();
-        m_settings = defaults(m_metadataDir);
-        m_loadFailed = true;
+    if (r != SettingsStore::LoadResult::Ok) {
+        // Unreadable or old format: defaults in memory, the file stays untouched until a save.
+        m_settings = defaults();
+        publishPaths();
         return;
     }
 
-    const QByteArray data = f.readAll();
-    f.close();
-
-
-    QJsonParseError err{};
-    const QJsonDocument doc = QJsonDocument::fromJson(data, &err);
-    if (err.error != QJsonParseError::NoError || !doc.isObject()) {
-        // A corrupt / half-written file (e.g. an old build of another process was just writing it): defaults
-        // in memory, but we do NOT silently overwrite the file, since the user's settings are in it. Only a later,
-        // explicit save sets it aside (see save()).
-        qCWarning(lcApp).noquote() << "settings.json nem értelmezhető (" << err.errorString()
-                                   << ") — alapértelmezések a memóriában, a fájl érintetlen:" << path;
-        m_settings = defaults(m_metadataDir);
-        m_loadFailed = true;
-        return;
-    }
-
-    // The whole AppSettings (EVERY scalar + the provider layer's old -> new shape migration) is read in ONE
-    // place, appSettingsFromJson, so when a field is added it need not be wired in two places (the JSON
-    // serialization and this loader cannot drift apart). Afterwards we only fill the gaps with defaults.
-    const QJsonObject obj = doc.object();
-    const AppSettings def = defaults(m_metadataDir);
-    AppSettings loaded = library::appSettingsFromJson(obj);
-
-    // Empty required folder/name fields -> a sensible default (appSettingsFromJson does not fill defaults;
-    // an empty string really means "not given", not "delete").
-    if (loaded.audioDir.isEmpty())        loaded.audioDir = def.audioDir;
-    if (loaded.notesDir.isEmpty())        loaded.notesDir = def.notesDir;
-    if (loaded.metadataDir.isEmpty())     loaded.metadataDir = def.metadataDir;
-    // TANARA_HOME: the metadataDir in settings.json must NOT send the app back to the real ~/.tanara (e.g.
-    // a copied sample settings file); the running value is always the override.
-    if (!paths::homeOverride().isEmpty()) loaded.metadataDir = paths::homeOverride();
-    if (loaded.userSpeakerName.isEmpty()) loaded.userSpeakerName = def.userSpeakerName;
-    // languageHints: the EMPTY list is a valid value ("Automatic" language); only a missing key gets the
-    // default (appSettingsFromJson already supplied that).
-
-    // The provider layer is already loaded + migrated; we only fill the gaps.
-    applyProviderDefaults(loaded, def);
-
+    AppSettings loaded;
+    for (const QString& name : AppSettings::sectionNames())
+        loaded.setSectionJson(name, m_store->section(name));
+    applyDefaults(loaded);
     m_settings = loaded;
-    library::devicenames::setOverrides(m_settings.deviceNames);   // the single resolver of device names
-    ensureDirs();
+    publishPaths();
+    m_paths.ensureDirs();
 }
 
-void SettingsManager::applyProviderDefaults(AppSettings& loaded, const AppSettings& def)
+void SettingsManager::applyDefaults(AppSettings& loaded)
 {
-    // ---- STT safety net ---------------------------------------------------
-    // Merge with the defaults: there must be no empty provider list / selected id.
-    if (loaded.sttConfigs.isEmpty())
-        loaded.sttConfigs = def.sttConfigs;
-    if (loaded.sttProviderId.isEmpty())
-        loaded.sttProviderId = def.sttProviderId;
-    // The selected id must have a config (otherwise fall back to the default).
-    if (!loaded.sttConfigs.contains(loaded.sttProviderId)) {
-        if (def.sttConfigs.contains(loaded.sttProviderId))
-            loaded.sttConfigs.insert(loaded.sttProviderId, def.sttConfigs.value(loaded.sttProviderId));
-        else
-            loaded.sttProviderId = loaded.sttConfigs.firstKey();
-    }
+    const AppSettings def = defaults();
+    // An empty speaker name -> the default (an empty string really means "not given").
+    if (loaded.recording.userSpeakerName.isEmpty())
+        loaded.recording.userSpeakerName = def.recording.userSpeakerName;
 
-    // ---- LLM safety net ---------------------------------------------------
-    if (loaded.llmConfigs.isEmpty())
-        loaded.llmConfigs = def.llmConfigs;
-    if (loaded.llmProviderId.isEmpty())
-        loaded.llmProviderId = def.llmProviderId;
-    if (!loaded.llmConfigs.contains(loaded.llmProviderId)) {
-        if (def.llmConfigs.contains(loaded.llmProviderId))
-            loaded.llmConfigs.insert(loaded.llmProviderId, def.llmConfigs.value(loaded.llmProviderId));
-        else
-            loaded.llmProviderId = loaded.llmConfigs.firstKey();
-    }
+    // ---- STT / LLM safety net: no empty provider list / selected id --------------------------
+    auto fill = [](providers::CapabilityProviders& c, const providers::CapabilityProviders& d) {
+        if (c.configs.isEmpty()) c.configs = d.configs;
+        if (c.selectedId.isEmpty()) c.selectedId = d.selectedId;
+        // The selected id must have a config (otherwise fall back to the default).
+        if (!c.configs.contains(c.selectedId)) {
+            if (d.configs.contains(c.selectedId))
+                c.configs.insert(c.selectedId, d.configs.value(c.selectedId));
+            else
+                c.selectedId = c.configs.firstKey();
+        }
+    };
+    fill(loaded.providers.stt, def.providers.stt);
+    fill(loaded.providers.llm, def.providers.llm);
 
     // ---- Embedding: filling in missing prefilled configs (an empty id = none) ----
-    for (auto it = def.embeddingConfigs.constBegin(); it != def.embeddingConfigs.constEnd(); ++it)
-        if (!loaded.embeddingConfigs.contains(it.key()))
-            loaded.embeddingConfigs.insert(it.key(), it.value());
+    const auto& emb = def.providers.embedding.configs;
+    for (auto it = emb.constBegin(); it != emb.constEnd(); ++it)
+        if (!loaded.providers.embedding.configs.contains(it.key()))
+            loaded.providers.embedding.configs.insert(it.key(), it.value());
 }
 
 void SettingsManager::save() const
 {
-    ensureDirs();
-
-    const QString path = settingsFilePath();
-    QFileInfo fi(path);
-    QDir().mkpath(fi.absolutePath());
-
-    // A file unreadable at load is set aside BEFORE saving (not destroyed): what the user configured can
-    // still be rescued from it by hand.
-    if (m_loadFailed && QFile::exists(path)) {
-        const QString aside = path + QStringLiteral(".corrupt-")
-            + QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd-HHmmss"));
-        if (!QFile::rename(path, aside)) {
-            qCWarning(lcApp).noquote() << "settings.json: a sérült fájl nem tehető félre — a mentés"
-                                          " kimarad, a fájl érintetlen:" << path;
-            return;
-        }
-        qCWarning(lcApp).noquote() << "settings.json: a sérült fájl félretéve:" << aside;
-    }
-    m_loadFailed = false;
-
-    // Atomic write (temporary file + rename): several processes (analyzer, recorder, watcher) read this
-    // same file, and none may see truncated content; after an interrupted write the earlier file stays.
-    const QByteArray data = QJsonDocument(library::toJson(m_settings)).toJson(QJsonDocument::Indented);
-    QSaveFile f(path);
-    if (!f.open(QIODevice::WriteOnly) || f.write(data) != data.size() || !f.commit())
-        qCWarning(lcApp).noquote() << "settings.json: a mentés nem sikerült:" << path << f.errorString();
+    for (const QString& name : AppSettings::sectionNames())
+        m_store->setSection(name, m_settings.sectionJson(name));
+    m_paths.ensureDirs();
+    if (m_store->save()) m_loadFailed = false;
 }
 
 void SettingsManager::setEnabledVoiceModels(const QStringList& ids)
 {
     const QStringList norm = processing::VoiceModelRegistry::normalizeIds(ids);
-    if (norm == m_settings.voiceModels) return;
+    if (norm == m_settings.processing.voiceModels) return;
     AppSettings s = m_settings;
-    s.voiceModels = norm;
+    s.processing.voiceModels = norm;
     setSettings(s);
 }
 
 void SettingsManager::setSettings(const AppSettings& s)
 {
     m_settings = s;
-    m_settings.voiceModels = processing::VoiceModelRegistry::normalizeIds(s.voiceModels);
-    library::devicenames::setOverrides(m_settings.deviceNames);
+    m_settings.processing.voiceModels = processing::VoiceModelRegistry::normalizeIds(s.processing.voiceModels);
+    publishPaths();
     save();
     emit settingsChanged();
 }

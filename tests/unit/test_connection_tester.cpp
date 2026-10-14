@@ -5,6 +5,7 @@
 // server error, refused connection, bad address. Plus recognizing a local endpoint and the
 // built-in providers' probe descriptors.
 #include <QtTest>
+#include "tanara/providers/core/ProviderConfig.h"
 #include <QSignalSpy>
 #include <QTcpServer>
 #include <QTcpSocket>
@@ -85,7 +86,7 @@ class TestConnectionTester : public QObject {
     Q_OBJECT
 
     // Running a probe and waiting for the result.
-    static providers::ConnectionTestResult run(const providers::ProviderDescriptor& d, const ProviderConfig& cfg, int timeoutMs = 3000)
+    static providers::ConnectionTestResult run(const providers::ProviderDescriptor& d, const providers::ProviderConfig& cfg, int timeoutMs = 3000)
     {
         providers::ConnectionTester tester;
         tester.setTimeoutMs(timeoutMs);
@@ -104,7 +105,7 @@ private slots:
         http.handler = [](const FakeRequest&) {
             return FakeReply{200, "{\"data\":[{\"id\":\"zeta\"},{\"id\":\"alfa\"}]}"};
         };
-        ProviderConfig cfg;
+        providers::ProviderConfig cfg;
         cfg.baseUrl = http.base() + QStringLiteral("/");     // the trailing slash does not matter
         cfg.model = QStringLiteral("alfa");
         cfg.apiKey = QStringLiteral("titok");
@@ -128,7 +129,7 @@ private slots:
         http.handler = [](const FakeRequest&) {
             return FakeReply{200, "{\"models\":[{\"id\":\"stt-async-v5\"},{\"id\":\"stt-rt-v4\"}]}"};
         };
-        ProviderConfig cfg;
+        providers::ProviderConfig cfg;
         cfg.baseUrl = http.base();
         cfg.model = QStringLiteral("nincs-ilyen");
         const providers::ConnectionTestResult r = run(probeDescriptor(), cfg);
@@ -142,7 +143,7 @@ private slots:
     {
         FakeHttp http;
         http.handler = [](const FakeRequest&) { return FakeReply{401, "{\"error\":\"unauthorized\"}"}; };
-        ProviderConfig cfg;
+        providers::ProviderConfig cfg;
         cfg.baseUrl = http.base();
         cfg.apiKey = QStringLiteral("rossz");
         providers::ConnectionTestResult r = run(probeDescriptor(), cfg);
@@ -162,7 +163,7 @@ private slots:
     {
         FakeHttp http;
         http.handler = [](const FakeRequest&) { return FakeReply{404, "not found"}; };
-        ProviderConfig cfg;
+        providers::ProviderConfig cfg;
         cfg.baseUrl = http.base();
         providers::ConnectionTestResult r = run(probeDescriptor(), cfg);
         QCOMPARE(r.status, providers::ConnectionTestResult::Status::NotAnApi);
@@ -179,7 +180,7 @@ private slots:
     void serverErrors()
     {
         FakeHttp http;
-        ProviderConfig cfg;
+        providers::ProviderConfig cfg;
         cfg.baseUrl = http.base();
         http.handler = [](const FakeRequest&) { return FakeReply{500, "{}"}; };
         providers::ConnectionTestResult r = run(probeDescriptor(), cfg);
@@ -200,7 +201,7 @@ private slots:
             port = http.port();
             http.close();
         }
-        ProviderConfig cfg;
+        providers::ProviderConfig cfg;
         cfg.baseUrl = QStringLiteral("http://127.0.0.1:%1/v1").arg(port);
         // On Windows a closed port is retried even after RST (~2 s per attempt), so a 3 s probe time
         // would end in ETIMEDOUT; the app's default (8 s) is plenty.
@@ -218,7 +219,7 @@ private slots:
 
     void badConfigNeverSendsARequest()
     {
-        ProviderConfig cfg;
+        providers::ProviderConfig cfg;
         providers::ConnectionTestResult r = run(probeDescriptor(), cfg);            // empty address
         QCOMPARE(r.status, providers::ConnectionTestResult::Status::BadConfig);
         QCOMPARE(r.code, QStringLiteral("EINVAL"));
@@ -242,7 +243,7 @@ private slots:
         http.handler = [](const FakeRequest&) { return FakeReply{200, "{\"data\":[]}"}; };
         providers::ConnectionTester tester;
         QSignalSpy spy(&tester, &providers::ConnectionTester::finished);
-        ProviderConfig cfg;
+        providers::ProviderConfig cfg;
         cfg.baseUrl = http.base();
         const int id = tester.test(probeDescriptor(), cfg);
         QVERIFY(tester.running(id));

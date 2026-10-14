@@ -3,7 +3,7 @@
 // Central cross-platform logging (on top of the Qt logging framework).
 //
 // One code path on Linux and Windows: every message goes through a custom message handler
-// that writes to (1) stderr and (2) a rotated log file (~/.tanara/logs/).
+// that writes to (1) stderr and (2) a rotated log file (AppPaths::logDir()).
 //   * Linux + KDE Plasma: systemd-journald captures stderr automatically
 //     (journalctl --user -t tanara); no libsystemd dependency.
 //   * Windows: the log file is the source of truth (the GUI has no console); the
@@ -32,7 +32,7 @@ struct LogOptions {
     LogLevel level     = LogLevel::Info;  // default "normal"
     bool     toFile    = true;
     bool     toStderr  = true;
-    QString  fileDir;                      // empty = ~/.tanara/logs
+    QString  fileDir;                      // empty = AppPaths::logDir()
     QString  extraRules;                   // --log-rules passthrough (QLoggingCategory szintaxis)
 };
 

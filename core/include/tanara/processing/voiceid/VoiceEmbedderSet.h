@@ -34,8 +34,8 @@ class VoiceEmbedderSet {
 public:
     // models: the models in use (any order; sorted by id inside). Empty loader = the real VoiceEmbedder (defaultLoader()).
     explicit VoiceEmbedderSet(QVector<VoiceModelEntry> models = {}, PcmEmbedderLoader loader = {});
-    // The set per the settings: VoiceModelRegistry::active(enabledIds, metaDir, appDir).
-    static VoiceEmbedderSet fromSettings(const QStringList& enabledIds, const QString& metaDir,
+    // The set per the settings: VoiceModelRegistry::active(enabledIds, modelsDir, appDir).
+    static VoiceEmbedderSet fromSettings(const QStringList& enabledIds, const QString& modelsDir,
                                          const QString& appDir, PcmEmbedderLoader loader = {});
     static PcmEmbedderLoader defaultLoader();
 

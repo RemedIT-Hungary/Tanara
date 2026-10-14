@@ -1,4 +1,6 @@
 #include "SettingsEmbeddingModel.h"
+#include "tanara/app/AppSettings.h"
+#include "tanara/providers/core/ProviderConfig.h"
 
 #include "SettingsProviderModel.h"
 #include "SettingsViewModel.h"
@@ -88,27 +90,27 @@ QString SettingsEmbeddingModel::providerFor(const QString& mode)
     return QString();
 }
 
-QString SettingsEmbeddingModel::effectiveModel(const AppSettings& s)
+QString SettingsEmbeddingModel::effectiveModel(const tanara::app::AppSettings& s)
 {
-    const QString id = s.embeddingProviderId;
+    const QString id = s.providers.embedding.selectedId;
     if (!providers::EmbeddingProviderRegistry::instance().has(id)) return QString();
-    const QString model = s.embeddingSelected().model.trimmed();
+    const QString model = s.providers.embedding.selected().model.trimmed();
     if (model.isEmpty() && id == providers::embeddingproviders::CloudId) return QStringLiteral("default");
     return model;
 }
 
-void SettingsEmbeddingModel::normalize(AppSettings& s) const
+void SettingsEmbeddingModel::normalize(tanara::app::AppSettings& s) const
 {
     if (!m_card) return;
-    const providers::ProviderDescriptor d = providers::EmbeddingProviderRegistry::instance().descriptor(s.embeddingProviderId);
-    if (!d.id.isEmpty()) m_card->fillDefaults(s.embeddingConfigs[s.embeddingProviderId], d);
+    const providers::ProviderDescriptor d = providers::EmbeddingProviderRegistry::instance().descriptor(s.providers.embedding.selectedId);
+    if (!d.id.isEmpty()) m_card->fillDefaults(s.providers.embedding.configs[s.providers.embedding.selectedId], d);
 }
 
 // ---- mode ---------------------------------------------------------------------------------
 
 QString SettingsEmbeddingModel::mode() const
 {
-    if (m_vm) return modeOf(m_vm->draft().embeddingProviderId);
+    if (m_vm) return modeOf(m_vm->draft().providers.embedding.selectedId);
     if (m_demoState == QLatin1String("cloud")) return QStringLiteral("cloud");
     if (m_demoState.isEmpty() || m_demoState == QLatin1String("none")) return QStringLiteral("none");
     return QStringLiteral("local");
@@ -120,13 +122,13 @@ void SettingsEmbeddingModel::setMode(const QString& mode)
     if (mode != QLatin1String("none") && mode != QLatin1String("local") && mode != QLatin1String("cloud")) return;
     if (mode == QLatin1String("cloud")) return;   // Tanara Cloud is "coming soon": not selectable
     const QString id = providerFor(mode);
-    AppSettings& d = m_vm->draft();
-    d.embeddingProviderId = id;
+    tanara::app::AppSettings& d = m_vm->draft();
+    d.providers.embedding.selectedId = id;
     if (!id.isEmpty()) {
         // The other mode's settings stay in the map; the new one starts with the defaults.
-        ProviderConfig cfg = d.embeddingConfigs.value(id);
+        providers::ProviderConfig cfg = d.providers.embedding.configs.value(id);
         m_card->fillDefaults(cfg, providers::EmbeddingProviderRegistry::instance().descriptor(id));
-        d.embeddingConfigs.insert(id, cfg);
+        d.providers.embedding.configs.insert(id, cfg);
     }
     m_card->reset();
     m_vm->touch();
@@ -209,7 +211,7 @@ QString SettingsEmbeddingModel::prepStatus() const
 {
     if (mode() == QLatin1String("none")) return QString();
     // The selected embedding is not saved yet: the preparation starts after the save.
-    if (m_vm && m_vm->base().embeddingProviderId.isEmpty()) return QStringLiteral("pending");
+    if (m_vm && m_vm->base().providers.embedding.selectedId.isEmpty()) return QStringLiteral("pending");
     const library::EmbeddingState s = prepState();
     switch (s.status) {
     case library::EmbeddingState::Running: return QStringLiteral("running");
@@ -328,7 +330,7 @@ int SettingsEmbeddingModel::estimateMinutes(int meetings) const
 QString SettingsEmbeddingModel::restartWarning() const
 {
     if (!restartPending()) return QString();
-    const bool otherProvider = m_vm && m_vm->base().embeddingProviderId != m_vm->draft().embeddingProviderId;
+    const bool otherProvider = m_vm && m_vm->base().providers.embedding.selectedId != m_vm->draft().providers.embedding.selectedId;
     const QString lead = otherProvider ? tr("Másik beágyazásra váltasz.") : tr("Másik modellre váltasz.");
     const int total = prepState().total;
     if (total <= 0)
@@ -343,26 +345,26 @@ QString SettingsEmbeddingModel::restartWarning() const
 
 bool SettingsEmbeddingModel::tagSuggestions() const
 {
-    return m_vm ? m_vm->draft().tagSuggestions : true;
+    return m_vm ? m_vm->draft().processing.tagSuggestions : true;
 }
 
 void SettingsEmbeddingModel::setTagSuggestions(bool on)
 {
-    if (!m_vm || m_vm->draft().tagSuggestions == on) return;
-    m_vm->draft().tagSuggestions = on;
+    if (!m_vm || m_vm->draft().processing.tagSuggestions == on) return;
+    m_vm->draft().processing.tagSuggestions = on;
     m_vm->touch();
     emit changed();
 }
 
 bool SettingsEmbeddingModel::llmTagSuggestions() const
 {
-    return m_vm ? m_vm->draft().llmTagSuggestions : true;
+    return m_vm ? m_vm->draft().processing.llmTagSuggestions : true;
 }
 
 void SettingsEmbeddingModel::setLlmTagSuggestions(bool on)
 {
-    if (!m_vm || m_vm->draft().llmTagSuggestions == on) return;
-    m_vm->draft().llmTagSuggestions = on;
+    if (!m_vm || m_vm->draft().processing.llmTagSuggestions == on) return;
+    m_vm->draft().processing.llmTagSuggestions = on;
     m_vm->touch();
     emit changed();
 }
@@ -404,28 +406,28 @@ void SettingsEmbeddingModel::loadDemo(const QString& state)
     const bool cloud = state == QLatin1String("cloud");
 
     if (m_vm) {
-        AppSettings& base = m_vm->m_base;
-        AppSettings& draft = m_vm->m_draft;
-        for (AppSettings* s : {&base, &draft}) {
-            s->embeddingConfigs.clear();
-            s->embeddingProviderId = local ? providers::embeddingproviders::LocalId
+        tanara::app::AppSettings& base = m_vm->m_base;
+        tanara::app::AppSettings& draft = m_vm->m_draft;
+        for (tanara::app::AppSettings* s : {&base, &draft}) {
+            s->providers.embedding.configs.clear();
+            s->providers.embedding.selectedId = local ? providers::embeddingproviders::LocalId
                                    : cloud ? providers::embeddingproviders::CloudId : QString();
-            ProviderConfig cfg;
+            providers::ProviderConfig cfg;
             cfg.type = providers::embeddingproviders::LocalId;
             cfg.baseUrl = QStringLiteral("http://localhost:1234/v1");
             cfg.model = QStringLiteral("text-embedding-nomic-embed-text-v1.5");
-            s->embeddingConfigs.insert(providers::embeddingproviders::LocalId, cfg);
+            s->providers.embedding.configs.insert(providers::embeddingproviders::LocalId, cfg);
             if (cloud) {
-                ProviderConfig c;
+                providers::ProviderConfig c;
                 c.type = providers::embeddingproviders::CloudId;
-                s->embeddingConfigs.insert(providers::embeddingproviders::CloudId, c);
+                s->providers.embedding.configs.insert(providers::embeddingproviders::CloudId, c);
             }
-            s->tagSuggestions = true;
-            s->llmTagSuggestions = true;
+            s->processing.tagSuggestions = true;
+            s->processing.llmTagSuggestions = true;
         }
         // The model was edited, not saved yet.
         if (state == QLatin1String("modelChange"))
-            draft.embeddingConfigs[providers::embeddingproviders::LocalId].model = QStringLiteral("nomic-embed-text-v2-moe");
+            draft.providers.embedding.configs[providers::embeddingproviders::LocalId].model = QStringLiteral("nomic-embed-text-v2-moe");
         if (m_card) m_card->reset();
     }
 

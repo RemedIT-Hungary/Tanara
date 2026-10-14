@@ -145,12 +145,12 @@ struct Sandbox {
         qputenv("TANARA_HOME", home->path().toUtf8());
         http = std::make_unique<FakeHttp>();
         app = std::make_unique<tanara::app::AppController>();
-        tanara::AppSettings s = app->settings()->settings();
-        s.sttProviderId = QStringLiteral("soniox");
-        s.sttConfigs[s.sttProviderId].baseUrl = http->base();
-        s.llmProviderId = QStringLiteral("openai-compat");
-        s.llmConfigs[s.llmProviderId].baseUrl = http->base();
-        s.llmConfigs[s.llmProviderId].model = QStringLiteral("teszt-modell");
+        tanara::app::AppSettings s = app->settings()->settings();
+        s.providers.stt.selectedId = QStringLiteral("soniox");
+        s.providers.stt.configs[s.providers.stt.selectedId].baseUrl = http->base();
+        s.providers.llm.selectedId = QStringLiteral("openai-compat");
+        s.providers.llm.configs[s.providers.llm.selectedId].baseUrl = http->base();
+        s.providers.llm.configs[s.providers.llm.selectedId].model = QStringLiteral("teszt-modell");
         app->settings()->setSettings(s);
     }
     ~Sandbox()

@@ -2,6 +2,7 @@
 // error), text.embeddings.bin both ways, chunking, library preparation (progress, cancel,
 // error, resume) and invalidation on a model change. No real endpoint.
 #include <QtTest>
+#include "tanara/providers/core/ProviderConfig.h"
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QJsonArray>
@@ -84,7 +85,7 @@ library::EmbeddingPreparer::ProviderFactory EmbeddingTest::factory()
 {
     const QString base = m_http->base();
     return [base](QObject* parent) -> providers::IEmbeddingProvider* {
-        ProviderConfig cfg;
+        providers::ProviderConfig cfg;
         cfg.baseUrl = base;
         cfg.model = QStringLiteral("teszt-embed");
         return new providers::OpenAiCompatibleEmbeddingProvider(cfg, parent);
@@ -111,12 +112,12 @@ void EmbeddingTest::registryDescriptors()
     QCOMPARE(cloud.authMode, providers::AuthMode::Login);
     QVERIFY(cloud.fields.isEmpty());
     std::unique_ptr<QObject> holder(new QObject);
-    QVERIFY(reg.create(providers::embeddingproviders::LocalId, ProviderConfig{}, holder.get()));
+    QVERIFY(reg.create(providers::embeddingproviders::LocalId, providers::ProviderConfig{}, holder.get()));
 }
 
 void EmbeddingTest::providerBatchesAndOrder()
 {
-    ProviderConfig cfg;
+    providers::ProviderConfig cfg;
     cfg.baseUrl = m_http->base() + "/";
     cfg.model = QStringLiteral("teszt-embed");
     cfg.apiKey = QStringLiteral("titok");
@@ -136,7 +137,7 @@ void EmbeddingTest::providerBatchesAndOrder()
 
 void EmbeddingTest::providerErrors()
 {
-    ProviderConfig cfg;
+    providers::ProviderConfig cfg;
     cfg.baseUrl = m_http->base();
     cfg.model = QStringLiteral("teszt-embed");
     providers::OpenAiCompatibleEmbeddingProvider p(cfg);
@@ -155,7 +156,7 @@ void EmbeddingTest::providerErrors()
     QVERIFY(failed2.wait(5000));
 
     // Without a title no request goes out.
-    providers::OpenAiCompatibleEmbeddingProvider none(ProviderConfig{});
+    providers::OpenAiCompatibleEmbeddingProvider none(providers::ProviderConfig{});
     providers::EmbeddingJob* job3 = none.embed({ { "x" }, QString() });
     QSignalSpy failed3(job3, &providers::EmbeddingJob::failed);
     QVERIFY(failed3.wait(2000));

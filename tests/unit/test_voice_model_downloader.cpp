@@ -56,7 +56,7 @@ private slots:
     {
         VoiceModelSpec s;
         s.fileName = QStringLiteral("a.onnx");
-        QCOMPARE(VoiceModelDownloader::targetPath(s, QStringLiteral("/x/meta")), QStringLiteral("/x/meta/models/a.onnx"));
+        QCOMPARE(VoiceModelDownloader::targetPath(s, QStringLiteral("/x/meta/models")), QStringLiteral("/x/meta/models/a.onnx"));
     }
 
     void downloadsFromAFileUrlWithProgress()
@@ -195,7 +195,7 @@ private slots:
     {
         const QByteArray data = payload();
         VoiceModelSpec s = spec(writeSource(QStringLiteral("m.onnx"), data), data.size());
-        const QString meta = m_dir->filePath(QStringLiteral("meta"));
+        const QString meta = m_dir->filePath(QStringLiteral("meta/models"));   // the models folder
         using VR = VoiceModelDownloader::VerifyResult;
         QCOMPARE(VoiceModelDownloader::verifyFile(s, target()), VR::Missing);
 
@@ -226,7 +226,7 @@ private slots:
         QCOMPARE(verified.first().at(1).value<VR>(), VR::SizeMismatch);
         QCOMPARE(*dl.lastVerify(s.id), VR::SizeMismatch);
 
-        // Delete: only the file under <meta>/models; a second time there is nothing.
+        // Delete: only the file in the models folder; a second time there is nothing.
         QString error;
         QVERIFY(VoiceModelDownloader::deleteModelFile(s, meta, &error));
         QVERIFY(!QFileInfo::exists(target()));

@@ -7,7 +7,7 @@
 
 #include "tanara/app/AppController.h"
 #include "tanara/foundation/log/Logging.h"
-#include "tanara/foundation/paths/Paths.h"
+#include "tanara/foundation/paths/AppPaths.h"
 #include "tanara/app/SettingsManager.h"
 
 #include <QDir>
@@ -62,8 +62,7 @@ bool SettingsWindowHost::ensureWindow()
             if (m_persistTheme && m_controller) {
                 // There is no main window to remember it: we write to the shared ui-state.json.
                 ShellUiState state;
-                state.setFilePath(QDir(paths::resolveMetadataDir(
-                    m_controller->settings()->settings().metadataDir)).filePath(QStringLiteral("ui-state.json")));
+                state.setFilePath(m_controller->settings()->paths().stateFile(paths::files::UiState));
                 state.setValue(QStringLiteral("themeMode"), mode);
                 state.flush();
             }

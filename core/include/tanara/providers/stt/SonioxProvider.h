@@ -5,6 +5,7 @@
 //   files (upload) -> transcriptions (create) -> poll -> transcript (fetch) -> cleanup.
 // Per-track use: if diarization=false, every token gets the track's fixed speaker.
 #include "tanara/providers/stt/ISttProvider.h"
+#include "tanara/providers/core/ProviderConfig.h"
 #include "tanara/domain/Types.h"
 
 #include <QObject>

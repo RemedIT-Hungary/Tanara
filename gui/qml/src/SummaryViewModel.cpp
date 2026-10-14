@@ -1,4 +1,5 @@
 #include "SummaryViewModel.h"
+#include "tanara/providers/core/ProviderConfig.h"
 
 #include "DemoText.h"
 #include "tanara/foundation/log/Logging.h"

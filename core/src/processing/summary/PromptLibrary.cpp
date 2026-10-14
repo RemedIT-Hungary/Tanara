@@ -1,5 +1,5 @@
 #include "tanara/processing/summary/PromptLibrary.h"
-#include "tanara/foundation/paths/Paths.h"
+#include "tanara/foundation/paths/AppPaths.h"
 #include "tanara/foundation/text/Text.h"
 
 #include <QCoreApplication>
@@ -236,10 +236,11 @@ QString promptBuiltin(const QString& id)
     return QString();
 }
 
-QString promptFilePath(const QString& id, const QString& metadataDir)
+QString promptFilePath(const QString& id, const QString& dataDir)
 {
-    const QString dir = paths::resolveMetadataDir(metadataDir);   // TANARA_HOME-tudatos
-    return QDir(dir).filePath(QStringLiteral("prompts/%1.md").arg(id));
+    // TANARA_HOME-aware: an empty dataDir = the current data folder.
+    const QString dir = dataDir.trimmed().isEmpty() ? paths::current().dataDir() : paths::normalize(dataDir);
+    return QDir(QDir(dir).filePath(paths::files::Prompts)).filePath(QStringLiteral("%1.md").arg(id));
 }
 
 namespace {
@@ -252,12 +253,12 @@ QString readPromptFile(const QString& path)
 }
 } // namespace
 
-QString promptDefault(const QString& id, const QString& metadataDir)
+QString promptDefault(const QString& id, const QString& dataDir)
 {
-    QString text = readPromptFile(promptFilePath(id, metadataDir));
+    QString text = readPromptFile(promptFilePath(id, dataDir));
     // The old file name of the short meeting's single-step prompt is valid too (prompts/simple.md).
     if (text.isEmpty() && id == QLatin1String("single"))
-        text = readPromptFile(promptFilePath(QStringLiteral("simple"), metadataDir));
+        text = readPromptFile(promptFilePath(QStringLiteral("simple"), dataDir));
     return text.isEmpty() ? promptBuiltin(id) : text;
 }
 

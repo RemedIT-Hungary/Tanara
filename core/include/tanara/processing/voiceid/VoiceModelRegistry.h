@@ -2,7 +2,7 @@
 //
 // VoiceModelRegistry: descriptors of the built-in speaker-embedding models (id, file name, fbank
 // parameters, license, source) and the resolution of the model file. A single resolution rule:
-// <metaDir>/models/<fileName>, otherwise <appDir>/models/<fileName>.
+// <modelsDir>/<fileName>, otherwise <appDir>/models/<fileName>.
 // The list of enabled models is the "voiceModels" key of settings.json (SettingsManager).
 #include "tanara/domain/Voice.h"
 #include "tanara/processing/voiceid/VoiceEmbedder.h"
@@ -42,27 +42,27 @@ public:
     static QVector<VoiceModelSpec> builtin();
     static std::optional<VoiceModelSpec> spec(const QString& id);
 
-    // <metaDir>/models/<fileName> if it exists; otherwise <appDir>/models/<fileName> if it exists;
+    // <modelsDir>/<fileName> if it exists; otherwise <appDir>/models/<fileName> if it exists;
     // otherwise the first (the "expected location", for an error message / download target). appDir may be empty.
-    static QString resolvePath(const VoiceModelSpec& spec, const QString& metaDir, const QString& appDir);
+    static QString resolvePath(const VoiceModelSpec& spec, const QString& modelsDir, const QString& appDir);
     // File name and resolution of the DEFAULT model (defaultModelId(), CAM++) with the rule above. Order:
-    //  1) <metaDir>/models/<name>  - the user's own (downloaded) model;
+    //  1) <modelsDir>/<name>  - the user's own (downloaded) model;
     //  2) <appDir>/models/<name>   - a model bundled with the app (Windows zip/installer);
     //  3) neither exists -> the path from 1) (the "expected location", for error messages / download target).
     // appDir may be empty (e.g. without QCoreApplication); then 2) is skipped.
     static QString defaultModelFileName();
-    static QString resolveDefaultModelPath(const QString& metaDir, const QString& appDir);
+    static QString resolveDefaultModelPath(const QString& modelsDir, const QString& appDir);
     // Of the built-in models, those whose file exists.
-    static QVector<VoiceModelSpec> available(const QString& metaDir, const QString& appDir);
+    static QVector<VoiceModelSpec> available(const QString& modelsDir, const QString& appDir);
 
     // The usable models: enabled intersect available (file exists), alphabetical by id.
     // Enabled ids that are unknown / have a missing file are dropped.
     // Fallback until WeSpeaker is downloaded: if enabled intersect available is empty but "campplus" is
     // available (e.g. it is bundled), it alone becomes ["campplus"].
-    static QVector<VoiceModelSpec> active(const QStringList& enabledIds, const QString& metaDir,
+    static QVector<VoiceModelSpec> active(const QStringList& enabledIds, const QString& modelsDir,
                                           const QString& appDir);
     // True exactly when active() switched to the CAM++ fallback (the UI signals this).
-    static bool isFallbackActive(const QStringList& enabledIds, const QString& metaDir,
+    static bool isFallbackActive(const QStringList& enabledIds, const QString& modelsDir,
                                  const QString& appDir);
 
     // Deterministic form of an id list: trimmed, without empties, unique, alphabetical.

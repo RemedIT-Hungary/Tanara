@@ -4,6 +4,7 @@
 // there is no hard-coded `new SonioxProvider`. Adding a provider: 1 descriptor + 1 factory + 1
 // registerProvider() call. Headless (core); does NOT link Qt Widgets.
 #include "tanara/providers/core/ProviderDescriptor.h"
+#include "tanara/providers/core/ProviderConfig.h"
 #include "tanara/domain/Types.h"
 
 #include <QHash>
@@ -59,7 +60,7 @@ void registerBuiltinProviders();
 
 // Registers the Tanara Cloud STT + LLM provider ("tanara-cloud", AuthMode::Login).
 // A feature flag (kill criterion): called only if the cloud client is compiled in
-// (TANARA_BUILD_CLOUD) AND the cloud mode is live (settings.cloudEnabled / TANARA_CLOUD_URL).
+// (TANARA_BUILD_CLOUD) AND the cloud mode is live (settings.cloud.enabled / TANARA_CLOUD_URL).
 // The factory is the existing SonioxProvider / OpenAiCompatibleProvider; AppController fills the gateway
 // config (baseUrl, key, model, headers, hook). Idempotent.
 void registerCloudProviders();

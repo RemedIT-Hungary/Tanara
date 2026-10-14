@@ -1,6 +1,7 @@
 // SummaryViewModel + TopicListModel: the states of the Summary tab on an isolated TANARA_HOME
 // with a fake LLM server (no real provider call).
 #include "JobTestSupport.h"
+#include "tanara/app/AppSettings.h"
 #include "ShellMeetingModel.h"
 #include "SummaryProgress.h"
 #include "SummaryViewModel.h"
@@ -362,14 +363,14 @@ private slots:
         QVERIFY2(vm.transcriptLine().contains("2 beszélő"), qPrintable(vm.transcriptLine()));
 
         // A missing server address: the bar names it, the button leads to the providers.
-        AppSettings s = sb.app->settings()->settings();
-        const QString model = s.llmConfigs[s.llmProviderId].baseUrl;
-        s.llmConfigs[s.llmProviderId].baseUrl.clear();
+        tanara::app::AppSettings s = sb.app->settings()->settings();
+        const QString model = s.providers.llm.configs[s.providers.llm.selectedId].baseUrl;
+        s.providers.llm.configs[s.providers.llm.selectedId].baseUrl.clear();
         sb.app->settings()->setSettings(s);
         QVERIFY(!vm.canRun());
         QCOMPARE(vm.blocker().value("actionPage").toString(), QStringLiteral("providers"));
         QVERIFY(!vm.blocker().value("text").toString().isEmpty());
-        s.llmConfigs[s.llmProviderId].baseUrl = model;
+        s.providers.llm.configs[s.providers.llm.selectedId].baseUrl = model;
         sb.app->settings()->setSettings(s);
         QVERIFY(vm.canRun());
 

@@ -5,6 +5,7 @@
 // It uses the same ProviderConfig fields as the LLM path: baseUrl, model, apiKey, extraHeaders,
 // onExchange (the Tanara Cloud gateway hooks).
 #include "tanara/providers/embedding/IEmbeddingProvider.h"
+#include "tanara/providers/core/ProviderConfig.h"
 #include "tanara/domain/Types.h"
 
 #include <QPointer>

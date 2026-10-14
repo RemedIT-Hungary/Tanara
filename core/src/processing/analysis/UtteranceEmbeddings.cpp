@@ -148,11 +148,11 @@ UtteranceEmbedderFactory voiceUtteranceEmbedderFactory(const QString& modelPath,
 }
 
 QVector<UtteranceModel> utteranceModelsFor(const QVector<VoiceModelSpec>& specs,
-                                           const QString& metaDir, const QString& appDir)
+                                           const QString& modelsDir, const QString& appDir)
 {
     QVector<UtteranceModel> out;
     for (const VoiceModelSpec& s : specs)
-        out.append({s.id, VoiceModelRegistry::resolvePath(s, metaDir, appDir), s.features, s.dim});
+        out.append({s.id, VoiceModelRegistry::resolvePath(s, modelsDir, appDir), s.features, s.dim});
     return out;
 }
 

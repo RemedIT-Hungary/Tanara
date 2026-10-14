@@ -1,5 +1,5 @@
 #include "tanara/watcher/detect/Autostart.h"
-#include "tanara/foundation/paths/Paths.h"
+#include "tanara/foundation/paths/AppPaths.h"
 
 #include <QDir>
 #include <QFile>
@@ -20,7 +20,9 @@ namespace tanara::watcher::autostart {
 QString watcherEntryPath()
 {
 #if defined(Q_OS_LINUX)
-    return QDir(QDir::homePath()).filePath(QStringLiteral(".config/autostart/tanara-watcher.desktop"));
+    // XDG autostart: $XDG_CONFIG_HOME/autostart (default ~/.config/autostart).
+    return QDir(QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation))
+        .filePath(QStringLiteral("autostart/tanara-watcher.desktop"));
 #elif defined(Q_OS_WIN)
     return QStringLiteral("HKEY_CURRENT_USER\\%1\\%2")
         .arg(QLatin1String(kRunSubKey), QLatin1String(kRunValueName));

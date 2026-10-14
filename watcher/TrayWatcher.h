@@ -59,7 +59,7 @@ private:
     void showCallNotification(const QString& appName);
     QStringList recordArgs(bool immediate) const;  // --record [+ --no-start] + the detected app/context
     QString tanaraBinary() const;             // resolves the sibling `tanara` binary
-    QString lockPath() const;                 // <metadata folder>/recording.lock
+    QString lockPath() const;                 // <state folder>/recording.lock
     void launch(const QStringList& args) const;
     void applyAutostart(bool on) const;       // Linux: autostart .desktop; Windows: HKCU Run
     // settings.json changed (Settings saved): reload and reconfigure the watcher without a

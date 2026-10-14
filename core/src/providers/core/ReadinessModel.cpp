@@ -1,4 +1,5 @@
 #include "tanara/providers/core/ReadinessModel.h"
+#include "tanara/providers/core/ProviderConfig.h"
 #include "tanara/providers/core/ProviderRegistry.h"
 
 #include <QCoreApplication>
@@ -77,7 +78,7 @@ ReadinessResult checkProviderConfig(const ProviderDescriptor& desc,
 
 } // namespace
 
-ReadinessModel::ReadinessModel(const AppSettings& settings, SecretProbe hasSecret)
+ReadinessModel::ReadinessModel(const ProviderSettings& settings, SecretProbe hasSecret)
     : m_settings(settings)
     , m_hasSecret(std::move(hasSecret))
 {
@@ -109,7 +110,7 @@ ReadinessResult ReadinessModel::check(WorkflowStep step, const Meeting& meeting)
         }
 
         // (b)+(c) config and auth check of the selected STT provider.
-        const QString sttId = m_settings.sttProviderId;
+        const QString sttId = m_settings.stt.selectedId;
         // An unknown / unregistered provider: descriptor() would return an empty descriptor (the required
         // loop is skipped, authMode defaults to ApiKey), so it would wrongly be runnable.
         if (!SttProviderRegistry::instance().has(sttId)) {
@@ -122,7 +123,7 @@ ReadinessResult ReadinessModel::check(WorkflowStep step, const Meeting& meeting)
             return r;
         }
         const ProviderDescriptor desc = SttProviderRegistry::instance().descriptor(sttId);
-        return checkProviderConfig(desc, sttId, m_settings.sttSelected(), m_hasSecret);
+        return checkProviderConfig(desc, sttId, m_settings.stt.selected(), m_hasSecret);
     }
 
     case WorkflowStep::Summarize: {
@@ -137,7 +138,7 @@ ReadinessResult ReadinessModel::check(WorkflowStep step, const Meeting& meeting)
         }
 
         // (b)+(c) config and auth check of the selected LLM provider.
-        const QString llmId = m_settings.llmProviderId;
+        const QString llmId = m_settings.llm.selectedId;
         // An unknown / unregistered provider: see the reasoning of the Transcribe branch.
         if (!LlmProviderRegistry::instance().has(llmId)) {
             ReadinessResult r;
@@ -149,7 +150,7 @@ ReadinessResult ReadinessModel::check(WorkflowStep step, const Meeting& meeting)
             return r;
         }
         const ProviderDescriptor desc = LlmProviderRegistry::instance().descriptor(llmId);
-        return checkProviderConfig(desc, llmId, m_settings.llmSelected(), m_hasSecret);
+        return checkProviderConfig(desc, llmId, m_settings.llm.selected(), m_hasSecret);
     }
     }
 

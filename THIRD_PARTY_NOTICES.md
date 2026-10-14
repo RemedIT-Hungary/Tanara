@@ -58,6 +58,13 @@ The fonts and icons are compiled into the GUI. The Windows packages carry their 
 
 - On Linux the system `kissfft-float` package is linked (BSD-3-Clause, (c) 2003-2010 Mark Borgerding); on Windows the vendored copy in section 1 is compiled into Tanara. It provides the FFT for kaldi-native-fbank. Upstream: https://github.com/mborgerding/kissfft
 
+### QtKeychain
+
+- **Version:** the system package on Linux (Fedora: `qtkeychain-qt6`, 0.16.x; not shipped by Tanara); on Windows release 0.16.0, built from source by CMake `FetchContent` and linked statically into Tanara.
+- **License:** BSD-3-Clause. **Copyright:** (C) 2011-2015 Frank Osterfeld. Upstream: https://github.com/frankosterfeld/qtkeychain
+- **License text:** `licenses/BSD-3-Clause-qtkeychain.txt`.
+- Stores the API keys in the operating system's keychain (Secret Service / KWallet on Linux, Credential Manager on Windows, Keychain on macOS). Without it, Tanara keeps the keys in a file readable only by the user.
+
 ### Linux system libraries
 
 The Linux build links the system C and C++ runtime (glibc: LGPL-2.1-or-later; libstdc++: GPL-3.0-or-later WITH GCC-exception-3.1). The audio servers (PipeWire, PulseAudio, ALSA) are loaded dynamically by miniaudio. Tanara does not ship these.

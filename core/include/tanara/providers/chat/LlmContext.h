@@ -10,6 +10,7 @@
 //  - the pre-load decision (keep / load / reload).
 // The network part (query, load) is done by the classes of LlmServer.h.
 #include <QByteArray>
+#include "tanara/providers/core/ProviderConfig.h"
 #include <QString>
 #include <QStringList>
 #include <QVector>

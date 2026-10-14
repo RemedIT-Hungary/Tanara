@@ -17,12 +17,12 @@ VoiceEmbedderSet::VoiceEmbedderSet(QVector<VoiceModelEntry> models, PcmEmbedderL
     m_slots.resize(m_models.size());
 }
 
-VoiceEmbedderSet VoiceEmbedderSet::fromSettings(const QStringList& enabledIds, const QString& metaDir,
+VoiceEmbedderSet VoiceEmbedderSet::fromSettings(const QStringList& enabledIds, const QString& modelsDir,
                                                 const QString& appDir, PcmEmbedderLoader loader)
 {
     QVector<VoiceModelEntry> models;
-    for (const VoiceModelSpec& s : VoiceModelRegistry::active(enabledIds, metaDir, appDir))
-        models.append({s, VoiceModelRegistry::resolvePath(s, metaDir, appDir)});
+    for (const VoiceModelSpec& s : VoiceModelRegistry::active(enabledIds, modelsDir, appDir))
+        models.append({s, VoiceModelRegistry::resolvePath(s, modelsDir, appDir)});
     return VoiceEmbedderSet(models, std::move(loader));
 }
 

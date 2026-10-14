@@ -3,6 +3,7 @@
 // back, up to the neighboring lines), only with the emissionTiming flag (Soniox); the Whisper
 // path is unchanged. Pure functions + SonioxProvider on a hand-written reply (fake HTTP, no real network).
 #include "fake_http.h"
+#include "tanara/providers/core/ProviderConfig.h"
 
 #include "tanara/providers/stt/SonioxProvider.h"
 #include "tanara/processing/stt/SonioxTiming.h"
@@ -156,7 +157,7 @@ private slots:
                              R"({"text":"i.","start_ms":127650,"end_ms":127710,"confidence":0.9}]})"};
             return {200, "{}"};
         };
-        ProviderConfig cfg;
+        providers::ProviderConfig cfg;
         cfg.baseUrl = srv.base();
         cfg.apiKey = QStringLiteral("test");
         providers::SonioxProvider provider(cfg);

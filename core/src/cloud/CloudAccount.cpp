@@ -1,5 +1,6 @@
 #include "tanara/cloud/CloudAccount.h"
-#include "tanara/foundation/KeyStore.h"
+#include "tanara/foundation/secrets/SecretStore.h"
+#include "tanara/foundation/paths/AppPaths.h"
 #include "tanara/domain/Types.h"
 #include "tanara/foundation/Version.h"
 
@@ -47,10 +48,10 @@ QString ts(const QDateTime& d) { return d.isValid() ? d.toString(Qt::ISODateWith
 QDateTime fromTs(const QJsonValue& v) { return v.isString() ? QDateTime::fromString(v.toString(), Qt::ISODateWithMs) : QDateTime(); }
 } // namespace
 
-CloudAccount::CloudAccount(KeyStore* keys, const QString& stateDir, QObject* parent)
+CloudAccount::CloudAccount(SecretStore* keys, const QString& dataDir, QObject* parent)
     : QObject(parent)
     , m_keys(keys)
-    , m_statePath(QDir(stateDir).filePath(QStringLiteral("cloud-state.json")))
+    , m_statePath(QDir(dataDir).filePath(paths::files::CloudState))
     , m_baseUrl(cloud::DefaultBaseUrl)
     , m_nam(new QNetworkAccessManager(this))
     , m_pollTimer(new QTimer(this))

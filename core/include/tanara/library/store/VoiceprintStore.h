@@ -1,6 +1,6 @@
 #pragma once
 //
-// VoiceprintStore: the global voiceprint database (~/.tanara/voiceprints.json).
+// VoiceprintStore: the global voiceprint database (<data>/voiceprints.json).
 // A name can have several embeddings (another microphone/condition). Matching takes the
 // LARGEST cosine similarity over the person's voiceprint set. Everything is local (privacy).
 //
@@ -18,7 +18,7 @@ namespace tanara::library {
 
 class VoiceprintStore {
 public:
-    explicit VoiceprintStore(const QString& filePath = QString()); // empty = ~/.tanara/voiceprints.json
+    explicit VoiceprintStore(const QString& filePath = QString()); // empty = <data>/voiceprints.json (AppPaths)
 
     // Names that have at least one voiceprint (alphabetical).
     QStringList people() const;

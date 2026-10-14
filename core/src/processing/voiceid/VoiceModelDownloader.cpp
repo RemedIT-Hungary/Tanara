@@ -53,9 +53,9 @@ QNetworkAccessManager* VoiceModelDownloader::nam()
     return m_ownNam;
 }
 
-QString VoiceModelDownloader::targetPath(const VoiceModelSpec& spec, const QString& metaDir)
+QString VoiceModelDownloader::targetPath(const VoiceModelSpec& spec, const QString& modelsDir)
 {
-    return QDir(metaDir).filePath(QStringLiteral("models/") + spec.fileName);
+    return QDir(modelsDir).filePath(spec.fileName);
 }
 
 bool VoiceModelDownloader::isRunning(const QString& id) const { return m_jobs.contains(id); }
@@ -272,11 +272,11 @@ std::optional<VoiceModelDownloader::VerifyResult> VoiceModelDownloader::lastVeri
     return it.value();
 }
 
-bool VoiceModelDownloader::deleteModelFile(const VoiceModelSpec& spec, const QString& metaDir, QString* error)
+bool VoiceModelDownloader::deleteModelFile(const VoiceModelSpec& spec, const QString& modelsDir, QString* error)
 {
-    const QString target = targetPath(spec, metaDir);
+    const QString target = targetPath(spec, modelsDir);
     const QFileInfo fi(target);
-    if (metaDir.isEmpty() || spec.fileName.isEmpty() || !fi.exists() || !fi.isFile()) {
+    if (modelsDir.isEmpty() || spec.fileName.isEmpty() || !fi.exists() || !fi.isFile()) {
         if (error) *error = QStringLiteral("No downloaded file for %1 (%2).").arg(spec.id, QDir::toNativeSeparators(target));
         return false;
     }

@@ -7,7 +7,7 @@
 #include "SettingsViewModel.h"
 
 #include "tanara/app/AppController.h"
-#include "tanara/foundation/paths/Paths.h"
+#include "tanara/foundation/paths/AppPaths.h"
 #include "tanara/app/SettingsManager.h"
 #include "tanara/library/store/MeetingStore.h"
 #include "tanara/library/store/VoiceprintStore.h"
@@ -381,7 +381,7 @@ QString VoiceModelListModel::metaDir() const
 {
     if (m_dirsOverridden) return m_metaOverride;
     if (!m_controller) return QString();
-    return paths::resolveMetadataDir(m_controller->settings()->settings().metadataDir);
+    return m_controller->settings()->paths().modelsDir();
 }
 
 QString VoiceModelListModel::appDir() const

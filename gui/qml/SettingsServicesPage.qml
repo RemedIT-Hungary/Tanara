@@ -235,10 +235,19 @@ Column {
         }
     }
 
+    // Where the keys are (keychain / file), + a warning if the keychain was wanted but unavailable.
+    TBanner {
+        objectName: "secretsWarning"
+        visible: !root.cloudView && root.vm !== null && root.vm.secretsWarning !== ""
+        width: parent.width
+        tone: "warn"
+        text: root.vm ? root.vm.secretsWarning : ""
+    }
     TLabel {
+        objectName: "secretsLocation"
         visible: !root.cloudView
         width: parent.width
-        text: qsTr("A kulcsokat a Tanara a belső adatok mappájában, csak neked olvasható fájlban tárolja; a beállítás-fájlba nem kerülnek.")
+        text: root.vm ? root.vm.secretsLocationText : ""
         muted: true
         font.pixelSize: Theme.fontCaption
         cssLineHeight: 1.45

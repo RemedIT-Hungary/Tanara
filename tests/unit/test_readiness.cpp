@@ -9,6 +9,8 @@
 // tests/CMakeLists.txt GLOB), each bringing its OWN main. Core (tanara_core) does NOT link Qt
 // Widgets, hence QTEST_GUILESS_MAIN here (no QApplication).
 #include <QtTest>
+#include "tanara/app/AppSettings.h"
+#include "tanara/providers/core/ProviderConfig.h"
 #include <QObject>
 #include <QDir>
 #include <QFile>
@@ -23,25 +25,25 @@ using namespace tanara;
 
 namespace {
 
-// An AppSettings with the built-in default providers (soniox / openai-compat), filled so that
+// An tanara::app::AppSettings with the built-in default providers (soniox / openai-compat), filled so that
 // the required NON-secret fields (e.g. the LLM baseUrl) are present. Each test breaks only what it examines.
-AppSettings makeSettings()
+tanara::app::AppSettings makeSettings()
 {
-    AppSettings s;
-    s.sttProviderId = QStringLiteral("soniox");
-    s.llmProviderId = QStringLiteral("openai-compat");
+    tanara::app::AppSettings s;
+    s.providers.stt.selectedId = QStringLiteral("soniox");
+    s.providers.llm.selectedId = QStringLiteral("openai-compat");
 
-    ProviderConfig stt;
+    providers::ProviderConfig stt;
     stt.type    = QStringLiteral("soniox");
     stt.baseUrl = QStringLiteral("https://api.soniox.com/v1");
     stt.model   = QStringLiteral("stt-async-v5");
-    s.sttConfigs.insert(QStringLiteral("soniox"), stt);
+    s.providers.stt.configs.insert(QStringLiteral("soniox"), stt);
 
-    ProviderConfig llm;
+    providers::ProviderConfig llm;
     llm.type    = QStringLiteral("openai-compat");
     llm.baseUrl = QStringLiteral("http://localhost:1234/v1");
     llm.model   = QStringLiteral("google/gemma-4-12b");
-    s.llmConfigs.insert(QStringLiteral("openai-compat"), llm);
+    s.providers.llm.configs.insert(QStringLiteral("openai-compat"), llm);
 
     return s;
 }
@@ -106,7 +108,7 @@ private slots:
     {
         // (a) completely empty tracks
         {
-            providers::ReadinessModel model(makeSettings(), secretsPresent({ QStringLiteral("soniox.apiKey") }));
+            providers::ReadinessModel model(makeSettings().providers, secretsPresent({ QStringLiteral("soniox.apiKey") }));
             Meeting m;
             m.id = QStringLiteral("m-empty");
 
@@ -118,7 +120,7 @@ private slots:
 
         // (b) there is a track, but all inactive (judged silent after the recording)
         {
-            providers::ReadinessModel model(makeSettings(), secretsPresent({ QStringLiteral("soniox.apiKey") }));
+            providers::ReadinessModel model(makeSettings().providers, secretsPresent({ QStringLiteral("soniox.apiKey") }));
             Meeting m = meetingWithActiveTrack();
             m.tracks[0].active = false;
 
@@ -133,7 +135,7 @@ private slots:
     // secret (apiKey) is missing. The provider config is the blocker, the missing field is "apiKey".
     void transcribe_blocksWhenSonioxKeyMissing()
     {
-        providers::ReadinessModel model(makeSettings(), noSecrets());   // hasSecret is always false
+        providers::ReadinessModel model(makeSettings().providers, noSecrets());   // hasSecret is always false
         const Meeting m = meetingWithActiveTrack();          // there is an active track
 
         const providers::ReadinessResult r = model.check(providers::WorkflowStep::Transcribe, m);
@@ -146,7 +148,7 @@ private slots:
     // Transcribe is RUNNABLE if there is an active track AND the Soniox key is set.
     void transcribe_runnableWithTrackAndKey()
     {
-        providers::ReadinessModel model(makeSettings(),
+        providers::ReadinessModel model(makeSettings().providers,
                              secretsPresent({ QStringLiteral("soniox.apiKey") }));
         const Meeting m = meetingWithActiveTrack();
 
@@ -162,7 +164,7 @@ private slots:
         QTemporaryDir dir;
         QVERIFY(dir.isValid());
 
-        providers::ReadinessModel model(makeSettings(),
+        providers::ReadinessModel model(makeSettings().providers,
                              secretsPresent({ QStringLiteral("llm.apiKey") }));
 
         Meeting m = meetingWithActiveTrack();
@@ -184,10 +186,10 @@ private slots:
         QVERIFY(dir.isValid());
         writeTranscriptFile(dir.path());
 
-        AppSettings s = makeSettings();
-        s.llmConfigs[QStringLiteral("openai-compat")].baseUrl = QString();   // the required field is empty
+        tanara::app::AppSettings s = makeSettings();
+        s.providers.llm.configs[QStringLiteral("openai-compat")].baseUrl = QString();   // the required field is empty
 
-        providers::ReadinessModel model(s, secretsPresent({ QStringLiteral("llm.apiKey") }));
+        providers::ReadinessModel model(s.providers, secretsPresent({ QStringLiteral("llm.apiKey") }));
 
         Meeting m = meetingWithActiveTrack();
         m.folder        = dir.path();   // there is a transcript.tokens.json
@@ -206,22 +208,22 @@ private slots:
     void cloud_blocksUntilLoggedIn()
     {
         providers::registerCloudProviders();
-        AppSettings s = makeSettings();
-        s.sttProviderId = QStringLiteral("tanara-cloud");
-        s.llmProviderId = QStringLiteral("tanara-cloud");
+        tanara::app::AppSettings s = makeSettings();
+        s.providers.stt.selectedId = QStringLiteral("tanara-cloud");
+        s.providers.llm.selectedId = QStringLiteral("tanara-cloud");
         const Meeting m = meetingWithActiveTrack();
 
-        providers::ReadinessModel out(s, noSecrets());
+        providers::ReadinessModel out(s.providers, noSecrets());
         const providers::ReadinessResult r = out.check(providers::WorkflowStep::Transcribe, m);
         QVERIFY(!r.runnable);
         QCOMPARE(r.blockerKind, providers::BlockerKind::Auth);
         QCOMPARE(r.fixActionHint, QStringLiteral("login:tanara-cloud"));
         QCOMPARE(r.detail, QStringLiteral("Jelentkezz be a Tanara Cloudba"));
 
-        providers::ReadinessModel in(s, secretsPresent({ QStringLiteral("tanara.cloud.apiKey") }));
+        providers::ReadinessModel in(s.providers, secretsPresent({ QStringLiteral("tanara.cloud.apiKey") }));
         QVERIFY(in.check(providers::WorkflowStep::Transcribe, m).runnable);
         // The old "<id>.token" convention does not count as a sign-in for the cloud.
-        providers::ReadinessModel legacy(s, secretsPresent({ QStringLiteral("tanara-cloud.token") }));
+        providers::ReadinessModel legacy(s.providers, secretsPresent({ QStringLiteral("tanara-cloud.token") }));
         QVERIFY(!legacy.check(providers::WorkflowStep::Transcribe, m).runnable);
     }
 };

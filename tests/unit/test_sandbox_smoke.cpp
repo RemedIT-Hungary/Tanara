@@ -13,7 +13,7 @@
 
 #include "tanara/app/AppController.h"
 #include "tanara/app/SettingsManager.h"
-#include "tanara/foundation/paths/Paths.h"
+#include "tanara/foundation/paths/AppPaths.h"
 #include "tanara/library/tracks/TrackCatalog.h"
 #include "tanara/library/tracks/WaveformService.h"
 #include "tanara/library/jobs/MeetingJobTracker.h"
@@ -45,7 +45,7 @@ void SandboxSmoke::initTestCase()
     qputenv("TANARA_HOME", home.toUtf8());
     qputenv("TANARA_CLOUD", "off");
     m_app = std::make_unique<app::AppController>();
-    QCOMPARE(m_app->settings()->settings().metadataDir, paths::homeOverride());
+    QCOMPARE(m_app->settings()->paths().dataDir(), paths::homeOverride());
     // Safety net: the recordings folder must not be the real ~/Tanara.
     const QString audio = m_app->store()->audioDir();
     QVERIFY2(!audio.startsWith(QDir(QDir::homePath()).filePath("Tanara")),

@@ -1,4 +1,5 @@
 #include "SettingsViewModel.h"
+#include "tanara/providers/core/ProviderConfig.h"
 
 #include "DemoText.h"
 
@@ -10,7 +11,7 @@
 
 #include "tanara/app/AppController.h"
 #include "tanara/foundation/i18n/Localization.h"
-#include "tanara/foundation/paths/Paths.h"
+#include "tanara/foundation/paths/AppPaths.h"
 #include "tanara/processing/summary/PromptLibrary.h"
 #include "tanara/app/SettingsManager.h"
 #include "tanara/recording/audio/DeviceManager.h"
@@ -59,23 +60,23 @@ QString promptGroupOf(const QString& id)
 }
 
 // The override stored in settings for the given prompt (empty = the built-in / file default applies).
-QString storedPrompt(const AppSettings& s, const QString& id)
+QString storedPrompt(const tanara::app::AppSettings& s, const QString& id)
 {
-    if (id == QLatin1String("single"))   return s.summaryPrompt;
-    if (id == QLatin1String("notes"))    return s.notesPrompt;
-    if (id == QLatin1String("merge"))    return s.mergePrompt;
-    if (id == QLatin1String("topic"))    return s.topicExtractionPrompt;
-    if (id == QLatin1String("analysis")) return s.topicAnalysisPrompt;
+    if (id == QLatin1String("single"))   return s.processing.summaryPrompt;
+    if (id == QLatin1String("notes"))    return s.processing.notesPrompt;
+    if (id == QLatin1String("merge"))    return s.processing.mergePrompt;
+    if (id == QLatin1String("topic"))    return s.processing.topicExtractionPrompt;
+    if (id == QLatin1String("analysis")) return s.processing.topicAnalysisPrompt;
     return QString();
 }
 
-void setStoredPrompt(AppSettings& s, const QString& id, const QString& text)
+void setStoredPrompt(tanara::app::AppSettings& s, const QString& id, const QString& text)
 {
-    if (id == QLatin1String("single"))        s.summaryPrompt = text;
-    else if (id == QLatin1String("notes"))    s.notesPrompt = text;
-    else if (id == QLatin1String("merge"))    s.mergePrompt = text;
-    else if (id == QLatin1String("topic"))    s.topicExtractionPrompt = text;
-    else if (id == QLatin1String("analysis")) s.topicAnalysisPrompt = text;
+    if (id == QLatin1String("single"))        s.processing.summaryPrompt = text;
+    else if (id == QLatin1String("notes"))    s.processing.notesPrompt = text;
+    else if (id == QLatin1String("merge"))    s.processing.mergePrompt = text;
+    else if (id == QLatin1String("topic"))    s.processing.topicExtractionPrompt = text;
+    else if (id == QLatin1String("analysis")) s.processing.topicAnalysisPrompt = text;
 }
 
 QLocale uiLocale()
@@ -188,11 +189,12 @@ int SettingsViewModel::countChanges(const QJsonObject& base, const QJsonObject& 
         if (b.value(p) == d.value(p)) continue;
         // A config of a just-selected provider filled with defaults is not a separate change
         // (the provider switch already counts).
+        // Path: providers/<capability>/configs/<id>/<field>.
         const QStringList parts = p.split(QLatin1Char('/'), Qt::SkipEmptyParts);
-        if (parts.size() >= 3
-            && (parts.at(0) == QLatin1String("sttProviders") || parts.at(0) == QLatin1String("llmProviders")
-                || parts.at(0) == QLatin1String("embeddingProviders"))
-            && !base.value(parts.at(0)).toObject().contains(parts.at(1)))
+        if (parts.size() >= 5 && parts.at(0) == QLatin1String("providers")
+            && parts.at(2) == QLatin1String("configs")
+            && !base.value(parts.at(0)).toObject().value(parts.at(1)).toObject()
+                    .value(parts.at(2)).toObject().contains(parts.at(3)))
             continue;
         ++n;
     }
@@ -220,10 +222,10 @@ SettingsViewModel::SettingsViewModel(QObject* parent) : QObject(parent)
     m_embedding = new SettingsEmbeddingModel(this);
     // Voice models: the enabled list is part of the draft; the download is immediate (not a draft).
     m_voiceModels = new VoiceModelListModel(this);
-    m_voiceModels->setDraftAccess([this] { return m_draft.voiceModels; },
+    m_voiceModels->setDraftAccess([this] { return m_draft.processing.voiceModels; },
                                   [this](const QStringList& ids) {
-                                      if (m_draft.voiceModels == ids) return;
-                                      m_draft.voiceModels = ids;
+                                      if (m_draft.processing.voiceModels == ids) return;
+                                      m_draft.processing.voiceModels = ids;
                                       touch();
                                   });
     connect(m_voiceModels, &VoiceModelListModel::openUrlRequested, this, [this](const QString& url) {
@@ -333,14 +335,14 @@ void SettingsViewModel::applyDefaultSelection()
     m_devices->refreshFromDraft();
 }
 
-void SettingsViewModel::normalize(AppSettings& s) const
+void SettingsViewModel::normalize(tanara::app::AppSettings& s) const
 {
     // The selected providers' empty fields get the descriptor's defaults (as the old window
     // filled them), so this does not count as a "change".
-    const providers::ProviderDescriptor sd = providers::SttProviderRegistry::instance().descriptor(s.sttProviderId);
-    if (!sd.id.isEmpty()) m_stt->fillDefaults(s.sttConfigs[s.sttProviderId], sd);
-    const providers::ProviderDescriptor ld = providers::LlmProviderRegistry::instance().descriptor(s.llmProviderId);
-    if (!ld.id.isEmpty()) m_llm->fillDefaults(s.llmConfigs[s.llmProviderId], ld);
+    const providers::ProviderDescriptor sd = providers::SttProviderRegistry::instance().descriptor(s.providers.stt.selectedId);
+    if (!sd.id.isEmpty()) m_stt->fillDefaults(s.providers.stt.configs[s.providers.stt.selectedId], sd);
+    const providers::ProviderDescriptor ld = providers::LlmProviderRegistry::instance().descriptor(s.providers.llm.selectedId);
+    if (!ld.id.isEmpty()) m_llm->fillDefaults(s.providers.llm.configs[s.providers.llm.selectedId], ld);
     m_embedding->normalize(s);
 }
 
@@ -367,7 +369,7 @@ void SettingsViewModel::loadFromCore()
     m_promptText.clear();
     m_promptDefault.clear();
     for (const QString& id : kPromptIds) {
-        const QString def = processing::promptDefault(id, m_base.metadataDir);
+        const QString def = processing::promptDefault(id, m_controller ? m_controller->settings()->paths().dataDir() : QString());
         const QString stored = storedPrompt(m_base, id);
         m_promptDefault.insert(id, def);
         m_promptText.insert(id, stored.isEmpty() ? def : stored);
@@ -416,13 +418,13 @@ void SettingsViewModel::onExternalSettingsChanged()
     // Someone else saved (another window, the CLI...): the new state
     // becomes the base, and own unsaved changes are applied on top.
     storePromptsInDraft();
-    AppSettings live = m_controller->settings()->settings();
+    tanara::app::AppSettings live = m_controller->settings()->settings();
     normalize(live);
-    const QJsonObject merged = mergedSettings(library::toJson(m_base), library::toJson(m_draft), library::toJson(live));
-    const QString typedName = m_draft.userSpeakerName;
+    const QJsonObject merged = mergedSettings(m_base.toJson(), m_draft.toJson(), live.toJson());
+    const QString typedName = m_draft.recording.userSpeakerName;
     m_base = live;
-    m_draft = library::appSettingsFromJson(merged);
-    if (typedName.trimmed() == m_draft.userSpeakerName) m_draft.userSpeakerName = typedName;
+    m_draft = tanara::app::AppSettings::fromJson(merged);
+    if (typedName.trimmed() == m_draft.recording.userSpeakerName) m_draft.recording.userSpeakerName = typedName;
     {
         // The prompts' editor text from the merged draft (an external prompt change shows too).
         for (const QString& id : kPromptIds) {
@@ -462,9 +464,9 @@ void SettingsViewModel::touch()
 {
     if (m_loading) return;
     storePromptsInDraft();
-    AppSettings d = m_draft;
-    d.userSpeakerName = d.userSpeakerName.trimmed();
-    int n = countChanges(library::toJson(m_base), library::toJson(d));
+    tanara::app::AppSettings d = m_draft;
+    d.recording.userSpeakerName = d.recording.userSpeakerName.trimmed();
+    int n = countChanges(m_base.toJson(), d.toJson());
     for (auto it = m_draftSecrets.constBegin(); it != m_draftSecrets.constEnd(); ++it)
         if (m_baseSecrets.value(it.key()) != it.value()) ++n;
     QStringList a = m_baseSelected, b = m_draftSelected;
@@ -483,16 +485,16 @@ void SettingsViewModel::touch()
 void SettingsViewModel::validate()
 {
     QVariantMap e;
-    if (m_draft.userSpeakerName.trimmed().isEmpty())
+    if (m_draft.recording.userSpeakerName.trimmed().isEmpty())
         e.insert(QStringLiteral("userName"), tr("Adj meg egy nevet — ezen a néven szerepelsz az átiratokban."));
-    for (const QString& key : {QStringLiteral("audio"), QStringLiteral("notes"), QStringLiteral("meta")}) {
+    for (const QString& key : folderKeys()) {
         const QString p = folderPath(key).trimmed();
         if (p.isEmpty())
             e.insert(QStringLiteral("folder.") + key, tr("Válassz egy mappát."));
         else if (!QDir::isAbsolutePath(paths::expandHome(p)))
             e.insert(QStringLiteral("folder.") + key, tr("Teljes elérési utat adj meg."));
     }
-    if (m_draft.knownCallApps.isEmpty())
+    if (m_draft.watcher.knownCallApps.isEmpty())
         e.insert(QStringLiteral("watchedApps"),
                  tr("Legalább egy alkalmazás kell: üres listával a figyelő semmire nem jelez."));
     if (e != m_errors) {
@@ -510,12 +512,32 @@ providers::ReadinessResult SettingsViewModel::draftReadiness(providers::Workflow
     t.active = true;
     m.tracks << t;
     m.hasTranscript = true;
-    const providers::ReadinessModel model(m_draft, [this](const QString& key) {
+    const providers::ReadinessModel model(m_draft.providers, [this](const QString& key) {
         if (m_draftSecrets.contains(key)) return !m_draftSecrets.value(key).trimmed().isEmpty();
         if (!m_controller) return false;
         return m_controller->hasSecret(key);
     });
     return model.check(step, m);
+}
+
+QString SettingsViewModel::secretsBackend() const
+{
+    // Demo / no controller: the keychain (the fictional user's usual case).
+    return m_controller ? m_controller->secretBackend() : QStringLiteral("keychain");
+}
+
+QString SettingsViewModel::secretsLocationText() const
+{
+    return secretsBackend() == QLatin1String("keychain")
+        ? tr("A kulcsok helye: a rendszer kulcstartója. A beállítás-fájlba nem kerülnek.")
+        : tr("A kulcsok helye: fájl a belső adatok mappájában, csak neked olvasható. A beállítás-fájlba nem kerülnek.");
+}
+
+QString SettingsViewModel::secretsWarning() const
+{
+    if (!m_controller || m_controller->secretBackendWarning().isEmpty()) return QString();
+    return tr("A rendszer kulcstartója nem érhető el, ezért a kulcsok titkosítatlan fájlban vannak "
+              "(csak a te felhasználód olvashatja).");
 }
 
 void SettingsViewModel::updateServicesWarn()
@@ -535,8 +557,8 @@ QString SettingsViewModel::footerText() const
     if (m_embedding->restartPending()) return tr("Modellváltás · mentéskor újraindul az előkészítés");
     // A new voice model was enabled: on save, backfilling the existing samples starts.
     bool modelAdded = false;
-    for (const QString& id : m_draft.voiceModels)
-        if (!m_base.voiceModels.contains(id)) modelAdded = true;
+    for (const QString& id : m_draft.processing.voiceModels)
+        if (!m_base.processing.voiceModels.contains(id)) modelAdded = true;
     if (modelAdded && m_changeCount == 1) return tr("Új hangmodell · mentéskor indul a minták pótlása");
     return tr("%n nem mentett változás", nullptr, m_changeCount);
 }
@@ -589,8 +611,8 @@ void SettingsViewModel::openPage(const QString& page, const QString& focusField)
 
 void SettingsViewModel::setUserName(const QString& name)
 {
-    if (m_draft.userSpeakerName == name) return;
-    m_draft.userSpeakerName = name;
+    if (m_draft.recording.userSpeakerName == name) return;
+    m_draft.recording.userSpeakerName = name;
     emit generalChanged();
     touch();
 }
@@ -600,7 +622,7 @@ void SettingsViewModel::refreshVoiceprint()
     QString text;
     bool has = false;
     if (m_controller && m_controller->voiceprints()) {
-        const QVector<Voiceprint> prints = m_controller->voiceprints()->printsFor(m_base.userSpeakerName);
+        const QVector<Voiceprint> prints = m_controller->voiceprints()->printsFor(m_base.recording.userSpeakerName);
         // One sample is one item: per-model sibling voiceprints count as one.
         QSet<QString> meetings, samples;
         for (const Voiceprint& p : prints) {
@@ -622,8 +644,8 @@ void SettingsViewModel::refreshVoiceprint()
 
 void SettingsViewModel::setUiLanguage(const QString& lang)
 {
-    if (m_draft.uiLanguage == lang) return;
-    m_draft.uiLanguage = lang;
+    if (m_draft.ui.language == lang) return;
+    m_draft.ui.language = lang;
     emit generalChanged();
     touch();
 }
@@ -644,7 +666,7 @@ bool SettingsViewModel::languageNeedsRestart() const
 {
     if (!m_controller) return false;
     const QString active = activeUiLanguage();
-    return !active.isEmpty() && resolvedUiLanguage(m_draft.uiLanguage) != active;
+    return !active.isEmpty() && resolvedUiLanguage(m_draft.ui.language) != active;
 }
 
 void SettingsViewModel::setThemeMode(const QString& mode)
@@ -657,12 +679,47 @@ void SettingsViewModel::setThemeMode(const QString& mode)
     touch();
 }
 
+// The folder keys of the General page: recordings, notes, internal data, speaker models.
+QStringList SettingsViewModel::folderKeys()
+{
+    return {QStringLiteral("audio"), QStringLiteral("notes"), QStringLiteral("meta"), QStringLiteral("models")};
+}
+
+namespace {
+paths::Role folderRole(const QString& key)
+{
+    if (key == QLatin1String("audio")) return paths::Role::Recordings;
+    if (key == QLatin1String("notes")) return paths::Role::Notes;
+    if (key == QLatin1String("models")) return paths::Role::Models;
+    return paths::Role::Data;
+}
+
+// The configured ("paths" section) value of a folder; empty = the default.
+QString configuredFolder(const paths::PathSettings& p, const QString& key)
+{
+    if (key == QLatin1String("audio")) return p.primaryRecordingRoot();
+    if (key == QLatin1String("notes")) return p.notesDir;
+    if (key == QLatin1String("meta")) return p.dataDir;
+    if (key == QLatin1String("models")) return p.modelsDir;
+    return {};
+}
+} // namespace
+
+QString SettingsViewModel::defaultFolder(const QString& key) const
+{
+    // The effective folder without a "paths" setting (with TANARA_HOME: the sandbox's).
+    return paths::AppPaths::system(paths::PathSettings()).dir(folderRole(key));
+}
+
 QString SettingsViewModel::folderPath(const QString& key) const
 {
-    if (key == QLatin1String("audio")) return m_draft.audioDir;
-    if (key == QLatin1String("notes")) return m_draft.notesDir;
-    if (key == QLatin1String("meta")) return m_draft.metadataDir;
-    return QString();
+    if (!folderKeys().contains(key)) return QString();
+    // TANARA_HOME pins the data folder (the sandbox).
+    if (key == QLatin1String("meta") && m_controller && !paths::homeOverride().isEmpty())
+        return paths::homeOverride();
+    const QString configured = configuredFolder(m_draft.paths, key);
+    if (!configured.isEmpty()) return configured;
+    return m_controller ? defaultFolder(key) : QString();
 }
 
 QVariantList SettingsViewModel::folders() const
@@ -679,19 +736,26 @@ QVariantList SettingsViewModel::folders() const
             {QStringLiteral("error"), m_errors.value(QStringLiteral("folder.") + key).toString()}};
     };
     QString metaWarn;
-    if (looksSynced(m_draft.metadataDir))
+    if (looksSynced(folderPath(QStringLiteral("meta"))))
         metaWarn = tr("Ez a mappa felhő-szinkronban lévőnek tűnik. A belső adatokat ne szinkronizáld: "
                       "két gép egyszerre írná, és megsérülhet.");
     QString metaHint = metaLocked
-        ? tr("Hanglenyomatok, beállítások és index. Ezt a mappát most a TANARA_HOME környezeti változó rögzíti.")
-        : tr("Hanglenyomatok, beállítások és index. Ne szinkronizáld felhőtárhellyel. "
+        ? tr("Hanglenyomatok, személyek, címkék és index. Ezt a mappát most a TANARA_HOME környezeti változó rögzíti.")
+        : tr("Hanglenyomatok, személyek, címkék és index. Ne szinkronizáld felhőtárhellyel. "
              "A váltás újraindítás után érvényes; a meglévő adatokat nem költözteti át.");
+    // With TANARA_HOME the sandbox's own folders are in effect, whatever is set here.
+    const QString sandboxWarn = metaLocked
+        ? tr("A TANARA_HOME be van állítva: amíg él, a homokozó saját mappája érvényes, nem ez.")
+        : QString();
     return {
         mk(QStringLiteral("audio"), tr("Felvételek"),
-           tr("Hangsávok, megbeszélésenként egy mappa. Az új felvételek ide kerülnek."), false, QString()),
+           tr("Hangsávok, megbeszélésenként egy mappa. Az új felvételek ide kerülnek."), false, sandboxWarn),
         mk(QStringLiteral("notes"), tr("Jegyzetek"),
-           tr("Az összefoglalók másolata sima Markdown-fájlként (pl. a jegyzettáradba)."), false, QString()),
+           tr("Az összefoglalók másolata sima Markdown-fájlként (pl. a jegyzettáradba)."), false, sandboxWarn),
         mk(QStringLiteral("meta"), tr("Belső adatok"), metaHint, metaLocked, metaWarn),
+        mk(QStringLiteral("models"), tr("Hangmodellek"),
+           tr("A beszélő-felismerés letöltött modelljei (.onnx). A váltás újraindítás után érvényes; "
+              "a meglévő fájlokat nem költözteti át."), false, sandboxWarn),
     };
 }
 
@@ -700,7 +764,7 @@ void SettingsViewModel::refreshFolderUsage()
     if (!m_controller) return;
     const int generation = ++m_usageGeneration;
     QPointer<SettingsViewModel> self(this);
-    for (const QString& key : {QStringLiteral("audio"), QStringLiteral("notes"), QStringLiteral("meta")}) {
+    for (const QString& key : folderKeys()) {
         const QString path = paths::expandHome(folderPath(key).trimmed());
         const bool audio = key == QLatin1String("audio");
         QThreadPool::globalInstance()->start([self, generation, key, path, audio] {
@@ -727,12 +791,14 @@ void SettingsViewModel::setFolder(const QString& key, const QString& path)
 {
     const QString p = path.trimmed();
     if (p == folderPath(key)) return;
-    if (key == QLatin1String("audio")) m_draft.audioDir = p;
-    else if (key == QLatin1String("notes")) m_draft.notesDir = p;
-    else if (key == QLatin1String("meta")) {
-        if (m_controller && !paths::homeOverride().isEmpty()) return;   // pinned
-        m_draft.metadataDir = p;
-    } else return;
+    if (!folderKeys().contains(key)) return;
+    if (key == QLatin1String("meta") && m_controller && !paths::homeOverride().isEmpty()) return;   // pinned
+    // The default folder is stored as "no setting" (later default changes then apply).
+    const QString stored = m_controller && paths::normalize(p) == defaultFolder(key) ? QString() : p;
+    if (key == QLatin1String("audio")) m_draft.paths.setPrimaryRecordingRoot(stored);
+    else if (key == QLatin1String("notes")) m_draft.paths.notesDir = stored;
+    else if (key == QLatin1String("meta")) m_draft.paths.dataDir = stored;
+    else m_draft.paths.modelsDir = stored;
     m_folderUsage.remove(key);
     emit foldersChanged();
     touch();
@@ -761,7 +827,7 @@ void SettingsViewModel::openFolder(const QString& key)
 void SettingsViewModel::openPeople()
 {
     // The link sits next to the own-voiceprint row: the own person gets selected.
-    if (m_dialogs) m_dialogs->openPeopleAt(m_base.userSpeakerName.trimmed());
+    if (m_dialogs) m_dialogs->openPeopleAt(m_base.recording.userSpeakerName.trimmed());
 }
 
 void SettingsViewModel::openPerson(const QString& person)
@@ -802,16 +868,16 @@ void SettingsViewModel::renameDevice(int row, const QString& name) { m_devices->
 
 void SettingsViewModel::setAutoRecordAll(bool on)
 {
-    if (m_draft.autoRecordAllDevices == on) return;
-    m_draft.autoRecordAllDevices = on;
+    if (m_draft.recording.autoRecordAllDevices == on) return;
+    m_draft.recording.autoRecordAllDevices = on;
     emit recordingChanged();
     touch();
 }
 
 void SettingsViewModel::setAudioQuality(const QString& quality)
 {
-    if (m_draft.audioQuality == quality) return;
-    m_draft.audioQuality = quality;
+    if (m_draft.recording.audioQuality == quality) return;
+    m_draft.recording.audioQuality = quality;
     emit recordingChanged();
     touch();
 }
@@ -827,9 +893,9 @@ QVariantList SettingsViewModel::audioQualityOptions() const
 
 QString SettingsViewModel::audioQualityHint() const
 {
-    const int kbps = opusBitrateKbps(m_draft.audioQuality);
+    const int kbps = opusBitrateKbps(m_draft.recording.audioQuality);
     const int mb = qRound(kbps * 1000.0 / 8.0 * 5400.0 / 1e6);   // 1.5 hours on one track
-    const QString q = m_draft.audioQuality;
+    const QString q = m_draft.recording.audioQuality;
     const QString tail = q == QLatin1String("low")    ? tr("A legkisebb fájl; az átíráshoz még elég.")
                        : q == QLatin1String("medium") ? tr("Beszédhez elég.")
                        : q == QLatin1String("high")   ? tr("Zajos teremhez, több beszélőhöz.")
@@ -839,8 +905,8 @@ QString SettingsViewModel::audioQualityHint() const
 
 void SettingsViewModel::setMixdownMode(const QString& mode)
 {
-    if (m_draft.mixdownMode == mode) return;
-    m_draft.mixdownMode = mode;
+    if (m_draft.recording.mixdownMode == mode) return;
+    m_draft.recording.mixdownMode = mode;
     emit recordingChanged();
     touch();
 }
@@ -861,24 +927,24 @@ QStringList SettingsViewModel::selectedDevicesForSave() const
 
 void SettingsViewModel::setDetectorEnabled(bool on)
 {
-    if (m_draft.detectorEnabled == on) return;
-    m_draft.detectorEnabled = on;
+    if (m_draft.watcher.detectorEnabled == on) return;
+    m_draft.watcher.detectorEnabled = on;
     emit watcherChanged();
     touch();
 }
 
 void SettingsViewModel::setWatcherAutostart(bool on)
 {
-    if (m_draft.watcherAutostart == on) return;
-    m_draft.watcherAutostart = on;
+    if (m_draft.watcher.autostart == on) return;
+    m_draft.watcher.autostart = on;
     emit watcherChanged();
     touch();
 }
 
 void SettingsViewModel::setAskStopOnCallEnd(bool on)
 {
-    if (m_draft.askStopOnCallEnd == on) return;
-    m_draft.askStopOnCallEnd = on;
+    if (m_draft.watcher.askStopOnCallEnd == on) return;
+    m_draft.watcher.askStopOnCallEnd = on;
     emit watcherChanged();
     touch();
 }
@@ -886,8 +952,8 @@ void SettingsViewModel::setAskStopOnCallEnd(bool on)
 void SettingsViewModel::setSilenceAskMinutes(int minutes)
 {
     const int m = std::clamp(minutes, 0, 60);
-    if (m_draft.silenceAskMinutes == m) return;
-    m_draft.silenceAskMinutes = m;
+    if (m_draft.watcher.silenceAskMinutes == m) return;
+    m_draft.watcher.silenceAskMinutes = m;
     emit watcherChanged();
     touch();
 }
@@ -895,8 +961,8 @@ void SettingsViewModel::setSilenceAskMinutes(int minutes)
 void SettingsViewModel::setDetectorIntervalSec(int sec)
 {
     const int s = std::clamp(sec, 3, 60);
-    if (m_draft.detectorIntervalSec == s) return;
-    m_draft.detectorIntervalSec = s;
+    if (m_draft.watcher.detectorIntervalSec == s) return;
+    m_draft.watcher.detectorIntervalSec = s;
     emit watcherChanged();
     touch();
 }
@@ -904,7 +970,7 @@ void SettingsViewModel::setDetectorIntervalSec(int sec)
 QVariantList SettingsViewModel::watchedApps() const
 {
     QVariantList out;
-    for (const QString& match : m_draft.knownCallApps) {
+    for (const QString& match : m_draft.watcher.knownCallApps) {
         const QString lower = match.toLower();
         const bool active = m_liveActive && !m_liveAppId.isEmpty()
                             && (m_liveAppId.contains(lower) || lower.contains(m_liveAppId));
@@ -919,9 +985,9 @@ QString SettingsViewModel::addWatchedApp(const QString& match)
     const QString m = match.trimmed().toLower();
     if (m.isEmpty()) return tr("Írd be a folyamat nevét vagy annak egy részét.");
     if (m.size() < 2) return tr("Legalább két karakter kell.");
-    for (const QString& have : m_draft.knownCallApps)
+    for (const QString& have : m_draft.watcher.knownCallApps)
         if (have.compare(m, Qt::CaseInsensitive) == 0) return tr("Ez már szerepel a listán.");
-    m_draft.knownCallApps << m;
+    m_draft.watcher.knownCallApps << m;
     emit watchedAppsChanged();
     touch();
     return QString();
@@ -929,8 +995,8 @@ QString SettingsViewModel::addWatchedApp(const QString& match)
 
 void SettingsViewModel::removeWatchedApp(int index)
 {
-    if (index < 0 || index >= m_draft.knownCallApps.size()) return;
-    m_draft.knownCallApps.removeAt(index);
+    if (index < 0 || index >= m_draft.watcher.knownCallApps.size()) return;
+    m_draft.watcher.knownCallApps.removeAt(index);
     emit watchedAppsChanged();
     touch();
 }
@@ -963,7 +1029,7 @@ QVariantList SettingsViewModel::runningApps() const
     QVariantList out;
     for (const QString& n : std::as_const(names)) {
         bool covered = n.startsWith(QLatin1String("tanara"));
-        for (const QString& have : m_draft.knownCallApps)
+        for (const QString& have : m_draft.watcher.knownCallApps)
             if (n.contains(have, Qt::CaseInsensitive)) { covered = true; break; }
         if (covered) continue;
         out << QVariantMap{{QStringLiteral("match"), n}, {QStringLiteral("label"), appLabel(n)}};
@@ -996,15 +1062,15 @@ void SettingsViewModel::pollDetector()
     if (!m_detector && !m_detectorTried && m_controller) {
         m_detectorTried = true;
         watcher::registerBuiltinDetectors();   // idempotent
-        m_detector.reset(m_draft.detectorId.isEmpty()
+        m_detector.reset(m_draft.watcher.detectorId.isEmpty()
                              ? watcher::MeetingDetectorRegistry::instance().createBest()
-                             : watcher::MeetingDetectorRegistry::instance().create(m_draft.detectorId));
+                             : watcher::MeetingDetectorRegistry::instance().create(m_draft.watcher.detectorId));
     }
     const bool available = m_detector && m_detector->isAvailable();
     watcher::MeetingSignal sig;
     if (available) {
         // With the DRAFT's list: an app just added shows immediately if it is in a call.
-        m_detector->configure(m_draft.knownCallApps, QStringLiteral("tanara"));
+        m_detector->configure(m_draft.watcher.knownCallApps, QStringLiteral("tanara"));
         sig = m_detector->poll();
     }
     if (available == m_detectorAvailable && sig.active == m_liveActive && sig.appName == m_liveApp
@@ -1022,7 +1088,7 @@ void SettingsViewModel::pollDetector()
 
 bool SettingsViewModel::cloudSelected() const
 {
-    return m_draft.sttProviderId == cloud::ProviderId || m_draft.llmProviderId == cloud::ProviderId;
+    return m_draft.providers.stt.selectedId == cloud::ProviderId || m_draft.providers.llm.selectedId == cloud::ProviderId;
 }
 
 void SettingsViewModel::setServiceMode(const QString& mode)
@@ -1039,8 +1105,8 @@ void SettingsViewModel::setServiceMode(const QString& mode)
 void SettingsViewModel::setSummaryLanguage(const QString& language)
 {
     const QString l = language.trimmed();
-    if (l.isEmpty() || m_draft.summaryLanguage == l) return;
-    m_draft.summaryLanguage = l;
+    if (l.isEmpty() || m_draft.processing.summaryLanguage == l) return;
+    m_draft.processing.summaryLanguage = l;
     emit summaryChanged();
     touch();
 }
@@ -1050,8 +1116,8 @@ QStringList SettingsViewModel::summaryLanguageOptions() const
     // The value is free text (it goes into the prompt): written in Hungarian, like the built-in prompts.
     QStringList out{QStringLiteral("magyar"), QStringLiteral("angol"), QStringLiteral("német"),
                     QStringLiteral("francia"), QStringLiteral("spanyol")};
-    if (!out.contains(m_draft.summaryLanguage) && !m_draft.summaryLanguage.isEmpty())
-        out.prepend(m_draft.summaryLanguage);
+    if (!out.contains(m_draft.processing.summaryLanguage) && !m_draft.processing.summaryLanguage.isEmpty())
+        out.prepend(m_draft.processing.summaryLanguage);
     return out;
 }
 
@@ -1197,7 +1263,7 @@ bool SettingsViewModel::save()
     }
 
     // Provider fields sit raw in the draft while typing: trimmed on save.
-    for (QMap<QString, ProviderConfig>* map : {&m_draft.sttConfigs, &m_draft.llmConfigs, &m_draft.embeddingConfigs})
+    for (QMap<QString, providers::ProviderConfig>* map : {&m_draft.providers.stt.configs, &m_draft.providers.llm.configs, &m_draft.providers.embedding.configs})
         for (auto it = map->begin(); it != map->end(); ++it) {
             it->baseUrl = it->baseUrl.trimmed();
             it->model = it->model.trimmed();
@@ -1205,13 +1271,13 @@ bool SettingsViewModel::save()
                 if (e->typeId() == QMetaType::QString) *e = e->toString().trimmed();
         }
 
-    const QString newName = m_draft.userSpeakerName.trimmed();
+    const QString newName = m_draft.recording.userSpeakerName.trimmed();
     const bool themeChanged = m_baseTheme != m_draftTheme;
     const QString theme = m_draftTheme;
 
     if (!m_controller) {
         // Demo: nothing to write to disk; the draft becomes the base.
-        m_draft.userSpeakerName = newName;
+        m_draft.recording.userSpeakerName = newName;
         m_base = m_draft;
         m_baseSecrets = m_draftSecrets;
         m_baseSelected = m_draftSelected;
@@ -1225,20 +1291,20 @@ bool SettingsViewModel::save()
     m_saving = true;
 
     // 1) settings: only the DIFFERENCE goes onto the core's currently effective state.
-    const AppSettings live = c->settings()->settings();
-    AppSettings draft = m_draft;
-    draft.userSpeakerName = m_base.userSpeakerName;   // the core handles the rename as a separate operation
-    const QJsonObject liveJson = library::toJson(live);
-    const QJsonObject mergedJson = mergedSettings(library::toJson(m_base), library::toJson(draft), liveJson);
+    const tanara::app::AppSettings live = c->settings()->settings();
+    tanara::app::AppSettings draft = m_draft;
+    draft.recording.userSpeakerName = m_base.recording.userSpeakerName;   // the core handles the rename as a separate operation
+    const QJsonObject liveJson = live.toJson();
+    const QJsonObject mergedJson = mergedSettings(m_base.toJson(), draft.toJson(), liveJson);
     if (mergedJson != liveJson) {
-        AppSettings merged = library::appSettingsFromJson(mergedJson);
-        if (!paths::homeOverride().isEmpty()) merged.metadataDir = live.metadataDir;
+        tanara::app::AppSettings merged = tanara::app::AppSettings::fromJson(mergedJson);
+        if (!paths::homeOverride().isEmpty()) merged.paths.dataDir = live.paths.dataDir;
         c->settings()->setSettings(merged);
     }
     // 2) own name: the core carries it through the person DB, the meetings and the voiceprints.
-    if (!newName.isEmpty() && newName != m_base.userSpeakerName.trimmed())
+    if (!newName.isEmpty() && newName != m_base.recording.userSpeakerName.trimmed())
         c->setUserSpeakerName(newName);
-    // 3) secrets -> KeyStore.
+    // 3) secrets -> SecretStore.
     for (auto it = m_draftSecrets.constBegin(); it != m_draftSecrets.constEnd(); ++it)
         if (m_baseSecrets.value(it.key()) != it.value()) c->setSecret(it.key(), it.value().trimmed());
     // 4) default sources (selection shared with the recorder).
@@ -1249,8 +1315,8 @@ bool SettingsViewModel::save()
         if (a != b) c->setLastUsedDeviceNames(selectedDevicesForSave());
     }
     // 5) starting the watcher at sign-in: effective immediately (never in a sandbox / test).
-    if (m_base.watcherAutostart != m_draft.watcherAutostart)
-        watcher::autostart::applyWatcher(m_draft.watcherAutostart,
+    if (m_base.watcher.autostart != m_draft.watcher.autostart)
+        watcher::autostart::applyWatcher(m_draft.watcher.autostart,
                                 watcher::autostart::findWatcherExecutable(QCoreApplication::applicationDirPath()));
     m_saving = false;
 
@@ -1307,38 +1373,39 @@ void SettingsViewModel::loadDemo()
     const QString st = m_demoState;
     m_loading = true;
 
-    AppSettings s;
-    s.userSpeakerName = demoName("Kovács Lilla");
-    s.audioDir = demoText("/home/lilla/Tanara/felvetelek", "/home/emma/Tanara/recordings");
-    s.notesDir = demoText("/home/lilla/Tanara/jegyzetek", "/home/emma/Tanara/notes");
-    s.metadataDir = demoText("/home/lilla/.tanara", "/home/emma/.tanara");
-    s.uiLanguage = QStringLiteral("auto");
-    s.autoRecordAllDevices = false;
-    s.audioQuality = QStringLiteral("medium");
-    s.mixdownMode = QStringLiteral("manual");
-    s.summaryLanguage = QStringLiteral("magyar");
-    s.knownCallApps = {QStringLiteral("zoom"), QStringLiteral("teams"), QStringLiteral("webex"),
+    tanara::app::AppSettings s;
+    s.recording.userSpeakerName = demoName("Kovács Lilla");
+    s.paths.setPrimaryRecordingRoot(demoText("/home/lilla/Tanara/felvetelek", "/home/emma/Tanara/recordings"));
+    s.paths.notesDir = demoText("/home/lilla/Tanara/jegyzetek", "/home/emma/Tanara/notes");
+    s.paths.dataDir = demoText("/home/lilla/.tanara", "/home/emma/.tanara");
+    s.paths.modelsDir = demoText("/home/lilla/.tanara/models", "/home/emma/.tanara/models");
+    s.ui.language = QStringLiteral("auto");
+    s.recording.autoRecordAllDevices = false;
+    s.recording.audioQuality = QStringLiteral("medium");
+    s.recording.mixdownMode = QStringLiteral("manual");
+    s.processing.summaryLanguage = QStringLiteral("magyar");
+    s.watcher.knownCallApps = {QStringLiteral("zoom"), QStringLiteral("teams"), QStringLiteral("webex"),
                        QStringLiteral("slack"), QStringLiteral("discord"), QStringLiteral("meet")};
-    s.watcherAutostart = true;
-    s.sttProviderId = QStringLiteral("soniox");
-    s.llmProviderId = QStringLiteral("openai-compat");
-    s.sttConfigs.clear();
-    s.llmConfigs.clear();
+    s.watcher.autostart = true;
+    s.providers.stt.selectedId = QStringLiteral("soniox");
+    s.providers.llm.selectedId = QStringLiteral("openai-compat");
+    s.providers.stt.configs.clear();
+    s.providers.llm.configs.clear();
     {
-        ProviderConfig llm;
-        llm.type = s.llmProviderId;
+        providers::ProviderConfig llm;
+        llm.type = s.providers.llm.selectedId;
         llm.baseUrl = QStringLiteral("http://localhost:1234/v1");
         llm.model = QStringLiteral("google/gemma-4-12b-qat");
         llm.temperature = 0.2;
         llm.maxTokens = 30000;
-        s.llmConfigs.insert(s.llmProviderId, llm);
+        s.providers.llm.configs.insert(s.providers.llm.selectedId, llm);
     }
     const QString trust = QStringLiteral("alsa_input.usb-Trust_USB_Microphone-00.mono-fallback");
     const QString headsetMon = demoText("Monitor of Sennheiser headset - Kommunikáció",
                                         "Monitor of Sennheiser headset - Communication");
     const QString kantoMon = demoText("Monitor of Kanto YU4 - Optikai digitális sztereó",
                                       "Monitor of Kanto YU4 - Digital Stereo (IEC958)");
-    s.deviceNames = {
+    s.recording.deviceNames = {
         {trust, demoText("Trust USB mikrofon", "Trust USB microphone")},
         {QStringLiteral("alsa_input.pci-0000_00_1f.3.analog-stereo"), demoText("Sennheiser fejhallgató (analóg)", "Sennheiser headphones (analog)")},
         {headsetMon, QStringLiteral("Sennheiser headset")},
@@ -1367,7 +1434,8 @@ void SettingsViewModel::loadDemo()
 
     m_folderUsage = {{QStringLiteral("audio"), QStringLiteral("12,4 GB · ") + tr("%n megbeszélés", nullptr, 86)},
                      {QStringLiteral("notes"), QStringLiteral("38 MB")},
-                     {QStringLiteral("meta"), QStringLiteral("210 MB")}};
+                     {QStringLiteral("meta"), QStringLiteral("210 MB")},
+                     {QStringLiteral("models"), QStringLiteral("96 MB")}};
     m_voiceprintText = tr("Hanglenyomat: %n minta,", nullptr, 23) + QLatin1Char(' ')
                        + tr("%n megbeszélésből", nullptr, 9);
     m_hasVoiceprint = true;
@@ -1398,7 +1466,7 @@ void SettingsViewModel::loadDemo()
 
     if (st == QLatin1String("B02") || st == QLatin1String("rename")) {
         m_page = QStringLiteral("recording");
-        m_draft.deviceNames.insert(kantoMon, demoText("Kanto hangfal", "Kanto speakers"));   // 1 unsaved change
+        m_draft.recording.deviceNames.insert(kantoMon, demoText("Kanto hangfal", "Kanto speakers"));   // 1 unsaved change
     } else if (st == QLatin1String("B03")) {
         m_page = QStringLiteral("watcher");
         m_liveActive = true;
@@ -1438,8 +1506,8 @@ void SettingsViewModel::loadDemo()
     } else if (st == QLatin1String("cloudSelected")) {
         // The saved setting names Tanara Cloud (developer setting): not available, own key needed.
         m_page = QStringLiteral("services");
-        m_draft.sttProviderId = cloud::ProviderId;
-        m_draft.llmProviderId = cloud::ProviderId;
+        m_draft.providers.stt.selectedId = cloud::ProviderId;
+        m_draft.providers.llm.selectedId = cloud::ProviderId;
         m_stt->reset();
         m_llm->reset();
     } else if (st == QLatin1String("B07") || st == QLatin1String("B07notes") || st == QLatin1String("schema")) {
@@ -1448,15 +1516,15 @@ void SettingsViewModel::loadDemo()
         const QString custom = processing::promptBuiltin(QStringLiteral("single"))
             + QStringLiteral("\nFor each action item, name the owner and the deadline when they were said.\n");
         m_promptText.insert(QStringLiteral("single"), custom);
-        m_base.summaryPrompt = m_draft.summaryPrompt = custom;
+        m_base.processing.summaryPrompt = m_draft.processing.summaryPrompt = custom;
         if (st == QLatin1String("B07notes"))
             m_promptIndex = 1;      // the per-part note prompt
     } else if (st.startsWith(QLatin1String("B08"))) {
         m_page = QStringLiteral("speakers");
         // The draft's enabled list follows the demo's model state.
-        m_base.voiceModels = m_draft.voiceModels = QStringList{QStringLiteral("wespeaker-resnet34-lm")};
+        m_base.processing.voiceModels = m_draft.processing.voiceModels = QStringList{QStringLiteral("wespeaker-resnet34-lm")};
     } else if (st == QLatin1String("dirty") || st == QLatin1String("unsaved")) {
-        m_draft.userSpeakerName = demoText("Kovács Lilla Anna", "Emma Anne Carter");
+        m_draft.recording.userSpeakerName = demoText("Kovács Lilla Anna", "Emma Anne Carter");
     }
 
     m_devices->refreshFromDraft();

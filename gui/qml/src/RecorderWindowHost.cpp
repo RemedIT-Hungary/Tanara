@@ -5,7 +5,7 @@
 
 #include "tanara/app/AppController.h"
 #include "tanara/foundation/log/Logging.h"
-#include "tanara/foundation/paths/Paths.h"
+#include "tanara/foundation/paths/AppPaths.h"
 #include "tanara/app/SettingsManager.h"
 #include "tanara/foundation/ProcessLock.h"
 
@@ -30,9 +30,7 @@ RecorderWindowHost::RecorderWindowHost(app::AppController* controller, QQmlEngin
     }
     setupEngine(*m_engine);
     if (controller) {
-        const QString metaDir = controller->settings()
-            ? controller->settings()->settings().metadataDir : QString();
-        m_lock = std::make_unique<RecordingLock>(recordingLockPath(metaDir));
+        m_lock = std::make_unique<RecordingLock>(recordingLockPath());
     }
 }
 
@@ -65,10 +63,8 @@ QString RecorderWindowHost::iniPath() const
     // Without a controller (test / demo) there is nothing to remember, and we do not touch the user's folder either.
     if (!m_controller)
         return {};
-    const QString dir = paths::resolveMetadataDir(
-        m_controller && m_controller->settings() ? m_controller->settings()->settings().metadataDir
-                                                 : QString());
-    return QDir(dir).filePath(QStringLiteral("recorder.ini"));
+    return (m_controller->settings() ? m_controller->settings()->paths() : paths::current())
+        .stateFile(paths::files::RecorderIni);
 }
 
 QQuickWindow* RecorderWindowHost::window() const { return m_window; }

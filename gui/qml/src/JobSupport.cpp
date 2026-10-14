@@ -1,4 +1,5 @@
 #include "JobSupport.h"
+#include "tanara/providers/core/ProviderConfig.h"
 #include "tanara/foundation/time/TimeFormat.h"
 
 #include "AppContext.h"
@@ -150,10 +151,10 @@ QString providerLabel(tanara::app::AppController* controller, tanara::providers:
         return trj("saját kulcs");
     if (controller->usesCloud(step))
         return QStringLiteral("Tanara Cloud");
-    const tanara::AppSettings s = controller->settings()->settings();
+    const tanara::app::AppSettings s = controller->settings()->settings();
     const QString name = step == tanara::providers::WorkflowStep::Transcribe
-        ? tanara::providers::SttProviderRegistry::instance().descriptor(s.sttProviderId).displayName
-        : tanara::providers::LlmProviderRegistry::instance().descriptor(s.llmProviderId).displayName;
+        ? tanara::providers::SttProviderRegistry::instance().descriptor(s.providers.stt.selectedId).displayName
+        : tanara::providers::LlmProviderRegistry::instance().descriptor(s.providers.llm.selectedId).displayName;
     if (name.isEmpty())
         return trj("saját kulcs");
     return trj("%1 · saját kulcs").arg(name);

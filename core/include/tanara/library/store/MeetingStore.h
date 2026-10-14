@@ -10,21 +10,17 @@
 #include <QObject>
 #include <QVector>
 
-namespace tanara::app { class SettingsManager; }
-
 namespace tanara::library {
 
 
 class MeetingStore : public QObject {
     Q_OBJECT
 public:
-    // With explicit folders.
+    // audioDir: the (primary) recordings root; metadataDir: the data folder (index.db). Typically
+    // AppPaths::primaryRecordingRoot() / dataDir().
     explicit MeetingStore(const QString& audioDir,
                           const QString& metadataDir,
                           QObject* parent = nullptr);
-
-    // Takes the audio/metadata dir from the SettingsManager.
-    explicit MeetingStore(app::SettingsManager* settings, QObject* parent = nullptr);
 
     ~MeetingStore() override;
 

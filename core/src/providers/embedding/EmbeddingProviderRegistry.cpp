@@ -1,4 +1,5 @@
 #include "tanara/providers/embedding/EmbeddingProviderRegistry.h"
+#include "tanara/providers/core/ProviderConfig.h"
 
 namespace tanara::providers {
 

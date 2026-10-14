@@ -14,7 +14,7 @@
 #include "OnboardingWindowHost.h"
 
 #include "tanara/app/AppController.h"
-#include "tanara/foundation/paths/Paths.h"
+#include "tanara/foundation/paths/AppPaths.h"
 #include "tanara/app/SettingsManager.h"
 #include "tanara/library/store/JsonSerialization.h"
 
@@ -29,7 +29,7 @@
 
 using namespace tanara_qml;
 using tanara::app::AppController;
-using tanara::AppSettings;
+using tanara::app::AppSettings;
 
 class TestOnboardingViewModel : public QObject {
     Q_OBJECT
@@ -46,7 +46,7 @@ class TestOnboardingViewModel : public QObject {
         m_app = std::make_unique<AppController>();
         AppContext::instance()->setThemeMode(QStringLiteral("light"));
     }
-    AppSettings live() const { return m_app->settings()->settings(); }
+    tanara::app::AppSettings live() const { return m_app->settings()->settings(); }
     QJsonObject settingsFile() const
     {
         QFile f(m_app->settings()->settingsFilePath());
@@ -84,10 +84,10 @@ private slots:
         QCOMPARE(vm.stepCount(), 6);
         // The name comes from the OS account (SettingsManager::defaults): not empty, and not the old hard-coded one.
         QVERIFY(!vm.userName().trimmed().isEmpty());
-        QCOMPARE(vm.userName(), live().userSpeakerName);
-        QCOMPARE(vm.uiLanguage(), live().uiLanguage);
+        QCOMPARE(vm.userName(), live().recording.userSpeakerName);
+        QCOMPARE(vm.uiLanguage(), live().ui.language);
         QCOMPARE(vm.themeMode(), QStringLiteral("light"));
-        QCOMPARE(folder(vm, "audio").value("path").toString(), live().audioDir);
+        QCOMPARE(folder(vm, "audio").value("path").toString(), m_app->settings()->paths().primaryRecordingRoot());
         QVERIFY(folder(vm, "audio").value("isDefault").toBool());
         QVERIFY(folder(vm, "notes").value("isDefault").toBool());
         QCOMPARE(vm.watcherAutostart(), false);
@@ -113,7 +113,7 @@ private slots:
         QVERIFY(vm.stepDirty());
         vm.skip();
         QCOMPARE(AppContext::instance()->themeMode(), QStringLiteral("light"));  // restored
-        QCOMPARE(vm.userName(), live().userSpeakerName);
+        QCOMPARE(vm.userName(), live().recording.userSpeakerName);
         QCOMPARE(vm.stepStatus().value("you").toString(), QStringLiteral("skipped"));
 
         QCOMPARE(vm.step(), QStringLiteral("folders"));
@@ -131,10 +131,14 @@ private slots:
         QVERIFY(vm.isDone());
 
         QJsonObject after = settingsFile();
-        QCOMPARE(after.value("onboardingDone").toBool(), true);
-        after.remove(QStringLiteral("onboardingDone"));
+        QJsonObject ui = after.value("ui").toObject();
+        QCOMPARE(ui.value("onboardingDone").toBool(), true);
+        ui.remove(QStringLiteral("onboardingDone"));
+        after["ui"] = ui;
         QJsonObject expected = before;
-        expected.remove(QStringLiteral("onboardingDone"));
+        QJsonObject expectedUi = expected.value("ui").toObject();
+        expectedUi.remove(QStringLiteral("onboardingDone"));
+        expected["ui"] = expectedUi;
         QCOMPARE(after, expected);
     }
 
@@ -157,8 +161,8 @@ private slots:
         vm.setUiLanguage(QStringLiteral("en"));
         vm.setThemeMode(QStringLiteral("dark"));
         QVERIFY(vm.next());
-        QCOMPARE(live().userSpeakerName, QStringLiteral("Teszt Elek"));
-        QCOMPARE(live().uiLanguage, QStringLiteral("en"));
+        QCOMPARE(live().recording.userSpeakerName, QStringLiteral("Teszt Elek"));
+        QCOMPARE(live().ui.language, QStringLiteral("en"));
         QCOMPARE(theme.count(), 1);
         QCOMPARE(theme.first().at(0).toString(), QStringLiteral("dark"));
         QCOMPARE(AppContext::instance()->themeMode(), QStringLiteral("dark"));
@@ -171,26 +175,26 @@ private slots:
         vm.setFolder(QStringLiteral("audio"), audio);
         vm.setFolder(QStringLiteral("notes"), notes);
         QVERIFY(vm.next());
-        QCOMPARE(live().audioDir, audio);
-        QCOMPARE(live().notesDir, notes);
+        QCOMPARE(live().paths.primaryRecordingRoot(), audio);
+        QCOMPARE(live().paths.notesDir, notes);
         // Back to the default (for the badge): the draft goes back to the default path.
         vm.back();
         vm.resetFolder(QStringLiteral("audio"));
         QVERIFY(folder(vm, "audio").value("isDefault").toBool());
         QVERIFY(vm.next());
-        QVERIFY(tanara::paths::expandHome(live().audioDir) == tanara::paths::defaultAudioDir()
-                || live().audioDir == tanara::paths::defaultAudioDir());
+        // The default folder is stored as "no setting".
+        QVERIFY(live().paths.primaryRecordingRoot().isEmpty());
 
         QCOMPARE(vm.step(), QStringLiteral("providers"));
         QVERIFY(vm.next());
         QCOMPARE(vm.step(), QStringLiteral("watcher"));
         vm.setWatcherAutostart(true);
         QVERIFY(vm.next());
-        QCOMPARE(live().watcherAutostart, true);
+        QCOMPARE(live().watcher.autostart, true);
         QCOMPARE(vm.step(), QStringLiteral("done"));
-        QVERIFY(!live().onboardingDone);                      // the flag only at the end / on close
+        QVERIFY(!live().ui.onboardingDone);                      // the flag only at the end / on close
         vm.next();
-        QVERIFY(live().onboardingDone);
+        QVERIFY(live().ui.onboardingDone);
     }
 
     void readinessLineFollowsProviders()
@@ -210,14 +214,14 @@ private slots:
         QVERIFY(vm.sttReady());
 
         // External save (Settings): the row refreshes by itself.
-        AppSettings s = live();
-        s.llmConfigs[s.llmProviderId].baseUrl.clear();
+        tanara::app::AppSettings s = live();
+        s.providers.llm.configs[s.providers.llm.selectedId].baseUrl.clear();
         m_app->settings()->setSettings(s);
         QCOMPARE(vm.llmStatus(), QStringLiteral("Összefoglaló: hiányos beállítás"));
         QVERIFY(!vm.llmReady());
 
-        s.llmConfigs[s.llmProviderId].baseUrl = QStringLiteral("http://localhost:11434/v1");
-        s.llmConfigs[s.llmProviderId].model = QStringLiteral("qwen3:8b");
+        s.providers.llm.configs[s.providers.llm.selectedId].baseUrl = QStringLiteral("http://localhost:11434/v1");
+        s.providers.llm.configs[s.providers.llm.selectedId].model = QStringLiteral("qwen3:8b");
         QCOMPARE(OnboardingViewModel::providerLabel(s, false), QStringLiteral("Ollama · qwen3:8b"));
     }
 
@@ -229,11 +233,11 @@ private slots:
         vm.setStep(QStringLiteral("folders"));
         const QString typed = m_home->filePath(QStringLiteral("begepelt"));
         vm.setFolder(QStringLiteral("notes"), typed);
-        AppSettings s = live();
-        s.audioDir = m_home->filePath(QStringLiteral("kivulrol"));
-        s.notesDir = m_home->filePath(QStringLiteral("kivulrol-jegyzet"));
+        tanara::app::AppSettings s = live();
+        s.paths.setPrimaryRecordingRoot(m_home->filePath(QStringLiteral("kivulrol")));
+        s.paths.notesDir = m_home->filePath(QStringLiteral("kivulrol-jegyzet"));
         m_app->settings()->setSettings(s);
-        QCOMPARE(folder(vm, "audio").value("path").toString(), s.audioDir);   // untouched, so it follows
+        QCOMPARE(folder(vm, "audio").value("path").toString(), s.paths.primaryRecordingRoot());   // untouched, so it follows
         QCOMPARE(folder(vm, "notes").value("path").toString(), typed);        // what was typed stays
     }
 
@@ -263,8 +267,8 @@ private slots:
         QSignalSpy closed(&host, &OnboardingWindowHost::closed);
         host.window()->close();
         QTRY_COMPARE(closed.count(), 1);
-        QVERIFY(live().onboardingDone);
-        QVERIFY(live().userSpeakerName != QStringLiteral("Nem mentett"));
+        QVERIFY(live().ui.onboardingDone);
+        QVERIFY(live().recording.userSpeakerName != QStringLiteral("Nem mentett"));
 
         // New process (new host) on the same data: not by itself, by hand yes, starting from the beginning.
         OnboardingWindowHost again(m_app.get(), nullptr);
@@ -281,8 +285,8 @@ private slots:
     void hostSkipsWhenDoneAndWithoutController()
     {
         startApp();
-        AppSettings s = live();
-        s.onboardingDone = true;
+        tanara::app::AppSettings s = live();
+        s.ui.onboardingDone = true;
         m_app->settings()->setSettings(s);
         OnboardingWindowHost host(m_app.get(), nullptr);
         QVERIFY(!host.openIfNeeded());

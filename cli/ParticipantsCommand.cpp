@@ -1,7 +1,7 @@
 // tanara-cli participants. All output is English, no tr().
 #include "ParticipantsCommand.h"
 
-#include "tanara/foundation/paths/Paths.h"
+#include "tanara/foundation/paths/AppPaths.h"
 #include "tanara/app/SettingsManager.h"
 #include "tanara/processing/analysis/ParticipantAnalysis.h"
 #include "tanara/editing/session/SpeakerOverlay.h"
@@ -165,7 +165,7 @@ int runParticipantsCommand(const QStringList& args)
     processing::ParticipantAnalysisFile file = processing::ParticipantAnalysisFile::load(folder);
     if (analyze) {
         const app::SettingsManager sm;
-        const QString meta = paths::resolveMetadataDir(sm.settings().metadataDir);
+        const QString meta = sm.paths().modelsDir();
         const QString appDir = QCoreApplication::instance() ? QCoreApplication::applicationDirPath() : QString();
         const processing::VoiceEmbedderSet set = processing::VoiceEmbedderSet::fromSettings(sm.enabledVoiceModels(), meta, appDir);
         if (set.isEmpty() || !set.ensureLoaded()) {
@@ -187,7 +187,7 @@ int runParticipantsCommand(const QStringList& args)
 
         const library::VoiceprintStore prints(QDir(meta).filePath(QStringLiteral("voiceprints.json")));
         processing::participants::CandidateContext ctx;
-        ctx.selfName = sm.settings().userSpeakerName.trimmed();
+        ctx.selfName = sm.settings().recording.userSpeakerName.trimmed();
         ctx.rank = [&prints](const EmbeddingSet& q) { return prints.rankedMatches(q, q.keys()); };
         ctx.hasVoiceprint = [&prints](const QString& n) { return prints.printCount(n) > 0; };
         m.participants = processing::participants::buildParticipants(cs, m, ctx);

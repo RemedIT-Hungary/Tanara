@@ -7,6 +7,7 @@
 //  - "tanara-hosted-embedding": Tanara Cloud (AuthMode::Login, no fields): the gateway's
 //    /v1/embeddings route, with the same sign-in as the LLM path.
 #include "tanara/providers/core/ProviderDescriptor.h"
+#include "tanara/providers/core/ProviderConfig.h"
 #include "tanara/domain/Types.h"
 
 #include <QHash>

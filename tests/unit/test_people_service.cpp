@@ -131,7 +131,7 @@ void PeopleServiceTest::init()
     QVERIFY(m_home->isValid());
     qputenv("TANARA_HOME", m_home->path().toUtf8());
     m_app = std::make_unique<app::AppController>();
-    QVERIFY(m_app->settings()->settings().audioDir.startsWith(m_home->path()));
+    QVERIFY(m_app->settings()->paths().primaryRecordingRoot().startsWith(m_home->path()));
     m_app->setUserSpeakerName(kSelf);
 }
 
@@ -720,7 +720,7 @@ void PeopleServiceTest::selfRenameChangesSettingAndSelfCannotBeDeleted()
     QVERIFY(svc()->isSelf("kovács lilla"));
     QVERIFY(svc()->person(kSelf).isSelf);
     QVERIFY(svc()->renamePerson(kSelf, "Kovács-Nagy Lilla").ok);
-    QCOMPARE(m_app->settings()->settings().userSpeakerName, QStringLiteral("Kovács-Nagy Lilla"));
+    QCOMPARE(m_app->settings()->settings().recording.userSpeakerName, QStringLiteral("Kovács-Nagy Lilla"));
     QVERIFY(svc()->isSelf("Kovács-Nagy Lilla"));
     QCOMPARE(svc()->person("Kovács-Nagy Lilla").aliases, QStringList{kSelf});
 
@@ -729,7 +729,7 @@ void PeopleServiceTest::selfRenameChangesSettingAndSelfCannotBeDeleted()
     QVERIFY(svc()->exists("Kovács-Nagy Lilla"));
 
     svc()->undo();
-    QCOMPARE(m_app->settings()->settings().userSpeakerName, kSelf);
+    QCOMPARE(m_app->settings()->settings().recording.userSpeakerName, kSelf);
     QVERIFY(svc()->person(kSelf).aliases.isEmpty());
 }
 

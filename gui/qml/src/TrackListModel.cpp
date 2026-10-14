@@ -110,11 +110,11 @@ void TrackListModel::connectController()
                              [this, mine](const QString& id) { if (mine(id)) reload(); });
     // Renaming devices (Settings) also changes the tracks' friendly names.
     if (c->settings()) {
-        m_deviceNames = c->settings()->settings().deviceNames;
+        m_deviceNames = c->settings()->settings().recording.deviceNames;
         m_connections << connect(c->settings(), &tanara::app::SettingsManager::settingsChanged, this, [this] {
             app::AppController* a = app();
             if (!a || !a->settings()) return;
-            const QMap<QString, QString> names = a->settings()->settings().deviceNames;
+            const QMap<QString, QString> names = a->settings()->settings().recording.deviceNames;
             if (names == m_deviceNames) return;
             m_deviceNames = names;
             reload();

@@ -7,7 +7,7 @@
 #include <QSignalSpy>
 #include <QTemporaryDir>
 
-#include "tanara/foundation/paths/Paths.h"
+#include "tanara/foundation/paths/AppPaths.h"
 #include "tanara/app/SettingsManager.h"
 #include "tanara/processing/voiceid/VoiceModelRegistry.h"
 
@@ -70,7 +70,7 @@ private slots:
     {
         QTemporaryDir meta, app;
         const processing::VoiceModelSpec s = *processing::VoiceModelRegistry::spec(QStringLiteral("campplus"));
-        const QString userModel = QDir(meta.path()).filePath(QStringLiteral("models/") + s.fileName);
+        const QString userModel = QDir(meta.path()).filePath(s.fileName);   // meta = the models folder
         const QString appModel = QDir(app.path()).filePath(QStringLiteral("models/") + s.fileName);
 
         QCOMPARE(processing::VoiceModelRegistry::resolvePath(s, meta.path(), app.path()), userModel);
@@ -102,13 +102,13 @@ private slots:
         app::SettingsManager sm(meta.path());
         QCOMPARE(sm.enabledVoiceModels(), QStringList{"wespeaker-resnet34-lm"});
         // The default is in the file written at first launch too.
-        QCOMPARE(readJson(sm.settingsFilePath()).value("voiceModels").toArray(), QJsonArray({"wespeaker-resnet34-lm"}));
+        QCOMPARE(readJson(sm.settingsFilePath()).value("processing").toObject().value("voiceModels").toArray(), QJsonArray({"wespeaker-resnet34-lm"}));
 
         QSignalSpy changed(&sm, &app::SettingsManager::settingsChanged);
         sm.setEnabledVoiceModels({"zeta", "campplus", "zeta"});
         QCOMPARE(changed.count(), 1);
         QCOMPARE(sm.enabledVoiceModels(), QStringList({"campplus", "zeta"}));
-        QCOMPARE(readJson(sm.settingsFilePath()).value("voiceModels").toArray(), QJsonArray({"campplus", "zeta"}));
+        QCOMPARE(readJson(sm.settingsFilePath()).value("processing").toObject().value("voiceModels").toArray(), QJsonArray({"campplus", "zeta"}));
 
         // The same (in another order): no change, no signal.
         sm.setEnabledVoiceModels({"zeta", "campplus"});
@@ -128,13 +128,13 @@ private slots:
         {
             QFile f(file);
             QVERIFY(f.open(QIODevice::WriteOnly));
-            f.write(R"({"userSpeakerName":"Teszt"})");
+            f.write(R"({"version":2,"recording":{"userSpeakerName":"Teszt"}})");
         }
         QCOMPARE(app::SettingsManager(meta.path()).enabledVoiceModels(), QStringList{"wespeaker-resnet34-lm"});
         {
             QFile f(file);
             QVERIFY(f.open(QIODevice::WriteOnly | QIODevice::Truncate));
-            f.write(R"({"voiceModels":["b","a","b"]})");
+            f.write(R"({"version":2,"processing":{"voiceModels":["b","a","b"]}})");
         }
         QCOMPARE(app::SettingsManager(meta.path()).enabledVoiceModels(), QStringList({"a", "b"}));
     }

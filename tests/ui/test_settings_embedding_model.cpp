@@ -1,7 +1,7 @@
 // SettingsEmbeddingModel: the Settings "Embedding" card and the TAG SUGGESTIONS section: the
 // demo states' made-up data, then on an isolated TANARA_HOME with the real core: the mode goes
 // into the draft (unsaved indicator, Cancel), the local endpoint's connection test against a
-// FAKE HTTP server, save to the AppSettings fields, the model-change notice before saving,
+// FAKE HTTP server, save to the tanara::app::AppSettings fields, the model-change notice before saving,
 // resetting the switches and the rejected suggestions. No real network / LM Studio.
 #include "AppContext.h"
 #include "SettingsEmbeddingModel.h"
@@ -217,12 +217,12 @@ private slots:
         emb->setLlmTagSuggestions(false);
         QVERIFY(vm.save());
         QVERIFY(!vm.dirty());
-        tanara::AppSettings s = m_app->settings()->settings();
-        QCOMPARE(s.embeddingProviderId, embid::LocalId);
-        QCOMPARE(s.embeddingConfigs.value(embid::LocalId).model, QStringLiteral("embed-a"));
-        QCOMPARE(s.embeddingConfigs.value(embid::LocalId).baseUrl, http.base());
-        QVERIFY(!s.tagSuggestions);
-        QVERIFY(!s.llmTagSuggestions);
+        tanara::app::AppSettings s = m_app->settings()->settings();
+        QCOMPARE(s.providers.embedding.selectedId, embid::LocalId);
+        QCOMPARE(s.providers.embedding.configs.value(embid::LocalId).model, QStringLiteral("embed-a"));
+        QCOMPARE(s.providers.embedding.configs.value(embid::LocalId).baseUrl, http.base());
+        QVERIFY(!s.processing.tagSuggestions);
+        QVERIFY(!s.processing.llmTagSuggestions);
         QVERIFY(emb->prepStatus() != QLatin1String("pending"));          // saved: core prepares
 
         // Model change: announced BEFORE saving; Cancel discards it.
@@ -241,13 +241,13 @@ private slots:
         QVERIFY(vm.save());
         QVERIFY(!emb->restartPending());
         s = m_app->settings()->settings();
-        QCOMPARE(s.embeddingConfigs.value(embid::LocalId).model, QStringLiteral("embed-b"));
-        QVERIFY(s.tagSuggestions);
+        QCOMPARE(s.providers.embedding.configs.value(embid::LocalId).model, QStringLiteral("embed-b"));
+        QVERIFY(s.processing.tagSuggestions);
 
         // Back to the default level.
         emb->setMode(QStringLiteral("none"));
         QVERIFY(vm.save());
-        QVERIFY(m_app->settings()->settings().embeddingProviderId.isEmpty());
+        QVERIFY(m_app->settings()->settings().providers.embedding.selectedId.isEmpty());
         QCOMPARE(emb->status(), QStringLiteral("neutral"));
     }
 
@@ -263,7 +263,7 @@ private slots:
         QVERIFY(!emb->card()->fieldErrors().isEmpty());
         QVERIFY(!vm.save());
         QCOMPARE(vm.page(), QStringLiteral("services"));
-        QVERIFY(m_app->settings()->settings().embeddingProviderId.isEmpty());
+        QVERIFY(m_app->settings()->settings().providers.embedding.selectedId.isEmpty());
     }
 
     void rejectedSuggestionsCanBeReset()

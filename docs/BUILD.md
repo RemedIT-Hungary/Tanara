@@ -28,9 +28,13 @@ installer) see [`packaging/windows/README.md`](../packaging/windows/README.md).
 sudo dnf install gcc-c++ cmake ninja-build ccache git \
     qt6-qtbase-devel qt6-qtbase-private-devel qt6-qtdeclarative-devel \
     qt6-qtmultimedia-devel qt6-qtsvg-devel qt6-qttools-devel qt6-linguist \
-    onnxruntime-devel \
+    onnxruntime-devel qtkeychain-qt6-devel \
     ffmpeg-free nodejs24 python3
 ```
+
+`qtkeychain-qt6-devel` (QtKeychain, BSD-3-Clause) stores the API keys in the system keychain
+(Secret Service / KWallet). It is optional: without it the build keeps the keys in a file that only
+the user can read (`TANARA_USE_KEYCHAIN=OFF` turns it off on purpose).
 
 `ffmpeg-free` is enough: it includes libopus and libmp3lame. `tools/ci/linux-deps.sh` installs the same list (it is what CI uses).
 
@@ -117,6 +121,7 @@ For a package that you give to others (licenses, VC++ runtime, LGPL FFmpeg, inst
 | `TANARA_BUILD_CLOUD` | ON | Tanara Cloud client (sign-in, cloud providers, estimate, balance). OFF: nothing cloud-related is registered. |
 | `TANARA_CLOUD_TEASER` | ON | The "coming soon" waitlist panel and the hint next to Settings. |
 | `ONNXRUNTIME_ROOT_DIR` | unset | Windows only: path of the unpacked ONNX Runtime release. |
+| `TANARA_USE_KEYCHAIN` | ON | Store the API keys in the OS keychain through QtKeychain. Linux: the distro package (`qtkeychain-qt6-devel`) if found. Windows: if no installed QtKeychain is found, CMake `FetchContent` builds the pinned release 0.16.0 (needs git + network at configure time). Not found / OFF: file only. Sandboxes (`TANARA_HOME`) and tests always use the file. |
 
 Headless build (no GUI, no watcher; this is what the `linux-headless` CI job builds):
 

@@ -4,6 +4,7 @@
 // Wires the modules together: settings, devices, recording, store, STT, LLM, summary.
 // RULE: no Widgets dependency here either; a plain QObject API (signals/slots + value DTOs).
 #include "tanara/domain/Types.h"
+#include "tanara/providers/core/ProviderConfig.h"
 #include "tanara/providers/core/ReadinessModel.h"
 #include "tanara/editing/session/SpeakerEditTypes.h"
 #include "tanara/cloud/CloudTypes.h"
@@ -90,7 +91,7 @@ public:
     // The account (always exists: the teaser-mode waitlist goes through it too). See CloudAccount.h.
     cloud::CloudAccount* cloud() const;
     // The sign-in cloud mode is live: compiled in (TANARA_BUILD_CLOUD) AND enabled
-    // (settings.cloudEnabled, or TANARA_CLOUD=live). TANARA_CLOUD=off disables everything.
+    // (settings.cloud.enabled, or TANARA_CLOUD=live). TANARA_CLOUD=off disables everything.
     bool cloudLive() const;
     // The "Coming soon" (waitlist) panel is visible: compiled in (TANARA_CLOUD_TEASER) and the cloud is not live yet.
     bool cloudTeaser() const;
@@ -109,7 +110,7 @@ public:
     providers::ReadinessResult canRun(providers::WorkflowStep step, const QString& meetingId) const;
 
     // NAMES of the devices used last (at the latest recording); the UI should pre-check
-    // these at startup. Persistent (~/.tanara/state.json).
+    // these at startup. Persistent (<state>/state.json, AppPaths).
     QStringList lastUsedDeviceNames() const;
 
     // ---- recorder (floating recorder window) -------------------------------------------------
@@ -377,7 +378,7 @@ public slots:
     // Transcribes a meeting. The transcript is built from the MIXDOWN (a single audio stream: no
     // per-track overlap merging/duplication, 1x Soniox cost instead of ~Nx). If the mixdown is
     // missing/stale, it builds it first and starts the transcription on its done signal.
-    // The key comes from the KeyStore.
+    // The key comes from the SecretStore.
     void transcribeMeeting(const QString& meetingId);
 
     // Re-transcription with an existing transcript: clears the speaker assignments (another
@@ -546,14 +547,18 @@ public slots:
     void requestLlmTagSuggestions(const QString& meetingId);
     // Sets the embedding provider (also in settings.json). A model change drops the index and
     // restarts preparation. Empty id = no embedding (basic level).
-    void setEmbeddingProvider(const QString& providerId, const tanara::ProviderConfig& config);
+    void setEmbeddingProvider(const QString& providerId, const tanara::providers::ProviderConfig& config);
 
-    // Sets a secret (e.g. the Soniox API key) in the KeyStore. name e.g. "soniox.apiKey".
+    // Sets a secret (e.g. the Soniox API key) in the SecretStore. name e.g. "soniox.apiKey".
     void setSecret(const QString& name, const QString& value);
     bool hasSecret(const QString& name) const;
     // The stored secret's value ("" if none), for the Settings key field (eye button) and the
     // "Test connection" probe. Do not display it anywhere else.
     QString secret(const QString& name) const;
+    // Where the secrets are: "keychain" | "file" (foundation/secrets/SecretStore.h), and why it is the
+    // file although the keychain was wanted (empty = by choice / sandbox / no problem).
+    QString secretBackend() const;
+    QString secretBackendWarning() const;
 
     // Counted level monitoring for several consumers (the Settings "Recording" page alongside the
     // recorder): while at least one consumer requests it, or the start/stopLevelMonitoring pair
@@ -574,7 +579,7 @@ public slots:
     // voiceModelsChanged is ALWAYS emitted (the file state may have changed too), and if the
     // list in use grew, voiceprint backfill starts.
     void rescanVoiceModels();
-    // Deletes a downloaded model file (only <metaDir>/models; a bundled one is not touched),
+    // Deletes a downloaded model file (only the models folder, AppPaths::modelsDir(); a bundled one is not touched),
     // then rescanVoiceModels. false (+ *error): unknown id / no downloaded file / currently
     // downloading or not deletable.
     bool deleteVoiceModelFile(const QString& id, QString* error = nullptr);
@@ -694,11 +699,11 @@ private:
     using CloudRunPtr = std::shared_ptr<CloudRun>;
     CloudRunPtr newCloudRun(const QString& meetingId, const QString& kind) const;
     // The run's gateway config (baseUrl, key, model, X-Tanara-* headers, response hook).
-    ProviderConfig cloudConfig(providers::WorkflowStep step, const CloudRunPtr& run,
+    providers::ProviderConfig cloudConfig(providers::WorkflowStep step, const CloudRunPtr& run,
                                const QString& summaryMode) const;
     // BYO: the selected LLM config + key (run stays null). Cloud: gateway config; if the run is
     // still null, a new run starts (by kind / summaryMode).
-    ProviderConfig llmConfigFor(CloudRunPtr& run, const QString& meetingId, const QString& kind,
+    providers::ProviderConfig llmConfigFor(CloudRunPtr& run, const QString& meetingId, const QString& kind,
                                 const QString& summaryMode) const;
     void finishCloudRun(const CloudRunPtr& run);                       // cloudCharged
     // Per-track speech share (background thread), then applied to the finished meeting; thenMixdown = remix.
@@ -742,7 +747,7 @@ private:
     std::unique_ptr<Impl> d;
 };
 
-// The KeyStore key names (in one place).
+// The SecretStore key names (in one place).
 namespace keys {
 inline const QString SonioxApiKey = QStringLiteral("soniox.apiKey");
 inline const QString LlmApiKey    = QStringLiteral("llm.apiKey");

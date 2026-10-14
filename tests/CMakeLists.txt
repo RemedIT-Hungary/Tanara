@@ -6,6 +6,11 @@ foreach(testfile ${TANARA_TEST_FILES})
     target_link_libraries(${tname} PRIVATE tanara_core Qt6::Test)
     tanara_copy_onnxruntime_dll(${tname})
     add_test(NAME ${tname} COMMAND ${tname})
+    # Safety net: every test starts in its own sandbox (TANARA_HOME), so a test that forgets to set
+    # one can never write into the user's real folders or keychain. Tests that check the
+    # non-sandbox resolution unset it themselves (with HOME / XDG_* pointed at temp folders).
+    set_tests_properties(${tname} PROPERTIES
+        ENVIRONMENT "TANARA_HOME=${CMAKE_CURRENT_BINARY_DIR}/sandbox/${tname}")
 endforeach()
 
 # The store/settings test gets a main() only with the standalone define.
@@ -40,7 +45,7 @@ if(TARGET tanara_qml)
         tanara_copy_onnxruntime_dll(${tname})
         add_test(NAME ${tname} COMMAND ${tname})
         set_tests_properties(${tname} PROPERTIES
-            ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software")
+            ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;TANARA_HOME=${CMAKE_CURRENT_BINARY_DIR}/sandbox/${tname}")
     endforeach()
 endif()
 

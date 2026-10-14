@@ -70,7 +70,7 @@ void DeviceUnplugTest::unplugDuringRecordingClosesOnlyThatTrack()
     qputenv("TANARA_HOME", home.path().toUtf8());
 
     auto app = std::make_unique<app::AppController>();
-    QVERIFY(app->settings()->settings().audioDir.startsWith(home.path()));
+    QVERIFY(app->settings()->paths().primaryRecordingRoot().startsWith(home.path()));
     app->setAutoMixdownAfterRecording(false);
 
     const AudioDeviceInfo mic = dev(QStringLiteral("Trust USB mikrofon"), TrackKind::Mic);

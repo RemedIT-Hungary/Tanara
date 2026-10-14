@@ -16,7 +16,8 @@
 #include "tanara/app/SettingsManager.h"
 #include "tanara/library/tracks/TrackCatalog.h"
 #include "tanara/foundation/ProcessLock.h"
-#include "tanara/foundation/KeyStore.h"
+#include "tanara/foundation/secrets/SecretStore.h"
+#include "tanara/foundation/paths/AppPaths.h"
 #include "tanara/library/store/MeetingStore.h"
 #include "tanara/library/store/PeopleStore.h"
 #include "tanara/foundation/SharedFile.h"
@@ -78,6 +79,7 @@ private slots:
     void replaceFileKeepsOldOnFailure();
     void relocateRejectsMixdownAndNonAudio();
     void deletingTracksNeverDeletesMixdown();
+    void sandboxRolesStayInside();
 
 private:
     QString orphanFolder(const QString& name);
@@ -115,7 +117,7 @@ void DataSafetyTest::orphanRecoverySkipsLiveLockFolder()
     const QString crashed = orphanFolder("2026-01-04_0900_Osszeomlott");
 
     // A live recorder (the test's own PID is alive) on this folder: not an orphan.
-    RecordingLock lock(QDir(m_meta).filePath("recording.lock"));
+    RecordingLock lock(recordingLockPath());
     QVERIFY(lock.acquire(live + "/"));   // with a trailing slash it is the same folder
     QCOMPARE(store.recoverOrphanRecordings(), 1);
     QVERIFY(!QFile::exists(QDir(live).filePath("meeting.json")));
@@ -131,10 +133,10 @@ void DataSafetyTest::orphanRecoverySkipsLiveLockFolder()
 
     // A stale lock (dead PID) does not protect: a crashed recorder's folder is recovered.
     const QString stale = orphanFolder("2026-01-06_1100_Halott-felvevo");
-    writeFile(QDir(m_meta).filePath("recording.lock"),
+    writeFile(recordingLockPath(),
               QJsonDocument(QJsonObject{{"pid", 2147483000}, {"meetingFolder", stale},
                                         {"startedAt", "2026-01-06T11:00:00"}}).toJson());
-    QVERIFY(!RecordingLock::read(QDir(m_meta).filePath("recording.lock")).active);
+    QVERIFY(!RecordingLock::read(recordingLockPath()).active);
     QCOMPARE(store.recoverOrphanRecordings(), 1);
     QVERIFY(QFile::exists(QDir(stale).filePath("meeting.json")));
 }
@@ -245,7 +247,7 @@ void DataSafetyTest::deleteKeepsLiveRecordingFolder()
     library::MeetingStore store(m_audio, m_meta);
     const Meeting a = store.createMeeting("Felvétel alatt");
     writeFile(QDir(a.folder).filePath("track_mic.ogg"), "epp-irodik");
-    RecordingLock lock(QDir(m_meta).filePath("recording.lock"));
+    RecordingLock lock(recordingLockPath());
     QVERIFY(lock.acquire(a.folder));
 
     QVERIFY(store.deleteMeeting(a.id));   // the entry disappears...
@@ -280,12 +282,12 @@ void DataSafetyTest::corruptSettingsAreNotOverwritten()
     QDir().mkpath(m_meta);
     const QString path = QDir(m_meta).filePath("settings.json");
     // An interrupted write: truncated JSON, with the user's settings in it.
-    const QByteArray broken = R"({"audioDir": "/mnt/felvetelek/tanara", "userSpeakerName": "Ádá)";
+    const QByteArray broken = R"({"version": 2, "recording": {"userSpeakerName": "Ádá)";
     writeFile(path, broken);
 
     app::SettingsManager sm(m_meta);
     QVERIFY(sm.loadFailed());
-    QCOMPARE(sm.settings().sttProviderId, QStringLiteral("soniox"));   // defaults in memory
+    QCOMPARE(sm.settings().providers.stt.selectedId, QStringLiteral("soniox"));   // defaults in memory
     QCOMPARE(readFile(path), broken);                                  // the file is UNTOUCHED
     // Another process (recorder / watcher) loading does not overwrite it either.
     { app::SettingsManager other(m_meta); QVERIFY(other.loadFailed()); }
@@ -293,8 +295,8 @@ void DataSafetyTest::corruptSettingsAreNotOverwritten()
     QCOMPARE(QDir(m_meta).entryList({"settings.json*"}, QDir::Files).size(), 1);
 
     // Explicit save: the corrupt file is set aside (kept), the new one is valid.
-    AppSettings s = sm.settings();
-    s.userSpeakerName = "Lilla";
+    tanara::app::AppSettings s = sm.settings();
+    s.recording.userSpeakerName = "Lilla";
     sm.setSettings(s);
     QVERIFY(!sm.loadFailed());
     const QStringList aside = QDir(m_meta).entryList({"settings.json.corrupt-*"}, QDir::Files);
@@ -302,7 +304,7 @@ void DataSafetyTest::corruptSettingsAreNotOverwritten()
     QCOMPARE(readFile(QDir(m_meta).filePath(aside.first())), broken);
     app::SettingsManager again(m_meta);
     QVERIFY(!again.loadFailed());
-    QCOMPARE(again.settings().userSpeakerName, QStringLiteral("Lilla"));
+    QCOMPARE(again.settings().recording.userSpeakerName, QStringLiteral("Lilla"));
     // The next save sets nothing aside anymore.
     again.setSettings(again.settings());
     QCOMPARE(QDir(m_meta).entryList({"settings.json.corrupt-*"}, QDir::Files).size(), 1);
@@ -315,24 +317,24 @@ void DataSafetyTest::healthySettingsRoundTrip()
     QVERIFY(!first.loadFailed());
     const QString path = QDir(m_meta).filePath("settings.json");
     QVERIFY(QFile::exists(path));
-    AppSettings s = first.settings();
-    s.userSpeakerName = "Ödön";
-    s.languageHints = QStringList{"hu", "en"};
+    tanara::app::AppSettings s = first.settings();
+    s.recording.userSpeakerName = "Ödön";
+    s.processing.languageHints = QStringList{"hu", "en"};
     first.setSettings(s);
     // Only settings.json remains (no temporary / set-aside file), and it can be read back.
     QCOMPARE(QDir(m_meta).entryList({"settings.json*"}, QDir::Files | QDir::Hidden), QStringList{"settings.json"});
     app::SettingsManager second(m_meta);
-    QCOMPARE(second.settings().userSpeakerName, QStringLiteral("Ödön"));
-    QCOMPARE(second.settings().languageHints, QStringList({"hu", "en"}));
+    QCOMPARE(second.settings().recording.userSpeakerName, QStringLiteral("Ödön"));
+    QCOMPARE(second.settings().processing.languageHints, QStringList({"hu", "en"}));
 }
 
 void DataSafetyTest::secretsKeepPermissionsAndContent()
 {
     const QString path = QDir(m_meta).filePath("secrets.json");
-    KeyStore ks(path);
+    FileSecretStore ks(path);
     ks.set("soniox.apiKey", "titok-1");
     ks.set("llm.apiKey", "titok-2");
-    KeyStore back(path);
+    FileSecretStore back(path);
     QCOMPARE(back.get("soniox.apiKey"), QStringLiteral("titok-1"));
     QCOMPARE(back.get("llm.apiKey"), QStringLiteral("titok-2"));
     QCOMPARE(QDir(m_meta).entryList(QDir::Files | QDir::Hidden), QStringList{"secrets.json"});
@@ -488,6 +490,29 @@ void DataSafetyTest::deletingTracksNeverDeletesMixdown()
     QVERIFY(!folder.exists("track_d.ogg"));                                   // the real dropped track was deleted
     QCOMPARE(readFile(folder.filePath("mixdown.mp3")), QByteArray("KEVEREK")); // the mix was not
     QVERIFY(folder.exists("track_mic.ogg"));
+}
+
+// Every AppPaths role and the secret backend stay inside TANARA_HOME, whatever the "paths"
+// settings section or the secrets backend says (a copied real settings.json must not leak out).
+void DataSafetyTest::sandboxRolesStayInside()
+{
+    const QString home = m_dir->filePath("home");
+    paths::PathSettings out;
+    out.dataDir = QStringLiteral("~/.tanara");
+    out.modelsDir = QStringLiteral("~/.tanara/models");
+    out.notesDir = QStringLiteral("~/Tanara/notes");
+    out.setPrimaryRecordingRoot(QStringLiteral("~/Tanara/recordings"));
+    const paths::AppPaths p = paths::AppPaths::system(out);
+    for (paths::Role r : {paths::Role::Config, paths::Role::Data, paths::Role::State, paths::Role::Logs,
+                          paths::Role::Models, paths::Role::Recordings, paths::Role::Notes})
+        QVERIFY2(p.dir(r) == home || p.dir(r).startsWith(home + QLatin1Char('/')), qPrintable(paths::roleName(r)));
+    QVERIFY(recordingLockPath().startsWith(home + QLatin1Char('/')));
+    QVERIFY(watcherLockPath().startsWith(home + QLatin1Char('/')));
+    // The keychain is never reached in a sandbox, even if asked for explicitly.
+    const secrets::OpenResult r = secrets::open(SecretSettings{QStringLiteral("keychain")},
+                                                p.dataFile(paths::files::Secrets), {QStringLiteral("soniox.apiKey")});
+    QCOMPARE(r.store->backendName(), QStringLiteral("file"));
+    QVERIFY(!secrets::keychainAllowed());
 }
 
 QTEST_GUILESS_MAIN(DataSafetyTest)

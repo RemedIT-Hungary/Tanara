@@ -3,6 +3,7 @@
 // the summary) against a fake HTTP server, configuring the embedding provider + model change,
 // and the settings' persistence. Isolated TANARA_HOME; no real network / LM Studio.
 #include <QtTest>
+#include "tanara/providers/core/ProviderConfig.h"
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QJsonArray>
@@ -85,11 +86,11 @@ void TagsControllerTest::init()
         return { 404, "{}" };
     };
     m_app = std::make_unique<app::AppController>();
-    AppSettings s = m_app->settings()->settings();
-    QVERIFY(s.audioDir.startsWith(m_home->path()));
-    s.llmProviderId = QStringLiteral("openai-compat");
-    s.llmConfigs[s.llmProviderId].baseUrl = m_http->base();
-    s.llmConfigs[s.llmProviderId].model = QStringLiteral("google/gemma-4-12b");
+    tanara::app::AppSettings s = m_app->settings()->settings();
+    QVERIFY(m_app->settings()->paths().primaryRecordingRoot().startsWith(m_home->path()));
+    s.providers.llm.selectedId = QStringLiteral("openai-compat");
+    s.providers.llm.configs[s.providers.llm.selectedId].baseUrl = m_http->base();
+    s.providers.llm.configs[s.providers.llm.selectedId].model = QStringLiteral("google/gemma-4-12b");
     m_app->settings()->setSettings(s);
     m_lib = tagsfixture::buildLibrary(*m_app->store());
 }
@@ -148,8 +149,8 @@ void TagsControllerTest::suggestionsComputingThenReady()
     QVERIFY(m_app->pendingTagSuggestions(m_lib.nordvik2).isEmpty());
 
     // Suggestions switched off: an empty list.
-    AppSettings s = m_app->settings()->settings();
-    s.tagSuggestions = false;
+    tanara::app::AppSettings s = m_app->settings()->settings();
+    s.processing.tagSuggestions = false;
     m_app->settings()->setSettings(s);
     ready.clear();
     m_app->requestTagSuggestions(m_lib.nordvik1);
@@ -157,7 +158,7 @@ void TagsControllerTest::suggestionsComputingThenReady()
     QVERIFY(ready.first().at(1).value<QVector<TagSuggestion>>().isEmpty());
 
     // Before import / recording: by title.
-    s.tagSuggestions = true;
+    s.processing.tagSuggestions = true;
     m_app->settings()->setSettings(s);
     const QVector<TagSuggestion> draft = m_app->draftTagSuggestions(QStringLiteral("Nordvik heti egyeztetés"));
     QVERIFY(!draft.isEmpty());
@@ -291,8 +292,8 @@ void TagsControllerTest::llmSuggestionsManualAndAutomatic()
     QVERIFY(!waitReady(ready, m_lib.museum2).isEmpty() || ready.count() >= 1);
 
     // Switched off it does not run.
-    AppSettings s = m_app->settings()->settings();
-    s.llmTagSuggestions = false;
+    tanara::app::AppSettings s = m_app->settings()->settings();
+    s.processing.llmTagSuggestions = false;
     m_app->settings()->setSettings(s);
     emit m_app->summaryReady(m_lib.museum2, md.fileName());
     QTest::qWait(50);
@@ -312,11 +313,11 @@ void TagsControllerTest::embeddingProviderAndModelChange()
 {
     library::EmbeddingPreparer* prep = m_app->embeddingPreparer();
     QCOMPARE(prep->state().provider, QString());       // default: no embedding
-    ProviderConfig cfg;
+    providers::ProviderConfig cfg;
     cfg.baseUrl = m_http->base();
     cfg.model = QStringLiteral("embed-a");
     m_app->setEmbeddingProvider(providers::embeddingproviders::LocalId, cfg);
-    QCOMPARE(m_app->settings()->settings().embeddingProviderId, providers::embeddingproviders::LocalId);
+    QCOMPARE(m_app->settings()->settings().providers.embedding.selectedId, providers::embeddingproviders::LocalId);
     QTRY_COMPARE_WITH_TIMEOUT(int(prep->state().status), int(library::EmbeddingState::Done), 10000);
     QCOMPARE(prep->state().prepared, 6);
     const QString file = QDir(m_app->store()->load(m_lib.budget1).folder).filePath("text.embeddings.bin");
@@ -325,8 +326,8 @@ void TagsControllerTest::embeddingProviderAndModelChange()
     const int calls = m_http->count("POST", "/embeddings");
 
     // A change of another setting does not restart it.
-    AppSettings s = m_app->settings()->settings();
-    s.summaryLanguage = QStringLiteral("angol");
+    tanara::app::AppSettings s = m_app->settings()->settings();
+    s.processing.summaryLanguage = QStringLiteral("angol");
     m_app->settings()->setSettings(s);
     QCOMPARE(m_http->count("POST", "/embeddings"), calls);
 
@@ -355,23 +356,23 @@ void TagsControllerTest::embeddingProviderAndModelChange()
 
 void TagsControllerTest::settingsRoundTrip()
 {
-    AppSettings s = m_app->settings()->settings();
-    QVERIFY(s.tagSuggestions);
-    QVERIFY(s.llmTagSuggestions);
-    QVERIFY(s.embeddingProviderId.isEmpty());
-    QVERIFY(s.embeddingConfigs.contains(providers::embeddingproviders::LocalId));   // prefilled
-    s.tagSuggestions = false;
-    s.llmTagSuggestions = false;
-    s.embeddingProviderId = providers::embeddingproviders::CloudId;
-    s.embeddingConfigs[providers::embeddingproviders::CloudId].model = QStringLiteral("x");
+    tanara::app::AppSettings s = m_app->settings()->settings();
+    QVERIFY(s.processing.tagSuggestions);
+    QVERIFY(s.processing.llmTagSuggestions);
+    QVERIFY(s.providers.embedding.selectedId.isEmpty());
+    QVERIFY(s.providers.embedding.configs.contains(providers::embeddingproviders::LocalId));   // prefilled
+    s.processing.tagSuggestions = false;
+    s.processing.llmTagSuggestions = false;
+    s.providers.embedding.selectedId = providers::embeddingproviders::CloudId;
+    s.providers.embedding.configs[providers::embeddingproviders::CloudId].model = QStringLiteral("x");
     m_app->settings()->setSettings(s);
-    app::SettingsManager again(m_app->settings()->settings().metadataDir);
-    const AppSettings r = again.settings();
-    QVERIFY(!r.tagSuggestions);
-    QVERIFY(!r.llmTagSuggestions);
-    QCOMPARE(r.embeddingProviderId, providers::embeddingproviders::CloudId);
-    QCOMPARE(r.embeddingSelected().model, QStringLiteral("x"));
-    QVERIFY(!library::toJson(r).contains("apiKey"));
+    app::SettingsManager again(m_app->settings()->paths().configDir());
+    const tanara::app::AppSettings r = again.settings();
+    QVERIFY(!r.processing.tagSuggestions);
+    QVERIFY(!r.processing.llmTagSuggestions);
+    QCOMPARE(r.providers.embedding.selectedId, providers::embeddingproviders::CloudId);
+    QCOMPARE(r.providers.embedding.selected().model, QStringLiteral("x"));
+    QVERIFY(!QJsonDocument(r.toJson()).toJson().contains("apiKey"));
 }
 
 QTEST_GUILESS_MAIN(TagsControllerTest)

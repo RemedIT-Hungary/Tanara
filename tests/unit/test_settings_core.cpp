@@ -1,5 +1,6 @@
 // The Settings window's core additions:
-//  - the user name of audio devices (AppSettings::deviceNames, tanara::devicenames): storage,
+//  - settings.json v2 (sections), old / corrupt files, the legacy import;
+//  - the user name of audio devices (RecordingSettings::deviceNames, tanara::devicenames): storage,
 //    readability of old files, resolution in ONE place (recorder name, track name);
 //  - cloudEstimateBeforeRun;
 //  - autostart guard (with TANARA_HOME we do not touch the real entry);
@@ -14,7 +15,8 @@
 #include "tanara/app/SettingsManager.h"
 #include "tanara/library/tracks/TrackCatalog.h"
 #include "tanara/watcher/detect/Autostart.h"
-#include "tanara/library/store/JsonSerialization.h"
+#include "tanara/app/LegacySettings.h"
+#include <QJsonArray>
 
 #if defined(Q_OS_WIN)
 #  ifndef NOMINMAX
@@ -126,46 +128,122 @@ private slots:
 
     void jsonRoundTrip()
     {
-        AppSettings s;
-        s.deviceNames = {{kMic, QStringLiteral("Asztali mikrofon")}, {kSpeakers, QStringLiteral("Nappali hangfal")}};
-        s.cloudEstimateBeforeRun = false;
-        const QJsonObject o = library::toJson(s);
-        QVERIFY(o.value(QStringLiteral("deviceNames")).isObject());
-        const AppSettings back = library::appSettingsFromJson(o);
-        QCOMPARE(back.deviceNames, s.deviceNames);
-        QCOMPARE(back.cloudEstimateBeforeRun, false);
+        tanara::app::AppSettings s;
+        s.recording.deviceNames = {{kMic, QStringLiteral("Asztali mikrofon")}, {kSpeakers, QStringLiteral("Nappali hangfal")}};
+        s.cloud.estimateBeforeRun = false;
+        s.paths.dataDir = QStringLiteral("~/adat");
+        s.paths.setPrimaryRecordingRoot(QStringLiteral("/srv/felvetelek"));
+        s.secrets.backend = QStringLiteral("file");
+        const QJsonObject o = s.toJson();
+        // Sections: every module's values under its own key.
+        QVERIFY(o.value(QStringLiteral("recording")).toObject().value(QStringLiteral("deviceNames")).isObject());
+        QCOMPARE(o.value(QStringLiteral("cloud")).toObject().value(QStringLiteral("estimateBeforeRun")).toBool(true), false);
+        const tanara::app::AppSettings back = tanara::app::AppSettings::fromJson(o);
+        QCOMPARE(back.recording.deviceNames, s.recording.deviceNames);
+        QCOMPARE(back.cloud.estimateBeforeRun, false);
+        QVERIFY(back.paths == s.paths);
+        QCOMPARE(back.secrets.backend, QStringLiteral("file"));
+        QVERIFY(!QJsonDocument(o).toJson().contains("apiKey"));
     }
 
-    void oldFilesStayReadable()
+    void v2FileRoundTrip()
     {
-        // An old build's settings.json: without the new keys, so defaults.
-        QJsonObject old = library::toJson(AppSettings{});
-        old.remove(QStringLiteral("deviceNames"));
-        old.remove(QStringLiteral("cloudEstimateBeforeRun"));
-        old[QStringLiteral("userSpeakerName")] = QStringLiteral("Lilla");
-        const AppSettings s = library::appSettingsFromJson(old);
-        QVERIFY(s.deviceNames.isEmpty());
-        QCOMPARE(s.cloudEstimateBeforeRun, true);
-        QCOMPARE(s.userSpeakerName, QStringLiteral("Lilla"));
-
-        // An old build reads the new file too: the existing keys' meaning did not change, and it just
-        // does not know the new ones (here: we remove them, and everything else stays the same).
-        AppSettings now;
-        now.deviceNames = {{kMic, QStringLiteral("Asztali")}};
-        now.audioQuality = QStringLiteral("medium");
-        QJsonObject fresh = library::toJson(now);
-        fresh.remove(QStringLiteral("deviceNames"));
-        fresh.remove(QStringLiteral("cloudEstimateBeforeRun"));
-        QCOMPARE(library::appSettingsFromJson(fresh).audioQuality, QStringLiteral("medium"));
+        // Write -> read through the SettingsManager: the file is v2 with sections.
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        {
+            app::SettingsManager mgr(dir.path());
+            tanara::app::AppSettings s = mgr.settings();
+            s.recording.audioQuality = QStringLiteral("medium");
+            s.watcher.silenceAskMinutes = 7;
+            s.ui.language = QStringLiteral("en");
+            s.processing.languageHints = {};
+            s.providers.llm.configs[s.providers.llm.selectedId].model = QStringLiteral("m");
+            mgr.setSettings(s);
+        }
+        QFile f(QDir(dir.path()).filePath(QStringLiteral("settings.json")));
+        QVERIFY(f.open(QIODevice::ReadOnly));
+        const QJsonObject o = QJsonDocument::fromJson(f.readAll()).object();
+        f.close();
+        QCOMPARE(o.value(QStringLiteral("version")).toInt(), 2);
+        for (const QString& sec : tanara::app::AppSettings::sectionNames())
+            QVERIFY2(o.value(sec).isObject(), qPrintable(sec));
+        QVERIFY(!o.contains(QStringLiteral("audioQuality")));   // nothing flat any more
+        app::SettingsManager again(dir.path());
+        QVERIFY(!again.legacyFormat());
+        QCOMPARE(again.settings().recording.audioQuality, QStringLiteral("medium"));
+        QCOMPARE(again.settings().watcher.silenceAskMinutes, 7);
+        QCOMPARE(again.settings().ui.language, QStringLiteral("en"));
+        QVERIFY(again.settings().processing.languageHints.isEmpty());   // empty list = automatic, kept
+        QCOMPARE(again.settings().providers.llm.selected().model, QStringLiteral("m"));
     }
 
-    void emptyNamesAreNotStored()
+    void oldFlatFileMeansDefaults()
     {
-        QJsonObject o = library::toJson(AppSettings{});
-        o[QStringLiteral("deviceNames")] = QJsonObject{{kMic, QStringLiteral("   ")}, {kSpeakers, QStringLiteral("Hangfal")}};
-        const AppSettings s = library::appSettingsFromJson(o);
-        QCOMPARE(s.deviceNames.size(), 1);
-        QCOMPARE(s.deviceNames.value(kSpeakers), QStringLiteral("Hangfal"));
+        // No backward compatibility (D8): an old flat settings.json -> defaults + warning; the file
+        // is set aside (not overwritten) on the next save, so import-legacy can still read it.
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString path = QDir(dir.path()).filePath(QStringLiteral("settings.json"));
+        {
+            QFile f(path);
+            QVERIFY(f.open(QIODevice::WriteOnly));
+            f.write(QJsonDocument(QJsonObject{{"audioQuality", "low"}, {"userSpeakerName", "Lilla"},
+                                              {"uiLanguage", "en"}}).toJson());
+        }
+        app::SettingsManager mgr(dir.path());
+        QVERIFY(mgr.legacyFormat());
+        QVERIFY(!mgr.loadFailed());
+        QCOMPARE(mgr.settings().recording.audioQuality, QStringLiteral("best"));
+        QCOMPARE(mgr.settings().ui.language, QStringLiteral("auto"));
+        mgr.save();
+        const QStringList aside = QDir(dir.path()).entryList({QStringLiteral("settings.json.v1-*")}, QDir::Files);
+        QCOMPARE(aside.size(), 1);
+        QFile old(QDir(dir.path()).filePath(aside.first()));
+        QVERIFY(old.open(QIODevice::ReadOnly));
+        QCOMPARE(QJsonDocument::fromJson(old.readAll()).object().value("audioQuality").toString(), QStringLiteral("low"));
+    }
+
+    void corruptFileIsSetAside()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString path = QDir(dir.path()).filePath(QStringLiteral("settings.json"));
+        {
+            QFile f(path);
+            QVERIFY(f.open(QIODevice::WriteOnly));
+            f.write("{ nem json");
+        }
+        app::SettingsManager mgr(dir.path());
+        QVERIFY(mgr.loadFailed());
+        QVERIFY(QFile::exists(path));   // untouched until a save
+        mgr.save();
+        QCOMPARE(QDir(dir.path()).entryList({QStringLiteral("settings.json.corrupt-*")}, QDir::Files).size(), 1);
+        QVERIFY(!app::SettingsManager(dir.path()).loadFailed());
+    }
+
+    void legacyImportMapsFlatKeys()
+    {
+        // tanara-cli settings import-legacy: the old flat values land in their sections.
+        const QJsonObject flat{{"audioQuality", "low"}, {"uiLanguage", "en"}, {"watcherAutostart", true},
+                               {"cloudEstimateBeforeRun", false}, {"voiceModels", QJsonArray{"b", "a"}},
+                               {"sttProviderId", "soniox"},
+                               {"sttProviders", QJsonObject{{"soniox", QJsonObject{{"type", "soniox"}, {"model", "x"}}}}},
+                               {"audioDir", "~/Felv"}, {"metadataDir", "/m/.tanara"}};
+        QVERIFY(app::legacy::isFlat(flat));
+        const tanara::app::AppSettings s = app::legacy::importFlat(flat, app::SettingsManager::defaults());
+        QCOMPARE(s.recording.audioQuality, QStringLiteral("low"));
+        QCOMPARE(s.ui.language, QStringLiteral("en"));
+        QVERIFY(s.watcher.autostart);
+        QVERIFY(!s.cloud.estimateBeforeRun);
+        QCOMPARE(s.processing.voiceModels, QStringList({"a", "b"}));
+        QCOMPARE(s.providers.stt.selected().model, QStringLiteral("x"));
+        QVERIFY(s.paths == paths::PathSettings());   // paths: adopt-legacy's job
+        const paths::PathSettings p = app::legacy::legacyPaths(flat, QStringLiteral("/home/u"));
+        QCOMPARE(p.dataDir, QStringLiteral("/m/.tanara"));
+        QCOMPARE(p.modelsDir, QStringLiteral("/m/.tanara/models"));
+        QCOMPARE(p.primaryRecordingRoot(), QStringLiteral("~/Felv"));
+        QCOMPARE(p.notesDir, QStringLiteral("/home/u/Tanara/notes"));
     }
 
     void settingsManagerFeedsTheResolver()
@@ -174,23 +252,24 @@ private slots:
         {
             app::SettingsManager mgr(dir.path());
             QVERIFY(library::devicenames::overrides().isEmpty());
-            AppSettings s = mgr.settings();
-            s.deviceNames.insert(kSpeakers, QStringLiteral("Nappali hangfal"));
+            tanara::app::AppSettings s = mgr.settings();
+            s.recording.deviceNames.insert(kSpeakers, QStringLiteral("Nappali hangfal"));
             mgr.setSettings(s);
             QCOMPARE(library::devicenames::displayName(kSpeakers), QStringLiteral("Nappali hangfal"));
         }
         // A new process (here: a new instance) loads from disk too.
         library::devicenames::setOverrides({});
         app::SettingsManager again(dir.path());
-        QCOMPARE(again.settings().deviceNames.value(kSpeakers), QStringLiteral("Nappali hangfal"));
+        QCOMPARE(again.settings().recording.deviceNames.value(kSpeakers), QStringLiteral("Nappali hangfal"));
         QCOMPARE(library::devicenames::displayName(kSpeakers), QStringLiteral("Nappali hangfal"));
         // In the file the key sits next to the other settings.
         QFile f(again.settingsFilePath());
         QVERIFY(f.open(QIODevice::ReadOnly));
         const QJsonObject o = QJsonDocument::fromJson(f.readAll()).object();
-        QCOMPARE(o.value(QStringLiteral("deviceNames")).toObject().value(kSpeakers).toString(),
+        QCOMPARE(o.value(QStringLiteral("recording")).toObject().value(QStringLiteral("deviceNames"))
+                     .toObject().value(kSpeakers).toString(),
                  QStringLiteral("Nappali hangfal"));
-        QVERIFY(o.contains(QStringLiteral("audioDir")));
+        QVERIFY(o.contains(QStringLiteral("paths")));
     }
 
     // ---- autostart -----------------------------------------------------------------------

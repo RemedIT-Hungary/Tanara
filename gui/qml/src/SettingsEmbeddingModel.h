@@ -4,7 +4,7 @@
 // section.
 //
 //  - mode: "None (default)" / "Local endpoint" / "Tanara Cloud": into the SettingsViewModel
-//    draft (AppSettings::embeddingProviderId / embeddingConfigs); the local endpoint's fields,
+//    draft (tanara::app::AppSettings::embeddingProviderId / embeddingConfigs); the local endpoint's fields,
 //    "Fetch" and "Test connection" are the `card`'s job (SettingsProviderModel, Embedding);
 //  - LIBRARY PREPARATION: the core EmbeddingPreparer's live state (running / stopped / up to
 //    date), Cancel / Resume / (Re)prepare;
@@ -18,6 +18,7 @@
 // localError | localDone | cloud | modelChange | none.
 //
 #include "SettingsProviderModel.h"
+#include "tanara/app/AppSettings.h"
 
 #include "tanara/library/index/EmbeddingPreparer.h"
 
@@ -115,7 +116,7 @@ public:
     void reset();                            // the draft reloaded / discarded
     void notifyDraftChanged() { emit changed(); }
     // Fills the selected provider's empty fields with the defaults.
-    void normalize(tanara::AppSettings& s) const;
+    void normalize(tanara::app::AppSettings& s) const;
     // Demo: the fictional preparation state + the draft for it (called by the vm's loadDemo).
     void loadDemo(const QString& state);
     // The computed (and in-test verified) preparation state.
@@ -132,7 +133,7 @@ private:
     static QString providerFor(const QString& mode);
     // The model the core uses ("" = no embedding): the local endpoint's model, for Cloud the
     // gateway's base model.
-    static QString effectiveModel(const tanara::AppSettings& s);
+    static QString effectiveModel(const tanara::app::AppSettings& s);
     int estimateMinutes(int meetings) const;
 
     SettingsViewModel* m_vm = nullptr;

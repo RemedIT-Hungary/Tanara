@@ -81,7 +81,7 @@ struct PeopleService::Private {
     QString self() const
     {
         return controller && controller->settings()
-            ? controller->settings()->settings().userSpeakerName.trimmed() : QString();
+            ? controller->settings()->settings().recording.userSpeakerName.trimmed() : QString();
     }
 
     QStringList names() const

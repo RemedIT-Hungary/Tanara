@@ -182,7 +182,7 @@ void ParticipantsViewModel::load()
         emit changed();
         return;
     }
-    m_selfName = c->settings()->settings().userSpeakerName.trimmed();
+    m_selfName = c->settings()->settings().recording.userSpeakerName.trimmed();
     m_running = c->participantAnalysisRunning(m.id);
     m_pending = c->participantApprovalPending(m.id);
     m_hasTranscript = m.hasTranscript;

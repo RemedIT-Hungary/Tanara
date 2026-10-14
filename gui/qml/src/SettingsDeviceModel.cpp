@@ -47,7 +47,7 @@ QVariant SettingsDeviceModel::data(const QModelIndex& index, int role) const
     const int i = index.row();
     if (i < 0 || i >= m_rows.size()) return {};
     const Row& r = m_rows.at(i);
-    const QMap<QString, QString>& names = m_vm->draft().deviceNames;
+    const QMap<QString, QString>& names = m_vm->draft().recording.deviceNames;
     switch (role) {
     case KeyRole:
     case RawNameRole:     return r.info.name;
@@ -143,7 +143,7 @@ void SettingsDeviceModel::rename(int row, const QString& name)
     if (row < 0 || row >= m_rows.size()) return;
     const QString raw = m_rows.at(row).info.name;
     const QString n = name.simplified();
-    QMap<QString, QString>& names = m_vm->draft().deviceNames;
+    QMap<QString, QString>& names = m_vm->draft().recording.deviceNames;
     // Empty, or just the factory short name -> no own name.
     if (n.isEmpty() || n == library::devicenames::displayName(raw, {}))
         names.remove(raw);

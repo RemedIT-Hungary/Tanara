@@ -14,7 +14,7 @@
 //
 // Resolution order for a prompt:
 //   1. the user override stored in Settings (handled by AppController, not here),
-//   2. <metadataDir>/prompts/<id>.md: tunable by hand, WITHOUT REBUILDING,
+//   2. <dataDir>/prompts/<id>.md: tunable by hand, WITHOUT REBUILDING,
 //   3. the built-in default compiled into the code (promptBuiltin).
 #include <QString>
 #include <QStringList>
@@ -25,12 +25,12 @@ namespace tanara::processing {
 // The compiled-in default for the given id (unknown id = empty string).
 QString promptBuiltin(const QString& id);
 
-// Path of the file override: <metadataDir>/prompts/<id>.md (expands "~";
-// empty metadataDir = ~/.tanara).
-QString promptFilePath(const QString& id, const QString& metadataDir = QString());
+// Path of the file override: <dataDir>/prompts/<id>.md (expands "~";
+// empty dataDir = the current data folder, see foundation/paths/AppPaths.h).
+QString promptFilePath(const QString& id, const QString& dataDir = QString());
 
 // The file override if it exists and is non-empty, otherwise the built-in default.
-QString promptDefault(const QString& id, const QString& metadataDir = QString());
+QString promptDefault(const QString& id, const QString& dataDir = QString());
 
 // Applies the summary's TARGET LANGUAGE to a system prompt:
 //  - replaces {{LANGUAGE}} with the English language name (summaryLanguageName) and {{NYELV}}

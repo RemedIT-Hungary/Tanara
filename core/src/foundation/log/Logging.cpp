@@ -1,5 +1,5 @@
 #include "tanara/foundation/log/Logging.h"
-#include "tanara/foundation/paths/Paths.h"
+#include "tanara/foundation/paths/AppPaths.h"
 
 
 #include <QCoreApplication>
@@ -39,8 +39,8 @@ bool        g_installed = false;
 
 QString defaultLogDir()
 {
-    // <metadata folder>/logs: ~/.tanara or TANARA_HOME (tanara/Paths.h).
-    return paths::metadataFile(QStringLiteral("logs"));
+    // The log folder of AppPaths (settings-independent; TANARA_HOME-aware).
+    return paths::current().logDir();
 }
 
 const char* levelTag(QtMsgType t)

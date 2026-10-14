@@ -25,6 +25,7 @@ Apache-2.0.txt                Apache License 2.0         kaldi-native-fbank; the
 MIT-onnxruntime.txt           MIT                        ONNX Runtime (Copyright (c) Microsoft Corporation)
 MIT-miniz.txt                 MIT                        miniz
 BSD-3-Clause-kissfft.txt      BSD-3-Clause               KISS FFT (Copyright (c) 2003-2010 Mark Borgerding)
+BSD-3-Clause-qtkeychain.txt   BSD-3-Clause               QtKeychain (Copyright (C) 2011-2015 Frank Osterfeld)
 OFL-1.1-IBM-Plex.txt          SIL Open Font License 1.1  IBM Plex Sans / IBM Plex Mono (embedded fonts)
 ISC-Lucide.txt                ISC (portions MIT)         Lucide icons (embedded SVGs)
 CC-BY-4.0.txt                 Creative Commons BY 4.0    WeSpeaker ResNet34-LM speaker model. NOT bundled:

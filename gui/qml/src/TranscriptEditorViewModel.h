@@ -12,6 +12,7 @@
 //  - tests:  setEditor() + setPeopleProvider() directly
 //
 #include "TranscriptListModel.h"
+#include "tanara/app/AppSettings.h"
 
 #include "tanara/editing/session/SpeakerEditTypes.h"
 #include "tanara/editing/session/SpeakerEditor.h"
@@ -239,7 +240,7 @@ class TranscriptEditorViewModel : public QObject, public QQmlParserStatus {
     // The dock's sweep layer: { uncertain: [x...], decided: [x...], frozenStart, frozenEnd, sections:
     // [{ start, end, done, active }], doneCount, total, aheadCount } (0..1); empty map: no sweep.
     Q_PROPERTY(QVariantMap sweepDock READ sweepDock NOTIFY sweepDockChanged)
-    // Auto-play of the "To review" focus view (AppSettings::reviewAutoPlay; without an
+    // Auto-play of the "To review" focus view (tanara::app::AppSettings::reviewAutoPlay; without an
     // AppController, i.e. demo or test, in memory only). On by default.
     Q_PROPERTY(bool reviewAutoPlay READ reviewAutoPlay WRITE setReviewAutoPlay NOTIFY reviewAutoPlayChanged)
 

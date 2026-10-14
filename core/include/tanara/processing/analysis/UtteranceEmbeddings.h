@@ -61,7 +61,7 @@ UtteranceEmbedderFactory voiceUtteranceEmbedderFactory(
     const VoiceEmbedderSet& set, const QString& ffmpegPath = QStringLiteral("ffmpeg"));
 // The given model descriptors (e.g. VoiceModelRegistry::active()) with their resolved file paths.
 QVector<UtteranceModel> utteranceModelsFor(const QVector<VoiceModelSpec>& specs,
-                                           const QString& metaDir, const QString& appDir);
+                                           const QString& modelsDir, const QString& appDir);
 // Single-model shorthand: the base model (VoiceModelRegistry::defaultModelId()) from the given file.
 UtteranceEmbedderFactory voiceUtteranceEmbedderFactory(
     const QString& modelPath, const QString& ffmpegPath = QStringLiteral("ffmpeg"));

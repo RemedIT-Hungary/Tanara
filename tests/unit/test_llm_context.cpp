@@ -3,6 +3,7 @@
 // native API, the pre-load decision, and the preparer (LlmModelPreparer) + the connection test
 // on a local fake server. NO request goes to a real LM Studio.
 #include <QtTest>
+#include "tanara/providers/core/ProviderConfig.h"
 #include <QSignalSpy>
 #include <QTcpServer>
 #include <QTcpSocket>
@@ -116,9 +117,9 @@ const char* kLlamaCpp =
 const char* kOpenAi =
     "{\"error\":{\"message\":\"This model's maximum context length is 8192 tokens. However, your messages resulted in 9000 tokens. Please reduce the length of the messages.\",\"type\":\"invalid_request_error\",\"param\":\"messages\",\"code\":\"context_length_exceeded\"}}";
 
-ProviderConfig cfgFor(const FakeHttp& srv, const QString& model = QStringLiteral("qwen3.8-27b"))
+providers::ProviderConfig cfgFor(const FakeHttp& srv, const QString& model = QStringLiteral("qwen3.8-27b"))
 {
-    ProviderConfig cfg;
+    providers::ProviderConfig cfg;
     cfg.type = QStringLiteral("openai-compat");
     cfg.baseUrl = srv.base();
     cfg.model = model;

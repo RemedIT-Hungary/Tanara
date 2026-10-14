@@ -9,7 +9,7 @@
 
 #include "tanara/app/AppController.h"
 #include "tanara/foundation/log/Logging.h"
-#include "tanara/foundation/paths/Paths.h"
+#include "tanara/foundation/paths/AppPaths.h"
 #include "tanara/app/SettingsManager.h"
 #include "tanara/editing/session/PeopleDirectory.h"
 #include "tanara/editing/review/SideAnalysis.h"
@@ -181,8 +181,7 @@ void TranscriptEditorViewModel::resolveSession()
         connect(m_controller, &app::AppController::voiceprintsChanged,
                 this, &TranscriptEditorViewModel::peopleChanged, Qt::UniqueConnection);
         if (!m_uiStatePathSet)
-            m_uiStatePath = paths::metadataFile(QStringLiteral("ui-transcript.json"),
-                                                m_controller->settings()->settings().metadataDir);
+            m_uiStatePath = m_controller->settings()->paths().stateFile(paths::files::UiTranscript);
         m_demoSession.reset();
         editing::SpeakerEditor* ed = m_meetingId.isEmpty() ? nullptr : m_controller->speakerEditor(m_meetingId);
         const Meeting meeting = ed ? m_controller->store()->load(m_meetingId) : Meeting();

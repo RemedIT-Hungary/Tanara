@@ -9,7 +9,7 @@
 #include "QmlApp.h"
 
 #include "tanara/app/AppController.h"
-#include "tanara/foundation/paths/Paths.h"
+#include "tanara/foundation/paths/AppPaths.h"
 #include "tanara/library/store/MeetingStore.h"
 
 #include <QDir>

@@ -1,8 +1,8 @@
 #include "tanara/app/AppController.h"
+#include "tanara/providers/core/ProviderConfig.h"
 
 #include "tanara/foundation/log/Logging.h"
 #include "tanara/foundation/text/Text.h"
-#include "tanara/foundation/paths/Paths.h"
 #include "tanara/processing/summary/PromptLibrary.h"
 #include "tanara/watcher/detect/DetectorRegistry.h"
 #include "tanara/watcher/detect/IMeetingDetector.h"
@@ -13,7 +13,9 @@
 #include "tanara/recording/audio/RecordingSession.h"
 #include "tanara/library/store/MeetingStore.h"
 #include "tanara/library/store/MeetingArchive.h"
-#include "tanara/foundation/KeyStore.h"
+#include "tanara/foundation/secrets/SecretStore.h"
+#include "tanara/foundation/paths/AppPaths.h"
+#include "tanara/cloud/CloudTypes.h"
 #include "tanara/library/store/PeopleStore.h"
 #include "tanara/library/people/PeopleService.h"
 #include "tanara/library/people/PeopleStats.h"
@@ -85,11 +87,6 @@ namespace tanara::app {
 
 namespace {
 
-QString expandTilde(QString p) {
-    if (p == QStringLiteral("~")) return QDir::homePath();
-    if (p.startsWith(QStringLiteral("~/"))) return QDir::homePath() + p.mid(1);
-    return p;
-}
 
 // Always LF line endings (WITHOUT QIODevice::Text): on Windows the Text mode would write CRLF, but
 // the readback (SummaryStore, transcript) reads raw, so a \r would end up in the text.
@@ -489,7 +486,7 @@ using FailureSinkPtr = std::shared_ptr<FailureSink>;
 
 // Extends the config's response hook: besides the existing (cloud) hook, non-2xx responses and network
 // errors are also stored in the sink. The failure of cleanup DELETEs does not count.
-void captureFailures(ProviderConfig& cfg, const FailureSinkPtr& sink) {
+void captureFailures(providers::ProviderConfig& cfg, const FailureSinkPtr& sink) {
     const auto prev = cfg.onExchange;
     cfg.onExchange = [prev, sink](const cloud::HttpExchange& ex) {
         if (prev) prev(ex);
@@ -507,7 +504,8 @@ struct AppController::Impl {
     recording::RecordingSession* session = nullptr;
     recording::RecordingSession::EngineFactory recordingEngineFactory;   // test seam; empty = the real one
     recording::DeviceMonitor*   monitor = nullptr;
-    KeyStore         keyStore;
+    std::unique_ptr<SecretStore> secrets;   // keychain or file (foundation/secrets)
+    QString          secretsWarning;
     std::unique_ptr<library::PeopleStore> people;
     library::PeopleStats*   peopleStats = nullptr;
     library::PeopleService* peopleService = nullptr;
@@ -555,7 +553,8 @@ struct AppController::Impl {
     void finishBackfill();
     RecordingState   state = RecordingState::Idle;
     QString          audioDir;
-    QString          metaDir;
+    QString          metaDir;     // AppPaths::dataDir()
+    QString          modelsDir;   // AppPaths::modelsDir()
     QString          notesDir;
     QString          statePath;
     QStringList      lastDevices;
@@ -685,7 +684,7 @@ struct AppController::Impl {
     // For a server without a native API, the context learned from the error message: the next summary
     // already adapts the parts to it (in memory only).
     QHash<QString, int> learnedContext;
-    static QString serverKey(const ProviderConfig& cfg) {
+    static QString serverKey(const providers::ProviderConfig& cfg) {
         return providers::llmctx::nativeApiRoot(cfg.baseUrl) + QLatin1Char('|') + cfg.model.trimmed();
     }
     // Tanara is currently running ANOTHER LLM request too (then we do not unload the model).
@@ -693,7 +692,7 @@ struct AppController::Impl {
     // Preparing the model before an LLM task. For Cloud (and if there is nothing to do) `go` runs at once;
     // for LM Studio, if needed, a load / reload as the task's "model" stage. The caller binds the returned
     // preparer to the run (for cancelling).
-    providers::LlmModelPreparer* prepareLlm(const QString& meetingId, JobKind kind, const ProviderConfig& cfg,
+    providers::LlmModelPreparer* prepareLlm(const QString& meetingId, JobKind kind, const providers::ProviderConfig& cfg,
                                  bool cloud, const LlmContextPtr& ctx, std::function<void()> go,
                                  std::function<void(const JobError&)> onFail);
 
@@ -911,7 +910,7 @@ JobError AppController::Impl::describeLlmFailure(JobKind kind, const QString& ra
 }
 
 providers::LlmModelPreparer* AppController::Impl::prepareLlm(const QString& meetingId, JobKind kind,
-                                                  const ProviderConfig& cfg, bool cloud,
+                                                  const providers::ProviderConfig& cfg, bool cloud,
                                                   const LlmContextPtr& ctx, std::function<void()> go,
                                                   std::function<void(const JobError&)> onFail)
 {
@@ -1010,28 +1009,49 @@ AppController::AppController(QObject* parent)
     d->settings = new SettingsManager(QString(), this);
     const AppSettings s = d->settings->settings();
 
-    // Tanara Cloud mode: TANARA_CLOUD=live|teaser|off overrides settings.cloudEnabled.
+    // Tanara Cloud mode: TANARA_CLOUD=live|teaser|off overrides settings.cloud.enabled.
     {
         const QString mode = qEnvironmentVariable("TANARA_CLOUD").trimmed().toLower();
         const bool off = mode == QLatin1String("off");
-        const bool wantLive = mode == QLatin1String("live") || (mode.isEmpty() && s.cloudEnabled);
+        const bool wantLive = mode == QLatin1String("live") || (mode.isEmpty() && s.cloud.enabled);
         d->cloudLive   = !off && cloud::clientCompiled() && wantLive;
         d->cloudTeaser = !off && !d->cloudLive && cloud::teaserCompiled();
         if (d->cloudLive)
             providers::registerCloudProviders();   // feature flag: without it the "tanara-cloud" id does not even exist
     }
-    d->audioDir = expandTilde(s.audioDir);
-    d->metaDir  = paths::resolveMetadataDir(s.metadataDir);   // TANARA_HOME-tudatos
-    d->notesDir = expandTilde(s.notesDir);
+    // Every location from AppPaths (platform convention / "paths" section / TANARA_HOME).
+    const paths::AppPaths& ap = d->settings->paths();
+    d->audioDir  = ap.primaryRecordingRoot();
+    d->metaDir   = ap.dataDir();
+    d->modelsDir = ap.modelsDir();
+    d->notesDir  = ap.notesDir();
     QDir().mkpath(d->audioDir);
     QDir().mkpath(d->metaDir);
 
-    d->keyStore = KeyStore(QDir(d->metaDir).filePath(QStringLiteral("secrets.json")));
+    {
+        // The known secret keys (preloaded from the keychain): the descriptors' secret fields + the
+        // fixed keys.
+        QStringList known{keys::SonioxApiKey, keys::LlmApiKey, cloud::ApiKeySecret,
+                          providers::embeddingproviders::ApiKeySecret};
+        auto collect = [&known](const QVector<providers::ProviderDescriptor>& descs) {
+            for (const auto& desc : descs) {
+                for (const auto& f : desc.fields)
+                    if (f.isSecret && !f.secretKey.isEmpty() && !known.contains(f.secretKey)) known << f.secretKey;
+                if (!desc.loginSecretKey.isEmpty() && !known.contains(desc.loginSecretKey)) known << desc.loginSecretKey;
+            }
+        };
+        collect(providers::SttProviderRegistry::instance().all());
+        collect(providers::LlmProviderRegistry::instance().all());
+        collect(providers::EmbeddingProviderRegistry::instance().all());
+        secrets::OpenResult opened = secrets::open(s.secrets, ap.dataFile(paths::files::Secrets), known);
+        d->secrets = std::move(opened.store);
+        d->secretsWarning = opened.warning;
+    }
 
-    d->cloud = new cloud::CloudAccount(&d->keyStore, d->metaDir, this);
+    d->cloud = new cloud::CloudAccount(d->secrets.get(), d->metaDir, this);
     {
         const QString envUrl = qEnvironmentVariable("TANARA_CLOUD_URL").trimmed();
-        d->cloud->setBaseUrl(!envUrl.isEmpty() ? envUrl : s.cloudBaseUrl);
+        d->cloud->setBaseUrl(!envUrl.isEmpty() ? envUrl : s.cloud.baseUrl);
         d->cloud->setLanguage(activeUiLanguage());
     }
     d->devices = new recording::DeviceManager(this);
@@ -1072,7 +1092,7 @@ AppController::AppController(QObject* parent)
         // Mixdown: exactly as at the end of a recording (see the RecordingSession::finished branch): first the
         // tracks' speech check (a speechless track is left out of the mix).
         if (d->autoMixdown) {
-            const bool mix = d->settings->settings().mixdownMode != QStringLiteral("manual");
+            const bool mix = d->settings->settings().recording.mixdownMode != QStringLiteral("manual");
             if (editing::trackspeech::needsSpeechCheck(m)) startSpeechCheck(m.id, mix);
             else if (mix) regenerateMixdown(m.id);
         }
@@ -1090,7 +1110,7 @@ AppController::AppController(QObject* parent)
         d->jobs->cancelled(id, JobKind::Import);
         emit importCancelled(id);
     });
-    d->jobStats  = std::make_unique<library::JobStats>(QDir(d->metaDir).filePath(QStringLiteral("job-stats.json")));
+    d->jobStats  = std::make_unique<library::JobStats>(ap.dataFile(paths::files::JobStats));
     connect(d->tracks, &library::TrackCatalog::tracksChanged, this, &AppController::tracksChanged);
     // The summary's staleness (speaker-editor layer) is part of the derived state: the library icon's
     // "stale" state and the "Waiting for you" list refresh from it.
@@ -1103,19 +1123,19 @@ AppController::AppController(QObject* parent)
     connect(d->devices, &recording::DeviceManager::devicesChanged, this, &AppController::handleDeviceSetChange);
     connect(d->devices, &recording::DeviceManager::devicesChanged, this, &AppController::devicesChanged);
 
-    d->statePath = QDir(d->metaDir).filePath(QStringLiteral("state.json"));
+    d->statePath = ap.stateFile(paths::files::State);
     d->lastDevices = loadLastDevices(d->statePath);
     d->monitor = new recording::DeviceMonitor(this);
     connect(d->monitor, &recording::DeviceMonitor::levelPeak, this, &AppController::deviceLevelPeak);
 
-    d->people = std::make_unique<library::PeopleStore>(QDir(d->metaDir).filePath(QStringLiteral("people.json")));
+    d->people = std::make_unique<library::PeopleStore>(ap.dataFile(paths::files::People));
 
     // Voice ID: the voiceprint DB + the model's location: <metaDir>/models/..., if absent, the
     // <appDir>/models/... packaged next to the application (Windows zip / installer).
     d->voiceprints = std::make_unique<library::VoiceprintStore>(
-        QDir(d->metaDir).filePath(QStringLiteral("voiceprints.json")));
+        ap.dataFile(paths::files::Voiceprints));
     d->appDir = QCoreApplication::instance() ? QCoreApplication::applicationDirPath() : QString();
-    d->voiceModelPath = processing::VoiceModelRegistry::resolveDefaultModelPath(d->metaDir, d->appDir);
+    d->voiceModelPath = processing::VoiceModelRegistry::resolveDefaultModelPath(d->modelsDir, d->appDir);
     d->backfillPool.setMaxThreadCount(1);
     d->backfillPool.setObjectName(QStringLiteral("tanara-voiceprint-backfill"));
     d->analysisPool.setMaxThreadCount(2);
@@ -1135,20 +1155,20 @@ AppController::AppController(QObject* parent)
 
     // Tags: the set + per-meeting tags, classic similarity (profiles built on a background thread),
     // embeddings and library preparation, an LLM suggestion after the summary.
-    d->tags = new library::TagService(d->store, QDir(d->metaDir).filePath(QStringLiteral("tags.json")), this);
+    d->tags = new library::TagService(d->store, ap.dataFile(paths::files::Tags), this);
     d->profiles = new library::MeetingProfiles(d->store, this);
     d->tags->setProfiles(d->profiles);
     // Tags on people: manual tags in people.json; the own person is left out.
     d->tags->setPeopleStore(d->people.get());
     d->tags->setSelfNameProvider([this]() {
-        return d->settings ? d->settings->settings().userSpeakerName : QString();
+        return d->settings ? d->settings->settings().recording.userSpeakerName : QString();
     });
     connect(this, &AppController::peopleChanged, d->tags, &library::TagService::invalidatePersonStats);
     d->library->setTagService(d->tags);
     d->embeddings = new library::EmbeddingIndex(d->store, this);
     d->embeddings->setProfiles(d->profiles);
     d->embeddingPreparer = new library::EmbeddingPreparer(
-        d->store, d->embeddings, QDir(d->metaDir).filePath(QStringLiteral("embedding-state.json")), this);
+        d->store, d->embeddings, ap.dataFile(paths::files::EmbeddingState), this);
     d->llmTags = new processing::LlmTagSuggester(d->tags, this);
     d->tagPool.setMaxThreadCount(1);
     d->tagPool.setObjectName(QStringLiteral("tanara-tag-suggest"));
@@ -1199,7 +1219,7 @@ AppController::AppController(QObject* parent)
         // Only if a tag set already exists: with an empty set the user is not tagging yet, and a model call
         // after every summary (with new-name ideas) would be intrusive and superfluous.
         const AppSettings st = d->settings->settings();
-        if (st.tagSuggestions && st.llmTagSuggestions && !d->tags->all().isEmpty())
+        if (st.processing.tagSuggestions && st.processing.llmTagSuggestions && !d->tags->all().isEmpty())
             requestLlmTagSuggestions(meetingId);
     });
     connect(d->llmTags, &processing::LlmTagSuggester::finished, this,
@@ -1317,7 +1337,7 @@ void AppController::setVoiceEmbedderLoader(processing::PcmEmbedderLoader loader)
 void AppController::applyVoiceModels()
 {
     const QStringList enabled = d->settings->enabledVoiceModels();
-    processing::VoiceEmbedderSet set = processing::VoiceEmbedderSet::fromSettings(enabled, d->metaDir, d->appDir, d->voiceLoader);
+    processing::VoiceEmbedderSet set = processing::VoiceEmbedderSet::fromSettings(enabled, d->modelsDir, d->appDir, d->voiceLoader);
     const QStringList ids = set.modelIds();
     if (d->voiceModelsApplied && ids == d->voiceModelIds) return;   // another setting changed
     bool grew = false;
@@ -2008,13 +2028,13 @@ void AppController::setUserSpeakerName(const QString& name) {
     const QString n = name.trimmed();
     if (n.isEmpty()) return;
     AppSettings s = d->settings->settings();
-    const QString old = s.userSpeakerName.trimmed();
+    const QString old = s.recording.userSpeakerName.trimmed();
     if (old == n) {
         if (d->people) d->people->add(n);
         emit peopleChanged();
         return;
     }
-    s.userSpeakerName = n;
+    s.recording.userSpeakerName = n;
     d->settings->setSettings(s);
     // The name change should propagate to EVERY meeting: the mic track's frozen speaker name, the mappings
     // and the voiceprints are rewritten too (renamePerson handles all of this).
@@ -2163,9 +2183,11 @@ bool AppController::stopRecordingDevice(const QString& deviceName) {
     return true;
 }
 
-void AppController::setSecret(const QString& name, const QString& value) { d->keyStore.set(name, value); }
-bool AppController::hasSecret(const QString& name) const { return !d->keyStore.get(name).isEmpty(); }
-QString AppController::secret(const QString& name) const { return d->keyStore.get(name); }
+void AppController::setSecret(const QString& name, const QString& value) { d->secrets->set(name, value); }
+bool AppController::hasSecret(const QString& name) const { return !d->secrets->get(name).isEmpty(); }
+QString AppController::secret(const QString& name) const { return d->secrets->get(name); }
+QString AppController::secretBackend() const { return d->secrets->backendName(); }
+QString AppController::secretBackendWarning() const { return d->secretsWarning; }
 
 void AppController::startRecording(const QString& title, const QVector<AudioDeviceInfo>& devices)
 {
@@ -2200,8 +2222,8 @@ void AppController::startRecording(const QString& title, const QVector<AudioDevi
 
     d->recordingTagIds.clear();   // the previous recording's tags are not inherited
     const AppSettings s = d->settings->settings();
-    auto* sess = new recording::RecordingSession(d->audioDir, title, s.userSpeakerName,
-                                      opusBitrateKbps(s.audioQuality), this);
+    auto* sess = new recording::RecordingSession(d->audioDir, title, s.recording.userSpeakerName,
+                                      opusBitrateKbps(s.recording.audioQuality), this);
     if (d->recordingEngineFactory) sess->setEngineFactory(d->recordingEngineFactory);
     d->session = sess;
 
@@ -2255,7 +2277,7 @@ void AppController::startRecording(const QString& title, const QVector<AudioDevi
         }
     });
     {
-        const int minutes = d->settings->settings().silenceAskMinutes;
+        const int minutes = d->settings->settings().watcher.silenceAskMinutes;
         if (d->silenceTimer) { d->silenceTimer->stop(); d->silenceTimer->deleteLater(); d->silenceTimer = nullptr; }
         if (minutes > 0) {
             d->lastLoudMs = QDateTime::currentMSecsSinceEpoch();
@@ -2310,7 +2332,7 @@ void AppController::startRecording(const QString& title, const QVector<AudioDevi
         // Before it, the tracks' speech check (on a background thread): a speechless track is left out of the mix
         // (Track::excludedReason "noSpeech"); the mix starts at the end of the measurement.
         if (d->autoMixdown) {
-            const bool mix = d->settings->settings().mixdownMode != QStringLiteral("manual")
+            const bool mix = d->settings->settings().recording.mixdownMode != QStringLiteral("manual")
                 && m.mixdownFile.isEmpty();
             if (editing::trackspeech::needsSpeechCheck(m)) startSpeechCheck(m.id, mix);
             else if (mix) regenerateMixdown(m.id);
@@ -2330,23 +2352,23 @@ void AppController::startCallEndMonitor()
 {
     stopCallEndMonitor();
     const AppSettings s = d->settings->settings();
-    if (!s.askStopOnCallEnd)
+    if (!s.watcher.askStopOnCallEnd)
         return;
     watcher::registerBuiltinDetectors();
-    d->callDetector.reset(s.detectorId.isEmpty()
+    d->callDetector.reset(s.watcher.detectorId.isEmpty()
         ? watcher::MeetingDetectorRegistry::instance().createBest()
-        : watcher::MeetingDetectorRegistry::instance().create(s.detectorId));
+        : watcher::MeetingDetectorRegistry::instance().create(s.watcher.detectorId));
     if (!d->callDetector) {
         qCDebug(lcApp) << "Hívás-vég figyelés: nincs elérhető detektor ezen a platformon.";
         return;
     }
-    d->callDetector->configure(s.knownCallApps, QStringLiteral("tanara"));
+    d->callDetector->configure(s.watcher.knownCallApps, QStringLiteral("tanara"));
     d->callSeenActive = false;
     d->callInactivePolls = 0;
     d->callAppName.clear();
     d->callTimer = new QTimer(this);
     connect(d->callTimer, &QTimer::timeout, this, &AppController::pollCallEnd);
-    d->callTimer->start(qMax(1, s.detectorIntervalSec) * 1000);
+    d->callTimer->start(qMax(1, s.watcher.detectorIntervalSec) * 1000);
     pollCallEnd();
 }
 
@@ -2394,8 +2416,8 @@ static processing::SummaryRequest summaryRequestFor(const AppSettings& s, const 
 providers::ReadinessResult AppController::canRun(providers::WorkflowStep step, const QString& meetingId) const
 {
     const Meeting meeting = d->store->load(meetingId);
-    providers::ReadinessModel model(d->settings->settings(),
-                         [this](const QString& k) { return !d->keyStore.get(k).isEmpty(); });
+    providers::ReadinessModel model(d->settings->settings().providers,
+                         [this](const QString& k) { return !d->secrets->get(k).isEmpty(); });
     providers::ReadinessResult r = model.check(step, meeting);
     if (!r.runnable || !usesCloud(step))
         return r;
@@ -2431,8 +2453,8 @@ bool AppController::usesCloud(providers::WorkflowStep step) const
 {
     if (!d->cloudLive) return false;
     const AppSettings s = d->settings->settings();
-    if (step == providers::WorkflowStep::Transcribe) return s.sttProviderId == cloud::ProviderId;
-    if (step == providers::WorkflowStep::Summarize)  return s.llmProviderId == cloud::ProviderId;
+    if (step == providers::WorkflowStep::Transcribe) return s.providers.stt.selectedId == cloud::ProviderId;
+    if (step == providers::WorkflowStep::Summarize)  return s.providers.llm.selectedId == cloud::ProviderId;
     return false;
 }
 
@@ -2440,7 +2462,7 @@ QString AppController::cloudModelFor(providers::WorkflowStep step) const
 {
     const AppSettings s = d->settings->settings();
     const bool stt = step == providers::WorkflowStep::Transcribe;
-    const QString expert = stt ? s.cloudSttModel : s.cloudLlmModel;
+    const QString expert = stt ? s.cloud.sttModel : s.cloud.llmModel;
     // The Expert model is valid only if it is still in the catalog (a retired model goes back to the tier's
     // virtual model; the UI signals it).
     if (!expert.isEmpty()) {
@@ -2449,7 +2471,7 @@ QString AppController::cloudModelFor(providers::WorkflowStep step) const
             return expert;
     }
     return cloud::virtualModelId(stt ? QStringLiteral("stt") : QStringLiteral("llm"),
-                          stt ? s.cloudSttTier : s.cloudLlmTier);
+                          stt ? s.cloud.sttTier : s.cloud.llmTier);
 }
 
 namespace {
@@ -2469,7 +2491,7 @@ cloud::EstimateRequest AppController::makeEstimateRequest(const QString& meeting
     r.task = task;
     r.durationMs = m.durationMs;
     for (const Track& t : m.tracks) if (t.active) ++r.tracks;
-    r.language = s.languageHints.value(0);
+    r.language = s.processing.languageHints.value(0);
     if (task != QLatin1String("summarize"))
         r.sttModel = cloudModelFor(providers::WorkflowStep::Transcribe);
     if (task != QLatin1String("transcribe")) {
@@ -2484,8 +2506,8 @@ cloud::EstimateRequest AppController::makeEstimateRequest(const QString& meeting
             const int transcript = merged.renderMarkdown().size() + m.contextNote.size();
             r.transcriptChars = transcript;
             if (r.summaryMode == QLatin1String("complex")) {
-                const int topicIn    = transcript + resolvedPrompt(s, s.topicExtractionPrompt, "topic").size();
-                const int analysisIn = transcript + resolvedPrompt(s, s.topicAnalysisPrompt, "analysis").size() + 200;
+                const int topicIn    = transcript + resolvedPrompt(s, s.processing.topicExtractionPrompt, "topic").size();
+                const int analysisIn = transcript + resolvedPrompt(s, s.processing.topicAnalysisPrompt, "analysis").size() + 200;
                 // The topic count is unknown before extraction (null -> the gateway's statistics); if an edited topic
                 // list already exists, we request only the not-yet-analyzed ones.
                 const QVector<SummaryTopic> topics =
@@ -2537,10 +2559,10 @@ AppController::CloudRunPtr AppController::newCloudRun(const QString& meetingId, 
     return run;
 }
 
-ProviderConfig AppController::cloudConfig(providers::WorkflowStep step, const CloudRunPtr& run,
+providers::ProviderConfig AppController::cloudConfig(providers::WorkflowStep step, const CloudRunPtr& run,
                                           const QString& summaryMode) const
 {
-    ProviderConfig cfg;
+    providers::ProviderConfig cfg;
     cfg.type = cloud::ProviderId;
     cfg.baseUrl = d->cloud->apiBase();
     cfg.apiKey = d->cloud->apiKey();
@@ -2594,12 +2616,12 @@ ProviderConfig AppController::cloudConfig(providers::WorkflowStep step, const Cl
     return cfg;
 }
 
-ProviderConfig AppController::llmConfigFor(CloudRunPtr& run, const QString& meetingId,
+providers::ProviderConfig AppController::llmConfigFor(CloudRunPtr& run, const QString& meetingId,
                                            const QString& kind, const QString& summaryMode) const
 {
     if (!usesCloud(providers::WorkflowStep::Summarize)) {
-        ProviderConfig cfg = d->settings->settings().llmSelected();
-        cfg.apiKey = d->keyStore.get(keys::LlmApiKey);   // LM Studio: may be empty
+        providers::ProviderConfig cfg = d->settings->settings().providers.llm.selected();
+        cfg.apiKey = d->secrets->get(keys::LlmApiKey);   // LM Studio: may be empty
         return cfg;
     }
     if (!run) run = newCloudRun(meetingId, kind);
@@ -2768,8 +2790,8 @@ void AppController::transcribeFromMixdown(const QString& meetingId)
     }
 
     const AppSettings s = d->settings->settings();
-    const QString sttId = s.sttProviderId;
-    ProviderConfig cfg = s.sttSelected();
+    const QString sttId = s.providers.stt.selectedId;
+    providers::ProviderConfig cfg = s.providers.stt.selected();
     // Tanara Cloud: the same Soniox provider with the gateway config; the run (job id, charge,
     // write-back, error) is filled from the response hook.
     CloudRunPtr run;
@@ -2785,7 +2807,7 @@ void AppController::transcribeFromMixdown(const QString& meetingId)
         const providers::ProviderDescriptor sttDesc = providers::SttProviderRegistry::instance().descriptor(sttId);
         for (const providers::ConfigField& f : sttDesc.fields)
             if (f.isSecret && !f.secretKey.isEmpty()) {
-                cfg.apiKey = d->keyStore.get(f.secretKey);
+                cfg.apiKey = d->secrets->get(f.secretKey);
                 break;
             }
     }
@@ -2811,7 +2833,7 @@ void AppController::transcribeFromMixdown(const QString& meetingId)
     providers::SttRequest req;
     req.audioFilePath = mixPath;
     req.trackId = QStringLiteral("mixdown");
-    req.languageHints = s.languageHints;
+    req.languageHints = s.processing.languageHints;
     // Context envelope -> Soniox's structured "context" object (general/text/terms): the title + the user's
     // note (names, jargon, mishearing corrections) + the participant names. The detected call app is NOT sent
     // (it tells the transcriber nothing).
@@ -2992,14 +3014,14 @@ void AppController::transcribeFromMixdown(const QString& meetingId)
 }
 
 // The system prompt actually to be sent: settings override -> file override
-// (<metadataDir>/prompts/<id>.md) -> built-in default (PromptLibrary), finally with the target language
+// (<data>/prompts/<id>.md) -> built-in default (PromptLibrary), finally with the target language
 // applied ({{NYELV}} placeholder / directive).
 static QString resolvedPrompt(const AppSettings& s, const QString& userOverride, const char* id)
 {
     const QString base = userOverride.trimmed().isEmpty()
-        ? processing::promptDefault(QLatin1String(id), s.metadataDir)
+        ? processing::promptDefault(QLatin1String(id))   // the current data folder
         : userOverride;
-    return processing::applySummaryLanguage(base, s.summaryLanguage);
+    return processing::applySummaryLanguage(base, s.processing.summaryLanguage);
 }
 
 void AppController::summarizeMeeting(const QString& meetingId)
@@ -3026,9 +3048,9 @@ void AppController::summarizeMeeting(const QString& meetingId)
     editing::speakeredit::applyResolvedSpeakers(merged, m);   // Gemma should see the real names
 
     const AppSettings s = d->settings->settings();
-    const QString llmId = s.llmProviderId;
+    const QString llmId = s.providers.llm.selectedId;
     CloudRunPtr run;   // cloud: ONE run (one job id) for all the note and merge calls
-    ProviderConfig cfg = llmConfigFor(run, meetingId, QStringLiteral("summary"), QStringLiteral("quick"));
+    providers::ProviderConfig cfg = llmConfigFor(run, meetingId, QStringLiteral("summary"), QStringLiteral("quick"));
     const auto sink = std::make_shared<FailureSink>();
     captureFailures(cfg, sink);
     providers::ILlmProvider* provider = providers::LlmProviderRegistry::instance().create(llmId, cfg, this);
@@ -3194,10 +3216,10 @@ static processing::SummaryRequest summaryRequestFor(const AppSettings& s, const 
     processing::SummaryRequest req;
     req.transcript = merged;
     req.contextNotes = m.contextNote.trimmed();
-    req.singlePrompt = resolvedPrompt(s, s.summaryPrompt, "single");
-    req.notesPrompt = resolvedPrompt(s, s.notesPrompt, "notes");
-    req.mergePrompt = resolvedPrompt(s, s.mergePrompt, "merge");
-    req.language = s.summaryLanguage;
+    req.singlePrompt = resolvedPrompt(s, s.processing.summaryPrompt, "single");
+    req.notesPrompt = resolvedPrompt(s, s.processing.notesPrompt, "notes");
+    req.mergePrompt = resolvedPrompt(s, s.processing.mergePrompt, "merge");
+    req.language = s.processing.summaryLanguage;
     req.model = model;
     req.maxTokens = maxTokens > 0 ? maxTokens : 8000;
     req.notesMaxTokens = qMin(req.maxTokens, kNotesMaxTokens);
@@ -3233,19 +3255,19 @@ void AppController::extractMeetingTopics(const QString& meetingId)
 
     const AppSettings s = d->settings->settings();
     CloudRunPtr run;
-    ProviderConfig cfg = llmConfigFor(run, meetingId, QStringLiteral("topics"), QStringLiteral("complex"));
+    providers::ProviderConfig cfg = llmConfigFor(run, meetingId, QStringLiteral("topics"), QStringLiteral("complex"));
     const auto sink = std::make_shared<FailureSink>();
     captureFailures(cfg, sink);
-    providers::ILlmProvider* provider = providers::LlmProviderRegistry::instance().create(s.llmProviderId, cfg, this);
-    if (!provider) { emit errorOccurred(tr("Ismeretlen LLM-provider: %1.").arg(s.llmProviderId)); return; }
+    providers::ILlmProvider* provider = providers::LlmProviderRegistry::instance().create(s.providers.llm.selectedId, cfg, this);
+    if (!provider) { emit errorOccurred(tr("Ismeretlen LLM-provider: %1.").arg(s.providers.llm.selectedId)); return; }
     QObject* providerObj = dynamic_cast<QObject*>(provider);
     auto* svc = new processing::ComplexSummaryService(provider, this);
-    svc->setLanguage(s.summaryLanguage);
+    svc->setLanguage(s.processing.summaryLanguage);
     emit jobProgress(meetingId, run ? tr("Témák kigyűjtése a Tanara Cloudban…")
                                     : tr("Témák kigyűjtése a helyi modellel…"));
 
     const QString key = Impl::llmKey(meetingId, JobKind::ExtractTopics);
-    const QString statsKey = QStringLiteral("topics/%1/%2").arg(s.llmProviderId, cfg.model);
+    const QString statsKey = QStringLiteral("topics/%1/%2").arg(s.providers.llm.selectedId, cfg.model);
     const double units = double(transcriptMd.size());
     d->jobs->begin(meetingId, JobKind::ExtractTopics, tr("Témák javaslása"));
     d->jobs->setEstimate(meetingId, JobKind::ExtractTopics, d->jobStats->estimateSec(statsKey, units));
@@ -3274,7 +3296,7 @@ void AppController::extractMeetingTopics(const QString& meetingId)
         emit topicsChanged(id);
         emit topicsReady(id, topics);
     });
-    const QString topicPrompt = resolvedPrompt(s, s.topicExtractionPrompt, "topic");
+    const QString topicPrompt = resolvedPrompt(s, s.processing.topicExtractionPrompt, "topic");
     const auto ctx = std::make_shared<Impl::LlmContextState>();
     ctx->need = providers::llmctx::callContextNeed(topicPrompt.size() + transcriptMd.size()
                                         + m.contextNote.size() + 300, cfg.maxTokens);
@@ -3479,14 +3501,14 @@ void AppController::startNextTopicJob()
         d->complexRuns.insert(m.id, run);
     }
     if (run) run->kind = QStringLiteral("complex");   // after topic gathering, the analysis stage
-    ProviderConfig cfg = llmConfigFor(run, m.id, QStringLiteral("complex"), QStringLiteral("complex"));
+    providers::ProviderConfig cfg = llmConfigFor(run, m.id, QStringLiteral("complex"), QStringLiteral("complex"));
     const auto sink = std::make_shared<FailureSink>();
     captureFailures(cfg, sink);
-    providers::ILlmProvider* provider = providers::LlmProviderRegistry::instance().create(s.llmProviderId, cfg, this);
-    if (!provider) { failEarly(tr("Ismeretlen LLM-provider: %1.").arg(s.llmProviderId)); return; }
+    providers::ILlmProvider* provider = providers::LlmProviderRegistry::instance().create(s.providers.llm.selectedId, cfg, this);
+    if (!provider) { failEarly(tr("Ismeretlen LLM-provider: %1.").arg(s.providers.llm.selectedId)); return; }
     QObject* providerObj = dynamic_cast<QObject*>(provider);
     auto* svc = new processing::ComplexSummaryService(provider, this);
-    svc->setLanguage(s.summaryLanguage);
+    svc->setLanguage(s.processing.summaryLanguage);
 
     d->topicJobActive = true;
     d->activeTopicMeetingId = m.id;
@@ -3519,7 +3541,7 @@ void AppController::startNextTopicJob()
         startNextTopicJob();
     });
     const QString transcriptMd = merged.renderMarkdown();
-    const QString analysisPrompt = resolvedPrompt(s, s.topicAnalysisPrompt, "analysis");
+    const QString analysisPrompt = resolvedPrompt(s, s.processing.topicAnalysisPrompt, "analysis");
     const auto ctx = std::make_shared<Impl::LlmContextState>();
     const auto prepError = std::make_shared<JobError>();   // the preparation's error (if that failed)
     ctx->need = providers::llmctx::callContextNeed(analysisPrompt.size() + transcriptMd.size() + m.contextNote.size()
@@ -3598,14 +3620,14 @@ void AppController::finalizeComplexSummary(const QString& meetingId)
 
     const AppSettings s = d->settings->settings();
     CloudRunPtr run = d->complexRuns.take(meetingId);   // the batch's run (if any) continues
-    ProviderConfig cfg = llmConfigFor(run, meetingId, QStringLiteral("complex"), QStringLiteral("complex"));
+    providers::ProviderConfig cfg = llmConfigFor(run, meetingId, QStringLiteral("complex"), QStringLiteral("complex"));
     const auto sink = std::make_shared<FailureSink>();
     captureFailures(cfg, sink);
-    providers::ILlmProvider* provider = providers::LlmProviderRegistry::instance().create(s.llmProviderId, cfg, this);
-    if (!provider) { emit errorOccurred(tr("Ismeretlen LLM-provider: %1.").arg(s.llmProviderId)); return; }
+    providers::ILlmProvider* provider = providers::LlmProviderRegistry::instance().create(s.providers.llm.selectedId, cfg, this);
+    if (!provider) { emit errorOccurred(tr("Ismeretlen LLM-provider: %1.").arg(s.providers.llm.selectedId)); return; }
     QObject* providerObj = dynamic_cast<QObject*>(provider);
     auto* svc = new processing::ComplexSummaryService(provider, this);
-    svc->setLanguage(s.summaryLanguage);
+    svc->setLanguage(s.processing.summaryLanguage);
     svc->setReducePrompt(resolvedPrompt(s, QString(), "reduce"));
     emit jobProgress(meetingId, tr("Összegzés (vezetői összefoglaló + teendők)…"));
 
@@ -3633,7 +3655,7 @@ void AppController::finalizeComplexSummary(const QString& meetingId)
         failCloudRun(run, tr("Komplex összefoglaló hiba: %1").arg(je.message));
     });
     connect(svc, &processing::ComplexSummaryService::reduceReady, this,
-            [this, m, ordered, cleanup, run, key, llmId = s.llmProviderId, model = cfg.model]
+            [this, m, ordered, cleanup, run, key, llmId = s.providers.llm.selectedId, model = cfg.model]
             (const QString& execSummary, const QVector<ActionItem>&) {
         d->llmRuns.remove(key);
         // Action items from CODE (not from the LLM): we collect the per-topic analyses' action items with a
@@ -3723,8 +3745,8 @@ QString AppController::importAudio(const library::ImportRequest& request)
         return {};
     }
     const AppSettings s = d->settings->settings();
-    d->importer->setOpusBitrateKbps(opusBitrateKbps(s.audioQuality));
-    d->importer->setUserSpeakerName(s.userSpeakerName);
+    d->importer->setOpusBitrateKbps(opusBitrateKbps(s.recording.audioQuality));
+    d->importer->setUserSpeakerName(s.recording.userSpeakerName);
     return d->importer->start(request);
 }
 
@@ -3961,7 +3983,7 @@ void AppController::publishTagSuggestions(const QString& meetingId, QVector<TagS
     list.erase(std::remove_if(list.begin(), list.end(), [](const TagSuggestion& sg) {
         return sg.source == SuggestionSource::People;
     }), list.end());
-    if (d->settings->settings().tagSuggestions) {
+    if (d->settings->settings().processing.tagSuggestions) {
         QVector<TagSuggestion> people = d->tags->suggestMeetingTagsFromParticipants(meetingId);
         for (TagSuggestion& p : people) {
             const auto dup = std::find_if(list.begin(), list.end(), [&](const TagSuggestion& sg) {
@@ -4072,7 +4094,7 @@ void AppController::requestTagSuggestions(const QString& meetingId)
 {
     if (meetingId.isEmpty()) return;
     emit tagSuggestionsComputing(meetingId);
-    if (!d->settings->settings().tagSuggestions) {
+    if (!d->settings->settings().processing.tagSuggestions) {
         publishTagSuggestions(meetingId, {});
         return;
     }
@@ -4086,7 +4108,7 @@ void AppController::requestTagSuggestions(const QString& meetingId)
 
 void AppController::requestCooccurSuggestions(const QString& meetingId, const QString& tagId)
 {
-    if (!d->settings->settings().tagSuggestions) return;
+    if (!d->settings->settings().processing.tagSuggestions) return;
     const library::TagSuggester suggester(d->tags, d->profiles, d->embeddings);
     const QVector<TagSuggestion> list = suggester.cooccur(meetingId, tagId);
     if (list.isEmpty()) return;
@@ -4097,7 +4119,7 @@ void AppController::requestCooccurSuggestions(const QString& meetingId, const QS
 void AppController::requestLlmTagSuggestions(const QString& meetingId)
 {
     const AppSettings s = d->settings->settings();
-    if (!s.tagSuggestions) return;
+    if (!s.processing.tagSuggestions) return;
     const library::SummaryDocument doc = summaryDocument(meetingId);
     if (!doc.exists || doc.markdown.trimmed().isEmpty()) return;
     emit tagSuggestionsComputing(meetingId);
@@ -4114,7 +4136,7 @@ void AppController::startLlmTagSuggestions(const QString& meetingId, const QVect
 {
     const AppSettings s = d->settings->settings();
     const library::SummaryDocument doc = summaryDocument(meetingId);
-    if (!s.tagSuggestions || !doc.exists || doc.markdown.trimmed().isEmpty()) {
+    if (!s.processing.tagSuggestions || !doc.exists || doc.markdown.trimmed().isEmpty()) {
         publishTagSuggestions(meetingId, d->pendingTags.value(meetingId));
         return;
     }
@@ -4128,8 +4150,8 @@ void AppController::startLlmTagSuggestions(const QString& meetingId, const QVect
         if (!prev.isEmpty() && prev != meetingId) publishTagSuggestions(prev, d->pendingTags.value(prev));
     }
     CloudRunPtr run;
-    const ProviderConfig cfg = llmConfigFor(run, meetingId, QStringLiteral("tags"), QStringLiteral("quick"));
-    providers::ILlmProvider* provider = providers::LlmProviderRegistry::instance().create(s.llmProviderId, cfg, this);
+    const providers::ProviderConfig cfg = llmConfigFor(run, meetingId, QStringLiteral("tags"), QStringLiteral("quick"));
+    providers::ILlmProvider* provider = providers::LlmProviderRegistry::instance().create(s.providers.llm.selectedId, cfg, this);
     if (!provider) {
         publishTagSuggestions(meetingId, d->pendingTags.value(meetingId));
         return;
@@ -4137,7 +4159,7 @@ void AppController::startLlmTagSuggestions(const QString& meetingId, const QVect
     d->llmTagsProvider = dynamic_cast<QObject*>(provider);
     d->llmTagsRun = run;
     d->llmTagsMeetingId = meetingId;
-    d->llmTags->start(provider, cfg.model, processing::promptDefault(QStringLiteral("tags"), s.metadataDir),
+    d->llmTags->start(provider, cfg.model, processing::promptDefault(QStringLiteral("tags"), d->metaDir),
                       meetingId, doc.markdown, suggested);
 }
 
@@ -4148,7 +4170,7 @@ QVector<TagSuggestion> AppController::pendingTagSuggestions(const QString& meeti
 
 QVector<TagSuggestion> AppController::draftTagSuggestions(const QString& title) const
 {
-    if (!d->settings->settings().tagSuggestions) return {};
+    if (!d->settings->settings().processing.tagSuggestions) return {};
     const library::TagSuggester suggester(d->tags, d->profiles, d->embeddings);
     return suggester.suggestForDraft(title);
 }
@@ -4162,15 +4184,15 @@ void AppController::setRecordingTags(const QStringList& tagIds)
 
 QStringList AppController::recordingTags() const { return d->recordingTagIds; }
 
-void AppController::setEmbeddingProvider(const QString& providerId, const ProviderConfig& config)
+void AppController::setEmbeddingProvider(const QString& providerId, const providers::ProviderConfig& config)
 {
     AppSettings s = d->settings->settings();
-    s.embeddingProviderId = providerId;
+    s.providers.embedding.selectedId = providerId;
     if (!providerId.isEmpty()) {
-        ProviderConfig cfg = config;
+        providers::ProviderConfig cfg = config;
         cfg.type = providerId;
-        cfg.apiKey.clear();   // the key belongs in the KeyStore (setSecret), not in the settings
-        s.embeddingConfigs.insert(providerId, cfg);
+        cfg.apiKey.clear();   // the key belongs in the SecretStore (setSecret), not in the settings
+        s.providers.embedding.configs.insert(providerId, cfg);
     }
     d->settings->setSettings(s);   // settingsChanged → applyEmbeddingSettings(true)
 }
@@ -4178,9 +4200,9 @@ void AppController::setEmbeddingProvider(const QString& providerId, const Provid
 void AppController::applyEmbeddingSettings(bool restart)
 {
     const AppSettings s = d->settings->settings();
-    const QString id = providers::EmbeddingProviderRegistry::instance().has(s.embeddingProviderId)
-        ? s.embeddingProviderId : QString();
-    ProviderConfig base = s.embeddingSelected();
+    const QString id = providers::EmbeddingProviderRegistry::instance().has(s.providers.embedding.selectedId)
+        ? s.providers.embedding.selectedId : QString();
+    providers::ProviderConfig base = s.providers.embedding.selected();
     // The Tanara Cloud variant has no model field: the gateway's default model.
     const QString model = id.isEmpty() ? QString()
         : (!base.model.trimmed().isEmpty() ? base.model.trimmed()
@@ -4196,7 +4218,7 @@ void AppController::applyEmbeddingSettings(bool restart)
     if (!key.isEmpty()) {
         factory = [this, id](QObject* parent) -> providers::IEmbeddingProvider* {
             const AppSettings cur = d->settings->settings();
-            ProviderConfig cfg = cur.embeddingConfigs.value(id);
+            providers::ProviderConfig cfg = cur.providers.embedding.configs.value(id);
             cfg.type = id;
             if (id == providers::embeddingproviders::CloudId) {
                 // The same sign-in and header set as on the LLM path (/v1/embeddings).
@@ -4206,7 +4228,7 @@ void AppController::applyEmbeddingSettings(bool restart)
                 QPointer<cloud::CloudAccount> acc = d->cloud;
                 cfg.onExchange = [acc](const cloud::HttpExchange& ex) { if (acc) acc->observeExchange(ex); };
             } else {
-                cfg.apiKey = d->keyStore.get(providers::embeddingproviders::ApiKeySecret);
+                cfg.apiKey = d->secrets->get(providers::embeddingproviders::ApiKeySecret);
             }
             return providers::EmbeddingProviderRegistry::instance().create(id, cfg, parent);
         };
@@ -4333,7 +4355,7 @@ bool AppController::cancelTopicAnalysis(const QString& meetingId, const QString&
 void AppController::requestLlmContext(int tokens)
 {
     if (tokens <= 0 || usesCloud(providers::WorkflowStep::Summarize)) return;
-    const ProviderConfig cfg = d->settings->settings().llmSelected();
+    const providers::ProviderConfig cfg = d->settings->settings().providers.llm.selected();
     d->contextFloor.insert(Impl::serverKey(cfg), tokens);
 }
 
@@ -4612,7 +4634,7 @@ editing::SpeakerEditor* AppController::speakerEditor(const QString& meetingId)
     if (m.id.isEmpty()) return nullptr;
 
     auto* ed = new editing::SpeakerEditor(d->store, d->people.get(), d->voiceprints.get(), meetingId, this);
-    ed->setUserSpeakerName(d->settings->settings().userSpeakerName);
+    ed->setUserSpeakerName(d->settings->settings().recording.userSpeakerName);
     // Without voice ID (no model / TANARA_BUILD_VOICEID=OFF) the editor is fully functional even without
     // uncertainty and suggestions.
     ed->setVoiceModelIds(d->editorModelIds(d->settings));
@@ -4718,7 +4740,7 @@ void AppController::dismissSummaryStale(const QString& meetingId)
 processing::participants::CandidateContext AppController::Impl::candidateContext() const
 {
     processing::participants::CandidateContext ctx;
-    ctx.selfName = settings->settings().userSpeakerName.trimmed();
+    ctx.selfName = settings->settings().recording.userSpeakerName.trimmed();
     library::VoiceprintStore* vp = voiceprints.get();
     ctx.rank = [vp](const EmbeddingSet& set) {
         return vp ? vp->rankedMatches(set, set.keys()) : QVector<VoiceMatch>();
@@ -5244,7 +5266,7 @@ bool AppController::applyParticipantsToTranscript(const QString& meetingId)
     if (lines.isEmpty()) return false;
     QVector<SpeakerBinding> bindings;
     if (m.approval->solo) {
-        const QString self = d->settings->settings().userSpeakerName.trimmed();
+        const QString self = d->settings->settings().recording.userSpeakerName.trimmed();
         if (self.isEmpty()) return false;
         QStringList raws;
         for (const TranscriptLine& l : lines)
@@ -5393,7 +5415,7 @@ QString AppController::addParticipant(const QString& meetingId, const QString& p
 bool AppController::setSoloMeeting(const QString& meetingId)
 {
     ParticipantUndoScope undoScope(this, meetingId, tr("Csak én beszéltem"));
-    const QString self = d->settings->settings().userSpeakerName.trimmed();
+    const QString self = d->settings->settings().recording.userSpeakerName.trimmed();
     Meeting m = d->store->load(meetingId);
     if (m.id.isEmpty() || self.isEmpty()) return false;
     if (const auto it = d->analysisRuns.constFind(meetingId); it != d->analysisRuns.constEnd())
@@ -5545,7 +5567,7 @@ bool AppController::deleteVoiceModelFile(const QString& id, QString* error)
         if (error) *error = QStringLiteral("Unknown voice model: %1").arg(id);
         return false;
     }
-    if (!processing::VoiceModelDownloader::deleteModelFile(*spec, d->metaDir, error)) return false;
+    if (!processing::VoiceModelDownloader::deleteModelFile(*spec, d->modelsDir, error)) return false;
     qCInfo(lcVoice).noquote() << "Hangmodell-fájl törölve:" << id;
     rescanVoiceModels();
     return true;

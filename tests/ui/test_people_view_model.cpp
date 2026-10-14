@@ -17,6 +17,7 @@
 #include "PeopleWindowHost.h"
 #include "QmlApp.h"
 
+#include "tanara/foundation/paths/AppPaths.h"
 #include "tanara/app/AppController.h"
 #include "tanara/app/SettingsManager.h"
 #include "tanara/processing/analysis/UtteranceEmbeddings.h"
@@ -92,7 +93,7 @@ class TestPeopleViewModel : public QObject {
         QVERIFY(m_home->isValid());
         qputenv("TANARA_HOME", m_home->path().toUtf8());
         m_app = std::make_unique<app::AppController>();
-        QVERIFY(m_app->settings()->settings().audioDir.startsWith(m_home->path()));
+        QVERIFY(m_app->settings()->paths().primaryRecordingRoot().startsWith(m_home->path()));
         m_app->setUserSpeakerName(kSelf);
     }
 
@@ -508,7 +509,7 @@ private slots:
         vm.setSelectedName(kSelf);
         QVERIFY(vm.selectedIsSelf());
         QCOMPARE(vm.rename("Kovács-Nagy Lilla"), QString());
-        QCOMPARE(m_app->settings()->settings().userSpeakerName, QStringLiteral("Kovács-Nagy Lilla"));
+        QCOMPARE(m_app->settings()->settings().recording.userSpeakerName, QStringLiteral("Kovács-Nagy Lilla"));
         QVERIFY(vm.selectedIsSelf());
         QVERIFY(!vm.deletePerson(false).isEmpty());             // the own person cannot be deleted
     }
@@ -832,7 +833,7 @@ private slots:
         startApp();
         scenario();
         // A second store on the same people.json (the path of learning: SpeakerEditor / PeopleService).
-        library::PeopleStore learner(QDir(m_app->settings()->settings().metadataDir).filePath(QStringLiteral("people.json")));
+        library::PeopleStore learner(m_app->settings()->paths().dataFile(paths::files::People));
         PeopleViewModel vm;
         vm.setController(m_app.get());
         vm.setSelectedName(kGergely);

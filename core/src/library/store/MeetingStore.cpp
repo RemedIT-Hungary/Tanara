@@ -1,9 +1,8 @@
 #include "tanara/library/store/MeetingStore.h"
 #include "tanara/library/store/JsonSerialization.h"
 #include "tanara/library/store/MeetingArchive.h"
-#include "tanara/app/SettingsManager.h"
 #include "tanara/foundation/log/Logging.h"
-#include "tanara/foundation/paths/Paths.h"
+#include "tanara/foundation/paths/AppPaths.h"
 #include "tanara/foundation/ProcessLock.h"
 
 #include <QCoreApplication>
@@ -26,15 +25,6 @@
 namespace tanara::library {
 
 namespace {
-
-QString expandHome(const QString& path)
-{
-    if (path.startsWith(QLatin1String("~/")))
-        return QDir(QDir::homePath()).filePath(path.mid(2));
-    if (path == QLatin1String("~"))
-        return QDir::homePath();
-    return path;
-}
 
 // Title -> a file-system-friendly slug (accents kept, only forbidden chars replaced).
 QString slugify(const QString& title)
@@ -79,21 +69,9 @@ MeetingStore::MeetingStore(const QString& audioDir,
                            const QString& metadataDir,
                            QObject* parent)
     : QObject(parent)
-    , m_audioDir(expandHome(audioDir))
-    , m_metadataDir(metadataDir.isEmpty() ? paths::defaultMetadataDir() : expandHome(metadataDir))
+    , m_audioDir(paths::expandHome(audioDir.trimmed()))
+    , m_metadataDir(metadataDir.trimmed().isEmpty() ? paths::current().dataDir() : paths::expandHome(metadataDir.trimmed()))
 {
-    m_connName = QStringLiteral("tanara_meetingstore_%1")
-                     .arg(QUuid::createUuid().toString(QUuid::Id128));
-    openDb();
-}
-
-MeetingStore::MeetingStore(app::SettingsManager* settings, QObject* parent)
-    : QObject(parent)
-{
-    if (settings) {
-        m_audioDir    = expandHome(settings->settings().audioDir);
-        m_metadataDir = paths::resolveMetadataDir(settings->settings().metadataDir);
-    }
     m_connName = QStringLiteral("tanara_meetingstore_%1")
                      .arg(QUuid::createUuid().toString(QUuid::Id128));
     openDb();
@@ -119,7 +97,7 @@ void MeetingStore::openDb()
     QDir().mkpath(m_metadataDir);
     QDir().mkpath(m_audioDir);
 
-    const QString dbPath = QDir(m_metadataDir).filePath(QStringLiteral("index.db"));
+    const QString dbPath = QDir(m_metadataDir).filePath(paths::files::IndexDb);
 
     QSqlDatabase db = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), m_connName);
     db.setDatabaseName(dbPath);
@@ -361,7 +339,7 @@ bool MeetingStore::folderOwnedOnlyBy(const QString& id, const QString& folder) c
 bool MeetingStore::isLiveRecordingFolder(const QString& folder) const
 {
     const RecordingLock::Info lock =
-        RecordingLock::read(QDir(m_metadataDir).filePath(QStringLiteral("recording.lock")));
+        RecordingLock::read(recordingLockPath());
     return lock.active && !lock.meetingFolder.isEmpty()
         && normFolder(lock.meetingFolder) == normFolder(folder);
 }

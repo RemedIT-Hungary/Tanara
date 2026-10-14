@@ -10,8 +10,7 @@ core/src/library/index/EmbeddingPreparer.cpp -> tanara/editing/session/SpeakerOv
 core/src/library/people/PeopleStats.cpp -> tanara/editing/session/SpeakerOverlay.h   # K7 -> P5
 core/src/library/tags/MeetingProfiles.cpp -> tanara/editing/session/SpeakerOverlay.h   # K7 -> P5
 
-# ---- P6 (1 lines) ----
-core/src/library/store/MeetingStore.cpp -> tanara/app/SettingsManager.h   # MeetingStore -> SettingsManager -> P6
+# ---- P6 (0 lines) ----
 
 # ---- P8 (3 lines) ----
 core/src/library/store/JsonSerialization.cpp -> tanara/processing/summary/SummarySources.h   # K3 -> P8
@@ -99,7 +98,7 @@ gui/src/ShellRecorderHost.cpp -> tanara/app/AppController.h   # GUI -> AppContro
 gui/src/main.cpp -> platform:Q_OS_LINUX   # platform (gui) -> P15
 gui/src/main.cpp -> tanara/app/AppController.h   # GUI -> AppController.h -> P15
 
-# ---- P16 (25 lines) ----
+# ---- P16 (24 lines) ----
 core/include/tanara/watcher/detect/LinuxCaptureDetector.h -> platform:Q_OS_LINUX   # platform -> P16
 core/include/tanara/watcher/detect/WindowsCaptureDetector.h -> platform:Q_OS_WIN   # platform -> P16
 core/src/app/SettingsManager.cpp -> platform:Q_OS_WIN   # platform -> P16
@@ -119,7 +118,6 @@ core/src/watcher/detect/BuiltinDetectors.cpp -> platform:Q_OS_WIN   # platform -
 core/src/watcher/detect/LinuxCaptureDetector.cpp -> platform:Q_OS_LINUX   # platform -> P16
 core/src/foundation/ProcessLock.cpp -> platform:Q_OS_WIN   # platform (moved by P4 from detect/RecordingLock.cpp) -> P16
 core/src/watcher/detect/WindowsCaptureDetector.cpp -> platform:Q_OS_WIN   # platform -> P16
-core/src/foundation/KeyStore.cpp -> platform:Q_OS_UNIX   # platform -> P16
 core/src/processing/voiceid/VoiceEmbedder.cpp -> platform:_WIN32   # platform -> P16
 watcher/TrayWatcher.cpp -> platform:Q_OS_WIN   # platform (watcher exe) -> P16
 watcher/TrayWatcher.cpp -> tanara/app/SettingsManager.h   # watcher exe -> SettingsManager/TrackCatalog -> P16

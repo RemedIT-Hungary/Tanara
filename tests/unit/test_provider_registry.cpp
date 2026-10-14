@@ -8,6 +8,7 @@
 // GLOB), each bringing its OWN main. Core (tanara_core) does NOT link Qt Widgets, hence
 // QTEST_GUILESS_MAIN here (no QApplication).
 #include <QtTest>
+#include "tanara/providers/core/ProviderConfig.h"
 #include <QObject>
 
 #include "tanara/domain/Types.h"
@@ -32,7 +33,7 @@ private slots:
         QVERIFY(reg.has(QStringLiteral("soniox")));
 
         QObject parent;
-        ProviderConfig cfg;
+        providers::ProviderConfig cfg;
         cfg.type = QStringLiteral("soniox");
 
         providers::ISttProvider* p = reg.create(QStringLiteral("soniox"), cfg, &parent);
@@ -64,7 +65,7 @@ private slots:
         providers::registerBuiltinProviders();
 
         QObject parent;
-        ProviderConfig cfg;
+        providers::ProviderConfig cfg;
 
         providers::ISttProvider* p =
             providers::SttProviderRegistry::instance().create(QStringLiteral("nonexistent"), cfg, &parent);
@@ -81,7 +82,7 @@ private slots:
         QVERIFY(reg.has(QStringLiteral("openai-compat")));
 
         QObject parent;
-        ProviderConfig cfg;
+        providers::ProviderConfig cfg;
         cfg.type = QStringLiteral("openai-compat");
 
         providers::ILlmProvider* p = reg.create(QStringLiteral("openai-compat"), cfg, &parent);

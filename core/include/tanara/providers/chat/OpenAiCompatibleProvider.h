@@ -3,6 +3,7 @@
 // OpenAI-compatible LLM provider (LM Studio / Ollama / OpenAI / Claude proxy).
 // MVP: non-streaming, a single /chat/completions POST.
 #include "tanara/providers/chat/ILlmProvider.h"
+#include "tanara/providers/core/ProviderConfig.h"
 #include "tanara/domain/Types.h"
 
 #include <QObject>

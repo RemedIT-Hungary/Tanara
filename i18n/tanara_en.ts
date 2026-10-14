@@ -10570,6 +10570,38 @@
         <source>A végpont nem válaszol. Fut a helyi szerver (pl. LM Studio), és jó a port?</source>
         <translation>The endpoint does not respond. Is the local server (e.g. LM Studio) running, and is the port right?</translation>
     </message>
+    <message>
+        <source>A kulcsok helye: a rendszer kulcstartója. A beállítás-fájlba nem kerülnek.</source>
+        <translation>Keys are stored in the system keychain. They never go into the settings file.</translation>
+    </message>
+    <message>
+        <source>A kulcsok helye: fájl a belső adatok mappájában, csak neked olvasható. A beállítás-fájlba nem kerülnek.</source>
+        <translation>Keys are stored in a file in the internal data folder, readable only by you. They never go into the settings file.</translation>
+    </message>
+    <message>
+        <source>A rendszer kulcstartója nem érhető el, ezért a kulcsok titkosítatlan fájlban vannak (csak a te felhasználód olvashatja).</source>
+        <translation>The system keychain is not available, so the keys are in an unencrypted file (readable only by your user).</translation>
+    </message>
+    <message>
+        <source>A beszélő-felismerés letöltött modelljei (.onnx). A váltás újraindítás után érvényes; a meglévő fájlokat nem költözteti át.</source>
+        <translation>The downloaded speaker recognition models (.onnx). A change takes effect after a restart; existing files are not moved.</translation>
+    </message>
+    <message>
+        <source>Hanglenyomatok, személyek, címkék és index. Ezt a mappát most a TANARA_HOME környezeti változó rögzíti.</source>
+        <translation>Voiceprints, people, tags and the index. This folder is currently fixed by the TANARA_HOME environment variable.</translation>
+    </message>
+    <message>
+        <source>Hanglenyomatok, személyek, címkék és index. Ne szinkronizáld felhőtárhellyel. A váltás újraindítás után érvényes; a meglévő adatokat nem költözteti át.</source>
+        <translation>Voiceprints, people, tags and the index. Do not sync it with cloud storage. A change takes effect after a restart; existing data is not moved.</translation>
+    </message>
+    <message>
+        <source>A TANARA_HOME be van állítva: amíg él, a homokozó saját mappája érvényes, nem ez.</source>
+        <translation>TANARA_HOME is set: while it is, the sandbox's own folder is used, not this one.</translation>
+    </message>
+    <message>
+        <source>Hangmodellek</source>
+        <translation>Voice models</translation>
+    </message>
 </context>
 <context>
     <name>tanara_qml::ShellActions</name>

@@ -21,7 +21,7 @@ struct ConfigOption {
 
 // Declarative description of a config field. The `key` points either to a well-known field of a
 // ProviderConfig (baseUrl/model/temperature/maxTokens) or to a key of ProviderConfig.extra. For a secret
-// the value goes into the KeyStore (under secretKey), not into the config.
+// the value goes into the SecretStore (under secretKey), not into the config.
 struct ConfigField {
     QString key;
     QString label;
@@ -30,8 +30,8 @@ struct ConfigField {
     QString help;                       // the "why": source of the tooltip/help
     QString defaultValue;               // in string form; numbers are interpreted by the renderer
     QVector<ConfigOption> options;      // for Combo
-    bool isSecret = false;              // true = KeyStore (not persisted into settings.json)
-    QString secretKey;                  // KeyStore key if isSecret (e.g. "soniox.apiKey")
+    bool isSecret = false;              // true = SecretStore (not persisted into settings.json)
+    QString secretKey;                  // SecretStore key if isSecret (e.g. "soniox.apiKey")
     bool dynamicOptions = false;        // a Combo whose options are fetched at run time (e.g. a model list)
     bool advanced = false;              // the UI puts it under the "Advanced" part (collapsed by default)
     // Number: the range the UI offers (minValue == maxValue = no constraint). A stored value outside the
@@ -63,7 +63,7 @@ struct ProviderDescriptor {
     bool networkRequired = true;
     QStringList languages;              // e.g. {"hu","en"}; empty = any
     QVector<ConfigField> fields;        // the declarative config schema
-    // AuthMode::Login: the KeyStore key whose presence = "signed in".
+    // AuthMode::Login: the SecretStore key whose presence = "signed in".
     // Empty = "<id>.token" (the earlier convention).
     QString loginSecretKey;
     ConnectionProbe probe;              // "Test connection" (empty = none)

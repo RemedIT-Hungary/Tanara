@@ -21,6 +21,7 @@
 // ("welcome" | "you" | "folders" | "providers" | "watcher" | "done") sets the step.
 //
 #include "tanara/domain/Types.h"
+#include "tanara/app/AppSettings.h"
 
 #include <QObject>
 #include <QPointer>
@@ -104,10 +105,10 @@ public:
     int stepCount() const;
     QVariantMap stepStatus() const { return m_status; }
 
-    QString userName() const { return m_draft.userSpeakerName; }
+    QString userName() const { return m_draft.recording.userSpeakerName; }
     void setUserName(const QString& name);
     QString userNameError() const;
-    QString uiLanguage() const { return m_draft.uiLanguage; }
+    QString uiLanguage() const { return m_draft.ui.language; }
     void setUiLanguage(const QString& lang);
     QVariantList uiLanguageOptions() const;
     bool languageNeedsRestart() const;
@@ -121,7 +122,7 @@ public:
     bool sttReady() const { return m_sttReady; }
     bool llmReady() const { return m_llmReady; }
 
-    bool watcherAutostart() const { return m_draft.watcherAutostart; }
+    bool watcherAutostart() const { return m_draft.watcher.autostart; }
     void setWatcherAutostart(bool on);
     QString autostartNote() const;
 
@@ -154,7 +155,7 @@ public:
     Q_INVOKABLE void refreshReadiness();
 
     // For tests / the host: the provider's short name ("LM Studio · gemma-4-12b").
-    static QString providerLabel(const tanara::AppSettings& s, bool stt);
+    static QString providerLabel(const tanara::app::AppSettings& s, bool stt);
 
 signals:
     void controllerChanged();
@@ -196,7 +197,7 @@ private:
     QString m_demoState;
     QList<QMetaObject::Connection> m_connections;
 
-    tanara::AppSettings m_base, m_draft;
+    tanara::app::AppSettings m_base, m_draft;
     QString m_baseTheme, m_draftTheme;
     QString m_step = QStringLiteral("welcome");
     QVariantMap m_status;

@@ -9,6 +9,7 @@
 //  - connection test against a local fake HTTP server (NO real provider call).
 // The Tanara Cloud gateway address is a closed local port (TANARA_CLOUD_URL), no sign-in.
 #include "AppContext.h"
+#include "tanara/providers/core/ProviderConfig.h"
 #include "QmlApp.h"
 #include "SettingsDeviceModel.h"
 #include "SettingsDialogs.h"
@@ -19,7 +20,7 @@
 #include "TrackListModel.h"
 
 #include "tanara/app/AppController.h"
-#include "tanara/foundation/paths/Paths.h"
+#include "tanara/foundation/paths/AppPaths.h"
 #include "tanara/app/SettingsManager.h"
 #include "tanara/recording/audio/DeviceManager.h"
 #include "tanara/library/tracks/TrackCatalog.h"
@@ -45,7 +46,7 @@
 
 using namespace tanara_qml;
 using tanara::app::AppController;
-using tanara::AppSettings;
+using tanara::app::AppSettings;
 
 namespace {
 
@@ -162,7 +163,7 @@ class TestSettingsViewModel : public QObject {
         m_app = std::make_unique<AppController>();
         AppContext::instance()->setThemeMode(QStringLiteral("light"));
     }
-    AppSettings live() const { return m_app->settings()->settings(); }
+    tanara::app::AppSettings live() const { return m_app->settings()->settings(); }
     QJsonObject settingsFile() const
     {
         QFile f(m_app->settings()->settingsFilePath());
@@ -198,34 +199,38 @@ private slots:
 
     void mergeAppliesOnlyWhatTheUserChanged()
     {
+        // settings.json v2 shape: providers/<capability>/configs/<id>/<field>.
+        auto stt = [](const QJsonObject& configs) {
+            return QJsonObject{{"stt", QJsonObject{{"selected", "soniox"}, {"configs", configs}}}};
+        };
         const QJsonObject base{{"a", 1}, {"b", "x"}, {"names", QJsonObject{{"mic", "A"}, {"spk", "B"}}},
-                               {"sttProviders", QJsonObject{{"soniox", QJsonObject{{"model", "m1"}, {"baseUrl", "u"}}}}}};
+                               {"providers", stt(QJsonObject{{"soniox", QJsonObject{{"model", "m1"}, {"baseUrl", "u"}}}})}};
         QJsonObject draft = base;
         draft["a"] = 2;                                                   // the user changed it
         draft["names"] = QJsonObject{{"mic", "A2"}};                      // rename + deleting one name
-        draft["sttProviders"] = QJsonObject{{"soniox", QJsonObject{{"model", "m2"}, {"baseUrl", "u"}}}};
+        draft["providers"] = stt(QJsonObject{{"soniox", QJsonObject{{"model", "m2"}, {"baseUrl", "u"}}}});
         QJsonObject onto = base;
         onto["b"] = "közben-más-mentette";                                // external change
         onto["c"] = true;                                                 // the window does not know it
-        onto["sttProviders"] = QJsonObject{{"soniox", QJsonObject{{"model", "m1"}, {"baseUrl", "külső"}}},
-                                           {"whisper", QJsonObject{{"model", "w"}}}};
+        onto["providers"] = stt(QJsonObject{{"soniox", QJsonObject{{"model", "m1"}, {"baseUrl", "külső"}}},
+                                            {"whisper", QJsonObject{{"model", "w"}}}});
 
         const QJsonObject out = SettingsViewModel::mergedSettings(base, draft, onto);
         QCOMPARE(out.value("a").toInt(), 2);
         QCOMPARE(out.value("b").toString(), QStringLiteral("közben-más-mentette"));
         QCOMPARE(out.value("c").toBool(), true);
         QCOMPARE(out.value("names").toObject(), (QJsonObject{{"mic", "A2"}}));
-        const QJsonObject stt = out.value("sttProviders").toObject();
-        QCOMPARE(stt.value("soniox").toObject().value("model").toString(), QStringLiteral("m2"));
-        QCOMPARE(stt.value("soniox").toObject().value("baseUrl").toString(), QStringLiteral("külső"));
-        QVERIFY(stt.contains("whisper"));
+        const QJsonObject cfgs = out.value("providers").toObject().value("stt").toObject().value("configs").toObject();
+        QCOMPARE(cfgs.value("soniox").toObject().value("model").toString(), QStringLiteral("m2"));
+        QCOMPARE(cfgs.value("soniox").toObject().value("baseUrl").toString(), QStringLiteral("külső"));
+        QVERIFY(cfgs.contains("whisper"));
 
         QCOMPARE(SettingsViewModel::countChanges(base, base), 0);
         QCOMPARE(SettingsViewModel::countChanges(base, draft), 4);   // a, mic, spk (deleted), model
         // The default fields of a provider selected for the first time are not separate changes.
         QJsonObject withNew = base;
-        withNew["sttProviders"] = QJsonObject{{"soniox", QJsonObject{{"model", "m1"}, {"baseUrl", "u"}}},
-                                              {"whisper", QJsonObject{{"model", "w"}, {"baseUrl", "v"}}}};
+        withNew["providers"] = stt(QJsonObject{{"soniox", QJsonObject{{"model", "m1"}, {"baseUrl", "u"}}},
+                                               {"whisper", QJsonObject{{"model", "w"}, {"baseUrl", "v"}}}});
         QCOMPARE(SettingsViewModel::countChanges(base, withNew), 0);
     }
 
@@ -261,7 +266,7 @@ private slots:
         QCOMPARE(vm.userName(), QStringLiteral("Kovács Lilla"));
         QVERIFY(vm.hasVoiceprint());
         QVERIFY(!vm.dirty());
-        QCOMPARE(vm.folders().size(), 3);
+        QCOMPARE(vm.folders().size(), 4);   // recordings, notes, internal data, models
         QVERIFY(vm.folders().at(0).toMap().value("usage").toString().contains(QStringLiteral("GB")));
         QCOMPARE(vm.footerText(), QStringLiteral("Nincs mentetlen változás"));
 
@@ -342,7 +347,7 @@ private slots:
         QVERIFY(!vm.demo());
         QVERIFY(!vm.dirty());
         QCOMPARE(vm.changeCount(), 0);
-        QCOMPARE(vm.userName(), live().userSpeakerName);
+        QCOMPARE(vm.userName(), live().recording.userSpeakerName);
 
         QSignalSpy dirty(&vm, &SettingsViewModel::dirtyChanged);
         const QString original = vm.audioQuality();
@@ -358,18 +363,18 @@ private slots:
         vm.setAudioQuality(original);
         QCOMPARE(vm.changeCount(), 2);
         // Nothing has changed in core yet.
-        QCOMPARE(live().mixdownMode, QStringLiteral("auto"));
-        QCOMPARE(live().silenceAskMinutes, 3);
+        QCOMPARE(live().recording.mixdownMode, QStringLiteral("auto"));
+        QCOMPARE(live().watcher.silenceAskMinutes, 3);
     }
 
     void saveWritesOnlyTheDifference()
     {
         startApp();
         // Settings the window does not show must not be lost.
-        AppSettings s = live();
-        s.detectorId = QStringLiteral("linux-capture");
-        s.cloudBaseUrl = QStringLiteral("http://127.0.0.1:9");
-        s.languageHints = {QStringLiteral("de")};
+        tanara::app::AppSettings s = live();
+        s.watcher.detectorId = QStringLiteral("linux-capture");
+        s.cloud.baseUrl = QStringLiteral("http://127.0.0.1:9");
+        s.processing.languageHints = {QStringLiteral("de")};
         m_app->settings()->setSettings(s);
 
         SettingsViewModel vm;
@@ -379,9 +384,9 @@ private slots:
 
         // Meanwhile someone else saves too (e.g. the recorder / another window): the untouched field
         // stays, and so does our own unsaved change.
-        AppSettings other = live();
-        other.askStopOnCallEnd = false;
-        other.silenceAskMinutes = 9;
+        tanara::app::AppSettings other = live();
+        other.watcher.askStopOnCallEnd = false;
+        other.watcher.silenceAskMinutes = 9;
         m_app->settings()->setSettings(other);
         QCOMPARE(vm.changeCount(), 2);
         QCOMPARE(vm.audioQuality(), QStringLiteral("medium"));
@@ -392,17 +397,17 @@ private slots:
         QVERIFY(vm.save());
         QCOMPARE(saved.size(), 1);
         QVERIFY(!vm.dirty());
-        const AppSettings after = live();
-        QCOMPARE(after.audioQuality, QStringLiteral("medium"));
-        QCOMPARE(after.detectorIntervalSec, 12);
-        QCOMPARE(after.silenceAskMinutes, 9);
-        QCOMPARE(after.askStopOnCallEnd, false);
-        QCOMPARE(after.detectorId, QStringLiteral("linux-capture"));
-        QCOMPARE(after.cloudBaseUrl, QStringLiteral("http://127.0.0.1:9"));
-        QCOMPARE(after.languageHints, QStringList{QStringLiteral("de")});
+        const tanara::app::AppSettings after = live();
+        QCOMPARE(after.recording.audioQuality, QStringLiteral("medium"));
+        QCOMPARE(after.watcher.detectorIntervalSec, 12);
+        QCOMPARE(after.watcher.silenceAskMinutes, 9);
+        QCOMPARE(after.watcher.askStopOnCallEnd, false);
+        QCOMPARE(after.watcher.detectorId, QStringLiteral("linux-capture"));
+        QCOMPARE(after.cloud.baseUrl, QStringLiteral("http://127.0.0.1:9"));
+        QCOMPARE(after.processing.languageHints, QStringList{QStringLiteral("de")});
         // On disk too.
-        QCOMPARE(settingsFile().value("audioQuality").toString(), QStringLiteral("medium"));
-        QCOMPARE(settingsFile().value("detectorId").toString(), QStringLiteral("linux-capture"));
+        QCOMPARE(settingsFile().value("recording").toObject().value("audioQuality").toString(), QStringLiteral("medium"));
+        QCOMPARE(settingsFile().value("watcher").toObject().value("detectorId").toString(), QStringLiteral("linux-capture"));
         // Without a change, saving writes nothing.
         QSignalSpy changed(m_app->settings(), &tanara::app::SettingsManager::settingsChanged);
         QVERIFY(vm.save());
@@ -426,8 +431,8 @@ private slots:
         QVERIFY(!vm.dirty());
         QCOMPARE(vm.themeMode(), QStringLiteral("light"));
         QCOMPARE(AppContext::instance()->themeMode(), QStringLiteral("light"));
-        QCOMPARE(vm.userName(), live().userSpeakerName);
-        QCOMPARE(vm.autoRecordAll(), live().autoRecordAllDevices);
+        QCOMPARE(vm.userName(), live().recording.userSpeakerName);
+        QCOMPARE(vm.autoRecordAll(), live().recording.autoRecordAllDevices);
     }
 
     void themeIsPersistedThroughTheSignal()
@@ -452,7 +457,7 @@ private slots:
         startApp();
         SettingsViewModel vm;
         vm.setController(m_app.get());
-        const QString before = live().userSpeakerName;
+        const QString before = live().recording.userSpeakerName;
         vm.setUserName(QStringLiteral("   "));
         QVERIFY(vm.errors().contains(QStringLiteral("userName")));
         // The pages can be visited freely.
@@ -464,15 +469,15 @@ private slots:
         QVERIFY(!vm.save());
         QCOMPARE(saved.size(), 0);
         QCOMPARE(vm.page(), QStringLiteral("speakers"));   // leads to the invalid field's page (the name is on the Speakers page)
-        QCOMPARE(live().userSpeakerName, before);          // nothing was written
-        QCOMPARE(live().audioQuality, QStringLiteral("best"));
+        QCOMPARE(live().recording.userSpeakerName, before);          // nothing was written
+        QCOMPARE(live().recording.audioQuality, QStringLiteral("best"));
 
         vm.setUserName(QStringLiteral("Teszt Elek"));
         QVERIFY(vm.errors().isEmpty());
         QVERIFY(vm.save());
-        QCOMPARE(live().userSpeakerName, QStringLiteral("Teszt Elek"));
+        QCOMPARE(live().recording.userSpeakerName, QStringLiteral("Teszt Elek"));
         QVERIFY(m_app->knownPeople().contains(QStringLiteral("Teszt Elek")));   // the path of setUserSpeakerName
-        QCOMPARE(live().audioQuality, QStringLiteral("low"));
+        QCOMPARE(live().recording.audioQuality, QStringLiteral("low"));
 
         // Folders: empty / relative path is an error.
         vm.setFolder(QStringLiteral("notes"), QStringLiteral("relativ/mappa"));
@@ -481,7 +486,7 @@ private slots:
         vm.setFolder(QStringLiteral("notes"), m_home->filePath(QStringLiteral("jegyzetek")));
         QVERIFY(vm.errors().isEmpty());
         QVERIFY(vm.save());
-        QCOMPARE(live().notesDir, m_home->filePath(QStringLiteral("jegyzetek")));
+        QCOMPARE(live().paths.notesDir, m_home->filePath(QStringLiteral("jegyzetek")));
         // With TANARA_HOME the internal data folder is fixed.
         QCOMPARE(vm.folders().at(2).toMap().value("locked").toBool(), true);
         vm.setFolder(QStringLiteral("meta"), QStringLiteral("/máshova"));
@@ -492,7 +497,7 @@ private slots:
     {
         startApp();
         // Two meeting folders under the recordings.
-        const QString audio = tanara::paths::expandHome(live().audioDir);
+        const QString audio = m_app->settings()->paths().primaryRecordingRoot();
         for (const char* name : {"egyik", "masik"}) {
             QVERIFY(QDir(audio).mkpath(QString::fromLatin1(name)));
             QFile f(QDir(audio).filePath(QString::fromLatin1(name) + QStringLiteral("/meeting.json")));
@@ -586,11 +591,11 @@ private slots:
         QCOMPARE(stt->value(QStringLiteral("language")).toString(), QStringLiteral("en"));
 
         QVERIFY(vm.save());
-        const AppSettings s = live();
-        QCOMPARE(s.sttProviderId, QStringLiteral("whisper-compat"));
-        QCOMPARE(s.sttConfigs.value(QStringLiteral("soniox")).model, QStringLiteral("stt-sajat-modell"));
-        QCOMPARE(s.sttConfigs.value(QStringLiteral("whisper-compat")).baseUrl, QStringLiteral("http://localhost:8000/v1"));
-        QCOMPARE(s.sttConfigs.value(QStringLiteral("whisper-compat")).extra.value(QStringLiteral("language")).toString(),
+        const tanara::app::AppSettings s = live();
+        QCOMPARE(s.providers.stt.selectedId, QStringLiteral("whisper-compat"));
+        QCOMPARE(s.providers.stt.configs.value(QStringLiteral("soniox")).model, QStringLiteral("stt-sajat-modell"));
+        QCOMPARE(s.providers.stt.configs.value(QStringLiteral("whisper-compat")).baseUrl, QStringLiteral("http://localhost:8000/v1"));
+        QCOMPARE(s.providers.stt.configs.value(QStringLiteral("whisper-compat")).extra.value(QStringLiteral("language")).toString(),
                  QStringLiteral("en"));
         // The key is in the KeyStore, not in the settings file.
         QCOMPARE(m_app->secret(tanara::app::keys::SonioxApiKey), QStringLiteral("soniox-kulcs"));
@@ -626,13 +631,13 @@ private slots:
         vm.llm()->setValue(QStringLiteral("maxTokens"), 30000);
         vm.llm()->setValue(QStringLiteral("temperature"), 0.35);
         QVERIFY(vm.save());
-        QCOMPARE(live().llmSelected().maxTokens, 30000);
-        QCOMPARE(live().llmSelected().temperature, 0.35);
+        QCOMPARE(live().providers.llm.selected().maxTokens, 30000);
+        QCOMPARE(live().providers.llm.selected().temperature, 0.35);
 
         // A temperature of 0 is a valid value: after saving 0 shows (not the default).
         vm.llm()->setValue(QStringLiteral("temperature"), 0.0);
         QVERIFY(vm.save());
-        QCOMPARE(live().llmSelected().temperature, 0.0);
+        QCOMPARE(live().providers.llm.selected().temperature, 0.0);
         QCOMPARE(vm.llm()->value(QStringLiteral("temperature")).toDouble(), 0.0);
         QVERIFY(!vm.dirty());
 
@@ -640,16 +645,16 @@ private slots:
         vm.llm()->setValue(QStringLiteral("model"), QStringLiteral("sajat modell "));
         QCOMPARE(vm.llm()->value(QStringLiteral("model")).toString(), QStringLiteral("sajat modell "));
         QVERIFY(vm.save());
-        QCOMPARE(live().llmSelected().model, QStringLiteral("sajat modell"));
+        QCOMPARE(live().providers.llm.selected().model, QStringLiteral("sajat modell"));
 
         // A previously stored out-of-range value does not block saving the other settings.
-        AppSettings s = live();
-        s.llmConfigs[s.llmProviderId].maxTokens = 100;
+        tanara::app::AppSettings s = live();
+        s.providers.llm.configs[s.providers.llm.selectedId].maxTokens = 100;
         m_app->settings()->setSettings(s);
         QVERIFY(vm.llm()->fieldError(QStringLiteral("maxTokens")).isEmpty());
         vm.setAudioQuality(QStringLiteral("low"));
         QVERIFY(vm.save());
-        QCOMPARE(live().llmSelected().maxTokens, 100);
+        QCOMPARE(live().providers.llm.selected().maxTokens, 100);
     }
 
     void warnDotFollowsReadiness()
@@ -770,7 +775,7 @@ private slots:
         QCOMPARE(tanara::library::devicenames::displayName(raw), factory);
 
         QVERIFY(vm.save());
-        QCOMPARE(live().deviceNames.value(raw), QStringLiteral("Saját mikrofonom"));
+        QCOMPARE(live().recording.deviceNames.value(raw), QStringLiteral("Saját mikrofonom"));
         QCOMPARE(tanara::library::devicenames::displayName(raw), QStringLiteral("Saját mikrofonom"));
         // The tracks' name follows too (Tracks tab).
         tanara::Track t;
@@ -789,7 +794,7 @@ private slots:
         QCOMPARE(row(again, 0, "name").toString(), factory);
         QCOMPARE(again.changeCount(), 1);
         QVERIFY(again.save());
-        QVERIFY(!live().deviceNames.contains(raw));
+        QVERIFY(!live().recording.deviceNames.contains(raw));
         QCOMPARE(tanara::library::devicenames::displayName(raw), factory);
         // The other (still open) view model took it over too.
         QCOMPARE(row(vm, 0, "name").toString(), factory);
@@ -821,12 +826,12 @@ private slots:
         const int nameRole = tracks.roleNames().key("displayName");
         QCOMPARE(tracks.data(tracks.index(0, 0), nameRole).toString(), QStringLiteral("Vonalbemenet"));
 
-        AppSettings s = live();
-        s.deviceNames.insert(raw, QStringLiteral("Gitár"));
+        tanara::app::AppSettings s = live();
+        s.recording.deviceNames.insert(raw, QStringLiteral("Gitár"));
         m_app->settings()->setSettings(s);                 // that is what saving Settings does
         QCOMPARE(tracks.data(tracks.index(0, 0), nameRole).toString(), QStringLiteral("Gitár"));
 
-        s.deviceNames.remove(raw);
+        s.recording.deviceNames.remove(raw);
         m_app->settings()->setSettings(s);
         QCOMPARE(tracks.data(tracks.index(0, 0), nameRole).toString(), QStringLiteral("Vonalbemenet"));
     }
@@ -895,7 +900,7 @@ private slots:
         QCOMPARE(vm.page(), QStringLiteral("watcher"));
         QCOMPARE(vm.addWatchedApp(QStringLiteral("teams")), QString());
         QVERIFY(vm.save());
-        QCOMPARE(live().knownCallApps, QStringList{QStringLiteral("teams")});
+        QCOMPARE(live().watcher.knownCallApps, QStringList{QStringLiteral("teams")});
     }
 
     void liveCallLineFollowsTheDetector()
@@ -914,7 +919,7 @@ private slots:
         QVERIFY(waitFor([&] { return vm.liveCallActive(); }));
         QVERIFY(vm.detectorAvailable());
         QCOMPARE(vm.liveCallApp(), QStringLiteral("Microsoft Teams"));
-        QCOMPARE(detector->configured, live().knownCallApps);   // asks with the draft's list
+        QCOMPARE(detector->configured, live().watcher.knownCallApps);   // asks with the draft's list
         bool highlighted = false;
         for (const QVariant& a : vm.watchedApps())
             if (a.toMap().value("match").toString() == QLatin1String("teams"))
@@ -935,7 +940,7 @@ private slots:
         vm.setController(m_app.get());
         vm.setWatcherAutostart(!vm.watcherAutostart());
         QVERIFY(vm.save());
-        QCOMPARE(live().watcherAutostart, vm.watcherAutostart());   // the setting is saved...
+        QCOMPARE(live().watcher.autostart, vm.watcherAutostart());   // the setting is saved...
         if (!real.isEmpty()) {                                      // ...but the real file is untouched
             QCOMPARE(QFile::exists(real), existed);
             if (existed) QCOMPARE(QFileInfo(real).lastModified(), stamp);
@@ -953,7 +958,7 @@ private slots:
         const QString def = vm.promptText();
         QVERIFY(def.contains(QStringLiteral("{{LANGUAGE}}")));
         QVERIFY(!vm.promptModified());
-        QVERIFY(live().summaryPrompt.isEmpty());
+        QVERIFY(live().processing.summaryPrompt.isEmpty());
 
         // Text that differs only in whitespace is not a "modification".
         vm.setPromptText(def + QStringLiteral("\n"));
@@ -979,9 +984,9 @@ private slots:
         QVERIFY(vm.promptText().endsWith(QStringLiteral("9. Légy tömör.")));
 
         QVERIFY(vm.save());
-        QVERIFY(live().summaryPrompt.endsWith(QStringLiteral("9. Légy tömör.")));
-        QVERIFY(live().topicExtractionPrompt.isEmpty());   // untouched: empty (the code default applies)
-        QVERIFY(live().topicAnalysisPrompt.endsWith(QStringLiteral("Még egy szabály.")));
+        QVERIFY(live().processing.summaryPrompt.endsWith(QStringLiteral("9. Légy tömör.")));
+        QVERIFY(live().processing.topicExtractionPrompt.isEmpty());   // untouched: empty (the code default applies)
+        QVERIFY(live().processing.topicAnalysisPrompt.endsWith(QStringLiteral("Még egy szabály.")));
         QVERIFY(vm.promptModified());                      // still "modified" after saving
         QVERIFY(!vm.dirty());
 
@@ -991,11 +996,11 @@ private slots:
         QVERIFY(!vm.promptModified());
         QCOMPARE(vm.changeCount(), 1);
         QVERIFY(vm.save());
-        QVERIFY(live().summaryPrompt.isEmpty());
+        QVERIFY(live().processing.summaryPrompt.isEmpty());
 
         vm.setSummaryLanguage(QStringLiteral("angol"));
         QVERIFY(vm.save());
-        QCOMPARE(live().summaryLanguage, QStringLiteral("angol"));
+        QCOMPARE(live().processing.summaryLanguage, QStringLiteral("angol"));
         vm.setSummaryLanguage(QStringLiteral("   "));        // no empty target language
         QCOMPARE(vm.summaryLanguage(), QStringLiteral("angol"));
     }
@@ -1041,9 +1046,9 @@ private slots:
         vm.setPromptText(vm.promptText() + QStringLiteral("\nAt most five decisions."));
         QCOMPARE(vm.changeCount(), 2);
         QVERIFY(vm.save());
-        QVERIFY(live().notesPrompt.endsWith(QStringLiteral("Keep every point short.")));
-        QVERIFY(live().mergePrompt.endsWith(QStringLiteral("At most five decisions.")));
-        QVERIFY(live().summaryPrompt.isEmpty());           // the single-pass one is untouched
+        QVERIFY(live().processing.notesPrompt.endsWith(QStringLiteral("Keep every point short.")));
+        QVERIFY(live().processing.mergePrompt.endsWith(QStringLiteral("At most five decisions.")));
+        QVERIFY(live().processing.summaryPrompt.isEmpty());           // the single-pass one is untouched
 
         // New view model: the overrides load back, with a "modified" indicator.
         SettingsViewModel again;
@@ -1057,8 +1062,8 @@ private slots:
         // Reset: the setting is empty again (the built-in applies).
         again.resetPrompt();
         QVERIFY(again.save());
-        QVERIFY(live().notesPrompt.isEmpty());
-        QVERIFY(!live().mergePrompt.isEmpty());
+        QVERIFY(live().processing.notesPrompt.isEmpty());
+        QVERIFY(!live().processing.mergePrompt.isEmpty());
 
         // Discard: the unsaved edit disappears.
         again.setPromptIndex(2);
@@ -1068,7 +1073,7 @@ private slots:
         QVERIFY(again.promptText().endsWith(QStringLiteral("At most five decisions.")));
     }
 
-    // The model's "thinking" (ProviderConfig::reasoning) in the LLM card's Advanced part.
+    // The model's "thinking" (providers::ProviderConfig::reasoning) in the LLM card's Advanced part.
     void reasoningRoundTrip()
     {
         startApp();
@@ -1083,19 +1088,19 @@ private slots:
         QCOMPARE(vm.llm()->reasoning(), QStringLiteral("on"));
         QCOMPARE(vm.changeCount(), 1);
         QVERIFY(vm.save());
-        QCOMPARE(live().llmSelected().reasoning, QStringLiteral("on"));
+        QCOMPARE(live().providers.llm.selected().reasoning, QStringLiteral("on"));
         vm.llm()->setReasoning(QStringLiteral("off"));
         QVERIFY(vm.save());
-        QCOMPARE(live().llmSelected().reasoning, QStringLiteral("off"));
+        QCOMPARE(live().providers.llm.selected().reasoning, QStringLiteral("off"));
         // Unknown value: automatic.
         vm.llm()->setReasoning(QStringLiteral("valami"));
         QCOMPARE(vm.llm()->reasoning(), QStringLiteral("auto"));
         QVERIFY(vm.save());
-        QCOMPARE(live().llmSelected().reasoning, QStringLiteral("auto"));
+        QCOMPARE(live().providers.llm.selected().reasoning, QStringLiteral("auto"));
 
         // New view model with the saved value; discard restores.
-        AppSettings s = live();
-        s.llmConfigs[s.llmProviderId].reasoning = QStringLiteral("on");
+        tanara::app::AppSettings s = live();
+        s.providers.llm.configs[s.providers.llm.selectedId].reasoning = QStringLiteral("on");
         m_app->settings()->setSettings(s);
         SettingsViewModel again;
         again.setController(m_app.get());
@@ -1106,7 +1111,7 @@ private slots:
         QCOMPARE(again.llm()->reasoning(), QStringLiteral("on"));
     }
 
-    // The model's context (ProviderConfig::contextLength): automatic or fixed tokens.
+    // The model's context (providers::ProviderConfig::contextLength): automatic or fixed tokens.
     void contextLengthRoundTrip()
     {
         startApp();
@@ -1125,15 +1130,15 @@ private slots:
         QCOMPARE(values.size(), 1);
         QCOMPARE(vm.changeCount(), 1);
         QVERIFY(vm.save());
-        QCOMPARE(live().llmSelected().contextLength, 16384);
+        QCOMPARE(live().providers.llm.selected().contextLength, 16384);
         vm.llm()->setContextLength(-5);                        // invalid: automatic
         QCOMPARE(vm.llm()->contextLength(), 0);
         QVERIFY(vm.save());
-        QCOMPARE(live().llmSelected().contextLength, 0);
+        QCOMPARE(live().providers.llm.selected().contextLength, 0);
 
         // A custom value from the file stays, and is added to the selectable values.
-        AppSettings s = live();
-        s.llmConfigs[s.llmProviderId].contextLength = 12345;
+        tanara::app::AppSettings s = live();
+        s.providers.llm.configs[s.providers.llm.selectedId].contextLength = 12345;
         m_app->settings()->setSettings(s);
         SettingsViewModel again;
         again.setController(m_app.get());
@@ -1218,7 +1223,7 @@ private slots:
         QCOMPARE(vm.changeCount(), changes);               // the tab changes nothing in the draft
         QCOMPARE(vm.stt()->providerId(), QStringLiteral("whisper-compat"));
         QVERIFY(!vm.cloudSelected());
-        QCOMPARE(live().sttProviderId, QStringLiteral("soniox"));
+        QCOMPARE(live().providers.stt.selectedId, QStringLiteral("soniox"));
 
         // The deep link to the Cloud page opens the notice, again without a draft change.
         vm.setServiceMode(QStringLiteral("own"));
@@ -1236,9 +1241,9 @@ private slots:
         startApp("live");
         if (!m_app->cloudLive())
             QSKIP("A build Tanara Cloud kliens nélkül készült.");
-        AppSettings s = live();
-        s.sttProviderId = tanara::cloud::ProviderId;
-        s.sttConfigs[tanara::cloud::ProviderId].type = tanara::cloud::ProviderId;
+        tanara::app::AppSettings s = live();
+        s.providers.stt.selectedId = tanara::cloud::ProviderId;
+        s.providers.stt.configs[tanara::cloud::ProviderId].type = tanara::cloud::ProviderId;
         m_app->settings()->setSettings(s);
 
         SettingsViewModel vm;
@@ -1251,13 +1256,13 @@ private slots:
         QVERIFY(vm.stt()->loginProvider());
         vm.llm()->setValue(QStringLiteral("model"), QStringLiteral("masik-modell"));
         QVERIFY(vm.save());
-        QCOMPARE(live().sttProviderId, tanara::cloud::ProviderId);
-        QCOMPARE(live().llmSelected().model, QStringLiteral("masik-modell"));
+        QCOMPARE(live().providers.stt.selectedId, tanara::cloud::ProviderId);
+        QCOMPARE(live().providers.llm.selected().model, QStringLiteral("masik-modell"));
 
         vm.stt()->setProviderId(QStringLiteral("soniox"));
         QVERIFY(!vm.cloudSelected());
         QVERIFY(vm.save());
-        QCOMPARE(live().sttProviderId, QStringLiteral("soniox"));
+        QCOMPARE(live().providers.stt.selectedId, QStringLiteral("soniox"));
     }
 
     // ---- the window and its host ----
@@ -1338,14 +1343,14 @@ private slots:
         // Save through the view model: the host signals; after that closing is plain.
         QVERIFY(vm->save());
         QCOMPARE(saved.size(), 1);
-        QCOMPARE(live().silenceAskMinutes, 11);
+        QCOMPARE(live().watcher.silenceAskMinutes, 11);
         host.window()->close();
         QVERIFY(waitFor([&] { return !host.isVisible(); }));
         QCOMPARE(closed.size(), 1);
 
         // Reopened: a fresh state from disk, on the requested page.
-        AppSettings s = live();
-        s.silenceAskMinutes = 4;
+        tanara::app::AppSettings s = live();
+        s.watcher.silenceAskMinutes = 4;
         m_app->settings()->setSettings(s);
         QVERIFY(host.open(QStringLiteral("summary")));
         QCOMPARE(vm->page(), QStringLiteral("summary"));

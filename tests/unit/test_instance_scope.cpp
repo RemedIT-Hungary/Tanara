@@ -5,7 +5,7 @@
 #include <QtTest>
 #include <QTemporaryDir>
 
-#include "tanara/foundation/paths/Paths.h"
+#include "tanara/foundation/paths/AppPaths.h"
 #include "tanara/foundation/ProcessLock.h"
 
 using namespace tanara;
@@ -46,7 +46,6 @@ private slots:
         QTemporaryDir dir;
         qputenv("TANARA_HOME", dir.path().toUtf8());
         QVERIFY(recordingLockPath().startsWith(dir.path()));
-        QVERIFY(recordingLockPath(QStringLiteral("~/.tanara")).startsWith(dir.path()));
         QVERIFY(watcherLockPath().startsWith(dir.path()));
         QVERIFY(recordingLockPath().endsWith(QStringLiteral("recording.lock")));
         QVERIFY(watcherLockPath().endsWith(QStringLiteral("watcher.lock")));

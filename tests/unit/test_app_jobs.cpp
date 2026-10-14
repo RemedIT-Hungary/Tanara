@@ -232,13 +232,13 @@ void AppJobsTest::newApp()
     m_errors.clear();
     m_app = std::make_unique<app::AppController>();
     connect(m_app.get(), &app::AppController::errorOccurred, this, [this](const QString& e) { m_errors << e; });
-    AppSettings s = m_app->settings()->settings();
-    QVERIFY(s.audioDir.startsWith(m_home->path()));   // TANARA_HOME: the recordings are in the sandbox too
-    s.sttProviderId = QStringLiteral("soniox");
-    s.sttConfigs[s.sttProviderId].baseUrl = m_http->base();
-    s.llmProviderId = QStringLiteral("openai-compat");
-    s.llmConfigs[s.llmProviderId].baseUrl = m_http->base();
-    s.llmConfigs[s.llmProviderId].model = QStringLiteral("teszt-modell");
+    tanara::app::AppSettings s = m_app->settings()->settings();
+    QVERIFY(m_app->settings()->paths().primaryRecordingRoot().startsWith(m_home->path()));   // TANARA_HOME: the recordings are in the sandbox too
+    s.providers.stt.selectedId = QStringLiteral("soniox");
+    s.providers.stt.configs[s.providers.stt.selectedId].baseUrl = m_http->base();
+    s.providers.llm.selectedId = QStringLiteral("openai-compat");
+    s.providers.llm.configs[s.providers.llm.selectedId].baseUrl = m_http->base();
+    s.providers.llm.configs[s.providers.llm.selectedId].model = QStringLiteral("teszt-modell");
     m_app->settings()->setSettings(s);
     m_app->setSecret(app::keys::SonioxApiKey, QStringLiteral("teszt-kulcs"));
 }

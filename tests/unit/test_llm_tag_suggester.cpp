@@ -2,6 +2,7 @@
 // "pick: / new:" lines, turning them into suggestions (existing / very similar / new name, at
 // most 2), and a full run against a fake HTTP server (thinking off).
 #include <QtTest>
+#include "tanara/providers/core/ProviderConfig.h"
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QJsonArray>
@@ -150,7 +151,7 @@ void LlmTagSuggesterTest::fullRunAgainstFakeServer()
             { "finish_reason", "stop" } } } } };
         return { 200, QJsonDocument(reply).toJson(QJsonDocument::Compact) };
     };
-    ProviderConfig cfg;
+    providers::ProviderConfig cfg;
     cfg.baseUrl = http.base();
     cfg.model = QStringLiteral("google/gemma-4-12b");
     providers::OpenAiCompatibleProvider provider(cfg);

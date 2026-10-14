@@ -6,6 +6,7 @@
 // SonioxProvider / OpenAiCompatibleProvider with the gateway config (headers, charge, write-back).
 // Without node the test is skipped (QSKIP).
 #include <QtTest>
+#include "tanara/providers/core/ProviderConfig.h"
 #include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -22,7 +23,7 @@
 #include "tanara/cloud/CloudAccount.h"
 #include "tanara/cloud/CloudTypes.h"
 #include "tanara/providers/chat/OpenAiCompatibleProvider.h"
-#include "tanara/foundation/KeyStore.h"
+#include "tanara/foundation/secrets/SecretStore.h"
 #include "tanara/providers/stt/SonioxProvider.h"
 
 #ifndef TANARA_MOCK_GATEWAY
@@ -52,13 +53,13 @@ private slots:
 private:
     void mockConfig(const QJsonObject& cfg);
     QJsonObject mockState();
-    ProviderConfig gatewayConfig(const QString& model, QVector<cloud::HttpExchange>* log);
+    providers::ProviderConfig gatewayConfig(const QString& model, QVector<cloud::HttpExchange>* log);
 
     QProcess m_mock;
     int m_port = 0;
     QString m_base;
     QTemporaryDir m_dir;
-    std::unique_ptr<KeyStore> m_keys;
+    std::unique_ptr<FileSecretStore> m_keys;
     std::unique_ptr<cloud::CloudAccount> m_acc;
     QNetworkAccessManager m_nam;
 };
@@ -87,7 +88,7 @@ void TestCloudGateway::initTestCase()
     }
     QVERIFY2(out.contains("mock-gateway 1.2.0"), out.constData());
 
-    m_keys = std::make_unique<KeyStore>(m_dir.filePath("secrets.json"));
+    m_keys = std::make_unique<FileSecretStore>(m_dir.filePath("secrets.json"));
     m_acc = std::make_unique<cloud::CloudAccount>(m_keys.get(), m_dir.path());
     m_acc->setBaseUrl(m_base + "/v1/");      // the /v1 and the trailing / are trimmed
     QCOMPARE(m_acc->apiBase(), m_base + "/v1");
@@ -122,9 +123,9 @@ QJsonObject TestCloudGateway::mockState()
 }
 
 // The same gateway config that AppController builds for the "tanara-cloud" provider.
-ProviderConfig TestCloudGateway::gatewayConfig(const QString& model, QVector<cloud::HttpExchange>* log)
+providers::ProviderConfig TestCloudGateway::gatewayConfig(const QString& model, QVector<cloud::HttpExchange>* log)
 {
-    ProviderConfig cfg;
+    providers::ProviderConfig cfg;
     cfg.type = cloud::ProviderId;
     cfg.baseUrl = m_acc->apiBase();
     cfg.apiKey = m_acc->apiKey();
@@ -222,7 +223,7 @@ void TestCloudGateway::deviceFlow_login_account_models()
 
 void TestCloudGateway::deviceFlow_denied_and_cancel()
 {
-    KeyStore keys(m_dir.filePath("secrets-2.json"));
+    FileSecretStore keys(m_dir.filePath("secrets-2.json"));
     QTemporaryDir d2;
     cloud::CloudAccount acc(&keys, d2.path());
     acc.setBaseUrl(m_base);

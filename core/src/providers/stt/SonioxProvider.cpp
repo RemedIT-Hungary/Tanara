@@ -1,4 +1,5 @@
 #include "tanara/providers/stt/SonioxProvider.h"
+#include "tanara/providers/core/ProviderConfig.h"
 #include "tanara/cloud/CloudTypes.h"
 
 #include <QNetworkAccessManager>

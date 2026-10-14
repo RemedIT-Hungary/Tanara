@@ -358,7 +358,7 @@ void OverviewViewModel::reload()
     }
     const Meeting m = (c->store() && !m_meetingId.isEmpty()) ? c->store()->load(m_meetingId) : Meeting();
     const MeetingProcessingState proc = c->processingState(m_meetingId);
-    const QString selfName = c->settings() ? c->settings()->settings().userSpeakerName : QString();
+    const QString selfName = c->settings() ? c->settings()->settings().recording.userSpeakerName : QString();
 
     auto job = [&proc](JobKind kind) -> const JobProgress* {
         for (const JobProgress& j : proc.jobs)

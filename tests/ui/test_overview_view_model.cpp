@@ -180,11 +180,11 @@ private slots:
         OverviewViewModel vm;
         vm.setController(m_app.get());
         vm.setMeetingId(m.id);
-        tanara::AppSettings s = m_app->settings()->settings();
-        s.userSpeakerName = QString();
+        tanara::app::AppSettings s = m_app->settings()->settings();
+        s.recording.userSpeakerName = QString();
         m_app->settings()->setSettings(s);
         QVERIFY(!vm.setSolo());
-        s.userSpeakerName = QStringLiteral("Kovács Lilla");
+        s.recording.userSpeakerName = QStringLiteral("Kovács Lilla");
         m_app->settings()->setSettings(s);
         QVERIFY(vm.setSolo());
         const tanara::Meeting after = m_app->store()->load(m.id);

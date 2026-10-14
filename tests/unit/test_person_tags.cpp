@@ -680,7 +680,7 @@ void PersonTagsTest::appMergeUnionsTagsAndRejections()
     QTemporaryDir home;
     qputenv("TANARA_HOME", home.path().toUtf8());
     app::AppController app;
-    QVERIFY(app.settings()->settings().audioDir.startsWith(home.path()));
+    QVERIFY(app.settings()->paths().primaryRecordingRoot().startsWith(home.path()));
     app.setUserSpeakerName(kSelf);
     library::TagService* tags = app.tags();
     library::PeopleService* ps = app.peopleService();
@@ -750,7 +750,7 @@ void PersonTagsTest::appPublishesParticipantTagSuggestions()
     qputenv("TANARA_HOME", home.path().toUtf8());
     {
         app::AppController app;
-        QVERIFY(app.settings()->settings().audioDir.startsWith(home.path()));
+        QVERIFY(app.settings()->paths().primaryRecordingRoot().startsWith(home.path()));
         app.setUserSpeakerName(kSelf);
         library::TagService* tags = app.tags();
         const Tag nord = tags->create("Nordvik");

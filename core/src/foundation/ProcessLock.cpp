@@ -1,10 +1,11 @@
 #include "tanara/foundation/ProcessLock.h"
 
-#include "tanara/foundation/paths/Paths.h"
+#include "tanara/foundation/paths/AppPaths.h"
 
 #include <QCoreApplication>
 #include <QCryptographicHash>
 #include <QDir>
+#include <QFileInfo>
 #include <QDateTime>
 #include <QFile>
 #include <QJsonDocument>
@@ -54,15 +55,14 @@ QString instanceScopeSuffix()
         QCryptographicHash::hash(canonical.toUtf8(), QCryptographicHash::Sha1).toHex().left(12));
 }
 
-QString recordingLockPath(const QString& configuredMetadataDir)
+QString recordingLockPath()
 {
-    return QDir(paths::resolveMetadataDir(configuredMetadataDir))
-        .filePath(QStringLiteral("recording.lock"));
+    return paths::current().stateFile(paths::files::RecordingLock);
 }
 
 QString watcherLockPath()
 {
-    return QDir(paths::defaultMetadataDir()).filePath(QStringLiteral("watcher.lock"));
+    return paths::current().stateFile(paths::files::WatcherLock);
 }
 
 ProcessLock::ProcessLock(const QString& lockPath)
@@ -77,6 +77,7 @@ bool ProcessLock::acquire(const QString& meetingFolder)
     o[QStringLiteral("meetingFolder")] = meetingFolder;
     o[QStringLiteral("startedAt")]     = QDateTime::currentDateTime().toString(Qt::ISODate);
 
+    QDir().mkpath(QFileInfo(m_path).absolutePath());   // the state folder may not exist yet
     QSaveFile f(m_path);
     if (!f.open(QIODevice::WriteOnly))
         return false;

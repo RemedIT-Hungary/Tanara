@@ -215,7 +215,7 @@ private:
     QStringList settingsModels() const
     {
         QStringList out;
-        for (const QJsonValue& v : readJson(QDir(m_home->path()).filePath("settings.json")).value("voiceModels").toArray())
+        for (const QJsonValue& v : readJson(QDir(m_home->path()).filePath("settings.json")).value("processing").toObject().value("voiceModels").toArray())
             out << v.toString();
         return out;
     }

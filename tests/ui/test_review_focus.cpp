@@ -7,6 +7,7 @@
 // on the undone line; auto-play (line + lead-out) and its switch; playing the context line
 // (`,`). It touches no user data.
 #include "AppContext.h"
+#include "tanara/app/AppSettings.h"
 #include "QmlApp.h"
 #include "ReviewQueueModel.h"
 #include "TranscriptEditorViewModel.h"
@@ -778,11 +779,11 @@ private slots:
     // The settings key (settings.json "reviewAutoPlay"): on by default, persists both ways.
     void settings_reviewAutoPlayRoundTrip()
     {
-        tanara::AppSettings s;
-        QVERIFY(s.reviewAutoPlay);
-        s.reviewAutoPlay = false;
-        QVERIFY(!tanara::library::appSettingsFromJson(tanara::library::toJson(s)).reviewAutoPlay);
-        QVERIFY(tanara::library::appSettingsFromJson(QJsonObject()).reviewAutoPlay);
+        tanara::app::AppSettings s;
+        QVERIFY(s.ui.reviewAutoPlay);
+        s.ui.reviewAutoPlay = false;
+        QVERIFY(!tanara::app::AppSettings::fromJson(s.toJson()).ui.reviewAutoPlay);
+        QVERIFY(tanara::app::AppSettings::fromJson(QJsonObject()).ui.reviewAutoPlay);
     }
 };
 

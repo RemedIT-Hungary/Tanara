@@ -1,6 +1,7 @@
 // OpenAI-compatible provider: switching "thinking" per model family (the request body on a
 // local fake HTTP server), and that thinking never gets into the reply.
 #include <QtTest>
+#include "tanara/providers/core/ProviderConfig.h"
 #include <QSignalSpy>
 #include <QTcpServer>
 #include <QTcpSocket>
@@ -98,7 +99,7 @@ QJsonObject LlmReasoningTest::roundTrip(const QString& model, const QString& rea
 {
     FakeServer srv;
     srv.reply = reply;
-    ProviderConfig cfg;
+    providers::ProviderConfig cfg;
     cfg.baseUrl = srv.base();
     cfg.model = model;
     cfg.reasoning = reasoning;
@@ -175,8 +176,8 @@ void LlmReasoningTest::requestBodies()
     QVERIFY(!b.contains("reasoning_effort"));
     QCOMPARE(b.value("messages").toArray().size(), 2);
 
-    // ProviderConfig's default is "auto".
-    QCOMPARE(ProviderConfig{}.reasoning, QStringLiteral("auto"));
+    // providers::ProviderConfig's default is "auto".
+    QCOMPARE(providers::ProviderConfig{}.reasoning, QStringLiteral("auto"));
 }
 
 void LlmReasoningTest::reasoningNeverReachesContent()

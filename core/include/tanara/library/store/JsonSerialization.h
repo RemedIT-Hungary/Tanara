@@ -2,9 +2,7 @@
 //
 // JSON (de)serialization for the value types.
 // Free functions in the `tanara` namespace: QJsonObject <-> DTO.
-//
-// IMPORTANT: when serializing ProviderConfig the `apiKey` does NOT go into the JSON;
-// secrets belong in the KeyStore.
+// (The settings sections serialize themselves: see app/AppSettings.h.)
 #include "tanara/domain/Types.h"
 #include <QJsonObject>
 #include <QJsonArray>
@@ -40,13 +38,5 @@ QString polarityName(Polarity p);
 // ---- Meeting --------------------------------------------------------------
 QJsonObject toJson(const Meeting& m);
 Meeting     meetingFromJson(const QJsonObject& o);
-
-// ---- ProviderConfig (apiKey KIHAGYVA) -------------------------------------
-QJsonObject toJson(const ProviderConfig& p);
-ProviderConfig providerConfigFromJson(const QJsonObject& o);
-
-// ---- AppSettings ----------------------------------------------------------
-QJsonObject toJson(const AppSettings& s);
-AppSettings appSettingsFromJson(const QJsonObject& o);
 
 } // namespace tanara::library

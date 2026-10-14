@@ -1,4 +1,5 @@
 #include "tanara/providers/core/ConnectionTester.h"
+#include "tanara/providers/core/ProviderConfig.h"
 #include "tanara/providers/chat/LlmServer.h"
 
 #include <QCoreApplication>

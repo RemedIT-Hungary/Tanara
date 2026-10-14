@@ -1,4 +1,5 @@
 #include "OnboardingViewModel.h"
+#include "tanara/providers/core/ProviderConfig.h"
 
 #include "DemoText.h"
 
@@ -7,7 +8,7 @@
 
 #include "tanara/app/AppController.h"
 #include "tanara/foundation/i18n/Localization.h"
-#include "tanara/foundation/paths/Paths.h"
+#include "tanara/foundation/paths/AppPaths.h"
 #include "tanara/app/SettingsManager.h"
 #include "tanara/watcher/detect/Autostart.h"
 #include "tanara/providers/core/ConnectionTester.h"
@@ -45,14 +46,14 @@ bool samePath(const QString& a, const QString& b)
 // transcript, so only the provider setting counts (like the Settings draft validation).
 struct Line { QString text; bool ready = false; };
 
-Line readinessLine(const AppSettings& s, bool stt, const providers::ReadinessModel::SecretProbe& hasSecret)
+Line readinessLine(const tanara::app::AppSettings& s, bool stt, const providers::ReadinessModel::SecretProbe& hasSecret)
 {
     Meeting m;
     Track t;
     t.active = true;
     m.tracks << t;
     m.hasTranscript = true;
-    const providers::ReadinessResult r = providers::ReadinessModel(s, hasSecret).check(stt ? providers::WorkflowStep::Transcribe
+    const providers::ReadinessResult r = providers::ReadinessModel(s.providers, hasSecret).check(stt ? providers::WorkflowStep::Transcribe
                                                                        : providers::WorkflowStep::Summarize, m);
     const QString head = stt ? OnboardingViewModel::tr("Átírás") : OnboardingViewModel::tr("Összefoglaló");
     Line out;
@@ -146,19 +147,23 @@ void OnboardingViewModel::attach()
     m_connections << connect(c->settings(), &app::SettingsManager::settingsChanged, this, [this] {
         if (m_applying || !m_controller) return;
         // Someone else saved (Settings, cloud window): untouched fields follow, the typed draft stays.
-        const AppSettings live = m_controller->settings()->settings();
+        const tanara::app::AppSettings live = m_controller->settings()->settings();
         auto follow = [](auto& base, auto& draft, const auto& now) {
             if (draft == base) draft = now;
             base = now;
         };
-        follow(m_base.userSpeakerName, m_draft.userSpeakerName, live.userSpeakerName);
-        follow(m_base.uiLanguage, m_draft.uiLanguage, live.uiLanguage);
-        follow(m_base.audioDir, m_draft.audioDir, live.audioDir);
-        follow(m_base.notesDir, m_draft.notesDir, live.notesDir);
-        follow(m_base.watcherAutostart, m_draft.watcherAutostart, live.watcherAutostart);
-        m_base.onboardingDone = live.onboardingDone;
-        if (m_done != live.onboardingDone) {
-            m_done = live.onboardingDone;
+        follow(m_base.recording.userSpeakerName, m_draft.recording.userSpeakerName, live.recording.userSpeakerName);
+        follow(m_base.ui.language, m_draft.ui.language, live.ui.language);
+        // The two folders follow separately (a typed notes folder must not hold back the recordings).
+        QString baseRoot = m_base.paths.primaryRecordingRoot(), draftRoot = m_draft.paths.primaryRecordingRoot();
+        follow(baseRoot, draftRoot, live.paths.primaryRecordingRoot());
+        m_base.paths.setPrimaryRecordingRoot(baseRoot);
+        m_draft.paths.setPrimaryRecordingRoot(draftRoot);
+        follow(m_base.paths.notesDir, m_draft.paths.notesDir, live.paths.notesDir);
+        follow(m_base.watcher.autostart, m_draft.watcher.autostart, live.watcher.autostart);
+        m_base.ui.onboardingDone = live.ui.onboardingDone;
+        if (m_done != live.ui.onboardingDone) {
+            m_done = live.ui.onboardingDone;
             emit doneChanged();
         }
         emitAllChanged();
@@ -173,7 +178,7 @@ void OnboardingViewModel::loadFromCore()
     if (!c) return;
     m_base = m_draft = c->settings()->settings();
     m_baseTheme = m_draftTheme = AppContext::instance()->themeMode();
-    m_done = m_base.onboardingDone;
+    m_done = m_base.ui.onboardingDone;
     emitAllChanged();
     emit doneChanged();
     refreshReadiness();
@@ -290,14 +295,14 @@ void OnboardingViewModel::markDone()
         }
         return;
     }
-    AppSettings live = m_controller->settings()->settings();
-    if (!live.onboardingDone) {
-        live.onboardingDone = true;
+    tanara::app::AppSettings live = m_controller->settings()->settings();
+    if (!live.ui.onboardingDone) {
+        live.ui.onboardingDone = true;
         m_applying = true;
         m_controller->settings()->setSettings(live);
         m_applying = false;
     }
-    m_base.onboardingDone = m_draft.onboardingDone = true;
+    m_base.ui.onboardingDone = m_draft.ui.onboardingDone = true;
     if (!m_done) {
         m_done = true;
         emit doneChanged();
@@ -307,12 +312,12 @@ void OnboardingViewModel::markDone()
 bool OnboardingViewModel::stepDirty() const
 {
     if (m_step == QLatin1String("you"))
-        return m_draft.userSpeakerName != m_base.userSpeakerName || m_draft.uiLanguage != m_base.uiLanguage
+        return m_draft.recording.userSpeakerName != m_base.recording.userSpeakerName || m_draft.ui.language != m_base.ui.language
                || m_draftTheme != m_baseTheme;
     if (m_step == QLatin1String("folders"))
-        return m_draft.audioDir != m_base.audioDir || m_draft.notesDir != m_base.notesDir;
+        return !(m_draft.paths == m_base.paths);
     if (m_step == QLatin1String("watcher"))
-        return m_draft.watcherAutostart != m_base.watcherAutostart;
+        return m_draft.watcher.autostart != m_base.watcher.autostart;
     return false;
 }
 
@@ -325,53 +330,51 @@ bool OnboardingViewModel::applyStep(const QString& step)
     if (!you && !folders && !watcher) return true;
     if (you && !userNameError().isEmpty()) return false;
 
-    const QString newName = m_draft.userSpeakerName.trimmed();
-    const bool nameChanged = you && newName != m_base.userSpeakerName.trimmed();
+    const QString newName = m_draft.recording.userSpeakerName.trimmed();
+    const bool nameChanged = you && newName != m_base.recording.userSpeakerName.trimmed();
     const bool themeChanged = you && m_draftTheme != m_baseTheme;
-    const bool autostartChanged = watcher && m_draft.watcherAutostart != m_base.watcherAutostart;
+    const bool autostartChanged = watcher && m_draft.watcher.autostart != m_base.watcher.autostart;
 
     if (app::AppController* c = m_controller) {
         m_applying = true;
-        AppSettings live = c->settings()->settings();
-        const AppSettings before = live;
-        if (you && m_draft.uiLanguage != m_base.uiLanguage) live.uiLanguage = m_draft.uiLanguage;
-        if (folders && m_draft.audioDir != m_base.audioDir) live.audioDir = m_draft.audioDir.trimmed();
-        if (folders && m_draft.notesDir != m_base.notesDir) live.notesDir = m_draft.notesDir.trimmed();
-        if (autostartChanged) live.watcherAutostart = m_draft.watcherAutostart;
-        const bool settingsChanged = live.uiLanguage != before.uiLanguage || live.audioDir != before.audioDir
-                                     || live.notesDir != before.notesDir
-                                     || live.watcherAutostart != before.watcherAutostart;
+        tanara::app::AppSettings live = c->settings()->settings();
+        const tanara::app::AppSettings before = live;
+        if (you && m_draft.ui.language != m_base.ui.language) live.ui.language = m_draft.ui.language;
+        if (folders && m_draft.paths.primaryRecordingRoot() != m_base.paths.primaryRecordingRoot())
+            live.paths.setPrimaryRecordingRoot(m_draft.paths.primaryRecordingRoot().trimmed());
+        if (folders && m_draft.paths.notesDir != m_base.paths.notesDir) live.paths.notesDir = m_draft.paths.notesDir.trimmed();
+        if (autostartChanged) live.watcher.autostart = m_draft.watcher.autostart;
+        const bool settingsChanged = live.ui.language != before.ui.language || !(live.paths == before.paths)
+                                     || live.watcher.autostart != before.watcher.autostart;
         if (settingsChanged) c->settings()->setSettings(live);
         // The own name: the core carries it through the person DB, the meetings and the voiceprints.
         if (nameChanged) c->setUserSpeakerName(newName);
         // Starting the watcher at sign-in: effective immediately (never in a sandbox / test).
         if (autostartChanged)
-            watcher::autostart::applyWatcher(m_draft.watcherAutostart,
+            watcher::autostart::applyWatcher(m_draft.watcher.autostart,
                                     watcher::autostart::findWatcherExecutable(QCoreApplication::applicationDirPath()));
         m_applying = false;
-        const AppSettings now = c->settings()->settings();
+        const tanara::app::AppSettings now = c->settings()->settings();
         if (you) {
-            m_base.userSpeakerName = m_draft.userSpeakerName = now.userSpeakerName;
-            m_base.uiLanguage = m_draft.uiLanguage = now.uiLanguage;
+            m_base.recording.userSpeakerName = m_draft.recording.userSpeakerName = now.recording.userSpeakerName;
+            m_base.ui.language = m_draft.ui.language = now.ui.language;
         }
         if (folders) {
-            m_base.audioDir = m_draft.audioDir = now.audioDir;
-            m_base.notesDir = m_draft.notesDir = now.notesDir;
+            m_base.paths = m_draft.paths = now.paths;
         }
-        if (watcher) m_base.watcherAutostart = m_draft.watcherAutostart = now.watcherAutostart;
+        if (watcher) m_base.watcher.autostart = m_draft.watcher.autostart = now.watcher.autostart;
         if (settingsChanged || nameChanged) emit saved();
     } else {
         // Demo: nothing to write to disk; the draft becomes the base.
-        m_draft.userSpeakerName = newName.isEmpty() ? m_draft.userSpeakerName : newName;
+        m_draft.recording.userSpeakerName = newName.isEmpty() ? m_draft.recording.userSpeakerName : newName;
         if (you) {
-            m_base.userSpeakerName = m_draft.userSpeakerName;
-            m_base.uiLanguage = m_draft.uiLanguage;
+            m_base.recording.userSpeakerName = m_draft.recording.userSpeakerName;
+            m_base.ui.language = m_draft.ui.language;
         }
         if (folders) {
-            m_base.audioDir = m_draft.audioDir;
-            m_base.notesDir = m_draft.notesDir;
+            m_base.paths = m_draft.paths;
         }
-        if (watcher) m_base.watcherAutostart = m_draft.watcherAutostart;
+        if (watcher) m_base.watcher.autostart = m_draft.watcher.autostart;
     }
     if (themeChanged) {
         m_baseTheme = m_draftTheme;
@@ -385,19 +388,18 @@ bool OnboardingViewModel::applyStep(const QString& step)
 void OnboardingViewModel::discardStep(const QString& step)
 {
     if (step == QLatin1String("you")) {
-        m_draft.userSpeakerName = m_base.userSpeakerName;
-        m_draft.uiLanguage = m_base.uiLanguage;
+        m_draft.recording.userSpeakerName = m_base.recording.userSpeakerName;
+        m_draft.ui.language = m_base.ui.language;
         if (m_draftTheme != m_baseTheme) {
             m_draftTheme = m_baseTheme;
             AppContext::instance()->setThemeMode(m_baseTheme);   // the preview reverts
         }
         emit youChanged();
     } else if (step == QLatin1String("folders")) {
-        m_draft.audioDir = m_base.audioDir;
-        m_draft.notesDir = m_base.notesDir;
+        m_draft.paths = m_base.paths;
         emit foldersChanged();
     } else if (step == QLatin1String("watcher")) {
-        m_draft.watcherAutostart = m_base.watcherAutostart;
+        m_draft.watcher.autostart = m_base.watcher.autostart;
         emit watcherChanged();
     }
     emit dirtyChanged();
@@ -407,22 +409,22 @@ void OnboardingViewModel::discardStep(const QString& step)
 
 void OnboardingViewModel::setUserName(const QString& name)
 {
-    if (m_draft.userSpeakerName == name) return;
-    m_draft.userSpeakerName = name;
+    if (m_draft.recording.userSpeakerName == name) return;
+    m_draft.recording.userSpeakerName = name;
     emit youChanged();
     emit dirtyChanged();
 }
 
 QString OnboardingViewModel::userNameError() const
 {
-    return m_draft.userSpeakerName.trimmed().isEmpty()
+    return m_draft.recording.userSpeakerName.trimmed().isEmpty()
         ? tr("Adj meg egy nevet — ezen a néven szerepelsz az átiratokban.") : QString();
 }
 
 void OnboardingViewModel::setUiLanguage(const QString& lang)
 {
-    if (m_draft.uiLanguage == lang) return;
-    m_draft.uiLanguage = lang;
+    if (m_draft.ui.language == lang) return;
+    m_draft.ui.language = lang;
     emit youChanged();
     emit dirtyChanged();
 }
@@ -441,9 +443,9 @@ QVariantList OnboardingViewModel::uiLanguageOptions() const
 
 bool OnboardingViewModel::languageNeedsRestart() const
 {
-    if (!m_controller) return m_draft.uiLanguage != m_base.uiLanguage;
+    if (!m_controller) return m_draft.ui.language != m_base.ui.language;
     const QString active = activeUiLanguage();
-    return !active.isEmpty() && resolvedUiLanguage(m_draft.uiLanguage) != active;
+    return !active.isEmpty() && resolvedUiLanguage(m_draft.ui.language) != active;
 }
 
 void OnboardingViewModel::setThemeMode(const QString& mode)
@@ -460,9 +462,12 @@ void OnboardingViewModel::setThemeMode(const QString& mode)
 
 QString OnboardingViewModel::folderPath(const QString& key) const
 {
-    if (key == QLatin1String("audio")) return m_draft.audioDir;
-    if (key == QLatin1String("notes")) return m_draft.notesDir;
-    return QString();
+    // The configured ("paths" section) value, else the default folder.
+    QString configured;
+    if (key == QLatin1String("audio")) configured = m_draft.paths.primaryRecordingRoot();
+    else if (key == QLatin1String("notes")) configured = m_draft.paths.notesDir;
+    else return QString();
+    return configured.isEmpty() ? defaultFolder(key) : configured;
 }
 
 QString OnboardingViewModel::defaultFolder(const QString& key) const
@@ -472,7 +477,9 @@ QString OnboardingViewModel::defaultFolder(const QString& key) const
         return key == QLatin1String("audio") ? demoText("/home/lilla/Tanara/felvetelek", "/home/emma/Tanara/recordings")
                                              : demoText("/home/lilla/Tanara/jegyzetek", "/home/emma/Tanara/notes");
     }
-    return key == QLatin1String("audio") ? paths::defaultAudioDir() : paths::defaultNotesDir();
+    // The effective folder without a "paths" setting (with TANARA_HOME: the sandbox's).
+    return paths::AppPaths::system(paths::PathSettings())
+        .dir(key == QLatin1String("audio") ? paths::Role::Recordings : paths::Role::Notes);
 }
 
 QVariantList OnboardingViewModel::folders() const
@@ -495,9 +502,11 @@ void OnboardingViewModel::setFolder(const QString& key, const QString& path)
 {
     const QString p = path.trimmed();
     if (p.isEmpty() || p == folderPath(key)) return;
-    if (key == QLatin1String("audio")) m_draft.audioDir = p;
-    else if (key == QLatin1String("notes")) m_draft.notesDir = p;
-    else return;
+    if (key != QLatin1String("audio") && key != QLatin1String("notes")) return;
+    // The default folder is stored as "no setting" (later default changes then apply).
+    const QString stored = m_controller && samePath(p, defaultFolder(key)) ? QString() : p;
+    if (key == QLatin1String("audio")) m_draft.paths.setPrimaryRecordingRoot(stored);
+    else m_draft.paths.notesDir = stored;
     emit foldersChanged();
     emit dirtyChanged();
 }
@@ -519,13 +528,13 @@ void OnboardingViewModel::browseFolder(const QString& key)
 
 // ---- Services ----------------------------------------------------------------------------
 
-QString OnboardingViewModel::providerLabel(const AppSettings& s, bool stt)
+QString OnboardingViewModel::providerLabel(const tanara::app::AppSettings& s, bool stt)
 {
-    const QString id = stt ? s.sttProviderId : s.llmProviderId;
+    const QString id = stt ? s.providers.stt.selectedId : s.providers.llm.selectedId;
     const providers::ProviderDescriptor d = stt ? providers::SttProviderRegistry::instance().descriptor(id)
                                      : providers::LlmProviderRegistry::instance().descriptor(id);
     if (d.id.isEmpty()) return id;
-    const ProviderConfig cfg = stt ? s.sttSelected() : s.llmSelected();
+    const providers::ProviderConfig cfg = stt ? s.providers.stt.selected() : s.providers.llm.selected();
     QString label = d.displayName;
     // From the local server's well-known port we show its name (the descriptor's name is
     // generic), the same as in Settings' collapsed provider card.
@@ -545,7 +554,7 @@ void OnboardingViewModel::refreshReadiness()
     QString stt, llm;
     bool sttOk = false, llmOk = false;
     if (app::AppController* c = m_controller) {
-        const AppSettings s = c->settings()->settings();
+        const tanara::app::AppSettings s = c->settings()->settings();
         const providers::ReadinessModel::SecretProbe probe = [c](const QString& key) { return c->hasSecret(key); };
         const Line a = readinessLine(s, true, probe);
         const Line b = readinessLine(s, false, probe);
@@ -577,8 +586,8 @@ void OnboardingViewModel::openServices()
 
 void OnboardingViewModel::setWatcherAutostart(bool on)
 {
-    if (m_draft.watcherAutostart == on) return;
-    m_draft.watcherAutostart = on;
+    if (m_draft.watcher.autostart == on) return;
+    m_draft.watcher.autostart = on;
     emit watcherChanged();
     emit dirtyChanged();
 }
@@ -603,13 +612,13 @@ QString OnboardingViewModel::autostartNote() const
 
 void OnboardingViewModel::loadDemo()
 {
-    AppSettings s;
-    s.userSpeakerName = demoName("Kovács Lilla");
-    s.audioDir = demoText("/home/lilla/Tanara/felvetelek", "/home/emma/Tanara/recordings");
-    s.notesDir = demoText("/home/lilla/Obsidian/Megbeszélések", "/home/emma/Obsidian/Meetings");
-    s.metadataDir = demoText("/home/lilla/.tanara", "/home/emma/.tanara");
-    s.uiLanguage = QStringLiteral("auto");
-    s.watcherAutostart = true;
+    tanara::app::AppSettings s;
+    s.recording.userSpeakerName = demoName("Kovács Lilla");
+    s.paths.setPrimaryRecordingRoot(demoText("/home/lilla/Tanara/felvetelek", "/home/emma/Tanara/recordings"));
+    s.paths.notesDir = demoText("/home/lilla/Obsidian/Megbeszélések", "/home/emma/Obsidian/Meetings");
+    s.paths.dataDir = demoText("/home/lilla/.tanara", "/home/emma/.tanara");
+    s.ui.language = QStringLiteral("auto");
+    s.watcher.autostart = true;
     m_base = m_draft = s;
     m_baseTheme = m_draftTheme = AppContext::instance()->themeMode();
     m_done = false;

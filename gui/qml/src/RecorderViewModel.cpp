@@ -6,7 +6,7 @@
 #include "TagDemoBackend.h"
 
 #include "tanara/app/AppController.h"
-#include "tanara/foundation/paths/Paths.h"
+#include "tanara/foundation/paths/AppPaths.h"
 #include "tanara/app/SettingsManager.h"
 #include "tanara/recording/audio/DeviceManager.h"
 #include "tanara/watcher/PlaybackRouting.h"
@@ -36,9 +36,7 @@ constexpr int    kSegments     = 14;
 
 QString recorderIniPath(app::AppController* c)
 {
-    const QString dir = paths::resolveMetadataDir(
-        c && c->settings() ? c->settings()->settings().metadataDir : QString());
-    return QDir(dir).filePath(QStringLiteral("recorder.ini"));
+    return (c && c->settings() ? c->settings()->paths() : paths::current()).stateFile(paths::files::RecorderIni);
 }
 
 } // namespace
@@ -394,15 +392,15 @@ void RecorderViewModel::rebuildDevices()
     // Source of the selection: the live rows; on the first enumeration the saved selection. A
     // device not seen until then arrives switched on in "record every device" mode (except
     // line-in types), switched off in manual mode.
-    const AppSettings s = m_controller->settings() ? m_controller->settings()->settings()
-                                                   : AppSettings{};
+    const tanara::app::AppSettings s = m_controller->settings() ? m_controller->settings()->settings()
+                                                   : tanara::app::AppSettings{};
     const QStringList last = m_controller->lastUsedDeviceNames();
     auto wantSelected = [&](const AudioDeviceInfo& d) {
         const int old = rowOf(d.name);
         if (old >= 0 && m_selectionLoaded) return m_rows.at(old).selected;
         if (last.contains(d.name)) return true;
         const bool isNew = !m_knownDevices.contains(d.name);
-        return (isNew || last.isEmpty()) && s.autoRecordAllDevices && d.kind != TrackKind::Other;
+        return (isNew || last.isEmpty()) && s.recording.autoRecordAllDevices && d.kind != TrackKind::Other;
     };
 
     QVector<Row> rows;

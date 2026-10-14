@@ -8,7 +8,7 @@
 // or what someone else changed meanwhile, is not lost); "Cancel" discards it. Exception: the
 // theme shows immediately (preview) but is kept only on save.
 //
-// Besides the settings, the draft includes: the secrets (API keys: they go to the KeyStore,
+// Besides the settings, the draft includes: the secrets (API keys: they go to the SecretStore,
 // not settings.json), the default sources selection (state.json, shared with the recorder)
 // and the theme (ui-state.json).
 //
@@ -24,6 +24,7 @@
 // "B08error" / "B08offline" / "B08backfill" / "B08partial" / "B08bundled") sets the design states.
 //
 #include "SettingsDeviceModel.h"
+#include "tanara/app/AppSettings.h"
 #include "SettingsEmbeddingModel.h"
 #include "SettingsProviderModel.h"
 #include "VoiceModelListModel.h"
@@ -76,6 +77,11 @@ class SettingsViewModel : public QObject {
     // The warning dot next to "Services": a required provider is incomplete or the latest
     // connection test failed.
     Q_PROPERTY(bool servicesWarn READ servicesWarn NOTIFY servicesWarnChanged)
+    // Where the API keys are: "keychain" | "file" (foundation/secrets), the one-line text for the
+    // Services page, and the warning when the keychain was wanted but the keys are in a file.
+    Q_PROPERTY(QString secretsBackend READ secretsBackend NOTIFY controllerChanged)
+    Q_PROPERTY(QString secretsLocationText READ secretsLocationText NOTIFY controllerChanged)
+    Q_PROPERTY(QString secretsWarning READ secretsWarning NOTIFY controllerChanged)
     // Field errors: { "userName": "...", "folder.audio": "...", "watchedApps": "..." }.
     Q_PROPERTY(QVariantMap errors READ errors NOTIFY errorsChanged)
 
@@ -173,13 +179,16 @@ public:
     int changeCount() const { return m_changeCount; }
     QString footerText() const;
     bool servicesWarn() const { return m_servicesWarn; }
+    QString secretsBackend() const;
+    QString secretsLocationText() const;
+    QString secretsWarning() const;
     QVariantMap errors() const { return m_errors; }
 
-    QString userName() const { return m_draft.userSpeakerName; }
+    QString userName() const { return m_draft.recording.userSpeakerName; }
     void setUserName(const QString& name);
     QString voiceprintText() const { return m_voiceprintText; }
     bool hasVoiceprint() const { return m_hasVoiceprint; }
-    QString uiLanguage() const { return m_draft.uiLanguage; }
+    QString uiLanguage() const { return m_draft.ui.language; }
     void setUiLanguage(const QString& lang);
     QVariantList uiLanguageOptions() const;
     bool languageNeedsRestart() const;
@@ -192,24 +201,24 @@ public:
     int deviceCount() const;
     bool monitoring() const { return m_monitoring; }
     void setMonitoring(bool on);
-    bool autoRecordAll() const { return m_draft.autoRecordAllDevices; }
+    bool autoRecordAll() const { return m_draft.recording.autoRecordAllDevices; }
     void setAutoRecordAll(bool on);
-    QString audioQuality() const { return m_draft.audioQuality; }
+    QString audioQuality() const { return m_draft.recording.audioQuality; }
     void setAudioQuality(const QString& quality);
     QVariantList audioQualityOptions() const;
     QString audioQualityHint() const;
-    QString mixdownMode() const { return m_draft.mixdownMode; }
+    QString mixdownMode() const { return m_draft.recording.mixdownMode; }
     void setMixdownMode(const QString& mode);
 
-    bool detectorEnabled() const { return m_draft.detectorEnabled; }
+    bool detectorEnabled() const { return m_draft.watcher.detectorEnabled; }
     void setDetectorEnabled(bool on);
-    bool watcherAutostart() const { return m_draft.watcherAutostart; }
+    bool watcherAutostart() const { return m_draft.watcher.autostart; }
     void setWatcherAutostart(bool on);
-    bool askStopOnCallEnd() const { return m_draft.askStopOnCallEnd; }
+    bool askStopOnCallEnd() const { return m_draft.watcher.askStopOnCallEnd; }
     void setAskStopOnCallEnd(bool on);
-    int silenceAskMinutes() const { return m_draft.silenceAskMinutes; }
+    int silenceAskMinutes() const { return m_draft.watcher.silenceAskMinutes; }
     void setSilenceAskMinutes(int minutes);
-    int detectorIntervalSec() const { return m_draft.detectorIntervalSec; }
+    int detectorIntervalSec() const { return m_draft.watcher.detectorIntervalSec; }
     void setDetectorIntervalSec(int sec);
     QVariantList watchedApps() const;
     bool watching() const { return m_watching; }
@@ -226,7 +235,7 @@ public:
     SettingsEmbeddingModel* embedding() const { return m_embedding; }
     VoiceModelListModel* voiceModels() const { return m_voiceModels; }
 
-    QString summaryLanguage() const { return m_draft.summaryLanguage; }
+    QString summaryLanguage() const { return m_draft.processing.summaryLanguage; }
     void setSummaryLanguage(const QString& language);
     QStringList summaryLanguageOptions() const;
     QVariantList promptGroups() const;
@@ -278,8 +287,8 @@ public:
     Q_INVOKABLE void resetPrompt();
 
     // ---- the draft for the sub-models ----
-    tanara::AppSettings& draft() { return m_draft; }
-    const tanara::AppSettings& base() const { return m_base; }
+    tanara::app::AppSettings& draft() { return m_draft; }
+    const tanara::app::AppSettings& base() const { return m_base; }
     QString draftSecret(const QString& key) const { return m_draftSecrets.value(key); }
     void setDraftSecret(const QString& key, const QString& value);
     // The draft changed: recomputes the counter, errors, warning dot.
@@ -340,7 +349,7 @@ private:
     void loadFromCore();
     void applyDefaultSelection();
     void loadDemo();
-    void normalize(tanara::AppSettings& s) const;
+    void normalize(tanara::app::AppSettings& s) const;
     void emitAllChanged();
     void onExternalSettingsChanged();
     void validate();
@@ -349,6 +358,8 @@ private:
     void refreshFolderUsage();
     void pollDetector();
     QString folderPath(const QString& key) const;
+    QString defaultFolder(const QString& key) const;
+    static QStringList folderKeys();
     QString promptId(int index) const;
     void storePromptsInDraft();
     QStringList selectedDevicesForSave() const;
@@ -359,7 +370,7 @@ private:
     QString m_demoState;
     QList<QMetaObject::Connection> m_connections;
 
-    tanara::AppSettings m_base, m_draft;
+    tanara::app::AppSettings m_base, m_draft;
     QHash<QString, QString> m_baseSecrets, m_draftSecrets;   // secretKey -> value
     QStringList m_baseSelected, m_draftSelected;             // default sources (raw names)
     QString m_baseTheme, m_draftTheme;

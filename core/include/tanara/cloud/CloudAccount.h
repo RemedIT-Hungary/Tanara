@@ -8,8 +8,8 @@
 // OpenAiCompatibleProvider with the gateway config (see AppController). They report every HTTP
 // response (HttpExchange) back here too (observeExchange), so min-client and the balance update in one place.
 //
-// State: the API key in the KeyStore (tanara.cloud.apiKey), the rest in
-// <metadataDir>/cloud-state.json (email, last known account/catalog, pending transcriptions,
+// State: the API key in the SecretStore (tanara.cloud.apiKey), the rest in
+// <data>/cloud-state.json (email, last known account/catalog, pending transcriptions,
 // terms "Later", hidden tracks). Headless (core): no Widgets dependency.
 #include "tanara/cloud/CloudTypes.h"
 
@@ -25,7 +25,7 @@ class QNetworkAccessManager;
 class QNetworkReply;
 class QTimer;
 
-namespace tanara { class KeyStore; }
+namespace tanara { class SecretStore; }
 
 namespace tanara::cloud {
 
@@ -33,8 +33,8 @@ namespace tanara::cloud {
 class CloudAccount : public QObject {
     Q_OBJECT
 public:
-    // keys: the caller's (AppController), its lifetime >= this one's. stateDir: ~/.tanara.
-    CloudAccount(KeyStore* keys, const QString& stateDir, QObject* parent = nullptr);
+    // keys: the caller's (AppController), its lifetime >= this one's. dataDir: AppPaths::dataDir() (cloud-state.json).
+    CloudAccount(SecretStore* keys, const QString& dataDir, QObject* parent = nullptr);
     ~CloudAccount() override;
 
     // Gateway base URL (WITHOUT /v1), e.g. https://api.tanara.remedit.hu or http://127.0.0.1:8300.
@@ -125,7 +125,7 @@ private:
     void loadState();
     void saveState() const;
 
-    KeyStore*   m_keys = nullptr;
+    SecretStore* m_keys = nullptr;
     QString     m_statePath;
     QString     m_baseUrl;
     QString     m_lang = QStringLiteral("hu");

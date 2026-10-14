@@ -1,4 +1,5 @@
 #include "tanara/providers/core/ProviderRegistry.h"
+#include "tanara/providers/core/ProviderConfig.h"
 
 // The concrete headers of the built-in providers appear ONLY here, so the registry itself stays
 // provider-agnostic and the dependency is concentrated in one place.

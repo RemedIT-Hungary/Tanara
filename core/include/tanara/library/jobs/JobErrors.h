@@ -2,8 +2,9 @@
 //
 // A failed background task -> a displayable error (human explanation + a technical line).
 // Pure functions (no state, no I/O); AppController calls them with the provider's last failed
-// HTTP response (ProviderConfig::onExchange) and the raw error text.
+// HTTP response (providers::ProviderConfig::onExchange) and the raw error text.
 #include "tanara/domain/Job.h"
+#include "tanara/providers/core/ProviderConfig.h"
 #include "tanara/providers/chat/LlmContext.h"
 
 namespace tanara::cloud { struct HttpExchange; }

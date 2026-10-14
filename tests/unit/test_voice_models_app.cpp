@@ -220,8 +220,8 @@ void VoiceModelsAppTest::editorGetsActiveModels()
     QCOMPARE(ed->voiceModelIds(), QStringList({kCamp}));
     // A change of another setting does not recompute.
     m_app->settings()->setEnabledVoiceModels({kCamp});
-    AppSettings s = m_app->settings()->settings();
-    s.userSpeakerName = QStringLiteral("Én");
+    tanara::app::AppSettings s = m_app->settings()->settings();
+    s.recording.userSpeakerName = QStringLiteral("Én");
     m_app->settings()->setSettings(s);
     QCOMPARE(models.count(), 1);
     // Unknown id: the setting stays, left out at run time.

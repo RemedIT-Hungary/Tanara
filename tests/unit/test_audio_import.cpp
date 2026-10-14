@@ -539,7 +539,7 @@ void AudioImportTest::controllerRunsImportAsJob()
     if (!m_ffmpeg) QSKIP("ffmpeg / ffprobe nincs telepítve");
     qputenv("TANARA_HOME", m_dir->filePath("home").toUtf8());
     app::AppController app;
-    QVERIFY(app.settings()->settings().audioDir.startsWith(m_dir->path()));
+    QVERIFY(app.settings()->paths().primaryRecordingRoot().startsWith(m_dir->path()));
     const QString file = stereoLeftOnly("megbeszeles.wav", 2);
 
     QSignalSpy imported(&app, &app::AppController::importFinished);
@@ -582,9 +582,9 @@ void AudioImportTest::controllerCancelAndManualMixdown()
     if (!m_ffmpeg) QSKIP("ffmpeg / ffprobe nincs telepítve");
     qputenv("TANARA_HOME", m_dir->filePath("home").toUtf8());
     app::AppController app;
-    AppSettings s = app.settings()->settings();
-    s.mixdownMode = QStringLiteral("manual");
-    s.audioQuality = QStringLiteral("low");
+    tanara::app::AppSettings s = app.settings()->settings();
+    s.recording.mixdownMode = QStringLiteral("manual");
+    s.recording.audioQuality = QStringLiteral("low");
     app.settings()->setSettings(s);
     const QString audioDir = app.store()->audioDir();
 

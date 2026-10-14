@@ -166,12 +166,12 @@ class TestShellActions : public QObject {
     }
     void configureProviders(bool withSttKey)
     {
-        tanara::AppSettings s = m_app->settings()->settings();
-        s.sttProviderId = QStringLiteral("soniox");
-        s.sttConfigs[s.sttProviderId].baseUrl = QStringLiteral("http://127.0.0.1:9/v1");   // closed port
-        s.llmProviderId = QStringLiteral("openai-compat");
-        s.llmConfigs[s.llmProviderId].baseUrl = QStringLiteral("http://127.0.0.1:9/v1");
-        s.llmConfigs[s.llmProviderId].model = QStringLiteral("teszt-modell");
+        tanara::app::AppSettings s = m_app->settings()->settings();
+        s.providers.stt.selectedId = QStringLiteral("soniox");
+        s.providers.stt.configs[s.providers.stt.selectedId].baseUrl = QStringLiteral("http://127.0.0.1:9/v1");   // closed port
+        s.providers.llm.selectedId = QStringLiteral("openai-compat");
+        s.providers.llm.configs[s.providers.llm.selectedId].baseUrl = QStringLiteral("http://127.0.0.1:9/v1");
+        s.providers.llm.configs[s.providers.llm.selectedId].model = QStringLiteral("teszt-modell");
         m_app->settings()->setSettings(s);
         if (withSttKey)
             m_app->setSecret(tanara::app::keys::SonioxApiKey, QStringLiteral("teszt-kulcs"));
@@ -592,9 +592,9 @@ private slots:
         m_shell = std::make_unique<ShellActions>();
         m_shell->setController(m_app.get());
         m_shell->setBridge(m_bridge.get());
-        tanara::AppSettings s = m_app->settings()->settings();
-        s.sttProviderId = tanara::cloud::ProviderId;
-        s.sttConfigs[tanara::cloud::ProviderId].type = tanara::cloud::ProviderId;
+        tanara::app::AppSettings s = m_app->settings()->settings();
+        s.providers.stt.selectedId = tanara::cloud::ProviderId;
+        s.providers.stt.configs[tanara::cloud::ProviderId].type = tanara::cloud::ProviderId;
         m_app->settings()->setSettings(s);
         const tanara::Meeting m = recording(QStringLiteral("Cloud"));
         QVERIFY(m_app->usesCloud(tanara::providers::WorkflowStep::Transcribe));

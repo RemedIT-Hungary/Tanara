@@ -1,4 +1,5 @@
 #include <QtTest>
+#include "tanara/app/AppSettings.h"
 #include "tanara/domain/Types.h"
 
 class SmokeTest : public QObject {
@@ -6,8 +7,8 @@ class SmokeTest : public QObject {
 private slots:
     void version_nonEmpty() { QVERIFY(!tanara::libraryVersion().isEmpty()); }
     void settings_defaultLanguageHu() {
-        tanara::AppSettings s;
-        QCOMPARE(s.languageHints.value(0), QStringLiteral("hu"));
+        tanara::app::AppSettings s;
+        QCOMPARE(s.processing.languageHints.value(0), QStringLiteral("hu"));
     }
 };
 

@@ -1,4 +1,5 @@
 #include "tanara/app/StartupDiagnostics.h"
+#include "tanara/providers/core/ProviderConfig.h"
 
 #include "tanara/app/AppController.h"
 #include "tanara/app/SettingsManager.h"
@@ -41,27 +42,29 @@ void logStartupDiagnostics(const AppController& app)
     const SettingsManager* sm = app.settings();
     const AppSettings s = sm->settings();
     qCDebug(lcApp).noquote() << QStringLiteral("settings.json: %1").arg(sm->settingsFilePath());
-    qCDebug(lcApp).noquote() << QStringLiteral("audioDir:    %1").arg(s.audioDir);
-    qCDebug(lcApp).noquote() << QStringLiteral("notesDir:    %1").arg(s.notesDir);
-    qCDebug(lcApp).noquote() << QStringLiteral("metadataDir: %1").arg(s.metadataDir);
-    qCDebug(lcApp).noquote() << QStringLiteral("saját név:   %1").arg(s.userSpeakerName);
+    const paths::AppPaths& ap = sm->paths();
+    for (paths::Role r : {paths::Role::Config, paths::Role::Data, paths::Role::State, paths::Role::Logs,
+                          paths::Role::Models, paths::Role::Recordings, paths::Role::Notes})
+        qCDebug(lcApp).noquote() << QStringLiteral("%1: %2 (%3)").arg(paths::roleName(r), -11)
+                                        .arg(ap.dir(r), paths::sourceName(ap.source(r)));
+    qCDebug(lcApp).noquote() << QStringLiteral("saját név:   %1").arg(s.recording.userSpeakerName);
     qCDebug(lcApp).noquote() << QStringLiteral("autoRecordAllDevices: %1, languageHints: %2")
-                                    .arg(s.autoRecordAllDevices ? QStringLiteral("igen") : QStringLiteral("nem"),
-                                         s.languageHints.join(QLatin1Char(',')));
+                                    .arg(s.recording.autoRecordAllDevices ? QStringLiteral("igen") : QStringLiteral("nem"),
+                                         s.processing.languageHints.join(QLatin1Char(',')));
     qCDebug(lcApp).noquote() << QStringLiteral("hangminőség: %1 (%2 kbps), lekeverés: %3")
-                                    .arg(s.audioQuality)
-                                    .arg(opusBitrateKbps(s.audioQuality))
-                                    .arg(s.mixdownMode);
+                                    .arg(s.recording.audioQuality)
+                                    .arg(opusBitrateKbps(s.recording.audioQuality))
+                                    .arg(s.recording.mixdownMode);
 
     // Provider selection: we NEVER log the API key, only its presence.
-    const ProviderConfig stt = s.sttSelected();
+    const providers::ProviderConfig stt = s.providers.stt.selected();
     qCDebug(lcStt).noquote() << QStringLiteral("STT: provider=%1 baseUrl=%2 model=%3 apiKey=%4")
-                                    .arg(s.sttProviderId, stt.baseUrl, stt.model,
+                                    .arg(s.providers.stt.selectedId, stt.baseUrl, stt.model,
                                          app.hasSecret(keys::SonioxApiKey) ? QStringLiteral("megadva")
                                                                            : QStringLiteral("NINCS"));
-    const ProviderConfig llm = s.llmSelected();
+    const providers::ProviderConfig llm = s.providers.llm.selected();
     qCDebug(lcLlm).noquote() << QStringLiteral("LLM: provider=%1 baseUrl=%2 model=%3 temp=%4 maxTokens=%5 apiKey=%6")
-                                    .arg(s.llmProviderId, llm.baseUrl, llm.model)
+                                    .arg(s.providers.llm.selectedId, llm.baseUrl, llm.model)
                                     .arg(llm.temperature).arg(llm.maxTokens)
                                     .arg(app.hasSecret(keys::LlmApiKey) ? QStringLiteral("megadva")
                                                                         : QStringLiteral("nincs (LM Studio: opcionális)"));

@@ -1,4 +1,5 @@
 #include "SettingsProviderModel.h"
+#include "tanara/providers/core/ProviderConfig.h"
 
 #include "SettingsViewModel.h"
 
@@ -17,14 +18,14 @@ namespace tanara_qml {
 
 namespace {
 
-// The ProviderConfig's well-known fields (the rest -> extra).
+// The providers::ProviderConfig's well-known fields (the rest -> extra).
 bool isWellKnownKey(const QString& key)
 {
     return key == QLatin1String("baseUrl") || key == QLatin1String("model")
         || key == QLatin1String("temperature") || key == QLatin1String("maxTokens");
 }
 
-QVariant configValue(const ProviderConfig& cfg, const providers::ConfigField& f)
+QVariant configValue(const providers::ProviderConfig& cfg, const providers::ConfigField& f)
 {
     if (f.key == QLatin1String("baseUrl")) return cfg.baseUrl;
     if (f.key == QLatin1String("model")) return cfg.model;
@@ -33,7 +34,7 @@ QVariant configValue(const ProviderConfig& cfg, const providers::ConfigField& f)
     return cfg.extra.value(f.key);
 }
 
-void setConfigValue(ProviderConfig& cfg, const providers::ConfigField& f, const QVariant& v)
+void setConfigValue(providers::ProviderConfig& cfg, const providers::ConfigField& f, const QVariant& v)
 {
     // The text goes into the draft RAW (while typing, the trimmed value would be written back
     // into the field); spaces are trimmed by the save and the runtime config (trimConfigs / runtimeConfig).
@@ -85,16 +86,16 @@ QString SettingsProviderModel::kindName() const
          : m_kind == providers::ProviderKind::Embedding ? QStringLiteral("embedding") : QStringLiteral("llm");
 }
 
-QMap<QString, ProviderConfig>& SettingsProviderModel::configs() const
+QMap<QString, providers::ProviderConfig>& SettingsProviderModel::configs() const
 {
-    return m_kind == providers::ProviderKind::Stt ? m_vm->draft().sttConfigs
-         : m_kind == providers::ProviderKind::Embedding ? m_vm->draft().embeddingConfigs : m_vm->draft().llmConfigs;
+    return m_kind == providers::ProviderKind::Stt ? m_vm->draft().providers.stt.configs
+         : m_kind == providers::ProviderKind::Embedding ? m_vm->draft().providers.embedding.configs : m_vm->draft().providers.llm.configs;
 }
 
 QString& SettingsProviderModel::selectedId() const
 {
-    return m_kind == providers::ProviderKind::Stt ? m_vm->draft().sttProviderId
-         : m_kind == providers::ProviderKind::Embedding ? m_vm->draft().embeddingProviderId : m_vm->draft().llmProviderId;
+    return m_kind == providers::ProviderKind::Stt ? m_vm->draft().providers.stt.selectedId
+         : m_kind == providers::ProviderKind::Embedding ? m_vm->draft().providers.embedding.selectedId : m_vm->draft().providers.llm.selectedId;
 }
 
 QVector<providers::ProviderDescriptor> SettingsProviderModel::allDescriptors() const
@@ -157,7 +158,7 @@ QVariantList SettingsProviderModel::providers() const
     return out;
 }
 
-void SettingsProviderModel::fillDefaults(ProviderConfig& cfg, const providers::ProviderDescriptor& d) const
+void SettingsProviderModel::fillDefaults(providers::ProviderConfig& cfg, const providers::ProviderDescriptor& d) const
 {
     cfg.type = d.id;
     for (const providers::ConfigField& f : d.fields) {
@@ -182,7 +183,7 @@ void SettingsProviderModel::setProviderId(const QString& id)
     if (d.id.isEmpty()) return;   // unregistered provider
     selectedId() = id;
     // The other provider's settings stay in the map; the new one starts with the defaults.
-    ProviderConfig cfg = configs().value(id);
+    providers::ProviderConfig cfg = configs().value(id);
     fillDefaults(cfg, d);
     configs().insert(id, cfg);
     m_models.clear();
@@ -271,7 +272,7 @@ void SettingsProviderModel::setValue(const QString& key, const QVariant& value)
             if (m_vm->draftSecret(f.secretKey) == v) return;
             m_vm->setDraftSecret(f.secretKey, v);
         } else {
-            ProviderConfig cfg = configs().value(d.id);
+            providers::ProviderConfig cfg = configs().value(d.id);
             cfg.type = d.id;
             const QVariant before = configValue(cfg, f);
             setConfigValue(cfg, f, value);
@@ -301,7 +302,7 @@ void SettingsProviderModel::setReasoning(const QString& mode)
     if (!reasoningAvailable()) return;
     const QString m = mode == QLatin1String("off") || mode == QLatin1String("on") ? mode : QStringLiteral("auto");
     const providers::ProviderDescriptor d = descriptor();
-    ProviderConfig cfg = configs().value(d.id);
+    providers::ProviderConfig cfg = configs().value(d.id);
     if (cfg.reasoning == m) return;
     cfg.type = d.id;
     cfg.reasoning = m;
@@ -320,7 +321,7 @@ void SettingsProviderModel::setContextLength(int tokens)
     if (!reasoningAvailable()) return;
     const int v = qMax(0, tokens);
     const providers::ProviderDescriptor d = descriptor();
-    ProviderConfig cfg = configs().value(d.id);
+    providers::ProviderConfig cfg = configs().value(d.id);
     if (cfg.contextLength == v) return;
     cfg.type = d.id;
     cfg.contextLength = v;
@@ -395,7 +396,7 @@ QHash<QString, QString> SettingsProviderModel::fieldErrors() const
 {
     QHash<QString, QString> out;
     const providers::ProviderDescriptor d = descriptor();
-    const ProviderConfig cfg = configs().value(d.id);
+    const providers::ProviderConfig cfg = configs().value(d.id);
     for (const providers::ConfigField& f : d.fields) {
         if (f.isSecret) continue;   // a missing key is not an obstacle to saving (the dot signals it)
         const QVariant v = configValue(cfg, f);
@@ -411,8 +412,8 @@ QHash<QString, QString> SettingsProviderModel::fieldErrors() const
                 out.insert(f.key, tr("http:// vagy https:// kezdetű címet adj meg."));
         } else if (f.type == providers::ConfigFieldType::Number) {
             // A stored out-of-range value stays until the user touches it.
-            const QMap<QString, ProviderConfig>& baseConfigs = m_kind == providers::ProviderKind::Stt ? m_vm->base().sttConfigs
-                : m_kind == providers::ProviderKind::Embedding ? m_vm->base().embeddingConfigs : m_vm->base().llmConfigs;
+            const QMap<QString, providers::ProviderConfig>& baseConfigs = m_kind == providers::ProviderKind::Stt ? m_vm->base().providers.stt.configs
+                : m_kind == providers::ProviderKind::Embedding ? m_vm->base().providers.embedding.configs : m_vm->base().providers.llm.configs;
             const bool untouched = baseConfigs.contains(d.id) && configValue(baseConfigs.value(d.id), f) == v;
             if (!untouched && f.minValue != f.maxValue && f.key != QLatin1String("temperature")
                 && (v.toDouble() < f.minValue || v.toDouble() > f.maxValue))
@@ -426,10 +427,10 @@ QHash<QString, QString> SettingsProviderModel::fieldErrors() const
     return out;
 }
 
-ProviderConfig SettingsProviderModel::runtimeConfig() const
+providers::ProviderConfig SettingsProviderModel::runtimeConfig() const
 {
     const providers::ProviderDescriptor d = descriptor();
-    ProviderConfig cfg = configs().value(d.id);
+    providers::ProviderConfig cfg = configs().value(d.id);
     for (const providers::ConfigField& f : d.fields)
         if (f.isSecret && f.type == providers::ConfigFieldType::Secret)
             cfg.apiKey = m_vm->draftSecret(f.secretKey).trimmed();
@@ -492,7 +493,7 @@ QString SettingsProviderModel::summaryText() const
 {
     const providers::ProviderDescriptor d = descriptor();
     if (d.id.isEmpty()) return QString();
-    const ProviderConfig cfg = configs().value(d.id);
+    const providers::ProviderConfig cfg = configs().value(d.id);
     QString label = d.displayName;
     // From the local server's well-known port we show its name (the descriptor's name is generic).
     const QUrl url(cfg.baseUrl.trimmed());

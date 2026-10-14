@@ -4,7 +4,7 @@
 
 #include "tanara/foundation/i18n/Localization.h"
 #include "tanara/foundation/log/Logging.h"
-#include "tanara/foundation/paths/Paths.h"
+#include "tanara/foundation/paths/AppPaths.h"
 #include "tanara/watcher/detect/DetectorRegistry.h"
 #include "tanara/foundation/ProcessLock.h"
 #include "RecorderTrayIcon.h"
@@ -22,8 +22,10 @@ int main(int argc, char** argv)
     tanara::initLogging(tanara::parseLogOptions(rawArgs));
 
     QApplication app(argc, argv);
+    // Organization "Tanara" in all three executables. The app name stays "Tanara Watcher" (the tray
+    // item's identity); the data folders do not depend on either (foundation/paths/AppPaths.h).
     QApplication::setApplicationName(QStringLiteral("Tanara Watcher"));
-    QApplication::setOrganizationName(QStringLiteral("RemedIT"));
+    QApplication::setOrganizationName(QStringLiteral("Tanara"));
     // No main window, so the tray icon alone keeps the process alive.
     QApplication::setQuitOnLastWindowClosed(false);
 
@@ -44,10 +46,9 @@ int main(int argc, char** argv)
     }
 
     // Single instance: PID-based lock (QLockFile handles a stale/dead PID itself).
-    // The lock lives in the metadata folder (~/.tanara, or with TANARA_HOME in the sandbox), so a
-    // sandbox watcher does not block the user's real watcher, and vice versa.
-    const QString metaDir = tanara::paths::defaultMetadataDir();
-    QDir().mkpath(metaDir);
+    // The lock lives in the state folder (with TANARA_HOME in the sandbox), so a sandbox watcher
+    // does not block the user's real watcher, and vice versa.
+    QDir().mkpath(tanara::paths::current().stateDir());
     QLockFile instanceLock(tanara::watcherLockPath());
     instanceLock.setStaleLockTime(0);   // PID-based stale detection only
     if (!instanceLock.tryLock(100)) {

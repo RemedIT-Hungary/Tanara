@@ -81,11 +81,11 @@ std::optional<VoiceModelSpec> VoiceModelRegistry::spec(const QString& id)
     return std::nullopt;
 }
 
-QString VoiceModelRegistry::resolvePath(const VoiceModelSpec& spec, const QString& metaDir,
+QString VoiceModelRegistry::resolvePath(const VoiceModelSpec& spec, const QString& modelsDir,
                                         const QString& appDir)
 {
-    const QString rel = QStringLiteral("models/") + spec.fileName;
-    const QString user = QDir(metaDir).filePath(rel);
+    const QString rel = QStringLiteral("models/") + spec.fileName;   // bundled: <appDir>/models/<file>
+    const QString user = QDir(modelsDir).filePath(spec.fileName);
     if (QFileInfo::exists(user))
         return user;
     if (!appDir.isEmpty()) {
@@ -101,51 +101,51 @@ QString VoiceModelRegistry::defaultModelFileName()
     return spec(defaultModelId())->fileName;
 }
 
-QString VoiceModelRegistry::resolveDefaultModelPath(const QString& metaDir, const QString& appDir)
+QString VoiceModelRegistry::resolveDefaultModelPath(const QString& modelsDir, const QString& appDir)
 {
     // Single resolution rule: resolvePath (for the base model).
-    return resolvePath(*spec(defaultModelId()), metaDir, appDir);
+    return resolvePath(*spec(defaultModelId()), modelsDir, appDir);
 }
 
-QVector<VoiceModelSpec> VoiceModelRegistry::available(const QString& metaDir, const QString& appDir)
+QVector<VoiceModelSpec> VoiceModelRegistry::available(const QString& modelsDir, const QString& appDir)
 {
     QVector<VoiceModelSpec> out;
     for (const VoiceModelSpec& s : builtin())
-        if (QFileInfo::exists(resolvePath(s, metaDir, appDir))) out.append(s);
+        if (QFileInfo::exists(resolvePath(s, modelsDir, appDir))) out.append(s);
     return out;
 }
 
 namespace {
-QVector<VoiceModelSpec> enabledAvailable(const QStringList& ids, const QString& metaDir, const QString& appDir)
+QVector<VoiceModelSpec> enabledAvailable(const QStringList& ids, const QString& modelsDir, const QString& appDir)
 {
     QVector<VoiceModelSpec> out;
     for (const QString& id : VoiceModelRegistry::normalizeIds(ids)) {
         const auto s = VoiceModelRegistry::spec(id);
-        if (s && QFileInfo::exists(VoiceModelRegistry::resolvePath(*s, metaDir, appDir))) out.append(*s);
+        if (s && QFileInfo::exists(VoiceModelRegistry::resolvePath(*s, modelsDir, appDir))) out.append(*s);
     }
     return out;
 }
 } // namespace
 
-QVector<VoiceModelSpec> VoiceModelRegistry::active(const QStringList& enabledIds, const QString& metaDir,
+QVector<VoiceModelSpec> VoiceModelRegistry::active(const QStringList& enabledIds, const QString& modelsDir,
                                                    const QString& appDir)
 {
-    QVector<VoiceModelSpec> out = enabledAvailable(enabledIds, metaDir, appDir);
+    QVector<VoiceModelSpec> out = enabledAvailable(enabledIds, modelsDir, appDir);
     // Fallback until WeSpeaker is downloaded: there is no usable enabled model, but CAM++ is present (it
     // is in the Windows package), so that one runs.
     if (out.isEmpty()) {
         const auto cam = spec(defaultModelId());
-        if (cam && QFileInfo::exists(resolvePath(*cam, metaDir, appDir))) out.append(*cam);
+        if (cam && QFileInfo::exists(resolvePath(*cam, modelsDir, appDir))) out.append(*cam);
     }
     return out;
 }
 
-bool VoiceModelRegistry::isFallbackActive(const QStringList& enabledIds, const QString& metaDir,
+bool VoiceModelRegistry::isFallbackActive(const QStringList& enabledIds, const QString& modelsDir,
                                           const QString& appDir)
 {
-    if (!enabledAvailable(enabledIds, metaDir, appDir).isEmpty()) return false;
+    if (!enabledAvailable(enabledIds, modelsDir, appDir).isEmpty()) return false;
     const auto cam = spec(defaultModelId());
-    return cam && QFileInfo::exists(resolvePath(*cam, metaDir, appDir));
+    return cam && QFileInfo::exists(resolvePath(*cam, modelsDir, appDir));
 }
 
 QStringList VoiceModelRegistry::normalizeIds(const QStringList& ids)

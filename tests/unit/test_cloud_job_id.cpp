@@ -103,9 +103,9 @@ void TestCloudJobId::initTestCase()
     QVERIFY(m_app->cloudLive());
     connect(m_app.get(), &app::AppController::errorOccurred, this, [](const QString& e) { qWarning("errorOccurred: %s", qPrintable(e)); });
 
-    AppSettings s = m_app->settings()->settings();
-    s.llmProviderId = cloud::ProviderId;
-    s.llmConfigs[cloud::ProviderId].type = cloud::ProviderId;
+    tanara::app::AppSettings s = m_app->settings()->settings();
+    s.providers.llm.selectedId = cloud::ProviderId;
+    s.providers.llm.configs[cloud::ProviderId].type = cloud::ProviderId;
     m_app->settings()->setSettings(s);
     QVERIFY(m_app->usesCloud(providers::WorkflowStep::Summarize));
 

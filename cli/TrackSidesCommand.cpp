@@ -213,7 +213,7 @@ int runTrackSidesCommand(const QStringList& args)
     if (lines.isEmpty()) { err() << "No transcript (transcript.segments.json) in " << folder << "\n"; return 1; }
     const SpeakerOverlay ov = editing::speakeredit::loadOverlayFor(folder, lines);
     const app::SettingsManager sm;
-    const QString userName = sm.settings().userSpeakerName;
+    const QString userName = sm.settings().recording.userSpeakerName;
 
     // Activity: from the cache if the fingerprint matches, otherwise computed (written to the folder only with --write-cache).
     const QString fp = processing::trackactivity::activityFingerprint(m, folder, frameMs);

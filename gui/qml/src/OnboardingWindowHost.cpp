@@ -92,7 +92,7 @@ bool OnboardingWindowHost::open()
 
 bool OnboardingWindowHost::shouldAutoOpen() const
 {
-    return m_controller && !m_autoOpened && !m_controller->settings()->settings().onboardingDone;
+    return m_controller && !m_autoOpened && !m_controller->settings()->settings().ui.onboardingDone;
 }
 
 bool OnboardingWindowHost::openIfNeeded()

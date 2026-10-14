@@ -14,6 +14,8 @@ PACKAGES=(
     qt6-qtmultimedia-devel qt6-qtsvg-devel qt6-qttools-devel qt6-linguist
     # voice-ID
     onnxruntime-devel
+    # OS keychain for the API keys (optional; without it: 0600 file only)
+    qtkeychain-qt6-devel
     # run-time tools used by tests (ffmpeg/ffprobe, node for the mock gateway)
     ffmpeg-free nodejs24 python3
     # needed by actions/cache and actions/checkout inside a bare container

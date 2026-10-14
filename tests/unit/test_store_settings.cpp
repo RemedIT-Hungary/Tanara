@@ -8,6 +8,7 @@
 // static-init time (QTest::qExec), so there is no main and no clash. If we switch to a
 // multi-test harness on integration, this file is easy to switch over.
 #include <QtTest>
+#include "tanara/providers/core/ProviderConfig.h"
 #include <QCoreApplication>
 #include <QTemporaryDir>
 #include <QJsonDocument>
@@ -20,7 +21,8 @@
 #include "tanara/app/SettingsManager.h"
 #include "tanara/library/store/JsonSerialization.h"
 #include "tanara/library/store/MeetingStore.h"
-#include "tanara/foundation/KeyStore.h"
+#include "tanara/foundation/secrets/SecretStore.h"
+#include "tanara/app/LegacySettings.h"
 
 using namespace tanara;
 
@@ -32,39 +34,39 @@ private slots:
     // Tanara Cloud settings round trip + old settings.json gives defaults.
     void appSettings_cloudFieldsRoundTrip()
     {
-        AppSettings s;
-        s.cloudEnabled  = true;
-        s.cloudBaseUrl  = QStringLiteral("http://127.0.0.1:8300");
-        s.cloudSttTier  = QStringLiteral("fast");
-        s.cloudLlmTier  = QStringLiteral("accurate");
-        s.cloudSttModel = QStringLiteral("soniox/stt-async-v5");
-        s.waitlistEmail = QStringLiteral("anna@example.com");
-        const AppSettings r = library::appSettingsFromJson(library::toJson(s));
-        QCOMPARE(r.cloudEnabled, true);
-        QCOMPARE(r.cloudBaseUrl, s.cloudBaseUrl);
-        QCOMPARE(r.cloudSttTier, QStringLiteral("fast"));
-        QCOMPARE(r.cloudSttModel, s.cloudSttModel);
-        QVERIFY(r.cloudLlmModel.isEmpty());
-        QCOMPARE(r.waitlistEmail, s.waitlistEmail);
+        tanara::app::AppSettings s;
+        s.cloud.enabled  = true;
+        s.cloud.baseUrl  = QStringLiteral("http://127.0.0.1:8300");
+        s.cloud.sttTier  = QStringLiteral("fast");
+        s.cloud.llmTier  = QStringLiteral("accurate");
+        s.cloud.sttModel = QStringLiteral("soniox/stt-async-v5");
+        s.cloud.waitlistEmail = QStringLiteral("anna@example.com");
+        const tanara::app::AppSettings r = tanara::app::AppSettings::fromJson(s.toJson());
+        QCOMPARE(r.cloud.enabled, true);
+        QCOMPARE(r.cloud.baseUrl, s.cloud.baseUrl);
+        QCOMPARE(r.cloud.sttTier, QStringLiteral("fast"));
+        QCOMPARE(r.cloud.sttModel, s.cloud.sttModel);
+        QVERIFY(r.cloud.llmModel.isEmpty());
+        QCOMPARE(r.cloud.waitlistEmail, s.cloud.waitlistEmail);
 
-        const AppSettings old = library::appSettingsFromJson(QJsonObject{ { QStringLiteral("audioDir"), QStringLiteral("/x") } });
-        QCOMPARE(old.cloudEnabled, false);                       // before launch: teaser
-        QCOMPARE(old.cloudSttTier, QStringLiteral("accurate"));
-        QVERIFY(old.waitlistEmail.isEmpty());
+        const tanara::app::AppSettings old = tanara::app::AppSettings::fromJson(QJsonObject{ { QStringLiteral("paths"), QJsonObject{} } });
+        QCOMPARE(old.cloud.enabled, false);                       // before launch: teaser
+        QCOMPARE(old.cloud.sttTier, QStringLiteral("accurate"));
+        QVERIFY(old.cloud.waitlistEmail.isEmpty());
     }
 
     // The "Getting started" flag goes both ways; in an old settings.json it is missing, so false.
     void appSettings_onboardingDoneRoundTrip()
     {
-        AppSettings s;
-        QCOMPARE(s.onboardingDone, false);
-        s.onboardingDone = true;
-        QCOMPARE(library::appSettingsFromJson(library::toJson(s)).onboardingDone, true);
-        const AppSettings old = library::appSettingsFromJson(QJsonObject{ { QStringLiteral("audioDir"), QStringLiteral("/x") } });
-        QCOMPARE(old.onboardingDone, false);
+        tanara::app::AppSettings s;
+        QCOMPARE(s.ui.onboardingDone, false);
+        s.ui.onboardingDone = true;
+        QCOMPARE(tanara::app::AppSettings::fromJson(s.toJson()).ui.onboardingDone, true);
+        const tanara::app::AppSettings old = tanara::app::AppSettings::fromJson(QJsonObject{ { QStringLiteral("paths"), QJsonObject{} } });
+        QCOMPARE(old.ui.onboardingDone, false);
     }
 
-    // AppSettings JSON round trip (NEW multi-provider shape).
+    // tanara::app::AppSettings JSON round trip (NEW multi-provider shape).
     // A track's start offset (Track::startOffsetMs) goes both ways in meeting.json; at 0 it is omitted.
     void track_startOffsetRoundTrip()
     {
@@ -89,95 +91,93 @@ private slots:
 
     void appSettings_jsonRoundTrip()
     {
-        AppSettings s;
-        s.audioDir        = QStringLiteral("/tmp/rec");
-        s.notesDir        = QStringLiteral("/tmp/notes");
-        s.metadataDir     = QStringLiteral("/tmp/meta");
-        s.userSpeakerName = QStringLiteral("Ádám");
-        s.languageHints   = QStringList{QStringLiteral("hu"), QStringLiteral("en")};
+        tanara::app::AppSettings s;
+        s.paths.setPrimaryRecordingRoot(QStringLiteral("/tmp/rec"));
+        s.paths.notesDir  = QStringLiteral("/tmp/notes");
+        s.paths.dataDir   = QStringLiteral("/tmp/meta");
+        s.recording.userSpeakerName = QStringLiteral("Ádám");
+        s.processing.languageHints   = QStringList{QStringLiteral("hu"), QStringLiteral("en")};
 
-        s.sttProviderId = QStringLiteral("soniox");
-        ProviderConfig stt;
+        s.providers.stt.selectedId = QStringLiteral("soniox");
+        providers::ProviderConfig stt;
         stt.type    = QStringLiteral("soniox");
         stt.baseUrl = QStringLiteral("https://api.soniox.com/v1");
         stt.model   = QStringLiteral("stt-async-v5");
         stt.apiKey  = QStringLiteral("SECRET-should-not-persist");
-        s.sttConfigs.insert(QStringLiteral("soniox"), stt);
+        s.providers.stt.configs.insert(QStringLiteral("soniox"), stt);
 
-        s.llmProviderId = QStringLiteral("openai-compat");
-        ProviderConfig llm;
+        s.providers.llm.selectedId = QStringLiteral("openai-compat");
+        providers::ProviderConfig llm;
         llm.type    = QStringLiteral("openai-compat");
         llm.baseUrl = QStringLiteral("http://localhost:1234/v1");
         llm.model   = QStringLiteral("gemma-4-12b");
         llm.apiKey  = QStringLiteral("LLM-SECRET-should-not-persist");
-        s.llmConfigs.insert(QStringLiteral("openai-compat"), llm);
+        s.providers.llm.configs.insert(QStringLiteral("openai-compat"), llm);
 
-        const QJsonObject o = library::toJson(s);
-        const AppSettings r = library::appSettingsFromJson(o);
+        const QJsonObject o = s.toJson();
+        const tanara::app::AppSettings r = tanara::app::AppSettings::fromJson(o);
 
-        QCOMPARE(r.audioDir, s.audioDir);
-        QCOMPARE(r.notesDir, s.notesDir);
-        QCOMPARE(r.metadataDir, s.metadataDir);
-        QCOMPARE(r.userSpeakerName, s.userSpeakerName);
-        QCOMPARE(r.languageHints, s.languageHints);
+        QVERIFY(r.paths == s.paths);
+        QCOMPARE(r.recording.userSpeakerName, s.recording.userSpeakerName);
+        QCOMPARE(r.processing.languageHints, s.processing.languageHints);
 
         // The selected provider ids come through.
-        QCOMPARE(r.sttProviderId, s.sttProviderId);
-        QCOMPARE(r.llmProviderId, s.llmProviderId);
+        QCOMPARE(r.providers.stt.selectedId, s.providers.stt.selectedId);
+        QCOMPARE(r.providers.llm.selectedId, s.providers.llm.selectedId);
 
         // The selected configs' fields come through (from the map / by accessor).
-        QCOMPARE(r.sttSelected().type,    s.sttSelected().type);
-        QCOMPARE(r.sttSelected().baseUrl, s.sttSelected().baseUrl);
-        QCOMPARE(r.sttSelected().model,   s.sttSelected().model);
-        QCOMPARE(r.llmSelected().model,   s.llmSelected().model);
-        QVERIFY(r.sttConfigs.contains(QStringLiteral("soniox")));
-        QVERIFY(r.llmConfigs.contains(QStringLiteral("openai-compat")));
+        QCOMPARE(r.providers.stt.selected().type,    s.providers.stt.selected().type);
+        QCOMPARE(r.providers.stt.selected().baseUrl, s.providers.stt.selected().baseUrl);
+        QCOMPARE(r.providers.stt.selected().model,   s.providers.stt.selected().model);
+        QCOMPARE(r.providers.llm.selected().model,   s.providers.llm.selected().model);
+        QVERIFY(r.providers.stt.configs.contains(QStringLiteral("soniox")));
+        QVERIFY(r.providers.llm.configs.contains(QStringLiteral("openai-compat")));
 
         // apiKey is NEVER persisted into the JSON, not into the providers block either.
-        const QJsonObject sttProv =
-            o.value(QStringLiteral("sttProviders")).toObject()
-             .value(QStringLiteral("soniox")).toObject();
+        const QJsonObject provs = o.value(QStringLiteral("providers")).toObject();
+        const QJsonObject sttProv = provs.value(QStringLiteral("stt")).toObject().value(QStringLiteral("configs"))
+                                        .toObject().value(QStringLiteral("soniox")).toObject();
+        QCOMPARE(sttProv.value(QStringLiteral("model")).toString(), QStringLiteral("stt-async-v5"));
         QVERIFY(!sttProv.contains(QStringLiteral("apiKey")));
-        const QJsonObject llmProv =
-            o.value(QStringLiteral("llmProviders")).toObject()
-             .value(QStringLiteral("openai-compat")).toObject();
+        const QJsonObject llmProv = provs.value(QStringLiteral("llm")).toObject().value(QStringLiteral("configs"))
+                                        .toObject().value(QStringLiteral("openai-compat")).toObject();
         QVERIFY(!llmProv.contains(QStringLiteral("apiKey")));
 
-        QVERIFY(r.sttSelected().apiKey.isEmpty());
-        QVERIFY(r.llmSelected().apiKey.isEmpty());
+        QVERIFY(r.providers.stt.selected().apiKey.isEmpty());
+        QVERIFY(r.providers.llm.selected().apiKey.isEmpty());
     }
 
     // JSON round trip of the meeting watcher fields (with non-default values).
     void appSettings_detectorRoundTrip()
     {
-        AppSettings s;
-        s.detectorEnabled     = false;
-        s.detectorIntervalSec = 15;
-        s.watcherAutostart    = true;
-        s.detectorId          = QStringLiteral("linux-capture");
-        s.knownCallApps       = QStringList{QStringLiteral("zoom"), QStringLiteral("jitsi")};
+        tanara::app::AppSettings s;
+        s.watcher.detectorEnabled     = false;
+        s.watcher.detectorIntervalSec = 15;
+        s.watcher.autostart    = true;
+        s.watcher.detectorId          = QStringLiteral("linux-capture");
+        s.watcher.knownCallApps       = QStringList{QStringLiteral("zoom"), QStringLiteral("jitsi")};
 
-        const AppSettings r = library::appSettingsFromJson(library::toJson(s));
+        const tanara::app::AppSettings r = tanara::app::AppSettings::fromJson(s.toJson());
 
-        QCOMPARE(r.detectorEnabled, false);
-        QCOMPARE(r.detectorIntervalSec, 15);
-        QCOMPARE(r.watcherAutostart, true);
-        QCOMPARE(r.detectorId, QStringLiteral("linux-capture"));
-        QCOMPARE(r.knownCallApps, (QStringList{QStringLiteral("zoom"), QStringLiteral("jitsi")}));
+        QCOMPARE(r.watcher.detectorEnabled, false);
+        QCOMPARE(r.watcher.detectorIntervalSec, 15);
+        QCOMPARE(r.watcher.autostart, true);
+        QCOMPARE(r.watcher.detectorId, QStringLiteral("linux-capture"));
+        QCOMPARE(r.watcher.knownCallApps, (QStringList{QStringLiteral("zoom"), QStringLiteral("jitsi")}));
     }
 
     // Back-compat: an (old) JSON without the watcher fields loads with the defaults.
     void appSettings_detectorDefaultsWhenAbsent()
     {
-        const AppSettings d;                          // built-in defaults
-        const AppSettings r = library::appSettingsFromJson(QJsonObject{});   // empty JSON
-        QCOMPARE(r.detectorEnabled, d.detectorEnabled);
-        QCOMPARE(r.detectorIntervalSec, d.detectorIntervalSec);
-        QCOMPARE(r.watcherAutostart, d.watcherAutostart);
-        QVERIFY(!r.knownCallApps.isEmpty());          // the default list stays
+        const tanara::app::AppSettings d;                          // built-in defaults
+        const tanara::app::AppSettings r = tanara::app::AppSettings::fromJson(QJsonObject{});   // empty JSON
+        QCOMPARE(r.watcher.detectorEnabled, d.watcher.detectorEnabled);
+        QCOMPARE(r.watcher.detectorIntervalSec, d.watcher.detectorIntervalSec);
+        QCOMPARE(r.watcher.autostart, d.watcher.autostart);
+        QVERIFY(!r.watcher.knownCallApps.isEmpty());          // the default list stays
     }
 
-    // The old {stt:{...},llm:{...}} shape migrates into the NEW maps.
+    // The old {stt:{...},llm:{...}} shape migrates into the NEW maps (tanara-cli settings import-legacy).
     void appSettings_migratesOldShape()
     {
         // A hand-built OLD-shape JSON (no sttProviders/llmProviders).
@@ -197,23 +197,23 @@ private slots:
         o[QStringLiteral("stt")]             = oldStt;
         o[QStringLiteral("llm")]             = oldLlm;
 
-        const AppSettings r = library::appSettingsFromJson(o);
+        const tanara::app::AppSettings r = app::legacy::importFlat(o, tanara::app::AppSettings{});
 
         // The type became the id (an empty type falls back to "soniox"/"openai-compat").
-        QCOMPARE(r.sttProviderId, QStringLiteral("soniox"));
-        QCOMPARE(r.llmProviderId, QStringLiteral("openai-compat"));
+        QCOMPARE(r.providers.stt.selectedId, QStringLiteral("soniox"));
+        QCOMPARE(r.providers.llm.selectedId, QStringLiteral("openai-compat"));
 
         // The configs went into the map under the id.
-        QVERIFY(r.sttConfigs.contains(QStringLiteral("soniox")));
-        QVERIFY(r.llmConfigs.contains(QStringLiteral("openai-compat")));
+        QVERIFY(r.providers.stt.configs.contains(QStringLiteral("soniox")));
+        QVERIFY(r.providers.llm.configs.contains(QStringLiteral("openai-compat")));
 
         // The fields are there (baseUrl/model), through the selected config.
-        QCOMPARE(r.sttSelected().type,    QStringLiteral("soniox"));
-        QCOMPARE(r.sttSelected().baseUrl, QStringLiteral("https://api.soniox.com/v1"));
-        QCOMPARE(r.sttSelected().model,   QStringLiteral("stt-async-v5"));
-        QCOMPARE(r.llmSelected().type,    QStringLiteral("openai-compat"));
-        QCOMPARE(r.llmSelected().baseUrl, QStringLiteral("http://localhost:1234/v1"));
-        QCOMPARE(r.llmSelected().model,   QStringLiteral("gemma-4-12b"));
+        QCOMPARE(r.providers.stt.selected().type,    QStringLiteral("soniox"));
+        QCOMPARE(r.providers.stt.selected().baseUrl, QStringLiteral("https://api.soniox.com/v1"));
+        QCOMPARE(r.providers.stt.selected().model,   QStringLiteral("stt-async-v5"));
+        QCOMPARE(r.providers.llm.selected().type,    QStringLiteral("openai-compat"));
+        QCOMPARE(r.providers.llm.selected().baseUrl, QStringLiteral("http://localhost:1234/v1"));
+        QCOMPARE(r.providers.llm.selected().model,   QStringLiteral("gemma-4-12b"));
     }
 
     // Old shape with an EMPTY type: fallback id ("soniox"/"openai-compat").
@@ -231,26 +231,26 @@ private slots:
         o[QStringLiteral("stt")] = oldStt;
         o[QStringLiteral("llm")] = oldLlm;
 
-        const AppSettings r = library::appSettingsFromJson(o);
+        const tanara::app::AppSettings r = app::legacy::importFlat(o, tanara::app::AppSettings{});
 
-        QCOMPARE(r.sttProviderId, QStringLiteral("soniox"));
-        QCOMPARE(r.llmProviderId, QStringLiteral("openai-compat"));
-        QVERIFY(r.sttConfigs.contains(QStringLiteral("soniox")));
-        QVERIFY(r.llmConfigs.contains(QStringLiteral("openai-compat")));
-        QCOMPARE(r.sttSelected().model, QStringLiteral("stt-async-v5"));
-        QCOMPARE(r.llmSelected().model, QStringLiteral("gemma-4-12b"));
+        QCOMPARE(r.providers.stt.selectedId, QStringLiteral("soniox"));
+        QCOMPARE(r.providers.llm.selectedId, QStringLiteral("openai-compat"));
+        QVERIFY(r.providers.stt.configs.contains(QStringLiteral("soniox")));
+        QVERIFY(r.providers.llm.configs.contains(QStringLiteral("openai-compat")));
+        QCOMPARE(r.providers.stt.selected().model, QStringLiteral("stt-async-v5"));
+        QCOMPARE(r.providers.llm.selected().model, QStringLiteral("gemma-4-12b"));
     }
 
     // Default languageHints == ["hu"] + the selected provider config's defaults.
     void defaults_languageHintsHu()
     {
-        const AppSettings d = app::SettingsManager::defaults(QStringLiteral("/tmp/x"));
-        QCOMPARE(d.languageHints, (QStringList{QStringLiteral("hu")}));
-        QVERIFY(!d.userSpeakerName.trimmed().isEmpty());   // the OS account's name (no hard-coded name)
-        QCOMPARE(d.sttProviderId, QStringLiteral("soniox"));
-        QCOMPARE(d.llmProviderId, QStringLiteral("openai-compat"));
-        QCOMPARE(d.sttSelected().type, QStringLiteral("soniox"));
-        QCOMPARE(d.llmSelected().baseUrl, QStringLiteral("http://localhost:1234/v1"));
+        const tanara::app::AppSettings d = app::SettingsManager::defaults();
+        QCOMPARE(d.processing.languageHints, (QStringList{QStringLiteral("hu")}));
+        QVERIFY(!d.recording.userSpeakerName.trimmed().isEmpty());   // the OS account's name (no hard-coded name)
+        QCOMPARE(d.providers.stt.selectedId, QStringLiteral("soniox"));
+        QCOMPARE(d.providers.llm.selectedId, QStringLiteral("openai-compat"));
+        QCOMPARE(d.providers.stt.selected().type, QStringLiteral("soniox"));
+        QCOMPARE(d.providers.llm.selected().baseUrl, QStringLiteral("http://localhost:1234/v1"));
     }
 
     // SettingsManager: loads, writes defaults, reloads and matches.
@@ -263,18 +263,18 @@ private slots:
         app::SettingsManager mgr(meta);
         // The constructor writes the default if there is no file.
         QVERIFY(QFile::exists(mgr.settingsFilePath()));
-        QCOMPARE(mgr.settings().languageHints, (QStringList{QStringLiteral("hu")}));
+        QCOMPARE(mgr.settings().processing.languageHints, (QStringList{QStringLiteral("hu")}));
 
-        AppSettings s = mgr.settings();
-        s.userSpeakerName = QStringLiteral("Béla");
+        tanara::app::AppSettings s = mgr.settings();
+        s.recording.userSpeakerName = QStringLiteral("Béla");
         mgr.setSettings(s);
 
         app::SettingsManager mgr2(meta);
-        QCOMPARE(mgr2.settings().userSpeakerName, QStringLiteral("Béla"));
+        QCOMPARE(mgr2.settings().recording.userSpeakerName, QStringLiteral("Béla"));
     }
 
-    // PRODUCTION PATH: a settings.json in the old {stt:{...},llm:{...}} shape loaded from disk
-    // (SettingsManager::load) migrates into the NEW maps, and the apiKey is NOT loaded from JSON.
+    // An old-shape ({stt:{...},llm:{...}}) settings.json on disk: the app does NOT migrate it (D8:
+    // defaults); the one-time legacy import takes it over, and the apiKey is NOT loaded from JSON.
     void settingsManager_migratesOldShapeFromDisk()
     {
         QTemporaryDir tmp;
@@ -308,24 +308,30 @@ private slots:
         f.write(QJsonDocument(root).toJson());
         f.close();
 
-        // Production load.
+        // The app: defaults (old format), the file untouched.
         app::SettingsManager mgr(meta);
-        const AppSettings r = mgr.settings();
+        QVERIFY(mgr.legacyFormat());
+        QCOMPARE(mgr.settings().recording.userSpeakerName, app::SettingsManager::defaults().recording.userSpeakerName);
+        // The legacy import.
+        QFile in(path);
+        QVERIFY(in.open(QIODevice::ReadOnly));
+        const tanara::app::AppSettings r = app::legacy::importFlat(QJsonDocument::fromJson(in.readAll()).object(),
+                                                                  app::SettingsManager::defaults());
 
         // type becomes id; the config went into the map with the preserved baseUrl/model.
-        QCOMPARE(r.sttProviderId, QStringLiteral("soniox"));
-        QCOMPARE(r.llmProviderId, QStringLiteral("openai-compat"));
-        QVERIFY(r.sttConfigs.contains(QStringLiteral("soniox")));
-        QVERIFY(r.llmConfigs.contains(QStringLiteral("openai-compat")));
-        QCOMPARE(r.sttSelected().baseUrl, QStringLiteral("https://api.soniox.com/v1"));
-        QCOMPARE(r.sttSelected().model,   QStringLiteral("stt-async-v5"));
-        QCOMPARE(r.llmSelected().baseUrl, QStringLiteral("http://localhost:1234/v1"));
-        QCOMPARE(r.llmSelected().model,   QStringLiteral("gemma-4-12b"));
-        QCOMPARE(r.llmSelected().maxTokens, 4096);
+        QCOMPARE(r.providers.stt.selectedId, QStringLiteral("soniox"));
+        QCOMPARE(r.providers.llm.selectedId, QStringLiteral("openai-compat"));
+        QVERIFY(r.providers.stt.configs.contains(QStringLiteral("soniox")));
+        QVERIFY(r.providers.llm.configs.contains(QStringLiteral("openai-compat")));
+        QCOMPARE(r.providers.stt.selected().baseUrl, QStringLiteral("https://api.soniox.com/v1"));
+        QCOMPARE(r.providers.stt.selected().model,   QStringLiteral("stt-async-v5"));
+        QCOMPARE(r.providers.llm.selected().baseUrl, QStringLiteral("http://localhost:1234/v1"));
+        QCOMPARE(r.providers.llm.selected().model,   QStringLiteral("gemma-4-12b"));
+        QCOMPARE(r.providers.llm.selected().maxTokens, 4096);
 
         // apiKey is NEVER loaded from JSON.
-        QVERIFY(r.sttSelected().apiKey.isEmpty());
-        QVERIFY(r.llmSelected().apiKey.isEmpty());
+        QVERIFY(r.providers.stt.selected().apiKey.isEmpty());
+        QVERIFY(r.providers.llm.selected().apiKey.isEmpty());
     }
 
     // SAFETY NET (production path): a new-shape JSON where sttProviderId points to an id that
@@ -353,11 +359,14 @@ private slots:
         QJsonObject llmProviders;
         llmProviders[QStringLiteral("openai-compat")] = llmCfg;
 
+        QJsonObject providersSec;
+        providersSec[QStringLiteral("stt")] = QJsonObject{{QStringLiteral("selected"), QStringLiteral("ghost-stt")}, // stale!
+                                                         {QStringLiteral("configs"), sttProviders}};
+        providersSec[QStringLiteral("llm")] = QJsonObject{{QStringLiteral("selected"), QStringLiteral("openai-compat")},
+                                                         {QStringLiteral("configs"), llmProviders}};
         QJsonObject root;
-        root[QStringLiteral("sttProviderId")] = QStringLiteral("ghost-stt"); // stale!
-        root[QStringLiteral("sttProviders")]  = sttProviders;
-        root[QStringLiteral("llmProviderId")] = QStringLiteral("openai-compat");
-        root[QStringLiteral("llmProviders")]  = llmProviders;
+        root[QStringLiteral("version")] = 2;
+        root[QStringLiteral("providers")] = providersSec;
 
         const QString path = QDir(meta).filePath(QStringLiteral("settings.json"));
         QFile f(path);
@@ -366,35 +375,35 @@ private slots:
         f.close();
 
         app::SettingsManager mgr(meta);
-        const AppSettings r = mgr.settings();
+        const tanara::app::AppSettings r = mgr.settings();
 
         // It fell back from the stale id to a sensible, NON-empty selection.
-        QVERIFY(!r.sttProviderId.isEmpty());
-        QVERIFY(r.sttConfigs.contains(r.sttProviderId));
-        QVERIFY(!r.sttSelected().type.isEmpty());
-        QVERIFY(!r.sttSelected().baseUrl.isEmpty());
+        QVERIFY(!r.providers.stt.selectedId.isEmpty());
+        QVERIFY(r.providers.stt.configs.contains(r.providers.stt.selectedId));
+        QVERIFY(!r.providers.stt.selected().type.isEmpty());
+        QVERIFY(!r.providers.stt.selected().baseUrl.isEmpty());
         // The single existing config ("soniox") is the fallback used.
-        QCOMPARE(r.sttProviderId, QStringLiteral("soniox"));
+        QCOMPARE(r.providers.stt.selectedId, QStringLiteral("soniox"));
     }
 
-    // KeyStore: set/get/remove file-based.
+    // FileSecretStore: set/get/remove file-based.
     void keyStore_setGetRemove()
     {
         QTemporaryDir tmp;
         QVERIFY(tmp.isValid());
         const QString path = tmp.filePath(QStringLiteral("secrets.json"));
 
-        KeyStore ks(path);
+        FileSecretStore ks(path);
         QVERIFY(!ks.contains(QStringLiteral("soniox.apiKey")));
         ks.set(QStringLiteral("soniox.apiKey"), QStringLiteral("abc123"));
         QCOMPARE(ks.get(QStringLiteral("soniox.apiKey")), QStringLiteral("abc123"));
 
         // Another instance on the same file sees the value.
-        KeyStore ks2(path);
+        FileSecretStore ks2(path);
         QCOMPARE(ks2.get(QStringLiteral("soniox.apiKey")), QStringLiteral("abc123"));
 
         ks2.remove(QStringLiteral("soniox.apiKey"));
-        KeyStore ks3(path);
+        FileSecretStore ks3(path);
         QVERIFY(!ks3.contains(QStringLiteral("soniox.apiKey")));
     }
 };

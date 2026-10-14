@@ -18,6 +18,7 @@
 // (can be tried before saving). Changing any field makes the previous test's result stale.
 //
 #include "tanara/domain/Types.h"
+#include "tanara/providers/core/ProviderConfig.h"
 #include "tanara/providers/core/ConnectionTester.h"
 #include "tanara/providers/chat/LlmServer.h"
 #include "tanara/providers/core/ProviderDescriptor.h"
@@ -62,11 +63,11 @@ class SettingsProviderModel : public QObject {
     Q_PROPERTY(QString warningText READ warningText NOTIFY testChanged)   // success, but e.g. the model is not in the list
     Q_PROPERTY(bool fetching READ fetching NOTIFY fetchChanged)
     Q_PROPERTY(QString fetchError READ fetchError NOTIFY fetchChanged)
-    // The model's "thinking" for the summary (ProviderConfig::reasoning): "auto" | "off" |
+    // The model's "thinking" for the summary (providers::ProviderConfig::reasoning): "auto" | "off" |
     // "on". Only for the own-key LLM provider (in the Advanced part); the cloud decides itself.
     Q_PROPERTY(bool reasoningAvailable READ reasoningAvailable NOTIFY providerChanged)
     Q_PROPERTY(QString reasoning READ reasoning WRITE setReasoning NOTIFY valuesChanged)
-    // The model's context (ProviderConfig::contextLength): 0 = automatic, otherwise tokens.
+    // The model's context (providers::ProviderConfig::contextLength): 0 = automatic, otherwise tokens.
     // Only for the own-key LLM provider (in the Advanced part). contextOptions:
     // [{ value ("0" | "16384" ...), label }]: the standard steps (+ the stored custom value).
     Q_PROPERTY(bool contextAvailable READ contextAvailable NOTIFY providerChanged)
@@ -139,9 +140,9 @@ public:
     tanara::providers::ProviderDescriptor descriptor(const QString& id) const;
     QVector<tanara::providers::ProviderDescriptor> allDescriptors() const;
     // Fills the missing (empty) fields with the descriptor's defaults.
-    void fillDefaults(tanara::ProviderConfig& cfg, const tanara::providers::ProviderDescriptor& d) const;
+    void fillDefaults(tanara::providers::ProviderConfig& cfg, const tanara::providers::ProviderDescriptor& d) const;
     // The draft's runtime config for the selected provider (with the key).
-    tanara::ProviderConfig runtimeConfig() const;
+    tanara::providers::ProviderConfig runtimeConfig() const;
     // Field errors for the pre-save validation: key -> text.
     QHash<QString, QString> fieldErrors() const;
     // The draft / the provider changed (reload, discard, external change).
@@ -171,7 +172,7 @@ signals:
 private:
     QVariantList fieldList(bool advanced) const;
     void bumpValues() { ++m_revision; emit valuesChanged(); }
-    QMap<QString, tanara::ProviderConfig>& configs() const;
+    QMap<QString, tanara::providers::ProviderConfig>& configs() const;
     QString& selectedId() const;
     void invalidateTest();
     void onFinished(int id, const tanara::providers::ConnectionTestResult& result);

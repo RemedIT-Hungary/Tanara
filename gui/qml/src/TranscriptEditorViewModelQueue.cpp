@@ -40,7 +40,7 @@ void TranscriptEditorViewModel::flushPendingReview()
 bool TranscriptEditorViewModel::reviewAutoPlay() const
 {
     const tanara::app::AppController* c = m_controller ? m_controller.data() : AppContext::instance()->controller();
-    if (c && c->settings() && !demo()) return c->settings()->settings().reviewAutoPlay;
+    if (c && c->settings() && !demo()) return c->settings()->settings().ui.reviewAutoPlay;
     return m_reviewAutoPlay;
 }
 
@@ -49,8 +49,8 @@ void TranscriptEditorViewModel::setReviewAutoPlay(bool on)
     if (on == reviewAutoPlay()) return;
     tanara::app::AppController* c = m_controller ? m_controller.data() : AppContext::instance()->controller();
     if (c && c->settings() && !demo()) {
-        tanara::AppSettings s = c->settings()->settings();
-        s.reviewAutoPlay = on;
+        tanara::app::AppSettings s = c->settings()->settings();
+        s.ui.reviewAutoPlay = on;
         c->settings()->setSettings(s);
     }
     m_reviewAutoPlay = on;

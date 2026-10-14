@@ -1,4 +1,5 @@
 #include "ShellActions.h"
+#include "tanara/providers/core/ProviderConfig.h"
 
 #include "AppContext.h"
 #include "LibraryDemoData.h"

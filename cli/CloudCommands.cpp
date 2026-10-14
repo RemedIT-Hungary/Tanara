@@ -77,15 +77,15 @@ void printAccount(const cloud::AccountInfo& a, cloud::CloudAccount* acc)
 
 void setProviders(app::AppController& app, bool cloud)
 {
-    AppSettings s = app.settings()->settings();
+    tanara::app::AppSettings s = app.settings()->settings();
     if (cloud) {
-        s.sttProviderId = cloud::ProviderId;
-        s.llmProviderId = cloud::ProviderId;
-        s.sttConfigs[cloud::ProviderId].type = cloud::ProviderId;
-        s.llmConfigs[cloud::ProviderId].type = cloud::ProviderId;
+        s.providers.stt.selectedId = cloud::ProviderId;
+        s.providers.llm.selectedId = cloud::ProviderId;
+        s.providers.stt.configs[cloud::ProviderId].type = cloud::ProviderId;
+        s.providers.llm.configs[cloud::ProviderId].type = cloud::ProviderId;
     } else {
-        s.sttProviderId = QStringLiteral("soniox");
-        s.llmProviderId = QStringLiteral("openai-compat");
+        s.providers.stt.selectedId = QStringLiteral("soniox");
+        s.providers.llm.selectedId = QStringLiteral("openai-compat");
     }
     app.settings()->setSettings(s);
 }
@@ -209,19 +209,19 @@ int runCloudCommand(app::AppController& app, const QStringList& args)
         if ((kind != QLatin1String("stt") && kind != QLatin1String("llm")) || (tier != QLatin1String("fast") && tier != QLatin1String("accurate"))) {
             err() << QStringLiteral("Usage: cloud tier <stt|llm> <fast|accurate>") << "\n"; return 1;
         }
-        AppSettings s = app.settings()->settings();
-        if (kind == QLatin1String("stt")) { s.cloudSttTier = tier; s.cloudSttModel.clear(); }
-        else { s.cloudLlmTier = tier; s.cloudLlmModel.clear(); }
+        tanara::app::AppSettings s = app.settings()->settings();
+        if (kind == QLatin1String("stt")) { s.cloud.sttTier = tier; s.cloud.sttModel.clear(); }
+        else { s.cloud.llmTier = tier; s.cloud.llmModel.clear(); }
         app.settings()->setSettings(s);
         out() << QStringLiteral("Tier set: %1 = %2").arg(kind, tier) << "\n";
         return 0;
     }
     if (sub == QLatin1String("lang")) {
-        AppSettings s = app.settings()->settings();
+        tanara::app::AppSettings s = app.settings()->settings();
         const QString code = args.value(3);
-        s.languageHints = code.isEmpty() || code == QLatin1String("auto") ? QStringList() : QStringList{ code };
+        s.processing.languageHints = code.isEmpty() || code == QLatin1String("auto") ? QStringList() : QStringList{ code };
         app.settings()->setSettings(s);
-        out() << QStringLiteral("Meeting language: %1").arg(s.languageHints.isEmpty() ? QStringLiteral("automatic") : code) << "\n";
+        out() << QStringLiteral("Meeting language: %1").arg(s.processing.languageHints.isEmpty() ? QStringLiteral("automatic") : code) << "\n";
         return 0;
     }
     if (sub == QLatin1String("models")) {
@@ -232,7 +232,7 @@ int runCloudCommand(app::AppController& app, const QStringList& args)
         acc->fetchModels();
         loop.exec();
         if (!ok) return fail(e);
-        const QString hint = app.settings()->settings().languageHints.value(0);
+        const QString hint = app.settings()->settings().processing.languageHints.value(0);
         for (const cloud::CloudModel& m : acc->models()) {
             const QString price = m.kind == QLatin1String("stt")
                 ? QStringLiteral("%1 / hour").arg(money(m.perHour, cloud::MoneyStyle::Charge))
@@ -305,7 +305,7 @@ int runCloudCommand(app::AppController& app, const QStringList& args)
         QEventLoop loop; int rc = 1;
         QObject::connect(acc, &cloud::CloudAccount::waitlistJoined, &loop, [&]() {
             out() << QStringLiteral("We sent you a confirmation e-mail.") << "\n"; rc = 0;
-            AppSettings st = app.settings()->settings(); st.waitlistEmail = s.email.trimmed(); app.settings()->setSettings(st);
+            tanara::app::AppSettings st = app.settings()->settings(); st.cloud.waitlistEmail = s.email.trimmed(); app.settings()->setSettings(st);
             loop.quit(); });
         QObject::connect(acc, &cloud::CloudAccount::waitlistFailed, &loop, [&](const cloud::CloudError& e) {
             if (e.kind == cloud::CloudErrorKind::DisposableEmail) { err() << QStringLiteral("Disposable e-mail addresses are not accepted.") << "\n"; rc = 2; }

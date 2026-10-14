@@ -1,7 +1,7 @@
 #pragma once
 //
 // VoiceModelDownloader: downloads the speaker models (ONNX) from VoiceModelSpec::downloadUrl to
-// <metaDir>/models/<fileName>. The shared downloader of the CLI (`voice-models fetch`) and the GUI
+// <modelsDir>/<fileName>. The shared downloader of the CLI (`voice-models fetch`) and the GUI
 // (Settings > Speakers, Getting started).
 //
 //  - asynchronous (QNetworkAccessManager on the caller's thread, no own event loop): does not block
@@ -58,8 +58,8 @@ public:
     // The NAM in use (not owned; nullptr = its own instance). Test seam.
     void setNetworkAccessManager(QNetworkAccessManager* nam);
 
-    // The download target: <metaDir>/models/<fileName> (the first resolution place of VoiceModelRegistry).
-    static QString targetPath(const VoiceModelSpec& spec, const QString& metaDir);
+    // The download target: <modelsDir>/<fileName> (the first resolution place of VoiceModelRegistry).
+    static QString targetPath(const VoiceModelSpec& spec, const QString& modelsDir);
 
     // Starts a download into the `target` file. true: it started (finished comes at the end). false: it
     // did not start (NoUrl / Exists / Write / Offline); then the finished(id, false, ...) signal is emitted
@@ -93,10 +93,10 @@ public:
     bool isVerifying(const QString& id) const;
     // Result of the id's last finished verification (nullopt: there has been none).
     std::optional<VerifyResult> lastVerify(const QString& id) const;
-    // Deletes the DOWNLOADED model file: only <metaDir>/models/<fileName> (targetPath); does not touch the
+    // Deletes the DOWNLOADED model file: only <modelsDir>/<fileName> (targetPath); does not touch the
     // one bundled in the package (<appDir>/models). false (+ *error, English): no downloaded file / not
     // deletable. The caller excludes a running download / verification (isRunning / isVerifying).
-    static bool deleteModelFile(const VoiceModelSpec& spec, const QString& metaDir, QString* error = nullptr);
+    static bool deleteModelFile(const VoiceModelSpec& spec, const QString& modelsDir, QString* error = nullptr);
 
 signals:
     void started(const QString& id);

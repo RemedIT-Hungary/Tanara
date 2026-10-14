@@ -8,6 +8,7 @@
 // NO diarization: every token gets speaker "1" ("Speaker 1"); the language is detected by the server if
 // the config's "language" field is empty.
 #include "tanara/providers/stt/ISttProvider.h"
+#include "tanara/providers/core/ProviderConfig.h"
 #include "tanara/domain/Types.h"
 
 #include <QObject>

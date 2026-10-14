@@ -1,7 +1,7 @@
 #pragma once
 //
 // ProcessLock (formerly RecordingLock): a PID-checked marker file between processes, today the
-// "is a recording going on" lock (~/.tanara/recording.lock).
+// "is a recording going on" lock (<state>/recording.lock).
 // The recorder (tanara --record) takes it at startup and releases it at shutdown; the watcher
 // reads it so it does not offer to record if one is already running. Headless (core).
 //
@@ -20,8 +20,9 @@ namespace tanara {
 // The scope suffix: empty if there is no TANARA_HOME (the real instance's name is unchanged);
 // otherwise "-<first 12 hex digits of the SHA-1 of the resolved folder>". For local socket / IPC names.
 QString instanceScopeSuffix();
-// The lock files live in the (resolved) metadata folder, so with TANARA_HOME in the sandbox.
-QString recordingLockPath(const QString& configuredMetadataDir = QString());
+// The lock files live in AppPaths' state folder (settings-independent), so every process agrees,
+// and with TANARA_HOME they are in the sandbox.
+QString recordingLockPath();
 QString watcherLockPath();
 
 class ProcessLock {

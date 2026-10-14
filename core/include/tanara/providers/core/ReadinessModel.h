@@ -4,7 +4,8 @@
 // missing?". What is missing may be meeting state (no audio track / no transcript), provider config (a
 // required field of the selected provider is missing), or auth (a Login provider, not signed in).
 // One source of truth: the GUI button enabling AND AppController's guards both use it. Does NOT link Widgets.
-#include "tanara/domain/Types.h"
+#include "tanara/domain/Meeting.h"
+#include "tanara/providers/core/ProviderSettings.h"
 
 #include <QString>
 #include <functional>
@@ -27,16 +28,16 @@ struct ReadinessResult {
 
 class ReadinessModel {
 public:
-    // hasSecret(secretKey): whether there is a (non-empty) secret in the KeyStore for the given key.
-    // So the ReadinessModel does not depend on the KeyStore's concrete type / constness.
+    // hasSecret(secretKey): whether there is a (non-empty) secret in the SecretStore for the given key.
+    // So the ReadinessModel does not depend on the SecretStore's concrete type / constness.
     using SecretProbe = std::function<bool(const QString& secretKey)>;
 
-    ReadinessModel(const AppSettings& settings, SecretProbe hasSecret);
+    ReadinessModel(const ProviderSettings& settings, SecretProbe hasSecret);
 
     ReadinessResult check(WorkflowStep step, const Meeting& meeting) const;
 
 private:
-    AppSettings m_settings;     // a value type, a copy is enough
+    ProviderSettings m_settings;     // a value type, a copy is enough
     SecretProbe m_hasSecret;
 };
 

@@ -106,7 +106,7 @@ int runReviewCommand(const QStringList& args)
     in.lines = lines;
     in.overlay = editing::speakeredit::loadOverlayFor(folder, lines);
     const app::SettingsManager sm;
-    in.userName = sm.settings().userSpeakerName;
+    in.userName = sm.settings().recording.userSpeakerName;
 
     // Embeddings: from the cache (the requested model, else the default, else whichever exists).
     const processing::UtteranceEmbeddingCache cache = processing::UtteranceEmbeddingCache::load(folder, in.overlay.transcriptFingerprint);
