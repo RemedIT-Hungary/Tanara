@@ -115,6 +115,41 @@ void OverviewViewModel::removeParticipant(const QString& id)
     reload();
 }
 
+bool OverviewViewModel::nameParticipant(const QString& id, const QString& personIdOrName)
+{
+    if (!m_facade || id.isEmpty() || personIdOrName.trimmed().isEmpty())
+        return false;
+    const bool ok = m_facade->nameParticipant(m_meetingId, id, personIdOrName.trimmed());
+    reload();
+    return ok;
+}
+
+bool OverviewViewModel::mergeParticipantInto(const QString& fromId, const QString& intoId)
+{
+    if (!m_facade || fromId.isEmpty() || intoId.isEmpty())
+        return false;
+    const bool ok = m_facade->mergeParticipantInto(m_meetingId, fromId, intoId);
+    reload();
+    return ok;
+}
+
+bool OverviewViewModel::confirmParticipant(const QString& id, bool confirmed)
+{
+    if (!m_facade || id.isEmpty())
+        return false;
+    const bool ok = m_facade->confirmParticipant(m_meetingId, id, confirmed);
+    reload();
+    return ok;
+}
+
+QVariantMap OverviewViewModel::setSelfParticipant(const QString& id)
+{
+    QString why;
+    const bool ok = m_facade && !id.isEmpty() && m_facade->setSelfParticipant(m_meetingId, id, &why);
+    reload();
+    return {{QStringLiteral("ok"), ok}, {QStringLiteral("reason"), ok ? QString() : why}};
+}
+
 bool OverviewViewModel::setSolo()
 {
     if (!m_facade)

@@ -1,11 +1,11 @@
-#include "ParticipantSample.h"
+#include "tanara/editing/participants/ParticipantSample.h"
 
+#include "tanara/editing/session/SpeakerEditTypes.h"
+
+#include <QHash>
 #include <QtGlobal>
 
-namespace tanara_qml::participantsample {
-
-using tanara::editing::ParticipantSample;
-using tanara::VoiceCluster;
+namespace tanara::editing::participantsample {
 
 ParticipantSample parseSampleRef(const QString& trackId, const QString& sampleRef)
 {
@@ -25,6 +25,11 @@ ParticipantSample parseSampleRef(const QString& trackId, const QString& sampleRe
     out.startMs = a;
     out.endMs = b;
     return out;
+}
+
+ParticipantSample storedSample(const Participant& p)
+{
+    return parseSampleRef(p.sampleTrackId, p.sampleRef);
 }
 
 namespace {
@@ -48,6 +53,8 @@ qint64 overlapMs(const VoiceCluster& c, qint64 startMs, qint64 endMs)
         sum += qMax<qint64>(0, qMin(w.second, endMs) - qMax(w.first, startMs));
     return sum;
 }
+
+bool clean(const EditorUtterance& u) { return !u.noisy && !u.ignored; }
 
 } // namespace
 
@@ -78,4 +85,28 @@ ParticipantSample lineSample(const QVector<VoiceCluster>& clusters, const QStrin
     return out.isValid() ? out : ParticipantSample();
 }
 
-} // namespace tanara_qml::participantsample
+const EditorUtterance* longestLine(const QVector<EditorUtterance>& utterances, const QStringList& speakerKeys)
+{
+    const EditorUtterance* longest = nullptr;
+    for (const EditorUtterance& u : utterances) {
+        if (!speakerKeys.contains(u.speakerKey)) continue;
+        const bool longer = !longest || (clean(u) && !clean(*longest))
+                            || (clean(u) == clean(*longest) && u.endMs - u.startMs > longest->endMs - longest->startMs);
+        if (longer) longest = &u;
+    }
+    return longest;
+}
+
+QVector<VoiceCluster> withMerges(QVector<VoiceCluster> clusters, const QVector<Participant>& participants)
+{
+    QHash<QString, QString> into;   // merged-away participant id -> the surviving one
+    for (const Participant& p : participants)
+        for (const QString& id : p.mergedFrom)
+            if (!id.isEmpty() && id != p.id) into.insert(id, p.id);
+    if (into.isEmpty()) return clusters;
+    for (VoiceCluster& c : clusters)
+        if (const auto it = into.constFind(c.participantId); it != into.constEnd()) c.participantId = it.value();
+    return clusters;
+}
+
+} // namespace tanara::editing::participantsample

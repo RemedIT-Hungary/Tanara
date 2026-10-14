@@ -12,6 +12,7 @@
 // only because it carries signals.
 #include "tanara/domain/Participant.h"
 #include "tanara/domain/Person.h"
+#include "tanara/editing/participants/ParticipantSample.h"
 #include "tanara/editing/session/SpeakerEditTypes.h"
 #include "tanara/library/tags/PersonTags.h"
 
@@ -23,16 +24,6 @@
 
 namespace tanara::editing {
 
-// A listenable sample of a participant: one span of one track, in MEETING time (what
-// PlayerController::playRange(trackId, startMs, endMs) takes). Before the transcript it is the
-// voice cluster's representative window; after it, the speaker's longest line.
-struct ParticipantSample {
-    QString trackId;
-    qint64 startMs = -1;
-    qint64 endMs = -1;
-    bool isValid() const { return !trackId.isEmpty() && startMs >= 0 && endMs > startMs; }
-};
-
 // One candidate of the meeting as the dialog starts from it.
 struct ParticipantCandidate {
     QString id;                         // the participant's id within the meeting
@@ -42,6 +33,7 @@ struct ParticipantCandidate {
     // The check the dialog starts with: the earlier decision, else the default rule (an invited but
     // not heard candidate is unchecked).
     bool checked = false;
+    bool approved = false;              // the record's approved / confirmed flag (ParticipantService)
     bool manual = false;                // added manually (in the dialog or earlier)
     QVector<Evidence> evidence;
     QStringList rawIds;                 // the bound raw speakers
@@ -125,6 +117,33 @@ public:
     virtual QVector<ParticipantTrackChoice> selectableTracks(const QString& meetingId) const = 0;
     virtual ParticipantTrackBinding participantTracks(const QString& meetingId, const QString& id) const = 0;
     virtual bool setParticipantTracks(const QString& meetingId, const QString& id, const QStringList& trackIds) = 0;
+
+    // ---- the card's row operations (ParticipantService, each one undo step; false: nothing changed) ----
+    // `id`: a candidate's id, or after the transcript a speaker key. The defaults do nothing (test doubles).
+    // Names the row (before the transcript too); merges with the person's manual voiceless row.
+    virtual bool nameParticipant(const QString& meetingId, const QString& id, const PersonChoice& person)
+    {
+        Q_UNUSED(meetingId); Q_UNUSED(id); Q_UNUSED(person);
+        return false;
+    }
+    // "Same voice as ...": `fromId` joins `intoId` (meeting-local).
+    virtual bool mergeParticipantInto(const QString& meetingId, const QString& fromId, const QString& intoId)
+    {
+        Q_UNUSED(meetingId); Q_UNUSED(fromId); Q_UNUSED(intoId);
+        return false;
+    }
+    // "Was there" (true) / its undo (false).
+    virtual bool confirmParticipant(const QString& meetingId, const QString& id, bool confirmed)
+    {
+        Q_UNUSED(meetingId); Q_UNUSED(id); Q_UNUSED(confirmed);
+        return false;
+    }
+    // "This is me". false + whyNot (translated) when no own name is set.
+    virtual bool setSelfParticipant(const QString& meetingId, const QString& id, QString* whyNot = nullptr)
+    {
+        Q_UNUSED(meetingId); Q_UNUSED(id); Q_UNUSED(whyNot);
+        return false;
+    }
 
 signals:
     void participantsChanged(QString meetingId);

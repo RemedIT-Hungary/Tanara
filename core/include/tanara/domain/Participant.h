@@ -76,6 +76,16 @@ struct Participant {
     QStringList tracks;
     QVector<Evidence> evidence;
     double talkShare = 0.0;         // 0..1, share of speaking time
+    // The representative sample of the participant's (largest) voice cluster, copied from the voice
+    // analysis so the UI does not read the analysis file: the logical track's id and
+    // "<file>#startMs-endMs" in meeting time (editing::participantsample::storedSample). Empty: none
+    // (a manual participant without a voice).
+    QString sampleTrackId;
+    QString sampleRef;
+    // Meeting-local "same voice" merges (ParticipantService::mergeParticipantInto): the ids of the
+    // participants merged into this one; the voice analysis's clusters of those ids belong to this one
+    // (editing::participantsample::withMerges). A re-analysis starts afresh (cleared).
+    QStringList mergedFrom;
 };
 
 // A participant's / speaker's track binding for the UI: the manual tracks (manual), otherwise

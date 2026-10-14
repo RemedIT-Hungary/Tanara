@@ -135,6 +135,16 @@ public:
     // "They were not there": the participant's rows become anonymous, their check is cleared.
     Q_INVOKABLE bool unbind(const QString& participantId);
 
+    // ---- the card's row operations (immediate, one undo step each; the core's ParticipantService) ----
+    // Names the row (a known person by id or name, else a new one); before the transcript too.
+    Q_INVOKABLE bool nameParticipant(const QString& id, const QString& personIdOrName);
+    // "Same voice as ...": the row `fromId` joins `intoId` (only in this meeting).
+    Q_INVOKABLE bool mergeParticipantInto(const QString& fromId, const QString& intoId);
+    // "Was there" (true) / its undo (false) on a doubtful row.
+    Q_INVOKABLE bool confirmParticipant(const QString& id, bool confirmed);
+    // "This is me": {ok: bool, reason: string (why not, e.g. no own name is set)}.
+    Q_INVOKABLE QVariantMap setSelfParticipant(const QString& id);
+
 signals:
     void meetingIdChanged();
     void demoStateChanged();
@@ -167,6 +177,8 @@ private:
     int indexOf(const QString& id) const;
     int indexOfName(const QString& name) const;
     QString nextAddedId();
+    // A picker's text as a person choice: a known person (id or name), else a new one.
+    tanara::PersonChoice choiceFor(const QString& personIdOrName) const;
 
     bool m_explicitServices = false;
     tanara::editing::IParticipantsFacade* m_facade = nullptr;   // shared (real) or ours (fictional)

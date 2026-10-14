@@ -15,7 +15,6 @@
 #include "RecorderViewModel.h"
 #include "ShellMeetingModel.h"
 #include "SummaryServicesFacade.h"
-#include "ParticipantSample.h"
 #include "TrackActivitySource.h"
 #include "TranscribeStepServicesFacade.h"
 #include "TranscriptEditorServicesFacade.h"
@@ -38,6 +37,7 @@
 
 #include "tanara/app/AppController.h"
 #include "tanara/app/Services.h"
+#include "tanara/editing/participants/ParticipantService.h"
 #include "tanara/editing/session/SpeakerEditSession.h"
 #include "tanara/library/jobs/MeetingJobTracker.h"
 #include "tanara/library/store/MeetingRepository.h"
@@ -45,7 +45,6 @@
 #include "tanara/library/summary/SummaryRepository.h"
 #include "tanara/library/store/TranscriptRepository.h"
 #include "tanara/library/tags/TagService.h"
-#include "tanara/processing/analysis/ParticipantAnalysis.h"
 // --- P15-6a ---
 #include "MeetingNoteServicesFacade.h"
 #include "SettingsServicesFacade.h"
@@ -484,7 +483,14 @@ QVariantMap personRow(const QString& id, const QString& name, int colorIndex, co
             {QStringLiteral("speakerKey"), QString()}, {QStringLiteral("anonymous"), false},
             {QStringLiteral("unheard"), false},
             {QStringLiteral("sampleTrackId"), QString()}, {QStringLiteral("sampleStartMs"), qint64(-1)},
-            {QStringLiteral("sampleEndMs"), qint64(-1)}};
+            {QStringLiteral("sampleEndMs"), qint64(-1)}, {QStringLiteral("approved"), false}};
+}
+
+// The row's record is approved / confirmed ("Was there"; ParticipantService::confirmParticipant).
+QVariantMap withApproved(QVariantMap row, bool approved)
+{
+    row.insert(QStringLiteral("approved"), approved);
+    return row;
 }
 
 // The row's listenable sample (meeting time; PlayerController::playRange(trackId, startMs, endMs)).
@@ -507,6 +513,7 @@ QVariantMap unheardRow(const Participant& p, const QString& name, int colorIndex
                        OverviewControllerFacade::tr("Az átiratban nem találtuk a hangját: nincs beszélő a nevén")));
     QVariantMap row = personRow(p.id, name, colorIndex, QString(), src, -1.0, false, false, true, true);
     row.insert(QStringLiteral("unheard"), true);
+    row.insert(QStringLiteral("approved"), p.approved);
     return row;
 }
 
@@ -596,6 +603,34 @@ void OverviewControllerFacade::setContextNote(const QString& meetingId, const QS
     if (m_c) m_c->setMeetingContextNote(meetingId, note.trimmed());
 }
 
+bool OverviewControllerFacade::nameParticipant(const QString& meetingId, const QString& id,
+                                               const QString& personIdOrName)
+{
+    using namespace tanara;
+    const QString n = personIdOrName.trimmed();
+    if (!m_c || !m_c->services() || n.isEmpty())
+        return false;
+    // A known person (PersonId or name), else a new one.
+    const PersonChoice choice = m_c->people() ? m_c->people()->choiceFor(n) : PersonChoice::create(n);
+    return m_c->services()->participants().nameParticipant(meetingId, id, choice);
+}
+
+bool OverviewControllerFacade::mergeParticipantInto(const QString& meetingId, const QString& fromId,
+                                                    const QString& intoId)
+{
+    return m_c && m_c->services() && m_c->services()->participants().mergeParticipantInto(meetingId, fromId, intoId);
+}
+
+bool OverviewControllerFacade::confirmParticipant(const QString& meetingId, const QString& id, bool confirmed)
+{
+    return m_c && m_c->services() && m_c->services()->participants().confirmParticipant(meetingId, id, confirmed);
+}
+
+bool OverviewControllerFacade::setSelfParticipant(const QString& meetingId, const QString& id, QString* whyNot)
+{
+    return m_c && m_c->services() && m_c->services()->participants().setSelfParticipant(meetingId, id, whyNot);
+}
+
 tanara::library::OverviewSnapshot OverviewControllerFacade::snapshot(const QString& meetingId)
 {
     using namespace tanara;
@@ -642,11 +677,18 @@ tanara::library::OverviewSnapshot OverviewControllerFacade::snapshot(const QStri
     editing::SpeakerEditSession* ed = m.hasTranscript ? c->editSession(m.id) : nullptr;
     const QVector<editing::EditorSpeaker> speakers = ed ? ed->speakers() : QVector<editing::EditorSpeaker>();
 
-    // The voice analysis' clusters: the samples to listen to (the Participant record carries none).
-    const QVector<VoiceCluster> clusters = (m.id.isEmpty() || parts.isEmpty())
-        ? QVector<VoiceCluster>() : processing::ParticipantAnalysisFile::load(m.folder).clusters;
-    QVector<editing::EditorUtterance> utterances;
-    if (ed) utterances = ed->utterances();
+    // The rows' samples to listen to (the participant service: before the transcript the record's / cluster's
+    // sample, after it the speaker's longest line), by participant id / speaker key.
+    QHash<QString, editing::ParticipantSample> samples;
+    if (!m.id.isEmpty() && !parts.isEmpty() && c->services()) {
+        QStringList ids;
+        if (!speakers.isEmpty())
+            for (const editing::EditorSpeaker& sp : speakers) ids << sp.key;
+        else
+            for (const Participant& p : parts) ids << p.id;
+        const QVector<editing::ParticipantSample> got = c->services()->participants().participantSamples(m.id, ids);
+        for (int i = 0; i < ids.size() && i < got.size(); ++i) samples.insert(ids.at(i), got.at(i));
+    }
 
     QVariantList rows;
     PersonIds names;            // the people already listed
@@ -674,27 +716,14 @@ tanara::library::OverviewSnapshot OverviewControllerFacade::snapshot(const QStri
             const QVariantList src = match ? sourcesOf(*match, false) : QVariantList();
             // The sample: the speaker's longest line (not a noisy / ignored one, if there is another),
             // on the track of the participant's voice cluster.
-            editing::ParticipantSample sample;
-            if (match) {
-                const editing::EditorUtterance* longest = nullptr;
-                for (const editing::EditorUtterance& u : std::as_const(utterances)) {
-                    if (u.speakerKey != s.key) continue;
-                    const bool clean = !u.noisy && !u.ignored;
-                    const bool longer = !longest || (clean && (longest->noisy || longest->ignored))
-                                        || (clean == (!longest->noisy && !longest->ignored)
-                                            && u.endMs - u.startMs > longest->endMs - longest->startMs);
-                    if (longer) longest = &u;
-                }
-                if (longest)
-                    sample = participantsample::lineSample(clusters, match->id, longest->startMs, longest->endMs);
-            }
+            const editing::ParticipantSample sample = match ? samples.value(s.key) : editing::ParticipantSample();
             // Removable: with a participant record, or without one too if it has a name (its rows
             // become anonymous: AppController::removeParticipant with the speaker key).
-            rows << withSample(withSpeaker(personRow(match ? match->id : s.key, name, s.colorIndex,
+            rows << withApproved(withSample(withSpeaker(personRow(match ? match->id : s.key, name, s.colorIndex,
                                                      s.anonymous ? tr("névtelen · elnevezhető") : QString(), src,
                                                      s.talkShare, self, false, false, match != nullptr || !s.anonymous),
                                            s.key, s.anonymous),
-                               sample);
+                               sample), match && match->approved);
             if (!s.personId.isNull()) names << s.personId;
             anonymous << QVariantMap{{QStringLiteral("name"), s.displayName},
                                      {QStringLiteral("share"), s.talkShare},
@@ -718,14 +747,13 @@ tanara::library::OverviewSnapshot OverviewControllerFacade::snapshot(const QStri
             const bool self = !selfId.isNull() && p.personId == selfId;
             QString name = p.personId.isNull() ? tr("Ismeretlen hang %1").arg(i + 1) : nameOf(p.personId);
             if (self) name = tr("%1 (te)").arg(name);
-            // Before the transcript: the participant's voice cluster sample (manual: none).
-            rows << withSample(withSpeaker(personRow(p.id, name, i,
+            // Before the transcript: the participant's voice cluster sample (a manual one without a voice: none).
+            rows << withApproved(withSample(withSpeaker(personRow(p.id, name, i,
                                                      p.personId.isNull() ? tr("névtelen · elnevezhető") : QString(),
                                                      sourcesOf(p, self), p.talkShare > 0 ? p.talkShare : -1.0, self,
                                                      false, false, true),
                                            QString(), p.personId.isNull()),
-                               p.source == ParticipantSource::Manual ? editing::ParticipantSample()
-                                                                     : participantsample::clusterSample(clusters, p.id));
+                               samples.value(p.id)), p.approved);
             if (!p.personId.isNull()) names << p.personId;
             ++i;
         }

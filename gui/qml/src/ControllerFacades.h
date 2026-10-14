@@ -105,6 +105,10 @@ public:
     bool reanalyze(const QString& meetingId) override;
     bool nameSpeakerInPlace(const QString&, const QString&, const QString&) override { return false; }
     void setContextNote(const QString& meetingId, const QString& note) override;
+    bool nameParticipant(const QString& meetingId, const QString& id, const QString& personIdOrName) override;
+    bool mergeParticipantInto(const QString& meetingId, const QString& fromId, const QString& intoId) override;
+    bool confirmParticipant(const QString& meetingId, const QString& id, bool confirmed) override;
+    bool setSelfParticipant(const QString& meetingId, const QString& id, QString* whyNot = nullptr) override;
 
 private:
     // The audio analysis progress of a meeting (participantAnalysisProgress): track k / N and percent.

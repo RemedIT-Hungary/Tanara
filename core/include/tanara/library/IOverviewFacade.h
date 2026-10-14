@@ -62,6 +62,34 @@ public:
     virtual bool nameSpeakerInPlace(const QString& meetingId, const QString& speakerKey, const QString& name) = 0;
     virtual void setContextNote(const QString& meetingId, const QString& note) = 0;
 
+    // ---- the "Who was there?" rows' operations (the participant service; each one undo step) ----
+    // `id`: the row's id (a participant, or after the transcript a speaker key). false: nothing changed.
+    // The defaults do nothing (test doubles).
+    // Names the row (a known person by id or name, else a new one), before the transcript too.
+    virtual bool nameParticipant(const QString& meetingId, const QString& id, const QString& personIdOrName)
+    {
+        Q_UNUSED(meetingId); Q_UNUSED(id); Q_UNUSED(personIdOrName);
+        return false;
+    }
+    // "Same voice as ...": the row `fromId` joins `intoId` (meeting-local).
+    virtual bool mergeParticipantInto(const QString& meetingId, const QString& fromId, const QString& intoId)
+    {
+        Q_UNUSED(meetingId); Q_UNUSED(fromId); Q_UNUSED(intoId);
+        return false;
+    }
+    // "Was there" (true) / its undo (false).
+    virtual bool confirmParticipant(const QString& meetingId, const QString& id, bool confirmed)
+    {
+        Q_UNUSED(meetingId); Q_UNUSED(id); Q_UNUSED(confirmed);
+        return false;
+    }
+    // "This is me". false + whyNot (translated) when no own name is set.
+    virtual bool setSelfParticipant(const QString& meetingId, const QString& id, QString* whyNot = nullptr)
+    {
+        Q_UNUSED(meetingId); Q_UNUSED(id); Q_UNUSED(whyNot);
+        return false;
+    }
+
 signals:
     // The snapshot of this meeting may have changed (the real facade: the core's signals; the
     // fictional one: after its own edits).

@@ -1,7 +1,6 @@
 #include "ParticipantsServicesFacade.h"
 
 #include "ControllerEvents.h"
-#include "ParticipantSample.h"
 
 #include "tanara/app/SettingsManager.h"
 #include "tanara/editing/participants/ParticipantService.h"
@@ -66,12 +65,16 @@ ParticipantsState ParticipantsServicesFacade::state(const QString& meetingId) co
         st.analysisModelIds = file.modelIds;
         st.analysisAt = QDateTime::fromString(file.at, Qt::ISODate);
     }
-    QVector<TranscriptLine> lines;
     if (st.hasTranscript) {
-        lines = editing::speakeredit::loadTranscriptLines(m.folder);
-        for (const TranscriptLine& l : std::as_const(lines))
+        for (const TranscriptLine& l : editing::speakeredit::loadTranscriptLines(m.folder))
             if (!l.rawLabel.isEmpty() && !st.rawLabels.contains(l.rawLabel)) st.rawLabels << l.rawLabel;
     }
+    // The listenable samples (the participant service: before the transcript the voice cluster's, after it
+    // the speaker's longest line on the track of the participant's cluster).
+    QStringList ids;
+    for (const Participant& p : m.participants) ids << p.id;
+    const QVector<ParticipantSample> samples =
+        m_d.participants ? m_d.participants->participantSamples(m.id, ids) : QVector<ParticipantSample>();
 
     // If there was a (non-skipped) decision -> that check; otherwise the default.
     const bool decided = m.approval && !m.approval->skipped && !m.approval->solo;
@@ -82,29 +85,16 @@ ParticipantsState ParticipantsServicesFacade::state(const QString& meetingId) co
         c.name = personName(names, p.personId);
         c.group = processing::participants::participantGroup(p);
         // An invited but not heard candidate is unchecked by default: there is nobody to bind the name to.
+        // A row confirmed on the card ("Was there", ParticipantService::confirmParticipant) starts checked too.
         c.checked = decided ? p.approved
-                            : (c.group != ParticipantGroup::InvitedNotHeard && processing::participants::defaultChecked(p));
+                            : (p.approved
+                               || (c.group != ParticipantGroup::InvitedNotHeard && processing::participants::defaultChecked(p)));
+        c.approved = p.approved;
         c.manual = p.source == ParticipantSource::Manual;
         c.evidence = p.evidence;
         c.rawIds = p.rawSpeakerIds;
         c.sides = p.sides;
-        // The listenable sample: before the transcript the voice cluster's, after it the longest line
-        // of the bound raw speakers (on the track of the participant's cluster).
-        if (!c.manual) {
-            if (!st.hasTranscript) {
-                c.sample = tanara_qml::participantsample::clusterSample(file.clusters, p.id);
-            } else {
-                const TranscriptLine* longest = nullptr;
-                for (const TranscriptLine& l : std::as_const(lines)) {
-                    bool mine = false;
-                    for (const QString& raw : p.rawSpeakerIds)
-                        mine = mine || processing::participants::rawLabelOf(raw) == l.rawLabel;
-                    if (mine && (!longest || l.endMs - l.startMs > longest->endMs - longest->startMs)) longest = &l;
-                }
-                if (longest)
-                    c.sample = tanara_qml::participantsample::lineSample(file.clusters, p.id, longest->startMs, longest->endMs);
-            }
-        }
+        c.sample = samples.value(st.candidates.size());
         st.candidates.append(c);
     }
     return st;
@@ -199,6 +189,27 @@ bool ParticipantsServicesFacade::setParticipantTracks(const QString& meetingId, 
                                                       const QStringList& trackIds)
 {
     return m_d.participants && m_d.participants->setParticipantTracks(meetingId, id, trackIds);
+}
+
+bool ParticipantsServicesFacade::nameParticipant(const QString& meetingId, const QString& id, const PersonChoice& person)
+{
+    return m_d.participants && m_d.participants->nameParticipant(meetingId, id, person);
+}
+
+bool ParticipantsServicesFacade::mergeParticipantInto(const QString& meetingId, const QString& fromId,
+                                                      const QString& intoId)
+{
+    return m_d.participants && m_d.participants->mergeParticipantInto(meetingId, fromId, intoId);
+}
+
+bool ParticipantsServicesFacade::confirmParticipant(const QString& meetingId, const QString& id, bool confirmed)
+{
+    return m_d.participants && m_d.participants->confirmParticipant(meetingId, id, confirmed);
+}
+
+bool ParticipantsServicesFacade::setSelfParticipant(const QString& meetingId, const QString& id, QString* whyNot)
+{
+    return m_d.participants && m_d.participants->setSelfParticipant(meetingId, id, whyNot);
 }
 
 } // namespace tanara_qml

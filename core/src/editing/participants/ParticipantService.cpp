@@ -1,5 +1,7 @@
 #include "tanara/editing/participants/ParticipantService.h"
 
+#include "tanara/editing/participants/ParticipantSample.h"
+
 #include "tanara/editing/review/SideAnalysis.h"
 #include "tanara/editing/session/SpeakerEditSession.h"
 #include "tanara/editing/session/SpeakerOverlay.h"
@@ -92,7 +94,7 @@ bool ParticipantService::participantApprovalPending(const QString& meetingId) co
 
 // ---- listening to tracks: speaker -> track binding ---------------------------------------------
 
-QStringList ParticipantService::speakerKeysFor(const Meeting& m, const QString& id)
+QStringList ParticipantService::speakerKeysFor(const Meeting& m, const QString& id) const
 {
     if (!m.hasTranscript || id.isEmpty()) return {};
     SpeakerEditSession* ed = editorFor(m.id);
@@ -488,6 +490,353 @@ QVector<Participant> ParticipantService::unheardParticipants(const QString& meet
         if (!p.personId.isNull() && p.rawSpeakerIds.isEmpty() && !heard.contains(p.personId))
             out.append(p);
     return out;
+}
+
+// ---- the "Who was there?" card's row operations (UA1) -------------------------------------------------
+
+namespace {
+
+// A manual row nobody heard: no voice cluster, side, raw speaker or sample.
+bool voiceless(const Participant& p)
+{
+    return p.source == ParticipantSource::Manual && p.sides.isEmpty() && p.rawSpeakerIds.isEmpty()
+           && p.sampleRef.isEmpty() && p.mergedFrom.isEmpty() && p.talkShare <= 0.0;
+}
+
+double voiceScoreOf(const Participant& p)
+{
+    double score = -1.0;
+    for (const Evidence& e : p.evidence)
+        if (e.kind == EvidenceKind::Voice) score = std::max(score, e.value);
+    return score;
+}
+
+// A real decision was made (approved; not skipped, not "only me").
+bool decided(const Meeting& m) { return m.approval && !m.approval->skipped && !m.approval->solo; }
+
+ParticipantApprovalEntry* approvalEntry(Meeting& m, const QString& participantId)
+{
+    if (!m.approval) return nullptr;
+    for (ParticipantApprovalEntry& e : m.approval->candidates)
+        if (e.participantId == participantId) return &e;
+    return nullptr;
+}
+
+void dropApprovalEntry(Meeting& m, const QString& participantId)
+{
+    if (!m.approval) return;
+    auto& c = m.approval->candidates;
+    c.erase(std::remove_if(c.begin(), c.end(),
+                           [&](const ParticipantApprovalEntry& e) { return e.participantId == participantId; }),
+            c.end());
+}
+
+void appendUniqueTo(QStringList& to, const QStringList& from)
+{
+    for (const QString& s : from)
+        if (!s.isEmpty() && !to.contains(s)) to << s;
+}
+
+int indexOfId(const Meeting& m, const QString& id)
+{
+    for (int i = 0; i < m.participants.size(); ++i)
+        if (!id.isEmpty() && m.participants.at(i).id == id) return i;
+    return -1;
+}
+
+} // namespace
+
+int ParticipantService::recordIndexFor(const Meeting& m, const QString& id) const
+{
+    const int direct = indexOfId(m, id);
+    if (direct >= 0 || !m.hasTranscript || id.isEmpty()) return direct;
+    // A speaker key: the record bound to that speaker (by person or raw label).
+    for (int i = 0; i < m.participants.size(); ++i)
+        if (speakerKeysFor(m, m.participants.at(i).id).contains(id)) return i;
+    return -1;
+}
+
+void ParticipantService::refreshEvidence(Participant& p, const Meeting& m)
+{
+    if (!m_deps.analysis) return;
+    const bool heard = !p.sides.isEmpty() || p.talkShare > 0.0;
+    p.evidence = m_deps.analysis->evidence(p, heard, voiceScoreOf(p), m);
+}
+
+void ParticipantService::mergeRecords(Meeting& m, int fromIdx, int intoIdx)
+{
+    if (fromIdx < 0 || intoIdx < 0 || fromIdx == intoIdx) return;
+    const Participant from = m.participants.at(fromIdx);
+    Participant& into = m.participants[intoIdx];
+    if (into.personId.isNull()) into.personId = from.personId;
+    // The larger cluster's sample (the speech share before the sum).
+    if (!from.sampleRef.isEmpty() && (into.sampleRef.isEmpty() || from.talkShare > into.talkShare)) {
+        into.sampleTrackId = from.sampleTrackId;
+        into.sampleRef = from.sampleRef;
+    }
+    appendUniqueTo(into.rawSpeakerIds, from.rawSpeakerIds);
+    appendUniqueTo(into.sides, from.sides);
+    std::sort(into.sides.begin(), into.sides.end());
+    if (into.tracks.isEmpty()) into.tracks = from.tracks;
+    into.talkShare = std::min(1.0, into.talkShare + from.talkShare);
+    into.approved = (into.approved || from.approved) && !into.personId.isNull();
+    appendUniqueTo(into.mergedFrom, QStringList{from.id} + from.mergedFrom);
+    // The evidence anew; the voice score: the better of the two.
+    const double score = std::max(voiceScoreOf(into), voiceScoreOf(from));
+    if (m_deps.analysis)
+        into.evidence = m_deps.analysis->evidence(into, !into.sides.isEmpty() || into.talkShare > 0.0, score, m);
+    if (ParticipantApprovalEntry* e = approvalEntry(m, into.id)) {
+        e->personId = into.personId;
+        e->rawSpeakerIds = into.rawSpeakerIds;
+        e->checked = into.approved;
+    }
+    const QString fromId = from.id;
+    dropApprovalEntry(m, fromId);
+    m.participants.removeAt(fromIdx);
+}
+
+bool ParticipantService::nameParticipantImpl(const QString& meetingId, const QString& participantId,
+                                             const PersonId& person, const QString& undoText)
+{
+    ParticipantUndoScope undoScope(m_deps.undo, meetingId, undoText);
+    Meeting m = m_deps.store->load(meetingId);
+    if (m.id.isEmpty() || person.isNull()) return false;
+    const int idx = recordIndexFor(m, participantId);
+    if (!m.hasTranscript && idx < 0) return false;
+    // After the transcript: the row's speakers (taken before the record changes) go to the person below.
+    const QStringList keys =
+        m.hasTranscript ? speakerKeysFor(m, idx >= 0 ? m.participants.at(idx).id : participantId) : QStringList();
+    bool changed = false;
+
+    if (idx >= 0) {
+        const QString id = m.participants.at(idx).id;
+        if (m.participants.at(idx).personId != person) {
+            m.participants[idx].personId = person;
+            changed = true;
+        }
+        // Other rows of the same person: a manual voiceless one dissolves into this row; a voiced one is the
+        // same voice, so this row joins it.
+        QString keptId = id;
+        for (int j = m.participants.size() - 1; j >= 0; --j) {
+            const int self = indexOfId(m, keptId);
+            if (j == self || m.participants.at(j).personId != person) continue;
+            const Participant other = m.participants.at(j);
+            if (voiceless(other)) {
+                Participant& p = m.participants[self];
+                if (p.tracks.isEmpty()) p.tracks = other.tracks;
+                p.approved = p.approved || other.approved;
+                dropApprovalEntry(m, other.id);
+                m.participants.removeAt(j);
+            } else {
+                mergeRecords(m, self, j);
+                keptId = other.id;
+            }
+            changed = true;
+        }
+        const int k = indexOfId(m, keptId);
+        if (k >= 0) {
+            Participant& p = m.participants[k];
+            if (decided(m)) p.approved = true;
+            refreshEvidence(p, m);
+            if (ParticipantApprovalEntry* e = approvalEntry(m, p.id)) {
+                e->personId = p.personId;
+                e->checked = p.approved;
+            } else if (decided(m)) {
+                m.approval->candidates.append({p.id, p.personId,
+                                               m_deps.analysis ? m_deps.analysis->group(p) : ParticipantGroup::Doubt,
+                                               p.approved, p.rawSpeakerIds});
+            }
+        }
+        if (changed) m_deps.store->saveMeeting(m);
+    }
+    // The editor binding after the record is saved (the editor writes the meeting too): the speakers merge
+    // with the person's speaker, if any; one editor step, absorbed by the shared step.
+    if (!keys.isEmpty()) {
+        QVector<SpeakerBinding> bindings;
+        for (const QString& key : keys) bindings.append({key, person, {}});
+        changed = applySpeakerBindings(meetingId, bindings, undoText) || changed;
+    }
+    if (changed) emit participantsChanged(meetingId);
+    return changed;
+}
+
+bool ParticipantService::nameParticipant(const QString& meetingId, const QString& participantId,
+                                         const PersonChoice& choice)
+{
+    if (choice.isAnonymous() || participantId.isEmpty()) return false;
+    const Meeting m = m_deps.store->load(meetingId);
+    if (m.id.isEmpty()) return false;
+    // The row must exist before a new person is created for it.
+    if (recordIndexFor(m, participantId) < 0 && speakerKeysFor(m, participantId).isEmpty()) return false;
+    const PersonId person = m_deps.people ? m_deps.people->resolve(choice) : choice.id;
+    if (person.isNull()) return false;
+    if (choice.id.isNull()) emit peopleChanged();
+    const QString name = m_deps.people ? m_deps.people->displayName(person) : choice.newName;
+    return nameParticipantImpl(meetingId, participantId, person, tr("Elnevezve: %1").arg(name));
+}
+
+bool ParticipantService::setSelfParticipant(const QString& meetingId, const QString& participantId, QString* whyNot)
+{
+    if (m_deps.peopleService) m_deps.peopleService->ensureSelf();
+    const SelfPerson me = m_deps.peopleService ? m_deps.peopleService->selfPerson() : SelfPerson();
+    if (me.id.isNull() || me.name.isEmpty()) {
+        if (whyNot) *whyNot = tr("Nincs megadva a saját neved: a Beállításokban adhatod meg.");
+        return false;
+    }
+    if (whyNot) whyNot->clear();
+    return nameParticipantImpl(meetingId, participantId, me.id, tr("Elnevezve: %1").arg(me.name));
+}
+
+bool ParticipantService::mergeParticipantInto(const QString& meetingId, const QString& fromId, const QString& intoId)
+{
+    if (fromId.isEmpty() || intoId.isEmpty() || fromId == intoId) return false;
+    ParticipantUndoScope undoScope(m_deps.undo, meetingId, tr("Összevonva"));
+    Meeting m = m_deps.store->load(meetingId);
+    if (m.id.isEmpty()) return false;
+    const int fi = recordIndexFor(m, fromId);
+    const int ii = recordIndexFor(m, intoId);
+    SpeakerEditSession* ed = m.hasTranscript ? editorFor(meetingId) : nullptr;
+    if (ed && !ed->hasTranscript()) ed = nullptr;
+
+    // The rows' names for the step's text.
+    auto label = [&](int idx, const QString& id) {
+        if (idx >= 0 && !m.participants.at(idx).personId.isNull() && m_deps.people)
+            return m_deps.people->displayName(m.participants.at(idx).personId);
+        if (ed)
+            for (const EditorSpeaker& s : ed->speakers())
+                if (s.key == id) return s.displayName;
+        return tr("névtelen hang");
+    };
+    const QString text = tr("Összevonva: %1 → %2").arg(label(fi, fromId), label(ii, intoId));
+    undoScope.text = text;
+
+    if (!ed) {
+        // Before the transcript: the records merge.
+        if (fi < 0 || ii < 0 || fi == ii) return false;
+        mergeRecords(m, fi, ii);
+        m_deps.store->saveMeeting(m);
+        emit participantsChanged(meetingId);
+        return true;
+    }
+
+    // After the transcript: the speakers of `from` go to `into` (its person; if anonymous, the person of
+    // `from`; if neither has one, into `into`'s speaker), in ONE editor step.
+    QStringList intoKeys = speakerKeysFor(m, ii >= 0 ? m.participants.at(ii).id : intoId);
+    QStringList fromKeys = speakerKeysFor(m, fi >= 0 ? m.participants.at(fi).id : fromId);
+    for (const QString& k : std::as_const(intoKeys)) fromKeys.removeAll(k);
+    if (fromKeys.isEmpty() && (fi < 0 || ii < 0 || fi == ii)) return false;
+    auto personOf = [&](int idx, const QStringList& keys) {
+        if (idx >= 0 && !m.participants.at(idx).personId.isNull()) return m.participants.at(idx).personId;
+        for (const QString& k : keys)
+            if (const EditorSpeaker s = ed->speaker(k); !s.personId.isNull()) return s.personId;
+        return PersonId();
+    };
+    PersonId target = personOf(ii, intoKeys);
+    if (target.isNull()) target = personOf(fi, fromKeys);
+    // The records first (the editor writes the meeting too), then the speakers.
+    bool changed = false;
+    if (fi >= 0 && ii >= 0 && fi != ii) {
+        if (m.participants.at(ii).personId.isNull()) m.participants[ii].personId = target;
+        mergeRecords(m, fi, ii);
+        changed = true;
+    } else if (fi >= 0 && !target.isNull() && m.participants.at(fi).personId != target) {
+        m.participants[fi].personId = target;   // `into` has no record: the record follows the speaker
+        changed = true;
+    }
+    if (changed) m_deps.store->saveMeeting(m);
+    if (!fromKeys.isEmpty()) {
+        if (!target.isNull()) {
+            QVector<SpeakerBinding> bindings;
+            for (const QString& k : intoKeys + fromKeys) bindings.append({k, target, {}});
+            changed = applySpeakerBindings(meetingId, bindings, text) || changed;
+        } else if (!intoKeys.isEmpty()) {
+            if (fromKeys.size() == 1) {
+                changed = ed->mergeSpeakers(fromKeys.first(), intoKeys.first()) || changed;
+            } else {
+                QStringList lines;
+                for (const EditorUtterance& u : ed->utterances())
+                    if (fromKeys.contains(u.speakerKey)) lines << u.id;
+                changed = ed->moveUtterances(lines, intoKeys.first()) || changed;
+            }
+        }
+    }
+    if (!changed) return false;
+    emit participantsChanged(meetingId);
+    return true;
+}
+
+bool ParticipantService::confirmParticipant(const QString& meetingId, const QString& participantId, bool confirmed)
+{
+    ParticipantUndoScope undoScope(m_deps.undo, meetingId, QString());
+    Meeting m = m_deps.store->load(meetingId);
+    if (m.id.isEmpty()) return false;
+    const int idx = recordIndexFor(m, participantId);
+    if (idx < 0) return false;
+    Participant& p = m.participants[idx];
+    if (confirmed && p.personId.isNull()) return false;   // name it first
+    const QString name = m_deps.people ? m_deps.people->displayName(p.personId) : QString();
+    undoScope.text = confirmed ? tr("Ott volt: %1").arg(name) : tr("Ott volt, visszavonva: %1").arg(name);
+    ParticipantApprovalEntry* e = approvalEntry(m, p.id);
+    if (p.approved == confirmed && (!e || e->checked == confirmed)) return false;
+    p.approved = confirmed;
+    if (e) {
+        e->checked = confirmed;
+        e->personId = p.personId;
+    } else if (m.approval) {
+        m.approval->candidates.append({p.id, p.personId,
+                                       m_deps.analysis ? m_deps.analysis->group(p) : ParticipantGroup::Doubt,
+                                       confirmed, p.rawSpeakerIds});
+    }
+    m_deps.store->saveMeeting(m);
+    // After the transcript, with a decision: the confirmed row's speakers get the name now (one step).
+    if (confirmed && m.hasTranscript && decided(m)) applyParticipantsToTranscript(meetingId);
+    emit participantsChanged(meetingId);
+    return true;
+}
+
+// ---- listening ----------------------------------------------------------------------------------
+
+QVector<ParticipantSample> ParticipantService::participantSamples(const QString& meetingId,
+                                                                  const QStringList& ids) const
+{
+    QVector<ParticipantSample> out(ids.size());
+    const Meeting m = meetingId.isEmpty() ? Meeting() : m_deps.store->load(meetingId);
+    if (m.id.isEmpty() || ids.isEmpty()) return out;
+    const QVector<VoiceCluster> clusters = (m_deps.analysis && !m.participants.isEmpty())
+        ? participantsample::withMerges(m_deps.analysis->analysisClusters(m.folder), m.participants)
+        : QVector<VoiceCluster>();
+    SpeakerEditSession* ed = m.hasTranscript ? editorFor(meetingId) : nullptr;
+    if (ed && !ed->hasTranscript()) ed = nullptr;
+    const QVector<EditorUtterance> utterances = ed ? ed->utterances() : QVector<EditorUtterance>();
+    for (int i = 0; i < ids.size(); ++i) {
+        const QString& id = ids.at(i);
+        const int idx = ed ? recordIndexFor(m, id) : indexOfId(m, id);
+        if (idx < 0) continue;   // no record: no cluster to play from
+        const Participant& p = m.participants.at(idx);
+        if (!ed) {
+            ParticipantSample s = participantsample::storedSample(p);
+            if (!s.isValid()) s = participantsample::clusterSample(clusters, p.id);
+            out[i] = s;
+            continue;
+        }
+        const QStringList keys = p.id == id ? speakerKeysFor(m, id) : QStringList{id};
+        const EditorUtterance* longest = participantsample::longestLine(utterances, keys);
+        if (!longest) continue;
+        ParticipantSample s = participantsample::lineSample(clusters, p.id, longest->startMs, longest->endMs);
+        if (!s.isValid() && !p.sampleTrackId.isEmpty()) {
+            s.trackId = p.sampleTrackId;
+            s.startMs = longest->startMs;
+            s.endMs = std::min(longest->endMs, longest->startMs + participantsample::kMaxSampleMs);
+            if (!s.isValid()) s = ParticipantSample();
+        }
+        out[i] = s;
+    }
+    return out;
+}
+
+ParticipantSample ParticipantService::participantSample(const QString& meetingId, const QString& id) const
+{
+    return participantSamples(meetingId, {id}).value(0);
 }
 
 // ---- voice identification -----------------------------------------------------------------------

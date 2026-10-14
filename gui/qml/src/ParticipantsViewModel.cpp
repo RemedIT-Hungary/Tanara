@@ -542,6 +542,56 @@ bool ParticipantsViewModel::skip()
     return (demo() || !m_meetingId.isEmpty()) && m_facade->skip(m_meetingId);
 }
 
+tanara::PersonChoice ParticipantsViewModel::choiceFor(const QString& personIdOrName) const
+{
+    const QString text = personIdOrName.trimmed();
+    if (text.isEmpty()) return {};
+    const QVector<editing::PersonInfo> known = m_facade->peopleDirectory();
+    for (const editing::PersonInfo& p : known)
+        if (!p.personId.isNull() && p.personId.toString() == text) return PersonChoice::existing(p.personId);
+    for (const editing::PersonInfo& p : known)
+        if (!p.personId.isNull() && persons::sameName(p.name, text)) return PersonChoice::existing(p.personId);
+    return PersonChoice::create(text);
+}
+
+bool ParticipantsViewModel::nameParticipant(const QString& id, const QString& personIdOrName)
+{
+    const PersonChoice choice = choiceFor(personIdOrName);
+    if (choice.isAnonymous() || id.isEmpty() || (!demo() && m_meetingId.isEmpty())) return false;
+    const bool ok = m_facade->nameParticipant(m_meetingId, id, choice);
+    if (ok && demo()) load();
+    return ok;
+}
+
+bool ParticipantsViewModel::mergeParticipantInto(const QString& fromId, const QString& intoId)
+{
+    if (fromId.isEmpty() || intoId.isEmpty() || (!demo() && m_meetingId.isEmpty())) return false;
+    const bool ok = m_facade->mergeParticipantInto(m_meetingId, fromId, intoId);
+    if (ok && demo()) load();
+    return ok;
+}
+
+bool ParticipantsViewModel::confirmParticipant(const QString& id, bool confirmed)
+{
+    if (id.isEmpty() || (!demo() && m_meetingId.isEmpty())) return false;
+    const bool ok = m_facade->confirmParticipant(m_meetingId, id, confirmed);
+    // The working copy follows (the reload after participantsChanged would keep the old check).
+    if (ok)
+        if (const int i = indexOf(id); i >= 0) m_rows[i].checked = confirmed;
+    if (ok && demo()) load();
+    else if (ok) emit changed();
+    return ok;
+}
+
+QVariantMap ParticipantsViewModel::setSelfParticipant(const QString& id)
+{
+    QString why;
+    const bool ok = !id.isEmpty() && (demo() || !m_meetingId.isEmpty())
+                    && m_facade->setSelfParticipant(m_meetingId, id, &why);
+    if (ok && demo()) load();
+    return {{QStringLiteral("ok"), ok}, {QStringLiteral("reason"), ok ? QString() : why}};
+}
+
 bool ParticipantsViewModel::unbind(const QString& participantId)
 {
     if (demo()) {

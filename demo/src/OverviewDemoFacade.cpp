@@ -47,7 +47,7 @@ QVariantMap personRow(const QString& id, const QString& name, int colorIndex, co
             {QStringLiteral("speakerKey"), QString()}, {QStringLiteral("anonymous"), false},
             {QStringLiteral("unheard"), false},
             {QStringLiteral("sampleTrackId"), QString()}, {QStringLiteral("sampleStartMs"), qint64(-1)},
-            {QStringLiteral("sampleEndMs"), qint64(-1)}};
+            {QStringLiteral("sampleEndMs"), qint64(-1)}, {QStringLiteral("approved"), false}};
 }
 
 // A fictional 6 s sample on the demo's mic / call track (the silent demo engine "plays" it).
@@ -144,6 +144,100 @@ bool OverviewDemoFacade::nameSpeakerInPlace(const QString& meetingId, const QStr
         }
         rows << row;
     }
+    m_snapshot.participants = rows;
+    emit changed(meetingId);
+    return true;
+}
+
+int OverviewDemoFacade::rowIndex(const QString& id) const
+{
+    for (int i = 0; i < m_snapshot.participants.size(); ++i) {
+        const QVariantMap row = m_snapshot.participants.at(i).toMap();
+        if (!id.isEmpty()
+            && (row.value(QStringLiteral("id")).toString() == id || row.value(QStringLiteral("speakerKey")).toString() == id))
+            return i;
+    }
+    return -1;
+}
+
+bool OverviewDemoFacade::nameParticipant(const QString& meetingId, const QString& id, const QString& personIdOrName)
+{
+    const QString n = personIdOrName.trimmed();
+    const int at = rowIndex(id);
+    if (n.isEmpty() || at < 0)
+        return false;
+    QVariantList rows = m_snapshot.participants;
+    QVariantMap row = rows.at(at).toMap();
+    row.insert(QStringLiteral("name"), n);
+    row.insert(QStringLiteral("monogram"), monogramOf(n));
+    row.insert(QStringLiteral("sub"), QString());
+    row.insert(QStringLiteral("anonymous"), false);
+    rows[at] = row;
+    // The person's manual row without a voice (no sample) dissolves into the named one.
+    for (int i = int(rows.size()) - 1; i >= 0; --i) {
+        const QVariantMap other = rows.at(i).toMap();
+        if (i != at && other.value(QStringLiteral("name")).toString() == n
+            && other.value(QStringLiteral("sampleTrackId")).toString().isEmpty()
+            && !other.value(QStringLiteral("suggested")).toBool())
+            rows.removeAt(i);
+    }
+    m_snapshot.participants = rows;
+    emit changed(meetingId);
+    return true;
+}
+
+bool OverviewDemoFacade::mergeParticipantInto(const QString& meetingId, const QString& fromId, const QString& intoId)
+{
+    const int from = rowIndex(fromId), into = rowIndex(intoId);
+    if (from < 0 || into < 0 || from == into)
+        return false;
+    QVariantList rows = m_snapshot.participants;
+    const QVariantMap f = rows.at(from).toMap();
+    QVariantMap t = rows.at(into).toMap();
+    if (t.value(QStringLiteral("anonymous")).toBool() && !f.value(QStringLiteral("anonymous")).toBool()) {
+        for (const char* key : {"name", "monogram", "sub", "anonymous", "self"})
+            t.insert(QString::fromLatin1(key), f.value(QString::fromLatin1(key)));
+    }
+    const double a = t.value(QStringLiteral("talkShare")).toDouble(), b = f.value(QStringLiteral("talkShare")).toDouble();
+    if (a >= 0 && b > 0) t.insert(QStringLiteral("talkShare"), a + b);
+    rows[into] = t;
+    rows.removeAt(from);
+    m_snapshot.participants = rows;
+    emit changed(meetingId);
+    return true;
+}
+
+bool OverviewDemoFacade::confirmParticipant(const QString& meetingId, const QString& id, bool confirmed)
+{
+    const int at = rowIndex(id);
+    if (at < 0)
+        return false;
+    QVariantMap row = m_snapshot.participants.at(at).toMap();
+    row.insert(QStringLiteral("approved"), confirmed);
+    m_snapshot.participants[at] = row;
+    emit changed(meetingId);
+    return true;
+}
+
+bool OverviewDemoFacade::setSelfParticipant(const QString& meetingId, const QString& id, QString* whyNot)
+{
+    if (whyNot) whyNot->clear();
+    const int at = rowIndex(id);
+    if (at < 0)
+        return false;
+    // The demo's own person: the earlier own row (if any) gives way.
+    QVariantList rows = m_snapshot.participants;
+    QVariantMap row = rows.at(at).toMap();
+    const QString name = demoText("Kovács Lilla (te)", "Emma Carter (you)");
+    row.insert(QStringLiteral("name"), name);
+    row.insert(QStringLiteral("monogram"), monogramOf(name));
+    row.insert(QStringLiteral("sub"), QString());
+    row.insert(QStringLiteral("anonymous"), false);
+    row.insert(QStringLiteral("self"), true);
+    rows[at] = row;
+    for (int i = int(rows.size()) - 1; i >= 0; --i)
+        if (i != at && rows.at(i).toMap().value(QStringLiteral("self")).toBool())
+            rows.removeAt(i);
     m_snapshot.participants = rows;
     emit changed(meetingId);
     return true;

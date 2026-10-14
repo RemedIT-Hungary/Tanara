@@ -46,7 +46,9 @@ class OverviewViewModel : public QObject {
     Q_PROPERTY(QString peopleState READ peopleState NOTIFY changed)
     // Rows: { id, name, monogram, colorIndex, sub, self, suggested, dimmed, removable, unheard,
     //          talkShare (0..1, -1 = none), speakerKey (the speaker's key after the transcript, else ""),
-    //          anonymous (anonymous, can be named), sources: [{ icon, text, negative, accent, detail }] }
+    //          anonymous (anonymous, can be named), approved (the record is approved / confirmed: "Was there"),
+    //          sampleTrackId / sampleStartMs / sampleEndMs (the sample to listen to, -1 = none),
+    //          sources: [{ icon, text, negative, accent, detail }] }
     // The badge's detail is the tooltip (the evidence's explanation). After the transcript, after
     // the speakers' rows come, dimmed, the participants not heard / added manually (unheard, "not
     // heard" badge, AppController::unheardParticipants), then at most 3 tag-based suggestions.
@@ -117,6 +119,16 @@ public:
     // In the demo, naming an anonymous row in place (true); on real data false: the editor's
     // reassignSpeaker does the work there (one undo step, change bar).
     Q_INVOKABLE bool nameSpeakerInDemo(const QString& speakerKey, const QString& name);
+    // ---- the "Who was there?" rows' operations (immediate, one undo step each) ----
+    // Names the row (a known person by id or name, else a new one), before the transcript too; merges with
+    // the person's manual voiceless row.
+    Q_INVOKABLE bool nameParticipant(const QString& id, const QString& personIdOrName);
+    // "Same voice as ...": the row `fromId` joins `intoId` (only in this meeting).
+    Q_INVOKABLE bool mergeParticipantInto(const QString& fromId, const QString& intoId);
+    // "Was there" (true) / its undo (false) on a doubtful row.
+    Q_INVOKABLE bool confirmParticipant(const QString& id, bool confirmed);
+    // "This is me": {ok: bool, reason: string (why not, e.g. no own name is set)}.
+    Q_INVOKABLE QVariantMap setSelfParticipant(const QString& id);
     // Saves the manual description (Meeting::contextNote).
     Q_INVOKABLE void setContextNote(const QString& note);
     Q_INVOKABLE void refresh();

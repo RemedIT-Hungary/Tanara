@@ -13,6 +13,7 @@
 #include "tanara/watcher/CallMonitor.h"
 // --- P12d ---
 #include "tanara/editing/participants/ParticipantService.h"
+#include "tanara/editing/participants/ParticipantSample.h"
 #include "tanara/editing/people/PeopleEditingAdapter.h"
 #include "tanara/editing/recheck/RecheckService.h"
 #include "tanara/editing/session/SpeakerEditSession.h"
@@ -121,7 +122,8 @@ public:
     {
         const processing::ParticipantAnalysisFile file = processing::ParticipantAnalysisFile::load(meetingFolder);
         if (file.isEmpty()) return false;
-        return processing::participants::bindRawSpeakers(participants, file.clusters, lines);
+        return processing::participants::bindRawSpeakers(
+            participants, editing::participantsample::withMerges(file.clusters, participants), lines);
     }
     QVector<SpeakerBinding> approvalBindings(const QVector<Participant>& all, const QStringList& acceptedIds,
                                              const QVector<TranscriptLine>& lines, const Meeting& m,
@@ -130,8 +132,13 @@ public:
         const processing::ParticipantAnalysisFile file = processing::ParticipantAnalysisFile::load(m.folder);
         const MeetingActivity act =
             MeetingActivity::load(m.folder, processing::trackactivity::activityFingerprint(m, m.folder));
-        return processing::participants::approvalBindings(all, acceptedIds, lines, file.clusters,
+        return processing::participants::approvalBindings(all, acceptedIds, lines,
+                                                          editing::participantsample::withMerges(file.clusters, all),
                                                           act.isEmpty() ? nullptr : &act, trackVeto ? &m : nullptr);
+    }
+    QVector<VoiceCluster> analysisClusters(const QString& meetingFolder) override
+    {
+        return processing::ParticipantAnalysisFile::load(meetingFolder).clusters;
     }
     bool analysisRunning(const QString& meetingId) const override { return m_voice->analysisRunning(meetingId); }
     void cancelAnalysis(const QString& meetingId) override { m_voice->cancelAnalysis(meetingId); }

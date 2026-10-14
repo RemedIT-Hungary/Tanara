@@ -455,6 +455,22 @@ QVector<Participant> buildParticipants(ClusterSet& clusters, const Meeting& m,
         p.evidence = participantEvidence(p, heard, bestScore.value(i, -1.0), m, ctx);
     }
 
+    // The participant's listenable sample (its largest cluster that has one) is copied onto the record;
+    // the meeting-local "same voice" merges of the previous analysis no longer apply (new clusters).
+    for (Participant& p : out) {
+        p.mergedFrom.clear();
+        p.sampleTrackId.clear();
+        p.sampleRef.clear();
+        qint64 bestMs = -1;
+        for (const VoiceCluster& c : std::as_const(clusters.clusters)) {
+            if (c.participantId != p.id || c.sampleRef.isEmpty() || c.trackId.isEmpty() || c.speechMs() <= bestMs)
+                continue;
+            bestMs = c.speechMs();
+            p.sampleTrackId = c.trackId;
+            p.sampleRef = c.sampleRef;
+        }
+    }
+
     // Order: group (Certain, Doubtful, Invited), within that by speech share; manual, unheard participants
     // at the end of their group.
     std::stable_sort(out.begin(), out.end(), [](const Participant& a, const Participant& b) {

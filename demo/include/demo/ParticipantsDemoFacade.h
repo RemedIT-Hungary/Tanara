@@ -38,10 +38,22 @@ public:
     tanara::ParticipantTrackBinding participantTracks(const QString& meetingId, const QString& id) const override;
     bool setParticipantTracks(const QString& meetingId, const QString& id, const QStringList& trackIds) override;
 
+    // The row operations in memory (applied over the design state's candidates).
+    bool nameParticipant(const QString& meetingId, const QString& id, const tanara::PersonChoice& person) override;
+    bool mergeParticipantInto(const QString& meetingId, const QString& fromId, const QString& intoId) override;
+    bool confirmParticipant(const QString& meetingId, const QString& id, bool confirmed) override;
+    bool setSelfParticipant(const QString& meetingId, const QString& id, QString* whyNot = nullptr) override;
+
 private:
+    tanara::editing::ParticipantsState baseState() const;
+    bool hasCandidate(const QString& id) const;
+
     QString m_state;
     QHash<QString, QStringList> m_manualTracks;   // participant id -> tracks (p3: bound to both at first)
     bool m_tracksSeeded = false;
+    QHash<QString, QString> m_named;        // candidate id -> the name given on the card
+    QHash<QString, QString> m_mergedInto;   // merged-away candidate id -> the one it joined
+    QHash<QString, bool> m_confirmed;       // candidate id -> "Was there"
 };
 
 } // namespace tanara_demo

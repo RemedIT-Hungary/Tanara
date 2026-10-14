@@ -217,6 +217,11 @@ void ParticipantsTest::analysisTwoClustersOneMatched()
     QCOMPARE(unknown->sides, QStringList({processing::participants::kSideMic}));
     QCOMPARE(cs.clusters[1].participantId, bela->id);
     QCOMPARE(cs.clusters[1].matchPersonId, P(QStringLiteral("Béla")));
+    // The record carries its cluster's sample (the UI does not have to read the analysis file).
+    QCOMPARE(bela->sampleTrackId, cs.clusters[1].trackId);
+    QCOMPARE(bela->sampleRef, cs.clusters[1].sampleRef);
+    QCOMPARE(unknown->sampleRef, cs.clusters[0].sampleRef);
+    QVERIFY(bela->mergedFrom.isEmpty());
     QVERIFY(qAbs(bela->talkShare + unknown->talkShare - 1.0) < 1e-9);
     // Béla: audio only gives Doubtful, but checked; the unknown voice is not checked.
     QCOMPARE(processing::participants::participantGroup(*bela), ParticipantGroup::Doubt);

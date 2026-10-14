@@ -12,6 +12,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 
+#include "tanara/editing/participants/ParticipantSample.h"
 #include "tanara/editing/participants/ParticipantService.h"
 #include "tanara/editing/session/SpeakerEditSession.h"
 #include "tanara/editing/session/SpeakerOverlay.h"
@@ -39,6 +40,7 @@ public:
     bool running = false;
     QStringList cancelled;
     QStringList modelIds{QStringLiteral("campplus")};
+    QVector<VoiceCluster> clusters;   // the "analysis file"
 
     QVector<Evidence> evidence(const Participant&, bool heard, double, const Meeting&) override
     {
@@ -64,6 +66,7 @@ public:
     }
     bool analysisRunning(const QString&) const override { return running; }
     void cancelAnalysis(const QString& meetingId) override { cancelled << meetingId; }
+    QVector<VoiceCluster> analysisClusters(const QString&) override { return clusters; }
 };
 
 } // namespace
@@ -80,10 +83,28 @@ private slots:
     void identificationCommitAndUnheard();
     void errorPaths();
 
+    // The card's row operations (UA1).
+    void nameBeforeTranscript();
+    void nameBeforeTranscriptFollowsTheDecision();
+    void nameAfterTranscript();
+    void mergeIntoBeforeTranscript();
+    void mergeIntoAfterTranscript();
+    void confirmParticipant();
+    void selfParticipant();
+    void sampleRefPersisted();
+    void sampleBeforeTranscript();
+    void sampleAfterTranscript();
+    void rowOperationErrorPaths();
+
 private:
     Meeting makeMeeting();
     void writeTranscript(Meeting& m, const QVector<std::tuple<qint64, qint64, QString>>& rows);
     editing::SpeakerEditSession* editorFor(const QString& meetingId);
+    // A voice candidate (an analysis cluster's record).
+    static Participant voiceRow(const QString& id, const PersonId& person, const QString& side, double share,
+                                const QString& sampleTrack = {}, const QString& sampleRef = {});
+    void saveParticipants(const QString& meetingId, const QVector<Participant>& ps);
+    const Participant* find(const QVector<Participant>& ps, const QString& id) const;
 
     std::unique_ptr<QTemporaryDir> m_home;
     std::unique_ptr<library::MeetingRepository> m_store;
@@ -382,6 +403,442 @@ void ParticipantServiceTest::errorPaths()
     QCOMPARE(map.count(), 0);
     QVERIFY(!m_undo->forMeeting(m.id)->canUndo());                           // nothing changed: no step
     QVERIFY(!m_undo->forMeeting(nope));
+}
+
+// ==== the card's row operations (UA1) ===========================================================
+
+Participant ParticipantServiceTest::voiceRow(const QString& id, const PersonId& person, const QString& side,
+                                             double share, const QString& sampleTrack, const QString& sampleRef)
+{
+    Participant p;
+    p.id = id;
+    p.personId = person;
+    p.source = ParticipantSource::Voice;
+    p.sides = {side};
+    p.talkShare = share;
+    p.sampleTrackId = sampleTrack;
+    p.sampleRef = sampleRef;
+    return p;
+}
+
+void ParticipantServiceTest::saveParticipants(const QString& meetingId, const QVector<Participant>& ps)
+{
+    Meeting m = m_store->load(meetingId);
+    m.participants = ps;
+    m_store->saveMeeting(m);
+}
+
+const Participant* ParticipantServiceTest::find(const QVector<Participant>& ps, const QString& id) const
+{
+    for (const Participant& p : ps)
+        if (p.id == id) return &p;
+    return nullptr;
+}
+
+// Naming a voice cluster before the transcript: the record gets the person; the person's manual voiceless row
+// dissolves into it (its track binding carried over); a new person is created; one undo step each.
+void ParticipantServiceTest::nameBeforeTranscript()
+{
+    const Meeting m = makeMeeting();
+    const QString cili = m_svc->addParticipant(m.id, PersonChoice::create(QStringLiteral("Cecília")));
+    const PersonId ciliId = m_people->idForName(QStringLiteral("Cecília"));
+    {
+        Meeting mm = m_store->load(m.id);
+        mm.participants.first().tracks = {QStringLiteral("loop")};
+        mm.participants.prepend(voiceRow(QStringLiteral("v1"), {}, QStringLiteral("loopback"), 0.6,
+                                         QStringLiteral("loop"), QStringLiteral("track_loop.wav#1000-4000")));
+        mm.participants.prepend(voiceRow(QStringLiteral("v2"), {}, QStringLiteral("mic"), 0.4));
+        m_store->saveMeeting(mm);
+    }
+    editing::MeetingUndoService* undo = m_undo->forMeeting(m.id);
+    const int steps = undo->count();
+    QSignalSpy changed(m_svc.get(), &ParticipantService::participantsChanged);
+
+    // The manual row merges: the cluster row carries Cecília.
+    QVERIFY(m_svc->nameParticipant(m.id, QStringLiteral("v1"), PersonChoice::existing(ciliId)));
+    QCOMPARE(changed.count(), 1);
+    QVector<Participant> ps = m_svc->participants(m.id);
+    QCOMPARE(ps.size(), 2);
+    QVERIFY(!find(ps, cili));
+    const Participant* v1 = find(ps, QStringLiteral("v1"));
+    QVERIFY(v1);
+    QCOMPARE(v1->personId, ciliId);
+    QCOMPARE(v1->tracks, QStringList{QStringLiteral("loop")});        // the manual row's track binding
+    QCOMPARE(v1->sampleRef, QStringLiteral("track_loop.wav#1000-4000"));
+    QVERIFY(!v1->approved);                                           // no decision yet: approval stays separate
+    QCOMPARE(evidenceText(v1->evidence.value(0)), QStringLiteral("hallottuk"));  // recomputed (heard)
+    QCOMPARE(undo->count(), steps + 1);
+    QCOMPARE(undo->undoText(), QStringLiteral("Elnevezve: Cecília"));
+    QVERIFY(!m_svc->nameParticipant(m.id, QStringLiteral("v1"), PersonChoice::existing(ciliId)));   // no change
+
+    // A new person for the other cluster.
+    QSignalSpy people(m_svc.get(), &ParticipantService::peopleChanged);
+    QVERIFY(m_svc->nameParticipant(m.id, QStringLiteral("v2"), PersonChoice::create(QStringLiteral("Dénes"))));
+    QCOMPARE(people.count(), 1);
+    QCOMPARE(find(m_svc->participants(m.id), QStringLiteral("v2"))->personId, m_people->idForName(QStringLiteral("Dénes")));
+    QCOMPARE(undo->undoText(), QStringLiteral("Elnevezve: Dénes"));
+
+    // Undo, step by step: the manual row comes back, the cluster is anonymous again.
+    QVERIFY(undo->undo());
+    QVERIFY(find(m_svc->participants(m.id), QStringLiteral("v2"))->personId.isNull());
+    QVERIFY(undo->undo());
+    ps = m_svc->participants(m.id);
+    QCOMPARE(ps.size(), 3);
+    QVERIFY(find(ps, cili));
+    QVERIFY(find(ps, QStringLiteral("v1"))->personId.isNull());
+}
+
+// After a decision the named row counts as approved and its approval entry follows; naming a second cluster
+// with a person that already has a VOICED row merges the two (same voice).
+void ParticipantServiceTest::nameBeforeTranscriptFollowsTheDecision()
+{
+    const Meeting m = makeMeeting();
+    const PersonId bela = m_people->ensure(QStringLiteral("Béla"));
+    saveParticipants(m.id, {voiceRow(QStringLiteral("v1"), {}, QStringLiteral("mic"), 0.2),
+                            voiceRow(QStringLiteral("v2"), bela, QStringLiteral("loopback"), 0.5,
+                                     QStringLiteral("loop"), QStringLiteral("track_loop.wav#0-3000"))});
+    QVERIFY(m_svc->approveParticipants(m.id, {}));   // a decision with nobody checked
+    QVERIFY(m_svc->nameParticipant(m.id, QStringLiteral("v1"), PersonChoice::create(QStringLiteral("Dóra"))));
+    Meeting after = m_store->load(m.id);
+    const Participant* v1 = find(after.participants, QStringLiteral("v1"));
+    QVERIFY(v1 && v1->approved);
+    bool entry = false;
+    for (const ParticipantApprovalEntry& e : after.approval->candidates)
+        if (e.participantId == QStringLiteral("v1")) {
+            entry = true;
+            QVERIFY(e.checked);
+            QCOMPARE(e.personId, v1->personId);
+        }
+    QVERIFY(entry);
+
+    // v1 named Béla too: v1 joins v2 (Béla's voiced row survives, v1's cluster belongs to it).
+    QVERIFY(m_svc->nameParticipant(m.id, QStringLiteral("v1"), PersonChoice::existing(bela)));
+    after = m_store->load(m.id);
+    QCOMPARE(after.participants.size(), 1);
+    const Participant& v2 = after.participants.first();
+    QCOMPARE(v2.id, QStringLiteral("v2"));
+    QCOMPARE(v2.personId, bela);
+    QCOMPARE(v2.mergedFrom, QStringList{QStringLiteral("v1")});
+    QCOMPARE(v2.sides, (QStringList{QStringLiteral("loopback"), QStringLiteral("mic")}));
+    QCOMPARE(after.approval->candidates.size(), 1);
+    QVERIFY(m_undo->forMeeting(m.id)->undo());
+    QCOMPARE(m_store->load(m.id).participants.size(), 2);
+}
+
+// After the transcript: naming binds the row's speakers to the person through the editor (one undo step,
+// absorbing the editor step); the manual voiceless row merges; a speaker key without a record is named too.
+void ParticipantServiceTest::nameAfterTranscript()
+{
+    Meeting m = makeMeeting();
+    writeTranscript(m, {{1000, 4000, "S1"}, {5000, 9000, "S2"}, {10000, 12000, "S1"}});
+    const PersonId cili = m_people->ensure(QStringLiteral("Cecília"));
+    Participant v1 = voiceRow(QStringLiteral("v1"), {}, QStringLiteral("mic"), 0.5);
+    v1.rawSpeakerIds = {QStringLiteral("S1")};
+    Participant manual;
+    manual.id = QStringLiteral("m-1");
+    manual.personId = cili;
+    manual.source = ParticipantSource::Manual;
+    saveParticipants(m.id, {v1, manual});
+    editing::SpeakerEditSession* ed = editorFor(m.id);
+    QVERIFY(ed && ed->hasTranscript());
+    editing::MeetingUndoService* undo = m_undo->forMeeting(m.id);
+    const int steps = undo->count();
+
+    QVERIFY(m_svc->nameParticipant(m.id, QStringLiteral("v1"), PersonChoice::existing(cili)));
+    QCOMPARE(ed->speaker(QStringLiteral("S1")).personId, cili);
+    QVector<Participant> ps = m_svc->participants(m.id);
+    QCOMPARE(ps.size(), 1);
+    QCOMPARE(ps.first().id, QStringLiteral("v1"));
+    QCOMPARE(ps.first().personId, cili);
+    QCOMPARE(undo->count(), steps + 1);                 // one shared step (the editor's absorbed)
+    QCOMPARE(undo->undoText(), QStringLiteral("Elnevezve: Cecília"));
+
+    // A speaker without a record (by its key): only the editor binding.
+    QVERIFY(m_svc->nameParticipant(m.id, QStringLiteral("S2"), PersonChoice::create(QStringLiteral("Dóra"))));
+    QCOMPARE(ed->speaker(QStringLiteral("S2")).personId, m_people->idForName(QStringLiteral("Dóra")));
+    QCOMPARE(m_svc->participants(m.id).size(), 1);
+    QCOMPARE(undo->count(), steps + 2);
+    QCOMPARE(undo->undoText(), QStringLiteral("Elnevezve: Dóra"));
+
+    // Undo both: the speakers are anonymous again, the manual row is back.
+    QVERIFY(undo->undo());
+    QVERIFY(ed->speaker(QStringLiteral("S2")).personId.isNull());
+    QVERIFY(undo->undo());
+    QVERIFY(ed->speaker(QStringLiteral("S1")).personId.isNull());
+    QCOMPARE(m_svc->participants(m.id).size(), 2);
+}
+
+// "Same voice as ..." before the transcript: the records merge (raw speakers, sides, share, clusters, the
+// larger cluster's sample); the target's person wins, an anonymous target takes the source's.
+void ParticipantServiceTest::mergeIntoBeforeTranscript()
+{
+    const Meeting m = makeMeeting();
+    const PersonId bela = m_people->ensure(QStringLiteral("Béla"));
+    saveParticipants(m.id, {voiceRow(QStringLiteral("v1"), {}, QStringLiteral("mic"), 0.2,
+                                     QStringLiteral("mic"), QStringLiteral("track_mic.wav#0-2000")),
+                            voiceRow(QStringLiteral("v2"), bela, QStringLiteral("loopback"), 0.5,
+                                     QStringLiteral("loop"), QStringLiteral("track_loop.wav#5000-9000"))});
+    editing::MeetingUndoService* undo = m_undo->forMeeting(m.id);
+
+    QVERIFY(m_svc->mergeParticipantInto(m.id, QStringLiteral("v1"), QStringLiteral("v2")));
+    QVector<Participant> ps = m_svc->participants(m.id);
+    QCOMPARE(ps.size(), 1);
+    QCOMPARE(ps.first().id, QStringLiteral("v2"));
+    QCOMPARE(ps.first().personId, bela);
+    QCOMPARE(ps.first().mergedFrom, QStringList{QStringLiteral("v1")});
+    QCOMPARE(ps.first().sides, (QStringList{QStringLiteral("loopback"), QStringLiteral("mic")}));
+    QVERIFY(qAbs(ps.first().talkShare - 0.7) < 1e-9);
+    QCOMPARE(ps.first().sampleRef, QStringLiteral("track_loop.wav#5000-9000"));   // the larger cluster's
+    QCOMPARE(undo->undoText(), QStringLiteral("Összevonva: névtelen hang → Béla"));
+    QVERIFY(undo->undo());
+    QCOMPARE(m_svc->participants(m.id).size(), 2);
+
+    // Into the anonymous row: it takes Béla and the larger (Béla's) sample.
+    QVERIFY(m_svc->mergeParticipantInto(m.id, QStringLiteral("v2"), QStringLiteral("v1")));
+    ps = m_svc->participants(m.id);
+    QCOMPARE(ps.size(), 1);
+    QCOMPARE(ps.first().id, QStringLiteral("v1"));
+    QCOMPARE(ps.first().personId, bela);
+    QCOMPARE(ps.first().sampleTrackId, QStringLiteral("loop"));
+    QCOMPARE(ps.first().mergedFrom, QStringList{QStringLiteral("v2")});
+
+    // The merged cluster belongs to the surviving row (the binding / sample side sees it so).
+    VoiceCluster c;
+    c.participantId = QStringLiteral("v2");
+    c.trackId = QStringLiteral("loop");
+    const QVector<VoiceCluster> merged = editing::participantsample::withMerges({c}, ps);
+    QCOMPARE(merged.first().participantId, QStringLiteral("v1"));
+}
+
+// After the transcript: the speakers of `from` go to `into`'s person (one step); two anonymous speakers
+// without records merge in the editor.
+void ParticipantServiceTest::mergeIntoAfterTranscript()
+{
+    Meeting m = makeMeeting();
+    writeTranscript(m, {{1000, 4000, "S1"}, {5000, 9000, "S2"}, {10000, 12000, "S3"}, {13000, 15000, "S4"}});
+    const PersonId bela = m_people->ensure(QStringLiteral("Béla"));
+    Participant v1 = voiceRow(QStringLiteral("v1"), {}, QStringLiteral("mic"), 0.3);
+    v1.rawSpeakerIds = {QStringLiteral("S1")};
+    Participant v2 = voiceRow(QStringLiteral("v2"), bela, QStringLiteral("loopback"), 0.3);
+    v2.rawSpeakerIds = {QStringLiteral("S2")};
+    saveParticipants(m.id, {v1, v2});
+    editing::SpeakerEditSession* ed = editorFor(m.id);
+    QVERIFY(ed->applyBindings({{QStringLiteral("S2"), bela, {}}}, QStringLiteral("setup")));
+    editing::MeetingUndoService* undo = m_undo->forMeeting(m.id);
+    const int steps = undo->count();
+
+    QVERIFY(m_svc->mergeParticipantInto(m.id, QStringLiteral("v1"), QStringLiteral("v2")));
+    for (const editing::EditorUtterance& u : ed->utterances())
+        if (u.rawLabel == QLatin1String("S1") || u.rawLabel == QLatin1String("S2"))
+            QCOMPARE(ed->speaker(u.speakerKey).personId, bela);
+    QVector<Participant> ps = m_svc->participants(m.id);
+    QCOMPARE(ps.size(), 1);
+    QCOMPARE(ps.first().rawSpeakerIds, (QStringList{QStringLiteral("S2"), QStringLiteral("S1")}));
+    QCOMPARE(ps.first().mergedFrom, QStringList{QStringLiteral("v1")});
+    QCOMPARE(undo->count(), steps + 1);
+    QCOMPARE(undo->undoText(), QStringLiteral("Összevonva: névtelen hang → Béla"));
+    QVERIFY(undo->undo());
+    QCOMPARE(m_svc->participants(m.id).size(), 2);
+    QVERIFY(ed->speaker(QStringLiteral("S1")).personId.isNull());
+
+    // Two anonymous speakers without records: S3 joins S4 (one editor step).
+    const int before = undo->count();
+    QVERIFY(m_svc->mergeParticipantInto(m.id, QStringLiteral("S3"), QStringLiteral("S4")));
+    for (const editing::EditorUtterance& u : ed->utterances())
+        if (u.rawLabel == QLatin1String("S3")) QCOMPARE(u.speakerKey, QStringLiteral("S4"));
+    QCOMPARE(undo->count(), before + 1);
+    QVERIFY(undo->undo());
+    for (const editing::EditorUtterance& u : ed->utterances())
+        if (u.rawLabel == QLatin1String("S3")) QCOMPARE(u.speakerKey, QStringLiteral("S3"));
+}
+
+// "Was there" on a doubtful row and its undo: the record's approved flag and the approval entry, one step each.
+void ParticipantServiceTest::confirmParticipant()
+{
+    const Meeting m = makeMeeting();
+    const PersonId bela = m_people->ensure(QStringLiteral("Béla"));
+    saveParticipants(m.id, {voiceRow(QStringLiteral("v1"), bela, QStringLiteral("loopback"), 0.4),
+                            voiceRow(QStringLiteral("v2"), {}, QStringLiteral("mic"), 0.6)});
+    editing::MeetingUndoService* undo = m_undo->forMeeting(m.id);
+
+    QVERIFY(!m_svc->confirmParticipant(m.id, QStringLiteral("v2"), true));   // anonymous: name it first
+    QVERIFY(m_svc->confirmParticipant(m.id, QStringLiteral("v1"), true));
+    QVERIFY(find(m_svc->participants(m.id), QStringLiteral("v1"))->approved);
+    QVERIFY(!m_store->load(m.id).approval.has_value());                       // no decision is made by it
+    QCOMPARE(undo->undoText(), QStringLiteral("Ott volt: Béla"));
+    QVERIFY(!m_svc->confirmParticipant(m.id, QStringLiteral("v1"), true));    // no change
+
+    // With a decision: the entry's check follows, both ways.
+    QVERIFY(m_svc->approveParticipants(m.id, {}));
+    QVERIFY(!find(m_svc->participants(m.id), QStringLiteral("v1"))->approved);
+    QVERIFY(m_svc->confirmParticipant(m.id, QStringLiteral("v1"), true));
+    auto checked = [&]() {
+        const Meeting now = m_store->load(m.id);
+        for (const ParticipantApprovalEntry& e : now.approval->candidates)
+            if (e.participantId == QStringLiteral("v1")) return e.checked;
+        return false;
+    };
+    QVERIFY(checked());
+    QVERIFY(m_svc->confirmParticipant(m.id, QStringLiteral("v1"), false));
+    QVERIFY(!checked());
+    QVERIFY(!find(m_svc->participants(m.id), QStringLiteral("v1"))->approved);
+    QCOMPARE(undo->undoText(), QStringLiteral("Ott volt, visszavonva: Béla"));
+    QVERIFY(undo->undo());
+    QVERIFY(checked());
+}
+
+// "This is me": needs the own name; merges with the own manual row.
+void ParticipantServiceTest::selfParticipant()
+{
+    const Meeting m = makeMeeting();
+    saveParticipants(m.id, {voiceRow(QStringLiteral("v1"), {}, QStringLiteral("mic"), 0.7)});
+    QString why;
+    QVERIFY(!m_svc->setSelfParticipant(m.id, QStringLiteral("v1"), &why));   // no own name configured
+    QVERIFY(!why.isEmpty());
+    QVERIFY(!m_undo->forMeeting(m.id)->canUndo());
+
+    m_selfName = QStringLiteral("Ádám");
+    m_peopleSvc->ensureSelf();
+    const PersonId self = m_peopleSvc->selfPerson().id;
+    QVERIFY(!self.isNull());
+    const QString own = m_svc->addParticipant(m.id, PersonChoice::existing(self));
+    QVERIFY(!own.isEmpty());
+    QVERIFY(m_svc->setSelfParticipant(m.id, QStringLiteral("v1"), &why));
+    QVERIFY(why.isEmpty());
+    const QVector<Participant> ps = m_svc->participants(m.id);
+    QCOMPARE(ps.size(), 1);
+    QCOMPARE(ps.first().id, QStringLiteral("v1"));
+    QCOMPARE(ps.first().personId, self);
+    editing::MeetingUndoService* undo = m_undo->forMeeting(m.id);
+    QCOMPARE(undo->undoText(), QStringLiteral("Elnevezve: Ádám"));
+    QVERIFY(undo->undo());
+    QCOMPARE(m_svc->participants(m.id).size(), 2);
+}
+
+// The participant's sample and merges are persisted with the meeting (additive fields).
+void ParticipantServiceTest::sampleRefPersisted()
+{
+    const Meeting m = makeMeeting();
+    Participant p = voiceRow(QStringLiteral("v1"), {}, QStringLiteral("mic"), 0.5, QStringLiteral("mic"),
+                             QStringLiteral("track_mic.wav#2000-8000"));
+    p.mergedFrom = {QStringLiteral("v7")};
+    saveParticipants(m.id, {p, voiceRow(QStringLiteral("v2"), {}, QStringLiteral("mic"), 0.1)});
+    const QVector<Participant> back = m_store->load(m.id).participants;
+    QCOMPARE(back.size(), 2);
+    QCOMPARE(back.at(0).sampleTrackId, QStringLiteral("mic"));
+    QCOMPARE(back.at(0).sampleRef, QStringLiteral("track_mic.wav#2000-8000"));
+    QCOMPARE(back.at(0).mergedFrom, QStringList{QStringLiteral("v7")});
+    QVERIFY(back.at(1).sampleRef.isEmpty() && back.at(1).sampleTrackId.isEmpty() && back.at(1).mergedFrom.isEmpty());
+    // An absent field stays absent in the file (the format grows only additively).
+    QFile f(QDir(m.folder).filePath(QStringLiteral("meeting.json")));
+    QVERIFY(f.open(QIODevice::ReadOnly));
+    const QByteArray json = f.readAll();
+    QCOMPARE(json.count("\"sampleRef\""), 1);
+}
+
+// Before the transcript: the record's stored sample, failing that its (merged) largest cluster's; a manual
+// row without a voice has none.
+void ParticipantServiceTest::sampleBeforeTranscript()
+{
+    const Meeting m = makeMeeting();
+    Participant stored = voiceRow(QStringLiteral("v1"), {}, QStringLiteral("mic"), 0.5, QStringLiteral("mic"),
+                                  QStringLiteral("track_mic.wav#2000-8000"));
+    Participant fromClusters = voiceRow(QStringLiteral("v2"), {}, QStringLiteral("loopback"), 0.3);
+    fromClusters.mergedFrom = {QStringLiteral("v9")};
+    Participant manual;
+    manual.id = QStringLiteral("m-1");
+    manual.source = ParticipantSource::Manual;
+    manual.personId = m_people->ensure(QStringLiteral("Cecília"));
+    saveParticipants(m.id, {stored, fromClusters, manual});
+    VoiceCluster small, big;
+    small.trackId = QStringLiteral("loop");
+    small.participantId = QStringLiteral("v2");
+    small.windows = {{0, 2000}};
+    small.sampleRef = QStringLiteral("track_loop.wav#0-2000");
+    big.trackId = QStringLiteral("loop");
+    big.participantId = QStringLiteral("v9");   // merged into v2
+    big.windows = {{10000, 20000}};
+    big.sampleRef = QStringLiteral("track_loop.wav#12000-18000");
+    m_analysis->clusters = {small, big};
+
+    const QVector<editing::ParticipantSample> s =
+        m_svc->participantSamples(m.id, {QStringLiteral("v1"), QStringLiteral("v2"), QStringLiteral("m-1"), QStringLiteral("x")});
+    QCOMPARE(s.size(), 4);
+    QCOMPARE(s.at(0).trackId, QStringLiteral("mic"));
+    QCOMPARE(s.at(0).startMs, 2000);
+    QCOMPARE(s.at(0).endMs, 8000);
+    QCOMPARE(s.at(1).trackId, QStringLiteral("loop"));   // the merged-in larger cluster
+    QCOMPARE(s.at(1).startMs, 12000);
+    QCOMPARE(s.at(1).endMs, 18000);
+    QVERIFY(!s.at(2).isValid());
+    QVERIFY(!s.at(3).isValid());
+}
+
+// After the transcript: the speaker's longest clean line, capped at 15 s, on the best-overlapping cluster's
+// track (failing that the stored sample's track); by participant id or speaker key; none without a record.
+void ParticipantServiceTest::sampleAfterTranscript()
+{
+    Meeting m = makeMeeting();
+    writeTranscript(m, {{0, 900, "S1"}, {2000, 30000, "S1"}, {31000, 36000, "S1"}, {40000, 44000, "S2"},
+                        {50000, 52000, "S3"}});
+    Participant v1 = voiceRow(QStringLiteral("v1"), {}, QStringLiteral("loopback"), 0.8);
+    v1.rawSpeakerIds = {QStringLiteral("S1")};
+    Participant v2 = voiceRow(QStringLiteral("v2"), {}, QStringLiteral("mic"), 0.2, QStringLiteral("mic"),
+                              QStringLiteral("track_mic.wav#40000-44000"));
+    v2.rawSpeakerIds = {QStringLiteral("S2")};
+    saveParticipants(m.id, {v1, v2});
+    VoiceCluster mic, loop;
+    mic.trackId = QStringLiteral("mic");
+    mic.participantId = QStringLiteral("v1");
+    mic.windows = {{0, 900}};
+    loop.trackId = QStringLiteral("loop");
+    loop.participantId = QStringLiteral("v1");
+    loop.windows = {{2500, 20000}};
+    m_analysis->clusters = {mic, loop};
+
+    editing::ParticipantSample s = m_svc->participantSample(m.id, QStringLiteral("v1"));
+    QCOMPARE(s.trackId, QStringLiteral("loop"));
+    QCOMPARE(s.startMs, 2000);
+    QCOMPARE(s.endMs, 2000 + editing::participantsample::kMaxSampleMs);
+    QCOMPARE(m_svc->participantSample(m.id, QStringLiteral("S1")).startMs, 2000);   // by the speaker's key
+
+    // The long line is noisy: the longest clean one wins.
+    editing::SpeakerEditSession* ed = editorFor(m.id);
+    QString longId;
+    for (const editing::EditorUtterance& u : ed->utterances())
+        if (u.startMs == 2000) longId = u.id;
+    QVERIFY(ed->setUtterancesNoisy({longId}, true));
+    s = m_svc->participantSample(m.id, QStringLiteral("v1"));
+    QCOMPARE(s.startMs, 31000);
+    QCOMPARE(s.endMs, 36000);
+
+    // v2 has no cluster: the stored sample's track. S3 has no record: nothing.
+    s = m_svc->participantSample(m.id, QStringLiteral("v2"));
+    QCOMPARE(s.trackId, QStringLiteral("mic"));
+    QCOMPARE(s.startMs, 40000);
+    QCOMPARE(s.endMs, 44000);
+    QVERIFY(!m_svc->participantSample(m.id, QStringLiteral("S3")).isValid());
+}
+
+void ParticipantServiceTest::rowOperationErrorPaths()
+{
+    const QString nope = QStringLiteral("nope");
+    QVERIFY(!m_svc->nameParticipant(nope, QStringLiteral("v1"), PersonChoice::create(QStringLiteral("X"))));
+    QVERIFY(!m_svc->mergeParticipantInto(nope, QStringLiteral("a"), QStringLiteral("b")));
+    QVERIFY(!m_svc->confirmParticipant(nope, QStringLiteral("a"), true));
+    QVERIFY(!m_svc->participantSample(nope, QStringLiteral("a")).isValid());
+    const Meeting m = makeMeeting();
+    saveParticipants(m.id, {voiceRow(QStringLiteral("v1"), {}, QStringLiteral("mic"), 0.5)});
+    QSignalSpy people(m_svc.get(), &ParticipantService::peopleChanged);
+    QVERIFY(!m_svc->nameParticipant(m.id, QStringLiteral("nincs"), PersonChoice::create(QStringLiteral("X"))));
+    QCOMPARE(people.count(), 0);                                    // no person created for a missing row
+    QVERIFY(m_people->idForName(QStringLiteral("X")).isNull());
+    QVERIFY(!m_svc->nameParticipant(m.id, QStringLiteral("v1"), PersonChoice()));   // anonymous choice
+    QVERIFY(!m_svc->mergeParticipantInto(m.id, QStringLiteral("v1"), QStringLiteral("v1")));
+    QVERIFY(!m_svc->mergeParticipantInto(m.id, QStringLiteral("v1"), QStringLiteral("nincs")));
+    QVERIFY(!m_svc->confirmParticipant(m.id, QStringLiteral("nincs"), true));
+    QVERIFY(!m_svc->confirmParticipant(m.id, QStringLiteral("v1"), false));         // already not confirmed
+    QVERIFY(!m_undo->forMeeting(m.id)->canUndo());
 }
 
 QTEST_MAIN(ParticipantServiceTest)

@@ -191,6 +191,21 @@ Evidence evidenceFromJson(const QJsonObject& o)
     return e;
 }
 
+// ---- the participant's sample and "same voice" merges (UA1; additive, absent = empty) ----
+static void writeSampleAndMerges(QJsonObject& o, const Participant& p)
+{
+    if (!p.sampleTrackId.isEmpty()) o[QStringLiteral("sampleTrackId")] = p.sampleTrackId;
+    if (!p.sampleRef.isEmpty()) o[QStringLiteral("sampleRef")] = p.sampleRef;
+    if (!p.mergedFrom.isEmpty()) o[QStringLiteral("mergedFrom")] = stringListToArray(p.mergedFrom);
+}
+
+static void readSampleAndMerges(const QJsonObject& o, Participant& p)
+{
+    p.sampleTrackId = o.value(QStringLiteral("sampleTrackId")).toString();
+    p.sampleRef = o.value(QStringLiteral("sampleRef")).toString();
+    p.mergedFrom = arrayToStringList(o.value(QStringLiteral("mergedFrom")).toArray());
+}
+
 QJsonObject toJson(const Participant& p)
 {
     QJsonObject o;
@@ -205,6 +220,7 @@ QJsonObject toJson(const Participant& p)
     for (const Evidence& e : p.evidence) ev.append(toJson(e));
     o[QStringLiteral("evidence")]      = ev;
     o[QStringLiteral("talkShare")]     = p.talkShare;
+    writeSampleAndMerges(o, p);
     return o;
 }
 
@@ -221,6 +237,7 @@ Participant participantFromJson(const QJsonObject& o)
     for (const QJsonValue& v : o.value(QStringLiteral("evidence")).toArray())
         p.evidence.append(evidenceFromJson(v.toObject()));
     p.talkShare     = o.value(QStringLiteral("talkShare")).toDouble();
+    readSampleAndMerges(o, p);
     return p;
 }
 

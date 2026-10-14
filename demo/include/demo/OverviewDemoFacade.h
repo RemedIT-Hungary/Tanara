@@ -22,12 +22,19 @@ public:
     bool reanalyze(const QString&) override { return true; }
     bool nameSpeakerInPlace(const QString& meetingId, const QString& speakerKey, const QString& name) override;
     void setContextNote(const QString& meetingId, const QString& note) override;
+    // The row operations in place (the rows of this instance's snapshot).
+    bool nameParticipant(const QString& meetingId, const QString& id, const QString& personIdOrName) override;
+    bool mergeParticipantInto(const QString& meetingId, const QString& fromId, const QString& intoId) override;
+    bool confirmParticipant(const QString& meetingId, const QString& id, bool confirmed) override;
+    bool setSelfParticipant(const QString& meetingId, const QString& id, QString* whyNot = nullptr) override;
 
     // "Varga Árpád" -> "VÁ", "Remote 1" -> "R1" ("Kovács Lilla (you)" -> "KL").
     static QString monogramOf(const QString& name);
 
 private:
     tanara::library::OverviewSnapshot build() const;
+    // The index of the row with this id (or speaker key); -1 if none.
+    int rowIndex(const QString& id) const;
 
     QString m_scenario;
     tanara::library::OverviewSnapshot m_snapshot;

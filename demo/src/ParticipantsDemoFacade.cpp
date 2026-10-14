@@ -32,6 +32,72 @@ void ParticipantsDemoFacade::applyDemoState(const QString& state)
 ParticipantsState ParticipantsDemoFacade::state(const QString& meetingId) const
 {
     Q_UNUSED(meetingId);
+    ParticipantsState st = baseState();
+    // The card's in-memory edits over the design state.
+    QVector<ParticipantCandidate> out;
+    for (ParticipantCandidate c : std::as_const(st.candidates)) {
+        if (m_mergedInto.contains(c.id)) continue;
+        if (const auto it = m_named.constFind(c.id); it != m_named.constEnd()) {
+            c.name = it.value();
+            c.checked = true;
+        }
+        if (const auto it = m_confirmed.constFind(c.id); it != m_confirmed.constEnd()) {
+            c.approved = it.value();
+            c.checked = it.value();
+        }
+        out.append(c);
+    }
+    st.candidates = out;
+    return st;
+}
+
+bool ParticipantsDemoFacade::hasCandidate(const QString& id) const
+{
+    for (const ParticipantCandidate& c : baseState().candidates)
+        if (c.id == id && !m_mergedInto.contains(id)) return true;
+    return false;
+}
+
+bool ParticipantsDemoFacade::nameParticipant(const QString& meetingId, const QString& id, const PersonChoice& person)
+{
+    if (!hasCandidate(id) || person.isAnonymous()) return false;
+    QString name = person.newName;
+    if (!person.id.isNull())
+        for (const PersonInfo& p : peopleDirectory())
+            if (p.personId == person.id) name = p.name;
+    if (name.isEmpty()) return false;
+    m_named.insert(id, name);
+    emit participantsChanged(meetingId);
+    return true;
+}
+
+bool ParticipantsDemoFacade::mergeParticipantInto(const QString& meetingId, const QString& fromId, const QString& intoId)
+{
+    if (fromId == intoId || !hasCandidate(fromId) || !hasCandidate(intoId)) return false;
+    m_mergedInto.insert(fromId, intoId);
+    emit participantsChanged(meetingId);
+    return true;
+}
+
+bool ParticipantsDemoFacade::confirmParticipant(const QString& meetingId, const QString& id, bool confirmed)
+{
+    if (!hasCandidate(id)) return false;
+    m_confirmed.insert(id, confirmed);
+    emit participantsChanged(meetingId);
+    return true;
+}
+
+bool ParticipantsDemoFacade::setSelfParticipant(const QString& meetingId, const QString& id, QString* whyNot)
+{
+    if (whyNot) whyNot->clear();
+    if (!hasCandidate(id)) return false;
+    m_named.insert(id, baseState().selfName);
+    emit participantsChanged(meetingId);
+    return true;
+}
+
+ParticipantsState ParticipantsDemoFacade::baseState() const
+{
     const QString s = m_state.isEmpty() ? QStringLiteral("doubts") : m_state;
     ParticipantsState st;
     st.found = true;

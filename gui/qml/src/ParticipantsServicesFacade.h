@@ -54,6 +54,11 @@ public:
     tanara::ParticipantTrackBinding participantTracks(const QString& meetingId, const QString& id) const override;
     bool setParticipantTracks(const QString& meetingId, const QString& id, const QStringList& trackIds) override;
 
+    bool nameParticipant(const QString& meetingId, const QString& id, const tanara::PersonChoice& person) override;
+    bool mergeParticipantInto(const QString& meetingId, const QString& fromId, const QString& intoId) override;
+    bool confirmParticipant(const QString& meetingId, const QString& id, bool confirmed) override;
+    bool setSelfParticipant(const QString& meetingId, const QString& id, QString* whyNot = nullptr) override;
+
 private:
     Deps m_d;
 };

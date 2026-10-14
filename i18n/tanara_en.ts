@@ -7927,6 +7927,34 @@
         <source>Résztvevő eltávolítva: %1</source>
         <translation>Participant removed: %1</translation>
     </message>
+    <message>
+        <source>Elnevezve: %1</source>
+        <translation>Named: %1</translation>
+    </message>
+    <message>
+        <source>Nincs megadva a saját neved: a Beállításokban adhatod meg.</source>
+        <translation>Your own name is not set: you can set it in Settings.</translation>
+    </message>
+    <message>
+        <source>Összevonva</source>
+        <translation>Merged</translation>
+    </message>
+    <message>
+        <source>névtelen hang</source>
+        <translation>unnamed voice</translation>
+    </message>
+    <message>
+        <source>Összevonva: %1 → %2</source>
+        <translation>Merged: %1 → %2</translation>
+    </message>
+    <message>
+        <source>Ott volt: %1</source>
+        <translation>Was there: %1</translation>
+    </message>
+    <message>
+        <source>Ott volt, visszavonva: %1</source>
+        <translation>Was there, undone: %1</translation>
+    </message>
 </context>
 <context>
     <name>tanara::editing::RecheckService</name>
