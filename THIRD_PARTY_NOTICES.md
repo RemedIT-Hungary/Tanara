@@ -3,7 +3,7 @@
 Tanara is released under the MIT License (see [`LICENSE`](LICENSE)), Copyright (c) RemedIT Hungary Kft.
 Tanara's MIT license applies only to Tanara's own source code. The components below remain under
 their own licenses. Verbatim license texts are in [`packaging/licenses/`](packaging/licenses/)
-(in the Windows packages: the `licenses\` folder next to `tanara.exe`); the index of that folder is
+(in the Windows packages: the `licenses\` folder next to `tanara.exe`; in the AppImage: `usr/share/licenses/tanara/licenses/`); the index of that folder is
 [`packaging/licenses/README.txt`](packaging/licenses/README.txt).
 
 How to read an entry: **name, version, license (SPDX), copyright holder, upstream, license text**.
@@ -15,6 +15,7 @@ Contents
 1. [Bundled in all builds](#1-bundled-in-all-builds-vendored-sources-fonts-icons)
 2. [Linked libraries](#2-linked-libraries)
 3. [Shipped only in Windows packages](#3-shipped-only-in-windows-packages)
+   - [Shipped in the AppImage](#3a-shipped-in-the-appimage)
 4. [Models](#4-models)
 5. [External programs on Linux](#5-external-programs-on-linux)
 6. [Services and data flow](#6-services-and-data-flow)
@@ -39,17 +40,17 @@ The fonts and icons are compiled into the GUI. The Windows packages carry their 
 
 ### Qt 6
 
-- **Version:** 6.11.1 (Windows packages, mingw_64 build); the system Qt 6.11.x on Linux (not shipped by Tanara).
+- **Version:** 6.11.1 (Windows packages, mingw_64 build; AppImage, linux_gcc_64 build); the system Qt 6.11.x in the RPM (not shipped by Tanara there).
 - **Modules used:** Core, Network, Sql (SQLite driver), Widgets, Multimedia, MultimediaWidgets, Qml, Quick, QuickControls2, Svg, and DBus on Linux. Build tools: LinguistTools, moc, rcc, uic, qmltyperegistrar, qmlcachegen, windeployqt. The Test module is used for the unit tests only.
 - **License:** LGPL-3.0-only (Qt is available under LGPL-3.0-only OR GPL-3.0-only WITH Qt-GPL-exception-1.0; Tanara uses it under the LGPL-3.0). Texts: `licenses/LGPL-3.0.txt`, `licenses/GPL-3.0.txt`.
 - **Copyright:** The Qt Company Ltd. and other contributors. Upstream: https://www.qt.io
 - **Notice:** This software uses the Qt toolkit, version 6.11.1, under the GNU Lesser General Public License version 3.
 - **Source availability:** the complete corresponding source of Qt 6.11.1 is at https://download.qt.io/archive/qt/6.11/6.11.1/single/qt-everywhere-src-6.11.1.tar.xz (modules also at https://download.qt.io/archive/qt/6.11/6.11.1/submodules/). Tanara does not modify Qt.
-- **Relinking:** Qt is linked dynamically (the Qt DLLs and plugins sit next to `tanara.exe` as separate files). You may replace them with your own build of a compatible Qt 6.11.x. Tanara's own source is available under the MIT License at https://github.com/RemedIT-Hungary/Tanara.
+- **Relinking:** Qt is linked dynamically (the Qt DLLs and plugins sit next to `tanara.exe` as separate files; in the AppImage they are in `usr/lib` and `usr/plugins`, and you can unpack it with `--appimage-extract`, replace them and repack it with appimagetool). You may replace them with your own build of a compatible Qt 6.11.x. Tanara's own source is available under the MIT License at https://github.com/RemedIT-Hungary/Tanara.
 
 ### ONNX Runtime
 
-- **Version:** 1.20.1 (Windows packages, `onnxruntime.dll`); the system package on Linux (not shipped; the 1.22.x series was used for development).
+- **Version:** 1.20.1 (Windows packages, `onnxruntime.dll`; AppImage, `libonnxruntime.so.1`); the system package in the RPM (not shipped there; the 1.22.x series was used for development).
 - **License:** MIT. **Copyright:** (c) Microsoft Corporation. Upstream: https://github.com/microsoft/onnxruntime
 - **License text:** `licenses/MIT-onnxruntime.txt`. The Windows packages also carry the release's own `LICENSE` and `ThirdPartyNotices.txt` as `licenses\onnxruntime-LICENSE.txt` and `licenses\onnxruntime-ThirdPartyNotices.txt`.
 - Runs the speaker-embedding models.
@@ -60,7 +61,7 @@ The fonts and icons are compiled into the GUI. The Windows packages carry their 
 
 ### QtKeychain
 
-- **Version:** the system package on Linux (Fedora: `qtkeychain-qt6`, 0.16.x; not shipped by Tanara); on Windows release 0.16.0, built from source by CMake `FetchContent` and linked statically into Tanara.
+- **Version:** the system package in the RPM (Fedora: `qtkeychain-qt6`, 0.16.x; not shipped there); on Windows release 0.16.0, built from source by CMake `FetchContent` and linked statically into Tanara; in the AppImage release 0.16.0, built from source (tarball SHA256 `3be26ec4ae30eecf0c2ff7572ba83799791b157c76e15a05ef35f23dc25e4054`) as the shared library `libqt6keychain.so.1`.
 - **License:** BSD-3-Clause. **Copyright:** (C) 2011-2015 Frank Osterfeld. Upstream: https://github.com/frankosterfeld/qtkeychain
 - **License text:** `licenses/BSD-3-Clause-qtkeychain.txt`.
 - Stores the API keys in the operating system's keychain (Secret Service / KWallet on Linux, Credential Manager on Windows, Keychain on macOS). Without it, Tanara keeps the keys in a file readable only by the user.
@@ -106,13 +107,29 @@ The Qt DLLs contain third-party code under permissive licenses: for example PCRE
 
 The installer is built with Inno Setup 6 (Jordan Russell and Martijn Laan; Inno Setup License). No attribution is required for the installer.
 
+### 3a. Shipped in the AppImage
+
+The AppImage (`Tanara-<version>-x86_64.AppImage`, built on Ubuntu 22.04 by `tools/ci/package-appimage.sh`) contains Tanara's three programs, `ffmpeg` and `ffprobe`, the CAM++ model (section 4), and these libraries. It also carries `LICENSE`, this file and the license texts in `usr/share/licenses/tanara/`.
+
+| Component | Version / source | License | Notes |
+|---|---|---|---|
+| Qt 6 libraries, plugins, QML imports | 6.11.1 (aqtinstall `linux_gcc_64`) | LGPL-3.0-only | Section 2. Dynamic; replaceable (see "Relinking" in section 2). |
+| FFmpeg libraries of Qt Multimedia (`libavcodec.so.61`, `libavformat.so.61`, `libavutil.so.59`, `libswresample.so.5`, `libswscale.so.8`) | the FFmpeg 7.1 series that Qt 6.11.1 ships | LGPL-2.1-or-later | Used for audio playback. Text: `licenses/LGPL-2.1.txt`. |
+| ICU (`libicu*.so.73`) | the copy that Qt 6.11.1 ships | Unicode License (ICU) | https://icu.unicode.org |
+| `ffmpeg`, `ffprobe` (programs) | BtbN/FFmpeg-Builds `autobuild-2026-09-30-13-08`, file `ffmpeg-n9.0.2-17-g2a571b6068-linux64-lgpl-9.0.tar.xz` (static, x86_64), SHA256 `2d41cbea0ca1a15029b638330740f78d6f5aeb062355bf425433fc938705350a` | LGPL-3.0-or-later (`--enable-version3`, no `--enable-gpl`, no `--enable-nonfree`; the build script checks this) | Same release and source as the Windows build in this section: FFmpeg commit `2a571b606854520cf89804d8030c8b328e621689`, build scripts https://github.com/BtbN/FFmpeg-Builds (commit `6c9aec5fc9a72ec3abedd1fa84db141fa18cf52b`). Started as separate programs (`QProcess`). License file: `licenses/FFmpeg-LICENSE.txt`. |
+| ONNX Runtime | 1.20.1, `onnxruntime-linux-x64-1.20.1.tgz`, SHA256 `67db4dc1561f1e3fd42e619575c82c601ef89849afc7ea85a003abbac1a1a105` | MIT | `licenses/MIT-onnxruntime.txt`, `licenses/onnxruntime-LICENSE.txt`, `licenses/onnxruntime-ThirdPartyNotices.txt` |
+| QtKeychain | 0.16.0 | BSD-3-Clause | Section 2. |
+| Libraries from the Ubuntu 22.04 build image (for example glib, D-Bus, PulseAudio client library, libsndfile, libogg/libvorbis/libFLAC/libopus, libxcb and libxkbcommon families, libpng, zstd, xz, brotli, libgcrypt, Kerberos client libraries) | Ubuntu 22.04 packages (glibc and libstdc++ are NOT bundled; the host provides them, as well as the graphics libraries libGL/libEGL) | various, mostly LGPL-2.1-or-later, MIT or BSD | The copyright file of every Ubuntu package whose library was bundled is in `usr/share/licenses/tanara/system-libs/<package>.copyright`, and the list is `PACKAGES.txt` there. Source of these packages: https://packages.ubuntu.com (source packages of Ubuntu 22.04 "jammy"). |
+
+Tools used to build the AppImage (not shipped inside it): linuxdeploy 1-alpha-20251107-1, linuxdeploy-plugin-qt 1-alpha-20250213-1, appimagetool 1.9.1, CMake 3.31.9.
+
 ## 4. Models
 
 Tanara downloads or uses these models. The model files are not part of the source repository.
 
 | Model | License | Copyright / origin | Bundled? |
 |---|---|---|---|
-| CAM++ speaker embedding (`iic/speech_campplus_sv_zh_en_16k-common_advanced`), ONNX export `campplus_sv_zh_en_16k.onnx`, 192-dim | Apache-2.0 (ModelScope license field) | Alibaba / 3D-Speaker authors (https://github.com/modelscope/3D-Speaker); ONNX export from the sherpa-onnx project (k2-fsa, Apache-2.0): https://github.com/k2-fsa/sherpa-onnx/releases/tag/speaker-recongition-models | **Yes, in the Windows packages** (`models\campplus_sv_zh_en_16k.onnx`, 28 MB). On Linux the user downloads it (see README). Text: `licenses/Apache-2.0.txt`. |
+| CAM++ speaker embedding (`iic/speech_campplus_sv_zh_en_16k-common_advanced`), ONNX export `campplus_sv_zh_en_16k.onnx`, 192-dim | Apache-2.0 (ModelScope license field) | Alibaba / 3D-Speaker authors (https://github.com/modelscope/3D-Speaker); ONNX export from the sherpa-onnx project (k2-fsa, Apache-2.0): https://github.com/k2-fsa/sherpa-onnx/releases/tag/speaker-recongition-models | **Yes, in the Windows packages** (`models\campplus_sv_zh_en_16k.onnx`, 28 MB) **and in the AppImage** (`usr/bin/models/`). The file is byte-identical to the sherpa-onnx release asset (SHA256 `aa3cfc16963a10586a9393f5035d6d6b57e98d358b347f80c2a30bf4f00ceba2`). In the RPM and in source builds the user downloads it (see README). Text: `licenses/Apache-2.0.txt`. |
 | ERes2NetV2 (`iic/speech_eres2netv2_sv_zh-cn_16k-common`), 192-dim | Apache-2.0 | Alibaba / 3D-Speaker authors; sherpa-onnx ONNX export, same release as above | **No.** Downloaded by the user with `tanara-cli voice-models fetch`. |
 | WeSpeaker ResNet34-LM (VoxCeleb), `wespeaker_en_voxceleb_resnet34_LM.onnx`, 256-dim | CC-BY-4.0 | WeSpeaker authors (https://github.com/wenet-e2e/wespeaker, model card https://huggingface.co/Wespeaker/wespeaker-voxceleb-resnet34-LM); ONNX export from the sherpa-onnx release above | **No.** Downloaded by the user with `tanara-cli voice-models fetch`. Attribution as CC-BY-4.0 requires: the model is by the WeSpeaker project, licensed CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/); it was converted to ONNX by the sherpa-onnx project and is used unchanged in Tanara. Text: `licenses/CC-BY-4.0.txt`. |
 | Google Gemma (default summary model, `google/gemma-4-12b`) | Gemma Terms of Use | Google | **No.** The user downloads it in LM Studio. |
@@ -126,7 +143,7 @@ Notes:
 
 ## 5. External programs on Linux
 
-On Linux, Tanara does not ship these. It runs the ones installed on your system:
+In the RPM and in source builds on Linux, Tanara does not ship these. It runs the ones installed on your system (the AppImage carries its own FFmpeg, section 3a):
 
 - **FFmpeg** (`ffmpeg`, `ffprobe`): started as external programs. License depends on your distribution's build (LGPL-2.1-or-later or GPL). Upstream: https://ffmpeg.org
 - **PipeWire** `pw-dump`: MIT, Copyright PipeWire contributors. Used to find which application is using the microphone. Upstream: https://pipewire.org

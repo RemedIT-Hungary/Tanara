@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Tanara app icon. Same geometry as gui/common/AppIcon.h (the icon the app draws in code):
+     blue-to-indigo rounded square, white microphone. Keep both in step. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <defs>
+    <linearGradient id="bg" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="256" y2="256">
+      <stop offset="0" stop-color="#3B82F6"/>
+      <stop offset="1" stop-color="#6366F1"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="240" height="240" rx="52" ry="52" fill="url(#bg)"/>
+  <rect x="100" y="44" width="56" height="104" rx="28" ry="28" fill="#FFFFFF"/>
+  <path d="M78 134 A50 50 0 0 0 178 134" fill="none" stroke="#FFFFFF" stroke-width="14" stroke-linecap="round"/>
+  <rect x="121" y="182" width="14" height="20" rx="6" ry="6" fill="#FFFFFF"/>
+  <rect x="98" y="200" width="60" height="16" rx="8" ry="8" fill="#FFFFFF"/>
+</svg>

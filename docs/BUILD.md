@@ -2,8 +2,8 @@
 
 Tanara is a C++20 / Qt 6 (Quick) project built with CMake and Ninja. This page covers a
 developer build on Fedora and on Windows (MinGW), the CMake options, how to run the tests,
-and how to run the CI steps on your own machine. For the Windows release package (zip and
-installer) see [`packaging/windows/README.md`](../packaging/windows/README.md).
+and how to run the CI steps on your own machine. For the release packages (Windows installer,
+AppImage, RPM, Flatpak experiment) see [Packaging](#packaging) below.
 
 ## Requirements
 
@@ -183,3 +183,103 @@ powershell -File tools\ci\build-test.ps1 -QtDir C:\Qt\6.11.1\mingw_64 -MingwBin 
 
 `windows-deps.ps1 -WhatIf` only prints what it would download. Versions and checksums of the
 downloads live in that script and must match `packaging/windows/README.md`.
+
+## Packaging
+
+Release packages are built from a tag `v<version>` (for example `v0.5.11`). The tag must equal
+the CMake version: `project(VERSION)` in `CMakeLists.txt` plus `TANARA_VERSION_SUFFIX`
+(`tools/ci/package-version.sh <tag>` checks it; the release workflow fails at once if they differ).
+There is no `.deb` package, and nothing is code-signed yet (decision D13; signing is phase 3).
+
+| Package | Built by | Where it runs |
+|---|---|---|
+| Windows installer (`Tanara-<v>-win64-setup.exe`, per-user, no admin rights) and zip | `tools/ci/package-windows.ps1` | GitHub Actions `windows-2022`, or any Windows machine with the build prerequisites |
+| AppImage (`Tanara-<v>-x86_64.AppImage`) | `tools/ci/package-appimage.sh` | GitHub Actions `ubuntu-22.04`, or an `ubuntu:22.04` container |
+| RPM (`tanara`) | Fedora COPR, `.copr/Makefile` + `packaging/rpm/tanara.spec` | COPR (the project and the webhook are set up by the maintainer) |
+| Flatpak (experiment only) | `flatpak-builder`, `packaging/flatpak/eu.remedit.Tanara.yml` | local; not in the release workflow, see `packaging/flatpak/TESTING.md` |
+
+### Release workflow
+
+`.github/workflows/release.yml` runs on a pushed `v*` tag: `check-version`, then `windows-installer`
+and `appimage` in parallel, then `release`, which attaches the files and their `.sha256` files to a
+**draft** GitHub release. The maintainer reads the draft and publishes it. To try it without a real
+release, push a throw-away tag whose CMake version matches (or a tag in a fork) and delete the draft
+and the tag afterwards.
+
+The release jobs do not run the tests again: CI (`ci.yml`) already ran them on the same commit.
+
+### Windows installer
+
+```powershell
+powershell -File tools\ci\windows-deps.ps1 -Dest C:\ci-deps      # ONNX Runtime + LGPL FFmpeg (SHA256-checked)
+powershell -File tools\ci\package-windows.ps1 -DepsDir C:\ci-deps `
+    -QtDir C:\Qt\6.11.1\mingw_64 -MingwBin C:\Qt\Tools\mingw1310_64\bin
+```
+
+The script builds (unless `-SkipBuild`), assembles `build-release\dist` (windeployqt with the QML
+imports, `qoffscreen`, `onnxruntime.dll`, the VC++ runtime DLLs from the Visual Studio `Redist`
+folder, the LGPL FFmpeg, the CAM++ model downloaded with a SHA256 check, the license files), runs
+a smoke test on a clean `PATH` (`tanara-cli --version`, `paths show`, `tanara --qml-shot`), writes
+the zip and runs Inno Setup (`ISCC`; installed with Chocolatey when it is missing). The result is in
+`build-release\`. These are the scripted steps of `packaging/windows/README.md` (that file explains
+why each step is there). Qt 6.11 needs the `qttasktree` add-on module with aqtinstall.
+
+### AppImage
+
+```bash
+# on ubuntu:22.04 (a container is fine); Qt 6.11.1 linux_gcc_64 from aqtinstall, with the modules
+#   qtmultimedia qtshadertools qttasktree
+tools/ci/package-appimage.sh --install-deps
+QT_ROOT_DIR=/path/to/6.11.1/gcc_64 tools/ci/package-appimage.sh [v0.5.11]
+# -> build-appimage/out/Tanara-<version>-x86_64.AppImage (+ .sha256)
+```
+
+The script downloads pinned, SHA256-checked tools and libraries (CMake 3.31, linuxdeploy and its Qt
+plugin, appimagetool, the BtbN LGPL FFmpeg, ONNX Runtime 1.20.1, QtKeychain 0.16.0, the CAM++ model),
+builds Tanara, lets `linuxdeploy` collect the libraries, the QML imports (`gui/qml`) and the Qt
+plugins, and squashes the result. Ubuntu 22.04 (glibc 2.35) is the build image on purpose: an
+AppImage runs on distributions with the same or a newer glibc. `ffmpeg` and `ffprobe` are in
+`usr/bin`; `MediaToolLocator` finds them through `$APPDIR` (the `bundle` source in the log).
+
+One AppImage contains three programs. `packaging/linux/AppRun` starts one of them:
+
+```bash
+./Tanara-0.5.11-x86_64.AppImage                      # the GUI
+./Tanara-0.5.11-x86_64.AppImage --tanara-cli paths show
+./Tanara-0.5.11-x86_64.AppImage --tanara-watcher
+ln -s Tanara-0.5.11-x86_64.AppImage tanara-cli       # started under this name: the CLI
+```
+
+Known limits: the watcher's "start at sign-in" entry writes the path of the running program, which
+inside an AppImage is a temporary mount; use the CLI/watcher through the AppImage file itself
+(for example an autostart entry with `Exec=/path/to/Tanara.AppImage --tanara-watcher`) until the
+app writes `$APPIMAGE` there.
+
+### RPM (Fedora COPR)
+
+`packaging/rpm/tanara.spec` builds with `%cmake`, runs `ctest` offscreen in `%check`, and installs
+the three programs, the desktop file, the AppStream file and the icon. `.copr/Makefile`
+(`make -f .copr/Makefile srpm outdir=... spec=...`) makes the source tarball with `git archive` and
+writes the version from `CMakeLists.txt` into the spec. Local check:
+
+```bash
+make -f .copr/Makefile srpm outdir=/tmp/tanara-srpm
+rpmbuild --rebuild /tmp/tanara-srpm/tanara-*.src.rpm      # full build and tests (takes a while)
+```
+
+The CAM++ model is not in the RPM (Fedora packages are built without network access); users run
+`tanara-cli voice-models fetch campplus`.
+
+### Flatpak (experiment)
+
+`packaging/flatpak/eu.remedit.Tanara.yml` and the checklist `packaging/flatpak/TESTING.md`. Not
+part of the release workflow until the checklist has passed.
+
+### Bundled components and licenses
+
+The Windows and AppImage packages carry `LICENSE`, `THIRD_PARTY_NOTICES.md` and a `licenses`
+folder (`licenses\` next to `tanara.exe`; `usr/share/licenses/tanara/` in the AppImage). When you
+change the bundled components (versions, new library), update `THIRD_PARTY_NOTICES.md`,
+`packaging/licenses/` and the pinned URLs and checksums in the scripts, `tools/ci/windows-deps.ps1`
+and the Flatpak manifest together. The FFmpeg build must stay LGPL-only (the scripts check
+`--enable-gpl` / `--enable-nonfree`). Check the license of a model before it goes into a package.

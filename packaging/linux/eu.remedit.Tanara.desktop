@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Version=1.5
+Name=Tanara
+GenericName=Meeting recorder and transcriber
+GenericName[hu]=Meeting-rögzítő és átíró
+Comment=Record, transcribe and summarize meetings
+Comment[hu]=Meetingek rögzítése, átírása és összefoglalása
+Exec=tanara
+Icon=eu.remedit.Tanara
+Terminal=false
+Categories=AudioVideo;Audio;Recorder;
+Keywords=meeting;recording;transcription;transcript;summary;speech;
+StartupNotify=true

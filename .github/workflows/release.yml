@@ -1,0 +1,120 @@
+name: Release
+
+# A tag v<version> (for example v0.5.11) builds the Windows installer + zip and the AppImage and
+# attaches them to a DRAFT GitHub release; the maintainer publishes it after a check.
+# The tag must equal the CMake version (project(VERSION) + TANARA_VERSION_SUFFIX in CMakeLists.txt),
+# otherwise the first job fails. The packaging steps are scripts that also run on a developer
+# machine: tools/ci/package-windows.ps1, tools/ci/package-appimage.sh (docs/BUILD.md, "Packaging").
+
+on:
+  push:
+    tags: ['v*']
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  check-version:
+    name: Tag matches the CMake version
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compare tag and CMake version
+        id: v
+        run: echo "version=$(bash tools/ci/package-version.sh "$GITHUB_REF_NAME")" >> "$GITHUB_OUTPUT"
+
+  windows-installer:
+    name: Windows installer and zip (MinGW 13.1, Inno Setup)
+    needs: check-version
+    runs-on: windows-2022
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Qt and MinGW
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: 6.11.1
+          host: windows
+          target: desktop
+          arch: win64_mingw
+          modules: qtmultimedia qtshadertools qttasktree
+          tools: tools_mingw1310,qt.tools.win64_mingw1310
+          cache: true
+      - name: Install Ninja
+        shell: pwsh
+        run: choco install ninja --no-progress -y
+      - uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/deps
+          key: windows-deps-${{ hashFiles('tools/ci/windows-deps.ps1', 'tools/ci/package-windows.ps1') }}
+      - name: Download ONNX Runtime and FFmpeg
+        shell: pwsh
+        run: ./tools/ci/windows-deps.ps1
+      - name: Build, assemble, smoke-test and package
+        shell: pwsh
+        # Inno Setup 6 is preinstalled on windows-2022; the script installs it with Chocolatey if it is missing.
+        run: ./tools/ci/package-windows.ps1 -Tag "${{ github.ref_name }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-packages
+          path: |
+            build-release/Tanara-*-win64.zip
+            build-release/Tanara-*-win64-setup.exe
+            build-release/*.sha256
+          if-no-files-found: error
+
+  appimage:
+    name: AppImage (ubuntu-22.04, Qt 6.11)
+    needs: check-version
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install system packages
+        run: bash tools/ci/package-appimage.sh --install-deps
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: 6.11.1
+          host: linux
+          target: desktop
+          arch: linux_gcc_64
+          modules: qtmultimedia qtshadertools qttasktree
+          cache: true
+      - name: Build the AppImage
+        run: bash tools/ci/package-appimage.sh "$GITHUB_REF_NAME"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: appimage
+          path: |
+            build-appimage/out/Tanara-*-x86_64.AppImage
+            build-appimage/out/*.sha256
+          if-no-files-found: error
+
+  release:
+    name: Draft GitHub release
+    needs: [windows-installer, appimage]
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-files
+          merge-multiple: true
+      - name: List the files
+        run: ls -l release-files
+      - uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: release-files/*

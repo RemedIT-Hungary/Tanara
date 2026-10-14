@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>eu.remedit.Tanara</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <name>Tanara</name>
+  <developer id="eu.remedit">
+    <name>RemedIT Hungary Kft.</name>
+  </developer>
+  <summary>Record, transcribe and summarize meetings</summary>
+  <description>
+    <p>
+      Tanara records a meeting (your microphone and the sound of the call), transcribes it with
+      the speech-to-text service you choose, recognizes the speakers on your device and writes a
+      summary with a language model. The recordings, transcripts and voice prints stay on your
+      computer. Nothing is sent anywhere except to the services you set up yourself.
+    </p>
+    <p>
+      A tray watcher can notice that a call has started and offer to record it.
+    </p>
+  </description>
+  <launchable type="desktop-id">eu.remedit.Tanara.desktop</launchable>
+  <url type="homepage">https://github.com/RemedIT-Hungary/Tanara</url>
+  <url type="bugtracker">https://github.com/RemedIT-Hungary/Tanara/issues</url>
+  <categories>
+    <category>AudioVideo</category>
+    <category>Audio</category>
+    <category>Recorder</category>
+  </categories>
+  <provides>
+    <binary>tanara</binary>
+    <binary>tanara-cli</binary>
+    <binary>tanara-watcher</binary>
+  </provides>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="0.5.11" date="2026-10-14"/>
+  </releases>
+</component>

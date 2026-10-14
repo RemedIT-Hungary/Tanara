@@ -1,0 +1,32 @@
+#!/bin/sh
+# Entry point of the Tanara AppImage (linuxdeploy --custom-apprun).
+#
+# One AppImage carries three programs. Which one starts:
+#   - the name the AppImage was started under (symlink or copy named tanara-cli / tanara-watcher);
+#   - or the first argument:  Tanara.AppImage --tanara-cli <args>   /   --tanara-watcher <args>;
+#   - otherwise: the GUI (tanara), all arguments go to it.
+# Example:  ln -s Tanara-x86_64.AppImage ~/bin/tanara-cli; tanara-cli paths show
+SELF="$(readlink -f "$0")"
+HERE="${SELF%/*}"
+export APPDIR="${APPDIR:-$HERE}"
+
+# Hooks written by linuxdeploy plugins (the Qt plugin sets QT_PLUGIN_PATH, QML2_IMPORT_PATH, ...).
+for hook in "$APPDIR"/apprun-hooks/*.sh; do
+    [ -r "$hook" ] && . "$hook"
+done
+
+# MediaToolLocator finds ffmpeg/ffprobe in $APPDIR/usr/bin; PATH makes them visible to child
+# processes too (for example the tray watcher starting the recorder).
+export PATH="$APPDIR/usr/bin:$PATH"
+
+prog="${ARGV0##*/}"
+case "$prog" in
+    tanara-cli|tanara-watcher) ;;
+    *) prog=tanara ;;
+esac
+case "${1:-}" in
+    --tanara-cli)     prog=tanara-cli;     shift ;;
+    --tanara-watcher) prog=tanara-watcher; shift ;;
+esac
+
+exec "$APPDIR/usr/bin/$prog" "$@"

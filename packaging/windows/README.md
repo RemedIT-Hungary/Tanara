@@ -11,6 +11,12 @@ This folder holds the files for the Windows tester package (zip) and the install
 License texts for everything in the package are in `packaging/licenses/`; the component list
 is in `THIRD_PARTY_NOTICES.md`. Both go into the package (see step 2).
 
+## Scripted build
+
+`tools/ci/package-windows.ps1` runs all the steps below (build, `dist` folder, smoke test, zip,
+installer); the release workflow (`.github/workflows/release.yml`) uses it on a `v*` tag.
+See `docs/BUILD.md`, chapter "Packaging". The manual steps in this file explain what the script does and why.
+
 ## Prerequisites
 
 - Qt 6.11 (mingw_64), the Qt-bundled MinGW 13.1, Ninja, and CMake. See the main

@@ -35,8 +35,9 @@ CC-BY-4.0.txt                 Creative Commons BY 4.0    WeSpeaker ResNet34-LM s
 miniaudio is public domain / MIT-0; its license statement is at the end of
 third_party/miniaudio/miniaudio.h and needs no separate file.
 
-Additional files added to the Windows package by the packaging steps (they come from the
-upstream archives, so they always match the shipped binaries; see packaging/windows/README.md):
+Additional files added to the Windows package and to the AppImage by the packaging steps (they come
+from the upstream archives, so they always match the shipped binaries; see packaging/windows/README.md
+and tools/ci/package-appimage.sh):
 
   FFmpeg-LICENSE.txt                   LICENSE.txt of the FFmpeg LGPL build (BtbN)
   FFmpeg-README-build.txt              short build information of that FFmpeg build

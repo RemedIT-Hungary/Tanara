@@ -1,0 +1,176 @@
+# Tanara as a Flatpak. EXPERIMENT (decision D13): not part of the release workflow and not for
+# Flathub until the checklist in TESTING.md passed on a real desktop.
+#
+# Build and install (from the repository root):
+#   flatpak install --user flathub org.kde.Platform//6.11 org.kde.Sdk//6.11
+#   flatpak-builder --user --install --force-clean build-flatpak packaging/flatpak/eu.remedit.Tanara.yml
+#   flatpak run eu.remedit.Tanara
+# The tray watcher and the CLI are in the same app:
+#   flatpak run --command=tanara-watcher eu.remedit.Tanara
+#   flatpak run --command=tanara-cli eu.remedit.Tanara paths show
+#
+# KNOWN GAPS (see TESTING.md): the autostart entry the watcher writes uses a path that does not exist
+# outside the sandbox (needs the Background portal or Exec=flatpak run --command=tanara-watcher ...);
+# the prebuilt FFmpeg/ONNX Runtime/model downloads below are fine for a local experiment but Flathub
+# requires everything to be built from source.
+app-id: eu.remedit.Tanara
+runtime: org.kde.Platform
+runtime-version: '6.11'
+sdk: org.kde.Sdk
+command: tanara
+
+finish-args:
+  # window system
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  # speech-to-text / LLM / Tanara Cloud endpoints
+  - --share=network
+  # microphone and the system sound (monitor sources) through PipeWire's PulseAudio server
+  - --socket=pulseaudio
+  # the PipeWire socket: pw-dump (call detection) reads the graph from it
+  - --filesystem=xdg-run/pipewire-0
+  # the default recordings folder <Documents>/Tanara/recordings (settings: paths.recordings)
+  - --filesystem=xdg-documents/Tanara:create
+  # API keys: Secret Service through QtKeychain/libsecret (falls back to a 0600 file in the sandbox)
+  - --talk-name=org.freedesktop.secrets
+  # tray icon (StatusNotifierItem)
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --talk-name=org.freedesktop.Notifications
+  # Autostart of the watcher: the Background portal (org.freedesktop.portal.Desktop is always reachable).
+  # Tanara does not call the portal yet; see TESTING.md.
+
+cleanup:
+  - /include
+  - /lib/cmake
+  - /lib/pkgconfig
+  - '*.a'
+
+modules:
+  # pw-dump (PipeWire tools only; the PipeWire libraries come from the runtime)
+  - name: pipewire-tools
+    buildsystem: meson
+    config-opts:
+      - -Dtests=disabled
+      - -Dexamples=disabled
+      - -Dman=disabled
+      - -Ddocs=disabled
+      - -Dsystemd=disabled
+      - -Dpipewire-alsa=disabled
+      - -Dpipewire-jack=disabled
+      - -Dpipewire-v4l2=disabled
+      - -Dgstreamer=disabled
+      - -Dgstreamer-device-provider=disabled
+      - -Dspa-plugins=disabled
+      - -Dsession-managers=[]
+      - -Dpw-cat=disabled
+      - -Dtest=disabled
+      - -Dlibcamera=disabled
+      - -Dbluez5=disabled
+      - -Dalsa=disabled
+      - -Dffmpeg=disabled
+      - -Djack=disabled
+      - -Dvulkan=disabled
+      - -Dx11=disabled
+      - -Dlibusb=disabled
+      - -Dsdl2=disabled
+    sources:
+      - type: git
+        url: https://gitlab.freedesktop.org/pipewire/pipewire.git
+        tag: 1.4.9
+        commit: fd60e04525f3a04d90bf50085222e0cc9139b4a4
+    post-install:
+      # keep only the tools Tanara runs
+      - find ${FLATPAK_DEST}/bin -type f ! -name pw-dump -delete
+
+  # QtKeychain (BSD-3-Clause) for Qt 6
+  - name: qtkeychain
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DBUILD_WITH_QT6=ON
+      - -DBUILD_TRANSLATIONS=OFF
+      - -DBUILD_TEST_APPLICATION=OFF
+      - -DCMAKE_INSTALL_LIBDIR=lib
+    sources:
+      - type: archive
+        url: https://github.com/frankosterfeld/qtkeychain/archive/refs/tags/0.16.0.tar.gz
+        sha256: 3be26ec4ae30eecf0c2ff7572ba83799791b157c76e15a05ef35f23dc25e4054
+
+  # ONNX Runtime 1.20.1 (MIT), the official CPU release; same file as the Windows/AppImage packages
+  - name: onnxruntime
+    buildsystem: simple
+    only-arches: [x86_64]
+    build-commands:
+      - install -Dm755 lib/libonnxruntime.so.1.20.1 ${FLATPAK_DEST}/lib/libonnxruntime.so.1.20.1
+      - ln -s libonnxruntime.so.1.20.1 ${FLATPAK_DEST}/lib/libonnxruntime.so.1
+      - ln -s libonnxruntime.so.1.20.1 ${FLATPAK_DEST}/lib/libonnxruntime.so
+      # the release's CMake config expects lib64/ and include/onnxruntime/
+      - ln -s lib ${FLATPAK_DEST}/lib64
+      - mkdir -p ${FLATPAK_DEST}/include/onnxruntime ${FLATPAK_DEST}/lib/cmake/onnxruntime
+      - cp include/*.h ${FLATPAK_DEST}/include/onnxruntime/
+      - cp lib/cmake/onnxruntime/*.cmake ${FLATPAK_DEST}/lib/cmake/onnxruntime/
+      - install -Dm644 LICENSE ${FLATPAK_DEST}/share/licenses/tanara/licenses/onnxruntime-LICENSE.txt
+      - install -Dm644 ThirdPartyNotices.txt ${FLATPAK_DEST}/share/licenses/tanara/licenses/onnxruntime-ThirdPartyNotices.txt
+    sources:
+      - type: archive
+        url: https://github.com/microsoft/onnxruntime/releases/download/v1.20.1/onnxruntime-linux-x64-1.20.1.tgz
+        sha256: 67db4dc1561f1e3fd42e619575c82c601ef89849afc7ea85a003abbac1a1a105
+        strip-components: 1
+
+  # ffmpeg + ffprobe (BtbN LGPL static build, same as the AppImage). Tanara runs them as separate
+  # programs and finds them next to its own executable (/app/bin) - MediaToolLocator, "app-dir".
+  # org.freedesktop.Platform.ffmpeg-full only has libraries, not the command-line tools.
+  - name: ffmpeg-lgpl
+    buildsystem: simple
+    only-arches: [x86_64]
+    build-commands:
+      - install -Dm755 bin/ffmpeg ${FLATPAK_DEST}/bin/ffmpeg
+      - install -Dm755 bin/ffprobe ${FLATPAK_DEST}/bin/ffprobe
+      - install -Dm644 LICENSE.txt ${FLATPAK_DEST}/share/licenses/tanara/licenses/FFmpeg-LICENSE.txt
+    sources:
+      - type: archive
+        url: https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-09-30-13-08/ffmpeg-n9.0.2-17-g2a571b6068-linux64-lgpl-9.0.tar.xz
+        sha256: 2d41cbea0ca1a15029b638330740f78d6f5aeb062355bf425433fc938705350a
+        strip-components: 1
+
+  # CAM++ speaker model (Apache-2.0): <app dir>/models/<file> is searched by VoiceModelRegistry
+  - name: campplus-model
+    buildsystem: simple
+    only-arches: [x86_64]
+    build-commands:
+      - install -Dm644 campplus_sv_zh_en_16k.onnx ${FLATPAK_DEST}/bin/models/campplus_sv_zh_en_16k.onnx
+    sources:
+      - type: file
+        url: https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/3dspeaker_speech_campplus_sv_zh_en_16k-common_advanced.onnx
+        sha256: aa3cfc16963a10586a9393f5035d6d6b57e98d358b347f80c2a30bf4f00ceba2
+        dest-filename: campplus_sv_zh_en_16k.onnx
+
+  - name: tanara
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DTANARA_BUILD_VOICEID=ON
+      - -DTANARA_USE_KEYCHAIN=ON
+      - -Donnxruntime_DIR=/app/lib/cmake/onnxruntime
+    sources:
+      - type: dir
+        path: ../..
+        skip:
+          - .git
+          - build
+          - build-flatpak
+          - build-appimage
+          - tmp
+    post-install:
+      # the project has no install() rules: copy the three programs and the desktop integration
+      - install -Dm755 gui/tanara ${FLATPAK_DEST}/bin/tanara
+      - install -Dm755 cli/tanara-cli ${FLATPAK_DEST}/bin/tanara-cli
+      - install -Dm755 watcher/tanara-watcher ${FLATPAK_DEST}/bin/tanara-watcher
+      - install -Dm644 ../packaging/linux/eu.remedit.Tanara.desktop ${FLATPAK_DEST}/share/applications/eu.remedit.Tanara.desktop
+      - install -Dm644 ../packaging/linux/eu.remedit.Tanara.metainfo.xml ${FLATPAK_DEST}/share/metainfo/eu.remedit.Tanara.metainfo.xml
+      - install -Dm644 ../packaging/linux/eu.remedit.Tanara.svg ${FLATPAK_DEST}/share/icons/hicolor/scalable/apps/eu.remedit.Tanara.svg
+      - install -Dm644 ../LICENSE ${FLATPAK_DEST}/share/licenses/tanara/LICENSE
+      - install -Dm644 ../THIRD_PARTY_NOTICES.md ${FLATPAK_DEST}/share/licenses/tanara/THIRD_PARTY_NOTICES.md
+      - cp -r ../packaging/licenses/. ${FLATPAK_DEST}/share/licenses/tanara/licenses/
