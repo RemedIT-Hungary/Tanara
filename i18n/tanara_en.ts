@@ -27,6 +27,22 @@
 <context>
     <name>BuiltinProviders</name>
     <message>
+        <source>Hasonló meetingek</source>
+        <translation>Similar meetings</translation>
+    </message>
+    <message>
+        <source>Helyi hangmodellek</source>
+        <translation>Local voice models</translation>
+    </message>
+    <message>
+        <source>Helyi hang-azonosítás</source>
+        <translation>Local voice identification</translation>
+    </message>
+    <message>
+        <source>Nyelvi modell</source>
+        <translation>Language model</translation>
+    </message>
+    <message>
         <source>Cím (URL)</source>
         <translation>Address (URL)</translation>
     </message>

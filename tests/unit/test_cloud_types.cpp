@@ -7,6 +7,9 @@
 
 #include "tanara/domain/Types.h"
 #include "tanara/cloud/CloudTypes.h"
+#include "tanara/cloud/CloudCapabilities.h"
+#include "tanara/cloud/CloudEstimator.h"
+#include "tanara/cloud/CloudMode.h"
 
 using namespace tanara;
 
@@ -34,6 +37,10 @@ private slots:
     void device_code_parse();
     void waitlist_body();
     void waitlist_validation();
+    void error_422_input();
+    void cloudMode_resolve();
+    void estimator_plan();
+    void gateway_kinds();
 };
 
 // The slot bodies are hidden from moc (moc cannot handle JSON raw-string literals).
@@ -270,6 +277,140 @@ void TestCloudTypes::waitlist_validation()
         s.email = QString::fromUtf8(bad);
         QCOMPARE(validateWaitlist(s), QStringLiteral("email"));
     }
+}
+
+void TestCloudTypes::error_422_input()
+{
+    // The capability endpoints' 422 invalid_input is an input error; the top-up limit stays its own kind.
+    const QByteArray body = R"({"error":{"code":"invalid_input","message":"x","fields":{"lines":{"code":"required"}}}})";
+    const cloud::CloudError e = cloud::parseCloudError(422, {}, body);
+    QCOMPARE(e.kind, cloud::CloudErrorKind::Validation);
+    QCOMPARE(cloud::toError(e).kind, Error::Kind::Input);
+    QCOMPARE(e.fieldErrors.value("lines"), QStringLiteral("required"));
+    const cloud::CloudError t = cloud::parseCloudError(422, {}, R"({"error":{"code":"topup_limit_exceeded"}})");
+    QCOMPARE(t.kind, cloud::CloudErrorKind::TopupLimit);
+}
+
+void TestCloudTypes::cloudMode_resolve()
+{
+    cloud::CloudSettings s;
+    s.baseUrl = QStringLiteral("https://gw.example");
+    // Unset: the settings decide; teaser if compiled in.
+    cloud::CloudMode m = cloud::CloudMode::resolve(s, QString(), QString(), true, true);
+    QVERIFY(!m.live);
+    QVERIFY(m.teaser);
+    QCOMPARE(m.baseUrl, QStringLiteral("https://gw.example"));
+    s.enabled = true;
+    m = cloud::CloudMode::resolve(s, QString(), QString(), true, true);
+    QVERIFY(m.live);
+    QVERIFY(!m.teaser);
+    // Not compiled in: never live.
+    QVERIFY(!cloud::CloudMode::resolve(s, "live", QString(), false, true).live);
+    // off wins over everything; live overrides the settings; the URL from the environment.
+    m = cloud::CloudMode::resolve(s, " OFF ", QString(), true, true);
+    QVERIFY(!m.live && !m.teaser);
+    s.enabled = false;
+    m = cloud::CloudMode::resolve(s, "live", " http://127.0.0.1:8300 ", true, false);
+    QVERIFY(m.live);
+    QCOMPARE(m.baseUrl, QStringLiteral("http://127.0.0.1:8300"));
+
+    providers::ProviderSettings ps;
+    ps.stt.selectedId = cloud::ProviderId;
+    ps.llm.selectedId = QStringLiteral("openai-compat");
+    QVERIFY(m.selects(providers::WorkflowStep::Transcribe, ps));
+    QVERIFY(!m.selects(providers::WorkflowStep::Summarize, ps));
+    QVERIFY(!m.selects(providers::WorkflowStep::Record, ps));
+    m.live = false;
+    QVERIFY(!m.selects(providers::WorkflowStep::Transcribe, ps));
+}
+
+void TestCloudTypes::estimator_plan()
+{
+    using E = cloud::CloudEstimator;
+    cloud::EstimateInputs in;
+    in.task = QStringLiteral("transcribe");
+    in.durationMs = 60000;
+    in.tracks = 2;
+    in.sttModel = QStringLiteral("tanara/stt-accurate");
+    in.llmModel = QStringLiteral("tanara/summary-accurate");
+    cloud::EstimateRequest r = E::plan(in);
+    QCOMPARE(r.sttModel, in.sttModel);
+    QVERIFY(r.llmModel.isEmpty());
+    QVERIFY(r.llmCalls.isEmpty());
+    QCOMPARE(r.tracks, 2);
+
+    // Summarize without a transcript: statistics (mode only).
+    in.task = QStringLiteral("summarize");
+    r = E::plan(in);
+    QVERIFY(r.sttModel.isEmpty());
+    QCOMPARE(r.summaryMode, QStringLiteral("quick"));
+    QCOMPARE(r.transcriptChars, -1);
+    QVERIFY(r.llmCalls.isEmpty());
+
+    // Quick, one call.
+    in.hasTranscript = true;
+    in.transcriptChars = 5000;
+    in.contextNoteChars = 100;
+    in.singleCall = true;
+    in.parts = 1;
+    in.singlePromptChars = 700;
+    r = E::plan(in);
+    QCOMPARE(r.transcriptChars, 5000);
+    QCOMPARE(r.llmCalls.size(), 1);
+    QCOMPARE(r.llmCalls[0].inputChars, 5700);
+    QCOMPARE(r.llmCalls[0].maxTokens, E::kMaxTokens);
+
+    // Quick, 3 parts, 1 cached: notes for the 2 missing + one merge.
+    in.singleCall = false;
+    in.parts = 3;
+    in.cachedParts = 1;
+    in.partChars = { 1000, 2000, 3001 };
+    in.notesPromptChars = 400;
+    in.mergePromptChars = 500;
+    in.notesMaxTokens = 3000;
+    r = E::plan(in);
+    QCOMPARE(r.llmCalls.size(), 2);
+    QCOMPARE(r.llmCalls[0].count, 2);
+    QCOMPARE(r.llmCalls[0].inputChars, 2001 + 400 + 300);   // ceil(6001 / 3) + notes prompt + (note + 200)
+    QCOMPARE(r.llmCalls[0].maxTokens, 3000);
+    QCOMPARE(r.llmCalls[1].inputChars, 500 + 300 + 3 * E::kNotesCharsPerPart);
+
+    // Complex, no topic list yet: topics + unknown analyses + reduce.
+    in.summaryMode = QStringLiteral("complex");
+    in.topicPromptChars = 50;
+    in.analysisPromptChars = 60;
+    r = E::plan(in);
+    QCOMPARE(r.llmCalls.size(), 3);
+    QCOMPARE(r.llmCalls[0].inputChars, 5050);
+    QCOMPARE(r.llmCalls[1].count, -1);
+    QCOMPARE(r.llmCalls[1].inputChars, 5260);
+    QCOMPARE(r.llmCalls[2].inputChars, E::kReduceInputChars);
+    // Edited topic list, 2 analyses missing.
+    in.topicsKnown = true;
+    in.missingAnalyses = 2;
+    r = E::plan(in);
+    QCOMPARE(r.llmCalls.size(), 2);
+    QCOMPARE(r.llmCalls[0].count, 2);
+    in.missingAnalyses = 0;
+    QCOMPARE(E::plan(in).llmCalls.size(), 1);   // the reduce only
+
+    // The ICostEstimating request maps 1:1.
+    providers::CostEstimateRequest q;
+    q.task = "both"; q.durationMs = 5; q.llmCalls = { { -1, 10, 20 } };
+    const cloud::EstimateRequest m = E::toEstimateRequest(q);
+    QCOMPARE(m.task, QStringLiteral("both"));
+    QCOMPARE(m.llmCalls.value(0).count, -1);
+    QCOMPARE(m.llmCalls.value(0).maxTokens, 20);
+}
+
+void TestCloudTypes::gateway_kinds()
+{
+    using K = providers::CapabilityKind;
+    QCOMPARE(cloud::gatewayKindsFor(K::Transcription), QStringList{ "stt" });
+    QCOMPARE(cloud::gatewayKindsFor(K::Summarization), QStringList{ "llm" });
+    QCOMPARE(cloud::gatewayKindsFor(K::ParticipantIdentification), QStringList{ "voice_embedding" });
+    QCOMPARE(cloud::gatewayKindsFor(K::TextEmbedding), QStringList{ "text_embedding" });
+    QVERIFY(cloud::gatewayKindsFor(K::ModelCatalog).isEmpty());
 }
 
 #endif

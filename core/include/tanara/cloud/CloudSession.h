@@ -1,8 +1,13 @@
 #pragma once
 //
-// CloudAccount: the client-side state of the Tanara Cloud account + the gateway's "own" (not
-// Soniox/OpenAI-shaped) endpoints: device flow, logout, account, models, estimate,
-// terms acceptance, topup link, waitlist, and the write-back check of interrupted transcriptions.
+// CloudSession: the client-side session of the Tanara Cloud (was CloudAccount until P10): the
+// sign-in state + the gateway's "own" (not Soniox/OpenAI-shaped) endpoints: device flow, logout,
+// account, models, estimate, terms acceptance, topup link, waitlist, and the write-back check of
+// interrupted transcriptions. The secrets live in the SecretStore, the calls go through the shared
+// net::HttpClient.
+//
+// The capability adapters (cloud/CloudCapabilities.h) take the gateway address and the sign-in
+// from here; the run bookkeeping is the CloudRunLedger, the cost estimate the CloudEstimator.
 //
 // STT/LLM processing does NOT run here: that is the existing SonioxProvider /
 // OpenAiCompatibleProvider with the gateway config and a ProviderContext from the CloudRunLedger. They
@@ -12,6 +17,7 @@
 // State: the API key in the SecretStore (tanara.cloud.apiKey), the rest in
 // <data>/cloud-state.json (email, last known account/catalog, pending transcriptions,
 // terms "Later", hidden tracks). Headless (core): no Widgets dependency.
+#include "tanara/cloud/CloudSettings.h"
 #include "tanara/cloud/CloudTypes.h"
 
 #include <QHash>
@@ -30,12 +36,12 @@ namespace tanara { class SecretStore; }
 namespace tanara::cloud {
 
 
-class CloudAccount : public QObject {
+class CloudSession : public QObject {
     Q_OBJECT
 public:
     // keys: the caller's (AppController), its lifetime >= this one's. dataDir: AppPaths::dataDir() (cloud-state.json).
-    CloudAccount(SecretStore* keys, const QString& dataDir, QObject* parent = nullptr);
-    ~CloudAccount() override;
+    CloudSession(SecretStore* keys, const QString& dataDir, QObject* parent = nullptr);
+    ~CloudSession() override;
 
     // The shared HTTP client (not owned; it must outlive the account). Default: an own one.
     void    setHttpClient(net::HttpClient* http);
@@ -56,6 +62,14 @@ public:
     AccountInfo account() const { return m_account; }
     QDateTime   accountFetchedAt() const { return m_accountAt; }
     QVector<CloudModel> models() const { return m_models; }
+
+    // The model id actually sent for a kind ("stt" | "llm"): the Expert model of the settings if it
+    // is still in the catalog (or the catalog is not known yet), otherwise the tier's virtual model.
+    QString modelFor(const QString& kind, const CloudSettings& settings) const;
+
+    // What blocks a cloud run now (the task strip's single CTA), from the last known state.
+    enum class Blocker { None, ClientTooOld, BalanceEmpty };
+    Blocker blocker() const;
 
     // Min-client: if any response's X-Tanara-Min-Client is > our version, or a 426 came.
     bool    clientTooOld() const { return m_tooOld; }

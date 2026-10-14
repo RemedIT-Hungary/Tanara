@@ -26,7 +26,7 @@
 
 namespace tanara::cloud {
 
-class CloudAccount;
+class CloudSession;
 
 // State of a cloud processing run. Filled by the providers' response observer (ProviderContext::observe).
 struct CloudRun {
@@ -57,7 +57,7 @@ class CloudRunLedger : public QObject {
     Q_OBJECT
 public:
     // account: the caller's (AppController), its lifetime >= this one's.
-    explicit CloudRunLedger(CloudAccount* account, QObject* parent = nullptr);
+    explicit CloudRunLedger(CloudSession* account, QObject* parent = nullptr);
 
     CloudRunPtr newRun(const QString& meetingId, const QString& kind) const;
 
@@ -74,7 +74,7 @@ public:
     // The run's accounting of one gateway response (what contextFor's observer does): the account's
     // observeExchange, the request id, the last error (not DELETE), the file / transcription id, the
     // charges (through the cost sink), the write-back of a failed transcription.
-    static void observe(CloudAccount* account, const CloudRunPtr& run, const HttpExchange& ex,
+    static void observe(CloudSession* account, const CloudRunPtr& run, const HttpExchange& ex,
                         const providers::CostSink& cost);
 
     // A successful run: drops the pending transcription, reports the charge (charged), refreshes the account.
@@ -92,7 +92,7 @@ signals:
                 tanara::cloud::Money chargedSoFar);
 
 private:
-    QPointer<CloudAccount> m_account;
+    QPointer<CloudSession> m_account;
 };
 
 } // namespace tanara::cloud

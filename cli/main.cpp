@@ -46,7 +46,7 @@
 #include "TrackSidesCommand.h"
 #include "VoiceCommands.h"
 #include "PathsCommands.h"
-#include "tanara/cloud/CloudAccount.h"
+#include "tanara/cloud/CloudSession.h"
 #include "tanara/foundation/log/Logging.h"
 #include "tanara/app/SettingsManager.h"
 #include "tanara/recording/audio/DeviceManager.h"

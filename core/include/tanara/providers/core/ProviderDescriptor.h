@@ -10,18 +10,15 @@
 namespace tanara::providers {
 
 // The capability a provider gives (one registry key part; providers/core/ProviderRegistry.h).
-// Transcription / Chat / TextEmbedding / LocalModelServer have ports and providers today; the others
-// are prepared for the next slices (P10: VoiceEmbedding, Summarization, TagSuggestion,
-// ParticipantIdentification, ModelCatalog).
 enum class CapabilityKind {
     Transcription,              // ISttProvider (providers/stt)
     Chat,                       // IChatProvider (providers/chat)
     TextEmbedding,              // ITextEmbedder (providers/embedding): the tag suggestions' related-topic level
-    VoiceEmbedding,             // P10: IVoiceEmbedder
-    Summarization,              // P10: ISummarizer
-    TagSuggestion,              // P10: ITagSuggester
-    ParticipantIdentification,  // P10: IParticipantIdentifier
-    ModelCatalog,               // P10: IModelCatalog
+    VoiceEmbedding,             // IVoiceEmbedder (providers/voice): raw clip or PCM -> speaker vectors
+    Summarization,              // ISummarizer (providers/summary): LLM pipeline or the server-side one
+    TagSuggestion,              // ITagSuggester (providers/tags)
+    ParticipantIdentification,  // IParticipantIdentifier (providers/voice): ready vectors -> who
+    ModelCatalog,               // IModelCatalog (providers/catalog): models of a capability, download
     LocalModelServer,           // optional: ILocalModelServer (LM Studio model preparation), keyed by the chat id
 };
 // Stable machine name ("transcription", "chat", ...): logs, tests, the CLI.
@@ -99,7 +96,7 @@ struct ProviderDescriptor {
     CapabilityKind capability = CapabilityKind::Transcription;   // set by ProviderRegistry::add<Port>()
     Origin origin = Origin::CustomEndpoint;
     Traits traits;
-    QString catalogRef;                 // which IModelCatalog lists the models (P10; empty = none)
+    QString catalogRef;                 // which IModelCatalog (its id) lists the models (empty = none)
     AuthMode authMode = AuthMode::ApiKey;
     bool supportsLive = false;          // STT live/streaming
     bool supportsStreaming = false;     // LLM streaming

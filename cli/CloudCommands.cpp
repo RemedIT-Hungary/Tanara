@@ -18,7 +18,7 @@
 
 #include "tanara/app/AppController.h"
 #include "tanara/app/SettingsManager.h"
-#include "tanara/cloud/CloudAccount.h"
+#include "tanara/cloud/CloudSession.h"
 #include "tanara/library/store/MeetingRepository.h"
 
 #include <QCoreApplication>
@@ -55,7 +55,7 @@ int fail(const cloud::CloudError& e, const cloud::Money& charged = {})
     return 2;
 }
 
-void printAccount(const cloud::AccountInfo& a, cloud::CloudAccount* acc)
+void printAccount(const cloud::AccountInfo& a, cloud::CloudSession* acc)
 {
     out() << QStringLiteral("Signed in as %1").arg(a.email.isEmpty() ? acc->email() : a.email) << "\n"
           << QStringLiteral("Balance: %1 (%2)").arg(money(a.balance), cloud::vatLabel(a.vatMode)) << "\n"
@@ -139,7 +139,7 @@ bool printCloudEstimate(app::AppController& app, const QString& meetingId, const
 
 int runCloudCommand(app::AppController& app, const QStringList& args)
 {
-    cloud::CloudAccount* acc = app.cloud();
+    cloud::CloudSession* acc = app.cloud();
     const QString sub = args.value(2);
     if (!app.cloudLive() && sub != QLatin1String("waitlist")) {
         err() << QStringLiteral("Tanara Cloud mode is off (settings.json: \"cloudEnabled\": true, or TANARA_CLOUD=live).") << "\n";
@@ -154,8 +154,8 @@ int runCloudCommand(app::AppController& app, const QStringList& args)
     if (sub == QLatin1String("status")) {
         if (!needLogin()) return 1;
         QEventLoop loop; cloud::CloudError e; bool ok = false;
-        QObject::connect(acc, &cloud::CloudAccount::accountUpdated, &loop, [&]() { ok = true; loop.quit(); });
-        QObject::connect(acc, &cloud::CloudAccount::accountFailed, &loop, [&](const cloud::CloudError& ce) { e = ce; loop.quit(); });
+        QObject::connect(acc, &cloud::CloudSession::accountUpdated, &loop, [&]() { ok = true; loop.quit(); });
+        QObject::connect(acc, &cloud::CloudSession::accountFailed, &loop, [&](const cloud::CloudError& ce) { e = ce; loop.quit(); });
         acc->refreshAccount();
         loop.exec();
         if (!ok) return fail(e);
@@ -165,17 +165,17 @@ int runCloudCommand(app::AppController& app, const QStringList& args)
     }
     if (sub == QLatin1String("login")) {
         QEventLoop loop; int rc = 1;
-        QObject::connect(acc, &cloud::CloudAccount::deviceCodeReady, &loop, [&](const cloud::DeviceCode& c) {
+        QObject::connect(acc, &cloud::CloudSession::deviceCodeReady, &loop, [&](const cloud::DeviceCode& c) {
             out() << QStringLiteral("Open this address in your browser and approve the code:") << "\n  " << c.verificationUriComplete << "\n"
                   << QStringLiteral("Code: %1 (expires in %2 min)").arg(c.userCode).arg(c.expiresIn / 60) << "\n";
             out().flush();
         });
-        QObject::connect(acc, &cloud::CloudAccount::deviceFlowSucceeded, &loop, [&](const QString& email) {
+        QObject::connect(acc, &cloud::CloudSession::deviceFlowSucceeded, &loop, [&](const QString& email) {
             out() << QStringLiteral("Signed in: %1").arg(email) << "\n"; rc = 0;
             // the account and catalog are still loading
             QTimer::singleShot(1500, &loop, &QEventLoop::quit);
         });
-        QObject::connect(acc, &cloud::CloudAccount::deviceFlowFailed, &loop, [&](const cloud::CloudError& e) {
+        QObject::connect(acc, &cloud::CloudSession::deviceFlowFailed, &loop, [&](const cloud::CloudError& e) {
             if (e.code == QLatin1String("access_denied")) err() << QStringLiteral("You denied the connection in the browser.") << "\n";
             else if (e.code == QLatin1String("expired_token")) err() << QStringLiteral("The code expired.") << "\n";
             else fail(e);
@@ -194,7 +194,7 @@ int runCloudCommand(app::AppController& app, const QStringList& args)
     }
     if (sub == QLatin1String("logout")) {
         acc->logout();
-        waitFor(acc, &cloud::CloudAccount::loggedOut, 10000);
+        waitFor(acc, &cloud::CloudSession::loggedOut, 10000);
         out() << QStringLiteral("Signed out; the key was deleted on this computer and revoked.") << "\n";
         return 0;
     }
@@ -227,14 +227,14 @@ int runCloudCommand(app::AppController& app, const QStringList& args)
     if (sub == QLatin1String("models")) {
         if (!needLogin()) return 1;
         QEventLoop loop; cloud::CloudError e; bool ok = false;
-        QObject::connect(acc, &cloud::CloudAccount::modelsUpdated, &loop, [&]() { ok = true; loop.quit(); });
-        QObject::connect(acc, &cloud::CloudAccount::modelsFailed, &loop, [&](const cloud::CloudError& ce) { e = ce; loop.quit(); });
+        QObject::connect(acc, &cloud::CloudSession::modelsUpdated, &loop, [&]() { ok = true; loop.quit(); });
+        QObject::connect(acc, &cloud::CloudSession::modelsFailed, &loop, [&](const cloud::CloudError& ce) { e = ce; loop.quit(); });
         acc->fetchModels();
         loop.exec();
         if (!ok) return fail(e);
         const QString hint = app.settings()->settings().processing.languageHints.value(0);
         for (const cloud::CloudModel& m : acc->models()) {
-            const QString price = m.kind == QLatin1String("stt")
+            const QString price = m.perHour.isValid()   // STT and voice embedding: per audio hour
                 ? QStringLiteral("%1 / hour").arg(money(m.perHour, cloud::MoneyStyle::Charge))
                 : QStringLiteral("%1 / 1M input tokens").arg(money(m.perMInput, cloud::MoneyStyle::Charge));
             out() << QStringLiteral("  %1  %2  %3  %4%5%6\n").arg(m.id, -32).arg(m.kind, -3)
@@ -259,15 +259,15 @@ int runCloudCommand(app::AppController& app, const QStringList& args)
         QString version = args.value(3);
         if (version.isEmpty()) {
             acc->refreshAccount();
-            waitFor(acc, &cloud::CloudAccount::accountUpdated, 10000);
+            waitFor(acc, &cloud::CloudSession::accountUpdated, 10000);
             const cloud::TermsStatus ts = acc->account().terms;
             version = ts.needsAcceptance() ? ts.currentVersion : ts.upcomingVersion;
         }
         if (version.isEmpty()) { out() << QStringLiteral("There is no Terms version to accept.") << "\n"; return 0; }
         QEventLoop loop; int rc = 1;
-        QObject::connect(acc, &cloud::CloudAccount::termsAccepted, &loop, [&](const cloud::TermsStatus& ts) {
+        QObject::connect(acc, &cloud::CloudSession::termsAccepted, &loop, [&](const cloud::TermsStatus& ts) {
             out() << QStringLiteral("You accepted Terms version %1.").arg(ts.acceptedVersion) << "\n"; rc = 0; loop.quit(); });
-        QObject::connect(acc, &cloud::CloudAccount::termsFailed, &loop, [&](const cloud::CloudError& e) { rc = fail(e); loop.quit(); });
+        QObject::connect(acc, &cloud::CloudSession::termsFailed, &loop, [&](const cloud::CloudError& e) { rc = fail(e); loop.quit(); });
         acc->acceptTerms(version);
         loop.exec();
         return rc;
@@ -276,7 +276,7 @@ int runCloudCommand(app::AppController& app, const QStringList& args)
         if (!needLogin()) return 1;
         const QStringList ids = acc->pendingTranscriptions();
         out() << QStringLiteral("Pending transcriptions: %1").arg(ids.isEmpty() ? QStringLiteral("—") : ids.join(QStringLiteral(", "))) << "\n";
-        QObject::connect(acc, &cloud::CloudAccount::previousTranscriptionRefunded, acc, [](const cloud::Money& refund, const cloud::Money& bal) {
+        QObject::connect(acc, &cloud::CloudSession::previousTranscriptionRefunded, acc, [](const cloud::Money& refund, const cloud::Money& bal) {
             out() << QStringLiteral("Your previous transcription failed on the provider side. We refunded the %1 charge. Balance: %2.")
                          .arg(money(refund, cloud::MoneyStyle::Charge), money(bal)) << "\n";
         });
@@ -303,11 +303,11 @@ int runCloudCommand(app::AppController& app, const QStringList& args)
             return 1;
         }
         QEventLoop loop; int rc = 1;
-        QObject::connect(acc, &cloud::CloudAccount::waitlistJoined, &loop, [&]() {
+        QObject::connect(acc, &cloud::CloudSession::waitlistJoined, &loop, [&]() {
             out() << QStringLiteral("We sent you a confirmation e-mail.") << "\n"; rc = 0;
             tanara::app::AppSettings st = app.settings()->settings(); st.cloud.waitlistEmail = s.email.trimmed(); app.settings()->setSettings(st);
             loop.quit(); });
-        QObject::connect(acc, &cloud::CloudAccount::waitlistFailed, &loop, [&](const cloud::CloudError& e) {
+        QObject::connect(acc, &cloud::CloudSession::waitlistFailed, &loop, [&](const cloud::CloudError& e) {
             if (e.kind == cloud::CloudErrorKind::DisposableEmail) { err() << QStringLiteral("Disposable e-mail addresses are not accepted.") << "\n"; rc = 2; }
             else rc = fail(e);
             loop.quit(); });

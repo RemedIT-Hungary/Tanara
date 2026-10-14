@@ -27,6 +27,17 @@
 //   --soniox-key KEY           STT passthrough to the real Soniox (without it: CANNED transcript)
 //   --llm http://localhost:1234/v1 | off   LLM passthrough (unreachable / off: canned)
 //
+// Capability endpoints (x-status: draft in the contract; deterministic fake results):
+//   POST /v1/embeddings          OpenAI shape; the vector is derived from the text's hash
+//   POST /v1/voice/embeddings    multipart (file + model); the vector is derived from the audio bytes' hash
+//   POST /v1/voice/identify      vectors + candidates (the client's, as opaque refs) -> best match per probe
+//   POST /v1/summaries           asynchronous: 202 + id; GET /v1/summaries/{id} is `processing` on the
+//                                first poll and `completed` (canned result) from the second
+//   POST /v1/tags/suggest        picks the candidates whose name occurs in the title / summary; #Word = new
+//   GET  /v1/models?capability=  the catalog filtered by capability
+// Error branches: 401 (no key), 402 insufficient_balance, 422 invalid_input (empty / malformed input),
+// and the usual --rate-limited / --maintenance ... switches.
+//
 // Waitlist (POST /v1/waitlist): 202; a disposable domain (e.g. @mailinator.com) gets 400
 // disposable_email; the --rate-limited / --maintenance / --upstream-down / --internal-error
 // switches apply here too.
@@ -36,7 +47,7 @@
 // Test key: tk_test_123 (works without X-Tanara-Client too).
 import http from 'node:http';
 import https from 'node:https';
-import { randomBytes, randomUUID } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { writeFileSync, unlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -88,8 +99,11 @@ const state = {
   usage: [],                 // {at, kind, model, amount, job_id, summary_mode, request_id, refunded}
   chat_ok: 0,                // number of successful chat calls (--fail-chat-after)
   waitlist: [],              // POST /v1/waitlist sign-ups
+  summaries: new Map(),      // id -> {mode, polls, job_id, charge, created}
 };
 state.keys.set('tk_test_123', { email: 'test@example.com', key_id: 'key_test' });
+
+const TEXT_DIM = 64, VOICE_DIM = 192;
 
 // ---- catalog (NET prices; converted on output per vat_mode) ----
 // STT: hourly rate. LLM: per 1M tokens (the gateway multiplier is already included).
@@ -103,13 +117,19 @@ const MODELS = [
   model('tanara/summary-fast', 'llm', 'fast', true, false, 'Gyors összefoglaló', { in: 0.9, out: 7.5 }),
   model('anthropic/claude-sonnet-4.5', 'llm', null, false, true, 'Claude Sonnet 4.5', { in: 9.0, out: 45.0 }),
   model('google/gemini-2.5-flash', 'llm', null, false, true, 'Gemini 2.5 Flash', { in: 0.9, out: 7.5 }),
+  model('tanara/text-embedding', 'text_embedding', 'accurate', true, false, 'Szöveg-beágyazás', { in: 0.02, out: 0 }, { dim: TEXT_DIM }),
+  model('tanara/voice-embedding', 'voice_embedding', 'accurate', true, false, 'Hang-beágyazás', { per_hour: 0.05 }, { dim: VOICE_DIM }),
 ];
+// GET /v1/models?capability=: the model kinds a capability uses.
+const CAPABILITY_KINDS = { transcription: ['stt'], chat: ['llm'], summarization: ['llm'], 'tag-suggestion': ['llm'],
+  'text-embedding': ['text_embedding'], 'voice-embedding': ['voice_embedding'], 'participant-identification': ['voice_embedding'] };
 const RESOLVE = { 'tanara/stt-accurate': 'soniox/stt-async-v5', 'tanara/stt-fast': 'groq/whisper-large-v3-turbo',
                   'tanara/summary-accurate': 'anthropic/claude-sonnet-4.5', 'tanara/summary-fast': 'google/gemini-2.5-flash' };
 function model(id, kind, tier, virtual, expert, display_name, price, extra = {}) {
   return { id, kind, tier, virtual, expert, display_name, price, languages: null, hidden_for_languages: [], ...extra };
 }
 const findModel = id => MODELS.find(m => m.id === id);
+const priceOf = m => m.price.per_hour !== undefined ? 'hour' : 'tokens';
 const sttModel = id => { const m = findModel(id); return m && m.kind === 'stt' ? m : findModel('tanara/stt-accurate'); };
 const llmModel = id => { const m = findModel(id); return m && m.kind === 'llm' ? m : findModel('tanara/summary-accurate'); };
 
@@ -118,10 +138,11 @@ const disp = net => cfg.vat_mode === 'reverse_charge' ? net : Math.round(net * (
 const money = net => ({ amount_micros: disp(net), currency: 'USD' });
 const usdNet = x => Math.round(x * USD);
 function modelJson(m) {
-  const price = m.kind === 'stt' ? { per_hour: money(usdNet(m.price.per_hour)) }
+  const price = priceOf(m) === 'hour' ? { per_hour: money(usdNet(m.price.per_hour)) }
     : { per_1m_input_tokens: money(usdNet(m.price.in)), per_1m_output_tokens: money(usdNet(m.price.out)) };
   const t = { kind: m.kind, tier: m.tier, virtual: m.virtual, expert: m.expert, display_name: m.display_name, languages: m.languages, hidden_for_languages: m.hidden_for_languages, price };
   if (m.kind === 'stt') t.diarization = !!m.diarization;
+  if (m.dim) t.dim = m.dim;
   return { id: m.id, object: 'model', owned_by: 'tanara', tanara: t };
 }
 const sttCharge = (m, duration_ms) => Math.round(usdNet(m.price.per_hour) * duration_ms / 3_600_000);
@@ -151,6 +172,7 @@ const MSG = {
   invalid_device_code: ['Ismeretlen eszköz-kód.', 'Unknown device code.'],
   topup_unavailable: ['Online feltöltés még nincs, írj nekünk.', 'There is no online top-up yet, contact us.'],
   not_completed: ['Az átírás még nem készült el.', 'The transcription is not completed yet.'],
+  invalid_input: ['A bemenet nem feldolgozható.', 'The input cannot be processed.'],
   disposable_email: ['Eldobható e-mail címmel nem lehet feliratkozni.', 'Disposable e-mail addresses are not accepted.'],
   terms_summary: ['Új visszatérítési szabályok; pontosított adatkezelés.', 'New refund rules; clarified data handling.'],
 };
@@ -410,6 +432,7 @@ async function route(req, res, url, path) {
   if (req.method === 'GET' && (mm = path.match(/^\/v1\/transcriptions\/([^/]+)$/))) return getTranscription(req, res, mm[1]);
   if (req.method === 'GET' && (mm = path.match(/^\/v1\/transcriptions\/([^/]+)\/transcript$/))) return getTranscript(req, res, mm[1]);
   if (req.method === 'DELETE' && (mm = path.match(/^\/v1\/transcriptions\/([^/]+)$/))) return deleteTranscription(req, res, mm[1]);
+  if (req.method === 'GET' && (mm = path.match(/^\/v1\/summaries\/([^/]+)$/))) return getSummary(req, res, mm[1]);
 
   if (req.method === 'POST' && path === '/v1/account/terms-acceptance') {
     const b = parseJson(await readBody(req)) || {};
@@ -433,7 +456,11 @@ async function route(req, res, url, path) {
       try { const r = await upstream('GET', LLM_UPSTREAM + '/models', {}, null, 800);
         extra = (JSON.parse(r.body.toString()).data || []).map(x => modelJson(model(x.id, 'llm', null, false, true, x.id + ' (helyi)', { in: 0.1, out: 0.3 }))); } catch {}
     }
-    return json(req, res, 200, { object: 'list', data: [...MODELS.map(modelJson), ...extra] });
+    const cap = url.searchParams.get('capability');
+    if (cap && !CAPABILITY_KINDS[cap]) return err(req, res, 422, 'invalid_input', { fields: { capability: { code: 'unknown_capability', message: text(req, 'invalid_input') } } });
+    const kinds = cap ? CAPABILITY_KINDS[cap] : null;
+    const data = [...MODELS.map(modelJson), ...extra].filter(x => !kinds || kinds.includes(x.tanara.kind));
+    return json(req, res, 200, { object: 'list', data });
   }
   if (req.method === 'POST' && path === '/v1/account/topup-link') {
     if (processingBlock(req, res, { topup: true })) return;
@@ -452,6 +479,11 @@ async function route(req, res, url, path) {
   if (req.method === 'POST' && path === '/v1/files') return uploadFile(req, res);
   if (req.method === 'POST' && path === '/v1/transcriptions') return createTranscription(req, res);
   if (req.method === 'POST' && path === '/v1/chat/completions') return chat(req, res);
+  if (req.method === 'POST' && path === '/v1/embeddings') return textEmbeddings(req, res);
+  if (req.method === 'POST' && path === '/v1/voice/embeddings') return voiceEmbeddings(req, res);
+  if (req.method === 'POST' && path === '/v1/voice/identify') return voiceIdentify(req, res);
+  if (req.method === 'POST' && path === '/v1/summaries') return createSummary(req, res);
+  if (req.method === 'POST' && path === '/v1/tags/suggest') return suggestTags(req, res);
   return err(req, res, 404, 'not_found');
 }
 
@@ -600,6 +632,143 @@ async function chat(req, res) {
   return json(req, res, 200, { id: 'chatcmpl_' + randomBytes(4).toString('hex'), object: 'chat.completion', model: b.model || m.id,
     choices: [{ index: 0, message: { role: 'assistant', content }, finish_reason: 'stop' }],
     usage: { ...usage, tanara_charge: chargeInfo(charge_id, c, jobId) } }, chargeHeaders(c));
+}
+
+// ---- capability endpoints (x-status: draft) ------------------------------------------------
+// A deterministic unit vector from a seed (the same input -> the same vector, every run).
+function hashVector(seed, dim) {
+  const out = []; let block = Buffer.alloc(0); let i = 0;
+  while (out.length < dim) {
+    if (i + 4 > block.length) { block = createHash('sha256').update(seed).update(String(out.length)).digest(); i = 0; }
+    out.push(block.readInt32LE(i) / 2147483648); i += 4;
+  }
+  const n = Math.sqrt(out.reduce((s, x) => s + x * x, 0)) || 1;
+  return out.map(x => +(x / n).toFixed(6));
+}
+const invalid = (req, res, field, code = 'invalid_value') =>
+  err(req, res, 422, 'invalid_input', { fields: { [field]: { code, message: text(req, 'invalid_input') } } });
+// Books one charge (net micros) and returns the response headers + the `tanara` object.
+function book(req, kind, modelId, c, extra = {}) {
+  state.balance -= c; bookBalanceChange();
+  const jobId = req.headers['x-tanara-job-id'] || null; const charge_id = 'ch_' + randomBytes(4).toString('hex');
+  state.usage.push({ at: new Date().toISOString(), kind, model: modelId, amount: disp(c), job_id: jobId, summary_mode: extra.summary_mode || null, request_id: req.requestId, refunded: false, charge_id });
+  log(`  ↳ terhelés ${fmt(c)} (${kind} ${modelId}) → egyenleg ${fmt(state.balance)}`);
+  return { headers: chargeHeaders(c), tanara: chargeInfo(charge_id, c, jobId) };
+}
+// Multipart parts by name: {name: {data: Buffer, filename}} (simple, enough for the client's uploads).
+function multipartParts(buf, ctype) {
+  const m = /boundary=(?:"([^"]+)"|([^;]+))/.exec(ctype || ''); if (!m) return {};
+  const b = Buffer.from('--' + (m[1] || m[2])); const parts = {};
+  let at = buf.indexOf(b);
+  while (at >= 0) {
+    const hdrStart = at + b.length + 2; const hdrEnd = buf.indexOf('\r\n\r\n', hdrStart); if (hdrEnd < 0) break;
+    const head = buf.subarray(hdrStart, hdrEnd).toString('utf8');
+    const next = buf.indexOf(b, hdrEnd); if (next < 0) break;
+    const name = /name="([^"]+)"/.exec(head); const filename = /filename="([^"]+)"/.exec(head);
+    if (name) parts[name[1]] = { data: buf.subarray(hdrEnd + 4, next - 2), filename: filename ? filename[1] : null };
+    at = next;
+  }
+  return parts;
+}
+
+async function textEmbeddings(req, res) {
+  if (processingBlock(req, res)) return;
+  const b = parseJson(await readBody(req));
+  const input = b && (typeof b.input === 'string' ? [b.input] : b.input);
+  if (!Array.isArray(input) || !input.length || input.some(x => typeof x !== 'string')) return invalid(req, res, 'input', 'required');
+  const m = findModel('tanara/text-embedding');
+  const tokens = Math.ceil(input.reduce((s, x) => s + x.length, 0) / 4);
+  const c = Math.max(1, llmCost(m, tokens, 0));   // at least 1 micro: a call is never free
+  if (state.balance <= 0 || state.balance < c) return insufficient(req, res, c, 'charge');
+  const { headers } = book(req, 'text_embedding', m.id, c);
+  return json(req, res, 200, { object: 'list', model: b.model && b.model !== 'default' ? b.model : m.id,
+    data: input.map((t, index) => ({ object: 'embedding', index, embedding: hashVector('text:' + t, TEXT_DIM) })),
+    usage: { prompt_tokens: tokens, total_tokens: tokens } }, headers);
+}
+
+async function voiceEmbeddings(req, res) {
+  if (processingBlock(req, res)) return;
+  const parts = multipartParts(await readBody(req), req.headers['content-type']);
+  const file = parts.file; const modelId = parts.model ? parts.model.data.toString('utf8') : 'tanara/voice-embedding';
+  if (!file || !file.data.length) return invalid(req, res, 'file', 'required');
+  const m = findModel(modelId);
+  if (!m || m.kind !== 'voice_embedding') return invalid(req, res, 'model', 'unknown_model');
+  const duration_ms = Math.max(1000, Math.round(file.data.length / 4));   // ~32 kbps Opus
+  const c = sttCharge(m, duration_ms);
+  if (state.balance <= 0 || state.balance < c) return insufficient(req, res, c, 'charge');
+  const { headers, tanara } = book(req, 'voice_embedding', m.id, c);
+  return json(req, res, 200, { object: 'voice_embedding', model: m.id, dim: m.dim,
+    embedding: hashVector(createHash('sha256').update(file.data).digest('hex') + m.id, m.dim), tanara }, headers);
+}
+
+async function voiceIdentify(req, res) {
+  if (processingBlock(req, res)) return;
+  const b = parseJson(await readBody(req));
+  if (!b || !Array.isArray(b.probes) || !b.probes.length) return invalid(req, res, 'probes', 'required');
+  if (!Array.isArray(b.candidates)) return invalid(req, res, 'candidates', 'required');
+  const cos = (a, x) => a.length === x.length ? a.reduce((s, v, i) => s + v * x[i], 0) : null;
+  const threshold = typeof b.threshold === 'number' ? b.threshold : 0.5;
+  // The client's matching rule: per candidate per model the max cosine, then the mean over the shared models.
+  const score = (probe, cand) => { let sum = 0, n = 0;
+    for (const v of probe.vectors || []) { let best = null;
+      for (const p of cand.prints || []) if (p.model === v.model) { const c = cos(v.embedding || [], p.embedding || []); if (c !== null && (best === null || c > best)) best = c; }
+      if (best !== null) { sum += best; n++; } }
+    return n ? sum / n : -1; };
+  const results = b.probes.map(p => {
+    const ranked = b.candidates.map(c => ({ candidate: c.ref, score: +score(p, c).toFixed(6) })).sort((x, y) => y.score - x.score);
+    const top = ranked[0];
+    return { probe: p.id, match: top && top.score >= threshold ? top.candidate : null, score: top ? top.score : -1, ranked };
+  });
+  const c = usdNet(0.0005) * b.probes.length;
+  if (state.balance <= 0 || state.balance < c) return insufficient(req, res, c, 'charge');
+  const { headers, tanara } = book(req, 'voice_identify', 'tanara/voice-embedding', c);
+  return json(req, res, 200, { results, tanara }, headers);
+}
+
+async function createSummary(req, res) {
+  if (processingBlock(req, res)) return;
+  const b = parseJson(await readBody(req));
+  if (!b || !Array.isArray(b.lines) || !b.lines.length) return invalid(req, res, 'lines', 'required');
+  if (b.mode && !['quick', 'complex'].includes(b.mode)) return invalid(req, res, 'mode');
+  const m = llmModel(b.model);
+  const chars = b.lines.reduce((s, l) => s + String(l.text || '').length, 0) + String(b.context_note || '').length;
+  const c = llmCost(m, Math.ceil(chars / 4), b.mode === 'complex' ? 4000 : 1500);
+  if (state.balance <= 0 || state.balance < c) return insufficient(req, res, c, 'charge');
+  const { headers, tanara } = book(req, 'summary', m.id, c, { summary_mode: b.mode || 'quick' });
+  const id = 'sum_' + randomUUID().slice(0, 8);
+  state.summaries.set(id, { mode: b.mode || 'quick', polls: 0, model: m.id, speakers: [...new Set(b.lines.map(l => l.speaker).filter(Boolean))] });
+  return json(req, res, 202, { id, status: 'queued', tanara }, headers);
+}
+async function getSummary(req, res, id) {
+  const t = state.summaries.get(id); if (!t) return err(req, res, 404, 'not_found');
+  t.polls++;
+  if (t.polls < 2) return json(req, res, 200, { id, status: 'processing' });
+  const analyses = t.mode === 'complex' ? [
+    { topic_id: 't1', title: 'Muzeo migráció', detail: 'A migráció állapotát egyeztették.', decisions: ['Jövő héten szállítunk.'], open_questions: [], action_items: [{ text: 'Teszt megírása', owner: 'Dompa', due: '' }] },
+    { topic_id: 't2', title: 'Tesztelés', detail: 'Ki írja meg a teszteket.', decisions: [], open_questions: ['Ki review-zza?'], action_items: [] }] : [];
+  const result = { model: t.model,
+    summary: { exec_summary: 'A csapat a MuseumPlus migrációt egyeztette; a szállítás jövő hétre került.', decisions: ['Jövő héten szállítunk.'],
+      open_questions: [], action_items: [{ text: 'Teszt megírása', owner: 'Dompa', due: '' }], participants: t.speakers },
+    topics: analyses.map(a => ({ id: a.topic_id, title: a.title, summary: a.detail })), analyses,
+    markdown: '## Vezetői összefoglaló\nA csapat a MuseumPlus migrációt egyeztette.' };
+  return json(req, res, 200, { id, status: 'completed', result });
+}
+
+async function suggestTags(req, res) {
+  if (processingBlock(req, res)) return;
+  const b = parseJson(await readBody(req));
+  if (!b || typeof b.summary !== 'string' || !b.summary.trim()) return invalid(req, res, 'summary', 'required');
+  if (b.candidates !== undefined && !Array.isArray(b.candidates)) return invalid(req, res, 'candidates');
+  const hay = `${b.title || ''}\n${b.summary}`.toLowerCase();
+  const picks = (b.candidates || []).filter(c => c.name && hay.includes(String(c.name).toLowerCase()))
+    .map(c => ({ ref: c.ref, name: c.name, is_new: false, score: 0.9 }));
+  const fresh = [...new Set([...b.summary.matchAll(/#([\p{L}\d][\p{L}\d-]*)/gu)].map(x => x[1]))]
+    .slice(0, Math.max(0, +(b.max_new ?? 2))).map(name => ({ ref: null, name, is_new: true, score: 0.5 }));
+  const m = llmModel(b.model);
+  const c = llmCost(m, Math.ceil(hay.length / 4), 100);
+  if (state.balance <= 0 || state.balance < c) return insufficient(req, res, c, 'charge');
+  const { headers, tanara } = book(req, 'tags', m.id, c);
+  return json(req, res, 200, { suggestions: [...picks, ...fresh], tanara }, headers);
 }
 
 // ---- browser pages ----

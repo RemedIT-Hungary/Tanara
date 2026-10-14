@@ -32,8 +32,11 @@
 #include "tanara/processing/summary/ComplexSummaryService.h"
 #include "tanara/processing/summary/TranscriptMerger.h"
 #include "tanara/foundation/i18n/Localization.h"
-#include "tanara/cloud/CloudAccount.h"
+#include "tanara/cloud/CloudSession.h"
 #include "tanara/cloud/CloudRunLedger.h"
+#include "tanara/cloud/CloudCapabilities.h"
+#include "tanara/cloud/CloudEstimator.h"
+#include "tanara/cloud/CloudMode.h"
 #include "tanara/foundation/net/HttpClient.h"
 #include "tanara/library/jobs/MeetingJobTracker.h"
 #include "tanara/library/jobs/JobErrors.h"
@@ -406,12 +409,12 @@ struct AppController::Impl {
     bool editorEmitting = false;   // the editor's own speakerMap signal is going out (do not reload)
 
     // Tanara Cloud.
-    cloud::CloudAccount* cloud = nullptr;
+    cloud::CloudSession* cloud = nullptr;
     cloud::CloudRunLedger* cloudLedger = nullptr;   // cloud run bookkeeping (cloud/CloudRunLedger.h)
+    cloud::CloudEstimator* cloudEstimator = nullptr; // cost estimates (cloud/CloudEstimator.h)
     net::HttpClient* http = nullptr;                 // the shared HTTP client of providers + cloud
     providers::ProviderRegistry providerRegistry;    // this controller's providers (not a singleton)
-    bool cloudLive = false;
-    bool cloudTeaser = false;
+    cloud::CloudMode cloudMode;                      // live / teaser / base URL (cloud/CloudMode.h)
     // Per meeting the cloud run of the open complex summary (topic gathering -> topic analyses -> reduce):
     // ONE X-Tanara-Job-Id, the per-call charges summed up (the "12 parts" case).
     // On completion (done / error / cancel) it is removed from here; a continuation is thus a new run.
@@ -798,20 +801,10 @@ AppController::AppController(QObject* parent)
     d->settings = new SettingsManager(QString(), this);
     const AppSettings s = d->settings->settings();
 
-    // Tanara Cloud mode: TANARA_CLOUD=live|teaser|off overrides settings.cloud.enabled.
-    {
-        const QString mode = qEnvironmentVariable("TANARA_CLOUD").trimmed().toLower();
-        const bool off = mode == QLatin1String("off");
-        const bool wantLive = mode == QLatin1String("live") || (mode.isEmpty() && s.cloud.enabled);
-        d->cloudLive   = !off && cloud::clientCompiled() && wantLive;
-        d->cloudTeaser = !off && !d->cloudLive && cloud::teaserCompiled();
-        if (d->cloudLive) {
-            // Feature flag: without it the "tanara-cloud" id does not even exist. The default registry
-            // (GUI listing, TODO(P15): remove) gets it too.
-            providers::registerCloudProviders(d->providerRegistry);
-            providers::registerCloudProviders(providers::ProviderRegistry::defaultInstance());
-        }
-    }
+    // Tanara Cloud mode: TANARA_CLOUD=live|teaser|off overrides settings.cloud.enabled (cloud/CloudMode.h).
+    // The cloud providers are registered below, once the session exists.
+    d->cloudMode = cloud::CloudMode::fromEnvironment(s.cloud);
+
     // Every location from AppPaths (platform convention / "paths" section / TANARA_HOME).
     const paths::AppPaths& ap = d->settings->paths();
     d->audioDir  = ap.primaryRecordingRoot();
@@ -842,16 +835,24 @@ AppController::AppController(QObject* parent)
     }
 
     d->http = new net::HttpClient(this);
-    d->cloud = new cloud::CloudAccount(d->secrets.get(), d->metaDir, this);
+    d->cloud = new cloud::CloudSession(d->secrets.get(), d->metaDir, this);
     d->cloud->setHttpClient(d->http);
+    d->cloud->setBaseUrl(d->cloudMode.baseUrl);
+    d->cloud->setLanguage(activeUiLanguage());
     d->cloudLedger = new cloud::CloudRunLedger(d->cloud, this);
+    d->cloudEstimator = new cloud::CloudEstimator(d->cloud, this);
     connect(d->cloudLedger, &cloud::CloudRunLedger::charged, this, &AppController::cloudCharged);
     connect(d->cloudLedger, &cloud::CloudRunLedger::refunded, this, &AppController::cloudRefunded);
     connect(d->cloudLedger, &cloud::CloudRunLedger::failed, this, &AppController::cloudError);
-    {
-        const QString envUrl = qEnvironmentVariable("TANARA_CLOUD_URL").trimmed();
-        d->cloud->setBaseUrl(!envUrl.isEmpty() ? envUrl : s.cloud.baseUrl);
-        d->cloud->setLanguage(activeUiLanguage());
+    if (d->cloudMode.live) {
+        // Feature flag (kill criterion): without it the "tanara-cloud" ids do not even exist. The default
+        // registry (GUI listing, TODO(P15): remove) gets them too.
+        cloud::CloudCapabilityDeps deps;
+        deps.media = [self = QPointer<AppController>(this)]() {
+            return self ? self->d->media : media::MediaToolPtr();
+        };
+        cloud::registerInto(d->providerRegistry, *d->cloud, deps);
+        cloud::registerInto(providers::ProviderRegistry::defaultInstance(), *d->cloud, deps);
     }
     d->devices = new recording::DeviceManager(this);
     d->media   = media::FfmpegMediaTool::fromSettings(s.media);
@@ -2209,7 +2210,8 @@ providers::ReadinessResult AppController::canRun(providers::WorkflowStep step, c
         return r;
 
     // Tanara Cloud-specific obstacles (exactly one CTA in the task strip).
-    if (d->cloud->clientTooOld()) {
+    const cloud::CloudSession::Blocker blocker = d->cloud->blocker();
+    if (blocker == cloud::CloudSession::Blocker::ClientTooOld) {
         providers::ReadinessResult c;
         c.blockerKind   = providers::BlockerKind::Cloud;
         c.detail        = tr("A Tanara Cloudhoz frissítés kell (legalább %1).").arg(d->cloud->minClient());
@@ -2217,8 +2219,7 @@ providers::ReadinessResult AppController::canRun(providers::WorkflowStep step, c
         c.providerId    = cloud::ProviderId;
         return c;
     }
-    const cloud::AccountInfo acc = d->cloud->account();
-    if (acc.valid && acc.balanceEmpty) {
+    if (blocker == cloud::CloudSession::Blocker::BalanceEmpty) {
         providers::ReadinessResult c;
         c.blockerKind   = providers::BlockerKind::Cloud;
         c.detail        = tr("töltsd fel az egyenleged");
@@ -2231,110 +2232,78 @@ providers::ReadinessResult AppController::canRun(providers::WorkflowStep step, c
 
 // ---- Tanara Cloud ------------------------------------------------------------------------
 
-cloud::CloudAccount* AppController::cloud() const { return d->cloud; }
-bool AppController::cloudLive() const { return d->cloudLive; }
+cloud::CloudSession* AppController::cloud() const { return d->cloud; }
+bool AppController::cloudLive() const { return d->cloudMode.live; }
 providers::ProviderRegistry& AppController::providerRegistry() const { return d->providerRegistry; }
-bool AppController::cloudTeaser() const { return d->cloudTeaser; }
+bool AppController::cloudTeaser() const { return d->cloudMode.teaser; }
 
 bool AppController::usesCloud(providers::WorkflowStep step) const
 {
-    if (!d->cloudLive) return false;
-    const AppSettings s = d->settings->settings();
-    if (step == providers::WorkflowStep::Transcribe) return s.providers.stt.selectedId == cloud::ProviderId;
-    if (step == providers::WorkflowStep::Summarize)  return s.providers.llm.selectedId == cloud::ProviderId;
-    return false;
+    return d->cloudMode.selects(step, d->settings->settings().providers);
 }
 
 QString AppController::cloudModelFor(providers::WorkflowStep step) const
 {
-    const AppSettings s = d->settings->settings();
-    const bool stt = step == providers::WorkflowStep::Transcribe;
-    const QString expert = stt ? s.cloud.sttModel : s.cloud.llmModel;
-    // The Expert model is valid only if it is still in the catalog (a retired model goes back to the tier's
-    // virtual model; the UI signals it).
-    if (!expert.isEmpty()) {
-        const QVector<cloud::CloudModel> cat = d->cloud->models();
-        if (cat.isEmpty() || findModel(cat, expert).has_value())
-            return expert;
-    }
-    return cloud::virtualModelId(stt ? QStringLiteral("stt") : QStringLiteral("llm"),
-                          stt ? s.cloud.sttTier : s.cloud.llmTier);
+    return d->cloud->modelFor(step == providers::WorkflowStep::Transcribe ? QStringLiteral("stt") : QStringLiteral("llm"),
+                              d->settings->settings().cloud);
 }
 
 namespace {
-// max_tokens of cloud LLM calls: a moderate value because of the coverage rule (priced at prompt +
-// max_tokens); the JSON summary and the topic analysis fit well within it.
-constexpr int kCloudMaxTokens = 4000;
-constexpr int kReduceInputChars = 6000;   // the reduce's input: a digest of the topic analyses (estimate)
-constexpr int kNotesCharsPerPart = 3000;  // length of one part note in the merge's input (estimate)
+constexpr int kCloudMaxTokens = cloud::CloudEstimator::kMaxTokens;
 }
 
+// Gathers the meeting's facts for the estimate (the planning rule is cloud::CloudEstimator::plan).
 cloud::EstimateRequest AppController::makeEstimateRequest(const QString& meetingId, const QString& task,
                                                    const QString& summaryMode) const
 {
     const Meeting m = d->store->load(meetingId);
     const AppSettings s = d->settings->settings();
-    cloud::EstimateRequest r;
-    r.task = task;
-    r.durationMs = m.durationMs;
-    for (const Track& t : m.tracks) if (t.active) ++r.tracks;
-    r.language = s.processing.languageHints.value(0);
+    cloud::EstimateInputs in;
+    in.task = task;
+    in.summaryMode = summaryMode;
+    in.durationMs = m.durationMs;
+    for (const Track& t : m.tracks) if (t.active) ++in.tracks;
+    in.language = s.processing.languageHints.value(0);
     if (task != QLatin1String("summarize"))
-        r.sttModel = cloudModelFor(providers::WorkflowStep::Transcribe);
+        in.sttModel = cloudModelFor(providers::WorkflowStep::Transcribe);
     if (task != QLatin1String("transcribe")) {
-        r.llmModel = cloudModelFor(providers::WorkflowStep::Summarize);
-        r.summaryMode = summaryMode.isEmpty() ? QStringLiteral("quick") : summaryMode;
+        in.llmModel = cloudModelFor(providers::WorkflowStep::Summarize);
         // The actual input: system prompt + context + transcript (markdown).
         MergedTranscript merged = d->mergedCache.value(meetingId);
         if (merged.tokens.isEmpty() && !m.folder.isEmpty())
             merged = TranscriptRepository::readTokens(m.folder);
         if (!merged.tokens.isEmpty()) {
             editing::speakeredit::applyResolvedSpeakers(merged, m);
-            const int transcript = merged.renderMarkdown().size() + m.contextNote.size();
-            r.transcriptChars = transcript;
-            if (r.summaryMode == QLatin1String("complex")) {
-                const int topicIn    = transcript + resolvedPrompt(s, s.processing.topicExtractionPrompt, "topic").size();
-                const int analysisIn = transcript + resolvedPrompt(s, s.processing.topicAnalysisPrompt, "analysis").size() + 200;
-                // The topic count is unknown before extraction (null -> the gateway's statistics); if an edited topic
-                // list already exists, we request only the not-yet-analyzed ones.
+            in.hasTranscript = true;
+            in.transcriptChars = int(merged.renderMarkdown().size() + m.contextNote.size());
+            in.contextNoteChars = int(m.contextNote.size());
+            if (summaryMode == QLatin1String("complex")) {
+                in.topicPromptChars = int(resolvedPrompt(s, s.processing.topicExtractionPrompt, "topic").size());
+                in.analysisPromptChars = int(resolvedPrompt(s, s.processing.topicAnalysisPrompt, "analysis").size());
                 const QVector<SummaryTopic> topics =
                     SummaryRepository::readTopics(m.folder);
-                if (topics.isEmpty()) {
-                    r.llmCalls.append({ 1, topicIn, kCloudMaxTokens });
-                    r.llmCalls.append({ -1, analysisIn, kCloudMaxTokens });
-                } else {
+                in.topicsKnown = !topics.isEmpty();
+                if (in.topicsKnown) {
                     QSet<QString> done;
                     for (const TopicAnalysis& a : SummaryRepository::readAnalyses(m.folder))
                         done.insert(a.topicId);
-                    int missing = 0;
-                    for (const SummaryTopic& t : topics) if (!done.contains(t.id)) ++missing;
-                    if (missing > 0) r.llmCalls.append({ missing, analysisIn, kCloudMaxTokens });
+                    for (const SummaryTopic& t : topics) if (!done.contains(t.id)) ++in.missingAnalyses;
                 }
-                r.llmCalls.append({ 1, kReduceInputChars, kCloudMaxTokens });
             } else {
-                // Quick summary: 1 part -> one call; n parts -> the note calls of the parts without a finished note + one
-                // merge call (see SummaryService::plan).
-                const processing::SummaryRequest req = summaryRequestFor(s, merged, m, r.llmModel, kCloudMaxTokens);
+                const processing::SummaryRequest req = summaryRequestFor(s, merged, m, in.llmModel, kCloudMaxTokens);
                 const processing::SummaryPlan plan = processing::SummaryService::plan(req);
-                const int ctx = int(m.contextNote.size()) + 200;
-                if (plan.singleCall) {
-                    r.llmCalls.append({ 1, transcript + int(req.singlePrompt.size()), kCloudMaxTokens });
-                } else if (plan.parts > 0) {
-                    const int missing = plan.parts - plan.cachedParts;
-                    if (missing > 0) {
-                        qint64 total = 0;
-                        for (int c : plan.partChars) total += c;
-                        const int perPart = int((total + plan.parts - 1) / plan.parts);
-                        r.llmCalls.append({ missing, perPart + int(req.notesPrompt.size()) + ctx,
-                                            req.notesMaxTokens });
-                    }
-                    r.llmCalls.append({ 1, int(req.mergePrompt.size()) + ctx + plan.parts * kNotesCharsPerPart,
-                                        kCloudMaxTokens });
-                }
+                in.singleCall = plan.singleCall;
+                in.parts = plan.parts;
+                in.cachedParts = plan.cachedParts;
+                in.partChars = plan.partChars;
+                in.singlePromptChars = int(req.singlePrompt.size());
+                in.notesPromptChars = int(req.notesPrompt.size());
+                in.mergePromptChars = int(req.mergePrompt.size());
+                in.notesMaxTokens = req.notesMaxTokens;
             }
         }
     }
-    return r;
+    return cloud::CloudEstimator::plan(in);
 }
 
 AppController::CloudRunPtr AppController::newCloudRun(const QString& meetingId, const QString& kind) const

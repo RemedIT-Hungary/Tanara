@@ -118,6 +118,11 @@ tags:
     description: Soniox-compatible async transcription passthrough.
   - name: llm
     description: OpenAI-compatible chat completions passthrough.
+  - name: capabilities
+    description: |
+      Capability endpoints of the client's provider ports (text and voice embedding, participant
+      identification, server-side summary, tag suggestion). `x-status: draft`: the shape may still
+      change before the first release; the mock gateway implements them with deterministic results.
 
 paths:
   /v1/auth/device/code:
@@ -420,10 +425,24 @@ paths:
         model list. Tier selection uses the virtual `tanara/*` models; Expert mode lists the
         concrete models where `expert` is `true`. Prices are in the user's `vat_mode`. Allowed
         without Terms acceptance.
+
+        **Capability filter** (`x-status: draft` addition): `?capability=` returns only the models a
+        client capability can use: `transcription` (kind `stt`), `chat` / `summarization` /
+        `tag-suggestion` (kind `llm`), `text-embedding` (kind `text_embedding`), `voice-embedding` /
+        `participant-identification` (kind `voice_embedding`). An unknown value is `422 invalid_input`.
+        Without the parameter the full catalog is returned (unchanged behavior).
       x-tanara-functions: [CLI-03, CLI-04, CLI-05, CLI-06, PAY-01]
       parameters:
         - $ref: '#/components/parameters/ClientHeader'
         - $ref: '#/components/parameters/AcceptLanguage'
+        - name: capability
+          in: query
+          required: false
+          x-status: draft
+          description: Filters the catalog to one client capability (see above).
+          schema:
+            type: string
+            enum: [transcription, chat, summarization, tag-suggestion, text-embedding, voice-embedding, participant-identification]
       responses:
         '200':
           description: Catalog.
@@ -442,6 +461,7 @@ paths:
                     items: { $ref: '#/components/schemas/Model' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/AccountSuspended' }
+        '422': { $ref: '#/components/responses/InvalidInput' }
         '426': { $ref: '#/components/responses/ClientTooOld' }
         '429': { $ref: '#/components/responses/RateLimited' }
         '500': { $ref: '#/components/responses/InternalError' }
@@ -794,6 +814,272 @@ paths:
         '500': { $ref: '#/components/responses/InternalError' }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
 
+  /v1/embeddings:
+    post:
+      tags: [capabilities]
+      x-status: draft
+      operationId: createEmbeddings
+      summary: Text embeddings (OpenAI shape) — charging call
+      description: |
+        OpenAI-compatible. The client's `ITextEmbedder` (the "related topic" level of tag
+        suggestions) uses it with the same sign-in as the LLM path. `model: default` (or a
+        `text_embedding` catalog id) selects the model. Charged by input tokens, in the user's
+        `vat_mode`; the charge is in the `X-Tanara-Charge-*` headers. An empty or malformed
+        `input` is `422 invalid_input`; nothing is charged.
+      x-tanara-functions: [CLI-21]
+      parameters:
+        - $ref: '#/components/parameters/ClientHeader'
+        - $ref: '#/components/parameters/AcceptLanguage'
+        - $ref: '#/components/parameters/JobId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EmbeddingRequest' }
+      responses:
+        '200':
+          description: Embeddings, charged.
+          headers:
+            X-Tanara-Min-Client: { $ref: '#/components/headers/MinClient' }
+            X-Tanara-Request-Id: { $ref: '#/components/headers/RequestId' }
+            X-Tanara-Charge-Micros: { $ref: '#/components/headers/ChargeMicros' }
+            X-Tanara-Balance-Micros: { $ref: '#/components/headers/BalanceMicros' }
+            X-Tanara-Currency: { $ref: '#/components/headers/Currency' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EmbeddingResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '402': { $ref: '#/components/responses/InsufficientBalance' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/InvalidInput' }
+        '426': { $ref: '#/components/responses/ClientTooOld' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+
+  /v1/voice/embeddings:
+    post:
+      tags: [capabilities]
+      x-status: draft
+      operationId: createVoiceEmbedding
+      summary: Speaker embedding of one audio clip — charging call
+      description: |
+        The client's `IVoiceEmbedder` with raw audio (decision D5): ONE short clip (a few seconds of
+        one speaker, cut on the device and encoded as Opus/ogg, 16 kHz mono), multipart. Returns one
+        L2-normalized vector of the requested `voice_embedding` model. Only the requested span
+        leaves the device; the gateway does not keep the audio after the response. Charged by the
+        clip's duration at the model's hourly price. An empty file or an unknown model is
+        `422 invalid_input`.
+      x-tanara-functions: [CLI-22]
+      parameters:
+        - $ref: '#/components/parameters/ClientHeader'
+        - $ref: '#/components/parameters/AcceptLanguage'
+        - $ref: '#/components/parameters/JobId'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary, description: 'Opus in ogg (`audio/ogg`), 16 kHz mono.' }
+                model: { type: string, default: tanara/voice-embedding, description: 'A `voice_embedding` catalog id.' }
+      responses:
+        '200':
+          description: The clip's embedding, charged.
+          headers:
+            X-Tanara-Min-Client: { $ref: '#/components/headers/MinClient' }
+            X-Tanara-Request-Id: { $ref: '#/components/headers/RequestId' }
+            X-Tanara-Charge-Micros: { $ref: '#/components/headers/ChargeMicros' }
+            X-Tanara-Balance-Micros: { $ref: '#/components/headers/BalanceMicros' }
+            X-Tanara-Currency: { $ref: '#/components/headers/Currency' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VoiceEmbeddingResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '402': { $ref: '#/components/responses/InsufficientBalance' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/InvalidInput' }
+        '426': { $ref: '#/components/responses/ClientTooOld' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+
+  /v1/voice/identify:
+    post:
+      tags: [capabilities]
+      x-status: draft
+      operationId: identifyParticipants
+      summary: Participant identification from ready vectors — charging call
+      description: |
+        The client's `IParticipantIdentifier` (privacy mode, D5): only vectors travel, no audio and
+        no names. The client sends the probes (one per speaker cluster: its centroid vector per
+        model) AND the candidates (its own voiceprints, under opaque refs it maps back locally).
+        **The gateway does not keep a voiceprint directory** (decision 2026-10-14): every request is
+        self-contained.
+
+        Rule (the same as the client's local one): per candidate per model the maximum cosine over
+        the candidate's prints of that model, then the mean over the models both sides have; no
+        shared model = `-1`. `match` is the best candidate if its score reaches `threshold`
+        (default 0.5), otherwise `null`. Empty `probes` is `422 invalid_input`.
+      x-tanara-functions: [CLI-22]
+      parameters:
+        - $ref: '#/components/parameters/ClientHeader'
+        - $ref: '#/components/parameters/AcceptLanguage'
+        - $ref: '#/components/parameters/JobId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/IdentifyRequest' }
+      responses:
+        '200':
+          description: One result per probe, charged.
+          headers:
+            X-Tanara-Min-Client: { $ref: '#/components/headers/MinClient' }
+            X-Tanara-Request-Id: { $ref: '#/components/headers/RequestId' }
+            X-Tanara-Charge-Micros: { $ref: '#/components/headers/ChargeMicros' }
+            X-Tanara-Balance-Micros: { $ref: '#/components/headers/BalanceMicros' }
+            X-Tanara-Currency: { $ref: '#/components/headers/Currency' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IdentifyResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '402': { $ref: '#/components/responses/InsufficientBalance' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/InvalidInput' }
+        '426': { $ref: '#/components/responses/ClientTooOld' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+
+  /v1/summaries:
+    post:
+      tags: [capabilities]
+      x-status: draft
+      operationId: createSummary
+      summary: Server-side summary pipeline (asynchronous) — charging call
+      description: |
+        The client's `ISummarizer` with the server-side pipeline (decision D6; the other way is the
+        LLM proxy, `/v1/chat/completions`). The client sends the transcript lines (speakers already
+        resolved), the mode, the language, the meeting note and optionally its own prompts. The
+        gateway answers `202` with an id at once and runs the pipeline (quick: notes + summary;
+        complex: topics -> per-topic analyses -> reduce); the client polls `GET /v1/summaries/{id}`,
+        like a transcription.
+
+        **Charge**: booked here, from the input size and the mode, in the user's `vat_mode`
+        (`X-Tanara-Charge-*` + `tanara`). If the pipeline later fails, the charge is refunded
+        automatically (`tanara.refunded` on the status response). Empty `lines` is
+        `422 invalid_input`.
+      x-tanara-functions: [CLI-23]
+      parameters:
+        - $ref: '#/components/parameters/ClientHeader'
+        - $ref: '#/components/parameters/AcceptLanguage'
+        - $ref: '#/components/parameters/JobId'
+        - $ref: '#/components/parameters/SummaryMode'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SummaryRequest' }
+      responses:
+        '202':
+          description: Accepted and charged.
+          headers:
+            X-Tanara-Min-Client: { $ref: '#/components/headers/MinClient' }
+            X-Tanara-Request-Id: { $ref: '#/components/headers/RequestId' }
+            X-Tanara-Charge-Micros: { $ref: '#/components/headers/ChargeMicros' }
+            X-Tanara-Balance-Micros: { $ref: '#/components/headers/BalanceMicros' }
+            X-Tanara-Currency: { $ref: '#/components/headers/Currency' }
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, status]
+                properties:
+                  id: { type: string }
+                  status: { $ref: '#/components/schemas/SummaryStatus' }
+                  tanara: { $ref: '#/components/schemas/ChargeInfo' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '402': { $ref: '#/components/responses/InsufficientBalance' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/InvalidInput' }
+        '426': { $ref: '#/components/responses/ClientTooOld' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+
+  /v1/summaries/{id}:
+    get:
+      tags: [capabilities]
+      x-status: draft
+      operationId: getSummary
+      summary: Summary status and result
+      description: |
+        `status` is `queued` / `processing` until the pipeline ends; `completed` carries `result`,
+        `error` carries `error` (and the refund in `tanara`). Allowed when suspended and without
+        Terms acceptance (a follow-up call of a running job). The client polls every few seconds.
+      parameters:
+        - $ref: '#/components/parameters/ClientHeader'
+        - $ref: '#/components/parameters/AcceptLanguage'
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Status (and the result, once completed).
+          headers:
+            X-Tanara-Min-Client: { $ref: '#/components/headers/MinClient' }
+            X-Tanara-Request-Id: { $ref: '#/components/headers/RequestId' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SummaryJob' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '426': { $ref: '#/components/responses/ClientTooOld' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /v1/tags/suggest:
+    post:
+      tags: [capabilities]
+      x-status: draft
+      operationId: suggestTags
+      summary: Tag suggestions for one meeting — charging call
+      description: |
+        The client's `ITagSuggester`. The client sends the meeting's title and summary and the
+        candidate tags (its existing tags with a one-line profile, under opaque refs); the gateway
+        picks from them (`ref`) and may propose at most `max_new` new names (`ref: null`,
+        `is_new: true`). The gateway keeps no tag set. Empty `summary` is `422 invalid_input`.
+      x-tanara-functions: [CLI-24]
+      parameters:
+        - $ref: '#/components/parameters/ClientHeader'
+        - $ref: '#/components/parameters/AcceptLanguage'
+        - $ref: '#/components/parameters/JobId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TagSuggestRequest' }
+      responses:
+        '200':
+          description: Suggestions, charged.
+          headers:
+            X-Tanara-Min-Client: { $ref: '#/components/headers/MinClient' }
+            X-Tanara-Request-Id: { $ref: '#/components/headers/RequestId' }
+            X-Tanara-Charge-Micros: { $ref: '#/components/headers/ChargeMicros' }
+            X-Tanara-Balance-Micros: { $ref: '#/components/headers/BalanceMicros' }
+            X-Tanara-Currency: { $ref: '#/components/headers/Currency' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TagSuggestResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '402': { $ref: '#/components/responses/InsufficientBalance' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/InvalidInput' }
+        '426': { $ref: '#/components/responses/ClientTooOld' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+
   /v1/waitlist:
     post:
       tags: [marketing]
@@ -980,6 +1266,14 @@ components:
       content:
         application/json:
           schema: { $ref: '#/components/schemas/ServiceUnavailableError' }
+    InvalidInput:
+      description: |
+        `invalid_input` (`x-status: draft`, the capability endpoints): the request is well-formed
+        but cannot be processed (empty input, unknown model or capability). `error.fields` names the
+        field. Nothing is charged.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
     InternalError:
       description: '`internal_error`: unexpected gateway error. Nothing was booked.'
       headers:
@@ -1309,12 +1603,13 @@ components:
       type: object
       required: [kind, tier, virtual, price]
       properties:
-        kind: { type: string, enum: [stt, llm] }
+        kind: { type: string, enum: [stt, llm, text_embedding, voice_embedding], description: '`text_embedding` and `voice_embedding` are `x-status: draft`.' }
         tier: { type: [string, 'null'], enum: [fast, accurate, null], description: '`null` for a concrete (Expert) model.' }
         virtual: { type: boolean, description: '`true` for `tanara/*` names.' }
         expert: { type: boolean, description: Offered in Expert mode. }
         display_name: { type: string }
         diarization: { type: boolean, description: STT only. When `false` the client warns and falls back to one speaker label. }
+        dim: { type: integer, description: 'Embedding models only (`x-status: draft`): the vector dimension.' }
         languages: { type: [array, 'null'], items: { type: string }, description: '`null` = all languages.' }
         hidden_for_languages: { type: array, items: { type: string }, description: The client does not offer the model for these languages by default. }
         price:
@@ -1502,3 +1797,237 @@ components:
             completion_tokens: { type: integer }
             total_tokens: { type: integer }
             tanara_charge: { $ref: '#/components/schemas/ChargeInfo' }
+
+    EmbeddingRequest:
+      type: object
+      x-status: draft
+      required: [input]
+      properties:
+        model: { type: string, default: default, description: '`default` or a `text_embedding` catalog id.' }
+        input:
+          oneOf:
+            - type: string
+            - type: array
+              items: { type: string }
+              maxItems: 16
+
+    EmbeddingResponse:
+      type: object
+      x-status: draft
+      required: [object, data, model]
+      properties:
+        object: { type: string, const: list }
+        model: { type: string }
+        data:
+          type: array
+          items:
+            type: object
+            required: [index, embedding]
+            properties:
+              object: { type: string, const: embedding }
+              index: { type: integer }
+              embedding: { type: array, items: { type: number } }
+        usage:
+          type: object
+          properties:
+            prompt_tokens: { type: integer }
+            total_tokens: { type: integer }
+
+    VoiceEmbeddingResponse:
+      type: object
+      x-status: draft
+      required: [model, dim, embedding]
+      properties:
+        object: { type: string, const: voice_embedding }
+        model: { type: string }
+        dim: { type: integer }
+        embedding: { type: array, items: { type: number }, description: 'L2-normalized.' }
+        tanara: { $ref: '#/components/schemas/ChargeInfo' }
+
+    VoiceVector:
+      type: object
+      required: [model, embedding]
+      properties:
+        model: { type: string }
+        embedding: { type: array, items: { type: number } }
+
+    IdentifyRequest:
+      type: object
+      x-status: draft
+      required: [probes, candidates]
+      properties:
+        threshold: { type: number, default: 0.5 }
+        probes:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [id, vectors]
+            properties:
+              id: { type: string, description: 'The client''s probe ref (e.g. `p0`).' }
+              vectors: { type: array, items: { $ref: '#/components/schemas/VoiceVector' } }
+        candidates:
+          type: array
+          description: The client's own voiceprints; the gateway stores nothing of them.
+          items:
+            type: object
+            required: [ref, prints]
+            properties:
+              ref: { type: string, description: 'An opaque ref (e.g. `c0`); names never travel.' }
+              prints: { type: array, items: { $ref: '#/components/schemas/VoiceVector' } }
+
+    IdentifyResponse:
+      type: object
+      x-status: draft
+      required: [results]
+      properties:
+        results:
+          type: array
+          items:
+            type: object
+            required: [probe, match, score]
+            properties:
+              probe: { type: string }
+              match: { type: [string, 'null'], description: 'The best candidate''s ref, `null` below the threshold.' }
+              score: { type: number, description: 'The best score (`-1` = no shared model).' }
+              ranked:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    candidate: { type: string }
+                    score: { type: number }
+        tanara: { $ref: '#/components/schemas/ChargeInfo' }
+
+    SummaryStatus:
+      type: string
+      enum: [queued, processing, completed, error]
+
+    SummaryLine:
+      type: object
+      required: [id, start_ms, end_ms, speaker, text]
+      properties:
+        id: { type: string, description: 'The utterance id (`u<start_ms>`), for source references.' }
+        start_ms: { type: integer }
+        end_ms: { type: integer }
+        speaker: { type: string }
+        text: { type: string }
+
+    SummaryRequest:
+      type: object
+      x-status: draft
+      required: [mode, lines]
+      properties:
+        mode: { type: string, enum: [quick, complex] }
+        model: { type: string, description: 'A virtual (`tanara/summary-*`) or concrete `llm` id; default: the accurate tier.' }
+        language: { type: string, description: 'The target language (the client''s setting text).' }
+        context_note: { type: string }
+        glossary: { type: array, items: { type: string } }
+        prompts:
+          type: object
+          description: The client's own system prompts (final form); a missing one = the gateway's built-in.
+          properties:
+            single: { type: string }
+            notes: { type: string }
+            merge: { type: string }
+            topics: { type: string }
+            analysis: { type: string }
+            reduce: { type: string }
+        lines: { type: array, minItems: 1, items: { $ref: '#/components/schemas/SummaryLine' } }
+
+    SummaryActionItem:
+      type: object
+      required: [text]
+      properties:
+        text: { type: string }
+        owner: { type: string }
+        due: { type: string }
+
+    SummaryResult:
+      type: object
+      required: [summary]
+      properties:
+        model: { type: string }
+        summary:
+          type: object
+          properties:
+            exec_summary: { type: string }
+            decisions: { type: array, items: { type: string } }
+            open_questions: { type: array, items: { type: string } }
+            action_items: { type: array, items: { $ref: '#/components/schemas/SummaryActionItem' } }
+            participants: { type: array, items: { type: string } }
+        topics:
+          type: array
+          description: Complex mode only.
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              title: { type: string }
+              summary: { type: string }
+        analyses:
+          type: array
+          description: Complex mode only, in topic order.
+          items:
+            type: object
+            properties:
+              topic_id: { type: string }
+              title: { type: string }
+              detail: { type: string }
+              decisions: { type: array, items: { type: string } }
+              open_questions: { type: array, items: { type: string } }
+              action_items: { type: array, items: { $ref: '#/components/schemas/SummaryActionItem' } }
+        markdown: { type: string, description: 'The rendered document.' }
+
+    SummaryJob:
+      type: object
+      x-status: draft
+      required: [id, status]
+      properties:
+        id: { type: string }
+        status: { $ref: '#/components/schemas/SummaryStatus' }
+        result: { $ref: '#/components/schemas/SummaryResult' }
+        error:
+          type: object
+          properties:
+            code: { type: string }
+            message: { type: string }
+        tanara: { $ref: '#/components/schemas/TranscriptionJobInfo' }
+
+    TagSuggestRequest:
+      type: object
+      x-status: draft
+      required: [summary]
+      properties:
+        model: { type: string }
+        title: { type: string }
+        summary: { type: string, minLength: 1 }
+        participants: { type: array, items: { type: string } }
+        prompt: { type: string, description: 'The client''s own system prompt (final form).' }
+        candidates:
+          type: array
+          items:
+            type: object
+            required: [ref, name]
+            properties:
+              ref: { type: string, description: 'An opaque ref (e.g. `t0`).' }
+              name: { type: string }
+              profile: { type: string, description: 'One line on the tag''s use (participants, phrases).' }
+        max_new: { type: integer, default: 2, minimum: 0 }
+
+    TagSuggestResponse:
+      type: object
+      x-status: draft
+      required: [suggestions]
+      properties:
+        suggestions:
+          type: array
+          items:
+            type: object
+            required: [ref, name, is_new, score]
+            properties:
+              ref: { type: [string, 'null'], description: 'The picked candidate''s ref; `null` for a new name.' }
+              name: { type: string }
+              is_new: { type: boolean }
+              score: { type: number, minimum: 0, maximum: 1 }
+        tanara: { $ref: '#/components/schemas/ChargeInfo' }

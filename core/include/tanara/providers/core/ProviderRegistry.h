@@ -93,10 +93,10 @@ private:
 void registerBuiltinProviders(ProviderRegistry& registry);
 
 // Registers the Tanara Cloud STT + chat provider ("tanara-cloud", AuthMode::Login, Origin::Cloud).
-// A feature flag (kill criterion): called only if the cloud client is compiled in
-// (TANARA_BUILD_CLOUD) AND the cloud mode is live (settings.cloud.enabled / TANARA_CLOUD_URL).
 // The factory is the existing SonioxProvider / OpenAiCompatibleProvider; the caller fills the gateway
-// config (baseUrl, model) and the ProviderContext (auth, headers, observer, cost).
+// config (baseUrl, model) and the ProviderContext (auth, headers, observer, cost). The app does not
+// call it directly: cloud::registerInto (cloud/CloudCapabilities.h) calls it together with the other
+// cloud adapters, only if the client is compiled in AND the cloud mode is live (kill criterion).
 void registerCloudProviders(ProviderRegistry& registry);
 
 } // namespace tanara::providers

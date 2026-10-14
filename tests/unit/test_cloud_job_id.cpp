@@ -29,9 +29,10 @@
 
 #include "tanara/app/AppController.h"
 #include "tanara/app/SettingsManager.h"
-#include "tanara/cloud/CloudAccount.h"
+#include "tanara/cloud/CloudSession.h"
 #include "tanara/cloud/CloudTypes.h"
 #include "tanara/library/store/MeetingRepository.h"
+#include "tanara/providers/core/ProviderRegistry.h"
 
 #include <memory>
 
@@ -101,6 +102,11 @@ void TestCloudJobId::initTestCase()
 
     m_app = std::make_unique<app::AppController>();
     QVERIFY(m_app->cloudLive());
+    // Live mode: the cloud capability adapters are registered (P10; the kill criterion keeps them out otherwise).
+    for (providers::CapabilityKind k : { providers::CapabilityKind::VoiceEmbedding, providers::CapabilityKind::Summarization,
+                                         providers::CapabilityKind::ParticipantIdentification,
+                                         providers::CapabilityKind::TagSuggestion, providers::CapabilityKind::ModelCatalog })
+        QVERIFY(m_app->providerRegistry().has(k, cloud::ProviderId));
     connect(m_app.get(), &app::AppController::errorOccurred, this, [](const QString& e) { qWarning("errorOccurred: %s", qPrintable(e)); });
 
     tanara::app::AppSettings s = m_app->settings()->settings();
@@ -110,7 +116,7 @@ void TestCloudJobId::initTestCase()
     QVERIFY(m_app->usesCloud(providers::WorkflowStep::Summarize));
 
     mockConfig({ { "auto_approve", true } });
-    QSignalSpy ok(m_app->cloud(), &cloud::CloudAccount::deviceFlowSucceeded);
+    QSignalSpy ok(m_app->cloud(), &cloud::CloudSession::deviceFlowSucceeded);
     m_app->cloud()->startDeviceFlow();
     QVERIFY(ok.wait(10000));
     QVERIFY(m_app->cloud()->isLoggedIn());

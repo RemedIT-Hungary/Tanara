@@ -29,7 +29,7 @@ namespace tanara::library { class TranscriptRepository; }
 namespace tanara::library { class UiStateRepository; }
 namespace tanara::library { class VoiceprintStore; }
 namespace tanara::editing { class SpeakerEditor; }
-namespace tanara::cloud { class CloudAccount; struct CloudRun; }
+namespace tanara::cloud { class CloudSession; struct CloudRun; }
 namespace tanara::providers { struct ProviderContext; class ProviderRegistry; }
 namespace tanara::library { class MeetingJobTracker; }
 namespace tanara::library { class MeetingLibrary; }
@@ -98,8 +98,8 @@ public:
     QString currentMeetingFolder() const;   // the folder currently or last recorded
 
     // ---- Tanara Cloud ----------------------------------------------------------------
-    // The account (always exists: the teaser-mode waitlist goes through it too). See CloudAccount.h.
-    cloud::CloudAccount* cloud() const;
+    // The account (always exists: the teaser-mode waitlist goes through it too). See CloudSession.h.
+    cloud::CloudSession* cloud() const;
     // The sign-in cloud mode is live: compiled in (TANARA_BUILD_CLOUD) AND enabled
     // (settings.cloud.enabled, or TANARA_CLOUD=live). TANARA_CLOUD=off disables everything.
     bool cloudLive() const;

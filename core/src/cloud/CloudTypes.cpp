@@ -228,8 +228,9 @@ CloudError parseCloudError(int httpStatus, const QHash<QByteArray, QByteArray>& 
                                                              e.kind = CloudErrorKind::DeviceFlow;
     else if (httpStatus == 404)                              e.kind = CloudErrorKind::NotFound;
     else if (httpStatus == 409 && c == QLatin1String("topup_unavailable")) e.kind = CloudErrorKind::TopupUnavailable;
-    else if (httpStatus == 422)                              e.kind = CloudErrorKind::TopupLimit;
-    else if (httpStatus == 400)                              e.kind = CloudErrorKind::Validation;
+    else if (httpStatus == 422 && c == QLatin1String("topup_limit_exceeded")) e.kind = CloudErrorKind::TopupLimit;
+    // 400, and 422 for an unprocessable input of the capability endpoints (invalid_input, P10).
+    else if (httpStatus == 400 || httpStatus == 422)         e.kind = CloudErrorKind::Validation;
     else if (httpStatus == 403)                              e.kind = CloudErrorKind::Suspended;
     else                                                     e.kind = CloudErrorKind::Other;
     return e;

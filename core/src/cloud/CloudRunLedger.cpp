@@ -1,5 +1,5 @@
 #include "tanara/cloud/CloudRunLedger.h"
-#include "tanara/cloud/CloudAccount.h"
+#include "tanara/cloud/CloudSession.h"
 
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -7,6 +7,16 @@
 #include <QUuid>
 
 namespace tanara::cloud {
+
+namespace {
+// The charging POST routes of the capability adapters (cloud/CloudCapabilities.h).
+bool isCapabilityPath(const QString& path)
+{
+    return path.endsWith(QLatin1String("/v1/embeddings")) || path.endsWith(QLatin1String("/voice/embeddings"))
+        || path.endsWith(QLatin1String("/voice/identify")) || path.endsWith(QLatin1String("/summaries"))
+        || path.endsWith(QLatin1String("/tags/suggest"));
+}
+} // namespace
 
 void CloudRun::addCharge(const ChargeInfo& c)
 {
@@ -43,7 +53,7 @@ providers::CostEvent toCostEvent(const ChargeInfo& c)
     return e;
 }
 
-CloudRunLedger::CloudRunLedger(CloudAccount* account, QObject* parent)
+CloudRunLedger::CloudRunLedger(CloudSession* account, QObject* parent)
     : QObject(parent), m_account(account)
 {
 }
@@ -73,7 +83,7 @@ providers::ProviderContext CloudRunLedger::contextFor(const CloudRunPtr& run, co
 {
     providers::ProviderContext ctx;
     ctx.http = http;
-    QPointer<CloudAccount> acc = m_account;
+    QPointer<CloudSession> acc = m_account;
     ctx.auth = providers::AuthSource::bearer([acc]() { return acc ? acc->apiKey() : QString(); });
     ctx.jobId = run ? run->jobId : QUuid::createUuid().toString(QUuid::WithoutBraces);
     ctx.language = acc ? acc->language() : QString();
@@ -86,7 +96,7 @@ providers::ProviderContext CloudRunLedger::contextFor(const CloudRunPtr& run, co
     return ctx;
 }
 
-void CloudRunLedger::observe(CloudAccount* acc, const CloudRunPtr& run, const HttpExchange& ex,
+void CloudRunLedger::observe(CloudSession* acc, const CloudRunPtr& run, const HttpExchange& ex,
                              const providers::CostSink& cost)
 {
     if (acc) acc->observeExchange(ex);
@@ -118,6 +128,12 @@ void CloudRunLedger::observe(CloudAccount* acc, const CloudRunPtr& run, const Ht
     } else if (ex.method == "POST" && ex.path.endsWith(QLatin1String("/chat/completions"))) {
         ChargeInfo c = chargeInfoFromJson(o.value(QStringLiteral("usage")).toObject()
                                               .value(QStringLiteral("tanara_charge")).toObject());
+        if (!c.valid) c = chargeInfoFromHeaders(ex.headers);
+        book(c);
+    } else if (ex.method == "POST" && isCapabilityPath(ex.path)) {
+        // The P10 capability endpoints (embeddings, voice, summaries, tag suggestions): the charge is in
+        // the `tanara` object and / or the X-Tanara-Charge-* headers.
+        ChargeInfo c = chargeInfoFromJson(o.value(QStringLiteral("tanara")).toObject());
         if (!c.valid) c = chargeInfoFromHeaders(ex.headers);
         book(c);
     } else if (ex.method == "GET" && statusPath.match(ex.path).hasMatch()) {

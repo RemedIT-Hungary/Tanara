@@ -3,7 +3,9 @@
 // The test starts the mock (node, no dependencies) on a free port, with canned STT/LLM, and
 // walks through the client's gateway paths: waitlist, device flow, account, catalog, estimate,
 // terms acceptance, top-up link, error states (402/403/426/429/503), and the existing
-// SonioxProvider / OpenAiCompatibleProvider with the gateway config (headers, charge, write-back).
+// SonioxProvider / OpenAiCompatibleProvider with the gateway config (headers, charge, write-back),
+// and the P10 capability adapters on the draft endpoints (embeddings, voice, identify, summaries,
+// tag suggestions, the filtered catalog): success, 402, 401, 422.
 // Without node the test is skipped (QSKIP).
 #include <QtTest>
 #include "tanara/providers/core/ProviderConfig.h"
@@ -20,8 +22,11 @@
 #include <QTemporaryDir>
 
 #include "tanara/domain/Types.h"
-#include "tanara/cloud/CloudAccount.h"
+#include "tanara/cloud/CloudSession.h"
 #include "tanara/cloud/CloudRunLedger.h"
+#include "tanara/cloud/CloudCapabilities.h"
+#include "tanara/cloud/CloudEstimator.h"
+#include "fake_media_tool.h"
 #include "tanara/cloud/CloudTypes.h"
 #include "tanara/providers/chat/OpenAiCompatibleProvider.h"
 #include "tanara/foundation/secrets/SecretStore.h"
@@ -49,6 +54,14 @@ private slots:
     void stt_throughGateway_chargeAndRefund();
     void llm_throughGateway_charge_and402();
     void pending_refundAtStartup();
+    void capabilities_registered();
+    void capabilities_textEmbedding();
+    void capabilities_voiceEmbedding_and_identify();
+    void capabilities_summaries();
+    void capabilities_tags();
+    void capabilities_modelCatalog();
+    void capabilities_estimator();
+    void capabilities_errors_402_401_422();
     void logout_removesKey();
 
 private:
@@ -62,9 +75,13 @@ private:
     QString m_base;
     QTemporaryDir m_dir;
     std::unique_ptr<FileSecretStore> m_keys;
-    std::unique_ptr<cloud::CloudAccount> m_acc;
+    std::unique_ptr<cloud::CloudSession> m_acc;
     std::unique_ptr<cloud::CloudRunLedger> m_ledger;
     cloud::CloudRunPtr m_run;   // the run of the last gatewayContext()
+    providers::ProviderRegistry m_reg;   // the cloud adapters (cloud::registerInto)
+    std::shared_ptr<testing::FakeMediaTool> m_media = std::make_shared<testing::FakeMediaTool>();
+    template <class Port> std::unique_ptr<Port> make(const QString& id, const providers::ProviderContext& ctx,
+                                                     providers::ProviderConfig cfg = {});
     QNetworkAccessManager m_nam;
 };
 
@@ -93,7 +110,7 @@ void TestCloudGateway::initTestCase()
     QVERIFY2(out.contains("mock-gateway 1.2.0"), out.constData());
 
     m_keys = std::make_unique<FileSecretStore>(m_dir.filePath("secrets.json"));
-    m_acc = std::make_unique<cloud::CloudAccount>(m_keys.get(), m_dir.path());
+    m_acc = std::make_unique<cloud::CloudSession>(m_keys.get(), m_dir.path());
     m_ledger = std::make_unique<cloud::CloudRunLedger>(m_acc.get());
     m_acc->setBaseUrl(m_base + "/v1/");      // the /v1 and the trailing / are trimmed
     QCOMPARE(m_acc->apiBase(), m_base + "/v1");
@@ -146,8 +163,8 @@ providers::ProviderContext TestCloudGateway::gatewayContext(QVector<net::HttpExc
 
 void TestCloudGateway::waitlist_acceptedAndErrors()
 {
-    QSignalSpy ok(m_acc.get(), &cloud::CloudAccount::waitlistJoined);
-    QSignalSpy bad(m_acc.get(), &cloud::CloudAccount::waitlistFailed);
+    QSignalSpy ok(m_acc.get(), &cloud::CloudSession::waitlistJoined);
+    QSignalSpy bad(m_acc.get(), &cloud::CloudSession::waitlistFailed);
     cloud::WaitlistSignup s;
     s.email = "anna@example.com"; s.consent = true; s.uiLanguage = "hu"; s.useCase = "meetings"; s.meetingLanguages = { "hu" };
     m_acc->joinWaitlist(s);
@@ -187,10 +204,10 @@ void TestCloudGateway::deviceFlow_login_account_models()
 {
     QVERIFY(!m_acc->isLoggedIn());
     mockConfig({ { "auto_approve", true } });
-    QSignalSpy code(m_acc.get(), &cloud::CloudAccount::deviceCodeReady);
-    QSignalSpy success(m_acc.get(), &cloud::CloudAccount::deviceFlowSucceeded);
-    QSignalSpy account(m_acc.get(), &cloud::CloudAccount::accountUpdated);
-    QSignalSpy models(m_acc.get(), &cloud::CloudAccount::modelsUpdated);
+    QSignalSpy code(m_acc.get(), &cloud::CloudSession::deviceCodeReady);
+    QSignalSpy success(m_acc.get(), &cloud::CloudSession::deviceFlowSucceeded);
+    QSignalSpy account(m_acc.get(), &cloud::CloudSession::accountUpdated);
+    QSignalSpy models(m_acc.get(), &cloud::CloudSession::modelsUpdated);
     m_acc->startDeviceFlow();
     QVERIFY(code.wait(5000));
     const cloud::DeviceCode dc = code.first().first().value<cloud::DeviceCode>();
@@ -221,7 +238,7 @@ void TestCloudGateway::deviceFlow_login_account_models()
     QVERIFY(findTierModel(m_acc->models(), "llm", "accurate").has_value());
 
     // The account and catalog cache in cloud-state.json survives a restart (offline display).
-    cloud::CloudAccount again(m_keys.get(), m_dir.path());
+    cloud::CloudSession again(m_keys.get(), m_dir.path());
     QCOMPARE(again.account().balance.micros, 12700000);
     QCOMPARE(again.email(), QStringLiteral("anna@example.com"));
     QVERIFY(!again.models().isEmpty());
@@ -232,10 +249,10 @@ void TestCloudGateway::deviceFlow_denied_and_cancel()
 {
     FileSecretStore keys(m_dir.filePath("secrets-2.json"));
     QTemporaryDir d2;
-    cloud::CloudAccount acc(&keys, d2.path());
+    cloud::CloudSession acc(&keys, d2.path());
     acc.setBaseUrl(m_base);
-    QSignalSpy code(&acc, &cloud::CloudAccount::deviceCodeReady);
-    QSignalSpy failed(&acc, &cloud::CloudAccount::deviceFlowFailed);
+    QSignalSpy code(&acc, &cloud::CloudSession::deviceCodeReady);
+    QSignalSpy failed(&acc, &cloud::CloudSession::deviceFlowFailed);
 
     mockConfig({ { "deny", true } });
     acc.startDeviceFlow();
@@ -290,7 +307,7 @@ void TestCloudGateway::estimate_levels()
 void TestCloudGateway::terms_earlyAcceptance()
 {
     mockConfig({ { "terms_pending", true } });
-    QSignalSpy account(m_acc.get(), &cloud::CloudAccount::accountUpdated);
+    QSignalSpy account(m_acc.get(), &cloud::CloudSession::accountUpdated);
     m_acc->refreshAccount();
     QVERIFY(account.wait(5000));
     cloud::TermsStatus t = m_acc->account().terms;
@@ -298,7 +315,7 @@ void TestCloudGateway::terms_earlyAcceptance()
     QVERIFY(!t.needsAcceptance());
     QVERIFY(t.upcomingEffectiveFrom > QDateTime::currentDateTimeUtc());
 
-    QSignalSpy accepted(m_acc.get(), &cloud::CloudAccount::termsAccepted);
+    QSignalSpy accepted(m_acc.get(), &cloud::CloudSession::termsAccepted);
     m_acc->acceptTerms(t.upcomingVersion);
     QVERIFY(accepted.wait(5000));
     t = accepted.first().first().value<cloud::TermsStatus>();
@@ -306,7 +323,7 @@ void TestCloudGateway::terms_earlyAcceptance()
     QVERIFY(!t.needsEarlyAcceptance());
 
     // Unknown version: 400 validation_error (fields.version).
-    QSignalSpy failed(m_acc.get(), &cloud::CloudAccount::termsFailed);
+    QSignalSpy failed(m_acc.get(), &cloud::CloudSession::termsFailed);
     m_acc->acceptTerms("1999-01-01");
     QVERIFY(failed.wait(5000));
     QVERIFY(failed.first().first().value<cloud::CloudError>().fieldErrors.contains("version"));
@@ -315,7 +332,7 @@ void TestCloudGateway::terms_earlyAcceptance()
 
 void TestCloudGateway::topup_unavailable()
 {
-    QSignalSpy failed(m_acc.get(), &cloud::CloudAccount::topupFailed);
+    QSignalSpy failed(m_acc.get(), &cloud::CloudSession::topupFailed);
     m_acc->createTopupLink();
     QVERIFY(failed.wait(5000));
     const cloud::CloudError e = failed.first().first().value<cloud::CloudError>();
@@ -323,7 +340,7 @@ void TestCloudGateway::topup_unavailable()
     QVERIFY(e.contactUrl.endsWith("/contact"));
 
     mockConfig({ { "topup_available", true } });
-    QSignalSpy ok(m_acc.get(), &cloud::CloudAccount::topupLinkReady);
+    QSignalSpy ok(m_acc.get(), &cloud::CloudSession::topupLinkReady);
     m_acc->createTopupLink();
     QVERIFY(ok.wait(5000));
     QVERIFY(ok.first().first().toString().contains("handoff="));
@@ -368,7 +385,7 @@ void TestCloudGateway::errors_blockingStates()
     }
     // A suspended account is 403 too, but for payment_dispute the top-up link is allowed (it reaches 409).
     mockConfig({ { "suspended", "payment_dispute" } });
-    QSignalSpy topup(m_acc.get(), &cloud::CloudAccount::topupFailed);
+    QSignalSpy topup(m_acc.get(), &cloud::CloudSession::topupFailed);
     m_acc->createTopupLink();
     QVERIFY(topup.wait(5000));
     QCOMPARE(topup.first().first().value<cloud::CloudError>().kind, cloud::CloudErrorKind::TopupUnavailable);
@@ -377,9 +394,9 @@ void TestCloudGateway::errors_blockingStates()
 
 void TestCloudGateway::minClient_detected()
 {
-    QSignalSpy old(m_acc.get(), &cloud::CloudAccount::clientTooOldDetected);
+    QSignalSpy old(m_acc.get(), &cloud::CloudSession::clientTooOldDetected);
     mockConfig({ { "min_client", "9.9.9" } });
-    QSignalSpy failed(m_acc.get(), &cloud::CloudAccount::accountFailed);
+    QSignalSpy failed(m_acc.get(), &cloud::CloudSession::accountFailed);
     m_acc->refreshAccount();
     QVERIFY(failed.wait(5000));
     QCOMPARE(failed.first().first().value<cloud::CloudError>().kind, cloud::CloudErrorKind::ClientTooOld);
@@ -388,7 +405,7 @@ void TestCloudGateway::minClient_detected()
     QCOMPARE(m_acc->minClient(), QStringLiteral("9.9.9"));
     QVERIFY(m_acc->downloadUrl().endsWith("/download"));
     mockConfig({ { "min_client", "0.1.0" } });
-    QSignalSpy ok(m_acc.get(), &cloud::CloudAccount::accountUpdated);
+    QSignalSpy ok(m_acc.get(), &cloud::CloudSession::accountUpdated);
     m_acc->refreshAccount();
     QVERIFY(ok.wait(5000));
     QVERIFY(!m_acc->clientTooOld());   // the gateway lowered the minimum
@@ -529,11 +546,11 @@ void TestCloudGateway::pending_refundAtStartup()
 
     m_acc->addPendingTranscription(trId, QString());
     QTest::qWait(3000);   // the mock job ends with an error meanwhile
-    QSignalSpy refunded(m_acc.get(), &cloud::CloudAccount::previousTranscriptionRefunded);
-    cloud::CloudAccount restarted(m_keys.get(), m_dir.path());   // new start: the pending id from cloud-state.json
+    QSignalSpy refunded(m_acc.get(), &cloud::CloudSession::previousTranscriptionRefunded);
+    cloud::CloudSession restarted(m_keys.get(), m_dir.path());   // new start: the pending id from cloud-state.json
     restarted.setBaseUrl(m_base);
     QCOMPARE(restarted.pendingTranscriptions(), QStringList{ trId });
-    QSignalSpy refunded2(&restarted, &cloud::CloudAccount::previousTranscriptionRefunded);
+    QSignalSpy refunded2(&restarted, &cloud::CloudSession::previousTranscriptionRefunded);
     restarted.checkPendingTranscriptions();
     QVERIFY(refunded2.wait(5000));
     QVERIFY(refunded2.first().first().value<cloud::Money>().micros > 0);
@@ -541,11 +558,321 @@ void TestCloudGateway::pending_refundAtStartup()
     mockConfig({ { "refund", false } });
 }
 
+template <class Port>
+std::unique_ptr<Port> TestCloudGateway::make(const QString& id, const providers::ProviderContext& ctx,
+                                             providers::ProviderConfig cfg)
+{
+    if (m_reg.descriptors(providers::ProviderTraits<Port>::kind).isEmpty()) {
+        providers::registerBuiltinProviders(m_reg);
+        cloud::CloudCapabilityDeps deps;
+        auto media = m_media;
+        deps.media = [media]() { return media; };
+        cloud::registerInto(m_reg, *m_acc, deps);
+    }
+    return std::unique_ptr<Port>(m_reg.create<Port>(id, ctx, cfg, nullptr));
+}
+
+namespace {
+template <class Job>
+bool waitJob(Job* job, int ms = 8000)
+{
+    QSignalSpy ok(job, &providers::CapabilityJob::finished);
+    QSignalSpy bad(job, &providers::CapabilityJob::failed);
+    QDeadlineTimer dl(ms);
+    while (!job->isDone() && ok.isEmpty() && bad.isEmpty() && !dl.hasExpired()) QTest::qWait(10);
+    return job->isDone() || !ok.isEmpty() || !bad.isEmpty();
+}
+}
+
+void TestCloudGateway::capabilities_registered()
+{
+    QVERIFY(m_acc->isLoggedIn());
+    providers::ProviderRegistry reg;
+    providers::registerBuiltinProviders(reg);
+    cloud::registerInto(reg, *m_acc);
+    using K = providers::CapabilityKind;
+    const QString id = cloud::capabilityProviderId();
+    for (K k : { K::Transcription, K::Chat, K::VoiceEmbedding, K::ParticipantIdentification, K::Summarization,
+                 K::TagSuggestion, K::ModelCatalog }) {
+        const providers::ProviderDescriptor d = reg.descriptor(k, id);
+        QVERIFY2(d.id == id, qPrintable(providers::capabilityName(k)));
+        QCOMPARE(d.origin, providers::Origin::Cloud);
+        QCOMPARE(d.authMode, providers::AuthMode::Login);
+    }
+    QCOMPARE(reg.descriptor(K::TextEmbedding, providers::embeddingproviders::CloudId).origin, providers::Origin::Cloud);
+    QVERIFY(reg.descriptor(K::VoiceEmbedding, id).traits.inputs.contains(providers::InputKind::AudioClip));
+    QVERIFY(reg.descriptor(K::VoiceEmbedding, id).traits.inputs.contains(providers::InputKind::Pcm));
+    QCOMPARE(reg.descriptor(K::Summarization, id).catalogRef, id);
+}
+
+void TestCloudGateway::capabilities_textEmbedding()
+{
+    QVector<net::HttpExchange> log;
+    auto emb = make<providers::ITextEmbedder>(providers::embeddingproviders::CloudId, gatewayContext(&log));
+    QVERIFY(emb);
+    providers::EmbeddingJob* job = emb->embed({ { "Nordvik raktár", "MuseumPlus bevezetés" }, QString() });
+    QSignalSpy fin(job, &providers::EmbeddingJob::finished);
+    QVERIFY(fin.wait(5000));
+    const auto vecs = fin.first().first().value<QVector<QVector<float>>>();
+    QCOMPARE(vecs.size(), 2);
+    QCOMPARE(vecs[0].size(), 64);
+    QVERIFY(vecs[0] != vecs[1]);
+    QCOMPARE(log.size(), 1);
+    QVERIFY(log[0].path.endsWith("/v1/embeddings"));
+    QCOMPARE(QJsonDocument::fromJson(log[0].body).object().value("model").toString(), QStringLiteral("tanara/text-embedding"));
+    QCOMPARE(m_run->calls, 1);   // charged through the ledger
+    QVERIFY(m_run->chargedMicros > 0);
+}
+
+void TestCloudGateway::capabilities_voiceEmbedding_and_identify()
+{
+    QVector<net::HttpExchange> log;
+    m_media->pcm.insert("track_mic.ogg", QVector<qint16>(16000 * 3, 2000));
+    auto emb = make<providers::IVoiceEmbedder>(cloud::capabilityProviderId(), gatewayContext(&log));
+    QVERIFY(emb);
+    QCOMPARE(emb->defaultModelIds(), QStringList{ "tanara/voice-embedding" });
+    providers::VoiceEmbeddingRequest req;
+    req.clips = { { m_dir.filePath("track_mic.ogg"), 0, 1500 }, { m_dir.filePath("track_mic.ogg"), 0, 1500 } };
+    req.pcm.clear();
+    providers::VoiceEmbeddingJob* job = emb->embed(req);
+    QVERIFY(waitJob(job));
+    QVERIFY2(!job->error().isError(), qPrintable(job->error().message));
+    const QVector<providers::VoiceVector> v = job->result();
+    QCOMPARE(v.size(), 2);
+    QCOMPARE(v[0].dim, 192);
+    QCOMPARE(v[0].vector.size(), 192);
+    QCOMPARE(v[0].vector, v[1].vector);              // the same clip -> the same (deterministic) vector
+    QCOMPARE(v[1].input, 1);
+    QCOMPARE(m_media->encodes().size(), 2);          // every clip re-encoded to Opus through the media tool
+    QCOMPARE(m_media->encodes()[0].input.sampleRate, 16000);
+    QCOMPARE(log.size(), 2);
+    QVERIFY(log[0].path.endsWith("/v1/voice/embeddings"));
+    QCOMPARE(m_run->calls, 2);
+    const QJsonObject last = mockState().value("usage").toArray().last().toObject();
+    QCOMPARE(last.value("kind").toString(), QStringLiteral("voice_embedding"));
+    QCOMPARE(last.value("job_id").toString(), QStringLiteral("job-test-1"));
+
+    // Identification: the probe is the clip's vector; Anna's print is the same vector, Béla's another one.
+    auto idf = make<providers::IParticipantIdentifier>(cloud::capabilityProviderId(), gatewayContext(&log));
+    providers::IdentifyRequest ir;
+    providers::IdentifyProbe probe;
+    probe.vectors = { v[0] };
+    probe.trackId = "mic";
+    probe.windows = 4;
+    ir.probes = { probe };
+    Voiceprint anna; anna.model = v[0].modelId; anna.embedding = v[0].vector;
+    QVector<float> other(192, 0.0f); other[0] = 1.0f;
+    Voiceprint bela; bela.model = v[0].modelId; bela.embedding = other;
+    ir.candidates = { { "Béla", { bela } }, { "Kovács Anna", { anna } } };
+    const QByteArray body = cloud::CloudParticipantIdentifier::requestBody(ir, QString());
+    QVERIFY(!body.contains("Anna") && !body.contains("B\xc3\xa9la"));   // names never leave the device
+    log.clear();
+    providers::IdentifyJob* ij = idf->identify(ir);
+    QVERIFY(waitJob(ij));
+    QVERIFY2(!ij->error().isError(), qPrintable(ij->error().message));
+    QCOMPARE(ij->result().size(), 1);
+    QCOMPARE(ij->result()[0].name, QStringLiteral("Kovács Anna"));
+    QVERIFY(ij->result()[0].score > 0.99);
+    QCOMPARE(ij->result()[0].trackId, QStringLiteral("mic"));
+    QCOMPARE(ij->result()[0].windows, 4);
+    QVERIFY(log[0].path.endsWith("/v1/voice/identify"));
+    // Below the threshold: no name.
+    ir.candidates = { { "Béla", { bela } } };
+    ij = idf->identify(ir);
+    QVERIFY(waitJob(ij));
+    QVERIFY(ij->result()[0].name.isEmpty());
+}
+
+void TestCloudGateway::capabilities_summaries()
+{
+    QVector<net::HttpExchange> log;
+    providers::ProviderConfig cfg = gatewayConfig(QStringLiteral("tanara/summary-fast"));
+    cfg.extra.insert(QStringLiteral("pollIntervalMs"), 20);
+    auto sum = make<providers::ISummarizer>(cloud::capabilityProviderId(), gatewayContext(&log), cfg);
+    QVERIFY(sum);
+    providers::SummarizationRequest req;
+    req.mode = providers::SummarizationMode::Complex;
+    req.language = QStringLiteral("magyar");
+    for (int i = 0; i < 4; ++i) {
+        TranscriptToken t;
+        t.text = QStringLiteral(" A migráció állapota, %1.").arg(i);
+        t.speaker = i % 2 ? QStringLiteral("Béla") : QStringLiteral("Ádám");
+        t.startMs = i * 10000;
+        t.endMs = t.startMs + 5000;
+        req.transcript.tokens.append(t);
+    }
+    providers::SummarizationJob* job = sum->summarize(req);
+    QVERIFY(waitJob(job));
+    QVERIFY2(!job->error().isError(), qPrintable(job->error().message));
+    const providers::SummarizationResult r = job->result();
+    QCOMPARE(r.mode, providers::SummarizationMode::Complex);
+    QVERIFY(r.summary.execSummary.contains(QStringLiteral("MuseumPlus")));
+    QCOMPARE(r.topics.size(), 2);
+    QCOMPARE(r.analyses.size(), 2);
+    QCOMPARE(r.summary.actionItems.value(0).owner, QStringLiteral("Dompa"));
+    QCOMPARE(r.summary.participants, QStringList({ "Ádám", "Béla" }));
+    // POST + 2 polls (processing, completed); the POST carried the lines and was charged once.
+    QCOMPARE(log.size(), 3);
+    QVERIFY(log[0].path.endsWith("/v1/summaries"));
+    QCOMPARE(log[0].status, 202);
+    const QJsonObject posted = QJsonDocument::fromJson(log[0].body).object();
+    QVERIFY(!posted.value("id").toString().isEmpty());
+    QVERIFY(log[2].path.endsWith("/v1/summaries/" + posted.value("id").toString()));
+    QCOMPARE(m_run->calls, 1);
+    const QJsonObject last = mockState().value("usage").toArray().last().toObject();
+    QCOMPARE(last.value("kind").toString(), QStringLiteral("summary"));
+    QCOMPARE(last.value("summary_mode").toString(), QStringLiteral("complex"));
+}
+
+void TestCloudGateway::capabilities_tags()
+{
+    QVector<net::HttpExchange> log;
+    auto tags = make<providers::ITagSuggester>(cloud::capabilityProviderId(), gatewayContext(&log));
+    QVERIFY(tags);
+    providers::TagSuggestRequest req;
+    req.title = QStringLiteral("Nordvik ütemterv");
+    req.summaryText = QStringLiteral("A raktár költözése csúszik. #Raktárköltözés #Logisztika #Harmadik");
+    req.candidates = { { "tag-1", "Nordvik", "Kovács Anna; raktár" }, { "tag-2", "MuseumPlus", QString() },
+                       { "tag-3", "Belső", QString() } };
+    req.maxNew = 2;
+    providers::TagSuggestJob* job = tags->suggest(req);
+    QVERIFY(waitJob(job));
+    QVERIFY2(!job->error().isError(), qPrintable(job->error().message));
+    QStringList names;
+    for (const TagSuggestion& t : job->result()) names << (t.isNew ? "+" : t.tagId + ":") + t.name;
+    QCOMPARE(names, QStringList({ "tag-1:Nordvik", "+Raktárköltözés", "+Logisztika" }));
+    QVERIFY(log.last().path.endsWith("/v1/tags/suggest"));
+    const QJsonObject sent = mockState().value("usage").toArray().last().toObject();
+    QCOMPARE(sent.value("kind").toString(), QStringLiteral("tags"));
+    QCOMPARE(m_run->calls, 1);
+    // A tag already on the meeting is dropped.
+    req.currentTagIds = { "tag-1" };
+    job = tags->suggest(req);
+    QVERIFY(waitJob(job));
+    QCOMPARE(job->result().size(), 2);
+}
+
+void TestCloudGateway::capabilities_modelCatalog()
+{
+    QVector<net::HttpExchange> log;
+    auto cat = make<providers::IModelCatalog>(cloud::capabilityProviderId(), gatewayContext(&log));
+    QVERIFY(cat);
+    providers::ModelListJob* job = cat->list(providers::CapabilityKind::VoiceEmbedding);
+    QVERIFY(waitJob(job));
+    QCOMPARE(job->result().size(), 1);
+    QCOMPARE(job->result()[0].id, QStringLiteral("tanara/voice-embedding"));
+    QCOMPARE(job->result()[0].dim, 192);
+    QCOMPARE(job->result()[0].origin, providers::Origin::Cloud);
+    QVERIFY(log.last().path.endsWith("/v1/models"));
+    job = cat->list(providers::CapabilityKind::Transcription);
+    QVERIFY(waitJob(job));
+    QVERIFY(job->result().size() >= 2);
+    for (const providers::ModelInfo& m : job->result()) QVERIFY(!m.id.contains("embedding"));
+
+    providers::ModelReadyJob* ready = cat->ensureAvailable(QStringLiteral("tanara/stt-fast"));
+    QVERIFY(waitJob(ready));
+    QCOMPARE(ready->result().remoteId, QStringLiteral("tanara/stt-fast"));
+    QVERIFY(!ready->result().isLocal());
+    ready = cat->ensureAvailable(QStringLiteral("no/such-model"));
+    QVERIFY(waitJob(ready));
+    QCOMPARE(ready->error().kind, Error::Kind::Input);
+    QCOMPARE(m_run->calls, 0);   // listing costs nothing
+}
+
+void TestCloudGateway::capabilities_estimator()
+{
+    cloud::CloudEstimator est(m_acc.get());
+    providers::CostEstimateRequest req;
+    req.task = QStringLiteral("transcribe");
+    req.durationMs = 3600000;
+    req.tracks = 2;
+    req.sttModel = QStringLiteral("tanara/stt-accurate");
+    providers::CostEstimateJob* job = est.estimateCost(req);
+    QVERIFY(waitJob(job));
+    QVERIFY2(!job->error().isError(), qPrintable(job->error().message));
+    QVERIFY(job->result().estimateMicros > 0);
+    QCOMPARE(job->result().currency, QStringLiteral("USD"));
+    QVERIFY(job->result().enough);
+    req.task = QStringLiteral("nonsense");
+    job = est.estimateCost(req);
+    QVERIFY(waitJob(job));
+    QCOMPARE(job->error().kind, Error::Kind::Input);   // 400 validation_error
+}
+
+void TestCloudGateway::capabilities_errors_402_401_422()
+{
+    QVector<net::HttpExchange> log;
+    m_media->pcm.insert("track_mic.ogg", QVector<qint16>(16000 * 3, 2000));
+    auto voice = make<providers::IVoiceEmbedder>(cloud::capabilityProviderId(), gatewayContext(&log));
+    auto idf = make<providers::IParticipantIdentifier>(cloud::capabilityProviderId(), gatewayContext(&log));
+    providers::ProviderConfig cfg;
+    cfg.extra.insert(QStringLiteral("pollIntervalMs"), 20);
+    auto sum = make<providers::ISummarizer>(cloud::capabilityProviderId(), gatewayContext(&log), cfg);
+    auto tags = make<providers::ITagSuggester>(cloud::capabilityProviderId(), gatewayContext(&log));
+    auto text = make<providers::ITextEmbedder>(providers::embeddingproviders::CloudId, gatewayContext(&log));
+
+    providers::VoiceEmbeddingRequest vr;
+    vr.pcm = { QVector<float>(16000, 0.2f) };
+    providers::IdentifyRequest ir;
+    providers::IdentifyProbe probe;
+    probe.vectors = { { QVector<float>(4, 0.5f), 4, QStringLiteral("tanara/voice-embedding"), 0 } };
+    ir.probes = { probe };
+    providers::SummarizationRequest sr;
+    TranscriptToken tok; tok.text = "Szia."; tok.speaker = "Ádám"; tok.endMs = 1000;
+    sr.transcript.tokens = { tok };
+    providers::TagSuggestRequest tr;
+    tr.summaryText = QStringLiteral("Nordvik.");
+
+    const auto expectAll = [&](Error::Kind kind, int status) {
+        QList<providers::CapabilityJob*> jobs{ voice->embed(vr), idf->identify(ir), sum->summarize(sr), tags->suggest(tr) };
+        for (providers::CapabilityJob* j : jobs) {
+            QVERIFY(waitJob(j));
+            QCOMPARE(j->error().kind, kind);
+            QCOMPARE(j->error().httpStatus, status);
+        }
+        providers::EmbeddingJob* ej = text->embed({ { "x" }, QString() });
+        QSignalSpy failed(ej, &providers::EmbeddingJob::failed);
+        QVERIFY(failed.wait(5000));
+        QCOMPARE(ej->error().httpStatus, status);
+    };
+
+    // 402: out of balance; nothing is charged.
+    mockConfig({ { "balance", 0 } });
+    const int callsBefore = m_run->calls;
+    expectAll(Error::Kind::Quota, 402);
+    QCOMPARE(m_run->calls, callsBefore);
+    mockConfig({ { "balance", 10 } });
+
+    // 401: a revoked / wrong key (the context's auth source wins over the session's).
+    providers::ProviderContext bad = gatewayContext(&log);
+    bad.auth = providers::AuthSource::fixed(QStringLiteral("tk_revoked"));
+    voice = make<providers::IVoiceEmbedder>(cloud::capabilityProviderId(), bad);
+    idf = make<providers::IParticipantIdentifier>(cloud::capabilityProviderId(), bad);
+    sum = make<providers::ISummarizer>(cloud::capabilityProviderId(), bad, cfg);
+    tags = make<providers::ITagSuggester>(cloud::capabilityProviderId(), bad);
+    text = make<providers::ITextEmbedder>(providers::embeddingproviders::CloudId, bad);
+    expectAll(Error::Kind::Auth, 401);
+
+    // 422: an unprocessable input (an empty summary / no transcript lines).
+    tags = make<providers::ITagSuggester>(cloud::capabilityProviderId(), gatewayContext(&log));
+    sum = make<providers::ISummarizer>(cloud::capabilityProviderId(), gatewayContext(&log), cfg);
+    tr.summaryText.clear();
+    providers::TagSuggestJob* tj = tags->suggest(tr);
+    QVERIFY(waitJob(tj));
+    QCOMPARE(tj->error().kind, Error::Kind::Input);
+    QCOMPARE(tj->error().httpStatus, 422);
+    sr.transcript.tokens.clear();
+    providers::SummarizationJob* sj = sum->summarize(sr);
+    QVERIFY(waitJob(sj));
+    QCOMPARE(sj->error().kind, Error::Kind::Input);
+    QCOMPARE(sj->error().code, QStringLiteral("invalid_input"));
+}
+
 void TestCloudGateway::logout_removesKey()
 {
     QVERIFY(m_acc->isLoggedIn());
     const QString key = m_acc->apiKey();
-    QSignalSpy out(m_acc.get(), &cloud::CloudAccount::loggedOut);
+    QSignalSpy out(m_acc.get(), &cloud::CloudSession::loggedOut);
     m_acc->logout();
     QVERIFY(out.wait(5000));
     QVERIFY(!m_acc->isLoggedIn());
@@ -553,7 +880,7 @@ void TestCloudGateway::logout_removesKey()
     QVERIFY(m_acc->email().isEmpty());
     // With the revoked key the gateway gives 401.
     m_keys->set(cloud::ApiKeySecret, key);
-    QSignalSpy failed(m_acc.get(), &cloud::CloudAccount::accountFailed);
+    QSignalSpy failed(m_acc.get(), &cloud::CloudSession::accountFailed);
     m_acc->refreshAccount();
     QVERIFY(failed.wait(5000));
     QCOMPARE(failed.first().first().value<cloud::CloudError>().kind, cloud::CloudErrorKind::Unauthorized);

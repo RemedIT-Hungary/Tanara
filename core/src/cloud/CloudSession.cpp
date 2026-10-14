@@ -1,4 +1,4 @@
-#include "tanara/cloud/CloudAccount.h"
+#include "tanara/cloud/CloudSession.h"
 #include "tanara/foundation/secrets/SecretStore.h"
 #include "tanara/foundation/paths/AppPaths.h"
 #include "tanara/domain/Types.h"
@@ -26,7 +26,7 @@ QString ts(const QDateTime& d) { return d.isValid() ? d.toString(Qt::ISODateWith
 QDateTime fromTs(const QJsonValue& v) { return v.isString() ? QDateTime::fromString(v.toString(), Qt::ISODateWithMs) : QDateTime(); }
 } // namespace
 
-CloudAccount::CloudAccount(SecretStore* keys, const QString& dataDir, QObject* parent)
+CloudSession::CloudSession(SecretStore* keys, const QString& dataDir, QObject* parent)
     : QObject(parent)
     , m_keys(keys)
     , m_statePath(QDir(dataDir).filePath(paths::files::CloudState))
@@ -35,18 +35,18 @@ CloudAccount::CloudAccount(SecretStore* keys, const QString& dataDir, QObject* p
     , m_pollTimer(new QTimer(this))
 {
     m_pollTimer->setSingleShot(true);
-    connect(m_pollTimer, &QTimer::timeout, this, &CloudAccount::pollDeviceToken);
+    connect(m_pollTimer, &QTimer::timeout, this, &CloudSession::pollDeviceToken);
     loadState();
 }
 
-CloudAccount::~CloudAccount() = default;
+CloudSession::~CloudSession() = default;
 
-void CloudAccount::setHttpClient(net::HttpClient* http)
+void CloudSession::setHttpClient(net::HttpClient* http)
 {
     if (http) m_http = http;
 }
 
-void CloudAccount::setBaseUrl(const QString& url)
+void CloudSession::setBaseUrl(const QString& url)
 {
     QString u = url.trimmed();
     while (u.endsWith(QLatin1Char('/'))) u.chop(1);
@@ -54,10 +54,28 @@ void CloudAccount::setBaseUrl(const QString& url)
     m_baseUrl = u.isEmpty() ? cloud::DefaultBaseUrl : u;
 }
 
-bool CloudAccount::isLoggedIn() const { return !apiKey().isEmpty(); }
-QString CloudAccount::apiKey() const { return m_keys ? m_keys->get(cloud::ApiKeySecret) : QString(); }
+QString CloudSession::modelFor(const QString& kind, const CloudSettings& s) const
+{
+    const bool stt = kind == QLatin1String("stt");
+    const QString expert = stt ? s.sttModel : s.llmModel;
+    // The Expert model is valid only if it is still in the catalog (a retired model goes back to the
+    // tier's virtual model; the UI signals it).
+    if (!expert.isEmpty() && (m_models.isEmpty() || findModel(m_models, expert).has_value()))
+        return expert;
+    return virtualModelId(stt ? QStringLiteral("stt") : QStringLiteral("llm"), stt ? s.sttTier : s.llmTier);
+}
 
-QList<QPair<QByteArray, QByteArray>> CloudAccount::requestHeaders(const QString& jobId,
+CloudSession::Blocker CloudSession::blocker() const
+{
+    if (m_tooOld) return Blocker::ClientTooOld;
+    if (m_account.valid && m_account.balanceEmpty) return Blocker::BalanceEmpty;
+    return Blocker::None;
+}
+
+bool CloudSession::isLoggedIn() const { return !apiKey().isEmpty(); }
+QString CloudSession::apiKey() const { return m_keys ? m_keys->get(cloud::ApiKeySecret) : QString(); }
+
+QList<QPair<QByteArray, QByteArray>> CloudSession::requestHeaders(const QString& jobId,
                                                                    const QString& summaryMode) const
 {
     QList<QPair<QByteArray, QByteArray>> h;
@@ -68,7 +86,7 @@ QList<QPair<QByteArray, QByteArray>> CloudAccount::requestHeaders(const QString&
     return h;
 }
 
-void CloudAccount::observeExchange(const HttpExchange& ex)
+void CloudSession::observeExchange(const HttpExchange& ex)
 {
     if (ex.status == 0) return;
     // Min-client: it is on every response; if our own version is older, the cloud is disabled.
@@ -99,7 +117,7 @@ void CloudAccount::observeExchange(const HttpExchange& ex)
     }
 }
 
-void CloudAccount::send(const QByteArray& method, const QString& path, const QJsonObject* body,
+void CloudSession::send(const QByteArray& method, const QString& path, const QJsonObject* body,
                         bool authenticated, Done done)
 {
     QNetworkRequest req(QUrl(apiBase() + path));
@@ -136,7 +154,7 @@ void CloudAccount::send(const QByteArray& method, const QString& path, const QJs
 
 // ---- device flow ---------------------------------------------------------------------
 
-void CloudAccount::startDeviceFlow()
+void CloudSession::startDeviceFlow()
 {
     m_pollTimer->stop();
     m_deviceActive = false;
@@ -160,7 +178,7 @@ void CloudAccount::startDeviceFlow()
     });
 }
 
-void CloudAccount::pollDeviceToken()
+void CloudSession::pollDeviceToken()
 {
     if (!m_deviceActive) return;
     if (QDateTime::currentDateTimeUtc() > m_deviceExpires) {
@@ -202,7 +220,7 @@ void CloudAccount::pollDeviceToken()
     });
 }
 
-void CloudAccount::cancelDeviceFlow()
+void CloudSession::cancelDeviceFlow()
 {
     m_pollTimer->stop();
     if (!m_deviceActive) return;
@@ -212,7 +230,7 @@ void CloudAccount::cancelDeviceFlow()
     send("POST", QStringLiteral("/auth/device/cancel"), &body, false, nullptr);   // 204, idempotent
 }
 
-void CloudAccount::setManualApiKey(const QString& key, const QString& email)
+void CloudSession::setManualApiKey(const QString& key, const QString& email)
 {
     if (m_keys) m_keys->set(cloud::ApiKeySecret, key.trimmed());
     if (!email.isEmpty()) m_email = email;
@@ -220,7 +238,7 @@ void CloudAccount::setManualApiKey(const QString& key, const QString& email)
     emit loggedIn();
 }
 
-void CloudAccount::logout()
+void CloudSession::logout()
 {
     auto clearLocal = [this]() {
         if (m_keys) m_keys->remove(cloud::ApiKeySecret);
@@ -238,7 +256,7 @@ void CloudAccount::logout()
 
 // ---- account / catalog ----------------------------------------------------------------
 
-void CloudAccount::refreshAccount()
+void CloudSession::refreshAccount()
 {
     if (!isLoggedIn()) return;
     send("GET", QStringLiteral("/account"), nullptr, true, [this](const HttpExchange& ex) {
@@ -254,7 +272,7 @@ void CloudAccount::refreshAccount()
     });
 }
 
-void CloudAccount::fetchModels()
+void CloudSession::fetchModels()
 {
     if (!isLoggedIn()) return;
     send("GET", QStringLiteral("/models"), nullptr, true, [this](const HttpExchange& ex) {
@@ -267,7 +285,7 @@ void CloudAccount::fetchModels()
     });
 }
 
-void CloudAccount::estimate(const EstimateRequest& req,
+void CloudSession::estimate(const EstimateRequest& req,
                             std::function<void(const EstimateResult&, const CloudError&)> done)
 {
     const QJsonObject body = estimateRequestToJson(req);
@@ -279,7 +297,7 @@ void CloudAccount::estimate(const EstimateRequest& req,
     });
 }
 
-void CloudAccount::acceptTerms(const QString& version)
+void CloudSession::acceptTerms(const QString& version)
 {
     QJsonObject body;
     body.insert(QStringLiteral("version"), version);
@@ -295,7 +313,7 @@ void CloudAccount::acceptTerms(const QString& version)
     });
 }
 
-void CloudAccount::createTopupLink()
+void CloudSession::createTopupLink()
 {
     send("POST", QStringLiteral("/account/topup-link"), nullptr, true, [this](const HttpExchange& ex) {
         CloudError e = parseCloudError(ex.status, ex.headers, ex.body, ex.networkError);
@@ -308,7 +326,7 @@ void CloudAccount::createTopupLink()
     });
 }
 
-void CloudAccount::joinWaitlist(const WaitlistSignup& signup)
+void CloudSession::joinWaitlist(const WaitlistSignup& signup)
 {
     const QJsonObject body = waitlistToJson(signup);
     const QString email = signup.email.trimmed();
@@ -321,19 +339,19 @@ void CloudAccount::joinWaitlist(const WaitlistSignup& signup)
 
 // ---- pending transcriptions ------------------------------------------------------------------
 
-void CloudAccount::addPendingTranscription(const QString& transcriptionId, const QString& fileId)
+void CloudSession::addPendingTranscription(const QString& transcriptionId, const QString& fileId)
 {
     if (transcriptionId.isEmpty()) return;
     m_pending.insert(transcriptionId, fileId);
     saveState();
 }
 
-void CloudAccount::removePendingTranscription(const QString& transcriptionId)
+void CloudSession::removePendingTranscription(const QString& transcriptionId)
 {
     if (m_pending.remove(transcriptionId) > 0) saveState();
 }
 
-void CloudAccount::checkPendingTranscriptions()
+void CloudSession::checkPendingTranscriptions()
 {
     if (!isLoggedIn()) return;
     const auto pending = m_pending;
@@ -360,14 +378,14 @@ void CloudAccount::checkPendingTranscriptions()
 
 // ---- local state -------------------------------------------------------------------
 
-void CloudAccount::postponeTerms() { m_termsPostponed = QDateTime::currentDateTime(); saveState(); }
-void CloudAccount::dismissLowBanner() { m_lowDismissed = QDateTime::currentDateTime(); saveState(); }
-void CloudAccount::dismissNotice(const QString& id)
+void CloudSession::postponeTerms() { m_termsPostponed = QDateTime::currentDateTime(); saveState(); }
+void CloudSession::dismissLowBanner() { m_lowDismissed = QDateTime::currentDateTime(); saveState(); }
+void CloudSession::dismissNotice(const QString& id)
 {
     if (!m_dismissedNotices.contains(id)) { m_dismissedNotices << id; saveState(); }
 }
 
-void CloudAccount::loadState()
+void CloudSession::loadState()
 {
     QFile f(m_statePath);
     if (!f.open(QIODevice::ReadOnly)) return;
@@ -386,7 +404,7 @@ void CloudAccount::loadState()
         m_dismissedNotices << v.toString();
 }
 
-void CloudAccount::saveState() const
+void CloudSession::saveState() const
 {
     QJsonObject o;
     o.insert(QStringLiteral("email"), m_email);
