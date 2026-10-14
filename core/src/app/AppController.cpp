@@ -12,7 +12,9 @@
 #include "tanara/recording/audio/DeviceMonitor.h"
 #include "tanara/recording/audio/RecordingSession.h"
 #include "tanara/library/store/MeetingRepository.h"
-#include "tanara/library/store/MeetingArchive.h"
+#include "tanara/app/Services.h"
+#include "tanara/library/import/ImportService.h"
+#include "tanara/library/store/ArchiveService.h"
 #include "tanara/foundation/secrets/SecretStore.h"
 #include "tanara/foundation/paths/AppPaths.h"
 #include "tanara/cloud/CloudTypes.h"
@@ -447,7 +449,7 @@ struct AppController::Impl {
     library::MeetingLibrary*    library = nullptr;
     library::TrackCatalog*      tracks = nullptr;
     library::WaveformService*   waveforms = nullptr;
-    library::AudioImporter*     importer = nullptr;
+    std::unique_ptr<app::Services> services;
     media::MediaToolPtr         media;      // ffmpeg / ffprobe port (created once in the constructor)
     std::unique_ptr<library::JobStats> jobStats;      // speed of earlier runs (for estimates)
 
@@ -539,10 +541,6 @@ struct AppController::Impl {
         return QStringLiteral("%1/%2/%3").arg(transcriptGen.value(meetingId)).arg(fs.mtimeMs).arg(fs.size);
     }
     QHash<QString, IdentifyRun> identifyRuns;
-    // An archive operation (export / import): one at a time, on a background thread.
-    QThread* archiveThread = nullptr;
-    std::shared_ptr<std::atomic<bool>> archiveCancel;
-    QString archiveOp;          // "export:<meetingId>" | "import:<uuid>"
 
     static QString llmKey(const QString& meetingId, JobKind kind) {
         return meetingId + QLatin1Char('|') + QString::number(int(kind));
@@ -893,43 +891,6 @@ AppController::AppController(QObject* parent)
     d->library   = new library::MeetingLibrary(d->store, d->jobs, this);
     d->tracks    = new library::TrackCatalog(d->store, this);
     d->waveforms = new library::WaveformService(d->media, this);
-    d->importer  = new library::AudioImporter(d->store, d->media, this);
-    // Import -> a structured task under the FUTURE meeting's id (there is no such meeting in the library
-    // yet; the shell shows it from activeJobs() / the signals).
-    connect(d->importer, &library::AudioImporter::started, this, [this](const QString& id, const QString& title) {
-        d->jobs->begin(id, JobKind::Import, tr("Importálás"));
-        d->jobs->setMessage(id, JobKind::Import, title);
-    });
-    connect(d->importer, &library::AudioImporter::progress, this,
-            [this](const QString& id, int percent, int fileIndex, int fileCount) {
-        d->jobs->setPercent(id, JobKind::Import, percent);
-        if (fileCount > 1)
-            d->jobs->setCounts(id, JobKind::Import, fileIndex, fileCount);
-    });
-    connect(d->importer, &library::AudioImporter::finished, this, [this](const QString& id, const Meeting& m) {
-        d->jobs->finish(id, JobKind::Import);
-        emit importFinished(m);
-        // Mixdown: exactly as at the end of a recording (see the RecordingSession::finished branch): first the
-        // tracks' speech check (a speechless track is left out of the mix).
-        if (d->autoMixdown) {
-            const bool mix = d->settings->settings().recording.mixdownMode != QStringLiteral("manual");
-            if (editing::trackspeech::needsSpeechCheck(m)) startSpeechCheck(m.id, mix);
-            else if (mix) regenerateMixdown(m.id);
-        }
-    });
-    connect(d->importer, &library::AudioImporter::failed, this,
-            [this](const QString& id, const QString& message, const QString& detail) {
-        JobError je;
-        je.kind = JobKind::Import;
-        je.message = message;
-        je.detail = detail;
-        d->jobs->fail(id, JobKind::Import, je);
-        emit importFailed(id, message, detail);
-    });
-    connect(d->importer, &library::AudioImporter::cancelled, this, [this](const QString& id) {
-        d->jobs->cancelled(id, JobKind::Import);
-        emit importCancelled(id);
-    });
     d->jobStats  = std::make_unique<library::JobStats>(ap.dataFile(paths::files::JobStats));
     connect(d->tracks, &library::TrackCatalog::tracksChanged, this, &AppController::tracksChanged);
     // The summary's staleness (speaker-editor layer) is part of the derived state: the library icon's
@@ -984,6 +945,37 @@ AppController::AppController(QObject* parent)
     // Tags: the set + per-meeting tags, classic similarity (profiles built on a background thread),
     // embeddings and library preparation, an LLM suggestion after the summary.
     d->tags = new library::TagService(d->store, ap.dataFile(paths::files::Tags), this);
+    {
+        app::ServicesDeps sd;
+        sd.store = d->store;
+        sd.tags  = d->tags;
+        sd.jobs  = d->jobs;
+        sd.media = d->media;
+        d->services = std::make_unique<app::Services>(sd);
+        // Facade: the services' signals are re-emitted unchanged.
+        library::ArchiveService& arch = d->services->archive();
+        arch.setRecordingGuard([this](const Meeting& m) {
+            return d->state != RecordingState::Idle && !d->currentFolder.isEmpty()
+                && QDir(d->currentFolder).absolutePath() == QDir(m.folder).absolutePath();
+        });
+        connect(&arch, &library::ArchiveService::rejected, this, &AppController::errorOccurred);
+        connect(&arch, &library::ArchiveService::progress, this, &AppController::archiveProgress);
+        connect(&arch, &library::ArchiveService::finished, this, &AppController::archiveFinished);
+        library::ImportService& imp = d->services->import();
+        connect(&imp, &library::ImportService::rejected, this, &AppController::errorOccurred);
+        connect(&imp, &library::ImportService::finished, this, [this](const Meeting& m) {
+            emit importFinished(m);
+            // Mixdown: exactly as at the end of a recording (see the RecordingSession::finished branch): first the
+            // tracks' speech check (a speechless track is left out of the mix).
+            if (d->autoMixdown) {
+                const bool mix = d->settings->settings().recording.mixdownMode != QStringLiteral("manual");
+                if (editing::trackspeech::needsSpeechCheck(m)) startSpeechCheck(m.id, mix);
+                else if (mix) regenerateMixdown(m.id);
+            }
+        });
+        connect(&imp, &library::ImportService::failed, this, &AppController::importFailed);
+        connect(&imp, &library::ImportService::cancelled, this, &AppController::importCancelled);
+    }
     d->profiles = new library::MeetingProfiles(d->store, this);
     d->tags->setProfiles(d->profiles);
     // Tags on people: manual tags in people.json; the own person is left out.
@@ -1122,13 +1114,7 @@ AppController::~AppController()
         }
     }
     d->identifyRuns.clear();
-    if (d->archiveThread) {
-        if (d->archiveCancel) d->archiveCancel->store(true);
-        d->archiveThread->disconnect(this);
-        d->archiveThread->wait();
-        delete d->archiveThread;
-        d->archiveThread = nullptr;
-    }
+    d->services.reset();   // joins a running archive thread
 }
 
 SettingsManager* AppController::settings() const { return d->settings; }
@@ -3560,198 +3546,45 @@ library::MeetingJobTracker* AppController::jobs() const      { return d->jobs; }
 library::MeetingLibrary*    AppController::library() const   { return d->library; }
 library::TrackCatalog*      AppController::tracks() const    { return d->tracks; }
 library::WaveformService*   AppController::waveforms() const { return d->waveforms; }
-library::AudioImporter*     AppController::importer() const  { return d->importer; }
+library::AudioImporter*     AppController::importer() const  { return d->services->import().importer(); }
 media::MediaToolPtr         AppController::mediaTool() const { return d->media; }
+app::Services*              AppController::services() const  { return d->services.get(); }
 
 QString AppController::importAudio(const library::ImportRequest& request)
 {
-    if (d->importer->busy()) {
-        emit errorOccurred(tr("Már fut egy importálás — várd meg, vagy szakítsd meg."));
-        return {};
-    }
     const AppSettings s = d->settings->settings();
-    d->importer->setOpusBitrateKbps(opusBitrateKbps(s.recording.audioQuality));
-    d->importer->setSelfPerson(d->selfPerson());
-    return d->importer->start(request);
+    return d->services->import().start(request, opusBitrateKbps(s.recording.audioQuality), d->selfPerson());
 }
 
 // ---- meeting archive ---------------------------------------------------------------
 
-bool AppController::archiveBusy() const { return d->archiveThread != nullptr; }
+bool AppController::archiveBusy() const { return d->services->archive().busy(); }
 
 bool AppController::exportMeetingArchiveNow(const QString& meetingId, const QString& zipPath,
                                             QString* error, std::function<void(int)> progress)
 {
-    const Meeting m = d->store->load(meetingId);
-    if (m.id.isEmpty()) {
-        if (error) *error = tr("Nincs ilyen megbeszélés: %1").arg(meetingId);
-        return false;
-    }
-    if (d->state != RecordingState::Idle && !d->currentFolder.isEmpty()
-        && QDir(d->currentFolder).absolutePath() == QDir(m.folder).absolutePath()) {
-        if (error) *error = tr("Felvétel közben a megbeszélés nem exportálható.");
-        return false;
-    }
-    return library::MeetingArchive::exportMeeting(m, zipPath, error, std::move(progress), library::MeetingArchive::tagsOf(d->tags, m));
+    return d->services->archive().exportNow(meetingId, zipPath, error, std::move(progress));
 }
 
 Meeting AppController::importMeetingArchiveNow(const QString& zipPath, QString* error,
                                                std::function<void(int)> progress)
 {
-    const QString root = QDir(d->store->audioDir()).absolutePath();
-    QDir().mkpath(root);
-    library::ArchiveManifest manifest;
-    const QString folder = library::MeetingArchive::importArchive(zipPath, root, error, std::move(progress), &manifest);
-    if (folder.isEmpty()) return {};
-    return library::MeetingArchive::adoptFolder(d->store, d->tags, folder, manifest, error);
+    return d->services->archive().importArchiveNow(zipPath, error, std::move(progress));
 }
 
 QString AppController::exportMeetingArchive(const QString& meetingId, const QString& zipPath)
 {
-    if (archiveBusy()) {
-        emit errorOccurred(tr("Már fut egy archívum-művelet — várd meg, vagy szakítsd meg."));
-        return {};
-    }
-    const Meeting m = d->store->load(meetingId);
-    if (m.id.isEmpty()) {
-        emit errorOccurred(tr("Nincs ilyen megbeszélés: %1").arg(meetingId));
-        return {};
-    }
-    if (d->state != RecordingState::Idle && !d->currentFolder.isEmpty()
-        && QDir(d->currentFolder).absolutePath() == QDir(m.folder).absolutePath()) {
-        emit errorOccurred(tr("Felvétel közben a megbeszélés nem exportálható."));
-        return {};
-    }
-    const QVector<Tag> tags = library::MeetingArchive::tagsOf(d->tags, m);
-    const QString opId = QStringLiteral("export:") + meetingId;
-    auto cancel = std::make_shared<std::atomic<bool>>(false);
-    auto ok = std::make_shared<bool>(false);
-    auto error = std::make_shared<QString>();
-    d->jobs->begin(meetingId, JobKind::Export, tr("Exportálás archívumba"));
-    d->jobs->setMessage(meetingId, JobKind::Export, QFileInfo(zipPath).fileName());
-    d->jobs->setPercent(meetingId, JobKind::Export, 0);
-
-    QPointer<AppController> self(this);
-    QThread* th = QThread::create([self, m, zipPath, tags, cancel, ok, error, opId]() {
-        *ok = library::MeetingArchive::exportMeeting(m, zipPath, error.get(), [self, opId, mid = m.id](int pct) {
-            QMetaObject::invokeMethod(qApp, [self, opId, mid, pct]() {
-                if (!self || self->d->archiveOp != opId) return;
-                if (self->d->jobs->isRunning(mid, JobKind::Export))
-                    self->d->jobs->setPercent(mid, JobKind::Export, pct);
-                emit self->archiveProgress(opId, pct);
-            }, Qt::QueuedConnection);
-        }, tags, cancel.get());
-    });
-    d->archiveThread = th;
-    d->archiveCancel = cancel;
-    d->archiveOp = opId;
-    connect(th, &QThread::finished, this, [this, th, meetingId, zipPath, cancel, ok, error, opId]() {
-        d->archiveThread = nullptr;
-        d->archiveCancel.reset();
-        d->archiveOp.clear();
-        th->deleteLater();
-        if (*ok) {
-            d->jobs->finish(meetingId, JobKind::Export);
-            emit archiveFinished(opId, true, meetingId, zipPath, QString());
-        } else if (cancel->load()) {
-            d->jobs->cancelled(meetingId, JobKind::Export);
-            emit archiveFinished(opId, false, meetingId, QString(), tr("Megszakítva."));
-        } else {
-            JobError je;
-            je.kind = JobKind::Export;
-            je.message = *error;
-            je.when = QDateTime::currentDateTime();
-            d->jobs->fail(meetingId, JobKind::Export, je);
-            emit archiveFinished(opId, false, meetingId, QString(), *error);
-        }
-    });
-    th->start();
-    return opId;
+    return d->services->archive().exportMeeting(meetingId, zipPath);
 }
 
-QString AppController::importMeetingFolder(const QString& folderIn)
+QString AppController::importMeetingFolder(const QString& folder)
 {
-    if (archiveBusy()) {
-        emit errorOccurred(tr("Már fut egy archívum-művelet — várd meg, vagy szakítsd meg."));
-        return {};
-    }
-    const QString folder = QFileInfo(folderIn).absoluteFilePath();
-    const QString root = QDir(d->store->audioDir()).absolutePath();
-    const QString opId = QStringLiteral("import:") + QUuid::createUuid().toString(QUuid::WithoutBraces);
-    auto staged = std::make_shared<QString>();
-    auto error = std::make_shared<QString>();
-    // A source under the recordings folder stays in place (no copy); everything else first goes into the
-    // .import-* temporary folder on a background thread, so the GUI does not freeze.
-    const bool inPlace = QFileInfo(folder).dir().absolutePath() == root;
-
-    QPointer<AppController> self(this);
-    library::MeetingRepository* store = d->store;
-    QThread* th = QThread::create([self, folder, inPlace, store, staged, error, opId]() {
-        if (inPlace) { *staged = folder; return; }
-        *staged = store->stageFolderForImport(folder, error.get());
-        QMetaObject::invokeMethod(qApp, [self, opId]() {
-            if (self && self->d->archiveOp == opId) emit self->archiveProgress(opId, 100);
-        }, Qt::QueuedConnection);
-    });
-    d->archiveThread = th;
-    d->archiveCancel.reset();
-    d->archiveOp = opId;
-    connect(th, &QThread::finished, this, [this, th, folder, staged, error, opId]() {
-        d->archiveThread = nullptr;
-        d->archiveOp.clear();
-        th->deleteLater();
-        QString message = *error;
-        Meeting m;
-        if (!staged->isEmpty())
-            m = library::MeetingArchive::adoptFolder(d->store, d->tags, *staged, library::ArchiveManifest{}, &message);
-        if (m.id.isEmpty())
-            emit archiveFinished(opId, false, QString(), folder, message);
-        else
-            emit archiveFinished(opId, true, m.id, folder, QString());
-    });
-    th->start();
-    return opId;
+    return d->services->archive().importFolder(folder);
 }
 
 QString AppController::importMeetingArchive(const QString& zipPath)
 {
-    if (archiveBusy()) {
-        emit errorOccurred(tr("Már fut egy archívum-művelet — várd meg, vagy szakítsd meg."));
-        return {};
-    }
-    const QString root = QDir(d->store->audioDir()).absolutePath();
-    QDir().mkpath(root);
-    const QString opId = QStringLiteral("import:") + QUuid::createUuid().toString(QUuid::WithoutBraces);
-    auto folder = std::make_shared<QString>();
-    auto error = std::make_shared<QString>();
-    auto manifest = std::make_shared<library::ArchiveManifest>();
-
-    QPointer<AppController> self(this);
-    QThread* th = QThread::create([self, zipPath, root, folder, error, manifest, opId]() {
-        *folder = library::MeetingArchive::importArchive(zipPath, root, error.get(), [self, opId](int pct) {
-            QMetaObject::invokeMethod(qApp, [self, opId, pct]() {
-                if (self && self->d->archiveOp == opId) emit self->archiveProgress(opId, pct);
-            }, Qt::QueuedConnection);
-        }, manifest.get());
-    });
-    d->archiveThread = th;
-    d->archiveCancel.reset();   // unpacking cannot be cancelled (it is short, and cleans up at the end anyway)
-    d->archiveOp = opId;
-    connect(th, &QThread::finished, this, [this, th, zipPath, folder, error, manifest, opId]() {
-        d->archiveThread = nullptr;
-        d->archiveOp.clear();
-        th->deleteLater();
-        QString message = *error;
-        Meeting m;
-        if (!folder->isEmpty())
-            m = library::MeetingArchive::adoptFolder(d->store, d->tags, *folder, *manifest, &message);
-        if (m.id.isEmpty())
-            emit archiveFinished(opId, false, QString(), zipPath, message);
-        else
-            emit archiveFinished(opId, true, m.id, zipPath, QString());
-    });
-    th->start();
-    return opId;
+    return d->services->archive().importArchive(zipPath);
 }
 
 MeetingProcessingState AppController::processingState(const QString& meetingId) const
@@ -4244,20 +4077,10 @@ bool AppController::cancelJob(const QString& meetingId, JobKind kind)
         proc->cancel();   // the finished branch closes: the half-made file is deleted, the old mix stays
         return true;
     }
-    case JobKind::Import: {
-        if (d->importer->currentId() != meetingId || !d->jobs->isRunning(meetingId, kind)) return false;
-        d->jobs->setCancelling(meetingId, kind);
-        d->importer->cancel();   // the cancelled branch closes: the half-made folder is deleted
-        return true;
-    }
-    case JobKind::Export: {
-        if (d->archiveOp != QStringLiteral("export:") + meetingId || !d->archiveCancel
-            || !d->jobs->isRunning(meetingId, kind))
-            return false;
-        d->jobs->setCancelling(meetingId, kind);
-        d->archiveCancel->store(true);   // the thread stops at the next block, the half-made file is deleted
-        return true;
-    }
+    case JobKind::Import:
+        return d->services->import().cancel(meetingId);
+    case JobKind::Export:
+        return d->services->archive().cancel(meetingId);
     case JobKind::Identify: {
         const auto ir = d->identifyRuns.constFind(meetingId);
         if (ir == d->identifyRuns.constEnd() || ir->asStage) return false;

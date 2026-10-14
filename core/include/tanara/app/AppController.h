@@ -34,6 +34,7 @@ namespace tanara::editing { class SpeakerEditor; }
 namespace tanara::cloud { class CloudSession; struct CloudRun; }
 namespace tanara::providers { struct ProviderContext; class ProviderRegistry; }
 namespace tanara::library { class MeetingJobTracker; }
+namespace tanara::app { class Services; }
 namespace tanara::library { class MeetingLibrary; }
 namespace tanara::library { class TrackCatalog; }
 namespace tanara::library { class WaveformService; }
@@ -82,6 +83,8 @@ public:
     library::AudioImporter*     importer() const;
     // The media port (ffmpeg / ffprobe, resolved once at startup from settings.media).
     media::MediaToolPtr         mediaTool() const;
+    // The services split out of the controller (archive, import; more with the P12 slices).
+    app::Services*              services() const;
     // Convenience: jobs()->state(meetingId).
     MeetingProcessingState processingState(const QString& meetingId) const;
 

@@ -7715,10 +7715,6 @@
         <translation>Loading model (%1-token context)…</translation>
     </message>
     <message>
-        <source>Importálás</source>
-        <translation>Import</translation>
-    </message>
-    <message>
         <source>Ismeretlen meeting: %1</source>
         <translation>Unknown meeting: %1</translation>
     </message>
@@ -7957,26 +7953,6 @@
     <message>
         <source>Komplex összefoglaló hiba: %1</source>
         <translation>Complex summary error: %1</translation>
-    </message>
-    <message>
-        <source>Már fut egy importálás — várd meg, vagy szakítsd meg.</source>
-        <translation>An import is already running — wait for it to finish or cancel it.</translation>
-    </message>
-    <message>
-        <source>Nincs ilyen megbeszélés: %1</source>
-        <translation>No such meeting: %1</translation>
-    </message>
-    <message>
-        <source>Felvétel közben a megbeszélés nem exportálható.</source>
-        <translation>The meeting cannot be exported while it is being recorded.</translation>
-    </message>
-    <message>
-        <source>Már fut egy archívum-művelet — várd meg, vagy szakítsd meg.</source>
-        <translation>An archive operation is already running — wait for it or cancel it.</translation>
-    </message>
-    <message>
-        <source>Exportálás archívumba</source>
-        <translation>Export to archive</translation>
     </message>
     <message>
         <source>Megszakítva.</source>
@@ -8294,6 +8270,29 @@
     </message>
 </context>
 <context>
+    <name>tanara::library::ArchiveService</name>
+    <message>
+        <source>Nincs ilyen megbeszélés: %1</source>
+        <translation>No such meeting: %1</translation>
+    </message>
+    <message>
+        <source>Felvétel közben a megbeszélés nem exportálható.</source>
+        <translation>The meeting cannot be exported while it is being recorded.</translation>
+    </message>
+    <message>
+        <source>Már fut egy archívum-művelet — várd meg, vagy szakítsd meg.</source>
+        <translation>An archive operation is already running — wait for it or cancel it.</translation>
+    </message>
+    <message>
+        <source>Exportálás archívumba</source>
+        <translation>Export to archive</translation>
+    </message>
+    <message>
+        <source>Megszakítva.</source>
+        <translation>Cancelled.</translation>
+    </message>
+</context>
+<context>
     <name>tanara::library::AudioImporter</name>
     <message>
         <source>Nincs importálható fájl.</source>
@@ -8325,6 +8324,17 @@
     <message>
         <source>A beágyazás nem menthető (%1).</source>
         <translation>The embedding could not be saved (%1).</translation>
+    </message>
+</context>
+<context>
+    <name>tanara::library::ImportService</name>
+    <message>
+        <source>Importálás</source>
+        <translation>Import</translation>
+    </message>
+    <message>
+        <source>Már fut egy importálás — várd meg, vagy szakítsd meg.</source>
+        <translation>An import is already running — wait for it to finish or cancel it.</translation>
     </message>
 </context>
 <context>
