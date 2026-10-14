@@ -3,11 +3,9 @@
 #include "QmlApp.h"
 #include "RecorderViewModel.h"
 
-#include "tanara/app/AppController.h"
 #include "tanara/foundation/log/Logging.h"
-#include "tanara/foundation/paths/AppPaths.h"
-#include "tanara/app/SettingsManager.h"
 #include "tanara/foundation/ProcessLock.h"
+#include "tanara/recording/IRecorderFacade.h"
 
 #include <QDir>
 #include <QGuiApplication>
@@ -21,17 +19,17 @@ using namespace tanara;
 
 namespace tanara_qml {
 
-RecorderWindowHost::RecorderWindowHost(app::AppController* controller, QQmlEngine* engine, QObject* parent)
-    : QObject(parent), m_controller(controller), m_engine(engine)
+RecorderWindowHost::RecorderWindowHost(recording::IRecorderFacade* facade, QQmlEngine* engine, QObject* parent)
+    : QObject(parent), m_facade(facade), m_engine(engine)
 {
     if (!m_engine) {
         m_engine = new QQmlEngine(this);
         m_ownEngine = true;
     }
     setupEngine(*m_engine);
-    if (controller) {
-        m_lock = std::make_unique<RecordingLock>(recordingLockPath());
-    }
+    // A fictional facade keeps no lock file (nothing is recorded).
+    if (facade && !facade->lockFilePath().isEmpty())
+        m_lock = std::make_unique<RecordingLock>(facade->lockFilePath());
 }
 
 RecorderWindowHost::~RecorderWindowHost()
@@ -60,11 +58,8 @@ bool RecorderWindowHost::platformCanPosition()
 
 QString RecorderWindowHost::iniPath() const
 {
-    // Without a controller (test / demo) there is nothing to remember, and we do not touch the user's folder either.
-    if (!m_controller)
-        return {};
-    return (m_controller->settings() ? m_controller->settings()->paths() : paths::current())
-        .stateFile(paths::files::RecorderIni);
+    // A fictional facade (test / demo) has nothing to remember, and we do not touch the user's folder either.
+    return m_facade ? m_facade->windowStatePath() : QString();
 }
 
 QQuickWindow* RecorderWindowHost::window() const { return m_window; }
@@ -73,7 +68,7 @@ bool RecorderWindowHost::isVisible() const { return m_window && m_window->isVisi
 
 bool RecorderWindowHost::recording() const
 {
-    return m_controller && m_controller->recordingState() != RecordingState::Idle;
+    return m_facade && m_facade->state() != RecordingState::Idle;
 }
 
 bool RecorderWindowHost::ensureWindow()
@@ -81,20 +76,21 @@ bool RecorderWindowHost::ensureWindow()
     if (m_window) return true;
     QQmlComponent comp(m_engine);
     comp.loadFromModule("Tanara", "RecorderWindow");
+    auto* vm = new RecorderViewModel(m_facade, this);
     QObject* obj = comp.isError() ? nullptr : comp.createWithInitialProperties(
-        {{QStringLiteral("pinSupported"), platformCanPosition()}});
+        {{QStringLiteral("pinSupported"), platformCanPosition()},
+         {QStringLiteral("vm"), QVariant::fromValue(vm)}});
     auto* win = qobject_cast<QQuickWindow*>(obj);
     if (!win) {
         for (const QQmlError& e : comp.errors())
             qCCritical(lcApp).noquote() << "Felvevő-ablak:" << e.toString();
         delete obj;
+        delete vm;
         return false;
     }
     QQmlEngine::setObjectOwnership(win, QQmlEngine::CppOwnership);
     m_window = win;
-    m_vm = qobject_cast<RecorderViewModel*>(win->property("vm").value<QObject*>());
-    if (m_vm && m_controller)
-        m_vm->setController(m_controller);
+    m_vm = vm;
 
     // QML signals (old-style connect: the QML type declares the signals).
     connect(win, SIGNAL(hideRequested()), this, SLOT(onHideRequested()));
@@ -132,9 +128,9 @@ bool RecorderWindowHost::ensureWindow()
             if (m_lock && !recording()) m_lock->release();
         });
         // If the recording is already running (the host was created later), the lock is taken now.
-        if (m_manageLock && m_lock && m_controller
-            && m_controller->recordingState() == RecordingState::Recording)
-            m_lock->acquire(m_controller->currentMeetingFolder());
+        if (m_manageLock && m_lock && m_facade
+            && m_facade->state() == RecordingState::Recording)
+            m_lock->acquire(m_facade->currentFolder());
     }
     restoreGeometry();
     return true;

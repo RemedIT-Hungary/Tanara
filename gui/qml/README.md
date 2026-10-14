@@ -540,7 +540,7 @@ Row inputs: `tracks` (`TrackListModel`), `player` (`PlayerController`), `activit
   (`objectName: "trackActivityTime"`). While the core still computes it pulses grey (`loading`).
   `objectName: "trackActivityStrip"`, playhead `"trackActivityPlayhead"`.
 - **`TrackActivityModel`** (`QML_ELEMENT`, one per meeting; `meetingId`, `demoState`, `state` = none \| loading \|
-  ready, `durationMs`, `revision`): reads `AppController::trackActivity()` (50 ms frames) and refreshes on
+  ready, `durationMs`, `revision`): reads the frames (50 ms) from a `TrackActivitySource` (`AppContext::services().trackActivity`: the core's `AppController::trackActivity()` or the fictional frames of `tanara_demo`) and refreshes on
   `trackActivityReady`. **`TrackActivityItem`** (C++ `QQuickItem`, `model`, `trackId`, `durationMs`, `color`,
   `quietColor`, `emptyColor`, `hasData`) paints from the model's frame arrays directly, with no QML array copy
   (2 h × 50 ms = 144 000 frames). A segment id maps to its leading segment. Without a controller the model
@@ -705,21 +705,24 @@ overview; `demoVariant="novoice"` shows the "no voice model" wording).
 1. Add `gui/qml/src/FooViewModel.h/.cpp` in namespace `tanara_qml`, a `QObject` with
    `QML_ELEMENT` (or `QML_SINGLETON`) and `#include <QtQml/qqmlregistration.h>`. It is
    then usable in QML as `FooViewModel { id: vm }` — no registration call, no CMake edit.
-2. Reach the core through the `App` singleton:
+2. Reach the core through a **facade** handed to the constructor (P15; ported so far: the
+   recorder, the Settings device list, the track-activity strips):
 
    ```cpp
-   #include "AppContext.h"
-   #include "tanara/AppController.h"
-
-   tanara::AppController* c = tanara_qml::AppContext::instance()->controller();
-   if (!c) { /* --demo, --gallery, --qml-shot, tests: no controller */ }
+   explicit FooViewModel(tanara::recording::IFooFacade* facade, QObject* parent = nullptr);
    ```
 
-   `controller()` is **null** in demo / gallery / screenshot mode and in tests. A view-model
-   must work without it; when `AppContext::instance()->demo()` is true it should serve
-   built-in **fictional** sample data, so its screen can be rendered with `--qml-shot`
-   and `--demo` without touching user data. Prefer taking the controller through a
-   settable property / constructor argument so tests can inject one.
+   The facade is an abstract interface in the module's public include
+   (`tanara::recording::IRecorderFacade`), implemented by the real services
+   (`RecorderServicesFacade`, built from `app::Services` and the settings) and by a fictional
+   one in **`tanara_demo`** (`demo/`: `RecorderDemoFacade`, sample data, the `DemoText` language
+   switch). `AppContext::instance()->services()` hands out the set for the moment (the real one
+   of the process's controller, or the fictional one when there is no controller / `App.demo`);
+   `servicesFor(controller)` is a given controller's set, `demoServices()` the fictional one.
+   The view-model factories (`*WindowHost`, `QmlApp`, `App.createRecorderDemo(state)` for the
+   preview) give the facade to the constructor — the view model never branches on demo mode.
+   Not yet ported view models still read `AppContext::instance()->controller()` (null in demo /
+   gallery / screenshot mode and in tests) and carry their own `loadDemo()`.
 3. From QML: `App.controller` (as `QObject`), `App.demo`, `App.dark`, `App.themeMode`,
    `App.bridge`.
 4. Test it in `tests/ui/test_foo_view_model.cpp` (`QTEST_MAIN`, see
@@ -912,9 +915,9 @@ Spec: `design/handoff-recorder/README.md` (states R01–R11).
 | `RecorderView.qml` | the whole recorder as an **item** (title bar, title field, start / status + stop, source lines, device list, R06 box, R07 sheet, R09, R10); 380 px wide, height follows content |
 | `RecorderPill.qml` | pill mode (R05) |
 | `RecorderWindow.qml` | frameless always-on-top `Window` hosting the two; created by the host |
-| `RecorderPreview.qml` | screenshot wrapper with fictional devices: `--qml-page RecorderPreview --size 420x640 --qml-prop 'demoState="R04"'` (`R01`…`R10`, `R03typing` = T08c) |
+| `RecorderPreview.qml` | screenshot wrapper with fictional devices: `--qml-page RecorderPreview --size 420x640 --qml-prop 'demoState="R04"'` (`R01`…`R10`, `R03typing` = T08c); the view model comes from `App.createRecorderDemo(state)` (fictional facade of `tanara_demo`) |
 | `VuMeter.qml`, `RecorderSwitch.qml`, `RecorderButton.qml` | 14-segment meter with peak hold, 30×18 switch with lock (unplugged device), the recorder's buttons |
-| `RecorderViewModel` | state, title, device model (`devices`: name / rawName / group / selected / locked / appName / level / peak / status…), `start()`, `stop()`, `toggleDevice(row)` (during a recording: on → the device's track starts now, a new segment if it ran before; off → its file ends, `AppController::stopRecordingDevice`; the last open track stays on; `locked` = unplugged device); tags (C06): `tags`, `addTag(name)`, `removeTag(id)`, `openTagInput()` (Ctrl+T) — handed to the core with `AppController::setRecordingTags` (the meeting only exists when the recording ends); without a controller it serves fictional data (`demoState`) |
+| `RecorderViewModel` | state, title, device model (`devices`: name / rawName / group / selected / locked / appName / level / peak / status…), `start()`, `stop()`, `toggleDevice(row)` (during a recording: on → the device's track starts now, a new segment if it ran before; off → its file ends, `IRecorderFacade::stopDevice`; the last open track stays on; `locked` = unplugged device); tags (C06): `tags`, `addTag(name)`, `removeTag(id)`, `openTagInput()` (Ctrl+T) — handed to the core with `IRecorderFacade::setRecordingTags` (the meeting only exists when the recording ends); built on an injected `IRecorderFacade` (real: `RecorderServicesFacade`; fictional design states `R01`…`R10`: `tanara_demo::RecorderDemoFacade`) |
 | `RecorderWindowHost` | C++ host: shows the window, executes `--record` requests, remembers position, snaps the pill, hide-to-tray, `recording.lock` |
 
 ### Recorder in the main window

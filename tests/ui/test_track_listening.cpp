@@ -337,6 +337,39 @@ private slots:
         QVERIFY(!m.hasTrack(QStringLiteral("mic")));
     }
 
+    // The demo frames come from tanara_demo through the same lane maths as a real measurement;
+    // the speech pattern must stay the deterministic one the demo images were made with.
+    void demoLanesKeepTheOriginalSamplePattern()
+    {
+        TrackActivityModel m;
+        m.setDemoState(QStringLiteral("overviewDone"));
+        QCOMPARE(m.durationMs(), (30 * 60 + 34) * 1000);
+        const int n = (30 * 60 + 34) * 1000 / 500;
+        auto reference = [n](int seed, double talk) {
+            QVector<qint8> frames(n);
+            quint32 x = 2463534242u + quint32(seed) * 7919u;
+            bool speaking = false;
+            int left = 0;
+            for (int i = 0; i < n; ++i) {
+                if (left-- <= 0) {
+                    x ^= x << 13; x ^= x >> 17; x ^= x << 5;
+                    speaking = talk > 0 && (x % 1000) / 1000.0 < talk;
+                    left = 4 + int((x >> 10) % (speaking ? 40 : 30));
+                }
+                frames[i] = speaking ? TrackActivityModel::Speech : TrackActivityModel::Quiet;
+            }
+            return frames;
+        };
+        const struct { const char* id; int seed; double talk; } lanes[] = {
+            {"mic", 1, 0.38}, {"call", 2, 0.61}, {"system", 3, 0.0}, {"mic2", 4, 0.2}};
+        for (const auto& l : lanes) {
+            const TrackActivityModel::Lane* lane = m.lane(QString::fromLatin1(l.id));
+            QVERIFY(lane);
+            QCOMPARE(lane->frameMs, 500);
+            QCOMPARE(lane->frames, reference(l.seed, l.talk));
+        }
+    }
+
     void binderDemoToggles()
     {
         ParticipantTrackBinder b;

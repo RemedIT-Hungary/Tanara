@@ -96,6 +96,7 @@ function(tanara_copy_onnxruntime_dll target)
 endfunction()
 
 add_subdirectory(core)
+add_subdirectory(demo)    # fictional content: demo implementations of the facades + sample data
 add_subdirectory(cli)
 if(TANARA_BUILD_GUI OR TANARA_BUILD_WATCHER)
     add_subdirectory(gui/common)    # header-only helpers shared by the GUI and the watcher
@@ -126,7 +127,7 @@ endif()
 #  - the .qm is built at build time (lrelease) and embedded in every executable target
 #    (:/i18n/tanara_en.qm); loaded with tanara::installAppTranslator().
 set(TANARA_I18N_TARGETS tanara-cli)
-set(TANARA_I18N_SOURCE_TARGETS tanara_core)
+set(TANARA_I18N_SOURCE_TARGETS tanara_core tanara_demo)
 if(TANARA_BUILD_GUI)
     list(APPEND TANARA_I18N_TARGETS tanara)
     # The qsTr() strings of the QML module (gui/qml) go into the shared .ts too; the .qm goes into the tanara exe.

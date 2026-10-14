@@ -26,7 +26,7 @@ class QQmlEngine;
 class QQuickWindow;
 
 namespace tanara {
-namespace app { class AppController; }
+namespace recording { class IRecorderFacade; }
 class ProcessLock;
 }
 
@@ -48,8 +48,9 @@ struct RecorderRequest {
 class RecorderWindowHost : public QObject {
     Q_OBJECT
 public:
+    // facade: the recorder's one view of the recording side (real or fictional; not taken over).
     // engine: the QML engine the window is created in; nullptr -> it makes its own engine.
-    explicit RecorderWindowHost(tanara::app::AppController* controller, QQmlEngine* engine = nullptr,
+    explicit RecorderWindowHost(tanara::recording::IRecorderFacade* facade, QQmlEngine* engine = nullptr,
                                 QObject* parent = nullptr);
     ~RecorderWindowHost() override;
 
@@ -104,7 +105,7 @@ private:
     void snapPill();
     QString iniPath() const;
 
-    QPointer<tanara::app::AppController> m_controller;
+    QPointer<tanara::recording::IRecorderFacade> m_facade;
     QQmlEngine* m_engine = nullptr;
     bool m_ownEngine = false;
     QPointer<QQuickWindow> m_window;

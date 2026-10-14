@@ -1,11 +1,11 @@
-#include "DemoText.h"
+#include "demo/DemoText.h"
 
 #include "tanara/foundation/i18n/Localization.h"
 
 #include <QHash>
 #include <QRegularExpression>
 
-namespace tanara_qml::demotext {
+namespace tanara_demo::demotext {
 
 namespace {
 
@@ -116,4 +116,4 @@ QString raw(const QString& hu)
     return en + m.captured(2) + m.captured(3);
 }
 
-} // namespace tanara_qml::demotext
+} // namespace tanara_demo::demotext

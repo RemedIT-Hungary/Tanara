@@ -1,7 +1,7 @@
 #pragma once
 //
 // Tanara QML: the tracks' speech activity for the speech strip (TrackActivityStrip): from the
-// core AppController::trackActivity() frames (50 ms, dB above the track's noise floor), one
+// core track-activity frames (50 ms, dB above the track's noise floor), one
 // frame-state row per track: no data / silence / speech. Speech = the frame is at most 10 dB
 // below the track's speech level (sides::speechLevelDb + sides::kSpeechDb), the same yardstick
 // as the track-side analysis.
@@ -11,8 +11,9 @@
 // "loading", refreshes on the ready signal (trackActivityReady). The track id may be any
 // segment's (we map to the leading one).
 //
-// Without a controller / with App.demo deterministic sample data (for TrackListModel's demo
-// tracks: mic, call, system, mic2); demoState "loading" -> the computing state.
+// Without a controller / with App.demo deterministic sample data from tanara_demo (for
+// TrackListModel's demo tracks: mic, call, system, mic2); demoState "loading" -> the computing
+// state. The data comes through a TrackActivitySource (AppContext::services()).
 //
 #include "tanara/processing/analysis/TrackActivity.h"
 
@@ -22,17 +23,14 @@
 #include <QVector>
 #include <QtQml/qqmlregistration.h>
 
-namespace tanara {
-namespace app { class AppController; }
-}
-
 namespace tanara_qml {
+
+class TrackActivitySource;
 
 class TrackActivityModel : public QObject {
     Q_OBJECT
     QML_ELEMENT
 
-    Q_PROPERTY(QObject* controller READ controllerObject WRITE setController NOTIFY controllerChanged)
     Q_PROPERTY(QString meetingId READ meetingId WRITE setMeetingId NOTIFY meetingIdChanged)
     Q_PROPERTY(QString demoState READ demoState WRITE setDemoState NOTIFY demoStateChanged)
     // "none" (no meeting / track) | "loading" (the core is computing) | "ready"
@@ -54,10 +52,11 @@ public:
         int speechFrames = 0;
     };
 
+    // QML creates it (QML_ELEMENT): the source comes from AppContext::services().
     explicit TrackActivityModel(QObject* parent = nullptr);
+    // With an explicit source (tests); not taken over.
+    explicit TrackActivityModel(TrackActivitySource* source, QObject* parent = nullptr);
 
-    QObject* controllerObject() const;
-    void setController(QObject* controller);
     QString meetingId() const { return m_meetingId; }
     void setMeetingId(const QString& id);
     QString demoState() const { return m_demoState; }
@@ -80,20 +79,19 @@ public:
     static Lane laneFrom(const tanara::TrackActivity& t);
 
 signals:
-    void controllerChanged();
     void meetingIdChanged();
     void demoStateChanged();
     void changed();
 
 private:
-    tanara::app::AppController* app() const;
-    void connectController();
+    void resolveSource();
+    void attach(TrackActivitySource* source);
     void reload();
-    void loadDemo();
     void publish(const QString& state);
 
-    QPointer<QObject> m_injected;
-    QPointer<tanara::app::AppController> m_connected;
+    QPointer<TrackActivitySource> m_source;
+    QPointer<TrackActivitySource> m_ownDemo;   // the demo source of this model's demoState
+    bool m_explicitSource = false;
     QList<QMetaObject::Connection> m_connections;
 
     QString m_meetingId;

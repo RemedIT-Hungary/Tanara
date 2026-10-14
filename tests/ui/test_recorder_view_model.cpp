@@ -1,6 +1,6 @@
 // The recorder's view model (tanara_qml::RecorderViewModel): the design states with made-up
-// data (without a controller), the level scale, the automatic name, and the recorder's QML
-// pages load without a warning.
+// data (the fictional facade of tanara_demo), the level scale, the automatic name, and the
+// recorder's QML pages load without a warning.
 //
 // LIVE test (skipped by default): with TANARA_LIVE_AUDIO_TEST=1 it makes a real recording of a
 // few seconds with the machine's audio devices in a temporary folder (TANARA_HOME =
@@ -10,6 +10,8 @@
 #include "QmlApp.h"
 #include "RecorderViewModel.h"
 #include "RecorderWindowHost.h"
+
+#include "demo/RecorderDemoFacade.h"
 
 #include "tanara/app/AppController.h"
 #include "tanara/recording/audio/DeviceManager.h"
@@ -33,6 +35,16 @@
 #include <QtTest>
 
 using namespace tanara_qml;
+
+namespace {
+// A view model on the fictional recorder in a design state; set() moves to another state.
+struct DemoRecorder {
+    tanara_demo::RecorderDemoFacade facade;
+    RecorderViewModel vm;
+    explicit DemoRecorder(const QString& state) : facade(state), vm(&facade) {}
+    void set(const QString& state) { facade.setDesignState(state); }
+};
+} // namespace
 
 class TestRecorderViewModel : public QObject {
     Q_OBJECT
@@ -77,8 +89,8 @@ private slots:
 
     void demoStatesMatchTheDesign()
     {
-        RecorderViewModel vm;
-        vm.setDemoState(QStringLiteral("R01"));
+        DemoRecorder demo(QStringLiteral("R01"));
+        RecorderViewModel& vm = demo.vm;
         QCOMPARE(vm.state(), QStringLiteral("idle"));
         QVERIFY(vm.titleAutomatic());
         QCOMPARE(vm.deviceCount(), 6);
@@ -87,7 +99,7 @@ private slots:
         QCOMPARE(role(vm, 4, "status").toString(), QStringLiteral("signalUnrecorded"));
         QCOMPARE(role(vm, 2, "appName").toString(), QStringLiteral("Microsoft Teams"));
 
-        vm.setDemoState(QStringLiteral("R03"));
+        demo.set(QStringLiteral("R03"));
         QCOMPARE(vm.state(), QStringLiteral("recording"));
         QCOMPARE(vm.trackCount(), 3);
         QCOMPARE(vm.elapsedText(), QStringLiteral("00:12:47"));
@@ -96,26 +108,26 @@ private slots:
         QVERIFY(role(vm, 1, "toggleable").toBool());      // not recorded: can be switched on
         QCOMPARE(role(vm, 3, "status").toString(), QStringLiteral("silentWarn"));
 
-        vm.setDemoState(QStringLiteral("R06"));
+        demo.set(QStringLiteral("R06"));
         QVERIFY(vm.askVisible());
         vm.continueRecording();
         QVERIFY(!vm.askVisible());
         QCOMPARE(vm.state(), QStringLiteral("recording"));   // "Continue" does not stop
 
-        vm.setDemoState(QStringLiteral("R09"));
+        demo.set(QStringLiteral("R09"));
         QCOMPARE(vm.state(), QStringLiteral("done"));
         QVERIFY(vm.doneProblem().isEmpty());
         QVERIFY(vm.doneSummary().startsWith(QStringLiteral("30:34")));
 
-        vm.setDemoState(QStringLiteral("R10"));
+        demo.set(QStringLiteral("R10"));
         QCOMPARE(vm.state(), QStringLiteral("noDevice"));
         QVERIFY(!vm.canStart());
     }
 
     void togglingAndRenaming()
     {
-        RecorderViewModel vm;
-        vm.setDemoState(QStringLiteral("R01"));
+        DemoRecorder demo(QStringLiteral("R01"));
+        RecorderViewModel& vm = demo.vm;
         QSignalSpy counts(&vm, &RecorderViewModel::countsChanged);
         vm.toggleDevice(1);                                // a switched-off microphone on
         QCOMPARE(vm.selectedCount(), 4);
@@ -131,7 +143,7 @@ private slots:
 
         // During a recording a device that is not recorded can be switched on, a recorded one can be
         // switched off (and on again: a new segment); neither is locked.
-        vm.setDemoState(QStringLiteral("R04"));
+        demo.set(QStringLiteral("R04"));
         vm.toggleDevice(1);
         QVERIFY(role(vm, 1, "selected").toBool());
         QVERIFY(!role(vm, 1, "locked").toBool());
@@ -147,8 +159,8 @@ private slots:
 
     void externalRequestSetsTitle()
     {
-        RecorderViewModel vm;
-        vm.setDemoState(QStringLiteral("R10"));
+        DemoRecorder demo(QStringLiteral("R10"));
+        RecorderViewModel& vm = demo.vm;
         vm.applyRequest(QString(), QStringLiteral("Zoom"), QString());
         QVERIFY(vm.titleAutomatic());
         QVERIFY(vm.title().startsWith(QStringLiteral("Zoom-hívás")));
@@ -160,8 +172,8 @@ private slots:
     // Tags before the start and during a recording (made-up data), Ctrl+T through the view model.
     void tagsBeforeAndDuringRecording()
     {
-        RecorderViewModel vm;
-        vm.setDemoState(QStringLiteral("R01"));
+        DemoRecorder demo(QStringLiteral("R01"));
+        RecorderViewModel& vm = demo.vm;
         QVERIFY(vm.tagsEditable());
         QCOMPARE(vm.tagIds(), QStringList{QStringLiteral("t-nordvik")});
 
@@ -183,7 +195,7 @@ private slots:
         QCOMPARE(input.count(), 1);
 
         // Editable during a recording too.
-        vm.setDemoState(QStringLiteral("R03"));
+        demo.set(QStringLiteral("R03"));
         QCOMPARE(vm.state(), QStringLiteral("recording"));
         QCOMPARE(vm.tagIds(), (QStringList{QStringLiteral("t-nordvik"), QStringLiteral("t-q4")}));
         QVERIFY(vm.tagsEditable());
@@ -192,12 +204,12 @@ private slots:
         QCOMPARE(vm.tags().size(), 3);
 
         // A finished recording and no device: no tag row.
-        vm.setDemoState(QStringLiteral("R09"));
+        demo.set(QStringLiteral("R09"));
         QVERIFY(!vm.tagsEditable());
         QVERIFY(!vm.openTagInput());
         QVERIFY(!vm.addTag(QStringLiteral("Nordvik")));
         QCOMPARE(input.count(), 2);
-        vm.setDemoState(QStringLiteral("R10"));
+        demo.set(QStringLiteral("R10"));
         QVERIFY(vm.tags().isEmpty());
     }
 
@@ -216,9 +228,8 @@ private slots:
             QVERIFY(svc);
             const tanara::Tag existing = svc->create(QStringLiteral("Nordvik"));
 
-            RecorderViewModel vm;
-            vm.attachTagsOnly(&c);
-            QTest::qWait(10);                                   // the queued App.controller lookup runs
+            RecorderViewModel vm(AppContext::instance()->servicesFor(&c).recorder,
+                                 RecorderViewModel::Wiring::TagsOnly);
             QVERIFY(vm.tags().isEmpty());                       // no demo data
             QVERIFY(vm.addTag(QStringLiteral("nordvik")));      // the existing one (key match)
             QVERIFY(vm.addTag(QStringLiteral("Q4 tervezés")));  // new in the set
@@ -238,6 +249,44 @@ private slots:
             QVERIFY(c.recordingTags().isEmpty());
         }
         qputenv("TANARA_HOME", oldHome);
+    }
+
+    // The real facade writes the finished meeting's notes through the repository (title, context
+    // note, detected call), and lists the devices per group, the default first.
+    void facadeAnnotatesAFinishedMeetingAndOrdersDevices()
+    {
+        tanara::app::AppController c;
+        tanara::recording::IRecorderFacade* f = AppContext::instance()->servicesFor(&c).recorder;
+        QVERIFY(f);
+
+        tanara::Meeting m = c.store()->createMeeting(QStringLiteral("Régi cím"));
+        f->renameMeeting(m.id, QStringLiteral("  Új cím  "));
+        f->renameMeeting(m.id, QStringLiteral("   "));                    // empty: ignored
+        f->setMeetingContextNote(m.id, QStringLiteral(" jegyzet "));
+        f->setMeetingDetectedCall(m.id, QStringLiteral("Teams"));
+        const tanara::Meeting loaded = c.store()->load(m.id);
+        QCOMPARE(loaded.title, QStringLiteral("Új cím"));
+        QCOMPARE(loaded.contextNote, QStringLiteral("jegyzet"));
+        QCOMPARE(loaded.detectedCallApp, QStringLiteral("Teams"));
+
+        auto dev = [](const char* name, tanara::TrackKind kind, bool def) {
+            tanara::AudioDeviceInfo d;
+            d.name = QString::fromLatin1(name);
+            d.kind = kind;
+            d.isDefault = def;
+            return d;
+        };
+        c.devices()->setDeviceListOverride(QVector<tanara::AudioDeviceInfo>{
+            dev("line-in", tanara::TrackKind::Other, false),
+            dev("monitor-a", tanara::TrackKind::Loopback, false),
+            dev("mic-a", tanara::TrackKind::Mic, false),
+            dev("monitor-b", tanara::TrackKind::Loopback, true),
+            dev("mic-b", tanara::TrackKind::Mic, true)});
+        c.devices()->refresh();
+        QStringList names;
+        for (const tanara::AudioDeviceInfo& d : f->captureDevices()) names << d.name;
+        QCOMPARE(names, (QStringList{"mic-b", "mic-a", "monitor-b", "monitor-a", "line-in"}));
+        c.devices()->setDeviceListOverride(std::nullopt);
     }
 
     void previewPagesLoadWithoutWarnings_data()
@@ -267,7 +316,8 @@ private slots:
     // The host creates the window even without a controller; closing (no recording running) emits closed().
     void hostCreatesWindow()
     {
-        RecorderWindowHost host(nullptr);
+        tanara_demo::RecorderDemoFacade facade;
+        RecorderWindowHost host(&facade);
         QSignalSpy closed(&host, &RecorderWindowHost::closed);
         QVERIFY(host.show());
         QVERIFY(host.window());
@@ -297,7 +347,8 @@ private slots:
         std::unique_ptr<QObject> mainScope(comp.create());
         QVERIFY2(mainScope, qPrintable(comp.errorString()));
 
-        RecorderWindowHost host(nullptr);            // engine = nullptr: its own engine
+        tanara_demo::RecorderDemoFacade facade;
+        RecorderWindowHost host(&facade);            // engine = nullptr: its own engine
         QVERIFY(host.show());
         QQmlEngine* recEngine = qmlEngine(host.window());
         QVERIFY(recEngine && recEngine != &mainEngine);
@@ -334,8 +385,7 @@ private slots:
         {
             tanara::app::AppController c;
             c.setAutoMixdownAfterRecording(false);       // like the standalone recorder process
-            RecorderViewModel vm;
-            vm.setController(&c);
+            RecorderViewModel vm(AppContext::instance()->servicesFor(&c).recorder);
             if (vm.deviceCount() < 2)
                 QSKIP("legalább két capture-eszköz kell");
             qInfo() << "eszközök:" << vm.deviceCount();

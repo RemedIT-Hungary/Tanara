@@ -26,12 +26,7 @@ Item {
     readonly property real volume: player && player.volume !== undefined ? player.volume : 1.0
     readonly property var rates: [0.75, 1.0, 1.25, 1.5, 2.0]
 
-    function clock(ms) {
-        const total = Math.max(0, Math.floor(ms / 1000))
-        const h = Math.floor(total / 3600), m = Math.floor((total % 3600) / 60), s = total % 60
-        const two = (n) => (n < 10 ? "0" : "") + n
-        return h > 0 ? h + ":" + two(m) + ":" + two(s) : two(m) + ":" + two(s)
-    }
+    function clock(ms) { return ShellFormat.clock(ms, true) }
     function rateLabel(r) {
         return String(Math.round(r * 100) / 100).replace(".", Qt.locale().decimalPoint) + "×"
     }

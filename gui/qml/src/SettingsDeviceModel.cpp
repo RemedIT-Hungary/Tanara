@@ -1,17 +1,18 @@
 #include "SettingsDeviceModel.h"
 
-#include "DemoText.h"
-
+#include "AppContext.h"
 #include "RecorderViewModel.h"
 #include "SettingsViewModel.h"
 
-#include "tanara/app/AppController.h"
-#include "tanara/recording/audio/DeviceManager.h"
+#include "demo/RecorderDemoFacade.h"
+
 #include "tanara/library/tracks/TrackCatalog.h"
+#include "tanara/recording/IRecorderFacade.h"
 
 #include <algorithm>
 
 using namespace tanara;
+using tanara::recording::IRecorderFacade;
 
 namespace tanara_qml {
 
@@ -78,15 +79,29 @@ QStringList SettingsDeviceModel::presentNames() const
     return out;
 }
 
+void SettingsDeviceModel::setSource(tanara::recording::IRecorderFacade* source)
+{
+    m_source = source;
+}
+
+IRecorderFacade* SettingsDeviceModel::source()
+{
+    if (m_source)
+        return m_source;
+    // The settings view model's controller decides: the real recorder facade of that controller,
+    // or (no controller: demo, screenshots, tests) the fictional device list of tanara_demo.
+    if (app::AppController* c = m_vm->controller())
+        return AppContext::instance()->servicesFor(c).recorder;
+    if (!m_demoSource)
+        m_demoSource = new tanara_demo::RecorderDemoFacade(
+            QString(), tanara_demo::RecorderDemoFacade::Fixture::SettingsList, this);
+    return m_demoSource;
+}
+
 void SettingsDeviceModel::rebuild()
 {
-    app::AppController* c = m_vm->controller();
-    if (!c) {
-        loadDemo();
-        return;
-    }
-    const QVector<AudioDeviceInfo> present =
-        c->devices() ? c->devices()->captureDevices() : QVector<AudioDeviceInfo>{};
+    IRecorderFacade* src = source();
+    const QVector<AudioDeviceInfo> present = src ? src->captureDevices() : QVector<AudioDeviceInfo>{};
 
     // Same set -> the levels stay, only the default marker refreshes.
     bool same = present.size() == m_rows.size();
@@ -99,13 +114,18 @@ void SettingsDeviceModel::rebuild()
         if (old >= 0) r = m_rows.at(old);
         r.info = d;
         r.group = d.kind == TrackKind::Mic ? 0 : d.kind == TrackKind::Loopback ? 1 : 2;
+        // A source that pins the meter (fixtures) fixes level and peak.
+        if (const auto pin = src->pinnedDisplay(d.name)) {
+            r.level = pin->level;
+            r.peakSeg = pin->peakSegment;
+            r.demoFixed = true;
+        } else {
+            r.demoFixed = false;
+        }
         rows.push_back(r);
     }
-    // The recorder's order: per group, the default device first.
-    std::stable_sort(rows.begin(), rows.end(), [](const Row& x, const Row& y) {
-        if (x.group != y.group) return x.group < y.group;
-        return x.info.isDefault && !y.info.isDefault;
-    });
+    // The recorder's order: the facade lists the devices per group, the default device first.
+    std::stable_sort(rows.begin(), rows.end(), [](const Row& x, const Row& y) { return x.group < y.group; });
 
     for (int k = 0; same && k < rows.size(); ++k)
         same = rows.at(k).info.name == m_rows.at(k).info.name;   // the order is the same too
@@ -200,35 +220,6 @@ void SettingsDeviceModel::tick()
             emit dataChanged(index(i), index(i), {PeakRole});
         }
     }
-}
-
-// ---- demo: the same fictional devices as in the recorder's demo ---------------------
-
-void SettingsDeviceModel::loadDemo()
-{
-    auto mk = [](const QString& raw, int group, bool def, int level, int peak) {
-        Row r;
-        r.info.name = raw;
-        r.info.kind = group == 0 ? TrackKind::Mic : group == 1 ? TrackKind::Loopback : TrackKind::Other;
-        r.info.isDefault = def;
-        r.group = group;
-        r.level = level;
-        r.peakSeg = peak;
-        r.demoFixed = true;
-        return r;
-    };
-    beginResetModel();
-    m_rows = {
-        mk(QStringLiteral("alsa_input.usb-Trust_USB_Microphone-00.mono-fallback"), 0, true, 9, 10),
-        mk(QStringLiteral("alsa_input.pci-0000_00_1f.3.analog-stereo"), 0, false, 0, -1),
-        mk(demoText("Monitor of Sennheiser headset - Kommunikáció",
-                    "Monitor of Sennheiser headset - Communication"), 1, false, 6, 7),
-        mk(demoText("Monitor of Kanto YU4 - Optikai digitális sztereó",
-                    "Monitor of Kanto YU4 - Digital Stereo (IEC958)"), 1, true, 0, -1),
-        mk(QStringLiteral("alsa_input.pci-0000_00_1f.3.analog-stereo.line-in"), 2, false, 0, -1),
-    };
-    endResetModel();
-    emit m_vm->deviceCountChanged();
 }
 
 } // namespace tanara_qml

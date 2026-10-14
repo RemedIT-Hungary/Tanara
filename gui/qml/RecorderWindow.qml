@@ -4,11 +4,12 @@ import QtQuick.Window
 // The floating recorder's window: frameless, (where the platform allows) always on top, 380 px
 // wide, height follows the content; in pill mode ~230x40. The content is the RecorderView /
 // RecorderPill item. The C++ host (tanara_qml::RecorderWindowHost) creates it and handles the
-// position, edge snapping, sending to the background and closing.
+// position, edge snapping, sending to the background and closing. The host also creates the view
+// model (it hands the recorder facade to its constructor) and passes it in as `vm`.
 Window {
     id: win
 
-    property alias vm: model
+    required property RecorderViewModel vm
     property alias expanded: view.expanded
     property alias sheetOpen: view.sheetOpen
     property bool pinned: true
@@ -44,15 +45,15 @@ Window {
     onYChanged: moveDebounce.restart()
     Timer { id: moveDebounce; interval: 250; onTriggered: win.userMoved() }
 
-    RecorderViewModel {
-        id: model
-        onAskRaised: win.showFull()
+    Connections {
+        target: win.vm
+        function onAskRaised() { win.showFull() }
     }
 
     RecorderView {
         id: view
         visible: !win.pill
-        vm: model
+        vm: win.vm
         pinned: win.pinned
         pinSupported: win.pinSupported
         onPinnedChanged: win.pinned = pinned
@@ -64,7 +65,7 @@ Window {
     RecorderPill {
         id: pillItem
         visible: win.pill
-        vm: model
+        vm: win.vm
         onMoveRequested: win.startSystemMove()
         onExpandRequested: win.pill = false
     }

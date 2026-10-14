@@ -32,7 +32,7 @@ core/src/processing/analysis/ParticipantAnalysis.cpp -> tanara/editing/review/Ca
 core/src/processing/analysis/ParticipantAnalysis.cpp -> tanara/editing/review/SideAnalysis.h   # K7 (processing ParticipantAnalysis -> editing review algorithms; not a type edge, left after P4) -> P13
 core/src/processing/analysis/ParticipantAnalysis.cpp -> tanara/editing/session/TrackSpeech.h   # K7 (processing ParticipantAnalysis -> editing review algorithms; not a type edge, left after P4) -> P13
 
-# ---- P15 (48 lines) ----
+# ---- P15 (43 lines) ----
 gui/qml/src/AppContext.cpp -> tanara/app/AppController.h   # GUI -> AppController.h -> P15
 gui/qml/src/JobSupport.cpp -> tanara/app/AppController.h   # GUI -> AppController.h -> P15
 gui/qml/src/LibraryListModel.cpp -> tanara/app/AppController.h   # GUI -> AppController.h -> P15
@@ -51,9 +51,6 @@ gui/qml/src/PeopleWindowHost.cpp -> tanara/app/AppController.h   # GUI -> AppCon
 gui/qml/src/PersonListModel.cpp -> tanara/app/AppController.h   # GUI -> AppController.h -> P15
 gui/qml/src/PlayerController.cpp -> tanara/app/AppController.h   # GUI -> AppController.h -> P15
 gui/qml/src/PreTranscriptViewModel.cpp -> tanara/app/AppController.h   # GUI -> AppController.h -> P15
-gui/qml/src/RecorderViewModel.cpp -> tanara/app/AppController.h   # GUI -> AppController.h -> P15
-gui/qml/src/RecorderWindowHost.cpp -> tanara/app/AppController.h   # GUI -> AppController.h -> P15
-gui/qml/src/SettingsDeviceModel.cpp -> tanara/app/AppController.h   # GUI -> AppController.h -> P15
 gui/qml/src/SettingsEmbeddingModel.cpp -> tanara/app/AppController.h   # GUI -> AppController.h -> P15
 gui/qml/src/SettingsProviderModel.cpp -> tanara/app/AppController.h   # GUI -> AppController.h -> P15
 gui/qml/src/SettingsViewModel.cpp -> tanara/app/AppController.h   # GUI -> AppController.h -> P15
@@ -67,7 +64,6 @@ gui/qml/src/TagBackend.cpp -> tanara/app/AppController.h   # GUI -> AppControlle
 gui/qml/src/TagControllerBackend.cpp -> tanara/app/AppController.h   # GUI -> AppController.h -> P15
 gui/qml/src/TagsWindowHost.cpp -> tanara/app/AppController.h   # GUI -> AppController.h -> P15
 gui/qml/src/TopicListModel.cpp -> tanara/app/AppController.h   # GUI -> AppController.h -> P15
-gui/qml/src/TrackActivityModel.cpp -> tanara/app/AppController.h   # GUI -> AppController.h -> P15
 gui/qml/src/TrackListModel.cpp -> tanara/app/AppController.h   # GUI -> AppController.h -> P15
 gui/qml/src/TranscriptEditorViewModel.cpp -> tanara/app/AppController.h   # GUI -> AppController.h -> P15
 gui/qml/src/TranscriptEditorViewModelQueue.cpp -> tanara/app/AppController.h   # GUI -> AppController.h -> P15
@@ -76,7 +72,6 @@ gui/src/AnalyzerSingleton.h -> platform:Q_OS_WIN   # platform (gui) -> P15
 gui/src/QmlShellBridge.cpp -> tanara/app/AppController.h   # GUI -> AppController.h -> P15
 gui/src/SettingsWidgetsDialogs.cpp -> tanara/app/AppController.h   # GUI -> AppController.h -> P15
 gui/src/ShellQaHook.h -> tanara/app/AppController.h   # GUI -> AppController.h -> P15
-gui/src/ShellRecorderHost.cpp -> tanara/app/AppController.h   # GUI -> AppController.h -> P15
 gui/src/main.cpp -> platform:Q_OS_LINUX   # platform (gui) -> P15
 gui/src/main.cpp -> tanara/app/AppController.h   # GUI -> AppController.h -> P15
 

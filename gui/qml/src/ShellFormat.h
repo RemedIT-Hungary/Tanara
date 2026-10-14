@@ -7,7 +7,9 @@
 
 #include <QDateTime>
 #include <QLocale>
+#include <QObject>
 #include <QString>
+#include <QtQml/qqmlregistration.h>
 
 namespace tanara_qml::fmt {
 
@@ -27,3 +29,19 @@ QString clock(qint64 ms, bool padMinutes = false);
 QString stepStateKey(tanara::StepState state);
 
 } // namespace tanara_qml::fmt
+
+namespace tanara_qml {
+
+// The formatters QML needs: the ONE playback / track time text (PlayerBar, ReviewFocusCard,
+// TrackActivityStrip).  QML:  ShellFormat.clock(ms)  /  ShellFormat.clock(ms, true)
+class ShellFormatBridge : public QObject {
+    Q_OBJECT
+    QML_NAMED_ELEMENT(ShellFormat)
+    QML_SINGLETON
+public:
+    using QObject::QObject;
+    // "30:34", "1:16:04" (padMinutes: "00:17"); the milliseconds are floored to the second.
+    Q_INVOKABLE QString clock(qint64 ms, bool padMinutes = false) const { return fmt::clock(ms, padMinutes); }
+};
+
+} // namespace tanara_qml

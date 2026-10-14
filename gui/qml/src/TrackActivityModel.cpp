@@ -1,12 +1,10 @@
 #include "TrackActivityModel.h"
 
 #include "AppContext.h"
-#include "JobSupport.h"
+#include "TrackActivitySource.h"
 
-#include "tanara/app/AppController.h"
 #include "tanara/library/tracks/TrackCatalog.h"
 #include "tanara/editing/review/SideAnalysis.h"
-#include "tanara/library/store/MeetingRepository.h"
 
 #include <algorithm>
 #include <cmath>
@@ -18,23 +16,47 @@ using namespace tanara;
 TrackActivityModel::TrackActivityModel(QObject* parent) : QObject(parent)
 {
     AppContext* ctx = AppContext::instance();
-    connect(ctx, &AppContext::controllerChanged, this, [this]() { connectController(); reload(); });
-    connect(ctx, &AppContext::demoChanged, this, &TrackActivityModel::reload);
-    connectController();
+    connect(ctx, &AppContext::controllerChanged, this, [this]() { resolveSource(); reload(); });
+    connect(ctx, &AppContext::demoChanged, this, [this]() { resolveSource(); reload(); });
+    resolveSource();
     reload();
 }
 
-app::AppController* TrackActivityModel::app() const { return jobsupport::resolveController(m_injected); }
-QObject* TrackActivityModel::controllerObject() const { return app(); }
-
-void TrackActivityModel::setController(QObject* controller)
+TrackActivityModel::TrackActivityModel(TrackActivitySource* source, QObject* parent) : QObject(parent)
 {
-    if (m_injected == controller)
-        return;
-    m_injected = controller;
-    connectController();
-    emit controllerChanged();
+    m_explicitSource = true;
+    attach(source);
     reload();
+}
+
+void TrackActivityModel::resolveSource()
+{
+    if (m_explicitSource)
+        return;
+    // The services of the moment: the real source (one per process), or a demo source of this
+    // model's own (its scenario is the demoState).
+    attach(AppContext::instance()->services().trackActivity(m_demoState, this));
+}
+
+void TrackActivityModel::attach(TrackActivitySource* source)
+{
+    if (source == m_source)
+        return;
+    for (const QMetaObject::Connection& conn : std::as_const(m_connections))
+        disconnect(conn);
+    m_connections.clear();
+    if (m_ownDemo && m_ownDemo != source)
+        m_ownDemo->deleteLater();
+    m_ownDemo = source && source->parent() == this ? source : nullptr;
+    m_source = source;
+    if (!source)
+        return;
+    auto mine = [this](const QString& id) { return !m_meetingId.isEmpty() && id == m_meetingId; };
+    m_connections << connect(source, &TrackActivitySource::activityReady, this,
+                             [this, mine](const QString& id) { if (mine(id)) reload(); });
+    // New / located / deleted track: the fingerprint changes, the core recomputes.
+    m_connections << connect(source, &TrackActivitySource::tracksChanged, this,
+                             [this, mine](const QString& id) { if (mine(id)) reload(); });
 }
 
 void TrackActivityModel::setMeetingId(const QString& id)
@@ -52,26 +74,8 @@ void TrackActivityModel::setDemoState(const QString& state)
         return;
     m_demoState = state;
     emit demoStateChanged();
+    resolveSource();
     reload();
-}
-
-void TrackActivityModel::connectController()
-{
-    app::AppController* c = app();
-    if (c == m_connected)
-        return;
-    for (const QMetaObject::Connection& conn : std::as_const(m_connections))
-        disconnect(conn);
-    m_connections.clear();
-    m_connected = c;
-    if (!c)
-        return;
-    auto mine = [this](const QString& id) { return !m_meetingId.isEmpty() && id == m_meetingId; };
-    m_connections << connect(c, &app::AppController::trackActivityReady, this,
-                             [this, mine](const QString& id) { if (mine(id)) reload(); });
-    // New / located / deleted track: the fingerprint changes, the core recomputes.
-    m_connections << connect(c, &app::AppController::tracksChanged, this,
-                             [this, mine](const QString& id) { if (mine(id)) reload(); });
 }
 
 TrackActivityModel::Lane TrackActivityModel::laneFrom(const TrackActivity& t)
@@ -131,25 +135,21 @@ void TrackActivityModel::publish(const QString& state)
 
 void TrackActivityModel::reload()
 {
-    app::AppController* c = app();
-    if (jobsupport::demoMode(c)) {
-        loadDemo();
-        return;
-    }
     m_lanes.clear();
     m_laneOf.clear();
     m_durationMs = 0;
-    if (m_meetingId.isEmpty() || !c->store()) {
+    TrackActivitySource* src = m_source;
+    if (!src) {
         publish(QStringLiteral("none"));
         return;
     }
-    const Meeting m = c->store()->load(m_meetingId);
+    const Meeting m = src->meeting(m_meetingId);
     if (m.id.isEmpty() || m.tracks.isEmpty()) {
         publish(QStringLiteral("none"));
         return;
     }
     m_durationMs = m.durationMs;
-    const MeetingActivity act = c->trackActivity(m_meetingId);
+    const MeetingActivity act = src->activity(m_meetingId);
     for (const TrackActivity& t : act.tracks) {
         m_laneOf.insert(t.trackId, int(m_lanes.size()));
         m_lanes.append(laneFrom(t));
@@ -162,48 +162,7 @@ void TrackActivityModel::reload()
         const auto it = m_laneOf.constFind(m.tracks.at(lead).id);
         if (it != m_laneOf.constEnd()) m_laneOf.insert(m.tracks.at(i).id, it.value());
     }
-    publish(c->trackActivityComputing(m_meetingId) ? QStringLiteral("loading") : QStringLiteral("ready"));
-}
-
-// Fictional, deterministic speech pattern for the demo (for TrackListModel's demo tracks).
-void TrackActivityModel::loadDemo()
-{
-    m_lanes.clear();
-    m_laneOf.clear();
-    m_durationMs = (30 * 60 + 34) * 1000;
-    if (m_demoState == QLatin1String("loading")) {
-        publish(QStringLiteral("loading"));
-        return;
-    }
-    const int frameMs = 500;
-    const int n = int(m_durationMs / frameMs);
-    auto make = [&](const char* id, int seed, qreal talk, qint64 startMs) {
-        Lane l;
-        l.trackId = QString::fromLatin1(id);
-        l.frameMs = frameMs;
-        l.originMs = 0;
-        l.frames.resize(n);
-        quint32 x = 2463534242u + quint32(seed) * 7919u;
-        bool speaking = false;
-        int left = 0;
-        for (int i = 0; i < n; ++i) {
-            if (qint64(i) * frameMs < startMs) { l.frames[i] = NoData; continue; }
-            if (left-- <= 0) {
-                x ^= x << 13; x ^= x >> 17; x ^= x << 5;
-                speaking = talk > 0 && (x % 1000) / 1000.0 < talk;
-                left = 4 + int((x >> 10) % (speaking ? 40 : 30));
-            }
-            l.frames[i] = speaking ? Speech : Quiet;
-            if (speaking) ++l.speechFrames;
-        }
-        m_laneOf.insert(l.trackId, int(m_lanes.size()));
-        m_lanes.append(l);
-    };
-    make("mic", 1, 0.38, 0);
-    make("call", 2, 0.61, 0);
-    make("system", 3, 0.0, 0);
-    make("mic2", 4, 0.2, 0);
-    publish(QStringLiteral("ready"));
+    publish(src->computing(m_meetingId) ? QStringLiteral("loading") : QStringLiteral("ready"));
 }
 
 } // namespace tanara_qml

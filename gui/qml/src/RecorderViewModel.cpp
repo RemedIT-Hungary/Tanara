@@ -1,29 +1,16 @@
 #include "RecorderViewModel.h"
 
-#include "DemoText.h"
-
-#include "AppContext.h"
-#include "TagDemoBackend.h"
-
-#include "tanara/app/AppController.h"
-#include "tanara/foundation/paths/AppPaths.h"
-#include "tanara/app/SettingsManager.h"
-#include "tanara/recording/audio/DeviceManager.h"
-#include "tanara/watcher/PlaybackRouting.h"
 #include "tanara/library/tracks/TrackCatalog.h"
 #include "tanara/library/MeetingNotes.h"
-#include "tanara/library/tags/TagService.h"
 
 #include <QDateTime>
-#include <QDir>
-#include <QFileInfo>
 #include <QLocale>
-#include <QSettings>
 
 #include <algorithm>
 #include <cmath>
 
 using namespace tanara;
+using tanara::recording::IRecorderFacade;
 
 namespace tanara_qml {
 
@@ -33,11 +20,6 @@ constexpr float  kSignalRms    = 0.004f;   // above this there is "signal" (abou
 constexpr qint64 kSignalHoldMs = 1500;     // the last sound still counts as signal for this long
 constexpr qint64 kPeakHoldMs   = 1500;     // peak-hold time
 constexpr int    kSegments     = 14;
-
-QString recorderIniPath(app::AppController* c)
-{
-    return (c && c->settings() ? c->settings()->paths() : paths::current()).stateFile(paths::files::RecorderIni);
-}
 
 } // namespace
 
@@ -95,64 +77,41 @@ QVariant RecorderDeviceModel::data(const QModelIndex& index, int role) const
 
 // ---- RecorderViewModel -----------------------------------------------------------------
 
-RecorderViewModel::RecorderViewModel(QObject* parent) : QObject(parent)
+RecorderViewModel::RecorderViewModel(IRecorderFacade* facade, QObject* parent)
+    : RecorderViewModel(facade, Wiring::Full, parent)
+{
+}
+
+RecorderViewModel::RecorderViewModel(IRecorderFacade* facade, Wiring wiring, QObject* parent)
+    : QObject(parent), m_facade(facade)
 {
     m_clock.start();
     m_tick.setInterval(33);   // ~30 Hz: peak hold + statuses
     connect(&m_tick, &QTimer::timeout, this, &RecorderViewModel::tick);
-    m_fallbackScan.setInterval(3000);
-    connect(&m_fallbackScan, &QTimer::timeout, this, [this] {
-        if (m_controller) m_controller->refreshDevices();
-    });
 
     m_title = automaticTitle(QString(), QDateTime::currentDateTime());
-    // App.controller binds in the next event-loop turn, if by then the caller has not given its
-    // own (setController) and has not asked for a demo state.
-    QMetaObject::invokeMethod(this, [this] {
-        if (m_controllerSet) return;
-        if (app::AppController* c = AppContext::instance()->controller())
-            setController(c);
-        else if (m_demoState.isEmpty() && AppContext::instance()->demo())
-            setDemoState(QStringLiteral("R01"));
-    }, Qt::QueuedConnection);
+    if (!m_facade)
+        return;
+    attachTags();
+    if (wiring == Wiring::Full)
+        attach();
 }
 
 RecorderViewModel::~RecorderViewModel()
 {
+    if (!m_attached || !m_facade)
+        return;
+    m_facade->stopWatching();
     // Level monitoring is stopped only when no recording runs (we do not touch the recording).
-    if (m_controller && m_controller->recordingState() == RecordingState::Idle)
-        m_controller->stopLevelMonitoring();
+    if (m_facade->state() == RecordingState::Idle)
+        m_facade->stopLevelMonitoring();
 }
 
-QObject* RecorderViewModel::controllerObject() const { return m_controller; }
-app::AppController* RecorderViewModel::controller() const { return m_controller; }
+QObject* RecorderViewModel::controllerObject() const { return m_facade ? m_facade->tagController() : nullptr; }
 
-void RecorderViewModel::setControllerObject(QObject* controller)
+void RecorderViewModel::attachTags()
 {
-    setController(qobject_cast<app::AppController*>(controller));
-}
-
-void RecorderViewModel::setController(app::AppController* controller)
-{
-    m_controllerSet = true;
-    if (m_controller == controller) return;
-    if (m_controller) m_controller->disconnect(this);
-    m_controller = controller;
-    attachTagsOnly(controller);
-    if (m_controller) {
-        m_demoState.clear();
-        attach();
-    }
-    emit controllerChanged();
-}
-
-void RecorderViewModel::attachTagsOnly(app::AppController* controller)
-{
-    m_controllerSet = true;
-    disconnect(m_tagConn);
-    m_tagCtl = controller;
-    if (controller && controller->tags())
-        m_tagConn = connect(controller->tags(), &library::TagService::tagsChanged, this, &RecorderViewModel::refreshTagNames);
+    connect(m_facade, &IRecorderFacade::tagsChanged, this, &RecorderViewModel::refreshTagNames);
 }
 
 QString RecorderViewModel::automaticTitle(const QString& appName, const QDateTime& when)
@@ -207,8 +166,8 @@ void RecorderViewModel::setTitle(const QString& title)
     m_titleAuto = false;
     emit titleChanged();
     // A finished meeting is renamed right away; a running recording's at the end (onFinished).
-    if (m_controller && m_state == QLatin1String("done") && !m_doneMeetingId.isEmpty())
-        m_controller->renameMeeting(m_doneMeetingId, m_title);
+    if (m_facade && m_state == QLatin1String("done") && !m_doneMeetingId.isEmpty())
+        m_facade->renameMeeting(m_doneMeetingId, m_title);
 }
 
 void RecorderViewModel::setState(const QString& state)
@@ -252,33 +211,30 @@ QVector<AudioDeviceInfo> RecorderViewModel::selectedDevices() const
 
 void RecorderViewModel::attach()
 {
-    app::AppController* c = m_controller;
-    {
-        QSettings ini(recorderIniPath(c), QSettings::IniFormat);
-        m_knownDevices = ini.value(QStringLiteral("devices/known")).toStringList();
-    }
-    connect(c, &app::AppController::devicesChanged, this, &RecorderViewModel::rebuildDevices);
+    IRecorderFacade* c = m_facade;
+    m_attached = true;
+    m_knownDevices = c->knownDevices();
+    connect(c, &IRecorderFacade::devicesChanged, this, &RecorderViewModel::rebuildDevices);
     // A device renamed in Settings is refreshed here immediately too (devicenames).
-    if (c->settings())
-        connect(c->settings(), &app::SettingsManager::settingsChanged, this, [this] {
-            for (int i = 0; i < m_rows.size(); ++i) {
-                const QString name = library::devicenames::displayName(m_rows.at(i).info.name);
-                if (name == m_rows.at(i).friendly) continue;
-                m_rows[i].friendly = name;
-                const QModelIndex idx = m_model.index(i);
-                emit m_model.dataChanged(idx, idx, {RecorderDeviceModel::NameRole});
-            }
-        });
-    connect(c, &app::AppController::deviceLevelPeak, this, &RecorderViewModel::onLevel);
-    connect(c, &app::AppController::recordingStateChanged, this, &RecorderViewModel::onRecordingState);
-    connect(c, &app::AppController::elapsedChanged, this, [this](qint64 ms) {
+    connect(c, &IRecorderFacade::deviceNamesChanged, this, [this] {
+        for (int i = 0; i < m_rows.size(); ++i) {
+            const QString name = m_facade->friendlyName(m_rows.at(i).info.name);
+            if (name == m_rows.at(i).friendly) continue;
+            m_rows[i].friendly = name;
+            const QModelIndex idx = m_model.index(i);
+            emit m_model.dataChanged(idx, idx, {RecorderDeviceModel::NameRole});
+        }
+    });
+    connect(c, &IRecorderFacade::deviceLevel, this, &RecorderViewModel::onLevel);
+    connect(c, &IRecorderFacade::stateChanged, this, &RecorderViewModel::onRecordingState);
+    connect(c, &IRecorderFacade::elapsedChanged, this, [this](qint64 ms) {
         // Signaling once per second is enough (the display is HH:MM:SS).
         if (ms / 1000 == m_elapsedMs / 1000 && m_elapsedMs != 0) { m_elapsedMs = ms; return; }
         m_elapsedMs = ms;
         emit elapsedChanged();
     });
-    connect(c, &app::AppController::recordingFinished, this, &RecorderViewModel::onFinished);
-    connect(c, &app::AppController::recordingTrackAdded, this, [this](const QString& name) {
+    connect(c, &IRecorderFacade::recordingFinished, this, &RecorderViewModel::onFinished);
+    connect(c, &IRecorderFacade::trackAdded, this, [this](const QString& name) {
         const int i = rowOf(name);
         if (i < 0) return;
         m_rows[i].recorded = true;
@@ -288,11 +244,10 @@ void RecorderViewModel::attach()
         refreshRow(i, false);
         emit countsChanged();
     });
-    connect(c, &app::AppController::recordingTrackClosed, this, [this](const QString& name) {
+    connect(c, &IRecorderFacade::trackClosed, this, [this](const QString& name) {
         const int i = rowOf(name);
         // Disconnected device, or the user switched it off (the latter can be switched on again).
-        const bool unplugged = !m_controller
-            || m_controller->disconnectedRecordingDeviceNames().contains(name);
+        const bool unplugged = !m_facade || m_facade->disconnectedDeviceNames().contains(name);
         if (i >= 0) {
             m_rows[i].recorded = false;
             m_rows[i].disconnected = unplugged;
@@ -314,53 +269,91 @@ void RecorderViewModel::attach()
             emit errorChanged();
         }
     });
-    connect(c, &app::AppController::recordingDeviceReturned, this, [this](const QString& name) {
+    connect(c, &IRecorderFacade::deviceReturned, this, [this](const QString& name) {
         // A device unplugged and plugged back in is recorded again by the system on its own (new segment).
         const int row = rowOf(name);
         const QString shown = (row >= 0 && !m_rows[row].friendly.isEmpty()) ? m_rows[row].friendly : name;
         m_errorText = tr("A(z) %1 eszköz visszatért, a rögzítése folytatódik (új szakasz).").arg(shown);
         emit errorChanged();
     });
-    connect(c, &app::AppController::callEnded, this, [this](const QString& app) {
+    connect(c, &IRecorderFacade::callEnded, this, [this](const QString& app) {
         raiseAsk(app.isEmpty()
             ? tr("Úgy tűnik, a hívás véget ért. Magamtól nem állítom le.")
             : tr("Úgy tűnik, véget ért: %1. Magamtól nem állítom le.").arg(app));
     });
-    connect(c, &app::AppController::silenceDetected, this, [this](int minutes) {
+    connect(c, &IRecorderFacade::silenceDetected, this, [this](int minutes) {
         raiseAsk(tr("Minden sávon %n perce csend van. Magamtól nem állítom le.", nullptr, minutes));
     });
-    connect(c, &app::AppController::errorOccurred, this, [this](const QString& e) {
+    connect(c, &IRecorderFacade::error, this, [this](const QString& e) {
         // We show only errors that concern the recorder: those arriving during start / stop.
         if (m_state == QLatin1String("done")) return;
         m_errorText = e;
         emit errorChanged();
     });
+    connect(c, &IRecorderFacade::routesChanged, this, &RecorderViewModel::updateRoutes);
+    connect(c, &IRecorderFacade::sessionChanged, this, &RecorderViewModel::reloadFromFacade);
 
-    // Playback routes + hot-plug: where available (Linux/PipeWire), the graph change signals it;
-    // elsewhere we re-enumerate devices on a timer.
-    if (watcher::PlaybackRouteMonitor::available()) {
-        m_routes = new watcher::PlaybackRouteMonitor(this);
-        connect(m_routes, &watcher::PlaybackRouteMonitor::routesChanged, this, &RecorderViewModel::updateRoutes);
-        connect(m_routes, &watcher::PlaybackRouteMonitor::deviceSetChanged, this, [this] {
-            if (m_controller) m_controller->refreshDevices();
-        });
-        m_routes->start(2000);
-    } else {
-        m_fallbackScan.start();
-    }
-
-    c->startLevelMonitoring();   // refresh → devicesChanged → rebuildDevices
+    // Playback routes + hot-plug (where the platform has them), then the level monitoring
+    // (refresh -> devicesChanged -> rebuildDevices).
+    c->startWatching();
+    c->startLevelMonitoring();
     if (m_rows.isEmpty()) rebuildDevices();
-    onRecordingState(c->recordingState());
+    onRecordingState(c->state());
+    applySession(c->session());
     m_tick.start();
+}
+
+// The fixture loaded another session: devices, selection and the whole session again.
+void RecorderViewModel::reloadFromFacade()
+{
+    m_knownDevices = m_facade->knownDevices();
+    m_selectionLoaded = false;   // the source decides the selection again
+    m_reloading = true;
+    rebuildDevices();
+    m_reloading = false;
+    const tanara::recording::RecorderSession session = m_facade->session();
+    applySession(session);
+    m_state.clear();
+    setState(session.done ? QStringLiteral("done")
+             : m_facade->state() == RecordingState::Recording ? QStringLiteral("recording")
+             : m_rows.isEmpty() ? QStringLiteral("noDevice") : QStringLiteral("idle"));
+}
+
+void RecorderViewModel::applySession(const tanara::recording::RecorderSession& s)
+{
+    if (!s.title.isEmpty()) {
+        m_title = s.title;
+        m_titleAuto = false;
+        emit titleChanged();
+    } else if (s.automaticWhen.isValid()) {
+        m_title = automaticTitle(s.automaticApp, s.automaticWhen);
+        m_titleAuto = true;
+        emit titleChanged();
+    }
+    m_tags.clear();
+    for (const tanara::recording::RecorderTag& t : s.tags) m_tags.append({t.id, t.name});
+    emit tagsChanged();
+
+    m_elapsedMs = s.elapsedMs;
+    emit elapsedChanged();
+
+    m_askVisible = !s.askText.isEmpty();
+    m_askText = s.askText;
+    emit askChanged();
+
+    m_doneSummary = s.done ? s.doneSummary : QString();
+    m_doneMeetingId = s.done ? s.doneMeetingId : QString();
+    m_doneProblem.clear();
+    emit doneChanged();
+    if (s.done) setState(QStringLiteral("done"));
 }
 
 void RecorderViewModel::rebuildDevices()
 {
-    if (!m_controller || !m_controller->devices()) return;
-    const QVector<AudioDeviceInfo> present = m_controller->devices()->captureDevices();
-    const QStringList recNames = m_controller->recordingDeviceNames();
-    const QStringList closed = m_controller->disconnectedRecordingDeviceNames();
+    if (!m_facade) return;
+    const QVector<AudioDeviceInfo> present = m_facade->captureDevices();
+    const QStringList recNames = m_facade->recordingDeviceNames();
+    const QStringList closed = m_facade->disconnectedDeviceNames();
 
     // Same set in the same state -> nothing to do (the DeviceManager signals on every
     // enumeration; rows and levels should not jump needlessly).
@@ -392,15 +385,14 @@ void RecorderViewModel::rebuildDevices()
     // Source of the selection: the live rows; on the first enumeration the saved selection. A
     // device not seen until then arrives switched on in "record every device" mode (except
     // line-in types), switched off in manual mode.
-    const tanara::app::AppSettings s = m_controller->settings() ? m_controller->settings()->settings()
-                                                   : tanara::app::AppSettings{};
-    const QStringList last = m_controller->lastUsedDeviceNames();
+    const bool autoAll = m_facade->autoRecordAllDevices();
+    const QStringList last = m_facade->lastUsedDeviceNames();
     auto wantSelected = [&](const AudioDeviceInfo& d) {
         const int old = rowOf(d.name);
         if (old >= 0 && m_selectionLoaded) return m_rows.at(old).selected;
         if (last.contains(d.name)) return true;
         const bool isNew = !m_knownDevices.contains(d.name);
-        return (isNew || last.isEmpty()) && s.recording.autoRecordAllDevices && d.kind != TrackKind::Other;
+        return (isNew || last.isEmpty()) && autoAll && d.kind != TrackKind::Other;
     };
 
     QVector<Row> rows;
@@ -412,10 +404,11 @@ void RecorderViewModel::rebuildDevices()
         else r.silentSince = now;
         r.selected = wantSelected(d);
         r.info = d;
-        r.friendly = library::devicenames::displayName(d.name);   // the user's name, otherwise the abbreviated one
+        r.friendly = m_facade->friendlyName(d.name);   // the user's name, otherwise the abbreviated one
         r.group = d.kind == TrackKind::Mic ? 0 : d.kind == TrackKind::Loopback ? 1 : 2;
         r.recorded = recNames.contains(d.name);
         r.disconnected = false;
+        applyPin(r);
         rows.push_back(r);
     }
     for (const QString& name : extras) {
@@ -424,7 +417,7 @@ void RecorderViewModel::rebuildDevices()
         if (old >= 0) r = m_rows.at(old);
         else {
             r.info.name = name;
-            r.friendly = library::devicenames::displayName(name);
+            r.friendly = m_facade->friendlyName(name);
             r.info.kind = name.contains(QStringLiteral("monitor"), Qt::CaseInsensitive)
                               ? TrackKind::Loopback : TrackKind::Mic;
             r.group = r.info.kind == TrackKind::Mic ? 0 : 1;
@@ -434,12 +427,12 @@ void RecorderViewModel::rebuildDevices()
         r.selected = true;
         r.rms = r.peak = 0.f;
         r.level = 0; r.peakSeg = -1;
+        r.pinned = false;
         rows.push_back(r);
     }
-    std::stable_sort(rows.begin(), rows.end(), [](const Row& x, const Row& y) {
-        if (x.group != y.group) return x.group < y.group;
-        return x.info.isDefault && !y.info.isDefault;
-    });
+    // The facade lists the devices in display order (default first per group); the rows of
+    // devices that are gone only join the end of their group.
+    std::stable_sort(rows.begin(), rows.end(), [](const Row& x, const Row& y) { return x.group < y.group; });
 
     m_model.beginResetModel();
     m_rows = rows;
@@ -449,25 +442,33 @@ void RecorderViewModel::rebuildDevices()
     bool knownChanged = false;
     for (const QString& n : presentNames)
         if (!m_knownDevices.contains(n)) { m_knownDevices << n; knownChanged = true; }
-    if (knownChanged) {
-        QSettings ini(recorderIniPath(m_controller), QSettings::IniFormat);
-        ini.setValue(QStringLiteral("devices/known"), m_knownDevices);
-    }
+    if (knownChanged)
+        m_facade->setKnownDevices(m_knownDevices);
 
     updateRoutes();
     for (int i = 0; i < m_rows.size(); ++i) computeStatus(m_rows[i], now);
     emit countsChanged();
-    if (m_state == QLatin1String("idle") || m_state == QLatin1String("noDevice"))
+    if (!m_reloading && (m_state == QLatin1String("idle") || m_state == QLatin1String("noDevice")))
         setState(m_rows.isEmpty() ? QStringLiteral("noDevice") : QStringLiteral("idle"));
+}
+
+void RecorderViewModel::applyPin(Row& r) const
+{
+    const std::optional<tanara::recording::DevicePin> pin = m_facade->pinnedDisplay(r.info.name);
+    r.pinned = pin.has_value();
+    if (!pin) return;
+    r.level = pin->level;
+    r.peakSeg = pin->peakSegment;
+    r.status = pin->status;
+    r.statusText = pin->statusText;
 }
 
 void RecorderViewModel::updateRoutes()
 {
-    if (!m_routes) return;
-    const watcher::AudioGraphSnapshot snap = m_routes->snapshot();
+    if (!m_facade) return;
     for (int i = 0; i < m_rows.size(); ++i) {
         Row& r = m_rows[i];
-        const QString app = r.group == 1 ? snap.appForOutput(r.info.name) : QString();
+        const QString app = r.group == 1 ? m_facade->appForOutput(r.info.name) : QString();
         if (app == r.app) continue;
         r.app = app;
         emit m_model.dataChanged(m_model.index(i), m_model.index(i), {RecorderDeviceModel::AppRole});
@@ -484,7 +485,7 @@ void RecorderViewModel::onLevel(const QString& device, float rms, float peak)
 
 void RecorderViewModel::computeStatus(Row& r, qint64 now) const
 {
-    if (r.demoFixed) return;
+    if (r.pinned) return;
     const bool recordingNow = m_state == QLatin1String("recording");
     const bool signal = r.lastSignalAt > 0 && now - r.lastSignalAt <= kSignalHoldMs;
     QString st, text;
@@ -515,7 +516,7 @@ void RecorderViewModel::tick()
     const qint64 now = m_clock.elapsed();
     for (int i = 0; i < m_rows.size(); ++i) {
         Row& r = m_rows[i];
-        if (r.demoFixed) continue;
+        if (r.pinned) continue;
         const int oldLevel = r.level, oldPeak = r.peakSeg;
         const QString oldStatus = r.status, oldText = r.statusText;
 
@@ -550,10 +551,10 @@ void RecorderViewModel::refreshRow(int row, bool levelOnly)
 
 void RecorderViewModel::persistSelection()
 {
-    if (!m_controller) return;
+    if (!m_facade) return;
     QStringList names;
     for (const Row& r : m_rows) if (r.selected && !r.disconnected) names << r.info.name;
-    m_controller->setLastUsedDeviceNames(names);
+    m_facade->setLastUsedDeviceNames(names);
 }
 
 // ---- actions -------------------------------------------------------------------------
@@ -581,8 +582,8 @@ void RecorderViewModel::applyRequest(const QString& title, const QString& appNam
         m_title = automaticTitle(m_appName, QDateTime::currentDateTime());
         emit titleChanged();
     }
-    if (!deviceIndexes.isEmpty() && m_controller && m_controller->devices()) {
-        const QVector<AudioDeviceInfo> all = m_controller->devices()->captureDevices();
+    if (!deviceIndexes.isEmpty() && m_facade) {
+        const QVector<AudioDeviceInfo> all = m_facade->captureDevices();
         QStringList want;
         for (int idx : deviceIndexes)
             if (idx >= 0 && idx < all.size()) want << all.at(idx).name;
@@ -599,10 +600,7 @@ void RecorderViewModel::start()
 {
     if (m_state != QLatin1String("idle")) return;
     clearError();
-    if (!m_controller) {                       // demo: only the state changes
-        if (!m_demoState.isEmpty()) setDemoState(QStringLiteral("R03"));
-        return;
-    }
+    if (!m_facade) return;
     const QVector<AudioDeviceInfo> sel = selectedDevices();
     if (sel.isEmpty()) {
         m_errorText = tr("Nincs bekapcsolt forrás. Kapcsolj be legalább egy eszközt.");
@@ -613,18 +611,14 @@ void RecorderViewModel::start()
         m_title = automaticTitle(m_appName, QDateTime::currentDateTime());
         emit titleChanged();
     }
-    m_controller->startRecording(m_title, sel);
+    m_facade->start(m_title, sel);
     syncRecordingTags();                       // tags chosen before starting (start clears them)
 }
 
 void RecorderViewModel::stop()
 {
     if (m_state != QLatin1String("recording")) return;
-    if (!m_controller) {
-        if (!m_demoState.isEmpty()) setDemoState(QStringLiteral("R09"));
-        return;
-    }
-    m_controller->stopRecording();
+    if (m_facade) m_facade->stop();
 }
 
 void RecorderViewModel::toggleDevice(int row)
@@ -635,7 +629,7 @@ void RecorderViewModel::toggleDevice(int row)
     if (m_state == QLatin1String("idle")) {
         r.selected = !r.selected;
         r.silentSince = m_clock.elapsed();
-        if (!r.demoFixed) computeStatus(r, m_clock.elapsed());
+        if (!r.pinned) computeStatus(r, m_clock.elapsed());
         else { r.status.clear(); r.statusText.clear(); }
         refreshRow(row, false);
         emit countsChanged();
@@ -643,20 +637,15 @@ void RecorderViewModel::toggleDevice(int row)
     } else if (m_state == QLatin1String("recording")) {
         // During recording: ON -> its track starts from that moment (a new segment for a device
         // switched off earlier); OFF -> the track's file closes here, the recording goes on.
-        if (!m_controller) {
-            r.recorded = r.selected = !r.recorded;
-            refreshRow(row, false);
-            emit countsChanged();
-            return;
-        }
+        if (!m_facade) return;
         if (r.recorded) {
-            if (!m_controller->stopRecordingDevice(r.info.name)) {
+            if (!m_facade->stopDevice(r.info.name)) {
                 m_errorText = tr("Az utolsó rögzített sáv nem kapcsolható ki — a felvételt a Leállítás gombbal fejezheted be.");
                 emit errorChanged();
             }
             return;
         }
-        if (!m_controller->addRecordingDevice(r.info)) {
+        if (!m_facade->addDevice(r.info)) {
             m_errorText = tr("Nem sikerült sávot indítani ezen az eszközön: %1").arg(r.friendly);
             emit errorChanged();
         }
@@ -666,7 +655,7 @@ void RecorderViewModel::toggleDevice(int row)
 void RecorderViewModel::rescan()
 {
     clearError();
-    if (m_controller) m_controller->refreshDevices();
+    if (m_facade) m_facade->refreshDevices();
 }
 
 void RecorderViewModel::newRecording()
@@ -682,7 +671,7 @@ void RecorderViewModel::newRecording()
     m_titleAuto = true;
     m_title = automaticTitle(QString(), QDateTime::currentDateTime());
     emit titleChanged();
-    if (!m_controller && !m_demoState.isEmpty()) { setDemoState(QStringLiteral("R01")); return; }
+    if (m_facade) m_facade->beginNewSession();   // a fixture returns to its start state (reloads us)
     setState(m_rows.isEmpty() ? QStringLiteral("noDevice") : QStringLiteral("idle"));
 }
 
@@ -739,23 +728,12 @@ bool RecorderViewModel::tagsEditable() const
 bool RecorderViewModel::addTag(const QString& name)
 {
     const QString n = name.simplified();
-    if (n.isEmpty() || !tagsEditable()) return false;
-    TagRef ref;
-    if (m_tagCtl) {
-        library::TagService* svc = m_tagCtl->tags();
-        if (!svc) return false;
-        const Tag t = svc->create(n);          // for an existing key, the existing tag
-        if (!t.isValid()) return false;
-        ref = {t.id, t.name};
-    } else {
-        // Demo: the ids of the fictional pool (the input list sees the same).
-        TagDemoBackend demo(TagDemoBackend::Content::Sample, nullptr);
-        for (const TagItem& t : demo.tags())
-            if (t.name.compare(n, Qt::CaseInsensitive) == 0) ref = {t.id, t.name};
-        if (ref.id.isEmpty()) ref = {QStringLiteral("new-") + n, n};
-    }
-    for (const TagRef& t : std::as_const(m_tags))
-        if (t.id == ref.id) return false;
+    if (n.isEmpty() || !tagsEditable() || !m_facade) return false;
+    const tanara::recording::RecorderTag t = m_facade->createTag(n);   // for an existing key, the existing tag
+    if (!t.isValid()) return false;
+    const TagRef ref{t.id, t.name};
+    for (const TagRef& existing : std::as_const(m_tags))
+        if (existing.id == ref.id) return false;
     m_tags.append(ref);
     emit tagsChanged();
     syncRecordingTags();
@@ -785,18 +763,18 @@ void RecorderViewModel::syncRecordingTags()
 {
     // Handed over before the start too (startRecording clears them, then handed over again);
     // the finished recording's tags are no longer touched from here.
-    if (!m_tagCtl || m_state == QLatin1String("done")) return;
-    m_tagCtl->setRecordingTags(tagIds());
+    if (!m_facade || m_state == QLatin1String("done")) return;
+    m_facade->setRecordingTags(tagIds());
 }
 
 void RecorderViewModel::refreshTagNames()
 {
-    if (!m_tagCtl || !m_tagCtl->tags()) return;
+    if (!m_facade) return;
     bool changed = false;
     for (int i = 0; i < m_tags.size(); ++i) {
-        const Tag t = m_tagCtl->tags()->tag(m_tags.at(i).id);
-        if (!t.isValid()) { m_tags.removeAt(i--); changed = true; continue; }   // deleted meanwhile
-        if (t.name != m_tags.at(i).name) { m_tags[i].name = t.name; changed = true; }
+        const std::optional<tanara::recording::RecorderTag> t = m_facade->tag(m_tags.at(i).id);
+        if (!t) { m_tags.removeAt(i--); changed = true; continue; }   // deleted meanwhile
+        if (t->name != m_tags.at(i).name) { m_tags[i].name = t->name; changed = true; }
     }
     if (!changed) return;
     emit tagsChanged();
@@ -807,9 +785,9 @@ void RecorderViewModel::refreshTagNames()
 
 void RecorderViewModel::onRecordingState(RecordingState st)
 {
-    if (!m_controller) return;
+    if (!m_facade) return;
     if (st == RecordingState::Recording) {
-        const QStringList rec = m_controller->recordingDeviceNames();
+        const QStringList rec = m_facade->recordingDeviceNames();
         const qint64 now = m_clock.elapsed();
         for (Row& r : m_rows) {
             r.recorded = rec.contains(r.info.name);
@@ -818,7 +796,7 @@ void RecorderViewModel::onRecordingState(RecordingState st)
         clearError();
         syncRecordingTags();
         setState(QStringLiteral("recording"));
-        emit recordingStarted(m_controller->currentMeetingFolder());
+        emit recordingStarted(m_facade->currentFolder());
     } else if (st == RecordingState::Stopping || st == RecordingState::Encoding) {
         if (m_askVisible) { m_askVisible = false; emit askChanged(); }
         setState(QStringLiteral("stopping"));
@@ -831,153 +809,37 @@ void RecorderViewModel::onRecordingState(RecordingState st)
     }
 }
 
-void RecorderViewModel::onFinished(const Meeting& m)
+void RecorderViewModel::onFinished(const tanara::recording::RecordingOutcome& outcome)
 {
-    // We get here when the core has closed the tracks' encoders AND saved the meeting. Before
-    // "Saved" we check ourselves that the track files are really there.
-    int ok = 0;
-    QStringList missing;
-    for (const Track& t : m.tracks) {
-        const QFileInfo fi(QDir(m.folder).absoluteFilePath(t.file));
-        if (fi.exists() && fi.size() > 0) ++ok; else missing << t.file;
-    }
-    const qint64 s = m.durationMs / 1000;
+    // We get here when the core has closed the tracks' encoders AND saved the meeting; the track
+    // files were checked before "Saved" (outcome.tracksOk / tracksMissing).
+    const int ok = outcome.tracksOk;
+    const qint64 s = outcome.durationMs / 1000;
     const QString dur = s >= 3600
         ? QStringLiteral("%1:%2:%3").arg(s / 3600).arg((s / 60) % 60, 2, 10, QLatin1Char('0'))
               .arg(s % 60, 2, 10, QLatin1Char('0'))
         : QStringLiteral("%1:%2").arg(s / 60, 2, 10, QLatin1Char('0')).arg(s % 60, 2, 10, QLatin1Char('0'));
     m_doneSummary = dur + QStringLiteral(" · ") + tr("%n sáv", nullptr, ok);
-    m_doneMeetingId = m.id;
+    m_doneMeetingId = outcome.meetingId;
     m_doneProblem = ok == 0 ? tr("Egyetlen sáv hangfájlja sem jött létre.")
-                  : !missing.isEmpty() ? tr("%n sáv hangfájlja hiányzik.", nullptr, static_cast<int>(missing.size()))
+                  : outcome.tracksMissing > 0 ? tr("%n sáv hangfájlja hiányzik.", nullptr, outcome.tracksMissing)
                   : QString();
     emit doneChanged();
 
-    if (m_controller) {
-        if (m.title != m_title && !m_title.isEmpty())
-            m_controller->renameMeeting(m.id, m_title);     // rename during recording
+    if (m_facade) {
+        if (outcome.title != m_title && !m_title.isEmpty())
+            m_facade->renameMeeting(outcome.meetingId, m_title);     // rename during recording
         if (!m_context.isEmpty())
-            m_controller->setMeetingContextNote(m.id, m_context);
+            m_facade->setMeetingContextNote(outcome.meetingId, m_context);
         if (!m_appName.isEmpty())
-            m_controller->setMeetingDetectedCall(m.id, m_appName);   // "Detected call: ..."
+            m_facade->setMeetingDetectedCall(outcome.meetingId, m_appName);   // "Detected call: ..."
     }
     for (Row& r : m_rows) { r.recorded = false; r.rms = r.peak = 0.f; }
     const bool hadDisconnected = std::any_of(m_rows.cbegin(), m_rows.cend(),
                                              [](const Row& r) { return r.disconnected; });
     setState(QStringLiteral("done"));
     if (hadDisconnected) { m_selectionLoaded = true; rebuildDevices(); }
-    emit recordingFinished(m.id);
-}
-
-// ---- demo (fictional devices, the design states) ----------------------------------------
-
-void RecorderViewModel::setDemoState(const QString& state)
-{
-    if (m_controller) return;
-    m_controllerSet = true;              // demo: we do not wait for App.controller either
-    m_demoState = state;
-    loadDemo();
-    emit demoStateChanged();
-}
-
-void RecorderViewModel::loadDemo()
-{
-    const QString st = m_demoState;
-    const bool rec = st == QLatin1String("R03") || st == QLatin1String("R04")
-                  || st == QLatin1String("R05") || st == QLatin1String("R06")
-                  || st == QLatin1String("R07");
-    const bool quiet = st == QLatin1String("R06");
-    const QDateTime when(QDate(2026, 10, 3), QTime(14, 2));
-
-    // The fictional device names in the English demo language (English counterparts of the Hungarian system descriptions).
-    static const QHash<QString, QString> deviceEn{
-        {QStringLiteral("Trust USB mikrofon"), QStringLiteral("Trust USB microphone")},
-        {QStringLiteral("Sennheiser fejhallgató (analóg)"), QStringLiteral("Sennheiser headphones (analog)")},
-        {QStringLiteral("Monitor of Sennheiser headset - Kommunikáció"),
-         QStringLiteral("Monitor of Sennheiser headset - Communication")},
-        {QStringLiteral("Kanto YU4 hangfal"), QStringLiteral("Kanto YU4 speakers")},
-        {QStringLiteral("Monitor of Kanto YU4 - Optikai digitális sztereó"),
-         QStringLiteral("Monitor of Kanto YU4 - Digital Stereo (IEC958)")},
-        {QStringLiteral("Monitor of Sennheiser fejhallgató (analóg sztereó)"),
-         QStringLiteral("Monitor of Sennheiser headphones (analog stereo)")},
-        {QStringLiteral("Alaplapi vonalbemenet"), QStringLiteral("Motherboard line-in")},
-    };
-    auto dev = [](const char* hu) {
-        const QString s = QString::fromUtf8(hu);
-        return demotext::english() ? deviceEn.value(s, s) : s;
-    };
-    auto mk = [&](const char* friendly, const char* raw, int group, bool sel, bool def,
-                  const char* app, int level, int peak, const char* status, const QString& text) {
-        Row r;
-        r.info.name = dev(raw);
-        r.info.kind = group == 0 ? TrackKind::Mic : group == 1 ? TrackKind::Loopback : TrackKind::Other;
-        r.info.isDefault = def;
-        r.friendly = dev(friendly);
-        r.group = group;
-        r.selected = sel;
-        r.recorded = rec && sel;
-        r.app = QString::fromUtf8(app);
-        r.level = quiet ? 0 : level;
-        r.peakSeg = quiet ? -1 : peak;
-        r.status = QString::fromLatin1(status);
-        r.statusText = text;
-        r.demoFixed = true;
-        return r;
-    };
-    QVector<Row> rows;
-    if (st != QLatin1String("R10")) {
-        const QString kantoText = rec ? tr("%n perce nincs jel", nullptr, 3) : tr("nincs jel");
-        rows << mk("Trust USB mikrofon", "alsa_input.usb-Trust_USB_microphone-00.mono-fallback",
-                   0, true, true, "", 9, 10, "", QString())
-             << mk("Sennheiser fejhallgató (analóg)", "alsa_input.pci-0000_00_1f.3.analog-stereo",
-                   0, false, false, "", 0, -1, "", QString())
-             << mk("Sennheiser headset", "Monitor of Sennheiser headset - Kommunikáció",
-                   1, true, false, "Microsoft Teams", rec ? 5 : 7, rec ? 8 : 9, "", QString())
-             << mk("Kanto YU4 hangfal", "Monitor of Kanto YU4 - Optikai digitális sztereó",
-                   1, true, true, "", 0, -1, quiet ? "" : (rec ? "silentWarn" : "noSignal"),
-                   quiet ? QString() : kantoText)
-             << mk("Sennheiser fejhallgató (analóg)", "Monitor of Sennheiser fejhallgató (analóg sztereó)",
-                   1, false, false, "Firefox", 6, 7, "signalUnrecorded", tr("jel van · nincs rögzítve"))
-             << mk("Alaplapi vonalbemenet", "alsa_input.pci-0000_00_1f.3.analog-stereo.line-in",
-                   2, false, false, "", 0, -1, "", QString());
-    }
-    m_model.beginResetModel();
-    m_rows = rows;
-    m_model.endResetModel();
-
-    const bool namedTitle = st != QLatin1String("R01") && st != QLatin1String("R10");
-    m_title = namedTitle ? demoText("Ügyféltámogatás átadás-átvétel", "Customer support handover")
-                         : automaticTitle(st == QLatin1String("R10") ? QString() : QStringLiteral("Teams"), when);
-    m_titleAuto = !namedTitle;
-    emit titleChanged();
-
-    // Fictional tags: one before starting, two during recording.
-    m_tags.clear();
-    if (st != QLatin1String("R09") && st != QLatin1String("R10")) {
-        m_tags.append({QStringLiteral("t-nordvik"), QStringLiteral("Nordvik")});
-        if (rec) m_tags.append({QStringLiteral("t-q4"), demoText("Q4 tervezés", "Q4 planning")});
-    }
-    emit tagsChanged();
-
-    m_elapsedMs = quiet ? (41 * 60 + 3) * 1000 : rec ? (12 * 60 + 47) * 1000 : 0;
-    emit elapsedChanged();
-
-    m_askVisible = quiet;
-    m_askText = quiet ? tr("A hívás sávján %n perce csend van. Magamtól nem állítom le.", nullptr, 2)
-                      : QString();
-    emit askChanged();
-
-    const bool done = st == QLatin1String("R09");
-    m_doneSummary = done ? QStringLiteral("30:34 · ") + tr("%n sáv", nullptr, 3) : QString();
-    m_doneMeetingId = done ? QStringLiteral("demo") : QString();
-    m_doneProblem.clear();
-    emit doneChanged();
-
-    emit countsChanged();
-    m_state.clear();
-    setState(st == QLatin1String("R10") ? QStringLiteral("noDevice")
-             : done ? QStringLiteral("done")
-             : rec ? QStringLiteral("recording") : QStringLiteral("idle"));
+    emit recordingFinished(outcome.meetingId);
 }
 
 } // namespace tanara_qml

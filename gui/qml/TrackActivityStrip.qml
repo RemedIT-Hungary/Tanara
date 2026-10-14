@@ -27,12 +27,7 @@ Item {
         if (root.durationMs <= 0 || root.width <= 0) return 0
         return Math.round(Math.max(0, Math.min(1, x / root.width)) * root.durationMs)
     }
-    function timeText(ms) {
-        const s = Math.floor(ms / 1000)
-        const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60
-        const mm = h > 0 && m < 10 ? "0" + m : "" + m
-        return (h > 0 ? h + ":" : "") + mm + ":" + (sec < 10 ? "0" : "") + sec
-    }
+    function timeText(ms) { return ShellFormat.clock(ms) }
 
     objectName: "trackActivityStrip"
     implicitHeight: compact ? 18 : 40

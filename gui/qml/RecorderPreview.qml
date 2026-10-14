@@ -11,7 +11,8 @@ Rectangle {
     property string demoState: "R01"
     color: Theme.sunken
 
-    RecorderViewModel { id: model; demoState: root.demoState === "R03typing" ? "R03" : root.demoState }
+    // The view model on the fictional recorder in the design state (a facade of tanara_demo).
+    readonly property var model: App.createRecorderDemo(root.demoState === "R03typing" ? "R03" : root.demoState)
 
     Item {
         x: 20; y: 20

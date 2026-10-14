@@ -74,10 +74,8 @@ Rectangle {
     border.color: Theme.border
     clip: true
 
-    function fmt(ms) {
-        const s = Math.max(0, Math.round(ms / 1000))
-        return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0")
-    }
+    // Rounded to the nearest second (the card shows a position, not a floor), then the common clock.
+    function fmt(ms) { return ShellFormat.clock(Math.max(0, Math.round(ms / 1000)) * 1000) }
     // Deterministic "waveform" from the line's id (the strip shows playback progress).
     function barHeight(i) {
         let seed = 7

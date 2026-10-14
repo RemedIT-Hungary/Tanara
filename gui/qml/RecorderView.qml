@@ -6,7 +6,7 @@ import QtQuick.Templates as T
 // sheet and the done / no-device states. RecorderWindow provides the window (frameless, always
 // on top); this item also works standalone for screenshots and embedding. Width 380 px, height
 // follows the content.
-//   RecorderView { vm: RecorderViewModel {} ; onHideRequested: ... }
+//   RecorderView { vm: <a RecorderViewModel from C++: RecorderWindowHost / App.createRecorderDemo> ; onHideRequested: ... }
 Item {
     id: root
 

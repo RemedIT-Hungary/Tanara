@@ -152,7 +152,8 @@ static int runRecorderMode(QApplication& app, app::AppController& controller, co
     // mixdown when needed.
     controller.setAutoMixdownAfterRecording(false);
 
-    auto* host = new tanara_qml::RecorderWindowHost(&controller, nullptr, &app);
+    auto* host = new tanara_qml::RecorderWindowHost(
+        tanara_qml::AppContext::instance()->servicesFor(&controller).recorder, nullptr, &app);
 
     // Own tray icon: shown only when the window is hidden AND the watcher is not running
     // (otherwise the watcher's icon brings the recorder back), and for the duration of a notification.

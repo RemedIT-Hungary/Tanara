@@ -47,7 +47,7 @@ from collections import defaultdict
 from pathlib import Path
 
 SRC_EXT = {".h", ".hpp", ".cpp", ".cc", ".mm"}
-SCAN_DIRS = ["core", "gui", "cli", "watcher"]
+SCAN_DIRS = ["core", "demo", "gui", "cli", "watcher"]
 SKIP_DIR_RE = re.compile(r"^(build.*|\.git|node_modules|third_party|\.cache)$")
 INCLUDE_RE = re.compile(r'^[ \t]*#[ \t]*include[ \t]*([<"])([^>"]+)[>"]', re.M)
 PLATFORM_RE = re.compile(r"\b(Q_OS_\w+|_WIN32|__APPLE__|__linux__)\b")

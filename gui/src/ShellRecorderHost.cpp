@@ -4,8 +4,8 @@
 #include "RecorderViewModel.h"
 #include "RecorderWindowHost.h"
 
-#include "tanara/app/AppController.h"
 #include "tanara/foundation/log/Logging.h"
+#include "tanara/recording/IRecorderFacade.h"
 
 #include <QQuickWindow>
 #include <QTimer>
@@ -24,13 +24,13 @@ tanara_qml::RecorderRequest toRecorderRequest(const RecorderArgs& ra)
     return r;
 }
 
-ShellRecorderHost::ShellRecorderHost(tanara::app::AppController* controller, QObject* parent)
-    : QObject(parent), m_controller(controller)
+ShellRecorderHost::ShellRecorderHost(tanara::recording::IRecorderFacade* facade, QObject* parent)
+    : QObject(parent), m_facade(facade)
 {
     // Recording ended with a hidden recorder (e.g. stopped from the tray): core restarts level
     // monitoring at the end (the recorder asked for it); if nobody is watching, we release the
     // microphone. Queued, because the restart happens AFTER the signal.
-    connect(m_controller, &tanara::app::AppController::recordingStateChanged, this,
+    connect(m_facade, &tanara::recording::IRecorderFacade::stateChanged, this,
             [this](tanara::RecordingState st) {
                 if (st == tanara::RecordingState::Idle)
                     QTimer::singleShot(0, this, &ShellRecorderHost::releaseMonitorIfUnused);
@@ -69,7 +69,7 @@ void ShellRecorderHost::ensureHost()
     // engine. The host manages recording.lock (default); the watcher must see a recording that
     // runs in the analyzer too. "Send to background" hides the window: the main window's
     // "Recording in progress" button (or the watcher's tray icon) brings it back.
-    m_host = new tanara_qml::RecorderWindowHost(m_controller, nullptr, this);
+    m_host = new tanara_qml::RecorderWindowHost(m_facade, nullptr, this);
     m_host->setManageLock(true);
     m_host->setHideToTrayEnabled(true);
     using Host = tanara_qml::RecorderWindowHost;
@@ -104,8 +104,8 @@ void ShellRecorderHost::open()
     }
     // When the recorder is hidden we stop level monitoring (do not hold the microphone while we
     // are just looking back); on reopen, when idle, it restarts.
-    if (m_controller->recordingState() == tanara::RecordingState::Idle)
-        m_controller->startLevelMonitoring();
+    if (m_facade && m_facade->state() == tanara::RecordingState::Idle)
+        m_facade->startLevelMonitoring();
 }
 
 void ShellRecorderHost::handleRequest(const QStringList& args)
@@ -128,15 +128,15 @@ void ShellRecorderHost::releaseMonitorIfUnused()
 {
     if (m_shutDown || isVisible())
         return;
-    if (m_controller->recordingState() == tanara::RecordingState::Idle)
-        m_controller->stopLevelMonitoring();
+    if (m_facade && m_facade->state() == tanara::RecordingState::Idle)
+        m_facade->stopLevelMonitoring();
 }
 
 void ShellRecorderHost::refreshFromSettings()
 {
     // The recorder's device list reflects the new device policy (devicesChanged triggers a rebuild).
-    if (m_host)
-        m_controller->refreshDevices();
+    if (m_host && m_facade)
+        m_facade->refreshDevices();
 }
 
 bool ShellRecorderHost::isVisible() const
@@ -164,7 +164,8 @@ void ShellRecorderHost::shutdown()
         m_host = nullptr;
     }
     // Make sure the capture devices are released on exit.
-    m_controller->stopLevelMonitoring();
+    if (m_facade)
+        m_facade->stopLevelMonitoring();
 }
 
 } // namespace tanara_gui

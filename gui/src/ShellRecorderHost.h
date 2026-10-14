@@ -20,9 +20,10 @@
 // Automatic mixdown stays ON in the analyzer (AppController default); only the standalone
 // recorder process turns it off.
 #include <QObject>
+#include <QPointer>
 #include <QStringList>
 
-namespace tanara { namespace app { class AppController; } }
+namespace tanara { namespace recording { class IRecorderFacade; } }
 namespace tanara_qml {
 class RecorderWindowHost;
 struct RecorderRequest;
@@ -39,7 +40,8 @@ tanara_qml::RecorderRequest toRecorderRequest(const RecorderArgs& args);
 class ShellRecorderHost : public QObject {
     Q_OBJECT
 public:
-    explicit ShellRecorderHost(tanara::app::AppController* controller, QObject* parent = nullptr);
+    // The facade is the recorder's view of the recording side (AppContext::servicesFor(controller).recorder).
+    explicit ShellRecorderHost(tanara::recording::IRecorderFacade* facade, QObject* parent = nullptr);
     ~ShellRecorderHost() override;
 
     void open();
@@ -63,7 +65,7 @@ private:
     void handleRequest(const QStringList& args);
     void releaseMonitorIfUnused();
 
-    tanara::app::AppController* m_controller = nullptr;
+    QPointer<tanara::recording::IRecorderFacade> m_facade;
     tanara_qml::RecorderWindowHost* m_host = nullptr;
     RecorderSingleton* m_singleton = nullptr;
     bool m_shutDown = false;

@@ -1,5 +1,6 @@
 #include "QmlShellBridge.h"
 
+#include "AppContext.h"
 #include "OnboardingViewModel.h"
 #include "OnboardingWindowHost.h"
 #include "PeopleWindowHost.h"
@@ -54,7 +55,8 @@ QmlShellBridge::QmlShellBridge(tanara::app::AppController* controller, QObject* 
     qApp->installEventFilter(this);
 
     // The recorder binding (the new QML recorder + singleton) lives in a separate class.
-    m_recorder = new ShellRecorderHost(m_controller, this);
+    m_recorder = new ShellRecorderHost(
+        tanara_qml::AppContext::instance()->servicesFor(m_controller).recorder, this);
     // In background mode (hidden main window) the recorder is the last visible window; if it
     // disappears too (sent to the background / closed), the main window comes back so there is
     // something to work with.

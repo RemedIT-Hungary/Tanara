@@ -3,17 +3,24 @@
 // Tanara QML: the `App` singleton: the shared entry point of the QML UI and the C++ world.
 //
 //  - from QML:  App.dark / App.themeMode / App.demo / App.controller / App.bridge
-//  - from C++ (view models):  tanara_qml::AppContext::instance()->controller()
+//  - from C++ (view model factories):  tanara_qml::AppContext::instance()->services()
 //
 // controller() may be nullptr: in screenshot (--qml-shot), gallery (--gallery) and demo
 // (--demo) modes an AppController is INTENTIONALLY not created (so the user's data is not
-// touched), and in the tests/ui tests it is not mandatory either. View models must cope with
-// this; if App.demo is true, they should show built-in (fictional) sample data.
+// touched), and in the tests/ui tests it is not mandatory either. services() then (and with
+// App.demo) hands out the fictional facades of tanara_demo, so view models never branch on it.
+// View models ported to facades (the recorder) take them in their constructor; the rest still
+// read controller() until their P15 sub-slice.
 //
+#include "UiServices.h"
+
 #include <QObject>
 #include <QPointer>
 #include <QString>
 #include <QtQml/qqmlregistration.h>
+
+#include <map>
+#include <memory>
 
 class QQmlEngine;
 class QJSEngine;
@@ -60,6 +67,19 @@ public:
     QObject* controllerObject() const;
     void setController(tanara::app::AppController* controller);
 
+    // The facades the view models are built on: the real ones of the process's controller; the
+    // fictional ones if there is no controller or App.demo is on.
+    const UiServices& services();
+    // The fictional set (tanara_demo); the recorder is a shared one without a design state.
+    const UiServices& demoServices();
+    // The real set of a given controller (cached; lives as long as the controller does).
+    // nullptr -> the fictional set.
+    const UiServices& servicesFor(tanara::app::AppController* controller);
+
+    // For RecorderPreview.qml (screenshots / gallery): a recorder view model on the fictional
+    // recorder in the given design state ("R01" ... "R10"). The caller owns the result.
+    Q_INVOKABLE QObject* createRecorderDemo(const QString& designState);
+
     QObject* bridge() const { return m_bridge; }
     void setBridge(QObject* bridge);
 
@@ -82,6 +102,8 @@ private:
     bool m_demo = false;
     QPointer<QObject> m_controller;
     QPointer<QObject> m_bridge;
+    std::map<QObject*, UiServices> m_realServices;   // by controller (node-stable: callers keep references)
+    std::unique_ptr<UiServices> m_demoServices;
 };
 
 } // namespace tanara_qml

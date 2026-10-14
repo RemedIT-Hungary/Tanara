@@ -42,6 +42,7 @@ qt_add_qml_module(tanara_qml
 target_include_directories(tanara_qml PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(tanara_qml PUBLIC
     tanara_core
+    tanara_demo       # the fictional facades + sample data of --demo / --gallery / --qml-shot
     Qt6::Qml
     Qt6::Quick
     Qt6::QuickControls2

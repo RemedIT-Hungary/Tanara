@@ -5,12 +5,13 @@
 // One object holds the recorder's whole state: title (automatic name + rename), device list
 // (three groups, toggles, friendly + raw name, live level with peak hold, signal hints),
 // recording state and elapsed time, the "End of the meeting?" question, the done state.
-// It reaches the core through tanara::AppController.
-//
-// Without a controller (--qml-shot / --demo / --gallery, tests) it works with FICTIONAL
-// devices and levels; `demoState` ("R01" ... "R10") sets the design states.
+// It reaches the recording side through ONE injected facade (tanara::recording::IRecorderFacade):
+// the real one (RecorderServicesFacade) or the fictional one of tanara_demo (--qml-shot / --demo /
+// --gallery, tests: made-up devices and levels, the design states "R01" ... "R10"). The view
+// model does not know which one it has.
 //
 #include "tanara/domain/Types.h"
+#include "tanara/recording/IRecorderFacade.h"
 
 #include <QAbstractListModel>
 #include <QElapsedTimer>
@@ -23,11 +24,6 @@
 #include <QVariantList>
 #include <QVector>
 #include <QtQml/qqmlregistration.h>
-
-namespace tanara {
-namespace app { class AppController; }
-namespace watcher { class PlaybackRouteMonitor; }
-}
 
 namespace tanara_qml {
 
@@ -68,6 +64,7 @@ private:
 class RecorderViewModel : public QObject {
     Q_OBJECT
     QML_ELEMENT
+    QML_UNCREATABLE("Created in C++ with a facade (RecorderWindowHost, App.createRecorderDemo).")
 
     // "idle" | "recording" | "stopping" | "done" | "noDevice"
     Q_PROPERTY(QString state READ state NOTIFY stateChanged)
@@ -93,17 +90,23 @@ class RecorderViewModel : public QObject {
     Q_PROPERTY(int silenceWarnMinutes READ silenceWarnMinutes CONSTANT)
     // The recording's tags: [{ id, name }]. Editable before starting and during recording; the
     // meeting is only created at the end of the recording, so the core attaches them at the end
-    // (AppController::setRecordingTags).
+    // (IRecorderFacade::setRecordingTags).
     Q_PROPERTY(QVariantList tags READ tags NOTIFY tagsChanged)
     Q_PROPERTY(QStringList tagIds READ tagIds NOTIFY tagsChanged)
     Q_PROPERTY(bool tagsEditable READ tagsEditable NOTIFY stateChanged)
-    // Design state ("R01" ... "R10"); only effective without a controller. "" = no demo.
-    Q_PROPERTY(QString demoState READ demoState WRITE setDemoState NOTIFY demoStateChanged)
-    // The core; defaults to App.controller. Can be overridden in tests / embedding.
-    Q_PROPERTY(QObject* controller READ controllerObject WRITE setControllerObject NOTIFY controllerChanged)
+    // What the tag input (TagInputModel.controller) wires to: transitional, from the facade.
+    Q_PROPERTY(QObject* controller READ controllerObject CONSTANT)
 
 public:
-    explicit RecorderViewModel(QObject* parent = nullptr);
+    // How much of the facade the view model wires.
+    enum class Wiring {
+        Full,       // devices, levels, recording, tags
+        TagsOnly,   // only the tags (no device enumeration or level monitoring), for tests where
+                    // touching audio devices is forbidden
+    };
+    // The facade is not taken over (the caller / the QML engine keeps it alive).
+    explicit RecorderViewModel(tanara::recording::IRecorderFacade* facade, QObject* parent = nullptr);
+    RecorderViewModel(tanara::recording::IRecorderFacade* facade, Wiring wiring, QObject* parent = nullptr);
     ~RecorderViewModel() override;
 
     QString state() const { return m_state; }
@@ -124,13 +127,7 @@ public:
     QString doneProblem() const { return m_doneProblem; }
     QString errorText() const { return m_errorText; }
     int silenceWarnMinutes() const { return 3; }
-    QString demoState() const { return m_demoState; }
-    void setDemoState(const QString& state);
-
     QObject* controllerObject() const;
-    void setControllerObject(QObject* controller);
-    tanara::app::AppController* controller() const;
-    void setController(tanara::app::AppController* controller);
 
     // The automatic name: "<App> call · Oct 3, 2:02 PM", without an app "Meeting · ...".
     static QString automaticTitle(const QString& appName, const QDateTime& when);
@@ -151,9 +148,6 @@ public:
     Q_INVOKABLE void removeTag(const QString& id);
     // Ctrl+T: opens the tag field (the view opens it on the tagInputRequested signal).
     Q_INVOKABLE bool openTagInput();
-    // Wires only the tags to the core (WITHOUT device enumeration or level monitoring), for
-    // tests where touching audio devices is forbidden. The full wiring is setController.
-    void attachTagsOnly(tanara::app::AppController* controller);
 
 public slots:
     void start();              // Ctrl+R
@@ -174,8 +168,6 @@ signals:
     void askChanged();
     void doneChanged();
     void errorChanged();
-    void demoStateChanged();
-    void controllerChanged();
     void tagsChanged();
     void tagInputRequested();
     // For the recorder window / the enclosing process:
@@ -202,11 +194,15 @@ private:
         qint64 lastSignalAt = 0;     // when there was last a signal (ms, monotonic); 0 = never
         qint64 silentSince = 0;      // start of the recorded track's silence (ms, monotonic)
         QString status, statusText;
-        bool demoFixed = false;      // demo: status / level are not recomputed
+        bool pinned = false;         // the facade pins level / status (fixtures): not recomputed
     };
 
-    void attach();                       // signals to the controller
+    void attach();                       // signals from the facade
+    void attachTags();
+    void reloadFromFacade();             // the fixture loaded another session: everything again
+    void applySession(const tanara::recording::RecorderSession& s);
     void rebuildDevices();               // device re-enumeration -> rows (selection preserved)
+    void applyPin(Row& r) const;         // a facade-pinned level / status
     void updateRoutes();
     void onLevel(const QString& device, float rms, float peak);
     void tick();                         // 30 Hz: peak hold, statuses, model refresh
@@ -214,10 +210,9 @@ private:
     void computeStatus(Row& r, qint64 now) const;
     void setState(const QString& state);
     void onRecordingState(tanara::RecordingState st);
-    void onFinished(const tanara::Meeting& m);
+    void onFinished(const tanara::recording::RecordingOutcome& outcome);
     void persistSelection();
     void raiseAsk(const QString& text);
-    void loadDemo();
     QString iconFor(const Row& r) const;
     void syncRecordingTags();            // handing the tags to the core (live during recording)
     void refreshTagNames();              // renamed / deleted tag in the pool
@@ -226,13 +221,10 @@ private:
 
     RecorderDeviceModel m_model{this};
     QVector<Row> m_rows;
-    QPointer<tanara::app::AppController> m_controller;
-    QPointer<tanara::app::AppController> m_tagCtl;    // the core of the tags (= m_controller, or attachTagsOnly)
-    QMetaObject::Connection m_tagConn;
-    bool m_controllerSet = false;
-    tanara::watcher::PlaybackRouteMonitor* m_routes = nullptr;
+    QPointer<tanara::recording::IRecorderFacade> m_facade;
+    bool m_attached = false;             // Wiring::Full
+    bool m_reloading = false;
     QTimer m_tick;
-    QTimer m_fallbackScan;               // where there is no route watcher: timed re-enumeration
     QElapsedTimer m_clock;
 
     QString m_state = QStringLiteral("idle");
@@ -245,7 +237,6 @@ private:
     QString m_askText;
     QString m_doneSummary, m_doneMeetingId, m_doneProblem;
     QString m_errorText;
-    QString m_demoState;
     struct TagRef { QString id, name; };
     QVector<TagRef> m_tags;
     QStringList m_knownDevices;          // what we have already seen (to recognize a "new device")

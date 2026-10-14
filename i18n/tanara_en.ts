@@ -8815,6 +8815,38 @@
     </message>
 </context>
 <context>
+    <name>tanara_demo::RecorderDemoFacade</name>
+    <message numerus="yes">
+        <source>%n perce nincs jel</source>
+        <translation>
+            <numerusform>no signal for %n minute</numerusform>
+            <numerusform>no signal for %n minutes</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>nincs jel</source>
+        <translation>no signal</translation>
+    </message>
+    <message>
+        <source>jel van · nincs rögzítve</source>
+        <translation>signal · not recorded</translation>
+    </message>
+    <message numerus="yes">
+        <source>A hívás sávján %n perce csend van. Magamtól nem állítom le.</source>
+        <translation>
+            <numerusform>The call track has been silent for %n minute. I won&apos;t stop on my own.</numerusform>
+            <numerusform>The call track has been silent for %n minutes. I won&apos;t stop on my own.</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>%n sáv</source>
+        <translation>
+            <numerusform>%n track</numerusform>
+            <numerusform>%n tracks</numerusform>
+        </translation>
+    </message>
+</context>
+<context>
     <name>tanara_gui::QmlShellBridge</name>
     <message>
         <source>Hangfájl kiválasztása</source>
@@ -10180,6 +10212,13 @@
     </message>
 </context>
 <context>
+    <name>tanara_qml::RecorderServicesFacade</name>
+    <message>
+        <source>Ismeretlen meeting: %1</source>
+        <translation>Unknown meeting: %1</translation>
+    </message>
+</context>
+<context>
     <name>tanara_qml::RecorderViewModel</name>
     <message>
         <source>Az utolsó rögzített sáv nem kapcsolható ki — a felvételt a Leállítás gombbal fejezheted be.</source>
@@ -10263,13 +10302,6 @@
         <translation>
             <numerusform>The audio file of %n track is missing.</numerusform>
             <numerusform>The audio files of %n tracks are missing.</numerusform>
-        </translation>
-    </message>
-    <message numerus="yes">
-        <source>A hívás sávján %n perce csend van. Magamtól nem állítom le.</source>
-        <translation>
-            <numerusform>The call track has been silent for %n minute. I won&apos;t stop on my own.</numerusform>
-            <numerusform>The call track has been silent for %n minutes. I won&apos;t stop on my own.</numerusform>
         </translation>
     </message>
 </context>

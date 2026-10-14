@@ -6,13 +6,16 @@
 //
 // The toggles set the "default sources" draft (selection shared with the recorder,
 // state.json), the names the draft's `deviceNames` table; both take effect when the
-// SettingsViewModel saves. The level comes from the core's level monitoring
-// (AppController::deviceLevelPeak), the scale is the recorder's (RecorderViewModel::levelSegments).
+// SettingsViewModel saves. The devices come from a tanara::recording::IRecorderFacade (the real
+// one of the view model's controller, or the fictional list of tanara_demo), the level from the
+// core's level monitoring, the scale is the recorder's (RecorderViewModel::levelSegments).
 //
 #include "tanara/domain/Types.h"
+#include "tanara/recording/IRecorderFacade.h"
 
 #include <QAbstractListModel>
 #include <QElapsedTimer>
+#include <QPointer>
 #include <QTimer>
 #include <QVector>
 #include <QtQml/qqmlregistration.h>
@@ -45,8 +48,11 @@ public:
     QVariant data(const QModelIndex& index, int role) const override;
     QHash<int, QByteArray> roleNames() const override;
 
-    // Re-reads the devices from the core (or the demo list), with the draft's names.
+    // Re-reads the devices from the facade, with the draft's names.
     void rebuild();
+    // Explicit device source (tests / the owner once it is built on facades); not taken over.
+    // Without one the model resolves it from the settings view model's controller.
+    void setSource(tanara::recording::IRecorderFacade* source);
     // The names / selection changed from the draft (discard, external save).
     void refreshFromDraft();
     void toggle(int row);
@@ -66,10 +72,12 @@ private:
         bool demoFixed = false;
     };
     void tick();
-    void loadDemo();
+    tanara::recording::IRecorderFacade* source();
     int rowOf(const QString& name) const;
 
     SettingsViewModel* m_vm;
+    QPointer<tanara::recording::IRecorderFacade> m_source;
+    QPointer<tanara::recording::IRecorderFacade> m_demoSource;
     QVector<Row> m_rows;
     QTimer m_tick;
     QElapsedTimer m_clock;

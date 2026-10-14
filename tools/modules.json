@@ -148,6 +148,25 @@
    "namespace": "tanara::app",
    "enforceNamespace": true
   },
+  "demo": {
+   "paths": [
+    "demo/**"
+   ],
+   "deps": [
+    "foundation",
+    "domain",
+    "media",
+    "providers",
+    "watcher",
+    "library",
+    "recording",
+    "processing",
+    "editing",
+    "cloud"
+   ],
+   "namespace": null,
+   "enforceNamespace": false
+  },
   "ui-common": {
    "paths": [
     "gui/common/**"
@@ -175,7 +194,8 @@
     "editing",
     "cloud",
     "app",
-    "ui-common"
+    "ui-common",
+    "demo"
    ],
    "namespace": null,
    "enforceNamespace": false
