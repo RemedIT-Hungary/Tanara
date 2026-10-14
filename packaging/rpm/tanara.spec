@@ -4,7 +4,7 @@
 %global app_id eu.remedit.Tanara
 
 Name:           tanara
-Version:        0.5.11
+Version:        0.5.253
 Release:        1%{?dist}
 Summary:        Record, transcribe and summarize meetings
 
@@ -101,5 +101,8 @@ rm -rf "$TANARA_HOME"
 %{_datadir}/icons/hicolor/scalable/apps/%{app_id}.svg
 
 %changelog
+* Wed Oct 14 2026 RemedIT Hungary Kft. <info@remedit.eu> - 0.5.253-1
+- Phase 2 cleanup: module layout, service layer, provider ports, PersonId, packaging
+
 * Wed Oct 14 2026 RemedIT Hungary Kft. <info@remedit.eu> - 0.5.11-1
 - First COPR package.
