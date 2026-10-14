@@ -47,6 +47,9 @@ class OverviewViewModel : public QObject {
     // Rows: { id, name, monogram, colorIndex, sub, self, suggested, dimmed, removable, unheard,
     //          talkShare (0..1, -1 = none), speakerKey (the speaker's key after the transcript, else ""),
     //          anonymous (anonymous, can be named), approved (the record is approved / confirmed: "Was there"),
+    //          doubtful (named and heard, but the approval leaves it out unless confirmed: "Was there"),
+    //          counted (the approval takes it: "Approve · N"), voiceless (no voice of theirs: added by
+    //          hand / not heard), lineCount (after the transcript: the speaker's lines, else 0),
     //          sampleTrackId / sampleStartMs / sampleEndMs (the sample to listen to, -1 = none),
     //          sources: [{ icon, text, negative, accent, detail }] }
     // The badge's detail is the tooltip (the evidence's explanation). After the transcript, after
@@ -59,6 +62,14 @@ class OverviewViewModel : public QObject {
     Q_PROPERTY(QString peopleHint READ peopleHint NOTIFY changed)
     Q_PROPERTY(bool approved READ approved NOTIFY changed)
     Q_PROPERTY(bool approvalPending READ approvalPending NOTIFY changed)
+    // "" | "pending" | "approved" | "skipped" | "solo" (OverviewSnapshot::decision).
+    Q_PROPERTY(QString decision READ decision NOTIFY changed)
+    // "Approve · N": the named rows the approval takes; after an approval the approved ones.
+    Q_PROPERTY(int approveCount READ approveCount NOTIFY changed)
+    // After the transcript: anonymous speakers without a line any more (not among the rows).
+    Q_PROPERTY(int hiddenSpeakers READ hiddenSpeakers NOTIFY changed)
+    // The user's own name ("This is me — <name>"); empty: not set.
+    Q_PROPERTY(QString selfName READ selfName NOTIFY changed)
     Q_PROPERTY(bool analysisRunning READ analysisRunning NOTIFY changed)
     Q_PROPERTY(int candidateCount READ candidateCount NOTIFY changed)
     // Whether the voiceprint step's "Re-analyze" button may show: there is audio and a model, it
@@ -98,6 +109,10 @@ public:
     QString peopleHint() const { return m_peopleHint; }
     bool approved() const { return m_approved; }
     bool approvalPending() const { return m_approvalPending; }
+    QString decision() const { return m_decision; }
+    int approveCount() const { return m_approveCount; }
+    int hiddenSpeakers() const { return m_hiddenSpeakers; }
+    QString selfName() const { return m_selfName; }
     bool analysisRunning() const { return m_analysisRunning; }
     int candidateCount() const { return m_candidateCount; }
     QVariantMap sideWho() const { return m_sideWho; }
@@ -119,6 +134,9 @@ public:
     // In the demo, naming an anonymous row in place (true); on real data false: the editor's
     // reassignSpeaker does the work there (one undo step, change bar).
     Q_INVOKABLE bool nameSpeakerInDemo(const QString& speakerKey, const QString& name);
+    // In the demo, the card's decision ("approved" | "skipped") in place (true); on real data false:
+    // ParticipantsViewModel approve / skip does the work (with the learning question).
+    Q_INVOKABLE bool decideInDemo(const QString& decision);
     // ---- the "Who was there?" rows' operations (immediate, one undo step each) ----
     // Names the row (a known person by id or name, else a new one), before the transcript too; merges with
     // the person's manual voiceless row.
@@ -167,6 +185,10 @@ private:
     QString m_peopleHint;
     bool m_approved = false;
     bool m_approvalPending = false;
+    QString m_decision;
+    int m_approveCount = 0;
+    int m_hiddenSpeakers = 0;
+    QString m_selfName;
     bool m_analysisRunning = false;
     int m_candidateCount = 0;
     QVariantMap m_sideWho;

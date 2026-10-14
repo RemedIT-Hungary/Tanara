@@ -44,7 +44,13 @@ ApplicationWindow {
     // In demo: states without a transcript (the header's Transcript tab is unavailable / reachable
     // only while running).
     readonly property bool demoNoTranscript: ["overviewProcessing", "overviewEmpty", "overviewRecorded",
-                                              "overviewRecordedError", "overviewTranscribing"].indexOf(demoState) >= 0
+                                              "overviewRecordedError", "overviewTranscribing",
+                                              "overviewNoVoiceModel"].indexOf(demoState) >= 0 || demoCandidates
+    // The "Who was there?" card's demo states (OverviewDemoFacade): like overviewProcessing, the
+    // transcription runs meanwhile.
+    readonly property bool demoCandidates: ["overviewNaming", "overviewSameVoice", "overviewWhichVoice",
+                                            "overviewVoiceless", "overviewThreeTracks", "overviewApproved",
+                                            "overviewSkipped", "overviewSolo"].indexOf(demoState) >= 0
     // "summarySources" (2nd tab, source chips) | "memoSections" (3rd tab) - for the screenshot of the wired
     // tool row and the dock's Source / Sections row.
     readonly property bool demoSummary: demoState === "summarySources" || demoState === "memoSections"
@@ -235,7 +241,7 @@ ApplicationWindow {
     Binding {
         when: App.demo && window.demoState !== ""
         target: header; property: "transcribePercent"
-        value: window.demoState === "overviewProcessing" ? 62 : window.demoState === "overviewEmpty" ? 18
+        value: window.demoState === "overviewProcessing" || window.demoCandidates ? 62 : window.demoState === "overviewEmpty" ? 18
              : window.demoState === "overviewTranscribing" ? 0 : -1
     }
     // From the Overview badge: the editor's "Why them?" panel (the tab is Transcript by then).

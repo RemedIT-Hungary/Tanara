@@ -40,6 +40,7 @@ void ParticipantTrackBinder::useServices(const UiServices& services)
     m_connections.clear();
     if (m_facade && m_facade->parent() == this) m_facade->deleteLater();   // a fictional facade of ours
     m_facade = services.participants(this);
+    m_facade->applyDemoState(m_demoState);
     auto mine = [this](const QString& id) { return !m_meetingId.isEmpty() && id == m_meetingId; };
     m_connections << connect(m_facade, &editing::IParticipantsFacade::tracksChanged, this,
                              [this, mine](const QString& id) { if (mine(id)) reload(); });
@@ -55,6 +56,16 @@ void ParticipantTrackBinder::setMeetingId(const QString& id)
         return;
     m_meetingId = id;
     emit meetingIdChanged();
+    reload();
+}
+
+void ParticipantTrackBinder::setDemoState(const QString& state)
+{
+    if (state == m_demoState)
+        return;
+    m_demoState = state;
+    m_facade->applyDemoState(state);
+    emit demoStateChanged();
     reload();
 }
 

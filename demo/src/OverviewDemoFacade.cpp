@@ -3,6 +3,9 @@
 #include "demo/DemoText.h"
 
 #include <QPair>
+#include <QSignalBlocker>
+
+#include <algorithm>
 
 using tanara::library::OverviewSnapshot;
 
@@ -47,7 +50,29 @@ QVariantMap personRow(const QString& id, const QString& name, int colorIndex, co
             {QStringLiteral("speakerKey"), QString()}, {QStringLiteral("anonymous"), false},
             {QStringLiteral("unheard"), false},
             {QStringLiteral("sampleTrackId"), QString()}, {QStringLiteral("sampleStartMs"), qint64(-1)},
-            {QStringLiteral("sampleEndMs"), qint64(-1)}, {QStringLiteral("approved"), false}};
+            {QStringLiteral("sampleEndMs"), qint64(-1)}, {QStringLiteral("approved"), false},
+            {QStringLiteral("doubtful"), false}, {QStringLiteral("counted"), !suggested && !dimmed},
+            {QStringLiteral("voiceless"), false}, {QStringLiteral("lineCount"), 0}};
+}
+
+// The card's decision keys of a row (see OverviewViewModel): taken by "Approve · N", doubtful (left out
+// unless "Was there"), no voice of theirs.
+QVariantMap withCard(QVariantMap row, bool counted, bool doubtful = false, bool voiceless = false)
+{
+    row.insert(QStringLiteral("counted"), counted);
+    row.insert(QStringLiteral("doubtful"), doubtful);
+    row.insert(QStringLiteral("voiceless"), voiceless);
+    return row;
+}
+
+// An unknown voice of the analysis ("Unknown voice N"): nameable, not counted.
+QVariantMap voiceRow(const QString& id, int n, int colorIndex, const QVariantList& sources, double talkShare)
+{
+    QVariantMap row = personRow(id, OverviewDemoFacade::tr("Ismeretlen hang %1").arg(n), colorIndex,
+                                OverviewDemoFacade::tr("névtelen · elnevezhető"), sources, talkShare);
+    row.insert(QStringLiteral("monogram"), QStringLiteral("?"));
+    row.insert(QStringLiteral("anonymous"), true);
+    return withCard(row, false);
 }
 
 // A fictional 6 s sample on the demo's mic / call track (the silent demo engine "plays" it).
@@ -67,7 +92,7 @@ QVariantMap unheardRow(const QString& id, const QString& name, int colorIndex)
                                   OverviewDemoFacade::tr("Az átiratban nem találtuk a hangját: nincs beszélő a nevén"))};
     QVariantMap row = personRow(id, name, colorIndex, QString(), src, -1.0, false, false, true, true);
     row.insert(QStringLiteral("unheard"), true);
-    return row;
+    return withCard(row, false, false, true);
 }
 
 // The row is one of the transcript's speakers.
@@ -78,11 +103,35 @@ QVariantMap withSpeaker(QVariantMap row, const QString& speakerKey, bool anonymo
     return row;
 }
 
+// The scenarios that show the "Who was there?" card with candidates, before the transcript (the
+// decision pending, the card's panels, the decided states).
+bool candidateScenario(const QString& st)
+{
+    static const QStringList all = {
+        QStringLiteral("overviewProcessing"), QStringLiteral("overviewNaming"), QStringLiteral("overviewSameVoice"),
+        QStringLiteral("overviewWhichVoice"), QStringLiteral("overviewVoiceless"), QStringLiteral("overviewThreeTracks"),
+        QStringLiteral("overviewApproved"), QStringLiteral("overviewSkipped"), QStringLiteral("overviewSolo")};
+    return all.contains(st);
+}
+
 } // namespace
+
+void OverviewDemoFacade::touch(const QString& meetingId)
+{
+    m_snapshot.approveCount = int(std::count_if(m_snapshot.participants.cbegin(), m_snapshot.participants.cend(),
+                                                [](const QVariant& v) {
+        const QVariantMap row = v.toMap();
+        return row.value(QStringLiteral("counted")).toBool() && !row.value(QStringLiteral("anonymous")).toBool();
+    }));
+    emit changed(meetingId);
+}
 
 OverviewDemoFacade::OverviewDemoFacade(const QString& scenario, QObject* parent)
     : tanara::library::IOverviewFacade(parent), m_scenario(scenario), m_snapshot(build())
 {
+    const QSignalBlocker quiet(this);
+    applyScenarioEdits();
+    touch(QString());
 }
 
 QString OverviewDemoFacade::monogramOf(const QString& name)
@@ -109,11 +158,18 @@ QString OverviewDemoFacade::addParticipant(const QString& meetingId, const QStri
         return {};
     QVariantList rows = m_snapshot.participants;
     const QString id = QStringLiteral("demo-") + QString::number(rows.size() + 1);
-    rows << personRow(id, n, int(rows.size()), QString(),
-                      {source(QStringLiteral("user"), tr("kézi"))}, -1.0, false, false, false, true);
+    rows << withCard(personRow(id, n, int(rows.size()), QString(),
+                               {source(QStringLiteral("user"), tr("kézi"), false, false, tr("Kézzel adtad hozzá"))},
+                               -1.0, false, false, false, true),
+                     true, false, true);
+    // A suggestion with this name is now a participant.
+    for (int i = int(rows.size()) - 2; i >= 0; --i)
+        if (rows.at(i).toMap().value(QStringLiteral("suggested")).toBool()
+            && rows.at(i).toMap().value(QStringLiteral("name")).toString() == n)
+            rows.removeAt(i);
     m_snapshot.participants = rows;
     m_snapshot.peopleState = QStringLiteral("list");
-    emit changed(meetingId);
+    touch(meetingId);
     return id;
 }
 
@@ -124,7 +180,7 @@ void OverviewDemoFacade::removeParticipant(const QString& meetingId, const QStri
     for (const QVariant& v : std::as_const(m_snapshot.participants))
         if (v.toMap().value(QStringLiteral("id")).toString() != id) rows << v;
     m_snapshot.participants = rows;
-    emit changed(meetingId);
+    touch(meetingId);
 }
 
 bool OverviewDemoFacade::nameSpeakerInPlace(const QString& meetingId, const QString& speakerKey,
@@ -145,7 +201,7 @@ bool OverviewDemoFacade::nameSpeakerInPlace(const QString& meetingId, const QStr
         rows << row;
     }
     m_snapshot.participants = rows;
-    emit changed(meetingId);
+    touch(meetingId);
     return true;
 }
 
@@ -172,17 +228,24 @@ bool OverviewDemoFacade::nameParticipant(const QString& meetingId, const QString
     row.insert(QStringLiteral("monogram"), monogramOf(n));
     row.insert(QStringLiteral("sub"), QString());
     row.insert(QStringLiteral("anonymous"), false);
+    row.insert(QStringLiteral("counted"), true);
+    row.insert(QStringLiteral("doubtful"), false);
+    // The "unknown voice" badge gives way to the manual naming.
+    QVariantList sources;
+    for (const QVariant& src : row.value(QStringLiteral("sources")).toList())
+        if (src.toMap().value(QStringLiteral("text")).toString() != tr("ismeretlen hang")) sources << src;
+    sources.prepend(source(QStringLiteral("user"), tr("kézi"), false, false, tr("Kézzel nevezted el")));
+    row.insert(QStringLiteral("sources"), sources);
     rows[at] = row;
-    // The person's manual row without a voice (no sample) dissolves into the named one.
+    // The person's manual row without a voice (no sample) and their suggestion dissolve into the named one.
     for (int i = int(rows.size()) - 1; i >= 0; --i) {
         const QVariantMap other = rows.at(i).toMap();
         if (i != at && other.value(QStringLiteral("name")).toString() == n
-            && other.value(QStringLiteral("sampleTrackId")).toString().isEmpty()
-            && !other.value(QStringLiteral("suggested")).toBool())
+            && other.value(QStringLiteral("sampleTrackId")).toString().isEmpty())
             rows.removeAt(i);
     }
     m_snapshot.participants = rows;
-    emit changed(meetingId);
+    touch(meetingId);
     return true;
 }
 
@@ -195,7 +258,7 @@ bool OverviewDemoFacade::mergeParticipantInto(const QString& meetingId, const QS
     const QVariantMap f = rows.at(from).toMap();
     QVariantMap t = rows.at(into).toMap();
     if (t.value(QStringLiteral("anonymous")).toBool() && !f.value(QStringLiteral("anonymous")).toBool()) {
-        for (const char* key : {"name", "monogram", "sub", "anonymous", "self"})
+        for (const char* key : {"name", "monogram", "sub", "anonymous", "self", "counted", "doubtful"})
             t.insert(QString::fromLatin1(key), f.value(QString::fromLatin1(key)));
     }
     const double a = t.value(QStringLiteral("talkShare")).toDouble(), b = f.value(QStringLiteral("talkShare")).toDouble();
@@ -203,7 +266,7 @@ bool OverviewDemoFacade::mergeParticipantInto(const QString& meetingId, const QS
     rows[into] = t;
     rows.removeAt(from);
     m_snapshot.participants = rows;
-    emit changed(meetingId);
+    touch(meetingId);
     return true;
 }
 
@@ -213,9 +276,12 @@ bool OverviewDemoFacade::confirmParticipant(const QString& meetingId, const QStr
     if (at < 0)
         return false;
     QVariantMap row = m_snapshot.participants.at(at).toMap();
+    if (row.value(QStringLiteral("anonymous")).toBool())
+        return false;   // like the core: confirming needs a name
     row.insert(QStringLiteral("approved"), confirmed);
+    if (row.value(QStringLiteral("doubtful")).toBool()) row.insert(QStringLiteral("counted"), confirmed);
     m_snapshot.participants[at] = row;
-    emit changed(meetingId);
+    touch(meetingId);
     return true;
 }
 
@@ -234,12 +300,57 @@ bool OverviewDemoFacade::setSelfParticipant(const QString& meetingId, const QStr
     row.insert(QStringLiteral("sub"), QString());
     row.insert(QStringLiteral("anonymous"), false);
     row.insert(QStringLiteral("self"), true);
+    row.insert(QStringLiteral("counted"), true);
+    row.insert(QStringLiteral("doubtful"), false);
+    row.insert(QStringLiteral("voiceless"), false);
     rows[at] = row;
     for (int i = int(rows.size()) - 1; i >= 0; --i)
         if (i != at && rows.at(i).toMap().value(QStringLiteral("self")).toBool())
             rows.removeAt(i);
     m_snapshot.participants = rows;
-    emit changed(meetingId);
+    touch(meetingId);
+    return true;
+}
+
+bool OverviewDemoFacade::setSolo(const QString& meetingId)
+{
+    return decideInPlace(meetingId, QStringLiteral("solo"));
+}
+
+bool OverviewDemoFacade::decideInPlace(const QString& meetingId, const QString& decision)
+{
+    if (decision != QLatin1String("approved") && decision != QLatin1String("skipped") && decision != QLatin1String("solo"))
+        return false;
+    m_snapshot.decision = decision;
+    m_snapshot.approvalPending = false;
+    m_snapshot.approved = decision == QLatin1String("approved");
+    QVariantList rows;
+    for (const QVariant& v : std::as_const(m_snapshot.participants)) {
+        QVariantMap row = v.toMap();
+        const bool counted = row.value(QStringLiteral("counted")).toBool() && !row.value(QStringLiteral("anonymous")).toBool();
+        // "Only I spoke": only the own row stays approved (the others are hidden on the card).
+        const bool approved = decision == QLatin1String("approved") ? counted
+                            : decision == QLatin1String("solo") ? row.value(QStringLiteral("self")).toBool()
+                            : row.value(QStringLiteral("approved")).toBool();
+        row.insert(QStringLiteral("approved"), approved);
+        if (decision != QLatin1String("skipped")) row.insert(QStringLiteral("counted"), approved);
+        rows << row;
+    }
+    m_snapshot.participants = rows;
+    m_snapshot.peopleHint = decision == QLatin1String("approved") ? tr("jóváhagyva %1-kor").arg(demoText("okt. 1. 19:12", "Oct 1, 7:12 PM"))
+                          : decision == QLatin1String("solo") ? tr("csak én beszéltem")
+                                                              : tr("kihagyva");
+    for (QVariant& v : m_snapshot.steps) {
+        QVariantMap step = v.toMap();
+        if (step.value(QStringLiteral("key")).toString() != QLatin1String("voice")) continue;
+        step.insert(QStringLiteral("state"), QStringLiteral("done"));
+        step.insert(QStringLiteral("sub"), decision == QLatin1String("solo") ? tr("csak én beszéltem")
+                                         : decision == QLatin1String("skipped") ? tr("kihagyva")
+                                         : tr("%n résztvevő", nullptr, int(std::count_if(rows.cbegin(), rows.cend(), [](const QVariant& r) {
+                                               return r.toMap().value(QStringLiteral("approved")).toBool(); }))));
+        v = step;
+    }
+    touch(meetingId);
     return true;
 }
 
@@ -262,20 +373,27 @@ tanara::library::OverviewSnapshot OverviewDemoFacade::build() const
     // After recording, before the transcript (like the empty state, "Start transcription" in the step); ...Error: with an error.
     const bool recordedError = st == QLatin1String("overviewRecordedError");
     const bool recorded = recordedError || st == QLatin1String("overviewRecorded");
+    // No voice model: recorded, not transcribed, the voice step blocked; one manual participant.
+    const bool noModel = st == QLatin1String("overviewNoVoiceModel");
 
     // The first transcription runs (two tracks, nobody yet): the phases and "Cancel" in the step.
     const bool transcribingOnly = st == QLatin1String("overviewTranscribing");
+    // The card's candidate states (the transcription runs meanwhile).
+    const bool candidates = candidateScenario(st);
+    const bool twoTrack = empty || nobody || recorded || transcribingOnly || noModel;
 
     s.hasTranscript = done || nobody;
     s.title = demoText("Negyedéves partnertalálkozó", "Quarterly partner review");
-    s.transcribing = !s.hasTranscript && !recorded;
+    s.transcribing = !s.hasTranscript && !recorded && !noModel;
     s.canReanalyze = done || nobody;
     s.allDone = done;
     s.analysisRunning = empty;
-    s.approvalPending = st == QLatin1String("overviewProcessing");
+    s.approvalPending = candidates;
     s.approved = done;
-    s.candidateCount = 4;
-    s.contextNote = (empty || nobody || recorded || transcribingOnly) ? QString()
+    s.decision = done ? QStringLiteral("approved") : candidates ? QStringLiteral("pending") : QString();
+    s.candidateCount = 5;
+    s.selfName = demoName("Kovács Lilla");
+    s.contextNote = twoTrack ? QString()
                       : demoText("Q4 partner review — napirend: Q3 számok, súgóoldalak, számlázási folyamat, Nordvik-megújítás.",
                                  "Q4 partner review — agenda: Q3 numbers, help pages, billing process, Nordvik renewal.");
 
@@ -293,62 +411,122 @@ tanara::library::OverviewSnapshot OverviewDemoFacade::build() const
                             QStringLiteral("S3"), false)
              << withSpeaker(personRow(QStringLiteral("p4"), demoName("Molnár Eszter"), 3, {}, {callSide}, 0.15),
                             QStringLiteral("S4"), false)
-             << withSpeaker(personRow(QStringLiteral("S5"), demoRaw(QStringLiteral("Távoli 1")), 4, tr("névtelen · elnevezhető"),
-                                      {callSide}, 0.07),
+             << withSpeaker(withCard(personRow(QStringLiteral("S5"), demoRaw(QStringLiteral("Távoli 1")), 4, tr("névtelen · elnevezhető"),
+                                               {callSide}, 0.07), false),
                             QStringLiteral("S5"), true);
+        const QList<int> lines = {286, 341, 247, 196, 91};
+        for (int i = 0; i < rows.size(); ++i) {
+            QVariantMap row = rows.at(i).toMap();
+            row.insert(QStringLiteral("lineCount"), lines.value(i));
+            row.insert(QStringLiteral("approved"), !row.value(QStringLiteral("anonymous")).toBool());
+            rows[i] = row;
+        }
         // Invited but did not speak (added manually): dim, after the speakers.
         rows << unheardRow(QStringLiteral("p5"), demoName("Lantos Réka"), 5);
         s.peopleState = QStringLiteral("list");
         s.peopleHint = tr("jóváhagyva %1-kor").arg(demoText("okt. 1. 16:40", "Oct 1, 4:40 PM"));
+        // An anonymous speaker whose lines all went to others: hidden.
+        s.hiddenSpeakers = 1;
     } else if (empty || recorded || transcribingOnly) {
         s.peopleState = QStringLiteral("empty");
         s.peopleHint.clear();
+    } else if (noModel) {
+        rows << withCard(personRow(QStringLiteral("m1"), demoName("Fehér Gábor"), 1, {},
+                                   {source(QStringLiteral("user"), tr("kézi"), false, false, tr("Kézzel adtad hozzá"))},
+                                   -1.0, false, false, false, true),
+                         true, false, true);
+        s.peopleState = QStringLiteral("list");
+        s.peopleHint = tr("kézi");
     } else if (nobody) {
+        // Everyone is anonymous: the speakers are the rows (named on the card).
+        const QList<QPair<QString, double>> anon = {{tr("Beszélő 1"), 0.46}, {tr("Beszélő 2"), 0.38}, {tr("Beszélő 3"), 0.16}};
+        const QList<int> lines = {188, 151, 73};
+        int i = 0;
+        for (const auto& [name, share] : anon) {
+            QVariantMap row = withCard(personRow(QStringLiteral("S%1").arg(i + 1), name, i, tr("névtelen · elnevezhető"),
+                                                 {}, share, false, false, false, false),
+                                       false);
+            row.insert(QStringLiteral("monogram"), QStringLiteral("B%1").arg(i + 1));
+            row.insert(QStringLiteral("lineCount"), lines.value(i));
+            rows << withSpeaker(row, QStringLiteral("S%1").arg(i + 1), true);
+            ++i;
+        }
         s.peopleState = QStringLiteral("nobody");
         s.peopleHint.clear();
     } else {
-        rows << personRow(QStringLiteral("p1"), demoText("Kovács Lilla (te)", "Emma Carter (you)"), 0, {}, {source(QStringLiteral("user"), tr("te")), source(QStringLiteral("mic"), tr("mikrofon"))}, -1.0, true)
+        // The decision pending (A variant, design 1): two known voices, two unknown, a doubtful one, a
+        // tag suggestion.
+        const QString voiceDetail = tr("A hangja %1%-ban hasonlít a mentett mintáihoz");
+        rows << personRow(QStringLiteral("p1"), demoText("Kovács Lilla (te)", "Emma Carter (you)"), 0, {},
+                          {source(QStringLiteral("fingerprint"), tr("hang %1%").arg(88), false, false, voiceDetail.arg(88))},
+                          0.41, true)
              << personRow(QStringLiteral("p2"), demoName("Fehér Gábor"), 1, {},
-                          {source(QStringLiteral("fingerprint"), tr("hang 84%"), false, false,
-                                  tr("A hangja 84%-ban hasonlít a mentett mintáihoz (2 modell)")),
+                          {source(QStringLiteral("fingerprint"), tr("hang %1%").arg(74), false, false, voiceDetail.arg(74)),
                            source(QStringLiteral("tag"), QStringLiteral("#Nordvik"), false, false,
                                   tr("Közös címke: %1").arg(QStringLiteral("Nordvik")))},
-                          -1.0, false, false, false, true)
-             << personRow(QStringLiteral("p3"), demoName("Varga Árpád"), 2, {}, {source(QStringLiteral("fingerprint"), tr("hang 79%")), source(QStringLiteral("tag"), QStringLiteral("#Nordvik"))}, -1.0, false, false, false, true)
-             << personRow(QStringLiteral("p4"), demoName("Molnár Eszter"), 3, {}, {source(QStringLiteral("fingerprint"), tr("hang 71%"))}, -1.0, false, false, false, true)
-             << personRow(QStringLiteral("p5"), demoName("Lantos Réka"), 4, {}, {source(QStringLiteral("fingerprint"), tr("nem hallottuk"), true)}, -1.0, false, false, true, true)
-             << personRow(QStringLiteral("suggest:") + demoName("Szabó Bence"), demoName("Szabó Bence"), -1, tr("javasolt"),
-                          {source(QStringLiteral("tag"), tr("a #%1 alapján · %2 / %3").arg(QStringLiteral("Nordvik")).arg(11).arg(14), false, true)},
+                          0.27, false, false, false, true)
+             << voiceRow(QStringLiteral("v1"), 1, 2,
+                         {source(QStringLiteral("fingerprint"), tr("ismeretlen hang"), false, false,
+                                 tr("A hangja egyik mentett mintához sem hasonlít eléggé"))}, 0.19)
+             << withCard(personRow(QStringLiteral("p4"), demoName("Varga Árpád"), 3, {},
+                                   {source(QStringLiteral("fingerprint"), tr("hang %1%").arg(52), false, false, voiceDetail.arg(52)),
+                                    source(QStringLiteral("tag"), tr("#%1-on még nem volt").arg(QStringLiteral("Nordvik")), true, false,
+                                           tr("A #%1 megbeszéléseken még nem vett részt").arg(QStringLiteral("Nordvik")))},
+                                   0.11, false, false, false, true),
+                         false, true)
+             << voiceRow(QStringLiteral("v2"), 2, 4,
+                         {source(QStringLiteral("fingerprint"), tr("ismeretlen hang"), false, false,
+                                 tr("A hangja egyik mentett mintához sem hasonlít eléggé")),
+                          source(QStringLiteral("x"), tr("%n ablak · rövid", nullptr, 4), true, false,
+                                 tr("Kevés hangablakból áll: lehet zaj vagy egy másik hang része"))}, 0.02)
+             << personRow(QStringLiteral("suggest:") + demoName("Molnár Eszter"), demoName("Molnár Eszter"), -1, tr("javasolt · nem hallottuk"),
+                          {source(QStringLiteral("tag"), tr("a #%1 alapján · %2 / %3").arg(QStringLiteral("Nordvik")).arg(9).arg(12), false, true)},
                           -1.0, false, true, false, true);
+        for (QVariant& v : rows) {
+            QVariantMap row = v.toMap();
+            row.insert(QStringLiteral("removable"), true);
+            v = row;
+        }
+        if (st == QLatin1String("overviewVoiceless"))
+            rows.insert(rows.size() - 1, withCard(personRow(QStringLiteral("t1"), demoName("Tóth Bence"), 5, {},
+                                                            {source(QStringLiteral("user"), tr("kézi"), false, false, tr("Kézzel adtad hozzá"))},
+                                                            -1.0, false, false, false, true),
+                                                  true, false, true));
         s.peopleState = QStringLiteral("list");
-        s.peopleHint = tr("naptár · hang · címke · kézi");
+        s.peopleHint = tr("hang · sáv · címke · kézi");
     }
     // Fictional samples: every heard row (not the dim / suggested ones) can be listened to.
-    if (done || (!empty && !recorded && !transcribingOnly && !nobody)) {
-        const QStringList heard = {QStringLiteral("p1"), QStringLiteral("p2"), QStringLiteral("p3"),
-                                   QStringLiteral("p4"), QStringLiteral("S5")};
+    {
+        const QStringList heard = done ? QStringList{QStringLiteral("p1"), QStringLiteral("p2"), QStringLiteral("p3"),
+                                                     QStringLiteral("p4"), QStringLiteral("S5")}
+                                : nobody ? QStringList{QStringLiteral("S1"), QStringLiteral("S2"), QStringLiteral("S3")}
+                                         : QStringList{QStringLiteral("p1"), QStringLiteral("p2"), QStringLiteral("v1"),
+                                                       QStringLiteral("p4"), QStringLiteral("v2")};
+        const QStringList onMic = {QStringLiteral("p1"), QStringLiteral("v2"), QStringLiteral("S1")};
         for (QVariant& v : rows) {
             const QVariantMap row = v.toMap();
-            const int n = int(heard.indexOf(row.value(QStringLiteral("id")).toString()));
+            const QString id = row.value(QStringLiteral("id")).toString();
+            const int n = int(heard.indexOf(id));
             if (n >= 0 && !row.value(QStringLiteral("dimmed")).toBool())
-                v = withSample(row, n == 0 ? QStringLiteral("mic") : QStringLiteral("call"), 42000 + 31000 * n);
+                v = withSample(row, onMic.contains(id) ? QStringLiteral("mic") : QStringLiteral("call"), 42000 + 31000 * n);
         }
     }
     s.participants = rows;
     s.anonymousSpeakers.clear();
     if (nobody) {
-        const QList<QPair<QString, double>> anon = {{tr("Beszélő 1"), 0.46}, {tr("Beszélő 2"), 0.38}, {tr("Beszélő 3"), 0.16}};
-        int i = 0;
-        for (const auto& [name, share] : anon)
-            s.anonymousSpeakers << QVariantMap{{QStringLiteral("name"), name}, {QStringLiteral("share"), share},
-                                       {QStringLiteral("colorIndex"), i++}};
+        for (const QVariant& v : std::as_const(rows)) {
+            const QVariantMap row = v.toMap();
+            s.anonymousSpeakers << QVariantMap{{QStringLiteral("name"), row.value(QStringLiteral("name"))},
+                                               {QStringLiteral("share"), row.value(QStringLiteral("talkShare"))},
+                                               {QStringLiteral("colorIndex"), row.value(QStringLiteral("colorIndex"))}};
+        }
     }
-    s.sideWho = (empty || nobody || recorded || transcribingOnly) ? QVariantMap()
+    s.sideWho = twoTrack ? QVariantMap()
               : QVariantMap{{QStringLiteral("mic"), demoName("Kovács Lilla")},
                             {QStringLiteral("loopback"), tr("%n résztvevő", nullptr, 4)}};
 
     QVariantList steps;
-    if (empty || nobody || recorded || transcribingOnly) {
+    if (twoTrack) {
         steps << step(QStringLiteral("recording"), tr("Felvétel"), QStringLiteral("0:42:10 · ") + tr("%n sáv", nullptr, 2), QStringLiteral("done"))
               << step(QStringLiteral("tracks"), tr("Sávok"), tr("%n aktív", nullptr, 2), QStringLiteral("done"))
               << step(QStringLiteral("mixdown"), tr("Lekeverés"), tr("%n sávból", nullptr, 2), QStringLiteral("done"));
@@ -356,7 +534,14 @@ tanara::library::OverviewSnapshot OverviewDemoFacade::build() const
             steps << step(QStringLiteral("voice"), tr("Hanglenyomat-elemzés"), tr("nem futott"), QStringLiteral("waiting"), true)
                   << step(QStringLiteral("transcript"), tr("Átirat"), QStringLiteral("Soniox · ") + tr("feltöltés"), QStringLiteral("running"), true, -2)
                   << step(QStringLiteral("summary"), tr("Összefoglaló"), tr("az átirat után"), QStringLiteral("waiting"));
-        else if (recorded)
+        else if (noModel) {
+            QVariantMap voice = step(QStringLiteral("voice"), tr("Hanglenyomat-elemzés"),
+                                     tr("Nincs hangmodell. Töltsd le a Beállításokban (Beszélők)."), QStringLiteral("attention"), true);
+            voice.insert(QStringLiteral("fixTarget"), QStringLiteral("speakers"));
+            steps << voice
+                  << step(QStringLiteral("transcript"), tr("Átirat"), tr("még nem indult"), QStringLiteral("waiting"), true)
+                  << step(QStringLiteral("summary"), tr("Összefoglaló"), tr("az átirat után"), QStringLiteral("waiting"));
+        } else if (recorded)
             steps << step(QStringLiteral("voice"), tr("Hanglenyomat-elemzés"), tr("nem futott"), QStringLiteral("waiting"), true)
                   << step(QStringLiteral("transcript"), tr("Átirat"), recordedError ? tr("nem sikerült") : tr("még nem indult"),
                           recordedError ? QStringLiteral("attention") : QStringLiteral("waiting"), true)
@@ -378,7 +563,7 @@ tanara::library::OverviewSnapshot OverviewDemoFacade::build() const
                   << step(QStringLiteral("transcript"), tr("Átirat"), tr("%n megszólalás", nullptr, 1298) + QStringLiteral(" · ") + tr("%n beszélő", nullptr, 5), QStringLiteral("done"), true)
                   << step(QStringLiteral("summary"), tr("Összefoglaló"), tr("kész"), QStringLiteral("done"));
         else
-            steps << step(QStringLiteral("voice"), tr("Hanglenyomat-elemzés"), tr("%n jelölt · jóváhagyásra vár", nullptr, 4), QStringLiteral("attention"), true)
+            steps << step(QStringLiteral("voice"), tr("Hanglenyomat-elemzés"), tr("%n jelölt · jóváhagyásra vár", nullptr, 5), QStringLiteral("attention"), true)
                   << step(QStringLiteral("transcript"), tr("Átirat"), QStringLiteral("Soniox · 62% · ") + tr("kb. %n perc", nullptr, 4), QStringLiteral("running"), true, 62)
                   << step(QStringLiteral("summary"), tr("Összefoglaló"), tr("az átirat után"), QStringLiteral("waiting"));
     }
@@ -395,5 +580,22 @@ tanara::library::OverviewSnapshot OverviewDemoFacade::build() const
     return s;
 }
 
+// The card's decided / edited design states, applied over the pending candidates with the same
+// in-memory operations as a click.
+void OverviewDemoFacade::applyScenarioEdits()
+{
+    const QString st = m_scenario;
+    if (st == QLatin1String("overviewSameVoice") || st == QLatin1String("overviewApproved"))
+        nameParticipant(QString(), QStringLiteral("v1"), demoName("Molnár Eszter"));
+    if (st == QLatin1String("overviewApproved")) {
+        confirmParticipant(QString(), QStringLiteral("p4"), true);
+        mergeParticipantInto(QString(), QStringLiteral("v2"), QStringLiteral("p1"));
+        decideInPlace(QString(), QStringLiteral("approved"));
+    } else if (st == QLatin1String("overviewSkipped")) {
+        decideInPlace(QString(), QStringLiteral("skipped"));
+    } else if (st == QLatin1String("overviewSolo")) {
+        decideInPlace(QString(), QStringLiteral("solo"));
+    }
+}
 
 } // namespace tanara_demo

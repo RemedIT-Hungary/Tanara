@@ -13,7 +13,9 @@
 // inferred track confirms the binding.
 //
 // On the fictional facade (demo) sample data (for the demo participant ids: p1 =
-// microphone, the others = call; p3 manually bound to both), toggling in memory.
+// microphone, the others = call; p3 manually bound to both), toggling in memory. demoState (the
+// Overview's design state) seeds it: "overviewApproved" binds every named row by hand (the track
+// rule holds), "overviewThreeTracks" offers a third track.
 //
 #include "UiServices.h"
 
@@ -33,6 +35,8 @@ class ParticipantTrackBinder : public QObject {
     QML_ELEMENT
 
     Q_PROPERTY(QString meetingId READ meetingId WRITE setMeetingId NOTIFY meetingIdChanged)
+    // The fictional facade's design state (demo / screenshots); ignored on real data.
+    Q_PROPERTY(QString demoState READ demoState WRITE setDemoState NOTIFY demoStateChanged)
     // Grows on every change: QML binds the chips(id) call to it.
     Q_PROPERTY(int revision READ revision NOTIFY changed)
     // Whether there are at least two selectable tracks (otherwise the chips make no sense).
@@ -45,6 +49,8 @@ public:
     explicit ParticipantTrackBinder(const UiServices& services, QObject* parent = nullptr);
     QString meetingId() const { return m_meetingId; }
     void setMeetingId(const QString& id);
+    QString demoState() const { return m_demoState; }
+    void setDemoState(const QString& state);
     int revision() const { return m_revision; }
     bool available() const;
 
@@ -57,6 +63,7 @@ public:
 
 signals:
     void meetingIdChanged();
+    void demoStateChanged();
     void changed();
 
 private:
@@ -77,6 +84,7 @@ private:
     QList<QMetaObject::Connection> m_connections;
 
     QString m_meetingId;
+    QString m_demoState;
     int m_revision = 0;
     QVector<TrackChoice> m_tracks;
 };

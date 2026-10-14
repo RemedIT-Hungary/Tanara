@@ -252,10 +252,8 @@ new one (see below). `Nézet` lists the four tabs, then **Javítás / Olvasás**
 #### Áttekintés (`OverviewTab`, `src/OverviewViewModel`)
 
 Two columns. **Left**: `MIRŐL SZÓL` (`SourceCard`: the manual description, calendar is a placeholder) ·
-the tag field `TagRowOverview` (tags + suggestions with source label and "Miért?") · `KIK VOLTAK OTT`
-(`ParticipantList` with source badges and speech share; empty: "+ Résztvevő" / "Csak én beszéltem";
-everybody unknown: the raw speakers + "Elnevezem őket") · the approval banner `approvalBanner`
-("A hanglenyomat-elemzés kész: N jelölt", `Átnézem` opens the dialog, `Később` hides it for the session).
+the tag field `TagRowOverview` (tags + suggestions with source label and "Miért?") · `KIK VOLTAK OTT`:
+the "Who was there?" card `ParticipantsCard` (A variant, UA2; see below).
 **Right** (340 px): `FELDOLGOZÁS` (`PipelineSteps`) and `SÁVOK` (`TrackList`); when all is done:
 `ADATOK` (`StatTiles`, 2×3) and the steps / tracks collapsed to one row each (`stepsCollapsed`, `tracksCollapsed`).
 **Before the transcription** (U6, V5): the Áttekintés shows right after the recording (tracks playable and
@@ -266,7 +264,29 @@ switchable, participants / tags / "Csak én beszéltem" usable); `PipelineSteps`
 when the mixdown is missing / stale (manual mixdown mode), the voiceprint step the identify switch.
 Without audio (import running, broken folder) the same tab says what is missing in the steps.
 
-Details added in the fix round (all verified against `OverviewTab.qml`, `ParticipantList.qml`, `SourceCard.qml`):
+**"Who was there?" card (UA2, `ParticipantsCard`).** The only place for the participants: every change is
+immediate and one step of the meeting's shared undo (change bar, Ctrl+Z). Header by state: analysis running
+(spinner + the voice step's progress; adding by hand and "Csak én beszéltem" work), no voice model (warn; points to
+the PROCESSING step's "Beállítások megnyitása", no second button), decision pending (blue: "Kik voltak ott? A
+hanglenyomat-elemzés N hangot talált" + `ParticipantsViewModel.metaText`), the decision ("Jóváhagyva · N",
+"Kihagyva", "Csak én beszéltem"), everyone anonymous. Footer while pending: what is left out, `Csak én beszéltem`
+(`soloButton`), `Kihagyás` (`skipButton`), `Jóváhagyás · N` (`approveButton`, N = `vm.approveCount`: the named rows
+the approval takes; on real data `ParticipantsViewModel.approve()` decides, with the tag learning question
+`TagLearnPopup`; in the demo `vm.decideInDemo`). Rows (`ParticipantCardRow`): ▶ `SampleButton`, avatar, name +
+subline, talk share, actions (`Elnevezés…` / `kétes` + `Ott volt` → `vm.confirmParticipant` / `Melyik hang?` / ⋯ /
+hover x), line 2: the evidence badges | the `Sáv:` control (`ParticipantTrackControl`: off / itt hallottuk / kézzel
+kötve buttons; 3+ tracks a drop-down). "Csak én" shows the own row only. Below: the track rule (G10) sentence.
+Panels: `ParticipantNamePanel` (sample, "Ez én vagyok" first when the own voice is not listed yet, otherwise last;
+people from `PersonListModel`; "Új személy"; "Ugyanaz a hang, mint…" = meeting-local `vm.mergeParticipantInto`,
+unlike the People window's "Személyek egyesítése"; "Nem résztvevő" / "Nem volt ott") and
+`ParticipantWhichVoicePanel` ("+ Résztvevő" → person → "Melyik hang ő?": ▶ + `Ő az` → `vm.nameParticipant`,
+"Egyik sem" → `vm.addParticipant`, a voiceless row). Demo states: `overviewProcessing` (pending), `overviewEmpty`
+(running), `overviewNaming` / `overviewSameVoice` / `overviewWhichVoice` (panels open), `overviewVoiceless`,
+`overviewThreeTracks`, `overviewApproved` (track rule holds), `overviewSkipped`, `overviewSolo`,
+`overviewNoVoiceModel`, `overviewDone` (after the transcript, one hidden zero-line speaker), `overviewNobody`.
+
+Details added in the fix round (all verified against `OverviewTab.qml`, `SourceCard.qml`; the participant rows
+are now `ParticipantCardRow`):
 
 - **First transcription running (A1).** The `Átirat` step keeps hosting `TranscribeStepPanel` while
   `vm.state === "running"`: a compact stage list (state circle, name, progress; `JobStageRow` states
@@ -281,12 +301,11 @@ Details added in the fix round (all verified against `OverviewTab.qml`, `Partici
 - **Title-based tag suggestion (A2).** Before the transcription `OverviewTab` binds
   `MeetingTagsModel.draftTitle` to the meeting title (`vm.title`); `TagRowOverview` then suggests tags from the
   title when there is no regular suggestion. Cleared (`""`) once a transcript exists.
-- **Clickable badges (A4).** The source badges of a `ParticipantList` row show the evidence in the tooltip;
+- **Clickable badges (A4).** The source badges of a participant row show the evidence in the tooltip;
   after the transcript (`canExplain`, row has a speaker key) a click emits `whyRequested(speakerKey, badge)` and
   `OverviewTab` calls `shell.openSpeakerWhy(meetingId, speakerKey)` → the editor's "Miért ő?" panel.
-- **"Elnevezés…" (A5).** An unnamed row (`anonymous` and not a suggestion: raw speakers) is nameable by a click or by the right-hand
-  `Elnevezés…` button (`nameRequested(row, anchor)`): after the transcript a `PersonPicker` →
-  `editor.reassignSpeaker`; before it the "Ki volt ott?" dialog.
+- **"Elnevezés…" (A5, UA2).** An unnamed row opens the card's naming panel, before and after the transcript
+  (`vm.nameParticipant`; the core binds the speaker's lines after the transcript).
 - **"Újraelemzés" (D4).** The voiceprint step shows `Újraelemzés` when `vm.canReanalyze` (audio and a model are
   there, nothing runs) and the step is `done` / `attention`. After the transcript it calls the same as the menu's
   "Hanglenyomat-elemzés újra" (`shell.identifyParticipants`); before it `vm.reanalyze()`
@@ -294,8 +313,8 @@ Details added in the fix round (all verified against `OverviewTab.qml`, `Partici
 - **Analysis progress (A8).** While `vm.analysisRunning`, the voiceprint step's sub line reads "k / N sáv" and its
   bar follows the percent, from `AppController::participantAnalysisProgress(meetingId, tracksDone, tracksTotal,
   percent)`; before the first signal it says "fut" (indeterminate).
-- **Speaker → track chips (G6).** In every `ParticipantList` row, after the badges: `ParticipantTrackChips`
-  (see "Tracks" below), bound by `OverviewTab`'s `ParticipantTrackBinder`.
+- **Speaker → track control (G6, UA2).** In every card row, after the badges: `ParticipantTrackControl`
+  (button look, three states), bound by `OverviewTab`'s `ParticipantTrackBinder` (demo: its `demoState`).
 
 #### The map dock (`MapDock`)
 
@@ -400,7 +419,7 @@ Kovács Lilla, Fehér Gábor, Varga Árpád, #Nordvik.
 |---|---|---|
 | Whole shell | `'Main:1280x820:demoState="overviewDone"'` | `overviewProcessing` (V1) · `overviewDone` (V3) · `overviewEmpty` (V5) · `overviewNobody` (V6) · `overviewRecorded` (U6: recorded, not transcribed, `Átírás indítása` in the step) · `overviewRecordedError` (U6: transcription failed) · `overviewTranscribing` (A1: first transcription running, stages + `Megszakítás` in the step) · `readingMap` (V4, Átirat + dock) · `tabTooltip` (V4 panel) · `summarySources` (S1, tab 2) · `memoSections` (S2, tab 3) |
 | Tracks dialog | `'Main:1280x820:demoOverlay="tracks"'` | (`demoOverlay`, not `demoState`) |
-| Áttekintés alone | `OverviewTab:1100x720:demoState="overviewDone"` | `overviewProcessing` · `overviewDone` · `overviewEmpty` · `overviewNobody` · `overviewRecorded` · `overviewRecordedError` · `overviewTranscribing` |
+| Áttekintés alone | `OverviewTab:1100x720:demoState="overviewDone"` | `overviewProcessing` · `overviewDone` · `overviewEmpty` · `overviewNobody` · `overviewRecorded` · `overviewRecordedError` · `overviewTranscribing`; the "Who was there?" card: `overviewNaming` · `overviewSameVoice` · `overviewWhichVoice` · `overviewVoiceless` · `overviewThreeTracks` · `overviewApproved` · `overviewSkipped` · `overviewSolo` · `overviewNoVoiceModel` (use `Main:1280x1180:…` for the sample buttons: they need the player) |
 | Map dock alone | `MapDock:1100x200` | (invented lanes) · `similarMarks` (E4: accent ticks of the lines similar to the new person) |
 | Tracks (details) | `TracksTab:1004x640:demoState="default"` | `default` · `loading` (strips pulse: activity still computing) · `idle` (the "Hívás hangja" row starts at 2:30); `overview…` states of `TrackListModel` feed the Áttekintés |
 | Header alone | `MeetingHeader:1100x420:demoState="tabTooltip"` | `tabTooltip` |

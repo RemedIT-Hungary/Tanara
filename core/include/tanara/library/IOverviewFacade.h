@@ -29,6 +29,16 @@ struct OverviewSnapshot {
     QString peopleHint;
     bool approved = false;
     bool approvalPending = false;
+    // The "Who was there?" decision: "" (nothing decided, nothing to decide yet) | "pending" (the analysis
+    // is done, no decision) | "approved" | "skipped" | "solo" ("Only I spoke").
+    QString decision;
+    // "Approve · N": the named rows the approval takes (sure by default, or confirmed "Was there"); after
+    // an approval the approved ones.
+    int approveCount = 0;
+    // After the transcript: the anonymous speakers that have no line any more (hidden from the rows).
+    int hiddenSpeakers = 0;
+    // The user's own name (the "This is me" row of the naming panel); empty: not set.
+    QString selfName;
     bool analysisRunning = false;
     int candidateCount = 0;
     bool canReanalyze = false;
@@ -61,6 +71,14 @@ public:
     // reassignSpeaker does it on real data.
     virtual bool nameSpeakerInPlace(const QString& meetingId, const QString& speakerKey, const QString& name) = 0;
     virtual void setContextNote(const QString& meetingId, const QString& note) = 0;
+    // Applies a "Who was there?" decision ("approved" | "skipped") in place: only the fictional facade
+    // can (true). On real data the participants view model decides (approve / skip, with the learning
+    // question) and the core's signal refreshes the snapshot.
+    virtual bool decideInPlace(const QString& meetingId, const QString& decision)
+    {
+        Q_UNUSED(meetingId); Q_UNUSED(decision);
+        return false;
+    }
 
     // ---- the "Who was there?" rows' operations (the participant service; each one undo step) ----
     // `id`: the row's id (a participant, or after the transcript a speaker key). false: nothing changed.

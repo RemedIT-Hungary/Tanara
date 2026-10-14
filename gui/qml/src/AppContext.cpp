@@ -38,6 +38,7 @@
 #include "tanara/app/AppController.h"
 #include "tanara/app/Services.h"
 #include "tanara/editing/participants/ParticipantService.h"
+#include "tanara/processing/analysis/ParticipantAnalysis.h"
 #include "tanara/editing/session/SpeakerEditSession.h"
 #include "tanara/library/jobs/MeetingJobTracker.h"
 #include "tanara/library/store/MeetingRepository.h"
@@ -483,7 +484,31 @@ QVariantMap personRow(const QString& id, const QString& name, int colorIndex, co
             {QStringLiteral("speakerKey"), QString()}, {QStringLiteral("anonymous"), false},
             {QStringLiteral("unheard"), false},
             {QStringLiteral("sampleTrackId"), QString()}, {QStringLiteral("sampleStartMs"), qint64(-1)},
-            {QStringLiteral("sampleEndMs"), qint64(-1)}, {QStringLiteral("approved"), false}};
+            {QStringLiteral("sampleEndMs"), qint64(-1)}, {QStringLiteral("approved"), false},
+            {QStringLiteral("doubtful"), false}, {QStringLiteral("counted"), false},
+            {QStringLiteral("voiceless"), false}, {QStringLiteral("lineCount"), 0}};
+}
+
+// Whether the approval takes the record by default (ParticipantsServicesFacade::state's start check):
+// heard, named, nothing contradicts.
+bool includedByDefault(const Participant& p)
+{
+    return processing::participants::participantGroup(p) != ParticipantGroup::InvitedNotHeard
+           && processing::participants::defaultChecked(p);
+}
+
+// The card's decision keys of a row with a participant record: counted ("Approve · N"; after a
+// decision: approved), doubtful (named and heard, but left out unless confirmed: "Was there"),
+// voiceless (no voice of theirs).
+QVariantMap withDecision(QVariantMap row, const Participant& p, bool decided)
+{
+    const bool named = !p.personId.isNull();
+    const bool voiceless = p.sides.isEmpty() && p.rawSpeakerIds.isEmpty();
+    const bool byDefault = includedByDefault(p);
+    row.insert(QStringLiteral("counted"), named && (decided ? p.approved : (p.approved || byDefault)));
+    row.insert(QStringLiteral("doubtful"), named && !voiceless && (!byDefault || (decided && !p.approved)));
+    row.insert(QStringLiteral("voiceless"), voiceless);
+    return row;
 }
 
 // The row's record is approved / confirmed ("Was there"; ParticipantService::confirmParticipant).
@@ -514,6 +539,7 @@ QVariantMap unheardRow(const Participant& p, const QString& name, int colorIndex
     QVariantMap row = personRow(p.id, name, colorIndex, QString(), src, -1.0, false, false, true, true);
     row.insert(QStringLiteral("unheard"), true);
     row.insert(QStringLiteral("approved"), p.approved);
+    row.insert(QStringLiteral("voiceless"), true);
     return row;
 }
 
@@ -690,6 +716,9 @@ tanara::library::OverviewSnapshot OverviewControllerFacade::snapshot(const QStri
         for (int i = 0; i < ids.size() && i < got.size(); ++i) samples.insert(ids.at(i), got.at(i));
     }
 
+    // A decision that binds (approved, not skipped / "only me"): the rows' approved flag counts.
+    const bool decided = m.approval && !m.approval->skipped && !m.approval->solo;
+    int hiddenSpeakers = 0;
     QVariantList rows;
     PersonIds names;            // the people already listed
     QVariantList anonymous;
@@ -700,7 +729,10 @@ tanara::library::OverviewSnapshot OverviewControllerFacade::snapshot(const QStri
                   [](const editing::EditorSpeaker& a, const editing::EditorSpeaker& b) { return a.colorIndex < b.colorIndex; });
         bool anyNamed = false;
         for (const editing::EditorSpeaker& s : sorted) {
-            if (s.utteranceCount == 0 && !s.added) continue;
+            if (s.utteranceCount == 0 && !s.added) {
+                if (s.anonymous) ++hiddenSpeakers;   // "N anonymous speakers without a line, hidden"
+                continue;
+            }
             const Participant* match = nullptr;
             for (const Participant& p : parts) {
                 if ((!s.personId.isNull() && p.personId == s.personId)
@@ -719,11 +751,18 @@ tanara::library::OverviewSnapshot OverviewControllerFacade::snapshot(const QStri
             const editing::ParticipantSample sample = match ? samples.value(s.key) : editing::ParticipantSample();
             // Removable: with a participant record, or without one too if it has a name (its rows
             // become anonymous: AppController::removeParticipant with the speaker key).
-            rows << withApproved(withSample(withSpeaker(personRow(match ? match->id : s.key, name, s.colorIndex,
+            QVariantMap row = withApproved(withSample(withSpeaker(personRow(match ? match->id : s.key, name, s.colorIndex,
                                                      s.anonymous ? tr("névtelen · elnevezhető") : QString(), src,
                                                      s.talkShare, self, false, false, match != nullptr || !s.anonymous),
                                            s.key, s.anonymous),
                                sample), match && match->approved);
+            if (match) {
+                row = withDecision(row, *match, decided);
+                row.insert(QStringLiteral("voiceless"), false);   // the speaker has lines
+                if (s.anonymous) { row.insert(QStringLiteral("counted"), false); row.insert(QStringLiteral("doubtful"), false); }
+            }
+            row.insert(QStringLiteral("lineCount"), s.utteranceCount);
+            rows << row;
             if (!s.personId.isNull()) names << s.personId;
             anonymous << QVariantMap{{QStringLiteral("name"), s.displayName},
                                      {QStringLiteral("share"), s.talkShare},
@@ -736,7 +775,10 @@ tanara::library::OverviewSnapshot OverviewControllerFacade::snapshot(const QStri
         for (const Participant& p : unheard) {
             if (names.contains(p.personId))
                 continue;
-            rows << unheardRow(p, nameOf(p.personId), colorIndex++);
+            QVariantMap row = withDecision(unheardRow(p, nameOf(p.personId), colorIndex++), p, decided);
+            row.insert(QStringLiteral("voiceless"), true);
+            row.insert(QStringLiteral("doubtful"), false);
+            rows << row;
             names << p.personId;
         }
         s.peopleState = rows.isEmpty() ? QStringLiteral("empty")
@@ -748,12 +790,12 @@ tanara::library::OverviewSnapshot OverviewControllerFacade::snapshot(const QStri
             QString name = p.personId.isNull() ? tr("Ismeretlen hang %1").arg(i + 1) : nameOf(p.personId);
             if (self) name = tr("%1 (te)").arg(name);
             // Before the transcript: the participant's voice cluster sample (a manual one without a voice: none).
-            rows << withApproved(withSample(withSpeaker(personRow(p.id, name, i,
+            rows << withDecision(withApproved(withSample(withSpeaker(personRow(p.id, name, i,
                                                      p.personId.isNull() ? tr("névtelen · elnevezhető") : QString(),
                                                      sourcesOf(p, self), p.talkShare > 0 ? p.talkShare : -1.0, self,
                                                      false, false, true),
                                            QString(), p.personId.isNull()),
-                               samples.value(p.id)), p.approved);
+                               samples.value(p.id)), p.approved), p, decided);
             if (!p.personId.isNull()) names << p.personId;
             ++i;
         }
@@ -783,6 +825,16 @@ tanara::library::OverviewSnapshot OverviewControllerFacade::snapshot(const QStri
             s.peopleState = QStringLiteral("list");
     }
     s.participants = rows;
+    s.hiddenSpeakers = hiddenSpeakers;
+    // The own name as "This is me" uses it (setSelfParticipant fails without the setting).
+    const QString ownSetting = c->settings() ? c->settings()->settings().recording.userSpeakerName.trimmed() : QString();
+    s.selfName = ownSetting.isEmpty() ? QString() : !selfId.isNull() ? nameOf(selfId) : ownSetting;
+    s.approveCount = int(std::count_if(rows.cbegin(), rows.cend(), [](const QVariant& v) {
+        return v.toMap().value(QStringLiteral("counted")).toBool();
+    }));
+    s.decision = m.approval ? (m.approval->solo ? QStringLiteral("solo")
+                               : m.approval->skipped ? QStringLiteral("skipped") : QStringLiteral("approved"))
+               : s.approvalPending ? QStringLiteral("pending") : QString();
     if (m.approval && m.approval->solo) {
         s.peopleHint = tr("csak én beszéltem");
     } else if (s.approved && m.approval->at.size() > 0) {

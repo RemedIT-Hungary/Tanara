@@ -7,6 +7,7 @@
 #include "UiServices.h"
 #include "FacadeTestSupport.h"
 #include "OverviewViewModel.h"
+#include "ParticipantsViewModel.h"
 #include "ShellMeetingModel.h"
 #include "TrackListModel.h"
 
@@ -458,6 +459,181 @@ private slots:
         QCOMPARE(model.summarizePercent(), -1);
     }
 
+    static QVariantMap rowOf(const OverviewViewModel& vm, const QString& id)
+    {
+        for (const QVariant& v : vm.participants())
+            if (v.toMap().value(QStringLiteral("id")).toString() == id) return v.toMap();
+        return {};
+    }
+    static tanara::Evidence evidence(tanara::EvidenceKind kind, tanara::Polarity polarity)
+    {
+        tanara::Evidence e;
+        e.kind = kind;
+        e.polarity = polarity;
+        e.value = 0.8;
+        return e;
+    }
+
+    // The "Who was there?" card's keys on real data: the decision ("pending" while there are voice
+    // candidates and no decision), "Approve · N" (= what ParticipantsViewModel approves), doubtful /
+    // counted / voiceless rows, and the row operations through the view model (confirm, "This is me"
+    // with its reason, naming merging the manual voiceless row, "same voice" merge).
+    void card_decisionKeysAndRowOperations()
+    {
+        using namespace tanara;
+        Meeting m = recording(QStringLiteral("Kártya"));
+        Participant sure;
+        sure.id = QStringLiteral("p-sure");
+        sure.personId = m_app->people()->ensure(QStringLiteral("Fehér Gábor"));
+        sure.sides = {QStringLiteral("loopback")};
+        sure.evidence = {evidence(EvidenceKind::Voice, Polarity::Support), evidence(EvidenceKind::Tag, Polarity::Support)};
+        Participant doubt;
+        doubt.id = QStringLiteral("p-doubt");
+        doubt.personId = m_app->people()->ensure(QStringLiteral("Varga Árpád"));
+        doubt.sides = {QStringLiteral("loopback")};
+        doubt.evidence = {evidence(EvidenceKind::Voice, Polarity::Support), evidence(EvidenceKind::Tag, Polarity::Contradict)};
+        Participant anon;
+        anon.id = QStringLiteral("p-anon");
+        anon.sides = {QStringLiteral("mic")};
+        Participant manual;
+        manual.id = QStringLiteral("p-man");
+        manual.personId = m_app->people()->ensure(QStringLiteral("Molnár Eszter"));
+        manual.source = ParticipantSource::Manual;
+        Meeting saved = m_app->store()->load(m.id);
+        saved.participants = {sure, doubt, anon, manual};
+        m_app->store()->saveMeeting(saved);
+        app::AppSettings settings = m_app->settings()->settings();
+        settings.recording.userSpeakerName = QString();
+        m_app->settings()->setSettings(settings);
+
+        OverviewViewModel vm(facadetest::overviewOf(m_app.get()));
+        vm.setMeetingId(m.id);
+        QCOMPARE(vm.decision(), QStringLiteral("pending"));
+        QVERIFY(vm.approvalPending());
+        QVERIFY(rowOf(vm, "p-sure").value("counted").toBool());
+        QVERIFY(!rowOf(vm, "p-sure").value("doubtful").toBool());
+        QVERIFY(!rowOf(vm, "p-sure").value("voiceless").toBool());
+        QVERIFY(!rowOf(vm, "p-doubt").value("counted").toBool());
+        QVERIFY(rowOf(vm, "p-doubt").value("doubtful").toBool());
+        QVERIFY(!rowOf(vm, "p-anon").value("counted").toBool());
+        QVERIFY(!rowOf(vm, "p-anon").value("doubtful").toBool());
+        QVERIFY(rowOf(vm, "p-anon").value("anonymous").toBool());
+        QVERIFY(rowOf(vm, "p-man").value("voiceless").toBool());
+        QVERIFY(rowOf(vm, "p-man").value("counted").toBool());
+        QCOMPARE(vm.approveCount(), 2);
+
+        // "Was there" on the doubtful row: counted, one undo step; an anonymous row cannot be confirmed.
+        QVERIFY(vm.confirmParticipant(QStringLiteral("p-doubt"), true));
+        QTRY_COMPARE(vm.approveCount(), 3);
+        QVERIFY(rowOf(vm, "p-doubt").value("approved").toBool());
+        QVERIFY(!vm.confirmParticipant(QStringLiteral("p-anon"), true));
+        QVERIFY(m_app->meetingUndo(m.id)->undo());
+        QTRY_COMPARE(vm.approveCount(), 2);
+        QVERIFY(vm.confirmParticipant(QStringLiteral("p-doubt"), true));
+        QTRY_COMPARE(vm.approveCount(), 3);
+
+        // "This is me" without an own name: fails with a reason for the panel.
+        const QVariantMap self = vm.setSelfParticipant(QStringLiteral("p-anon"));
+        QVERIFY(!self.value("ok").toBool());
+        QVERIFY(!self.value("reason").toString().isEmpty());
+        QVERIFY(vm.selfName().isEmpty());
+
+        // Naming the unknown voice after the person's manual voiceless row: the two rows become one.
+        QVERIFY(vm.nameParticipant(QStringLiteral("p-anon"), QStringLiteral("Molnár Eszter")));
+        QTRY_VERIFY(rowOf(vm, "p-man").isEmpty());
+        QCOMPARE(rowOf(vm, "p-anon").value("name").toString(), QStringLiteral("Molnár Eszter"));
+        QVERIFY(!rowOf(vm, "p-anon").value("voiceless").toBool());
+        QVERIFY(!rowOf(vm, "p-anon").value("anonymous").toBool());
+
+        // "Same voice as ...": the doubtful row joins the sure one (meeting-local).
+        QVERIFY(vm.mergeParticipantInto(QStringLiteral("p-doubt"), QStringLiteral("p-sure")));
+        QTRY_VERIFY(rowOf(vm, "p-doubt").isEmpty());
+        QVERIFY(!rowOf(vm, "p-sure").isEmpty());
+
+        // "Approve · N" is what the participants view model approves (the card's footer).
+        ParticipantsViewModel decision(AppContext::instance()->servicesFor(m_app.get()));
+        decision.setMeetingId(m.id);
+        decision.reload();
+        QCOMPARE(decision.checkedCount(), vm.approveCount());
+        const int n = vm.approveCount();
+        QVERIFY(decision.approve());
+        QTRY_COMPARE(vm.decision(), QStringLiteral("approved"));
+        QCOMPARE(vm.approveCount(), n);
+        QVERIFY(!vm.approvalPending());
+        // A demo-only decision does nothing on real data.
+        QVERIFY(!vm.decideInDemo(QStringLiteral("skipped")));
+
+        // With an own name: "This is me" works and the panel knows the name; "Only I spoke" -> "solo".
+        m_app->setUserSpeakerName(QStringLiteral("Kovács Lilla"));
+        const tanara::Meeting other = recording(QStringLiteral("Egyedül a kártyán"));
+        Meeting otherSaved = m_app->store()->load(other.id);
+        Participant voice;
+        voice.id = QStringLiteral("p-voice");
+        voice.sides = {QStringLiteral("mic")};
+        otherSaved.participants = {voice};
+        m_app->store()->saveMeeting(otherSaved);
+        OverviewViewModel second(facadetest::overviewOf(m_app.get()));
+        second.setMeetingId(other.id);
+        QCOMPARE(second.selfName(), QStringLiteral("Kovács Lilla"));
+        QVERIFY(second.setSelfParticipant(QStringLiteral("p-voice")).value("ok").toBool());
+        QTRY_VERIFY(rowOf(second, "p-voice").value("self").toBool());
+        QVERIFY(second.setSolo());
+        QTRY_COMPARE(second.decision(), QStringLiteral("solo"));
+    }
+
+    // The card's demo states (OverviewDemoFacade): decision, "Approve · N", and the row operations in
+    // memory (naming, "Was there", "same voice", "This is me", the decisions).
+    void card_demoStatesAndOperations()
+    {
+        m_app.reset();
+        AppContext::instance()->setDemo(true);
+        OverviewViewModel vm;
+        vm.setDemoState(QStringLiteral("overviewProcessing"));
+        QCOMPARE(vm.decision(), QStringLiteral("pending"));
+        QCOMPARE(vm.approveCount(), 2);
+        QVERIFY(rowOf(vm, "p4").value("doubtful").toBool());
+        QVERIFY(rowOf(vm, "v1").value("anonymous").toBool());
+        QVERIFY(!vm.selfName().isEmpty());
+        QVERIFY(vm.confirmParticipant(QStringLiteral("p4"), true));
+        QCOMPARE(vm.approveCount(), 3);
+        QVERIFY(!vm.confirmParticipant(QStringLiteral("v1"), true));     // a name is needed
+        QVERIFY(vm.nameParticipant(QStringLiteral("v1"), QStringLiteral("Molnár Eszter")));
+        QCOMPARE(vm.approveCount(), 4);
+        // The suggestion with that name dissolved into the named voice.
+        QVERIFY(rowOf(vm, QStringLiteral("suggest:Molnár Eszter")).isEmpty());
+        QVERIFY(vm.mergeParticipantInto(QStringLiteral("v2"), QStringLiteral("p1")));
+        QVERIFY(rowOf(vm, "v2").isEmpty());
+        QVERIFY(vm.decideInDemo(QStringLiteral("approved")));
+        QCOMPARE(vm.decision(), QStringLiteral("approved"));
+        QVERIFY(!vm.approvalPending());
+        QCOMPARE(vm.approveCount(), 4);
+
+        vm.setDemoState(QStringLiteral("overviewVoiceless"));
+        QVERIFY(rowOf(vm, "t1").value("voiceless").toBool());
+        QVERIFY(vm.setSelfParticipant(QStringLiteral("v1")).value("ok").toBool());
+        QVERIFY(rowOf(vm, "p1").isEmpty());                                // the earlier own row gave way
+        QVERIFY(rowOf(vm, "v1").value("self").toBool());
+
+        vm.setDemoState(QStringLiteral("overviewApproved"));
+        QCOMPARE(vm.decision(), QStringLiteral("approved"));
+        QCOMPARE(vm.approveCount(), 4);
+        vm.setDemoState(QStringLiteral("overviewSkipped"));
+        QCOMPARE(vm.decision(), QStringLiteral("skipped"));
+        vm.setDemoState(QStringLiteral("overviewSolo"));
+        QCOMPARE(vm.decision(), QStringLiteral("solo"));
+        vm.setDemoState(QStringLiteral("overviewNoVoiceModel"));
+        QCOMPARE(stepOf(vm, QStringLiteral("voice")).value("fixTarget").toString(), QStringLiteral("speakers"));
+        QVERIFY(rowOf(vm, "m1").value("voiceless").toBool());
+        vm.setDemoState(QStringLiteral("overviewDone"));
+        QCOMPARE(vm.hiddenSpeakers(), 1);
+        QVERIFY(rowOf(vm, "p2").value("lineCount").toInt() > 0);
+        vm.setDemoState(QStringLiteral("overviewNobody"));
+        QCOMPARE(vm.participants().size(), 3);
+        QVERIFY(vm.nameParticipant(QStringLiteral("S1"), QStringLiteral("Szabó Bence")));
+        QCOMPARE(rowOf(vm, "S1").value("name").toString(), QStringLiteral("Szabó Bence"));
+        AppContext::instance()->setDemo(false);
+    }
+
     // Demo (screenshot): the made-up data of the four states.
     void demoStates()
     {
@@ -467,13 +643,13 @@ private slots:
         vm.setDemoState(QStringLiteral("overviewProcessing"));
         QVERIFY(vm.approvalPending());
         QVERIFY(vm.transcribing());
-        QCOMPARE(vm.candidateCount(), 4);
+        QCOMPARE(vm.candidateCount(), 5);
         QCOMPARE(vm.participants().size(), 6);
         QVERIFY(vm.participants().last().toMap().value("suggested").toBool());
         QCOMPARE(stepOf(vm, QStringLiteral("voice")).value("state").toString(), QStringLiteral("attention"));
         QCOMPARE(stepOf(vm, QStringLiteral("transcript")).value("progress").toInt(), 62);
         // "Add" / x on the suggestion.
-        vm.removeParticipant(QStringLiteral("suggest:Szabó Bence"));
+        vm.removeParticipant(QStringLiteral("suggest:Molnár Eszter"));
         QCOMPARE(vm.participants().size(), 5);
 
         vm.setDemoState(QStringLiteral("overviewDone"));

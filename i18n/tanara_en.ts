@@ -2012,70 +2012,8 @@
         <translation>WHO WAS THERE</translation>
     </message>
     <message>
-        <source>Módosítás</source>
-        <translation>Edit</translation>
-    </message>
-    <message>
         <source>+ Résztvevő</source>
         <translation>+ Participant</translation>
-    </message>
-    <message>
-        <source>Még nem tudjuk, kik voltak ott</source>
-        <translation>We don&apos;t know yet who was there</translation>
-    </message>
-    <message>
-        <source>Add meg, kik voltak ott: a beszélők így a nevükre kerülnek, és legközelebb a hangjukról is felismerjük őket.</source>
-        <translation>Enter who was there: the speakers will get their names, and next time we&apos;ll recognize them by voice too.</translation>
-    </message>
-    <message>
-        <source>A hanglenyomat-elemzés után ide jönnek a jelöltek. Ha tudod, add meg most: az azonosítás így pontosabb lesz.</source>
-        <translation>Candidates will appear here after the voiceprint analysis. If you know, enter them now: identification will be more accurate.</translation>
-    </message>
-    <message>
-        <source>Csak én beszéltem</source>
-        <translation>Only I spoke</translation>
-    </message>
-    <message>
-        <source>Minden beszéd a te nevedre kerül, az azonosítás kimarad</source>
-        <translation>All speech goes under your name; identification is skipped</translation>
-    </message>
-    <message numerus="yes">
-        <source>%n beszélő, ismeretlen hanggal</source>
-        <translation>
-            <numerusform>%n speaker with an unknown voice</numerusform>
-            <numerusform>%n speakers with unknown voices</numerusform>
-        </translation>
-    </message>
-    <message>
-        <source>Egyikük hangja sem hasonlít egy ismert emberére sem. Elnevezheted őket; legközelebb már felismerjük a hangjukat.</source>
-        <translation>None of their voices resemble anyone known. You can name them; next time we&apos;ll recognize their voices.</translation>
-    </message>
-    <message>
-        <source>Elnevezem őket</source>
-        <translation>Name them</translation>
-    </message>
-    <message numerus="yes">
-        <source>A hanglenyomat-elemzés kész: %n jelölt</source>
-        <translation>
-            <numerusform>Voiceprint analysis finished: %n candidate</numerusform>
-            <numerusform>Voiceprint analysis finished: %n candidates</numerusform>
-        </translation>
-    </message>
-    <message>
-        <source>Nézd át, kik voltak ott. Ebből kötöm az átirat beszélőit a nevekhez.</source>
-        <translation>Review who was there. I use this to match the transcript&apos;s speakers to names.</translation>
-    </message>
-    <message>
-        <source>Nézd át, kik voltak ott. Ebből köti az átirat a beszélőket, amikor megérkezik.</source>
-        <translation>Review who was there. The transcript uses this to match speakers to names when it arrives.</translation>
-    </message>
-    <message>
-        <source>Átnézem</source>
-        <translation>Review</translation>
-    </message>
-    <message>
-        <source>Később</source>
-        <translation>Later</translation>
     </message>
     <message>
         <source>ADATOK</source>
@@ -2164,10 +2102,6 @@
         <translation>Re-run the voiceprint analysis on the tracks</translation>
     </message>
     <message>
-        <source>A beszélő minden sora a választott névre kerül; Ctrl+Z visszavonja.</source>
-        <translation>All lines of the speaker go to the chosen name; Ctrl+Z undoes it.</translation>
-    </message>
-    <message>
         <source>Sávok részletei</source>
         <translation>Track details</translation>
     </message>
@@ -2188,26 +2122,85 @@
     </message>
 </context>
 <context>
-    <name>ParticipantList</name>
+    <name>ParticipantCardRow</name>
+    <message>
+        <source>minta · %1–%2</source>
+        <translation>sample · %1–%2</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n sor</source>
+        <translation>
+            <numerusform>%n line</numerusform>
+            <numerusform>%n lines</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>hang nélkül vettük fel</source>
+        <translation>added without a voice</translation>
+    </message>
+    <message>
+        <source>kétes · hallgasd meg</source>
+        <translation>doubtful · listen</translation>
+    </message>
     <message>
         <source>Kattints: Miért ő? (javítás a szerkesztőben)</source>
-        <translation>Click: Why them? (correct it in the editor)</translation>
+        <translation>Click: Why them? (fix in the editor)</translation>
+    </message>
+    <message>
+        <source>Még nem hallottuk: nincs minta</source>
+        <translation>Not heard yet: no sample</translation>
+    </message>
+    <message>
+        <source>Ehhez a sorhoz nincs meghallgatható minta</source>
+        <translation>This row has no sample to listen to</translation>
+    </message>
+    <message>
+        <source>kétes</source>
+        <translation>doubtful</translation>
     </message>
     <message>
         <source>Elnevezés…</source>
         <translation>Name…</translation>
     </message>
     <message>
-        <source>Kié ez a hang? A sorai a választott névre kerülnek</source>
-        <translation>Whose voice is this? Its lines go to the chosen name</translation>
+        <source>Kié ez a hang? Meghallgatod, majd nevet adsz neki</source>
+        <translation>Whose voice is this? Listen, then give it a name</translation>
     </message>
     <message>
-        <source>Hozzáadás</source>
-        <translation>Add</translation>
+        <source>Melyik hang?</source>
+        <translation>Which voice?</translation>
+    </message>
+    <message>
+        <source>Hozzárendeled egy talált hanghoz: a két sor egy lesz</source>
+        <translation>Assign it to a voice that was found: the two rows become one</translation>
+    </message>
+    <message>
+        <source>Ott volt</source>
+        <translation>Was there</translation>
+    </message>
+    <message>
+        <source>Felveszed a résztvevők közé</source>
+        <translation>Add them to the participants</translation>
+    </message>
+    <message>
+        <source>Megerősítetted, hogy ott volt · kattintva visszavonod</source>
+        <translation>You confirmed they were there · click to undo</translation>
+    </message>
+    <message>
+        <source>Meghallgattad, ő az: jóváhagyáskor a beszéde a nevére kerül</source>
+        <translation>You listened, it is them: on approval their speech goes to their name</translation>
+    </message>
+    <message>
+        <source>Ugyanaz a hang, mint… · Nem résztvevő</source>
+        <translation>Same voice as… · Not a participant</translation>
+    </message>
+    <message>
+        <source>Másik név… · Ugyanaz a hang, mint… · Nem volt ott</source>
+        <translation>Another name… · Same voice as… · Was not there</translation>
     </message>
     <message>
         <source>Nem volt ott: a javaslat ennél a megbeszélésnél nem jön elő (Ctrl+Z visszahozza)</source>
-        <translation>Was not there: the suggestion will not come up for this meeting (Ctrl+Z brings it back)</translation>
+        <translation>Was not there: the suggestion does not come back for this meeting (Ctrl+Z brings it back)</translation>
     </message>
     <message>
         <source>Törlés a résztvevők közül (Ctrl+Z visszavonja)</source>
@@ -2215,7 +2208,105 @@
     </message>
     <message>
         <source>Nem volt ott: törlés a résztvevők közül, a sorai névtelenek lesznek (Ctrl+Z visszavonja)</source>
-        <translation>Was not there: removed from the participants, their lines become unnamed (Ctrl+Z undoes it)</translation>
+        <translation>Was not there: removed from the participants, their lines become anonymous (Ctrl+Z undoes it)</translation>
+    </message>
+</context>
+<context>
+    <name>ParticipantNamePanel</name>
+    <message>
+        <source>Nem sikerült elnevezni ezt a sort.</source>
+        <translation>This row could not be named.</translation>
+    </message>
+    <message>
+        <source>Nem sikerült: add meg a saját neved a Beállításokban.</source>
+        <translation>Did not work: set your own name in Settings.</translation>
+    </message>
+    <message>
+        <source>Szól a minta…</source>
+        <translation>Playing the sample…</translation>
+    </message>
+    <message>
+        <source>Hallgasd meg, mielőtt nevet adsz</source>
+        <translation>Listen before you name it</translation>
+    </message>
+    <message>
+        <source>%1 mp</source>
+        <translation>%1 s</translation>
+    </message>
+    <message>
+        <source>Ez én vagyok — %1</source>
+        <translation>This is me — %1</translation>
+    </message>
+    <message>
+        <source>Ez én vagyok</source>
+        <translation>This is me</translation>
+    </message>
+    <message>
+        <source>Kié ez a hang? Név keresése vagy új név…</source>
+        <translation>Whose voice is this? Search a name or type a new one…</translation>
+    </message>
+    <message>
+        <source>Másik név keresése vagy új név…</source>
+        <translation>Search another name or type a new one…</translation>
+    </message>
+    <message>
+        <source>„%1”</source>
+        <translation>“%1”</translation>
+    </message>
+    <message>
+        <source>már a listán</source>
+        <translation>already on the list</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n megbeszélés</source>
+        <translation>
+            <numerusform>%n meeting</numerusform>
+            <numerusform>%n meetings</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>nincs hanglenyomat</source>
+        <translation>no voiceprint</translation>
+    </message>
+    <message>
+        <source>Új személy: „%1”</source>
+        <translation>New person: “%1”</translation>
+    </message>
+    <message>
+        <source>Ugyanaz a hang, mint…</source>
+        <translation>Same voice as…</translation>
+    </message>
+    <message>
+        <source>csak itt</source>
+        <translation>only here</translation>
+    </message>
+    <message>
+        <source>Ezt a két sort nem lehet összevonni.</source>
+        <translation>These two rows cannot be merged.</translation>
+    </message>
+    <message>
+        <source>Nem résztvevő</source>
+        <translation>Not a participant</translation>
+    </message>
+    <message>
+        <source>Nem volt ott</source>
+        <translation>Was not there</translation>
+    </message>
+    <message>
+        <source>a beszéde névtelen marad</source>
+        <translation>their speech stays anonymous</translation>
+    </message>
+    <message>
+        <source>a sorai névtelenek lesznek</source>
+        <translation>their lines become anonymous</translation>
+    </message>
+    <message>
+        <source>Csak ebben a megbeszélésben: a két hang egy résztvevő lesz. Két személy végleges egyesítése a Személyek ablakban van („Személyek egyesítése”).</source>
+        <translation>Only in this meeting: the two voices become one participant. Merging two people for good is in the People window (“Merge people”).</translation>
+    </message>
+    <message>
+        <source>A választott névre kerül a hang, és legközelebb felismerjük. Ctrl+Z visszavonja.</source>
+        <translation>The voice goes to the chosen name, and we recognize it next time. Ctrl+Z undoes it.</translation>
     </message>
 </context>
 <context>
@@ -2246,6 +2337,258 @@
     <message>
         <source>Kattintva kézzel ehhez a sávhoz köti</source>
         <translation>Click to tie to this track manually</translation>
+    </message>
+</context>
+<context>
+    <name>ParticipantTrackControl</name>
+    <message>
+        <source>kézzel kötve: %1</source>
+        <translation>bound by hand: %1</translation>
+    </message>
+    <message>
+        <source>hallottuk: %1 · kattints a kötéshez</source>
+        <translation>heard on: %1 · click to bind</translation>
+    </message>
+    <message>
+        <source>nincs kötve</source>
+        <translation>not bound</translation>
+    </message>
+    <message>
+        <source>Sáv:</source>
+        <translation>Track:</translation>
+    </message>
+    <message>
+        <source>Kézzel ehhez a sávhoz kötve · kattintva leveszed</source>
+        <translation>Bound to this track by hand · click to remove</translation>
+    </message>
+    <message>
+        <source>Itt hallottuk (következtetés, nem kötés) · kattintva ehhez a sávhoz kötöd</source>
+        <translation>Heard here (an inference, not a binding) · click to bind to this track</translation>
+    </message>
+    <message>
+        <source>Kattintva ezt a sávot is hozzáköti</source>
+        <translation>Click to bind this track too</translation>
+    </message>
+    <message>
+        <source>Kattintva kézzel ehhez a sávhoz köti</source>
+        <translation>Click to bind to this track by hand</translation>
+    </message>
+    <message>
+        <source>kézzel kötve</source>
+        <translation>bound by hand</translation>
+    </message>
+    <message>
+        <source>itt hallottuk</source>
+        <translation>heard here</translation>
+    </message>
+</context>
+<context>
+    <name>ParticipantWhichVoicePanel</name>
+    <message>
+        <source>Melyik hang %1?</source>
+        <translation>Which voice is %1?</translation>
+    </message>
+    <message>
+        <source>Hallgasd meg a névtelen hangokat. A választott hang az ő nevére kerül, és legközelebb felismerjük.</source>
+        <translation>Listen to the unnamed voices. The chosen voice goes to their name, and we recognize it next time.</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n sor</source>
+        <translation>
+            <numerusform>%n line</numerusform>
+            <numerusform>%n lines</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Ő az</source>
+        <translation>That&apos;s them</translation>
+    </message>
+    <message>
+        <source>Egyik sem — marad külön sorban, hang nélkül</source>
+        <translation>None of them — stays a separate row, without a voice</translation>
+    </message>
+    <message>
+        <source>Egyik sem — külön sorba, hang nélkül</source>
+        <translation>None of them — a separate row, without a voice</translation>
+    </message>
+    <message>
+        <source>Miért külön sor? Ebben a felvételben még egyik hang sincs a nevéhez kötve, és ha nincs hanglenyomata, a gép nem is találhatta meg: hang nélkül vettük fel. Ha később elnevezel egy hangot a nevére, a két sor összeolvad.</source>
+        <translation>Why a separate row? In this recording no voice is bound to their name yet, and without a voiceprint the machine could not find them: they are added without a voice. If you later name a voice with their name, the two rows merge.</translation>
+    </message>
+</context>
+<context>
+    <name>ParticipantsCard</name>
+    <message numerus="yes">
+        <source>%n kétes</source>
+        <translation>
+            <numerusform>%n doubtful</numerusform>
+            <numerusform>%n doubtful</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>%n névtelen hang</source>
+        <translation>
+            <numerusform>%n unnamed voice</numerusform>
+            <numerusform>%n unnamed voices</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Minden hang névhez kötve.</source>
+        <translation>Every voice has a name.</translation>
+    </message>
+    <message>
+        <source>kimarad: %1 — az ő beszédük névtelen marad</source>
+        <translation>left out: %1 — their speech stays anonymous</translation>
+    </message>
+    <message>
+        <source>Hanglenyomat-elemzés fut…</source>
+        <translation>Voiceprint analysis running…</translation>
+    </message>
+    <message>
+        <source>Nincs hangmodell: a jelöltek nem jönnek maguktól</source>
+        <translation>No voice model: candidates do not come by themselves</translation>
+    </message>
+    <message numerus="yes">
+        <source>Kik voltak ott? A hanglenyomat-elemzés %n hangot talált</source>
+        <translation>
+            <numerusform>Who was there? The voiceprint analysis found %n voice</numerusform>
+            <numerusform>Who was there? The voiceprint analysis found %n voices</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>Jóváhagyva · %n résztvevő</source>
+        <translation>
+            <numerusform>Approved · %n participant</numerusform>
+            <numerusform>Approved · %n participants</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Kihagyva</source>
+        <translation>Skipped</translation>
+    </message>
+    <message>
+        <source>Csak én beszéltem</source>
+        <translation>Only I spoke</translation>
+    </message>
+    <message>
+        <source>Egyik hang sem ismerős</source>
+        <translation>No voice is familiar</translation>
+    </message>
+    <message>
+        <source>Addig is felvehetsz résztvevőt és sávhoz kötheted, vagy jelezheted, hogy csak te beszéltél.</source>
+        <translation>Meanwhile you can add participants and bind them to tracks, or say that only you spoke.</translation>
+    </message>
+    <message>
+        <source>Vedd fel kézzel, kik voltak ott, és kösd őket sávhoz. A hangmodellt a Feldolgozás oszlop hanglenyomat-lépésében a „Beállítások megnyitása” tölti le.</source>
+        <translation>Add who was there by hand and bind them to tracks. To download the voice model, use “Open settings” in the voiceprint step of the Processing column.</translation>
+    </message>
+    <message>
+        <source>Hallgasd meg (▶), nevezd el, kösd sávhoz, majd hagyd jóvá. Ebből kötöm az átirat beszélőit a nevekhez.</source>
+        <translation>Listen (▶), name, bind to a track, then approve. I bind the transcript&apos;s speakers to the names from this.</translation>
+    </message>
+    <message>
+        <source>Hallgasd meg (▶), nevezd el, kösd sávhoz, majd hagyd jóvá. Az átirat ebből köti a beszélőket, amikor megérkezik.</source>
+        <translation>Listen (▶), name, bind to a track, then approve. The transcript binds its speakers from this when it arrives.</translation>
+    </message>
+    <message>
+        <source>Az átirat beszélői ezekhez a nevekhez kötve. A módosítás azonnal érvényes; Ctrl+Z visszavonja.</source>
+        <translation>The transcript&apos;s speakers are bound to these names. Changes apply at once; Ctrl+Z undoes them.</translation>
+    </message>
+    <message>
+        <source>Az átirat érkezésekor ezekre a nevekre kötöm a beszélőket. A módosítás azonnal érvényes; Ctrl+Z visszavonja.</source>
+        <translation>When the transcript arrives, I bind its speakers to these names. Changes apply at once; Ctrl+Z undoes them.</translation>
+    </message>
+    <message>
+        <source>Nem kötöttünk senkit; az átirat után a hangfelismerés dönt. Később is jóváhagyhatod.</source>
+        <translation>Nobody was bound; after the transcript, voice recognition decides. You can still approve later.</translation>
+    </message>
+    <message>
+        <source>Az átirat minden beszélője a te nevedre kerül; a többi jelölt rejtve. Ctrl+Z visszavonja.</source>
+        <translation>Every speaker of the transcript goes to your name; the other candidates are hidden. Ctrl+Z undoes it.</translation>
+    </message>
+    <message>
+        <source>Egyikük hangja sem hasonlít egy ismert emberére sem. Nevezd el őket: legközelebb felismerjük a hangjukat.</source>
+        <translation>None of their voices resembles a known person. Name them: next time we recognize their voices.</translation>
+    </message>
+    <message numerus="yes">
+        <source>Jóváhagyás · %n</source>
+        <translation>
+            <numerusform>Approve · %n</numerusform>
+            <numerusform>Approve · %n</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>A névvel bíró, megerősített sorok jóváhagyása; az átirat ezekre köti a beszélőket</source>
+        <translation>Approve the named, confirmed rows; the transcript binds its speakers to them</translation>
+    </message>
+    <message>
+        <source>Még nincs résztvevő. A „+ Résztvevő” felveszi; ha csak te beszéltél, jelezd lent.</source>
+        <translation>No participant yet. “+ Participant” adds one; if only you spoke, say so below.</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n névtelen beszélő, akinek már nincs sora, elrejtve</source>
+        <translation>
+            <numerusform>%n anonymous speaker without lines hidden</numerusform>
+            <numerusform>%n anonymous speakers without lines hidden</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>A jóváhagyás az elemzés után lesz elérhető.</source>
+        <translation>Approval becomes available after the analysis.</translation>
+    </message>
+    <message>
+        <source>Minden beszéd a te nevedre kerül, az azonosítás kimarad</source>
+        <translation>All speech goes to your name, identification is skipped</translation>
+    </message>
+    <message>
+        <source>Kihagyás</source>
+        <translation>Skip</translation>
+    </message>
+    <message>
+        <source>Nem kötünk senkit; a jelöltek megmaradnak, később is jóváhagyhatod</source>
+        <translation>Nobody gets bound; the candidates stay, you can approve later</translation>
+    </message>
+    <message numerus="yes">
+        <source>Jóváhagyás · %n résztvevő</source>
+        <translation>
+            <numerusform>Approve · %n participant</numerusform>
+            <numerusform>Approve · %n participants</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>A névvel bíró, megerősített sorok mennek tovább; az átirat ezekre köti a beszélőket</source>
+        <translation>The named, confirmed rows go on; the transcript binds its speakers to them</translation>
+    </message>
+    <message>
+        <source>Még nem tudjuk, kik voltak ott</source>
+        <translation>We don&apos;t know yet who was there</translation>
+    </message>
+    <message>
+        <source>Add meg, kik voltak ott: a beszélők így a nevükre kerülnek, és legközelebb a hangjukról is felismerjük őket.</source>
+        <translation>Tell us who was there: the speakers get their names, and next time we recognize them by voice too.</translation>
+    </message>
+    <message>
+        <source>A hanglenyomat-elemzés után ide jönnek a jelöltek. Ha tudod, add meg most: az azonosítás így pontosabb lesz.</source>
+        <translation>After the voiceprint analysis the candidates come here. If you know, add them now: identification gets more accurate.</translation>
+    </message>
+    <message>
+        <source>+ Résztvevő</source>
+        <translation>+ Participant</translation>
+    </message>
+    <message>
+        <source>A sávszabály él: minden nevesített beszélőnek van kézi sávja, ezért a sáv kizár — más sávon nem keresem őket.</source>
+        <translation>The track rule applies: every named speaker has a manual track, so the track excludes — I don&apos;t look for them on other tracks.</translation>
+    </message>
+    <message>
+        <source>A sávszabály nem él: %1 nincs kézzel sávhoz kötve, ezért a sáv most csak rangsorol.</source>
+        <translation>The track rule does not apply: not bound to a track by hand: %1 — so the track only ranks for now.</translation>
+    </message>
+    <message numerus="yes">
+        <source>és még %n</source>
+        <translation>
+            <numerusform>and %n more</numerusform>
+            <numerusform>and %n more</numerusform>
+        </translation>
     </message>
 </context>
 <context>
@@ -9078,36 +9421,8 @@
         <translation>approved at %1</translation>
     </message>
     <message>
-        <source>te</source>
-        <translation>you</translation>
-    </message>
-    <message>
-        <source>hang 84%</source>
-        <translation>voice 84%</translation>
-    </message>
-    <message>
-        <source>A hangja 84%-ban hasonlít a mentett mintáihoz (2 modell)</source>
-        <translation>Their voice is 84% similar to their saved samples (2 models)</translation>
-    </message>
-    <message>
-        <source>hang 79%</source>
-        <translation>voice 79%</translation>
-    </message>
-    <message>
-        <source>hang 71%</source>
-        <translation>voice 71%</translation>
-    </message>
-    <message>
-        <source>javasolt</source>
-        <translation>suggested</translation>
-    </message>
-    <message>
         <source>a #%1 alapján · %2 / %3</source>
         <translation>based on #%1 · %2 / %3</translation>
-    </message>
-    <message>
-        <source>naptár · hang · címke · kézi</source>
-        <translation>calendar · voice · tag · manual</translation>
     </message>
     <message>
         <source>Beszélő 1</source>
@@ -9192,6 +9507,73 @@
     <message>
         <source>még nem indult</source>
         <translation>not started yet</translation>
+    </message>
+    <message>
+        <source>Ismeretlen hang %1</source>
+        <translation>Unknown voice %1</translation>
+    </message>
+    <message>
+        <source>Kézzel adtad hozzá</source>
+        <translation>You added them by hand</translation>
+    </message>
+    <message>
+        <source>ismeretlen hang</source>
+        <translation>unknown voice</translation>
+    </message>
+    <message>
+        <source>Kézzel nevezted el</source>
+        <translation>You named them by hand</translation>
+    </message>
+    <message>
+        <source>csak én beszéltem</source>
+        <translation>only I spoke</translation>
+    </message>
+    <message>
+        <source>kihagyva</source>
+        <translation>skipped</translation>
+    </message>
+    <message>
+        <source>A hangja %1%-ban hasonlít a mentett mintáihoz</source>
+        <translation>Their voice is %1% similar to their saved samples</translation>
+    </message>
+    <message>
+        <source>hang %1%</source>
+        <translation>voice %1%</translation>
+    </message>
+    <message>
+        <source>A hangja egyik mentett mintához sem hasonlít eléggé</source>
+        <translation>Their voice is not similar enough to any saved sample</translation>
+    </message>
+    <message>
+        <source>#%1-on még nem volt</source>
+        <translation>never at #%1</translation>
+    </message>
+    <message>
+        <source>A #%1 megbeszéléseken még nem vett részt</source>
+        <translation>They have not attended #%1 meetings yet</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n ablak · rövid</source>
+        <translation>
+            <numerusform>%n window · short</numerusform>
+            <numerusform>%n windows · short</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Kevés hangablakból áll: lehet zaj vagy egy másik hang része</source>
+        <translation>Made of few voice windows: may be noise or part of another voice</translation>
+    </message>
+    <message>
+        <source>javasolt · nem hallottuk</source>
+        <translation>suggested · not heard</translation>
+    </message>
+    <message>
+        <source>hang · sáv · címke · kézi</source>
+        <translation>voice · track · tag · manual</translation>
+    </message>
+    <message>
+        <source>Nincs hangmodell. Töltsd le a Beállításokban (Beszélők).</source>
+        <translation>No voice model. Download it in Settings (Speakers).</translation>
     </message>
     <message>
         <source>sáv</source>

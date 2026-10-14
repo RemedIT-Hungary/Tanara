@@ -236,16 +236,31 @@ ApprovalOutcome ParticipantsDemoFacade::approve(const QString&, const QVector<Ap
 
 QVector<ParticipantTrackChoice> ParticipantsDemoFacade::selectableTracks(const QString&) const
 {
-    return {{QStringLiteral("mic"), demoText("Saját mikrofon", "My microphone"), QStringLiteral("mic")},
-            {QStringLiteral("call"), demoText("Hívás hangja", "Call audio"), QStringLiteral("phone")}};
+    QVector<ParticipantTrackChoice> out{{QStringLiteral("mic"), demoText("Saját mikrofon", "My microphone"), QStringLiteral("mic")},
+                                        {QStringLiteral("call"), demoText("Hívás hangja", "Call audio"), QStringLiteral("phone")}};
+    // The Overview card's 3+ tracks state (the track control becomes a drop-down).
+    if (m_state == QLatin1String("overviewThreeTracks"))
+        out.append({QStringLiteral("browser"), demoText("Böngésző hangja", "Browser audio"), QStringLiteral("phone")});
+    return out;
+}
+
+// The default manual binding of a design state: p3 bound to both; on the Overview card's approved
+// state every named row (the track rule holds).
+static QStringList seededTracks(const QString& state, const QString& id)
+{
+    if (state == QLatin1String("overviewApproved")) {
+        if (id == QLatin1String("p1")) return {QStringLiteral("mic")};
+        if (id == QLatin1String("p2") || id == QLatin1String("v1") || id == QLatin1String("p4"))
+            return {QStringLiteral("call")};
+        return {};
+    }
+    return id == QLatin1String("p3") ? QStringList{QStringLiteral("mic"), QStringLiteral("call")} : QStringList();
 }
 
 ParticipantTrackBinding ParticipantsDemoFacade::participantTracks(const QString&, const QString& id) const
 {
     ParticipantTrackBinding b;
-    const QStringList manual = m_tracksSeeded ? m_manualTracks.value(id)
-                                              : (id == QLatin1String("p3") ? QStringList{QStringLiteral("mic"), QStringLiteral("call")}
-                                                                           : QStringList());
+    const QStringList manual = m_tracksSeeded ? m_manualTracks.value(id) : seededTracks(m_state, id);
     b.manual = !manual.isEmpty();
     b.trackIds = b.manual ? manual : QStringList{id == QLatin1String("p1") ? QStringLiteral("mic") : QStringLiteral("call")};
     return b;
@@ -254,7 +269,9 @@ ParticipantTrackBinding ParticipantsDemoFacade::participantTracks(const QString&
 bool ParticipantsDemoFacade::setParticipantTracks(const QString& meetingId, const QString& id, const QStringList& trackIds)
 {
     if (!m_tracksSeeded) {
-        m_manualTracks.insert(QStringLiteral("p3"), {QStringLiteral("mic"), QStringLiteral("call")});
+        for (const QString& seeded : {QStringLiteral("p1"), QStringLiteral("p2"), QStringLiteral("p3"),
+                                      QStringLiteral("p4"), QStringLiteral("v1")})
+            if (const QStringList t = seededTracks(m_state, seeded); !t.isEmpty()) m_manualTracks.insert(seeded, t);
         m_tracksSeeded = true;
     }
     if (trackIds.isEmpty()) m_manualTracks.remove(id);

@@ -4,9 +4,10 @@ import QtQuick.Templates as T
 
 // Overview tab: the first tab, two columns.
 //   Left (what and who): ABOUT (source card: manual description; calendar later), tag field with
-//       suggestions, WHO WAS THERE (participants with source badges and talk share; when empty
-//       "+ Participant" / "Only I spoke"; when everyone is unknown: the raw speakers + "Name
-//       them"), and the approval banner ("Voiceprint analysis is done: N candidates").
+//       suggestions, WHO WAS THERE: the "Who was there?" card (ParticipantsCard, A variant: the
+//       analysis header, the decision pending -> blue header + "Approve · N" / "Skip" / "Only I
+//       spoke" footer, rows with a voice sample, the "Track:" control, naming panel, "Which voice is
+//       it?" after "+ Participant"; every change immediate, one shared-undo step).
 //   Right, 340 px (technical): PROCESSING steps, TRACKS (playback, mixdown switch, "Mix in");
 //       for a finished meeting STATS as a 2x3 tile grid, with steps / tracks collapsed to one
 //       row each. The full view of the old Tracks tab (rename, locate, restore, permanent
@@ -20,17 +21,19 @@ import QtQuick.Templates as T
 // similar meetings and the detected call; the tag row suggests from the title when there is
 // no other suggestion (MeetingTagsModel.draftTitle).
 // Participant row badges: tooltip with the evidence; after transcription a click opens the
-// editor's "Why them?" panel (shell.openSpeakerWhy). An anonymous row can be named by click /
-// "Name..." button: after transcription a person picker -> editor.reassignSpeaker; before it the
-// "Who was there?" dialog (the name is editable there). The voiceprint step has "Reanalyze".
-// The "Who was there?" dialog opens on the participantsRequested signal (Main: shell.openParticipants).
+// editor's "Why them?" panel (shell.openSpeakerWhy). Naming (before and after the transcript) is
+// the card's naming panel (OverviewViewModel.nameParticipant ...). The voiceprint step has "Reanalyze".
+// participantsRequested: no longer emitted here (the "Who was there?" dialog goes in UA3; Main still
+// connects it).
 // Change bar: every Overview action (approval, "Only I spoke", track on / off, description,
 // adding / removing a participant, rejecting a suggestion, tag, naming) goes onto the meeting's
 // SHARED undo stack (MeetingUndoService); Main calls showChange(text) on the shell's
 // meetingChangePosted signal -> dark bar at the bottom of the left column:
 // "<what happened> · Undo · Ctrl+Z · x"; after an undo "Undone: ..." (showUndone).
 // For screenshots: --qml-prop 'demoState="overviewProcessing|overviewDone|overviewEmpty|overviewNobody|
-// overviewRecorded|overviewRecordedError|overviewTranscribing"'.
+// overviewRecorded|overviewRecordedError|overviewTranscribing"'; the card's states: overviewNaming |
+// overviewSameVoice | overviewWhichVoice (the panels open) | overviewVoiceless | overviewThreeTracks |
+// overviewApproved | overviewSkipped | overviewSolo | overviewNoVoiceModel (OverviewDemoFacade).
 Item {
     id: root
 
@@ -47,9 +50,6 @@ Item {
 
     signal participantsRequested()
 
-    // "Later": the banner does not come back in this session for this meeting.
-    property var laterFor: ({})
-    readonly property bool bannerShown: vm.approvalPending && !laterFor[meetingId]
     // Opening the collapsed rows in the done state.
     property bool stepsOpen: false
     property bool tracksOpen: false
@@ -57,13 +57,23 @@ Item {
 
     // The V5-like (two-track, empty) demo states.
     readonly property bool demoTwoTracks: ["overviewEmpty", "overviewNobody", "overviewRecorded",
-                                           "overviewRecordedError", "overviewTranscribing"].indexOf(root.demoState) >= 0
+                                           "overviewRecordedError", "overviewTranscribing",
+                                           "overviewNoVoiceModel"].indexOf(root.demoState) >= 0
+    // The "Who was there?" card's states with candidates (the transcription runs meanwhile).
+    readonly property bool demoCandidates: ["overviewNaming", "overviewSameVoice", "overviewWhichVoice",
+                                            "overviewVoiceless", "overviewThreeTracks", "overviewApproved",
+                                            "overviewSkipped", "overviewSolo"].indexOf(root.demoState) >= 0
     // Before transcription starts: the start controls inside the steps.
     readonly property bool beforeTranscription: !vm.hasTranscript && !vm.transcribing
     // State of the voiceprint step: while waiting "Start analysis", after a finished analysis "Reanalyze".
     readonly property string voiceState: {
         for (const s of vm.steps) if (s.key === "voice") return s.state
         return ""
+    }
+    // The voiceprint step itself (the card's running header shows its progress).
+    readonly property var voiceStep: {
+        for (const s of vm.steps) if (s.key === "voice") return s
+        return ({})
     }
     // Settings page that fixes a blocked voice step (no voice model installed), "" = not blocked.
     readonly property string voiceFixTarget: {
@@ -87,7 +97,9 @@ Item {
         demoState: root.demoState === "overviewRecordedError" ? "failed"
                  : root.demoState === "overviewRecorded" ? "readyNote"
                  : root.demoState === "overviewTranscribing" ? "uploading"
-                 : root.demoState === "overviewProcessing" || root.demoState === "overviewEmpty" ? "running" : ""
+                 : root.demoState === "overviewNoVoiceModel" ? "readyNote"
+                 : root.demoState === "overviewProcessing" || root.demoState === "overviewEmpty"
+                   || root.demoCandidates ? "running" : ""
     }
     TrackListModel {
         id: tracks
@@ -98,6 +110,13 @@ Item {
     ParticipantTrackBinder {
         id: trackBinder
         objectName: "participantTrackBinder"
+        meetingId: root.meetingId
+        demoState: root.demoState
+    }
+    // The "Who was there?" decision on real data (approve / skip with the learning question; the
+    // header's model / age meta). The card's rows come from vm.
+    ParticipantsViewModel {
+        id: decisionVm
         meetingId: root.meetingId
     }
     // Own tag model when the host gives none (standalone screenshot): a made-up set.
@@ -124,6 +143,7 @@ Item {
     }
 
     function openPicker(anchor) {
+        picker.anchorItem = anchor
         const p = anchor.mapToItem(root, 0, anchor.height)
         picker.x = Math.max(8, Math.min(root.width - picker.width - 8, p.x + anchor.width - picker.width))
         picker.y = p.y + 6
@@ -143,20 +163,18 @@ Item {
         if (root.shell && typeof root.shell.openSpeakerWhy === "function")
             root.shell.openSpeakerWhy(root.meetingId, speakerKey)
     }
-    // Naming an anonymous row. After transcription a person picker (-> editor.reassignSpeaker);
-    // before it the "Who was there?" dialog (the core lets the name be set there).
-    function nameRow(row, anchor) {
-        if (!vm.hasTranscript || (row.speakerKey || "") === "") {
-            root.participantsRequested()
-            return
+    // Demo / screenshots: the card's panels open by themselves in their design states.
+    Timer {
+        id: demoPanelTimer
+        interval: 250
+        running: ["overviewNaming", "overviewSameVoice", "overviewWhichVoice"].indexOf(root.demoState) >= 0
+        onTriggered: {
+            if (root.demoState === "overviewNaming") participantsCard.openNaming("v1", false)
+            else if (root.demoState === "overviewSameVoice") participantsCard.openNaming("v2", true)
+            else participantsCard.openWhichVoice(DemoText.t("Tóth Bence", "Ryan Mitchell"), "")
         }
-        namePicker.speakerKey = row.speakerKey
-        namePicker.sampleRow = row
-        const p = anchor.mapToItem(root, 0, anchor.height)
-        namePicker.x = Math.max(8, Math.min(root.width - namePicker.width - 8, p.x + anchor.width - namePicker.width))
-        namePicker.y = p.y + 6
-        namePicker.open()
     }
+
     // The change bar (Main calls it on the shared stack's signals; in the demo, for screenshots).
     function showChange(text) { changeBar.post(text, false) }
     function showUndone(text) { changeBar.post(qsTr("Visszavonva: %1").arg(text), true) }
@@ -434,158 +452,26 @@ Item {
                         Layout.topMargin: 8
                         title: qsTr("KIK VOLTAK OTT")
                         hint: vm.peopleHint
-                        actionText: vm.approved ? qsTr("Módosítás") : vm.peopleState === "list" ? qsTr("+ Résztvevő") : ""
+                        actionText: qsTr("+ Résztvevő")
                         actionName: "participantsAction"
-                        onActionClicked: (anchor) => vm.approved ? root.participantsRequested() : root.openPicker(anchor)
+                        onActionClicked: (anchor) => root.openPicker(anchor)
                     }
-                    ParticipantList {
+                    ParticipantsCard {
+                        id: participantsCard
                         objectName: "participantList"
-                        visible: vm.peopleState === "list"
                         Layout.fillWidth: true
-                        people: vm.participants
-                        canExplain: vm.hasTranscript
-                        trackBinder: trackBinder
+                        vm: vm
+                        decision: decisionVm
+                        binder: trackBinder
                         player: root.player
-                        onAddRequested: (name) => vm.addParticipant(name)
-                        onRemoveRequested: (id) => vm.removeParticipant(id)
-                        onWhyRequested: (key) => root.explainSpeaker(key)
-                        onNameRequested: (row, anchor) => root.nameRow(row, anchor)
-                    }
-                    EmptyCard {
-                        objectName: "peopleEmpty"
-                        visible: vm.peopleState === "empty"
-                        Layout.fillWidth: true
-                        iconName: "users"
-                        title: qsTr("Még nem tudjuk, kik voltak ott")
-                        text: vm.hasTranscript ? qsTr("Add meg, kik voltak ott: a beszélők így a nevükre kerülnek, és legközelebb a hangjukról is felismerjük őket.")
-                                               : qsTr("A hanglenyomat-elemzés után ide jönnek a jelöltek. Ha tudod, add meg most: az azonosítás így pontosabb lesz.")
-                        TButton {
-                            id: addPersonButton
-                            objectName: "emptyAddParticipant"
-                            text: qsTr("+ Résztvevő")
-                            size: "small"
-                            onClicked: root.openPicker(addPersonButton)
-                        }
-                        TButton {
-                            objectName: "soloButton"
-                            text: qsTr("Csak én beszéltem")
-                            size: "small"
-                            toolTipText: qsTr("Minden beszéd a te nevedre kerül, az azonosítás kimarad")
-                            onClicked: root.solo()
-                        }
-                    }
-                    EmptyCard {
-                        objectName: "peopleNobody"
-                        visible: vm.peopleState === "nobody"
-                        Layout.fillWidth: true
-                        iconName: "fingerprint"
-                        title: qsTr("%n beszélő, ismeretlen hanggal", "", vm.anonymousSpeakers.length)
-                        text: qsTr("Egyikük hangja sem hasonlít egy ismert emberére sem. Elnevezheted őket; legközelebb már felismerjük a hangjukat.")
-                        Repeater {
-                            model: vm.anonymousSpeakers
-                            Rectangle {
-                                required property var modelData
-                                width: chipRow.implicitWidth + 12
-                                height: 26
-                                radius: 13
-                                color: Theme.speakerSoft(modelData.colorIndex)
-                                border.width: 1
-                                border.color: Theme.speakerLine(modelData.colorIndex)
-                                Row {
-                                    id: chipRow
-                                    x: 3
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    spacing: 6
-                                    TAvatar {
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        size: 20
-                                        variant: "solid"
-                                        speakerIndex: modelData.colorIndex
-                                        monogram: "B" + (modelData.colorIndex + 1)
-                                    }
-                                    TLabel {
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        text: modelData.name
-                                        color: Theme.speakerInk(modelData.colorIndex)
-                                        font.pixelSize: 12
-                                        font.weight: Theme.weightSemiBold
-                                    }
-                                    TLabel {
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        text: Math.round(modelData.share * 100) + "%"
-                                        mono: true
-                                        color: Theme.speakerInk(modelData.colorIndex)
-                                        opacity: 0.75
-                                        font.pixelSize: Theme.fontMicro
-                                    }
-                                }
-                            }
-                        }
-                        TButton {
-                            objectName: "nameThemButton"
-                            text: qsTr("Elnevezem őket")
-                            variant: "primary"
-                            size: "small"
-                            onClicked: root.participantsRequested()
-                        }
-                    }
-
-                    // Approval banner (voice analysis is done, no decision yet).
-                    Rectangle {
-                        objectName: "approvalBanner"
-                        visible: root.bannerShown
-                        Layout.fillWidth: true
-                        Layout.topMargin: 2
-                        implicitHeight: bannerRow.implicitHeight + 22
-                        radius: Theme.radiusPopup
-                        color: Theme.accentSoft
-                        border.width: 1
-                        border.color: Theme.accentLine
-                        RowLayout {
-                            id: bannerRow
-                            x: 14
-                            anchors.verticalCenter: parent.verticalCenter
-                            width: parent.width - 28
-                            spacing: 12
-                            TIcon { name: "fingerprint"; size: 18; color: Theme.accent }
-                            ColumnLayout {
-                                Layout.fillWidth: true
-                                spacing: 2
-                                TLabel {
-                                    Layout.fillWidth: true
-                                    text: qsTr("A hanglenyomat-elemzés kész: %n jelölt", "", vm.candidateCount)
-                                    font.pixelSize: Theme.fontBody
-                                    font.weight: Theme.weightSemiBold
-                                    wrapMode: Text.Wrap
-                                }
-                                TLabel {
-                                    Layout.fillWidth: true
-                                    text: vm.hasTranscript ? qsTr("Nézd át, kik voltak ott. Ebből kötöm az átirat beszélőit a nevekhez.")
-                                                           : qsTr("Nézd át, kik voltak ott. Ebből köti az átirat a beszélőket, amikor megérkezik.")
-                                    muted: true
-                                    font.pixelSize: 12
-                                    cssLineHeight: 1.4
-                                    wrapMode: Text.Wrap
-                                }
-                            }
-                            TButton {
-                                objectName: "reviewButton"
-                                text: qsTr("Átnézem")
-                                variant: "primary"
-                                onClicked: root.participantsRequested()
-                            }
-                            TButton {
-                                objectName: "laterButton"
-                                text: qsTr("Később")
-                                variant: "ghost"
-                                muted: true
-                                onClicked: {
-                                    const later = Object.assign({}, root.laterFor)
-                                    later[root.meetingId] = true
-                                    root.laterFor = later
-                                }
-                            }
-                        }
+                        editor: root.editor
+                        voiceFixTarget: root.voiceFixTarget
+                        voiceProgress: root.voiceStep.progress !== undefined ? root.voiceStep.progress : -1
+                        voiceSub: root.voiceStep.sub || ""
+                        onSoloRequested: root.solo()
+                        onApproved: learnPopup.openIfAsked()
+                        onAddRequested: (anchor) => root.openPicker(anchor)
+                        onWhyRequested: (key, anchor) => root.explainSpeaker(key)
                     }
                 }
             }
@@ -782,26 +668,20 @@ Item {
     }
 
     // ---- "+ Participant" ----
+    // A person, then (when the meeting has unnamed voices) "Which voice is it?" on the card.
     PersonPicker {
         id: picker
         objectName: "overviewPersonPicker"
+        property Item anchorItem: null
         editor: root.editor
         anonymousText: ""
-        onPersonChosen: name => vm.addParticipant(name)
+        onPersonChosen: name => participantsCard.addPerson(name, picker.anchorItem)
     }
-    // ---- "Name..." (anonymous speaker, after transcription) ----
-    PersonPicker {
-        id: namePicker
-        objectName: "overviewNamePicker"
-        property string speakerKey: ""
-        player: root.player
-        editor: root.editor
-        anonymousText: ""
-        hintText: qsTr("A beszélő minden sora a választott névre kerül; Ctrl+Z visszavonja.")
-        onPersonChosen: name => {
-            if (vm.nameSpeakerInDemo(namePicker.speakerKey, name)) return
-            if (root.editor) root.editor.reassignSpeaker(namePicker.speakerKey, name, false)
-        }
+    // ---- after "Who was there?" is approved: the tag learning question ----
+    TagLearnPopup {
+        id: learnPopup
+        vm: decisionVm
+        shell: root.shell
     }
 
     // ---- the old Tracks tab's full view ----

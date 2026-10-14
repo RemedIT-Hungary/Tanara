@@ -176,6 +176,14 @@ bool OverviewViewModel::nameSpeakerInDemo(const QString& speakerKey, const QStri
     return true;
 }
 
+bool OverviewViewModel::decideInDemo(const QString& decision)
+{
+    if (!m_facade || !m_facade->decideInPlace(m_meetingId, decision))
+        return false;
+    reload();
+    return true;
+}
+
 void OverviewViewModel::setContextNote(const QString& note)
 {
     if (!m_facade)
@@ -201,6 +209,10 @@ void OverviewViewModel::reload()
     m_peopleHint = s.peopleHint;
     m_approved = s.approved;
     m_approvalPending = s.approvalPending;
+    m_decision = s.decision;
+    m_approveCount = s.approveCount;
+    m_hiddenSpeakers = s.hiddenSpeakers;
+    m_selfName = s.selfName;
     m_analysisRunning = s.analysisRunning;
     m_candidateCount = s.candidateCount;
     m_sideWho = s.sideWho;

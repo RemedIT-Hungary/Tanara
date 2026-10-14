@@ -1,7 +1,7 @@
 // The meeting view shell (Main.qml) without a display (offscreen), with demo data (App.demo, no
 // AppController): the one-line header with the four tabs, the panel of an unavailable tab, the
-// "Meeting" menu, the parts of the Overview (banner + "Later", steps, tracks, DATA, collapsed
-// rows, empty cards), the Transcript tool row (Read / Edit, Ctrl+E) and the map dock (only on
+// "Meeting" menu, the parts of the Overview (the "Who was there?" card's decision, steps, tracks,
+// DATA, collapsed rows, empty cards), the Transcript tool row (Read / Edit, Ctrl+E) and the map dock (only on
 // the Transcript / summary tabs; click = jump). After a recording, before transcription, the
 // Overview shows too, with "Start transcription" in the PROCESSING step.
 // Also covered: the first transcription's stages and "Cancel" in the step, note template and
@@ -122,7 +122,7 @@ private slots:
         m_window = nullptr;
     }
 
-    // The Overview is the first tab; the banner disappears on "Later"; the unavailable summary
+    // The Overview is the first tab; the card's "Skip" decides in place; the unavailable summary
     // tab opens a panel on click (and does not switch), a running transcription shows on the tab.
     void processing_bannerTabsAndPanel()
     {
@@ -135,9 +135,13 @@ private slots:
         QVERIFY(!shown("statTiles"));
         QVERIFY(!shown("mapDock"));                       // the plain player on the Overview
         QVERIFY(shown("seekSlider"));
-        QVERIFY(shown("approvalBanner"));
-        click(item("laterButton"));
-        QTRY_VERIFY(!shown("approvalBanner"));
+        // The decision is the card's header + footer ("Who was there?" A variant; no banner, no dialog).
+        QVERIFY(shown("participantsHeader"));
+        QVERIFY(shown("approveButton"));
+        QVERIFY(shown("skipButton"));
+        QMetaObject::invokeMethod(object("participantList"), "skip");   // below the fold at 820 px
+        QTRY_VERIFY(!shown("skipButton"));
+        QCOMPARE(item("participantsHeaderTitle")->property("text").toString(), QStringLiteral("Kihagyva"));
 
         QObject* tip = object("tabTooltip");
         QVERIFY(tip);
@@ -164,7 +168,7 @@ private slots:
         QVERIFY(shown("statTiles"));
         QVERIFY(!shown("pipelineSteps"));
         QVERIFY(!shown("trackList"));
-        QVERIFY(!shown("approvalBanner"));
+        QVERIFY(!shown("approveButton"));
         click(item("stepsCollapsed"));
         QTRY_VERIFY(shown("pipelineSteps"));
         click(item("tracksCollapsed"));
@@ -204,12 +208,15 @@ private slots:
     // Empty parts are dashed cards with the actions.
     void emptyAndNobodyCards()
     {
+        // The analysis runs: the card's grey header, placeholders; adding by hand and "Only I spoke" work.
         load(QStringLiteral("overviewEmpty"));
-        QVERIFY(shown("peopleEmpty"));
+        QVERIFY(!shown("peopleEmpty"));
+        QVERIFY(shown("participantsHeader"));
         QVERIFY(shown("soloButton"));
-        QVERIFY(shown("emptyAddParticipant"));
+        QVERIFY(shown("participantsAction"));
+        QVERIFY(!shown("approveButton"));
         QVERIFY(shown("sourceDescribe"));
-        QVERIFY(!shown("participantList"));
+        QVERIFY(!shown("participantRow"));
         // The description can be entered in place.
         click(item("sourceDescribe"));
         QTRY_VERIFY(shown("sourceEditor"));
@@ -220,9 +227,12 @@ private slots:
                      ->property("contextNote").toString(), QStringLiteral("Q4 review"));
         m_engine.reset();
 
+        // Everyone anonymous after the transcript: the speakers are rows, nameable on the card.
         load(QStringLiteral("overviewNobody"));
-        QVERIFY(shown("peopleNobody"));
-        QVERIFY(shown("nameThemButton"));
+        QVERIFY(shown("participantsHeader"));
+        int nameable = 0;
+        for (QQuickItem* it : items("participantNameButton")) nameable += it->isVisible() ? 1 : 0;
+        QCOMPARE(nameable, 3);
         QVERIFY(!shown("peopleEmpty"));
     }
 
@@ -297,7 +307,7 @@ private slots:
         QVERIFY(shown("emptyAddParticipant"));
         QVERIFY(shown("sourceDescribe"));
         QVERIFY(shown("overviewTags"));
-        QVERIFY(!shown("approvalBanner"));
+        QVERIFY(!shown("approveButton"));
         QVERIFY(!shown("statTiles"));
         QVERIFY(!shown("transcribeError"));
         QVERIFY(!shown("transcribeBlocker"));
@@ -417,7 +427,7 @@ private slots:
 
     // After the transcript the badge asks the "Why this one?" panel for that speaker (from the
     // shell); before the transcript it is not clickable (tooltip only). The "Name..." button of an
-    // anonymous line opens the person picker; the chosen name goes onto the line (in place in demo mode).
+    // anonymous line opens the card's naming panel; the chosen name goes onto the line (in place in demo mode).
     void done_badgesAndNaming()
     {
         load(QStringLiteral("overviewDone"));
@@ -428,25 +438,24 @@ private slots:
         // first clickable badge is the second one.
         click(item("participantBadge"));
         QCOMPARE(spy.calls, QStringList({QStringLiteral("openSpeakerWhy::S2")}));
-        QVERIFY(shown("participantTrackChips"));
+        QVERIFY(shown("participantTrackControl"));
 
         QCOMPARE(items("participantNameButton").size(), 6);   // + the invited participant who was not heard
         int visibleName = 0;
         for (QQuickItem* it : items("participantNameButton")) visibleName += it->isVisible() ? 1 : 0;
         QCOMPARE(visibleName, 1);                         // only the anonymous "Remote 1"
         click(item("participantNameButton"));
-        QObject* picker = object("overviewNamePicker");
+        QObject* picker = object("participantNamePanel");
         QVERIFY(picker);
         QTRY_VERIFY(picker->property("opened").toBool());
-        QCOMPARE(picker->property("speakerKey").toString(), QStringLiteral("S5"));
-        QMetaObject::invokeMethod(picker, "personChosen", Q_ARG(QString, QStringLiteral("Szabó Bence")));
+        QCOMPARE(picker->property("row").toMap().value("speakerKey").toString(), QStringLiteral("S5"));
+        QMetaObject::invokeMethod(picker, "chooseName", Q_ARG(QVariant, QStringLiteral("Szabó Bence")));
+        QTRY_VERIFY(!picker->property("opened").toBool());
         QObject* vm = overview->property("vm").value<QObject*>();
         bool named = false;
         for (const QVariant& v : vm->property("participants").toList())
             named = named || v.toMap().value("name").toString() == QStringLiteral("Szabó Bence");
         QVERIFY(named);
-        QTest::keyClick(m_window, Qt::Key_Escape);
-        QTRY_VERIFY(!picker->property("opened").toBool());
         m_engine.reset();
 
         load(QStringLiteral("overviewProcessing"));
