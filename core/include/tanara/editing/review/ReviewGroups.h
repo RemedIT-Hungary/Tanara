@@ -45,8 +45,9 @@ struct ReviewGroup {
     QString subtitle;
     QStringList utteranceIds;   // in time order
     QString currentSpeakerKey;
-    QString proposedSpeakerKey; // empty: proposedPersonName, or a new anonymous participant (ShortLines: no suggestion)
-    QString proposedPersonName; // the proposed person (the key is empty for a candidate outside the meeting)
+    QString proposedSpeakerKey; // empty: proposedPersonId, or a new anonymous participant (ShortLines: no suggestion)
+    PersonId proposedPersonId;  // the proposed person (the key is empty for a candidate outside the meeting)
+    QString proposedPersonName; // its display name
     // SideConflict: the manual track assignment excludes the current speaker and there is no known
     // candidate on the line's side -> suggestion: a NEW anonymous speaker on this side (proposedSide:
     // Local / Remote). The key and name are empty then; applying (applyReviewGroup) creates a new participant.
@@ -64,10 +65,10 @@ struct ReviewInput {
     QVector<TranscriptLine> lines;
     SpeakerOverlay overlay;
     QHash<QString, QVector<float>> embeddings;          // utterance id -> fused, L2-normalized vector
-    QString userName;
-    QHash<QString, QVector<QVector<float>>> personPrints;   // person name -> fused voiceprints (L2)
+    SelfPerson self;                                    // the user's own person
+    QHash<PersonId, QVector<QVector<float>>> personPrints;  // person -> fused voiceprints (L2)
     library::TagEvidenceFn tagEvidence;                          // empty = no tag evidence (PersonTags.h)
-    SideHints sideHints;                                // learned sides (the manual assignment comes from the overlay)
+    SideHints sideHints;                                // learned sides + display names (the manual assignment comes from the overlay)
     QString newPersonKey;                               // the person just created (SimilarToNewPerson)
 };
 

@@ -23,7 +23,7 @@ providers::TagSuggestJob* SimilarityTagSuggestionProvider::suggest(const provide
                 return false;
             }
             const TagSuggester s(m_tags, m_profiles, m_index);
-            *out = req.meetingId.isEmpty() ? s.suggestForDraft(req.title, req.participants)
+            *out = req.meetingId.isEmpty() ? s.suggestForDraft(req.title, req.participantIds)
                                            : s.suggest(req.meetingId);
             out->erase(std::remove_if(out->begin(), out->end(), [&req](const TagSuggestion& t) {
                            return req.currentTagIds.contains(t.tagId);

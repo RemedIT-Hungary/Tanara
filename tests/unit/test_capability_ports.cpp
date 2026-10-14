@@ -224,13 +224,16 @@ void CapabilityPortsTest::localIdentifier_matchingRule()
     p.vectors = { { unit(4, 0, 0.1f), 4, QStringLiteral("alpha"), 0 }, { unit(4, 2), 4, QStringLiteral("beta"), 0 } };
     req.probes = { p };
     // Anna: alpha matches well, beta exactly -> mean high. Béla: only an alpha print, orthogonal.
-    req.candidates = { { QStringLiteral("Béla"), { print("alpha", unit(4, 3)) } },
+    const PersonId bela = PersonId::fromString(QStringLiteral("p-bela"));
+    const PersonId anna = PersonId::fromString(QStringLiteral("p-anna"));
+    req.candidates = { { QStringLiteral("Béla"), { print("alpha", unit(4, 3)) }, bela },
                        { QStringLiteral("Anna"), { print("alpha", unit(4, 1)), print("alpha", unit(4, 0)),
-                                                   print("beta", unit(4, 2)) } } };
+                                                   print("beta", unit(4, 2)) }, anna } };
 
     const QVector<ParticipantGuess> g = processing::LocalParticipantIdentifier::identifyNow(req);
     QCOMPARE(g.size(), 1);
-    QCOMPARE(g[0].name, QStringLiteral("Anna"));
+    QCOMPARE(g[0].personId, anna);
+    QCOMPARE(g[0].displayName, QStringLiteral("Anna"));
     QVERIFY(g[0].score > 0.9);
     QCOMPARE(g[0].trackId, QStringLiteral("loopback"));
     QCOMPARE(g[0].windows, 7);
@@ -243,14 +246,15 @@ void CapabilityPortsTest::localIdentifier_matchingRule()
 
     // Above-threshold only.
     req.threshold = 0.995;
-    QVERIFY(processing::LocalParticipantIdentifier::identifyNow(req)[0].name.isEmpty());
+    QVERIFY(processing::LocalParticipantIdentifier::identifyNow(req)[0].personId.isNull());
+    QVERIFY(processing::LocalParticipantIdentifier::identifyNow(req)[0].displayName.isEmpty());
 
     // Through the port.
     processing::LocalParticipantIdentifier id;
     req.threshold = -1.0;
     providers::IdentifyJob* job = id.identify(req);
     QVERIFY(waitDone(job));
-    QCOMPARE(job->result()[0].name, QStringLiteral("Anna"));
+    QCOMPARE(job->result()[0].personId, anna);
 }
 
 void CapabilityPortsTest::llmSummarizer_quick()

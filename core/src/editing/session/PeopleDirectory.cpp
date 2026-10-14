@@ -23,58 +23,51 @@ bool matchesSearch(const QString& text, const QString& needle)
 QVector<PersonInfo> listPeople(const library::PeopleStore* people, const library::VoiceprintStore* voiceprints,
                                library::MeetingRepository* store)
 {
-    // Name merging case-insensitively (people.json and the voiceprint DB treat it this way).
+    // Every person of people.json (voiceprints belong to these people by id).
     QVector<PersonInfo> out;
-    QHash<QString, int> indexByFolded;
-    auto ensure = [&](const QString& name) -> int {
-        const QString n = name.trimmed();
-        if (n.isEmpty()) return -1;
-        const QString key = n.toCaseFolded();
-        const auto it = indexByFolded.constFind(key);
-        if (it != indexByFolded.constEnd()) return it.value();
-        PersonInfo p;
-        p.name = n;
-        out.append(p);
-        indexByFolded.insert(key, out.size() - 1);
-        return out.size() - 1;
-    };
-
+    QHash<PersonId, int> indexById;
     if (people)
-        for (const QString& n : people->names()) ensure(n);
-    if (voiceprints)
-        for (const QString& n : voiceprints->people()) {
-            const int i = ensure(n);
-            if (i < 0) continue;
-            out[i].voiceprintCount = voiceprints->sampleCount(n);
-            out[i].hasVoiceprint = out[i].voiceprintCount > 0;
+        for (const Person& person : people->people()) {
+            PersonInfo p;
+            p.personId = person.id;
+            p.name = person.displayName;
+            p.aliases = person.aliases;
+            indexById.insert(person.id, int(out.size()));
+            out.append(p);
         }
-
-    if (people)
-        for (PersonInfo& p : out) p.aliases = people->aliases(p.name);
+    if (voiceprints)
+        for (const PersonId& id : voiceprints->people()) {
+            const auto it = indexById.constFind(id);
+            if (it == indexById.constEnd()) continue;   // a voiceprint of an unknown person
+            PersonInfo& p = out[it.value()];
+            p.voiceprintCount = voiceprints->sampleCount(id);
+            p.hasVoiceprint = p.voiceprintCount > 0;
+        }
 
     if (store) {
         const QVector<Meeting> index = store->loadAll();
         for (const Meeting& entry : index) {
             const Meeting m = store->load(entry.id);
             if (m.id.isEmpty()) continue;
-            QSet<QString> present;   // a meeting counts a person once
-            for (const QString& v : m.speakerMap) present.insert(v.trimmed().toCaseFolded());
-            for (const Track& t : m.tracks)
-                if (t.fixedSpeaker) present.insert(t.speakerLabel.trimmed().toCaseFolded());
+            QSet<PersonId> present;   // a meeting counts a person once
+            for (const PersonId& v : m.speakerMap) present.insert(v);
             if (QFile::exists(speakeredit::overlayPath(m.folder))) {
                 const SpeakerOverlay ov = speakeredit::loadOverlay(m.folder);
-                for (const OverlayParticipant& p : ov.participants)
-                    present.insert(p.person.trimmed().toCaseFolded());
+                for (const OverlayParticipant& p : ov.participants) present.insert(p.personId);
             }
-            for (const QString& key : std::as_const(present)) {
-                const auto it = indexByFolded.constFind(key);
-                if (it != indexByFolded.constEnd()) ++out[it.value()].meetingCount;
+            for (const PersonId& key : std::as_const(present)) {
+                const auto it = indexById.constFind(key);
+                if (it == indexById.constEnd()) continue;
+                PersonInfo& p = out[it.value()];
+                ++p.meetingCount;
+                if (!p.lastSeen.isValid() || m.startedAt > p.lastSeen) p.lastSeen = m.startedAt;
             }
         }
     }
 
     std::sort(out.begin(), out.end(), [](const PersonInfo& a, const PersonInfo& b) {
-        return QString::localeAwareCompare(a.name, b.name) < 0;
+        const int c = QString::localeAwareCompare(a.name, b.name);
+        return c != 0 ? c < 0 : a.personId < b.personId;
     });
     return out;
 }

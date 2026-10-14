@@ -97,7 +97,7 @@ public:
     void setNoTranscript(bool on);
     bool noSummary() const { return m_query.noSummary; }
     void setNoSummary(bool on);
-    QStringList people() const { return m_query.people; }
+    QStringList people() const { return m_peopleNames; }
     void setPeople(const QStringList& people);
     bool filtered() const { return !m_query.isEmpty(); }
     int count() const { return int(m_entries.size()); }
@@ -162,6 +162,9 @@ private:
     QPointer<tanara::library::MeetingLibrary> m_library;     // the one we are currently bound to
     bool m_controllerInjected = false;
     tanara::library::LibraryQuery m_query;
+    // The people filter as the QML side sees it (display names); m_query.people holds their PersonIds.
+    QStringList m_peopleNames;
+    tanara::PersonIds idsForNames(const QStringList& names) const;
     QVector<tanara::library::LibraryEntry> m_entries;
     int m_total = 0;
     bool m_forceEmpty = false;

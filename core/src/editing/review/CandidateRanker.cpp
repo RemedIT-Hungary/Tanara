@@ -79,7 +79,8 @@ Candidate score(const RankContext& ctx, const SpeakerProfile& p, const Probe& pr
 {
     Candidate c;
     c.speakerKey = p.key;
-    c.personName = p.personName;
+    c.personId = p.personId;
+    c.displayName = p.displayName;
     c.linesHere = p.lines;
 
     QString basis;
@@ -110,7 +111,7 @@ Candidate score(const RankContext& ctx, const SpeakerProfile& p, const Probe& pr
         }
         c.evidence.append(e);
     }
-    if (tagEvidenceOf(p.tagEvidence, p.personName, &e)) {
+    if (tagEvidenceOf(p.tagEvidence, p.personId.isNull() ? QString() : p.displayName, &e)) {
         s += e.polarity == Polarity::Support ? kTagSupport : -kTagMismatch;
         c.evidence.append(e);
     }
@@ -219,7 +220,7 @@ QVector<Candidate> rankForSpeaker(const RankContext& ctx, const QString& speaker
     for (const SpeakerProfile& sp : ctx.speakers) {
         if (sp.key == speakerKey) continue;
         // The same person under another key (e.g. two raw labels) is not "actually someone else".
-        if (!sp.personName.isEmpty() && sp.personName.compare(self->personName, Qt::CaseInsensitive) == 0) continue;
+        if (!sp.personId.isNull() && sp.personId == self->personId) continue;
         out.append(score(ctx, sp, p));
     }
     sortCandidates(out);
@@ -233,7 +234,7 @@ QVector<Evidence> selfEvidence(const RankContext& ctx, const QString& speakerKey
     if (!p) return out;
     // Voice: the speaker's voice here against the person's voiceprints.
     const QVector<float> own = p->core.isEmpty() ? normalized(p->sum) : p->core;
-    if (!p->personName.isEmpty()) {
+    if (!p->personId.isNull()) {
         double best = qQNaN();
         for (const QVector<float>& pr : p->prints) {
             const double v = cosine(pr, own);
@@ -255,7 +256,7 @@ QVector<Evidence> selfEvidence(const RankContext& ctx, const QString& speakerKey
         if (e.polarity == Polarity::Contradict) e.text = QCoreApplication::translate("CandidateRanker", "a sorai a másik sávon szólnak");
         out.append(e);
     }
-    if (tagEvidenceOf(p->tagEvidence, p->personName, &e)) out.append(e);
+    if (tagEvidenceOf(p->tagEvidence, p->personId.isNull() ? QString() : p->displayName, &e)) out.append(e);
     if (p->lines > 0) {
         Evidence l;
         l.kind = EvidenceKind::LineCount;

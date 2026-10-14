@@ -2,6 +2,8 @@
 //
 // Domain: meeting participants ("Who was there?"), the evidence behind a suggestion, and the
 // pre-transcript speaker guesses.
+#include "tanara/domain/Person.h"
+
 #include <QMetaType>
 #include <QString>
 #include <QStringList>
@@ -29,7 +31,8 @@ struct Evidence {
 
 struct Candidate {
     QString speakerKey;         // the meeting's speaker; empty = a known person outside the meeting
-    QString personName;
+    PersonId personId;          // the candidate person (null = an anonymous speaker of the meeting)
+    QString displayName;        // for display only
     double score = 0.0;
     QVector<Evidence> evidence;
     bool otherSide = false;     // the candidate speaks on the other track (ranked lower, not removed)
@@ -44,10 +47,10 @@ struct Candidate {
 enum class ParticipantSource { Manual, Voice, Tag, Calendar };
 
 // A binding for the participant approval (SpeakerEditor::applyBindings): the raw speaker (or
-// only its given lines) goes to a person; empty personName = set anonymous.
+// only its given lines) goes to a person; null personId = set anonymous.
 struct SpeakerBinding {
     QString     rawLabel;
-    QString     personName;
+    PersonId    personId;
     QStringList utteranceIds;   // empty = the whole raw speaker
 };
 
@@ -57,7 +60,7 @@ enum class ParticipantGroup { Sure, Doubt, InvitedNotHeard };
 
 struct Participant {
     QString id;                     // stable id within the meeting
-    QString personName;             // empty = anonymous (unknown voice)
+    PersonId personId;              // null = anonymous (unknown voice)
     QStringList rawSpeakerIds;      // bound raw STT speakers ("Speaker 1")
     ParticipantSource source = ParticipantSource::Voice;
     bool approved = false;          // approved by the user ("Who was there?")
@@ -80,7 +83,7 @@ struct ParticipantTrackBinding {
 // State of a candidate at the moment of the decision.
 struct ParticipantApprovalEntry {
     QString participantId;
-    QString personName;
+    PersonId personId;
     ParticipantGroup group = ParticipantGroup::Doubt;
     bool checked = false;
     QStringList rawSpeakerIds;
@@ -100,7 +103,8 @@ struct ParticipantApproval {
 struct ParticipantGuess {
     QString trackId;
     QString deviceName;
-    QString name;          // name of the DB match, or "" if unknown (below threshold)
+    PersonId personId;     // the DB match, or null if unknown (below threshold)
+    QString displayName;   // the match's name at the time of the guess (display only)
     double  score = -1.0;  // cosine score of the match
     int     windows = 0;   // how many voice windows the cluster consisted of (reliability)
     QString sampleRef;     // "track_x.ogg#startMs-endMs": representative sample (in meeting time)

@@ -1,4 +1,5 @@
 #include "TagPeopleCommands.h"
+#include "tanara/library/store/PeopleStore.h"
 
 #include "tanara/app/AppController.h"
 #include "tanara/library/people/PeopleService.h"
@@ -28,15 +29,13 @@ Tag resolveTag(const library::TagService& tags, const QString& nameOrId)
     return t.isValid() ? t : tags.byName(nameOrId);
 }
 
-// The stored spelling if the person is known (otherwise the input).
-QString canonicalPerson(app::AppController& app, const QString& name)
+// The person: a known PersonId, else the first person with that name; null if none.
+PersonId findPerson(app::AppController& app, const QString& nameOrId)
 {
-    if (library::PeopleService* ps = app.peopleService()) {
-        ps->reload();
-        const library::PersonRecord r = ps->person(name);
-        if (ps->exists(name) && !r.name.isEmpty()) return r.name;
-    }
-    return name.trimmed();
+    library::PeopleStore* people = app.people();
+    if (!people) return {};
+    people->refresh();
+    return people->choiceFor(nameOrId).id;
 }
 
 QString counts(const library::PersonTagStat& s)
@@ -46,7 +45,8 @@ QString counts(const library::PersonTagStat& s)
 
 int usage()
 {
-    err() << "Usage: tags people <tag> | tags person <name> | tags set-person <name> <tag,...>" << Qt::endl;
+    err() << "Usage: tags people <tag> | tags person <name|personId> | tags set-person <name|personId> <tag,...>"
+          << Qt::endl;
     return 1;
 }
 
@@ -85,9 +85,13 @@ int runTagPeopleCommand(app::AppController& app, const QStringList& args)
         return 0;
     }
 
-    const QString name = canonicalPerson(app, args.value(3));
-    if (name.isEmpty()) return usage();
-    if (tags->isSelf(name)) {
+    const QString typed = args.value(3).trimmed();
+    if (typed.isEmpty()) return usage();
+    PersonId person = findPerson(app, typed);
+    // set-person on an unknown name creates the person (as the old name-keyed record did).
+    if (person.isNull() && sub == QLatin1String("set-person") && app.people()) person = app.people()->create(typed);
+    const QString name = person.isNull() ? typed : app.people()->displayName(person);
+    if (!person.isNull() && tags->isSelf(person)) {
         err() << "ERROR: your own person has no tags (you attend every meeting)." << Qt::endl;
         return 1;
     }
@@ -95,8 +99,8 @@ int runTagPeopleCommand(app::AppController& app, const QStringList& args)
     if (sub == QLatin1String("person")) {
         tags->refreshPersonStatsNow();
         const auto st = tags->personStats();
-        const QVector<library::PersonTagStat> list = tags->personTagStats(name);
-        out() << QStringLiteral("%1 — %2 meetings").arg(name).arg(st->personTotal(name)) << Qt::endl;
+        const QVector<library::PersonTagStat> list = tags->personTagStats(person);
+        out() << QStringLiteral("%1 — %2 meetings").arg(name).arg(st->personTotal(person)) << Qt::endl;
         for (const library::PersonTagStat& s : list) {
             QStringList flags;
             if (s.manual) flags << QStringLiteral("tagged");
@@ -105,7 +109,7 @@ int runTagPeopleCommand(app::AppController& app, const QStringList& args)
             if (!flags.isEmpty()) out() << QStringLiteral("  [%1]").arg(flags.join(QStringLiteral(", ")));
             out() << Qt::endl;
         }
-        const QVector<library::PersonTagStat> sugg = tags->suggestTagsForPerson(name);
+        const QVector<library::PersonTagStat> sugg = tags->suggestTagsForPerson(person);
         if (!sugg.isEmpty()) {
             QStringList names;
             for (const library::PersonTagStat& s : sugg)
@@ -126,12 +130,12 @@ int runTagPeopleCommand(app::AppController& app, const QStringList& args)
         if (!t.isValid()) { err() << "ERROR: invalid tag name: " << n << Qt::endl; return 1; }
         if (!ids.contains(t.id)) ids << t.id;
     }
-    if (!tags->setPersonTags(name, ids)) {
+    if (person.isNull() || !tags->setPersonTags(person, ids)) {
         err() << "ERROR: could not set tags." << Qt::endl;
         return 1;
     }
     QStringList shown;
-    for (const QString& id : tags->tagsOfPerson(name)) shown << QStringLiteral("#") + tags->tag(id).name;
+    for (const QString& id : tags->tagsOfPerson(person)) shown << QStringLiteral("#") + tags->tag(id).name;
     out() << QStringLiteral("%1: %2").arg(name, shown.isEmpty() ? QStringLiteral("(no tags)") : shown.join(QStringLiteral(" ")))
           << Qt::endl;
     return 0;

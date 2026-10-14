@@ -397,7 +397,8 @@ public:
         QStringList ids;
         QString currentKey;
         QString proposedKey;
-        QString proposedName;
+        QString proposedPerson; // PersonId string of the proposed person (empty = none)
+        QString proposedName;   // its display name
         QString newSide;        // G10: the suggestion is a new speaker on this side ("local" | "remote"; empty = none)
         QVariantList evidence;
         bool actionable = true; // asks for a decision (short lines only inform)

@@ -87,7 +87,7 @@ struct PairScene {
         if (f.open(QIODevice::WriteOnly)) f.write(QJsonDocument(segs).toJson());
         f.close();
         meeting.hasTranscript = true;
-        meeting.speakerMap = {{kB1, QStringLiteral("Anna")}, {kB2, QStringLiteral("Béla")}};
+        meeting.speakerMap = {{kB1, people->ensure(QStringLiteral("Anna"))}, {kB2, people->ensure(QStringLiteral("Béla"))}};
         store->saveMeeting(meeting);
         const QVector<float> a{1.0f, 0.0f, 0.0f};
         const QVector<float> b = similar ? QVector<float>{0.85f, 0.5268f, 0.0f} : QVector<float>{0.0f, 1.0f, 0.0f};
@@ -294,7 +294,7 @@ private slots:
         QCOMPARE(vm.lanes().size(), 3);
         QCOMPARE(cell(vm, 4, Role::SpeakerNameRole).toString(), QStringLiteral("Cili"));
         QCOMPARE(cell(vm, 4, Role::LaneRole).toInt(), 2);
-        QVERIFY(fx.people->names().contains(QStringLiteral("Cili")));
+        QVERIFY(!fx.people->idForName(QStringLiteral("Cili")).isNull());
         QCOMPARE(fx.prints->totalPrintCount(), 0);          // reassigning does not teach a voiceprint
         vm.undo();
         QCOMPARE(vm.speakerCount(), 2);
@@ -323,7 +323,7 @@ private slots:
         TranscriptEditorViewModel vm;
         vm.setEditor(ed.get());
         QVERIFY(vm.reassignSpeaker(kB2, QStringLiteral("Szabó Áron"), false));
-        fx.people->addAlias(QStringLiteral("Szabó Áron"), QStringLiteral("Dönci"));
+        fx.people->addAlias(fx.people->idForName(QStringLiteral("Szabó Áron")), QStringLiteral("Dönci"));
 
         const QVariantList byAlias = vm.speakersMatching(QStringLiteral("donci"), QString());
         QCOMPARE(byAlias.size(), 1);
@@ -658,11 +658,11 @@ private slots:
         here.embedding = {1.0f, 0.0f, 0.0f};
         here.sourceMeetingId = sc.meeting.id;
         here.sampleRef = QStringLiteral("audio.ogg#0-4000");     // Anna's line 0
-        sc.prints->addPrint(QStringLiteral("Anna"), here);
+        sc.prints->addPrint(sc.people->ensure(QStringLiteral("Anna")), here);
         tanara::Voiceprint earlier;
         earlier.embedding = {0.0f, 1.0f, 0.0f};
         earlier.sourceMeetingId = QStringLiteral("korabbi-megbeszeles");
-        sc.prints->addPrint(QStringLiteral("Béla"), earlier);
+        sc.prints->addPrint(sc.people->ensure(QStringLiteral("Béla")), earlier);
         auto ed = sc.editor();
         TranscriptEditorViewModel vm;
         vm.setEditor(ed.get());
@@ -726,7 +726,7 @@ private slots:
 
         // Fixing a line outside the filter brings a suggestion: the anchor line appears in the filter,
         // so the fixed line (which the bar's suggestion refers to) does not disappear.
-        QVERIFY(ed->moveUtterancesToPerson({uid(4)}, QStringLiteral("Cili")).size() > 0);
+        QVERIFY(ed->moveUtterancesToPerson({uid(4)}, ed->personChoice(QStringLiteral("Cili"))).size() > 0);
         QVERIFY(vm.suggestionActive());
         const int anchorRow = vm.rows()->rowOfUtterance(4);
         QVERIFY(anchorRow >= 0);
@@ -962,7 +962,7 @@ private slots:
         QVERIFY(mat.value(QStringLiteral("sufficient")).toBool());
         r = vm.createVoiceprint(cili);
         QVERIFY2(r.value(QStringLiteral("ok")).toBool(), qPrintable(r.value(QStringLiteral("message")).toString()));
-        QCOMPARE(fx.prints->printCount(QStringLiteral("Cili")), 1);
+        QCOMPARE(fx.prints->printCount(fx.people->idForName(QStringLiteral("Cili"))), 1);
         QVERIFY(vm.speakerInfo(cili).value(QStringLiteral("hasVoiceprint")).toBool());
         QCOMPARE(notice.count(), 1);
     }
@@ -974,7 +974,7 @@ private slots:
         Fixture fx;
         Voiceprint old;
         old.embedding = {0.0f, 1.0f, 0.0f};
-        fx.prints->addPrint(QStringLiteral("Anna"), old);    // Anna already has an older sample
+        fx.prints->addPrint(fx.people->ensure(QStringLiteral("Anna")), old);    // Anna already has an older sample
         auto ed = fx.editor();
         TranscriptEditorViewModel vm;
         vm.setEditor(ed.get());
@@ -1005,15 +1005,15 @@ private slots:
         QVERIFY(!printId.isEmpty());
         QVERIFY(r.value(QStringLiteral("usedLines")).toInt() >= 3);
         QVERIFY(r.value(QStringLiteral("usedSec")).toInt() >= 15);
-        QCOMPARE(fx.prints->printCount(QStringLiteral("Béla")), 1);
+        QCOMPARE(fx.prints->printCount(fx.people->idForName(QStringLiteral("Béla"))), 1);
         QTRY_COMPARE(overviewVoiceprint(vm, kB2), QStringLiteral("has"));
         QCOMPARE(vm.lanes().at(laneOf(vm, kB2)).toMap().value(QStringLiteral("voiceprint")).toString(),
                  QStringLiteral("has"));
 
         // Undo: exactly this voiceprint is deleted (another person's is untouched), it does not work twice.
         QVERIFY(vm.removeVoiceprint(printId));
-        QCOMPARE(fx.prints->printCount(QStringLiteral("Béla")), 0);
-        QCOMPARE(fx.prints->printCount(QStringLiteral("Anna")), 1);
+        QCOMPARE(fx.prints->printCount(fx.people->idForName(QStringLiteral("Béla"))), 0);
+        QCOMPARE(fx.prints->printCount(fx.people->idForName(QStringLiteral("Anna"))), 1);
         QTRY_COMPARE(overviewVoiceprint(vm, kB2), QStringLiteral("none"));
         QVERIFY(!vm.removeVoiceprint(printId));
         QVERIFY(!vm.removeVoiceprint(QString()));
@@ -1057,7 +1057,7 @@ private slots:
         // Accepted: the bar says what was made; "Undo" then deletes the voiceprint.
         const int serial = vm.changeSerial();
         QVERIFY(vm.createVoiceprintFromChange());
-        QCOMPARE(fx.prints->printCount(QStringLiteral("Béla")), 1);
+        QCOMPARE(fx.prints->printCount(fx.people->idForName(QStringLiteral("Béla"))), 1);
         QVERIFY(vm.changeActive());
         QVERIFY(vm.changeVoiceprintCreated());
         QVERIFY(!vm.changeVoiceprintOffer());
@@ -1066,7 +1066,7 @@ private slots:
         QCOMPARE(notice.count(), 0);                        // the bar itself is the feedback
         const QString undoBefore = vm.undoText();
         vm.undoChange();
-        QCOMPARE(fx.prints->printCount(QStringLiteral("Béla")), 0);
+        QCOMPARE(fx.prints->printCount(fx.people->idForName(QStringLiteral("Béla"))), 0);
         QVERIFY(vm.changeActive());
         QVERIFY(!vm.changeUndoable());
         QVERIFY(!vm.changeVoiceprintCreated());

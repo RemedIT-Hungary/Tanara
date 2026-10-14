@@ -19,6 +19,7 @@
 #include <cmath>
 
 #include "tanara/app/AppController.h"
+#include "tanara/library/store/PeopleStore.h"
 #include "tanara/app/SettingsManager.h"
 #include "tanara/library/tracks/TrackCatalog.h"
 #include "tanara/library/jobs/MeetingJobTracker.h"
@@ -187,6 +188,12 @@ private slots:
 
 private:
     void newApp();
+
+    // People by name (people.json): created if missing (pid) / only looked up (idOf); a picker's choice; the name.
+    PersonId pid(const QString& name) { return m_app->people()->ensure(name); }
+    PersonId idOf(const QString& name) { m_app->people()->refresh(); return m_app->people()->idForName(name); }
+    PersonChoice choice(const QString& name) { return m_app->people()->choiceFor(name); }
+    QString nameOf(const PersonId& id) { m_app->people()->refresh(); return m_app->people()->displayName(id); }
     Meeting recording(const QString& title, int seconds);
     Meeting transcribed(const QString& title);
     Meeting transcribedLong(const QString& title, int minutes);
@@ -439,7 +446,7 @@ void AppJobsTest::cancelTranscriptionAtProvider()
     m_http->handler = [](const FakeRequest& r) { return sonioxOk(r, "processing"); };
     // Re-transcription: an earlier transcript and a named speaker exist; after cancel all stay.
     Meeting m = transcribed("Megszakított újra-átírás");
-    m.speakerMap.insert("Beszélő 1", "Ödön");
+    m.speakerMap.insert("Beszélő 1", pid("Ödön"));
     m_app->store()->saveMeeting(m);
     const QByteArray tokensBefore = [&] { QFile f(QDir(m.folder).filePath("transcript.tokens.json")); return f.open(QIODevice::ReadOnly) ? f.readAll() : QByteArray(); }();
 
@@ -448,7 +455,7 @@ void AppJobsTest::cancelTranscriptionAtProvider()
         editing::SpeakerEditor* ed = m_app->speakerEditor(m.id);
         QVERIFY(ed);
         QCOMPARE(ed->utteranceCount(), 2);
-        QVERIFY(!ed->moveUtterancesToPerson({ed->utteranceAt(1).id}, "Kovács Lilla").isEmpty());
+        QVERIFY(!ed->moveUtterancesToPerson({ed->utteranceAt(1).id}, choice("Kovács Lilla")).isEmpty());
         m_app->closeSpeakerEditor(m.id);
     }
     QCOMPARE(m_app->retranscribeImpact(m.id).correctedUtterances, 1);
@@ -465,7 +472,7 @@ void AppJobsTest::cancelTranscriptionAtProvider()
     // exists (otherwise the cancel aborts the still in-flight POST and there is nothing to delete;
     // on Windows, because of the slower local connect, this was routinely the case).
     QTRY_VERIFY_WITH_TIMEOUT(m_http->count("GET", "/transcriptions/t1") >= 1, 30000);
-    QCOMPARE(m_app->store()->load(m.id).speakerMap.value("Beszélő 1"), QStringLiteral("Ödön"));   // not deleted in advance
+    QCOMPARE(nameOf(m_app->store()->load(m.id).speakerMap.value("Beszélő 1")), QStringLiteral("Ödön"));   // not deleted in advance
 
     QVERIFY(m_app->cancelJob(m.id, JobKind::Transcribe));
     QCOMPARE(finished.count(), 1);
@@ -480,7 +487,7 @@ void AppJobsTest::cancelTranscriptionAtProvider()
     QVERIFY(!st.busy());
     const Meeting after = m_app->store()->load(m.id);
     QVERIFY(after.hasTranscript);
-    QCOMPARE(after.speakerMap.value("Beszélő 1"), QStringLiteral("Ödön"));
+    QCOMPARE(nameOf(after.speakerMap.value("Beszélő 1")), QStringLiteral("Ödön"));
     QFile f(QDir(m.folder).filePath("transcript.tokens.json"));
     QVERIFY(f.open(QIODevice::ReadOnly));
     QCOMPARE(f.readAll(), tokensBefore);
@@ -1293,17 +1300,17 @@ void AppJobsTest::retranscribeSuccessClearsNamesAndCorrections()
     if (!m_ffmpeg) QSKIP("ffmpeg nem található");
     m_http->handler = [](const FakeRequest& r) { return sonioxOk(r); };
     Meeting m = transcribed("Sikeres újra-átírás");
-    m.speakerMap.insert("Beszélő 1", "Ödön");
+    m.speakerMap.insert("Beszélő 1", pid("Ödön"));
     m_app->store()->saveMeeting(m);
     editing::SpeakerEditor* ed = m_app->speakerEditor(m.id);
     QVERIFY(ed);
-    QVERIFY(!ed->moveUtterancesToPerson({ed->utteranceAt(1).id}, "Kovács Lilla").isEmpty());
+    QVERIFY(!ed->moveUtterancesToPerson({ed->utteranceAt(1).id}, choice("Kovács Lilla")).isEmpty());
     QCOMPARE(m_app->retranscribeImpact(m.id).correctedUtterances, 1);
 
     QSignalSpy ready(m_app.get(), &app::AppController::transcriptReady);
     m_app->retranscribeMeeting(m.id, /*keepBackup*/ true);
     // While it runs, the old names and fixes live (they were not deleted in advance).
-    QCOMPARE(m_app->store()->load(m.id).speakerMap.value("Beszélő 1"), QStringLiteral("Ödön"));
+    QCOMPARE(nameOf(m_app->store()->load(m.id).speakerMap.value("Beszélő 1")), QStringLiteral("Ödön"));
     QCOMPARE(m_app->retranscribeImpact(m.id).correctedUtterances, 1);
     QVERIFY(ready.wait(30000));
     QTRY_VERIFY(!m_app->jobs()->isBusy(m.id));
@@ -1334,7 +1341,7 @@ void AppJobsTest::manualParticipantSurvivesTranscription()
     if (!m_ffmpeg) QSKIP("ffmpeg nem található");
     m_http->handler = [](const FakeRequest& r) { return sonioxOk(r); };
     const Meeting m = recording("Kézi résztvevő", 3);
-    const QString cili = m_app->addParticipant(m.id, QStringLiteral("Cecília"));
+    const QString cili = m_app->addParticipant(m.id, choice(QStringLiteral("Cecília")));
     QVERIFY(!cili.isEmpty());
     QVERIFY(m_app->unheardParticipants(m.id).isEmpty());   // no "not heard" without a transcript
 
@@ -1351,7 +1358,7 @@ void AppJobsTest::manualParticipantSurvivesTranscription()
     QVector<Participant> ps = m_app->participants(m.id);
     const Participant* p = findCili(ps);
     QVERIFY(p);
-    QCOMPARE(p->personName, QStringLiteral("Cecília"));
+    QCOMPARE(nameOf(p->personId), QStringLiteral("Cecília"));
     QVERIFY(p->rawSpeakerIds.isEmpty());
     QCOMPARE(p->source, ParticipantSource::Manual);
     QVector<Participant> unheard = m_app->unheardParticipants(m.id);
@@ -1359,7 +1366,7 @@ void AppJobsTest::manualParticipantSurvivesTranscription()
     QCOMPARE(unheard.first().id, cili);
 
     // Once a speaker is assigned its name, it is no longer "not heard".
-    m_app->renameSpeaker(m.id, QStringLiteral("Beszélő 1"), QStringLiteral("Cecília"), /*enroll*/ false);
+    m_app->renameSpeaker(m.id, QStringLiteral("Beszélő 1"), choice(QStringLiteral("Cecília")), /*enroll*/ false);
     QVERIFY(m_app->unheardParticipants(m.id).isEmpty());
 
     // It survives a re-transcription too (the names are deleted, the participant is not).
@@ -1390,7 +1397,7 @@ void AppJobsTest::staleSummaryShowsInStateAndPending()
     QSignalSpy stateChanged(m_app->jobs(), &library::MeetingJobTracker::stateChanged);
     QSignalSpy pendingChanged(m_app->library(), &library::MeetingLibrary::pendingItemsChanged);
     QSignalSpy entryChanged(m_app->library(), &library::MeetingLibrary::meetingChanged);
-    m_app->renameSpeaker(m.id, "Beszélő 1", "Ödön", /*enroll*/ false);
+    m_app->renameSpeaker(m.id, "Beszélő 1", choice("Ödön"), /*enroll*/ false);
     QVERIFY(stateChanged.count() >= 1);
     QVERIFY(pendingChanged.count() >= 1);
     QVERIFY(entryChanged.count() >= 1);
@@ -1413,7 +1420,7 @@ void AppJobsTest::staleSummaryShowsInStateAndPending()
     QVERIFY(m_app->library()->pendingItems().isEmpty());
 
     // Stale again, then regenerating the summary clears it.
-    m_app->renameSpeaker(m.id, "Beszélő 1", "Lilla", false);
+    m_app->renameSpeaker(m.id, "Beszélő 1", choice("Lilla"), false);
     QVERIFY(m_app->processingState(m.id).summaryStale);
     m_app->summarizeMeeting(m.id);
     QVERIFY(ready.wait(10000));
@@ -1435,7 +1442,7 @@ void AppJobsTest::retryAfterFailedRetranscribeClearsNames()
 {
     if (!m_ffmpeg) QSKIP("ffmpeg nem található");
     Meeting m = transcribed("Újrapróbált újra-átírás");
-    m.speakerMap.insert("Beszélő 1", "Ödön");
+    m.speakerMap.insert("Beszélő 1", pid("Ödön"));
     m_app->store()->saveMeeting(m);
     library::MeetingJobTracker* jobs = m_app->jobs();
 
@@ -1448,7 +1455,7 @@ void AppJobsTest::retryAfterFailedRetranscribeClearsNames()
     m_app->retranscribeMeeting(m.id);
     QTRY_COMPARE_WITH_TIMEOUT(finished.count(), 1, 30000);
     QCOMPARE(finished.at(0).at(2).value<JobOutcome>(), JobOutcome::Failed);
-    QCOMPARE(m_app->store()->load(m.id).speakerMap.value("Beszélő 1"), QStringLiteral("Ödön"));
+    QCOMPARE(nameOf(m_app->store()->load(m.id).speakerMap.value("Beszélő 1")), QStringLiteral("Ödön"));
 
     // 2) Retry with a PLAIN transcription (the error card's "Retry" button): the new diarization's
     //    "Speaker 1" may be a different person, so the old name must NOT stay on it.
@@ -1473,12 +1480,12 @@ void AppJobsTest::emptySttResultKeepsOldTranscript()
         return sonioxOk(r);
     };
     Meeting m = transcribed("Üres eredmény");
-    m.speakerMap.insert("Beszélő 1", "Ödön");
+    m.speakerMap.insert("Beszélő 1", pid("Ödön"));
     m_app->store()->saveMeeting(m);
     {
         editing::SpeakerEditor* ed = m_app->speakerEditor(m.id);
         QVERIFY(ed);
-        QVERIFY(!ed->moveUtterancesToPerson({ed->utteranceAt(1).id}, "Kovács Lilla").isEmpty());
+        QVERIFY(!ed->moveUtterancesToPerson({ed->utteranceAt(1).id}, choice("Kovács Lilla")).isEmpty());
         m_app->closeSpeakerEditor(m.id);
     }
     const QString tokensPath = QDir(m.folder).filePath("transcript.tokens.json");
@@ -1506,7 +1513,7 @@ void AppJobsTest::emptySttResultKeepsOldTranscript()
     QCOMPARE(fileBytes(editing::speakeredit::overlayPath(m.folder)), overlayBefore);
     const Meeting after = m_app->store()->load(m.id);
     QVERIFY(after.hasTranscript);
-    QCOMPARE(after.speakerMap.value("Beszélő 1"), QStringLiteral("Ödön"));
+    QCOMPARE(nameOf(after.speakerMap.value("Beszélő 1")), QStringLiteral("Ödön"));
     QCOMPARE(m_app->retranscribeImpact(m.id).correctedUtterances, 1);
 
     // On a first transcription too it is an error (not "done, empty transcript"): no transcript file is created.

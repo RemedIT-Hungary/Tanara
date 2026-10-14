@@ -83,7 +83,7 @@ void JobTrackerTest::flagsDeriveDone()
     Meeting m = newMeeting();
     m.hasTranscript = true;
     m.hasSummary = true;
-    m.speakerMap.insert(QStringLiteral("Beszélő 1"), QStringLiteral("Ödön"));
+    m.speakerMap.insert(QStringLiteral("Beszélő 1"), PersonId::fromString(QStringLiteral("p-odon")));
     m_store->saveMeeting(m);
     const MeetingProcessingState s = t.state(m.id);
     QCOMPARE(s.transcriptState, StepState::Done);

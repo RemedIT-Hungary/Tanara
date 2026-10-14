@@ -22,6 +22,9 @@ using namespace tanara;
 
 namespace {
 
+// The tests' people: the name stands in as the PersonId.
+PersonId P(const QString& name) { return PersonId::fromString(name); }
+
 // Per frame: speech (40 dB above the floor, floor -80 dBFS) in the given [s,e) second ranges.
 TrackActivity activity(const QString& id, TrackKind kind, int seconds, const QVector<QPair<int, int>>& speech)
 {
@@ -195,24 +198,24 @@ void ParticipantsTest::analysisTwoClustersOneMatched()
     // A voiceprint only for the loopback's voice ("Béla"); the own name is "Ádám" (no voiceprint).
     const int dim = spec.dim;
     processing::participants::CandidateContext ctx;
-    ctx.selfName = QStringLiteral("Ádám");
+    ctx.self = SelfPerson{P(QStringLiteral("Ádám")), QStringLiteral("Ádám")};
     ctx.rank = [dim](const EmbeddingSet& q) {
         const double s = library::VoiceprintStore::cosineSimilarity(q.value("campplus"), oneHot(dim, 1));
-        return QVector<VoiceMatch>{{QStringLiteral("Béla"), s}};
+        return QVector<VoiceMatch>{{P(QStringLiteral("Béla")), s}};
     };
-    ctx.hasVoiceprint = [](const QString& n) { return n == QStringLiteral("Béla"); };
+    ctx.hasVoiceprint = [](const PersonId& n) { return n == P(QStringLiteral("Béla")); };
     const QVector<Participant> ps = processing::participants::buildParticipants(cs, m, ctx);
     QCOMPARE(ps.size(), 2);
     const Participant* bela = nullptr;
     const Participant* unknown = nullptr;
-    for (const Participant& p : ps) (p.personName == QStringLiteral("Béla") ? bela : unknown) = &p;
+    for (const Participant& p : ps) (p.personId == P(QStringLiteral("Béla")) ? bela : unknown) = &p;
     QVERIFY(bela && unknown);
     QCOMPARE(bela->source, ParticipantSource::Voice);
     QCOMPARE(bela->sides, QStringList({processing::participants::kSideLoopback}));
-    QVERIFY(unknown->personName.isEmpty());
+    QVERIFY(unknown->personId.isNull());
     QCOMPARE(unknown->sides, QStringList({processing::participants::kSideMic}));
     QCOMPARE(cs.clusters[1].participantId, bela->id);
-    QCOMPARE(cs.clusters[1].matchName, QStringLiteral("Béla"));
+    QCOMPARE(cs.clusters[1].matchPersonId, P(QStringLiteral("Béla")));
     QVERIFY(qAbs(bela->talkShare + unknown->talkShare - 1.0) < 1e-9);
     // Béla: audio only gives Doubtful, but checked; the unknown voice is not checked.
     QCOMPARE(processing::participants::participantGroup(*bela), ParticipantGroup::Doubt);
@@ -227,13 +230,13 @@ void ParticipantsTest::analysisTwoClustersOneMatched()
     library::PersonTagSnapshot snap;
     snap.stats = std::make_shared<library::PersonTagStats>();
     snap.tagNames.insert(QStringLiteral("t1"), QStringLiteral("Projekt"));
-    snap.manual.insert(library::persontags::personKey(QStringLiteral("Béla")), {QStringLiteral("t1")});
-    ctx.tagEvidence = [snap](const QString& n, const QStringList& tags, const QString& mid) {
+    snap.manual.insert(P(QStringLiteral("Béla")), {QStringLiteral("t1")});
+    ctx.tagEvidence = [snap](const PersonId& n, const QStringList& tags, const QString& mid) {
         return snap.evidence(n, tags, mid);
     };
     ClusterSet cs2 = cs;
     const QVector<Participant> ps2 = processing::participants::buildParticipants(cs2, tagged, ctx);
-    QCOMPARE(ps2.first().personName, QStringLiteral("Béla"));   // the Sure group first
+    QCOMPARE(ps2.first().personId, P(QStringLiteral("Béla")));   // the Sure group first
     QCOMPARE(processing::participants::participantGroup(ps2.first()), ParticipantGroup::Sure);
     bool tagEv = false;
     for (const Evidence& e : ps2.first().evidence)
@@ -248,11 +251,11 @@ void ParticipantsTest::manualParticipantBoostAndEvidence()
     Meeting m;
     Participant manual;
     manual.id = QStringLiteral("m-1");
-    manual.personName = QStringLiteral("Ádám");
+    manual.personId = P(QStringLiteral("Ádám"));
     manual.source = ParticipantSource::Manual;
     Participant ghost = manual;
     ghost.id = QStringLiteral("m-2");
-    ghost.personName = QStringLiteral("Cecília");
+    ghost.personId = P(QStringLiteral("Cecília"));
     m.participants = {manual, ghost};
 
     ClusterSet cs;
@@ -262,12 +265,12 @@ void ParticipantsTest::manualParticipantBoostAndEvidence()
     c.windows = {{0, 5000}};
     cs.clusters = {c};
     processing::participants::CandidateContext ctx;
-    ctx.selfName = QStringLiteral("Ádám");
+    ctx.self = SelfPerson{P(QStringLiteral("Ádám")), QStringLiteral("Ádám")};
     // 0.45: below the threshold alone, but accepted with the manual bonus (+0.1).
     ctx.rank = [](const EmbeddingSet&) {
-        return QVector<VoiceMatch>{{QStringLiteral("Ádám"), 0.45}, {QStringLiteral("Cecília"), 0.2}};
+        return QVector<VoiceMatch>{{P(QStringLiteral("Ádám")), 0.45}, {P(QStringLiteral("Cecília")), 0.2}};
     };
-    ctx.hasVoiceprint = [](const QString& n) { return n == QStringLiteral("Cecília"); };
+    ctx.hasVoiceprint = [](const PersonId& n) { return n == P(QStringLiteral("Cecília")); };
     const QVector<Participant> ps = processing::participants::buildParticipants(cs, m, ctx);
     QCOMPARE(ps.size(), 2);
     const Participant& adam = ps[0];
@@ -283,7 +286,7 @@ void ParticipantsTest::manualParticipantBoostAndEvidence()
     QVERIFY(!processing::participants::defaultChecked(cili));
 
     // A manual participant without a voiceprint: "no voiceprint" (neutral), so checkable.
-    ctx.hasVoiceprint = [](const QString&) { return false; };
+    ctx.hasVoiceprint = [](const PersonId&) { return false; };
     const QVector<Evidence> ev = processing::participants::participantEvidence(ghost, false, -1.0, m, ctx);
     bool noPrint = false;
     for (const Evidence& e : ev)
@@ -294,7 +297,7 @@ void ParticipantsTest::manualParticipantBoostAndEvidence()
 
     // Calendar source without audio: "Invited, but not heard".
     Participant invited;
-    invited.personName = QStringLiteral("Dóra");
+    invited.personId = P(QStringLiteral("Dóra"));
     invited.source = ParticipantSource::Calendar;
     QCOMPARE(processing::participants::participantGroup(invited), ParticipantGroup::InvitedNotHeard);
 }
@@ -302,8 +305,8 @@ void ParticipantsTest::manualParticipantBoostAndEvidence()
 void ParticipantsTest::bindRawSpeakersByOverlap()
 {
     QVector<Participant> ps(2);
-    ps[0].id = QStringLiteral("v1"); ps[0].personName = QStringLiteral("Ádám");
-    ps[1].id = QStringLiteral("v2"); ps[1].personName = QStringLiteral("Béla");
+    ps[0].id = QStringLiteral("v1"); ps[0].personId = P(QStringLiteral("Ádám"));
+    ps[1].id = QStringLiteral("v2"); ps[1].personId = P(QStringLiteral("Béla"));
     VoiceCluster a; a.participantId = "v1"; a.side = processing::participants::kSideMic; a.windows = {{0, 8000}, {20000, 28000}};
     VoiceCluster b; b.participantId = "v2"; b.side = processing::participants::kSideLoopback; b.windows = {{9000, 18000}};
     const QVector<TranscriptLine> lines = {line("Beszélő 1", 1000, 7000), line("Beszélő 2", 9500, 15500),
@@ -318,10 +321,10 @@ void ParticipantsTest::bindRawSpeakersByOverlap()
     const QVector<SpeakerBinding> bind = processing::participants::approvalBindings(ps, {"v1"}, lines, {a, b}, nullptr);
     QCOMPARE(bind.size(), 2);
     QCOMPARE(bind[0].rawLabel, QStringLiteral("Beszélő 1"));
-    QCOMPARE(bind[0].personName, QStringLiteral("Ádám"));
+    QCOMPARE(bind[0].personId, P(QStringLiteral("Ádám")));
     QVERIFY(bind[0].utteranceIds.isEmpty());
     QCOMPARE(bind[1].rawLabel, QStringLiteral("Beszélő 2"));
-    QVERIFY(bind[1].personName.isEmpty());
+    QVERIFY(bind[1].personId.isNull());
 }
 
 // G10: if every checked, named participant has a manual track, the raw speaker's lines split
@@ -332,9 +335,9 @@ void ParticipantsTest::approvalSideVetoSplitsBySide()
     Meeting m;
     m.tracks = {track("mic", TrackKind::Mic, "mic.wav"), track("loop", TrackKind::Loopback, "loop.wav")};
     QVector<Participant> ps(2);
-    ps[0].id = QStringLiteral("v1"); ps[0].personName = QStringLiteral("Ádám");
+    ps[0].id = QStringLiteral("v1"); ps[0].personId = P(QStringLiteral("Ádám"));
     ps[0].rawSpeakerIds = {QStringLiteral("Beszélő 1")};
-    ps[1].id = QStringLiteral("v2"); ps[1].personName = QStringLiteral("Béla");
+    ps[1].id = QStringLiteral("v2"); ps[1].personId = P(QStringLiteral("Béla"));
     ps[1].rawSpeakerIds = {QStringLiteral("Beszélő 2")};
     VoiceCluster a; a.participantId = "v1"; a.side = processing::participants::kSideMic; a.windows = {{0, 8000}, {20000, 28000}};
     VoiceCluster b; b.participantId = "v2"; b.side = processing::participants::kSideLoopback; b.windows = {{9000, 18000}, {40000, 44000}};
@@ -354,7 +357,7 @@ void ParticipantsTest::approvalSideVetoSplitsBySide()
     QVector<SpeakerBinding> bind = processing::participants::approvalBindings(ps, {"v1", "v2"}, lines, {a, b}, &act, &m);
     QCOMPARE(bind.size(), 2);
     QVERIFY(bind[0].utteranceIds.isEmpty());
-    QCOMPARE(bind[0].personName, QStringLiteral("Ádám"));
+    QCOMPARE(bind[0].personId, P(QStringLiteral("Ádám")));
 
     // Both assigned: Speaker 1 is anonymous; Ádám gets the microphone lines, Béla the call line in
     // his voice; the 30 s call line stays anonymous.
@@ -362,13 +365,13 @@ void ParticipantsTest::approvalSideVetoSplitsBySide()
     bind = processing::participants::approvalBindings(ps, {"v1", "v2"}, lines, {a, b}, &act, &m);
     QCOMPARE(bind.size(), 4);
     QCOMPARE(bind[0].rawLabel, QStringLiteral("Beszélő 1"));
-    QVERIFY(bind[0].personName.isEmpty() && bind[0].utteranceIds.isEmpty());
-    QCOMPARE(bind[1].personName, QStringLiteral("Ádám"));
+    QVERIFY(bind[0].personId.isNull() && bind[0].utteranceIds.isEmpty());
+    QCOMPARE(bind[1].personId, P(QStringLiteral("Ádám")));
     QCOMPARE(bind[1].utteranceIds, QStringList({"u1000", "u21000"}));
-    QCOMPARE(bind[2].personName, QStringLiteral("Béla"));
+    QCOMPARE(bind[2].personId, P(QStringLiteral("Béla")));
     QCOMPARE(bind[2].utteranceIds, QStringList({"u9500"}));
     QCOMPARE(bind[3].rawLabel, QStringLiteral("Beszélő 2"));
-    QCOMPARE(bind[3].personName, QStringLiteral("Béla"));
+    QCOMPARE(bind[3].personId, P(QStringLiteral("Béla")));
     QVERIFY(bind[3].utteranceIds.isEmpty());
 
     // A multi-track person is never excluded.
@@ -386,8 +389,8 @@ void ParticipantsTest::approvalSideVetoSplitsBySide()
 void ParticipantsTest::twoSidedRawSpeakerIsSplit()
 {
     QVector<Participant> ps(2);
-    ps[0].id = QStringLiteral("v1"); ps[0].personName = QStringLiteral("Ádám");
-    ps[1].id = QStringLiteral("v2"); ps[1].personName = QStringLiteral("Béla");
+    ps[0].id = QStringLiteral("v1"); ps[0].personId = P(QStringLiteral("Ádám"));
+    ps[1].id = QStringLiteral("v2"); ps[1].personId = P(QStringLiteral("Béla"));
     VoiceCluster a; a.participantId = "v1"; a.side = processing::participants::kSideMic; a.windows = {{0, 8000}, {20000, 28000}};
     VoiceCluster b; b.participantId = "v2"; b.side = processing::participants::kSideLoopback; b.windows = {{9000, 18000}};
     // The diarization took Ádám and Béla as one speaker ("Speaker 1"), the 2nd speaker is Ádám.
@@ -404,11 +407,11 @@ void ParticipantsTest::twoSidedRawSpeakerIsSplit()
     // bigger side (here equal, so the microphone).
     const QVector<SpeakerBinding> bind = processing::participants::approvalBindings(ps, {"v1", "v2"}, lines, {a, b}, nullptr);
     QCOMPARE(bind.size(), 3);
-    QCOMPARE(bind[0].personName, QStringLiteral("Ádám"));
+    QCOMPARE(bind[0].personId, P(QStringLiteral("Ádám")));
     QCOMPARE(bind[0].utteranceIds, QStringList({"u1000", "u30000"}));
     QCOMPARE(bind[1].rawLabel, QStringLiteral("Beszélő 2"));
     QVERIFY(bind[1].utteranceIds.isEmpty());
-    QCOMPARE(bind[2].personName, QStringLiteral("Béla"));
+    QCOMPARE(bind[2].personId, P(QStringLiteral("Béla")));
     QCOMPARE(bind[2].utteranceIds, QStringList({"u9500"}));
 
     // Side from track energy if the clusters do not cover the line.
@@ -430,7 +433,7 @@ void ParticipantsTest::meetingJsonRoundTrip()
     m.tracks = {t, off};
     Participant p;
     p.id = QStringLiteral("v1");
-    p.personName = QStringLiteral("Béla");
+    p.personId = P(QStringLiteral("Béla"));
     p.rawSpeakerIds = {QStringLiteral("Beszélő 1@loopback")};
     p.source = ParticipantSource::Voice;
     p.approved = true;
@@ -441,7 +444,7 @@ void ParticipantsTest::meetingJsonRoundTrip()
     ParticipantApproval ap;
     ap.at = QStringLiteral("2026-10-10T10:00:00");
     ap.modelIds = {QStringLiteral("campplus")};
-    ap.candidates = {{p.id, p.personName, ParticipantGroup::Sure, true, p.rawSpeakerIds}};
+    ap.candidates = {{p.id, p.personId, ParticipantGroup::Sure, true, p.rawSpeakerIds}};
     m.approval = ap;
 
     const Meeting r = library::meetingFromJson(library::toJson(m));
@@ -450,7 +453,7 @@ void ParticipantsTest::meetingJsonRoundTrip()
     QCOMPARE(r.tracks[1].excludedReason, editing::trackspeech::kNoSpeech);
     QCOMPARE(r.participants.size(), 1);
     const Participant& q = r.participants.first();
-    QCOMPARE(q.personName, p.personName);
+    QCOMPARE(q.personId, p.personId);
     QCOMPARE(q.rawSpeakerIds, p.rawSpeakerIds);
     QCOMPARE(q.source, ParticipantSource::Voice);
     QVERIFY(q.approved);
@@ -480,14 +483,14 @@ void ParticipantsTest::meetingJsonRoundTrip()
     f.tracksKey = QStringLiteral("abc");
     VoiceCluster c;
     c.trackId = "loop"; c.side = processing::participants::kSideLoopback; c.participantId = "v1";
-    c.matchName = "Béla"; c.matchScore = 0.82; c.windows = {{1000, 5000}}; c.sampleRef = "b.ogg#1000-5000";
+    c.matchPersonId = P("Béla"); c.matchScore = 0.82; c.windows = {{1000, 5000}}; c.sampleRef = "b.ogg#1000-5000";
     f.clusters = {c};
     QVERIFY(f.save(dir.path()));
     const processing::ParticipantAnalysisFile g = processing::ParticipantAnalysisFile::load(dir.path());
     QCOMPARE(g.tracksKey, f.tracksKey);
     QCOMPARE(g.clusters.size(), 1);
     QCOMPARE(g.clusters[0].windows, c.windows);
-    QCOMPARE(g.clusters[0].matchName, c.matchName);
+    QCOMPARE(g.clusters[0].matchPersonId, c.matchPersonId);
 }
 
 QTEST_GUILESS_MAIN(ParticipantsTest)

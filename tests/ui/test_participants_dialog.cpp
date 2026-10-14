@@ -10,6 +10,7 @@
 #include "ShellActions.h"
 
 #include "tanara/app/AppController.h"
+#include "tanara/library/store/PeopleStore.h"
 #include "tanara/library/store/MeetingRepository.h"
 #include "tanara/library/tags/TagService.h"
 
@@ -38,12 +39,12 @@ Evidence evidence(EvidenceKind k, Polarity p, const QString& text)
     return e;
 }
 
-Participant participant(const QString& id, const QString& name, QVector<Evidence> evs,
+Participant participant(const QString& id, const PersonId& person, QVector<Evidence> evs,
                         const QStringList& sides, ParticipantSource source = ParticipantSource::Voice)
 {
     Participant p;
     p.id = id;
-    p.personName = name;
+    p.personId = person;
     p.evidence = std::move(evs);
     p.sides = sides;
     p.source = source;
@@ -122,6 +123,9 @@ class TestParticipantsDialog : public QObject {
     std::unique_ptr<app::AppController> m_app;
     QString m_meetingId;
 
+    PersonId pid(const QString& name) { return name.isEmpty() ? PersonId() : m_app->people()->ensure(name); }
+    QString nameOf(const PersonId& id) const { return m_app->people()->displayName(id); }
+
     // Lilla (mic + call audio): certain; Gábor (call audio only): doubtful, checked; Bence (call
     // audio + contradicting tag): doubtful, unchecked; Réka (calendar, not heard): invited;
     // anonymous voice: doubtful, cannot be checked until it has a name.
@@ -129,18 +133,18 @@ class TestParticipantsDialog : public QObject {
     {
         Meeting m = m_app->store()->createMeeting(QStringLiteral("Negyedéves partnertalálkozó"));
         m.participants = {
-            participant("v1", "Kovács Lilla",
+            participant("v1", pid("Kovács Lilla"),
                         {evidence(EvidenceKind::Side, Polarity::Support, "mikrofon"),
                          evidence(EvidenceKind::Voice, Polarity::Support, "hang 96%")}, {"mic"}),
-            participant("v2", "Fehér Gábor", {evidence(EvidenceKind::Voice, Polarity::Support, "hang 84%")},
+            participant("v2", pid("Fehér Gábor"), {evidence(EvidenceKind::Voice, Polarity::Support, "hang 84%")},
                         {"loopback"}),
-            participant("v3", "Tóth Bence",
+            participant("v3", pid("Tóth Bence"),
                         {evidence(EvidenceKind::Voice, Polarity::Support, "hang 58%"),
                          evidence(EvidenceKind::Voice, Polarity::Contradict, "más címkéken szokott lenni")},
                         {"loopback"}),
-            participant("c1", "Lantos Réka", {evidence(EvidenceKind::Calendar, Polarity::Neutral, "naptár")},
+            participant("c1", pid("Lantos Réka"), {evidence(EvidenceKind::Calendar, Polarity::Neutral, "naptár")},
                         {}, ParticipantSource::Calendar),
-            participant("v4", "", {evidence(EvidenceKind::Voice, Polarity::Neutral, "ismeretlen hang")},
+            participant("v4", pid(""), {evidence(EvidenceKind::Voice, Polarity::Neutral, "ismeretlen hang")},
                         {"loopback"}),
         };
         m.participants[0].rawSpeakerIds = {"Beszélő 1@mic"};
@@ -264,7 +268,7 @@ private slots:
         // Nothing has reached the meeting yet.
         for (const Participant& p : m_app->participants(m_meetingId)) {
             QVERIFY(!p.approved);
-            QVERIFY(p.personName != QLatin1String("Szabó Bence"));
+            QVERIFY(nameOf(p.personId) != QLatin1String("Szabó Bence"));
         }
 
         // External change (participantsChanged): the working copy stays.
@@ -278,7 +282,7 @@ private slots:
         QVERIFY(!m.approval->skipped);
         QStringList approved;
         for (const Participant& p : m.participants)
-            if (p.approved) approved << p.personName;
+            if (p.approved) approved << nameOf(p.personId);
         approved.sort();
         QCOMPARE(approved, (QStringList{"Kovács Lilla", "Szabó Bence", "Tóth Bence", "Varga Árpád"}));
         QVERIFY(!m_app->participantApprovalPending(m_meetingId));
@@ -351,7 +355,7 @@ private slots:
         library::TagService* tags = m_app->tags();
         const QString nord = tags->create(QStringLiteral("Nordvik")).id;
         Meeting before = m_app->store()->createMeeting(QStringLiteral("Előző egyeztetés"));
-        before.speakerMap.insert(QStringLiteral("Beszélő 2"), QStringLiteral("Fehér Gábor"));
+        before.speakerMap.insert(QStringLiteral("Beszélő 2"), pid(QStringLiteral("Fehér Gábor")));
         before.tagIds = {nord};
         m_app->store()->saveMeeting(before);
         seedMeeting(false);
@@ -375,14 +379,14 @@ private slots:
 
         // One pair from "One by one...": Bence "No" (persistent rejection); the question stays for Gábor.
         QVERIFY(vm.answerLearnPair(1, false).contains(QStringLiteral("#Nordvik")));
-        QVERIFY(tags->isRejectedForPerson(QStringLiteral("Szabó Bence"), nord));
+        QVERIFY(tags->isRejectedForPerson(pid(QStringLiteral("Szabó Bence")), nord));
         QVERIFY(vm.learnQuestion().value("pairs").toList().isEmpty());
         // "Yes": the tag on Gábor, one step.
         QVERIFY(vm.answerLearn(true).contains(QStringLiteral("Fehér Gábor")));
-        QCOMPARE(tags->tagsOfPerson(QStringLiteral("Fehér Gábor")), QStringList{nord});
+        QCOMPARE(tags->tagsOfPerson(pid(QStringLiteral("Fehér Gábor"))), QStringList{nord});
         QVERIFY(vm.learnQuestion().isEmpty());
         tags->undo();
-        QVERIFY(tags->tagsOfPerson(QStringLiteral("Fehér Gábor")).isEmpty());
+        QVERIFY(tags->tagsOfPerson(pid(QStringLiteral("Fehér Gábor"))).isEmpty());
 
         // Asks once: a repeated approval brings no question.
         vm.reload();

@@ -212,16 +212,16 @@ Side sideOfTracks(const Meeting& m, const QStringList& trackIds)
     return local ? Side::Local : remote ? Side::Remote : Side::Unknown;
 }
 
-QHash<QString, Side> learnedDefaults(const SideReport& r)
+QHash<PersonId, Side> learnedDefaults(const SideReport& r)
 {
-    QHash<QString, Side> out;
+    QHash<PersonId, Side> out;
     for (const PersonSide& p : r.persons) {
-        if (p.personName.isEmpty()) continue;
+        if (p.personId.isNull()) continue;
         if (p.side != Side::Local && p.side != Side::Remote) continue;
         if (p.basis != QLatin1String("lines") && p.basis != QLatin1String("override")
             && p.basis != QLatin1String("manual"))
             continue;
-        out.insert(p.personName, p.side);
+        out.insert(p.personId, p.side);
     }
     return out;
 }
@@ -234,12 +234,12 @@ bool allNamedSpeakersBound(const Meeting& m, const SideReport& r, const SpeakerO
     QSet<QString> seen;
     for (const PersonSide& p : r.persons) {
         seen.insert(p.speakerKey);
-        if (p.personName.trimmed().isEmpty()) continue;
+        if (p.personId.isNull()) continue;
         ++named;
         if (p.manualSide == Side::Unknown) return false;
     }
     for (const OverlayParticipant& op : ov.participants) {
-        if (seen.contains(op.key) || op.person.trimmed().isEmpty()) continue;
+        if (seen.contains(op.key) || op.personId.isNull()) continue;
         ++named;
         if (sideOfTracks(m, manual.value(op.key)) == Side::Unknown) return false;
     }
@@ -250,7 +250,7 @@ bool allNamedParticipantsBound(const Meeting& m, const QVector<Participant>& all
 {
     int named = 0;
     for (const Participant& p : all) {
-        if (!acceptedIds.contains(p.id) || p.personName.trimmed().isEmpty()) continue;
+        if (!acceptedIds.contains(p.id) || p.personId.isNull()) continue;
         ++named;
         if (sideOfTracks(m, p.tracks) == Side::Unknown) return false;
     }
@@ -281,7 +281,7 @@ QVector<Side> classifyLineSides(const MeetingActivity& activity, const QVector<T
 
 SideReport analyzeSides(const Meeting& m, const QVector<TranscriptLine>& lines,
                         const SpeakerOverlay& ov, const MeetingActivity& activity,
-                        const QString& userName, const SideHints& hints)
+                        const SelfPerson& self, const SideHints& hints)
 {
     SideReport r;
     r.histogram = QVector<int>(10, 0);
@@ -354,8 +354,8 @@ SideReport analyzeSides(const Meeting& m, const QVector<TranscriptLine>& lines,
     for (const QString& key : speakerOrder) {
         PersonSide p;
         p.speakerKey = key;
-        p.personName = speakeredit::speakerPerson(ov, m.speakerMap, key);
-        p.displayName = speakeredit::speakerDisplayName(ov, m.speakerMap, key);
+        p.personId = speakeredit::speakerPerson(ov, m.speakerMap, key);
+        p.displayName = speakeredit::speakerDisplayName(ov, m.speakerMap, hints.names, key);
         personIdx.insert(key, int(r.persons.size()));
         r.persons.append(p);
     }
@@ -373,8 +373,8 @@ SideReport analyzeSides(const Meeting& m, const QVector<TranscriptLine>& lines,
     for (PersonSide& p : r.persons) {
         p.manualTracks = manual.value(p.speakerKey);
         p.manualSide = sides::sideOfTracks(m, p.manualTracks);
-        if (!p.personName.isEmpty())
-            p.learnedSide = hints.learnedSides.value(p.personName.toCaseFolded(), Side::Unknown);
+        if (!p.personId.isNull())
+            p.learnedSide = hints.learnedSides.value(p.personId, Side::Unknown);
         if (!r.active) { p.basis = QStringLiteral("none"); continue; }
         if (p.manualSide != Side::Unknown) {
             // The manual track assignment is the single truth (the user stated it).
@@ -389,13 +389,14 @@ SideReport analyzeSides(const Meeting& m, const QVector<TranscriptLine>& lines,
         if (p.learnedSide == Side::Local || p.learnedSide == Side::Remote) {
             p.defaultSide = p.learnedSide;
             defBasis = QStringLiteral("learned");
-        } else if (sameName(userName, p.personName) || (p.personName.isEmpty() && sameName(userName, p.speakerKey))) {
+        } else if (self.is(p.personId) || (p.personId.isNull() && sameName(self.name, p.speakerKey))) {
             p.defaultSide = Side::Local;
             defBasis = QStringLiteral("user-name");
         } else {
             for (const Track& t : m.tracks) {
                 if (!t.fixedSpeaker || sideOfKind(t.kind) == Side::Unknown) continue;
-                if (sameName(t.speakerLabel, p.speakerKey) || sameName(t.speakerLabel, p.personName)) {
+                if (sameName(t.speakerLabel, p.speakerKey)
+                    || (!p.personId.isNull() && sameName(t.speakerLabel, p.displayName))) {
                     p.defaultSide = sideOfKind(t.kind);
                     defBasis = QStringLiteral("fixed-track");
                     break;

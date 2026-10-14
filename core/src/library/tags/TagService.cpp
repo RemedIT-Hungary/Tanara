@@ -35,7 +35,7 @@ struct TagRec {
 
 struct Rejected {
     QString meetingId;   // empty = person-level, lasting (person filled in)
-    QString person;      // non-empty = a (person, tag) rejection; without tagId (with meetingId):
+    PersonId person;     // non-null = a (person, tag) rejection; without tagId (with meetingId):
                          // the person's suggestion rejected for that meeting
     QString tagId;     // empty = by name (e.g. the LLM's new-name idea)
     QString name;      // the original name (the key is computed from it)
@@ -46,7 +46,7 @@ struct Row {
     QString     title;
     QDateTime   startedAt;
     QStringList tagIds;
-    QStringList participants;
+    PersonIds   participants;
     qint64      durationMs = 0;
 };
 
@@ -58,28 +58,22 @@ struct UndoStep {
     QVector<TagRec>   tags;
     QVector<Rejected> rejected;
     QHash<QString, QStringList> meetings;   // meetingId -> its tags before
-    QHash<QString, QStringList> persons;    // person -> manual tags before
+    QHash<PersonId, QStringList> persons;   // person -> manual tags before
     bool isEmpty() const { return !hasSet && meetings.isEmpty() && persons.isEmpty(); }
 };
 
 // The meeting's named participants for the person <-> tag computation (UX plan 3: M(p)): the speaker
 // map and the own track (MeetingLibrary::participantsOf), plus manually added, calendar-sourced and
 // approved ("Who was there?") participants, so also before transcription.
-QStringList namedParticipants(const Meeting& m)
+PersonIds namedParticipants(const Meeting& m)
 {
-    QStringList out = MeetingLibrary::participantsOf(m);
+    PersonIds out = MeetingLibrary::participantsOf(m);
     for (const Participant& p : m.participants) {
-        const QString n = p.personName.trimmed();
-        if (n.isEmpty() || out.contains(n)) continue;
+        if (p.personId.isNull() || out.contains(p.personId)) continue;
         if (p.approved || p.source == ParticipantSource::Manual || p.source == ParticipantSource::Calendar)
-            out << n;
+            out << p.personId;
     }
     return out;
-}
-
-bool samePerson(const QString& a, const QString& b)
-{
-    return persontags::personKey(a) == persontags::personKey(b);
 }
 
 } // namespace
@@ -89,7 +83,7 @@ struct TagService::Impl {
     MeetingRepository* store = nullptr;
     MeetingProfiles* profiles = nullptr;
     PeopleStore*  people = nullptr;
-    std::function<QString()> selfProvider;
+    std::function<PersonId()> selfProvider;
     QString       path;
     FileStamp     stamp;
 
@@ -111,7 +105,7 @@ struct TagService::Impl {
     bool statsAsync = false;
     bool statsRunning = false;
     bool statsAgain = false;
-    QSet<QString> askedLearning;   // learning questions already asked (meeting, person, tag)
+    QSet<QString> askedLearning;   // learning questions already asked (meeting, personId, tag)
     int  statsGen = 0;
     std::shared_ptr<std::atomic_bool> alive = std::make_shared<std::atomic_bool>(true);
 
@@ -139,13 +133,15 @@ struct TagService::Impl {
             const QJsonObject o = v.toObject();
             Rejected r;
             r.meetingId = o.value(QStringLiteral("meetingId")).toString();
-            r.person = o.value(QStringLiteral("person")).toString().trimmed();
+            // A name-keyed "person" item (before version 2) is not read: it has no PersonId.
+            if (o.contains(QStringLiteral("person")) && !o.contains(QStringLiteral("personId"))) continue;
+            r.person = PersonId::fromString(o.value(QStringLiteral("personId")).toString());
             r.tagId = o.value(QStringLiteral("tagId")).toString();
             r.name = o.value(QStringLiteral("name")).toString();
             r.key = tagKey(r.name);
-            if (r.meetingId.isEmpty() && r.person.isEmpty()) continue;
-            if (!r.person.isEmpty() && r.tagId.isEmpty() && r.meetingId.isEmpty()) continue;
-            if (r.person.isEmpty() && r.tagId.isEmpty() && r.key.isEmpty()) continue;
+            if (r.meetingId.isEmpty() && r.person.isNull()) continue;
+            if (!r.person.isNull() && r.tagId.isEmpty() && r.meetingId.isEmpty()) continue;
+            if (r.person.isNull() && r.tagId.isEmpty() && r.key.isEmpty()) continue;
             rejected.append(r);
         }
     }
@@ -165,12 +161,12 @@ struct TagService::Impl {
         for (const Rejected& r : std::as_const(rejected)) {
             QJsonObject o;
             if (!r.meetingId.isEmpty()) o.insert(QStringLiteral("meetingId"), r.meetingId);
-            if (!r.person.isEmpty()) o.insert(QStringLiteral("person"), r.person);
+            if (!r.person.isNull()) o.insert(QStringLiteral("personId"), r.person.toString());
             if (!r.tagId.isEmpty()) o.insert(QStringLiteral("tagId"), r.tagId);
             if (!r.name.isEmpty()) o.insert(QStringLiteral("name"), r.name);
             ra.append(o);
         }
-        const QJsonObject root{{QStringLiteral("version"), 1},
+        const QJsonObject root{{QStringLiteral("version"), 2},
                                {QStringLiteral("tags"), ta},
                                {QStringLiteral("rejected"), ra}};
         QDir().mkpath(QFileInfo(path).absolutePath());
@@ -299,35 +295,38 @@ struct TagService::Impl {
         return true;
     }
     // ---- people ----
-    QString self() const { return selfProvider ? selfProvider().trimmed() : QString(); }
-    bool isSelf(const QString& name) const {
-        const QString s = self();
-        return !s.isEmpty() && samePerson(s, name);
+    PersonId self() const { return selfProvider ? selfProvider() : PersonId(); }
+    bool isSelf(const PersonId& person) const {
+        const PersonId s = self();
+        return !s.isNull() && s == person;
     }
-    void snapshotPerson(const QString& name) {
-        if (undoing || !people) return;
-        for (auto it = current.persons.constBegin(); it != current.persons.constEnd(); ++it)
-            if (samePerson(it.key(), name)) return;
-        current.persons.insert(name.trimmed(), people->tags(name));
+    QString nameOf(const PersonId& person) const {
+        if (!people) return {};
+        return people->displayName(person);
+    }
+    void snapshotPerson(const PersonId& person) {
+        if (undoing || !people || current.persons.contains(person)) return;
+        current.persons.insert(person, people->tags(person));
     }
     // Writing the person's manual tags (people.json). true if changed.
-    bool writePersonTags(const QString& name, const QStringList& ids) {
+    bool writePersonTags(const PersonId& person, const QStringList& ids) {
         if (!people) return false;
         people->refresh();
+        if (!people->contains(person)) return false;
         QStringList clean;
         for (const QString& id : ids)
             if (!id.isEmpty() && !clean.contains(id)) clean << id;
-        if (people->tags(name) == clean) return false;
-        snapshotPerson(name);
-        if (!people->setTags(name, clean)) return false;
-        emit q->personTagsChanged(name.trimmed());
+        if (people->tags(person) == clean) return false;
+        snapshotPerson(person);
+        if (!people->setTags(person, clean)) return false;
+        emit q->personTagsChanged(person.toString());
         return true;
     }
     // On every person: tag `from` replaced by `to` (an empty `to` = removal).
     void replacePersonTag(const QString& from, const QString& to) {
         if (!people) return;
         people->refresh();
-        const QHash<QString, QStringList> all = people->allTags();
+        const QHash<PersonId, QStringList> all = people->allTags();
         for (auto it = all.constBegin(); it != all.constEnd(); ++it) {
             QStringList t = it.value();
             const int pos = t.indexOf(from);
@@ -373,7 +372,7 @@ struct TagService::Impl {
         statsRunning = true;
         statsAgain = false;
         const int gen = statsGen;
-        const QString selfName = self();
+        const PersonId selfName = self();
         // A copy of the rows already loaded; otherwise the background thread reads the meeting.json files.
         QVector<PersonTagRow> copied;
         QVector<QPair<QString, QString>> folders;
@@ -407,19 +406,20 @@ struct TagService::Impl {
         if (statsDirty && !statsAsync) computeStatsNow();
         return stats;
     }
-    PersonTagStat statOf(const PersonTagStats& st, const QString& name, const QString& tagId) const {
+    PersonTagStat statOf(const PersonTagStats& st, const PersonId& person, const QString& tagId) const {
         PersonTagStat r;
-        r.name = st.displayName(name);
+        r.personId = person;
+        r.name = nameOf(person);
         r.tagId = tagId;
-        r.shared = st.shared(name, tagId);
+        r.shared = st.shared(person, tagId);
         r.tagTotal = st.tagTotal(tagId);
-        r.personTotal = st.personTotal(name);
-        r.lastShared = st.lastShared(name, tagId);
+        r.personTotal = st.personTotal(person);
+        r.lastShared = st.lastShared(person, tagId);
         return r;
     }
-    bool personRejected(const QString& name, const QString& tagId, const QString& meetingId) const {
+    bool personRejected(const PersonId& person, const QString& tagId, const QString& meetingId) const {
         for (const Rejected& r : rejected) {
-            if (r.person.isEmpty() || r.tagId != tagId || !samePerson(r.person, name)) continue;
+            if (r.person.isNull() || r.tagId != tagId || r.person != person) continue;
             if (r.meetingId.isEmpty() || r.meetingId == meetingId) return true;
         }
         return false;
@@ -433,7 +433,7 @@ struct TagService::Impl {
         const QString key = tagKey(name);
         const auto before = rejected.size();
         rejected.erase(std::remove_if(rejected.begin(), rejected.end(), [&](const Rejected& r) {
-            if (r.meetingId != meetingId || !r.person.isEmpty()) return false;
+            if (r.meetingId != meetingId || !r.person.isNull()) return false;
             return (!tagId.isEmpty() && r.tagId == tagId) || (!key.isEmpty() && r.key == key);
         }), rejected.end());
         if (rejected.size() != before) emit q->rejectedChanged();
@@ -709,7 +709,7 @@ void TagService::merge(const QString& fromId, const QString& keepId)
     for (Rejected r : std::as_const(d->rejected)) {
         if (r.tagId == fromId) r.tagId = keepId;
         const bool dup = std::any_of(rej.cbegin(), rej.cend(), [&](const Rejected& x) {
-            return x.meetingId == r.meetingId && samePerson(x.person, r.person)
+            return x.meetingId == r.meetingId && x.person == r.person
                 && x.tagId == r.tagId && x.key == r.key;
         });
         if (!dup) rej.append(r);
@@ -904,14 +904,16 @@ TagProfile TagService::profile(const QString& id) const
     if (d->indexOf(id) < 0) return p;
     const QStringList mids = meetingsWith(id);
     p.meetingCount = int(mids.size());
-    QHash<QString, int> people;
+    QHash<PersonId, int> people;
     for (const QString& mid : mids) {
         const Row r = d->rows.value(mid);
         p.meetings.append({ mid, r.title, r.startedAt, r.durationMs });
-        for (const QString& n : r.participants) people[n]++;
+        for (const PersonId& n : r.participants) people[n]++;
     }
-    for (auto it = people.constBegin(); it != people.constEnd(); ++it)
-        p.topParticipants.append({ it.key(), it.value() });
+    for (auto it = people.constBegin(); it != people.constEnd(); ++it) {
+        const QString name = d->nameOf(it.key());
+        if (!name.isEmpty()) p.topParticipants.append({ name, it.value() });
+    }
     std::sort(p.topParticipants.begin(), p.topParticipants.end(), [](const auto& a, const auto& b) {
         if (a.second != b.second) return a.second > b.second;
         return a.first.localeAwareCompare(b.first) < 0;
@@ -967,7 +969,7 @@ bool TagService::isRejected(const QString& meetingId, const QString& tagIdOrName
     const QString key = idx >= 0 ? tagKey(d->tags.at(idx).tag.name) : tagKey(tagIdOrName);
     const QString id = idx >= 0 ? tagIdOrName : QString();
     for (const Rejected& r : std::as_const(d->rejected)) {
-        if (r.meetingId != meetingId || !r.person.isEmpty()) continue;
+        if (r.meetingId != meetingId || !r.person.isNull()) continue;
         if (!id.isEmpty() && r.tagId == id) return true;
         if (!r.key.isEmpty() && r.key == key) return true;
     }
@@ -1049,36 +1051,43 @@ void TagService::undo()
 
 void TagService::setPeopleStore(PeopleStore* people) { d->people = people; }
 
-void TagService::setSelfNameProvider(std::function<QString()> provider)
+void TagService::setSelfProvider(std::function<PersonId()> provider)
 {
     d->selfProvider = std::move(provider);
     d->invalidateStats();
 }
 
-QString TagService::selfName() const { return d->self(); }
+PersonId TagService::selfId() const { return d->self(); }
 
-bool TagService::isSelf(const QString& name) const { return d->isSelf(name); }
+bool TagService::isSelf(const PersonId& person) const { return d->isSelf(person); }
 
-QStringList TagService::tagsOfPerson(const QString& name) const
+PersonNames TagService::personNames() const
+{
+    if (!d->people) return {};
+    d->people->refresh();
+    return d->people->names();
+}
+
+QStringList TagService::tagsOfPerson(const PersonId& person) const
 {
     QStringList out;
-    if (!d->people || name.trimmed().isEmpty() || d->isSelf(name)) return out;
+    if (!d->people || person.isNull() || d->isSelf(person)) return out;
     d->people->refresh();
-    for (const QString& id : d->people->tags(name))
+    for (const QString& id : d->people->tags(person))
         if (d->indexOf(id) >= 0) out << id;
     return out;
 }
 
-bool TagService::setPersonTags(const QString& name, const QStringList& ids)
+bool TagService::setPersonTags(const PersonId& person, const QStringList& ids)
 {
-    if (!d->people || name.trimmed().isEmpty() || d->isSelf(name)) return false;
+    if (!d->people || person.isNull() || d->isSelf(person)) return false;
     StepScope step(this, tr("Személy címkéinek módosítása"));
     QStringList clean;
     for (const QString& id : ids)
         if (d->indexOf(id) >= 0 && !clean.contains(id)) clean << id;
     // Ids that have since vanished from the set also come off the record.
-    const QStringList before = tagsOfPerson(name);
-    if (!d->writePersonTags(name, clean)) return true;
+    const QStringList before = tagsOfPerson(person);
+    if (!d->writePersonTags(person, clean)) return true;
     SharedFileLock lock(d->path);
     d->syncFromDisk();
     d->snapshotSet();
@@ -1089,36 +1098,38 @@ bool TagService::setPersonTags(const QString& name, const QStringList& ids)
     return true;
 }
 
-Tag TagService::addPersonTag(const QString& name, const QString& nameOrId)
+Tag TagService::addPersonTag(const PersonId& person, const QString& nameOrId)
 {
-    if (!d->people || name.trimmed().isEmpty() || d->isSelf(name)) return {};
+    if (!d->people || person.isNull() || d->isSelf(person)) return {};
     StepScope step(this, tr("Címke a személyen"));
     Tag t = tag(nameOrId);
     if (!t.isValid()) t = create(nameOrId);
     if (!t.isValid()) return {};
-    QStringList ids = tagsOfPerson(name);
-    if (!ids.contains(t.id)) setPersonTags(name, ids << t.id);
+    QStringList ids = tagsOfPerson(person);
+    if (!ids.contains(t.id)) setPersonTags(person, ids << t.id);
     return t;
 }
 
-void TagService::removePersonTag(const QString& name, const QString& id)
+void TagService::removePersonTag(const PersonId& person, const QString& id)
 {
     StepScope step(this, tr("Címke levétele a személyről"));
-    QStringList ids = tagsOfPerson(name);
+    QStringList ids = tagsOfPerson(person);
     if (ids.removeAll(id) == 0) return;
-    setPersonTags(name, ids);
+    setPersonTags(person, ids);
 }
 
-QStringList TagService::peopleWith(const QString& tagId) const
+PersonIds TagService::peopleWith(const QString& tagId) const
 {
-    QStringList out;
+    PersonIds out;
     if (!d->people || d->indexOf(tagId) < 0) return out;
     d->people->refresh();
-    const QHash<QString, QStringList> all = d->people->allTags();
+    const QHash<PersonId, QStringList> all = d->people->allTags();
     for (auto it = all.constBegin(); it != all.constEnd(); ++it)
         if (it.value().contains(tagId) && !d->isSelf(it.key())) out << it.key();
-    std::sort(out.begin(), out.end(), [](const QString& a, const QString& b) {
-        return text::fold(a).localeAwareCompare(text::fold(b)) < 0;
+    const PersonNames names = d->people->names();
+    std::sort(out.begin(), out.end(), [&](const PersonId& a, const PersonId& b) {
+        const int c = text::fold(names.value(a)).localeAwareCompare(text::fold(names.value(b)));
+        return c != 0 ? c < 0 : a < b;
     });
     return out;
 }
@@ -1148,16 +1159,17 @@ PersonTagSnapshot TagService::personTagSnapshot() const
 {
     PersonTagSnapshot snap;
     snap.stats = d->currentStats();
-    snap.selfKey = persontags::personKey(d->self());
+    snap.self = d->self();
     for (const TagRec& r : std::as_const(d->tags)) snap.tagNames.insert(r.tag.id, r.tag.name);
     if (d->people) {
         d->people->refresh();
-        const QHash<QString, QStringList> all = d->people->allTags();
+        snap.names = d->people->names();
+        const QHash<PersonId, QStringList> all = d->people->allTags();
         for (auto it = all.constBegin(); it != all.constEnd(); ++it) {
             QStringList ids;
             for (const QString& id : it.value())
                 if (snap.tagNames.contains(id)) ids << id;
-            if (!ids.isEmpty()) snap.manual.insert(persontags::personKey(it.key()), ids);
+            if (!ids.isEmpty()) snap.manual.insert(it.key(), ids);
         }
     }
     return snap;
@@ -1175,7 +1187,8 @@ bool statLess(const PersonTagStat& a, const PersonTagStat& b)
         if (!b.lastShared.isValid()) return true;
         return a.lastShared > b.lastShared;
     }
-    return text::fold(a.name).localeAwareCompare(text::fold(b.name)) < 0;
+    const int c = text::fold(a.name).localeAwareCompare(text::fold(b.name));
+    return c != 0 ? c < 0 : a.personId < b.personId;
 }
 
 } // namespace
@@ -1185,16 +1198,15 @@ QVector<PersonTagStat> TagService::peopleStats(const QString& tagId, int limit) 
     QVector<PersonTagStat> out;
     if (d->indexOf(tagId) < 0) return out;
     const auto st = d->currentStats();
-    QStringList names = peopleWith(tagId);
-    for (const QString& n : st->peopleOf(tagId)) {
-        if (d->isSelf(n)) continue;
-        if (std::any_of(names.cbegin(), names.cend(), [&](const QString& x) { return samePerson(x, n); })) continue;
-        if (persontags::learnedLink(st->shared(n, tagId), st->tagTotal(tagId))) names << n;
+    PersonIds people = peopleWith(tagId);
+    for (const PersonId& n : st->peopleOf(tagId)) {
+        if (d->isSelf(n) || people.contains(n)) continue;
+        if (d->people && !d->people->contains(n)) continue;   // a person no longer known
+        if (persontags::learnedLink(st->shared(n, tagId), st->tagTotal(tagId))) people << n;
     }
-    for (const QString& n : std::as_const(names)) {
+    for (const PersonId& n : std::as_const(people)) {
         PersonTagStat s = d->statOf(*st, n, tagId);
         s.manual = d->people && d->people->tags(n).contains(tagId);
-        if (s.manual) s.name = n;   // the record's spelling
         s.rejected = d->personRejected(n, tagId, QString());
         out.append(s);
     }
@@ -1203,20 +1215,19 @@ QVector<PersonTagStat> TagService::peopleStats(const QString& tagId, int limit) 
     return out;
 }
 
-QVector<PersonTagStat> TagService::personTagStats(const QString& name) const
+QVector<PersonTagStat> TagService::personTagStats(const PersonId& person) const
 {
     QVector<PersonTagStat> out;
-    if (name.trimmed().isEmpty() || d->isSelf(name)) return out;
+    if (person.isNull() || d->isSelf(person)) return out;
     const auto st = d->currentStats();
-    const QStringList manual = tagsOfPerson(name);
+    const QStringList manual = tagsOfPerson(person);
     QStringList ids = manual;
-    for (const QString& t : st->tagsOf(name))
+    for (const QString& t : st->tagsOf(person))
         if (!ids.contains(t) && d->indexOf(t) >= 0) ids << t;
     for (const QString& t : std::as_const(ids)) {
-        PersonTagStat s = d->statOf(*st, name, t);
-        s.name = name.trimmed();
+        PersonTagStat s = d->statOf(*st, person, t);
         s.manual = manual.contains(t);
-        s.rejected = d->personRejected(name, t, QString());
+        s.rejected = d->personRejected(person, t, QString());
         out.append(s);
     }
     std::sort(out.begin(), out.end(), [this](const PersonTagStat& a, const PersonTagStat& b) {
@@ -1227,14 +1238,13 @@ QVector<PersonTagStat> TagService::personTagStats(const QString& name) const
     return out;
 }
 
-QVector<PersonTagStat> TagService::suggestPeopleForTag(const QString& tagId, const QStringList& excludeNames,
+QVector<PersonTagStat> TagService::suggestPeopleForTag(const QString& tagId, const PersonIds& exclude,
                                                        int limit) const
 {
     QVector<PersonTagStat> out;
     for (const PersonTagStat& s : peopleStats(tagId, 0)) {
         if (s.manual || s.rejected) continue;
-        if (std::any_of(excludeNames.cbegin(), excludeNames.cend(),
-                        [&](const QString& x) { return samePerson(x, s.name); })) continue;
+        if (exclude.contains(s.personId)) continue;
         if (!persontags::learnedLink(s.shared, s.tagTotal)) continue;
         out.append(s);
         if (limit > 0 && out.size() >= limit) break;
@@ -1242,10 +1252,10 @@ QVector<PersonTagStat> TagService::suggestPeopleForTag(const QString& tagId, con
     return out;
 }
 
-QVector<PersonTagStat> TagService::suggestTagsForPerson(const QString& name, int limit) const
+QVector<PersonTagStat> TagService::suggestTagsForPerson(const PersonId& person, int limit) const
 {
     QVector<PersonTagStat> out;
-    for (const PersonTagStat& s : personTagStats(name)) {
+    for (const PersonTagStat& s : personTagStats(person)) {
         if (s.manual || s.rejected) continue;
         if (!persontags::suggestableForPerson(s.shared, s.tagTotal, s.personTotal)) continue;
         out.append(s);
@@ -1261,22 +1271,20 @@ QVector<PersonTagStat> TagService::suggestTagsForPerson(const QString& name, int
     return out;
 }
 
-QVector<TagSuggestion> TagService::suggestTagsForPeople(const QStringList& names, const QString& meetingId) const
+QVector<TagSuggestion> TagService::suggestTagsForPeople(const PersonIds& input, const QString& meetingId) const
 {
     QVector<TagSuggestion> out;
-    QStringList people;
-    for (const QString& n : names)
-        if (!n.trimmed().isEmpty() && !d->isSelf(n)
-            && std::none_of(people.cbegin(), people.cend(), [&](const QString& x) { return samePerson(x, n); }))
-            people << n.trimmed();
+    PersonIds people;
+    for (const PersonId& n : input)
+        if (!n.isNull() && !d->isSelf(n) && !people.contains(n)) people << n;
     if (people.isEmpty()) return out;
     const QStringList onMeeting = meetingId.isEmpty() ? QStringList() : tagsOf(meetingId);
-    QHash<QString, QStringList> carriers;   // tagId -> the participants carrying the tag
+    QHash<QString, QStringList> carriers;   // tagId -> the names of the participants carrying the tag
     QStringList order;
-    for (const QString& p : std::as_const(people))
+    for (const PersonId& p : std::as_const(people))
         for (const QString& t : tagsOfPerson(p)) {
             if (!carriers.contains(t)) order << t;
-            carriers[t] << p;
+            carriers[t] << d->nameOf(p);
         }
     const int need = people.size() == 1 ? 1 : 2;
     for (const QString& t : std::as_const(order)) {
@@ -1303,13 +1311,13 @@ QVector<TagSuggestion> TagService::suggestMeetingTagsFromParticipants(const QStr
     return suggestTagsForPeople(d->rows.value(meetingId).participants, meetingId);
 }
 
-TagEvidence TagService::tagEvidence(const QString& personName, const QStringList& meetingTagIds,
+TagEvidence TagService::tagEvidence(const PersonId& person, const QStringList& meetingTagIds,
                                     const QString& meetingId) const
 {
-    return personTagSnapshot().evidence(personName, meetingTagIds, meetingId);
+    return personTagSnapshot().evidence(person, meetingTagIds, meetingId);
 }
 
-QVector<PersonTagQuestion> TagService::learningQuestions(const QString& meetingId, const QStringList& names) const
+QVector<PersonTagQuestion> TagService::learningQuestions(const QString& meetingId, const PersonIds& people) const
 {
     if (meetingId.isEmpty()) return {};
     const QStringList meetingTags = tagsOf(meetingId);
@@ -1318,13 +1326,21 @@ QVector<PersonTagQuestion> TagService::learningQuestions(const QString& meetingI
     // At startup, until the first background computation is done, everyone would be "new": better not to ask.
     if (snap.stats->meetingCount() == 0 && personStatsBusy()) return {};
     QVector<PersonTagQuestion> out = snap.learningQuestions(
-        meetingId, meetingTags, names,
-        [this](const QString& name, const QString& tagId) { return isRejectedForPerson(name, tagId); });
+        meetingId, meetingTags, people,
+        [this](const PersonId& person, const QString& tagId) { return isRejectedForPerson(person, tagId); });
     // It asks once: an already asked (meeting, person, tag) triple is dropped.
-    for (PersonTagQuestion& q : out)
-        q.people.removeIf([&](const QString& name) {
-            return d->askedLearning.contains(meetingId + QChar(0x1f) + persontags::personKey(name) + QChar(0x1f) + q.tagId);
-        });
+    for (PersonTagQuestion& q : out) {
+        PersonIds keep;
+        QStringList keepNames;
+        for (int i = 0; i < q.people.size(); ++i) {
+            if (d->askedLearning.contains(meetingId + QChar(0x1f) + q.people.at(i).toString() + QChar(0x1f) + q.tagId))
+                continue;
+            keep << q.people.at(i);
+            keepNames << q.names.value(i);
+        }
+        q.people = keep;
+        q.names = keepNames;
+    }
     out.removeIf([](const PersonTagQuestion& q) { return q.people.isEmpty(); });
     return out;
 }
@@ -1332,8 +1348,8 @@ QVector<PersonTagQuestion> TagService::learningQuestions(const QString& meetingI
 void TagService::markLearningAsked(const QString& meetingId, const QVector<PersonTagQuestion>& questions)
 {
     for (const PersonTagQuestion& q : questions)
-        for (const QString& name : q.people)
-            d->askedLearning.insert(meetingId + QChar(0x1f) + persontags::personKey(name) + QChar(0x1f) + q.tagId);
+        for (const PersonId& person : q.people)
+            d->askedLearning.insert(meetingId + QChar(0x1f) + person.toString() + QChar(0x1f) + q.tagId);
 }
 
 void TagService::answerLearning(const PersonTagQuestion& question, bool accept)
@@ -1342,24 +1358,24 @@ void TagService::answerLearning(const PersonTagQuestion& question, bool accept)
     // A question is one undo step (both "Yes" and "No").
     beginGroup(accept ? tr("Címke a személyeken: #%1").arg(tag(question.tagId).name)
                       : tr("Javaslat elutasítása"));
-    for (const QString& name : question.people) {
-        if (accept) addPersonTag(name, question.tagId);
-        else rejectPersonTag(name, question.tagId);
+    for (const PersonId& person : question.people) {
+        if (accept) addPersonTag(person, question.tagId);
+        else rejectPersonTag(person, question.tagId);
     }
     endGroup();
 }
 
-void TagService::rejectPersonTag(const QString& name, const QString& tagId, const QString& meetingId)
+void TagService::rejectPersonTag(const PersonId& person, const QString& tagId, const QString& meetingId)
 {
-    if (name.trimmed().isEmpty() || d->indexOf(tagId) < 0) return;
-    if (d->personRejected(name, tagId, meetingId)) return;
+    if (person.isNull() || d->indexOf(tagId) < 0) return;
+    if (d->personRejected(person, tagId, meetingId)) return;
     StepScope step(this, tr("Javaslat elutasítása"));
     d->markMeeting(meetingId);
     SharedFileLock lock(d->path);
     d->syncFromDisk();
     d->snapshotSet();
     Rejected r;
-    r.person = name.trimmed();
+    r.person = person;
     r.meetingId = meetingId;
     r.tagId = tagId;
     r.name = tag(tagId).name;
@@ -1369,125 +1385,145 @@ void TagService::rejectPersonTag(const QString& name, const QString& tagId, cons
     emit rejectedChanged();
 }
 
-bool TagService::isRejectedForPerson(const QString& name, const QString& tagId, const QString& meetingId) const
+bool TagService::isRejectedForPerson(const PersonId& person, const QString& tagId, const QString& meetingId) const
 {
-    return d->personRejected(name, tagId, meetingId);
+    return d->personRejected(person, tagId, meetingId);
 }
 
 // ---- person suggestion for a meeting ---------------------------------------------------------
 
-QVector<PersonTagStat> TagService::suggestPeopleForMeeting(const QString& meetingId, const QStringList& excludeNames,
+QVector<PersonTagStat> TagService::suggestPeopleForMeeting(const QString& meetingId, const PersonIds& exclude,
                                                            int limit) const
 {
     QVector<PersonTagStat> out;
     if (meetingId.isEmpty()) return out;
-    QStringList seen = excludeNames;
+    PersonIds seen = exclude;
     for (const QString& tagId : tagsOf(meetingId)) {
         for (const PersonTagStat& st : suggestPeopleForTag(tagId, seen, 0)) {
-            if (d->isSelf(st.name) || isPersonRejectedForMeeting(st.name, meetingId)
-                || d->personRejected(st.name, tagId, meetingId))
+            if (d->isSelf(st.personId) || isPersonRejectedForMeeting(st.personId, meetingId)
+                || d->personRejected(st.personId, tagId, meetingId))
                 continue;
             out.append(st);
-            seen << st.name;
+            seen << st.personId;
             if (limit > 0 && out.size() >= limit) return out;
         }
     }
     return out;
 }
 
-void TagService::rejectPersonForMeeting(const QString& name, const QString& meetingId)
+void TagService::rejectPersonForMeeting(const PersonId& person, const QString& meetingId)
 {
-    const QString n = name.trimmed();
-    if (n.isEmpty() || meetingId.isEmpty() || isPersonRejectedForMeeting(n, meetingId)) return;
-    StepScope step(this, tr("Javaslat elutasítása: %1").arg(n));
+    if (person.isNull() || meetingId.isEmpty() || isPersonRejectedForMeeting(person, meetingId)) return;
+    StepScope step(this, tr("Javaslat elutasítása: %1").arg(d->nameOf(person)));
     d->markMeeting(meetingId);
     SharedFileLock lock(d->path);
     d->syncFromDisk();
     d->snapshotSet();
     Rejected r;
-    r.person = n;
+    r.person = person;
     r.meetingId = meetingId;
     d->rejected.append(r);
     d->save();
     emit rejectedChanged();
 }
 
-bool TagService::isPersonRejectedForMeeting(const QString& name, const QString& meetingId) const
+bool TagService::isPersonRejectedForMeeting(const PersonId& person, const QString& meetingId) const
 {
-    if (name.trimmed().isEmpty() || meetingId.isEmpty()) return false;
+    if (person.isNull() || meetingId.isEmpty()) return false;
     for (const Rejected& r : std::as_const(d->rejected))
-        if (!r.person.isEmpty() && r.tagId.isEmpty() && r.meetingId == meetingId && samePerson(r.person, name))
+        if (r.person == person && r.tagId.isEmpty() && r.meetingId == meetingId)
             return true;
     return false;
 }
 
-void TagService::renamePersonRefs(const QString& oldName, const QString& newName)
+QVector<PersonRejectionMove> TagService::movePersonRefs(const PersonId& drop, const PersonId& keep)
 {
-    const QString o = oldName.trimmed(), n = newName.trimmed();
-    if (o.isEmpty() || n.isEmpty() || o == n) return;
-    // The stack's person snapshots: on a pure rename they follow the name; on a merge (the target already
-    // exists) the disappearing name's snapshot is dropped: it must not overwrite the union.
-    bool merging = false;
-    if (d->people && !samePerson(o, n)) {
-        d->people->refresh();
-        const QStringList listed = d->people->names();
-        merging = !d->people->details(n).isEmpty()
-            || std::any_of(listed.cbegin(), listed.cend(), [&](const QString& x) { return samePerson(x, n); });
-    }
+    QVector<PersonRejectionMove> moves;
+    if (drop.isNull() || keep.isNull() || drop == keep) return moves;
+    // The undo stack's snapshots of the dropped person: they must not overwrite the merged record.
     for (UndoStep& s : d->undo) {
-        for (const QString& k : s.persons.keys()) {
-            if (!samePerson(k, o)) continue;
-            const QStringList tags = s.persons.take(k);
-            if (!merging) s.persons.insert(n, tags);
-        }
-        // The step's rejection snapshot also moves to the new name (so it does not resurrect the old one).
+        s.persons.remove(drop);
         for (Rejected& r : s.rejected)
-            if (!r.person.isEmpty() && samePerson(r.person, o)) r.person = n;
+            if (r.person == drop) r.person = keep;
     }
     SharedFileLock lock(d->path);
     d->syncFromDisk();
-    QVector<Rejected> rej;
-    bool changed = false;
-    for (Rejected r : std::as_const(d->rejected)) {
-        if (!r.person.isEmpty() && samePerson(r.person, o)) { r.person = n; changed = true; }
-        const bool dup = std::any_of(rej.cbegin(), rej.cend(), [&](const Rejected& x) {
-            return !x.person.isEmpty() && samePerson(x.person, r.person) && x.meetingId == r.meetingId
-                && x.tagId == r.tagId;
+    auto has = [&](const PersonId& who, const QString& tagId, const QString& meetingId) {
+        return std::any_of(d->rejected.cbegin(), d->rejected.cend(), [&](const Rejected& x) {
+            return x.person == who && x.tagId == tagId && x.meetingId == meetingId;
         });
-        if (!dup) rej.append(r);
+    };
+    QVector<Rejected> rej;
+    for (const Rejected& r : std::as_const(d->rejected)) {
+        if (r.person != drop) { rej.append(r); continue; }
+        PersonRejectionMove m{r.tagId, r.meetingId, has(keep, r.tagId, r.meetingId)};
+        moves.append(m);
+        if (m.keepHadIt) continue;
+        Rejected moved = r;
+        moved.person = keep;
+        rej.append(moved);
     }
-    if (changed) {
+    if (!moves.isEmpty()) {
         d->rejected = rej;
         d->save();
         emit rejectedChanged();
     }
     d->invalidateStats();
-    emit personTagsChanged(n);
+    emit personTagsChanged(keep.toString());
+    return moves;
 }
 
-void TagService::forgetPerson(const QString& name)
+void TagService::undoMovePersonRefs(const PersonId& keep, const PersonId& drop,
+                                    const QVector<PersonRejectionMove>& moves)
 {
-    const QString n = name.trimmed();
-    if (n.isEmpty()) return;
+    if (keep.isNull() || drop.isNull()) return;
+    SharedFileLock lock(d->path);
+    d->syncFromDisk();
+    for (const PersonRejectionMove& m : moves) {
+        if (!m.keepHadIt) {
+            d->rejected.erase(std::remove_if(d->rejected.begin(), d->rejected.end(), [&](const Rejected& r) {
+                return r.person == keep && r.tagId == m.tagId && r.meetingId == m.meetingId;
+            }), d->rejected.end());
+        }
+        Rejected back;
+        back.person = drop;
+        back.tagId = m.tagId;
+        back.meetingId = m.meetingId;
+        if (!m.tagId.isEmpty()) {
+            back.name = tag(m.tagId).name;
+            back.key = tagKey(back.name);
+        }
+        d->rejected.append(back);
+    }
+    if (!moves.isEmpty()) {
+        d->save();
+        emit rejectedChanged();
+    }
+    d->invalidateStats();
+    emit personTagsChanged(QString());
+}
+
+void TagService::forgetPerson(const PersonId& person)
+{
+    if (person.isNull()) return;
     for (UndoStep& s : d->undo) {
-        for (const QString& k : s.persons.keys())
-            if (samePerson(k, n)) s.persons.remove(k);
+        s.persons.remove(person);
         s.rejected.erase(std::remove_if(s.rejected.begin(), s.rejected.end(), [&](const Rejected& r) {
-            return !r.person.isEmpty() && samePerson(r.person, n);
+            return r.person == person;
         }), s.rejected.end());
     }
     SharedFileLock lock(d->path);
     d->syncFromDisk();
     const auto before = d->rejected.size();
     d->rejected.erase(std::remove_if(d->rejected.begin(), d->rejected.end(), [&](const Rejected& r) {
-        return !r.person.isEmpty() && samePerson(r.person, n);
+        return r.person == person;
     }), d->rejected.end());
     if (d->rejected.size() != before) {
         d->save();
         emit rejectedChanged();
     }
     d->invalidateStats();
-    emit personTagsChanged(n);
+    emit personTagsChanged(person.toString());
 }
 
 } // namespace tanara::library

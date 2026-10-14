@@ -3,6 +3,8 @@
 // Domain: the DATA of a meeting's manual speaker-correction layer (<meeting folder>/transcript.speakers.json)
 // and the transcript lines it refers to. The operations (load / save / resolution) are in the editor
 // (editing/session/SpeakerOverlay.h).
+#include "tanara/domain/Person.h"
+
 #include <QHash>
 #include <QMap>
 #include <QString>
@@ -25,7 +27,7 @@ struct TranscriptLine {
 // A manually added participant (one the diarization did not separate).
 struct OverlayParticipant {
     QString key;        // "participant:N"
-    QString person;     // bound person's name; empty = anonymous
+    PersonId personId;  // the bound person; null = anonymous
     QString label;      // anonymous label ("New speaker 1")
     int     colorIndex = 0;
 };
@@ -60,8 +62,15 @@ struct OverlayUtterance {
 };
 
 struct OverlayIdentification {
-    QString person;
+    PersonId personId;
     double  score = -1.0;
+};
+
+// The overlay entries one person-reference rewrite touched (merge of two people; for its undo).
+struct OverlayPersonRefs {
+    QStringList participantKeys;    // "participant:N" whose person changed
+    QStringList identifiedLabels;   // raw labels whose identification changed
+    bool isEmpty() const { return participantKeys.isEmpty() && identifiedLabels.isEmpty(); }
 };
 
 struct SpeakerOverlay {

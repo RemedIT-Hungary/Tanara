@@ -49,10 +49,11 @@ public:
     // The fictional tag ids' names (for the evidence chips); empty for an unknown one.
     QString tagName(const QString& id) const { return m_tagNames.value(id); }
     // The fictional person tags (source of the candidate ranking); the quick "+ #Tag" writes here.
-    QStringList personTags(const QString& person) const { return m_personTags->value(person); }
-    bool addPersonTag(const QString& person, const QString& tagId);
-    // The own person (in the v3 variant Kovács Lilla); empty elsewhere.
+    QStringList personTags(const tanara::PersonId& person) const { return m_personTags->value(person); }
+    bool addPersonTag(const tanara::PersonId& person, const QString& tagId);
+    // The own person (in the v3 variant Kovács Lilla); empty / null elsewhere.
     QString selfName() const { return m_selfName; }
+    tanara::PersonId selfId() const { return m_selfId; }
     // Preparing the v3 demo states knowing the script (confirmed cores, an "overlapping speech"
     // row, two foreign-voice confirmed rows for the contaminated core, the "fixed" row). Does
     // nothing in another variant. Returns: true if the variant is v3.
@@ -69,8 +70,10 @@ private:
     QString m_seedId;
     QString m_seedTarget;
     QHash<QString, QString> m_tagNames;
-    std::shared_ptr<QHash<QString, QStringList>> m_personTags = std::make_shared<QHash<QString, QStringList>>();
+    std::shared_ptr<QHash<tanara::PersonId, QStringList>> m_personTags =
+        std::make_shared<QHash<tanara::PersonId, QStringList>>();
     QString m_selfName;
+    tanara::PersonId m_selfId;
     QVector<tanara::Track> m_tracks;
     bool m_v3 = false;
     QVector<int> m_lineSpeaker;     // script row -> speaker (cast index)

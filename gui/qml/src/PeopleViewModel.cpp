@@ -279,6 +279,12 @@ const PeopleViewModel::Person* PeopleViewModel::find(const QString& name) const
     return nullptr;
 }
 
+tanara::PersonId PeopleViewModel::idOf(const QString& name) const
+{
+    const Person* p = find(name);
+    return p ? p->id : tanara::PersonId();
+}
+
 void PeopleViewModel::rebuild()
 {
     if (m_service) {
@@ -289,6 +295,7 @@ void PeopleViewModel::rebuild()
         m_persons.reserve(records.size());
         for (const library::PersonRecord& r : records) {
             Person p;
+            p.id = r.id;
             p.name = r.name;
             p.isSelf = r.isSelf;
             p.aliases = r.aliases;
@@ -297,7 +304,7 @@ void PeopleViewModel::rebuild()
             p.defaultSide = r.defaultSide;
             p.defaultSideManual = r.defaultSideManual;
             if (m_statsReady) {
-                const library::PersonStats s = m_stats->stats(r.name);
+                const library::PersonStats s = m_stats->stats(r.id);
                 p.meetingCount = s.meetingCount;
                 p.talkMs = s.talkMs;
                 p.lastSeen = s.lastSeen;
@@ -440,7 +447,7 @@ void PeopleViewModel::refreshDetail()
     QSet<QString> sources;
 
     if (p && m_service) {
-        for (const library::VoiceSample& s : m_service->samples(p->name)) {
+        for (const library::VoiceSample& s : m_service->samples(p->id)) {
             QString label = s.deviceLabel;
             if (label.isEmpty())
                 label = s.sourceKind == QStringLiteral("mix") ? tr("A megbeszélés lekevert hangja")
@@ -463,7 +470,7 @@ void PeopleViewModel::refreshDetail()
             });
         }
         if (m_statsReady && m_stats) {
-            for (const library::PersonMeetingStat& m : m_stats->stats(p->name).meetings)
+            for (const library::PersonMeetingStat& m : m_stats->stats(p->id).meetings)
                 m_meetings.append(QVariantMap{
                     {QStringLiteral("title"), m.title},
                     {QStringLiteral("date"), m.startedAt.toString(QStringLiteral("yyyy-MM-dd"))},
@@ -697,7 +704,7 @@ void PeopleViewModel::refreshPlan()
     // selection shows first, the plan afterwards.
     QTimer::singleShot(0, this, [this, generation, name] {
         if (generation != m_planGeneration || !m_service) return;
-        const library::VoiceprintPlan plan = m_service->voiceprintPlan(name);
+        const library::VoiceprintPlan plan = m_service->voiceprintPlan(idOf(name));
         const int usable = plan.usableMeetingIds.size();
         m_planFor = name;
         m_planMeetingIds = plan.usableMeetingIds;
@@ -765,7 +772,7 @@ void PeopleViewModel::runNextVoiceprint()
         return;
     }
     const QString meetingId = m_createQueue.takeFirst();
-    const editing::VoiceprintResult r = m_service->createVoiceprintFromMeeting(m_creatingFor, meetingId);
+    const editing::VoiceprintResult r = m_service->createVoiceprintFromMeeting(idOf(m_creatingFor), meetingId);
     if (r.ok) ++m_createOk;
     else {
         ++m_createFailed;
@@ -867,7 +874,7 @@ QString PeopleViewModel::rename(const QString& newName)
 {
     if (!m_service || m_selected.isEmpty()) return QString();
     const QString old = m_selected;
-    const library::PeopleOpResult r = m_service->renamePerson(old, newName);
+    const library::PeopleOpResult r = m_service->renamePerson(idOf(old), newName);
     if (!r.ok) return r.error;
     m_selected = r.name;
     rebuild();
@@ -882,7 +889,7 @@ QString PeopleViewModel::rename(const QString& newName)
 QString PeopleViewModel::addAlias(const QString& alias)
 {
     if (!m_service || m_selected.isEmpty()) return QString();
-    const library::PeopleOpResult r = m_service->addAlias(m_selected, alias);
+    const library::PeopleOpResult r = m_service->addAlias(idOf(m_selected), alias);
     rebuild();
     return r.ok ? QString() : r.error;
 }
@@ -890,7 +897,7 @@ QString PeopleViewModel::addAlias(const QString& alias)
 void PeopleViewModel::removeAlias(const QString& alias)
 {
     if (!m_service || m_selected.isEmpty()) return;
-    if (!m_service->removeAlias(m_selected, alias)) return;
+    if (!m_service->removeAlias(idOf(m_selected), alias)) return;
     rebuild();
     m_undoOrder << kPeopleUndo;
     emit toast(tr("Becenév törölve: %1").arg(alias), true);
@@ -920,7 +927,7 @@ void PeopleViewModel::setDefaultSide(const QString& side)
         refreshDetail();
         return;
     }
-    if (!m_service || !m_service->setDefaultSide(m_selected, clean)) return;
+    if (!m_service || !m_service->setDefaultSide(idOf(m_selected), clean)) return;
     rebuild();
 }
 
@@ -932,7 +939,7 @@ void PeopleViewModel::requestSection(const QString& section)
 void PeopleViewModel::setNote(const QString& note)
 {
     if (!m_service || m_selected.isEmpty() || note == m_detail.note) return;
-    m_service->setNote(m_selected, note);
+    m_service->setNote(idOf(m_selected), note);
     rebuild();
 }
 
@@ -953,8 +960,11 @@ void PeopleViewModel::removeSample(const QString& sampleId)
 QString PeopleViewModel::moveSample(const QString& sampleId, const QString& toName)
 {
     if (!m_service) return QString();
-    const bool existed = m_service->exists(toName);
-    const library::PeopleOpResult r = m_service->moveSample(sampleId, toName);
+    // The target: a listed person by name, otherwise a new person with that name.
+    const tanara::PersonId target = idOf(toName);
+    const bool existed = !target.isNull();
+    const library::PeopleOpResult r = m_service->moveSample(
+        sampleId, existed ? tanara::PersonChoice::existing(target) : tanara::PersonChoice::create(toName));
     if (!r.ok) return r.error;
     rebuild();
     m_undoOrder << kPeopleUndo;
@@ -1006,7 +1016,7 @@ QVariantList PeopleViewModel::mergeCandidates(const QString& query) const
         }
         int percent = -1;
         if (m_service) {
-            const double s = m_service->similarity(m_selected, p.name);
+            const double s = m_service->similarity(idOf(m_selected), p.id);
             if (s >= 0) percent = qRound(s * 100);
         } else if (p.name == demoName("B. Gergő") && m_selected == demoName("Bárány Gergely")) {
             percent = 88;
@@ -1041,7 +1051,7 @@ QString PeopleViewModel::mergeResultText(const QString& other, bool keepSelected
     const QString survivor = keepSelected ? m_selected : o->name;
     int meetingsN = 0, samplesN = 0, stale = 0;
     if (m_service) {
-        const library::MergePreview p = m_service->mergePreview(loser, survivor);
+        const library::MergePreview p = m_service->mergePreview(idOf(loser), idOf(survivor));
         meetingsN = p.meetingCount;
         samplesN = p.sampleCount;
         stale = p.staleSummaries;
@@ -1066,7 +1076,6 @@ QString PeopleViewModel::mergeResultText(const QString& other, bool keepSelected
             text += QLatin1Char(' ') + tr("A címkék összeadódnak (%1).").arg(names.join(QStringLiteral(", ")));
         }
     }
-    text += QLatin1Char(' ') + tr("Az összevonás nem vonható vissza.");
     return text;
 }
 
@@ -1075,14 +1084,15 @@ QString PeopleViewModel::merge(const QString& other, bool keepSelected)
     if (!m_service || m_selected.isEmpty()) return QString();
     const QString loser = keepSelected ? other : m_selected;
     const QString survivor = keepSelected ? m_selected : other;
-    const library::PeopleOpResult r = m_service->merge(loser, survivor);
+    const library::PeopleOpResult r = m_service->merge(idOf(loser), idOf(survivor));
     if (!r.ok) return r.error;
     m_selected = r.name;
     rebuild();
     emit selectionChanged();
+    m_undoOrder << kPeopleUndo;
     emit toast(tr("Összevonva: %1").arg(r.name) + QStringLiteral(" — ")
                + tr("%n megbeszélés", "", r.meetings) + QStringLiteral(", ")
-               + tr("%n minta", "", r.samples), false);
+               + tr("%n minta", "", r.samples), true);
     return QString();
 }
 
@@ -1093,7 +1103,7 @@ QString PeopleViewModel::deleteText(bool keepSamples) const
     if (m_selected.isEmpty()) return QString();
     library::DeletePreview p;
     if (m_service) {
-        p = m_service->deletePreview(m_selected);
+        p = m_service->deletePreview(idOf(m_selected));
     } else {
         p.meetingCount = m_detail.meetingCount;
         p.sampleCount = m_detail.sampleCount;
@@ -1123,7 +1133,7 @@ QString PeopleViewModel::deletePerson(bool keepSamples)
 {
     if (!m_service || m_selected.isEmpty()) return QString();
     const QString name = m_selected;
-    const library::PeopleOpResult r = m_service->removePerson(name, keepSamples);
+    const library::PeopleOpResult r = m_service->removePerson(idOf(name), keepSamples);
     if (!r.ok) return r.error;
     rebuild();
     if (!r.name.isEmpty()) {
@@ -1155,13 +1165,16 @@ void PeopleViewModel::undo()
     if (!m_service || !m_service->canUndo()) return;
     const library::PeopleUndoInfo info = m_service->undo();
     rebuild();
-    if (!info.person.isEmpty()) selectPerson(info.person);
+    if (!info.person.isNull())
+        for (const Person& p : std::as_const(m_persons))
+            if (p.id == info.person) { selectPerson(p.name); break; }
     QString text;
     switch (info.kind) {
     case library::PeopleUndoKind::SampleRemoved: text = tr("A minta visszakerült."); break;
     case library::PeopleUndoKind::SampleMoved: text = tr("A minta visszakerült a korábbi helyére."); break;
     case library::PeopleUndoKind::AliasRemoved: text = tr("Becenév visszaállítva: %1").arg(info.detail); break;
     case library::PeopleUndoKind::Renamed: text = tr("Az átnevezés visszavonva."); break;
+    case library::PeopleUndoKind::Merged: text = tr("Az összevonás visszavonva: %1").arg(info.detail); break;
     case library::PeopleUndoKind::None: return;
     }
     emit toast(text, false);

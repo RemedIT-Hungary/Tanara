@@ -1,7 +1,10 @@
 #pragma once
 // Shared MADE-UP test library for the tag tests: six meetings with short transcripts, in three
-// topics (Nordvik delivery, internal budget, MuseumPlus rollout). The own microphone track (the own person)
-// is on every one of them: it is the "present everywhere" participant of the rarity weighting.
+// topics (Nordvik delivery, internal budget, MuseumPlus rollout). The own microphone track (the own person,
+// "Ádám") is on every one of them: it is the "present everywhere" participant of the rarity weighting.
+//
+// People are PersonIds: with a PeopleStore the ids come from it (people.json, the own person = "self");
+// without one a person's id is its name (tagsfixture::pid), so tests can refer to them directly.
 #include <QDir>
 #include <QFile>
 #include <QJsonArray>
@@ -10,8 +13,17 @@
 #include <QStringList>
 
 #include "tanara/library/store/MeetingRepository.h"
+#include "tanara/library/store/PeopleStore.h"
 
 namespace tagsfixture {
+
+inline const QString kSelf = QStringLiteral("Ádám");
+
+// A person's id: from the store (created if missing), or the name itself without a store.
+inline tanara::PersonId pid(const QString& name, tanara::library::PeopleStore* people = nullptr)
+{
+    return people ? people->ensure(name) : tanara::PersonId::fromString(name);
+}
 
 inline void writeSegments(const QString& folder, const QStringList& lines)
 {
@@ -27,17 +39,21 @@ inline void writeSegments(const QString& folder, const QStringList& lines)
 }
 
 inline QString addMeeting(tanara::library::MeetingRepository& store, const QString& title, const QDate& day,
-                          const QStringList& people, const QStringList& lines)
+                          const QStringList& people, const QStringList& lines,
+                          tanara::library::PeopleStore* peopleStore = nullptr)
 {
     tanara::Meeting m = store.createMeeting(title);
     m.startedAt = QDateTime(day, QTime(10, 0));
     m.durationMs = 30 * 60 * 1000;
     tanara::Track mic;
     mic.id = "mic"; mic.kind = tanara::TrackKind::Mic; mic.file = "track_mic.ogg";
-    mic.speakerLabel = "Ádám"; mic.fixedSpeaker = true;
+    mic.speakerLabel = kSelf; mic.fixedSpeaker = true;
     m.tracks.append(mic);
+    // The own track's label is the own person (as the importer / the converter maps it).
+    m.speakerMap.insert(kSelf, pid(kSelf, peopleStore));
+    if (peopleStore) peopleStore->setSelfId(pid(kSelf, peopleStore));
     for (int i = 0; i < people.size(); ++i)
-        m.speakerMap.insert(QStringLiteral("Beszélő %1").arg(i + 2), people.at(i));
+        m.speakerMap.insert(QStringLiteral("Beszélő %1").arg(i + 2), pid(people.at(i), peopleStore));
     m.hasTranscript = !lines.isEmpty();
     if (!lines.isEmpty()) writeSegments(m.folder, lines);
     store.saveMeeting(m);
@@ -48,9 +64,14 @@ struct Library {
     QString nordvik1, nordvik2, budget1, budget2, museum1, museum2;
 };
 
-inline Library buildLibrary(tanara::library::MeetingRepository& store)
+inline Library buildLibrary(tanara::library::MeetingRepository& store,
+                            tanara::library::PeopleStore* people = nullptr)
 {
     Library l;
+    auto addMeeting = [&](tanara::library::MeetingRepository& st, const QString& title, const QDate& day,
+                          const QStringList& who, const QStringList& lines) {
+        return tagsfixture::addMeeting(st, title, day, who, lines, people);
+    };
     l.nordvik1 = addMeeting(store, "Nordvik ütemterv egyeztetés", QDate(2026, 9, 1),
         { "Kovács Anna", "Fehér Bence" },
         { "Jó reggelt, akkor nézzük a Nordvik szállítási ütemtervet.",

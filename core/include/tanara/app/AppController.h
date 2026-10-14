@@ -17,6 +17,7 @@
 #include "tanara/processing/analysis/ParticipantAnalysis.h"
 #include "tanara/processing/analysis/TrackActivity.h"
 #include "tanara/processing/voiceid/BackfillReport.h"
+#include "tanara/library/people/PersonMerge.h"
 #include "tanara/media/MediaTool.h"
 #include <QObject>
 #include <QVector>
@@ -28,6 +29,7 @@ namespace tanara::library { class MeetingRepository; }
 namespace tanara::library { class TranscriptRepository; }
 namespace tanara::library { class UiStateRepository; }
 namespace tanara::library { class VoiceprintStore; }
+namespace tanara::library { class PeopleStore; }
 namespace tanara::editing { class SpeakerEditor; }
 namespace tanara::cloud { class CloudSession; struct CloudRun; }
 namespace tanara::providers { struct ProviderContext; class ProviderRegistry; }
@@ -64,6 +66,7 @@ public:
     library::TranscriptRepository* transcripts() const;
     library::UiStateRepository*    uiState() const;
     library::VoiceprintStore* voiceprints() const;   // voiceprint DB (voice ID)
+    library::PeopleStore*     people() const;        // people.json: the people by PersonId (names, nicknames ...)
 
     // ---- backend of the redesigned main window (structured layer) -------------------------
     // Per-meeting processing state: running jobs (phases, real progress), persistent errors,
@@ -184,14 +187,21 @@ public:
 
     // Known person names (global, reused across meetings), for autocomplete.
     QStringList knownPeople() const;
+    // The user's own person (people.json "self") with the settings' name.
+    tanara::SelfPerson selfPerson() const;
 
-    // Renames/deletes a person GLOBALLY: in the name list + carried through EVERY meeting's
-    // speakerMap (transcript.md files regenerated). peopleChanged signal.
-    // The person's record (nicknames, note) moves as a whole: on rename it goes to the new name
-    // (if the target name exists, the two people's data merge), on delete it is deleted. (The
-    // old name is kept as a nickname by the People window action, PeopleService.)
-    void renamePerson(const QString& oldName, const QString& newName);
-    void removePerson(const QString& name);
+    // GLOBAL person operations. People are referred to by PersonId everywhere, so:
+    //  - rename: writes the person's name field (people.json); the meetings that show the person get
+    //    their transcript.md regenerated (a derived file) and speakerMapChanged; peopleChanged;
+    //  - remove: deletes the record, the voiceprints, the tag rejections and every meeting reference
+    //    (the speakers become anonymous); peopleChanged;
+    //  - merge: every reference to `drop` points to `keep` afterwards (voiceprints, tag rejections, every
+    //    meeting's speakerMap / participants / approval / overlay), `drop`'s record folds into `keep`'s
+    //    (its name becomes a nickname). Returns what changed for undoMergePeople (invalid: nothing).
+    void renamePerson(const tanara::PersonId& person, const QString& newName);
+    void removePerson(const tanara::PersonId& person);
+    library::PersonMergeUndo mergePeople(const tanara::PersonId& keep, const tanara::PersonId& drop);
+    bool undoMergePeople(const library::PersonMergeUndo& merge);
 
     // The meeting's per-topic analyses completed so far (persisted, summary.analyses.json).
     // The UI loads the topic cards' "Done" state from this when the editor opens.
@@ -255,7 +265,7 @@ public:
     tanara::ParticipantTrackBinding participantTracks(const QString& meetingId, const QString& id);
     // Test seam: a person's manual tags (tag ids, in the Meeting::tagIds space) instead of the
     // TagService's manual tags; the learned association (c(p,t)) still comes from the TagService.
-    void setPersonTagsProvider(std::function<QStringList(const QString& personName)> provider);
+    void setPersonTagsProvider(std::function<QStringList(const tanara::PersonId& person)> provider);
 
     // Test seam: factory of the capture engine for the next recordings (empty = the real
     // miniaudio engine). See RecordingSession::setEngineFactory.
@@ -384,7 +394,8 @@ public slots:
     // Whether an archive operation (export or import) is running.
     bool archiveBusy() const;
 
-    // Sets the user's own (mic track) speaker name, in the settings AND in the people DB.
+    // Sets the user's own (mic track) speaker name, in the settings AND on the own person's record
+    // (people.json "self"; created if missing).
     void setUserSpeakerName(const QString& name);
 
     // Transcribes a meeting. The transcript is built from the MIXDOWN (a single audio stream: no
@@ -422,17 +433,17 @@ public slots:
     // -> summary.md + summaryReady. Callable separately, e.g. after rerunning a failed topic.
     void finalizeComplexSummary(const QString& meetingId);
 
-    // Renames a speaker in a meeting (raw label -> real name). Persists (Meeting.speakerMap +
-    // people.json), regenerates transcript.md with the names, and emits speakerMapChanged.
-    // Empty/same name = clears the mapping.
+    // Binds a speaker of a meeting to a person (raw label -> PersonId; a new person is created for
+    // PersonChoice::newName). Persists (Meeting.speakerMap + people.json), regenerates transcript.md
+    // with the names, and emits speakerMapChanged. An anonymous choice clears the mapping.
     // If enroll=true (default) and there is a voice model, it also records a voiceprint of the
-    // speaker's voice under the name (manual labeling "teaches" voice ID).
+    // speaker's voice for the person (manual labeling "teaches" voice ID).
     void renameSpeaker(const QString& meetingId, const QString& rawLabel,
-                       const QString& displayName, bool enroll = true);
+                       const tanara::PersonChoice& person, bool enroll = true);
 
     // Explicitly records a speaker's voiceprint in the voiceprint DB (from the representative
     // audio of the meeting's raw label). voiceprintsChanged signal.
-    void enrollSpeaker(const QString& meetingId, const QString& rawLabel, const QString& name);
+    void enrollSpeaker(const QString& meetingId, const QString& rawLabel, const tanara::PersonId& person);
 
     // Auto-identification: matches the meeting's still anonymous (unmapped) raw speakers against
     // the voiceprint DB; above the threshold it pre-fills the speakerMap.
@@ -443,7 +454,7 @@ public slots:
                              const std::function<bool(int,int)>& onProgress = {});
 
     // Fingerprint test for ONE speaker: the best match from the voiceprint DB for its voice
-    // (name + cosine score). Modifies nothing; { "", -1 } if there is no model/match.
+    // (person + cosine score). Modifies nothing; { null, -1 } if there is no model/match.
     tanara::VoiceMatch testSpeakerMatch(const QString& meetingId, const QString& rawLabel);
 
     // PRE-TRANSCRIPT participant identification: samples the audio per track with windowing,
@@ -481,18 +492,20 @@ public slots:
     // marker is cleared.
     bool unbindParticipant(const QString& meetingId, const QString& participantId);
     // Adds a manual participant (also before transcription): source = Manual; gets priority in the analysis.
-    // Returns the participant's id (for an existing name, that one's); empty if no such meeting / name.
-    QString addParticipant(const QString& meetingId, const QString& personName);
+    // Returns the participant's id (for an existing person, that one's); empty if no such meeting / person.
+    // A PersonChoice::newName creates the person.
+    QString addParticipant(const QString& meetingId, const tanara::PersonChoice& person);
     // "Only I spoke": every raw speaker gets the user's own name (now, or when the transcript arrives),
     // identification is skipped. false: no own name set / no such meeting.
     bool setSoloMeeting(const QString& meetingId);
 
     // Records a voiceprint from an arbitrary audio segment (for naming before transcription):
     // computes an embedding from the [startMs,endMs] part of the meeting's given track and saves
-    // it under the name. Times are in MEETING time (like the sampleRef of identifyParticipants);
-    // the function subtracts the track's offset (Track::startOffsetMs). voiceprintsChanged signal.
-    void enrollVoiceprintFromSample(const QString& name, const QString& meetingId,
-                                    const QString& trackId, qint64 startMs, qint64 endMs);
+    // it for the person (created for PersonChoice::newName). Times are in MEETING time (like the
+    // sampleRef of identifyParticipants); the function subtracts the track's offset
+    // (Track::startOffsetMs). voiceprintsChanged signal. Returns the person (null: nothing recorded).
+    tanara::PersonId enrollVoiceprintFromSample(const tanara::PersonChoice& person, const QString& meetingId,
+                                                const QString& trackId, qint64 startMs, qint64 endMs);
 
     // ---- structured layer: cancel, topics, identification, waveform ----------------
     // Cancels a running task. The meeting stays in a consistent state, no recording is

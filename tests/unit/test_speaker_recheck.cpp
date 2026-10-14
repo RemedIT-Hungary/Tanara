@@ -112,7 +112,7 @@ struct Fixture {
         if (f.open(QIODevice::WriteOnly)) f.write(QJsonDocument(segs).toJson());
         f.close();
         meeting.hasTranscript = true;
-        meeting.speakerMap = {{kB1, QStringLiteral("Anna")}, {kB2, QStringLiteral("Béla")}};
+        meeting.speakerMap = {{kB1, people->ensure(QStringLiteral("Anna"))}, {kB2, people->ensure(QStringLiteral("Béla"))}};
         store->saveMeeting(meeting);
         if (withCache) writeCache();
     }
@@ -252,8 +252,8 @@ struct PairFixture {
         if (f.open(QIODevice::WriteOnly)) f.write(QJsonDocument(segs).toJson());
         f.close();
         meeting.hasTranscript = true;
-        meeting.speakerMap = {{kB1, QStringLiteral("Anna")}, {kB2, QStringLiteral("Béla")},
-                              {kB3, QStringLiteral("Csaba")}};
+        meeting.speakerMap = {{kB1, people->ensure(QStringLiteral("Anna"))}, {kB2, people->ensure(QStringLiteral("Béla"))},
+                              {kB3, people->ensure(QStringLiteral("Csaba"))}};
         store->saveMeeting(meeting);
         const QVector<TranscriptLine> lines = editing::speakeredit::loadTranscriptLines(meeting.folder);
         processing::UtteranceEmbeddingCache c;
@@ -983,10 +983,10 @@ private slots:
         Fixture fx;
         // Anna's voiceprint made here from line 0; Béla's earlier voiceprint from another meeting;
         // a voiceprint of another dimension (another model), which must be skipped.
-        fx.prints->addPrint(QStringLiteral("Anna"),
+        fx.prints->addPrint(fx.people->ensure(QStringLiteral("Anna")),
                             makePrint(kA, fx.meeting.id, QStringLiteral("audio.ogg#0-4000")));
-        fx.prints->addPrint(QStringLiteral("Béla"), makePrint(kB, QStringLiteral("masik-megbeszeles")));
-        fx.prints->addPrint(QStringLiteral("Béla"),
+        fx.prints->addPrint(fx.people->ensure(QStringLiteral("Béla")), makePrint(kB, QStringLiteral("masik-megbeszeles")));
+        fx.prints->addPrint(fx.people->ensure(QStringLiteral("Béla")),
                             makePrint({0.0f, 1.0f, 0.0f, 0.0f}, QStringLiteral("regi-modell")));
         auto ed = fx.editor();
         // A voiceprint made here is a local core by itself, so the recheck runs without confirmation too.
@@ -1055,7 +1055,7 @@ private slots:
     void editor_pairRecheckUsesStoredVoiceprints()
     {
         PairFixture fx;
-        fx.prints->addPrint(QStringLiteral("Béla"), makePrint(pb, QStringLiteral("masik-megbeszeles")));
+        fx.prints->addPrint(fx.people->ensure(QStringLiteral("Béla")), makePrint(pb, QStringLiteral("masik-megbeszeles")));
         auto ed = fx.editor();
         QVERIFY(ed->confirmUtterances(pids({0, 2, 5, 1})));     // Béla has only 1 confirmed line
         const editing::SpeakerEditor::PairRecheckResult r = ed->recheckPair(kB1, kB2);

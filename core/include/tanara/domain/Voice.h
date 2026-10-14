@@ -3,6 +3,8 @@
 // Domain: voiceprints, voice matches and the per-model embedding set.
 // The fusion of an EmbeddingSet (fusion::fuse / averageCosine) is an algorithm and lives in
 // processing/voiceid/EmbeddingSet.h.
+#include "tanara/domain/Person.h"
+
 #include <QMap>
 #include <QMetaType>
 #include <QString>
@@ -29,7 +31,7 @@ QStringList normalizeIds(const QStringList& ids);
 // ---- speaker identification (voiceprint) ------------------------------------
 // A voiceprint: an L2-normalized embedding vector computed from one representative
 // segment of a speaker + the source metadata. A name may have several (a different
-// microphone gives a different acoustic signature).
+// microphone gives a different acoustic signature). voiceprints.json keys them by PersonId.
 struct Voiceprint {
     QString id;                 // unique id (QUuid)
     QVector<float> embedding;   // L2-normalized speaker embedding
@@ -50,7 +52,7 @@ struct Voiceprint {
 
 // Result of a match: which person, with what (cosine) score.
 struct VoiceMatch {
-    QString name;
+    PersonId personId;          // null = no match
     double score = -1.0;        // [-1..1] cosine; <0 = no match / empty DB
 };
 

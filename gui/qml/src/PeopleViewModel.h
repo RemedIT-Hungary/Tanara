@@ -28,6 +28,7 @@
 // and tag actions run on the fictional tag pool.
 //
 #include "PeopleListModel.h"
+#include "tanara/domain/Person.h"
 
 #include <QDateTime>
 #include <QObject>
@@ -252,6 +253,7 @@ signals:
 
 private:
     struct Person {
+        tanara::PersonId id;            // null in the demo (fictional people)
         QString name;
         bool isSelf = false;
         QStringList aliases;
@@ -274,6 +276,9 @@ private:
     void refreshPlan();
     void runNextVoiceprint();
     const Person* find(const QString& name) const;
+    // The person behind a displayed name (the QML side selects / hands over names; the People window
+    // keeps them unique). Null if unknown.
+    tanara::PersonId idOf(const QString& name) const;
     QString rowMeta(const Person& p, const QString& aliasHit) const;
     QString personMeta(const Person& p) const;
     void loadDemo();

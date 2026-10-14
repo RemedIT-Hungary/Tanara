@@ -148,8 +148,10 @@ private slots:
         QCOMPARE(top.value(QStringLiteral("name")).toString(), QStringLiteral("Fehér Gábor"));
         QCOMPARE(cands.rowForKey(1), 0);
         // The search finds by nickname too (matching the other person lists), the hit is in the substring.
-        vm.setPeopleProvider([] {
+        const PersonId gaborId = PersonId::fromString(top.value(QStringLiteral("personId")).toString());
+        vm.setPeopleProvider([gaborId] {
             editing::PersonInfo p;
+            p.personId = gaborId;
             p.name = QStringLiteral("Fehér Gábor");
             p.aliases = QStringList{QStringLiteral("Gabi")};
             return QVector<editing::PersonInfo>{p};
@@ -275,7 +277,7 @@ private slots:
         QVERIFY(vm.addQuickTag(QStringLiteral("Molnár Eszter"), QStringLiteral("nordvik")));
         QVERIFY(review.count() > 0);
         QVERIFY(vm.quickTagFor(QStringLiteral("Molnár Eszter")).isEmpty());
-        QVERIFY(vm.editor()->personTagIds(QStringLiteral("Molnár Eszter")).contains(QStringLiteral("nordvik")));
+        QVERIFY(vm.editor()->personTagIds(vm.editor()->personChoice(QStringLiteral("Molnár Eszter")).id).contains(QStringLiteral("nordvik")));
         QVERIFY(!vm.addQuickTag(QStringLiteral("Kovács Lilla"), QStringLiteral("nordvik")));
         QVERIFY(settle(vm));
         // The tag evidence already shows the shared tag.

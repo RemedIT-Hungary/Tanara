@@ -13,6 +13,7 @@
 #include "TagsViewModel.h"
 
 #include "tanara/app/AppController.h"
+#include "tanara/library/store/PeopleStore.h"
 #include "tanara/library/tags/MeetingProfiles.h"
 #include "tanara/app/SettingsManager.h"
 #include "tanara/library/store/MeetingRepository.h"
@@ -40,7 +41,7 @@ private slots:
         qputenv("TANARA_HOME", m_home->path().toUtf8());
         m_app = std::make_unique<tanara::app::AppController>();
         QVERIFY(m_app->settings()->paths().primaryRecordingRoot().startsWith(m_home->path()));
-        m_lib = tagsfixture::buildLibrary(*m_app->store());
+        m_lib = tagsfixture::buildLibrary(*m_app->store(), m_app->people());
         m_backend.reset(createTagBackend(m_app.get(), nullptr));
         QVERIFY(dynamic_cast<TagControllerBackend*>(m_backend.get()));
     }
@@ -242,11 +243,11 @@ private slots:
     {
         tanara::library::TagService* tags = m_app->tags();
         const QString nord = tags->create(QStringLiteral("Nordvik")).id;
-        tags->setPersonTags(QStringLiteral("Fehér Gábor"), {nord});
-        tags->setPersonTags(QStringLiteral("Varga Árpád"), {nord});
+        tags->setPersonTags(m_app->people()->ensure(QStringLiteral("Fehér Gábor")), {nord});
+        tags->setPersonTags(m_app->people()->ensure(QStringLiteral("Varga Árpád")), {nord});
         const QString mid = m_app->store()->createMeeting(QStringLiteral("Friss felvétel")).id;
-        m_app->addParticipant(mid, QStringLiteral("Fehér Gábor"));
-        m_app->addParticipant(mid, QStringLiteral("Varga Árpád"));
+        m_app->addParticipant(mid, m_app->people()->choiceFor(QStringLiteral("Fehér Gábor")));
+        m_app->addParticipant(mid, m_app->people()->choiceFor(QStringLiteral("Varga Árpád")));
 
         MeetingTagsModel m;
         m.setController(m_app.get());
@@ -266,7 +267,7 @@ private slots:
         // After applying it disappears; a participant change does not bring it back.
         m.accept(0);
         QVERIFY(m.suggestions().isEmpty());
-        m_app->addParticipant(mid, QStringLiteral("Szabó Bence"));
+        m_app->addParticipant(mid, m_app->people()->choiceFor(QStringLiteral("Szabó Bence")));
         QVERIFY(m.suggestions().isEmpty());
     }
 

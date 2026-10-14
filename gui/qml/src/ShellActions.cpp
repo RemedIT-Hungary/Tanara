@@ -7,6 +7,7 @@
 #include "ShellBridge.h"
 
 #include "tanara/app/AppController.h"
+#include "tanara/library/store/PeopleStore.h"
 #include "tanara/editing/undo/MeetingUndo.h"
 #include "tanara/editing/session/SpeakerEditor.h"
 #include "tanara/library/jobs/MeetingJobTracker.h"
@@ -813,10 +814,13 @@ QString ShellActions::participantsGuess(const QString& meetingId) const
 QString ShellActions::speakerSummary(const QString& meetingId) const
 {
     const tanara::Meeting m = meeting(meetingId);
+    tanara::library::PeopleStore* people = m_controller ? m_controller->people() : nullptr;
+    if (people) people->refresh();
     QStringList named;
-    for (auto it = m.speakerMap.constBegin(); it != m.speakerMap.constEnd(); ++it)
-        if (!it.value().trimmed().isEmpty())
-            named << it.value().trimmed();
+    for (auto it = m.speakerMap.constBegin(); it != m.speakerMap.constEnd(); ++it) {
+        const QString name = people ? people->displayName(it.value()) : QString();
+        if (!name.trimmed().isEmpty()) named << name.trimmed();
+    }
     named.removeDuplicates();
     if (named.isEmpty())
         return tr("Az azonosítás kész: egyik beszélő hangja sem ismert még. A neveket az "

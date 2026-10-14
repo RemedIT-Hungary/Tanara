@@ -110,10 +110,16 @@ struct Fixture {
         store->saveMeeting(meeting);
     }
 
+    // A person by name (people.json; created if missing).
+    tanara::PersonId pid(const QString& name) { return people->ensure(name); }
+    QString nameOf(const tanara::PersonId& id) const { return people->displayName(id); }
+
+    // raw label -> person NAME (the people are created in people.json).
     void setSpeakerMap(const QMap<QString, QString>& map)
     {
         meeting = store->load(meeting.id);
-        meeting.speakerMap = map;
+        meeting.speakerMap.clear();
+        for (auto it = map.constBegin(); it != map.constEnd(); ++it) meeting.speakerMap.insert(it.key(), pid(it.value()));
         store->saveMeeting(meeting);
     }
 

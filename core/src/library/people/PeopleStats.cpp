@@ -18,17 +18,10 @@
 
 namespace tanara::library {
 
-namespace {
-
-QString fold(const QString& name) { return name.trimmed().toCaseFolded(); }
-
-} // namespace
-
-const MeetingPerson* MeetingPeople::find(const QString& name) const
+const MeetingPerson* MeetingPeople::find(const PersonId& person) const
 {
-    const QString key = fold(name);
     for (const MeetingPerson& p : people)
-        if (fold(p.name) == key) return &p;
+        if (p.personId == person) return &p;
     return nullptr;
 }
 
@@ -41,17 +34,15 @@ MeetingPeople scanMeetingPeople(const Meeting& m)
     out.startedAt = m.startedAt;
     out.hasSummary = m.hasSummary;
 
-    QHash<QString, int> index;
-    auto ensure = [&](const QString& name) -> MeetingPerson* {
-        const QString n = name.trimmed();
-        if (n.isEmpty()) return nullptr;
-        const QString key = n.toCaseFolded();
-        auto it = index.constFind(key);
+    QHash<PersonId, int> index;
+    auto ensure = [&](const PersonId& person) -> MeetingPerson* {
+        if (person.isNull()) return nullptr;
+        auto it = index.constFind(person);
         if (it == index.constEnd()) {
             MeetingPerson p;
-            p.name = n;
+            p.personId = person;
             out.people.append(p);
-            it = index.insert(key, out.people.size() - 1);
+            it = index.insert(person, out.people.size() - 1);
         }
         return &out.people[it.value()];
     };
@@ -65,30 +56,17 @@ MeetingPeople scanMeetingPeople(const Meeting& m)
         ov = lines.isEmpty() ? editing::speakeredit::loadOverlay(m.folder)
                              : editing::speakeredit::loadOverlayFor(m.folder, lines);
 
-    // Presence: the same rule as the person picker's counter (listPeople): a speakerMap value, the name
-    // of a fixed-speaker track, a manually added (named) participant.
+    // Presence: the same rule as the person picker's counter (listPeople): a speakerMap person, a manually
+    // added (named) participant.
     for (auto it = m.speakerMap.constBegin(); it != m.speakerMap.constEnd(); ++it)
         addKey(ensure(it.value()), it.key());
-    QHash<QString, QString> fixedLabels;   // lowercased track label -> label
-    for (const Track& t : m.tracks) {
-        if (!t.fixedSpeaker || t.speakerLabel.trimmed().isEmpty()) continue;
-        fixedLabels.insert(fold(t.speakerLabel), t.speakerLabel.trimmed());
-        addKey(ensure(t.speakerLabel), t.speakerLabel.trimmed());
-    }
     for (const OverlayParticipant& p : ov.participants)
-        addKey(ensure(p.person), p.key);
+        addKey(ensure(p.personId), p.key);
 
     // Speaking time: by the lines' RESOLVED speaker (override -> merge -> speakerMap).
     for (const TranscriptLine& l : lines) {
         const QString key = editing::speakeredit::resolveSpeakerKey(ov, l);
-        QString person = editing::speakeredit::speakerPerson(ov, m.speakerMap, key);
-        if (person.isEmpty()) {
-            // Old, per-track transcript: the raw label itself is the (fixed) speaker's name.
-            const auto fixed = fixedLabels.constFind(fold(key));
-            if (fixed != fixedLabels.constEnd()) person = fixed.value();
-            else if (m.speakerMap.value(key) == key) person = key;
-        }
-        if (person.isEmpty()) continue;
+        const PersonId person = editing::speakeredit::speakerPerson(ov, m.speakerMap, key);
         if (MeetingPerson* p = ensure(person)) p->talkMs += std::max<qint64>(0, l.endMs - l.startMs);
     }
     return out;
@@ -101,9 +79,9 @@ PeopleStats::PeopleStats(MeetingRepository* store, QObject* parent)
 
 PeopleStats::~PeopleStats() { m_alive->store(false); }
 
-PersonStats PeopleStats::stats(const QString& name) const
+PersonStats PeopleStats::stats(const PersonId& person) const
 {
-    return m_byPerson.value(fold(name));
+    return m_byPerson.value(person);
 }
 
 QVector<MeetingPeople> PeopleStats::meetings() const
@@ -246,7 +224,7 @@ void PeopleStats::rebuild()
     m_byPerson.clear();
     for (const MeetingPeople& m : std::as_const(m_cache)) {
         for (const MeetingPerson& p : m.people) {
-            PersonStats& s = m_byPerson[fold(p.name)];
+            PersonStats& s = m_byPerson[p.personId];
             ++s.meetingCount;
             s.talkMs += p.talkMs;
             if (!s.lastSeen.isValid() || m.startedAt > s.lastSeen) s.lastSeen = m.startedAt;

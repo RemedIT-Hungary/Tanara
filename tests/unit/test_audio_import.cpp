@@ -404,7 +404,8 @@ void AudioImportTest::multipleFilesWithOwnTrack()
     QVERIFY(!mine.isEmpty() && !theirs.isEmpty());
 
     library::AudioImporter imp(m_store.get(), m_media);
-    imp.setUserSpeakerName(QStringLiteral("Minta Márta"));
+    const PersonId self = PersonId::fromString(QStringLiteral("p-marta"));
+    imp.setSelfPerson(SelfPerson{self, QStringLiteral("Minta Márta")});
     QSignalSpy progress(&imp, &library::AudioImporter::progress);
     library::ImportRequest req;
     req.sources = {{mine, false}, {theirs, true}};
@@ -419,6 +420,7 @@ void AudioImportTest::multipleFilesWithOwnTrack()
     QCOMPARE(m.tracks[0].kind, TrackKind::Mic);
     QVERIFY(m.tracks[0].fixedSpeaker);
     QCOMPARE(m.tracks[0].speakerLabel, QStringLiteral("Minta Márta"));
+    QCOMPARE(m.speakerMap.value(QStringLiteral("Minta Márta")), self);   // the own track's label is the own person
     QCOMPARE(m.tracks[1].kind, TrackKind::Other);
     QVERIFY(!m.tracks[1].fixedSpeaker);
     QCOMPARE(library::tracknames::friendlyNames(m.tracks),

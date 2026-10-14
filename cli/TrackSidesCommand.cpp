@@ -8,6 +8,7 @@
 #include "tanara/editing/session/SpeakerOverlay.h"
 #include "tanara/processing/analysis/TrackActivity.h"
 #include "tanara/library/store/MeetingRepository.h"
+#include "tanara/library/store/PeopleStore.h"
 
 #include <QFileInfo>
 #include <QHash>
@@ -87,7 +88,9 @@ QJsonObject toJson(const editing::SideReport& r, const MeetingActivity& act, con
     for (const editing::SideConflict& c : r.conflicts) ++conflictsPer[c.speakerKey];
     QJsonArray persons;
     for (const editing::PersonSide& p : r.persons)
-        persons.append(QJsonObject{{"speakerKey", p.speakerKey}, {"person", p.personName}, {"name", p.displayName},
+        persons.append(QJsonObject{{"speakerKey", p.speakerKey}, {"personId", p.personId.toString()},
+                                   {"person", p.personId.isNull() ? QString() : p.displayName},
+                                   {"name", p.displayName},
                                    {"side", sideName(p.side)}, {"defaultSide", sideName(p.defaultSide)},
                                    {"basis", p.basis}, {"confidence", double(p.confidence)},
                                    {"learnedSide", sideName(p.learnedSide)},
@@ -214,7 +217,10 @@ int runTrackSidesCommand(const QStringList& args)
     if (lines.isEmpty()) { err() << "No transcript (transcript.segments.json) in " << folder << "\n"; return 1; }
     const SpeakerOverlay ov = editing::speakeredit::loadOverlayFor(folder, lines);
     const app::SettingsManager sm;
-    const QString userName = sm.settings().recording.userSpeakerName;
+    const library::PeopleStore people;
+    const SelfPerson self{people.selfId(), sm.settings().recording.userSpeakerName.trimmed()};
+    editing::SideHints hints;
+    hints.names = people.names();
 
     // Activity: from the cache if the fingerprint matches, otherwise computed (written to the folder only with --write-cache).
     const QString fp = processing::trackactivity::activityFingerprint(m, folder, frameMs);
@@ -235,7 +241,7 @@ int runTrackSidesCommand(const QStringList& args)
     qint64 meetingMs = m.durationMs;
     for (const TranscriptLine& l : lines) meetingMs = std::max(meetingMs, l.endMs);
 
-    const editing::SideReport r = editing::analyzeSides(m, lines, ov, act, userName);
+    const editing::SideReport r = editing::analyzeSides(m, lines, ov, act, self, hints);
     if (json) {
         out() << QJsonDocument(toJson(r, act, folder, fromCache, meetingMs, legacy)).toJson(QJsonDocument::Indented);
         out().flush();

@@ -2,6 +2,7 @@
 #include "tanara/library/MeetingLayout.h"
 #include "tanara/library/jobs/MeetingJobTracker.h"
 #include "tanara/library/store/MeetingRepository.h"
+#include "tanara/library/store/PeopleStore.h"
 #include "tanara/library/tags/TagService.h"
 
 #include <QCoreApplication>
@@ -34,6 +35,7 @@ struct MeetingLibrary::Impl {
     MeetingRepository*      store = nullptr;
     MeetingJobTracker* tracker = nullptr;
     TagService*        tags = nullptr;
+    PeopleStore*       people = nullptr;
     bool               loaded = false;
     QVector<Meeting>   meetings;            // descending by startedAt
     QHash<QString, int> index;              // id -> position in meetings
@@ -45,6 +47,11 @@ struct MeetingLibrary::Impl {
     void reindex() {
         index.clear();
         for (int i = 0; i < meetings.size(); ++i) index.insert(meetings.at(i).id, i);
+    }
+    PersonNames names() const {
+        if (!people) return {};
+        people->refresh();
+        return people->names();
     }
     static QString segmentsPath(const Meeting& m) {
         return MeetingLayout::path(m.folder, MeetingLayout::segmentsJson());
@@ -206,22 +213,11 @@ const MeetingLibrary::TextDoc* MeetingLibrary::textDoc(const Meeting& m) const
     return ins->segStart.isEmpty() ? nullptr : &*ins;
 }
 
-QStringList MeetingLibrary::participantsOf(const Meeting& m)
+PersonIds MeetingLibrary::participantsOf(const Meeting& m)
 {
-    QStringList out;
-    auto add = [&out](const QString& raw) {
-        const QString n = raw.trimmed();
-        if (!n.isEmpty() && !out.contains(n)) out << n;
-    };
-    // The own (microphone) track's fixed speaker: the recorder took part too. Generic labels ("Microphone 2",
-    // "System") are not people.
-    for (const Track& t : m.tracks) {
-        if (t.kind != TrackKind::Mic || !t.active) continue;
-        if (t.speakerLabel.startsWith(QStringLiteral("Mikrofon"))) continue;
-        add(t.speakerLabel);
-    }
+    PersonIds out;
     for (auto it = m.speakerMap.constBegin(); it != m.speakerMap.constEnd(); ++it)
-        add(it.value());
+        if (!it.value().isNull() && !out.contains(it.value())) out << it.value();
     return out;
 }
 
@@ -268,7 +264,9 @@ LibraryEntry MeetingLibrary::makeEntry(const Meeting& m, const QDate& today) con
     e.hasTranscript = m.hasTranscript;
     e.hasSummary = m.hasSummary;
     e.section = sectionFor(m.startedAt, today);
-    e.participants = participantsOf(m);
+    e.participantIds = participantsOf(m);
+    const PersonNames names = d->names();
+    for (const PersonId& p : std::as_const(e.participantIds)) e.participants << personName(names, p);
     if (d->tags) {
         for (const QString& id : m.tagIds) {
             const Tag t = d->tags->tag(id);
@@ -296,11 +294,9 @@ LibraryResult MeetingLibrary::query(const LibraryQuery& q, const QDateTime& now)
     res.totalMeetings = int(d->meetings.size());
     const QDate today = now.date();
     const QString fq = text::foldQuery(q.text);
-    QStringList wantPeople;
-    for (const QString& p : q.people) {
-        const QString f = text::foldQuery(p);
-        if (!f.isEmpty()) wantPeople << f;
-    }
+    PersonIds wantPeople;
+    for (const PersonId& p : q.people)
+        if (!p.isNull()) wantPeople << p;
 
     // Tag filter: only existing tags count.
     QStringList wantTags;
@@ -327,10 +323,9 @@ LibraryResult MeetingLibrary::query(const LibraryQuery& q, const QDateTime& now)
         if (q.noSummary && m.hasSummary) continue;
         if (!tagsOk(m)) continue;
         if (!wantPeople.isEmpty()) {
-            QStringList have;
-            for (const QString& p : participantsOf(m)) have << text::foldQuery(p);
+            const PersonIds have = participantsOf(m);
             bool all = true;
-            for (const QString& w : wantPeople)
+            for (const PersonId& w : std::as_const(wantPeople))
                 if (!have.contains(w)) { all = false; break; }
             if (!all) continue;
         }
@@ -379,7 +374,7 @@ LibraryResult MeetingLibrary::query(const LibraryQuery& q, const QDateTime& now)
             if (seg >= 0) {
                 e.snippetMs = doc->segMs.at(seg);
                 const QString raw = doc->segSpeaker.at(seg);
-                e.snippetSpeaker = m.speakerMap.value(raw, raw);
+                e.snippetSpeaker = personName(d->names(), m.speakerMap.value(raw), raw);
             }
         }
         res.entries.append(e);
@@ -433,18 +428,27 @@ QVector<meetingnotes::NoteSuggestion> MeetingLibrary::noteSuggestions(const QStr
 QVector<PersonPresence> MeetingLibrary::people() const
 {
     ensureLoaded();
-    QHash<QString, int> counts;
+    QHash<PersonId, int> counts;
     for (const Meeting& m : std::as_const(d->meetings))
-        for (const QString& p : participantsOf(m)) counts[p]++;
+        for (const PersonId& p : participantsOf(m)) counts[p]++;
+    const PersonNames names = d->names();
     QVector<PersonPresence> out;
     out.reserve(counts.size());
-    for (auto it = counts.constBegin(); it != counts.constEnd(); ++it)
-        out.append({ it.key(), it.value() });
+    for (auto it = counts.constBegin(); it != counts.constEnd(); ++it) {
+        const QString name = personName(names, it.key());
+        if (name.isEmpty()) continue;   // a person no longer known
+        out.append({ it.key(), name, it.value() });
+    }
     std::sort(out.begin(), out.end(), [](const PersonPresence& a, const PersonPresence& b) {
         if (a.meetingCount != b.meetingCount) return a.meetingCount > b.meetingCount;
         return a.name.localeAwareCompare(b.name) < 0;
     });
     return out;
+}
+
+void MeetingLibrary::setPeopleStore(PeopleStore* people)
+{
+    d->people = people;
 }
 
 void MeetingLibrary::setTagService(TagService* tags)

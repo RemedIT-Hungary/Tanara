@@ -248,13 +248,13 @@ void PathsTest::storesDefaultIntoOverride()
     QVERIFY(QFile::exists(sb + QStringLiteral("/secrets.json")));
 
     library::PeopleStore people;
-    people.add(QStringLiteral("Teszt Elek"));
+    const PersonId elek = people.create(QStringLiteral("Teszt Elek"));
     QVERIFY(QFile::exists(sb + QStringLiteral("/people.json")));
 
     library::VoiceprintStore prints;
     Voiceprint vp;
     vp.embedding = {1.0f, 0.0f};
-    prints.addPrint(QStringLiteral("Teszt Elek"), vp);
+    prints.addPrint(elek, vp);
     QVERIFY(QFile::exists(sb + QStringLiteral("/voiceprints.json")));
 
     app::SettingsManager sm;   // empty: the config folder of AppPaths

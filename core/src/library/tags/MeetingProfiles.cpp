@@ -292,7 +292,7 @@ struct MeetingProfiles::Impl {
         QHash<QString, QString> display;               // merged stem -> displayed form
         QHash<QString, QHash<QString, double>> vec;    // meetingId -> (stem -> weight), <= 60
         QHash<QString, double> norm;
-        QHash<QString, double> personWeight;           // name -> rarity weight
+        QHash<QString, double> personWeight;           // PersonId string -> rarity weight
     };
     enum class RowsState { NotLoaded, Loading, Loaded };
 
@@ -314,8 +314,13 @@ struct MeetingProfiles::Impl {
     std::atomic<bool> background{false};
     mutable std::atomic<bool> recomputeQueued{false};
 
+    static QStringList idStrings(const PersonIds& ids) {
+        QStringList out;
+        for (const PersonId& id : ids) out << id.toString();
+        return out;
+    }
     static Row rowOf(const Meeting& m) {
-        return Row{ m.title, meetingnotes::titleWords(m.title), MeetingLibrary::participantsOf(m),
+        return Row{ m.title, meetingnotes::titleWords(m.title), idStrings(MeetingLibrary::participantsOf(m)),
                     m.folder, m.hasTranscript };
     }
     static Row rowFromIndex(const Meeting& idx) {
@@ -765,12 +770,12 @@ QVector<SimilarHit> MeetingProfiles::similar(const QString& meetingId, int limit
     return Impl::rank(*s, meetingId, self->participants, self->titleWords, limit);
 }
 
-QVector<SimilarHit> MeetingProfiles::similarToDraft(const QString& title, const QStringList& participants,
+QVector<SimilarHit> MeetingProfiles::similarToDraft(const QString& title, const PersonIds& participants,
                                                     const QString& excludeId, int limit) const
 {
     d->ensureRowsSync();
     const QString self = excludeId.isEmpty() ? QStringLiteral("\x01draft") : excludeId;
-    return Impl::rank(*d->snapshot(), self, participants, meetingnotes::titleWords(title), limit);
+    return Impl::rank(*d->snapshot(), self, Impl::idStrings(participants), meetingnotes::titleWords(title), limit);
 }
 
 QStringList MeetingProfiles::termsOf(const QString& meetingId, int limit) const
@@ -812,10 +817,10 @@ QStringList MeetingProfiles::sharedTerms(const QString& a, const QString& b, int
     return Impl::shared(*d->snapshot(), a, b, limit);
 }
 
-double MeetingProfiles::participantWeight(const QString& name) const
+double MeetingProfiles::participantWeight(const PersonId& person) const
 {
     d->ensureRowsSync();
-    return d->snapshot()->personWeight.value(name, 1.0);
+    return d->snapshot()->personWeight.value(person.toString(), 1.0);
 }
 
 } // namespace tanara::library

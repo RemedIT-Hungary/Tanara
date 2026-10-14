@@ -11,6 +11,7 @@
 #include <QJsonObject>
 
 #include "tanara/app/AppController.h"
+#include "tanara/library/store/PeopleStore.h"
 #include "tanara/app/SettingsManager.h"
 #include "tanara/recording/audio/MixdownPlan.h"
 #include "tanara/processing/analysis/ParticipantAnalysis.h"
@@ -69,10 +70,10 @@ Voiceprint print(int hot)
     return vp;
 }
 
-const Participant* byName(const QVector<Participant>& ps, const QString& name)
+const Participant* byName(const QVector<Participant>& ps, const PersonId& person)
 {
     for (const Participant& p : ps)
-        if (p.personName == name) return &p;
+        if (p.personId == person) return &p;
     return nullptr;
 }
 
@@ -92,6 +93,12 @@ private slots:
     void removeNamedSpeakerWithoutRecord();
 
 private:
+
+    // People by name (people.json): created if missing (pid) / only looked up (idOf); a picker's choice; the name.
+    PersonId pid(const QString& name) { return m_app->people()->ensure(name); }
+    PersonId idOf(const QString& name) { m_app->people()->refresh(); return m_app->people()->idForName(name); }
+    PersonChoice choice(const QString& name) { return m_app->people()->choiceFor(name); }
+    QString nameOf(const PersonId& id) { m_app->people()->refresh(); return m_app->people()->displayName(id); }
     Meeting makeMeeting(bool withSilent);
     void writeTranscript(Meeting& m, const QVector<std::tuple<qint64, qint64, QString>>& rows);
 
@@ -217,8 +224,8 @@ void ParticipantsAppTest::speechCheckExcludesSilentTrack()
 void ParticipantsAppTest::analysisApproveUndoUnbindSolo()
 {
     Meeting m = makeMeeting(/*withSilent*/ false);
-    m_app->voiceprints()->addPrint(QStringLiteral("Ádám"), print(0));
-    m_app->voiceprints()->addPrint(QStringLiteral("Béla"), print(1));
+    m_app->voiceprints()->addPrint(pid(QStringLiteral("Ádám")), print(0));
+    m_app->voiceprints()->addPrint(pid(QStringLiteral("Béla")), print(1));
 
     QSignalSpy done(m_app.get(), &app::AppController::participantAnalysisFinished);
     QVERIFY(m_app->analyzeParticipants(m.id));
@@ -229,8 +236,8 @@ void ParticipantsAppTest::analysisApproveUndoUnbindSolo()
 
     QVector<Participant> ps = m_app->participants(m.id);
     QCOMPARE(ps.size(), 2);
-    const Participant* adam = byName(ps, QStringLiteral("Ádám"));
-    const Participant* bela = byName(ps, QStringLiteral("Béla"));
+    const Participant* adam = byName(ps, pid(QStringLiteral("Ádám")));
+    const Participant* bela = byName(ps, pid(QStringLiteral("Béla")));
     QVERIFY(adam && bela);
     QCOMPARE(adam->sides, QStringList({processing::participants::kSideMic}));
     QCOMPARE(bela->sides, QStringList({processing::participants::kSideLoopback}));
@@ -246,14 +253,14 @@ void ParticipantsAppTest::analysisApproveUndoUnbindSolo()
     QVERIFY(m_app->bindRawSpeakers(m.id));
     QCOMPARE(changed.count(), 1);
     ps = m_app->participants(m.id);
-    QCOMPARE(byName(ps, "Ádám")->rawSpeakerIds, QStringList({"Beszélő 1"}));
-    QCOMPARE(byName(ps, "Béla")->rawSpeakerIds, QStringList({"Beszélő 2"}));
+    QCOMPARE(byName(ps, pid("Ádám"))->rawSpeakerIds, QStringList({"Beszélő 1"}));
+    QCOMPARE(byName(ps, pid("Béla"))->rawSpeakerIds, QStringList({"Beszélő 2"}));
 
     // Approval: the raw speakers to the names, in one undo step.
     QVERIFY(m_app->approveParticipants(m.id, ps));
     m = m_app->store()->load(m.id);
-    QCOMPARE(m.speakerMap.value("Beszélő 1"), QStringLiteral("Ádám"));
-    QCOMPARE(m.speakerMap.value("Beszélő 2"), QStringLiteral("Béla"));
+    QCOMPARE(nameOf(m.speakerMap.value("Beszélő 1")), QStringLiteral("Ádám"));
+    QCOMPARE(nameOf(m.speakerMap.value("Beszélő 2")), QStringLiteral("Béla"));
     QVERIFY(m.approval.has_value());
     QCOMPARE(m.approval->candidates.size(), 2);
     QVERIFY(!m_app->participantApprovalPending(m.id));
@@ -270,9 +277,9 @@ void ParticipantsAppTest::analysisApproveUndoUnbindSolo()
     QVERIFY(m_app->unbindParticipant(m.id, belaId));
     m = m_app->store()->load(m.id);
     QVERIFY(!m.speakerMap.contains("Beszélő 2"));
-    QCOMPARE(m.speakerMap.value("Beszélő 1"), QStringLiteral("Ádám"));
-    QVERIFY(!byName(m.participants, "Béla")->approved);
-    QVERIFY(byName(m.participants, "Ádám")->approved);
+    QCOMPARE(nameOf(m.speakerMap.value("Beszélő 1")), QStringLiteral("Ádám"));
+    QVERIFY(!byName(m.participants, pid("Béla"))->approved);
+    QVERIFY(byName(m.participants, pid("Ádám"))->approved);
 
     // "Only I spoke": every raw speaker to the own name (merged into one speaker).
     QVERIFY(m_app->setSoloMeeting(m.id));
@@ -281,7 +288,7 @@ void ParticipantsAppTest::analysisApproveUndoUnbindSolo()
     int named = 0;
     for (const editing::EditorSpeaker& s : ed->speakers())
         if (s.utteranceCount > 0) {
-            QCOMPARE(s.personName, QStringLiteral("Ádám"));
+            QCOMPARE(nameOf(s.personId), QStringLiteral("Ádám"));
             ++named;
         }
     QCOMPARE(named, 1);
@@ -292,16 +299,16 @@ void ParticipantsAppTest::analysisApproveUndoUnbindSolo()
 void ParticipantsAppTest::manualParticipantKeptThroughAnalysis()
 {
     const Meeting m = makeMeeting(/*withSilent*/ false);
-    m_app->voiceprints()->addPrint(QStringLiteral("Béla"), print(1));
-    const QString id = m_app->addParticipant(m.id, QStringLiteral("Cecília"));
+    m_app->voiceprints()->addPrint(pid(QStringLiteral("Béla")), print(1));
+    const QString id = m_app->addParticipant(m.id, choice(QStringLiteral("Cecília")));
     QVERIFY(id.startsWith("m-"));
-    QCOMPARE(m_app->addParticipant(m.id, QStringLiteral("cecília")), id);   // already there
+    QCOMPARE(m_app->addParticipant(m.id, choice(QStringLiteral("cecília"))), id);   // already there
     QSignalSpy done(m_app.get(), &app::AppController::participantAnalysisFinished);
     QVERIFY(m_app->analyzeParticipants(m.id));
     QVERIFY(done.wait(60000));
     const QVector<Participant> ps = m_app->participants(m.id);
     QCOMPARE(ps.size(), 3);   // Béla, Cecília (manual), the unknown microphone voice
-    const Participant* cili = byName(ps, QStringLiteral("Cecília"));
+    const Participant* cili = byName(ps, pid(QStringLiteral("Cecília")));
     QVERIFY(cili);
     QCOMPARE(cili->id, id);
     QCOMPARE(cili->source, ParticipantSource::Manual);
@@ -309,7 +316,7 @@ void ParticipantsAppTest::manualParticipantKeptThroughAnalysis()
     for (const Evidence& e : cili->evidence)
         if (e.kind == EvidenceKind::Voice && e.text == QStringLiteral("nincs lenyomata")) noPrint = true;
     QVERIFY(noPrint);
-    QVERIFY(byName(ps, QString()));   // unknown voice (Ádám's voiceprint is not here)
+    QVERIFY(byName(ps, PersonId()));   // unknown voice (Ádám's voiceprint is not here)
 
     // "Skip": a decision without a binding.
     QVERIFY(m_app->skipApproval(m.id));
@@ -362,7 +369,7 @@ void ParticipantsAppTest::removeNamedSpeakerWithoutRecord()
     Meeting m = makeMeeting(/*withSilent*/ false);
     writeTranscript(m, {{0, 1000, QStringLiteral("Beszélő 1")}, {1000, 2000, QStringLiteral("Beszélő 2")}});
     m = m_app->store()->load(m.id);
-    m.speakerMap.insert(QStringLiteral("Beszélő 1"), QStringLiteral("Béla"));
+    m.speakerMap.insert(QStringLiteral("Beszélő 1"), pid(QStringLiteral("Béla")));
     m_app->store()->saveMeeting(m);
     QVERIFY(m_app->participants(m.id).isEmpty());
 
@@ -370,7 +377,7 @@ void ParticipantsAppTest::removeNamedSpeakerWithoutRecord()
     QVERIFY(ed);
     QString belaKey, anonKey;
     for (const editing::EditorSpeaker& s : ed->speakers()) {
-        if (s.personName == QStringLiteral("Béla")) belaKey = s.key;
+        if (s.personId == pid(QStringLiteral("Béla"))) belaKey = s.key;
         else if (s.anonymous) anonKey = s.key;
     }
     QVERIFY(!belaKey.isEmpty());
@@ -379,12 +386,12 @@ void ParticipantsAppTest::removeNamedSpeakerWithoutRecord()
     QVERIFY(!m_app->removeParticipant(m.id, QStringLiteral("nincs")));  // unknown
     QVERIFY(m_app->removeParticipant(m.id, belaKey));
     bool belaLeft = false;
-    for (const editing::EditorSpeaker& s : ed->speakers()) belaLeft = belaLeft || s.personName == QStringLiteral("Béla");
+    for (const editing::EditorSpeaker& s : ed->speakers()) belaLeft = belaLeft || s.personId == pid(QStringLiteral("Béla"));
     QVERIFY(!belaLeft);
     QVERIFY(m_app->meetingUndo(m.id)->canUndo());
     m_app->meetingUndo(m.id)->undo();
     bool belaBack = false;
-    for (const editing::EditorSpeaker& s : ed->speakers()) belaBack = belaBack || s.personName == QStringLiteral("Béla");
+    for (const editing::EditorSpeaker& s : ed->speakers()) belaBack = belaBack || s.personId == pid(QStringLiteral("Béla"));
     QVERIFY(belaBack);
 }
 

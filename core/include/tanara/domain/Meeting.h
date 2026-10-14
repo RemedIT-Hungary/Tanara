@@ -3,6 +3,7 @@
 // Domain: a meeting and its tracks.
 #include "tanara/domain/Audio.h"
 #include "tanara/domain/Participant.h"
+#include "tanara/domain/Person.h"
 
 #include <QDateTime>
 #include <QMap>
@@ -57,7 +58,7 @@ struct Meeting {
     bool mixdownDirty = false;   // true = the tracks changed since the mixdown (remix needed)
     bool hasTranscript = false;
     bool hasSummary = false;
-    QMap<QString, QString> speakerMap;   // raw speaker label ("Remote 1") -> real name ("Bela")
+    QMap<QString, PersonId> speakerMap;  // raw speaker label ("Remote 1") -> the person (people.json)
     // A few words from the user describing the meeting (topic/context). It goes into the STT
     // context envelope (more accurate transcript for doubtful parts) AND into the LLM summary
     // context. Editable in the pre-transcript view and on the Summary tab; names, jargon and

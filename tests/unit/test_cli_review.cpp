@@ -1,6 +1,8 @@
 // tanara-cli review: the real CLI (QProcess), with an ISOLATED TANARA_HOME, on a made-up
 // meeting (no tracks; the embeddings directly in the cache). Checks that the command only
 // READS, that the JSON has the core-mismatch group with its evidence, and that no transcript text appears.
+#include "cli_people_fixture.h"
+
 #include <QtTest>
 #include <QTemporaryDir>
 #include <QJsonArray>
@@ -50,6 +52,7 @@ private slots:
     {
         m_home = std::make_unique<QTemporaryDir>();
         QVERIFY(m_home->isValid());
+        QVERIFY(cli_fixture::writePeople(m_home->path(), {{"p-anna", "Anna"}, {"p-bela", "Béla"}}));
     }
     void cleanup() { m_home.reset(); }
 
@@ -67,8 +70,8 @@ private slots:
         QTemporaryDir meetingDir;
         const QString folder = meetingDir.path();
         writeJson(QDir(folder).filePath("meeting.json"), QJsonObject{
-            {"id", "review-1"}, {"title", "Review"},
-            {"speakerMap", QJsonObject{{"A", "Anna"}, {"B", "Béla"}}}});
+            {"version", 3}, {"id", "review-1"}, {"title", "Review"},
+            {"speakerMap", QJsonObject{{"A", "p-anna"}, {"B", "p-bela"}}}});
         // A: 3 confirmed (voice 0), B: 3 confirmed (voice 1), for A 2 lines in B's voice + 1 short.
         const QVector<QPair<QString, int>> spec{{"A", 0}, {"A", 0}, {"A", 0}, {"B", 1}, {"B", 1}, {"B", 1},
                                                 {"A", 1}, {"A", 0}, {"A", 1}, {"B", -1}};

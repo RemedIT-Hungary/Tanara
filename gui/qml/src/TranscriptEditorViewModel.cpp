@@ -72,7 +72,10 @@ QVariantMap speakerMap(const editing::EditorSpeaker& s, int lane)
     return {
         {QStringLiteral("key"), s.key},
         {QStringLiteral("name"), s.displayName},
-        {QStringLiteral("personName"), s.personName},
+        // personId: the person (empty = anonymous); personName: their display name (QML shows it and may hand
+        // either back: the view model resolves an id or a name).
+        {QStringLiteral("personId"), s.personId.toString()},
+        {QStringLiteral("personName"), s.anonymous ? QString() : s.displayName},
         {QStringLiteral("rawLabel"), s.rawLabel},
         {QStringLiteral("colorIndex"), s.colorIndex},
         {QStringLiteral("hasVoiceprint"), s.hasVoiceprint},
@@ -850,10 +853,10 @@ void TranscriptEditorViewModel::declinePairOffer()
 QVariantList TranscriptEditorViewModel::pairCandidates(const QString& speakerKey) const
 {
     QVariantList out;
-    const QString self = m_views.contains(speakerKey) && m_editor ? m_editor->speaker(speakerKey).personName : QString();
+    const PersonId self = m_views.contains(speakerKey) && m_editor ? m_editor->speaker(speakerKey).personId : PersonId();
     for (const editing::EditorSpeaker& s : m_speakers) {
         if (s.key == speakerKey || s.anonymous || s.utteranceCount <= 0) continue;
-        if (!self.isEmpty() && s.personName.compare(self, Qt::CaseInsensitive) == 0) continue;
+        if (!self.isNull() && s.personId == self) continue;
         out.append(QVariantMap{{QStringLiteral("key"), s.key},
                                {QStringLiteral("name"), s.displayName},
                                {QStringLiteral("colorIndex"), s.colorIndex},
@@ -1264,7 +1267,7 @@ QString TranscriptEditorViewModel::moveLines(const QStringList& ids, MoveTarget 
         if (m_editor->moveUtterances(ids, value, noisy)) key = value;
         break;
     case MoveTarget::Person:
-        key = m_editor->moveUtterancesToPerson(ids, value, noisy);
+        key = m_editor->moveUtterancesToPerson(ids, m_editor->personChoice(value), noisy);
         break;
     case MoveTarget::NewParticipant:
         key = m_editor->moveUtterancesToNewParticipant(ids, noisy);
@@ -1566,7 +1569,7 @@ void TranscriptEditorViewModel::dismissChange()
 QString TranscriptEditorViewModel::addParticipant(const QString& personName)
 {
     if (!m_editor) return QString();
-    const QString key = m_editor->addParticipant(personName.trimmed());
+    const QString key = m_editor->addParticipant(m_editor->personChoice(personName));
     afterMove(key);
     return key;
 }
@@ -1584,10 +1587,11 @@ bool TranscriptEditorViewModel::reassignSpeaker(const QString& speakerKey, const
     const QString fromName = m_views.value(speakerKey).name;
     const int lines = speakerInfo(speakerKey).value(QStringLiteral("utteranceCount")).toInt();
     ++m_opDepth;
-    const bool ok = m_editor->reassignSpeaker(speakerKey, name, fixVoiceprints);
+    const PersonChoice choice = m_editor->personChoice(name);
+    const bool ok = m_editor->reassignSpeaker(speakerKey, choice, fixVoiceprints);
     --m_opDepth;
     if (!ok) return false;
-    const QString target = speakerKeyForPerson(name);
+    const QString target = speakerKeyForPerson(choice.id.isNull() ? name : choice.id.toString());
     afterMove(target);
     publishWholeSpeakerChange(fromName, lines, target);
     return true;
@@ -1851,7 +1855,7 @@ QVariantList TranscriptEditorViewModel::speakersMatching(const QString& query, c
         QString matchedAlias;
         if (!needle.isEmpty() && !text::foldForSearch(s.displayName).contains(needle)) {
             if (m_editor && !s.anonymous)
-                for (const QString& a : m_editor->personAliases(s.personName))
+                for (const QString& a : m_editor->personAliases(s.personId))
                     if (text::foldForSearch(a).contains(needle)) { matchedAlias = a; break; }
             if (matchedAlias.isEmpty()) continue;
         }
@@ -1864,9 +1868,13 @@ QVariantList TranscriptEditorViewModel::speakersMatching(const QString& query, c
 
 QString TranscriptEditorViewModel::speakerKeyForPerson(const QString& personName) const
 {
+    // A PersonId (exact) or a name (the person's display name, case-insensitively).
     const QString name = personName.trimmed();
+    if (name.isEmpty()) return {};
     for (const editing::EditorSpeaker& s : m_speakers)
-        if (!s.anonymous && s.personName.compare(name, Qt::CaseInsensitive) == 0) return s.key;
+        if (!s.anonymous && s.personId.toString() == name) return s.key;
+    for (const editing::EditorSpeaker& s : m_speakers)
+        if (!s.anonymous && s.displayName.compare(name, Qt::CaseInsensitive) == 0) return s.key;
     return {};
 }
 
@@ -1917,7 +1925,8 @@ QVariantMap TranscriptEditorViewModel::lineSampleInfo(const QString& utteranceId
     const editing::EditorUtterance& u = m_utts.at(i);
     const editing::EditorSpeaker sp = m_editor->speaker(u.speakerKey);
     out[QStringLiteral("seconds")] = int((u.endMs - u.startMs) / 1000);
-    out[QStringLiteral("personName")] = sp.personName;
+    out[QStringLiteral("personName")] = sp.anonymous ? QString() : sp.displayName;
+    out[QStringLiteral("personId")] = sp.personId.toString();
     if (sp.anonymous)
         out[QStringLiteral("reason")] = tr("Előbb nevezd el a beszélőt.");
     else if (u.noisy)
@@ -1981,9 +1990,7 @@ QVector<editing::PersonInfo> TranscriptEditorViewModel::people() const
 
 bool TranscriptEditorViewModel::isMeetingPerson(const QString& name) const
 {
-    for (const editing::EditorSpeaker& s : m_speakers)
-        if (!s.anonymous && s.personName.compare(name, Qt::CaseInsensitive) == 0) return true;
-    return false;
+    return !speakerKeyForPerson(name).isEmpty();
 }
 
 // ---- evidence, candidates, "To review" groups, new person -------------------
@@ -2255,13 +2262,14 @@ bool TranscriptEditorViewModel::setSpeakerTracks(const QString& speakerKey, cons
 
 QVariantMap TranscriptEditorViewModel::quickTagFor(const QString& personName) const
 {
-    const QString person = personName.trimmed();
-    if (!m_editor || person.isEmpty()) return {};
+    if (!m_editor) return {};
+    const PersonId person = m_editor->personChoice(personName).id;
+    if (person.isNull()) return {};
     // The own person is excluded from every tag rule.
-    QString self;
-    if (m_demoSession) self = m_demoSession->selfName();
-    else if (m_controller && m_controller->tags()) self = m_controller->tags()->selfName();
-    if (!self.isEmpty() && self.compare(person, Qt::CaseInsensitive) == 0) return {};
+    PersonId self;
+    if (m_demoSession) self = m_demoSession->selfId();
+    else if (m_controller && m_controller->tags()) self = m_controller->tags()->selfId();
+    if (!self.isNull() && self == person) return {};
     const QStringList has = m_editor->personTagIds(person);
     for (const QString& id : m_editor->meetingTagIds()) {
         if (has.contains(id, Qt::CaseInsensitive)) continue;
@@ -2276,8 +2284,8 @@ QVariantMap TranscriptEditorViewModel::quickTagFor(const QString& personName) co
 
 bool TranscriptEditorViewModel::addQuickTag(const QString& personName, const QString& tagId)
 {
-    const QString person = personName.trimmed();
-    if (!m_editor || person.isEmpty() || tagId.isEmpty()) return false;
+    const PersonId person = m_editor ? m_editor->personChoice(personName).id : PersonId();
+    if (!m_editor || person.isNull() || tagId.isEmpty()) return false;
     bool ok = false;
     if (m_demoSession) ok = m_demoSession->addPersonTag(person, tagId);
     else if (m_controller && m_controller->tags()) ok = m_controller->tags()->addPersonTag(person, tagId).isValid();
@@ -2315,7 +2323,9 @@ QString TranscriptEditorViewModel::sideBasisText(const QString& speakerKey) cons
 
 QString TranscriptEditorViewModel::personOf(const QString& speakerKey) const
 {
-    return m_editor ? m_editor->speaker(speakerKey).personName : QString();
+    if (!m_editor) return {};
+    const editing::EditorSpeaker s = m_editor->speaker(speakerKey);
+    return s.anonymous ? QString() : s.displayName;
 }
 
 void TranscriptEditorViewModel::scheduleReview()
@@ -2364,6 +2374,7 @@ void TranscriptEditorViewModel::rebuildReview()
             v.ids = g.utteranceIds;
             v.currentKey = g.currentSpeakerKey;
             v.proposedKey = g.proposedSpeakerKey;
+            v.proposedPerson = g.proposedPersonId.toString();
             v.proposedName = g.proposedPersonName;
             if (g.proposeNew) v.newSide = sideName(g.proposedSide);
             const QString ctx = sides.value(!g.proposedSpeakerKey.isEmpty() ? g.proposedSpeakerKey : g.currentSpeakerKey);
@@ -2571,7 +2582,7 @@ bool TranscriptEditorViewModel::applyReviewGroup(const QString& groupId, bool no
                                  [&](const ReviewView& v) { return v.id == groupId; });
     if (it == m_reviewViews.cend() || !it->actionable) return false;
     const ReviewView v = *it;
-    if (v.proposedKey.isEmpty() && v.proposedName.isEmpty() && v.newSide.isEmpty()) return false;
+    if (v.proposedKey.isEmpty() && v.proposedPerson.isEmpty() && v.newSide.isEmpty()) return false;
     int moved = 0, last = -1;
     for (const QString& id : v.ids) {
         const int i = m_uttIndex.value(id, -1);
@@ -2587,7 +2598,7 @@ bool TranscriptEditorViewModel::applyReviewGroup(const QString& groupId, bool no
             if (i >= 0 && (v.proposedKey.isEmpty() || m_utts[i].speakerKey != v.proposedKey)) ids << id;
         }
         const QString key = !v.proposedKey.isEmpty() ? moveLines(ids, MoveTarget::Speaker, v.proposedKey, true)
-                          : !v.proposedName.isEmpty() ? moveLines(ids, MoveTarget::Person, v.proposedName, true)
+                          : !v.proposedPerson.isEmpty() ? moveLines(ids, MoveTarget::Person, v.proposedPerson, true)
                           : moveLines(ids, MoveTarget::NewParticipant, QString(), true);
         if (key.isEmpty()) return false;
         relabelGroupDecision(int(ids.size()), key);
@@ -2605,7 +2616,7 @@ bool TranscriptEditorViewModel::applyReviewGroup(const QString& groupId, bool no
         return false;
     }
     QString target = !v.proposedKey.isEmpty() && m_views.contains(v.proposedKey) ? v.proposedKey
-                                                                                   : speakerKeyForPerson(v.proposedName);
+                                                                                   : speakerKeyForPerson(v.proposedPerson);
     if (target.isEmpty())
         for (const QString& k : m_views.keys())
             if (!keysBefore.contains(k)) target = k;
@@ -2633,7 +2644,8 @@ bool TranscriptEditorViewModel::splitSpeaker(const QString& speakerKey)
     QString proposed;
     for (const editing::ReviewGroup& g : m_editor->reviewGroups())
         if (g.kind == editing::ReviewKind::ContaminatedCore && g.currentSpeakerKey == speakerKey)
-            proposed = !g.proposedSpeakerKey.isEmpty() ? g.proposedSpeakerKey : speakerKeyForPerson(g.proposedPersonName);
+            proposed = !g.proposedSpeakerKey.isEmpty() ? g.proposedSpeakerKey
+                                                       : speakerKeyForPerson(g.proposedPersonId.toString());
     ++m_opDepth;
     const bool ok = m_editor->splitSpeaker(speakerKey);
     --m_opDepth;
@@ -2942,11 +2954,13 @@ void TranscriptEditorViewModel::askNewPersonTag(const QString& name)
 {
     if (!m_change.active || !m_change.newPerson || name.trimmed().isEmpty()) return;
     QVector<library::PersonTagQuestion> questions;
+    const PersonId person = m_editor ? m_editor->personChoice(name).id : PersonId();
     if (demo()) {
         if (m_demoTagQuestion)
-            questions = {library::PersonTagQuestion{QStringLiteral("nordvik"), QStringLiteral("Nordvik"), {name.trimmed()}, true}};
-    } else if (m_controller && m_controller->tags()) {
-        questions = m_controller->tags()->learningQuestions(m_meetingId, {name.trimmed()});
+            questions = {library::PersonTagQuestion{QStringLiteral("nordvik"), QStringLiteral("Nordvik"),
+                                                    {person}, {name.trimmed()}, true}};
+    } else if (m_controller && m_controller->tags() && !person.isNull()) {
+        questions = m_controller->tags()->learningQuestions(m_meetingId, {person});
         m_controller->tags()->markLearningAsked(m_meetingId, questions);
     }
     if (questions.isEmpty()) return;

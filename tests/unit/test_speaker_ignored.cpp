@@ -41,6 +41,8 @@ QVector<float> voice(int k)
     return v;
 }
 
+PersonId P(const QString& name) { return name.isEmpty() ? PersonId() : PersonId::fromString(name.toCaseFolded()); }
+
 // ---- pure analysis ----
 struct L { int speaker; int axis; bool locked = false; bool noisy = false; bool ignored = false; };
 
@@ -160,7 +162,7 @@ struct Fixture {
         if (f.open(QIODevice::WriteOnly)) f.write(QJsonDocument(segs).toJson());
         f.close();
         meeting.hasTranscript = true;
-        meeting.speakerMap = names;
+        for (auto it = names.constBegin(); it != names.constEnd(); ++it) meeting.speakerMap.insert(it.key(), pid(it.value()));
         store->saveMeeting(meeting);
 
         const QVector<TranscriptLine> lines = editing::speakeredit::loadTranscriptLines(meeting.folder);
@@ -181,12 +183,14 @@ struct Fixture {
                       activity("loop", TrackKind::Loopback, total, loopSpans)};
     }
 
+    PersonId pid(const QString& name) { return people->ensure(name); }
+
     QString uid(int i) const { return QStringLiteral("u%1").arg(i * 5000); }
 
     std::unique_ptr<editing::SpeakerEditor> editor()
     {
         auto ed = std::make_unique<editing::SpeakerEditor>(store.get(), people.get(), prints.get(), meeting.id);
-        ed->setUserSpeakerName("Ádám");
+        ed->setSelfPerson(SelfPerson{pid("Ádám"), "Ádám"});
         const MeetingActivity a = act;
         ed->setActivityProvider([a](const Meeting&) { return a; });
         return ed;
@@ -309,7 +313,7 @@ private slots:
         QVector<Spec> spec{{"B1", 'L', 0, true}, {"B1", 'L', 0, true}, {"B1", 'R', 0, true},
                            {"B1", 'R', 0, true}, {"B1", 'R', 0, true}, {"B1", 'R', 0}};
         Scenario sc = scenario(spec, true);
-        editing::SideReport r = editing::analyzeSides(sc.in.meeting, sc.in.lines, sc.in.overlay, sc.act, QString());
+        editing::SideReport r = editing::analyzeSides(sc.in.meeting, sc.in.lines, sc.in.overlay, sc.act, SelfPerson{});
         QVERIFY(r.active);
         QCOMPARE(r.persons.size(), 1);
         QCOMPARE(r.persons[0].remoteLines, 3);
@@ -319,7 +323,7 @@ private slots:
         // microphone; the non-ignored loopback line is a contradiction, the ignored ones are not.
         for (int i = 2; i <= 4; ++i) spec[i].ignored = true;
         sc = scenario(spec, true);
-        r = editing::analyzeSides(sc.in.meeting, sc.in.lines, sc.in.overlay, sc.act, QString());
+        r = editing::analyzeSides(sc.in.meeting, sc.in.lines, sc.in.overlay, sc.act, SelfPerson{});
         QCOMPARE(r.persons[0].localLines, 2);
         QCOMPARE(r.persons[0].remoteLines, 0);
         QCOMPARE(r.persons[0].allLines.total(), 3);
@@ -368,8 +372,8 @@ private slots:
     void reviewSideConflictsSkipIgnored()
     {
         Scenario sc = scenario(sideScenario(), true);
-        sc.in.userName = "Ádám";
-        sc.in.meeting.speakerMap = {{"B1", "Ádám"}, {"B2", "Béla"}};
+        sc.in.self = SelfPerson{P("Ádám"), "Ádám"};
+        sc.in.meeting.speakerMap = {{"B1", P("Ádám")}, {"B2", P("Béla")}};
         editing::ReviewResult r = analyzeReview(sc.in, sc.act);
         QVERIFY(r.sideConflicts.contains("u15000"));
         sc.in.overlay.utterances["u15000"].ignored = true;
@@ -493,7 +497,7 @@ private slots:
         QVERIFY(!u.noisy);
 
         // To a person (a new participant) and to a new anonymous one in one step too.
-        const QString key = ed->moveUtterancesToPerson({fx.uid(5)}, "Cecil", true);
+        const QString key = ed->moveUtterancesToPerson({fx.uid(5)}, PersonChoice{PersonId(), "Cecil"}, true);
         QVERIFY(!key.isEmpty());
         QCOMPARE(ed->undoSerials().size(), 1);
         QVERIFY(ed->utterance(fx.uid(5)).noisy && ed->utterance(fx.uid(5)).manuallyCorrected);
@@ -562,7 +566,8 @@ private slots:
         QCOMPARE(st.size(), 2);
         const editing::SpeakerSampleStats* bela = statsOf(st, "B2");
         QVERIFY(bela);
-        QCOMPARE(bela->personName, QStringLiteral("Béla"));
+        QCOMPARE(bela->personId, fx.pid("Béla"));
+        QCOMPARE(bela->displayName, QStringLiteral("Béla"));
         QCOMPARE(bela->sampleLines, 3);
         QCOMPARE(bela->sampleMs, qint64(12000));
         QCOMPARE(bela->sessionAdded, 0);

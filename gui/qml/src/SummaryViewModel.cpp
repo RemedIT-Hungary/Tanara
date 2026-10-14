@@ -347,7 +347,7 @@ void SummaryViewModel::reloadParticipants()
     int utterances = 0;
     if (editor) {
         for (const editing::EditorSpeaker& s : editor->speakers())
-            m_speakers.append({s.displayName, s.personName, s.colorIndex, s.talkShare});
+            m_speakers.append({s.displayName, s.anonymous ? QString() : s.displayName, s.colorIndex, s.talkShare});
         utterances = editor->utteranceCount();
     }
     m_sourceUtterances = utterances;

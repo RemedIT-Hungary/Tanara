@@ -339,7 +339,7 @@ struct AppController::Impl {
     QSet<QString>    activityViewRunning; // meetingIds being computed now
     QHash<QString, std::shared_ptr<std::atomic<bool>>> analysisRuns;   // meetingId -> cancel flag
     std::shared_ptr<std::atomic<bool>> analysisShutdown = std::make_shared<std::atomic<bool>>(false);
-    std::function<QStringList(const QString&)> personTags;   // test seam (a person's tags)
+    std::function<QStringList(const PersonId&)> personTags;  // test seam (a person's tags)
     processing::participants::CandidateContext candidateContext() const;
     bool             voiceModelsApplied = false;
     // The editor's model list: the models in use; if none is usable (no model file), the enabled ones:
@@ -354,10 +354,31 @@ struct AppController::Impl {
     QVector<processing::VoiceprintBackfillSkip> backfillSkipped;              // samples skipped by the latest backfill
     int              backfillDone = 0;
     int              backfillTotal = 0;
-    void noteBackfillSkip(const QString& person, const QString& model, const Voiceprint& vp,
+    void noteBackfillSkip(const PersonId& person, const QString& model, const Voiceprint& vp,
                           processing::VoiceprintBackfillSkip::Reason reason);
     // A voiceprint to backfill: the sibling group's representative + the missing model + the source meeting.
-    struct BackfillJob { QString person; QString model; Voiceprint print; Meeting meeting; };
+    struct BackfillJob { PersonId person; QString model; Voiceprint print; Meeting meeting; };
+    // ---- people ----
+    // The current display names (people.json); for transcript.md, summaries, source references.
+    PersonNames personNames() const
+    {
+        if (!people) return {};
+        people->refresh();
+        return people->names();
+    }
+    SelfPerson selfPerson() const
+    {
+        SelfPerson self;
+        if (people) { people->refresh(); self.id = people->selfId(); }
+        if (settings) self.name = settings->settings().recording.userSpeakerName.trimmed();
+        return self;
+    }
+    // Makes sure the user's own person exists in people.json ("self"), named after the settings' name.
+    void ensureSelf();
+    // Whether the meeting refers to the person anywhere (speakerMap, participants, approval, overlay).
+    static bool meetingRefersTo(const Meeting& m, const PersonId& person);
+    // transcript.md with the current names + speakerMapChanged (after a person change).
+    void refreshMeetingNames(const Meeting& m);
     void finishBackfillJob(const BackfillJob& job, const QVector<float>& vec, bool missingAudio);
     void finishBackfill();
     RecordingState   state = RecordingState::Idle;
@@ -771,10 +792,10 @@ bool AppController::Impl::matchSpeaker(Meeting& m, const QString& rawLabel,
 {
     if (!voiceprints || embedding.isEmpty()) return false;
     const VoiceMatch match = voiceprints->bestMatch(embedding, embedding.keys());
-    if (match.score < kVoiceMatchThreshold || match.name.isEmpty()) return false;
-    m.speakerMap.insert(rawLabel, match.name);
-    if (people) people->add(match.name);
-    editing::speakeredit::recordIdentification(m.folder, rawLabel, match.name, match.score);
+    if (match.score < kVoiceMatchThreshold || match.personId.isNull()) return false;
+    if (people && !people->contains(match.personId)) return false;   // a voiceprint of an unknown person
+    m.speakerMap.insert(rawLabel, match.personId);
+    editing::speakeredit::recordIdentification(m.folder, rawLabel, match.personId, match.score);
     return true;
 }
 
@@ -785,7 +806,7 @@ void AppController::Impl::commitIdentification(const Meeting& m, MergedTranscrip
 {
     store->saveMeeting(m);
     if (!merged.tokens.isEmpty()) {
-        editing::speakeredit::applyResolvedSpeakers(merged, m);
+        editing::speakeredit::applyResolvedSpeakers(merged, m, personNames());
         TranscriptRepository::writeMarkdown(m.folder, merged.renderMarkdown());
     }
     if (editing::speakeredit::markSummaryStale(m, identifiedLabels)) emit q->summaryStaleChanged(m.id);
@@ -928,6 +949,7 @@ AppController::AppController(QObject* parent)
     connect(d->monitor, &recording::DeviceMonitor::levelPeak, this, &AppController::deviceLevelPeak);
 
     d->people = std::make_unique<library::PeopleStore>(ap.dataFile(paths::files::People));
+    d->ensureSelf();
 
     // Voice ID: the voiceprint DB + the model's location: <metaDir>/models/..., if absent, the
     // <appDir>/models/... packaged next to the application (Windows zip / installer).
@@ -966,11 +988,10 @@ AppController::AppController(QObject* parent)
     d->tags->setProfiles(d->profiles);
     // Tags on people: manual tags in people.json; the own person is left out.
     d->tags->setPeopleStore(d->people.get());
-    d->tags->setSelfNameProvider([this]() {
-        return d->settings ? d->settings->settings().recording.userSpeakerName : QString();
-    });
+    d->tags->setSelfProvider([this]() { return d->people ? d->people->selfId() : PersonId(); });
     connect(this, &AppController::peopleChanged, d->tags, &library::TagService::invalidatePersonStats);
     d->library->setTagService(d->tags);
+    d->library->setPeopleStore(d->people.get());
     d->embeddings = new library::EmbeddingIndex(d->store, this);
     d->embeddings->setProfiles(d->profiles);
     d->embeddingPreparer = new library::EmbeddingPreparer(
@@ -1115,6 +1136,7 @@ recording::DeviceManager*   AppController::devices()  const { return d->devices;
 library::MeetingRepository*    AppController::store()     const { return d->store; }
 library::TranscriptRepository* AppController::transcripts() const { return d->transcripts.get(); }
 library::UiStateRepository*    AppController::uiState()    const { return d->uiState.get(); }
+library::PeopleStore*     AppController::people() const { return d->people.get(); }
 library::VoiceprintStore* AppController::voiceprints() const { return d->voiceprints.get(); }
 library::PeopleService*   AppController::peopleService() const { return d->peopleService; }
 library::PeopleStats*     AppController::peopleStats() const { return d->peopleStats; }
@@ -1184,7 +1206,7 @@ void AppController::backfillVoiceprints()
     d->voiceprints->refresh();
     QVector<Impl::BackfillJob> jobs;
     QHash<QString, Meeting> meetings;
-    for (const QString& person : d->voiceprints->people()) {
+    for (const PersonId& person : d->voiceprints->people()) {
         for (const QString& model : std::as_const(d->voiceModelIds)) {
             // A sibling-exact list (printsMissingModel works at sampleRef level: it would mix up the same span of two
             // meetings' identically named mixes).
@@ -1199,7 +1221,7 @@ void AppController::backfillVoiceprints()
                     if (!d->backfillLogged.contains(key)) {
                         d->backfillLogged.insert(key);
                         qCInfo(lcVoice).noquote() << "Lenyomat-pótlás: a forrás-megbeszélés nincs meg, kihagyva:"
-                                                  << person << vp.sampleRef << model;
+                                                  << person.toString() << vp.sampleRef << model;
                     }
                     continue;
                 }
@@ -1251,7 +1273,7 @@ void AppController::Impl::finishBackfillJob(const BackfillJob& job, const QVecto
             backfillLogged.insert(key);
             qCInfo(lcVoice).noquote() << (missingAudio ? "Lenyomat-pótlás: hiányzó hang, kihagyva:"
                                                        : "Lenyomat-pótlás: nem számolható, kihagyva:")
-                                      << job.person << job.print.sampleRef << job.model;
+                                      << job.person.toString() << job.print.sampleRef << job.model;
         }
         return;
     }
@@ -1302,42 +1324,80 @@ void AppController::setLastUsedDeviceNames(const QStringList& names) {
 }
 
 QStringList AppController::knownPeople() const {
-    return d->people ? d->people->names() : QStringList();
+    QStringList out;
+    if (!d->people) return out;
+    d->people->refresh();
+    for (const Person& p : d->people->people()) out << p.displayName;
+    return out;
+}
+
+SelfPerson AppController::selfPerson() const { return d->selfPerson(); }
+
+void AppController::Impl::ensureSelf()
+{
+    if (!people || people->legacy() || !settings) return;
+    people->refresh();
+    if (!people->selfId().isNull() && people->contains(people->selfId())) return;
+    const QString name = settings->settings().recording.userSpeakerName.trimmed();
+    if (name.isEmpty()) return;
+    const PersonId id = people->ensure(name);
+    if (!id.isNull()) people->setSelfId(id);
+}
+
+bool AppController::Impl::meetingRefersTo(const Meeting& m, const PersonId& person)
+{
+    if (person.isNull()) return false;
+    for (const PersonId& p : m.speakerMap) if (p == person) return true;
+    for (const Participant& p : m.participants) if (p.personId == person) return true;
+    if (m.approval)
+        for (const ParticipantApprovalEntry& c : m.approval->candidates) if (c.personId == person) return true;
+    if (m.folder.isEmpty() || !QFile::exists(editing::speakeredit::overlayPath(m.folder))) return false;
+    const SpeakerOverlay ov = editing::speakeredit::loadOverlay(m.folder);
+    for (const OverlayParticipant& p : ov.participants) if (p.personId == person) return true;
+    for (const OverlayIdentification& i : ov.identified) if (i.personId == person) return true;
+    return false;
+}
+
+void AppController::Impl::refreshMeetingNames(const Meeting& m)
+{
+    MergedTranscript merged = TranscriptRepository::readTokens(m.folder);
+    if (!merged.tokens.isEmpty()) {
+        editing::speakeredit::applyResolvedSpeakers(merged, m, personNames());
+        TranscriptRepository::writeMarkdown(m.folder, merged.renderMarkdown());
+    }
+    emit q->speakerMapChanged(m.id);
 }
 
 void AppController::renameSpeaker(const QString& meetingId, const QString& rawLabel,
-                                 const QString& displayName, bool enroll) {
+                                 const PersonChoice& choice, bool enroll) {
     Meeting m = d->store->load(meetingId);
     if (m.id.isEmpty()) { emit errorOccurred(tr("Ismeretlen meeting: %1").arg(meetingId)); return; }
 
-    const QString name = displayName.trimmed();
-    if (name.isEmpty() || name == rawLabel) {
-        m.speakerMap.remove(rawLabel);
-    } else {
-        m.speakerMap.insert(rawLabel, name);
-        if (d->people) d->people->add(name);
-    }
+    const bool hadPeople = d->people && !choice.isAnonymous() && choice.id.isNull();
+    const PersonId person = choice.isAnonymous() || !d->people ? PersonId() : d->people->resolve(choice);
+    if (person.isNull()) m.speakerMap.remove(rawLabel);
+    else m.speakerMap.insert(rawLabel, person);
     d->store->saveMeeting(m);
+    if (hadPeople && !person.isNull()) emit peopleChanged();
 
     // Regenerating transcript.md with the FULL mapping (from the raw tokens).
     // segments.json STAYS RAW so the UI can relabel any time.
     MergedTranscript merged =
         TranscriptRepository::readTokens(m.folder);
     if (!merged.tokens.isEmpty()) {
-        editing::speakeredit::applyResolvedSpeakers(merged, m);
+        editing::speakeredit::applyResolvedSpeakers(merged, m, d->personNames());
         TranscriptRepository::writeMarkdown(m.folder, merged.renderMarkdown());
     }
     if (editing::speakeredit::markSummaryStale(m, {rawLabel})) emit summaryStaleChanged(meetingId);
     emit speakerMapChanged(meetingId);
 
-    // Manual labeling "teaches" voice ID: we record a voiceprint under the name.
-    if (enroll && !name.isEmpty() && name != rawLabel)
-        enrollSpeaker(meetingId, rawLabel, name);
+    // Manual labeling "teaches" voice ID: we record a voiceprint for the person.
+    if (enroll && !person.isNull())
+        enrollSpeaker(meetingId, rawLabel, person);
 }
 
-void AppController::enrollSpeaker(const QString& meetingId, const QString& rawLabel, const QString& name) {
-    const QString nm = name.trimmed();
-    if (nm.isEmpty()) return;
+void AppController::enrollSpeaker(const QString& meetingId, const QString& rawLabel, const PersonId& person) {
+    if (person.isNull()) return;
     const Meeting m = d->store->load(meetingId);
     if (m.id.isEmpty()) return;
     // No model: silently skipped (manual labeling works anyway).
@@ -1361,7 +1421,7 @@ void AppController::enrollSpeaker(const QString& meetingId, const QString& rawLa
     tmpl.sampleRef = representativeSampleRef(merged, rawLabel, src.fileRel);
     tmpl.sourceRefs = refs;
     tmpl.createdAt = QDateTime::currentDateTime().toString(Qt::ISODate);
-    for (const Voiceprint& vp : printsFromSet(set, tmpl)) d->voiceprints->addPrint(nm, vp);
+    for (const Voiceprint& vp : printsFromSet(set, tmpl)) d->voiceprints->addPrint(person, vp);
     emit voiceprintsChanged();
 }
 
@@ -1512,7 +1572,8 @@ QVector<ParticipantGuess> AppController::identifyParticipants(
             ParticipantGuess g;
             g.trackId = t.id;
             g.deviceName = t.deviceName;
-            g.name = (mt.score >= kVoiceMatchThreshold) ? mt.name : QString();
+            g.personId = (mt.score >= kVoiceMatchThreshold) ? mt.personId : PersonId();
+            g.displayName = d->people ? d->people->displayName(g.personId) : QString();
             g.score = mt.score;
             g.windows = idxs.size();
             g.sampleRef = QStringLiteral("%1#%2-%3").arg(t.file).arg(repStart).arg(repStart + kWinMs);
@@ -1525,23 +1586,24 @@ QVector<ParticipantGuess> AppController::identifyParticipants(
     return out;
 }
 
-void AppController::enrollVoiceprintFromSample(const QString& name, const QString& meetingId,
-                                              const QString& trackId, qint64 startMs, qint64 endMs) {
-    const QString nm = name.trimmed();
-    if (nm.isEmpty()) return;
+PersonId AppController::enrollVoiceprintFromSample(const PersonChoice& choice, const QString& meetingId,
+                                                  const QString& trackId, qint64 startMs, qint64 endMs) {
+    if (choice.isAnonymous()) return {};
     const Meeting m = d->store->load(meetingId);
-    if (m.id.isEmpty()) return;
-    if (!d->voiceModelUsable() || !d->voiceSet.ensureLoaded()) return;
+    if (m.id.isEmpty()) return {};
+    if (!d->voiceModelUsable() || !d->voiceSet.ensureLoaded()) return {};
     const Track* track = nullptr;
     for (const Track& t : m.tracks) if (t.id == trackId) { track = &t; break; }
-    if (!track) return;
+    if (!track) return {};
     const QString path = QDir(m.folder).filePath(track->file);
     // startMs/endMs in meeting time (like the sampleRef) -> the track file's time.
     const tanara::tracktiming::FileRange fr = tanara::tracktiming::fileRange(*track, startMs, endMs);
-    if (!fr.valid()) return;
+    if (!fr.valid()) return {};
     const EmbeddingSet set =
         d->voiceSet.embedPcm(processing::VoiceEmbedder::decodePcm16kMono(*d->media, path, fr.startMs, fr.endMs));
-    if (set.isEmpty()) return;
+    if (set.isEmpty()) return {};
+    const PersonId person = d->people ? d->people->resolve(choice) : choice.id;
+    if (person.isNull()) return {};
 
     Voiceprint tmpl;
     tmpl.sourceMeetingId = m.id;
@@ -1550,53 +1612,37 @@ void AppController::enrollVoiceprintFromSample(const QString& name, const QStrin
     tmpl.sampleRef = QStringLiteral("%1#%2-%3").arg(track->file).arg(startMs).arg(endMs);
     tmpl.sourceRefs = QStringList{tmpl.sampleRef};
     tmpl.createdAt = QDateTime::currentDateTime().toString(Qt::ISODate);
-    for (const Voiceprint& vp : printsFromSet(set, tmpl)) d->voiceprints->addPrint(nm, vp);
-    if (d->people) d->people->add(nm);
+    for (const Voiceprint& vp : printsFromSet(set, tmpl)) d->voiceprints->addPrint(person, vp);
     emit voiceprintsChanged();
     emit peopleChanged();
+    return person;
 }
 
-void AppController::renamePerson(const QString& oldName, const QString& newName) {
-    const QString o = oldName.trimmed(), n = newName.trimmed();
-    if (o.isEmpty() || n.isEmpty() || o == n) return;
-    if (d->tags) d->tags->renamePersonRefs(o, n);   // rejections + undo (BEFORE the rename)
-    if (d->people) d->people->rename(o, n);   // the whole record goes (nicknames, note, tags)
-    if (d->voiceprints) { d->voiceprints->renamePerson(o, n); emit voiceprintsChanged(); }
-
-    const QVector<Meeting> all = d->store->loadAll();
-    for (const Meeting& idx : all) {
-        Meeting m = d->store->load(idx.id);
-        bool changed = false;
-        // 1) Rewriting the existing mapping VALUES (diarized -> name).
-        for (auto it = m.speakerMap.begin(); it != m.speakerMap.end(); ++it)
-            if (it.value() == o) { it.value() = n; changed = true; }
-        // 2) Renaming the frozen track speaker (mic): updating track.speakerLabel, and, since the raw tokens
-        //    still say "o", an o -> n mapping so the already finished transcript shows the fresh name too.
-        bool micHadOld = false;
-        for (Track& tr : m.tracks)
-            if (tr.speakerLabel == o) { tr.speakerLabel = n; micHadOld = true; }
-        if (micHadOld) { m.speakerMap.insert(o, n); changed = true; }
-        // 3) The person name of manually added participants (transcript.speakers.json).
-        if (editing::speakeredit::renamePersonInOverlay(m.folder, o, n)) changed = true;
-
-        if (!changed) continue;
-        d->store->saveMeeting(m);
-        MergedTranscript merged = TranscriptRepository::readTokens(m.folder);
-        if (!merged.tokens.isEmpty()) {
-            editing::speakeredit::applyResolvedSpeakers(merged, m);
-            TranscriptRepository::writeMarkdown(m.folder, merged.renderMarkdown());
+// A rename writes ONE field (people.json). transcript.md is a derived file with the names in it: the meetings
+// showing the person regenerate it, and their speakerMapChanged makes open views reread.
+void AppController::renamePerson(const PersonId& person, const QString& newName) {
+    const QString n = newName.trimmed();
+    if (person.isNull() || n.isEmpty() || !d->people) return;
+    if (!d->people->rename(person, n)) return;
+    if (d->settings && d->people->selfId() == person) {
+        AppSettings s = d->settings->settings();
+        if (s.recording.userSpeakerName.trimmed() != n) {
+            s.recording.userSpeakerName = n;
+            d->settings->setSettings(s);
         }
-        emit speakerMapChanged(m.id);
+    }
+    for (const Meeting& idx : d->store->loadAll()) {
+        const Meeting m = d->store->load(idx.id);
+        if (Impl::meetingRefersTo(m, person)) d->refreshMeetingNames(m);
     }
     emit peopleChanged();
 }
 
-void AppController::removePerson(const QString& name) {
-    const QString nm = name.trimmed();
-    if (nm.isEmpty()) return;
-    if (d->people) d->people->remove(nm);
-    if (d->tags) d->tags->forgetPerson(nm);
-    if (d->voiceprints) { d->voiceprints->removePerson(nm); emit voiceprintsChanged(); }
+void AppController::removePerson(const PersonId& person) {
+    if (person.isNull()) return;
+    if (d->people) d->people->remove(person);
+    if (d->tags) d->tags->forgetPerson(person);
+    if (d->voiceprints) { d->voiceprints->removePerson(person); emit voiceprintsChanged(); }
 
     const QVector<Meeting> all = d->store->loadAll();
     for (const Meeting& idx : all) {
@@ -1604,18 +1650,115 @@ void AppController::removePerson(const QString& name) {
         bool changed = false;
         const QList<QString> keys = m.speakerMap.keys();
         for (const QString& key : keys)
-            if (m.speakerMap.value(key) == nm) { m.speakerMap.remove(key); changed = true; }
-        if (editing::speakeredit::removePersonFromOverlay(m.folder, nm)) changed = true;
-        if (!changed) continue;
-        d->store->saveMeeting(m);
-        MergedTranscript merged = TranscriptRepository::readTokens(m.folder);
-        if (!merged.tokens.isEmpty()) {
-            editing::speakeredit::applyResolvedSpeakers(merged, m);
-            TranscriptRepository::writeMarkdown(m.folder, merged.renderMarkdown());
-        }
-        emit speakerMapChanged(m.id);
+            if (m.speakerMap.value(key) == person) { m.speakerMap.remove(key); changed = true; }
+        for (Participant& p : m.participants)
+            if (p.personId == person) { p.personId = PersonId(); changed = true; }
+        if (m.approval)
+            for (ParticipantApprovalEntry& c : m.approval->candidates)
+                if (c.personId == person) { c.personId = PersonId(); changed = true; }
+        const bool overlay = editing::speakeredit::removePersonFromOverlay(m.folder, person);
+        if (!changed && !overlay) continue;
+        if (changed) d->store->saveMeeting(m);
+        d->refreshMeetingNames(m);
     }
     emit peopleChanged();
+}
+
+library::PersonMergeUndo AppController::mergePeople(const PersonId& keep, const PersonId& drop) {
+    library::PersonMergeUndo u;
+    if (!d->people || keep.isNull() || drop.isNull() || keep == drop) return u;
+    d->people->refresh();
+    if (!d->people->contains(keep) || !d->people->contains(drop)) return u;
+    u.keep = keep;
+    u.drop = drop;
+    u.keepBefore = d->people->person(keep);
+    u.dropBefore = d->people->person(drop);
+    u.selfWasDrop = d->people->selfId() == drop;
+    u.selfNameBefore = d->settings ? d->settings->settings().recording.userSpeakerName : QString();
+
+    // 1) The records: drop folds into keep (its name becomes a nickname; "self" moves to keep).
+    d->people->merge(keep, drop, /*dropNameAsAlias*/ true);
+    if (u.selfWasDrop && d->settings) {
+        AppSettings s = d->settings->settings();
+        s.recording.userSpeakerName = u.keepBefore.displayName;
+        d->settings->setSettings(s);
+    }
+    // 2) Voiceprints and tag rejections.
+    if (d->voiceprints) u.movedPrintIds = d->voiceprints->merge(drop, keep);
+    if (d->tags) u.rejections = d->tags->movePersonRefs(drop, keep);
+    // 3) Every meeting's references.
+    for (const Meeting& idx : d->store->loadAll()) {
+        Meeting m = d->store->load(idx.id);
+        library::PersonMergeMeeting mm;
+        mm.meetingId = m.id;
+        for (auto it = m.speakerMap.begin(); it != m.speakerMap.end(); ++it)
+            if (it.value() == drop) { it.value() = keep; mm.speakerMapKeys << it.key(); }
+        for (Participant& p : m.participants)
+            if (p.personId == drop) { p.personId = keep; mm.participantIds << p.id; }
+        if (m.approval)
+            for (ParticipantApprovalEntry& c : m.approval->candidates)
+                if (c.personId == drop) { c.personId = keep; mm.approvalParticipantIds << c.participantId; }
+        mm.overlay = editing::speakeredit::replacePersonInOverlay(m.folder, drop, keep);
+        if (mm.isEmpty()) continue;
+        if (!mm.speakerMapKeys.isEmpty() || !mm.participantIds.isEmpty() || !mm.approvalParticipantIds.isEmpty())
+            d->store->saveMeeting(m);
+        u.meetings.append(mm);
+        d->refreshMeetingNames(m);
+        emit participantsChanged(m.id);
+    }
+    emit voiceprintsChanged();
+    emit peopleChanged();
+    return u;
+}
+
+bool AppController::undoMergePeople(const library::PersonMergeUndo& u) {
+    if (!u.isValid() || !d->people) return false;
+    // 1) The records as they were (the dropped person comes back with its id).
+    d->people->restore(u.dropBefore);
+    d->people->restore(u.keepBefore);
+    if (u.selfWasDrop) {
+        d->people->setSelfId(u.drop);
+        if (d->settings) {
+            AppSettings s = d->settings->settings();
+            s.recording.userSpeakerName = u.selfNameBefore;
+            d->settings->setSettings(s);
+        }
+    }
+    // 2) Voiceprints and tag rejections.
+    if (d->voiceprints) {
+        d->voiceprints->refresh();
+        for (const QString& printId : u.movedPrintIds) {
+            PersonId owner;
+            Voiceprint vp;
+            if (!d->voiceprints->findPrint(printId, &owner, &vp) || owner != u.keep) continue;
+            d->voiceprints->removePrint(printId);
+            d->voiceprints->addPrint(u.drop, vp);
+        }
+    }
+    if (d->tags) d->tags->undoMovePersonRefs(u.keep, u.drop, u.rejections);
+    // 3) The recorded meeting references that still point to keep.
+    for (const library::PersonMergeMeeting& mm : u.meetings) {
+        Meeting m = d->store->load(mm.meetingId);
+        if (m.id.isEmpty()) continue;
+        bool changed = false;
+        for (const QString& key : mm.speakerMapKeys)
+            if (m.speakerMap.value(key) == u.keep) { m.speakerMap.insert(key, u.drop); changed = true; }
+        for (Participant& p : m.participants)
+            if (mm.participantIds.contains(p.id) && p.personId == u.keep) { p.personId = u.drop; changed = true; }
+        if (m.approval)
+            for (ParticipantApprovalEntry& c : m.approval->candidates)
+                if (mm.approvalParticipantIds.contains(c.participantId) && c.personId == u.keep) {
+                    c.personId = u.drop;
+                    changed = true;
+                }
+        if (changed) d->store->saveMeeting(m);
+        editing::speakeredit::restorePersonInOverlay(m.folder, mm.overlay, u.keep, u.drop);
+        d->refreshMeetingNames(m);
+        emit participantsChanged(m.id);
+    }
+    emit voiceprintsChanged();
+    emit peopleChanged();
+    return true;
 }
 
 void AppController::renameMeeting(const QString& meetingId, const QString& newTitle) {
@@ -1814,22 +1957,15 @@ void AppController::setUserSpeakerName(const QString& name) {
     const QString n = name.trimmed();
     if (n.isEmpty()) return;
     AppSettings s = d->settings->settings();
-    const QString old = s.recording.userSpeakerName.trimmed();
-    if (old == n) {
-        if (d->people) d->people->add(n);
-        emit peopleChanged();
-        return;
+    if (s.recording.userSpeakerName.trimmed() != n) {
+        s.recording.userSpeakerName = n;
+        d->settings->setSettings(s);
     }
-    s.recording.userSpeakerName = n;
-    d->settings->setSettings(s);
-    // The name change should propagate to EVERY meeting: the mic track's frozen speaker name, the mappings
-    // and the voiceprints are rewritten too (renamePerson handles all of this).
-    if (!old.isEmpty())
-        renamePerson(old, n);                 // emits peopleChanged + speakerMapChanged from inside
-    else {
-        if (d->people) d->people->add(n);
-        emit peopleChanged();
-    }
+    // The own person's record: ONE field (renamePerson refreshes the meetings showing it).
+    d->ensureSelf();
+    const PersonId self = d->people ? d->people->selfId() : PersonId();
+    if (!self.isNull() && d->people->displayName(self) != n) renamePerson(self, n);
+    else emit peopleChanged();
 }
 
 void AppController::startLevelMonitoring() {
@@ -2273,7 +2409,7 @@ cloud::EstimateRequest AppController::makeEstimateRequest(const QString& meeting
         if (merged.tokens.isEmpty() && !m.folder.isEmpty())
             merged = TranscriptRepository::readTokens(m.folder);
         if (!merged.tokens.isEmpty()) {
-            editing::speakeredit::applyResolvedSpeakers(merged, m);
+            editing::speakeredit::applyResolvedSpeakers(merged, m, d->personNames());
             in.hasTranscript = true;
             in.transcriptChars = int(merged.renderMarkdown().size() + m.contextNote.size());
             in.contextNoteChars = int(m.contextNote.size());
@@ -2448,7 +2584,7 @@ void AppController::retranscribeMeeting(const QString& meetingId, bool keepBacku
     if (d->jobs->isRunning(meetingId, JobKind::Transcribe))
         return;   // a transcription is already running on this meeting
     // The current transcript (with the names and manual corrections) stays as a copy, if requested.
-    if (keepBackup) editing::speakeredit::backupTranscript(m);
+    if (keepBackup) editing::speakeredit::backupTranscript(m, d->personNames());
     // Both the speaker assignments (speakerMap) AND the manual line corrections (overlay) are cleared when the
     // NEW transcript arrives, not beforehand: the speakerMap in the transcription's finished branch, the
     // overlay in the transcriptReady hook. If the re-transcription is cancelled or fails, the old transcript
@@ -2734,7 +2870,7 @@ void AppController::summarizeMeeting(const QString& meetingId)
         emit errorOccurred(tr("Nincs átirat — előbb futtass átírást."));
         return;
     }
-    editing::speakeredit::applyResolvedSpeakers(merged, m);   // Gemma should see the real names
+    editing::speakeredit::applyResolvedSpeakers(merged, m, d->personNames());   // Gemma should see the real names
 
     const AppSettings s = d->settings->settings();
     const QString llmId = s.providers.llm.selectedId;
@@ -2757,7 +2893,7 @@ void AppController::summarizeMeeting(const QString& meetingId)
     req.temperature = cfg.temperature;
     // For the source references: the utterances with their current (resolved) speaker; this becomes the
     // summary's speaker snapshot (the targeted staleness compares against it).
-    req.sourceLines = editing::speakeredit::resolvedSourceLines(m);
+    req.sourceLines = editing::speakeredit::resolvedSourceLines(m, d->personNames());
     req.adaptToContext = !run;   // with Tanara Cloud the context is the gateway's business
     const processing::SummaryPlan plan = processing::SummaryService::plan(req);
     const auto ctx = std::make_shared<Impl::LlmContextState>();
@@ -2937,7 +3073,7 @@ void AppController::extractMeetingTopics(const QString& meetingId)
     if (merged.tokens.isEmpty())
         merged = TranscriptRepository::readTokens(m.folder);
     if (merged.tokens.isEmpty()) { emit errorOccurred(tr("Nincs átirat — előbb futtass átírást.")); return; }
-    editing::speakeredit::applyResolvedSpeakers(merged, m);
+    editing::speakeredit::applyResolvedSpeakers(merged, m, d->personNames());
     const QString transcriptMd = merged.renderMarkdown();
 
     const AppSettings s = d->settings->settings();
@@ -3180,7 +3316,7 @@ void AppController::startNextTopicJob()
     if (merged.tokens.isEmpty())
         merged = TranscriptRepository::readTokens(m.folder);
     if (merged.tokens.isEmpty()) { failEarly(tr("Nincs átirat — előbb futtass átírást.")); return; }
-    editing::speakeredit::applyResolvedSpeakers(merged, m);
+    editing::speakeredit::applyResolvedSpeakers(merged, m, d->personNames());
 
     const AppSettings s = d->settings->settings();
     CloudRunPtr run = d->complexRuns.value(m.id);
@@ -3435,7 +3571,7 @@ QString AppController::importAudio(const library::ImportRequest& request)
     }
     const AppSettings s = d->settings->settings();
     d->importer->setOpusBitrateKbps(opusBitrateKbps(s.recording.audioQuality));
-    d->importer->setUserSpeakerName(s.recording.userSpeakerName);
+    d->importer->setSelfPerson(d->selfPerson());
     return d->importer->start(request);
 }
 
@@ -4285,7 +4421,7 @@ editing::SpeakerEditor* AppController::speakerEditor(const QString& meetingId)
     if (m.id.isEmpty()) return nullptr;
 
     auto* ed = new editing::SpeakerEditor(d->store, d->people.get(), d->voiceprints.get(), meetingId, this);
-    ed->setUserSpeakerName(d->settings->settings().recording.userSpeakerName);
+    ed->setSelfPerson(d->selfPerson());
     // Without voice ID (no model / TANARA_BUILD_VOICEID=OFF) the editor is fully functional even without
     // uncertainty and suggestions.
     ed->setVoiceModelIds(d->editorModelIds(d->settings));
@@ -4300,7 +4436,7 @@ editing::SpeakerEditor* AppController::speakerEditor(const QString& meetingId)
     {
         library::TagService* ts = d->tags;
         ed->setPersonTagsProvider(d->personTags ? d->personTags
-                                                : [ts](const QString& n) { return ts ? ts->tagsOfPerson(n) : QStringList(); });
+                                                : [ts](const PersonId& p) { return ts ? ts->tagsOfPerson(p) : QStringList(); });
     }
     d->speakerEditors.insert(meetingId, ed);
     meetingUndo(meetingId);   // the shared undo follows from the editor's first step
@@ -4340,7 +4476,7 @@ SummaryStaleInfo AppController::summaryStale(const QString& meetingId) const
     editing::SpeakerEditor* ed = d->speakerEditors.value(meetingId);
     SummaryStaleInfo info = ed ? ed->summaryStale() : editing::speakeredit::summaryStale(m);
     // The editor persists after every step, so the targeted part can be computed from disk.
-    if (!m.id.isEmpty()) editing::speakeredit::fillTargetedStale(m, info);
+    if (!m.id.isEmpty()) editing::speakeredit::fillTargetedStale(m, d->personNames(), info);
     return info;
 }
 
@@ -4350,7 +4486,7 @@ QVector<SummaryStatement> AppController::summaryStatements(const QString& meetin
     if (m.id.isEmpty()) return {};
     SummaryStaleInfo info;
     QVector<SummaryStatement> out;
-    editing::speakeredit::fillTargetedStale(m, info, &out);
+    editing::speakeredit::fillTargetedStale(m, d->personNames(), info, &out);
     return out;
 }
 
@@ -4395,26 +4531,27 @@ void AppController::dismissSummaryStale(const QString& meetingId)
 processing::participants::CandidateContext AppController::Impl::candidateContext() const
 {
     processing::participants::CandidateContext ctx;
-    ctx.selfName = settings->settings().recording.userSpeakerName.trimmed();
+    ctx.self = selfPerson();
+    ctx.names = personNames();
     library::VoiceprintStore* vp = voiceprints.get();
     ctx.rank = [vp](const EmbeddingSet& set) {
         return vp ? vp->rankedMatches(set, set.keys()) : QVector<VoiceMatch>();
     };
-    ctx.hasVoiceprint = [vp](const QString& name) { return vp && vp->printCount(name) > 0; };
+    ctx.hasVoiceprint = [vp](const PersonId& person) { return vp && vp->printCount(person) > 0; };
     library::TagService* ts = tags;
     // The tag evidence (UX plan rule 4): the TagService snapshot, manual tag and learned association; the
     // configured seam (tests) overrides the manual tags.
-    ctx.tagEvidence = [ts, override = personTags](const QString& name, const QStringList& meetingTags,
+    ctx.tagEvidence = [ts, override = personTags](const PersonId& person, const QStringList& meetingTags,
                                                   const QString& meetingId) {
         if (!ts) return library::TagEvidence();
         library::PersonTagSnapshot snap = ts->personTagSnapshot();
-        if (override) snap.manual.insert(library::persontags::personKey(name), override(name));
-        return snap.evidence(name, meetingTags, meetingId);
+        if (override) snap.manual.insert(person, override(person));
+        return snap.evidence(person, meetingTags, meetingId);
     };
     return ctx;
 }
 
-void AppController::setPersonTagsProvider(std::function<QStringList(const QString&)> provider)
+void AppController::setPersonTagsProvider(std::function<QStringList(const PersonId&)> provider)
 {
     d->personTags = std::move(provider);
 }
@@ -4622,8 +4759,7 @@ QStringList AppController::speakerKeysFor(const Meeting& m, const QString& id)
     for (const QString& r : p->rawSpeakerIds) raws << r.section(QLatin1Char('@'), 0, 0);
     QStringList keys;
     for (const editing::EditorSpeaker& s : speakers) {
-        const bool byName = !p->personName.isEmpty()
-                         && s.personName.compare(p->personName, Qt::CaseInsensitive) == 0;
+        const bool byName = !p->personId.isNull() && s.personId == p->personId;
         const bool byRaw = !s.rawLabel.isEmpty() && raws.contains(s.rawLabel);
         if ((byName || byRaw) && !keys.contains(s.key)) keys << s.key;
     }
@@ -4921,8 +5057,9 @@ bool AppController::applyParticipantsToTranscript(const QString& meetingId)
     if (lines.isEmpty()) return false;
     QVector<SpeakerBinding> bindings;
     if (m.approval->solo) {
-        const QString self = d->settings->settings().recording.userSpeakerName.trimmed();
-        if (self.isEmpty()) return false;
+        d->ensureSelf();
+        const PersonId self = d->selfPerson().id;
+        if (self.isNull()) return false;
         QStringList raws;
         for (const TranscriptLine& l : lines)
             if (!l.rawLabel.isEmpty() && !raws.contains(l.rawLabel)) raws << l.rawLabel;
@@ -4954,17 +5091,16 @@ bool AppController::approveParticipants(const QString& meetingId, const QVector<
         for (int i = 0; i < m.participants.size(); ++i)
             if (!a.id.isEmpty() && m.participants.at(i).id == a.id) idx = i;
         if (idx < 0) {
-            // The new person added in the dialog.
+            // The new person added in the dialog (the caller resolved / created the person).
             Participant p = a;
-            p.personName = a.personName.trimmed();
-            if (p.personName.isEmpty()) continue;
+            if (p.personId.isNull()) continue;
             p.id = QStringLiteral("m-") + QUuid::createUuid().toString(QUuid::Id128).left(8);
             p.source = ParticipantSource::Manual;
             p.evidence = processing::participants::participantEvidence(p, !p.sides.isEmpty(), -1.0, m, ctx);
             m.participants.append(p);
             idx = m.participants.size() - 1;
-        } else if (!a.personName.trimmed().isEmpty()) {
-            m.participants[idx].personName = a.personName.trimmed();   // name edited
+        } else if (!a.personId.isNull()) {
+            m.participants[idx].personId = a.personId;   // person changed in the dialog
         }
         acceptedIds << m.participants.at(idx).id;
     }
@@ -4973,9 +5109,8 @@ bool AppController::approveParticipants(const QString& meetingId, const QVector<
     ap.at = QDateTime::currentDateTime().toString(Qt::ISODate);
     ap.modelIds = processing::ParticipantAnalysisFile::load(m.folder).modelIds;
     for (Participant& p : m.participants) {
-        p.approved = acceptedIds.contains(p.id) && !p.personName.isEmpty();
-        if (p.approved && d->people) d->people->add(p.personName);
-        ap.candidates.append({p.id, p.personName, processing::participants::participantGroup(p), p.approved,
+        p.approved = acceptedIds.contains(p.id) && !p.personId.isNull();
+        ap.candidates.append({p.id, p.personId, processing::participants::participantGroup(p), p.approved,
                               p.rawSpeakerIds});
     }
     m.approval = ap;
@@ -4996,7 +5131,7 @@ bool AppController::skipApproval(const QString& meetingId)
     ap.modelIds = processing::ParticipantAnalysisFile::load(m.folder).modelIds;
     ap.skipped = true;
     for (const Participant& p : m.participants)
-        ap.candidates.append({p.id, p.personName, processing::participants::participantGroup(p), false, p.rawSpeakerIds});
+        ap.candidates.append({p.id, p.personId, processing::participants::participantGroup(p), false, p.rawSpeakerIds});
     m.approval = ap;
     d->store->saveMeeting(m);
     emit participantsChanged(meetingId);
@@ -5013,7 +5148,8 @@ bool AppController::unbindParticipant(const QString& meetingId, const QString& p
         if (m.participants.at(i).id == participantId) idx = i;
     if (idx < 0) return false;
     Participant& p = m.participants[idx];
-    undoScope.text = tr("Nem volt ott: %1").arg(p.personName);
+    const QString pname = d->people ? d->people->displayName(p.personId) : QString();
+    undoScope.text = tr("Nem volt ott: %1").arg(pname);
 
     // Its lines go anonymous: the bound raw speakers (for a two-sided one only that side's lines), and every
     // speaker bound to the person (e.g. from an earlier automatic identification).
@@ -5023,18 +5159,18 @@ bool AppController::unbindParticipant(const QString& meetingId, const QString& p
         const processing::ParticipantAnalysisFile file = processing::ParticipantAnalysisFile::load(m.folder);
         const MeetingActivity act =
             MeetingActivity::load(m.folder, processing::trackactivity::activityFingerprint(m, m.folder));
-        Participant named = p;   // only their bindings (with the name, so two-sided lines come out)
-        if (named.personName.isEmpty()) named.personName = QStringLiteral("?");
+        Participant named = p;   // only their bindings (with a person, so two-sided lines come out)
+        if (named.personId.isNull()) named.personId = PersonId::fromString(QStringLiteral("?"));
         for (SpeakerBinding b : processing::participants::approvalBindings({named}, {p.id}, lines, file.clusters,
                                                                act.isEmpty() ? nullptr : &act)) {
-            b.personName.clear();
+            b.personId = PersonId();
             bindings.append(b);
         }
-        if (!p.personName.isEmpty())
+        if (!p.personId.isNull())
             if (editing::SpeakerEditor* ed = speakerEditor(meetingId))
                 for (const editing::EditorSpeaker& s : ed->speakers())
-                    if (s.personName.compare(p.personName, Qt::CaseInsensitive) == 0)
-                        bindings.append({s.key, QString(), {}});
+                    if (s.personId == p.personId)
+                        bindings.append({s.key, PersonId(), {}});
     }
     p.approved = false;
     p.rawSpeakerIds.clear();
@@ -5042,27 +5178,30 @@ bool AppController::unbindParticipant(const QString& meetingId, const QString& p
         for (ParticipantApprovalEntry& e : m.approval->candidates)
             if (e.participantId == participantId) e.checked = false;
     d->store->saveMeeting(m);
-    applySpeakerBindings(meetingId, bindings, tr("Nem volt ott: %1").arg(p.personName));
+    applySpeakerBindings(meetingId, bindings, tr("Nem volt ott: %1").arg(pname));
     emit participantsChanged(meetingId);
     return true;
 }
 
-QString AppController::addParticipant(const QString& meetingId, const QString& personName)
+QString AppController::addParticipant(const QString& meetingId, const PersonChoice& choice)
 {
-    ParticipantUndoScope undoScope(this, meetingId, tr("Résztvevő felvéve: %1").arg(personName.trimmed()));
-    const QString name = personName.trimmed();
+    const QString label = !choice.id.isNull() && d->people ? d->people->displayName(choice.id) : choice.newName;
+    ParticipantUndoScope undoScope(this, meetingId, tr("Résztvevő felvéve: %1").arg(label));
     Meeting m = d->store->load(meetingId);
-    if (m.id.isEmpty() || name.isEmpty()) return {};
-    for (const Participant& p : m.participants)
-        if (p.personName.compare(name, Qt::CaseInsensitive) == 0) return p.id;
+    if (m.id.isEmpty() || choice.isAnonymous()) return {};
+    if (!choice.id.isNull())
+        for (const Participant& p : m.participants)
+            if (p.personId == choice.id) return p.id;
+    const PersonId person = d->people ? d->people->resolve(choice) : choice.id;
+    if (person.isNull()) return {};
+    if (choice.id.isNull()) emit peopleChanged();
     Participant p;
     p.id = QStringLiteral("m-") + QUuid::createUuid().toString(QUuid::Id128).left(8);
-    p.personName = name;
+    p.personId = person;
     p.source = ParticipantSource::Manual;
     p.evidence = processing::participants::participantEvidence(p, false, -1.0, m, d->candidateContext());
     m.participants.append(p);
     d->store->saveMeeting(m);
-    if (d->people) d->people->add(name);
     emit participantsChanged(meetingId);
     return p.id;
 }
@@ -5070,22 +5209,24 @@ QString AppController::addParticipant(const QString& meetingId, const QString& p
 bool AppController::setSoloMeeting(const QString& meetingId)
 {
     ParticipantUndoScope undoScope(this, meetingId, tr("Csak én beszéltem"));
-    const QString self = d->settings->settings().recording.userSpeakerName.trimmed();
+    d->ensureSelf();
+    const SelfPerson me = d->selfPerson();
+    const PersonId self = me.id;
     Meeting m = d->store->load(meetingId);
-    if (m.id.isEmpty() || self.isEmpty()) return false;
+    if (m.id.isEmpty() || self.isNull() || me.name.isEmpty()) return false;   // no own name configured
     if (const auto it = d->analysisRuns.constFind(meetingId); it != d->analysisRuns.constEnd())
         it.value()->store(true);   // the running analysis's result is no longer needed
 
     bool have = false;
     for (Participant& p : m.participants) {
-        const bool me = p.personName.compare(self, Qt::CaseInsensitive) == 0;
+        const bool me = p.personId == self;
         p.approved = me;
         have = have || me;
     }
     if (!have) {
         Participant p;
         p.id = QStringLiteral("m-") + QUuid::createUuid().toString(QUuid::Id128).left(8);
-        p.personName = self;
+        p.personId = self;
         p.source = ParticipantSource::Manual;
         p.approved = true;
         p.evidence = processing::participants::participantEvidence(p, false, -1.0, m, d->candidateContext());
@@ -5095,7 +5236,7 @@ bool AppController::setSoloMeeting(const QString& meetingId)
     ap.at = QDateTime::currentDateTime().toString(Qt::ISODate);
     ap.solo = true;
     for (const Participant& p : m.participants)
-        ap.candidates.append({p.id, p.personName, processing::participants::participantGroup(p), p.approved, p.rawSpeakerIds});
+        ap.candidates.append({p.id, p.personId, processing::participants::participantGroup(p), p.approved, p.rawSpeakerIds});
     m.approval = ap;
     d->store->saveMeeting(m);
     if (m.hasTranscript) applyParticipantsToTranscript(meetingId);
@@ -5139,14 +5280,15 @@ bool AppController::removeParticipant(const QString& meetingId, const QString& p
         if (!ed) return false;
         for (const editing::EditorSpeaker& s : ed->speakers()) {
             if (s.key != participantId || s.anonymous) continue;
-            undoScope.text = tr("Nem volt ott: %1").arg(s.personName);
-            applySpeakerBindings(meetingId, {{s.key, QString(), {}}}, undoScope.text);
+            undoScope.text = tr("Nem volt ott: %1").arg(s.displayName);
+            applySpeakerBindings(meetingId, {{s.key, PersonId(), {}}}, undoScope.text);
             emit participantsChanged(meetingId);
             return true;
         }
         return false;
     }
-    if (!it0->personName.isEmpty()) undoScope.text = tr("Résztvevő eltávolítva: %1").arg(it0->personName);
+    if (!it0->personId.isNull() && d->people)
+        undoScope.text = tr("Résztvevő eltávolítva: %1").arg(d->people->displayName(it0->personId));
 
     // Its lines go anonymous (one editor step, which the shared step absorbs), then the deletion.
     unbindParticipant(meetingId, participantId);
@@ -5168,23 +5310,23 @@ QVector<Participant> AppController::unheardParticipants(const QString& meetingId
     const Meeting m = d->store->load(meetingId);
     if (m.id.isEmpty() || !m.hasTranscript) return {};
     // The persons of the transcript's speakers: from the open editor, otherwise resolved from disk.
-    QSet<QString> heard;
+    QSet<PersonId> heard;
     if (editing::SpeakerEditor* ed = d->speakerEditors.value(meetingId)) {
         for (const editing::EditorSpeaker& s : ed->speakers())
-            if (s.utteranceCount > 0 && !s.personName.isEmpty()) heard.insert(s.personName.toLower());
+            if (s.utteranceCount > 0 && !s.personId.isNull()) heard.insert(s.personId);
     } else {
         const QVector<TranscriptLine> lines = editing::speakeredit::loadTranscriptLines(m.folder);
         const SpeakerOverlay ov = editing::speakeredit::loadOverlayFor(m.folder, lines);
         QSet<QString> keys;
         for (const TranscriptLine& l : lines) keys.insert(editing::speakeredit::resolveSpeakerKey(ov, l));
         for (const QString& k : std::as_const(keys)) {
-            const QString person = editing::speakeredit::speakerPerson(ov, m.speakerMap, k);
-            if (!person.isEmpty()) heard.insert(person.toLower());
+            const PersonId person = editing::speakeredit::speakerPerson(ov, m.speakerMap, k);
+            if (!person.isNull()) heard.insert(person);
         }
     }
     QVector<Participant> out;
     for (const Participant& p : m.participants)
-        if (!p.personName.isEmpty() && p.rawSpeakerIds.isEmpty() && !heard.contains(p.personName.toLower()))
+        if (!p.personId.isNull() && p.rawSpeakerIds.isEmpty() && !heard.contains(p.personId))
             out.append(p);
     return out;
 }
@@ -5198,14 +5340,15 @@ QVector<processing::VoiceprintBackfillSkip> AppController::backfillSkippedSample
     return out;
 }
 
-void AppController::Impl::noteBackfillSkip(const QString& person, const QString& model, const Voiceprint& vp,
+void AppController::Impl::noteBackfillSkip(const PersonId& person, const QString& model, const Voiceprint& vp,
                                            processing::VoiceprintBackfillSkip::Reason reason)
 {
     for (const processing::VoiceprintBackfillSkip& s : std::as_const(backfillSkipped))
-        if (s.person == person && s.model == model && s.sampleRef == vp.sampleRef
+        if (s.personId == person && s.model == model && s.sampleRef == vp.sampleRef
             && s.sourceMeetingId == vp.sourceMeetingId)
             return;
-    backfillSkipped.append({person, model, vp.sampleRef, vp.sourceMeetingId, reason});
+    const QString name = people ? people->displayName(person) : QString();
+    backfillSkipped.append({person, name, model, vp.sampleRef, vp.sourceMeetingId, reason});
 }
 
 void AppController::rescanVoiceModels()

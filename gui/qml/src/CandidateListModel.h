@@ -37,7 +37,7 @@ public:
     enum Role {
         SpeakerKeyRole = Qt::UserRole + 1,  // empty: a known person outside the meeting
         NameRole,
-        PersonNameRole,
+        PersonNameRole, PersonIdRole,
         ColorIndexRole,                     // -1: a person outside the meeting (neutral avatar)
         SubTextRole,                        // "86 rows here" / "is them now" / "12 meetings"
         EvidenceRole,                       // [evidence map]
@@ -83,7 +83,8 @@ private:
     struct Item {
         QString speakerKey;
         QString name;
-        QString personName;
+        QString personName;     // the candidate person's display name (empty = an anonymous speaker)
+        QString personId;       // ...and their PersonId (the pickers hand this back)
         int colorIndex = -1;
         QString subText;
         QVariantList evidence;

@@ -124,7 +124,7 @@ QJsonObject toJson(const Participant& p)
 {
     QJsonObject o;
     o[QStringLiteral("id")]            = p.id;
-    o[QStringLiteral("personName")]    = p.personName;
+    if (!p.personId.isNull()) o[QStringLiteral("personId")] = p.personId.toString();
     o[QStringLiteral("rawSpeakerIds")] = stringListToArray(p.rawSpeakerIds);
     o[QStringLiteral("source")]        = participantSourceName(p.source);
     o[QStringLiteral("approved")]      = p.approved;
@@ -141,7 +141,7 @@ Participant participantFromJson(const QJsonObject& o)
 {
     Participant p;
     p.id            = o.value(QStringLiteral("id")).toString();
-    p.personName    = o.value(QStringLiteral("personName")).toString();
+    p.personId      = PersonId::fromString(o.value(QStringLiteral("personId")).toString());
     p.rawSpeakerIds = arrayToStringList(o.value(QStringLiteral("rawSpeakerIds")).toArray());
     p.source        = participantSourceFromName(o.value(QStringLiteral("source")).toString());
     p.approved      = o.value(QStringLiteral("approved")).toBool();
@@ -162,7 +162,7 @@ QJsonObject toJson(const ParticipantApproval& a)
     for (const ParticipantApprovalEntry& c : a.candidates) {
         QJsonObject co;
         co[QStringLiteral("participantId")] = c.participantId;
-        co[QStringLiteral("personName")]    = c.personName;
+        if (!c.personId.isNull()) co[QStringLiteral("personId")] = c.personId.toString();
         co[QStringLiteral("group")]         = participantGroupName(c.group);
         co[QStringLiteral("checked")]       = c.checked;
         co[QStringLiteral("rawSpeakerIds")] = stringListToArray(c.rawSpeakerIds);
@@ -183,7 +183,7 @@ ParticipantApproval participantApprovalFromJson(const QJsonObject& o)
         const QJsonObject co = v.toObject();
         ParticipantApprovalEntry c;
         c.participantId = co.value(QStringLiteral("participantId")).toString();
-        c.personName    = co.value(QStringLiteral("personName")).toString();
+        c.personId      = PersonId::fromString(co.value(QStringLiteral("personId")).toString());
         c.group         = participantGroupFromName(co.value(QStringLiteral("group")).toString());
         c.checked       = co.value(QStringLiteral("checked")).toBool();
         c.rawSpeakerIds = arrayToStringList(co.value(QStringLiteral("rawSpeakerIds")).toArray());

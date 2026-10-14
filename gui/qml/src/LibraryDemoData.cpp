@@ -140,6 +140,8 @@ QVector<DemoMeeting> build(bool en)
         e.hasSummary = r.summary == StepState::Done;
         e.section = tanara::library::MeetingLibrary::sectionFor(e.startedAt, today);
         e.participants = demotext::names(QString::fromUtf8(r.people).split(QLatin1Char(','), Qt::SkipEmptyParts));
+        // The demo's people have no store: the name stands in as their (fictional) PersonId.
+        for (const QString& n : std::as_const(e.participants)) e.participantIds << tanara::PersonId::fromString(n);
         e.state.meetingId = e.id;
         e.state.transcriptState = r.transcript;
         e.state.summaryState = r.summary;
@@ -241,8 +243,8 @@ tanara::library::LibraryResult query(const tanara::library::LibraryQuery& q)
         if (q.noTranscript && e.hasTranscript) continue;
         if (q.noSummary && e.hasSummary) continue;
         bool peopleOk = true;
-        for (const QString& p : q.people)
-            if (!e.participants.contains(p)) { peopleOk = false; break; }
+        for (const tanara::PersonId& p : q.people)
+            if (!e.participantIds.contains(p)) { peopleOk = false; break; }
         if (!peopleOk) continue;
         if (!q.tags.isEmpty() || q.untagged) {
             bool ok = q.untagged && e.tagIds.isEmpty();
@@ -289,7 +291,7 @@ QVector<tanara::library::PersonPresence> people()
         }
     QVector<tanara::library::PersonPresence> out;
     for (const QString& p : std::as_const(order))
-        out.append({p, counts.value(p)});
+        out.append({tanara::PersonId::fromString(p), p, counts.value(p)});
     std::stable_sort(out.begin(), out.end(), [](const tanara::library::PersonPresence& a,
                                                 const tanara::library::PersonPresence& b) {
         return a.meetingCount > b.meetingCount;

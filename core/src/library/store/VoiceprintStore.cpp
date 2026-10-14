@@ -19,19 +19,6 @@
 
 namespace tanara::library {
 
-namespace {
-
-QString findPersonByName(const QMap<QString, QVector<Voiceprint>>& people, const QString& name)
-{
-    // Case-insensitive key lookup (returns the stored spelling).
-    for (auto it = people.constBegin(); it != people.constEnd(); ++it)
-        if (it.key().compare(name, Qt::CaseInsensitive) == 0)
-            return it.key();
-    return QString();
-}
-
-} // namespace
-
 VoiceprintStore::VoiceprintStore(const QString& filePath)
 {
     m_filePath = filePath.isEmpty()
@@ -40,22 +27,19 @@ VoiceprintStore::VoiceprintStore(const QString& filePath)
     load();
 }
 
-QStringList VoiceprintStore::people() const
+PersonIds VoiceprintStore::people() const
 {
-    QStringList names = m_people.keys();
-    names.sort(Qt::CaseInsensitive);
-    return names;
+    return PersonIds(m_people.keyBegin(), m_people.keyEnd());
 }
 
-QVector<Voiceprint> VoiceprintStore::printsFor(const QString& name) const
+QVector<Voiceprint> VoiceprintStore::printsFor(const PersonId& person) const
 {
-    const QString key = findPersonByName(m_people, name.trimmed());
-    return key.isEmpty() ? QVector<Voiceprint>() : m_people.value(key);
+    return m_people.value(person);
 }
 
-int VoiceprintStore::printCount(const QString& name) const
+int VoiceprintStore::printCount(const PersonId& person) const
 {
-    return printsFor(name).size();
+    return printsFor(person).size();
 }
 
 int VoiceprintStore::totalPrintCount() const
@@ -66,10 +50,9 @@ int VoiceprintStore::totalPrintCount() const
     return n;
 }
 
-void VoiceprintStore::addPrint(const QString& name, Voiceprint print)
+void VoiceprintStore::addPrint(const PersonId& person, Voiceprint print)
 {
-    const QString n = name.trimmed();
-    if (n.isEmpty() || print.embedding.isEmpty())
+    if (person.isNull() || print.embedding.isEmpty())
         return;
     if (print.id.isEmpty())
         print.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
@@ -82,11 +65,8 @@ void VoiceprintStore::addPrint(const QString& name, Voiceprint print)
     // Lock + the fresh state from disk: voiceprints another process added meanwhile are kept.
     const SharedFileLock lock(m_filePath);
     reloadIfChanged();
-    const QString key = findPersonByName(m_people, n);
-    if (key.isEmpty())
-        m_people[n].append(print);
-    else
-        m_people[key].append(print);
+    if (m_legacy) return;
+    m_people[person].append(print);
     persist();
 }
 
@@ -116,7 +96,7 @@ bool VoiceprintStore::removePrint(const QString& printId)
     return removed;
 }
 
-bool VoiceprintStore::findPrint(const QString& printId, QString* owner, Voiceprint* print) const
+bool VoiceprintStore::findPrint(const QString& printId, PersonId* owner, Voiceprint* print) const
 {
     if (printId.isEmpty()) return false;
     for (auto it = m_people.constBegin(); it != m_people.constEnd(); ++it)
@@ -129,51 +109,28 @@ bool VoiceprintStore::findPrint(const QString& printId, QString* owner, Voicepri
     return false;
 }
 
-void VoiceprintStore::renamePerson(const QString& oldName, const QString& newName)
-{
-    const QString o = oldName.trimmed(), n = newName.trimmed();
-    if (o.isEmpty() || n.isEmpty() || o.compare(n, Qt::CaseInsensitive) == 0)
-        return;
-    const SharedFileLock lock(m_filePath);
-    reloadIfChanged();
-    const QString srcKey = findPersonByName(m_people, o);
-    if (srcKey.isEmpty())
-        return;
-    const QVector<Voiceprint> prints = m_people.take(srcKey);
-    const QString dstKey = findPersonByName(m_people, n);
-    if (dstKey.isEmpty())
-        m_people[n] = prints;
-    else
-        m_people[dstKey] += prints;   // merge if the target already exists
-    persist();
-}
-
-void VoiceprintStore::removePerson(const QString& name)
+void VoiceprintStore::removePerson(const PersonId& person)
 {
     const SharedFileLock lock(m_filePath);
     reloadIfChanged();
-    const QString key = findPersonByName(m_people, name.trimmed());
-    if (!key.isEmpty() && m_people.remove(key) > 0)
+    if (m_people.remove(person) > 0)
         persist();
 }
 
-void VoiceprintStore::merge(const QString& from, const QString& into)
+QStringList VoiceprintStore::merge(const PersonId& from, const PersonId& into)
 {
-    const QString f = from.trimmed(), i = into.trimmed();
-    if (f.isEmpty() || i.isEmpty() || f.compare(i, Qt::CaseInsensitive) == 0)
-        return;
+    QStringList moved;
+    if (from.isNull() || into.isNull() || from == into)
+        return moved;
     const SharedFileLock lock(m_filePath);
     reloadIfChanged();
-    const QString fKey = findPersonByName(m_people, f);
-    if (fKey.isEmpty())
-        return;
-    const QVector<Voiceprint> prints = m_people.take(fKey);
-    const QString iKey = findPersonByName(m_people, i);
-    if (iKey.isEmpty())
-        m_people[i] = prints;
-    else
-        m_people[iKey] += prints;
+    if (!m_people.contains(from))
+        return moved;
+    const QVector<Voiceprint> prints = m_people.take(from);
+    for (const Voiceprint& p : prints) moved << p.id;
+    m_people[into] += prints;
     persist();
+    return moved;
 }
 
 namespace {
@@ -241,10 +198,10 @@ QVector<VoiceMatch> VoiceprintStore::rankedMatches(const QVector<float>& embeddi
     return rankedMatches(defaultSet(embedding), {voicemodels::defaultModelId()});
 }
 
-QStringList VoiceprintStore::printsMissingModel(const QString& name, const QString& modelId) const
+QStringList VoiceprintStore::printsMissingModel(const PersonId& person, const QString& modelId) const
 {
     QStringList refs, have;
-    for (const Voiceprint& p : printsFor(name)) {
+    for (const Voiceprint& p : printsFor(person)) {
         if (p.sampleRef.isEmpty()) continue;
         if (p.model == modelId) have << p.sampleRef;
         else if (!refs.contains(p.sampleRef)) refs << p.sampleRef;
@@ -283,9 +240,9 @@ QVector<QVector<Voiceprint>> VoiceprintStore::siblingGroups(const QVector<Voicep
     return groups;
 }
 
-QVector<Voiceprint> VoiceprintStore::siblingsOf(const QString& printId, QString* owner) const
+QVector<Voiceprint> VoiceprintStore::siblingsOf(const QString& printId, PersonId* owner) const
 {
-    QString who;
+    PersonId who;
     Voiceprint print;
     if (!findPrint(printId, &who, &print)) return {};
     if (owner) *owner = who;
@@ -295,10 +252,10 @@ QVector<Voiceprint> VoiceprintStore::siblingsOf(const QString& printId, QString*
     return {print};
 }
 
-QVector<Voiceprint> VoiceprintStore::samplesMissingModel(const QString& name, const QString& modelId) const
+QVector<Voiceprint> VoiceprintStore::samplesMissingModel(const PersonId& person, const QString& modelId) const
 {
     QVector<Voiceprint> out;
-    for (const QVector<Voiceprint>& g : siblingGroups(printsFor(name))) {
+    for (const QVector<Voiceprint>& g : siblingGroups(printsFor(person))) {
         if (g.first().sampleRef.isEmpty()) continue;   // no sample: cannot be backfilled
         bool has = false;
         for (const Voiceprint& p : g)
@@ -308,9 +265,9 @@ QVector<Voiceprint> VoiceprintStore::samplesMissingModel(const QString& name, co
     return out;
 }
 
-int VoiceprintStore::sampleCount(const QString& name) const
+int VoiceprintStore::sampleCount(const PersonId& person) const
 {
-    return int(siblingGroups(printsFor(name)).size());
+    return int(siblingGroups(printsFor(person)).size());
 }
 
 double VoiceprintStore::cosineSimilarity(const QVector<float>& a, const QVector<float>& b)
@@ -355,6 +312,7 @@ void VoiceprintStore::load()
 {
     m_stamp = FileStamp::of(m_filePath);
     m_corrupt = false;
+    m_legacy = false;
     QFile f(m_filePath);
     if (!f.open(QIODevice::ReadOnly))
         return;
@@ -367,43 +325,40 @@ void VoiceprintStore::load()
         m_corrupt = true;
         return;
     }
-    const QJsonArray people = doc.object().value(QStringLiteral("people")).toArray();
+    const QJsonObject root = doc.object();
+    const int version = root.value(QStringLiteral("version")).toInt(0);
+    const QJsonValue peopleValue = root.value(QStringLiteral("people"));
     m_people.clear();
-    for (const QJsonValue& pv : people) {
-        const QJsonObject po = pv.toObject();
-        const QString name = po.value(QStringLiteral("name")).toString();
-        if (name.isEmpty())
+    if (version < kFormatVersion || !peopleValue.isObject()) {
+        m_legacy = true;
+        qCCritical(lcVoice).noquote()
+            << QStringLiteral("voiceprints.json is in an old, name-keyed format (version %1); the app does not read it."
+                              " Convert it once (with a backup): run: tanara-cli migrate person-ids  (%2)")
+                   .arg(version).arg(m_filePath);
+        return;
+    }
+    const QJsonObject people = peopleValue.toObject();
+    for (auto pit = people.constBegin(); pit != people.constEnd(); ++pit) {
+        const PersonId person = PersonId::fromString(pit.key());
+        if (person.isNull())
             continue;
         QVector<Voiceprint> prints;
-        const QJsonArray arr = po.value(QStringLiteral("prints")).toArray();
-        for (const QJsonValue& vv : arr) {
-            const QJsonObject o = vv.toObject();
-            Voiceprint vp;
-            vp.id = o.value(QStringLiteral("id")).toString();
-            const QJsonArray emb = o.value(QStringLiteral("embedding")).toArray();
-            vp.embedding.reserve(emb.size());
-            for (const QJsonValue& e : emb)
-                vp.embedding.append(static_cast<float>(e.toDouble()));
-            vp.dim = o.value(QStringLiteral("dim")).toInt(vp.embedding.size());
-            vp.sourceMeetingId = o.value(QStringLiteral("sourceMeetingId")).toString();
-            vp.sourceTrack = o.value(QStringLiteral("sourceTrack")).toString();
-            vp.device = o.value(QStringLiteral("device")).toString();
-            vp.sampleRef = o.value(QStringLiteral("sampleRef")).toString();
-            vp.createdAt = o.value(QStringLiteral("createdAt")).toString();
-            vp.model = o.value(QStringLiteral("model")).toString(voicemodels::defaultModelId());
-            if (vp.model.isEmpty()) vp.model = voicemodels::defaultModelId();
-            for (const QJsonValue& r : o.value(QStringLiteral("sourceRefs")).toArray())
-                if (!r.toString().isEmpty()) vp.sourceRefs << r.toString();
+        for (const QJsonValue& vv : pit.value().toArray()) {
+            const Voiceprint vp = voiceprintFromJson(vv.toObject());
             if (!vp.embedding.isEmpty())
                 prints.append(vp);
         }
         if (!prints.isEmpty())
-            m_people[name] = prints;
+            m_people[person] = prints;
     }
 }
 
 void VoiceprintStore::persist()
 {
+    if (m_legacy) {
+        qCCritical(lcVoice).noquote() << "voiceprints.json: old format on disk, not overwritten — run: tanara-cli migrate person-ids";
+        return;
+    }
     QDir().mkpath(QFileInfo(m_filePath).absolutePath());
     if (m_corrupt && !setAsideCorrupt(m_filePath)) {
         qCWarning(lcVoice).noquote() << "voiceprints.json: a sérült fájl nem tehető félre — a mentés kimarad:"
@@ -411,33 +366,15 @@ void VoiceprintStore::persist()
         return;
     }
     m_corrupt = false;
-    QJsonArray people;
+    QJsonObject people;
     for (auto it = m_people.constBegin(); it != m_people.constEnd(); ++it) {
-        QJsonObject po;
-        po[QStringLiteral("name")] = it.key();
         QJsonArray prints;
-        for (const Voiceprint& vp : it.value()) {
-            QJsonObject o;
-            o[QStringLiteral("id")] = vp.id;
-            QJsonArray emb;
-            for (float x : vp.embedding)
-                emb.append(static_cast<double>(x));
-            o[QStringLiteral("embedding")] = emb;
-            o[QStringLiteral("dim")] = vp.dim;
-            o[QStringLiteral("sourceMeetingId")] = vp.sourceMeetingId;
-            o[QStringLiteral("sourceTrack")] = vp.sourceTrack;
-            o[QStringLiteral("device")] = vp.device;
-            o[QStringLiteral("sampleRef")] = vp.sampleRef;
-            o[QStringLiteral("createdAt")] = vp.createdAt;
-            o[QStringLiteral("model")] = vp.model;
-            if (!vp.sourceRefs.isEmpty())
-                o[QStringLiteral("sourceRefs")] = QJsonArray::fromStringList(vp.sourceRefs);
-            prints.append(o);
-        }
-        po[QStringLiteral("prints")] = prints;
-        people.append(po);
+        for (const Voiceprint& vp : it.value())
+            prints.append(voiceprintToJson(vp));
+        people.insert(it.key().toString(), prints);
     }
     QJsonObject root;
+    root[QStringLiteral("version")] = kFormatVersion;
     root[QStringLiteral("people")] = people;
     QSaveFile f(m_filePath);
     if (f.open(QIODevice::WriteOnly)) {
@@ -445,6 +382,47 @@ void VoiceprintStore::persist()
         if (f.commit())
             m_stamp = FileStamp::of(m_filePath);   // no need to reread our own write
     }
+}
+
+QJsonObject voiceprintToJson(const Voiceprint& vp)
+{
+    QJsonObject o;
+    o[QStringLiteral("id")] = vp.id;
+    QJsonArray emb;
+    for (float x : vp.embedding)
+        emb.append(static_cast<double>(x));
+    o[QStringLiteral("embedding")] = emb;
+    o[QStringLiteral("dim")] = vp.dim;
+    o[QStringLiteral("sourceMeetingId")] = vp.sourceMeetingId;
+    o[QStringLiteral("sourceTrack")] = vp.sourceTrack;
+    o[QStringLiteral("device")] = vp.device;
+    o[QStringLiteral("sampleRef")] = vp.sampleRef;
+    o[QStringLiteral("createdAt")] = vp.createdAt;
+    o[QStringLiteral("model")] = vp.model;
+    if (!vp.sourceRefs.isEmpty())
+        o[QStringLiteral("sourceRefs")] = QJsonArray::fromStringList(vp.sourceRefs);
+    return o;
+}
+
+Voiceprint voiceprintFromJson(const QJsonObject& o)
+{
+    Voiceprint vp;
+    vp.id = o.value(QStringLiteral("id")).toString();
+    const QJsonArray emb = o.value(QStringLiteral("embedding")).toArray();
+    vp.embedding.reserve(emb.size());
+    for (const QJsonValue& e : emb)
+        vp.embedding.append(static_cast<float>(e.toDouble()));
+    vp.dim = o.value(QStringLiteral("dim")).toInt(vp.embedding.size());
+    vp.sourceMeetingId = o.value(QStringLiteral("sourceMeetingId")).toString();
+    vp.sourceTrack = o.value(QStringLiteral("sourceTrack")).toString();
+    vp.device = o.value(QStringLiteral("device")).toString();
+    vp.sampleRef = o.value(QStringLiteral("sampleRef")).toString();
+    vp.createdAt = o.value(QStringLiteral("createdAt")).toString();
+    vp.model = o.value(QStringLiteral("model")).toString(voicemodels::defaultModelId());
+    if (vp.model.isEmpty()) vp.model = voicemodels::defaultModelId();
+    for (const QJsonValue& r : o.value(QStringLiteral("sourceRefs")).toArray())
+        if (!r.toString().isEmpty()) vp.sourceRefs << r.toString();
+    return vp;
 }
 
 } // namespace tanara::library

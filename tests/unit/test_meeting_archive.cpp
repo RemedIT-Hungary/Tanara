@@ -196,7 +196,7 @@ Meeting MeetingArchiveTest::makeFixture(library::MeetingRepository& store, const
     m.hasTranscript = true;
     m.hasSummary = true;
     m.durationMs = 125000;
-    m.speakerMap.insert(QStringLiteral("Távoli 1"), QStringLiteral("Kovács Anna"));
+    m.speakerMap.insert(QStringLiteral("Távoli 1"), PersonId::fromString(QStringLiteral("p-anna")));
     m.contextNote = QStringLiteral("Negyedéves áttekintés");
     m.tagIds = {QStringLiteral("tag-a"), QStringLiteral("tag-b")};
     store.saveMeeting(m);

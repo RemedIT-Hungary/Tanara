@@ -3,6 +3,7 @@
 
 #include "tanara/processing/analysis/UtteranceEmbeddings.h"
 #include "tanara/library/store/MeetingRepository.h"
+#include "tanara/library/store/PeopleStore.h"
 #include "tanara/processing/stt/SonioxTiming.h"
 #include "tanara/domain/Summary.h"
 
@@ -335,7 +336,8 @@ ApplyResult apply(const QString& folder, const Plan& p)
         Meeting m = library::MeetingRepository::readMeetingFolder(folder);
         if (!m.id.isEmpty()) {
             m.folder = folder;
-            res.markdownRegenerated = speakeredit::regenerateTranscriptMarkdown(m);
+            const library::PeopleStore people;   // the display names (<data>/people.json)
+            res.markdownRegenerated = speakeredit::regenerateTranscriptMarkdown(m, people.names());
             if (res.markdownRegenerated) res.written << kMarkdown;
         }
     }

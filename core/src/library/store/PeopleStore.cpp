@@ -2,14 +2,13 @@
 #include "tanara/foundation/log/Logging.h"
 #include "tanara/foundation/paths/AppPaths.h"
 
-#include <QDateTime>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
-#include <QSaveFile>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
-#include <QJsonArray>
+#include <QSaveFile>
 
 #include <algorithm>
 
@@ -17,77 +16,60 @@ namespace tanara::library {
 
 namespace {
 
-constexpr int kFormatVersion = 2;
-
 const QLatin1String kVersionKey("version");
+const QLatin1String kSelfKey("self");
 const QLatin1String kPeopleKey("people");
-const QLatin1String kUnlistedKey("unlisted");
 const QLatin1String kNameKey("name");
 const QLatin1String kAliasesKey("aliases");
 const QLatin1String kNoteKey("note");
 const QLatin1String kTagsKey("tags");
+const QLatin1String kSideKey("defaultSide");
+const QLatin1String kSideManualKey("defaultSideManual");
 
-bool sameName(const QString& a, const QString& b)
-{
-    return a.trimmed().compare(b.trimmed(), Qt::CaseInsensitive) == 0;
-}
+using persons::sameName;
 
 bool containsAlias(const QStringList& list, const QString& alias)
 {
-    return std::any_of(list.cbegin(), list.cend(),
-                       [&](const QString& a) { return sameName(a, alias); });
+    return std::any_of(list.cbegin(), list.cend(), [&](const QString& a) { return sameName(a, alias); });
 }
 
 // One record from the JSON object: the known fields extracted, the rest stays in `raw`.
-void readRecord(QJsonObject obj, PersonDetails* d, QJsonObject* raw)
+void readRecord(const PersonId& id, QJsonObject obj, Person* p, QJsonObject* raw)
 {
-    d->name = obj.take(kNameKey).toString();
+    p->id = id;
+    p->displayName = obj.take(kNameKey).toString().trimmed();
     for (const QJsonValue& a : obj.take(kAliasesKey).toArray()) {
         const QString s = a.toString().trimmed();
-        if (!s.isEmpty() && !sameName(s, d->name) && !containsAlias(d->aliases, s)) d->aliases << s;
+        if (!s.isEmpty() && !sameName(s, p->displayName) && !containsAlias(p->aliases, s)) p->aliases << s;
     }
-    d->note = obj.take(kNoteKey).toString();
+    p->note = obj.take(kNoteKey).toString();
     for (const QJsonValue& t : obj.take(kTagsKey).toArray()) {
-        const QString id = t.toString().trimmed();
-        if (!id.isEmpty() && !d->tags.contains(id)) d->tags << id;
+        const QString tag = t.toString().trimmed();
+        if (!tag.isEmpty() && !p->tags.contains(tag)) p->tags << tag;
     }
+    p->defaultSide = obj.take(kSideKey).toString();
+    p->defaultSideManual = obj.take(kSideManualKey).toBool() && !p->defaultSide.isEmpty();
     *raw = obj;
 }
 
-// Merging `src` into `dst`: union of nicknames (the target's name cannot be its own nickname);
-// note: the target's if non-empty, the source's if the target's is empty, and if both exist and
-// differ, one under the other; the source's unknown fields go to the target if absent there.
-void absorb(PersonDetails& dst, QJsonObject& dstRaw, const PersonDetails& src, const QJsonObject& srcRaw)
-{
-    for (const QString& a : src.aliases)
-        if (!sameName(a, dst.name) && !containsAlias(dst.aliases, a)) dst.aliases << a;
-    if (dst.note.trimmed().isEmpty()) dst.note = src.note;
-    else if (!src.note.trimmed().isEmpty() && src.note != dst.note)
-        dst.note = dst.note + QLatin1Char('\n') + src.note;
-    for (const QString& t : src.tags)
-        if (!dst.tags.contains(t)) dst.tags << t;
-    for (auto it = srcRaw.constBegin(); it != srcRaw.constEnd(); ++it)
-        if (!dstRaw.contains(it.key())) dstRaw.insert(it.key(), it.value());
-}
-
-QJsonObject writeRecord(const PersonDetails& d, const QJsonObject& raw)
+QJsonObject writeRecord(const Person& p, const QJsonObject& raw)
 {
     QJsonObject o = raw;
-    o[kNameKey] = d.name;
-    o[kAliasesKey] = QJsonArray::fromStringList(d.aliases);
-    o[kNoteKey] = d.note;
-    if (!d.tags.isEmpty()) o[kTagsKey] = QJsonArray::fromStringList(d.tags);
+    o[kNameKey] = p.displayName;
+    o[kAliasesKey] = QJsonArray::fromStringList(p.aliases);
+    o[kNoteKey] = p.note;
+    if (!p.tags.isEmpty()) o[kTagsKey] = QJsonArray::fromStringList(p.tags);
+    if (!p.defaultSide.isEmpty()) o[kSideKey] = p.defaultSide;
+    if (p.defaultSideManual && !p.defaultSide.isEmpty()) o[kSideManualKey] = true;
     return o;
 }
 
-// Renaming the file to "<file>.<suffix>-<timestamp>" (we do not delete what we did not merge in).
-// true if the file is no longer at its original place.
-bool setAsideAs(const QString& path, const QString& suffix)
+QStringList cleanTags(const QStringList& tagIds)
 {
-    if (!QFileInfo::exists(path)) return true;
-    const QString aside = path + QLatin1Char('.') + suffix + QLatin1Char('-')
-        + QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd-HHmmss-zzz"));
-    return QFile::rename(path, aside);
+    QStringList clean;
+    for (const QString& t : tagIds)
+        if (!t.trimmed().isEmpty() && !clean.contains(t.trimmed())) clean << t.trimmed();
+    return clean;
 }
 
 } // namespace
@@ -98,161 +80,224 @@ PeopleStore::PeopleStore(const QString& filePath)
         ? paths::current().dataFile(paths::files::People)
         : filePath;
     load();
-    migrateIfNeeded();
 }
 
-QString PeopleStore::legacyDetailsPath() const
+int PeopleStore::indexOf(const PersonId& id) const
 {
-    return QFileInfo(m_filePath).absoluteDir().filePath(QStringLiteral("people-details.json"));
-}
-
-int PeopleStore::indexOf(const QString& name) const
-{
+    if (id.isNull()) return -1;
     for (int i = 0; i < m_entries.size(); ++i)
-        if (sameName(m_entries[i].d.name, name)) return i;
+        if (m_entries[i].p.id == id) return i;
     return -1;
 }
 
-PeopleStore::Entry& PeopleStore::ensure(const QString& name)
-{
-    const int i = indexOf(name);
-    if (i >= 0) return m_entries[i];
-    Entry e;
-    e.d.name = name.trimmed();
-    e.listed = false;
-    m_entries.append(e);
-    return m_entries.last();
-}
-
-// The name list sorted by name first, the off-list records after it (among themselves in their
-// existing order).
 void PeopleStore::sortEntries()
 {
     std::stable_sort(m_entries.begin(), m_entries.end(), [](const Entry& a, const Entry& b) {
-        if (a.listed != b.listed) return a.listed;
-        if (!a.listed) return false;
-        return a.d.name.compare(b.d.name, Qt::CaseInsensitive) < 0;
+        const int c = a.p.displayName.compare(b.p.displayName, Qt::CaseInsensitive);
+        if (c != 0) return c < 0;
+        return a.p.id < b.p.id;
     });
 }
 
-QStringList PeopleStore::names() const
+QVector<Person> PeopleStore::people() const
 {
-    QStringList out;
-    for (const Entry& e : m_entries)
-        if (e.listed) out << e.d.name;
+    QVector<Person> out;
+    out.reserve(m_entries.size());
+    for (const Entry& e : m_entries) out.append(e.p);
     return out;
 }
 
-QStringList PeopleStore::unlistedNames() const
+PersonIds PeopleStore::ids() const
 {
-    QStringList out;
-    for (const Entry& e : m_entries)
-        if (!e.listed && !(e.d.isEmpty() && e.raw.isEmpty())) out << e.d.name;
+    PersonIds out;
+    out.reserve(m_entries.size());
+    for (const Entry& e : m_entries) out.append(e.p.id);
     return out;
 }
 
-PersonDetails PeopleStore::details(const QString& name) const
+bool PeopleStore::contains(const PersonId& id) const { return indexOf(id) >= 0; }
+
+Person PeopleStore::person(const PersonId& id) const
 {
-    const int i = indexOf(name);
-    if (i >= 0) return m_entries[i].d;
-    PersonDetails d;
-    d.name = name.trimmed();
-    return d;
+    const int i = indexOf(id);
+    return i < 0 ? Person() : m_entries[i].p;
+}
+
+QString PeopleStore::displayName(const PersonId& id) const
+{
+    const int i = indexOf(id);
+    return i < 0 ? QString() : m_entries[i].p.displayName;
+}
+
+PersonNames PeopleStore::names() const
+{
+    PersonNames out;
+    out.reserve(m_entries.size());
+    for (const Entry& e : m_entries) out.insert(e.p.id, e.p.displayName);
+    return out;
+}
+
+PersonIds PeopleStore::findByName(const QString& name) const
+{
+    PersonIds out;
+    if (name.trimmed().isEmpty()) return out;
+    for (const Entry& e : m_entries)
+        if (sameName(e.p.displayName, name)) out.append(e.p.id);
+    return out;
+}
+
+PersonId PeopleStore::idForName(const QString& name) const
+{
+    const PersonIds all = findByName(name);
+    return all.isEmpty() ? PersonId() : all.first();
+}
+
+PersonChoice PeopleStore::choiceFor(const QString& idOrName) const
+{
+    const QString v = idOrName.trimmed();
+    if (v.isEmpty()) return {};
+    const PersonId asId = PersonId::fromString(v);
+    if (contains(asId)) return PersonChoice::existing(asId);
+    const PersonId byName = idForName(v);
+    return byName.isNull() ? PersonChoice::create(v) : PersonChoice::existing(byName);
 }
 
 // Every modification: inter-process lock -> reread the fresh state from disk (if another process
-// wrote meanwhile) -> the modification -> write out. So rewriting the whole file does not discard what
-// another process (recorder / watcher / another window) added in the meantime.
+// wrote meanwhile) -> the modification -> write out. A legacy (old-format) file is never written.
 
-void PeopleStore::add(const QString& name)
+void PeopleStore::setSelfId(const PersonId& id)
+{
+    const SharedFileLock lock(m_filePath);
+    reloadIfChanged();
+    if (m_legacy || m_self == id) return;
+    m_self = id;
+    persist();
+}
+
+PersonId PeopleStore::create(const QString& name)
 {
     const QString n = name.trimmed();
-    if (n.isEmpty())
-        return;
+    if (n.isEmpty()) return {};
     const SharedFileLock lock(m_filePath);
     reloadIfChanged();
-    const int i = indexOf(n);
-    if (i >= 0) {
-        if (m_entries[i].listed)
-            return;
-        m_entries[i].listed = true;    // the off-list record (nicknames, note) comes back
-    } else {
-        Entry e;
-        e.d.name = n;
-        m_entries.append(e);
-    }
+    if (m_legacy) return {};
+    Entry e;
+    e.p.id = PersonId::generate();
+    e.p.displayName = n;
+    m_entries.append(e);
     sortEntries();
     persist();
+    return e.p.id;
 }
 
-void PeopleStore::rename(const QString& oldName, const QString& newName, bool oldNameAsAlias)
+PersonId PeopleStore::ensure(const QString& name)
 {
-    const QString o = oldName.trimmed(), n = newName.trimmed();
-    if (o.isEmpty() || n.isEmpty() || o == n)
-        return;
+    const QString n = name.trimmed();
+    if (n.isEmpty()) return {};
+    reloadIfChanged();
+    const PersonId have = idForName(n);
+    return have.isNull() ? create(n) : have;
+}
+
+PersonId PeopleStore::resolve(const PersonChoice& choice)
+{
+    if (!choice.id.isNull()) return choice.id;
+    return create(choice.newName);
+}
+
+bool PeopleStore::restore(const Person& person)
+{
+    if (person.id.isNull()) return false;
     const SharedFileLock lock(m_filePath);
     reloadIfChanged();
-    const int from = indexOf(o);
-    if (sameName(o, n)) {
-        // Only the spelling changes: the same record.
-        Entry& e = from >= 0 ? m_entries[from] : ensure(n);
-        e.d.name = n;
-        e.listed = true;
-    } else {
-        Entry src;
-        if (from >= 0) src = m_entries.takeAt(from);
-        Entry& dst = ensure(n);
-        dst.listed = true;
-        absorb(dst.d, dst.raw, src.d, src.raw);
-        if (oldNameAsAlias && !containsAlias(dst.d.aliases, o)) dst.d.aliases << o;
-    }
+    if (m_legacy) return false;
+    const int i = indexOf(person.id);
+    if (i >= 0) m_entries[i].p = person;
+    else m_entries.append(Entry{person, {}});
     sortEntries();
-    persist();
+    return persist();
 }
 
-void PeopleStore::remove(const QString& name)
+bool PeopleStore::rename(const PersonId& id, const QString& newName)
+{
+    const QString n = newName.trimmed();
+    if (n.isEmpty()) return false;
+    const SharedFileLock lock(m_filePath);
+    reloadIfChanged();
+    const int i = indexOf(id);
+    if (i < 0 || m_entries[i].p.displayName == n) return false;
+    Person& p = m_entries[i].p;
+    p.displayName = n;
+    // A name cannot be its own nickname.
+    p.aliases.removeIf([&](const QString& a) { return sameName(a, n); });
+    sortEntries();
+    return persist();
+}
+
+bool PeopleStore::remove(const PersonId& id)
 {
     const SharedFileLock lock(m_filePath);
     reloadIfChanged();
-    const int i = indexOf(name);
-    if (i < 0)
-        return;
+    const int i = indexOf(id);
+    if (i < 0) return false;
     m_entries.removeAt(i);
-    persist();
+    if (m_self == id) m_self = PersonId();
+    return persist();
 }
 
-void PeopleStore::unlist(const QString& name)
+bool PeopleStore::merge(const PersonId& keep, const PersonId& drop, bool dropNameAsAlias)
 {
+    if (keep == drop) return false;
     const SharedFileLock lock(m_filePath);
     reloadIfChanged();
-    const int i = indexOf(name);
-    if (i < 0 || !m_entries[i].listed)
-        return;
-    m_entries[i].listed = false;    // the save drops the empty record
+    const int k = indexOf(keep), dr = indexOf(drop);
+    if (k < 0 || dr < 0) return false;
+    const Entry src = m_entries[dr];
+    Person& dst = m_entries[k].p;
+    QJsonObject& dstRaw = m_entries[k].raw;
+    QStringList extra = src.p.aliases;
+    if (dropNameAsAlias) extra.append(src.p.displayName);   // after its nicknames (as the old rename-merge did)
+    for (const QString& a : std::as_const(extra))
+        if (!a.trimmed().isEmpty() && !sameName(a, dst.displayName) && !containsAlias(dst.aliases, a))
+            dst.aliases << a.trimmed();
+    if (dst.note.trimmed().isEmpty()) dst.note = src.p.note;
+    else if (!src.p.note.trimmed().isEmpty() && src.p.note != dst.note)
+        dst.note = dst.note + QLatin1Char('\n') + src.p.note;
+    for (const QString& t : src.p.tags)
+        if (!dst.tags.contains(t)) dst.tags << t;
+    if (dst.defaultSide.isEmpty() && !src.p.defaultSide.isEmpty()) {
+        dst.defaultSide = src.p.defaultSide;
+        dst.defaultSideManual = src.p.defaultSideManual;
+    }
+    for (auto it = src.raw.constBegin(); it != src.raw.constEnd(); ++it)
+        if (!dstRaw.contains(it.key())) dstRaw.insert(it.key(), it.value());
+    m_entries.removeAt(dr);
+    if (m_self == drop) m_self = keep;
     sortEntries();
-    persist();
+    return persist();
 }
 
-bool PeopleStore::addAlias(const QString& name, const QString& alias)
+bool PeopleStore::addAlias(const PersonId& id, const QString& alias)
 {
-    const QString n = name.trimmed(), a = alias.trimmed();
-    if (n.isEmpty() || a.isEmpty() || sameName(n, a)) return false;
+    const QString a = alias.trimmed();
+    if (a.isEmpty()) return false;
     const SharedFileLock lock(m_filePath);
     reloadIfChanged();
-    Entry& e = ensure(n);
-    if (containsAlias(e.d.aliases, a)) return false;
-    e.d.aliases << a;
-    persist();
-    return true;
+    const int i = indexOf(id);
+    if (i < 0) return false;
+    Person& p = m_entries[i].p;
+    if (sameName(p.displayName, a) || containsAlias(p.aliases, a)) return false;
+    p.aliases << a;
+    return persist();
 }
 
-int PeopleStore::removeAlias(const QString& name, const QString& alias)
+int PeopleStore::removeAlias(const PersonId& id, const QString& alias)
 {
     const SharedFileLock lock(m_filePath);
     reloadIfChanged();
-    const int i = indexOf(name);
+    const int i = indexOf(id);
     if (i < 0) return -1;
-    QStringList& list = m_entries[i].d.aliases;
+    QStringList& list = m_entries[i].p.aliases;
     for (int k = 0; k < list.size(); ++k) {
         if (!sameName(list[k], alias)) continue;
         list.removeAt(k);
@@ -262,101 +307,70 @@ int PeopleStore::removeAlias(const QString& name, const QString& alias)
     return -1;
 }
 
-bool PeopleStore::insertAlias(const QString& name, const QString& alias, int index)
+bool PeopleStore::insertAlias(const PersonId& id, const QString& alias, int index)
 {
-    const QString n = name.trimmed(), a = alias.trimmed();
-    if (n.isEmpty() || a.isEmpty() || sameName(n, a)) return false;
+    const QString a = alias.trimmed();
+    if (a.isEmpty()) return false;
     const SharedFileLock lock(m_filePath);
     reloadIfChanged();
-    Entry& e = ensure(n);
-    if (containsAlias(e.d.aliases, a)) return false;
-    e.d.aliases.insert(std::clamp<qsizetype>(index, 0, e.d.aliases.size()), a);
-    persist();
-    return true;
+    const int i = indexOf(id);
+    if (i < 0) return false;
+    Person& p = m_entries[i].p;
+    if (sameName(p.displayName, a) || containsAlias(p.aliases, a)) return false;
+    p.aliases.insert(std::clamp<qsizetype>(index, 0, p.aliases.size()), a);
+    return persist();
 }
 
-void PeopleStore::setNote(const QString& name, const QString& note)
+bool PeopleStore::setNote(const PersonId& id, const QString& note)
 {
-    const QString n = name.trimmed();
-    if (n.isEmpty()) return;
     const SharedFileLock lock(m_filePath);
     reloadIfChanged();
-    const int i = indexOf(n);
-    if (i < 0 && note.trimmed().isEmpty()) return;
-    Entry& e = ensure(n);
-    if (e.d.note == note) return;
-    e.d.note = note;
-    persist();
+    const int i = indexOf(id);
+    if (i < 0 || m_entries[i].p.note == note) return false;
+    m_entries[i].p.note = note;
+    return persist();
 }
 
-bool PeopleStore::setTags(const QString& name, const QStringList& tagIds)
+bool PeopleStore::setTags(const PersonId& id, const QStringList& tagIds)
 {
-    const QString n = name.trimmed();
-    if (n.isEmpty()) return false;
-    QStringList clean;
-    for (const QString& t : tagIds)
-        if (!t.trimmed().isEmpty() && !clean.contains(t.trimmed())) clean << t.trimmed();
+    const QStringList clean = cleanTags(tagIds);
     const SharedFileLock lock(m_filePath);
     reloadIfChanged();
-    const int i = indexOf(n);
-    if (i < 0 && clean.isEmpty()) return false;
-    Entry& e = ensure(n);
-    if (e.d.tags == clean) return false;
-    e.d.tags = clean;
-    persist();
-    return true;
+    const int i = indexOf(id);
+    if (i < 0 || m_entries[i].p.tags == clean) return false;
+    m_entries[i].p.tags = clean;
+    return persist();
 }
 
-QString PeopleStore::defaultSide(const QString& name) const
+QHash<PersonId, QStringList> PeopleStore::allTags() const
 {
-    const int i = indexOf(name);
-    return i < 0 ? QString() : m_entries[i].raw.value(QStringLiteral("defaultSide")).toString();
-}
-
-bool PeopleStore::defaultSideManual(const QString& name) const
-{
-    const int i = indexOf(name);
-    return i >= 0 && m_entries[i].raw.value(QStringLiteral("defaultSideManual")).toBool();
-}
-
-bool PeopleStore::setDefaultSide(const QString& name, const QString& side, bool manual)
-{
-    const QString n = name.trimmed();
-    if (n.isEmpty()) return false;
-    const SharedFileLock lock(m_filePath);
-    reloadIfChanged();
-    const int i = indexOf(n);
-    if (i < 0 && side.isEmpty()) return false;
-    const QString key = QStringLiteral("defaultSide");
-    const QString manualKey = QStringLiteral("defaultSideManual");
-    // The manual value is protected from learning.
-    if (!manual && i >= 0 && m_entries[i].raw.value(manualKey).toBool()) return false;
-    Entry& e = ensure(n);
-    const bool flag = manual && !side.isEmpty();
-    if (e.raw.value(key).toString() == side && e.raw.value(manualKey).toBool() == flag) return false;
-    if (side.isEmpty()) e.raw.remove(key);
-    else e.raw.insert(key, side);
-    if (flag) e.raw.insert(manualKey, true);
-    else e.raw.remove(manualKey);
-    persist();
-    return true;
-}
-
-QHash<QString, QStringList> PeopleStore::allTags() const
-{
-    QHash<QString, QStringList> out;
+    QHash<PersonId, QStringList> out;
     for (const Entry& e : m_entries)
-        if (!e.d.tags.isEmpty()) out.insert(e.d.name, e.d.tags);
+        if (!e.p.tags.isEmpty()) out.insert(e.p.id, e.p.tags);
     return out;
 }
 
-QHash<QString, QString> PeopleStore::defaultSides() const
+bool PeopleStore::setDefaultSide(const PersonId& id, const QString& side, bool manual)
 {
-    QHash<QString, QString> out;
-    for (const Entry& e : m_entries) {
-        const QString s = e.raw.value(QStringLiteral("defaultSide")).toString();
-        if (!s.isEmpty()) out.insert(e.d.name, s);
-    }
+    const SharedFileLock lock(m_filePath);
+    reloadIfChanged();
+    const int i = indexOf(id);
+    if (i < 0) return false;
+    Person& p = m_entries[i].p;
+    // The manual value is protected from learning.
+    if (!manual && p.defaultSideManual) return false;
+    const bool flag = manual && !side.isEmpty();
+    if (p.defaultSide == side && p.defaultSideManual == flag) return false;
+    p.defaultSide = side;
+    p.defaultSideManual = flag;
+    return persist();
+}
+
+QHash<PersonId, QString> PeopleStore::defaultSides() const
+{
+    QHash<PersonId, QString> out;
+    for (const Entry& e : m_entries)
+        if (!e.p.defaultSide.isEmpty()) out.insert(e.p.id, e.p.defaultSide);
     return out;
 }
 
@@ -366,176 +380,63 @@ void PeopleStore::reloadIfChanged()
         load();
 }
 
-// Loading. Three cases for people.json:
+// Loading:
 //  - missing / cannot be opened: the in-memory state stays (empty at startup);
 //  - unparseable: the in-memory state stays, the next save sets the file aside;
-//  - parseable: memory becomes the file's content. Old shape (no "version", or the "people" items
-//    are plain names) -> migration is needed (m_migrationPending).
-// Then the old people-details.json, if it exists:
-//  - if people.json is ALREADY in the new shape, the details file is a leftover of an earlier migration
-//    (its deletion failed): we do not merge it again (it would resurrect nicknames deleted since), the
-//    save / migration step sets it aside as ".leftover-<time>";
-//  - otherwise it merges into memory: for a name on the list into its record, for an unknown name (an
-//    orphan entry) as an off-list record; the file is deleted AFTER a successful save;
-//  - if unparseable: the name list still migrates, and the details file is set aside after a
-//    successful save as ".corrupt-<time>" (not deleted, can be rescued by hand).
-// This function does NOT write to disk.
+//  - an older format (no version / version < 3, or a "people" array): legacy, empty, read-only;
+//  - otherwise memory becomes the file's content.
 void PeopleStore::load()
 {
     m_stamp = FileStamp::of(m_filePath);
     m_corrupt = false;
-    m_migrationPending = false;
-    m_legacy = LegacyDetails::None;
+    m_legacy = false;
 
-    bool parsed = false;
     QFile f(m_filePath);
-    if (f.open(QIODevice::ReadOnly)) {
-        QJsonParseError err{};
-        const QJsonDocument doc = QJsonDocument::fromJson(f.readAll(), &err);
-        if (err.error != QJsonParseError::NoError || !doc.isObject()) {
-            // Unparseable file: the in-memory list stays, the next save sets the file aside (we do not overwrite
-            // it without a trace).
-            qCWarning(lcStore).noquote() << "people.json nem értelmezhető:" << m_filePath << err.errorString();
-            m_corrupt = true;
-        } else {
-            parsed = true;
-            m_rootExtra = doc.object();
-            m_version = m_rootExtra.take(kVersionKey).toInt(0);
-            const QJsonArray listed = m_rootExtra.take(kPeopleKey).toArray();
-            const QJsonArray unlisted = m_rootExtra.take(kUnlistedKey).toArray();
-            m_entries.clear();
-            bool plainNames = false;
-            auto read = [&](const QJsonArray& arr, bool isListed) {
-                for (const QJsonValue& v : arr) {
-                    Entry e;
-                    e.listed = isListed;
-                    if (v.isString()) {             // old shape: a plain name
-                        e.d.name = v.toString();
-                        plainNames = true;
-                    } else {
-                        readRecord(v.toObject(), &e.d, &e.raw);
-                    }
-                    if (e.d.name.trimmed().isEmpty()) continue;
-                    const int have = indexOf(e.d.name);
-                    if (have < 0) {
-                        m_entries.append(e);
-                        continue;
-                    }
-                    // The same name twice (case-insensitively): it becomes one record.
-                    absorb(m_entries[have].d, m_entries[have].raw, e.d, e.raw);
-                    m_entries[have].listed = m_entries[have].listed || isListed;
-                }
-            };
-            read(listed, true);
-            read(unlisted, false);
-            if (m_version > kFormatVersion)
-                qCWarning(lcStore).noquote() << "people.json újabb verziójú, mint amit ez a build ismer:"
-                                             << m_version << m_filePath;
-            m_migrationPending = m_version < kFormatVersion || plainNames;
-        }
-    }
-
-    const QString legacyPath = legacyDetailsPath();
-    if (!QFileInfo::exists(legacyPath))
+    if (!f.open(QIODevice::ReadOnly))
         return;
-    if (parsed && !m_migrationPending) {
-        m_legacy = LegacyDetails::SetAsideLeftover;
-        return;
-    }
-    m_migrationPending = true;
-    QFile lf(legacyPath);
-    QByteArray bytes;
-    const bool readable = lf.open(QIODevice::ReadOnly);
-    if (readable) bytes = lf.readAll();
-    if (readable && bytes.trimmed().isEmpty()) {
-        m_legacy = LegacyDetails::Remove;       // empty file: nothing to take over
-        return;
-    }
     QJsonParseError err{};
-    const QJsonDocument doc = QJsonDocument::fromJson(bytes, &err);
-    if (!readable || err.error != QJsonParseError::NoError || !doc.isObject()) {
-        qCWarning(lcStore).noquote() << "people-details.json nem értelmezhető — a becenevek és megjegyzések"
-                                        " nem vehetők át belőle, a fájl félre lesz téve:"
-                                     << legacyPath << (readable ? err.errorString() : lf.errorString());
-        m_legacy = LegacyDetails::SetAsideCorrupt;
+    const QJsonDocument doc = QJsonDocument::fromJson(f.readAll(), &err);
+    if (err.error != QJsonParseError::NoError || !doc.isObject()) {
+        qCWarning(lcStore).noquote() << "people.json nem értelmezhető:" << m_filePath << err.errorString();
+        m_corrupt = true;
         return;
     }
-    m_legacy = LegacyDetails::Remove;
-    QJsonObject legacyRoot = doc.object();
-    const QJsonArray arr = legacyRoot.take(kPeopleKey).toArray();
-    legacyRoot.remove(kVersionKey);
-    for (auto it = legacyRoot.constBegin(); it != legacyRoot.constEnd(); ++it)
-        if (!m_rootExtra.contains(it.key())) m_rootExtra.insert(it.key(), it.value());
-    QStringList orphans;
-    for (const QJsonValue& v : arr) {
-        PersonDetails d;
-        QJsonObject raw;
-        readRecord(v.toObject(), &d, &raw);
-        d.name = d.name.trimmed();
-        if (d.name.isEmpty() || (d.isEmpty() && raw.isEmpty())) continue;
-        const bool known = indexOf(d.name) >= 0;
-        Entry& e = ensure(d.name);      // unknown name -> an off-list record
-        absorb(e.d, e.raw, d, raw);
-        if (!known) orphans << d.name;
-    }
-    if (!orphans.isEmpty())
-        qCInfo(lcStore).noquote() << "people-details.json:" << orphans.size()
-                                  << "bejegyzés neve nincs a névlistán — listán kívüli rekordként megmarad";
-}
-
-// One-time migration from the old shape (the constructor calls it after loading). It rereads under
-// lock (another process may have migrated meanwhile) and writes only if still needed. If the lock cannot
-// be obtained, people.json is unparseable, or the write fails: the old files stay untouched, the store
-// works in memory, and the next successful save (persist) completes the migration.
-void PeopleStore::migrateIfNeeded()
-{
-    if (!m_migrationPending && m_legacy == LegacyDetails::None)
-        return;
-    if (m_corrupt)
-        return;
-    const SharedFileLock lock(m_filePath);
-    if (!lock.locked()) {
-        qCWarning(lcStore).noquote() << "people.json: az átálláshoz nem szerezhető zár — később újra:" << m_filePath;
+    QJsonObject root = doc.object();
+    m_version = root.take(kVersionKey).toInt(0);
+    const QJsonValue peopleValue = root.take(kPeopleKey);
+    m_entries.clear();
+    m_self = PersonId();
+    if (m_version < kFormatVersion || !peopleValue.isObject()) {
+        m_legacy = true;
+        m_rootExtra = {};
+        qCCritical(lcStore).noquote()
+            << QStringLiteral("people.json is in an old, name-keyed format (version %1); the app does not read it."
+                              " Convert it once (with a backup): run: tanara-cli migrate person-ids  (%2)")
+                   .arg(m_version).arg(m_filePath);
         return;
     }
-    load();     // the fresh state under the lock
-    if (m_corrupt)
-        return;
-    if (m_migrationPending) {
-        if (persist())
-            qCInfo(lcStore).noquote() << "people.json átállítva az új alakra:" << m_filePath;
-    } else if (m_legacy != LegacyDetails::None) {
-        finishLegacyDetails();
+    if (m_version > kFormatVersion)
+        qCWarning(lcStore).noquote() << "people.json újabb verziójú, mint amit ez a build ismer:"
+                                     << m_version << m_filePath;
+    m_self = PersonId::fromString(root.take(kSelfKey).toString());
+    m_rootExtra = root;
+    const QJsonObject people = peopleValue.toObject();
+    for (auto it = people.constBegin(); it != people.constEnd(); ++it) {
+        const PersonId id = PersonId::fromString(it.key());
+        if (id.isNull()) continue;
+        Entry e;
+        readRecord(id, it.value().toObject(), &e.p, &e.raw);
+        m_entries.append(e);
     }
-}
-
-// Removing the old people-details.json: called ONLY when the new-shape people.json is surely already on disk.
-void PeopleStore::finishLegacyDetails()
-{
-    const QString legacyPath = legacyDetailsPath();
-    bool done = true;
-    switch (m_legacy) {
-    case LegacyDetails::None:
-        return;
-    case LegacyDetails::Remove:
-        done = !QFileInfo::exists(legacyPath) || QFile::remove(legacyPath);
-        break;
-    case LegacyDetails::SetAsideCorrupt:
-        done = setAsideAs(legacyPath, QStringLiteral("corrupt"));
-        break;
-    case LegacyDetails::SetAsideLeftover:
-        qCWarning(lcStore).noquote() << "people-details.json maradt egy korábbi átállásból — félretéve:" << legacyPath;
-        done = setAsideAs(legacyPath, QStringLiteral("leftover"));
-        break;
-    }
-    if (done)
-        m_legacy = LegacyDetails::None;
-    else
-        qCWarning(lcStore).noquote() << "people-details.json nem távolítható el:" << legacyPath;
+    sortEntries();
 }
 
 bool PeopleStore::persist()
 {
+    if (m_legacy) {
+        qCCritical(lcStore).noquote() << "people.json: old format on disk, not overwritten — run: tanara-cli migrate person-ids";
+        return false;
+    }
     QDir().mkpath(QFileInfo(m_filePath).absolutePath());
     if (m_corrupt && !setAsideCorrupt(m_filePath)) {
         qCWarning(lcStore).noquote() << "people.json: a sérült fájl nem tehető félre — a mentés kimarad:"
@@ -543,37 +444,23 @@ bool PeopleStore::persist()
         return false;
     }
     m_corrupt = false;
-    // An empty, off-list record carries no data: we do not store it.
-    m_entries.erase(std::remove_if(m_entries.begin(), m_entries.end(), [](const Entry& e) {
-                        return !e.listed && e.d.isEmpty() && e.raw.isEmpty();
-                    }),
-                    m_entries.end());
-    QJsonArray listed, unlisted;
+    QJsonObject people;
     for (const Entry& e : std::as_const(m_entries))
-        (e.listed ? listed : unlisted).append(writeRecord(e.d, e.raw));
+        people.insert(e.p.id.toString(), writeRecord(e.p, e.raw));
     QJsonObject root = m_rootExtra;
     root[kVersionKey] = std::max(m_version, kFormatVersion);
-    root[kPeopleKey] = listed;
-    if (!unlisted.isEmpty())
-        root[kUnlistedKey] = unlisted;
+    if (!m_self.isNull()) root[kSelfKey] = m_self.toString();
+    root[kPeopleKey] = people;
     const QByteArray bytes = QJsonDocument(root).toJson(QJsonDocument::Indented);
 
     QSaveFile f(m_filePath);
-    bool ok = f.open(QIODevice::WriteOnly) && f.write(bytes) == bytes.size() && f.commit();
-    if (ok && m_legacy != LegacyDetails::None) {
-        // Before removing the old details file: is what is on disk really what we wrote?
-        QFile check(m_filePath);
-        ok = check.open(QIODevice::ReadOnly) && check.readAll() == bytes;
-    }
+    const bool ok = f.open(QIODevice::WriteOnly) && f.write(bytes) == bytes.size() && f.commit();
     if (!ok) {
-        qCWarning(lcStore).noquote() << "people.json nem írható:" << m_filePath << f.errorString()
-                                     << (m_migrationPending ? "— az átállás elmaradt, a régi fájlok érintetlenek" : "");
+        qCWarning(lcStore).noquote() << "people.json nem írható:" << m_filePath << f.errorString();
         return false;
     }
     m_stamp = FileStamp::of(m_filePath);   // no need to reread our own write
     m_version = std::max(m_version, kFormatVersion);
-    m_migrationPending = false;
-    finishLegacyDetails();
     return true;
 }
 

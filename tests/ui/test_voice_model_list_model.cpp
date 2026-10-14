@@ -10,6 +10,7 @@
 #include "VoiceModelListModel.h"
 
 #include "tanara/app/AppController.h"
+#include "tanara/library/store/PeopleStore.h"
 #include "tanara/app/SettingsManager.h"
 #include "tanara/library/store/MeetingRepository.h"
 #include "tanara/library/store/VoiceprintStore.h"
@@ -376,11 +377,11 @@ private slots:
         vp.sourceMeetingId = meeting.id;
         vp.sampleRef = QStringLiteral("nincs-ilyen.wav#0-3000");
         vp.createdAt = QStringLiteral("2026-10-01T10:00:00");
-        m_app->voiceprints()->addPrint(QStringLiteral("Kovács Lilla"), vp);
+        m_app->voiceprints()->addPrint(m_app->people()->ensure(QStringLiteral("Kovács Lilla")), vp);
         tanara::Voiceprint orphan = vp;
         orphan.sourceMeetingId = QStringLiteral("torolt-megbeszeles");
         orphan.sampleRef = QStringLiteral("mixdown.wav#0-2000");
-        m_app->voiceprints()->addPrint(QStringLiteral("Fehér Gábor"), orphan);
+        m_app->voiceprints()->addPrint(m_app->people()->ensure(QStringLiteral("Fehér Gábor")), orphan);
 
         VoiceModelListModel m;
         m.setController(m_app.get());

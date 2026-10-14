@@ -62,6 +62,7 @@ TagSnapshot TagSuggester::snapshot(const TagService& tags, const QString& meetin
     }
     for (auto it = snap.tagsByMeeting.constBegin(); it != snap.tagsByMeeting.constEnd(); ++it)
         snap.refs.insert(it.key(), tags.meetingRef(it.key()));
+    snap.personNames = tags.personNames();
     return snap;
 }
 
@@ -109,7 +110,15 @@ QVector<TagSuggestion> TagSuggester::vote(const TagSnapshot& snap, const QVector
         s.source = SuggestionSource::Similar;
         s.score = best > 0 ? it->score / best : 0.0;
         for (const ReasonKind k : { ReasonKind::Participant, ReasonKind::Terms, ReasonKind::Title }) {
-            const QStringList vals = it->reasons.value(int(k));
+            QStringList vals = it->reasons.value(int(k));
+            if (k == ReasonKind::Participant) {
+                QStringList named;
+                for (const QString& id : std::as_const(vals)) {
+                    const QString n = personName(snap.personNames, PersonId::fromString(id));
+                    if (!n.isEmpty()) named << n;
+                }
+                vals = named;
+            }
             if (!vals.isEmpty()) s.reasons.append({ k, vals.mid(0, k == ReasonKind::Title ? 2 : 3) });
         }
         QVector<QPair<double, QString>> voters = it->voters;
@@ -151,7 +160,7 @@ QVector<TagSuggestion> TagSuggester::suggest(const QString& meetingId) const
     return suggestFrom(snapshot(*m_tags, meetingId), m_profiles, m_index);
 }
 
-QVector<TagSuggestion> TagSuggester::suggestForDraft(const QString& title, const QStringList& participants) const
+QVector<TagSuggestion> TagSuggester::suggestForDraft(const QString& title, const PersonIds& participants) const
 {
     if (!m_profiles || !m_tags) return {};
     return vote(snapshot(*m_tags, QString()), m_profiles->similarToDraft(title, participants, QString(), 20));

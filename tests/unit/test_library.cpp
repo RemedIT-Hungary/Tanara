@@ -9,6 +9,7 @@
 #include <QJsonObject>
 
 #include "tanara/library/MeetingLibrary.h"
+#include "tanara/library/store/PeopleStore.h"
 #include "tanara/foundation/text/Text.h"
 #include "tanara/library/jobs/MeetingJobTracker.h"
 #include "tanara/library/store/MeetingRepository.h"
@@ -43,6 +44,9 @@ private slots:
     void tagOptionsAndUntagged();
 
 private:
+
+    // A person by name (the test's people.json; created if missing).
+    PersonId pid(const QString& name) { return m_people->ensure(name); }
     struct Seg { qint64 ms; QString speaker; QString text; };
     Meeting add(const QString& title, const QDateTime& when, const QVector<Seg>& segs = {},
                 bool summary = false, const QMap<QString, QString>& speakers = {});
@@ -50,6 +54,7 @@ private:
 
     std::unique_ptr<QTemporaryDir> m_dir;
     std::unique_ptr<library::MeetingRepository> m_store;
+    std::unique_ptr<library::PeopleStore> m_people;
     const QDateTime m_now{QDate(2026, 10, 1), QTime(15, 0)};   // Thursday
 };
 
@@ -58,6 +63,7 @@ void LibraryTest::init()
     m_dir = std::make_unique<QTemporaryDir>();
     QVERIFY(m_dir->isValid());
     m_store = std::make_unique<library::MeetingRepository>(m_dir->filePath("rec"), m_dir->filePath("meta"));
+    m_people = std::make_unique<library::PeopleStore>(m_dir->filePath("meta/people.json"));
 }
 
 void LibraryTest::cleanup()
@@ -90,10 +96,11 @@ Meeting LibraryTest::add(const QString& title, const QDateTime& when, const QVec
     m.durationMs = 30 * 60 * 1000;
     m.hasTranscript = !segs.isEmpty();
     m.hasSummary = summary;
-    m.speakerMap = speakers;
+    for (auto it = speakers.constBegin(); it != speakers.constEnd(); ++it) m.speakerMap.insert(it.key(), pid(it.value()));
     Track mic;
     mic.id = "mic"; mic.kind = TrackKind::Mic; mic.file = "track_mic.ogg";
     mic.speakerLabel = "Ádám"; mic.fixedSpeaker = true;
+    m.speakerMap.insert(mic.speakerLabel, pid("Ádám"));   // the own track's label is the own person
     m.tracks.append(mic);
     if (!segs.isEmpty()) writeSegments(m, segs);
     m_store->saveMeeting(m);
@@ -183,6 +190,7 @@ void LibraryTest::listNewestFirstWithSections()
     add("Tegnapi", QDateTime(QDate(2026, 9, 30), QTime(9, 0)));
     add("Keddi", QDateTime(QDate(2026, 9, 29), QTime(9, 0)));
     library::MeetingLibrary lib(m_store.get());
+    lib.setPeopleStore(m_people.get());
     const library::LibraryResult r = lib.query({}, m_now);
     QCOMPARE(r.count(), 4);
     QCOMPARE(r.totalMeetings, 4);
@@ -203,6 +211,7 @@ void LibraryTest::searchTitleAccentInsensitive()
     add("Ödön heti egyeztetése", m_now.addDays(-1));
     add("Tervezés", m_now.addDays(-2));
     library::MeetingLibrary lib(m_store.get());
+    lib.setPeopleStore(m_people.get());
     library::LibraryQuery q;
     q.text = "odon";
     const library::LibraryResult r = lib.query(q, m_now);
@@ -225,6 +234,7 @@ void LibraryTest::searchTranscriptSnippet()
         false, {{"Beszélő 2", "Kovács Lilla"}});
     add("Másik", m_now.addDays(-4), {{0, "Beszélő 1", "Semmi érdekes."}});
     library::MeetingLibrary lib(m_store.get());
+    lib.setPeopleStore(m_people.get());
     library::LibraryQuery q;
     q.text = "odon kuldi";
     const library::LibraryResult r = lib.query(q, m_now);
@@ -243,6 +253,7 @@ void LibraryTest::searchNoHit()
 {
     add("Valami", m_now, {{0, "Beszélő 1", "Szöveg."}});
     library::MeetingLibrary lib(m_store.get());
+    lib.setPeopleStore(m_people.get());
     library::LibraryQuery q;
     q.text = "nincsilyen";
     const library::LibraryResult r = lib.query(q, m_now);
@@ -256,6 +267,7 @@ void LibraryTest::filters()
     add("Csak átirat", m_now.addDays(-2), {{0, "Beszélő 1", "Hello."}}, false, {{"Beszélő 1", "Ödön"}});
     add("Minden megvan", m_now.addDays(-3), {{0, "Beszélő 1", "Hello."}}, true, {{"Beszélő 1", "Lilla"}});
     library::MeetingLibrary lib(m_store.get());
+    lib.setPeopleStore(m_people.get());
 
     library::LibraryQuery q;
     QVERIFY(q.isEmpty());
@@ -271,15 +283,15 @@ void LibraryTest::filters()
     QCOMPARE(r.count(), 2);
 
     q = {};
-    q.people = {QStringLiteral("odon")};                // without accents too
+    q.people = {pid(QStringLiteral("Ödön"))};
     r = lib.query(q, m_now);
     QCOMPARE(r.count(), 1);
     QCOMPARE(r.entries.first().title, QStringLiteral("Csak átirat"));
     QVERIFY(r.entries.first().participants.contains(QStringLiteral("Ödön")));
 
-    q.people = {QStringLiteral("Ádám")};                // the own-microphone track's speaker is on all of them
+    q.people = {pid(QStringLiteral("Ádám"))};          // the own-microphone track's speaker is on all of them
     QCOMPARE(lib.query(q, m_now).count(), 3);
-    q.people = {QStringLiteral("Ádám"), QStringLiteral("Lilla")};   // both are required
+    q.people = {pid(QStringLiteral("Ádám")), pid(QStringLiteral("Lilla"))};   // both are required
     QCOMPARE(lib.query(q, m_now).count(), 1);
 
     // Filter + text together.
@@ -296,6 +308,7 @@ void LibraryTest::people()
     add("A", m_now, {{0, "Beszélő 1", "x"}}, false, {{"Beszélő 1", "Lilla"}});
     add("B", m_now.addDays(-1), {{0, "Beszélő 1", "x"}}, false, {{"Beszélő 1", "Lilla"}, {"Beszélő 2", "Ödön"}});
     library::MeetingLibrary lib(m_store.get());
+    lib.setPeopleStore(m_people.get());
     const QVector<library::PersonPresence> p = lib.people();
     QCOMPARE(p.size(), 3);
     QCOMPARE(p.at(0).meetingCount, 2);                  // two each for the own person and Lilla, 1 for Ödön
@@ -312,6 +325,7 @@ void LibraryTest::pendingItems()
 
     library::MeetingJobTracker tracker(m_store.get());
     library::MeetingLibrary lib(m_store.get(), &tracker);
+    lib.setPeopleStore(m_people.get());
     QSignalSpy pendingSpy(&lib, &library::MeetingLibrary::pendingItemsChanged);
 
     JobError e;
@@ -342,6 +356,7 @@ void LibraryTest::pendingItems()
 void LibraryTest::incrementalSignals()
 {
     library::MeetingLibrary lib(m_store.get());
+    lib.setPeopleStore(m_people.get());
     QCOMPARE(lib.query({}, m_now).count(), 0);           // loaded (empty)
     QSignalSpy added(&lib, &library::MeetingLibrary::meetingAdded);
     QSignalSpy changed(&lib, &library::MeetingLibrary::meetingChanged);
@@ -376,6 +391,7 @@ void LibraryTest::transcriptChangeInvalidatesCache()
 {
     Meeting m = add("Változó", m_now, {{0, "Beszélő 1", "Az első változat szövege."}});
     library::MeetingLibrary lib(m_store.get());
+    lib.setPeopleStore(m_people.get());
     library::LibraryQuery q;
     q.text = "masodik";
     QCOMPARE(lib.query(q, m_now).count(), 0);
@@ -392,7 +408,7 @@ void LibraryTest::transcriptChangeInvalidatesCache()
     QCOMPARE(lib.query(q, m_now).count(), 0);
 
     // Only the speaker assignment changes: the text cache stays, the name refreshes.
-    m.speakerMap.insert("Beszélő 1", "Ödön");
+    m.speakerMap.insert("Beszélő 1", pid("Ödön"));
     m_store->saveMeeting(m);
     q.text = "masodik";
     QCOMPARE(lib.query(q, m_now).entries.first().snippetSpeaker, QStringLiteral("Ödön"));
@@ -417,6 +433,7 @@ void LibraryTest::manyMeetingsStayResponsive()
         if (i == 137) needleId = m.id;
     }
     library::MeetingLibrary lib(m_store.get());
+    lib.setPeopleStore(m_people.get());
     QElapsedTimer clock;
     clock.start();
     QCOMPARE(lib.query({}, m_now).count(), 300);
@@ -447,6 +464,7 @@ void LibraryTest::warmUpLoadsInBackground()
     for (int i = 0; i < 40; ++i)
         add(QStringLiteral("M%1").arg(i), m_now.addDays(-i), {{0, "Beszélő 1", QStringLiteral("szöveg %1").arg(i)}});
     library::MeetingLibrary lib(m_store.get());
+    lib.setPeopleStore(m_people.get());
     QVERIFY(!lib.isWarm());
     QSignalSpy warmed(&lib, &library::MeetingLibrary::warmedUp);
     lib.warmUp();
@@ -464,6 +482,7 @@ void LibraryTest::tagsInEntriesAndFilter()
     const Meeting c = add("Címke nélkül", m_now.addDays(-3));
     library::TagService tags(m_store.get(), m_dir->filePath("meta/tags.json"));
     library::MeetingLibrary lib(m_store.get());
+    lib.setPeopleStore(m_people.get());
     lib.setTagService(&tags);
     const Tag nord = tags.addTag(a.id, QStringLiteral("Nordvik"));
     const Tag part = tags.addTag(a.id, QStringLiteral("Partnerek"));
@@ -503,6 +522,7 @@ void LibraryTest::searchInTagNames()
     add("Másik", m_now.addDays(-2), {{0, "Beszélő 1", "Semmi köze."}});
     library::TagService tags(m_store.get(), m_dir->filePath("meta/tags.json"));
     library::MeetingLibrary lib(m_store.get());
+    lib.setPeopleStore(m_people.get());
     lib.setTagService(&tags);
     tags.addTag(a.id, QStringLiteral("Ügyfél-Nordvik"));
 
@@ -527,6 +547,7 @@ void LibraryTest::tagOptionsAndUntagged()
     add("C", m_now.addDays(-6));
     library::TagService tags(m_store.get(), m_dir->filePath("meta/tags.json"));
     library::MeetingLibrary lib(m_store.get());
+    lib.setPeopleStore(m_people.get());
     QVERIFY(lib.tagOptions().isEmpty());               // no tags without TagService
     lib.setTagService(&tags);
     const Tag x = tags.addTag(a.id, QStringLiteral("Zebra"));

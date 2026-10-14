@@ -82,6 +82,9 @@ private slots:
     void sandboxRolesStayInside();
 
 private:
+
+    // The tests' people: the name stands in as the PersonId.
+    static PersonId pid(const QString& name) { return PersonId::fromString(name); }
     QString orphanFolder(const QString& name);
 
     std::unique_ptr<QTemporaryDir> m_dir;
@@ -262,7 +265,7 @@ void DataSafetyTest::meetingJsonWrittenAtomically()
 {
     library::MeetingRepository store(m_audio, m_meta);
     Meeting m = store.createMeeting("Atomikus");
-    m.speakerMap.insert("Beszélő 1", "Ödön");
+    m.speakerMap.insert("Beszélő 1", pid("Ödön"));
     m.hasTranscript = true;
     for (int i = 0; i < 20; ++i) {
         m.contextNote = QString("megjegyzés %1").arg(i);
@@ -276,7 +279,7 @@ void DataSafetyTest::meetingJsonWrittenAtomically()
     QCOMPARE(doc.object().value("id").toString(), m.id);
     const Meeting back = store.load(m.id);
     QCOMPARE(back.contextNote, QStringLiteral("megjegyzés 19"));
-    QCOMPARE(back.speakerMap.value("Beszélő 1"), QStringLiteral("Ödön"));
+    QCOMPARE(back.speakerMap.value("Beszélő 1"), pid("Ödön"));
 }
 
 void DataSafetyTest::corruptSettingsAreNotOverwritten()
@@ -353,18 +356,23 @@ void DataSafetyTest::peopleFromTwoProcessesMerge()
     // Two "processes": both load at startup, then modify alternately.
     library::PeopleStore analyzer(path);
     library::PeopleStore recorder(path);
-    analyzer.add("Bence");
-    recorder.add("Lilla");          // before the fix this dropped Bence
-    analyzer.add("Zsófi");          // ...and this dropped Lilla
-    QCOMPARE(library::PeopleStore(path).names(), QStringList({"Bence", "Lilla", "Zsófi"}));
+    auto names = [](const library::PeopleStore& st) {
+        QStringList out;
+        for (const Person& p : st.people()) out << p.displayName;
+        return out;
+    };
+    const PersonId bence = analyzer.create("Bence");
+    const PersonId lilla = recorder.create("Lilla");          // before the fix this dropped Bence
+    analyzer.create("Zsófi");                                 // ...and this dropped Lilla
+    QCOMPARE(names(library::PeopleStore(path)), QStringList({"Bence", "Lilla", "Zsófi"}));
 
-    // Delete / rename builds on the other process's fresh state, and does not resurrect a deleted name.
-    recorder.remove("Bence");
-    analyzer.rename("Lilla", "Kovács Lilla");
-    QCOMPARE(library::PeopleStore(path).names(), QStringList({"Kovács Lilla", "Zsófi"}));
-    QCOMPARE(analyzer.names(), QStringList({"Kovács Lilla", "Zsófi"}));
+    // Delete / rename builds on the other process's fresh state, and does not resurrect a deleted person.
+    recorder.remove(bence);
+    analyzer.rename(lilla, "Kovács Lilla");
+    QCOMPARE(names(library::PeopleStore(path)), QStringList({"Kovács Lilla", "Zsófi"}));
+    QCOMPARE(names(analyzer), QStringList({"Kovács Lilla", "Zsófi"}));
     // Two records in the file, and no lock file remains.
-    QCOMPARE(QJsonDocument::fromJson(readFile(path)).object().value("people").toArray().size(), 2);
+    QCOMPARE(QJsonDocument::fromJson(readFile(path)).object().value("people").toObject().size(), 2);
     QCOMPARE(QDir(m_meta).entryList(QDir::Files | QDir::Hidden), QStringList{"people.json"});
 }
 
@@ -373,20 +381,20 @@ void DataSafetyTest::voiceprintsFromTwoProcessesMerge()
     const QString path = QDir(m_meta).filePath("voiceprints.json");
     library::VoiceprintStore analyzer(path);
     library::VoiceprintStore recorder(path);
-    analyzer.addPrint("Bence", print(1, 0));
-    recorder.addPrint("Lilla", print(0, 1));        // before the fix this dropped Bence's voiceprint
-    analyzer.addPrint("Bence", print(0.9f, 0.1f));  // ...and this dropped Lilla's
+    analyzer.addPrint(pid("Bence"), print(1, 0));
+    recorder.addPrint(pid("Lilla"), print(0, 1));        // before the fix this dropped Bence's voiceprint
+    analyzer.addPrint(pid("Bence"), print(0.9f, 0.1f));  // ...and this dropped Lilla's
     {
         library::VoiceprintStore fresh(path);
-        QCOMPARE(fresh.people(), QStringList({"Bence", "Lilla"}));
-        QCOMPARE(fresh.printCount("Bence"), 2);
-        QCOMPARE(fresh.printCount("Lilla"), 1);
+        QCOMPARE(fresh.people(), PersonIds({pid("Bence"), pid("Lilla")}));
+        QCOMPARE(fresh.printCount(pid("Bence")), 2);
+        QCOMPARE(fresh.printCount(pid("Lilla")), 1);
     }
     // The other process's delete stays: the next write does not resurrect it.
-    recorder.removePerson("Bence");
-    analyzer.addPrint("Zsófi", print(0.5f, 0.5f));
+    recorder.removePerson(pid("Bence"));
+    analyzer.addPrint(pid("Zsófi"), print(0.5f, 0.5f));
     library::VoiceprintStore fresh(path);
-    QCOMPARE(fresh.people(), QStringList({"Lilla", "Zsófi"}));
+    QCOMPARE(fresh.people(), PersonIds({pid("Lilla"), pid("Zsófi")}));
     QCOMPARE(fresh.totalPrintCount(), 2);
     QCOMPARE(analyzer.totalPrintCount(), 2);
     QCOMPARE(QDir(m_meta).entryList(QDir::Files | QDir::Hidden), QStringList{"voiceprints.json"});
@@ -395,16 +403,16 @@ void DataSafetyTest::voiceprintsFromTwoProcessesMerge()
 void DataSafetyTest::corruptVoiceprintsAreSetAside()
 {
     const QString path = QDir(m_meta).filePath("voiceprints.json");
-    const QByteArray broken = R"({"people":[{"name":"Ödön","prints":[{"id":"a","embedding":[0.1,0.)";
+    const QByteArray broken = R"({"version":3,"people":{"Ödön":[{"id":"a","embedding":[0.1,0.)";
     writeFile(path, broken);
     library::VoiceprintStore store(path);
     QCOMPARE(store.totalPrintCount(), 0);
     QCOMPARE(readFile(path), broken);            // not touched on load
-    store.addPrint("Lilla", print(0, 1));
+    store.addPrint(pid("Lilla"), print(0, 1));
     const QStringList aside = QDir(m_meta).entryList({"voiceprints.json.corrupt-*"}, QDir::Files);
     QCOMPARE(aside.size(), 1);                   // the corrupt file stayed (can be saved by hand)
     QCOMPARE(readFile(QDir(m_meta).filePath(aside.first())), broken);
-    QCOMPARE(library::VoiceprintStore(path).people(), QStringList{"Lilla"});
+    QCOMPARE(library::VoiceprintStore(path).people(), PersonIds{pid("Lilla")});
 }
 
 void DataSafetyTest::replaceFileKeepsOldOnFailure()

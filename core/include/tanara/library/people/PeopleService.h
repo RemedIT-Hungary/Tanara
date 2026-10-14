@@ -5,13 +5,14 @@
 // nicknames, note, delete / move a sample / new person from a sample, voiceprint from manually
 // assigned meetings, merge, delete) plus undo.
 //
+// People are identified by PersonId (domain/Person.h); the name is only a field of the record.
 // What writes where:
 //  - people.json: one record per person (name, nicknames, note) (PeopleStore);
-//  - voiceprints.json: voiceprints bound to a name (VoiceprintStore);
+//  - voiceprints.json: voiceprints bound to the PersonId (VoiceprintStore);
 //    both through the stores (lock + reread + atomic write);
-//  - meetings: rename / merge / delete go through AppController's existing global operations
-//    (renamePerson / setUserSpeakerName / removePerson), which carry through every meeting's
-//    speakerMap, track name and manual participants.
+//  - rename: ONE field (AppController::renamePerson / setUserSpeakerName for the own person);
+//  - merge / delete: AppController::mergePeople / removePerson rewrite the references (voiceprints,
+//    tag rejections, every meeting's speakerMap / participants / overlay).
 //
 // What affects who the speakers are (merge, delete, moving a sample) marks the affected meetings'
 // summary stale with the existing mechanism (speakeredit::markSummaryStale), and emits the usual
@@ -19,8 +20,10 @@
 // summaryStaleChanged), so open windows refresh without a restart.
 //
 // Undoable: deleting a sample, moving a sample (and "new person from this sample"), deleting a
-// nickname, rename. NOT undoable: merge, deleting a person: they rewrite every affected meeting; the stack is cleared then.
+// nickname, rename, merge (the merge's exact reference list goes on the stack: PersonMergeUndo).
+// NOT undoable: deleting a person (the stack is cleared then).
 #include "tanara/editing/session/SpeakerEditTypes.h"
+#include "tanara/domain/Person.h"
 #include "tanara/processing/analysis/UtteranceEmbeddings.h"
 
 #include <QDate>
@@ -41,6 +44,7 @@ class PeopleStats;
 class VoiceprintStore;
 
 struct PersonRecord {
+    PersonId    id;
     QString     name;
     QStringList aliases;
     QString     note;
@@ -53,7 +57,7 @@ struct PersonRecord {
 // A voice sample (voiceprint) ready for display.
 struct VoiceSample {
     QString id;
-    QString person;
+    PersonId person;
     QString sourceKind;     // "mic" | "call" | "system" | "mix" | "unknown"
     QString deviceLabel;    // friendly device / track name; empty = unknown
     QString meetingId;
@@ -69,7 +73,8 @@ struct VoiceSample {
 struct PeopleOpResult {
     bool    ok = false;
     QString error;          // human error message if !ok
-    QString name;           // name of the affected / created person
+    PersonId person;        // the affected / created person
+    QString name;           // their name
     int     meetings = 0;   // affected meetings
     int     samples = 0;    // affected samples
     int     staleSummaries = 0;   // summaries marked stale
@@ -96,12 +101,12 @@ struct VoiceprintPlan {
     qint64      usableMs = 0;           // this much audio of those gets used in total
 };
 
-enum class PeopleUndoKind { None, SampleRemoved, SampleMoved, AliasRemoved, Renamed };
+enum class PeopleUndoKind { None, SampleRemoved, SampleMoved, AliasRemoved, Renamed, Merged };
 
 struct PeopleUndoInfo {
     PeopleUndoKind kind = PeopleUndoKind::None;
-    QString person;     // the person the change is visible at (worth selecting after an undo)
-    QString detail;     // sample: the meeting's title; nickname: the nickname; rename: the new name
+    PersonId person;    // the person the change is visible at (worth selecting after an undo)
+    QString detail;     // sample: the meeting's title; nickname: the nickname; rename: the new name; merge: the dropped name
 };
 
 class PeopleService : public QObject {
@@ -118,24 +123,29 @@ public:
     // ---- reading (fast: does not read meetings) ----
     // The fresh state on disk (another process may write the two files too).
     void reload();
-    QString selfName() const;
-    bool isSelf(const QString& name) const;
-    // people.json + the voiceprint DB + the own name; unordered.
+    PersonId selfId() const;
+    bool isSelf(const PersonId& person) const;
+    // Every person of people.json; unordered.
     QVector<PersonRecord> persons() const;
-    PersonRecord person(const QString& name) const;
-    bool exists(const QString& name) const;
+    PersonRecord person(const PersonId& person) const;   // unknown: an invalid record (null id)
+    bool exists(const PersonId& person) const;
+    // The people with this name (case-insensitive; two people may share a name).
+    PersonIds findByName(const QString& name) const;
     // The person's samples, newest first.
-    QVector<VoiceSample> samples(const QString& name) const;
+    QVector<VoiceSample> samples(const PersonId& person) const;
     // Similarity of two people's voices from the stored voiceprints (cosine of the best matching pair,
     // clamped to 0..1); -1 if either has no voiceprint.
-    double similarity(const QString& a, const QString& b) const;
+    double similarity(const PersonId& a, const PersonId& b) const;
 
     // ---- operations ----
+    // A new person. The People window keeps names unique: an existing name is an error.
     PeopleOpResult addPerson(const QString& name);
-    PeopleOpResult renamePerson(const QString& oldName, const QString& newName);
-    PeopleOpResult addAlias(const QString& name, const QString& alias);
-    bool removeAlias(const QString& name, const QString& alias);
-    void setNote(const QString& name, const QString& note);
+    // Rename = one field; the old name stays as a nickname. An existing name (another person's) is an error
+    // ("use Merge"), as before.
+    PeopleOpResult renamePerson(const PersonId& person, const QString& newName);
+    PeopleOpResult addAlias(const PersonId& person, const QString& alias);
+    bool removeAlias(const PersonId& person, const QString& alias);
+    void setNote(const PersonId& person, const QString& note);
     // Refreshes the learned track side from an analysis (SideAnalysis: sides::learnedDefaults: the
     // Local / Remote that comes from confirmed lines or a manual assignment). Returns how many people's
     // changed. Not undoable (a learned value; the next analysis overwrites it).
@@ -143,27 +153,27 @@ public:
     // Manual override of the track side (People window: "Typically: local / remote / no data"):
     // "local" | "remote" is a protected manual value; empty = delete (learning may write it again).
     // true if changed (changed signal).
-    bool setDefaultSide(const QString& name, const QString& side);
+    bool setDefaultSide(const PersonId& person, const QString& side);
 
     PeopleOpResult removeSample(const QString& printId);
-    // The sample moves to `toName`. If there is no such person, one is created ("new person from this
+    // The sample moves to the chosen person; PersonChoice::newName creates one ("new person from this
     // sample"). The summary of the sample's source meeting becomes stale.
-    PeopleOpResult moveSample(const QString& printId, const QString& toName);
+    PeopleOpResult moveSample(const QString& printId, const PersonChoice& to);
 
-    VoiceprintPlan voiceprintPlan(const QString& name) const;
+    VoiceprintPlan voiceprintPlan(const PersonId& person) const;
     // One sample from a meeting (with the existing SpeakerEditor::createVoiceprint logic).
-    editing::VoiceprintResult createVoiceprintFromMeeting(const QString& name, const QString& meetingId);
+    editing::VoiceprintResult createVoiceprintFromMeeting(const PersonId& person, const QString& meetingId);
 
-    MergePreview mergePreview(const QString& loser, const QString& survivor) const;
+    MergePreview mergePreview(const PersonId& loser, const PersonId& survivor) const;
     // Every meeting, sample and nickname of `loser` goes to `survivor`; the `loser` name becomes a
-    // nickname. Not undoable.
-    PeopleOpResult merge(const QString& loser, const QString& survivor);
+    // nickname. One undo step (PeopleUndoKind::Merged).
+    PeopleOpResult merge(const PersonId& loser, const PersonId& survivor);
 
-    DeletePreview deletePreview(const QString& name) const;
+    DeletePreview deletePreview(const PersonId& person) const;
     // Deletes the person from every meeting (an anonymous speaker remains). keepSamples: their
-    // samples go to a new person named "Anonymous N" (result.name), who shows in the list and can be
-    // renamed or merged later. The own person cannot be deleted. Not undoable.
-    PeopleOpResult removePerson(const QString& name, bool keepSamples);
+    // samples go to a new person named "Anonymous N" (result.person / result.name), who shows in the list
+    // and can be renamed or merged later. The own person cannot be deleted. Not undoable.
+    PeopleOpResult removePerson(const PersonId& person, bool keepSamples);
 
     // ---- undo ----
     bool canUndo() const;

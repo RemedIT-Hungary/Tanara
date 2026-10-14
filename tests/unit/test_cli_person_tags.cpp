@@ -1,6 +1,7 @@
 // tanara-cli tags people / person / set-person: the real CLI (QProcess), with an ISOLATED
 // TANARA_HOME, made-up meetings (the test process writes them into the sandbox with an AppController).
 #include <QtTest>
+#include "tanara/library/store/PeopleStore.h"
 #include <QTemporaryDir>
 
 #include "tanara/app/AppController.h"
@@ -36,7 +37,8 @@ private slots:
             mic.id = "mic"; mic.kind = TrackKind::Mic; mic.file = "track_mic.ogg";
             mic.speakerLabel = kSelf; mic.fixedSpeaker = true; mic.active = true;
             m.tracks.append(mic);
-            m.speakerMap.insert(QStringLiteral("Beszélő 2"), kGabor);
+            m.speakerMap.insert(kSelf, app.selfPerson().id);
+            m.speakerMap.insert(QStringLiteral("Beszélő 2"), app.people()->ensure(kGabor));
             m.tagIds = {nord.id};
             app.store()->saveMeeting(m);
         }

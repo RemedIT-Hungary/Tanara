@@ -22,6 +22,7 @@
 //  - The importer does NOT make a mixdown: the caller (AppController) starts it per mixdownMode,
 //    exactly as at the end of a recording.
 #include "tanara/domain/Meeting.h"
+#include "tanara/domain/Person.h"
 #include "tanara/media/MediaTool.h"
 
 #include <QObject>
@@ -102,9 +103,10 @@ public:
     AudioImporter(MeetingRepository* store, media::MediaToolPtr media, QObject* parent = nullptr);
     ~AudioImporter() override;
 
-    // The tracks' Opus bitrate (kbps) and the speaker name of the "own microphone" track.
+    // The tracks' Opus bitrate (kbps) and the speaker of the "own microphone" track (its label is the
+    // user's name, mapped to the own person in the speakerMap).
     void setOpusBitrateKbps(int kbps);
-    void setUserSpeakerName(const QString& name);
+    void setSelfPerson(const SelfPerson& self);
 
     bool    busy() const;          // an import is running (one at a time)
     QString currentId() const;     // id of the running import (= the future meeting)

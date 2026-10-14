@@ -4,13 +4,14 @@
 //
 // Storage:
 //  - the set: <metadataDir>/tags.json
-//      { "version": 1,
+//      { "version": 2,
 //        "tags":     [ {"id", "name", "createdAt", "lastUsedAt"?, "aliases"?: [...]}, ... ],
 //        "rejected": [ {"meetingId", "tagId"?, "name"?}, ... ] }
-//    The person-level items of "rejected": {"person", "tagId", "meetingId"?}: without meetingId a
+//    The person-level items of "rejected": {"personId", "tagId", "meetingId"?}: without meetingId a
 //    lasting (person, tag) rejection, with a meetingId only for that meeting.
-//    {"person", "meetingId"} without a tag: the person's suggestion rejected for that meeting
-//    (the x of the participant suggestion, rejectPersonForMeeting).
+//    {"personId", "meetingId"} without a tag: the person's suggestion rejected for that meeting
+//    (the x of the participant suggestion, rejectPersonForMeeting). Version 2: people by PersonId
+//    (the old name-keyed "person" items are not read; `tanara-cli migrate person-ids` converts them).
 //    written atomically, under an inter-process lock (the recorder process may write it too; see
 //    store/SharedFile.h). "aliases" are the old names of merged tags: typing one offers the kept tag.
 //  - the assignment: "tags" in meeting.json (Meeting::tagIds), via MeetingRepository::saveMeeting.
@@ -28,7 +29,7 @@
 // to the people (in one step). The learned association's statistics are computed from the row
 // cache: after ensurePersonStats() on a background thread (the old snapshot stays valid until the
 // new one is ready; personStatsChanged), before that the first read is synchronous (tests, CLI).
-// The own person is left out of every rule.
+// The own person is left out of every rule. People are identified by PersonId everywhere.
 #include "tanara/library/tags/PersonTags.h"
 #include "tanara/domain/Tag.h"
 
@@ -44,6 +45,13 @@ namespace tanara::library {
 class MeetingRepository;
 class MeetingProfiles;
 class PeopleStore;
+
+// One person-level rejection moved by a merge (movePersonRefs), for its undo.
+struct PersonRejectionMove {
+    QString tagId;          // empty: a "not at this meeting" rejection
+    QString meetingId;      // empty: a lasting one
+    bool    keepHadIt = false;   // the kept person already had the same rejection
+};
 
 class TagService : public QObject {
     Q_OBJECT
@@ -96,17 +104,19 @@ public:
     // The store of manual tags (people.json). Without it the manual tag operations have no effect; the
     // learned statistics work.
     void setPeopleStore(PeopleStore* people);
-    // The own person's name (queried on every call; empty = none).
-    void setSelfNameProvider(std::function<QString()> provider);
-    QString selfName() const;
-    bool isSelf(const QString& name) const;
+    // The own person (queried on every call; null = none).
+    void setSelfProvider(std::function<PersonId()> provider);
+    PersonId selfId() const;
+    bool isSelf(const PersonId& person) const;
+    // Display names of every known person (people.json; empty without a PeopleStore).
+    PersonNames personNames() const;
 
-    QStringList tagsOfPerson(const QString& name) const;       // only existing tags, in order
-    // false: empty / own name, or no PeopleStore. Unknown ids are dropped.
-    bool setPersonTags(const QString& name, const QStringList& ids);
-    Tag  addPersonTag(const QString& name, const QString& nameOrId);   // a non-existent name -> a new tag
-    void removePersonTag(const QString& name, const QString& id);
-    QStringList peopleWith(const QString& tagId) const;        // manual; sorted by name
+    QStringList tagsOfPerson(const PersonId& person) const;    // only existing tags, in order
+    // false: null / own person, or no PeopleStore. Unknown ids are dropped.
+    bool setPersonTags(const PersonId& person, const QStringList& ids);
+    Tag  addPersonTag(const PersonId& person, const QString& nameOrId);   // a non-existent name -> a new tag
+    void removePersonTag(const PersonId& person, const QString& id);
+    PersonIds peopleWith(const QString& tagId) const;          // manual; sorted by name
 
     // ---- people: learned association + suggestions ----
     // Turns background mode on and precomputes the statistics (the app calls it at startup).
@@ -125,52 +135,53 @@ public:
     // limit <= 0: all.
     QVector<PersonTagStat> peopleStats(const QString& tagId, int limit = 50) const;
     // The person's tags with numbers: manual (even with 0 shared) + every c >= 1 tag; manual first.
-    QVector<PersonTagStat> personTagStats(const QString& name) const;
+    QVector<PersonTagStat> personTagStats(const PersonId& person) const;
     // 3.1: "Put it on them": learned >= threshold, not manually on them, not rejected, not excluded.
-    QVector<PersonTagStat> suggestPeopleForTag(const QString& tagId, const QStringList& excludeNames = {},
+    QVector<PersonTagStat> suggestPeopleForTag(const QString& tagId, const PersonIds& exclude = {},
                                                int limit = persontags::kMaxSuggestions) const;
     // 3.2: "Usually at these" (c >= 2 and (>= 30% of the tag's or >= 50% of the person's)).
-    QVector<PersonTagStat> suggestTagsForPerson(const QString& name, int limit = persontags::kMaxSuggestions) const;
+    QVector<PersonTagStat> suggestTagsForPerson(const PersonId& person, int limit = persontags::kMaxSuggestions) const;
     // 3.3: a meeting tag from the participants' manual tags: t, if it is on >= 2 participants, or there is
     // a single non-own participant and it is on them; tags on the meeting and rejected there are dropped.
     // source = People, reason ReasonKind::PeopleTags (the names of the participants carrying the tag).
-    QVector<TagSuggestion> suggestTagsForPeople(const QStringList& names, const QString& meetingId) const;
+    QVector<TagSuggestion> suggestTagsForPeople(const PersonIds& people, const QString& meetingId) const;
     // The same with the meeting's named participants: the speaker map and the own track
     // (MeetingLibrary::participantsOf), plus manual, calendar and approved participants,
     // so also before transcription.
     QVector<TagSuggestion> suggestMeetingTagsFromParticipants(const QString& meetingId) const;
     // The tag as identification evidence (see PersonTagSnapshot::evidence; meetingId: its own row
     // is left out of the numbers).
-    TagEvidence tagEvidence(const QString& personName, const QStringList& meetingTagIds,
+    TagEvidence tagEvidence(const PersonId& person, const QStringList& meetingTagIds,
                             const QString& meetingId = QString()) const;
 
     // (person, tag) rejection; empty meetingId = lasting, otherwise only for that meeting.
-    void rejectPersonTag(const QString& name, const QString& tagId, const QString& meetingId = QString());
-    bool isRejectedForPerson(const QString& name, const QString& tagId, const QString& meetingId = QString()) const;
+    void rejectPersonTag(const PersonId& person, const QString& tagId, const QString& meetingId = QString());
+    bool isRejectedForPerson(const PersonId& person, const QString& tagId, const QString& meetingId = QString()) const;
 
     // ---- person suggestion for a meeting (Overview > Participants) ----
     // The people learned from the meeting's tags (suggestPeopleForTag in tag order) who are not
-    // among the participants yet (excludeNames) and are not rejected for this meeting (neither
+    // among the participants yet (exclude) and are not rejected for this meeting (neither
     // rejectPersonForMeeting nor the (person, tag, meeting) rejection). A person once (with their
     // first tag). The own person is left out. limit <= 0: all.
-    QVector<PersonTagStat> suggestPeopleForMeeting(const QString& meetingId, const QStringList& excludeNames = {},
+    QVector<PersonTagStat> suggestPeopleForMeeting(const QString& meetingId, const PersonIds& exclude = {},
                                                    int limit = persontags::kMaxSuggestions) const;
     // The suggested person's x button: a LASTING rejection for this meeting only (tags.json rejected[]
-    // {"person", "meetingId"} without a tag). One undo step. Deleting the meeting deletes the rejection too.
-    void rejectPersonForMeeting(const QString& name, const QString& meetingId);
-    bool isPersonRejectedForMeeting(const QString& name, const QString& meetingId) const;
+    // {"personId", "meetingId"} without a tag). One undo step. Deleting the meeting deletes the rejection too.
+    void rejectPersonForMeeting(const PersonId& person, const QString& meetingId);
+    bool isPersonRejectedForMeeting(const PersonId& person, const QString& meetingId) const;
 
-    // Carrying person operations through (called by AppController's global rename / delete; the
-    // people.json record is moved by PeopleStore): rejections go with the person (a union on merge),
-    // the undo stack's person snapshots follow the name.
-    void renamePersonRefs(const QString& oldName, const QString& newName);
-    void forgetPerson(const QString& name);
+    // Carrying person operations through (AppController's merge / delete; the people.json record is
+    // handled by PeopleStore). A rename needs nothing here (the id stays).
+    // Merge: `drop`'s rejections go to `keep` (a union); returns what moved, for the undo.
+    QVector<PersonRejectionMove> movePersonRefs(const PersonId& drop, const PersonId& keep);
+    void undoMovePersonRefs(const PersonId& keep, const PersonId& drop, const QVector<PersonRejectionMove>& moves);
+    void forgetPerson(const PersonId& person);
 
     // ---- learning question (UX plan rule 5) ----
     // The questions after an approval / new person (PersonTagSnapshot::learningQuestions; a lastingly
     // rejected pair and an already asked question are dropped). The UI asks the question once:
     // then markLearningAsked (remembered for the run; an unanswered question is not a rejection).
-    QVector<PersonTagQuestion> learningQuestions(const QString& meetingId, const QStringList& names) const;
+    QVector<PersonTagQuestion> learningQuestions(const QString& meetingId, const PersonIds& people) const;
     void markLearningAsked(const QString& meetingId, const QVector<PersonTagQuestion>& questions);
     // "Yes": the tag on every person (manual tag); "No": a lasting (person, tag) rejection.
     // Both are ONE undo step.
@@ -207,7 +218,7 @@ signals:
     void meetingTagsChanged(QString meetingId);
     void rejectedChanged();
     void undoChanged();
-    void personTagsChanged(QString name);     // a person's manual tags changed (empty: several)
+    void personTagsChanged(QString personId); // a person's manual tags changed (PersonId string; empty: several)
     void personStatsChanged();                // the learned association's statistics refreshed
 
 private:

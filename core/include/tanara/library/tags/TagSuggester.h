@@ -14,6 +14,7 @@
 // needed for a suggestion is made on the main thread; suggestFrom uses it plus the thread-safe
 // readers of MeetingProfiles / EmbeddingIndex, so it can run on a background thread. The methods
 // reading TagService directly (suggest, cooccur, suggestForDraft) belong to the main thread.
+#include "tanara/domain/Person.h"
 #include "tanara/domain/Tag.h"
 
 #include <QHash>
@@ -34,6 +35,9 @@ struct TagSnapshot {
     QSet<QString> rejected;                         // tag ids rejected on the meeting
     QHash<QString, MeetingRef> refs;                // references of the tagged meetings
     int totalMeetings = 0;
+    // Display names: the "shared participant" reasons of MeetingProfiles carry PersonIds; the
+    // suggestion's reason shows the names (an unknown person is dropped).
+    PersonNames personNames;
 };
 
 class TagSuggester {
@@ -51,7 +55,7 @@ public:
     static QVector<TagSuggestion> suggestFrom(const TagSnapshot& snap, const MeetingProfiles* profiles,
                                               const EmbeddingIndex* index = nullptr);
     QVector<TagSuggestion> cooccur(const QString& meetingId, const QString& justAddedTagId) const;
-    QVector<TagSuggestion> suggestForDraft(const QString& title, const QStringList& participants = {}) const;
+    QVector<TagSuggestion> suggestForDraft(const QString& title, const PersonIds& participants = {}) const;
 
     // Merging the neighbors by reciprocal rank fusion (pure function, testable).
     static QVector<SimilarHit> fuseRrf(const QVector<SimilarHit>& a, const QVector<SimilarHit>& b, int k = kRrfK);

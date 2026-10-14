@@ -36,6 +36,7 @@
 //   reslice <meeting-folder> [--dry-run] [--json]   re-pad Soniox lines, carrying ids over (ResliceCommand.cpp)
 //   paths show | paths adopt-legacy [--from <dir>] [--dry-run]   folders and their source (PathsCommands.cpp)
 //   settings import-legacy [--from <file>] [--dry-run]           old flat settings.json -> v2 sections
+//   migrate person-ids [--dry-run] [--backup-dir <dir>]   one-time: name-keyed people -> PersonIds, with a backup (MigrateCommands.cpp)
 #include "tanara/app/AppController.h"
 #include "tanara/app/StartupDiagnostics.h"
 #include "CloudCommands.h"
@@ -46,6 +47,8 @@
 #include "TrackSidesCommand.h"
 #include "VoiceCommands.h"
 #include "PathsCommands.h"
+#include "MigrateCommands.h"
+#include "tanara/library/store/PeopleStore.h"
 #include "tanara/cloud/CloudSession.h"
 #include "tanara/foundation/log/Logging.h"
 #include "tanara/app/SettingsManager.h"
@@ -267,6 +270,8 @@ int main(int argc, char** argv) {
     // One-time helpers of the folder / settings format change (P6): no AppController, no side effects.
     if (cmd == "paths")        return tanara::cli::runPathsCommand(args);
     if (cmd == "settings")     return tanara::cli::runSettingsCommand(args);
+    // One-time converter of the person data to PersonIds (P11): before AppController, which would read the data.
+    if (cmd == "migrate")      return tanara::cli::runMigrateCommand(args);
 
     app::AppController app;
 
@@ -726,12 +731,13 @@ int main(int argc, char** argv) {
     if (cmd == "rename") {
         const QString id = args.value(2), raw = args.value(3), name = args.value(4);
         if (id.isEmpty() || raw.isEmpty()) {
-            err << QStringLiteral("Usage: rename <meetingId> <rawLabel> <name>") << "\n"; return 1;
+            err << QStringLiteral("Usage: rename <meetingId> <rawLabel> <name|personId>") << "\n"; return 1;
         }
         QObject::connect(&app, &app::AppController::errorOccurred, &qapp, [&](QString e) {
             err << QStringLiteral("ERROR: %1").arg(e) << "\n"; err.flush();
         });
-        app.renameSpeaker(id, raw, name);   // synchronous
+        // A known PersonId, else the first person with that name, else a new person; empty = anonymous.
+        app.renameSpeaker(id, raw, app.people()->choiceFor(name));   // synchronous
         out << QStringLiteral("Renamed: \"%1\" → \"%2\"").arg(raw, name) << "\n"; out.flush();
         return 0;
     }
@@ -745,7 +751,8 @@ int main(int argc, char** argv) {
         if (m.speakerMap.isEmpty())
             out << QStringLiteral("  (empty — no match above threshold, or no model/voiceprint)") << "\n";
         for (auto it = m.speakerMap.constBegin(); it != m.speakerMap.constEnd(); ++it)
-            out << "  " << it.key() << " → " << it.value() << "\n";
+            out << "  " << it.key() << " → " << app.people()->displayName(it.value())
+                << "  [" << it.value().toString() << "]\n";
         out.flush();
         return 0;
     }
@@ -757,9 +764,9 @@ int main(int argc, char** argv) {
         const auto guesses = app.identifyParticipants(id);
         if (guesses.isEmpty()) { out << QStringLiteral("  (no match — no model/active track, or silence)") << "\n"; out.flush(); return 0; }
         for (const auto& g : guesses) {
-            const QString who = g.name.isEmpty()
+            const QString who = g.personId.isNull()
                 ? QStringLiteral("UNKNOWN")
-                : QStringLiteral("%1 (%2%)").arg(g.name).arg(int(g.score * 100 + 0.5));
+                : QStringLiteral("%1 (%2%)").arg(g.displayName).arg(int(g.score * 100 + 0.5));
             out << plural(g.windows, "  • %1  →  %2   [%n window, sample: %3]", "  • %1  →  %2   [%n windows, sample: %3]")
                        .arg(g.deviceName, who, g.sampleRef)
                 << "\n";
@@ -775,9 +782,9 @@ int main(int argc, char** argv) {
                    .arg(plural(vp->people().size(), "%n person", "%n people"),
                         plural(vp->totalPrintCount(), "%n voiceprint", "%n voiceprints"))
             << "\n";
-        for (const QString& name : vp->people())
-            out << QStringLiteral("  %1: %2").arg(name,
-                       plural(vp->printCount(name), "%n voiceprint", "%n voiceprints"))
+        for (const PersonId& person : vp->people())
+            out << QStringLiteral("  %1: %2  [%3]").arg(app.people()->displayName(person),
+                       plural(vp->printCount(person), "%n voiceprint", "%n voiceprints"), person.toString())
                 << "\n";
         out.flush();
         return 0;
@@ -806,14 +813,14 @@ int main(int argc, char** argv) {
         << "Commands: devices | record [--title T --seconds N --device IDX] | list | adopt <folder> | align <id> (--auto | --track <trackId>=<ms>) | "
            "export <id> [<archive.zip>] | import-archive <archive.zip> | "
            "import <file>… [--title T --date ISO --split-channels --own-track N] | reindex | "
-           "transcribe <id> [--yes] | summarize <id> [--yes --complex] | rename <id> <rawLabel> <name> | "
+           "transcribe <id> [--yes] | summarize <id> [--yes --complex] | rename <id> <rawLabel> <name|personId> | "
            "identify <id> | participants <id> | voiceprints | detect [--watch --interval N --app NAME] | "
            "tags <list|add|remove|suggest|people|person|set-person> … | cloud <status|login|estimate|…> | "
            "voice-models [enable|disable|fetch|verify|delete <id>] | voice-eval <folder> [--models a,b --min-ms N --json] | "
            "track-sides <folder> [--frame-ms N --json --no-cache --write-cache --legacy] | "
            "participants <folder> [--analyze [--write] | --remove <id>] [--json] | review <folder> [--json --models a,b] | "
            "reslice <folder> [--dry-run --json] | paths show | paths adopt-legacy [--from <dir> --dry-run] | "
-           "settings import-legacy [--from <file> --dry-run]"
+           "settings import-legacy [--from <file> --dry-run] | migrate person-ids [--dry-run --backup-dir <dir>]"
         << "\n";
     out.flush();
     return 0;

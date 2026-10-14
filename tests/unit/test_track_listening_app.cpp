@@ -13,6 +13,7 @@
 #include <QJsonObject>
 
 #include "tanara/app/AppController.h"
+#include "tanara/library/store/PeopleStore.h"
 #include "tanara/processing/analysis/ParticipantAnalysis.h"
 #include "tanara/editing/session/SpeakerEditor.h"
 #include "tanara/processing/analysis/TrackActivity.h"
@@ -54,6 +55,12 @@ private slots:
     void manualTracksSteerClusterMatchAndEvidence();
 
 private:
+
+    // People by name (people.json): created if missing (pid) / only looked up (idOf); a picker's choice; the name.
+    PersonId pid(const QString& name) { return m_app->people()->ensure(name); }
+    PersonId idOf(const QString& name) { m_app->people()->refresh(); return m_app->people()->idForName(name); }
+    PersonChoice choice(const QString& name) { return m_app->people()->choiceFor(name); }
+    QString nameOf(const PersonId& id) { m_app->people()->refresh(); return m_app->people()->displayName(id); }
     Meeting makeMeeting();
     void writeTranscript(Meeting& m);
 
@@ -106,12 +113,12 @@ Meeting TrackListeningAppTest::makeMeeting()
     m.durationMs = 24000;
     Participant me;
     me.id = "v1";
-    me.personName = "Ádám";
+    me.personId = pid("Ádám");
     me.sides = {"mic"};
     me.rawSpeakerIds = {"Beszélő 1"};
     Participant far;
     far.id = "v2";
-    far.personName = "Béla";
+    far.personId = pid("Béla");
     far.sides = {"loopback"};
     far.rawSpeakerIds = {"Beszélő 2@loopback"};
     m.participants = {me, far};
@@ -188,7 +195,7 @@ void TrackListeningAppTest::participantTracksSerialize()
 {
     Participant p;
     p.id = "v1";
-    p.personName = "Ádám";
+    p.personId = pid("Ádám");
     p.tracks = {"mic", "loop"};
     const Participant back = library::participantFromJson(library::toJson(p));
     QCOMPARE(back.tracks, p.tracks);
@@ -294,13 +301,14 @@ void TrackListeningAppTest::manualTracksSteerClusterMatchAndEvidence()
     cs.clusters = {onMic, onLoop};
     processing::participants::CandidateContext ctx;
     // Both clusters resemble Béla best (e.g. echo on the microphone).
-    ctx.rank = [](const EmbeddingSet&) { return QVector<VoiceMatch>{{QStringLiteral("Béla"), 0.8}}; };
+    const PersonId belaId = pid(QStringLiteral("Béla"));
+    ctx.rank = [belaId](const EmbeddingSet&) { return QVector<VoiceMatch>{{belaId, 0.8}}; };
     const QVector<Participant> out = processing::participants::buildParticipants(cs, m, ctx);
-    QCOMPARE(cs.clusters[0].matchName, QString());              // the microphone cluster is not them
-    QCOMPARE(cs.clusters[1].matchName, QStringLiteral("Béla"));
+    QVERIFY(cs.clusters[0].matchPersonId.isNull());             // the microphone cluster is not them
+    QCOMPARE(cs.clusters[1].matchPersonId, belaId);
     const Participant* bela = nullptr;
     for (const Participant& p : out)
-        if (p.personName == QStringLiteral("Béla")) bela = &p;
+        if (p.personId == belaId) bela = &p;
     QVERIFY(bela);
     QCOMPARE(bela->tracks, QStringList{"loop"});                 // the re-analysis keeps it
     bool manualSide = false;

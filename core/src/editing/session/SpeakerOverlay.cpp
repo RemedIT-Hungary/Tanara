@@ -113,7 +113,7 @@ SpeakerOverlay loadOverlay(const QString& meetingFolder)
         const QJsonObject o = v.toObject();
         OverlayParticipant p;
         p.key        = o.value(QStringLiteral("key")).toString();
-        p.person     = o.value(QStringLiteral("person")).toString();
+        p.personId   = PersonId::fromString(o.value(QStringLiteral("personId")).toString());
         p.label      = o.value(QStringLiteral("label")).toString();
         p.colorIndex = o.value(QStringLiteral("colorIndex")).toInt();
         if (!p.key.isEmpty()) ov.participants.append(p);
@@ -152,7 +152,8 @@ SpeakerOverlay loadOverlay(const QString& meetingFolder)
     for (auto it = ident.constBegin(); it != ident.constEnd(); ++it) {
         const QJsonObject o = it.value().toObject();
         OverlayIdentification id;
-        id.person = o.value(QStringLiteral("person")).toString();
+        id.personId = PersonId::fromString(o.value(QStringLiteral("personId")).toString());
+        if (id.personId.isNull()) continue;
         id.score  = o.value(QStringLiteral("score")).toDouble(-1.0);
         ov.identified.insert(it.key(), id);
     }
@@ -192,14 +193,14 @@ bool saveOverlay(const QString& meetingFolder, const SpeakerOverlay& ov)
     }
 
     QJsonObject root;
-    root[QStringLiteral("version")] = 2;
+    root[QStringLiteral("version")] = 3;   // 3: people by PersonId
     root[QStringLiteral("transcript")] = ov.transcriptFingerprint;
 
     QJsonArray parts;
     for (const OverlayParticipant& p : ov.participants) {
         QJsonObject o;
         o[QStringLiteral("key")] = p.key;
-        o[QStringLiteral("person")] = p.person;
+        if (!p.personId.isNull()) o[QStringLiteral("personId")] = p.personId.toString();
         o[QStringLiteral("label")] = p.label;
         o[QStringLiteral("colorIndex")] = p.colorIndex;
         parts.append(o);
@@ -241,7 +242,7 @@ bool saveOverlay(const QString& meetingFolder, const SpeakerOverlay& ov)
     QJsonObject ident;
     for (auto it = ov.identified.constBegin(); it != ov.identified.constEnd(); ++it) {
         QJsonObject o;
-        o[QStringLiteral("person")] = it.value().person;
+        o[QStringLiteral("personId")] = it.value().personId.toString();
         o[QStringLiteral("score")] = it.value().score;
         ident[it.key()] = o;
     }
@@ -271,30 +272,28 @@ QString resolveSpeakerKey(const SpeakerOverlay& ov, const TranscriptLine& line)
     return mg != ov.merged.constEnd() ? mg.value() : line.rawLabel;
 }
 
-QString speakerPerson(const SpeakerOverlay& ov, const QMap<QString, QString>& speakerMap,
-                      const QString& key)
+PersonId speakerPerson(const SpeakerOverlay& ov, const QMap<QString, PersonId>& speakerMap,
+                       const QString& key)
 {
     if (isParticipantKey(key)) {
         const OverlayParticipant* p = ov.participant(key);
-        return p ? p->person : QString();
+        return p ? p->personId : PersonId();
     }
-    const QString name = speakerMap.value(key);
-    return name == key ? QString() : name;
+    return speakerMap.value(key);
 }
 
-QString speakerDisplayName(const SpeakerOverlay& ov, const QMap<QString, QString>& speakerMap,
-                           const QString& key)
+QString speakerDisplayName(const SpeakerOverlay& ov, const QMap<QString, PersonId>& speakerMap,
+                           const PersonNames& names, const QString& key)
 {
     if (isParticipantKey(key)) {
         const OverlayParticipant* p = ov.participant(key);
         if (!p) return key;
-        return !p->person.isEmpty() ? p->person : p->label;
+        return personName(names, p->personId, p->label);
     }
-    const QString name = speakerMap.value(key);
-    return name.isEmpty() ? key : name;
+    return personName(names, speakerMap.value(key), key);
 }
 
-void applyResolvedSpeakers(MergedTranscript& mt, const Meeting& m)
+void applyResolvedSpeakers(MergedTranscript& mt, const Meeting& m, const PersonNames& names)
 {
     const QVector<TranscriptLine> lines = loadTranscriptLines(m.folder);
     const SpeakerOverlay ov = loadOverlayFor(m.folder, lines);
@@ -304,7 +303,7 @@ void applyResolvedSpeakers(MergedTranscript& mt, const Meeting& m)
         if (m.speakerMap.isEmpty()) return;
         for (TranscriptToken& t : mt.tokens) {
             const auto it = m.speakerMap.constFind(t.speaker);
-            if (it != m.speakerMap.constEnd()) t.speaker = it.value();
+            if (it != m.speakerMap.constEnd()) t.speaker = personName(names, it.value(), t.speaker);
         }
         return;
     }
@@ -315,7 +314,7 @@ void applyResolvedSpeakers(MergedTranscript& mt, const Meeting& m)
     QHash<QString, QVector<Span>> byRaw;
     for (const TranscriptLine& l : lines) {
         const QString key = resolveSpeakerKey(ov, l);
-        byRaw[l.rawLabel].append({l.startMs, l.endMs, speakerDisplayName(ov, m.speakerMap, key)});
+        byRaw[l.rawLabel].append({l.startMs, l.endMs, speakerDisplayName(ov, m.speakerMap, names, key)});
     }
     for (auto it = byRaw.begin(); it != byRaw.end(); ++it)
         std::sort(it->begin(), it->end(),
@@ -339,16 +338,16 @@ void applyResolvedSpeakers(MergedTranscript& mt, const Meeting& m)
         } else {
             // A token not attachable to a line (e.g. an empty-text, skipped block): speaker level.
             const QString key = ov.merged.value(raw, raw);
-            t.speaker = speakerDisplayName(ov, m.speakerMap, key);
+            t.speaker = speakerDisplayName(ov, m.speakerMap, names, key);
         }
     }
 }
 
-bool regenerateTranscriptMarkdown(const Meeting& m)
+bool regenerateTranscriptMarkdown(const Meeting& m, const PersonNames& names)
 {
     MergedTranscript mt = library::TranscriptRepository::readTokens(m.folder);
     if (mt.tokens.isEmpty()) return false;
-    applyResolvedSpeakers(mt, m);
+    applyResolvedSpeakers(mt, m, names);
     return library::TranscriptRepository::writeMarkdown(m.folder, mt.renderMarkdown());
 }
 
@@ -411,7 +410,7 @@ bool clearSummaryStale(const QString& meetingFolder)
     return was;
 }
 
-QVector<tanara::summarysrc::SourceLine> resolvedSourceLines(const Meeting& m)
+QVector<tanara::summarysrc::SourceLine> resolvedSourceLines(const Meeting& m, const PersonNames& names)
 {
     QVector<tanara::summarysrc::SourceLine> out;
     if (m.folder.isEmpty()) return out;
@@ -425,13 +424,14 @@ QVector<tanara::summarysrc::SourceLine> resolvedSourceLines(const Meeting& m)
         sl.startMs = l.startMs;
         sl.endMs = l.endMs;
         sl.speakerKey = resolveSpeakerKey(ov, l);
-        sl.speakerName = speakerDisplayName(ov, m.speakerMap, sl.speakerKey);
+        sl.speakerName = speakerDisplayName(ov, m.speakerMap, names, sl.speakerKey);
         out.append(sl);
     }
     return out;
 }
 
-void fillTargetedStale(const Meeting& m, SummaryStaleInfo& info, QVector<SummaryStatement>* statements)
+void fillTargetedStale(const Meeting& m, const PersonNames& names, SummaryStaleInfo& info,
+                       QVector<SummaryStatement>* statements)
 {
     if (statements) statements->clear();
     if (!m.hasSummary || m.folder.isEmpty()) return;
@@ -440,7 +440,7 @@ void fillTargetedStale(const Meeting& m, SummaryStaleInfo& info, QVector<Summary
     if (sts.isEmpty()) return;
     QHash<QString, SourceSpeaker> now;
     if (!doc.summary.sourceSpeakers.isEmpty()) {
-        for (const tanara::summarysrc::SourceLine& l : resolvedSourceLines(m))
+        for (const tanara::summarysrc::SourceLine& l : resolvedSourceLines(m, names))
             if (doc.summary.sourceSpeakers.contains(l.id))
                 now.insert(l.id, SourceSpeaker{l.speakerKey, l.speakerName});
     }
@@ -452,37 +452,54 @@ void fillTargetedStale(const Meeting& m, SummaryStaleInfo& info, QVector<Summary
 // ---- AppController hooks -----------------------------------------------
 
 void recordIdentification(const QString& meetingFolder, const QString& rawLabel,
-                          const QString& person, double score)
+                          const PersonId& person, double score)
 {
-    if (rawLabel.isEmpty() || person.isEmpty()) return;
+    if (rawLabel.isEmpty() || person.isNull()) return;
     SpeakerOverlay ov = loadOverlay(meetingFolder);
     ov.identified.insert(rawLabel, OverlayIdentification{person, score});
     saveOverlay(meetingFolder, ov);
 }
 
-bool renamePersonInOverlay(const QString& meetingFolder, const QString& oldName,
-                           const QString& newName)
+OverlayPersonRefs replacePersonInOverlay(const QString& meetingFolder, const PersonId& from,
+                                         const PersonId& to)
 {
-    if (!QFile::exists(overlayPath(meetingFolder))) return false;
+    OverlayPersonRefs refs;
+    if (from.isNull() || to.isNull() || from == to || !QFile::exists(overlayPath(meetingFolder))) return refs;
+    SpeakerOverlay ov = loadOverlay(meetingFolder);
+    for (OverlayParticipant& p : ov.participants)
+        if (p.personId == from) { p.personId = to; refs.participantKeys << p.key; }
+    for (auto it = ov.identified.begin(); it != ov.identified.end(); ++it)
+        if (it->personId == from) { it->personId = to; refs.identifiedLabels << it.key(); }
+    if (!refs.isEmpty()) saveOverlay(meetingFolder, ov);
+    return refs;
+}
+
+bool restorePersonInOverlay(const QString& meetingFolder, const OverlayPersonRefs& refs,
+                            const PersonId& current, const PersonId& original)
+{
+    if (refs.isEmpty() || !QFile::exists(overlayPath(meetingFolder))) return false;
     SpeakerOverlay ov = loadOverlay(meetingFolder);
     bool changed = false;
     for (OverlayParticipant& p : ov.participants)
-        if (p.person == oldName) { p.person = newName; changed = true; }
+        if (refs.participantKeys.contains(p.key) && p.personId == current) { p.personId = original; changed = true; }
     for (auto it = ov.identified.begin(); it != ov.identified.end(); ++it)
-        if (it->person == oldName) { it->person = newName; changed = true; }
+        if (refs.identifiedLabels.contains(it.key()) && it->personId == current) {
+            it->personId = original;
+            changed = true;
+        }
     if (changed) saveOverlay(meetingFolder, ov);
     return changed;
 }
 
-bool removePersonFromOverlay(const QString& meetingFolder, const QString& name)
+bool removePersonFromOverlay(const QString& meetingFolder, const PersonId& person)
 {
-    if (!QFile::exists(overlayPath(meetingFolder))) return false;
+    if (person.isNull() || !QFile::exists(overlayPath(meetingFolder))) return false;
     SpeakerOverlay ov = loadOverlay(meetingFolder);
     bool changed = false;
     for (OverlayParticipant& p : ov.participants) {
-        if (p.person != name) continue;
+        if (p.personId != person) continue;
         // The participant becomes anonymous (their lines stay with them).
-        p.person.clear();
+        p.personId = PersonId();
         if (p.label.isEmpty())
             p.label = QCoreApplication::translate("tanara::SpeakerEditor", "Új beszélő %1")
                           .arg(ov.nextAnonymous++);
@@ -490,7 +507,7 @@ bool removePersonFromOverlay(const QString& meetingFolder, const QString& name)
     }
     const QStringList idKeys = ov.identified.keys();
     for (const QString& k : idKeys)
-        if (ov.identified.value(k).person == name) { ov.identified.remove(k); changed = true; }
+        if (ov.identified.value(k).personId == person) { ov.identified.remove(k); changed = true; }
     if (changed) saveOverlay(meetingFolder, ov);
     return changed;
 }
@@ -507,20 +524,20 @@ RetranscribeImpact retranscribeImpact(const Meeting& m)
         else if (it->confirmed) ++imp.confirmedUtterances;
     }
     imp.addedParticipants = ov.participants.size();
-    QSet<QString> named;
+    QSet<PersonId> named;
     for (auto it = m.speakerMap.constBegin(); it != m.speakerMap.constEnd(); ++it)
-        if (!it.value().isEmpty() && it.value() != it.key()) named.insert(it.value());
+        if (!it.value().isNull()) named.insert(it.value());
     for (const OverlayParticipant& p : ov.participants)
-        if (!p.person.isEmpty()) named.insert(p.person);
+        if (!p.personId.isNull()) named.insert(p.personId);
     imp.namedSpeakers = named.size();
     return imp;
 }
 
-QString backupTranscript(const Meeting& m)
+QString backupTranscript(const Meeting& m, const PersonNames& names)
 {
     if (m.folder.isEmpty()) return {};
     // The editor rewrites transcript.md with a delay: the copy always contains the CURRENT (resolved-name) state.
-    regenerateTranscriptMarkdown(m);
+    regenerateTranscriptMarkdown(m, names);
     QDir folder(m.folder);
     const QString stamp = QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd-HHmmss"));
     const QString prefix = library::MeetingLayout::transcriptBackupPrefix();
@@ -539,11 +556,11 @@ QString backupTranscript(const Meeting& m)
         folder.rmdir(name);   // nothing to save
         return {};
     }
-    // The raw label -> name mapping lives in meeting.json and is cleared at re-transcription: we put it next
-    // to the copy so the transcript can be restored together with the names.
+    // The raw label -> person mapping lives in meeting.json and is cleared at re-transcription: we put it next
+    // to the copy so the transcript can be restored together with the people (by PersonId).
     QJsonObject sm;
     for (auto it = m.speakerMap.constBegin(); it != m.speakerMap.constEnd(); ++it)
-        sm[it.key()] = it.value();
+        sm[it.key()] = it.value().toString();
     QJsonObject root;
     root[QStringLiteral("speakerMap")] = sm;
     root[QStringLiteral("createdAt")] = QDateTime::currentDateTime().toString(Qt::ISODate);

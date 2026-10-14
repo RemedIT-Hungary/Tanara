@@ -7,6 +7,8 @@
 #include "tanara/domain/Audio.h"
 #include "tanara/domain/Voice.h"
 
+#include "tanara/domain/Person.h"
+
 #include <QPair>
 #include <QString>
 #include <QStringList>
@@ -55,7 +57,7 @@ struct VoiceCluster {
     QString sampleRef;                        // "<file>#start-end": the medoid window
     // Result of the matching (filled by buildParticipants):
     QString participantId;
-    QString matchName;                        // the accepted voiceprint match (above threshold); empty = unknown
+    PersonId matchPersonId;                   // the accepted voiceprint match (above threshold); null = unknown
     double  matchScore = -1.0;                // score of the best match (also below the threshold)
     qint64 speechMs() const;
 };

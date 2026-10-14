@@ -4,6 +4,8 @@
 // one stays separate); after the write the ids carried over (overlay fixes, confirmations,
 // noisy, summary sources), the fingerprint matches, the tokens are untouched, the .bak is made
 // once; the second run and real word timing give "nothing to do". No transcript text goes to the output.
+#include "cli_people_fixture.h"
+
 #include <QtTest>
 #include <QTemporaryDir>
 #include <QJsonArray>
@@ -59,7 +61,8 @@ struct Tok { const char* text; const char* speaker; const char* track; qint64 s;
 void writeMeeting(const QString& folder, const QVector<Tok>& toks)
 {
     writeJson(QDir(folder).filePath("meeting.json"), QJsonObject{
-        {"id", "reslice-1"}, {"title", "Reslice"}, {"speakerMap", QJsonObject{{"A", "Anna"}, {"B", "Béla"}}}});
+        {"version", 3}, {"id", "reslice-1"}, {"title", "Reslice"},
+        {"speakerMap", QJsonObject{{"A", "p-anna"}, {"B", "p-bela"}}}});
     QVector<TrackTranscript> tracks;
     for (const char* id : {"t1", "t2"}) {
         TrackTranscript tt;
@@ -102,6 +105,7 @@ private slots:
     {
         m_home = std::make_unique<QTemporaryDir>();
         QVERIFY(m_home->isValid());
+        QVERIFY(cli_fixture::writePeople(m_home->path(), {{"p-anna", "Anna"}, {"p-bela", "Béla"}}));
     }
     void cleanup() { m_home.reset(); }
 

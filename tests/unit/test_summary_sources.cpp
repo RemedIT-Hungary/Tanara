@@ -759,11 +759,13 @@ void SummarySourcesTest::targetedStalenessFromOverlay()
     m.id = QStringLiteral("m1");
     m.folder = dir.path();
     m.hasSummary = true;
-    m.speakerMap = {{QStringLiteral("Beszélő 1"), QStringLiteral("Fehér Gábor")},
-                    {QStringLiteral("Beszélő 2"), QStringLiteral("Varga Árpád")}};
+    const PersonId gabor = PersonId::fromString(QStringLiteral("p-gabor"));
+    const PersonId arpad = PersonId::fromString(QStringLiteral("p-arpad"));
+    const PersonNames names{{gabor, QStringLiteral("Fehér Gábor")}, {arpad, QStringLiteral("Varga Árpád")}};
+    m.speakerMap = {{QStringLiteral("Beszélő 1"), gabor}, {QStringLiteral("Beszélő 2"), arpad}};
 
     // A summary with the current state (the speaker snapshot from resolvedSourceLines).
-    const QVector<summarysrc::SourceLine> lines = editing::speakeredit::resolvedSourceLines(m);
+    const QVector<summarysrc::SourceLine> lines = editing::speakeredit::resolvedSourceLines(m, names);
     QCOMPARE(lines.size(), 3);
     QCOMPARE(lines[0].speakerName, QStringLiteral("Fehér Gábor"));
     Summary s;
@@ -780,7 +782,7 @@ void SummarySourcesTest::targetedStalenessFromOverlay()
 
     // Without a fix: targeted, but nothing is affected.
     SummaryStaleInfo info0 = editing::speakeredit::summaryStale(m);
-    editing::speakeredit::fillTargetedStale(m, info0);
+    editing::speakeredit::fillTargetedStale(m, names, info0);
     QVERIFY(!info0.stale);
     QVERIFY(info0.targeted);
     QCOMPARE(info0.affectedStatements + info0.affectedTodos, 0);
@@ -799,7 +801,7 @@ void SummarySourcesTest::targetedStalenessFromOverlay()
     QVERIFY(info.stale);
     QCOMPARE(info.correctedSpeakers, 2);
     QVector<SummaryStatement> sts;
-    editing::speakeredit::fillTargetedStale(m, info, &sts);
+    editing::speakeredit::fillTargetedStale(m, names, info, &sts);
     QVERIFY(info.targeted);
     QCOMPARE(info.affectedStatements, 1);
     QCOMPARE(info.affectedTodos, 1);
@@ -813,7 +815,7 @@ void SummarySourcesTest::targetedStalenessFromOverlay()
     // "Fine as is": the flag disappears, the targeted list empties.
     QVERIFY(editing::speakeredit::clearSummaryStale(dir.path()));
     SummaryStaleInfo after = editing::speakeredit::summaryStale(m);
-    editing::speakeredit::fillTargetedStale(m, after, &sts);
+    editing::speakeredit::fillTargetedStale(m, names, after, &sts);
     QVERIFY(!after.stale);
     QCOMPARE(after.affectedStatements + after.affectedTodos, 0);
     QVERIFY(sts[0].staleBecause.isEmpty());
@@ -822,7 +824,7 @@ void SummarySourcesTest::targetedStalenessFromOverlay()
     Meeting none = m;
     none.hasSummary = false;
     SummaryStaleInfo ni;
-    editing::speakeredit::fillTargetedStale(none, ni, &sts);
+    editing::speakeredit::fillTargetedStale(none, names, ni, &sts);
     QVERIFY(!ni.targeted);
     QVERIFY(sts.isEmpty());
 }

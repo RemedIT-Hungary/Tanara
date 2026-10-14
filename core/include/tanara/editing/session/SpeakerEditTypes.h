@@ -7,10 +7,11 @@
 //  - UTTERANCE: one line of transcript.segments.json. No cutting within a line.
 //  - SPEAKER: a participant of the meeting, with a stable key. Either a raw diarization
 //    label ("Speaker 1": the key is the label itself) or a manually added participant
-//    ("participant:N"). Can be bound to a person (a name) or anonymous.
+//    ("participant:N"). Can be bound to a person (a PersonId) or anonymous.
 #include "tanara/domain/Participant.h"
 #include "tanara/domain/Summary.h"
 
+#include <QDateTime>
 #include <QString>
 #include <QStringList>
 #include <QVector>
@@ -68,14 +69,14 @@ struct SampleDeviation {
 // last new transcript).
 struct SpeakerSampleStats {
     QString speakerKey;
-    QString personName;         // empty = anonymous
+    PersonId personId;          // null = anonymous
     QString displayName;
     int     sampleLines = 0;
     qint64  sampleMs = 0;       // total length of the sample lines
     int     sessionAdded = 0;   // of these, became a sample of this speaker in this session
     QStringList sessionAddedIds;    // those lines (in time order), for the "+N now" filter
     bool operator==(const SpeakerSampleStats& o) const {
-        return speakerKey == o.speakerKey && personName == o.personName && displayName == o.displayName
+        return speakerKey == o.speakerKey && personId == o.personId && displayName == o.displayName
             && sampleLines == o.sampleLines && sampleMs == o.sampleMs && sessionAdded == o.sessionAdded
             && sessionAddedIds == o.sessionAddedIds;
     }
@@ -87,11 +88,11 @@ struct SpeakerSampleStats {
 struct EditorSpeaker {
     QString key;                // stable key: raw label OR "participant:N"
     QString displayName;        // person name, or an anonymous label ("Speaker 2", "New speaker 1")
-    QString personName;         // name of the bound person; empty = anonymous
+    PersonId personId;          // the bound person; null = anonymous
     QString rawLabel;           // raw label (empty for a manually added participant)
     bool    anonymous = true;   // not bound to a person
     bool    added = false;      // manually added participant (does not come from diarization)
-    bool    isSelf = false;     // the user themselves (userSpeakerName)
+    bool    isSelf = false;     // the user's own person (people.json "self")
     int     colorIndex = 0;     // order of first appearance in the meeting; independent of editing
     int     utteranceCount = 0;
     qint64  talkTimeMs = 0;
@@ -123,12 +124,14 @@ struct PairRecheckOffer {
 
 // A known person for the person-picker panel.
 struct PersonInfo {
-    QString name;
+    PersonId personId;
+    QString name;                   // display name
     bool    hasVoiceprint = false;
     int     voiceprintCount = 0;
     int     meetingCount = 0;       // in how many meetings they appear
     QStringList aliases;            // nicknames (people.json); search matches these too
     QString matchedAlias;           // after filtering: if the match came from a nickname, that nickname
+    QDateTime lastSeen;             // the latest meeting they appear in (tells same-named people apart)
 };
 
 // How much material there is for a speaker's manual voiceprint in this meeting.

@@ -95,6 +95,7 @@ void TagsProfilesTest::similarityOrdering()
     // Reasoning: common participant + common phrases (in displayed form) + a similar title.
     bool person = false, terms = false, title = false;
     for (const SuggestionReason& r : hits.first().reasons) {
+        // (the participant reasons carry PersonIds; the fixture's ids are the names)
         if (r.kind == ReasonKind::Participant) { person = true; QVERIFY(r.values.contains("Kovács Anna")); QVERIFY(!r.values.contains("Ádám")); }
         if (r.kind == ReasonKind::Terms) { terms = true; QVERIFY(r.values.size() <= 3); }
         if (r.kind == ReasonKind::Title) title = true;
@@ -117,9 +118,9 @@ void TagsProfilesTest::similarityOrdering()
 void TagsProfilesTest::participantRarity()
 {
     library::MeetingProfiles p(m_store.get());
-    QVERIFY(p.participantWeight("Ádám") < 0.01);             // on 6/6 meetings
-    QVERIFY(qAbs(p.participantWeight("Kovács Anna") - (1.0 - (2.0 / 6.0) / 0.6)) < 1e-9);
-    QVERIFY(p.participantWeight("Fehér Bence") > p.participantWeight("Kovács Anna"));
+    QVERIFY(p.participantWeight(tagsfixture::pid("Ádám")) < 0.01);             // on 6/6 meetings
+    QVERIFY(qAbs(p.participantWeight(tagsfixture::pid("Kovács Anna")) - (1.0 - (2.0 / 6.0) / 0.6)) < 1e-9);
+    QVERIFY(p.participantWeight(tagsfixture::pid("Fehér Bence")) > p.participantWeight(tagsfixture::pid("Kovács Anna")));
 }
 
 void TagsProfilesTest::mishearingMerge()
@@ -186,7 +187,7 @@ void TagsProfilesTest::parallelReadsWhileRebuilding()
                 p.sharedTerms(m_lib.museum1, m_lib.museum2, 5);
                 p.topTerms({ m_lib.budget1, m_lib.budget2 }, 10);
                 p.similarToDraft(QStringLiteral("Nordvik heti egyeztetés"), {});
-                p.participantWeight(QStringLiteral("Kovács Anna"));
+                p.participantWeight(tagsfixture::pid(QStringLiteral("Kovács Anna")));
                 p.isBuilt(m_lib.budget1);
                 ++reads;
             }

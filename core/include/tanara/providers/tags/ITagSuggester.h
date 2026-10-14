@@ -6,6 +6,7 @@
 //  - processing::LlmTagSuggestionProvider: the language model picks from candidates / invents names
 //    (LlmTagSuggester; needs the summary text);
 //  - cloud::CloudTagSuggester: the gateway (/v1/tags/suggest; the client sends the candidates).
+#include "tanara/domain/Person.h"
 #include "tanara/domain/Tag.h"
 #include "tanara/providers/core/CapabilityJob.h"
 #include "tanara/providers/core/ProviderDescriptor.h"
@@ -27,7 +28,8 @@ struct TagSuggestRequest {
     QString meetingId;
     QString title;
     QString summaryText;                   // the summary (LLM / Cloud); may be empty for similarity
-    QStringList participants;
+    QStringList participants;              // display names (the Cloud / LLM text)
+    PersonIds participantIds;              // the same people by id (the local similarity suggester)
     QVector<TagSuggestion> seeds;          // earlier (e.g. similarity) suggestions to refine
     // The existing tags a model may pick; empty = the provider builds them (local) / the seeds (Cloud).
     QVector<TagCandidate> candidates;

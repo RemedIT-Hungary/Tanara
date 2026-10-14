@@ -51,7 +51,7 @@ ParticipantAnalysisFile ParticipantAnalysisFile::load(const QString& meetingFold
         c.side = co.value(QStringLiteral("side")).toString();
         c.sampleRef = co.value(QStringLiteral("sampleRef")).toString();
         c.participantId = co.value(QStringLiteral("participantId")).toString();
-        c.matchName = co.value(QStringLiteral("matchName")).toString();
+        c.matchPersonId = PersonId::fromString(co.value(QStringLiteral("matchPersonId")).toString());
         c.matchScore = co.value(QStringLiteral("matchScore")).toDouble(-1.0);
         for (const QJsonValue& w : co.value(QStringLiteral("windows")).toArray()) {
             const QJsonArray p = w.toArray();
@@ -75,7 +75,7 @@ bool ParticipantAnalysisFile::save(const QString& meetingFolder) const
         co[QStringLiteral("side")] = c.side;
         co[QStringLiteral("sampleRef")] = c.sampleRef;
         co[QStringLiteral("participantId")] = c.participantId;
-        co[QStringLiteral("matchName")] = c.matchName;
+        if (!c.matchPersonId.isNull()) co[QStringLiteral("matchPersonId")] = c.matchPersonId.toString();
         co[QStringLiteral("matchScore")] = c.matchScore;
         QJsonArray ws;
         for (const auto& w : c.windows) ws.append(QJsonArray{double(w.first), double(w.second)});
@@ -98,10 +98,6 @@ qint64 overlapMs(qint64 a0, qint64 a1, qint64 b0, qint64 b1)
     return std::max<qint64>(0, std::min(a1, b1) - std::max(a0, b0));
 }
 
-bool isSelf(const QString& name, const QString& self)
-{
-    return !name.isEmpty() && !self.isEmpty() && name.compare(self, Qt::CaseInsensitive) == 0;
-}
 
 bool hasPolarity(const Participant& p, Polarity pol, EvidenceKind kind, bool anyKind = false)
 {
@@ -304,7 +300,7 @@ QVector<Evidence> participantEvidence(const Participant& p, bool heard, double s
                                       const Meeting& m, const CandidateContext& ctx)
 {
     QVector<Evidence> ev;
-    const bool named = !p.personName.isEmpty();
+    const bool named = !p.personId.isNull();
     if (p.source == ParticipantSource::Manual)
         ev.append({EvidenceKind::Manual, Polarity::Support, 1.0, QCoreApplication::translate("ParticipantAnalysis", "kézzel felvéve"), {}, {}});
 
@@ -316,7 +312,7 @@ QVector<Evidence> participantEvidence(const Participant& p, bool heard, double s
         ev.append({EvidenceKind::Voice, Polarity::Neutral, score, QCoreApplication::translate("ParticipantAnalysis", "ismeretlen hang"),
                    {}, QStringLiteral("samples")});
     } else if (named) {
-        const bool prints = ctx.hasVoiceprint && ctx.hasVoiceprint(p.personName);
+        const bool prints = ctx.hasVoiceprint && ctx.hasVoiceprint(p.personId);
         if (prints)
             ev.append({EvidenceKind::Voice, Polarity::Contradict, score, QStringLiteral("nem hallottuk"),
                        {}, QStringLiteral("samples")});
@@ -343,7 +339,7 @@ QVector<Evidence> participantEvidence(const Participant& p, bool heard, double s
         QStringList labels;
         for (const QString& s : p.sides) labels << sideLabel(s);
         const QString text = labels.join(QCoreApplication::translate("ParticipantAnalysis", " és "));
-        const bool self = isSelf(p.personName, ctx.selfName);
+        const bool self = ctx.self.is(p.personId);
         const bool onMic = p.sides.contains(kSideMic);
         if (self && onMic)
             ev.append({EvidenceKind::Side, Polarity::Support, 1.0, text, {}, QStringLiteral("tracks")});
@@ -358,7 +354,8 @@ QVector<Evidence> participantEvidence(const Participant& p, bool heard, double s
     // here (neutral): the voice decides the "Who was there?" group and the default checking.
     if (named && ctx.tagEvidence) {
         Evidence e;
-        if (editing::ranking::tagEvidenceOf(ctx.tagEvidence(p.personName, m.tagIds, m.id), p.personName, &e)) {
+        if (editing::ranking::tagEvidenceOf(ctx.tagEvidence(p.personId, m.tagIds, m.id),
+                                            personName(ctx.names, p.personId), &e)) {
             if (e.polarity == Polarity::Contradict) e.polarity = Polarity::Neutral;
             ev.append(e);
         }
@@ -371,13 +368,13 @@ QVector<Participant> buildParticipants(ClusterSet& clusters, const Meeting& m,
 {
     // The survivors: the manual participants (without the previous analysis's evidence).
     QVector<Participant> out;
-    QSet<QString> manualNames;
-    QSet<QString> approvedNames;
+    QSet<PersonId> manualNames;
+    QSet<PersonId> approvedNames;
     QSet<QString> usedIds;
-    QHash<QString, QStringList> manualTracks;   // name -> manual track binding (a re-analysis keeps it too)
+    QHash<PersonId, QStringList> manualTracks;   // person -> manual track binding (a re-analysis keeps it too)
     for (const Participant& p : m.participants) {
-        if (p.approved && !p.personName.isEmpty()) approvedNames.insert(p.personName.toLower());
-        if (!p.tracks.isEmpty() && !p.personName.isEmpty()) manualTracks.insert(p.personName.toLower(), p.tracks);
+        if (p.approved && !p.personId.isNull()) approvedNames.insert(p.personId);
+        if (!p.tracks.isEmpty() && !p.personId.isNull()) manualTracks.insert(p.personId, p.tracks);
         if (p.source != ParticipantSource::Manual) continue;
         Participant k = p;
         k.sides.clear();
@@ -385,31 +382,31 @@ QVector<Participant> buildParticipants(ClusterSet& clusters, const Meeting& m,
         k.talkShare = 0.0;
         out.append(k);
         usedIds.insert(k.id);
-        if (!k.personName.isEmpty()) manualNames.insert(k.personName.toLower());
+        if (!k.personId.isNull()) manualNames.insert(k.personId);
     }
 
     // Matching per cluster (a manual participant has an advantage).
     qint64 totalMs = 0;
     for (VoiceCluster& c : clusters.clusters) {
         totalMs += c.speechMs();
-        c.matchName.clear();
+        c.matchPersonId = PersonId();
         c.matchScore = -1.0;
         c.participantId.clear();
         const QVector<VoiceMatch> ranked = ctx.rank ? ctx.rank(c.centroid) : QVector<VoiceMatch>();
-        QString pick;
+        PersonId pick;
         double pickScore = -1.0, bestEff = -2.0;
         for (const VoiceMatch& vm : ranked) {
-            if (vm.name.isEmpty()) continue;
+            if (vm.personId.isNull()) continue;
             // Manual track binding ("Which track do they speak on?"): a cluster speaking on another track cannot be
             // them; one speaking on the bound track gets an advantage (like a manual participant).
-            const auto bound = manualTracks.constFind(vm.name.toLower());
+            const auto bound = manualTracks.constFind(vm.personId);
             const bool hasBinding = bound != manualTracks.constEnd();
             if (hasBinding && !c.trackId.isEmpty() && !bound->contains(c.trackId)) continue;
-            const double eff = vm.score + (manualNames.contains(vm.name.toLower()) ? kManualBoost : 0.0)
+            const double eff = vm.score + (manualNames.contains(vm.personId) ? kManualBoost : 0.0)
                              + (hasBinding ? kManualBoost : 0.0);
-            if (eff > bestEff) { bestEff = eff; pick = vm.name; pickScore = vm.score; }
+            if (eff > bestEff) { bestEff = eff; pick = vm.personId; pickScore = vm.score; }
         }
-        if (bestEff >= kMatchThreshold) { c.matchName = pick; c.matchScore = pickScore; }
+        if (bestEff >= kMatchThreshold) { c.matchPersonId = pick; c.matchScore = pickScore; }
         else if (!ranked.isEmpty()) c.matchScore = ranked.first().score;   // without a name, informational
     }
 
@@ -421,24 +418,24 @@ QVector<Participant> buildParticipants(ClusterSet& clusters, const Meeting& m,
     };
 
     // Clusters -> participants: the same name is one participant; an anonymous cluster stands separate.
-    QHash<QString, int> byName;   // lowercase name -> index in out
+    QHash<PersonId, int> byName;   // person -> index in out
     for (int i = 0; i < out.size(); ++i)
-        if (!out.at(i).personName.isEmpty()) byName.insert(out.at(i).personName.toLower(), i);
+        if (!out.at(i).personId.isNull()) byName.insert(out.at(i).personId, i);
     QHash<int, double> bestScore;   // participant index -> best voice score
     QHash<int, qint64> speech;
     for (VoiceCluster& c : clusters.clusters) {
         int idx = -1;
-        if (!c.matchName.isEmpty()) idx = byName.value(c.matchName.toLower(), -1);
+        if (!c.matchPersonId.isNull()) idx = byName.value(c.matchPersonId, -1);
         if (idx < 0) {
             Participant p;
             p.id = newId();
-            p.personName = c.matchName;
+            p.personId = c.matchPersonId;
             p.source = ParticipantSource::Voice;
-            p.approved = !p.personName.isEmpty() && approvedNames.contains(p.personName.toLower());
-            if (!p.personName.isEmpty()) p.tracks = manualTracks.value(p.personName.toLower());
+            p.approved = !p.personId.isNull() && approvedNames.contains(p.personId);
+            if (!p.personId.isNull()) p.tracks = manualTracks.value(p.personId);
             out.append(p);
             idx = out.size() - 1;
-            if (!p.personName.isEmpty()) byName.insert(p.personName.toLower(), idx);
+            if (!p.personId.isNull()) byName.insert(p.personId, idx);
         }
         Participant& p = out[idx];
         c.participantId = p.id;
@@ -479,7 +476,7 @@ ParticipantGroup participantGroup(const Participant& p)
 
 bool defaultChecked(const Participant& p)
 {
-    return !p.personName.isEmpty()
+    return !p.personId.isNull()
         && !hasPolarity(p, Polarity::Contradict, EvidenceKind::Voice, /*anyKind*/ true);
 }
 
@@ -623,29 +620,29 @@ QVector<SpeakerBinding> approvalBindings(const QVector<Participant>& all, const 
         sideOfLine = editing::sides::classifyLineSides(*activity, lines);
         for (int i = 0; i < lines.size(); ++i) lineIdx.insert(lines[i].id, i);
         for (const Participant& p : all)
-            if (acceptedIds.contains(p.id) && !p.personName.isEmpty())
+            if (acceptedIds.contains(p.id) && !p.personId.isNull())
                 manualOf.insert(p.id, editing::sides::sideOfTracks(*meeting, p.tracks));
     }
     // The excluded line's best non-excluded owner: the checked, named participant whose clusters cover the
     // most of the line (none -> empty: the line stays anonymous).
-    auto alternativeFor = [&](const Participant& self, const TranscriptLine& l, editing::Side ls) -> QString {
+    auto alternativeFor = [&](const Participant& self, const TranscriptLine& l, editing::Side ls) -> PersonId {
         QHash<QString, qint64> ov;
         for (const VoiceCluster& c : clusters) {
             if (c.participantId == self.id || !manualOf.contains(c.participantId)) continue;
             if (editing::sides::vetoes(true, manualOf.value(c.participantId), ls)) continue;
             for (const auto& w : c.windows) ov[c.participantId] += overlapMs(l.startMs, l.endMs, w.first, w.second);
         }
-        QString best;
+        PersonId best;
         qint64 bestV = 0;
         for (const Participant& q : all)
-            if (ov.value(q.id) > bestV) { bestV = ov.value(q.id); best = q.personName; }
+            if (ov.value(q.id) > bestV) { bestV = ov.value(q.id); best = q.personId; }
         return best;
     };
 
     QVector<SpeakerBinding> out;
     QSet<QString> acceptedRaw;   // raw labels bound to the checked ones
     for (const Participant& p : all) {
-        if (!acceptedIds.contains(p.id) || p.personName.isEmpty()) continue;
+        if (!acceptedIds.contains(p.id) || p.personId.isNull()) continue;
         for (const QString& id : p.rawSpeakerIds) {
             const QString label = rawLabelOf(id), side = rawSideOf(id);
             acceptedRaw.insert(label);
@@ -672,20 +669,20 @@ QVector<SpeakerBinding> approvalBindings(const QVector<Participant>& all, const 
             }
             // Excluded lines split off: to the best non-excluded participant of the other side, or become anonymous.
             QStringList kept;
-            QMap<QString, QStringList> moved;   // person (empty = anonymous) -> lines
+            QMap<PersonId, QStringList> moved;  // person (null = anonymous) -> lines
             for (const QString& uid : std::as_const(mine)) {
                 const int li = lineIdx.value(uid, -1);
                 const editing::Side ls = li >= 0 ? sideOfLine.value(li, editing::Side::Unknown) : editing::Side::Unknown;
                 if (!veto || !editing::sides::vetoes(true, manualOf.value(p.id), ls)) { kept << uid; continue; }
                 moved[alternativeFor(p, lines[li], ls)] << uid;
             }
-            if (side.isEmpty() && moved.isEmpty()) { out.append({label, p.personName, {}}); continue; }
+            if (side.isEmpty() && moved.isEmpty()) { out.append({label, p.personId, {}}); continue; }
             // The whole raw speaker becomes anonymous (an earlier binding must not carry the excluded lines
             // either), the remaining lines go to the person.
-            if (side.isEmpty()) out.append({label, QString(), {}});
-            if (!kept.isEmpty()) out.append({label, p.personName, kept});
+            if (side.isEmpty()) out.append({label, PersonId(), {}});
+            if (!kept.isEmpty()) out.append({label, p.personId, kept});
             for (auto it = moved.cbegin(); it != moved.cend(); ++it)
-                if (!it.key().isEmpty()) out.append({label, it.key(), it.value()});
+                if (!it.key().isNull()) out.append({label, it.key(), it.value()});
         }
     }
     // (Whole) raw speakers bound only to unchecked participants go anonymous.
@@ -694,7 +691,7 @@ QVector<SpeakerBinding> approvalBindings(const QVector<Participant>& all, const 
         for (const QString& id : p.rawSpeakerIds) {
             const QString label = rawLabelOf(id);
             if (!rawSideOf(id).isEmpty() || acceptedRaw.contains(label)) continue;
-            out.append({label, QString(), {}});
+            out.append({label, PersonId(), {}});
             acceptedRaw.insert(label);
         }
     }

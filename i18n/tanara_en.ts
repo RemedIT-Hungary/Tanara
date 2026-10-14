@@ -8361,6 +8361,10 @@
         <translation>A person with this name already exists.</translation>
     </message>
     <message>
+        <source>A személy nem menthető.</source>
+        <translation>The person could not be saved.</translation>
+    </message>
+    <message>
         <source>Ez a személy már nem létezik.</source>
         <translation>This person no longer exists.</translation>
     </message>
@@ -9938,10 +9942,6 @@
         <translation>Tags add up (%1).</translation>
     </message>
     <message>
-        <source>Az összevonás nem vonható vissza.</source>
-        <translation>A merge cannot be undone.</translation>
-    </message>
-    <message>
         <source>Összevonva: %1</source>
         <translation>Merged: %1</translation>
     </message>
@@ -10019,6 +10019,10 @@
     <message>
         <source>Az átnevezés visszavonva.</source>
         <translation>The rename was undone.</translation>
+    </message>
+    <message>
+        <source>Az összevonás visszavonva: %1</source>
+        <translation>The merge was undone: %1</translation>
     </message>
     <message>
         <source>A minta hangfájlja már nincs meg, ezért nem hallgatható meg.</source>

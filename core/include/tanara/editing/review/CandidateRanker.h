@@ -50,7 +50,7 @@ inline constexpr int kMinReferenceLines = 2;
 // A candidate (a speaker of the meeting, or a known person outside the meeting) for ranking.
 struct SpeakerProfile {
     QString key;                // empty = a person outside the meeting
-    QString personName;
+    PersonId personId;          // null = an anonymous speaker
     QString displayName;
     Side    side = Side::Unknown;       // the speaker's side (SideAnalysis PersonSide)
     QString sideBasis;                  // PersonSide::basis
@@ -114,6 +114,7 @@ QString evidenceKindName(EvidenceKind k);   // "voice" | "side" | … (CLI / JSO
 QString polarityName(Polarity p);           // "support" | "contradict" | "neutral"
 // The tag evidence as Evidence: text is the chip ("#Nordvik", "#Nordvik +1", "other tags" on a
 // contradiction), detail the explanatory sentence with numbers ("... (11 / 14)"). false: no evidence.
+// personName: the person's display name (empty = no name in the sentence).
 bool tagEvidenceOf(const library::TagEvidence& tag, const QString& personName, Evidence* out);
 
 } // namespace ranking

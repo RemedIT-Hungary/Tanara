@@ -11,6 +11,7 @@
 #include "ShellUiState.h"
 
 #include "tanara/app/AppController.h"
+#include "tanara/library/store/PeopleStore.h"
 #include "tanara/app/SettingsManager.h"
 #include "tanara/cloud/CloudTypes.h"
 #include "tanara/editing/session/SpeakerEditor.h"
@@ -159,8 +160,8 @@ class TestShellActions : public QObject {
                                                                    : QVector<float>{0.6f, 0.8f, 0});
         cache.save(m.folder);
         m.hasTranscript = true;
-        m.speakerMap = {{QStringLiteral("Beszélő 1"), QStringLiteral("Anna")},
-                        {QStringLiteral("Beszélő 2"), QStringLiteral("Béla")}};
+        m.speakerMap = {{QStringLiteral("Beszélő 1"), m_app->people()->ensure(QStringLiteral("Anna"))},
+                        {QStringLiteral("Beszélő 2"), m_app->people()->ensure(QStringLiteral("Béla"))}};
         m_app->store()->saveMeeting(m);
         return m;
     }
@@ -250,7 +251,7 @@ private slots:
         QVERIFY(m_shell->hasMeetingUndo());
         QVERIFY(!m_shell->canUndoMeeting());
 
-        QVERIFY(!m_app->addParticipant(a.id, QStringLiteral("Fehér Gábor")).isEmpty());
+        QVERIFY(!m_app->addParticipant(a.id, m_app->people()->choiceFor(QStringLiteral("Fehér Gábor"))).isEmpty());
         QTRY_COMPARE(posted.count(), 1);
         QCOMPARE(posted.at(0).at(0).toString(), QStringLiteral("Résztvevő felvéve: Fehér Gábor"));
         QCOMPARE(posted.at(0).at(1).toInt(), 2);   // Source::Participants

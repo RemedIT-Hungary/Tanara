@@ -10,6 +10,7 @@
 #include "tanara/domain/Meeting.h"
 #include "tanara/domain/Overlay.h"
 #include "tanara/domain/Participant.h"
+#include "tanara/domain/Person.h"
 #include "tanara/domain/Summary.h"
 #include "tanara/domain/Tag.h"
 #include "tanara/domain/Transcript.h"

@@ -12,6 +12,7 @@
 #include "tanara/app/SettingsManager.h"
 #include "tanara/editing/undo/MeetingUndo.h"
 #include "tanara/library/store/MeetingRepository.h"
+#include "tanara/library/store/PeopleStore.h"
 #include "tanara/library/tags/TagService.h"
 
 #include <QFile>
@@ -271,7 +272,7 @@ private slots:
             tanara::Meeting t = m_app->store()->createMeeting(QStringLiteral("Nordvik %1").arg(i));
             t.startedAt = QDateTime(QDate(2026, 9, i), QTime(10, 0));
             for (int k = 0; k < crew.size(); ++k)
-                t.speakerMap.insert(QStringLiteral("Beszélő %1").arg(k + 1), crew.at(k));
+                t.speakerMap.insert(QStringLiteral("Beszélő %1").arg(k + 1), m_app->people()->ensure(crew.at(k)));
             t.tagIds = {nord.id};
             m_app->store()->saveMeeting(t);
         }
@@ -292,10 +293,12 @@ private slots:
         QCOMPARE(suggested().size(), 3);
         QCOMPARE(vm.peopleState(), QStringLiteral("list"));
         const QString rejected = suggested().first();
-        vm.removeParticipant(QStringLiteral("suggest:") + rejected);
+        const tanara::PersonId rejectedId = m_app->people()->idForName(rejected);
+        QVERIFY(!rejectedId.isNull());
+        vm.removeParticipant(QStringLiteral("suggest:") + rejectedId.toString());
         QTRY_VERIFY(!suggested().contains(rejected));
         QCOMPARE(suggested().size(), 3);   // the fourth takes its place
-        QVERIFY(tags->isPersonRejectedForMeeting(rejected, m.id));
+        QVERIFY(tags->isPersonRejectedForMeeting(rejectedId, m.id));
         {
             OverviewViewModel fresh;
             fresh.setController(m_app.get());
@@ -304,7 +307,7 @@ private slots:
                 QVERIFY(v.toMap().value("name").toString() != rejected);
         }
         QVERIFY(m_app->meetingUndo(m.id)->undo());
-        QVERIFY(!tags->isPersonRejectedForMeeting(rejected, m.id));
+        QVERIFY(!tags->isPersonRejectedForMeeting(rejectedId, m.id));
         vm.refresh();
         QVERIFY(suggested().contains(rejected));
 

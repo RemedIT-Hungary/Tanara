@@ -24,10 +24,7 @@ namespace {
 
 constexpr int kMaxUndoSteps = 20;
 
-bool sameName(const QString& a, const QString& b)
-{
-    return a.trimmed().compare(b.trimmed(), Qt::CaseInsensitive) == 0;
-}
+using persons::sameName;
 
 // "file#startMs-endMs" -> file + range (the range may be omitted).
 void parseSampleRef(const QString& ref, QString* file, qint64* startMs, qint64* endMs)
@@ -53,15 +50,20 @@ struct StaleMark {
 
 struct UndoStep {
     PeopleUndoKind kind = PeopleUndoKind::None;
-    QString person;         // sample: the (former) owner; nickname / rename: the person (old name)
-    QString other;          // move: the target; rename: the new name
+    PersonId person;        // sample: the (former) owner; nickname / rename: the person; merge: the survivor
+    PersonId other;         // move: the target
     Voiceprint print;       // for sample steps (the selected voiceprint)
     QVector<Voiceprint> prints;   // ...and all its siblings (the same sample with other models), together with it
     QString detail;
     QString alias;
     int aliasIndex = -1;
+    QString oldName;        // rename: the name before
+    QString newName;        // rename: the name after
     bool createdPerson = false;     // the move created the target person
+    Person createdRecord;           // ...its record (undo deletes it if nothing else is bound to it)
     bool aliasWasPresent = false;   // rename: the new name was already a nickname
+    bool aliasAdded = false;        // rename: the old name became a nickname now
+    PersonMergeUndo merge;          // merge: what changed
     QVector<StaleMark> marks;
 };
 
@@ -78,49 +80,21 @@ struct PeopleService::Private {
     bool factoryInjected = false;
     QVector<UndoStep> undo;
 
-    QString self() const
-    {
-        return controller && controller->settings()
-            ? controller->settings()->settings().recording.userSpeakerName.trimmed() : QString();
-    }
+    PersonId self() const { return people ? people->selfId() : PersonId(); }
+    QString nameOf(const PersonId& person) const { return people ? people->displayName(person) : QString(); }
+    bool known(const PersonId& person) const { return people && people->contains(person); }
 
-    QStringList names() const
-    {
-        QStringList out;
-        auto add = [&](const QString& name) {
-            const QString n = name.trimmed();
-            if (n.isEmpty()) return;
-            for (const QString& have : std::as_const(out))
-                if (sameName(have, n)) return;
-            out << n;
-        };
-        add(self());
-        if (people) for (const QString& n : people->names()) add(n);
-        if (voiceprints) for (const QString& n : voiceprints->people()) add(n);
-        return out;
-    }
-
-    // The stored spelling (on a case-insensitive match), otherwise empty.
-    QString canonical(const QString& name) const
-    {
-        for (const QString& n : names())
-            if (sameName(n, name)) return n;
-        return QString();
-    }
-
-    PersonRecord record(const QString& name) const
+    PersonRecord record(const Person& p) const
     {
         PersonRecord r;
-        r.name = name;
-        r.isSelf = !self().isEmpty() && sameName(name, self());
-        if (people) {
-            const PersonDetails d = people->details(name);
-            r.aliases = d.aliases;
-            r.note = d.note;
-            r.defaultSide = people->defaultSide(name);
-            r.defaultSideManual = people->defaultSideManual(name);
-        }
-        r.sampleCount = voiceprints ? voiceprints->sampleCount(name) : 0;
+        r.id = p.id;
+        r.name = p.displayName;
+        r.aliases = p.aliases;
+        r.note = p.note;
+        r.isSelf = !p.id.isNull() && p.id == self();
+        r.defaultSide = p.defaultSide;
+        r.defaultSideManual = p.defaultSideManual;
+        r.sampleCount = voiceprints ? voiceprints->sampleCount(p.id) : 0;
         return r;
     }
 
@@ -136,30 +110,20 @@ struct PeopleService::Private {
         undo.clear();
         emit q->undoChanged();
     }
-    // After a rename the stack's earlier steps should refer to the new name.
-    void renameInUndo(const QString& from, const QString& to)
-    {
-        for (UndoStep& s : undo) {
-            if (sameName(s.person, from)) s.person = to;
-            if (s.kind == PeopleUndoKind::SampleMoved && sameName(s.other, from)) s.other = to;
-        }
-    }
 
     // Marks the summaries of the person's meetings stale ON DISK (without signals);
     // only: only this meeting (empty = all of them).
-    QVector<StaleMark> markStale(const QString& person, const QString& only = QString())
+    QVector<StaleMark> markStale(const PersonId& person, const QString& only = QString())
     {
         QVector<StaleMark> marks;
         if (!stats || !store) return marks;
         const PersonStats ps = stats->stats(person);
         for (const PersonMeetingStat& pm : ps.meetings) {
             if (!only.isEmpty() && pm.meetingId != only) continue;
-            if (!pm.hasSummary) continue;
+            if (!pm.hasSummary || pm.speakerKeys.isEmpty()) continue;
             const Meeting m = store->load(pm.meetingId);
             if (m.id.isEmpty() || !m.hasSummary) continue;
-            QStringList keys = pm.speakerKeys;
-            if (keys.isEmpty()) keys << person;
-            const QStringList added = editing::speakeredit::markSummaryStaleKeys(m, keys);
+            const QStringList added = editing::speakeredit::markSummaryStaleKeys(m, pm.speakerKeys);
             if (!added.isEmpty()) marks.append(StaleMark{m.id, m.folder, added});
         }
         return marks;
@@ -195,24 +159,45 @@ struct PeopleService::Private {
     }
 
     // The person's speaker keys in an open editor.
-    static QStringList speakerKeysOf(const editing::SpeakerEditor& ed, const QString& person)
+    static QStringList speakerKeysOf(const editing::SpeakerEditor& ed, const PersonId& person)
     {
         QStringList keys;
         for (const editing::EditorSpeaker& s : ed.speakers())
-            if (!s.anonymous && sameName(s.personName, person)) keys << s.key;
+            if (!s.anonymous && s.personId == person) keys << s.key;
         return keys;
     }
 
     QString freeAnonymousName() const
     {
-        const QStringList have = names();
+        QStringList have;
+        if (people) for (const Person& p : people->people()) have << p.displayName;
         for (int i = 1;; ++i) {
             const QString candidate = PeopleService::tr("Névtelen %1").arg(i);
             bool taken = false;
-            for (const QString& n : have)
+            for (const QString& n : std::as_const(have))
                 if (sameName(n, candidate)) { taken = true; break; }
             if (!taken) return candidate;
         }
+    }
+
+    // Another person with this name (the People window keeps names unique).
+    bool nameTaken(const QString& name, const PersonId& except = PersonId()) const
+    {
+        if (!people) return false;
+        for (const PersonId& id : people->findByName(name))
+            if (id != except) return true;
+        return false;
+    }
+
+    // A rename through the global route: the own person also updates the settings' name.
+    void renameGlobally(const PersonId& person, const QString& name)
+    {
+        if (!controller) {
+            if (people) people->rename(person, name);
+            return;
+        }
+        if (person == self()) controller->setUserSpeakerName(name);
+        else controller->renamePerson(person, name);
     }
 
     void finish(bool people_, bool prints)
@@ -251,32 +236,37 @@ void PeopleService::reload()
     if (d->voiceprints) d->voiceprints->refresh();
 }
 
-QString PeopleService::selfName() const { return d->self(); }
+PersonId PeopleService::selfId() const { return d->self(); }
 
-bool PeopleService::isSelf(const QString& name) const
+bool PeopleService::isSelf(const PersonId& person) const
 {
-    const QString self = d->self();
-    return !self.isEmpty() && sameName(self, name);
+    return !person.isNull() && person == d->self();
 }
 
 QVector<PersonRecord> PeopleService::persons() const
 {
     QVector<PersonRecord> out;
-    const QStringList names = d->names();
-    out.reserve(names.size());
-    for (const QString& n : names) out.append(d->record(n));
+    if (!d->people) return out;
+    const QVector<Person> all = d->people->people();
+    out.reserve(all.size());
+    for (const Person& p : all) out.append(d->record(p));
     return out;
 }
 
-PersonRecord PeopleService::person(const QString& name) const
+PersonRecord PeopleService::person(const PersonId& person) const
 {
-    const QString canonical = d->canonical(name);
-    return d->record(canonical.isEmpty() ? name.trimmed() : canonical);
+    if (!d->known(person)) return PersonRecord();
+    return d->record(d->people->person(person));
 }
 
-bool PeopleService::exists(const QString& name) const { return !d->canonical(name).isEmpty(); }
+bool PeopleService::exists(const PersonId& person) const { return d->known(person); }
 
-QVector<VoiceSample> PeopleService::samples(const QString& name) const
+PersonIds PeopleService::findByName(const QString& name) const
+{
+    return d->people ? d->people->findByName(name) : PersonIds();
+}
+
+QVector<VoiceSample> PeopleService::samples(const PersonId& person) const
 {
     QVector<VoiceSample> out;
     if (!d->voiceprints) return out;
@@ -284,12 +274,12 @@ QVector<VoiceSample> PeopleService::samples(const QString& name) const
     // Sibling voiceprints (the same sample with other models) as one sample: the representative is the one
     // with the smallest model id; delete / move also act on the siblings.
     QVector<Voiceprint> reps;
-    for (const QVector<Voiceprint>& g : VoiceprintStore::siblingGroups(d->voiceprints->printsFor(name)))
+    for (const QVector<Voiceprint>& g : VoiceprintStore::siblingGroups(d->voiceprints->printsFor(person)))
         reps.append(g.first());
     for (const Voiceprint& vp : std::as_const(reps)) {
         VoiceSample s;
         s.id = vp.id;
-        s.person = name;
+        s.person = person;
         s.meetingId = vp.sourceMeetingId;
         s.sourceKind = QStringLiteral("unknown");
         QString file;
@@ -360,7 +350,7 @@ QVector<VoiceSample> PeopleService::samples(const QString& name) const
     return out;
 }
 
-double PeopleService::similarity(const QString& a, const QString& b) const
+double PeopleService::similarity(const PersonId& a, const PersonId& b) const
 {
     if (!d->voiceprints) return -1.0;
     const QVector<Voiceprint> pa = d->voiceprints->printsFor(a), pb = d->voiceprints->printsFor(b);
@@ -384,29 +374,38 @@ PeopleOpResult PeopleService::addPerson(const QString& name)
         return r;
     }
     reload();
-    const QString existing = d->canonical(n);
-    if (!existing.isEmpty()) {
-        r.error = tr("Ilyen nevű személy már van.");
-        r.name = existing;
+    if (d->people) {
+        const PersonId existing = d->people->idForName(n);
+        if (!existing.isNull()) {
+            r.error = tr("Ilyen nevű személy már van.");
+            r.person = existing;
+            r.name = d->nameOf(existing);
+            return r;
+        }
+    }
+    r.person = d->people ? d->people->create(n) : PersonId();
+    if (r.person.isNull()) {
+        r.error = tr("A személy nem menthető.");
         return r;
     }
-    if (d->people) d->people->add(n);
     r.ok = true;
     r.name = n;
     d->finish(true, false);
     return r;
 }
 
-PeopleOpResult PeopleService::renamePerson(const QString& oldName, const QString& newName)
+PeopleOpResult PeopleService::renamePerson(const PersonId& person, const QString& newName)
 {
     PeopleOpResult r;
     reload();
-    const QString o = d->canonical(oldName), n = newName.trimmed();
-    r.name = o;
-    if (o.isEmpty()) {
+    const QString n = newName.trimmed();
+    r.person = person;
+    if (!d->known(person)) {
         r.error = tr("Ez a személy már nem létezik.");
         return r;
     }
+    const QString o = d->nameOf(person);
+    r.name = o;
     if (n.isEmpty()) {
         r.error = tr("A név nem lehet üres.");
         return r;
@@ -415,28 +414,24 @@ PeopleOpResult PeopleService::renamePerson(const QString& oldName, const QString
         r.ok = true;
         return r;
     }
-    if (!sameName(o, n) && !d->canonical(n).isEmpty()) {
+    if (!sameName(o, n) && d->nameTaken(n, person)) {
         r.error = tr("Ilyen nevű személy már van. Ha ugyanaz az ember, használd az Összevonást.");
         return r;
     }
     UndoStep step;
     step.kind = PeopleUndoKind::Renamed;
-    step.person = o;
-    step.other = n;
+    step.person = person;
+    step.oldName = o;
+    step.newName = n;
     step.detail = n;
-    if (d->people)
-        for (const QString& a : d->people->aliases(o))
-            if (sameName(a, n)) step.aliasWasPresent = true;
+    for (const QString& a : d->people->aliases(person))
+        if (sameName(a, n)) step.aliasWasPresent = true;
 
-    // The existing global rename: the person's record (with nicknames and note), voiceprints, every
-    // meeting. For the own name the same happens as for Settings' "Your name" field.
-    if (isSelf(o)) d->controller->setUserSpeakerName(n);
-    else d->controller->renamePerson(o, n);
+    // ONE field (the own person: the settings' "Your name" too).
+    d->renameGlobally(person, n);
     // The old name stays as a nickname (also findable by the name in old transcripts).
-    if (d->people && !sameName(o, n)) d->people->addAlias(n, o);
+    if (!sameName(o, n)) step.aliasAdded = d->people->addAlias(person, o);
 
-    d->renameInUndo(o, n);
-    step.person = o;
     d->push(step);
     r.ok = true;
     r.name = n;
@@ -444,20 +439,21 @@ PeopleOpResult PeopleService::renamePerson(const QString& oldName, const QString
     return r;
 }
 
-PeopleOpResult PeopleService::addAlias(const QString& name, const QString& alias)
+PeopleOpResult PeopleService::addAlias(const PersonId& person, const QString& alias)
 {
     PeopleOpResult r;
-    r.name = name;
+    r.person = person;
+    r.name = d->nameOf(person);
     const QString a = alias.trimmed();
     if (a.isEmpty()) {
         r.error = tr("Adj meg egy becenevet.");
         return r;
     }
-    if (sameName(a, name)) {
+    if (sameName(a, r.name)) {
         r.error = tr("Ez a személy neve — becenévnek mást adj meg.");
         return r;
     }
-    if (!d->people || !d->people->addAlias(name, a)) {
+    if (!d->people || !d->people->addAlias(person, a)) {
         r.error = tr("Ez a becenév már szerepel.");
         return r;
     }
@@ -466,14 +462,14 @@ PeopleOpResult PeopleService::addAlias(const QString& name, const QString& alias
     return r;
 }
 
-bool PeopleService::removeAlias(const QString& name, const QString& alias)
+bool PeopleService::removeAlias(const PersonId& person, const QString& alias)
 {
     if (!d->people) return false;
-    const int index = d->people->removeAlias(name, alias);
+    const int index = d->people->removeAlias(person, alias);
     if (index < 0) return false;
     UndoStep step;
     step.kind = PeopleUndoKind::AliasRemoved;
-    step.person = name;
+    step.person = person;
     step.alias = alias;
     step.detail = alias;
     step.aliasIndex = index;
@@ -482,19 +478,17 @@ bool PeopleService::removeAlias(const QString& name, const QString& alias)
     return true;
 }
 
-void PeopleService::setNote(const QString& name, const QString& note)
+void PeopleService::setNote(const PersonId& person, const QString& note)
 {
-    if (!d->people || name.trimmed().isEmpty()) return;
-    if (d->people->details(name).note == note) return;
-    d->people->setNote(name, note);
-    emit changed();
+    if (!d->people || person.isNull()) return;
+    if (d->people->setNote(person, note)) emit changed();
 }
 
-bool PeopleService::setDefaultSide(const QString& name, const QString& side)
+bool PeopleService::setDefaultSide(const PersonId& person, const QString& side)
 {
-    if (!d->people || name.trimmed().isEmpty()) return false;
+    if (!d->people || person.isNull()) return false;
     const QString clean = side == QLatin1String("local") || side == QLatin1String("remote") ? side : QString();
-    if (!d->people->setDefaultSide(name, clean, /*manual*/ true)) return false;
+    if (!d->people->setDefaultSide(person, clean, /*manual*/ true)) return false;
     emit changed();
     return true;
 }
@@ -503,7 +497,7 @@ int PeopleService::learnDefaultSides(const editing::SideReport& report)
 {
     if (!d->people) return 0;
     int n = 0;
-    const QHash<QString, editing::Side> learned = editing::sides::learnedDefaults(report);
+    const QHash<PersonId, editing::Side> learned = editing::sides::learnedDefaults(report);
     for (auto it = learned.cbegin(); it != learned.cend(); ++it)
         n += d->people->setDefaultSide(it.key(), sideName(it.value())) ? 1 : 0;
     if (n > 0) emit changed();
@@ -532,19 +526,19 @@ PeopleOpResult PeopleService::removeSample(const QString& printId)
     if (d->store) step.detail = d->store->load(step.print.sourceMeetingId).title;
     d->push(step);
     r.ok = true;
-    r.name = step.person;
+    r.person = step.person;
+    r.name = d->nameOf(step.person);
     r.samples = 1;
     d->finish(false, true);
     return r;
 }
 
-PeopleOpResult PeopleService::moveSample(const QString& printId, const QString& toName)
+PeopleOpResult PeopleService::moveSample(const QString& printId, const PersonChoice& to)
 {
     PeopleOpResult r;
-    if (!d->voiceprints) return r;
+    if (!d->voiceprints || !d->people) return r;
     reload();
-    const QString target = toName.trimmed();
-    if (target.isEmpty()) {
+    if (to.isAnonymous()) {
         r.error = tr("Adj meg egy nevet.");
         return r;
     }
@@ -554,13 +548,17 @@ PeopleOpResult PeopleService::moveSample(const QString& printId, const QString& 
         r.error = tr("Ez a minta már nincs meg.");
         return r;
     }
-    const QString existing = d->canonical(target);
-    if (sameName(existing, step.person)) {
+    if (!to.id.isNull() && to.id == step.person) {
         r.error = tr("A minta már ennél a személynél van.");
         return r;
     }
-    step.other = existing.isEmpty() ? target : existing;
-    step.createdPerson = existing.isEmpty();
+    step.createdPerson = to.id.isNull();
+    step.other = d->people->resolve(to);
+    if (step.other.isNull()) {
+        r.error = tr("Adj meg egy nevet.");
+        return r;
+    }
+    if (step.createdPerson) step.createdRecord = d->people->person(step.other);
 
     // The summary of the source meeting: there the speaker's identity became questionable.
     if (d->stats) d->stats->refreshNow();
@@ -571,12 +569,12 @@ PeopleOpResult PeopleService::moveSample(const QString& printId, const QString& 
         d->voiceprints->removePrint(p.id);
         d->voiceprints->addPrint(step.other, p);   // the id stays
     }
-    if (d->people) d->people->add(step.other);
     if (d->store) step.detail = d->store->load(step.print.sourceMeetingId).title;
     d->push(step);
 
     r.ok = true;
-    r.name = step.other;
+    r.person = step.other;
+    r.name = d->nameOf(step.other);
     r.samples = 1;
     r.staleSummaries = step.marks.size();
     d->announceStale(step.marks);
@@ -584,13 +582,13 @@ PeopleOpResult PeopleService::moveSample(const QString& printId, const QString& 
     return r;
 }
 
-VoiceprintPlan PeopleService::voiceprintPlan(const QString& name) const
+VoiceprintPlan PeopleService::voiceprintPlan(const PersonId& person) const
 {
     VoiceprintPlan plan;
     const processing::UtteranceEmbedderFactory factory = d->embedderFactory();
     plan.modelAvailable = bool(factory);
     if (!d->stats || !d->store) return plan;
-    const PersonStats ps = d->stats->stats(name);
+    const PersonStats ps = d->stats->stats(person);
     for (const PersonMeetingStat& pm : ps.meetings) {
         if (pm.talkMs <= 0) continue;
         ++plan.meetingsWithLines;
@@ -598,7 +596,7 @@ VoiceprintPlan PeopleService::voiceprintPlan(const QString& name) const
         editing::SpeakerEditor ed(d->store, d->people, d->voiceprints, pm.meetingId);
         d->configureEditor(ed, {});
         qint64 best = 0;
-        for (const QString& key : Private::speakerKeysOf(ed, name)) {
+        for (const QString& key : Private::speakerKeysOf(ed, person)) {
             const editing::VoiceprintMaterial material = ed.voiceprintMaterial(key);
             if (material.sufficient) best = std::max(best, material.usableMs);
         }
@@ -609,7 +607,7 @@ VoiceprintPlan PeopleService::voiceprintPlan(const QString& name) const
     return plan;
 }
 
-editing::VoiceprintResult PeopleService::createVoiceprintFromMeeting(const QString& name, const QString& meetingId)
+editing::VoiceprintResult PeopleService::createVoiceprintFromMeeting(const PersonId& person, const QString& meetingId)
 {
     editing::VoiceprintResult r;
     const processing::UtteranceEmbedderFactory factory = d->embedderFactory();
@@ -624,7 +622,7 @@ editing::VoiceprintResult PeopleService::createVoiceprintFromMeeting(const QStri
     d->configureEditor(ed, factory);
     QString bestKey;
     qint64 bestMs = 0;
-    for (const QString& key : Private::speakerKeysOf(ed, name)) {
+    for (const QString& key : Private::speakerKeysOf(ed, person)) {
         const editing::VoiceprintMaterial material = ed.voiceprintMaterial(key);
         if (material.sufficient && material.usableMs > bestMs) {
             bestMs = material.usableMs;
@@ -640,7 +638,7 @@ editing::VoiceprintResult PeopleService::createVoiceprintFromMeeting(const QStri
     return r;
 }
 
-MergePreview PeopleService::mergePreview(const QString& loser, const QString& survivor) const
+MergePreview PeopleService::mergePreview(const PersonId& loser, const PersonId& survivor) const
 {
     MergePreview p;
     if (d->stats) {
@@ -658,29 +656,38 @@ MergePreview PeopleService::mergePreview(const QString& loser, const QString& su
     return p;
 }
 
-PeopleOpResult PeopleService::merge(const QString& loserName, const QString& survivorName)
+PeopleOpResult PeopleService::merge(const PersonId& loser, const PersonId& survivor)
 {
     PeopleOpResult r;
     reload();
-    const QString loser = d->canonical(loserName), survivor = d->canonical(survivorName);
-    if (loser.isEmpty() || survivor.isEmpty() || sameName(loser, survivor)) {
+    if (!d->known(loser) || !d->known(survivor) || loser == survivor || !d->controller) {
         r.error = tr("Az összevonáshoz két különböző, létező személy kell.");
         return r;
     }
+    const QString loserName = d->nameOf(loser);
     if (d->stats) d->stats->refreshNow();
-    // In the meetings of the name that disappears the speaker's name changes: their summaries go stale.
+    // In the meetings of the person that disappears the speaker's name changes: their summaries go stale.
     const QVector<StaleMark> marks = d->markStale(loser);
 
-    // The existing global rename to an existing target name = merge: the two records become one
-    // (nicknames, note), the voiceprints and every meeting follow; the name that disappears becomes a nickname.
-    if (isSelf(loser)) d->controller->setUserSpeakerName(survivor);
-    else d->controller->renamePerson(loser, survivor);
-    if (d->people) d->people->addAlias(survivor, loser);
+    // Every reference to the loser points to the survivor; the loser's record folds into the survivor's (its
+    // name becomes a nickname). ONE undo step with the exact reference list.
+    UndoStep step;
+    step.kind = PeopleUndoKind::Merged;
+    step.person = survivor;
+    step.other = loser;
+    step.detail = loserName;
+    step.marks = marks;
+    step.merge = d->controller->mergePeople(survivor, loser);
+    if (!step.merge.isValid()) {
+        r.error = tr("Az összevonáshoz két különböző, létező személy kell.");
+        return r;
+    }
+    d->push(step);
 
-    d->clearUndo();   // not undoable, and the earlier steps' names are no longer valid
     if (d->stats) d->stats->refreshNow();
     r.ok = true;
-    r.name = survivor;
+    r.person = survivor;
+    r.name = d->nameOf(survivor);
     r.meetings = d->stats ? d->stats->stats(survivor).meetingCount : 0;
     r.samples = d->voiceprints ? d->voiceprints->sampleCount(survivor) : 0;
     r.staleSummaries = marks.size();
@@ -689,19 +696,19 @@ PeopleOpResult PeopleService::merge(const QString& loserName, const QString& sur
     return r;
 }
 
-DeletePreview PeopleService::deletePreview(const QString& name) const
+DeletePreview PeopleService::deletePreview(const PersonId& person) const
 {
     DeletePreview p;
-    p.sampleCount = d->voiceprints ? d->voiceprints->sampleCount(name) : 0;
+    p.sampleCount = d->voiceprints ? d->voiceprints->sampleCount(person) : 0;
     if (!d->stats) return p;
-    const PersonStats ps = d->stats->stats(name);
+    const PersonStats ps = d->stats->stats(person);
     p.meetingCount = ps.meetingCount;
     for (const PersonMeetingStat& m : ps.meetings) {
         if (m.hasSummary) ++p.staleSummaries;
         if (!p.exampleLabel.isEmpty()) continue;
         // A raw label the speaker reverts to (from the newest meeting).
         for (const QString& key : m.speakerKeys)
-            if (!editing::speakeredit::isParticipantKey(key) && !sameName(key, name)) {
+            if (!editing::speakeredit::isParticipantKey(key)) {
                 p.exampleLabel = key;
                 break;
             }
@@ -709,39 +716,39 @@ DeletePreview PeopleService::deletePreview(const QString& name) const
     return p;
 }
 
-PeopleOpResult PeopleService::removePerson(const QString& nameIn, bool keepSamples)
+PeopleOpResult PeopleService::removePerson(const PersonId& person, bool keepSamples)
 {
     PeopleOpResult r;
     reload();
-    const QString name = d->canonical(nameIn);
-    if (name.isEmpty()) {
+    if (!d->known(person)) {
         r.error = tr("Ez a személy már nem létezik.");
         return r;
     }
-    if (isSelf(name)) {
+    if (isSelf(person)) {
         r.error = tr("A saját személyed nem törölhető.");
         return r;
     }
     if (d->stats) d->stats->refreshNow();
-    r.meetings = d->stats ? d->stats->stats(name).meetingCount : 0;
-    r.samples = d->voiceprints ? d->voiceprints->sampleCount(name) : 0;
-    const QVector<StaleMark> marks = d->markStale(name);
+    r.meetings = d->stats ? d->stats->stats(person).meetingCount : 0;
+    r.samples = d->voiceprints ? d->voiceprints->sampleCount(person) : 0;
+    const QVector<StaleMark> marks = d->markStale(person);
 
     // "Keep voice samples as an anonymous person": the samples go BEFORE the deletion to a new person
     // named "Anonymous N" (so they do not vanish from the store for even a moment).
-    if (keepSamples && r.samples > 0 && d->voiceprints) {
+    if (keepSamples && r.samples > 0 && d->voiceprints && d->people) {
         r.name = d->freeAnonymousName();
-        d->voiceprints->renamePerson(name, r.name);
-        if (d->people) d->people->add(r.name);
+        r.person = d->people->create(r.name);
+        d->voiceprints->merge(person, r.person);
     }
-    d->controller->removePerson(name);
+    if (d->controller) d->controller->removePerson(person);
+    else if (d->people) d->people->remove(person);
 
     d->clearUndo();
     if (d->stats) d->stats->refreshNow();
     r.ok = true;
     r.staleSummaries = marks.size();
     d->announceStale(marks);
-    d->finish(!r.name.isEmpty(), !r.name.isEmpty());
+    d->finish(!r.person.isNull(), !r.person.isNull());
     return r;
 }
 
@@ -785,10 +792,12 @@ PeopleUndoInfo PeopleService::undo()
             }
         }
         // If the operation created the target person and nothing is bound to it since, it disappears.
-        if (s.createdPerson && d->people && d->voiceprints && d->voiceprints->printCount(s.other) == 0
-            && d->people->details(s.other).isEmpty()
-            && (!d->stats || d->stats->stats(s.other).meetingCount == 0))
-            d->people->remove(s.other);
+        if (s.createdPerson && d->people && d->voiceprints && d->voiceprints->printCount(s.other) == 0) {
+            const Person now = d->people->person(s.other);
+            const bool untouched = now.isValid() && now.aliases.isEmpty() && now.note.isEmpty() && now.tags.isEmpty();
+            if (untouched && (!d->stats || d->stats->stats(s.other).meetingCount == 0))
+                d->people->remove(s.other);
+        }
         QVector<StaleMark> undone;
         for (const StaleMark& mark : s.marks)
             if (editing::speakeredit::unmarkSummaryStale(mark.folder, mark.keys)) undone.append(mark);
@@ -801,16 +810,24 @@ PeopleUndoInfo PeopleService::undo()
         d->finish(true, false);
         break;
     case PeopleUndoKind::Renamed: {
-        // Back to the old name via the same global route; the nickname added at the rename (the old name)
-        // disappears by itself with the rename back (a name cannot be its own nickname).
-        const QString current = d->canonical(s.other);
-        if (current.isEmpty()) break;
-        if (isSelf(current)) d->controller->setUserSpeakerName(s.person);
-        else d->controller->renamePerson(current, s.person);
+        if (!d->known(s.person)) break;
+        // The nickname added at the rename (the old name) goes first: the name cannot be its own nickname.
+        if (d->people && s.aliasAdded) d->people->removeAlias(s.person, s.oldName);
+        d->renameGlobally(s.person, s.oldName);
         // If the new name was originally a nickname (the rename removed it), it comes back.
-        if (d->people && s.aliasWasPresent) d->people->addAlias(s.person, s.other);
-        d->renameInUndo(s.other, s.person);
+        if (d->people && s.aliasWasPresent) d->people->addAlias(s.person, s.newName);
         d->finish(true, false);
+        break;
+    }
+    case PeopleUndoKind::Merged: {
+        if (d->controller) d->controller->undoMergePeople(s.merge);
+        QVector<StaleMark> undone;
+        for (const StaleMark& mark : s.marks)
+            if (editing::speakeredit::unmarkSummaryStale(mark.folder, mark.keys)) undone.append(mark);
+        d->announceStale(undone);
+        if (d->stats) d->stats->refreshNow();
+        info.person = s.other;   // the person who came back
+        d->finish(true, true);
         break;
     }
     case PeopleUndoKind::None:

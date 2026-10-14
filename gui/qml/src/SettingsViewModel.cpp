@@ -621,7 +621,7 @@ void SettingsViewModel::refreshVoiceprint()
     QString text;
     bool has = false;
     if (m_controller && m_controller->voiceprints()) {
-        const QVector<Voiceprint> prints = m_controller->voiceprints()->printsFor(m_base.recording.userSpeakerName);
+        const QVector<Voiceprint> prints = m_controller->voiceprints()->printsFor(m_controller->selfPerson().id);
         // One sample is one item: per-model sibling voiceprints count as one.
         QSet<QString> meetings, samples;
         for (const Voiceprint& p : prints) {

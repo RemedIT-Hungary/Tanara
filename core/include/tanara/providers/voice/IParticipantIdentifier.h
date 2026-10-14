@@ -8,8 +8,8 @@
 // voiceprint directory (decision 2026-10-14, gateway question 5).
 //
 // One probe = one speaker cluster of a track (its centroid vector per model) -> one ParticipantGuess
-// (the probe's track / device / windows / sample are copied; name + score are the identification:
-// the best candidate if its score reaches the threshold, otherwise an empty name).
+// (the probe's track / device / windows / sample are copied; personId + displayName + score are the
+// identification: the best candidate if its score reaches the threshold, otherwise a null id).
 //
 // Implementations: processing::LocalParticipantIdentifier (Origin::Local), cloud::CloudParticipantIdentifier
 // (Origin::Cloud, /v1/voice/identify).
@@ -24,11 +24,12 @@
 
 namespace tanara::providers {
 
-// A known person and their voiceprints (one per model and sample).
-// TODO(P11): a stable PersonId next to the name, once the domain has it.
+// A known person and their voiceprints (one per model and sample). Only the prints leave the device
+// (the Cloud gets an opaque ref per candidate); the id and the name map the match back locally.
 struct IdentifyCandidate {
-    QString name;
+    QString name;                   // display name (copied into ParticipantGuess::displayName)
     QVector<Voiceprint> prints;
+    PersonId personId;
 };
 
 struct IdentifyProbe {
@@ -48,7 +49,7 @@ struct IdentifyMeetingContext {
 struct IdentifyRequest {
     QVector<IdentifyProbe>     probes;
     QVector<IdentifyCandidate> candidates;
-    // Minimum cosine score of a match; below it the guess gets an empty name. < 0 = provider default.
+    // Minimum cosine score of a match; below it the guess gets a null id. < 0 = provider default.
     double threshold = -1.0;
     IdentifyMeetingContext meetingContext;
 };

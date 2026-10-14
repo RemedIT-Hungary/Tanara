@@ -44,8 +44,8 @@ public:
     QString meetingId() const;
     bool hasTranscript() const;     // whether transcript.segments.json exists (otherwise everything is empty)
 
-    // The user's own name (to mark EditorSpeaker::isSelf).
-    void setUserSpeakerName(const QString& name);
+    // The user's own person (EditorSpeaker::isSelf; the side analysis' default).
+    void setSelfPerson(const SelfPerson& self);
     // Factory of the utterance embedder. Without it there is no uncertainty / suggestion /
     // manual voiceprint; everything else works (graceful degradation without a model or audio).
     void setEmbedderFactory(processing::UtteranceEmbedderFactory factory);
@@ -69,7 +69,12 @@ public:
     QVector<EditorSpeaker> speakers() const;
     EditorSpeaker speaker(const QString& key) const;
     // A person's nicknames (from the person store), so the pickers match nicknames too.
-    QStringList personAliases(const QString& personName) const;        // unknown key = empty key
+    QStringList personAliases(const PersonId& person) const;            // unknown person = empty
+    // The person a picker / text field hands over (a PersonId, or a typed name): a known id, else the first
+    // person with that name, else a new person to create (PeopleStore::choiceFor). Empty = anonymous.
+    PersonChoice personChoice(const QString& idOrName) const;
+    // A person's current display name (empty if unknown).
+    QString personDisplayName(const PersonId& person) const;
 
     int uncertainCount() const;
     QStringList uncertainUtteranceIds() const;
@@ -82,10 +87,10 @@ public:
     // behavior) and it counts as a sample -> lastSampleDeviation() updates. The move also clears
     // the "unidentifiable" flag.
     bool moveUtterances(const QStringList& utteranceIds, const QString& speakerKey, bool noisy = false);
-    // ...to a person by name: if already a speaker of the meeting, to that one; otherwise a new
-    // participant is created (a known OR brand-new person; the latter also enters the name list).
-    // Returns the target speaker's key. noisy: as above.
-    QString moveUtterancesToPerson(const QStringList& utteranceIds, const QString& personName,
+    // ...to a person: if already a speaker of the meeting, to that one; otherwise a new participant is
+    // created (a known person, OR a brand-new one from PersonChoice::newName: created in the same undo
+    // step). Returns the target speaker's key. noisy: as above.
+    QString moveUtterancesToPerson(const QStringList& utteranceIds, const PersonChoice& person,
                                    bool noisy = false);
     // ...to a new ANONYMOUS participant ("New speaker N"). Returns the new speaker's key. noisy: as above.
     QString moveUtterancesToNewParticipant(const QStringList& utteranceIds, bool noisy = false);
@@ -94,7 +99,7 @@ public:
     // speaker of the meeting, the two merge. fixVoiceprints: "wrong recognition": the meeting's
     // samples leave the PREVIOUS person's voiceprint and are added to the chosen one
     // (undo reverts this too).
-    bool reassignSpeaker(const QString& speakerKey, const QString& personName,
+    bool reassignSpeaker(const QString& speakerKey, const PersonChoice& person,
                          bool fixVoiceprints = false);
     // Resets the speaker to anonymous. fixVoiceprints: the meeting's samples leave the
     // previous person's voiceprint.
@@ -107,9 +112,9 @@ public:
     // All lines of fromKey go to intoKey; fromKey ceases to exist.
     bool mergeSpeakers(const QString& fromKey, const QString& intoKey);
 
-    // Adds a participant (no lines yet). Empty name = anonymous. If the person is already a
-    // speaker, returns that key (no step).
-    QString addParticipant(const QString& personName = QString());
+    // Adds a participant (no lines yet). An anonymous choice = an anonymous participant. If the person is
+    // already a speaker, returns that key (no step).
+    QString addParticipant(const PersonChoice& person = {});
     // Removes an empty speaker (0 lines). false for a non-empty one.
     bool removeParticipant(const QString& speakerKey);
 
@@ -279,12 +284,12 @@ public:
     void setActivityProvider(ActivityProvider provider);
     // The person's MANUAL tags (TagService::tagsOfPerson), only for the quick "+ #Tag" offer;
     // the candidate ranking's evidence comes from setTagEvidenceProvider. Called on the main thread.
-    using PersonTagsFn = std::function<QStringList(const QString& personName)>;
+    using PersonTagsFn = std::function<QStringList(const PersonId& person)>;
     void setPersonTagsProvider(PersonTagsFn fn);
     // The meeting's tags (Meeting::tagIds, at load) and a person's tags from the source above
     // (empty if no source), for the quick "+ #Tag" offer.
     QStringList meetingTagIds() const;
-    QStringList personTagIds(const QString& personName) const;
+    QStringList personTagIds(const PersonId& person) const;
     // The person's tags changed (e.g. quick "+ #Tag"): recompute the candidates / evidence.
     void notifyPersonTagsChanged();
     // The tag evidence (manual tag + learned association; PersonTagSnapshot::evidence). Called

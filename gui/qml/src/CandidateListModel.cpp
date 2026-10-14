@@ -26,6 +26,7 @@ QHash<int, QByteArray> CandidateListModel::roleNames() const
         {SpeakerKeyRole, "speakerKey"},
         {NameRole, "name"},
         {PersonNameRole, "personName"},
+        {PersonIdRole, "personId"},
         {ColorIndexRole, "colorIndex"},
         {SubTextRole, "subText"},
         {EvidenceRole, "evidence"},
@@ -47,6 +48,7 @@ QVariant CandidateListModel::data(const QModelIndex& index, int role) const
     case SpeakerKeyRole: return it.speakerKey;
     case NameRole: return it.name;
     case PersonNameRole: return it.personName;
+    case PersonIdRole: return it.personId;
     case ColorIndexRole: return it.colorIndex;
     case SubTextRole: return it.subText;
     case EvidenceRole: return it.evidence;
@@ -132,17 +134,17 @@ void CandidateListModel::refresh()
             sideCtx = m_editor->speakerSideName(m_speakerKey);
         }
         const QString needle = text::foldForSearch(m_query.trimmed());
-        QHash<QString, int> meetings;
-        QHash<QString, QStringList> aliases;   // nicknames for the search (by name)
+        QHash<PersonId, int> meetings;
+        QHash<PersonId, QStringList> aliases;   // nicknames for the search
         for (const editing::PersonInfo& p : m_editor->people()) {
-            meetings.insert(p.name.toCaseFolded(), p.meetingCount);
-            if (!p.aliases.isEmpty()) aliases.insert(text::foldForSearch(p.name), p.aliases);
+            if (p.personId.isNull()) continue;     // not a stored person (a fictional demo name): nothing to join
+            meetings.insert(p.personId, p.meetingCount);
+            if (!p.aliases.isEmpty()) aliases.insert(p.personId, p.aliases);
         }
         // The search matches the name or the nickname; the matched nickname goes into the subtext ("Dompa" · ...).
-        auto matchedAlias = [&](const QString& name, const QString& personName) -> QString {
-            for (const QString& key : {text::foldForSearch(name), text::foldForSearch(personName)})
-                for (const QString& a : aliases.value(key))
-                    if (text::foldForSearch(a).contains(needle)) return a;
+        auto matchedAlias = [&](const PersonId& person) -> QString {
+            for (const QString& a : aliases.value(person))
+                if (text::foldForSearch(a).contains(needle)) return a;
             return {};
         };
 
@@ -152,18 +154,19 @@ void CandidateListModel::refresh()
         for (const Candidate& c : cands) {
             Item it;
             it.speakerKey = c.speakerKey;
-            it.personName = c.personName;
+            it.personName = c.personId.isNull() ? QString() : c.displayName;
+            it.personId = c.personId.toString();
             if (!c.speakerKey.isEmpty()) {
                 const auto view = m_editor->speakerView(c.speakerKey);
                 it.name = view.name;
                 it.colorIndex = view.colorIndex;
             } else {
-                it.name = c.personName;
+                it.name = c.displayName;
             }
             if (it.name.isEmpty()) continue;
             QString aliasHit;
             if (!needle.isEmpty() && !text::foldForSearch(it.name).contains(needle)) {
-                aliasHit = matchedAlias(it.name, c.personName);
+                aliasHit = matchedAlias(c.personId);
                 if (aliasHit.isEmpty()) continue;
             }
             it.otherSide = c.otherSide;
@@ -184,7 +187,7 @@ void CandidateListModel::refresh()
             it.evidence = m_editor->evidenceList(ev, sideCtx, lineMode, /*chipsOnly*/ true);
             if (it.current) it.subText = tr("most ő");
             else if (!c.speakerKey.isEmpty()) it.subText = tr("%n sor itt", nullptr, c.linesHere);
-            else it.subText = tr("%n megbeszélés", nullptr, meetings.value(c.personName.toCaseFolded()));
+            else it.subText = tr("%n megbeszélés", nullptr, meetings.value(c.personId));
             if (!aliasHit.isEmpty()) it.subText = tr("„%1”").arg(aliasHit) + QStringLiteral(" · ") + it.subText;
             if (it.current) {
                 current = it;
@@ -216,6 +219,7 @@ QVariantMap CandidateListModel::get(int row) const
     return {{QStringLiteral("speakerKey"), it.speakerKey},
             {QStringLiteral("name"), it.name},
             {QStringLiteral("personName"), it.personName},
+            {QStringLiteral("personId"), it.personId},
             {QStringLiteral("current"), it.current},
             {QStringLiteral("otherSide"), it.otherSide},
             {QStringLiteral("vetoed"), it.vetoed}};

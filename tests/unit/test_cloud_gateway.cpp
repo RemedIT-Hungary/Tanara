@@ -663,24 +663,28 @@ void TestCloudGateway::capabilities_voiceEmbedding_and_identify()
     Voiceprint anna; anna.model = v[0].modelId; anna.embedding = v[0].vector;
     QVector<float> other(192, 0.0f); other[0] = 1.0f;
     Voiceprint bela; bela.model = v[0].modelId; bela.embedding = other;
-    ir.candidates = { { "Béla", { bela } }, { "Kovács Anna", { anna } } };
+    const PersonId annaId = PersonId::fromString(QStringLiteral("p-anna-1"));
+    ir.candidates = { { "Béla", { bela }, PersonId::fromString(QStringLiteral("p-bela-1")) },
+                      { "Kovács Anna", { anna }, annaId } };
     const QByteArray body = cloud::CloudParticipantIdentifier::requestBody(ir, QString());
     QVERIFY(!body.contains("Anna") && !body.contains("B\xc3\xa9la"));   // names never leave the device
+    QVERIFY(!body.contains("p-anna-1") && !body.contains("p-bela-1"));     // nor do the person ids
     log.clear();
     providers::IdentifyJob* ij = idf->identify(ir);
     QVERIFY(waitJob(ij));
     QVERIFY2(!ij->error().isError(), qPrintable(ij->error().message));
     QCOMPARE(ij->result().size(), 1);
-    QCOMPARE(ij->result()[0].name, QStringLiteral("Kovács Anna"));
+    QCOMPARE(ij->result()[0].personId, annaId);
+    QCOMPARE(ij->result()[0].displayName, QStringLiteral("Kovács Anna"));
     QVERIFY(ij->result()[0].score > 0.99);
     QCOMPARE(ij->result()[0].trackId, QStringLiteral("mic"));
     QCOMPARE(ij->result()[0].windows, 4);
     QVERIFY(log[0].path.endsWith("/v1/voice/identify"));
     // Below the threshold: no name.
-    ir.candidates = { { "Béla", { bela } } };
+    ir.candidates = { { "Béla", { bela }, PersonId::fromString(QStringLiteral("p-bela-1")) } };
     ij = idf->identify(ir);
     QVERIFY(waitJob(ij));
-    QVERIFY(ij->result()[0].name.isEmpty());
+    QVERIFY(ij->result()[0].personId.isNull());
 }
 
 void TestCloudGateway::capabilities_summaries()

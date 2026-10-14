@@ -31,14 +31,17 @@ QVector<ParticipantGuess> LocalParticipantIdentifier::identifyNow(const provider
         g.deviceName = probe.deviceName;
         g.windows = probe.windows;
         g.sampleRef = probe.sampleRef;
-        QString bestName;
+        const providers::IdentifyCandidate* bestCandidate = nullptr;
         double best = -1.0;
         for (const providers::IdentifyCandidate& c : req.candidates) {
             const double s = score(probe, c);
-            if (s > best) { best = s; bestName = c.name; }
+            if (s > best) { best = s; bestCandidate = &c; }
         }
         g.score = best;
-        g.name = best >= threshold ? bestName : QString();
+        if (bestCandidate && best >= threshold) {
+            g.personId = bestCandidate->personId;
+            g.displayName = bestCandidate->name;
+        }
         out.append(g);
     }
     return out;

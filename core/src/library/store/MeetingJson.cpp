@@ -1,6 +1,7 @@
 #include "tanara/library/store/detail/MeetingJson.h"
 #include "tanara/library/store/ParticipantJson.h"
 #include "tanara/library/MeetingNotes.h"
+#include "tanara/foundation/log/Logging.h"
 
 #include <QJsonArray>
 #include <QJsonValue>
@@ -81,6 +82,7 @@ Track trackFromJson(const QJsonObject& o)
 QJsonObject toJson(const Meeting& m)
 {
     QJsonObject o;
+    o[QStringLiteral("version")]   = kMeetingFormatVersion;
     o[QStringLiteral("id")]        = m.id;
     o[QStringLiteral("title")]     = m.title;
     // No "folder": the folder is where the file is (MeetingRepository sets it on reading), so a
@@ -101,7 +103,7 @@ QJsonObject toJson(const Meeting& m)
 
     QJsonObject sm;
     for (auto it = m.speakerMap.constBegin(); it != m.speakerMap.constEnd(); ++it)
-        sm[it.key()] = it.value();
+        sm[it.key()] = it.value().toString();
     o[QStringLiteral("speakerMap")] = sm;
     if (!m.contextNote.isEmpty())
         o[QStringLiteral("contextNote")] = m.contextNote;
@@ -138,8 +140,10 @@ Meeting meetingFromJson(const QJsonObject& o)
     m.hasSummary    = o.value(QStringLiteral("hasSummary")).toBool();
 
     const QJsonObject sm = o.value(QStringLiteral("speakerMap")).toObject();
-    for (auto it = sm.constBegin(); it != sm.constEnd(); ++it)
-        m.speakerMap.insert(it.key(), it.value().toString());
+    for (auto it = sm.constBegin(); it != sm.constEnd(); ++it) {
+        const PersonId person = PersonId::fromString(it.value().toString());
+        if (!person.isNull()) m.speakerMap.insert(it.key(), person);
+    }
     m.contextNote = o.value(QStringLiteral("contextNote")).toString();
     m.detectedCallApp = o.value(QStringLiteral("detectedCallApp")).toString();
     for (const QJsonValue& v : o.value(QStringLiteral("tags")).toArray()) {
@@ -150,6 +154,12 @@ Meeting meetingFromJson(const QJsonObject& o)
         m.participants.append(participantFromJson(v.toObject()));
     if (o.value(QStringLiteral("participantApproval")).isObject())
         m.approval = participantApprovalFromJson(o.value(QStringLiteral("participantApproval")).toObject());
+    // An older meeting.json (before version 3) refers to people by NAME; the app does not read that.
+    const int version = o.value(QStringLiteral("version")).toInt(0);
+    if (version < kMeetingFormatVersion && (!sm.isEmpty() || !m.participants.isEmpty()))
+        qCWarning(lcStore).noquote()
+            << QStringLiteral("meeting.json %1 is in an old, name-keyed format (version %2): its people are not"
+                              " resolved. Run: tanara-cli migrate person-ids").arg(m.id).arg(version);
     // Old meeting: the watcher's automatic sentence ("Automatically detected call: ...") is not a note
     // -> an empty note + the detected call. The next save writes it this way.
     meetingnotes::interpretLegacyNote(m);

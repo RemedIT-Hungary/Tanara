@@ -208,10 +208,17 @@ struct Fixture {
         writeJson(QDir(folder).filePath(QStringLiteral("transcript.segments.json")), QJsonDocument(segs));
     }
 
+    // A person by name (people.json; created if missing) and back.
+    PersonId pid(const QString& name) { return people->ensure(name); }
+    QString nameOf(const PersonId& id) const { return people->displayName(id); }
+    PersonChoice choice(const QString& name) const { return people->choiceFor(name); }
+
+    // raw label -> person NAME (the people are created in people.json).
     void setSpeakerMap(const QMap<QString, QString>& map, bool hasSummary = false)
     {
         meeting = store->load(meeting.id);
-        meeting.speakerMap = map;
+        meeting.speakerMap.clear();
+        for (auto it = map.constBegin(); it != map.constEnd(); ++it) meeting.speakerMap.insert(it.key(), pid(it.value()));
         meeting.hasSummary = hasSummary;
         store->saveMeeting(meeting);
     }
@@ -239,7 +246,17 @@ struct Fixture {
     {
         return readText(QDir(meeting.folder).filePath(QStringLiteral("transcript.md")));
     }
-    QMap<QString, QString> diskMap() const { return store->load(meeting.id).speakerMap; }
+    // The speakerMap on disk with the people's NAMES (raw label -> name).
+    QMap<QString, QString> diskMap() const
+    {
+        QMap<QString, QString> out;
+        const QMap<QString, PersonId> m = store->load(meeting.id).speakerMap;
+        for (auto it = m.constBegin(); it != m.constEnd(); ++it) out.insert(it.key(), nameOf(it.value()));
+        return out;
+    }
+    // The person with this name (no creation); null if none.
+    PersonId idOf(const QString& name) const { people->refresh(); return people->idForName(name); }
+    bool hasPerson(const QString& name) const { return !idOf(name).isNull(); }
 };
 
 editing::EditorSpeaker findSpeaker(const editing::SpeakerEditor& ed, const QString& key) { return ed.speaker(key); }
@@ -309,11 +326,11 @@ void SpeakerEditorTest::readModel_speakersAndUtterances()
     Fixture fx;
     fx.setSpeakerMap({{kB2, QStringLiteral("Béla")}});
     Voiceprint vp; vp.embedding = {0, 1, 0};
-    fx.prints->addPrint(QStringLiteral("Béla"), vp);
-    editing::speakeredit::recordIdentification(fx.meeting.folder, kB2, QStringLiteral("Béla"), 0.82);
+    fx.prints->addPrint(fx.pid(QStringLiteral("Béla")), vp);
+    editing::speakeredit::recordIdentification(fx.meeting.folder, kB2, fx.pid(QStringLiteral("Béla")), 0.82);
 
     auto ed = fx.editor();
-    ed->setUserSpeakerName(QStringLiteral("béla"));
+    ed->setSelfPerson(SelfPerson{fx.pid(QStringLiteral("Béla")), QStringLiteral("Béla")});
     QVERIFY(ed->hasTranscript());
     QCOMPARE(ed->utteranceCount(), scenario().size());
 
@@ -340,7 +357,7 @@ void SpeakerEditorTest::readModel_speakersAndUtterances()
 
     QCOMPARE(sp[1].key, kB2);
     QCOMPARE(sp[1].displayName, QStringLiteral("Béla"));
-    QCOMPARE(sp[1].personName, QStringLiteral("Béla"));
+    QCOMPARE(fx.nameOf(sp[1].personId), QStringLiteral("Béla"));
     QVERIFY(!sp[1].anonymous);
     QVERIFY(sp[1].isSelf);
     QCOMPARE(sp[1].colorIndex, 1);
@@ -372,12 +389,12 @@ void SpeakerEditorTest::oldMeeting_withoutOverlayOrTranscript()
     QCOMPARE(none.utteranceCount(), 0);
     QVERIFY(none.speakers().isEmpty());
     QVERIFY(!none.moveUtterances({QStringLiteral("u0")}, kB1));
-    QVERIFY(none.moveUtterancesToPerson({QStringLiteral("u0")}, QStringLiteral("X")).isEmpty());
+    QVERIFY(none.moveUtterancesToPerson({QStringLiteral("u0")}, fx.choice(QStringLiteral("X"))).isEmpty());
 
     // An unknown meeting does not crash either.
     editing::SpeakerEditor unknown(fx.store.get(), nullptr, nullptr, QStringLiteral("nincs-ilyen"));
     QVERIFY(!unknown.hasTranscript());
-    QVERIFY(unknown.addParticipant(QStringLiteral("X")).isEmpty());
+    QVERIFY(unknown.addParticipant(fx.choice(QStringLiteral("X"))).isEmpty());
 }
 
 void SpeakerEditorTest::move_undoRedo_persist()
@@ -440,25 +457,25 @@ void SpeakerEditorTest::move_undoRedo_persist()
 void SpeakerEditorTest::move_toNewPerson_andAnonymous()
 {
     Fixture fx;
-    fx.people->add(QStringLiteral("Anna"));
+    fx.pid(QStringLiteral("Anna"));
     auto ed = fx.editor();
 
     // A brand-new person: a participant is created, it also goes onto the name list; NO voiceprint is made.
-    const QString cili = ed->moveUtterancesToPerson(uids({4, 7}), QStringLiteral("  Cili "));
+    const QString cili = ed->moveUtterancesToPerson(uids({4, 7}), fx.choice(QStringLiteral("  Cili ")));
     QVERIFY(editing::speakeredit::isParticipantKey(cili));
     editing::EditorSpeaker s = ed->speaker(cili);
     QCOMPARE(s.displayName, QStringLiteral("Cili"));
-    QCOMPARE(s.personName, QStringLiteral("Cili"));
+    QCOMPARE(fx.nameOf(s.personId), QStringLiteral("Cili"));
     QVERIFY(s.added);
     QCOMPARE(s.utteranceCount, 2);
     QCOMPARE(s.colorIndex, 2);                  // after the two raw labels
-    QVERIFY(fx.people->names().contains(QStringLiteral("Cili")));
+    QVERIFY(fx.hasPerson(QStringLiteral("Cili")));
     QCOMPARE(fx.prints->totalPrintCount(), 0);
     ed->flushPendingWrites();   // transcript.md is written with a delay
     QVERIFY(fx.markdown().contains(QStringLiteral("**Cili** L4a L4b")));
 
     // To the same person again: it goes to the existing speaker, no second column.
-    QCOMPARE(ed->moveUtterancesToPerson(uids({9}), QStringLiteral("cili")), cili);
+    QCOMPARE(ed->moveUtterancesToPerson(uids({9}), fx.choice(QStringLiteral("cili"))), cili);
     QCOMPARE(ed->speakers().size(), 3);
     QCOMPARE(ed->speaker(cili).utteranceCount, 3);
 
@@ -475,10 +492,10 @@ void SpeakerEditorTest::move_toNewPerson_andAnonymous()
     ed->undo(); ed->undo(); ed->undo();
     QVERIFY(!ed->canUndo());
     QCOMPARE(ed->speakers().size(), 2);
-    QVERIFY(!fx.people->names().contains(QStringLiteral("Cili")));
-    QVERIFY(fx.people->names().contains(QStringLiteral("Anna")));
+    QVERIFY(!fx.hasPerson(QStringLiteral("Cili")));
+    QVERIFY(fx.hasPerson(QStringLiteral("Anna")));
     ed->redo();
-    QVERIFY(fx.people->names().contains(QStringLiteral("Cili")));
+    QVERIFY(fx.hasPerson(QStringLiteral("Cili")));
     QCOMPARE(ed->speaker(cili).utteranceCount, 2);
 }
 
@@ -488,15 +505,15 @@ void SpeakerEditorTest::reassign_keepsSpeakerMapSemantics()
     auto ed = fx.editor();
 
     // Naming a raw speaker = the old speakerMap entry (the CLI reads this).
-    QVERIFY(ed->reassignSpeaker(kB1, QStringLiteral("Anna")));
+    QVERIFY(ed->reassignSpeaker(kB1, fx.choice(QStringLiteral("Anna"))));
     QCOMPARE(fx.diskMap().value(kB1), QStringLiteral("Anna"));
     QCOMPARE(ed->speaker(kB1).displayName, QStringLiteral("Anna"));
-    QVERIFY(fx.people->names().contains(QStringLiteral("Anna")));
+    QVERIFY(fx.hasPerson(QStringLiteral("Anna")));
     ed->flushPendingWrites();   // transcript.md is written with a delay
     QVERIFY(fx.markdown().contains(QStringLiteral("**Anna** L0a L0b")));
     QCOMPARE(fx.prints->totalPrintCount(), 0);      // no automatic teaching
-    QVERIFY(!ed->reassignSpeaker(kB1, QStringLiteral("anna")));     // the same: no step
-    QVERIFY(!ed->reassignSpeaker(kB1, QStringLiteral("  ")));
+    QVERIFY(!ed->reassignSpeaker(kB1, fx.choice(QStringLiteral("anna"))));     // the same: no step
+    QVERIFY(!ed->reassignSpeaker(kB1, fx.choice(QStringLiteral("  "))));
 
     ed->undo();
     QVERIFY(!fx.diskMap().contains(kB1));
@@ -508,8 +525,8 @@ void SpeakerEditorTest::reassign_keepsSpeakerMapSemantics()
 
     // Renaming a manually added participant lives in the overlay (the speakerMap does not change).
     const QString p = ed->moveUtterancesToNewParticipant(uids({4}));
-    QVERIFY(ed->reassignSpeaker(p, QStringLiteral("Cili")));
-    QCOMPARE(ed->speaker(p).personName, QStringLiteral("Cili"));
+    QVERIFY(ed->reassignSpeaker(p, fx.choice(QStringLiteral("Cili"))));
+    QCOMPARE(fx.nameOf(ed->speaker(p).personId), QStringLiteral("Cili"));
     QCOMPARE(fx.diskMap().size(), 1);
 }
 
@@ -519,7 +536,7 @@ void SpeakerEditorTest::reassign_toExistingPerson_merges()
     fx.setSpeakerMap({{kB1, QStringLiteral("Anna")}});
     auto ed = fx.editor();
     // We assign label 2 to Anna too, so there are not two Anna columns: a merge.
-    QVERIFY(ed->reassignSpeaker(kB2, QStringLiteral("Anna")));
+    QVERIFY(ed->reassignSpeaker(kB2, fx.choice(QStringLiteral("Anna"))));
     QCOMPARE(ed->speakers().size(), 1);
     QCOMPARE(ed->speaker(kB1).utteranceCount, scenario().size());
     QCOMPARE(ed->utterance(uid(1)).speakerKey, kB1);
@@ -541,40 +558,40 @@ void SpeakerEditorTest::reassign_fixVoiceprints_undo()
     Voiceprint other; other.embedding = {0, 1, 0};
     other.sourceMeetingId = QStringLiteral("masik-meeting");
     other.id = QStringLiteral("mashol");
-    fx.prints->addPrint(QStringLiteral("Béla"), here);
-    fx.prints->addPrint(QStringLiteral("Béla"), other);
+    fx.prints->addPrint(fx.pid(QStringLiteral("Béla")), here);
+    fx.prints->addPrint(fx.pid(QStringLiteral("Béla")), other);
 
     auto ed = fx.editor();
     QVERIFY(Fixture::embed(*ed));
 
     // "Wrong recognition": label 2 is really Dóra.
-    QVERIFY(ed->reassignSpeaker(kB2, QStringLiteral("Dóra"), /*fixVoiceprints*/ true));
-    QCOMPARE(fx.prints->printCount(QStringLiteral("Béla")), 1);
-    QCOMPARE(fx.prints->printsFor(QStringLiteral("Béla")).first().id, QStringLiteral("mashol"));
-    QCOMPARE(fx.prints->printCount(QStringLiteral("Dóra")), 1);
-    const Voiceprint made = fx.prints->printsFor(QStringLiteral("Dóra")).first();
+    QVERIFY(ed->reassignSpeaker(kB2, fx.choice(QStringLiteral("Dóra")), /*fixVoiceprints*/ true));
+    QCOMPARE(fx.prints->printCount(fx.idOf(QStringLiteral("Béla"))), 1);
+    QCOMPARE(fx.prints->printsFor(fx.idOf(QStringLiteral("Béla"))).first().id, QStringLiteral("mashol"));
+    QCOMPARE(fx.prints->printCount(fx.idOf(QStringLiteral("Dóra"))), 1);
+    const Voiceprint made = fx.prints->printsFor(fx.idOf(QStringLiteral("Dóra"))).first();
     QCOMPARE(made.sourceMeetingId, fx.meeting.id);
     QVERIFY(library::VoiceprintStore::cosineSimilarity(made.embedding, {0, 1, 0}) > 0.99);
     QVERIFY(ed->speaker(kB2).hasVoiceprint);
 
     // Undo also reverts the voiceprint side effects ...
     ed->undo();
-    QCOMPARE(fx.prints->printCount(QStringLiteral("Béla")), 2);
-    QCOMPARE(fx.prints->printCount(QStringLiteral("Dóra")), 0);
+    QCOMPARE(fx.prints->printCount(fx.idOf(QStringLiteral("Béla"))), 2);
+    QCOMPARE(fx.prints->printCount(fx.idOf(QStringLiteral("Dóra"))), 0);
     QCOMPARE(fx.diskMap().value(kB2), QStringLiteral("Béla"));
     // ... and redo applies them again (with the same voiceprint).
     ed->redo();
-    QCOMPARE(fx.prints->printCount(QStringLiteral("Béla")), 1);
-    QCOMPARE(fx.prints->printsFor(QStringLiteral("Dóra")).first().id, made.id);
+    QCOMPARE(fx.prints->printCount(fx.idOf(QStringLiteral("Béla"))), 1);
+    QCOMPARE(fx.prints->printsFor(fx.idOf(QStringLiteral("Dóra"))).first().id, made.id);
     // On disk too (the store persists).
     library::VoiceprintStore reread(fx.prints->filePath());
-    QCOMPARE(reread.printCount(QStringLiteral("Dóra")), 1);
+    QCOMPARE(reread.printCount(fx.idOf(QStringLiteral("Dóra"))), 1);
 
     // Without the marker it does not touch the voiceprints.
     ed->undo();
-    QVERIFY(ed->reassignSpeaker(kB2, QStringLiteral("Dóra"), false));
-    QCOMPARE(fx.prints->printCount(QStringLiteral("Béla")), 2);
-    QCOMPARE(fx.prints->printCount(QStringLiteral("Dóra")), 0);
+    QVERIFY(ed->reassignSpeaker(kB2, fx.choice(QStringLiteral("Dóra")), false));
+    QCOMPARE(fx.prints->printCount(fx.idOf(QStringLiteral("Béla"))), 2);
+    QCOMPARE(fx.prints->printCount(fx.idOf(QStringLiteral("Dóra"))), 0);
 }
 
 void SpeakerEditorTest::revertToAnonymous()
@@ -588,10 +605,10 @@ void SpeakerEditorTest::revertToAnonymous()
     QCOMPARE(ed->speaker(kB1).displayName, kB1);
     QVERIFY(!fx.diskMap().contains(kB1));
     ed->undo();
-    QCOMPARE(ed->speaker(kB1).personName, QStringLiteral("Anna"));
+    QCOMPARE(fx.nameOf(ed->speaker(kB1).personId), QStringLiteral("Anna"));
 
     // A named participant that is made anonymous gets a label.
-    const QString p = ed->moveUtterancesToPerson(uids({4}), QStringLiteral("Cili"));
+    const QString p = ed->moveUtterancesToPerson(uids({4}), fx.choice(QStringLiteral("Cili")));
     QVERIFY(ed->revertSpeakerToAnonymous(p));
     QVERIFY(ed->speaker(p).anonymous);
     QCOMPARE(ed->speaker(p).displayName, QStringLiteral("Új beszélő 1"));
@@ -603,7 +620,7 @@ void SpeakerEditorTest::merge_undo()
     Fixture fx;
     fx.setSpeakerMap({{kB2, QStringLiteral("Béla")}});
     auto ed = fx.editor();
-    const QString cili = ed->moveUtterancesToPerson(uids({4, 7}), QStringLiteral("Cili"));
+    const QString cili = ed->moveUtterancesToPerson(uids({4, 7}), fx.choice(QStringLiteral("Cili")));
 
     QVERIFY(!ed->mergeSpeakers(kB1, kB1));
     QVERIFY(!ed->mergeSpeakers(kB1, QStringLiteral("nincs")));
@@ -626,7 +643,7 @@ void SpeakerEditorTest::merge_undo()
     QCOMPARE(ed->speaker(kB2).utteranceCount, scenario().size());
 
     // Renaming the target carries the merged label too (speakerMap compatibility).
-    QVERIFY(ed->reassignSpeaker(kB2, QStringLiteral("Dóra")));
+    QVERIFY(ed->reassignSpeaker(kB2, fx.choice(QStringLiteral("Dóra"))));
     QCOMPARE(fx.diskMap().value(kB1), QStringLiteral("Dóra"));
     QCOMPARE(fx.diskMap().value(kB2), QStringLiteral("Dóra"));
 
@@ -646,11 +663,11 @@ void SpeakerEditorTest::addAndRemoveParticipant()
     auto ed = fx.editor();
 
     // A participant with no lines (one the system did not separate).
-    const QString dora = ed->addParticipant(QStringLiteral("Dóra"));
+    const QString dora = ed->addParticipant(fx.choice(QStringLiteral("Dóra")));
     QVERIFY(!dora.isEmpty());
     QCOMPARE(ed->speaker(dora).utteranceCount, 0);
     QCOMPARE(ed->speakers().size(), 3);
-    QCOMPARE(ed->addParticipant(QStringLiteral("Béla")), kB2);     // already a speaker: no new one
+    QCOMPARE(ed->addParticipant(fx.choice(QStringLiteral("Béla"))), kB2);     // already a speaker: no new one
     QCOMPARE(ed->speakers().size(), 3);
     const QString anon = ed->addParticipant();
     QCOMPARE(ed->speaker(anon).displayName, QStringLiteral("Új beszélő 1"));
@@ -767,13 +784,13 @@ void SpeakerEditorTest::suggestion_afterMove_acceptIsOneStep()
     auto ed = fx.editor();
 
     // Without embeddings there is no suggestion (but the operation works).
-    QVERIFY(!ed->moveUtterancesToPerson(uids({4}), QStringLiteral("Cili")).isEmpty());
+    QVERIFY(!ed->moveUtterancesToPerson(uids({4}), fx.choice(QStringLiteral("Cili"))).isEmpty());
     QVERIFY(!ed->hasSuggestion());
     ed->undo();
 
     QVERIFY(Fixture::embed(*ed));
     QSignalSpy sugg(ed.get(), &editing::SpeakerEditor::suggestionChanged);
-    const QString cili = ed->moveUtterancesToPerson(uids({4}), QStringLiteral("Cili"));
+    const QString cili = ed->moveUtterancesToPerson(uids({4}), fx.choice(QStringLiteral("Cili")));
     QVERIFY(ed->hasSuggestion());
     QCOMPARE(sugg.count(), 1);
     const editing::SpeakerSuggestion sg = ed->suggestion();
@@ -891,7 +908,7 @@ void SpeakerEditorTest::voiceprint_fromSingleLine()
 {
     Fixture fx;
     auto ed = fx.editor();
-    const QString cili = ed->moveUtterancesToPerson(uids({14}), QStringLiteral("Cili"));  // 6 s line
+    const QString cili = ed->moveUtterancesToPerson(uids({14}), fx.choice(QStringLiteral("Cili")));  // 6 s line
     QCOMPARE(fx.prints->totalPrintCount(), 0);
 
     // Not their line: no sample.
@@ -904,16 +921,16 @@ void SpeakerEditorTest::voiceprint_fromSingleLine()
     QVERIFY2(r.ok, qPrintable(r.error));
     QCOMPARE(r.usedLines, 1);
     QCOMPARE(vpSig.count(), 1);
-    QCOMPARE(fx.prints->printCount(QStringLiteral("Cili")), 1);
-    QCOMPARE(fx.prints->printsFor(QStringLiteral("Cili")).first().sampleRef,
+    QCOMPARE(fx.prints->printCount(fx.idOf(QStringLiteral("Cili"))), 1);
+    QCOMPARE(fx.prints->printsFor(fx.idOf(QStringLiteral("Cili"))).first().sampleRef,
              QStringLiteral("mixdown.mp3#83000-89000"));
 
     // A short line: an understandable error, no sample is made.
-    const QString dani = ed->moveUtterancesToPerson(uids({3}), QStringLiteral("Dani"));   // 0,8 mp
+    const QString dani = ed->moveUtterancesToPerson(uids({3}), fx.choice(QStringLiteral("Dani")));   // 0,8 mp
     r = ed->createVoiceprintFromLines(dani, uids({3}));
     QVERIFY(!r.ok);
     QVERIFY(r.error.contains(QStringLiteral("rövid")));
-    QCOMPARE(fx.prints->printCount(QStringLiteral("Dani")), 0);
+    QCOMPARE(fx.prints->printCount(fx.idOf(QStringLiteral("Dani"))), 0);
 }
 
 // Several models: one background run = one open() (one decode) for all models; the cache
@@ -945,10 +962,10 @@ void SpeakerEditorTest::embedding_multiModel_oneDecodeFusedPrints()
     QCOMPARE(cache.vectors("y").value(uid(0)), (QVector<float>{1, 0, 0, 0}));
 
     // Manual voiceprint: one per model, with a shared sample; undo takes both.
-    const QString cili = ed->moveUtterancesToPerson(uids({4, 7, 9, 14}), QStringLiteral("Cili"));
+    const QString cili = ed->moveUtterancesToPerson(uids({4, 7, 9, 14}), fx.choice(QStringLiteral("Cili")));
     const editing::VoiceprintResult r = ed->createVoiceprint(cili);
     QVERIFY2(r.ok, qPrintable(r.error));
-    const QVector<Voiceprint> made = fx.prints->printsFor(QStringLiteral("Cili"));
+    const QVector<Voiceprint> made = fx.prints->printsFor(fx.idOf(QStringLiteral("Cili")));
     QCOMPARE(made.size(), 2);
     QCOMPARE(made[0].model, QStringLiteral("x"));
     QCOMPARE(made[1].model, QStringLiteral("y"));
@@ -958,7 +975,7 @@ void SpeakerEditorTest::embedding_multiModel_oneDecodeFusedPrints()
     QCOMPARE(made[0].dim, 3);
     QCOMPARE(made[1].dim, 4);
     QVERIFY(ed->removeVoiceprint(r.printId));
-    QCOMPARE(fx.prints->printCount(QStringLiteral("Cili")), 0);
+    QCOMPARE(fx.prints->printCount(fx.idOf(QStringLiteral("Cili"))), 0);
 
     // New model: until it has a vector there is no fusion vector (no audio-based uncertainty);
     // the next run computes only "z", again with a single open().
@@ -985,7 +1002,7 @@ void SpeakerEditorTest::voiceprint_explicitOnly()
     QVERIFY(!r.error.isEmpty());
 
     // Little material: it says how much is missing, and makes no weak voiceprint.
-    const QString cili = ed->moveUtterancesToPerson(uids({4}), QStringLiteral("Cili"));
+    const QString cili = ed->moveUtterancesToPerson(uids({4}), fx.choice(QStringLiteral("Cili")));
     editing::VoiceprintMaterial mat = ed->voiceprintMaterial(cili);
     QVERIFY(!mat.sufficient);
     QCOMPARE(mat.usableLines, 1);
@@ -1008,8 +1025,8 @@ void SpeakerEditorTest::voiceprint_explicitOnly()
     QVERIFY2(r.ok, qPrintable(r.error));
     QCOMPARE(r.usedLines, 4);
     QCOMPARE(vpSig.count(), 1);
-    QCOMPARE(fx.prints->printCount(QStringLiteral("Cili")), 1);
-    const Voiceprint vp = fx.prints->printsFor(QStringLiteral("Cili")).first();
+    QCOMPARE(fx.prints->printCount(fx.idOf(QStringLiteral("Cili"))), 1);
+    const Voiceprint vp = fx.prints->printsFor(fx.idOf(QStringLiteral("Cili"))).first();
     QCOMPARE(vp.id, r.printId);
     QCOMPARE(vp.sourceMeetingId, fx.meeting.id);
     QCOMPARE(vp.sampleRef, QStringLiteral("mixdown.mp3#83000-89000"));  // the longest line
@@ -1023,10 +1040,10 @@ void SpeakerEditorTest::voiceprint_explicitOnly()
     {
         const editing::VoiceprintResult again = ed->createVoiceprint(cili);
         QVERIFY(again.ok && !again.printId.isEmpty());
-        const int before = fx.prints->printCount(QStringLiteral("Cili"));
+        const int before = fx.prints->printCount(fx.idOf(QStringLiteral("Cili")));
         QSignalSpy speakersSpy(ed.get(), &editing::SpeakerEditor::speakersChanged);
         QVERIFY(ed->removeVoiceprint(again.printId));
-        QCOMPARE(fx.prints->printCount(QStringLiteral("Cili")), before - 1);
+        QCOMPARE(fx.prints->printCount(fx.idOf(QStringLiteral("Cili"))), before - 1);
         QCOMPARE(speakersSpy.count(), 1);
         QVERIFY(!ed->removeVoiceprint(again.printId));
         QVERIFY(!ed->removeVoiceprint(QString()));
@@ -1054,14 +1071,14 @@ void SpeakerEditorTest::summaryStale_lifecycle()
     QSignalSpy stale(ed.get(), &editing::SpeakerEditor::summaryStaleChanged);
     QVERIFY(!ed->summaryStale().stale);
 
-    const QString cili = ed->moveUtterancesToPerson(uids({4}), QStringLiteral("Cili"));
+    const QString cili = ed->moveUtterancesToPerson(uids({4}), fx.choice(QStringLiteral("Cili")));
     QVERIFY(ed->summaryStale().stale);
     QCOMPARE(ed->summaryStale().correctedSpeakers, 1);
     QCOMPARE(stale.count(), 1);
     QCOMPARE(stale.last().at(0).toBool(), true);
     QVERIFY(ed->moveUtterances(uids({7}), cili));               // the same speaker: still 1
     QCOMPARE(ed->summaryStale().correctedSpeakers, 1);
-    QVERIFY(ed->reassignSpeaker(kB2, QStringLiteral("Béla")));
+    QVERIFY(ed->reassignSpeaker(kB2, fx.choice(QStringLiteral("Béla"))));
     QCOMPARE(ed->summaryStale().correctedSpeakers, 2);
     QVERIFY(ed->confirmUtterances(uids({1})));                  // a confirmation is not a speaker change
     QCOMPARE(ed->summaryStale().correctedSpeakers, 2);
@@ -1103,7 +1120,7 @@ void SpeakerEditorTest::retranscribe_impactBackupDiscard()
     auto ed = fx.editor();
     QVERIFY(!ed->retranscribeImpact().manualCorrections());
 
-    const QString cili = ed->moveUtterancesToPerson(uids({4, 7}), QStringLiteral("Cili"));
+    const QString cili = ed->moveUtterancesToPerson(uids({4, 7}), fx.choice(QStringLiteral("Cili")));
     QVERIFY(ed->confirmUtterances(uids({1, 4})));       // the 4th is already fixed: it does not count twice
     QVERIFY(Fixture::embed(*ed));
     editing::RetranscribeImpact imp = ed->retranscribeImpact();
@@ -1119,7 +1136,7 @@ void SpeakerEditorTest::retranscribe_impactBackupDiscard()
     QCOMPARE(disk.namedSpeakers, 2);
 
     // A copy of the current transcript.
-    const QString backup = editing::speakeredit::backupTranscript(m);
+    const QString backup = editing::speakeredit::backupTranscript(m, fx.people->names());
     QVERIFY(!backup.isEmpty());
     QVERIFY(backup.startsWith(m.folder));
     for (const char* f : {"transcript.md", "transcript.tokens.json", "transcript.segments.json",
@@ -1127,7 +1144,7 @@ void SpeakerEditorTest::retranscribe_impactBackupDiscard()
         QVERIFY2(QFile::exists(QDir(backup).filePath(QLatin1String(f))), f);
     QVERIFY(readText(QDir(backup).filePath(QStringLiteral("transcript.md")))
                 .contains(QStringLiteral("**Cili** L4a L4b")));
-    QVERIFY(editing::speakeredit::backupTranscript(m) != backup);    // a second copy does not overwrite
+    QVERIFY(editing::speakeredit::backupTranscript(m, fx.people->names()) != backup);    // a second copy does not overwrite
 
     // A new transcript was made: the manual fixes and the embedding cache dropped.
     editing::speakeredit::discardForNewTranscript(m.folder);
@@ -1146,7 +1163,7 @@ void SpeakerEditorTest::overlay_fingerprintMismatchDropsEdits()
     Fixture fx;
     {
         auto ed = fx.editor();
-        ed->moveUtterancesToPerson(uids({4}), QStringLiteral("Cili"));
+        ed->moveUtterancesToPerson(uids({4}), fx.choice(QStringLiteral("Cili")));
     }
     // The transcript is replaced behind the overlay's back (one line shorter).
     QFile f(editing::speakeredit::segmentsPath(fx.meeting.folder));
@@ -1167,7 +1184,7 @@ void SpeakerEditorTest::applyResolvedSpeakers_tokens()
     Fixture fx;
     fx.setSpeakerMap({{kB1, QStringLiteral("Anna")}, {kB2, QStringLiteral("Béla")}});
     auto ed = fx.editor();
-    const QString cili = ed->moveUtterancesToPerson(uids({4}), QStringLiteral("Cili"));
+    const QString cili = ed->moveUtterancesToPerson(uids({4}), fx.choice(QStringLiteral("Cili")));
     Q_UNUSED(cili);
 
     MergedTranscript mt;
@@ -1179,7 +1196,7 @@ void SpeakerEditorTest::applyResolvedSpeakers_tokens()
     tok(24000, 26000, kB1);     // line 4: Cili (per-line override)
     tok(6000, 8000, kB2);       // line 1: Béla
     tok(500000, 501000, kB1);   // cannot be tied to a line: speaker level (Anna)
-    editing::speakeredit::applyResolvedSpeakers(mt, fx.store->load(fx.meeting.id));
+    editing::speakeredit::applyResolvedSpeakers(mt, fx.store->load(fx.meeting.id), fx.people->names());
     QCOMPARE(mt.tokens[0].speaker, QStringLiteral("Anna"));
     QCOMPARE(mt.tokens[1].speaker, QStringLiteral("Cili"));
     QCOMPARE(mt.tokens[2].speaker, QStringLiteral("Béla"));
@@ -1191,7 +1208,7 @@ void SpeakerEditorTest::applyResolvedSpeakers_tokens()
     MergedTranscript mt2;
     TranscriptToken t; t.speaker = kB1; mt2.tokens << t;
     t.speaker = kB2; mt2.tokens << t;
-    editing::speakeredit::applyResolvedSpeakers(mt2, plain.store->load(plain.meeting.id));
+    editing::speakeredit::applyResolvedSpeakers(mt2, plain.store->load(plain.meeting.id), plain.people->names());
     QCOMPARE(mt2.tokens[0].speaker, QStringLiteral("Anna"));
     QCOMPARE(mt2.tokens[1].speaker, kB2);
 }
@@ -1200,17 +1217,17 @@ void SpeakerEditorTest::externalChange_refresh()
 {
     Fixture fx;
     auto ed = fx.editor();
-    const QString cili = ed->moveUtterancesToPerson(uids({4}), QStringLiteral("Cili"));
+    const QString cili = ed->moveUtterancesToPerson(uids({4}), fx.choice(QStringLiteral("Cili")));
     QVERIFY(ed->canUndo());
 
     // The old UI / auto-identification names the raw label: the manual fix stays, and so does
     // the undo stack (the overlay did not change).
     fx.setSpeakerMap({{kB1, QStringLiteral("Anna")}});
-    editing::speakeredit::recordIdentification(fx.meeting.folder, kB1, QStringLiteral("Anna"), 0.71);
+    editing::speakeredit::recordIdentification(fx.meeting.folder, kB1, fx.pid(QStringLiteral("Anna")), 0.71);
     QSignalSpy speakers(ed.get(), &editing::SpeakerEditor::speakersChanged);
     ed->refreshFromDisk();
     QVERIFY(speakers.count() >= 1);
-    QCOMPARE(ed->speaker(kB1).personName, QStringLiteral("Anna"));
+    QCOMPARE(fx.nameOf(ed->speaker(kB1).personId), QStringLiteral("Anna"));
     QCOMPARE(ed->speaker(kB1).voiceConfidence, 0.71);
     QCOMPARE(ed->utterance(uid(4)).speakerKey, cili);
     QVERIFY(ed->canUndo());
@@ -1221,17 +1238,26 @@ void SpeakerEditorTest::externalChange_refresh()
     QCOMPARE(ed->utterance(uid(4)).speakerKey, kB1);
     ed->redo();
 
-    // A global person rename writes the overlay: a full reload, the stack dropped.
-    QVERIFY(editing::speakeredit::renamePersonInOverlay(fx.meeting.folder, QStringLiteral("Cili"),
-                                               QStringLiteral("Cecília")));
+    // A global person rename is ONE field (people.json): the overlay is untouched, the editor shows the new
+    // name after a refresh and keeps its undo stack.
+    const PersonId ciliId = fx.idOf(QStringLiteral("Cili"));
+    QVERIFY(fx.people->rename(ciliId, QStringLiteral("Cecília")));
+    ed->refreshFromDisk();
+    QCOMPARE(ed->speaker(cili).personId, ciliId);
+    QCOMPARE(ed->speaker(cili).displayName, QStringLiteral("Cecília"));
+    QVERIFY(ed->canUndo());
+
+    // A global merge writes the overlay: a full reload, the stack dropped.
+    const PersonId dora = fx.pid(QStringLiteral("Dóra"));
+    QVERIFY(!editing::speakeredit::replacePersonInOverlay(fx.meeting.folder, ciliId, dora).isEmpty());
     QSignalSpy reloaded(ed.get(), &editing::SpeakerEditor::reloaded);
     ed->refreshFromDisk();
     QCOMPARE(reloaded.count(), 1);
-    QCOMPARE(ed->speaker(cili).personName, QStringLiteral("Cecília"));
+    QCOMPARE(ed->speaker(cili).personId, dora);
     QVERIFY(!ed->canUndo());
 
     // Deleting a person: the participant becomes anonymous, its lines stay.
-    QVERIFY(editing::speakeredit::removePersonFromOverlay(fx.meeting.folder, QStringLiteral("Cecília")));
+    QVERIFY(editing::speakeredit::removePersonFromOverlay(fx.meeting.folder, dora));
     ed->refreshFromDisk();
     QVERIFY(ed->speaker(cili).anonymous);
     QCOMPARE(ed->speaker(cili).utteranceCount, 1);
@@ -1254,7 +1280,7 @@ void SpeakerEditorTest::fineGrainedSignals()
     QCOMPARE(undo.count(), 1);
     QCOMPARE(map.count(), 0);                                   // the speakerMap did not change
 
-    QVERIFY(ed->reassignSpeaker(kB1, QStringLiteral("Anna")));
+    QVERIFY(ed->reassignSpeaker(kB1, fx.choice(QStringLiteral("Anna"))));
     QCOMPARE(rows.count(), 1);                                  // the line data did not change
     QCOMPARE(speakers.count(), 2);
     QCOMPARE(map.count(), 1);
@@ -1279,19 +1305,19 @@ void SpeakerEditorTest::people_directoryAndSearch()
     QVERIFY(!editing::matchesSearch(QStringLiteral("Szűcs Ödön"), QStringLiteral("edon")));
 
     Fixture fx;
-    fx.people->add(QStringLiteral("Anna"));
-    fx.people->add(QStringLiteral("Béla"));
-    fx.people->add(QStringLiteral("Ödön"));
+    fx.pid(QStringLiteral("Anna"));
+    fx.pid(QStringLiteral("Béla"));
+    fx.pid(QStringLiteral("Ödön"));
     Voiceprint vp; vp.embedding = {1, 0, 0};
-    fx.prints->addPrint(QStringLiteral("anna"), vp);        // case-insensitive merge
-    fx.prints->addPrint(QStringLiteral("Zita"), vp);        // has only a voiceprint
+    fx.prints->addPrint(fx.pid(QStringLiteral("anna")), vp);        // the name lookup is case-insensitive
+    fx.prints->addPrint(fx.pid(QStringLiteral("Zita")), vp);        // a voiceprint, no meeting
     fx.setSpeakerMap({{kB1, QStringLiteral("Anna")}, {kB2, QStringLiteral("Anna")}});
     {
         auto ed = fx.editor();
-        ed->moveUtterancesToPerson(uids({4}), QStringLiteral("Ödön"));
+        ed->moveUtterancesToPerson(uids({4}), fx.choice(QStringLiteral("Ödön")));
     }
     Meeting second = fx.store->createMeeting(QStringLiteral("Másik"));
-    second.speakerMap.insert(kB1, QStringLiteral("Anna"));
+    second.speakerMap.insert(kB1, fx.pid(QStringLiteral("Anna")));
     fx.store->saveMeeting(second);
 
     const QVector<editing::PersonInfo> all = editing::listPeople(fx.people.get(), fx.prints.get(), fx.store.get());

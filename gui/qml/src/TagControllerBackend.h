@@ -20,6 +20,7 @@
 // to a deleted tag is dropped.
 //
 #include "TagBackend.h"
+#include "tanara/domain/Person.h"
 
 #include "tanara/domain/Tag.h"
 
@@ -77,6 +78,9 @@ public:
 
 private:
     tanara::library::TagService* service() const;
+    // The GUI hands over a person's display name (or a PersonId): the person behind it, and back.
+    tanara::PersonId personOf(const QString& nameOrId) const;
+    QString nameOf(const tanara::PersonId& person) const;
 
     QPointer<tanara::app::AppController> m_controller;
     QSet<QString> m_computing;   // meetingIds for which no Ready has come after the Computing

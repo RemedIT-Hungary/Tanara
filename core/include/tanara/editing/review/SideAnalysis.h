@@ -141,7 +141,7 @@ struct SideCounts {
 
 struct PersonSide {
     QString speakerKey;
-    QString personName;         // the bound person (empty = anonymous)
+    PersonId personId;          // the bound person (null = anonymous)
     QString displayName;
     Side    side = Side::Unknown;
     // Sides of the confirmed/corrected, non-noisy lines (the verdict comes from these).
@@ -183,18 +183,20 @@ struct SideHints {
     // Manual track assignment: speaker key -> track ids (SpeakerOverlay::speakerTracks). If empty,
     // the overlay's applies.
     QHash<QString, QStringList> speakerTracks;
-    // The default learned in people.json: person name (toCaseFolded) -> side.
-    QHash<QString, Side> learnedSides;
+    // The default learned in people.json: person -> side.
+    QHash<PersonId, Side> learnedSides;
+    // Display names (logs, PersonSide::displayName); unknown people show as anonymous.
+    PersonNames names;
 };
 
-// The full analysis. userName: the user's own name (SettingsManager); the speaker bound to it and
+// The full analysis. self: the user's own person; the speaker bound to it and
 // the speaker matching a Track.fixedSpeaker track's speakerLabel stand by default on that track's
 // side (mic -> Local, loopback -> Remote). A learned default takes precedence over this; the
 // default is overridden by clear contradiction from the confirmed lines (logged); the manual
 // track assignment overrides everything.
 SideReport analyzeSides(const Meeting& m, const QVector<TranscriptLine>& lines,
                         const SpeakerOverlay& ov, const MeetingActivity& activity,
-                        const QString& userName, const SideHints& hints = {});
+                        const SelfPerson& self, const SideHints& hints = {});
 
 namespace sides {
 // Side of the tracks per the meeting's tracks (mic -> Local, loopback -> Remote; mixed -> Mixed;
@@ -202,8 +204,7 @@ namespace sides {
 Side sideOfTracks(const Meeting& m, const QStringList& trackIds);
 // What people.json can learn from an analysis: the named people whose side came from data
 // (confirmed lines) or a manual assignment, and are Local / Remote.
-// Key: the person's name (as in the speakerMap).
-QHash<QString, Side> learnedDefaults(const SideReport& r);
+QHash<PersonId, Side> learnedDefaults(const SideReport& r);
 
 // ---- track veto ----
 // The manual track assignment EXCLUDES (the person cannot be a candidate for the line) when all hold:

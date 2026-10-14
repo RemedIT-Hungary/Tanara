@@ -380,8 +380,8 @@ QString QmlShellBridge::identifyParticipantsPreview(const QString& meetingId, bo
     QStringList named;
     int unknown = 0;
     for (const auto& g : guesses) {
-        if (g.name.trimmed().isEmpty()) ++unknown;
-        else named << g.name.trimmed();
+        if (g.personId.isNull()) ++unknown;
+        else named << g.displayName.trimmed();
     }
     dlg.reset();
     return participantsSummary(named, unknown, int(guesses.size()));

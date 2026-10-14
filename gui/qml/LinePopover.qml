@@ -130,7 +130,7 @@ TPopover {
         const c = candidates.get(row)
         if (c.speakerKey === undefined) return
         if (c.speakerKey !== "") chooseSpeaker(c.speakerKey)
-        else choosePerson(c.personName)
+        else choosePerson(c.personId || c.personName)
     }
     function chooseIndex(index) {
         if (index < candidates.count) chooseCandidate(index)

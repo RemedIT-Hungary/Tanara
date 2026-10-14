@@ -98,9 +98,10 @@ ClusterSet computeVoiceClusters(const Meeting& m, const MeetingActivity& activit
 
 // Context of the candidates (filled on the main thread).
 struct CandidateContext {
-    QString selfName;                                                  // the microphone's owner
+    SelfPerson self;                                                   // the microphone's owner
+    PersonNames names;                                                 // display names (evidence texts)
     std::function<QVector<VoiceMatch>(const EmbeddingSet&)> rank;      // voiceprint ranking, descending
-    std::function<bool(const QString& person)> hasVoiceprint;
+    std::function<bool(const PersonId& person)> hasVoiceprint;
     // The tag evidence (manual tag and learned association; the same seam as the candidate ranking's:
     // PersonTagSnapshot::evidence). Empty = no tag evidence.
     library::TagEvidenceFn tagEvidence;
@@ -108,7 +109,7 @@ struct CandidateContext {
 
 // Step 2: participants from the clusters. Existing manual participants stay (extended with
 // evidence), earlier voice candidates are replaced by new ones; an approved name stays approved.
-// Fills the participantId / matchName / matchScore fields of the clusters.
+// Fills the participantId / matchPersonId / matchScore fields of the clusters.
 QVector<Participant> buildParticipants(ClusterSet& clusters, const Meeting& m,
                                        const CandidateContext& ctx);
 

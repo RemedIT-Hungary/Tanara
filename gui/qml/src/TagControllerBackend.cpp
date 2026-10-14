@@ -1,5 +1,7 @@
 #include "TagControllerBackend.h"
 
+#include "tanara/library/store/PeopleStore.h"
+
 #include "tanara/app/AppController.h"
 #include "tanara/library/tags/PersonTags.h"
 #include "tanara/library/tags/TagService.h"
@@ -100,7 +102,10 @@ TagControllerBackend::TagControllerBackend(tanara::app::AppController* controlle
         connect(s, &tanara::library::TagService::tagsChanged, this, &TagBackend::tagsChanged);
         connect(s, &tanara::library::TagService::meetingTagsChanged, this, &TagBackend::meetingTagsChanged);
         connect(s, &tanara::library::TagService::undoChanged, this, &TagBackend::undoChanged);
-        connect(s, &tanara::library::TagService::personTagsChanged, this, &TagBackend::personTagsChanged);
+        // The core signals a PersonId; this backend speaks display names (the GUI's person key).
+        connect(s, &tanara::library::TagService::personTagsChanged, this, [this](const QString& personId) {
+            emit personTagsChanged(personId.isEmpty() ? QString() : nameOf(tanara::PersonId::fromString(personId)));
+        });
         // A person-level rejection lives in the rejected list: for the view this is a person change too.
         connect(s, &tanara::library::TagService::rejectedChanged, this, [this] { emit personTagsChanged(QString()); });
         connect(s, &tanara::library::TagService::personStatsChanged, this, &TagBackend::personStatsChanged);
@@ -285,38 +290,54 @@ void TagControllerBackend::undo()
 
 // ---- people ----
 
+tanara::PersonId TagControllerBackend::personOf(const QString& nameOrId) const
+{
+    tanara::library::PeopleStore* people = m_controller ? m_controller->people() : nullptr;
+    if (!people) return {};
+    people->refresh();
+    return people->choiceFor(nameOrId).id;
+}
+
+QString TagControllerBackend::nameOf(const tanara::PersonId& person) const
+{
+    tanara::library::PeopleStore* people = m_controller ? m_controller->people() : nullptr;
+    return people ? people->displayName(person) : QString();
+}
+
 QString TagControllerBackend::selfName() const
 {
     tanara::library::TagService* s = service();
-    return s ? s->selfName() : QString();
+    return s ? nameOf(s->selfId()) : QString();
 }
 
 QStringList TagControllerBackend::tagsOfPerson(const QString& name) const
 {
     tanara::library::TagService* s = service();
-    return s ? s->tagsOfPerson(name) : QStringList();
+    return s ? s->tagsOfPerson(personOf(name)) : QStringList();
 }
 
 QString TagControllerBackend::addPersonTag(const QString& name, const QString& nameOrId)
 {
     tanara::library::TagService* s = service();
-    return s ? s->addPersonTag(name, nameOrId).id : QString();
+    return s ? s->addPersonTag(personOf(name), nameOrId).id : QString();
 }
 
 void TagControllerBackend::removePersonTag(const QString& name, const QString& tagId)
 {
-    if (tanara::library::TagService* s = service()) s->removePersonTag(name, tagId);
+    if (tanara::library::TagService* s = service()) s->removePersonTag(personOf(name), tagId);
 }
 
 void TagControllerBackend::rejectPersonTag(const QString& name, const QString& tagId)
 {
-    if (tanara::library::TagService* s = service()) s->rejectPersonTag(name, tagId);
+    if (tanara::library::TagService* s = service()) s->rejectPersonTag(personOf(name), tagId);
 }
 
 QStringList TagControllerBackend::peopleWith(const QString& tagId) const
 {
-    tanara::library::TagService* s = service();
-    return s ? s->peopleWith(tagId) : QStringList();
+    QStringList out;
+    if (tanara::library::TagService* s = service())
+        for (const tanara::PersonId& p : s->peopleWith(tagId)) out << nameOf(p);
+    return out;
 }
 
 QVector<PersonTagItem> TagControllerBackend::peopleStats(const QString& tagId) const
@@ -331,14 +352,15 @@ QVector<PersonTagItem> TagControllerBackend::suggestTagsForPerson(const QString&
 {
     QVector<PersonTagItem> out;
     if (tanara::library::TagService* s = service())
-        for (const tanara::library::PersonTagStat& st : s->suggestTagsForPerson(name, 0)) out.push_back(tanara_qml::toItem(st));
+        for (const tanara::library::PersonTagStat& st : s->suggestTagsForPerson(personOf(name), 0))
+            out.push_back(tanara_qml::toItem(st));
     return out;
 }
 
 int TagControllerBackend::personMeetingCount(const QString& name) const
 {
     tanara::library::TagService* s = service();
-    return s ? s->personStats()->personTotal(name) : 0;
+    return s ? s->personStats()->personTotal(personOf(name)) : 0;
 }
 
 bool TagControllerBackend::personStatsBusy() const

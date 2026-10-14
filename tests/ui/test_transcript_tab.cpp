@@ -812,7 +812,7 @@ private slots:
         QCOMPARE(textOf("quickTagLink"), QStringLiteral("+ #Nordvik ráteszem"));
         QVERIFY(visual("fixLink"));                         // the "Tags" link stays
         click(center(visual("quickTagLink")));
-        QVERIFY(m_vm->editor()->personTagIds(QStringLiteral("Molnár Eszter")).contains(QStringLiteral("nordvik")));
+        QVERIFY(m_vm->editor()->personTagIds(m_vm->editor()->personChoice(QStringLiteral("Molnár Eszter")).id).contains(QStringLiteral("nordvik")));
         QVERIFY(m_shell->property("toasts").toString().contains(QStringLiteral("Molnár Eszter címkéje lett: #Nordvik")));
         QTRY_VERIFY(!visual("quickTagLink"));
         QVERIFY(popupOpen("speakerWhyPopover"));            // the panel stays open
@@ -835,7 +835,7 @@ private slots:
         QVERIFY(chip && chip->isVisible());
         QCOMPARE(chip->property("width").toReal() > 0, true);
         click(center(chip));
-        QVERIFY(m_vm->editor()->personTagIds(QStringLiteral("Molnár Eszter")).contains(QStringLiteral("nordvik")));
+        QVERIFY(m_vm->editor()->personTagIds(m_vm->editor()->personChoice(QStringLiteral("Molnár Eszter")).id).contains(QStringLiteral("nordvik")));
         QCOMPARE(speakerOf(2), before);
         QVERIFY(popupOpen("linePopover"));
         QVERIFY(m_shell->property("toasts").toString().contains(QStringLiteral("#Nordvik")));
@@ -1097,7 +1097,9 @@ private slots:
         openReview();
         const QString id = focusLine();
         const QVariantMap info = m_vm->lineInfo(id);
-        // The card's play button: the line to its boundaries (+ 0.3 s lead-out).
+        // The card's play button: the line to its boundaries (+ 0.3 s lead-out). The focus view's
+        // pending auto-play (Qt.callLater on opening) lands first, so the log has only the click.
+        pump();
         m_player->setProperty("log", QString());
         click(center(visual("reviewFocusPlay")));
         QCOMPARE(m_player->property("log").toString(),

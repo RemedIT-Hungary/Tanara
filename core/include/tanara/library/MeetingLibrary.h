@@ -28,6 +28,7 @@ namespace tanara::library {
 class MeetingRepository;
 class MeetingJobTracker;
 class TagService;
+class PeopleStore;
 
 enum class DateSection { Today, Yesterday, ThisWeek, Earlier };
 
@@ -39,7 +40,8 @@ struct LibraryEntry {
     bool      hasTranscript = false;
     bool      hasSummary = false;
     DateSection section = DateSection::Earlier;
-    QStringList participants;          // named participants (speakerMap + the own mic track)
+    PersonIds   participantIds;        // named participants (the speakerMap's people)
+    QStringList participants;          // their display names (same order)
     MeetingProcessingState state;      // icon states (if the library got a tracker)
 
     // --- search hit (all invalid/empty for an empty search) ---
@@ -60,7 +62,7 @@ struct LibraryQuery {
     QString     text;                  // search term (empty = no text filter)
     bool        noTranscript = false;  // only those without a transcript
     bool        noSummary = false;     // only those without a summary
-    QStringList people;                // every given person attended
+    PersonIds   people;                // every given person attended
     QStringList tags;                  // tag ids: any (tagsAll = every) is on it
     bool        tagsAll = false;       // true = AND, false = OR
     bool        untagged = false;      // untagged ones (OR-ed with tags)
@@ -78,7 +80,8 @@ struct LibraryResult {
 };
 
 struct PersonPresence {
-    QString name;
+    PersonId id;
+    QString name;                      // display name
     int meetingCount = 0;
 };
 
@@ -130,6 +133,8 @@ public:
 
     // Tags: the entries' tag names; the tag filter and the search in tags need this.
     void setTagService(TagService* tags);
+    // People: the participants' display names (without it, people have no names in the entries).
+    void setPeopleStore(PeopleStore* people);
     // The filter popover's tags: every tag with its library count (frequency, then alphabetical).
     QVector<TagUsage> tagOptions() const;
     // How many meetings have no tag (the "Untagged" count).
@@ -146,9 +151,9 @@ public:
     // Whether every transcript's text has already been loaded for search.
     bool isWarm() const;
 
-    // The meeting's named participants: the fixed speaker of the own (mic) track + the speakerMap
-    // names, once each. Generic track labels ("Microphone 2") are not people.
-    static QStringList participantsOf(const Meeting& m);
+    // The meeting's named participants: the people of the speakerMap (raw labels and fixed track
+    // labels mapped to a person), once each, in raw-label order.
+    static PersonIds participantsOf(const Meeting& m);
 
 public slots:
     // Preloading the transcript texts in slices in the event loop (non-blocking). warmedUp signal.

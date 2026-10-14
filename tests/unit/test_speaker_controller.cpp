@@ -10,6 +10,7 @@
 #include <QJsonObject>
 
 #include "tanara/app/AppController.h"
+#include "tanara/library/store/PeopleStore.h"
 #include "tanara/app/SettingsManager.h"
 #include "tanara/editing/session/SpeakerEditor.h"
 #include "tanara/editing/session/SpeakerOverlay.h"
@@ -43,6 +44,12 @@ private slots:
     void peopleAndImpact();
 
 private:
+
+    // People by name (people.json): created if missing (pid) / only looked up (idOf); a picker's choice; the name.
+    PersonId pid(const QString& name) { return m_app->people()->ensure(name); }
+    PersonId idOf(const QString& name) { m_app->people()->refresh(); return m_app->people()->idForName(name); }
+    PersonChoice choice(const QString& name) { return m_app->people()->choiceFor(name); }
+    QString nameOf(const PersonId& id) { m_app->people()->refresh(); return m_app->people()->displayName(id); }
     Meeting makeMeeting(const QString& title, bool hasSummary);
     QString markdown(const Meeting& m) const
     {
@@ -136,23 +143,23 @@ void SpeakerControllerTest::editorAndLegacyRenameCoexist()
     QSignalSpy peopleSig(m_app.get(), &app::AppController::peopleChanged);
 
     // The editor's operations go out on the usual signals too.
-    const QString cili = ed->moveUtterancesToPerson({QStringLiteral("u12000")}, QStringLiteral("Cili"));
+    const QString cili = ed->moveUtterancesToPerson({QStringLiteral("u12000")}, choice(QStringLiteral("Cili")));
     QVERIFY(!cili.isEmpty());
     QCOMPARE(peopleSig.count(), 1);
     QVERIFY(m_app->knownPeople().contains(QStringLiteral("Cili")));
     QVERIFY(staleSig.count() >= 1);
     QVERIFY(m_app->summaryStale(m.id).stale);
     QCOMPARE(m_app->summaryStale(m.id).correctedSpeakers, 1);
-    QVERIFY(ed->reassignSpeaker(kB1, QStringLiteral("Anna")));
+    QVERIFY(ed->reassignSpeaker(kB1, choice(QStringLiteral("Anna"))));
     QCOMPARE(mapSig.count(), 1);
-    QCOMPARE(m_app->store()->load(m.id).speakerMap.value(kB1), QStringLiteral("Anna"));
+    QCOMPARE(nameOf(m_app->store()->load(m.id).speakerMap.value(kB1)), QStringLiteral("Anna"));
 
     // The OLD path (CLI): renaming a raw label. The editor takes it over, the per-line fix
     // stays, and transcript.md reflects both.
     QSignalSpy speakers(ed, &editing::SpeakerEditor::speakersChanged);
-    m_app->renameSpeaker(m.id, kB2, QStringLiteral("Béla"), /*enroll*/ false);
+    m_app->renameSpeaker(m.id, kB2, choice(QStringLiteral("Béla")), /*enroll*/ false);
     QVERIFY(speakers.count() >= 1);
-    QCOMPARE(ed->speaker(kB2).personName, QStringLiteral("Béla"));
+    QCOMPARE(nameOf(ed->speaker(kB2).personId), QStringLiteral("Béla"));
     QCOMPARE(ed->utterance(QStringLiteral("u12000")).speakerKey, cili);
     QVERIFY(ed->canUndo());
     ed->flushPendingWrites();   // transcript.md is written with a delay
@@ -174,7 +181,7 @@ void SpeakerControllerTest::summaryReady_clearsStale()
     const Meeting m = makeMeeting(QStringLiteral("Elavult"), true);
     // WITHOUT an open editor: the old rename makes the summary stale too.
     QSignalSpy staleSig(m_app.get(), &app::AppController::summaryStaleChanged);
-    m_app->renameSpeaker(m.id, kB1, QStringLiteral("Anna"), false);
+    m_app->renameSpeaker(m.id, kB1, choice(QStringLiteral("Anna")), false);
     QCOMPARE(staleSig.count(), 1);
     QVERIFY(m_app->summaryStale(m.id).stale);
     // A new summary was made (the signal is emitted by AppController at the end of generation).
@@ -195,7 +202,7 @@ void SpeakerControllerTest::transcriptReady_discardsOverlay()
 {
     const Meeting m = makeMeeting(QStringLiteral("Újraírt"), false);
     editing::SpeakerEditor* ed = m_app->speakerEditor(m.id);
-    ed->moveUtterancesToPerson({QStringLiteral("u0")}, QStringLiteral("Dóra"));
+    ed->moveUtterancesToPerson({QStringLiteral("u0")}, choice(QStringLiteral("Dóra")));
     QVERIFY(ed->confirmUtterances({QStringLiteral("u6000")}));
     QCOMPARE(m_app->retranscribeImpact(m.id).manualCorrections(), 2);
     QCOMPARE(ed->speakers().size(), 3);
@@ -216,17 +223,17 @@ void SpeakerControllerTest::globalPersonRename_reachesParticipants()
 {
     const Meeting m = makeMeeting(QStringLiteral("Átnevezés"), false);
     editing::SpeakerEditor* ed = m_app->speakerEditor(m.id);
-    const QString p = ed->moveUtterancesToPerson({QStringLiteral("u0")}, QStringLiteral("Emese"));
-    QVERIFY(ed->reassignSpeaker(kB2, QStringLiteral("Feri")));
+    const QString p = ed->moveUtterancesToPerson({QStringLiteral("u0")}, choice(QStringLiteral("Emese")));
+    QVERIFY(ed->reassignSpeaker(kB2, choice(QStringLiteral("Feri"))));
 
-    m_app->renamePerson(QStringLiteral("Emese"), QStringLiteral("Emőke"));
-    QCOMPARE(ed->speaker(p).personName, QStringLiteral("Emőke"));
+    m_app->renamePerson(idOf(QStringLiteral("Emese")), QStringLiteral("Emőke"));
+    QCOMPARE(ed->speaker(p).displayName, QStringLiteral("Emőke"));   // the open editor follows the rename
     ed->flushPendingWrites();
     QVERIFY(markdown(m).contains(QStringLiteral("**Emőke** S0")));
-    m_app->renamePerson(QStringLiteral("Feri"), QStringLiteral("Ferenc"));
-    QCOMPARE(ed->speaker(kB2).personName, QStringLiteral("Ferenc"));
+    m_app->renamePerson(idOf(QStringLiteral("Feri")), QStringLiteral("Ferenc"));
+    QCOMPARE(ed->speaker(kB2).displayName, QStringLiteral("Ferenc"));
 
-    m_app->removePerson(QStringLiteral("Emőke"));
+    m_app->removePerson(idOf(QStringLiteral("Emőke")));
     QVERIFY(ed->speaker(p).anonymous);
     QCOMPARE(ed->speaker(p).utteranceCount, 1);
     m_app->closeSpeakerEditor(m.id);
@@ -235,7 +242,7 @@ void SpeakerControllerTest::globalPersonRename_reachesParticipants()
 void SpeakerControllerTest::peopleAndImpact()
 {
     const Meeting m = makeMeeting(QStringLiteral("Személyek"), false);
-    m_app->renameSpeaker(m.id, kB1, QStringLiteral("Gizi"), false);
+    m_app->renameSpeaker(m.id, kB1, choice(QStringLiteral("Gizi")), false);
     const QVector<editing::PersonInfo> all = m_app->peopleDirectory();
     bool found = false;
     for (const editing::PersonInfo& p : all)

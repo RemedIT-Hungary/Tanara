@@ -8,11 +8,6 @@ namespace tanara::library {
 
 namespace persontags {
 
-QString personKey(const QString& name)
-{
-    return name.trimmed().toLower();
-}
-
 bool learnedLink(int shared, int tagTotal)
 {
     return shared >= kMinShared && tagTotal > 0 && shared * 100 >= kTagRatioPct * tagTotal;
@@ -26,13 +21,9 @@ bool suggestableForPerson(int shared, int tagTotal, int personTotal)
 
 } // namespace persontags
 
-using persontags::personKey;
-
-PersonTagStats PersonTagStats::compute(const QVector<PersonTagRow>& rows, const QString& selfName)
+PersonTagStats PersonTagStats::compute(const QVector<PersonTagRow>& rows, const PersonId& self)
 {
     PersonTagStats s;
-    const QString self = personKey(selfName);
-    QHash<QString, QDateTime> displayAt;   // the displayed spelling is the latest meeting's
     for (const PersonTagRow& r : rows) {
         ++s.m_meetings;
         QStringList tags;
@@ -40,18 +31,13 @@ PersonTagStats PersonTagStats::compute(const QVector<PersonTagRow>& rows, const 
             if (!t.isEmpty() && !tags.contains(t)) tags << t;
         for (const QString& t : std::as_const(tags)) s.m_tagTotal[t]++;
         if (!r.meetingId.isEmpty()) s.m_meetingTags.insert(r.meetingId, tags);
-        QSet<QString> seen;
-        for (const QString& raw : r.participants) {
-            const QString k = personKey(raw);
-            if (k.isEmpty() || k == self || seen.contains(k)) continue;
+        QSet<PersonId> seen;
+        for (const PersonId& k : r.participants) {
+            if (k.isNull() || k == self || seen.contains(k)) continue;
             seen.insert(k);
             s.m_personTotal[k]++;
             if (!tags.isEmpty()) s.m_personTagged[k]++;
             if (!r.meetingId.isEmpty()) s.m_meetingPeople[r.meetingId] << k;
-            if (!displayAt.contains(k) || r.startedAt >= displayAt.value(k)) {
-                displayAt.insert(k, r.startedAt);
-                s.m_display.insert(k, raw.trimmed());
-            }
             for (const QString& t : std::as_const(tags)) {
                 int& c = s.m_shared[t][k];
                 if (c == 0) s.m_tagsOf[k] << t;
@@ -64,41 +50,36 @@ PersonTagStats PersonTagStats::compute(const QVector<PersonTagRow>& rows, const 
     return s;
 }
 
-int PersonTagStats::shared(const QString& person, const QString& tagId) const
+int PersonTagStats::shared(const PersonId& person, const QString& tagId) const
 {
     const auto it = m_shared.constFind(tagId);
-    return it == m_shared.constEnd() ? 0 : it->value(personKey(person));
+    return it == m_shared.constEnd() ? 0 : it->value(person);
 }
 
-QDateTime PersonTagStats::lastShared(const QString& person, const QString& tagId) const
+QDateTime PersonTagStats::lastShared(const PersonId& person, const QString& tagId) const
 {
     const auto it = m_last.constFind(tagId);
-    return it == m_last.constEnd() ? QDateTime() : it->value(personKey(person));
+    return it == m_last.constEnd() ? QDateTime() : it->value(person);
 }
 
-QString PersonTagStats::displayName(const QString& person) const
+PersonIds PersonTagStats::peopleOf(const QString& tagId) const
 {
-    return m_display.value(personKey(person), person.trimmed());
-}
-
-QStringList PersonTagStats::peopleOf(const QString& tagId) const
-{
-    QStringList out;
+    PersonIds out;
     const auto it = m_shared.constFind(tagId);
     if (it == m_shared.constEnd()) return out;
-    for (auto p = it->constBegin(); p != it->constEnd(); ++p) out << m_display.value(p.key(), p.key());
+    for (auto p = it->constBegin(); p != it->constEnd(); ++p) out << p.key();
     return out;
 }
 
-QStringList PersonTagStats::tagsOf(const QString& person) const
+QStringList PersonTagStats::tagsOf(const PersonId& person) const
 {
-    return m_tagsOf.value(personKey(person));
+    return m_tagsOf.value(person);
 }
 
-bool PersonTagStats::meetingHasPerson(const QString& meetingId, const QString& person) const
+bool PersonTagStats::meetingHasPerson(const QString& meetingId, const PersonId& person) const
 {
     const auto it = m_meetingPeople.constFind(meetingId);
-    return it != m_meetingPeople.constEnd() && it->contains(personKey(person));
+    return it != m_meetingPeople.constEnd() && it->contains(person);
 }
 
 namespace {
@@ -108,7 +89,7 @@ struct Counts {
     int shared = 0, tagTotal = 0;
 };
 
-Counts countsWithout(const PersonTagStats& st, const QString& person, const QString& tagId, const QString& meetingId)
+Counts countsWithout(const PersonTagStats& st, const PersonId& person, const QString& tagId, const QString& meetingId)
 {
     Counts c{ st.shared(person, tagId), st.tagTotal(tagId) };
     if (meetingId.isEmpty() || !st.meetingTags(meetingId).contains(tagId)) return c;
@@ -117,13 +98,13 @@ Counts countsWithout(const PersonTagStats& st, const QString& person, const QStr
     return c;
 }
 
-int personTotalWithout(const PersonTagStats& st, const QString& person, const QString& meetingId)
+int personTotalWithout(const PersonTagStats& st, const PersonId& person, const QString& meetingId)
 {
     const int n = st.personTotal(person);
     return !meetingId.isEmpty() && st.meetingHasPerson(meetingId, person) ? std::max(0, n - 1) : n;
 }
 
-int personTaggedWithout(const PersonTagStats& st, const QString& person, const QString& meetingId)
+int personTaggedWithout(const PersonTagStats& st, const PersonId& person, const QString& meetingId)
 {
     const int n = st.personTagged(person);
     const bool here = !meetingId.isEmpty() && st.meetingHasPerson(meetingId, person)
@@ -133,12 +114,12 @@ int personTaggedWithout(const PersonTagStats& st, const QString& person, const Q
 
 } // namespace
 
-TagEvidence PersonTagSnapshot::evidence(const QString& personName, const QStringList& meetingTagIds,
+TagEvidence PersonTagSnapshot::evidence(const PersonId& personName, const QStringList& meetingTagIds,
                                         const QString& meetingId) const
 {
     TagEvidence ev;
-    const QString k = personKey(personName);
-    if (k.isEmpty() || k == selfKey || meetingTagIds.isEmpty() || !stats) return ev;
+    const PersonId& k = personName;
+    if (k.isNull() || k == self || meetingTagIds.isEmpty() || !stats) return ev;
     const QStringList manualTags = manual.value(k);
 
     QVector<TagEvidenceItem> support;
@@ -208,8 +189,8 @@ TagEvidence PersonTagSnapshot::evidence(const QString& personName, const QString
 }
 
 QVector<PersonTagQuestion> PersonTagSnapshot::learningQuestions(
-    const QString& meetingId, const QStringList& meetingTagIds, const QStringList& names,
-    const std::function<bool(const QString&, const QString&)>& rejected) const
+    const QString& meetingId, const QStringList& meetingTagIds, const PersonIds& people,
+    const std::function<bool(const PersonId&, const QString&)>& rejected) const
 {
     QVector<PersonTagQuestion> out;
     if (!stats || meetingTagIds.isEmpty()) return out;
@@ -220,21 +201,21 @@ QVector<PersonTagQuestion> PersonTagSnapshot::learningQuestions(
     auto bucket = [&out, this](const QString& tagId, bool isNew) -> PersonTagQuestion& {
         for (PersonTagQuestion& q : out)
             if (q.tagId == tagId && q.newPeople == isNew) return q;
-        out.append(PersonTagQuestion{ tagId, tagNames.value(tagId), {}, isNew });
+        out.append(PersonTagQuestion{ tagId, tagNames.value(tagId), {}, {}, isNew });
         return out.last();
     };
-    QSet<QString> seen;
-    for (const QString& raw : names) {
-        const QString name = raw.trimmed();
-        const QString k = personKey(name);
-        if (k.isEmpty() || k == selfKey || seen.contains(k)) continue;
+    QSet<PersonId> seen;
+    for (const PersonId& k : people) {
+        if (k.isNull() || k == self || seen.contains(k)) continue;
         seen.insert(k);
         const QStringList manualTags = manual.value(k);
-        const bool isNew = personTotalWithout(*stats, name, meetingId) == 0;
+        const bool isNew = personTotalWithout(*stats, k, meetingId) == 0;
         for (const QString& t : std::as_const(tags)) {
-            if (manualTags.contains(t) || (rejected && rejected(name, t))) continue;
-            if (!isNew && countsWithout(*stats, name, t, meetingId).shared != 1) continue;
-            bucket(t, isNew).people << name;
+            if (manualTags.contains(t) || (rejected && rejected(k, t))) continue;
+            if (!isNew && countsWithout(*stats, k, t, meetingId).shared != 1) continue;
+            PersonTagQuestion& q = bucket(t, isNew);
+            q.people << k;
+            q.names << personName(names, k);
         }
     }
     // A multi-person question first; on a tie the meeting's tag order (stable).

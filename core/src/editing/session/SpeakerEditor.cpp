@@ -49,17 +49,17 @@ constexpr int kMarkdownDelayMs = 1500;
 // A change of one Meeting.speakerMap key (undo restores only the AFFECTED keys, so a change arriving
 // meanwhile from outside, the old UI or auto-identification, is not overwritten).
 struct MapDelta {
-    QString raw;
-    bool    hadBefore = false;
-    QString before;
-    bool    hasAfter = false;
-    QString after;
+    QString  raw;
+    bool     hadBefore = false;
+    PersonId before;
+    bool     hasAfter = false;
+    PersonId after;
 };
 
 // A voiceprint side effect (when fixing a "wrong recognition"): undo reverses it.
 struct VoiceprintOp {
     bool       added = false;   // true: ADDED to the person; false: REMOVED from them
-    QString    person;
+    PersonId   person;
     Voiceprint print;
 };
 
@@ -87,19 +87,19 @@ struct Command {
     SpeakerOverlay after;
     QVector<MapDelta> map;
     QVector<VoiceprintOp> voiceprints;
-    QStringList peopleAdded;
+    QVector<Person> peopleAdded;    // people created by the step (undo deletes, redo restores them)
     QStringList affectedSpeakers;
 };
 
 // An operation in progress: the starting state + the side effects accumulating meanwhile.
 struct Step {
     SpeakerOverlay before;
-    QMap<QString, QString> mapBefore;
+    QMap<QString, PersonId> mapBefore;
     QVector<RowState> rows;
     QStringList names;              // per-line displayed name (whether a new transcript.md is needed)
     SummaryStaleInfo stale;
     QVector<VoiceprintOp> voiceprints;
-    QStringList peopleAdded;
+    QVector<Person> peopleAdded;
     QStringList affectedSpeakers;
 };
 
@@ -111,7 +111,7 @@ bool sameEdits(const SpeakerOverlay& a, const SpeakerOverlay& b)
     for (int i = 0; i < a.participants.size(); ++i) {
         const OverlayParticipant& x = a.participants[i];
         const OverlayParticipant& y = b.participants[i];
-        if (x.key != y.key || x.person != y.person || x.label != y.label) return false;
+        if (x.key != y.key || x.personId != y.personId || x.label != y.label) return false;
     }
     if (a.utterances.size() != b.utterances.size()) return false;
     for (auto it = a.utterances.constBegin(); it != a.utterances.constEnd(); ++it) {
@@ -166,7 +166,7 @@ struct SpeakerEditor::Private {
     QString folder;
     QString audioPath;      // the mixdown (may not exist)
     QString audioRel;
-    QString userName;
+    SelfPerson self;                    // the user's own person (EditorSpeaker::isSelf, side defaults)
     bool    hasSummary = false;
 
     QVector<TranscriptLine> lines;
@@ -174,7 +174,8 @@ struct SpeakerEditor::Private {
     QStringList rawOrder;               // raw labels in order of first appearance
 
     SpeakerOverlay ov;
-    QMap<QString, QString> speakerMap;
+    QMap<QString, PersonId> speakerMap;
+    PersonNames names;                  // display names (refreshed on load / every step)
     QVector<QString> assigned;          // per line the resolved speaker key
     QVector<bool> uncertain;
     QVector<bool> voiceUncertain;       // only the voice judgment (for uncertainReason)
@@ -205,7 +206,7 @@ struct SpeakerEditor::Private {
     library::TagEvidenceFn tagEvidence;
     SpeakerEditor::PersonTagsFn personTags;   // manual tags for the quick "+ #Tag"
     QStringList meetingTags;            // Meeting::tagIds
-    mutable QHash<QString, library::TagEvidence> tagEvidenceCache;   // case-folded person -> evidence
+    mutable QHash<PersonId, library::TagEvidence> tagEvidenceCache;   // person -> evidence
     std::optional<MeetingActivity> activity;    // in memory after the first computation
     ReviewResult review;                // the latest analysis
     int  reviewEpoch = 0;               // grows on every (re)load; the old result is dropped
@@ -238,6 +239,7 @@ struct SpeakerEditor::Private {
         folder = m.folder;
         hasSummary = m.hasSummary;
         speakerMap = m.speakerMap;
+        refreshNames();
         meetingTags = m.tagIds;
         tagEvidenceCache.clear();
         audioPath = m.folder.isEmpty() ? QString() : mixdownPath(m);
@@ -349,8 +351,8 @@ struct SpeakerEditor::Private {
     bool hintResolved(int i, const QString& key) const
     {
         if (key == assigned[i]) return true;
-        const QString person = personOf(key);
-        return !person.isEmpty() && person.compare(personOf(assigned[i]), Qt::CaseInsensitive) == 0;
+        const PersonId person = personOf(key);
+        return !person.isNull() && person == personOf(assigned[i]);
     }
 
     // The recheck's suggestion (the speaker that fits the voice better), if still valid and showable.
@@ -403,27 +405,37 @@ struct SpeakerEditor::Private {
         return keys;
     }
 
-    QString personOf(const QString& key) const { return speakerPerson(ov, speakerMap, key); }
-    QString displayOf(const QString& key) const { return speakerDisplayName(ov, speakerMap, key); }
+    PersonId personOf(const QString& key) const { return speakerPerson(ov, speakerMap, key); }
+    QString displayOf(const QString& key) const { return speakerDisplayName(ov, speakerMap, names, key); }
+    QString nameOf(const PersonId& person) const { return personName(names, person); }
+
+    void refreshNames()
+    {
+        if (!people) return;
+        people->refresh();
+        names = people->names();
+    }
 
     // The meeting's (visible) speaker bound to this person; empty if none.
-    QString speakerKeyForPerson(const QString& person, const QString& except = QString()) const
+    QString speakerKeyForPerson(const PersonId& person, const QString& except = QString()) const
     {
-        if (person.isEmpty()) return {};
+        if (person.isNull()) return {};
         for (const QString& key : visibleKeys())
-            if (key != except && personOf(key).compare(person, Qt::CaseInsensitive) == 0)
+            if (key != except && personOf(key) == person)
                 return key;
         return {};
     }
 
-    // The spelling stored in the name list (on a case-insensitive match), otherwise the given one.
-    QString canonicalPerson(const QString& name) const
+    // The chosen person: an existing id, or a new person created within the step (undone with it).
+    PersonId resolveChoice(const PersonChoice& choice, Step& s)
     {
-        const QString n = name.trimmed();
-        if (n.isEmpty() || !people) return n;
-        for (const QString& known : people->names())
-            if (known.compare(n, Qt::CaseInsensitive) == 0) return known;
-        return n;
+        if (!choice.id.isNull()) return choice.id;
+        if (choice.newName.trimmed().isEmpty() || !people) return {};
+        const PersonId id = people->create(choice.newName);
+        if (id.isNull()) return {};
+        s.peopleAdded.append(people->person(id));
+        refreshNames();
+        return id;
     }
 
     QVector<int> indicesOf(const QStringList& ids) const
@@ -483,13 +495,12 @@ struct SpeakerEditor::Private {
             s.utteranceCount = st.first;
             s.talkTimeMs = st.second;
             s.talkShare = totalMs > 0 ? double(st.second) / double(totalMs) : 0.0;
-            s.personName = personOf(s.key);
+            s.personId = personOf(s.key);
             s.displayName = displayOf(s.key);
-            s.anonymous = s.personName.isEmpty();
-            s.isSelf = !s.anonymous && !userName.isEmpty()
-                && s.personName.compare(userName, Qt::CaseInsensitive) == 0;
+            s.anonymous = s.personId.isNull();
+            s.isSelf = self.is(s.personId);
             s.hasVoiceprint = voiceprints && !s.anonymous
-                && voiceprints->printCount(s.personName) > 0;
+                && voiceprints->printCount(s.personId) > 0;
         };
 
         QVector<EditorSpeaker> out;
@@ -503,7 +514,7 @@ struct SpeakerEditor::Private {
             fill(s);
             // The voice-identification score is valid only while the same person stands there.
             const auto id = ov.identified.constFind(raw);
-            if (id != ov.identified.constEnd() && !s.anonymous && id->person == s.personName)
+            if (id != ov.identified.constEnd() && !s.anonymous && id->personId == s.personId)
                 s.voiceConfidence = id->score;
             out.append(s);
         }
@@ -532,9 +543,9 @@ struct SpeakerEditor::Private {
             if (groupByPerson) {
                 auto g = groupOf.find(assigned[i]);
                 if (g == groupOf.end()) {
-                    const QString person = personOf(assigned[i]);
-                    g = groupOf.insert(assigned[i], person.isEmpty()
-                            ? assigned[i] : QStringLiteral("person:") + person.toCaseFolded());
+                    const PersonId person = personOf(assigned[i]);
+                    g = groupOf.insert(assigned[i], person.isNull()
+                            ? assigned[i] : QStringLiteral("person:") + person.toString());
                 }
                 group = g.value();
             }
@@ -589,12 +600,12 @@ struct SpeakerEditor::Private {
     }
 
     // The person's tag evidence on this meeting (on the main thread; from the cache cleared per analysis).
-    library::TagEvidence tagEvidenceOf(const QString& person) const
+    library::TagEvidence tagEvidenceOf(const PersonId& person) const
     {
-        if (!tagEvidence || person.isEmpty() || meetingTags.isEmpty()) return {};
-        const QString k = person.toCaseFolded();
-        auto it = tagEvidenceCache.constFind(k);
-        if (it == tagEvidenceCache.constEnd()) it = tagEvidenceCache.insert(k, tagEvidence(person, meetingTags, meetingId));
+        if (!tagEvidence || person.isNull() || meetingTags.isEmpty()) return {};
+        auto it = tagEvidenceCache.constFind(person);
+        if (it == tagEvidenceCache.constEnd())
+            it = tagEvidenceCache.insert(person, tagEvidence(person, meetingTags, meetingId));
         return *it;
     }
 
@@ -621,7 +632,7 @@ struct SpeakerEditor::Private {
         QString sourceMeetingId;
         QString sampleRef;
     };
-    QVector<FusedPrint> fusedPrints(const QString& person) const
+    QVector<FusedPrint> fusedPrints(const PersonId& person) const
     {
         struct Group { QString key; EmbeddingSet set; FusedPrint meta; };
         QVector<Group> groups;
@@ -654,14 +665,14 @@ struct SpeakerEditor::Private {
         QVector<SpeakerPrior> out(speakerCount);
         if (!voiceprints || fused.isEmpty()) return out;
         const int dim = fused.constBegin()->size();
-        QVector<QString> personOfIdx(speakerCount);
+        QVector<PersonId> personOfIdx(speakerCount);
         for (int i = 0; i < al.size(); ++i) {
             const int s = al[i].speaker;
-            if (s >= 0 && s < speakerCount && personOfIdx[s].isEmpty())
+            if (s >= 0 && s < speakerCount && personOfIdx[s].isNull())
                 personOfIdx[s] = personOf(assigned[i]);
         }
         for (int s = 0; s < speakerCount; ++s) {
-            if (personOfIdx[s].isEmpty()) continue;
+            if (personOfIdx[s].isNull()) continue;
             SpeakerPrior& p = out[s];
             for (const FusedPrint& vp : fusedPrints(personOfIdx[s])) {
                 if (vp.vec.size() != dim) continue;   // not comparable (another model composition)
@@ -765,6 +776,7 @@ struct SpeakerEditor::Private {
                 hasSummary = m.hasSummary;
             }
         }
+        refreshNames();
         Step s;
         s.before = ov;
         s.mapBefore = speakerMap;
@@ -778,14 +790,14 @@ struct SpeakerEditor::Private {
     void syncLegacyMap()
     {
         for (auto it = ov.merged.constBegin(); it != ov.merged.constEnd(); ++it) {
-            const QString person = personOf(it.value());
-            if (person.isEmpty()) speakerMap.remove(it.key());
+            const PersonId person = personOf(it.value());
+            if (person.isNull()) speakerMap.remove(it.key());
             else speakerMap.insert(it.key(), person);
         }
     }
 
-    static QVector<MapDelta> diffMap(const QMap<QString, QString>& before,
-                                     const QMap<QString, QString>& after)
+    static QVector<MapDelta> diffMap(const QMap<QString, PersonId>& before,
+                                     const QMap<QString, PersonId>& after)
     {
         QVector<MapDelta> out;
         QSet<QString> keys;
@@ -815,7 +827,7 @@ struct SpeakerEditor::Private {
         if (!delta.isEmpty()) {
             for (const MapDelta& dl : delta) {
                 const bool has = forward ? dl.hasAfter : dl.hadBefore;
-                const QString& val = forward ? dl.after : dl.before;
+                const PersonId& val = forward ? dl.after : dl.before;
                 if (has) m.speakerMap.insert(dl.raw, val);
                 else m.speakerMap.remove(dl.raw);
             }
@@ -856,10 +868,11 @@ struct SpeakerEditor::Private {
         markdownRunning = true;
         ++markdownInFlight;
         QPointer<SpeakerEditor> self(q);
-        QThreadPool::globalInstance()->start([this, self, m] {
+        const PersonNames snapshot = names;
+        QThreadPool::globalInstance()->start([this, self, m, snapshot] {
             {
                 tanara::PerfScope bg("SpeakerEditor: transcript.md (háttérszál)", 10);
-                regenerateTranscriptMarkdown(m);
+                regenerateTranscriptMarkdown(m, snapshot);
             }
             --markdownInFlight;
             QMetaObject::invokeMethod(qApp, [this, self] {
@@ -915,8 +928,8 @@ struct SpeakerEditor::Private {
     // lines, we offer a review between the two.
     void offerPair(const QString& source, const QString& target, double similarity)
     {
-        const QString ps = personOf(source), pt = personOf(target);
-        if (ps.isEmpty() || pt.isEmpty() || ps.compare(pt, Qt::CaseInsensitive) == 0) return;
+        const PersonId ps = personOf(source), pt = personOf(target);
+        if (ps.isNull() || pt.isNull() || ps == pt) return;
         if (declinedPairs.contains(pairId(source, target))) return;
         if (lockedVoiceLines(source) < kMinSpeakerLines || lockedVoiceLines(target) < kMinSpeakerLines)
             return;
@@ -973,7 +986,7 @@ struct SpeakerEditor::Private {
         for (const EditorSpeaker& sp : buildSpeakers()) {
             SpeakerSampleStats st;
             st.speakerKey = sp.key;
-            st.personName = sp.personName;
+            st.personId = sp.personId;
             st.displayName = sp.displayName;
             at.insert(sp.key, int(out.size()));
             out.append(st);
@@ -1021,8 +1034,8 @@ struct SpeakerEditor::Private {
             const QSet<int> dec(decided.cbegin(), decided.cend());
             QHash<QString, QVector<float>> refCache;    // group -> reference (empty = not measurable)
             auto groupOf = [&](const QString& key) {
-                const QString person = personOf(key);
-                return person.isEmpty() ? key : QStringLiteral("person:") + person.toCaseFolded();
+                const PersonId person = personOf(key);
+                return person.isNull() ? key : QStringLiteral("person:") + person.toString();
             };
             auto referenceFor = [&](const QString& group) {
                 auto it = refCache.constFind(group);
@@ -1139,11 +1152,13 @@ struct SpeakerEditor::Private {
                 }
             }
         }
-        if (people)
-            for (const QString& name : c.peopleAdded) {
-                if (undoing) people->unlist(name);   // its nicknames / note stay
-                else people->add(name);
+        if (people) {
+            for (const Person& person : c.peopleAdded) {
+                if (undoing) people->remove(person.id);
+                else people->restore(person);
             }
+            refreshNames();
+        }
 
         recomputeAssigned();
         // The affected keys of the speakerMap in memory too (persist carries them to disk).
@@ -1161,27 +1176,18 @@ struct SpeakerEditor::Private {
     }
 
     // ---- building blocks of the operations ---------------------------------------------
-    QString createParticipant(const QString& person, Step& s)
+    QString createParticipant(const PersonId& person, Step& s)
     {
         OverlayParticipant p;
         p.key = QStringLiteral("participant:%1").arg(ov.nextParticipant);
         // The color follows the order of the recording after the raw labels; it does not change later either.
         p.colorIndex = rawOrder.size() + ov.nextParticipant - 1;
         ++ov.nextParticipant;
-        p.person = person;
-        if (person.isEmpty())
+        p.personId = person;
+        if (person.isNull())
             p.label = SpeakerEditor::tr("Új beszélő %1").arg(ov.nextAnonymous++);
         ov.participants.append(p);
-        rememberPerson(person, s);
         return p.key;
-    }
-
-    void rememberPerson(const QString& person, Step& s)
-    {
-        if (!people || person.isEmpty()) return;
-        if (people->names().contains(person, Qt::CaseInsensitive)) return;
-        people->add(person);
-        s.peopleAdded << person;
     }
 
     // noisy: "-> Y, not a sample": a "talked over each other" flag in the same step too.
@@ -1199,11 +1205,10 @@ struct SpeakerEditor::Private {
         appendUnique(s.affectedSpeakers, key);
     }
 
-    void setPerson(const QString& key, const QString& person, Step& s)
+    void setPerson(const QString& key, const PersonId& person, Step& s)
     {
-        if (OverlayParticipant* p = ov.participant(key)) p->person = person;
+        if (OverlayParticipant* p = ov.participant(key)) p->personId = person;
         else speakerMap.insert(key, person);
-        rememberPerson(person, s);
         appendUnique(s.affectedSpeakers, key);
     }
 
@@ -1356,10 +1361,10 @@ struct SpeakerEditor::Private {
 
     // "Wrong recognition": the speaker's samples HERE out of the former person's voiceprints, and (if there
     // is a new person) into theirs. Every step goes into the Step for undo.
-    void fixVoiceprints(const QVector<int>& speakerLines, const QString& oldPerson,
-                        const QString& newPerson, bool othersHaveOldPerson, Step& s)
+    void fixVoiceprints(const QVector<int>& speakerLines, const PersonId& oldPerson,
+                        const PersonId& newPerson, bool othersHaveOldPerson, Step& s)
     {
-        if (!voiceprints || oldPerson.isEmpty()) return;
+        if (!voiceprints || oldPerson.isNull()) return;
         QVector<Voiceprint> removed;
         for (const Voiceprint& p : voiceprints->printsFor(oldPerson)) {
             if (p.sourceMeetingId != meetingId) continue;
@@ -1378,7 +1383,7 @@ struct SpeakerEditor::Private {
                 s.voiceprints.append(VoiceprintOp{false, oldPerson, p});
             }
         }
-        if (newPerson.isEmpty()) return;
+        if (newPerson.isNull()) return;
         // A fresh voiceprint for the chosen person from the speaker's lines; if there is not enough material for
         // that (or no model), we move the taken samples to them.
         const QVector<Voiceprint> built = buildPrint(speakerLines, nullptr, nullptr, nullptr);
@@ -1496,10 +1501,11 @@ struct SpeakerEditor::Private {
         in.lines = lines;
         in.overlay = ov;
         in.embeddings = fused;
-        in.userName = userName;
+        in.self = self;
+        in.sideHints.names = names;
         if (voiceprints && !fused.isEmpty()) {
             const int dim = fused.constBegin()->size();
-            for (const QString& person : voiceprints->people()) {
+            for (const PersonId& person : voiceprints->people()) {
                 QVector<QVector<float>> vecs;
                 for (const FusedPrint& fp : fusedPrints(person))
                     if (fp.vec.size() == dim) vecs.append(fp.vec);
@@ -1508,19 +1514,19 @@ struct SpeakerEditor::Private {
         }
         if (tagEvidence) {
             tagEvidenceCache.clear();
-            QHash<QString, library::TagEvidence> tags;
-            QStringList persons = in.personPrints.keys();
+            QHash<PersonId, library::TagEvidence> tags;
+            PersonIds persons = in.personPrints.keys();
             for (const QString& key : visibleKeys()) persons << personOf(key);
-            for (const QString& p : std::as_const(persons))
-                if (!p.isEmpty() && !tags.contains(p.toCaseFolded())) tags.insert(p.toCaseFolded(), tagEvidenceOf(p));
-            in.tagEvidence = [tags](const QString& p, const QStringList&, const QString&) {
-                return tags.value(p.toCaseFolded());
+            for (const PersonId& p : std::as_const(persons))
+                if (!p.isNull() && !tags.contains(p)) tags.insert(p, tagEvidenceOf(p));
+            in.tagEvidence = [tags](const PersonId& p, const QStringList&, const QString&) {
+                return tags.value(p);
             };
         }
         if (people) {
-            const QHash<QString, QString> learned = people->defaultSides();
+            const QHash<PersonId, QString> learned = people->defaultSides();
             for (auto it = learned.cbegin(); it != learned.cend(); ++it)
-                in.sideHints.learnedSides.insert(it.key().toCaseFolded(), sideFromName(it.value()));
+                in.sideHints.learnedSides.insert(it.key(), sideFromName(it.value()));
         }
         if (!newPersonKey.isEmpty() && visible(newPersonKey)) in.newPersonKey = newPersonKey;
         return in;
@@ -1573,7 +1579,7 @@ struct SpeakerEditor::Private {
         // The learned track sides of people.json (from confirmed lines / manual assignment).
         if (people) {
             bool any = false;
-            const QHash<QString, Side> learned = sides::learnedDefaults(review.sides);
+            const QHash<PersonId, Side> learned = sides::learnedDefaults(review.sides);
             for (auto it = learned.cbegin(); it != learned.cend(); ++it)
                 any |= people->setDefaultSide(it.key(), sideName(it.value()));
             if (any) emit q->peopleChanged();
@@ -1584,16 +1590,16 @@ struct SpeakerEditor::Private {
 
     // Moving lines to a target in ONE step: an existing key, a person (their existing speaker or a new
     // participant), or a new anonymous participant.
-    bool moveToTarget(const QVector<int>& idx, const QString& key, const QString& person, const QString& label)
+    bool moveToTarget(const QVector<int>& idx, const QString& key, const PersonId& person, const QString& label)
     {
         QString target = (!key.isEmpty() && visible(key)) ? key : QString();
-        if (target.isEmpty() && !person.isEmpty()) target = speakerKeyForPerson(canonicalPerson(person));
+        if (target.isEmpty() && !person.isNull()) target = speakerKeyForPerson(person);
         QVector<int> move;
         for (int i : idx)
             if (target.isEmpty() || assigned[i] != target) move.append(i);
         if (move.isEmpty()) return false;
         Step s = begin();
-        if (target.isEmpty()) target = createParticipant(canonicalPerson(person), s);
+        if (target.isEmpty()) target = createParticipant(person, s);
         moveLines(move, target, s);
         commit(s, SpeakerEditor::tr("%1: %n sor ide: %2", nullptr, move.size()).arg(label, displayOf(target)));
         return true;
@@ -1626,7 +1632,7 @@ SpeakerEditor::~SpeakerEditor()
     if (d->markdownPending && d->store) {
         d->markdownPending = false;
         const Meeting m = d->store->load(d->meetingId);
-        if (!m.id.isEmpty() && QDir(m.folder).exists()) regenerateTranscriptMarkdown(m);
+        if (!m.id.isEmpty() && QDir(m.folder).exists()) regenerateTranscriptMarkdown(m, d->names);
     }
 }
 
@@ -1645,10 +1651,10 @@ void SpeakerEditor::flushPendingWrites()
 QString SpeakerEditor::meetingId() const { return d->meetingId; }
 bool SpeakerEditor::hasTranscript() const { return !d->lines.isEmpty(); }
 
-void SpeakerEditor::setUserSpeakerName(const QString& name)
+void SpeakerEditor::setSelfPerson(const SelfPerson& self)
 {
-    if (d->userName == name.trimmed()) return;
-    d->userName = name.trimmed();
+    if (d->self.id == self.id && d->self.name == self.name.trimmed()) return;
+    d->self = SelfPerson{self.id, self.name.trimmed()};
     emit speakersChanged();
     d->scheduleReview();
 }
@@ -1702,9 +1708,23 @@ int SpeakerEditor::indexOf(const QString& id) const { return d->indexById.value(
 
 QVector<EditorSpeaker> SpeakerEditor::speakers() const { return d->buildSpeakers(); }
 
-QStringList SpeakerEditor::personAliases(const QString& personName) const
+PersonChoice SpeakerEditor::personChoice(const QString& idOrName) const
 {
-    return d->people && !personName.trimmed().isEmpty() ? d->people->aliases(personName) : QStringList();
+    if (d->people) {
+        d->people->refresh();
+        return d->people->choiceFor(idOrName);
+    }
+    return idOrName.trimmed().isEmpty() ? PersonChoice() : PersonChoice::create(idOrName);
+}
+
+QString SpeakerEditor::personDisplayName(const PersonId& person) const
+{
+    return d->people ? d->people->displayName(person) : QString();
+}
+
+QStringList SpeakerEditor::personAliases(const PersonId& person) const
+{
+    return d->people && !person.isNull() ? d->people->aliases(person) : QStringList();
 }
 
 EditorSpeaker SpeakerEditor::speaker(const QString& key) const
@@ -1749,11 +1769,10 @@ bool SpeakerEditor::moveUtterances(const QStringList& utteranceIds, const QStrin
 }
 
 QString SpeakerEditor::moveUtterancesToPerson(const QStringList& utteranceIds,
-                                              const QString& personName, bool noisy)
+                                              const PersonChoice& choice, bool noisy)
 {
-    const QString person = d->canonicalPerson(personName);
-    if (person.isEmpty()) return {};
-    const QString existing = d->speakerKeyForPerson(person);
+    if (choice.isAnonymous()) return {};
+    const QString existing = d->speakerKeyForPerson(choice.id);
     if (!existing.isEmpty()) {
         moveUtterances(utteranceIds, existing, noisy);
         return existing;
@@ -1762,11 +1781,14 @@ QString SpeakerEditor::moveUtterancesToPerson(const QStringList& utteranceIds,
     if (idx.isEmpty()) return {};
 
     Step s = d->begin();
+    const PersonId person = d->resolveChoice(choice, s);
+    if (person.isNull()) return {};
     const QString key = d->createParticipant(person, s);
     d->moveLines(idx, key, s, noisy);
     d->newPersonKey = key;
-    d->commit(s, noisy ? tr("%n sor áthelyezése ide: %1 (nem hangminta)", nullptr, idx.size()).arg(person)
-                       : tr("%n sor áthelyezése ide: %1", nullptr, idx.size()).arg(person));
+    const QString name = d->nameOf(person);
+    d->commit(s, noisy ? tr("%n sor áthelyezése ide: %1 (nem hangminta)", nullptr, idx.size()).arg(name)
+                       : tr("%n sor áthelyezése ide: %1", nullptr, idx.size()).arg(name));
     if (noisy) return key;
     d->finishDecision(idx);
     d->proposeSuggestion(s, idx, key);
@@ -1779,7 +1801,7 @@ QString SpeakerEditor::moveUtterancesToNewParticipant(const QStringList& utteran
     if (idx.isEmpty()) return {};
 
     Step s = d->begin();
-    const QString key = d->createParticipant(QString(), s);
+    const QString key = d->createParticipant(PersonId(), s);
     d->moveLines(idx, key, s, noisy);
     d->newPersonKey = key;
     d->commit(s, noisy ? tr("%n sor áthelyezése ide: %1 (nem hangminta)", nullptr, idx.size()).arg(d->displayOf(key))
@@ -1790,16 +1812,17 @@ QString SpeakerEditor::moveUtterancesToNewParticipant(const QStringList& utteran
     return key;
 }
 
-bool SpeakerEditor::reassignSpeaker(const QString& speakerKey, const QString& personName,
+bool SpeakerEditor::reassignSpeaker(const QString& speakerKey, const PersonChoice& choice,
                                     bool fixVoiceprints)
 {
     if (!d->visible(speakerKey)) return false;
-    const QString person = d->canonicalPerson(personName);
-    if (person.isEmpty()) return false;
+    if (choice.isAnonymous()) return false;
+    const PersonId oldPerson = d->personOf(speakerKey);
+    if (!choice.id.isNull() && oldPerson == choice.id) return false;
 
     Step s = d->begin();
-    const QString oldPerson = d->personOf(speakerKey);
-    if (oldPerson.compare(person, Qt::CaseInsensitive) == 0) return false;
+    const PersonId person = d->resolveChoice(choice, s);
+    if (person.isNull()) return false;
     const QString oldName = d->displayOf(speakerKey);
     const QVector<int> speakerLines = d->linesOf(speakerKey);
     const bool othersHaveOld = !d->speakerKeyForPerson(oldPerson, speakerKey).isEmpty();
@@ -1811,7 +1834,7 @@ bool SpeakerEditor::reassignSpeaker(const QString& speakerKey, const QString& pe
 
     if (fixVoiceprints)
         d->fixVoiceprints(speakerLines, oldPerson, person, othersHaveOld, s);
-    d->commit(s, tr("Beszélő cseréje: %1 → %2").arg(oldName, person));
+    d->commit(s, tr("Beszélő cseréje: %1 → %2").arg(oldName, d->nameOf(person)));
     return true;
 }
 
@@ -1819,21 +1842,22 @@ bool SpeakerEditor::revertSpeakerToAnonymous(const QString& speakerKey, bool fix
 {
     if (!d->visible(speakerKey)) return false;
     Step s = d->begin();
-    const QString oldPerson = d->personOf(speakerKey);
-    if (oldPerson.isEmpty()) return false;
+    const PersonId oldPerson = d->personOf(speakerKey);
+    if (oldPerson.isNull()) return false;
+    const QString oldName = d->nameOf(oldPerson);
     const QVector<int> speakerLines = d->linesOf(speakerKey);
     const bool othersHaveOld = !d->speakerKeyForPerson(oldPerson, speakerKey).isEmpty();
 
     if (OverlayParticipant* p = d->ov.participant(speakerKey)) {
-        p->person.clear();
+        p->personId = PersonId();
         if (p->label.isEmpty()) p->label = tr("Új beszélő %1").arg(d->ov.nextAnonymous++);
     } else {
         d->speakerMap.remove(speakerKey);
     }
     s.affectedSpeakers << speakerKey;
     if (fixVoiceprints)
-        d->fixVoiceprints(speakerLines, oldPerson, QString(), othersHaveOld, s);
-    d->commit(s, tr("Névtelenre állítás: %1").arg(oldPerson));
+        d->fixVoiceprints(speakerLines, oldPerson, PersonId(), othersHaveOld, s);
+    d->commit(s, tr("Névtelenre állítás: %1").arg(oldName));
     return true;
 }
 
@@ -1842,15 +1866,15 @@ bool SpeakerEditor::applyBindings(const QVector<SpeakerBinding>& bindings, const
     Step s = d->begin();
     bool changed = false;
     for (const SpeakerBinding& b : bindings) {
-        const QString person = d->canonicalPerson(b.personName);
+        const PersonId person = b.personId;
         if (b.utteranceIds.isEmpty()) {
             const QString key = b.rawLabel;
             if (!d->visible(key)) continue;
-            const QString old = d->personOf(key);
-            if (person.isEmpty()) {
-                if (old.isEmpty()) continue;
+            const PersonId old = d->personOf(key);
+            if (person.isNull()) {
+                if (old.isNull()) continue;
                 if (OverlayParticipant* p = d->ov.participant(key)) {
-                    p->person.clear();
+                    p->personId = PersonId();
                     if (p->label.isEmpty()) p->label = tr("Új beszélő %1").arg(d->ov.nextAnonymous++);
                 } else {
                     d->speakerMap.remove(key);
@@ -1859,7 +1883,7 @@ bool SpeakerEditor::applyBindings(const QVector<SpeakerBinding>& bindings, const
                 changed = true;
                 continue;
             }
-            if (old.compare(person, Qt::CaseInsensitive) == 0) continue;
+            if (old == person) continue;
             const QString existing = d->speakerKeyForPerson(person, key);
             if (!existing.isEmpty()) d->mergeInto(key, existing, s);
             else d->setPerson(key, person, s);
@@ -1896,14 +1920,14 @@ bool SpeakerEditor::mergeSpeakers(const QString& fromKey, const QString& intoKey
     return true;
 }
 
-QString SpeakerEditor::addParticipant(const QString& personName)
+QString SpeakerEditor::addParticipant(const PersonChoice& choice)
 {
     if (d->folder.isEmpty()) return {};
-    const QString person = d->canonicalPerson(personName);
-    const QString existing = d->speakerKeyForPerson(person);
+    const QString existing = d->speakerKeyForPerson(choice.id);
     if (!existing.isEmpty()) return existing;
 
     Step s = d->begin();
+    const PersonId person = d->resolveChoice(choice, s);
     const QString key = d->createParticipant(person, s);
     d->commit(s, tr("Résztvevő hozzáadása: %1").arg(d->displayOf(key)));
     return key;
@@ -2388,8 +2412,8 @@ VoiceprintResult SpeakerEditor::createVoiceprint(const QString& speakerKey)
         r.error = tr("Ismeretlen beszélő.");
         return r;
     }
-    const QString person = d->personOf(speakerKey);
-    if (person.isEmpty()) {
+    const PersonId person = d->personOf(speakerKey);
+    if (person.isNull()) {
         r.error = tr("Előbb nevezd el a beszélőt — névtelen beszélőhöz nem készül hanglenyomat.");
         return r;
     }
@@ -2419,8 +2443,8 @@ VoiceprintResult SpeakerEditor::createVoiceprintFromLines(const QString& speaker
         r.error = tr("Ismeretlen beszélő.");
         return r;
     }
-    const QString person = d->personOf(speakerKey);
-    if (person.isEmpty()) {
+    const PersonId person = d->personOf(speakerKey);
+    if (person.isNull()) {
         r.error = tr("Előbb nevezd el a beszélőt — névtelen beszélőhöz nem készül hanglenyomat.");
         return r;
     }
@@ -2474,7 +2498,7 @@ bool SpeakerEditor::removeVoiceprint(const QString& printId)
     if (!d->voiceprints || printId.isEmpty()) return false;
     // The voiceprint and its siblings (the same sample with other models: the same sampleRef, source and
     // createdAt) are deleted together: one manual creation can be undone as a unit.
-    QString owner;
+    PersonId owner;
     Voiceprint print;
     if (!d->voiceprints->findPrint(printId, &owner, &print)) return false;
     QStringList ids{printId};
@@ -2502,9 +2526,9 @@ RetranscribeImpact SpeakerEditor::retranscribeImpact() const
         else if (it->confirmed) ++imp.confirmedUtterances;
     }
     imp.addedParticipants = d->ov.participants.size();
-    QSet<QString> named;
+    QSet<PersonId> named;
     for (const EditorSpeaker& s : d->buildSpeakers())
-        if (!s.anonymous) named.insert(s.personName);
+        if (!s.anonymous) named.insert(s.personId);
     imp.namedSpeakers = named.size();
     return imp;
 }
@@ -2555,6 +2579,7 @@ void SpeakerEditor::refreshFromDisk()
     s.stale = d->staleInfo();
     const Meeting m = d->store->load(d->meetingId);
     d->speakerMap = m.speakerMap;
+    d->refreshNames();
     d->hasSummary = m.hasSummary;
     d->ov.identified = disk.identified;
     d->ov.changedSinceSummary = disk.changedSinceSummary;
@@ -2641,9 +2666,9 @@ void SpeakerEditor::setPersonTagsProvider(PersonTagsFn fn)
 
 QStringList SpeakerEditor::meetingTagIds() const { return d->meetingTags; }
 
-QStringList SpeakerEditor::personTagIds(const QString& personName) const
+QStringList SpeakerEditor::personTagIds(const PersonId& person) const
 {
-    return d->personTags && !personName.trimmed().isEmpty() ? d->personTags(personName) : QStringList();
+    return d->personTags && !person.isNull() ? d->personTags(person) : QStringList();
 }
 
 void SpeakerEditor::notifyPersonTagsChanged() { d->scheduleReview(); }
@@ -2670,7 +2695,7 @@ bool SpeakerEditor::applyReviewGroup(const QString& groupId)
         idx.append(i);
     }
     const QString label = g.kind == ReviewKind::ContaminatedCore ? tr("Szétválasztás") : tr("Átnézendő");
-    if (!d->moveToTarget(idx, g.proposedSpeakerKey, g.proposedPersonName, label)) return false;
+    if (!d->moveToTarget(idx, g.proposedSpeakerKey, g.proposedPersonId, label)) return false;
     d->review.groups.erase(std::remove_if(d->review.groups.begin(), d->review.groups.end(),
                                           [&](const ReviewGroup& x) { return x.id == groupId; }),
                            d->review.groups.end());
@@ -2683,11 +2708,11 @@ bool SpeakerEditor::splitSpeaker(const QString& speakerKey)
     if (!d->visible(speakerKey) || d->fused.isEmpty()) return false;
     const ReviewInput in = d->makeInput();
     const SideReport sr = analyzeSides(in.meeting, in.lines, in.overlay, d->activity.value_or(MeetingActivity{}),
-                                       in.userName, in.sideHints);
+                                       in.self, in.sideHints);
     const ranking::RankContext ctx = buildRankContext(in, sr);
     for (const ReviewGroup& g : buildReviewGroups(in, sr, ctx)) {
         if (g.kind != ReviewKind::ContaminatedCore || g.currentSpeakerKey != speakerKey) continue;
-        return d->moveToTarget(d->indicesOf(g.utteranceIds), g.proposedSpeakerKey, g.proposedPersonName,
+        return d->moveToTarget(d->indicesOf(g.utteranceIds), g.proposedSpeakerKey, g.proposedPersonId,
                                tr("Szétválasztás"));
     }
     return false;

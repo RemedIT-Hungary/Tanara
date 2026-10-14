@@ -97,6 +97,14 @@ class TestPeopleViewModel : public QObject {
         m_app->setUserSpeakerName(kSelf);
     }
 
+    // The id of an existing person by name (null if none).
+    PersonId id(const QString& name) const { return m_app->people()->idForName(name); }
+    PersonId ensurePerson(const QString& name)
+    {
+        const PersonId known = id(name);
+        return known.isNull() ? m_app->peopleService()->addPerson(name).person : known;
+    }
+
     Meeting addMeeting(const QString& title, const QDate& day, const QVector<Line>& lines,
                        const QMap<QString, QString>& speakerMap, bool hasSummary = false)
     {
@@ -113,10 +121,10 @@ class TestPeopleViewModel : public QObject {
         m.startedAt = QDateTime(day, QTime(10, 0));
         m.hasTranscript = true;
         m.hasSummary = hasSummary;
-        m.speakerMap = speakerMap;
+        for (auto it = speakerMap.constBegin(); it != speakerMap.constEnd(); ++it) m.speakerMap.insert(it.key(), ensurePerson(it.value()));
         m.mixdownFile = QStringLiteral("mixdown.mp3");
         m_app->store()->saveMeeting(m);
-        for (const QString& name : speakerMap) m_app->peopleService()->addPerson(name);
+        
         return m_app->store()->load(m.id);
     }
 
@@ -132,9 +140,9 @@ class TestPeopleViewModel : public QObject {
              {613000, 5000, "Beszélő 2"}, {619000, 5000, "Beszélő 2"}},
             {{"Beszélő 1", kGergely}, {"Beszélő 2", kEszter}}, true);
         addMeeting("Régi hívás", QDate(2026, 8, 3), {{0, 30000, "Beszélő 1"}}, {{"Beszélő 1", kGergo}});
-        m_app->voiceprints()->addPrint(kGergely, print("g1", {1, 0, 0}, a.id));
-        m_app->voiceprints()->addPrint(kGergely, print("g2", {0, 1, 0}, b.id));
-        m_app->voiceprints()->addPrint(kGergo, print("o1", {0.6f, 0.8f, 0}, a.id));
+        m_app->voiceprints()->addPrint(id(kGergely), print("g1", {1, 0, 0}, a.id));
+        m_app->voiceprints()->addPrint(id(kGergely), print("g2", {0, 1, 0}, b.id));
+        m_app->voiceprints()->addPrint(id(kGergo), print("o1", {0.6f, 0.8f, 0}, a.id));
         if (first) *first = a;
         if (second) *second = b;
     }
@@ -335,10 +343,10 @@ private slots:
         QCOMPARE(vm.addAlias(QStringLiteral("Geri")), QString());
         vm.removeAlias(QStringLiteral("Geri"));
         vm.acceptTagSuggestion(nordvik);
-        QCOMPARE(tags->tagsOfPerson(kGergely), QStringList({nordvik}));
+        QCOMPARE(tags->tagsOfPerson(id(kGergely)), QStringList({nordvik}));
         QCOMPARE(vm.personTags().size(), 1);
         vm.undo();
-        QVERIFY(tags->tagsOfPerson(kGergely).isEmpty());
+        QVERIFY(tags->tagsOfPerson(id(kGergely)).isEmpty());
         QVERIFY(!vm.aliases().contains(QStringLiteral("Geri")));
         vm.undo();
         QVERIFY(vm.aliases().contains(QStringLiteral("Geri")));
@@ -348,7 +356,7 @@ private slots:
         vm.setSelectedName(kGergo);
         QCOMPARE(vm.tagHintText(), QStringLiteral("A javaslathoz legalább két megbeszélés kell."));
         vm.addPersonTag(QStringLiteral("Partnerek"));
-        QCOMPARE(tags->tagsOfPerson(kGergo).size(), 1);
+        QCOMPARE(tags->tagsOfPerson(id(kGergo)).size(), 1);
         QVERIFY2(vm.mergeResultText(kGergely, false).contains(QStringLiteral("A címkék összeadódnak (#Partnerek, #Nordvik).")),
                  qPrintable(vm.mergeResultText(kGergely, false)));
         vm.setQuery(QStringLiteral("nordv"));
@@ -411,7 +419,7 @@ private slots:
     {
         startApp();
         scenario();
-        m_app->peopleService()->addAlias(kEszter, "Gergő felesége");
+        m_app->peopleService()->addAlias(id(kEszter), "Gergő felesége");
         m_app->peopleStats()->refreshNow();
         PeopleViewModel vm;
         vm.setController(m_app.get());
@@ -476,14 +484,14 @@ private slots:
         QCOMPARE(vm.rename("Bárány Gergő"), QString());
         QCOMPARE(vm.selectedName(), QStringLiteral("Bárány Gergő"));
         QCOMPARE(vm.aliases(), QStringList{kGergely});
-        QCOMPARE(m_app->store()->load(a.id).speakerMap.value("Beszélő 1"), QStringLiteral("Bárány Gergő"));
+        QCOMPARE(m_app->people()->displayName(m_app->store()->load(a.id).speakerMap.value("Beszélő 1")), QStringLiteral("Bárány Gergő"));
         QCOMPARE(toast.last().at(0).toString(), QStringLiteral("Átnevezve: Bárány Gergő"));
         QCOMPARE(toast.last().at(1).toBool(), true);
         QVERIFY(vm.canUndo());
         vm.undo();
         QCOMPARE(vm.selectedName(), kGergely);
         QVERIFY(vm.aliases().isEmpty());
-        QCOMPARE(m_app->store()->load(a.id).speakerMap.value("Beszélő 1"), kGergely);
+        QCOMPARE(m_app->people()->displayName(m_app->store()->load(a.id).speakerMap.value("Beszélő 1")), kGergely);
         QCOMPARE(toast.last().at(1).toBool(), false);
         QVERIFY(!vm.canUndo());
 
@@ -538,7 +546,7 @@ private slots:
         QVERIFY(!vm.moveSample("g1", kGergely).isEmpty());      // already belongs to that person
         QCOMPARE(vm.moveSample("g1", kGergo), QString());
         QCOMPARE(vm.sampleCount(), 1);
-        QCOMPARE(m_app->voiceprints()->printCount(kGergo), 2);
+        QCOMPARE(m_app->voiceprints()->printCount(id(kGergo)), 2);
         QCOMPARE(toast.last().at(0).toString(), QStringLiteral("Minta áthelyezve ide: B. Gergő"));
         QVERIFY(m_app->summaryStale(a.id).stale);
         QVERIFY(!m_app->summaryStale(b.id).stale);
@@ -556,7 +564,7 @@ private slots:
         QCOMPARE(vm.sampleCount(), 2);
 
         // The picker list: without the selected one, finds by nickname too.
-        m_app->peopleService()->addAlias(kEszter, "Eszti");
+        m_app->peopleService()->addAlias(id(kEszter), "Eszti");
         QTest::qWait(20);
         QCOMPARE(vm.personChoices("").size(), 3);
         const QVariantList hits = vm.personChoices("eszti");
@@ -588,7 +596,7 @@ private slots:
 
         // Missing audio file: does not start, notifies.
         QSignalSpy toast(&vm, &PeopleViewModel::toast);
-        m_app->voiceprints()->addPrint(kGergely, print("gone", {1, 0, 0}, "torolt"));
+        m_app->voiceprints()->addPrint(id(kGergely), print("gone", {1, 0, 0}, "torolt"));
         QVERIFY(waitFor([&] { return vm.sampleCount() == 2; }));
         vm.toggleSample("gone");
         QCOMPARE(vm.playingSampleId(), QString());
@@ -619,7 +627,7 @@ private slots:
         const QString keep = vm.mergeResultText(kGergo, true);
         QVERIFY2(keep.contains(QStringLiteral("<b>3 megbeszélés</b>, <b>3 minta</b>. „B. Gergő” becenév lesz.")), qPrintable(keep));
         QVERIFY(!keep.contains(QStringLiteral("összefoglaló")));          // Gergő's meeting has no summary
-        QVERIFY(keep.contains(QStringLiteral("nem vonható vissza")));
+        QVERIFY(!keep.contains(QStringLiteral("nem vonható vissza")));   // P11: a merge is undoable
         const QString other = vm.mergeResultText(kGergo, false);
         QVERIFY(other.contains(QStringLiteral("„Bárány Gergely” becenév lesz.")));
         QVERIFY2(other.contains(QStringLiteral("2 érintett összefoglaló elavultnak jelölődik.")), qPrintable(other));
@@ -632,8 +640,16 @@ private slots:
         QCOMPARE(vm.sampleCount(), 3);
         QCOMPARE(vm.meetingCount(), 3);
         QCOMPARE(toast.last().at(0).toString(), QStringLiteral("Összevonva: B. Gergő — 3 megbeszélés, 3 minta"));
-        QCOMPARE(toast.last().at(1).toBool(), false);                     // not undoable
-        QVERIFY(!vm.canUndo());
+        QCOMPARE(toast.last().at(1).toBool(), true);                      // undoable (P11)
+        QVERIFY(vm.canUndo());
+        // Undo: both people are back, with their own samples, and the meetings name Gergely again.
+        vm.undo();
+        QCOMPARE(vm.totalCount(), 4);
+        QVERIFY(vm.personExists(kGergely));
+        QVERIFY(vm.personExists(kGergo));
+        QCOMPARE(m_app->voiceprints()->printCount(id(kGergely)), 2);
+        QCOMPARE(m_app->voiceprints()->printCount(id(kGergo)), 1);
+        QCOMPARE(toast.last().at(0).toString(), QStringLiteral("Az összevonás visszavonva: Bárány Gergely"));   // the restored one
     }
 
     void deleteTextAndKeepSamples()
@@ -736,12 +752,12 @@ private slots:
         PeopleViewModel vm;
         vm.setController(m_app.get());
         // A change coming from another window (transcript editor, Settings): the list follows by itself.
-        m_app->renamePerson(kGergo, "Balla Gergő");
+        m_app->renamePerson(id(kGergo), "Balla Gergő");
         QVERIFY(waitFor([&] { return vm.personExists("Balla Gergő"); }));
         QVERIFY(!vm.personExists(kGergo));
         m_app->setUserSpeakerName("Kovács L.");
         QVERIFY(waitFor([&] { return vm.people()->nameAt(0) == QStringLiteral("Kovács L."); }));
-        m_app->voiceprints()->removePerson("Balla Gergő");
+        m_app->voiceprints()->removePerson(id("Balla Gergő"));
         emit m_app->voiceprintsChanged();
         const int row = vm.people()->indexOfName("Balla Gergő");
         QVERIFY(waitFor([&] {
@@ -777,7 +793,7 @@ private slots:
         host.window()->close();
         QVERIFY(waitFor([&] { return !host.isVisible(); }));
         QCOMPARE(closed.size(), 1);
-        QCOMPARE(m_app->peopleService()->person(kEszter).note, QStringLiteral("Pénzügy"));
+        QCOMPARE(m_app->peopleService()->person(id(kEszter)).note, QStringLiteral("Pénzügy"));
 
         QVERIFY(host.open(kGergely));
         QCOMPARE(vm->selectedName(), kGergely);
@@ -845,16 +861,16 @@ private slots:
         vm.setDefaultSide(QStringLiteral("remote"));
         QCOMPARE(vm.defaultSide(), QStringLiteral("remote"));
         QCOMPARE(vm.defaultSideNote(), QStringLiteral("kézzel beállítva"));
-        library::PersonRecord r = m_app->peopleService()->person(kGergely);
+        library::PersonRecord r = m_app->peopleService()->person(id(kGergely));
         QCOMPARE(r.defaultSide, QStringLiteral("remote"));
         QVERIFY(r.defaultSideManual);
-        QVERIFY(!learner.setDefaultSide(kGergely, QStringLiteral("local")));   // learned entry
-        QCOMPARE(m_app->peopleService()->person(kGergely).defaultSide, QStringLiteral("remote"));
+        QVERIFY(!learner.setDefaultSide(id(kGergely), QStringLiteral("local")));   // learned entry
+        QCOMPARE(m_app->peopleService()->person(id(kGergely)).defaultSide, QStringLiteral("remote"));
 
         // "no data": deleted, learning may write again.
         vm.setDefaultSide(QString());
         QCOMPARE(vm.defaultSide(), QString());
-        QVERIFY(learner.setDefaultSide(kGergely, QStringLiteral("local")));
+        QVERIFY(learner.setDefaultSide(id(kGergely), QStringLiteral("local")));
         m_app->peopleService()->reload();
         vm.refresh();
         vm.setSelectedName(kGergely);

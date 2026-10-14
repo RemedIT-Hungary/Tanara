@@ -4,7 +4,7 @@
 //
 // Concepts (see the vault UX plan "Person tags"):
 //  - M(t): the meetings of tag t; M(p): the meetings where p is a named participant
-//    (MeetingLibrary::participantsOf); c(p,t) = |M(p) intersect M(t)|.
+//    (MeetingLibrary::participantsOf); c(p,t) = |M(p) intersect M(t)|. People are keyed by PersonId.
 //  - Learned association (not stored): c(p,t) computed from the meetings. The own person is
 //    left out everywhere (present at every meeting, carries no information).
 //  - Manual tag: the "tags" array of the people.json record (PeopleStore), handled by TagService.
@@ -12,6 +12,7 @@
 // PersonTagStats is an immutable snapshot; PersonTagSnapshot (statistics + manual tags + tag
 // names) can be passed between threads, so the evidence can also be computed on a background
 // thread (identification / recheck).
+#include "tanara/domain/Person.h"
 #include "tanara/domain/Tag.h"
 
 #include <QDateTime>
@@ -29,12 +30,13 @@ struct PersonTagRow {
     QString     meetingId;
     QDateTime   startedAt;
     QStringList tagIds;
-    QStringList participants;   // named participants
+    PersonIds   participants;   // named participants
 };
 
 // A (person, tag) pair with numbers, for list rows and suggestions.
 struct PersonTagStat {
-    QString   name;              // the person (display spelling)
+    PersonId  personId;          // the person
+    QString   name;              // their display name
     QString   tagId;
     int       shared = 0;        // c(p,t)
     int       tagTotal = 0;      // |M(t)|
@@ -75,7 +77,8 @@ struct TagEvidence {
 struct PersonTagQuestion {
     QString tagId;
     QString tagName;
-    QStringList people;       // display names, in input order
+    PersonIds   people;       // in input order
+    QStringList names;        // their display names (same order)
     bool newPeople = false;   // their first meeting (a new person): "X is a new person. Put ... on them?"
 };
 
@@ -91,9 +94,6 @@ constexpr int kMaxSuggestions = 3;
 constexpr int kContradictPersonTagged = 5;
 constexpr int kMatureTagMeetings = 5;
 
-// Comparison key of a person name (case-insensitive, trimmed).
-QString personKey(const QString& name);
-
 // 3.1 / evidence: c >= 2 and c / |M(t)| >= 30%.
 bool learnedLink(int shared, int tagTotal);
 // 3.2: c >= 2 and (c / |M(t)| >= 30% or c / |M(p)| >= 50%).
@@ -104,44 +104,42 @@ bool suggestableForPerson(int shared, int tagTotal, int personTotal);
 // Statistics of the learned association (immutable; readable from any thread).
 class PersonTagStats {
 public:
-    // The own name (selfName) is left out of every computation; participants are not trimmed.
-    static PersonTagStats compute(const QVector<PersonTagRow>& rows, const QString& selfName);
+    // The own person (self) is left out of every computation.
+    static PersonTagStats compute(const QVector<PersonTagRow>& rows, const PersonId& self);
 
     int tagTotal(const QString& tagId) const { return m_tagTotal.value(tagId); }
-    int personTotal(const QString& person) const { return m_personTotal.value(persontags::personKey(person)); }
+    int personTotal(const PersonId& person) const { return m_personTotal.value(person); }
     // Number of the person's tagged (>= 1 tag) meetings.
-    int personTagged(const QString& person) const { return m_personTagged.value(persontags::personKey(person)); }
-    // The meeting's row in the computation: its tags and (keyed) participants; empty for an unknown one.
+    int personTagged(const PersonId& person) const { return m_personTagged.value(person); }
+    // The meeting's row in the computation: its tags; empty for an unknown one.
     QStringList meetingTags(const QString& meetingId) const { return m_meetingTags.value(meetingId); }
-    bool meetingHasPerson(const QString& meetingId, const QString& person) const;
-    int shared(const QString& person, const QString& tagId) const;
-    QDateTime lastShared(const QString& person, const QString& tagId) const;
-    // The stored display spelling (the latest meeting's); the input for an unknown one.
-    QString displayName(const QString& person) const;
+    bool meetingHasPerson(const QString& meetingId, const PersonId& person) const;
+    int shared(const PersonId& person, const QString& tagId) const;
+    QDateTime lastShared(const PersonId& person, const QString& tagId) const;
     // The tag's participants (c >= 1), or the person's tags (c >= 1); unordered.
-    QStringList peopleOf(const QString& tagId) const;
-    QStringList tagsOf(const QString& person) const;
+    PersonIds peopleOf(const QString& tagId) const;
+    QStringList tagsOf(const PersonId& person) const;
     int meetingCount() const { return m_meetings; }
 
 private:
     QHash<QString, int> m_tagTotal;                          // tagId → |M(t)|
-    QHash<QString, int> m_personTotal;                       // personKey → |M(p)|
-    QHash<QString, QString> m_display;                       // personKey -> name
-    QHash<QString, QHash<QString, int>> m_shared;            // tagId → personKey → c
-    QHash<QString, QHash<QString, QDateTime>> m_last;        // tagId -> personKey -> last shared
-    QHash<QString, QStringList> m_tagsOf;                    // personKey → tagId-k
-    QHash<QString, int> m_personTagged;                      // personKey -> its tagged meetings
+    QHash<PersonId, int> m_personTotal;                      // person → |M(p)|
+    QHash<QString, QHash<PersonId, int>> m_shared;           // tagId → person → c
+    QHash<QString, QHash<PersonId, QDateTime>> m_last;       // tagId -> person -> last shared
+    QHash<PersonId, QStringList> m_tagsOf;                   // person → tagIds
+    QHash<PersonId, int> m_personTagged;                     // person -> its tagged meetings
     QHash<QString, QStringList> m_meetingTags;               // meetingId -> tags (in order)
-    QHash<QString, QStringList> m_meetingPeople;             // meetingId → personKey-ek
+    QHash<QString, PersonIds> m_meetingPeople;               // meetingId → people
     int m_meetings = 0;
 };
 
 // Everything the evidence needs, in a package that can be passed between threads.
 struct PersonTagSnapshot {
     std::shared_ptr<const PersonTagStats> stats;   // never null (TagService::personTagSnapshot)
-    QHash<QString, QStringList> manual;            // personKey -> manual tagIds
+    QHash<PersonId, QStringList> manual;           // person -> manual tagIds
     QHash<QString, QString> tagNames;              // tagId -> name
-    QString selfKey;                               // key of the own person (empty = none)
+    PersonId self;                                 // the own person (null = none)
+    PersonNames names;                             // display names (learning questions)
 
     // The evidence (pure function; UX plan rule 4). Rules:
     //  - supports: one of the meeting's tags is manually on the person, OR the learned association
@@ -152,23 +150,23 @@ struct PersonTagSnapshot {
     //  - otherwise (and for the own person, for a meeting without tags) empty.
     // meetingId: the examined meeting's own row is left out of the numbers (otherwise the person
     // would support themselves with their current presence); empty = every row counts.
-    TagEvidence evidence(const QString& personName, const QStringList& meetingTagIds,
+    TagEvidence evidence(const PersonId& person, const QStringList& meetingTagIds,
                          const QString& meetingId = QString()) const;
 
     // Learning questions for a meeting's participants (pure function; UX plan rule 5). The meeting's
     // own row is left out of the computation, so the snapshot's freshness does not matter. Per person:
     //  - a new person (not at another meeting yet): every tag of the meeting;
     //  - otherwise tag t, if c(p,t) becomes 2 with it (exactly 1 at other meetings);
-    //  - left out: the own person, an empty name, those already manually on them, and the rejected ones.
+    //  - left out: the own person, a null id, those already manually on them, and the rejected ones.
     // Grouped by tag (new people separately), a multi-person question first.
     QVector<PersonTagQuestion> learningQuestions(
-        const QString& meetingId, const QStringList& meetingTagIds, const QStringList& names,
-        const std::function<bool(const QString& name, const QString& tagId)>& rejected = {}) const;
+        const QString& meetingId, const QStringList& meetingTagIds, const PersonIds& people,
+        const std::function<bool(const PersonId& person, const QString& tagId)>& rejected = {}) const;
 };
 
 // The evidence seam (identification, candidate ranking, "Who was there?"): the person, the
 // meeting's tags and id -> TagEvidence. AppController binds it to the TagService snapshot.
-using TagEvidenceFn = std::function<TagEvidence(const QString& personName, const QStringList& meetingTagIds,
+using TagEvidenceFn = std::function<TagEvidence(const PersonId& person, const QStringList& meetingTagIds,
                                                 const QString& meetingId)>;
 
 } // namespace tanara::library

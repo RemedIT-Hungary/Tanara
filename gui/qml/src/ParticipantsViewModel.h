@@ -24,6 +24,7 @@
 // after approval, several pairs) | learnNewPerson (new person).
 //
 #include "tanara/domain/Types.h"
+#include "tanara/domain/Person.h"
 #include "tanara/editing/session/SpeakerEditTypes.h"
 #include "tanara/library/tags/PersonTags.h"
 
@@ -142,7 +143,8 @@ signals:
 private:
     struct Row {
         QString id;
-        QString name;                   // empty = anonymous (unknown voice)
+        tanara::PersonId personId;      // the person (null: anonymous, or a name typed in the dialog)
+        QString name;                   // display name; empty = anonymous (unknown voice)
         int group = 1;                  // 0 sure, 1 doubtful, 2 invited, 3 added
         bool checked = false;
         bool added = false;             // added in the dialog (not yet on the meeting)
@@ -182,7 +184,7 @@ private:
     QVector<Row> m_rows;
     int m_addedSeq = 0;
 
-    struct TagSuggestion { QString name; QString tagName; int shared = 0; int total = 0; };
+    struct TagSuggestion { QString name; QString tagName; int shared = 0; int total = 0; tanara::PersonId personId; };
     QString m_tagLabel;
     QVector<TagSuggestion> m_tagSuggestions;
     QString m_demoInfo;                 // the demo footer line (if not computable)

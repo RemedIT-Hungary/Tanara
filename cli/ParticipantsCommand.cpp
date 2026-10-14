@@ -9,7 +9,7 @@
 #include "tanara/processing/analysis/TrackActivity.h"
 #include "tanara/library/store/ParticipantJson.h"
 #include "tanara/library/store/MeetingRepository.h"
-#include "tanara/library/store/MeetingRepository.h"
+#include "tanara/library/store/PeopleStore.h"
 #include "tanara/library/store/VoiceprintStore.h"
 #include "tanara/processing/voiceid/VoiceEmbedderSet.h"
 
@@ -51,15 +51,16 @@ QString groupLabel(ParticipantGroup g)
     return QStringLiteral("DOUBT");
 }
 
-QJsonObject participantJson(const Participant& p)
+QJsonObject participantJson(const Participant& p, const PersonNames& names)
 {
     QJsonObject o = library::toJson(p);
+    if (!p.personId.isNull()) o[QStringLiteral("personName")] = personName(names, p.personId);
     o[QStringLiteral("group")] = library::participantGroupName(processing::participants::participantGroup(p));
     o[QStringLiteral("defaultChecked")] = processing::participants::defaultChecked(p);
     return o;
 }
 
-void printText(const Meeting& m, const QString& analysisNote)
+void printText(const Meeting& m, const QString& analysisNote, const PersonNames& names)
 {
     out() << "Tracks:\n";
     for (const Track& t : m.tracks)
@@ -79,7 +80,8 @@ void printText(const Meeting& m, const QString& analysisNote)
             for (const Evidence& e : p->evidence) ev << evidenceText(e);
             for (const QString& r : p->rawSpeakerIds) raw << processing::participants::rawDisplay(r);
             out() << "  [" << (processing::participants::defaultChecked(*p) ? 'x' : ' ') << "] "
-                  << (p->personName.isEmpty() ? QStringLiteral("(unknown voice)") : p->personName).leftJustified(22)
+                  << (p->personId.isNull() ? QStringLiteral("(unknown voice)")
+                                           : personName(names, p->personId, p->personId.toString())).leftJustified(22)
                   << " " << p->id.leftJustified(11) << " " << library::participantSourceName(p->source).leftJustified(8)
                   << " sides " << (p->sides.isEmpty() ? QStringLiteral("-") : p->sides.join(QLatin1Char('+'))).leftJustified(13)
                   << " talk " << QString::number(qRound(p->talkShare * 100)).rightJustified(3) << "%"
@@ -98,7 +100,7 @@ void printText(const Meeting& m, const QString& analysisNote)
 // --remove: permanently deletes the participant (like AppController::removeParticipant, minus
 // the editor): the approval entry goes too, and raw speakers bound to that name become
 // anonymous (transcript.md is regenerated). Per-line manual fixes (the overlay) are untouched.
-int removeParticipant(Meeting& m, const QString& id, bool json)
+int removeParticipant(Meeting& m, const QString& id, bool json, const PersonNames& names)
 {
     const auto it = std::find_if(m.participants.cbegin(), m.participants.cend(),
                                  [&id](const Participant& p) { return p.id == id; });
@@ -107,7 +109,7 @@ int removeParticipant(Meeting& m, const QString& id, bool json)
     bool mapChanged = false;
     for (const QString& raw : p.rawSpeakerIds) {
         const QString label = processing::participants::rawLabelOf(raw);
-        if (!p.personName.isEmpty() && m.speakerMap.value(label) == p.personName) {
+        if (!p.personId.isNull() && m.speakerMap.value(label) == p.personId) {
             m.speakerMap.remove(label);
             mapChanged = true;
         }
@@ -122,13 +124,14 @@ int removeParticipant(Meeting& m, const QString& id, bool json)
         err() << "Cannot write meeting.json in " << m.folder << "\n";
         return 1;
     }
-    if (mapChanged && m.hasTranscript) editing::speakeredit::regenerateTranscriptMarkdown(m);
+    if (mapChanged && m.hasTranscript) editing::speakeredit::regenerateTranscriptMarkdown(m, names);
+    const QString name = personName(names, p.personId);
     if (json) {
-        out() << QJsonDocument(QJsonObject{{"removed", id}, {"personName", p.personName},
+        out() << QJsonDocument(QJsonObject{{"removed", id}, {"personId", p.personId.toString()}, {"personName", name},
                                            {"unmappedSpeakers", mapChanged}}).toJson(QJsonDocument::Indented);
     } else {
         out() << "Removed participant " << id << " ("
-              << (p.personName.isEmpty() ? QStringLiteral("unknown voice") : p.personName) << ")"
+              << (p.personId.isNull() ? QStringLiteral("unknown voice") : name) << ")"
               << (mapChanged ? ", its speakers are unnamed now" : "") << "\n";
     }
     out().flush();
@@ -159,7 +162,10 @@ int runParticipantsCommand(const QStringList& args)
     Meeting m = library::MeetingRepository::readMeetingFolder(folder);
     if (m.id.isEmpty()) { err() << "Not a meeting folder (no readable meeting.json): " << folder << "\n"; return 1; }
     m.folder = folder;
-    if (!removeId.isEmpty()) return removeParticipant(m, removeId, json);
+    const app::SettingsManager settings;
+    const library::PeopleStore people(settings.paths().dataFile(paths::files::People));
+    const PersonNames names = people.names();
+    if (!removeId.isEmpty()) return removeParticipant(m, removeId, json, names);
 
     QString note;
     processing::ParticipantAnalysisFile file = processing::ParticipantAnalysisFile::load(folder);
@@ -186,11 +192,12 @@ int runParticipantsCommand(const QStringList& args)
         ClusterSet cs = processing::participants::computeVoiceClusters(m, act, set, processing::participants::filePcmReader(m, media));
         if (!cs.error.isEmpty()) { err() << "Analysis failed: " << cs.error << "\n"; return 1; }
 
-        const library::VoiceprintStore prints(QDir(meta).filePath(QStringLiteral("voiceprints.json")));
+        const library::VoiceprintStore prints(sm.paths().dataFile(paths::files::Voiceprints));
         processing::participants::CandidateContext ctx;
-        ctx.selfName = sm.settings().recording.userSpeakerName.trimmed();
+        ctx.self = SelfPerson{people.selfId(), sm.settings().recording.userSpeakerName.trimmed()};
+        ctx.names = names;
         ctx.rank = [&prints](const EmbeddingSet& q) { return prints.rankedMatches(q, q.keys()); };
-        ctx.hasVoiceprint = [&prints](const QString& n) { return prints.printCount(n) > 0; };
+        ctx.hasVoiceprint = [&prints](const PersonId& person) { return prints.printCount(person) > 0; };
         m.participants = processing::participants::buildParticipants(cs, m, ctx);
         file.at = QDateTime::currentDateTime().toString(Qt::ISODate);
         file.modelIds = cs.modelIds;
@@ -222,7 +229,7 @@ int runParticipantsCommand(const QStringList& args)
                                       {"included", t.included()}, {"excludedReason", t.excludedReason}});
         root["tracks"] = tracks;
         QJsonArray ps;
-        for (const Participant& p : m.participants) ps.append(participantJson(p));
+        for (const Participant& p : m.participants) ps.append(participantJson(p, names));
         root["participants"] = ps;
         if (m.approval) root["approval"] = library::toJson(*m.approval);
         if (!file.isEmpty())
@@ -231,7 +238,7 @@ int runParticipantsCommand(const QStringList& args)
         out() << QJsonDocument(root).toJson(QJsonDocument::Indented);
         out().flush();
     } else {
-        printText(m, note);
+        printText(m, note, names);
     }
     return 0;
 }

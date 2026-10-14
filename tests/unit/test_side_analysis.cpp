@@ -13,6 +13,14 @@ using namespace tanara;
 
 namespace {
 
+// The tests' people: the case-folded name stands in as the PersonId (so "ádám" is the same person).
+PersonId P(const QString& name) { return PersonId::fromString(name.toCaseFolded()); }
+SelfPerson me(const QString& name) { return SelfPerson{P(name), name}; }
+
+}
+
+namespace {
+
 struct Span { qint64 s, e; float db; };
 
 // One track's activity: 0..totalMs, the given dB above the floor on the given segments, 0 elsewhere.
@@ -158,14 +166,14 @@ private slots:
     {
         Synth s = synth("LLRRLR", {"Beszélő 1"});
         Meeting m;
-        m.speakerMap["Beszélő 1"] = "Ádám";
+        m.speakerMap["Beszélő 1"] = P("Ádám");
         SpeakerOverlay ov;
         for (const auto& l : s.lines) confirm(ov, l.id);
         for (TrackKind keep : {TrackKind::Mic, TrackKind::Loopback}) {
             MeetingActivity only;
             for (const auto& t : s.act.tracks)
                 if (t.kind == keep) only.tracks << t;
-            const editing::SideReport r = editing::analyzeSides(m, s.lines, ov, only, "Ádám");
+            const editing::SideReport r = editing::analyzeSides(m, s.lines, ov, only, me("Ádám"));
             QVERIFY(!r.active);
             QCOMPARE(r.totals.unknown, 6);
             QVERIFY(r.conflicts.isEmpty());
@@ -174,7 +182,7 @@ private slots:
             for (int h : r.histogram) QCOMPARE(h, 0);
         }
         // Empty activity (no track) likewise.
-        const editing::SideReport r = editing::analyzeSides(m, s.lines, ov, MeetingActivity{}, "Ádám");
+        const editing::SideReport r = editing::analyzeSides(m, s.lines, ov, MeetingActivity{}, me("Ádám"));
         QVERIFY(!r.active);
         QCOMPARE(r.totals.unknown, 6);
     }
@@ -186,8 +194,8 @@ private slots:
         Synth s = synth("LLRLRRLL", {"Beszélő 1", "Beszélő 1", "Beszélő 1", "Beszélő 1",
                                       "Beszélő 1", "Beszélő 1", "Beszélő 1", "Beszélő 2"});
         Meeting m;
-        m.speakerMap["Beszélő 1"] = "Ádám";
-        const editing::SideReport r = editing::analyzeSides(m, s.lines, SpeakerOverlay{}, s.act, "ádám");
+        m.speakerMap["Beszélő 1"] = P("Ádám");
+        const editing::SideReport r = editing::analyzeSides(m, s.lines, SpeakerOverlay{}, s.act, me("ádám"));
         QVERIFY(r.active);
         QCOMPARE(r.totals.local, 5);
         QCOMPARE(r.totals.remote, 3);
@@ -223,7 +231,7 @@ private slots:
         confirm(ov, "u0");
         confirm(ov, "u2500");
         confirm(ov, "u5000");
-        const editing::SideReport r = editing::analyzeSides(Meeting{}, s.lines, ov, s.act, "Ádám");
+        const editing::SideReport r = editing::analyzeSides(Meeting{}, s.lines, ov, s.act, me("Ádám"));
         const editing::PersonSide* p = person(r, "Beszélő 2");
         QCOMPARE(p->side, editing::Side::Remote);
         QCOMPARE(p->basis, QStringLiteral("lines"));
@@ -239,10 +247,10 @@ private slots:
         // loopback, so the data overrides the own-name default (Remote), its local line is a contradiction.
         Synth s = synth("RRRRL", {"Beszélő 2"});
         Meeting m;
-        m.speakerMap["Beszélő 2"] = "Ádám";
+        m.speakerMap["Beszélő 2"] = P("Ádám");
         SpeakerOverlay ov;
         for (const char* id : {"u0", "u2500", "u5000", "u7500"}) confirm(ov, id);
-        editing::SideReport r = editing::analyzeSides(m, s.lines, ov, s.act, "Ádám");
+        editing::SideReport r = editing::analyzeSides(m, s.lines, ov, s.act, me("Ádám"));
         const editing::PersonSide* p = person(r, "Beszélő 2");
         QCOMPARE(p->defaultSide, editing::Side::Local);
         QCOMPARE(p->side, editing::Side::Remote);
@@ -255,7 +263,7 @@ private slots:
         SpeakerOverlay weak;
         confirm(weak, "u0");
         confirm(weak, "u2500");
-        r = editing::analyzeSides(m, s.lines, weak, s.act, "Ádám");
+        r = editing::analyzeSides(m, s.lines, weak, s.act, me("Ádám"));
         p = person(r, "Beszélő 2");
         QCOMPARE(p->side, editing::Side::Local);
         QCOMPARE(p->basis, QStringLiteral("user-name"));
@@ -265,7 +273,7 @@ private slots:
         SpeakerOverlay noisy = ov;
         noisy.utterances["u0"].noisy = true;
         noisy.utterances["u2500"].noisy = true;
-        r = editing::analyzeSides(m, s.lines, noisy, s.act, "Ádám");
+        r = editing::analyzeSides(m, s.lines, noisy, s.act, me("Ádám"));
         QCOMPARE(person(r, "Beszélő 2")->side, editing::Side::Local);
     }
 
@@ -280,8 +288,10 @@ private slots:
         loop.fixedSpeaker = true;
         loop.speakerLabel = "Béla";
         m.tracks = {loop};
-        m.speakerMap["Távoli 1"] = "Béla";
-        const editing::SideReport r = editing::analyzeSides(m, s.lines, SpeakerOverlay{}, s.act, "Ádám");
+        m.speakerMap["Távoli 1"] = P("Béla");
+        editing::SideHints h;
+        h.names.insert(P("Béla"), QStringLiteral("Béla"));   // the person's name matches the track's label
+        const editing::SideReport r = editing::analyzeSides(m, s.lines, SpeakerOverlay{}, s.act, me("Ádám"), h);
         const editing::PersonSide* p = person(r, "Távoli 1");
         QCOMPARE(p->side, editing::Side::Remote);
         QCOMPARE(p->basis, QStringLiteral("fixed-track"));
@@ -297,7 +307,7 @@ private slots:
         // "speaks" and it is never Remote; the loopback is at speech level too, so Mixed (crosstalk
         // this strong looks like overlapping speech).
         Synth s = synth("LRLRRLRRLRLR", {"Beszélő 1"}, 30.0f, 28.0f, 26.0f);
-        const editing::SideReport r = editing::analyzeSides(Meeting{}, s.lines, SpeakerOverlay{}, s.act, "Ádám");
+        const editing::SideReport r = editing::analyzeSides(Meeting{}, s.lines, SpeakerOverlay{}, s.act, me("Ádám"));
         QVERIFY(r.thresholds.adaptive);
         QCOMPARE(r.legacyTotals.local, 5);
         QCOMPARE(r.legacyTotals.remote, 7);
@@ -394,20 +404,20 @@ private slots:
         Track mic; mic.id = "mic"; mic.kind = TrackKind::Mic;
         Track loop; loop.id = "loop"; loop.kind = TrackKind::Loopback;
         m.tracks = {mic, loop};
-        m.speakerMap["Beszélő 1"] = "Ádám";
+        m.speakerMap["Beszélő 1"] = P("Ádám");
         SpeakerOverlay ov;
         ov.speakerTracks["Beszélő 1"] = QStringList{"loop"};
-        editing::SideReport r = editing::analyzeSides(m, s.lines, ov, s.act, "Ádám");
+        editing::SideReport r = editing::analyzeSides(m, s.lines, ov, s.act, me("Ádám"));
         const editing::PersonSide* p = person(r, "Beszélő 1");
         QCOMPARE(p->side, editing::Side::Remote);
         QCOMPARE(p->basis, QStringLiteral("manual"));
         QCOMPARE(p->manualTracks, QStringList{"loop"});
         QCOMPARE(r.conflicts.size(), 3);
-        QCOMPARE(editing::sides::learnedDefaults(r).value("Ádám"), editing::Side::Remote);
+        QCOMPARE(editing::sides::learnedDefaults(r).value(P("Ádám")), editing::Side::Remote);
 
         editing::SideHints h;
         h.speakerTracks["Beszélő 1"] = QStringList{"mic", "loop"};
-        r = analyzeSides(m, s.lines, ov, s.act, "Ádám", h);
+        r = analyzeSides(m, s.lines, ov, s.act, me("Ádám"), h);
         QCOMPARE(person(r, "Beszélő 1")->side, editing::Side::Mixed);
         QVERIFY(r.conflicts.isEmpty());
         QCOMPARE(editing::sides::sideOfTracks(m, {"nincs"}), editing::Side::Unknown);
@@ -418,10 +428,10 @@ private slots:
         // The learned default (Remote) takes precedence over the own-name default; weak data does not override it.
         Synth s = synth("RRL", {"Beszélő 1"});
         Meeting m;
-        m.speakerMap["Beszélő 1"] = "Béla";
+        m.speakerMap["Beszélő 1"] = P("Béla");
         editing::SideHints h;
-        h.learnedSides.insert(QStringLiteral("béla"), editing::Side::Remote);
-        const editing::SideReport r = analyzeSides(m, s.lines, SpeakerOverlay{}, s.act, "Béla", h);
+        h.learnedSides.insert(P(QStringLiteral("béla")), editing::Side::Remote);
+        const editing::SideReport r = analyzeSides(m, s.lines, SpeakerOverlay{}, s.act, me("Béla"), h);
         const editing::PersonSide* p = person(r, "Beszélő 1");
         QCOMPARE(p->side, editing::Side::Remote);
         QCOMPARE(p->basis, QStringLiteral("learned"));

@@ -69,7 +69,8 @@ struct Fixture {
         if (f.open(QIODevice::WriteOnly)) f.write(QJsonDocument(segs).toJson());
         f.close();
         meeting.hasTranscript = true;
-        meeting.speakerMap = names;
+        meeting.speakerMap.clear();
+        for (auto it = names.constBegin(); it != names.constEnd(); ++it) meeting.speakerMap.insert(it.key(), pid(it.value()));
         store->saveMeeting(meeting);
 
         const QVector<TranscriptLine> lines = editing::speakeredit::loadTranscriptLines(meeting.folder);
@@ -101,11 +102,13 @@ struct Fixture {
     }
 
     QString uid(int i) const { return QStringLiteral("u%1").arg(i * 5000); }
+    // A person by name (people.json; created if missing).
+    PersonId pid(const QString& name) { return people->ensure(name); }
 
     std::unique_ptr<editing::SpeakerEditor> editor()
     {
         auto ed = std::make_unique<editing::SpeakerEditor>(store.get(), people.get(), prints.get(), meeting.id);
-        ed->setUserSpeakerName("Ádám");
+        ed->setSelfPerson(SelfPerson{pid("Ádám"), "Ádám"});
         const MeetingActivity a = act;
         ed->setActivityProvider([a](const Meeting&) { return a; });
         return ed;
@@ -187,7 +190,7 @@ private slots:
         QCOMPARE(cands.first().speakerKey, QStringLiteral("B2"));
 
         // The learned side: Béla's confirmed lines are on the loopback.
-        QCOMPARE(fx.people->defaultSide("Béla"), QStringLiteral("remote"));
+        QCOMPARE(fx.people->defaultSide(fx.pid("Béla")), QStringLiteral("remote"));
 
         const int undoDepth = ed->canUndo() ? 1 : 0;
         QVERIFY(ed->applyReviewGroup(g->id));
@@ -274,11 +277,11 @@ private slots:
         library::PersonTagSnapshot snap;
         QVector<library::PersonTagRow> rows;
         for (int i = 0; i < 5; ++i)
-            rows << library::PersonTagRow{QStringLiteral("m%1").arg(i), QDateTime(), {"t-projekt"}, {QStringLiteral("Béla")}};
-        snap.stats = std::make_shared<library::PersonTagStats>(library::PersonTagStats::compute(rows, QString()));
+            rows << library::PersonTagRow{QStringLiteral("m%1").arg(i), QDateTime(), {"t-projekt"}, {fx.pid(QStringLiteral("Béla"))}};
+        snap.stats = std::make_shared<library::PersonTagStats>(library::PersonTagStats::compute(rows, PersonId()));
         snap.tagNames = {{"t-projekt", "Projekt"}, {"t-marketing", "Marketing"}};
-        snap.manual.insert(library::persontags::personKey("Anna"), {"t-marketing"});
-        ed->setTagEvidenceProvider([snap](const QString& p, const QStringList& tags, const QString& mid) {
+        snap.manual.insert(fx.pid("Anna"), {"t-marketing"});
+        ed->setTagEvidenceProvider([snap](const PersonId& p, const QStringList& tags, const QString& mid) {
             return snap.evidence(p, tags, mid);
         });
         QVERIFY(waitReview(*ed));

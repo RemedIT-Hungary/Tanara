@@ -9,6 +9,7 @@
 // touching the user's desktop (mouse, focus). In normal use, without the switch, it does nothing.
 #include "AppContext.h"
 #include "tanara/app/AppController.h"
+#include "tanara/library/store/PeopleStore.h"
 
 #include <QAbstractButton>
 #include <QApplication>
@@ -127,10 +128,14 @@ public:
         QMetaObject::invokeMethod(w, "close", Qt::QueuedConnection);
         return true;
     }
-    // The People window calls the same: renames a person in core.
+    // The People window calls the same: renames a person in core (oldName: the person's name or PersonId).
     Q_INVOKABLE void renamePerson(const QString& oldName, const QString& newName)
     {
-        if (auto* c = tanara_qml::AppContext::instance()->controller()) c->renamePerson(oldName, newName);
+        auto* c = tanara_qml::AppContext::instance()->controller();
+        if (!c || !c->people()) return;
+        c->people()->refresh();
+        const tanara::PersonId person = c->people()->choiceFor(oldName).id;
+        if (!person.isNull()) c->renamePerson(person, newName);
     }
     Q_INVOKABLE QStringList knownPeople() const
     {

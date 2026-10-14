@@ -11,6 +11,7 @@
 #include "tanara/editing/session/SpeakerEditor.h"
 #include "tanara/library/jobs/MeetingJobTracker.h"
 #include "tanara/library/store/MeetingRepository.h"
+#include "tanara/library/store/PeopleStore.h"
 #include "tanara/library/summary/SummaryRepository.h"
 #include "tanara/library/tags/TagService.h"
 
@@ -110,12 +111,12 @@ QVariantMap personRow(const QString& id, const QString& name, int colorIndex, co
 
 // After the transcript, a participant not tied to a speaker (never spoke / added manually):
 // a dim row with a "not heard" badge, removable.
-QVariantMap unheardRow(const Participant& p, int colorIndex)
+QVariantMap unheardRow(const Participant& p, const QString& name, int colorIndex)
 {
     QVariantList src = sourcesOf(p, false);
     src.prepend(source(QStringLiteral("fingerprint"), OverviewViewModel::tr("nem hallottuk"), true, false,
                        OverviewViewModel::tr("Az átiratban nem találtuk a hangját: nincs beszélő a nevén")));
-    QVariantMap row = personRow(p.id, p.personName, colorIndex, QString(), src, -1.0, false, false, true, true);
+    QVariantMap row = personRow(p.id, name, colorIndex, QString(), src, -1.0, false, false, true, true);
     row.insert(QStringLiteral("unheard"), true);
     return row;
 }
@@ -130,11 +131,6 @@ QVariantMap withSpeaker(QVariantMap row, const QString& speakerKey, bool anonymo
 
 // The number of tag-based person suggestions on the Overview.
 constexpr int kMaxSuggestedPeople = 3;
-
-bool sameName(const QString& a, const QString& b)
-{
-    return !a.isEmpty() && a.compare(b, Qt::CaseInsensitive) == 0;
-}
 
 } // namespace
 
@@ -261,7 +257,9 @@ QString OverviewViewModel::addParticipant(const QString& name)
         emit changed();
         return id;
     }
-    const QString id = c->addParticipant(m_meetingId, n);
+    // The typed name: a known person (PersonId or name), else a new one.
+    const PersonChoice choice = c->people() ? c->people()->choiceFor(n) : PersonChoice::create(n);
+    const QString id = c->addParticipant(m_meetingId, choice);
     scheduleReload();
     return id;
 }
@@ -285,7 +283,7 @@ void OverviewViewModel::removeParticipant(const QString& id)
         // be created first, since it does not take tag steps from before the attachment).
         c->meetingUndo(m_meetingId);
         if (library::TagService* tags = c->tags())
-            tags->rejectPersonForMeeting(id.mid(8), m_meetingId);
+            tags->rejectPersonForMeeting(PersonId::fromString(id.mid(8)), m_meetingId);
     } else {
         c->removeParticipant(m_meetingId, id);
     }
@@ -358,7 +356,10 @@ void OverviewViewModel::reload()
     }
     const Meeting m = (c->store() && !m_meetingId.isEmpty()) ? c->store()->load(m_meetingId) : Meeting();
     const MeetingProcessingState proc = c->processingState(m_meetingId);
-    const QString selfName = c->settings() ? c->settings()->settings().recording.userSpeakerName : QString();
+    const PersonId selfId = c->selfPerson().id;
+    PersonNames personNames;
+    if (c->people()) { c->people()->refresh(); personNames = c->people()->names(); }
+    auto nameOf = [&personNames](const PersonId& p) { return personName(personNames, p); };
 
     auto job = [&proc](JobKind kind) -> const JobProgress* {
         for (const JobProgress& j : proc.jobs)
@@ -391,7 +392,7 @@ void OverviewViewModel::reload()
     const QVector<editing::EditorSpeaker> speakers = ed ? ed->speakers() : QVector<editing::EditorSpeaker>();
 
     QVariantList rows;
-    QStringList names;
+    PersonIds names;            // the people already listed
     QVariantList anonymous;
     if (!speakers.isEmpty()) {
         // After the transcript: the speakers (with color, share), with the participant's evidence.
@@ -403,13 +404,13 @@ void OverviewViewModel::reload()
             if (s.utteranceCount == 0 && !s.added) continue;
             const Participant* match = nullptr;
             for (const Participant& p : parts) {
-                if ((!s.personName.isEmpty() && sameName(p.personName, s.personName))
+                if ((!s.personId.isNull() && p.personId == s.personId)
                     || (!s.rawLabel.isEmpty() && p.rawSpeakerIds.contains(s.rawLabel))) {
                     match = &p;
                     break;
                 }
             }
-            const bool self = s.isSelf || sameName(s.personName, selfName);
+            const bool self = s.isSelf || (!selfId.isNull() && s.personId == selfId);
             if (!s.anonymous) anyNamed = true;
             QString name = s.displayName;
             if (self) name = tr("%1 (te)").arg(name);
@@ -420,7 +421,7 @@ void OverviewViewModel::reload()
                                           s.anonymous ? tr("névtelen · elnevezhető") : QString(), src,
                                           s.talkShare, self, false, false, match != nullptr || !s.anonymous),
                                 s.key, s.anonymous);
-            names << s.personName;
+            if (!s.personId.isNull()) names << s.personId;
             anonymous << QVariantMap{{QStringLiteral("name"), s.displayName},
                                      {QStringLiteral("share"), s.talkShare},
                                      {QStringLiteral("colorIndex"), s.colorIndex}};
@@ -430,25 +431,25 @@ void OverviewViewModel::reload()
         const QVector<Participant> unheard = c->unheardParticipants(m.id);
         int colorIndex = int(sorted.size());
         for (const Participant& p : unheard) {
-            if (std::any_of(names.cbegin(), names.cend(), [&](const QString& n) { return sameName(n, p.personName); }))
+            if (names.contains(p.personId))
                 continue;
-            rows << unheardRow(p, colorIndex++);
-            names << p.personName;
+            rows << unheardRow(p, nameOf(p.personId), colorIndex++);
+            names << p.personId;
         }
         m_peopleState = rows.isEmpty() ? QStringLiteral("empty")
                       : (anyNamed || !unheard.isEmpty()) ? QStringLiteral("list") : QStringLiteral("nobody");
     } else {
         int i = 0;
         for (const Participant& p : parts) {
-            const bool self = sameName(p.personName, selfName);
-            QString name = p.personName.isEmpty() ? tr("Ismeretlen hang %1").arg(i + 1) : p.personName;
+            const bool self = !selfId.isNull() && p.personId == selfId;
+            QString name = p.personId.isNull() ? tr("Ismeretlen hang %1").arg(i + 1) : nameOf(p.personId);
             if (self) name = tr("%1 (te)").arg(name);
             rows << withSpeaker(personRow(p.id, name, i,
-                                          p.personName.isEmpty() ? tr("névtelen · elnevezhető") : QString(),
+                                          p.personId.isNull() ? tr("névtelen · elnevezhető") : QString(),
                                           sourcesOf(p, self), p.talkShare > 0 ? p.talkShare : -1.0, self,
                                           false, false, true),
-                                QString(), p.personName.isEmpty());
-            names << p.personName;
+                                QString(), p.personId.isNull());
+            if (!p.personId.isNull()) names << p.personId;
             ++i;
         }
         m_peopleState = rows.isEmpty() ? QStringLiteral("empty") : QStringLiteral("list");
@@ -462,15 +463,15 @@ void OverviewViewModel::reload()
         int added = 0;
         const QVector<library::PersonTagStat> stats = tags->suggestPeopleForMeeting(m.id, names, kMaxSuggestedPeople);
         for (const library::PersonTagStat& st : stats) {
-            if (std::any_of(names.cbegin(), names.cend(), [&](const QString& n) { return sameName(n, st.name); }))
+            if (names.contains(st.personId))
                 continue;
             const QString tagName = tags->tag(st.tagId).name;
-            rows << personRow(QStringLiteral("suggest:") + st.name, st.name, -1, tr("javasolt"),
+            rows << personRow(QStringLiteral("suggest:") + st.personId.toString(), st.name, -1, tr("javasolt"),
                               {source(QStringLiteral("tag"),
                                       tr("a #%1 alapján · %2 / %3").arg(tagName).arg(st.shared).arg(st.tagTotal),
                                       false, true)},
                               -1.0, false, true, false, true);
-            names << st.name;
+            names << st.personId;
             ++added;
         }
         if (added > 0 && m_peopleState == QLatin1String("empty"))
@@ -490,8 +491,8 @@ void OverviewViewModel::reload()
     // Who speaks on each side (the Tracks rows' subtext).
     QStringList micNames, loopNames;
     for (const Participant& p : parts) {
-        if (p.sides.contains(QStringLiteral("mic"))) micNames << (p.personName.isEmpty() ? tr("névtelen") : p.personName);
-        if (p.sides.contains(QStringLiteral("loopback"))) loopNames << p.personName;
+        if (p.sides.contains(QStringLiteral("mic"))) micNames << (p.personId.isNull() ? tr("névtelen") : nameOf(p.personId));
+        if (p.sides.contains(QStringLiteral("loopback"))) loopNames << nameOf(p.personId);
     }
     m_sideWho.clear();
     if (micNames.size() == 1) m_sideWho.insert(QStringLiteral("mic"), micNames.first());
@@ -550,7 +551,7 @@ void OverviewViewModel::reload()
         voiceState = QStringLiteral("attention");
     } else if (m.approval.has_value() || !parts.isEmpty()) {
         const int known = int(std::count_if(parts.cbegin(), parts.cend(),
-                                            [](const Participant& p) { return !p.personName.isEmpty(); }));
+                                            [](const Participant& p) { return !p.personId.isNull(); }));
         voiceSub = m.approval && m.approval->solo ? tr("csak én beszéltem")
                  : known == 0 ? tr("nincs ismert hang")
                               : tr("%n résztvevő", nullptr, known);
@@ -682,9 +683,8 @@ void OverviewViewModel::loadDemo()
         // Invited but did not speak (added manually): dim, after the speakers.
         Participant invited;
         invited.id = QStringLiteral("p5");
-        invited.personName = demoName("Lantos Réka");
         invited.source = ParticipantSource::Manual;
-        rows << unheardRow(invited, 5);
+        rows << unheardRow(invited, demoName("Lantos Réka"), 5);
         m_peopleState = QStringLiteral("list");
         m_peopleHint = tr("jóváhagyva %1-kor").arg(demoText("okt. 1. 16:40", "Oct 1, 4:40 PM"));
     } else if (empty || recorded || transcribingOnly) {

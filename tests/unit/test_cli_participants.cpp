@@ -2,11 +2,14 @@
 // TANARA_HOME, a made-up meeting.json. Checks the argument errors, the list's JSON (group,
 // default check, raw speakers), that it only READS by default, and that without a model
 // --analyze stops with an error (writes nothing).
+#include "cli_people_fixture.h"
+
 #include <QtTest>
 #include <QTemporaryDir>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+
 
 namespace {
 
@@ -43,6 +46,7 @@ private slots:
     void listsCandidatesReadOnly()
     {
         QTemporaryDir dir;
+        cli_fixture::writePeople(m_home->path(), {{"p-tester", "Tester"}});
         const QString meetingJson = QDir(dir.path()).filePath("meeting.json");
         const QJsonObject voice{{"kind", "voice"}, {"polarity", "support"}, {"value", 0.82}, {"text", "hang 82%"},
                                 {"fixTarget", "samples"}};
@@ -50,16 +54,16 @@ private slots:
         QFile f(meetingJson);
         QVERIFY(f.open(QIODevice::WriteOnly));
         f.write(QJsonDocument(QJsonObject{
-            {"id", "p-1"}, {"title", "P"},
+            {"version", 3}, {"id", "p-1"}, {"title", "P"},
             {"tracks", QJsonArray{QJsonObject{{"id", "mic"}, {"file", "track_mic.ogg"}, {"kind", "mic"},
                                               {"active", true}, {"speechRatio", 0.4}},
                                   QJsonObject{{"id", "loop"}, {"file", "track_loop.ogg"}, {"kind", "loopback"},
                                               {"active", false}, {"excludedReason", "noSpeech"}, {"speechRatio", 0.0}}}},
             {"participants", QJsonArray{
-                QJsonObject{{"id", "v1"}, {"personName", "Tester"}, {"source", "voice"}, {"sides", QJsonArray{"mic"}},
+                QJsonObject{{"id", "v1"}, {"personId", "p-tester"}, {"source", "voice"}, {"sides", QJsonArray{"mic"}},
                             {"rawSpeakerIds", QJsonArray{"Beszélő 1@mic"}}, {"evidence", QJsonArray{voice, side}},
                             {"talkShare", 0.6}},
-                QJsonObject{{"id", "v2"}, {"personName", ""}, {"source", "voice"}, {"sides", QJsonArray{"loopback"}},
+                QJsonObject{{"id", "v2"}, {"source", "voice"}, {"sides", QJsonArray{"loopback"}},
                             {"evidence", QJsonArray{QJsonObject{{"kind", "voice"}, {"polarity", "neutral"},
                                                                 {"text", "ismeretlen hang"}}}}}}}}).toJson());
         f.close();
@@ -98,19 +102,20 @@ private slots:
     void removeParticipant()
     {
         QTemporaryDir dir;
+        cli_fixture::writePeople(m_home->path(), {{"p-tester", "Tester"}, {"p-other", "Other"}});
         const QString meetingJson = QDir(dir.path()).filePath("meeting.json");
         QFile f(meetingJson);
         QVERIFY(f.open(QIODevice::WriteOnly));
         f.write(QJsonDocument(QJsonObject{
-            {"id", "p-2"}, {"title", "P"},
-            {"speakerMap", QJsonObject{{"Beszélő 1", "Tester"}, {"Beszélő 2", "Other"}}},
+            {"version", 3}, {"id", "p-2"}, {"title", "P"},
+            {"speakerMap", QJsonObject{{"Beszélő 1", "p-tester"}, {"Beszélő 2", "p-other"}}},
             {"participants", QJsonArray{
-                QJsonObject{{"id", "v1"}, {"personName", "Tester"}, {"source", "voice"},
+                QJsonObject{{"id", "v1"}, {"personId", "p-tester"}, {"source", "voice"},
                             {"rawSpeakerIds", QJsonArray{"Beszélő 1@mic"}}, {"approved", true}},
-                QJsonObject{{"id", "m-1"}, {"personName", "Other"}, {"source", "manual"}}}},
+                QJsonObject{{"id", "m-1"}, {"personId", "p-other"}, {"source", "manual"}}}},
             {"participantApproval", QJsonObject{{"at", "2026-10-11T10:00:00"},
-                {"candidates", QJsonArray{QJsonObject{{"participantId", "v1"}, {"personName", "Tester"}, {"checked", true}},
-                                          QJsonObject{{"participantId", "m-1"}, {"personName", "Other"}}}}}}}).toJson());
+                {"candidates", QJsonArray{QJsonObject{{"participantId", "v1"}, {"personId", "p-tester"}, {"checked", true}},
+                                          QJsonObject{{"participantId", "m-1"}, {"personId", "p-other"}}}}}}}).toJson());
         f.close();
 
         QCOMPARE(cli({"participants", dir.path(), "--remove", "nincs"}).code, 1);
@@ -130,7 +135,7 @@ private slots:
         const QJsonArray cand = m.value("participantApproval").toObject().value("candidates").toArray();
         QCOMPARE(cand.size(), 1);
         QVERIFY(!m.value("speakerMap").toObject().contains("Beszélő 1"));
-        QCOMPARE(m.value("speakerMap").toObject().value("Beszélő 2").toString(), QStringLiteral("Other"));
+        QCOMPARE(m.value("speakerMap").toObject().value("Beszélő 2").toString(), QStringLiteral("p-other"));
     }
 
 private:

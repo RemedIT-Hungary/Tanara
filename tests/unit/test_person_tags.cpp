@@ -3,7 +3,8 @@
 // merge over to the people, the union on a person merge, the suggestion thresholds in both
 // directions, the meeting tag suggested from the participants, (person, tag) rejection, and
 // tagEvidence's supports / contradicts / neutral cases.
-// Made-up names; everything in a temporary folder (or a TANARA_HOME sandbox).
+// Made-up names; everything in a temporary folder (or a TANARA_HOME sandbox). People are PersonIds: in the
+// pure tests a person's id is its name (P), with a PeopleStore it comes from the store (pid).
 #include <QtTest>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -31,9 +32,18 @@ const QString kArpad = QStringLiteral("Varga Árpád");
 const QString kEszter = QStringLiteral("Molnár Eszter");
 const QString kBence = QStringLiteral("Szabó Bence");
 
+// The pure tests' people: the name stands in as the PersonId.
+PersonId P(const QString& name) { return PersonId::fromString(name); }
+PersonIds Ps(const QStringList& names)
+{
+    PersonIds out;
+    for (const QString& n : names) out << P(n);
+    return out;
+}
+
 library::PersonTagRow row(const QString& id, int day, const QStringList& tags, const QStringList& people)
 {
-    return library::PersonTagRow{ id, QDateTime(QDate(2026, 9, day), QTime(10, 0)), tags, people };
+    return library::PersonTagRow{ id, QDateTime(QDate(2026, 9, day), QTime(10, 0)), tags, Ps(people) };
 }
 
 QJsonObject readJson(const QString& path)
@@ -81,6 +91,8 @@ private slots:
 private:
     QString addMeeting(const QString& title, int day, const QStringList& people, const QStringList& tagIds = {});
     void makeService();
+    // A person by name in the test's people.json (created if missing).
+    PersonId pid(const QString& name) { return m_people->ensure(name); }
 
     std::unique_ptr<QTemporaryDir> m_dir;
     std::unique_ptr<library::MeetingRepository> m_store;
@@ -109,7 +121,7 @@ void PersonTagsTest::makeService()
 {
     m_tags = std::make_unique<library::TagService>(m_store.get(), m_dir->filePath("meta/tags.json"));
     m_tags->setPeopleStore(m_people.get());
-    m_tags->setSelfNameProvider([] { return kSelf; });
+    m_tags->setSelfProvider([this] { return pid(kSelf); });
 }
 
 QString PersonTagsTest::addMeeting(const QString& title, int day, const QStringList& people, const QStringList& tagIds)
@@ -121,8 +133,9 @@ QString PersonTagsTest::addMeeting(const QString& title, int day, const QStringL
     mic.id = "mic"; mic.kind = TrackKind::Mic; mic.file = "track_mic.ogg";
     mic.speakerLabel = kSelf; mic.fixedSpeaker = true; mic.active = true;
     m.tracks.append(mic);
+    m.speakerMap.insert(kSelf, pid(kSelf));   // the own track's label is the own person
     for (int i = 0; i < people.size(); ++i)
-        m.speakerMap.insert(QStringLiteral("Beszélő %1").arg(i + 2), people.at(i));
+        m.speakerMap.insert(QStringLiteral("Beszélő %1").arg(i + 2), pid(people.at(i)));
     m.tagIds = tagIds;
     m_store->saveMeeting(m);
     return m.id;
@@ -136,28 +149,27 @@ void PersonTagsTest::statsExcludeSelfAndDoNotTruncate()
     for (int i = 1; i <= 12; ++i) crowd << QStringLiteral("Résztvevő %1").arg(i);
     QVector<library::PersonTagRow> rows;
     rows << row("m1", 1, {"nord"}, QStringList{kSelf, kGabor} + crowd)
-         << row("m2", 2, {"nord"}, {kSelf, kGabor.toUpper(), kArpad})
+         << row("m2", 2, {"nord"}, {kSelf, kGabor, kArpad})
          << row("m3", 3, {"nord", "part"}, {kSelf, kArpad})
          << row("m4", 4, {}, {kSelf, kGabor})
          << row("m5", 5, {"part"}, {kSelf});
-    const library::PersonTagStats st = library::PersonTagStats::compute(rows, kSelf.toLower());
+    const library::PersonTagStats st = library::PersonTagStats::compute(rows, P(kSelf));
 
     QCOMPARE(st.meetingCount(), 5);
     QCOMPARE(st.tagTotal("nord"), 3);
     QCOMPARE(st.tagTotal("part"), 2);
     // The own name is nowhere.
-    QCOMPARE(st.shared(kSelf, "nord"), 0);
-    QCOMPARE(st.personTotal(kSelf), 0);
-    QVERIFY(!st.peopleOf("nord").contains(kSelf));
+    QCOMPARE(st.shared(P(kSelf), "nord"), 0);
+    QCOMPARE(st.personTotal(P(kSelf)), 0);
+    QVERIFY(!st.peopleOf("nord").contains(P(kSelf)));
     // Not cut to 8: all 12 + Gábor + Árpád.
     QCOMPARE(st.peopleOf("nord").size(), 14);
-    QCOMPARE(st.shared(QStringLiteral("Résztvevő 12"), "nord"), 1);
-    // Case-insensitive; |M(p)| counts the untagged meeting too.
-    QCOMPARE(st.shared(kGabor, "nord"), 2);
-    QCOMPARE(st.personTotal(kGabor), 3);
-    QCOMPARE(st.lastShared(kGabor, "nord").date(), QDate(2026, 9, 2));
-    QCOMPARE(st.displayName(kGabor.toLower()), kGabor);    // the latest (m4) spelling
-    QCOMPARE(st.tagsOf(kArpad).size(), 2);
+    QCOMPARE(st.shared(P(QStringLiteral("Résztvevő 12")), "nord"), 1);
+    // |M(p)| counts the untagged meeting too.
+    QCOMPARE(st.shared(P(kGabor), "nord"), 2);
+    QCOMPARE(st.personTotal(P(kGabor)), 3);
+    QCOMPARE(st.lastShared(P(kGabor), "nord").date(), QDate(2026, 9, 2));
+    QCOMPARE(st.tagsOf(P(kArpad)).size(), 2);
 }
 
 void PersonTagsTest::thresholds()
@@ -180,14 +192,14 @@ void PersonTagsTest::evidenceSupportContradictNeutral()
         rows << row(QStringLiteral("n%1").arg(i), i, {"nord"}, i <= 11 ? QStringList{kGabor} : QStringList{kArpad});
     rows << row("p1", 20, {"part"}, {kEszter}) << row("p2", 21, {"part"}, {kEszter});
     library::PersonTagSnapshot snap;
-    snap.stats = std::make_shared<library::PersonTagStats>(library::PersonTagStats::compute(rows, kSelf));
+    snap.stats = std::make_shared<library::PersonTagStats>(library::PersonTagStats::compute(rows, P(kSelf)));
     snap.tagNames = { {"nord", "Nordvik"}, {"part", "Partnerek"}, {"new", "Új"} };
-    snap.selfKey = library::persontags::personKey(kSelf);
-    snap.manual.insert(library::persontags::personKey(kEszter), {"part"});
-    snap.manual.insert(library::persontags::personKey(kBence), {"nord"});
+    snap.self = P(kSelf);
+    snap.manual.insert(P(kEszter), {"part"});
+    snap.manual.insert(P(kBence), {"nord"});
 
     // Learned support without a manual tag.
-    library::TagEvidence ev = snap.evidence(kGabor, {"nord"});
+    library::TagEvidence ev = snap.evidence(P(kGabor), {"nord"});
     QVERIFY(ev.isSupport());
     QCOMPARE(ev.supportTagIds, QStringList{"nord"});
     QCOMPARE(ev.text, QStringLiteral("#Nordvik"));
@@ -195,21 +207,21 @@ void PersonTagsTest::evidenceSupportContradictNeutral()
     QVERIFY(!ev.items.first().manual);
 
     // Manual support with 0 shared meetings (a person added in advance).
-    ev = snap.evidence(kBence, {"nord", "part"});
+    ev = snap.evidence(P(kBence), {"nord", "part"});
     QCOMPARE(ev.supportTagIds, QStringList{"nord"});
     QVERIFY(ev.items.first().manual);
     QCOMPARE(ev.text, QStringLiteral("#Nordvik"));
     QCOMPARE(ev.detail, QStringLiteral("0 / 14"));
 
     // Several supporting tags: "+1".
-    snap.manual.insert(library::persontags::personKey(kGabor), {"part"});
-    ev = snap.evidence(kGabor, {"nord", "part"});
+    snap.manual.insert(P(kGabor), {"part"});
+    ev = snap.evidence(P(kGabor), {"nord", "part"});
     QCOMPARE(ev.supportTagIds, (QStringList{"part", "nord"}));   // manual first
     QCOMPARE(ev.text, QStringLiteral("#Partnerek +1"));
-    snap.manual.remove(library::persontags::personKey(kGabor));
+    snap.manual.remove(P(kGabor));
 
     // Contradiction: it has a manual tag, none is the meeting's, and there is no learned association either.
-    ev = snap.evidence(kEszter, {"nord"});
+    ev = snap.evidence(P(kEszter), {"nord"});
     QVERIFY(ev.isContradiction());
     QVERIFY(!ev.isSupport());
     QCOMPARE(ev.contradictTagIds, QStringList{"nord"});
@@ -219,12 +231,12 @@ void PersonTagsTest::evidenceSupportContradictNeutral()
     QCOMPARE(ev.detail, QStringLiteral("0 / 14"));
 
     // Neutral: a person without tags (Árpád: 3/14 is below the threshold) is never penalized.
-    QVERIFY(snap.evidence(kArpad, {"nord"}).isEmpty());
+    QVERIFY(snap.evidence(P(kArpad), {"nord"}).isEmpty());
     // Neutral: an untagged meeting; an unknown tag; the own person.
-    QVERIFY(snap.evidence(kEszter, {}).isEmpty());
-    QVERIFY(snap.evidence(kEszter, {"ismeretlen"}).isEmpty());
-    snap.manual.insert(library::persontags::personKey(kSelf), {"part"});
-    QVERIFY(snap.evidence(kSelf, {"nord"}).isEmpty());
+    QVERIFY(snap.evidence(P(kEszter), {}).isEmpty());
+    QVERIFY(snap.evidence(P(kEszter), {"ismeretlen"}).isEmpty());
+    snap.manual.insert(P(kSelf), {"part"});
+    QVERIFY(snap.evidence(P(kSelf), {"nord"}).isEmpty());
 }
 
 void PersonTagsTest::evidenceContradictionGuards()
@@ -239,29 +251,29 @@ void PersonTagsTest::evidenceContradictionGuards()
     rows << row("q1", 20, {"part"}, {nora}) << row("q2", 21, {"part"}, {nora});
     rows << row("e1", 22, {"nord"}, {kArpad});
     library::PersonTagSnapshot snap;
-    snap.stats = std::make_shared<library::PersonTagStats>(library::PersonTagStats::compute(rows, kSelf));
+    snap.stats = std::make_shared<library::PersonTagStats>(library::PersonTagStats::compute(rows, P(kSelf)));
     snap.tagNames = { {"nord", "Nordvik"}, {"part", "Partnerek"}, {"new", "Új"} };
-    snap.selfKey = library::persontags::personKey(kSelf);
-    snap.manual.insert(library::persontags::personKey(kEszter), {"part"});
-    snap.manual.insert(library::persontags::personKey(kArpad), {"part"});
+    snap.self = P(kSelf);
+    snap.manual.insert(P(kEszter), {"part"});
+    snap.manual.insert(P(kArpad), {"part"});
 
     // All four hold: manual tag, mature tag, c = 0, so it contradicts.
-    library::TagEvidence ev = snap.evidence(kEszter, {"nord"});
+    library::TagEvidence ev = snap.evidence(P(kEszter), {"nord"});
     QVERIFY(ev.isContradiction());
     QCOMPARE(ev.detail, QStringLiteral("0 / 7"));
     // (2) without a manual tag >= 5 tagged meetings are enough too; the "other tags" come from the learned ones.
-    ev = snap.evidence(kBence, {"nord"});
+    ev = snap.evidence(P(kBence), {"nord"});
     QVERIFY(ev.isContradiction());
     QCOMPARE(ev.personTagNames, QStringList{"Partnerek"});
     // (2) does not hold: an untagged person with few tagged meetings never penalizes.
-    QVERIFY(snap.evidence(nora, {"nord"}).isEmpty());
+    QVERIFY(snap.evidence(P(nora), {"nord"}).isEmpty());
     // (1) does not hold: the meeting has no (known) tag.
-    QVERIFY(snap.evidence(kEszter, {}).isEmpty());
+    QVERIFY(snap.evidence(P(kEszter), {}).isEmpty());
     // (3) does not hold: Árpád has already been at a #Nordvik meeting once (c = 1, below the threshold).
-    QVERIFY(snap.evidence(kArpad, {"nord"}).isEmpty());
+    QVERIFY(snap.evidence(P(kArpad), {"nord"}).isEmpty());
     // (4) does not hold: a young tag (|M(t)| = 2 < 5) does not penalize; not with mixed tags either.
-    QVERIFY(snap.evidence(kEszter, {"new"}).isEmpty());
-    QVERIFY(snap.evidence(kEszter, {"nord", "new"}).isEmpty());
+    QVERIFY(snap.evidence(P(kEszter), {"new"}).isEmpty());
+    QVERIFY(snap.evidence(P(kEszter), {"nord", "new"}).isEmpty());
 }
 
 void PersonTagsTest::evidenceExcludesOwnMeeting()
@@ -272,11 +284,11 @@ void PersonTagsTest::evidenceExcludesOwnMeeting()
     for (int i = 1; i <= 6; ++i)
         rows << row(QStringLiteral("n%1").arg(i), i, {"nord"}, i <= 2 ? QStringList{kGabor} : QStringList{kArpad});
     library::PersonTagSnapshot snap;
-    snap.stats = std::make_shared<library::PersonTagStats>(library::PersonTagStats::compute(rows, kSelf));
+    snap.stats = std::make_shared<library::PersonTagStats>(library::PersonTagStats::compute(rows, P(kSelf)));
     snap.tagNames = { {"nord", "Nordvik"} };
-    QVERIFY(snap.evidence(kGabor, {"nord"}).isSupport());
-    QCOMPARE(snap.evidence(kGabor, {"nord"}, "n3").detail, QStringLiteral("2 / 5"));
-    QVERIFY(snap.evidence(kGabor, {"nord"}, "n2").isEmpty());
+    QVERIFY(snap.evidence(P(kGabor), {"nord"}).isSupport());
+    QCOMPARE(snap.evidence(P(kGabor), {"nord"}, "n3").detail, QStringLiteral("2 / 5"));
+    QVERIFY(snap.evidence(P(kGabor), {"nord"}, "n2").isEmpty());
 }
 
 void PersonTagsTest::learningQuestionsRules()
@@ -289,78 +301,79 @@ void PersonTagsTest::learningQuestionsRules()
          << row("c", 3, {"nord"}, {kBence}) << row("d", 4, {}, {nora})
          << row("cur", 5, {"nord", "part"}, {kGabor, kArpad, kBence});
     library::PersonTagSnapshot snap;
-    snap.stats = std::make_shared<library::PersonTagStats>(library::PersonTagStats::compute(rows, kSelf));
+    snap.stats = std::make_shared<library::PersonTagStats>(library::PersonTagStats::compute(rows, P(kSelf)));
     snap.tagNames = { {"nord", "Nordvik"}, {"part", "Partnerek"} };
-    snap.selfKey = library::persontags::personKey(kSelf);
+    snap.self = P(kSelf);
+    for (const QString& n : {kGabor, kArpad, kBence, kEszter, nora, kSelf}) snap.names.insert(P(n), n);
 
-    const QStringList names{kGabor, kArpad, kBence, kEszter, nora, kSelf, QString()};
-    QVector<library::PersonTagQuestion> q = snap.learningQuestions("cur", {"nord", "part"}, names);
+    const PersonIds people = Ps({kGabor, kArpad, kBence, kEszter, nora, kSelf}) + PersonIds{PersonId()};
+    QVector<library::PersonTagQuestion> q = snap.learningQuestions("cur", {"nord", "part"}, people);
     // Gábor and Árpád: c becomes 2 now, so one group question; Bence is already at 3, so none;
     // Eszter is a new person, so both tags; Nóra for the first time on #Nordvik, so none; own and empty are left out.
     QCOMPARE(q.size(), 3);
     QCOMPARE(q.at(0).tagId, QStringLiteral("nord"));
-    QCOMPARE(q.at(0).people, (QStringList{kGabor, kArpad}));
+    QCOMPARE(q.at(0).people, Ps({kGabor, kArpad}));
+    QCOMPARE(q.at(0).names, (QStringList{kGabor, kArpad}));
     QVERIFY(!q.at(0).newPeople);
     QCOMPARE(q.at(1).tagId, QStringLiteral("nord"));
-    QCOMPARE(q.at(1).people, QStringList{kEszter});
+    QCOMPARE(q.at(1).people, Ps({kEszter}));
     QVERIFY(q.at(1).newPeople);
     QCOMPARE(q.at(2).tagId, QStringLiteral("part"));
-    QCOMPARE(q.at(2).people, QStringList{kEszter});
+    QCOMPARE(q.at(2).people, Ps({kEszter}));
 
     // A manual tag and a rejection exclude; no question on an untagged meeting.
-    snap.manual.insert(library::persontags::personKey(kGabor), {"nord"});
-    q = snap.learningQuestions("cur", {"nord"}, {kGabor, kArpad, kEszter},
-                               [](const QString& n, const QString& t) { return n == kEszter && t == "nord"; });
+    snap.manual.insert(P(kGabor), {"nord"});
+    q = snap.learningQuestions("cur", {"nord"}, Ps({kGabor, kArpad, kEszter}),
+                               [](const PersonId& n, const QString& t) { return n == P(kEszter) && t == "nord"; });
     QCOMPARE(q.size(), 1);
-    QCOMPARE(q.at(0).people, QStringList{kArpad});
-    QVERIFY(snap.learningQuestions("d", {}, {nora}).isEmpty());
+    QCOMPARE(q.at(0).people, Ps({kArpad}));
+    QVERIFY(snap.learningQuestions("d", {}, Ps({nora})).isEmpty());
 }
 
 // ---- TagService + PeopleStore -----------------------------------------------------------------
 
 void PersonTagsTest::manualTagsRoundTripAndUndo()
 {
-    m_people->add(kGabor);
+    pid(kGabor);
     QSignalSpy changed(m_tags.get(), &library::TagService::personTagsChanged);
-    const Tag nord = m_tags->addPersonTag(kGabor, QStringLiteral("Nordvik"));   // new tag
+    const Tag nord = m_tags->addPersonTag(pid(kGabor), QStringLiteral("Nordvik"));   // new tag
     QVERIFY(nord.isValid());
-    const Tag part = m_tags->addPersonTag(kGabor, QStringLiteral("Partnerek"));
-    QCOMPARE(m_tags->tagsOfPerson(kGabor), (QStringList{nord.id, part.id}));
-    QCOMPARE(m_tags->tagsOfPerson(kGabor.toLower()), (QStringList{nord.id, part.id}));
+    const Tag part = m_tags->addPersonTag(pid(kGabor), QStringLiteral("Partnerek"));
+    QCOMPARE(m_tags->tagsOfPerson(pid(kGabor)), (QStringList{nord.id, part.id}));
     QVERIFY(changed.count() >= 2);
-    QCOMPARE(m_tags->peopleWith(nord.id), QStringList{kGabor});
+    QCOMPARE(changed.last().first().toString(), pid(kGabor).toString());   // the signal carries the PersonId
+    QCOMPARE(m_tags->peopleWith(nord.id), PersonIds{pid(kGabor)});
 
     // people.json: the record's "tags" array; a new PeopleStore sees it too.
-    const QJsonArray people = readJson(m_dir->filePath("meta/people.json")).value("people").toArray();
-    QCOMPARE(people.size(), 1);
-    QCOMPARE(people.at(0).toObject().value("tags").toArray().size(), 2);
+    const QJsonObject people = readJson(m_dir->filePath("meta/people.json")).value("people").toObject();
+    QCOMPARE(people.value(pid(kGabor).toString()).toObject().value("tags").toArray().size(), 2);
     library::PeopleStore other(m_dir->filePath("meta/people.json"));
-    QCOMPARE(other.tags(kGabor), (QStringList{nord.id, part.id}));
+    QCOMPARE(other.tags(pid(kGabor)), (QStringList{nord.id, part.id}));
 
     // A repeat does not duplicate; removal; undo step by step.
-    m_tags->addPersonTag(kGabor, nord.id);
-    QCOMPARE(m_tags->tagsOfPerson(kGabor).size(), 2);
-    m_tags->removePersonTag(kGabor, nord.id);
-    QCOMPARE(m_tags->tagsOfPerson(kGabor), QStringList{part.id});
+    m_tags->addPersonTag(pid(kGabor), nord.id);
+    QCOMPARE(m_tags->tagsOfPerson(pid(kGabor)).size(), 2);
+    m_tags->removePersonTag(pid(kGabor), nord.id);
+    QCOMPARE(m_tags->tagsOfPerson(pid(kGabor)), QStringList{part.id});
     QVERIFY(m_tags->canUndo());
     m_tags->undo();
-    QCOMPARE(m_tags->tagsOfPerson(kGabor), (QStringList{nord.id, part.id}));
+    QCOMPARE(m_tags->tagsOfPerson(pid(kGabor)), (QStringList{nord.id, part.id}));
     m_tags->undo();   // applying Partners (with creating the tag, one step)
-    QCOMPARE(m_tags->tagsOfPerson(kGabor), QStringList{nord.id});
+    QCOMPARE(m_tags->tagsOfPerson(pid(kGabor)), QStringList{nord.id});
     QVERIFY(!m_tags->tag(part.id).isValid());
 
     // setPersonTags: an unknown id is left out; the list is replaced.
-    QVERIFY(m_tags->setPersonTags(kGabor, {QStringLiteral("nincs-ilyen"), nord.id}));
-    QCOMPARE(m_tags->tagsOfPerson(kGabor), QStringList{nord.id});
-    QVERIFY(m_tags->setPersonTags(kGabor, {}));
-    QVERIFY(m_tags->tagsOfPerson(kGabor).isEmpty());
+    QVERIFY(m_tags->setPersonTags(pid(kGabor), {QStringLiteral("nincs-ilyen"), nord.id}));
+    QCOMPARE(m_tags->tagsOfPerson(pid(kGabor)), QStringList{nord.id});
+    QVERIFY(m_tags->setPersonTags(pid(kGabor), {}));
+    QVERIFY(m_tags->tagsOfPerson(pid(kGabor)).isEmpty());
     m_tags->undo();
-    QCOMPARE(m_tags->tagsOfPerson(kGabor), QStringList{nord.id});
+    QCOMPARE(m_tags->tagsOfPerson(pid(kGabor)), QStringList{nord.id});
 
-    // A person not on the list (e.g. one that only has a voiceprint) can be tagged too.
-    m_tags->addPersonTag(kBence, nord.id);
-    QCOMPARE(m_tags->tagsOfPerson(kBence), QStringList{nord.id});
-    QVERIFY(!m_people->names().contains(kBence));
+    // Any person of people.json can be tagged; an unknown id cannot.
+    m_tags->addPersonTag(pid(kBence), nord.id);
+    QCOMPARE(m_tags->tagsOfPerson(pid(kBence)), QStringList{nord.id});
+    QVERIFY(m_tags->tagsOfPerson(PersonId::fromString("nincs-ilyen")).isEmpty());
 }
 
 void PersonTagsTest::removeAndMergePropagateToPeople()
@@ -369,41 +382,40 @@ void PersonTagsTest::removeAndMergePropagateToPeople()
     const Tag nordOld = m_tags->create("Nordvik régi");
     const Tag part = m_tags->create("Partnerek");
     const QString m1 = addMeeting("Egyeztetés", 1, {kGabor}, {nordOld.id});
-    m_tags->setPersonTags(kGabor, {nordOld.id, part.id});
-    m_tags->setPersonTags(kArpad, {nordOld.id, nord.id});
-    m_tags->rejectPersonTag(kEszter, nordOld.id);
+    m_tags->setPersonTags(pid(kGabor), {nordOld.id, part.id});
+    m_tags->setPersonTags(pid(kArpad), {nordOld.id, nord.id});
+    m_tags->rejectPersonTag(pid(kEszter), nordOld.id);
 
     // Merge: replacement on the people, without duplicates; the rejection carries over too.
     m_tags->merge(nordOld.id, nord.id);
-    QCOMPARE(m_tags->tagsOfPerson(kGabor), (QStringList{nord.id, part.id}));
-    QCOMPARE(m_tags->tagsOfPerson(kArpad), QStringList{nord.id});
+    QCOMPARE(m_tags->tagsOfPerson(pid(kGabor)), (QStringList{nord.id, part.id}));
+    QCOMPARE(m_tags->tagsOfPerson(pid(kArpad)), QStringList{nord.id});
     QCOMPARE(m_tags->tagsOf(m1), QStringList{nord.id});
-    QVERIFY(m_tags->isRejectedForPerson(kEszter, nord.id));
+    QVERIFY(m_tags->isRejectedForPerson(pid(kEszter), nord.id));
     m_tags->undo();   // one step: meeting + people + set
-    QCOMPARE(m_tags->tagsOfPerson(kGabor), (QStringList{nordOld.id, part.id}));
-    QCOMPARE(m_tags->tagsOfPerson(kArpad), (QStringList{nordOld.id, nord.id}));
+    QCOMPARE(m_tags->tagsOfPerson(pid(kGabor)), (QStringList{nordOld.id, part.id}));
+    QCOMPARE(m_tags->tagsOfPerson(pid(kArpad)), (QStringList{nordOld.id, nord.id}));
     QCOMPARE(m_tags->tagsOf(m1), QStringList{nordOld.id});
 
     // Delete: removed from every person; undoable.
     m_tags->remove(part.id);
-    QCOMPARE(m_tags->tagsOfPerson(kGabor), QStringList{nordOld.id});
-    QVERIFY(!m_people->tags(kGabor).contains(part.id));
+    QCOMPARE(m_tags->tagsOfPerson(pid(kGabor)), QStringList{nordOld.id});
+    QVERIFY(!m_people->tags(pid(kGabor)).contains(part.id));
     m_tags->undo();
-    QCOMPARE(m_tags->tagsOfPerson(kGabor), (QStringList{nordOld.id, part.id}));
+    QCOMPARE(m_tags->tagsOfPerson(pid(kGabor)), (QStringList{nordOld.id, part.id}));
 }
 
 void PersonTagsTest::peopleStoreRenameUnionsTags()
 {
-    m_people->add(kGabor);
-    m_people->add(kArpad);
-    m_people->setTags(kGabor, {"a", "b"});
-    m_people->setTags(kArpad, {"b", "c"});
-    m_people->rename(kGabor, kArpad, true);   // merge: the two records become one
-    QCOMPARE(m_people->tags(kArpad), (QStringList{"b", "c", "a"}));
-    QVERIFY(m_people->tags(kGabor).isEmpty());
-    m_people->rename(kArpad, kEszter);        // plain rename: the tags go along
-    QCOMPARE(m_people->tags(kEszter), (QStringList{"b", "c", "a"}));
-    m_people->remove(kEszter);
+    const PersonId g = pid(kGabor), a = pid(kArpad);
+    m_people->setTags(g, {"a", "b"});
+    m_people->setTags(a, {"b", "c"});
+    QVERIFY(m_people->merge(a, g));             // merge: the two records become one
+    QCOMPARE(m_people->tags(a), (QStringList{"b", "c", "a"}));
+    QVERIFY(m_people->tags(g).isEmpty());
+    QVERIFY(m_people->rename(a, kEszter));      // plain rename: one field, the tags stay
+    QCOMPARE(m_people->tags(a), (QStringList{"b", "c", "a"}));
+    m_people->remove(a);
     QVERIFY(m_people->allTags().isEmpty());
 }
 
@@ -418,7 +430,7 @@ void PersonTagsTest::peopleStatsAndSuggestPeopleForTag()
         addMeeting(QStringLiteral("Nordvik %1").arg(i), i, who, {nord.id});
     }
     addMeeting("Más", 10, {kArpad});
-    m_tags->setPersonTags(kBence, {nord.id});   // a person added in advance, 0 meetings
+    m_tags->setPersonTags(pid(kBence), {nord.id});   // a person added in advance, 0 meetings
 
     const QVector<library::PersonTagStat> list = m_tags->peopleStats(nord.id);
     QCOMPARE(list.size(), 3);                     // Eszter (1/6) does not reach the threshold
@@ -434,7 +446,8 @@ void PersonTagsTest::peopleStatsAndSuggestPeopleForTag()
     QVector<library::PersonTagStat> sugg = m_tags->suggestPeopleForTag(nord.id);
     QCOMPARE(sugg.size(), 2);                     // Bence is manual, so not a suggestion
     QCOMPARE(sugg.at(0).name, kGabor);
-    sugg = m_tags->suggestPeopleForTag(nord.id, {kGabor.toUpper()});
+    QCOMPARE(sugg.at(0).personId, pid(kGabor));
+    sugg = m_tags->suggestPeopleForTag(nord.id, {pid(kGabor)});
     QCOMPARE(sugg.size(), 1);
     QCOMPARE(sugg.at(0).name, kArpad);
     QCOMPARE(m_tags->suggestPeopleForTag(nord.id, {}, 1).size(), 1);
@@ -455,76 +468,79 @@ void PersonTagsTest::suggestTagsForPerson()
     addMeeting("E1", 5, {kGabor}, {one.id});
     for (int i = 0; i < 18; ++i) addMeeting(QStringLiteral("Nagy %1").arg(i), 6 + i % 20, {kArpad}, {big.id});
 
-    QVector<library::PersonTagStat> sugg = m_tags->suggestTagsForPerson(kGabor);
+    QVector<library::PersonTagStat> sugg = m_tags->suggestTagsForPerson(pid(kGabor));
     QCOMPARE(sugg.size(), 2);
     QCOMPARE(sugg.at(0).tagId, nord.id);
     QCOMPARE(sugg.at(1).tagId, big.id);
     QCOMPARE(sugg.at(1).personTotal, 4);
 
     // An already applied tag is not a suggestion; the person's tag list shows everything.
-    m_tags->setPersonTags(kGabor, {nord.id});
-    sugg = m_tags->suggestTagsForPerson(kGabor);
+    m_tags->setPersonTags(pid(kGabor), {nord.id});
+    sugg = m_tags->suggestTagsForPerson(pid(kGabor));
     QCOMPARE(sugg.size(), 1);
     QCOMPARE(sugg.at(0).tagId, big.id);
-    const QVector<library::PersonTagStat> all = m_tags->personTagStats(kGabor);
+    const QVector<library::PersonTagStat> all = m_tags->personTagStats(pid(kGabor));
     QCOMPARE(all.size(), 4);
     QVERIFY(all.at(0).manual);
     QCOMPARE(all.at(0).tagId, nord.id);
 
     // A person with < 2 meetings gets no suggestion.
-    QVERIFY(m_tags->suggestTagsForPerson(kEszter).isEmpty());
+    QVERIFY(m_tags->suggestTagsForPerson(pid(kEszter)).isEmpty());
 }
 
 void PersonTagsTest::personRejection()
 {
     const Tag nord = m_tags->create("Nordvik");
     for (int i = 1; i <= 3; ++i) addMeeting(QStringLiteral("N%1").arg(i), i, {kGabor}, {nord.id});
-    QCOMPARE(m_tags->suggestTagsForPerson(kGabor).size(), 1);
+    QCOMPARE(m_tags->suggestTagsForPerson(pid(kGabor)).size(), 1);
     QCOMPARE(m_tags->suggestPeopleForTag(nord.id).size(), 1);
     const int before = m_tags->rejectedCount();
 
-    m_tags->rejectPersonTag(kGabor, nord.id);
-    QVERIFY(m_tags->isRejectedForPerson(kGabor.toLower(), nord.id));
-    QVERIFY(m_tags->suggestTagsForPerson(kGabor).isEmpty());
+    m_tags->rejectPersonTag(pid(kGabor), nord.id);
+    QVERIFY(m_tags->isRejectedForPerson(pid(kGabor), nord.id));
+    QVERIFY(m_tags->suggestTagsForPerson(pid(kGabor)).isEmpty());
     QVERIFY(m_tags->suggestPeopleForTag(nord.id).isEmpty());
     QCOMPARE(m_tags->rejectedCount(), before + 1);
     // The evidence stays (the statistics are true); the list shows the rejection.
-    QVERIFY(m_tags->tagEvidence(kGabor, {nord.id}).isSupport());
+    QVERIFY(m_tags->tagEvidence(pid(kGabor), {nord.id}).isSupport());
     QVERIFY(m_tags->peopleStats(nord.id).at(0).rejected);
     // It does not disturb the meeting-level rejection question.
     QVERIFY(!m_tags->isRejected(QStringLiteral("x"), nord.id));
 
-    // Persistent: in tags.json with a "person" field, without meetingId; a new instance sees it too.
-    const QJsonArray rej = readJson(m_dir->filePath("meta/tags.json")).value("rejected").toArray();
+    // Persistent: in tags.json (version 2) with a "personId" field, without meetingId; a new instance sees it too.
+    const QJsonObject tagsJson = readJson(m_dir->filePath("meta/tags.json"));
+    QCOMPARE(tagsJson.value("version").toInt(), 2);
+    const QJsonArray rej = tagsJson.value("rejected").toArray();
     QCOMPARE(rej.size(), 1);
-    QCOMPARE(rej.at(0).toObject().value("person").toString(), kGabor);
+    QCOMPARE(rej.at(0).toObject().value("personId").toString(), pid(kGabor).toString());
+    QVERIFY(!rej.at(0).toObject().contains("person"));
     QVERIFY(!rej.at(0).toObject().contains("meetingId"));
     makeService();
-    QVERIFY(m_tags->isRejectedForPerson(kGabor, nord.id));
+    QVERIFY(m_tags->isRejectedForPerson(pid(kGabor), nord.id));
 
     // Undoable; clearRejected clears this too.
     m_tags->undo();   // new instance: empty stack, so no effect
-    QVERIFY(m_tags->isRejectedForPerson(kGabor, nord.id));
+    QVERIFY(m_tags->isRejectedForPerson(pid(kGabor), nord.id));
     m_tags->clearRejected();
-    QVERIFY(!m_tags->isRejectedForPerson(kGabor, nord.id));
+    QVERIFY(!m_tags->isRejectedForPerson(pid(kGabor), nord.id));
     m_tags->undo();
-    QVERIFY(m_tags->isRejectedForPerson(kGabor, nord.id));
+    QVERIFY(m_tags->isRejectedForPerson(pid(kGabor), nord.id));
 
     // A meeting-level person rejection applies to that meeting only.
-    m_tags->rejectPersonTag(kArpad, nord.id, QStringLiteral("m-1"));
-    QVERIFY(m_tags->isRejectedForPerson(kArpad, nord.id, QStringLiteral("m-1")));
-    QVERIFY(!m_tags->isRejectedForPerson(kArpad, nord.id, QStringLiteral("m-2")));
-    QVERIFY(!m_tags->isRejectedForPerson(kArpad, nord.id));
+    m_tags->rejectPersonTag(pid(kArpad), nord.id, QStringLiteral("m-1"));
+    QVERIFY(m_tags->isRejectedForPerson(pid(kArpad), nord.id, QStringLiteral("m-1")));
+    QVERIFY(!m_tags->isRejectedForPerson(pid(kArpad), nord.id, QStringLiteral("m-2")));
+    QVERIFY(!m_tags->isRejectedForPerson(pid(kArpad), nord.id));
 }
 
 void PersonTagsTest::meetingTagsFromParticipants()
 {
     const Tag nord = m_tags->create("Nordvik");
     const Tag part = m_tags->create("Partnerek");
-    m_tags->setPersonTags(kGabor, {nord.id, part.id});
-    m_tags->setPersonTags(kArpad, {nord.id});
-    m_tags->setPersonTags(kSelf, {part.id});   // the own person cannot be tagged
-    QVERIFY(m_tags->tagsOfPerson(kSelf).isEmpty());
+    m_tags->setPersonTags(pid(kGabor), {nord.id, part.id});
+    m_tags->setPersonTags(pid(kArpad), {nord.id});
+    m_tags->setPersonTags(pid(kSelf), {part.id});   // the own person cannot be tagged
+    QVERIFY(m_tags->tagsOfPerson(pid(kSelf)).isEmpty());
 
     // Two participants: only the tags on both of them.
     const QString m1 = addMeeting("Új egyeztetés", 1, {kGabor, kArpad});
@@ -547,8 +563,8 @@ void PersonTagsTest::meetingTagsFromParticipants()
     QCOMPARE(s.at(0).tagId, nord.id);
 
     // An explicit name list (e.g. manual participants, before the transcript).
-    QCOMPARE(m_tags->suggestTagsForPeople({kGabor, kEszter}, QString()).size(), 0);
-    QCOMPARE(m_tags->suggestTagsForPeople({kSelf, kArpad}, QString()).size(), 1);
+    QCOMPARE(m_tags->suggestTagsForPeople({pid(kGabor), pid(kEszter)}, QString()).size(), 0);
+    QCOMPARE(m_tags->suggestTagsForPeople({pid(kSelf), pid(kArpad)}, QString()).size(), 1);
 }
 
 void PersonTagsTest::meetingTagsFromManualParticipantsBeforeTranscript()
@@ -556,13 +572,13 @@ void PersonTagsTest::meetingTagsFromManualParticipantsBeforeTranscript()
     // Before the transcript there is no speaker map: manual and approved participants count; an
     // unapproved audio candidate does not.
     const Tag nord = m_tags->create("Nordvik");
-    m_tags->setPersonTags(kGabor, {nord.id});
-    m_tags->setPersonTags(kArpad, {nord.id});
-    m_tags->setPersonTags(kEszter, {nord.id});
+    m_tags->setPersonTags(pid(kGabor), {nord.id});
+    m_tags->setPersonTags(pid(kArpad), {nord.id});
+    m_tags->setPersonTags(pid(kEszter), {nord.id});
     const QString mid = addMeeting("Felvétel", 3, {});
     Meeting m = m_store->load(mid);
     Participant manual;
-    manual.id = "m-1"; manual.personName = kGabor; manual.source = ParticipantSource::Manual;
+    manual.id = "m-1"; manual.personId = pid(kGabor); manual.source = ParticipantSource::Manual;
     m.participants = {manual};
     m_store->saveMeeting(m);
     // A single non-own participant with the tag on them: a suggestion.
@@ -571,9 +587,9 @@ void PersonTagsTest::meetingTagsFromManualParticipantsBeforeTranscript()
     QCOMPARE(s.at(0).reasons.at(0).values, QStringList{kGabor});
 
     Participant guess;
-    guess.id = "v-1"; guess.personName = kEszter; guess.source = ParticipantSource::Voice;
+    guess.id = "v-1"; guess.personId = pid(kEszter); guess.source = ParticipantSource::Voice;
     Participant approved;
-    approved.id = "v-2"; approved.personName = kArpad; approved.source = ParticipantSource::Voice;
+    approved.id = "v-2"; approved.personId = pid(kArpad); approved.source = ParticipantSource::Voice;
     approved.approved = true;
     m = m_store->load(mid);
     m.participants << guess << approved;
@@ -588,32 +604,33 @@ void PersonTagsTest::learningQuestionsServiceAskOnceAndAnswer()
     const Tag nord = m_tags->create("Nordvik");
     addMeeting("Első", 1, {kGabor, kArpad}, {nord.id});
     const QString mid = addMeeting("Második", 2, {kGabor, kArpad}, {nord.id});
-    QVector<library::PersonTagQuestion> q = m_tags->learningQuestions(mid, {kGabor, kArpad});
+    QVector<library::PersonTagQuestion> q = m_tags->learningQuestions(mid, {pid(kGabor), pid(kArpad)});
     QCOMPARE(q.size(), 1);
     QCOMPARE(q.at(0).tagName, QStringLiteral("Nordvik"));
-    QCOMPARE(q.at(0).people, (QStringList{kGabor, kArpad}));
+    QCOMPARE(q.at(0).people, (PersonIds{pid(kGabor), pid(kArpad)}));
+    QCOMPARE(q.at(0).names, (QStringList{kGabor, kArpad}));
 
     // Asks once.
     m_tags->markLearningAsked(mid, q);
-    QVERIFY(m_tags->learningQuestions(mid, {kGabor, kArpad}).isEmpty());
+    QVERIFY(m_tags->learningQuestions(mid, {pid(kGabor), pid(kArpad)}).isEmpty());
 
     // "Yes": for both of them, ONE undo step.
     m_tags->answerLearning(q.at(0), true);
-    QCOMPARE(m_tags->tagsOfPerson(kGabor), QStringList{nord.id});
-    QCOMPARE(m_tags->tagsOfPerson(kArpad), QStringList{nord.id});
+    QCOMPARE(m_tags->tagsOfPerson(pid(kGabor)), QStringList{nord.id});
+    QCOMPARE(m_tags->tagsOfPerson(pid(kArpad)), QStringList{nord.id});
     m_tags->undo();
-    QVERIFY(m_tags->tagsOfPerson(kGabor).isEmpty());
-    QVERIFY(m_tags->tagsOfPerson(kArpad).isEmpty());
+    QVERIFY(m_tags->tagsOfPerson(pid(kGabor)).isEmpty());
+    QVERIFY(m_tags->tagsOfPerson(pid(kArpad)).isEmpty());
 
     // "No": a persistent (person, tag) rejection, one step; afterwards it does not ask again.
     m_tags->answerLearning(q.at(0), false);
-    QVERIFY(m_tags->isRejectedForPerson(kGabor, nord.id));
-    QVERIFY(m_tags->isRejectedForPerson(kArpad, nord.id));
+    QVERIFY(m_tags->isRejectedForPerson(pid(kGabor), nord.id));
+    QVERIFY(m_tags->isRejectedForPerson(pid(kArpad), nord.id));
     const QString third = addMeeting("Harmadik", 3, {kGabor}, {nord.id});
     Q_UNUSED(third);
     m_tags->undo();
-    QVERIFY(!m_tags->isRejectedForPerson(kGabor, nord.id));
-    QVERIFY(!m_tags->isRejectedForPerson(kArpad, nord.id));
+    QVERIFY(!m_tags->isRejectedForPerson(pid(kGabor), nord.id));
+    QVERIFY(!m_tags->isRejectedForPerson(pid(kArpad), nord.id));
 }
 
 void PersonTagsTest::serviceEvidence()
@@ -621,35 +638,35 @@ void PersonTagsTest::serviceEvidence()
     const Tag nord = m_tags->create("Nordvik");
     const Tag part = m_tags->create("Partnerek");
     for (int i = 1; i <= 4; ++i) addMeeting(QStringLiteral("N%1").arg(i), i, {kGabor}, {nord.id});
-    m_tags->setPersonTags(kEszter, {part.id});
+    m_tags->setPersonTags(pid(kEszter), {part.id});
 
-    library::TagEvidence ev = m_tags->tagEvidence(kGabor, {nord.id});
+    library::TagEvidence ev = m_tags->tagEvidence(pid(kGabor), {nord.id});
     QCOMPARE(ev.supportTagIds, QStringList{nord.id});
     QCOMPARE(ev.text, QStringLiteral("#Nordvik"));
     QCOMPARE(ev.detail, QStringLiteral("4 / 4"));
     // Eszter has a manual tag, but #Nordvik is not yet mature (4 < 5 meetings): no penalty.
-    QVERIFY(m_tags->tagEvidence(kEszter, {nord.id}).isEmpty());
+    QVERIFY(m_tags->tagEvidence(pid(kEszter), {nord.id}).isEmpty());
     addMeeting(QStringLiteral("N5"), 5, {kArpad}, {nord.id});
-    ev = m_tags->tagEvidence(kEszter, {nord.id});
+    ev = m_tags->tagEvidence(pid(kEszter), {nord.id});
     QCOMPARE(ev.contradictTagIds, QStringList{nord.id});
-    QVERIFY(m_tags->tagEvidence(kArpad, {nord.id}).isEmpty());
-    QVERIFY(m_tags->tagEvidence(kSelf, {nord.id}).isEmpty());
+    QVERIFY(m_tags->tagEvidence(pid(kArpad), {nord.id}).isEmpty());
+    QVERIFY(m_tags->tagEvidence(pid(kSelf), {nord.id}).isEmpty());
 
     // The snapshot can be passed between threads: it gives the same.
     const library::PersonTagSnapshot snap = m_tags->personTagSnapshot();
-    QCOMPARE(snap.evidence(kGabor, {nord.id}).detail, QStringLiteral("4 / 5"));
+    QCOMPARE(snap.evidence(pid(kGabor), {nord.id}).detail, QStringLiteral("4 / 5"));
 }
 
 void PersonTagsTest::selfIsExcluded()
 {
     const Tag nord = m_tags->create("Nordvik");
     for (int i = 1; i <= 3; ++i) addMeeting(QStringLiteral("N%1").arg(i), i, {kGabor}, {nord.id});
-    QVERIFY(!m_tags->setPersonTags(kSelf, {nord.id}));
-    QVERIFY(!m_tags->addPersonTag(kSelf.toUpper(), nord.id).isValid());
-    for (const library::PersonTagStat& s : m_tags->peopleStats(nord.id)) QVERIFY(s.name != kSelf);
-    QVERIFY(m_tags->personTagStats(kSelf).isEmpty());
-    QVERIFY(m_tags->suggestTagsForPerson(kSelf).isEmpty());
-    QCOMPARE(m_tags->personStats()->personTotal(kSelf), 0);
+    QVERIFY(!m_tags->setPersonTags(pid(kSelf), {nord.id}));
+    QVERIFY(!m_tags->addPersonTag(pid(kSelf), nord.id).isValid());
+    for (const library::PersonTagStat& s : m_tags->peopleStats(nord.id)) QVERIFY(s.personId != pid(kSelf));
+    QVERIFY(m_tags->personTagStats(pid(kSelf)).isEmpty());
+    QVERIFY(m_tags->suggestTagsForPerson(pid(kSelf)).isEmpty());
+    QCOMPARE(m_tags->personStats()->personTotal(pid(kSelf)), 0);
     // The old profile (TagProfile) still contains it: this is the trap we avoid.
     bool selfInProfile = false;
     for (const auto& p : m_tags->profile(nord.id).topParticipants) selfInProfile |= p.first == kSelf;
@@ -663,13 +680,13 @@ void PersonTagsTest::backgroundStats()
     QSignalSpy spy(m_tags.get(), &library::TagService::personStatsChanged);
     m_tags->ensurePersonStats();
     QTRY_VERIFY(!m_tags->personStatsBusy());
-    QCOMPARE(m_tags->personStats()->shared(kGabor, nord.id), 3);
+    QCOMPARE(m_tags->personStats()->shared(pid(kGabor), nord.id), 3);
 
     // New meeting: the old snapshot lives until the new one is ready.
     spy.clear();
     addMeeting("N4", 4, {kGabor}, {nord.id});
     QTRY_VERIFY(spy.count() > 0 && !m_tags->personStatsBusy());
-    QCOMPARE(m_tags->personStats()->shared(kGabor, nord.id), 4);
+    QCOMPARE(m_tags->personStats()->shared(pid(kGabor), nord.id), 4);
     QCOMPARE(m_tags->personStats()->tagTotal(nord.id), 4);
 }
 
@@ -686,23 +703,34 @@ void PersonTagsTest::appMergeUnionsTagsAndRejections()
     library::PeopleService* ps = app.peopleService();
     QVERIFY(ps->addPerson(kGabor).ok);
     QVERIFY(ps->addPerson(kArpad).ok);
+    const PersonId g = app.people()->idForName(kGabor), a = app.people()->idForName(kArpad);
     const Tag nord = tags->create("Nordvik");
     const Tag part = tags->create("Partnerek");
     const Tag third = tags->create("Harmadik");
-    tags->setPersonTags(kGabor, {nord.id});
-    tags->setPersonTags(kArpad, {part.id, nord.id});
-    tags->rejectPersonTag(kGabor, third.id);
-    tags->rejectPersonTag(kArpad, third.id);
+    const Tag fourth = tags->create("Negyedik");
+    tags->setPersonTags(g, {nord.id});
+    tags->setPersonTags(a, {part.id, nord.id});
+    tags->rejectPersonTag(g, third.id);
+    tags->rejectPersonTag(a, third.id);
+    tags->rejectPersonTag(g, fourth.id);
 
-    QVERIFY(ps->merge(kGabor, kArpad).ok);
-    QCOMPARE(tags->tagsOfPerson(kArpad), (QStringList{part.id, nord.id}));
-    QVERIFY(tags->tagsOfPerson(kGabor).isEmpty());
-    QVERIFY(tags->isRejectedForPerson(kArpad, third.id));
-    QVERIFY(!tags->isRejectedForPerson(kGabor, third.id));
-    QCOMPARE(tags->rejectedCount(), 1);   // union, without repeats
-    // Undoing the disappearing name's tag step does not overwrite the union.
-    while (tags->canUndo()) tags->undo();
-    QVERIFY(tags->tagsOfPerson(kGabor).isEmpty());
+    QVERIFY(ps->merge(g, a).ok);
+    QCOMPARE(tags->tagsOfPerson(a), (QStringList{part.id, nord.id}));
+    QVERIFY(tags->tagsOfPerson(g).isEmpty());
+    QVERIFY(tags->isRejectedForPerson(a, third.id));
+    QVERIFY(tags->isRejectedForPerson(a, fourth.id));
+    QVERIFY(!tags->isRejectedForPerson(g, third.id));
+    QCOMPARE(tags->rejectedCount(), 2);   // union, without repeats
+    // The person merge is undone in the People window's stack: tags and rejections go back.
+    QVERIFY(ps->canUndo());
+    ps->undo();
+    QCOMPARE(tags->tagsOfPerson(g), QStringList{nord.id});
+    QCOMPARE(tags->tagsOfPerson(a), (QStringList{part.id, nord.id}));
+    QVERIFY(tags->isRejectedForPerson(g, third.id));
+    QVERIFY(tags->isRejectedForPerson(g, fourth.id));
+    QVERIFY(tags->isRejectedForPerson(a, third.id));
+    QVERIFY(!tags->isRejectedForPerson(a, fourth.id));
+    QCOMPARE(tags->rejectedCount(), 3);
     qunsetenv("TANARA_HOME");
 }
 
@@ -716,30 +744,32 @@ void PersonTagsTest::appRemoveAndRenamePerson()
     library::PeopleService* ps = app.peopleService();
     QVERIFY(ps->addPerson(kGabor).ok);
     QVERIFY(ps->addPerson(kEszter).ok);
+    const PersonId g = app.people()->idForName(kGabor), e = app.people()->idForName(kEszter);
     const Tag nord = tags->create("Nordvik");
-    tags->setPersonTags(kGabor, {nord.id});
-    tags->rejectPersonTag(kGabor, QStringLiteral("x"));   // unknown tag: not recorded
+    tags->setPersonTags(g, {nord.id});
+    tags->rejectPersonTag(g, QStringLiteral("x"));   // unknown tag: not recorded
     QCOMPARE(tags->rejectedCount(), 0);
     const Tag part = tags->create("Partnerek");
-    tags->rejectPersonTag(kGabor, part.id);
+    tags->rejectPersonTag(g, part.id);
 
-    // Rename: the tag and the rejection follow; undo works under the new name.
-    QVERIFY(ps->renamePerson(kGabor, kBence).ok);
-    QCOMPARE(tags->tagsOfPerson(kBence), QStringList{nord.id});
-    QVERIFY(tags->isRejectedForPerson(kBence, part.id));
+    // Rename: one field; the tag and the rejection stay with the same id; undo still works.
+    QVERIFY(ps->renamePerson(g, kBence).ok);
+    QCOMPARE(app.people()->idForName(kBence), g);
+    QCOMPARE(tags->tagsOfPerson(g), QStringList{nord.id});
+    QVERIFY(tags->isRejectedForPerson(g, part.id));
     tags->undo();   // the Partners rejection
     tags->undo();   // creating Partners
-    tags->undo();   // applying Nordvik (now on Bence)
-    QVERIFY(tags->tagsOfPerson(kBence).isEmpty());
-    tags->setPersonTags(kBence, {nord.id});
+    tags->undo();   // applying Nordvik
+    QVERIFY(tags->tagsOfPerson(g).isEmpty());
+    tags->setPersonTags(g, {nord.id});
 
     // Delete: the tags go with the record, and the rejections too; the sample holder does not inherit.
-    tags->rejectPersonTag(kBence, nord.id);
-    tags->rejectPersonTag(kEszter, nord.id);
-    QVERIFY(ps->removePerson(kBence, false).ok);
-    QVERIFY(tags->tagsOfPerson(kBence).isEmpty());
-    QVERIFY(!tags->isRejectedForPerson(kBence, nord.id));
-    QVERIFY(tags->isRejectedForPerson(kEszter, nord.id));
+    tags->rejectPersonTag(g, nord.id);
+    tags->rejectPersonTag(e, nord.id);
+    QVERIFY(ps->removePerson(g, false).ok);
+    QVERIFY(tags->tagsOfPerson(g).isEmpty());
+    QVERIFY(!tags->isRejectedForPerson(g, nord.id));
+    QVERIFY(tags->isRejectedForPerson(e, nord.id));
     QVERIFY(tags->peopleWith(nord.id).isEmpty());
     qunsetenv("TANARA_HOME");
 }
@@ -754,8 +784,9 @@ void PersonTagsTest::appPublishesParticipantTagSuggestions()
         app.setUserSpeakerName(kSelf);
         library::TagService* tags = app.tags();
         const Tag nord = tags->create("Nordvik");
-        tags->setPersonTags(kGabor, {nord.id});
-        tags->setPersonTags(kArpad, {nord.id});
+        const PersonId g = app.people()->ensure(kGabor), a = app.people()->ensure(kArpad);
+        tags->setPersonTags(g, {nord.id});
+        tags->setPersonTags(a, {nord.id});
         const QString mid = app.store()->createMeeting(QStringLiteral("Új felvétel")).id;
 
         QSignalSpy ready(&app, &app::AppController::tagSuggestionsReady);
@@ -769,17 +800,17 @@ void PersonTagsTest::appPublishesParticipantTagSuggestions()
         QVERIFY(!hasPeople());
 
         // Manual participants before the transcript: the list refreshes by itself (participantsChanged).
-        app.addParticipant(mid, kGabor);
-        app.addParticipant(mid, kArpad);
+        app.addParticipant(mid, PersonChoice::existing(g));
+        app.addParticipant(mid, PersonChoice::existing(a));
         QVERIFY(hasPeople());
         const QVector<TagSuggestion> list = app.pendingTagSuggestions(mid);
         QCOMPARE(list.first().source, SuggestionSource::People);   // first
         QCOMPARE(list.first().reasons.first().kind, ReasonKind::PeopleTags);
 
         // Removing the person tag refreshes too; the applied tag is left out.
-        tags->removePersonTag(kArpad, nord.id);
+        tags->removePersonTag(a, nord.id);
         QVERIFY(!hasPeople());
-        tags->setPersonTags(kArpad, {nord.id});
+        tags->setPersonTags(a, {nord.id});
         QVERIFY(hasPeople());
         tags->addTag(mid, nord.id);
         QVERIFY(!hasPeople());

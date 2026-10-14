@@ -7,8 +7,9 @@
 // boundaries change).
 //
 // Resolution order of the displayed name:
-//   per-line override -> (redirect of a merged raw label) -> Meeting.speakerMap -> raw label.
-// The semantics of Meeting.speakerMap are unchanged (the CLI reads/writes it).
+//   per-line override -> (redirect of a merged raw label) -> Meeting.speakerMap (PersonId) -> raw label.
+// People are referred to by PersonId (overlay "participants"[].personId, "identified".personId; version 3);
+// the displayed name comes from a PersonNames snapshot (PeopleStore::names()).
 // The overlay's DATA (TranscriptLine, SpeakerOverlay ...) is in domain/Overlay.h; the operations are here.
 #include "tanara/domain/Meeting.h"
 #include "tanara/domain/Overlay.h"
@@ -52,18 +53,19 @@ bool saveOverlay(const QString& meetingFolder, const SpeakerOverlay& overlay);
 bool isParticipantKey(const QString& key);
 // A line's resolved speaker key: override -> merge redirect -> raw label.
 QString resolveSpeakerKey(const SpeakerOverlay& ov, const TranscriptLine& line);
-// The speaker's person (empty = anonymous) and displayed name.
-QString speakerPerson(const SpeakerOverlay& ov, const QMap<QString, QString>& speakerMap,
-                      const QString& key);
-QString speakerDisplayName(const SpeakerOverlay& ov, const QMap<QString, QString>& speakerMap,
-                           const QString& key);
+// The speaker's person (null = anonymous) and displayed name (the person's current name; an unknown
+// person shows as anonymous: the participant's label / the raw label).
+PersonId speakerPerson(const SpeakerOverlay& ov, const QMap<QString, PersonId>& speakerMap,
+                       const QString& key);
+QString speakerDisplayName(const SpeakerOverlay& ov, const QMap<QString, PersonId>& speakerMap,
+                           const PersonNames& names, const QString& key);
 
 // Writes the RESOLVED name onto the tokens' speaker (overlay + speakerMap). AppController
 // calls this wherever names must go onto the transcript (transcript.md, summary input).
-// Without an overlay = the old speakerMap application.
-void applyResolvedSpeakers(MergedTranscript& mt, const Meeting& m);
+// Without an overlay = the plain speakerMap application.
+void applyResolvedSpeakers(MergedTranscript& mt, const Meeting& m, const PersonNames& names);
 // Regenerates transcript.md with the resolved names (from transcript.tokens.json).
-bool regenerateTranscriptMarkdown(const Meeting& m);
+bool regenerateTranscriptMarkdown(const Meeting& m, const PersonNames& names);
 
 // ---- summary staleness ---------------------------------------------
 SummaryStaleInfo summaryStale(const Meeting& m);
@@ -80,27 +82,30 @@ bool clearSummaryStale(const QString& meetingFolder);
 // The transcript's utterances with their CURRENT resolved speaker (key + displayed name), for the
 // summary's source references (a snapshot at creation, compared later). Empty if there is no
 // transcript.segments.json.
-QVector<tanara::summarysrc::SourceLine> resolvedSourceLines(const Meeting& m);
+QVector<tanara::summarysrc::SourceLine> resolvedSourceLines(const Meeting& m, const PersonNames& names);
 // Fills the targeted staleness in the info (the summary.json statements + the source lines'
 // speaker then vs. now + the overlay's corrected keys). Does not touch info.stale /
 // correctedSpeakers. statements != nullptr: the statements with their staleBecause fields.
-void fillTargetedStale(const Meeting& m, SummaryStaleInfo& info,
+void fillTargetedStale(const Meeting& m, const PersonNames& names, SummaryStaleInfo& info,
                        QVector<SummaryStatement>* statements = nullptr);
 
 // ---- AppController hooks ---------------------------------------------
 // Records the voice-identification score (raw label -> person, cosine).
 void recordIdentification(const QString& meetingFolder, const QString& rawLabel,
-                          const QString& person, double score);
-// Carries a global person rename / delete through the manually added participants.
-bool renamePersonInOverlay(const QString& meetingFolder, const QString& oldName,
-                           const QString& newName);
-bool removePersonFromOverlay(const QString& meetingFolder, const QString& name);
+                          const PersonId& person, double score);
+// Merge of two people: every overlay reference to `from` points to `to` afterwards.
+OverlayPersonRefs replacePersonInOverlay(const QString& meetingFolder, const PersonId& from, const PersonId& to);
+// Undo of replacePersonInOverlay: the recorded entries that still point to `current` go back to `original`.
+bool restorePersonInOverlay(const QString& meetingFolder, const OverlayPersonRefs& refs,
+                            const PersonId& current, const PersonId& original);
+// Deleting a person: their manually added participants become anonymous, identifications are dropped.
+bool removePersonFromOverlay(const QString& meetingFolder, const PersonId& person);
 
 // ---- re-transcription ----------------------------------------------------------
 RetranscribeImpact retranscribeImpact(const Meeting& m);
 // Copies the current transcript files (md, tokens, segments, speakers + the speakerMap) into
 // the meeting folder's "transcript-backup-<timestamp>" subfolder. Returns the folder path (empty = error).
-QString backupTranscript(const Meeting& m);
+QString backupTranscript(const Meeting& m, const PersonNames& names);
 // A new transcript was made: deletes the overlay's line-level corrections + the utterance-embedding cache.
 void discardForNewTranscript(const QString& meetingFolder);
 

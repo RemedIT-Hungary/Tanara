@@ -223,7 +223,7 @@ struct AudioImporter::Impl {
     MeetingRepository*  store = nullptr;
     media::MediaToolPtr tool;
     int            kbps = 64;
-    QString        userName;
+    SelfPerson     self;          // the own microphone's speaker
 
     // The running import. The closing (success / error / cancel) happens in ONE place: close().
     struct Run {
@@ -280,7 +280,7 @@ AudioImporter::~AudioImporter()
 }
 
 void AudioImporter::setOpusBitrateKbps(int kbps) { d->kbps = kbps > 0 ? kbps : 64; }
-void AudioImporter::setUserSpeakerName(const QString& name) { d->userName = name.trimmed(); }
+void AudioImporter::setSelfPerson(const SelfPerson& self) { d->self = SelfPerson{self.id, self.name.trimmed()}; }
 bool AudioImporter::busy() const { return d->run != nullptr; }
 QString AudioImporter::currentId() const { return d->run ? d->run->id : QString(); }
 
@@ -512,7 +512,9 @@ void AudioImporter::Impl::finalize()
             // The user's own microphone: it behaves like a recorded mic track.
             t.kind = TrackKind::Mic;
             t.fixedSpeaker = true;
-            t.speakerLabel = userName.isEmpty() ? QStringLiteral("Mikrofon 1") : userName;
+            t.speakerLabel = self.name.isEmpty() ? QStringLiteral("Mikrofon 1") : self.name;
+            // The track's fixed speaker IS the user: the label maps to the own person.
+            if (!self.name.isEmpty() && !self.id.isNull()) m.speakerMap.insert(t.speakerLabel, self.id);
         } else {
             t.kind = TrackKind::Other;
             t.fixedSpeaker = false;

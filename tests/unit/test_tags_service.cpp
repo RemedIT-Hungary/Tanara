@@ -2,6 +2,7 @@
 // names, input rows, rename / merge / delete, undo (groups), rejected suggestions,
 // persistence (tags.json + meeting.json "tags"). Made-up names and titles.
 #include <QtTest>
+#include "tanara/library/store/PeopleStore.h"
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QJsonDocument>
@@ -40,6 +41,7 @@ private:
 
     std::unique_ptr<QTemporaryDir> m_dir;
     std::unique_ptr<library::MeetingRepository> m_store;
+    std::unique_ptr<library::PeopleStore> m_people;
 };
 
 void TagsServiceTest::init()
@@ -47,10 +49,12 @@ void TagsServiceTest::init()
     m_dir = std::make_unique<QTemporaryDir>();
     QVERIFY(m_dir->isValid());
     m_store = std::make_unique<library::MeetingRepository>(m_dir->filePath("rec"), m_dir->filePath("meta"));
+    m_people = std::make_unique<library::PeopleStore>(m_dir->filePath("meta/people.json"));
 }
 
 void TagsServiceTest::cleanup()
 {
+    m_people.reset();
     m_store.reset();
     m_dir.reset();
 }
@@ -61,14 +65,16 @@ QString TagsServiceTest::addMeeting(const QString& title, const QDateTime& when,
     m.startedAt = when;
     m.durationMs = 52 * 60 * 1000;
     for (int i = 0; i < speakers.size(); ++i)
-        m.speakerMap.insert(QStringLiteral("Beszélő %1").arg(i + 1), speakers.at(i));
+        m.speakerMap.insert(QStringLiteral("Beszélő %1").arg(i + 1), m_people->ensure(speakers.at(i)));
     m_store->saveMeeting(m);
     return m.id;
 }
 
 std::unique_ptr<library::TagService> TagsServiceTest::makeService()
 {
-    return std::make_unique<library::TagService>(m_store.get(), m_dir->filePath("meta/tags.json"));
+    auto svc = std::make_unique<library::TagService>(m_store.get(), m_dir->filePath("meta/tags.json"));
+    svc->setPeopleStore(m_people.get());   // the participants' names (profile)
+    return svc;
 }
 
 void TagsServiceTest::names()
@@ -135,7 +141,7 @@ void TagsServiceTest::persistence()
     QFile f(m_dir->filePath("meta/tags.json"));
     QVERIFY(f.open(QIODevice::ReadOnly));
     const QJsonObject root = QJsonDocument::fromJson(f.readAll()).object();
-    QCOMPARE(root.value("version").toInt(), 1);
+    QCOMPARE(root.value("version").toInt(), 2);   // v2: person rejections by PersonId (P11)
     QCOMPARE(root.value("tags").toArray().size(), 1);
     QCOMPARE(root.value("tags").toArray().at(0).toObject().value("name").toString(), QStringLiteral("Nordvik"));
     // meeting.json "tags"

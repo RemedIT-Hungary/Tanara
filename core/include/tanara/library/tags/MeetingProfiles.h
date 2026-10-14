@@ -3,8 +3,9 @@
 // MeetingProfiles: meeting similarity without an embedding model (the "basic" level).
 //
 // One PROFILE per meeting:
-//  - participants: the named speakers (speakerMap + the own mic track's name), weighted by their
-//    rarity in the library (someone present in over 60% of meetings has ~0 weight);
+//  - participants: the named speakers (the speakerMap's people, by PersonId), weighted by their
+//    rarity in the library (someone present in over 60% of meetings has ~0 weight). The
+//    ReasonKind::Participant reasons of a hit carry PersonId strings (TagSuggester names them);
 //  - title words: meetingnotes::titleWords;
 //  - characteristic phrases (<= 60): the transcript's words folded, without numbers / short words /
 //    filler words, with light Hungarian suffix stripping (tagtext::stem), weight =
@@ -26,6 +27,7 @@
 //
 // Similarity: 0.45 * participants (weighted Jaccard) + 0.40 * phrases (cosine) +
 // 0.15 * title (meetingnotes::titleSimilarity).
+#include "tanara/domain/Person.h"
 #include "tanara/domain/Tag.h"
 
 #include <QHash>
@@ -72,7 +74,7 @@ public:
     // The most similar OTHER meetings, by descending score (a zero score is dropped).
     QVector<SimilarHit> similar(const QString& meetingId, int limit = 8) const;
     // For a not-yet-existing meeting (import / before recording): by title + participants.
-    QVector<SimilarHit> similarToDraft(const QString& title, const QStringList& participants,
+    QVector<SimilarHit> similarToDraft(const QString& title, const PersonIds& participants,
                                        const QString& excludeId = QString(), int limit = 8) const;
 
     // For display: the meeting's characteristic phrases, or the shared ones of several meetings.
@@ -81,7 +83,7 @@ public:
     // The shared characteristic phrases of two meetings (by the product of the weights).
     QStringList sharedTerms(const QString& a, const QString& b, int limit = 3) const;
     // Rarity weight (0..1) of the meeting's participants, for tests / explanation.
-    double participantWeight(const QString& name) const;
+    double participantWeight(const PersonId& person) const;
     // Folders of the known meetings (id -> folder), from a background thread without the index (EmbeddingIndex).
     QHash<QString, QString> folders() const;
 

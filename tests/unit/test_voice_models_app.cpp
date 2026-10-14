@@ -11,6 +11,7 @@
 #include <QJsonObject>
 
 #include "tanara/app/AppController.h"
+#include "tanara/library/store/PeopleStore.h"
 #include "tanara/app/SettingsManager.h"
 #include "tanara/editing/session/SpeakerEditor.h"
 #include "tanara/library/people/PeopleService.h"
@@ -72,6 +73,10 @@ private slots:
 private:
     Meeting makeMeeting(const QString& title);
     void enable(const QStringList& ids) { m_app->settings()->setEnabledVoiceModels(ids); }
+    // A person by name: created if missing (pid) / only looked up (idOf); the picker's choice (choice).
+    PersonId pid(const QString& name) { return m_app->people()->ensure(name); }
+    PersonId idOf(const QString& name) { m_app->people()->refresh(); return m_app->people()->idForName(name); }
+    PersonChoice choice(const QString& name) { return m_app->people()->choiceFor(name); }
 
     bool m_haveFfmpeg = false;
     std::unique_ptr<QTemporaryDir> m_home;
@@ -151,9 +156,9 @@ void VoiceModelsAppTest::enrolCreatesOnePrintPerModel()
 {
     const Meeting m = makeMeeting("Felvétel");
     QSignalSpy changed(m_app.get(), &app::AppController::voiceprintsChanged);
-    m_app->enrollVoiceprintFromSample("Anna", m.id, "mic", 2000, 5000);
+    m_app->enrollVoiceprintFromSample(choice("Anna"), m.id, "mic", 2000, 5000);
     QCOMPARE(changed.count(), 1);
-    const QVector<Voiceprint> prints = m_app->voiceprints()->printsFor("Anna");
+    const QVector<Voiceprint> prints = m_app->voiceprints()->printsFor(idOf("Anna"));
     QCOMPARE(prints.size(), 2);
     QSet<QString> models;
     for (const Voiceprint& p : prints) {
@@ -166,20 +171,20 @@ void VoiceModelsAppTest::enrolCreatesOnePrintPerModel()
     }
     QCOMPARE(models, QSet<QString>({kCamp, kWe}));
     QVERIFY(prints[0].id != prints[1].id);
-    QCOMPARE(m_app->voiceprints()->sampleCount("Anna"), 1);
-    QCOMPARE(m_app->peopleService()->samples("Anna").size(), 1);   // one sample in the list
+    QCOMPARE(m_app->voiceprints()->sampleCount(idOf("Anna")), 1);
+    QCOMPARE(m_app->peopleService()->samples(idOf("Anna")).size(), 1);   // one sample in the list
 
     // Matching works with both models (the fake vectors are identical, so 1.0).
     const VoiceMatch match = m_app->testSpeakerMatch(m.id, "Beszélő 1");
-    QCOMPARE(match.name, QStringLiteral("Anna"));
+    QCOMPARE(match.personId, idOf("Anna"));
     QVERIFY(match.score > 0.99);
 
     // Only one model switched on: one voiceprint.
     enable({kWe});
     QCOMPARE(m_app->activeVoiceModelIds(), QStringList{kWe});
-    m_app->enrollVoiceprintFromSample("Béla", m.id, "mic", 2000, 5000);
-    QCOMPARE(m_app->voiceprints()->printsFor("Béla").size(), 1);
-    QCOMPARE(m_app->voiceprints()->printsFor("Béla").first().model, kWe);
+    m_app->enrollVoiceprintFromSample(choice("Béla"), m.id, "mic", 2000, 5000);
+    QCOMPARE(m_app->voiceprints()->printsFor(idOf("Béla")).size(), 1);
+    QCOMPARE(m_app->voiceprints()->printsFor(idOf("Béla")).first().model, kWe);
 
     // None switched on, but campplus's file exists, so the fallback runs (one voiceprint).
     enable({});
@@ -189,15 +194,15 @@ void VoiceModelsAppTest::enrolCreatesOnePrintPerModel()
     enable({kWe, "nincs-ilyen"});
     enable({});
     QVERIFY(!m_app->voiceIdentificationAvailable());
-    m_app->enrollVoiceprintFromSample("Cili", m.id, "mic", 2000, 5000);
-    QCOMPARE(m_app->voiceprints()->printCount("Cili"), 0);
+    m_app->enrollVoiceprintFromSample(choice("Cili"), m.id, "mic", 2000, 5000);
+    QCOMPARE(m_app->voiceprints()->printCount(idOf("Cili")), 0);
 }
 
 void VoiceModelsAppTest::enrolSpeakerFromTranscript_hasSourceRefs()
 {
     const Meeting m = makeMeeting("Átirat");
-    m_app->enrollSpeaker(m.id, "Beszélő 1", "Dóra");
-    const QVector<Voiceprint> prints = m_app->voiceprints()->printsFor("Dóra");
+    m_app->enrollSpeaker(m.id, "Beszélő 1", pid("Dóra"));
+    const QVector<Voiceprint> prints = m_app->voiceprints()->printsFor(idOf("Dóra"));
     QCOMPARE(prints.size(), 2);
     for (const Voiceprint& p : prints) {
         QCOMPARE(p.sampleRef, QStringLiteral("mixdown.wav#0-3000"));   // the longest line
@@ -234,8 +239,8 @@ void VoiceModelsAppTest::backfillAfterEnablingModel()
 {
     const Meeting m = makeMeeting("Pótlás");
     enable({kCamp});
-    m_app->enrollVoiceprintFromSample("Anna", m.id, "mic", 2000, 5000);
-    QCOMPARE(m_app->voiceprints()->printsFor("Anna").size(), 1);
+    m_app->enrollVoiceprintFromSample(choice("Anna"), m.id, "mic", 2000, 5000);
+    QCOMPARE(m_app->voiceprints()->printsFor(idOf("Anna")).size(), 1);
     // A voiceprint made from several segments (editor style): the backfill computes from sourceRefs.
     Voiceprint multi;
     multi.embedding = {1, 0, 0};
@@ -244,16 +249,16 @@ void VoiceModelsAppTest::backfillAfterEnablingModel()
     multi.sampleRef = QStringLiteral("mixdown.wav#0-3000");
     multi.sourceRefs = {QStringLiteral("mixdown.wav#0-3000"), QStringLiteral("mixdown.wav#5000-8000")};
     multi.createdAt = QStringLiteral("2026-10-01T10:00:00");
-    m_app->voiceprints()->addPrint("Béla", multi);
+    m_app->voiceprints()->addPrint(pid("Béla"), multi);
     // Missing audio: skipped (and does not get stuck on it).
     Voiceprint gone = multi;
     gone.sampleRef = QStringLiteral("nincs-ilyen.wav#0-3000");
     gone.sourceRefs.clear();
-    m_app->voiceprints()->addPrint("Cili", gone);
+    m_app->voiceprints()->addPrint(pid("Cili"), gone);
     // Unknown source meeting: skipped too.
     Voiceprint orphan = multi;
     orphan.sourceMeetingId = QStringLiteral("torolt-megbeszeles");
-    m_app->voiceprints()->addPrint("Dani", orphan);
+    m_app->voiceprints()->addPrint(pid("Dani"), orphan);
 
     QSignalSpy done(m_app.get(), &app::AppController::voiceprintBackfillFinished);
     QSignalSpy changed(m_app.get(), &app::AppController::voiceprintsChanged);
@@ -262,7 +267,7 @@ void VoiceModelsAppTest::backfillAfterEnablingModel()
     const int before = m_embeds->load();
     enable({kCamp, kWe});   // expanded: the backfill starts by itself, on a background thread
     QVERIFY(m_app->voiceprintBackfillRunning());
-    QCOMPARE(m_app->voiceprints()->printsFor("Anna").size(), 1);   // the call did not wait for it
+    QCOMPARE(m_app->voiceprints()->printsFor(idOf("Anna")).size(), 1);   // the call did not wait for it
     QVERIFY(done.wait(30000));
     QCOMPARE(done.first().first().toInt(), 2);
     QCOMPARE(changed.count(), 1);
@@ -287,16 +292,16 @@ void VoiceModelsAppTest::backfillAfterEnablingModel()
     QCOMPARE(skipped.at(1).sourceMeetingId, QStringLiteral("torolt-megbeszeles"));
 
     for (const QString& who : {QStringLiteral("Anna"), QStringLiteral("Béla")}) {
-        const QVector<Voiceprint> ps = m_app->voiceprints()->printsFor(who);
+        const QVector<Voiceprint> ps = m_app->voiceprints()->printsFor(idOf(who));
         QCOMPARE(ps.size(), 2);
         QCOMPARE(library::VoiceprintStore::siblingKey(ps[0]), library::VoiceprintStore::siblingKey(ps[1]));
         QCOMPARE(ps[0].sourceRefs, ps[1].sourceRefs);
         QVERIFY(ps[0].id != ps[1].id);
         QVERIFY(ps[0].model != ps[1].model);
     }
-    QCOMPARE(m_app->voiceprints()->printsFor("Cili").size(), 1);
-    QCOMPARE(m_app->voiceprints()->printsFor("Dani").size(), 1);
-    QCOMPARE(m_app->voiceprints()->samplesMissingModel("Béla", kWe).size(), 0);
+    QCOMPARE(m_app->voiceprints()->printsFor(idOf("Cili")).size(), 1);
+    QCOMPARE(m_app->voiceprints()->printsFor(idOf("Dani")).size(), 1);
+    QCOMPARE(m_app->voiceprints()->samplesMissingModel(idOf("Béla"), kWe).size(), 0);
 
     // Rerun: nothing to backfill (the ones with missing audio are skipped again).
     done.clear();
@@ -343,34 +348,34 @@ void VoiceModelsAppTest::rescanAndDeleteModelFile()
 void VoiceModelsAppTest::siblingRemoveAndMoveWithUndo()
 {
     const Meeting m = makeMeeting("Testvérek");
-    m_app->enrollVoiceprintFromSample("Anna", m.id, "mic", 2000, 5000);
-    m_app->enrollVoiceprintFromSample("Anna", m.id, "mic", 5000, 7000);
-    QCOMPARE(m_app->voiceprints()->printCount("Anna"), 4);
+    m_app->enrollVoiceprintFromSample(choice("Anna"), m.id, "mic", 2000, 5000);
+    m_app->enrollVoiceprintFromSample(choice("Anna"), m.id, "mic", 5000, 7000);
+    QCOMPARE(m_app->voiceprints()->printCount(idOf("Anna")), 4);
     library::PeopleService* svc = m_app->peopleService();
-    const QVector<library::VoiceSample> samples = svc->samples("Anna");
+    const QVector<library::VoiceSample> samples = svc->samples(idOf("Anna"));
     QCOMPARE(samples.size(), 2);
-    QCOMPARE(svc->person("Anna").sampleCount, 2);
+    QCOMPARE(svc->person(idOf("Anna")).sampleCount, 2);
 
     // Delete: the sibling goes too; undo: both come back.
     const QString first = samples.first().id;
     QVERIFY(svc->removeSample(first).ok);
-    QCOMPARE(m_app->voiceprints()->printCount("Anna"), 2);
-    QCOMPARE(svc->samples("Anna").size(), 1);
+    QCOMPARE(m_app->voiceprints()->printCount(idOf("Anna")), 2);
+    QCOMPARE(svc->samples(idOf("Anna")).size(), 1);
     svc->undo();
-    QCOMPARE(m_app->voiceprints()->printCount("Anna"), 4);
+    QCOMPARE(m_app->voiceprints()->printCount(idOf("Anna")), 4);
 
     // Move: together with the sibling, ids stay; undo.
     const QVector<Voiceprint> sibs = m_app->voiceprints()->siblingsOf(first);
     QCOMPARE(sibs.size(), 2);
-    QVERIFY(svc->moveSample(sibs.last().id, "Béla").ok);
-    QCOMPARE(m_app->voiceprints()->printCount("Anna"), 2);
-    QCOMPARE(m_app->voiceprints()->printCount("Béla"), 2);
+    QVERIFY(svc->moveSample(sibs.last().id, choice("Béla")).ok);
+    QCOMPARE(m_app->voiceprints()->printCount(idOf("Anna")), 2);
+    QCOMPARE(m_app->voiceprints()->printCount(idOf("Béla")), 2);
     QStringList movedIds;
-    for (const Voiceprint& p : m_app->voiceprints()->printsFor("Béla")) movedIds << p.id;
+    for (const Voiceprint& p : m_app->voiceprints()->printsFor(idOf("Béla"))) movedIds << p.id;
     QVERIFY(movedIds.contains(sibs.first().id) && movedIds.contains(sibs.last().id));
     svc->undo();
-    QCOMPARE(m_app->voiceprints()->printCount("Anna"), 4);
-    QCOMPARE(m_app->voiceprints()->printCount("Béla"), 0);
+    QCOMPARE(m_app->voiceprints()->printCount(idOf("Anna")), 4);
+    QCOMPARE(m_app->voiceprints()->printCount(idOf("Béla")), 0);
 }
 
 QTEST_GUILESS_MAIN(VoiceModelsAppTest)

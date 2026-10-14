@@ -17,9 +17,8 @@ namespace tanara::editing {
 // True if `needle` is a substring of `text` (accent- and case-insensitively). An empty needle matches everything.
 bool matchesSearch(const QString& text, const QString& needle);
 
-// The known people (people.json union the voiceprint DB), sorted by name.
-// meetingCount: by a speakerMap value, the mic track's fixed name or a manually added participant.
-// The nicknames come from the people.json records (also for someone who has only a voiceprint).
+// The known people (people.json), sorted by name (then id: two people may share a name).
+// meetingCount / lastSeen: by a speakerMap person or a manually added participant.
 QVector<PersonInfo> listPeople(const library::PeopleStore* people, const library::VoiceprintStore* voiceprints,
                                library::MeetingRepository* store);
 

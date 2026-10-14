@@ -26,7 +26,7 @@ class MeetingRepository;
 
 // One person at one meeting.
 struct MeetingPerson {
-    QString     name;
+    PersonId    personId;
     qint64      talkMs = 0;
     QStringList speakerKeys;    // which of the meeting's speaker keys (raw label / participant:N) are theirs
 };
@@ -40,7 +40,7 @@ struct MeetingPeople {
     bool      hasSummary = false;
     QVector<MeetingPerson> people;
 
-    const MeetingPerson* find(const QString& name) const;
+    const MeetingPerson* find(const PersonId& person) const;
 };
 
 struct PersonMeetingStat {
@@ -71,7 +71,7 @@ public:
     // Whether a full computation has happened yet (before that every statistic is empty).
     bool ready() const { return m_ready; }
     bool busy() const { return m_running; }
-    PersonStats stats(const QString& name) const;
+    PersonStats stats(const PersonId& person) const;
     // The meetings' participants (the cache content), unordered.
     QVector<MeetingPeople> meetings() const;
     // Time of the last refresh in ms and the number of meetings reread (diagnostics).
@@ -114,7 +114,7 @@ private:
     MeetingRepository* m_store = nullptr;
     QHash<QString, Stamp> m_stamps;
     QHash<QString, MeetingPeople> m_cache;          // meetingId -> participants
-    QHash<QString, PersonStats> m_byPerson;         // lowercased name -> statistics
+    QHash<PersonId, PersonStats> m_byPerson;        // person -> statistics
     std::shared_ptr<std::atomic_bool> m_alive;
     bool m_ready = false;
     bool m_running = false;

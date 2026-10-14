@@ -56,16 +56,17 @@ QJsonObject candidateJson(const Candidate& c)
 {
     QJsonArray ev;
     for (const Evidence& e : c.evidence) ev.append(evidenceJson(e));
-    return {{"speakerKey", c.speakerKey}, {"person", c.personName}, {"score", c.score},
+    return {{"speakerKey", c.speakerKey}, {"personId", c.personId.toString()}, {"person", c.displayName},
+            {"score", c.score},
             {"otherSide", c.otherSide}, {"linesHere", c.linesHere}, {"evidence", ev}};
 }
 
 // The people's stored voiceprints as fusion vectors (including sibling voiceprints, i.e. the
 // same sample under other models); only those with the requested dimension.
-QHash<QString, QVector<QVector<float>>> fusedPrints(const library::VoiceprintStore& vp, const QStringList& models, int dim)
+QHash<PersonId, QVector<QVector<float>>> fusedPrints(const library::VoiceprintStore& vp, const QStringList& models, int dim)
 {
-    QHash<QString, QVector<QVector<float>>> out;
-    for (const QString& person : vp.people()) {
+    QHash<PersonId, QVector<QVector<float>>> out;
+    for (const PersonId& person : vp.people()) {
         for (const QVector<Voiceprint>& group : library::VoiceprintStore::siblingGroups(vp.printsFor(person))) {
             EmbeddingSet set;
             for (const Voiceprint& p : group) set.insert(p.model, p.embedding);
@@ -107,7 +108,9 @@ int runReviewCommand(const QStringList& args)
     in.lines = lines;
     in.overlay = editing::speakeredit::loadOverlayFor(folder, lines);
     const app::SettingsManager sm;
-    in.userName = sm.settings().recording.userSpeakerName;
+    const library::PeopleStore people;
+    in.self = SelfPerson{people.selfId(), sm.settings().recording.userSpeakerName.trimmed()};
+    in.sideHints.names = people.names();
 
     // Embeddings: from the cache (the requested model, else the default, else whichever exists).
     const processing::UtteranceEmbeddingCache cache = processing::UtteranceEmbeddingCache::load(folder, in.overlay.transcriptFingerprint);
@@ -127,10 +130,9 @@ int runReviewCommand(const QStringList& args)
         dim = int(f.size());
     }
     if (dim > 0) in.personPrints = fusedPrints(library::VoiceprintStore(), models, dim);
-    const library::PeopleStore people;
-    const QHash<QString, QString> learned = people.defaultSides();
+    const QHash<PersonId, QString> learned = people.defaultSides();
     for (auto it = learned.cbegin(); it != learned.cend(); ++it)
-        in.sideHints.learnedSides.insert(it.key().toCaseFolded(), editing::sideFromName(it.value()));
+        in.sideHints.learnedSides.insert(it.key(), editing::sideFromName(it.value()));
 
     // Track activity: the cache, otherwise computed in memory (nothing is written to the folder).
     const QString fp = processing::trackactivity::activityFingerprint(m, folder);
@@ -164,6 +166,7 @@ int runReviewCommand(const QStringList& args)
             groups.append(QJsonObject{{"id", g.id}, {"kind", reviewKindName(g.kind)},
                                       {"currentSpeakerKey", g.currentSpeakerKey},
                                       {"proposedSpeakerKey", g.proposedSpeakerKey},
+                                      {"proposedPersonId", g.proposedPersonId.toString()},
                                       {"proposedPerson", g.proposedPersonName},
                                       {"utteranceIds", QJsonArray::fromStringList(g.utteranceIds)},
                                       {"confirmedBasis", g.confirmedBasis}, {"evidence", ev}});
@@ -180,7 +183,9 @@ int runReviewCommand(const QStringList& args)
             for (const Evidence& e : editing::ranking::selfEvidence(r.context, p.key)) self.append(evidenceJson(e));
             const QVector<Candidate> cs = editing::ranking::rankForSpeaker(r.context, p.key);
             for (int i = 0; i < cs.size() && i < kTopCandidates; ++i) cands.append(candidateJson(cs[i]));
-            speakers.append(QJsonObject{{"speakerKey", p.key}, {"person", p.personName}, {"name", p.displayName},
+            speakers.append(QJsonObject{{"speakerKey", p.key}, {"personId", p.personId.toString()},
+                                        {"person", p.personId.isNull() ? QString() : p.displayName},
+                                        {"name", p.displayName},
                                         {"side", sideName(p.side)}, {"sideBasis", p.sideBasis},
                                         {"lines", p.lines}, {"confirmedLines", p.confirmedLines},
                                         {"prints", int(p.prints.size())}, {"evidence", self},
@@ -239,7 +244,7 @@ int runReviewCommand(const QStringList& args)
         for (int i = 0; i < cs.size() && i < kTopCandidates; ++i) {
             QStringList ev;
             for (const Evidence& e : cs[i].evidence) ev << evidenceText(e);
-            out() << "      or: " << (cs[i].speakerKey.isEmpty() ? cs[i].personName : cs[i].speakerKey)
+            out() << "      or: " << (cs[i].speakerKey.isEmpty() ? cs[i].displayName : cs[i].speakerKey)
                   << "  score " << num(cs[i].score) << (cs[i].otherSide ? "  (other side)" : "")
                   << "  " << ev.join(QStringLiteral(", ")) << "\n";
         }
@@ -319,6 +324,7 @@ int runLinesCommand(const QStringList& args)
     if (edit) return setIgnored(folder, lines, ids, sub == QLatin1String("ignore"));
 
     const SpeakerOverlay ov = editing::speakeredit::loadOverlayFor(folder, lines);
+    const PersonNames names = library::PeopleStore().names();
     // The automatic "talked over" flag (overlap with another resolved speaker), as in the editor.
     QVector<QString> keys(lines.size());
     QVector<editing::speakeredit::TimedLine> timed(lines.size());
@@ -344,7 +350,7 @@ int runLinesCommand(const QStringList& args)
         const bool ignored = has && o->ignored;
         const bool rechecked = has && o->rechecked && !corrected && !confirmed && !ignored;
         ignoredCount += ignored ? 1 : 0;
-        const QString name = editing::speakeredit::speakerDisplayName(ov, m.speakerMap, keys[i]);
+        const QString name = editing::speakeredit::speakerDisplayName(ov, m.speakerMap, names, keys[i]);
         if (json) {
             arr.append(QJsonObject{{"id", l.id}, {"startMs", double(l.startMs)}, {"endMs", double(l.endMs)},
                                    {"speakerKey", keys[i]}, {"speaker", name}, {"rawLabel", l.rawLabel},

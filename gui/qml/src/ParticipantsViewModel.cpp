@@ -11,6 +11,7 @@
 #include "tanara/processing/analysis/ParticipantAnalysis.h"
 #include "tanara/editing/session/SpeakerOverlay.h"
 #include "tanara/library/store/MeetingRepository.h"
+#include "tanara/library/store/PeopleStore.h"
 #include "tanara/library/tags/TagService.h"
 #include "tanara/processing/voiceid/VoiceModelRegistry.h"
 
@@ -183,6 +184,8 @@ void ParticipantsViewModel::load()
         return;
     }
     m_selfName = c->settings()->settings().recording.userSpeakerName.trimmed();
+    PersonNames names;
+    if (c->people()) { c->people()->refresh(); names = c->people()->names(); }
     m_running = c->participantAnalysisRunning(m.id);
     m_pending = c->participantApprovalPending(m.id);
     m_hasTranscript = m.hasTranscript;
@@ -210,7 +213,8 @@ void ParticipantsViewModel::load()
     for (const Participant& p : m.participants) {
         Row r;
         r.id = p.id;
-        r.name = p.personName;
+        r.personId = p.personId;
+        r.name = personName(names, p.personId);
         r.group = groupOf(processing::participants::participantGroup(p));
         // An invited but not heard candidate is unchecked by default: there is nobody to bind the name to.
         r.checked = decided ? p.approved : (r.group != 2 && processing::participants::defaultChecked(p));
@@ -223,7 +227,10 @@ void ParticipantsViewModel::load()
         for (const Row& old : previous)
             if (old.id == r.id && !old.added) {
                 r.checked = old.checked;
-                if (r.name.isEmpty()) r.name = old.name;   // named in the dialog
+                if (r.name.isEmpty()) {   // named in the dialog
+                    r.name = old.name;
+                    r.personId = old.personId;
+                }
             }
         m_rows.append(r);
     }
@@ -257,10 +264,10 @@ void ParticipantsViewModel::loadDemo()
     m_rawLabels.clear();
     m_demoInfo.clear();
     m_demoPeople = {
-        {demoName("Szabó Bence"), true, 2, 11, {}, {}},
-        {demoName("Szabó Dóra"), false, 0, 2, {}, {}},
-        {demoName("Nagy Péter"), true, 1, 6, {}, {}},
-        {demoName("Kiss Anna"), true, 3, 9, {}, {}},
+        {{}, demoName("Szabó Bence"), true, 2, 11, {}, {}},
+        {{}, demoName("Szabó Dóra"), false, 0, 2, {}, {}},
+        {{}, demoName("Nagy Péter"), true, 1, 6, {}, {}},
+        {{}, demoName("Kiss Anna"), true, 3, 9, {}, {}},
     };
 
     const auto S = Polarity::Support, N = Polarity::Neutral, X = Polarity::Contradict;
@@ -335,24 +342,20 @@ void ParticipantsViewModel::loadDemoLearn()
 {
     if (m_demoState == QLatin1String("learnNewPerson")) {
         setLearn({library::PersonTagQuestion{QStringLiteral("demo-nordvik"), QStringLiteral("Nordvik"),
-                                    {demoName("Szabó Bence")}, true}});
+                                    {PersonId()}, {demoName("Szabó Bence")}, true}});
         return;
     }
+    // The demo's people have no ids (the answer does not reach the core).
     setLearn({library::PersonTagQuestion{QStringLiteral("demo-nordvik"), QStringLiteral("Nordvik"),
-                                {demoName("Fehér Gábor"), demoName("Varga Árpád")}, false},
+                                {PersonId(), PersonId()}, {demoName("Fehér Gábor"), demoName("Varga Árpád")}, false},
               library::PersonTagQuestion{QStringLiteral("demo-partnerek"), demoText("Partnerek", "Partners"),
-                                {demoName("Fehér Gábor")}, false}});
+                                {PersonId()}, {demoName("Fehér Gábor")}, false}});
 }
 
 void ParticipantsViewModel::reloadTagSuggestions()
 {
     m_tagLabel.clear();
     m_tagSuggestions.clear();
-    QStringList names;
-    for (const Row& r : std::as_const(m_rows))
-        if (!r.name.isEmpty()) names << r.name;
-    if (!m_selfName.isEmpty()) names << m_selfName;
-
     if (demo()) {
         if (m_running || indexOfName(demoName("Szabó Bence")) >= 0) return;
         m_tagLabel = tr("A #%1 alapján:").arg(QStringLiteral("Nordvik"));
@@ -362,14 +365,21 @@ void ParticipantsViewModel::reloadTagSuggestions()
     app::AppController* c = app();
     library::TagService* tags = c ? c->tags() : nullptr;
     if (!tags) return;
+    // The people already in the dialog (a typed name: the person with that name) and the own person.
+    PersonIds present;
+    for (const Row& r : std::as_const(m_rows)) {
+        if (!r.personId.isNull()) present << r.personId;
+        else if (!r.name.isEmpty() && c->people()) present << c->people()->idForName(r.name);
+    }
+    present << c->selfPerson().id;
     // The first tag that has a suggestion; at most 3 people.
     for (const QString& tagId : std::as_const(m_tagIds)) {
-        const QVector<library::PersonTagStat> stats = tags->suggestPeopleForTag(tagId, names, 3);
+        const QVector<library::PersonTagStat> stats = tags->suggestPeopleForTag(tagId, present, 3);
         if (stats.isEmpty()) continue;
         const QString tagName = tags->tag(tagId).name;
         m_tagLabel = tr("A #%1 alapján:").arg(tagName);
         for (const library::PersonTagStat& st : stats)
-            m_tagSuggestions.append({st.name, tagName, st.shared, st.tagTotal});
+            m_tagSuggestions.append({st.name, tagName, st.shared, st.tagTotal, st.personId});
         break;
     }
 }
@@ -563,6 +573,7 @@ void ParticipantsViewModel::acceptTagSuggestion(int index)
     const TagSuggestion t = m_tagSuggestions.at(index);
     const QString id = addPerson(t.name);
     if (const int i = indexOf(id); i >= 0 && m_rows.at(i).added) {
+        m_rows[i].personId = t.personId;
         m_rows[i].evidence = {ev(EvidenceKind::Tag, Polarity::Support,
                                  QStringLiteral("címke: %1").arg(t.tagName))};
         emit changed();
@@ -581,6 +592,7 @@ void ParticipantsViewModel::nameRow(const QString& id, const QString& name)
         return;
     }
     m_rows[i].name = n;
+    m_rows[i].personId = PersonId();   // resolved by name on approval
     m_rows[i].checked = true;
     reloadTagSuggestions();
     emit changed();
@@ -608,7 +620,10 @@ bool ParticipantsViewModel::approve()
         if (!r.checked || r.name.isEmpty()) continue;
         Participant p;
         p.id = r.added ? QString() : r.id;
-        p.personName = r.name;
+        // The row's person; a name typed in the dialog: a known person with that name, else a new person.
+        p.personId = !r.personId.isNull() ? r.personId
+                   : c->people() ? c->people()->resolve(c->people()->choiceFor(r.name)) : PersonId();
+        if (p.personId.isNull()) continue;
         p.rawSpeakerIds = r.rawIds;
         p.sides = r.sides;
         accepted.append(p);
@@ -617,9 +632,9 @@ bool ParticipantsViewModel::approve()
     // Learning question: once, for the approved names.
     QVector<library::PersonTagQuestion> questions;
     if (library::TagService* tags = c->tags()) {
-        QStringList names;
-        for (const Participant& p : std::as_const(accepted)) names << p.personName;
-        questions = tags->learningQuestions(m_meetingId, names);
+        PersonIds people;
+        for (const Participant& p : std::as_const(accepted)) people << p.personId;
+        questions = tags->learningQuestions(m_meetingId, people);
         tags->markLearningAsked(m_meetingId, questions);
     }
     setLearn(questions);
@@ -639,7 +654,7 @@ QVariantMap ParticipantsViewModel::learnQuestion() const
     const library::PersonTagQuestion& q = m_learn.first();
     return {{QStringLiteral("text"), taglearning::questionText(q)},
             {QStringLiteral("tagName"), q.tagName},
-            {QStringLiteral("people"), q.people},
+            {QStringLiteral("people"), q.names},
             {QStringLiteral("newPeople"), q.newPeople},
             {QStringLiteral("pairs"), m_learnPairs.size() > 1 ? taglearning::pairMaps(m_learnPairs) : QVariantList()}};
 }

@@ -78,29 +78,32 @@ const SpeakerProfile* findProfile(const RankContext& ctx, const Candidate& c)
 {
     if (!c.speakerKey.isEmpty()) return ctx.profile(c.speakerKey);
     for (const SpeakerProfile& p : ctx.speakers)
-        if (p.key.isEmpty() && p.personName.compare(c.personName, Qt::CaseInsensitive) == 0) return &p;
+        if (p.key.isEmpty() && !c.personId.isNull() && p.personId == c.personId) return &p;
     return nullptr;
 }
 
-QString nameOf(const RankContext& ctx, const QString& key, const QString& person)
+QString nameOf(const RankContext& ctx, const QString& key, const PersonId& person)
 {
     if (!key.isEmpty())
         if (const SpeakerProfile* p = ctx.profile(key)) return p->displayName;
-    return person.isEmpty() ? QCoreApplication::translate("ReviewGroups", "új résztvevő") : person;
+    if (!person.isNull())
+        for (const SpeakerProfile& p : ctx.speakers)
+            if (p.personId == person && !p.displayName.isEmpty()) return p.displayName;
+    return QCoreApplication::translate("ReviewGroups", "új résztvevő");
 }
 
 bool samePerson(const RankContext& ctx, const QString& keyA, const Candidate& c)
 {
     if (c.speakerKey == keyA) return true;
     const SpeakerProfile* a = ctx.profile(keyA);
-    return a && !a->personName.isEmpty() && a->personName.compare(c.personName, Qt::CaseInsensitive) == 0;
+    return a && !a->personId.isNull() && a->personId == c.personId;
 }
 
-QString groupId(ReviewKind k, const QString& current, const QString& proposedKey, const QString& proposedPerson,
+QString groupId(ReviewKind k, const QString& current, const QString& proposedKey, const PersonId& proposedPerson,
                 Side newSide = Side::Unknown)
 {
     const QString target = !proposedKey.isEmpty() ? proposedKey
-                         : !proposedPerson.isEmpty() ? QStringLiteral("person:") + proposedPerson
+                         : !proposedPerson.isNull() ? QStringLiteral("person:") + proposedPerson.toString()
                          : newSide != Side::Unknown ? QStringLiteral("new:") + sideName(newSide)
                                                      : QString();
     return reviewKindName(k) + QLatin1Char(':') + current + QStringLiteral("->") + target;
@@ -226,38 +229,32 @@ RankContext buildRankContext(const ReviewInput& in, const SideReport& sides)
     // The manual track assignment per person (tracks of same-named speakers together): the 3rd condition of the veto.
     const QHash<QString, QStringList>& manual = in.sideHints.speakerTracks.isEmpty() ? in.overlay.speakerTracks
                                                                                      : in.sideHints.speakerTracks;
-    QHash<QString, QStringList> personTracks;   // case-folded name -> tracks
+    QHash<PersonId, QStringList> personTracks;   // person -> tracks
     for (const PersonSide& ps : sides.persons)
-        if (!ps.personName.isEmpty()) personTracks[ps.personName.toCaseFolded()] += ps.manualTracks;
+        if (!ps.personId.isNull()) personTracks[ps.personId] += ps.manualTracks;
     for (const OverlayParticipant& op : in.overlay.participants)
-        if (!op.person.isEmpty()) personTracks[op.person.toCaseFolded()] += manual.value(op.key);
-    auto manualSideOf = [&](const QString& key, const QString& person) {
-        return sides::sideOfTracks(in.meeting, person.isEmpty() ? manual.value(key)
-                                                                : personTracks.value(person.toCaseFolded()));
+        if (!op.personId.isNull()) personTracks[op.personId] += manual.value(op.key);
+    auto manualSideOf = [&](const QString& key, const PersonId& person) {
+        return sides::sideOfTracks(in.meeting, person.isNull() ? manual.value(key) : personTracks.value(person));
     };
 
-    QHash<QString, QVector<QVector<float>>> prints;   // case-folded name -> voiceprints
-    QHash<QString, QString> printNames;
-    for (auto it = in.personPrints.cbegin(); it != in.personPrints.cend(); ++it) {
-        prints[it.key().toCaseFolded()] += it.value();
-        printNames.insert(it.key().toCaseFolded(), it.key());
-    }
-    auto tagsOf = [&](const QString& person) {
-        return (in.tagEvidence && !person.isEmpty()) ? in.tagEvidence(person, in.meeting.tagIds, in.meeting.id)
-                                                     : library::TagEvidence();
+    const QHash<PersonId, QVector<QVector<float>>>& prints = in.personPrints;
+    auto tagsOf = [&](const PersonId& person) {
+        return (in.tagEvidence && !person.isNull()) ? in.tagEvidence(person, in.meeting.tagIds, in.meeting.id)
+                                                    : library::TagEvidence();
     };
 
     for (const PersonSide& ps : sides.persons) {
         SpeakerProfile p;
         p.key = ps.speakerKey;
-        p.personName = ps.personName;
+        p.personId = ps.personId;
         p.displayName = ps.displayName;
         p.side = ps.side;
         p.sideBasis = ps.basis;
-        p.manualSide = manualSideOf(p.key, p.personName);
+        p.manualSide = manualSideOf(p.key, p.personId);
         p.lineSide = majoritySide(ps.allLines.local, ps.allLines.remote);
-        if (!p.personName.isEmpty()) p.prints = prints.value(p.personName.toCaseFolded());
-        p.tagEvidence = tagsOf(p.personName);
+        if (!p.personId.isNull()) p.prints = prints.value(p.personId);
+        p.tagEvidence = tagsOf(p.personId);
         ctx.index.insert(p.key, int(ctx.speakers.size()));
         ctx.speakers.append(p);
     }
@@ -266,18 +263,17 @@ RankContext buildRankContext(const ReviewInput& in, const SideReport& sides)
         if (ctx.index.contains(op.key)) continue;
         SpeakerProfile p;
         p.key = op.key;
-        p.personName = op.person;
-        p.displayName = speakeredit::speakerDisplayName(in.overlay, in.meeting.speakerMap, op.key);
-        p.side = op.person.isEmpty() ? Side::Unknown
-                                     : in.sideHints.learnedSides.value(op.person.toCaseFolded(), Side::Unknown);
+        p.personId = op.personId;
+        p.displayName = speakeredit::speakerDisplayName(in.overlay, in.meeting.speakerMap, in.sideHints.names, op.key);
+        p.side = op.personId.isNull() ? Side::Unknown : in.sideHints.learnedSides.value(op.personId, Side::Unknown);
         p.sideBasis = decided(p.side) ? QStringLiteral("learned") : QStringLiteral("none");
-        p.manualSide = manualSideOf(p.key, p.personName);
+        p.manualSide = manualSideOf(p.key, p.personId);
         if (sides.active && p.manualSide != Side::Unknown) {   // even without lines: the manual assignment is the truth
             p.side = p.manualSide;
             p.sideBasis = QStringLiteral("manual");
         }
-        if (!p.personName.isEmpty()) p.prints = prints.value(p.personName.toCaseFolded());
-        p.tagEvidence = tagsOf(p.personName);
+        if (!p.personId.isNull()) p.prints = prints.value(p.personId);
+        p.tagEvidence = tagsOf(p.personId);
         ctx.index.insert(p.key, int(ctx.speakers.size()));
         ctx.speakers.append(p);
     }
@@ -308,21 +304,25 @@ RankContext buildRankContext(const ReviewInput& in, const SideReport& sides)
     }
 
     // People outside the meeting who have a voiceprint.
-    QSet<QString> inMeeting;
+    QSet<PersonId> inMeeting;
     for (const SpeakerProfile& p : std::as_const(ctx.speakers))
-        if (!p.personName.isEmpty()) inMeeting.insert(p.personName.toCaseFolded());
-    QStringList outside;
+        if (!p.personId.isNull()) inMeeting.insert(p.personId);
+    PersonIds outside;
     for (auto it = prints.cbegin(); it != prints.cend(); ++it)
         if (!inMeeting.contains(it.key()) && !it.value().isEmpty()) outside << it.key();
-    std::sort(outside.begin(), outside.end());
-    for (const QString& folded : std::as_const(outside)) {
+    // By name (case-insensitive), then by id: a stable order.
+    std::sort(outside.begin(), outside.end(), [&](const PersonId& a, const PersonId& b) {
+        const int c = personName(in.sideHints.names, a).compare(personName(in.sideHints.names, b), Qt::CaseInsensitive);
+        return c != 0 ? c < 0 : a < b;
+    });
+    for (const PersonId& person : std::as_const(outside)) {
         SpeakerProfile p;
-        p.personName = printNames.value(folded);
-        p.displayName = p.personName;
-        p.prints = prints.value(folded);
-        p.side = in.sideHints.learnedSides.value(folded, Side::Unknown);
+        p.personId = person;
+        p.displayName = personName(in.sideHints.names, person);
+        p.prints = prints.value(person);
+        p.side = in.sideHints.learnedSides.value(person, Side::Unknown);
         p.sideBasis = decided(p.side) ? QStringLiteral("learned") : QStringLiteral("none");
-        p.tagEvidence = tagsOf(p.personName);
+        p.tagEvidence = tagsOf(person);
         ctx.speakers.append(p);
     }
     return ctx;
@@ -343,7 +343,7 @@ QVector<ReviewGroup> buildReviewGroups(const ReviewInput& in, const SideReport& 
     // Group collector: id -> index in out.
     QHash<QString, int> byId;
     QHash<QString, QVector<double>> voiceSums;   // id -> the proposed voice's scores
-    auto groupFor = [&](ReviewKind kind, const QString& current, const QString& pKey, const QString& pPerson,
+    auto groupFor = [&](ReviewKind kind, const QString& current, const QString& pKey, const PersonId& pPerson,
                         Side newSide = Side::Unknown) -> ReviewGroup& {
         const QString id = groupId(kind, current, pKey, pPerson, newSide);
         auto it = byId.find(id);
@@ -353,7 +353,8 @@ QVector<ReviewGroup> buildReviewGroups(const ReviewInput& in, const SideReport& 
             g.kind = kind;
             g.currentSpeakerKey = current;
             g.proposedSpeakerKey = pKey;
-            g.proposedPersonName = pPerson;
+            g.proposedPersonId = pPerson;
+            g.proposedPersonName = pPerson.isNull() ? QString() : nameOf(ctx, pKey, pPerson);
             g.proposeNew = newSide != Side::Unknown;
             g.proposedSide = newSide;
             it = byId.insert(id, int(out.size()));
@@ -368,7 +369,8 @@ QVector<ReviewGroup> buildReviewGroups(const ReviewInput& in, const SideReport& 
             const int ri = rowOf.value(c.utteranceId, -1);
             if (ri < 0 || rows[ri].locked || used[ri]) continue;
             const Row& r = rows[ri];
-            QString pKey, pPerson;
+            QString pKey;
+            PersonId pPerson;
             double voice = qQNaN();
             // Without a voice embedding (a short line) there is no automatic suggestion: the track only says which
             // SIDE, not who; these must be decided one by one.
@@ -380,7 +382,7 @@ QVector<ReviewGroup> buildReviewGroups(const ReviewInput& in, const SideReport& 
                 const SpeakerProfile* p = findProfile(ctx, cand);
                 if (!p || p->side != c.lineSide) continue;
                 pKey = cand.speakerKey;
-                pPerson = cand.personName;
+                pPerson = cand.personId;
                 if (r.emb) {
                     ranking::Probe probe;
                     probe.embedding = *r.emb;
@@ -392,7 +394,7 @@ QVector<ReviewGroup> buildReviewGroups(const ReviewInput& in, const SideReport& 
             // side -> suggestion: a new speaker on that side (it moves nothing by itself).
             Side newSide = Side::Unknown;
             const SpeakerProfile* curP = ctx.profile(r.key);
-            if (r.emb && pKey.isEmpty() && pPerson.isEmpty() && curP
+            if (r.emb && pKey.isEmpty() && pPerson.isNull() && curP
                 && sides::vetoes(ctx.vetoActive, curP->manualSide, c.lineSide))
                 newSide = c.lineSide;
             ReviewGroup& g = groupFor(ReviewKind::SideConflict, r.key, pKey, pPerson, newSide);
@@ -406,10 +408,10 @@ QVector<ReviewGroup> buildReviewGroups(const ReviewInput& in, const SideReport& 
             const Side curSide = cur ? cur->side : Side::Unknown;
             const Side lineSide = curSide == Side::Local ? Side::Remote : Side::Local;
             const int n = int(g.utteranceIds.size());
-            const QString curName = nameOf(ctx, g.currentSpeakerKey, QString());
-            const bool hasProposal = !g.proposedSpeakerKey.isEmpty() || !g.proposedPersonName.isEmpty();
+            const QString curName = nameOf(ctx, g.currentSpeakerKey, PersonId());
+            const bool hasProposal = !g.proposedSpeakerKey.isEmpty() || !g.proposedPersonId.isNull();
             const QString target = g.proposeNew ? newSpeakerLabel(g.proposedSide)
-                                                : nameOf(ctx, g.proposedSpeakerKey, g.proposedPersonName);
+                                                : nameOf(ctx, g.proposedSpeakerKey, g.proposedPersonId);
             g.title = QCoreApplication::translate("ReviewGroups", "%n sor a másik sávon", nullptr, n);
             g.subtitle = hasProposal || g.proposeNew
                 ? QCoreApplication::translate("ReviewGroups", "Most: %1 · javaslat: %2").arg(curName, target)
@@ -469,7 +471,7 @@ QVector<ReviewGroup> buildReviewGroups(const ReviewInput& in, const SideReport& 
                     used[i] = true;
                 }
                 if (!ids.isEmpty()) {
-                    ReviewGroup& g = groupFor(ReviewKind::SimilarToNewPerson, QString(), in.newPersonKey, np->personName);
+                    ReviewGroup& g = groupFor(ReviewKind::SimilarToNewPerson, QString(), in.newPersonKey, np->personId);
                     g.utteranceIds = ids;
                     const int n = int(ids.size());
                     const double avg = sumSim / n;
@@ -486,7 +488,7 @@ QVector<ReviewGroup> buildReviewGroups(const ReviewInput& in, const SideReport& 
                     int best = 0;
                     for (auto it = fromKeys.cbegin(); it != fromKeys.cend(); ++it)
                         if (it.value() > best) { best = it.value(); g.currentSpeakerKey = it.key(); }
-                    g.id = groupId(ReviewKind::SimilarToNewPerson, QString(), in.newPersonKey, np->personName);
+                    g.id = groupId(ReviewKind::SimilarToNewPerson, QString(), in.newPersonKey, np->personId);
                     g.confirmedBasis = np->confirmedLines;
                 }
             }
@@ -510,7 +512,8 @@ QVector<ReviewGroup> buildReviewGroups(const ReviewInput& in, const SideReport& 
         probe.embedding = split.minorityCentroid;
         probe.side = majoritySide(local, remote);
         probe.currentKey = p.key;
-        QString pKey, pPerson;
+        QString pKey;
+        PersonId pPerson;
         double voice = qQNaN();
         for (const Candidate& cand : ranking::rank(ctx, probe)) {
             if (samePerson(ctx, p.key, cand) || cand.otherSide || cand.vetoed) continue;
@@ -518,7 +521,7 @@ QVector<ReviewGroup> buildReviewGroups(const ReviewInput& in, const SideReport& 
             const double v = cp ? ranking::voiceScore(*cp, probe) : qQNaN();
             if (std::isnan(v) || v < ranking::kVoiceGood) continue;
             pKey = cand.speakerKey;
-            pPerson = cand.personName;
+            pPerson = cand.personId;
             voice = v;
             break;
         }
@@ -547,13 +550,13 @@ QVector<ReviewGroup> buildReviewGroups(const ReviewInput& in, const SideReport& 
         double bestFit = qQNaN();
         for (const SpeakerProfile& o : ctx.speakers) {
             if (o.key.isEmpty() || o.key == r.key || o.core.isEmpty()) continue;
-            if (!o.personName.isEmpty() && o.personName.compare(own->personName, Qt::CaseInsensitive) == 0) continue;
+            if (!o.personId.isNull() && o.personId == own->personId) continue;
             if (sides.active && sides::vetoes(ctx.vetoActive, o.manualSide, r.side)) continue;   // never a suggestion
             const double f = ranking::cosine(o.core, *r.emb);
             if (!std::isnan(f) && (std::isnan(bestFit) || f > bestFit)) { bestFit = f; best = &o; }
         }
         if (!best || std::isnan(ownFit) || bestFit - ownFit < margin) continue;
-        ReviewGroup& g = groupFor(ReviewKind::CoreMismatch, r.key, best->key, best->personName);
+        ReviewGroup& g = groupFor(ReviewKind::CoreMismatch, r.key, best->key, best->personId);
         g.utteranceIds << r.id;
         voiceSums[g.id] << bestFit;
         voiceSums[g.id + QStringLiteral("#own")] << ownFit;
@@ -562,8 +565,8 @@ QVector<ReviewGroup> buildReviewGroups(const ReviewInput& in, const SideReport& 
     for (ReviewGroup& g : out) {
         if (g.kind != ReviewKind::CoreMismatch) continue;
         const int n = int(g.utteranceIds.size());
-        const QString target = nameOf(ctx, g.proposedSpeakerKey, g.proposedPersonName);
-        const QString curName = nameOf(ctx, g.currentSpeakerKey, QString());
+        const QString target = nameOf(ctx, g.proposedSpeakerKey, g.proposedPersonId);
+        const QString curName = nameOf(ctx, g.currentSpeakerKey, PersonId());
         g.title = QCoreApplication::translate("ReviewGroups", "%n sor hangja inkább: %1", nullptr, n).arg(target);
         g.subtitle = QCoreApplication::translate("ReviewGroups", "Most: %1").arg(curName);
         auto avgOf = [](const QVector<double>& v) {
@@ -592,7 +595,7 @@ QVector<ReviewGroup> buildReviewGroups(const ReviewInput& in, const SideReport& 
             ids << r.id;
         }
         if (!ids.isEmpty()) {
-            ReviewGroup& g = groupFor(ReviewKind::ShortLines, QString(), QString(), QString());
+            ReviewGroup& g = groupFor(ReviewKind::ShortLines, QString(), QString(), PersonId());
             g.utteranceIds = ids;
             g.title = QCoreApplication::translate("ReviewGroups", "%n rövid sor", nullptr, int(ids.size()));
             g.subtitle = QCoreApplication::translate("ReviewGroups", "Túl rövidek a hang-ellenőrzéshez — csak tájékoztató");
@@ -623,7 +626,7 @@ QVector<ReviewGroup> buildReviewGroups(const ReviewInput& in, const SideReport& 
 ReviewResult analyzeReview(const ReviewInput& in, const MeetingActivity& activity)
 {
     ReviewResult r;
-    r.sides = analyzeSides(in.meeting, in.lines, in.overlay, activity, in.userName, in.sideHints);
+    r.sides = analyzeSides(in.meeting, in.lines, in.overlay, activity, in.self, in.sideHints);
     r.context = buildRankContext(in, r.sides);
     r.groups = buildReviewGroups(in, r.sides, r.context);
     QSet<QString> locked;

@@ -31,12 +31,22 @@ QVector<double> sumOf(const QVector<QVector<float>>& vs)
     return s;
 }
 
+// The tests' people: the case-folded name stands in as the PersonId.
+PersonId P(const QString& name) { return name.isEmpty() ? PersonId() : PersonId::fromString(name.toCaseFolded()); }
+SelfPerson me(const QString& name) { return SelfPerson{P(name), name}; }
+QMap<QString, PersonId> spk(std::initializer_list<std::pair<const char*, const char*>> pairs)
+{
+    QMap<QString, PersonId> out;
+    for (const auto& p : pairs) out.insert(QString::fromUtf8(p.first), P(QString::fromUtf8(p.second)));
+    return out;
+}
+
 SpeakerProfile profile(const QString& key, const QString& person, editing::Side side, int lines,
                        const QVector<QVector<float>>& voices, bool core)
 {
     SpeakerProfile p;
     p.key = key;
-    p.personName = person;
+    p.personId = P(person);
     p.displayName = person.isEmpty() ? key : person;
     p.side = side;
     p.sideBasis = QStringLiteral("lines");
@@ -168,13 +178,13 @@ private slots:
         library::PersonTagSnapshot snap;
         QVector<library::PersonTagRow> rows;
         for (int i = 0; i < 5; ++i)
-            rows << library::PersonTagRow{QStringLiteral("m%1").arg(i), QDateTime(), {"projekt-x", "heti"}, {"Cecil"}};
-        snap.stats = std::make_shared<library::PersonTagStats>(library::PersonTagStats::compute(rows, QString()));
+            rows << library::PersonTagRow{QStringLiteral("m%1").arg(i), QDateTime(), {"projekt-x", "heti"}, {P("Cecil")}};
+        snap.stats = std::make_shared<library::PersonTagStats>(library::PersonTagStats::compute(rows, PersonId()));
         snap.tagNames = {{"projekt-x", "Projekt X"}, {"heti", "Heti"}, {"marketing", "Marketing"}};
-        snap.manual.insert(library::persontags::personKey("Anna"), {"projekt-x"});
-        snap.manual.insert(library::persontags::personKey("Béla"), {"marketing"});
-        a.tagEvidence = snap.evidence("Anna", {"projekt-x", "heti"});
-        b.tagEvidence = snap.evidence("Béla", {"projekt-x", "heti"});
+        snap.manual.insert(P("Anna"), {"projekt-x"});
+        snap.manual.insert(P("Béla"), {"marketing"});
+        a.tagEvidence = snap.evidence(P("Anna"), {"projekt-x", "heti"});
+        b.tagEvidence = snap.evidence(P("Béla"), {"projekt-x", "heti"});
         editing::ranking::RankContext ctx = context({a, b});
         ctx.meetingTags = {"projekt-x", "heti"};
         const QVector<Candidate> cs = editing::ranking::rankForLine(ctx, voice(0), editing::Side::Unknown, "", false);
@@ -197,8 +207,8 @@ private slots:
             if (e.kind == EvidenceKind::Tag) QCOMPARE(e.text, QStringLiteral("más címkék"));
         // A young tag (< 5 meetings) does not penalize: no tag evidence.
         QVector<library::PersonTagRow> young = rows.mid(0, 2);
-        snap.stats = std::make_shared<library::PersonTagStats>(library::PersonTagStats::compute(young, QString()));
-        QVERIFY(snap.evidence("Béla", {"projekt-x", "heti"}).isEmpty());
+        snap.stats = std::make_shared<library::PersonTagStats>(library::PersonTagStats::compute(young, PersonId()));
+        QVERIFY(snap.evidence(P("Béla"), {"projekt-x", "heti"}).isEmpty());
     }
 
     void leaveOneOutAndPrints()
@@ -217,7 +227,7 @@ private slots:
         QVERIFY(editing::ranking::voiceScore(ctx.speakers[0], p) > 0.4);
         // The voiceprint is a reference too; the better one counts.
         editing::ranking::SpeakerProfile c;
-        c.personName = "Cecil";
+        c.personId = P("Cecil");
         c.prints = {voice(2)};
         p.embedding = voice(2);
         QVERIFY(std::abs(editing::ranking::voiceScore(c, p, &basis) - 1.0) < 1e-6);
@@ -250,8 +260,8 @@ private slots:
         Scenario sc = build({{"B1", 'L', 0}, {"B2", 'R', 1, true}, {"B1", 'L', 0}, {"B1", 'R', 1},
                              {"B2", 'R', 1, true}, {"B1", 'R', 1}, {"B1", 'L', 0}, {"B2", 'R', 1, true},
                              {"B1", 'R', 1}, {"B1", 'L', 0}});
-        sc.in.meeting.speakerMap = {{"B1", "Ádám"}, {"B2", "Béla"}};
-        sc.in.userName = "Ádám";
+        sc.in.meeting.speakerMap = spk({{"B1", "Ádám"}, {"B2", "Béla"}});
+        sc.in.self = me("Ádám");
         const editing::ReviewResult r = analyzeReview(sc.in, sc.act);
         QVERIFY(r.sides.active);
         const editing::ReviewGroup* g = group(r.groups, editing::ReviewKind::SideConflict);
@@ -267,12 +277,12 @@ private slots:
         QVERIFY(!g->id.isEmpty());
         // No suitable same-side candidate: the suggestion is empty (a new participant).
         Scenario solo = build({{"B1", 'L', 0}, {"B1", 'L', 0}, {"B1", 'R', 1}, {"B1", 'L', 0}});
-        solo.in.meeting.speakerMap = {{"B1", "Ádám"}};
-        solo.in.userName = "Ádám";
+        solo.in.meeting.speakerMap = spk({{"B1", "Ádám"}});
+        solo.in.self = me("Ádám");
         const editing::ReviewResult rs = analyzeReview(solo.in, solo.act);
         const editing::ReviewGroup* gs = group(rs.groups, editing::ReviewKind::SideConflict);
         QVERIFY(gs);
-        QVERIFY(gs->proposedSpeakerKey.isEmpty() && gs->proposedPersonName.isEmpty());
+        QVERIFY(gs->proposedSpeakerKey.isEmpty() && gs->proposedPersonId.isNull());
     }
 
     void coreMismatchGroup()
@@ -331,7 +341,7 @@ private slots:
         r = analyzeReview(noC.in, MeetingActivity{});
         g = group(r.groups, editing::ReviewKind::ContaminatedCore);
         QVERIFY(g);
-        QVERIFY(g->proposedSpeakerKey.isEmpty() && g->proposedPersonName.isEmpty());
+        QVERIFY(g->proposedSpeakerKey.isEmpty() && g->proposedPersonId.isNull());
 
         // A uniform core (only voice 0, with a little noise) is not contaminated.
         QVector<LineSpec> clean;
@@ -369,16 +379,16 @@ private slots:
     {
         // A person outside the meeting who has a voiceprint is a candidate too (without a key), with a learned side.
         Scenario sc = build({{"A", 'L', 0}, {"A", 'L', 0}, {"A", 'R', 4}});
-        sc.in.meeting.speakerMap = {{"A", "Anna"}};
-        sc.in.personPrints.insert("Dénes", {voice(4)});
-        sc.in.sideHints.learnedSides.insert("dénes", editing::Side::Remote);
+        sc.in.meeting.speakerMap = spk({{"A", "Anna"}});
+        sc.in.personPrints.insert(P("Dénes"), {voice(4)});
+        sc.in.sideHints.learnedSides.insert(P("dénes"), editing::Side::Remote);
         const editing::ReviewResult r = analyzeReview(sc.in, sc.act);
         bool found = false;
         for (const SpeakerProfile& p : r.context.speakers)
-            if (p.personName == "Dénes") { found = true; QVERIFY(p.key.isEmpty()); QCOMPARE(p.side, editing::Side::Remote); }
+            if (p.personId == P("Dénes")) { found = true; QVERIFY(p.key.isEmpty()); QCOMPARE(p.side, editing::Side::Remote); }
         QVERIFY(found);
         const QVector<Candidate> cs = rankForLine(r.context, voice(4), editing::Side::Remote, "A", false);
-        QCOMPARE(cs[0].personName, QStringLiteral("Dénes"));
+        QCOMPARE(cs[0].personId, P("Dénes"));
         QVERIFY(cs[0].speakerKey.isEmpty());
     }
 
@@ -448,7 +458,7 @@ private slots:
     void sideVeto_contextFromOverlay()
     {
         Scenario sc = build({{"B1", 'L', 0}, {"B2", 'R', 1}, {"B1", 'L', 0}, {"B3", 'R', 2}, {"B2", 'R', 1}});
-        sc.in.meeting.speakerMap = {{"B1", "Ádám"}, {"B2", "Béla"}};
+        sc.in.meeting.speakerMap = spk({{"B1", "Ádám"}, {"B2", "Béla"}});
         sc.in.overlay.speakerTracks.insert("B1", {"mic"});
         editing::ReviewResult r = analyzeReview(sc.in, sc.act);
         QVERIFY(!r.context.vetoActive);   // Béla has no assignment
@@ -473,7 +483,7 @@ private slots:
     {
         Scenario sc = build({{"B1", 'L', 0}, {"B2", 'R', 1, true}, {"B1", 'L', 0}, {"B1", 'R', 1},
                              {"B2", 'R', 1, true}, {"B1", 'R', 1}, {"B1", 'L', 0}, {"B2", 'R', 1, true}});
-        sc.in.meeting.speakerMap = {{"B1", "Ádám"}, {"B2", "Béla"}};
+        sc.in.meeting.speakerMap = spk({{"B1", "Ádám"}, {"B2", "Béla"}});
         sc.in.overlay.speakerTracks.insert("B1", {"mic"});
         sc.in.overlay.speakerTracks.insert("B2", {"loop"});
         editing::ReviewResult r = analyzeReview(sc.in, sc.act);
@@ -485,12 +495,12 @@ private slots:
 
         // Without Béla: no known person on the call voice, so "new remote speaker".
         Scenario solo = build({{"B1", 'L', 0}, {"B1", 'L', 0}, {"B1", 'R', 1}, {"B1", 'R', 1}, {"B1", 'L', 0}});
-        solo.in.meeting.speakerMap = {{"B1", "Ádám"}};
+        solo.in.meeting.speakerMap = spk({{"B1", "Ádám"}});
         solo.in.overlay.speakerTracks.insert("B1", {"mic"});
         r = analyzeReview(solo.in, solo.act);
         g = group(r.groups, editing::ReviewKind::SideConflict);
         QVERIFY(g);
-        QVERIFY(g->proposedSpeakerKey.isEmpty() && g->proposedPersonName.isEmpty());
+        QVERIFY(g->proposedSpeakerKey.isEmpty() && g->proposedPersonId.isNull());
         QVERIFY(g->proposeNew);
         QCOMPARE(g->proposedSide, editing::Side::Remote);
         QVERIFY(g->id.endsWith(QStringLiteral("new:remote")));
@@ -499,7 +509,7 @@ private slots:
 
         // Without a manual assignment (only the own name) the old behavior stays: no suggestion.
         solo.in.overlay.speakerTracks.clear();
-        solo.in.userName = "Ádám";
+        solo.in.self = me("Ádám");
         r = analyzeReview(solo.in, solo.act);
         g = group(r.groups, editing::ReviewKind::SideConflict);
         QVERIFY(g && !g->proposeNew);
@@ -510,7 +520,7 @@ private slots:
     {
         Scenario sc = build({{"A", 'L', 0, true}, {"A", 'L', 0, true}, {"A", 'L', 0, true}, {"B", 'R', 1, true},
                              {"B", 'R', 1, true}, {"B", 'R', 1, true}, {"A", 'L', 1}, {"A", 'L', 0}, {"A", 'L', 1}});
-        sc.in.meeting.speakerMap = {{"A", "Anna"}, {"B", "Béla"}};
+        sc.in.meeting.speakerMap = spk({{"A", "Anna"}, {"B", "Béla"}});
         editing::ReviewResult r = analyzeReview(sc.in, sc.act);
         const editing::ReviewGroup* g = group(r.groups, editing::ReviewKind::CoreMismatch);
         QVERIFY(g && g->proposedSpeakerKey == QStringLiteral("B"));   // without an assignment: suggests it

@@ -1,5 +1,6 @@
 // tanara-cli voice-models / voice-eval. All output is English, no tr().
 #include "VoiceCommands.h"
+#include "tanara/library/store/PeopleStore.h"
 
 #include "tanara/media/FfmpegMediaTool.h"
 #include "tanara/foundation/paths/AppPaths.h"
@@ -313,6 +314,7 @@ int runVoiceEvalCommand(const QStringList& args)
     if (!QFileInfo::exists(audio)) { err() << "Mixdown audio missing: " << audio << "\n"; return 1; }
 
     // Speakers (in order of appearance) and the noisy lines, using the editor's rules.
+    const PersonNames names = library::PeopleStore().names();
     QVector<processing::VoiceEvalSpeaker> speakers;
     QHash<QString, int> speakerIdx;
     QVector<int> lineSpeaker;
@@ -322,7 +324,7 @@ int runVoiceEvalCommand(const QStringList& args)
         auto it = speakerIdx.constFind(key);
         if (it == speakerIdx.constEnd()) {
             it = speakerIdx.insert(key, int(speakers.size()));
-            speakers.append({key, editing::speakeredit::speakerDisplayName(ov, m.speakerMap, key)});
+            speakers.append({key, editing::speakeredit::speakerDisplayName(ov, m.speakerMap, names, key)});
         }
         lineSpeaker.append(*it);
         timed.append({l.startMs, l.endMs, *it});

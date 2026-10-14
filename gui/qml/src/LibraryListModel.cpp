@@ -275,25 +275,44 @@ void LibraryListModel::setNoSummary(bool on)
     refreshNow();
 }
 
+tanara::PersonIds LibraryListModel::idsForNames(const QStringList& names) const
+{
+    QVector<tanara::library::PersonPresence> people;
+    if (tanara::library::MeetingLibrary* lib = library())
+        people = lib->people();
+    else if (AppContext::instance()->demo() && !m_forceEmpty)
+        people = demo::people();
+    tanara::PersonIds out;
+    for (const QString& name : names) {
+        tanara::PersonId id;
+        for (const tanara::library::PersonPresence& p : std::as_const(people))
+            if (p.name == name) { id = p.id; break; }
+        // An unknown name filters to nothing (as a name nobody carries did before).
+        out << (id.isNull() ? tanara::PersonId::fromString(QStringLiteral("unknown:") + name) : id);
+    }
+    return out;
+}
+
 void LibraryListModel::setPeople(const QStringList& people)
 {
-    if (people == m_query.people) return;
-    m_query.people = people;
+    if (people == m_peopleNames) return;
+    m_peopleNames = people;
+    m_query.people = idsForNames(people);
     emit queryChanged();
     refreshNow();
 }
 
 void LibraryListModel::addPerson(const QString& name)
 {
-    if (name.isEmpty() || m_query.people.contains(name)) return;
-    QStringList p = m_query.people;
+    if (name.isEmpty() || m_peopleNames.contains(name)) return;
+    QStringList p = m_peopleNames;
     p << name;
     setPeople(p);
 }
 
 void LibraryListModel::removePerson(const QString& name)
 {
-    QStringList p = m_query.people;
+    QStringList p = m_peopleNames;
     if (p.removeAll(name) > 0)
         setPeople(p);
 }
@@ -440,6 +459,7 @@ void LibraryListModel::clearFilters()
     if (m_query.isEmpty() && m_query.text.isEmpty()) return;
     const bool hadTags = !m_query.tags.isEmpty();
     m_query = {};
+    m_peopleNames.clear();
     emit queryChanged();
     if (hadTags) emit tagFilterItemsChanged();
     refreshNow();
@@ -485,6 +505,7 @@ QVariantList LibraryListModel::peopleOptions() const
     int i = 0;
     for (const tanara::library::PersonPresence& p : std::as_const(people))
         out.append(QVariantMap{{QStringLiteral("name"), p.name},
+                               {QStringLiteral("personId"), p.id.toString()},
                                {QStringLiteral("count"), p.meetingCount},
                                {QStringLiteral("colorIndex"), i++}});
     return out;

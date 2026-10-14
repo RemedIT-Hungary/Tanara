@@ -328,8 +328,10 @@ IdentifyJob* CloudParticipantIdentifier::identify(const IdentifyRequest& req)
             out[pi].score = r.value(QStringLiteral("score")).toDouble(-1.0);
             const QString ref = r.value(QStringLiteral("match")).toString();
             const int ci = ref.startsWith(QLatin1Char('c')) ? ref.mid(1).toInt() : -1;
-            if (!ref.isEmpty() && ci >= 0 && ci < req.candidates.size())
-                out[pi].name = req.candidates.at(ci).name;   // the ref maps back on the device only
+            if (!ref.isEmpty() && ci >= 0 && ci < req.candidates.size()) {   // the ref maps back on the device only
+                out[pi].personId = req.candidates.at(ci).personId;
+                out[pi].displayName = req.candidates.at(ci).name;
+            }
         }
         guard->complete(out);
     });

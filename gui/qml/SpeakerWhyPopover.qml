@@ -84,7 +84,7 @@ TPopover {
         if (c.speakerKey !== "")
             mergeRequested({ kind: "merge", fromKey: key, intoKey: c.speakerKey, personName: "", fix: false })
         else
-            editor.reassignSpeaker(key, c.personName, fixPrints)
+            editor.reassignSpeaker(key, c.personId || c.personName, fixPrints)
     }
     // Track chip = switch: the clicked track toggles, the others stay (several can be marked); if none
     // remains, the constraint is cleared (the machine decides again). Each click is one step.
