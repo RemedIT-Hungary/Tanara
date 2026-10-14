@@ -15,83 +15,7 @@
 #include "tanara/library/store/VoiceprintStore.h"   // l2normalize
 #include "kaldi-native-fbank/csrc/online-feature.h"
 
-// --- SAL shim for MinGW --------------------------------------------------------
-// Under _WIN32 the ONNX Runtime C-API header relies on <specstrings.h> for the SAL2 annotations
-// (_In_, _Outptr_, _Frees_ptr_opt_, ...). MinGW's specstrings.h is old and lacks several SAL2
-// macros, so undefined tokens make function-pointer parameters "disappear" (implicit int -> a
-// compile error). Solution: on MinGW (only there, NOT on MSVC) we define as empty, BEFORE the include,
-// exactly the set the header itself uses in its non-Windows branch.
-// (#ifndef guard: the definitions already in specstrings.h do not collide.)
-#if defined(_WIN32) && !defined(_MSC_VER)
-#  ifndef _In_
-#    define _In_
-#  endif
-#  ifndef _In_z_
-#    define _In_z_
-#  endif
-#  ifndef _In_opt_
-#    define _In_opt_
-#  endif
-#  ifndef _In_opt_z_
-#    define _In_opt_z_
-#  endif
-#  ifndef _Out_
-#    define _Out_
-#  endif
-#  ifndef _Outptr_
-#    define _Outptr_
-#  endif
-#  ifndef _Out_opt_
-#    define _Out_opt_
-#  endif
-#  ifndef _Inout_
-#    define _Inout_
-#  endif
-#  ifndef _Inout_opt_
-#    define _Inout_opt_
-#  endif
-#  ifndef _Frees_ptr_opt_
-#    define _Frees_ptr_opt_
-#  endif
-#  ifndef _Ret_maybenull_
-#    define _Ret_maybenull_
-#  endif
-#  ifndef _Ret_notnull_
-#    define _Ret_notnull_
-#  endif
-#  ifndef _Check_return_
-#    define _Check_return_
-#  endif
-#  ifndef _Outptr_result_maybenull_
-#    define _Outptr_result_maybenull_
-#  endif
-#  ifndef _In_reads_
-#    define _In_reads_(X)
-#  endif
-#  ifndef _Inout_updates_
-#    define _Inout_updates_(X)
-#  endif
-#  ifndef _Out_writes_
-#    define _Out_writes_(X)
-#  endif
-#  ifndef _Inout_updates_all_
-#    define _Inout_updates_all_(X)
-#  endif
-#  ifndef _Out_writes_bytes_all_
-#    define _Out_writes_bytes_all_(X)
-#  endif
-#  ifndef _Out_writes_all_
-#    define _Out_writes_all_(X)
-#  endif
-#  ifndef _Success_
-#    define _Success_(X)
-#  endif
-#  ifndef _Outptr_result_buffer_maybenull_
-#    define _Outptr_result_buffer_maybenull_(X)
-#  endif
-#endif  // _WIN32 && !_MSC_VER
-
-#include <onnxruntime_cxx_api.h>
+#include "OnnxRuntimeInclude.h"
 
 #include <string>
 #include <cmath>
@@ -140,13 +64,8 @@ VoiceEmbedder::VoiceEmbedder(const QString& modelPath, const EmbedderConfig& cfg
         Ort::SessionOptions so;
         so.SetIntraOpNumThreads(1);
         so.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
-        // ORT expects the model path as ORTCHAR_T*: wchar_t on Windows (wide path), char on POSIX. We
-        // convert the QString accordingly.
-#if defined(_WIN32)
-        const std::wstring modelPathOrt = modelPath.toStdWString();
-#else
-        const std::string modelPathOrt = modelPath.toUtf8().toStdString();
-#endif
+        // ORT expects the model path as ORTCHAR_T* (wide on Windows), see ortPath().
+        const auto modelPathOrt = ortPath(modelPath);
         d->session = std::make_unique<Ort::Session>(
             d->env, modelPathOrt.c_str(), so);
 

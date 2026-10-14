@@ -1,6 +1,7 @@
 #include "tanara/processing/ProcessingProviders.h"
 #include "tanara/processing/analysis/LlmTagSuggestionProvider.h"
 #include "tanara/processing/analysis/LocalParticipantIdentifier.h"
+#include "tanara/processing/diarization/LocalDiarizer.h"
 #include "tanara/processing/summary/LlmSummarizer.h"
 #include "tanara/processing/voiceid/LocalVoiceModelCatalog.h"
 #include "tanara/processing/voiceid/OnnxVoiceEmbedder.h"
@@ -8,6 +9,7 @@
 #include "tanara/providers/chat/IChatProvider.h"
 #include "tanara/providers/summary/ISummarizer.h"
 #include "tanara/providers/tags/ITagSuggester.h"
+#include "tanara/providers/voice/IDiarizer.h"
 #include "tanara/providers/voice/IParticipantIdentifier.h"
 #include "tanara/providers/voice/IVoiceEmbedder.h"
 
@@ -74,6 +76,22 @@ void registerInto(ProviderRegistry& registry, ProcessingProviderDeps deps)
         return new OnnxVoiceEmbedder(voiceSet ? voiceSet() : VoiceEmbedderSet(), media ? media() : media::MediaToolPtr(),
                                      parent);
     });
+
+    // Diarization (D3 stage: segmentation only, see LocalDiarizer.h): registered only when a
+    // segmentation model file is present (the SHA-256 is checked when a job opens it).
+    if (LocalDiarizer::hasUsableModel(deps.modelsDir, deps.appDir)) {
+        ProviderDescriptor diar = localDescriptor(LocalDiarizer::Id,
+            QCoreApplication::translate("BuiltinProviders", "Helyi beszélő-elkülönítés"), InputKind::AudioClip);
+        diar.traits.inputs = { InputKind::AudioClip, InputKind::Pcm };
+        diar.traits.needsModelFile = true;
+        diar.catalogRef = LocalVoiceModelCatalog::Id;
+        const QString mDir = deps.modelsDir, aDir = deps.appDir;
+        registry.add<IDiarizer>(diar, [mDir, aDir, media](const ProviderContext&, const ProviderConfig&,
+                                                          QObject* parent) -> IDiarizer* {
+            return new LocalDiarizer(LocalDiarizer::catalogLoader(mDir, aDir), media ? media() : media::MediaToolPtr(),
+                                     parent);
+        });
+    }
 
     registry.add<IParticipantIdentifier>(
         localDescriptor(LocalParticipantIdentifier::Id,

@@ -16,6 +16,10 @@
         <translation>Local voice identification</translation>
     </message>
     <message>
+        <source>Helyi beszélő-elkülönítés</source>
+        <translation>Local speaker separation</translation>
+    </message>
+    <message>
         <source>Nyelvi modell</source>
         <translation>Language model</translation>
     </message>

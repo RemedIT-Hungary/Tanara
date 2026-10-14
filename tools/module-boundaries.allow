@@ -38,6 +38,5 @@ gui/src/main.cpp -> platform:Q_OS_LINUX   # platform (gui) -> P15
 gui/src/main.cpp -> tanara/app/AppController.h   # composition root (modules.json forbiddenIncludes.ui has no per-file exception)
 
 # ---- P16 (24 lines) ----
-core/src/processing/voiceid/VoiceEmbedder.cpp -> platform:_WIN32   # compiler/ABI, not OS: MinGW SAL shims + ORTCHAR_T path type for onnxruntime (kept, justified by P16)
 watcher/TrayWatcher.cpp -> tanara/app/SettingsManager.h   # watcher exe -> SettingsManager/TrackCatalog -> P16
 watcher/TrayWatcher.cpp -> tanara/library/tracks/TrackCatalog.h   # watcher exe -> SettingsManager/TrackCatalog -> P16

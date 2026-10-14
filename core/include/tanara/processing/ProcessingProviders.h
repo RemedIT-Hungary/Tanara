@@ -8,6 +8,7 @@
 //   Summarization              llm                   LlmSummarizer             (over the chat provider cfg.type)
 //   TagSuggestion              llm                   LlmTagSuggestionProvider  (over the chat provider cfg.type)
 //   ModelCatalog               local-voice-models    LocalVoiceModelCatalog
+//   Diarization                local                 LocalDiarizer             (only when a segmentation model file exists)
 //
 // The LLM-based providers take their chat provider from the SAME registry, by the config's type
 // (ProviderConfig::type: "openai-compat", or "tanara-cloud" = the Tanara Cloud LLM proxy), created

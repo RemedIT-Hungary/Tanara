@@ -73,6 +73,10 @@ target_link_libraries(tanara_core PRIVATE tanara_miniz)
 if(TANARA_BUILD_VOICEID)
     target_compile_definitions(tanara_core PRIVATE TANARA_HAVE_VOICEID)
     target_link_libraries(tanara_core PRIVATE kaldi_native_fbank onnxruntime::onnxruntime)
+    # MinGW's old <specstrings.h> lacks SAL2 macros the ORT header needs (see OnnxRuntimeInclude.h).
+    if(MINGW)
+        target_compile_definitions(tanara_core PRIVATE TANARA_ORT_SAL_SHIM)
+    endif()
 endif()
 
 # Tanara Cloud compile switches (see the root CMakeLists.txt).

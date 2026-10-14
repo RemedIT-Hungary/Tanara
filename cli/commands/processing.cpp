@@ -1,7 +1,8 @@
-// tanara-cli, processing module: transcribe, summarize, identify, speaker models, embed-probe, providers.
+// tanara-cli, processing module: transcribe, summarize, identify, speaker models, diarize-probe, embed-probe, providers.
 // All output is English, no tr().
 #include "Commands.h"
 #include "VoiceCommands.h"
+#include "DiarizeCommands.h"
 
 #include "tanara/app/AppController.h"
 #include "tanara/app/SettingsManager.h"
@@ -255,6 +256,9 @@ void registerProcessingCommands(CommandRegistry& r)
     r.add({"voice-eval", m, "Compare the speaker models on a meeting folder (read-only)",
            "voice-eval <meeting-folder> [--models a,b] [--min-ms N] [--json]", false,
            [](CliContext&, const QStringList& a) { return runVoiceEvalCommand(a); }});
+    r.add({"diarize-probe", m, "Run the speaker segmentation on one audio file and print the turns (read-only)",
+           "diarize-probe <audio> [--model <id>] [--shift <ratio>] [--min-on <s>] [--min-off <s>] [--threads <n>] [--batch <n>] [--json] [--windows]",
+           false, [](CliContext&, const QStringList& a) { return runDiarizeProbeCommand(a); }});
     r.add({"embed-probe", m, "Print the embedding of one audio segment (voiceprint debugging)",
            "embed-probe <modelPath> <audioPath> <startMs> <endMs> [scale] [cmn:0/1] [snip:0/1]", true, cmd_embedProbe});
     r.add({"providers", m, "List the providers; test a provider's connection (one GET, nothing paid)",
