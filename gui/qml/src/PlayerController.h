@@ -22,7 +22,8 @@
 //
 #include "PlayerBackend.h"
 
-#include "tanara/domain/Types.h"
+#include "tanara/domain/Meeting.h"
+#include "tanara/library/tracks/ITracksFacade.h"
 
 #include <QObject>
 #include <QPointer>
@@ -32,9 +33,6 @@
 
 #include <functional>
 
-namespace tanara {
-namespace app { class AppController; }
-}
 
 namespace tanara_qml {
 
@@ -84,8 +82,8 @@ public:
     explicit PlayerController(QObject* parent = nullptr);
     ~PlayerController() override;
 
-    // The controller defaults to the App singleton's; injectable in tests.
-    void setController(tanara::app::AppController* controller);
+    // The meeting source defaults to AppContext::services()'s tracks facade; injectable in tests.
+    void setFacade(tanara::library::ITracksFacade* facade);
 
     QString meetingId() const { return m_meetingId; }
     void setMeetingId(const QString& id);
@@ -153,9 +151,13 @@ private:
     void onBackendDuration(qint64 ms);
     void onBackendFinished();
 
-    QPointer<tanara::app::AppController> m_controller;
-    QPointer<tanara::app::AppController> m_attached;     // whose signals we are currently bound to
-    bool m_controllerInjected = false;
+    void resolveServices();
+    void attach(tanara::library::ITracksFacade* facade);
+    bool live() const;
+
+    QPointer<tanara::library::ITracksFacade> m_facade;
+    QList<QMetaObject::Connection> m_connections;
+    bool m_explicitFacade = false;
     PlayerBackend* m_backend = nullptr;
     QTimer m_tick;
 

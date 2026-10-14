@@ -19,8 +19,8 @@ import QtQuick.Templates as T
 ApplicationWindow {
     id: window
 
-    // Passed by the host (as initial properties); without them App.controller / demo applies.
-    property QtObject hostController: null
+    // Passed by the host (as an initial property). The view model takes the App's services (the
+    // fictional ones in the demo / screenshot, where demoState picks the step).
     property QtObject hostDialogs: null
     property string demoState: ""
     property alias vm: model
@@ -42,8 +42,7 @@ ApplicationWindow {
 
     Component.onCompleted: {
         if (hostDialogs) model.dialogs = hostDialogs
-        if (hostController) model.controller = hostController
-        else if (demoState !== "") model.demoState = demoState
+        if (demoState !== "") model.demoState = demoState
     }
 
     // Key / provider saved meanwhile in Settings: a fresh status row on return.
@@ -507,7 +506,6 @@ ApplicationWindow {
                         // Voice model: if WeSpeaker is missing it can be downloaded from here too; skippable.
                         VoiceModelOnboardingRow {
                             width: parent.width
-                            controller: window.hostController
                             demoState: window.demoState === "providers" ? "B08none" : ""
                         }
                     }

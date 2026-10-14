@@ -17,11 +17,13 @@
 // card, library preparation and tag-suggestion switches), `voiceModels` (the Speakers page's
 // voice models and the backfill state).
 //
-// Without a controller (--qml-shot / --demo, tests) it provides FICTIONAL data; `demoState`
-// ("B01" ... "B07", "B07notes", "advanced", "dirty", "unsaved", "schema", "cloudComingSoon", "cloudSelected",
-// "B04embedding" / "B04embeddingRunning" / "B04embeddingError" / "B04embeddingDone" /
-// "B04embeddingCloud" / "B04embeddingNone" / "B04modelChange", "B08" / "B08download" / "B08none" / "B08fallback" /
-// "B08error" / "B08offline" / "B08backfill" / "B08partial" / "B08bundled") sets the design states.
+// It works on a tanara::app::ISettingsFacade (and the voice-model list on an IVoiceModelsFacade):
+// the QML default constructor takes them from AppContext::services(); on the fictional facades
+// (tanara_demo: --qml-shot / --demo, tests) `demoState` ("B01" ... "B07", "B07notes", "advanced",
+// "dirty", "unsaved", "schema", "cloudComingSoon", "cloudSelected", "B04embedding" /
+// "B04embeddingRunning" / "B04embeddingError" / "B04embeddingDone" / "B04embeddingCloud" /
+// "B04embeddingNone" / "B04modelChange", "B08" / "B08download" / "B08none" / "B08fallback" /
+// "B08error" / "B08offline" / "B08backfill" / "B08partial" / "B08bundled") picks the design state.
 //
 #include "SettingsDeviceModel.h"
 #include "tanara/app/AppSettings.h"
@@ -29,7 +31,7 @@
 #include "SettingsProviderModel.h"
 #include "VoiceModelListModel.h"
 
-#include "tanara/domain/Types.h"
+#include "tanara/app/ISettingsFacade.h"
 #include "tanara/providers/core/ReadinessModel.h"
 
 #include <QAbstractItemModel>
@@ -47,23 +49,22 @@
 #include <memory>
 
 namespace tanara {
-namespace app { class AppController; }
 namespace watcher { class IMeetingDetector; }
 }
 
 namespace tanara_qml {
 
 class SettingsDialogs;
+struct UiServices;
 
 class SettingsViewModel : public QObject {
     Q_OBJECT
     QML_ELEMENT
 
-    Q_PROPERTY(QObject* controller READ controllerObject WRITE setControllerObject NOTIFY controllerChanged)
     Q_PROPERTY(QObject* dialogs READ dialogsObject WRITE setDialogsObject NOTIFY dialogsChanged)
     Q_PROPERTY(QString demoState READ demoState WRITE setDemoState NOTIFY demoStateChanged)
-    // True: there is no core, saving happens in memory only (demo / screenshot).
-    Q_PROPERTY(bool demo READ demo NOTIFY controllerChanged)
+    // True: fictional facade, saving happens in memory only (demo / screenshot).
+    Q_PROPERTY(bool demo READ demo NOTIFY facadeChanged)
 
     // ---- window ----
     // "general" | "recording" | "watcher" | "services" | "speakers" | "summary"
@@ -79,9 +80,9 @@ class SettingsViewModel : public QObject {
     Q_PROPERTY(bool servicesWarn READ servicesWarn NOTIFY servicesWarnChanged)
     // Where the API keys are: "keychain" | "file" (foundation/secrets), the one-line text for the
     // Services page, and the warning when the keychain was wanted but the keys are in a file.
-    Q_PROPERTY(QString secretsBackend READ secretsBackend NOTIFY controllerChanged)
-    Q_PROPERTY(QString secretsLocationText READ secretsLocationText NOTIFY controllerChanged)
-    Q_PROPERTY(QString secretsWarning READ secretsWarning NOTIFY controllerChanged)
+    Q_PROPERTY(QString secretsBackend READ secretsBackend NOTIFY facadeChanged)
+    Q_PROPERTY(QString secretsLocationText READ secretsLocationText NOTIFY facadeChanged)
+    Q_PROPERTY(QString secretsWarning READ secretsWarning NOTIFY facadeChanged)
     // Field errors: { "userName": "...", "folder.audio": "...", "watchedApps": "..." }.
     Q_PROPERTY(QVariantMap errors READ errors NOTIFY errorsChanged)
 
@@ -160,19 +161,19 @@ class SettingsViewModel : public QObject {
     Q_PROPERTY(QString schemaKind READ schemaKind NOTIFY promptIndexChanged)
 
 public:
+    // QML: the facades of AppContext::services() (the fictional ones follow demoState).
     explicit SettingsViewModel(QObject* parent = nullptr);
+    // An explicit set (tests): its settings facade, and the voice-model list its voice-model facade.
+    explicit SettingsViewModel(const UiServices& services, QObject* parent = nullptr);
     ~SettingsViewModel() override;
 
-    QObject* controllerObject() const;
-    void setControllerObject(QObject* controller);
-    tanara::app::AppController* controller() const;
-    void setController(tanara::app::AppController* controller);
+    tanara::app::ISettingsFacade* facade() const { return m_facade; }
     QObject* dialogsObject() const;
     void setDialogsObject(QObject* dialogs);
     SettingsDialogs* dialogs() const;
     QString demoState() const { return m_demoState; }
     void setDemoState(const QString& state);
-    bool demo() const { return m_controller.isNull(); }
+    bool demo() const { return !m_live; }
 
     QString page() const { return m_page; }
     void setPage(const QString& page);
@@ -317,7 +318,7 @@ public:
     static QString formatBytes(qint64 bytes);
 
 signals:
-    void controllerChanged();
+    void facadeChanged();
     void dialogsChanged();
     void demoStateChanged();
     void pageChanged();
@@ -354,10 +355,12 @@ private:
     friend class SettingsProviderModel;
     friend class SettingsEmbeddingModel;
 
-    void attach();
+    void init();
+    void resolveServices();
+    void useFacade(tanara::app::ISettingsFacade* facade);
     void loadFromCore();
+    void applyScenario();
     void applyDefaultSelection();
-    void loadDemo();
     void normalize(tanara::app::AppSettings& s) const;
     void emitAllChanged();
     void onExternalSettingsChanged();
@@ -373,8 +376,9 @@ private:
     void storePromptsInDraft();
     QStringList selectedDevicesForSave() const;
 
-    QPointer<tanara::app::AppController> m_controller;
-    bool m_controllerSet = false;
+    QPointer<tanara::app::ISettingsFacade> m_facade;
+    bool m_explicitFacade = false;
+    bool m_live = false;
     QPointer<SettingsDialogs> m_dialogs;
     QString m_demoState;
     QList<QMetaObject::Connection> m_connections;

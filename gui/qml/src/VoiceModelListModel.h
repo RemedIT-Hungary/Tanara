@@ -8,21 +8,23 @@
 //  - verification: after a download and when the page opens (refresh), the core's
 //    VoiceModelDownloader::verify (file size); meanwhile "verifying", on a mismatch "error" +
 //    corrupt (Retry: replaces it);
-//  - delete: deletes the DOWNLOADED file (<metaDir>/models) (AppController::deleteVoiceModelFile),
+//  - delete: deletes the DOWNLOADED file (<metaDir>/models) (IVoiceModelsFacade::deleteModelFile),
 //    never touches a bundled one; disabled during a running download / verification;
-//  - rescan: after a manually copied model file (AppController::rescanVoiceModels);
+//  - rescan: after a manually copied model file (IVoiceModelsFacade::rescan);
 //  - download: the core's VoiceModelDownloader (immediate, NOT a draft); after a successful
 //    download the model is enabled in the draft (takes effect on Save);
 //  - enabling: into the Settings draft (setDraftAccess: provided by SettingsViewModel); a
 //    standalone instance without a draft writes the core's setting immediately;
-//  - backfill: AppController::voiceprintBackfillStarted / Progress / Finished (real "k / N"),
-//    the skipped-samples list from AppController::backfillSkippedSamples (person, sample,
-//    reason: one item per sample, however many models are missing).
+//  - backfill: the facade's backfillStarted / Progress / Finished (real "k / N"), the
+//    skipped-samples list from IVoiceModelsFacade::backfillSkips (person, sample, reason: one
+//    item per sample, however many models are missing).
 //
-// Without a controller (demo, --qml-shot) it provides FICTIONAL data; demoState: B08 | B08download |
-// B08none | B08fallback | B08error | B08offline | B08backfill | B08partial | B08bundled |
-// B08verify | B08delete.
+// It works on a tanara::processing::IVoiceModelsFacade: from QML the one of AppContext::services();
+// inside Settings the view model's (useServices). On the fictional facade (tanara_demo: demo,
+// --qml-shot) the rows show a design state; demoState: B08 | B08download | B08none | B08fallback |
+// B08error | B08offline | B08backfill | B08partial | B08bundled | B08verify | B08delete.
 //
+#include "tanara/processing/voiceid/IVoiceModelsFacade.h"
 #include "tanara/processing/voiceid/VoiceModelRegistry.h"
 
 #include <QAbstractListModel>
@@ -37,17 +39,17 @@
 #include <functional>
 
 namespace tanara {
-namespace app { class AppController; }
 namespace processing { class VoiceModelDownloader; }
 }
 
 namespace tanara_qml {
 
+struct UiServices;
+
 class VoiceModelListModel : public QAbstractListModel {
     Q_OBJECT
     QML_ELEMENT
 
-    Q_PROPERTY(QObject* controller READ controllerObject WRITE setControllerObject NOTIFY controllerChanged)
     Q_PROPERTY(QString demoState READ demoState WRITE setDemoState NOTIFY demoStateChanged)
     Q_PROPERTY(int count READ count NOTIFY summaryChanged)
     // Whether there is at least one usable (downloaded or bundled) model.
@@ -107,9 +109,11 @@ public:
     QVariant data(const QModelIndex& index, int role) const override;
     QHash<int, QByteArray> roleNames() const override;
 
-    QObject* controllerObject() const;
-    void setControllerObject(QObject* controller);
-    void setController(tanara::app::AppController* controller);
+    // An explicit facade (tests); from now on the process's services no longer apply.
+    void setFacade(tanara::processing::IVoiceModelsFacade* facade);
+    tanara::processing::IVoiceModelsFacade* facade() const { return m_facade; }
+    // The owner's (SettingsViewModel's) set: the facade of `services` in the given design state.
+    void useServices(const UiServices& services, const QString& scenario = QString());
     QString demoState() const { return m_demoState; }
     void setDemoState(const QString& state);
 
@@ -157,8 +161,6 @@ public:
     void setDraftAccess(std::function<QStringList()> get, std::function<void(const QStringList&)> set);
     // The draft changed from outside (load, discard, save).
     void notifyDraftChanged();
-    // Demo: the fictional state (called by SettingsViewModel's loadDemo).
-    void loadDemo(const QString& state);
 
     // ---- teszt-varratok ----
     tanara::processing::VoiceModelDownloader* downloader() const { return m_downloader; }
@@ -167,7 +169,6 @@ public:
     void setDirsForTest(const QString& metaDir, const QString& appDir);
 
 signals:
-    void controllerChanged();
     void demoStateChanged();
     void summaryChanged();
     void backfillChanged();
@@ -187,7 +188,10 @@ private:
         bool hasFile = false;       // there is a downloaded file (<metaDir>/models)
     };
 
+    void resolveServices();
     void attach();
+    void applyScenario();
+    bool live() const;
     void rebuild();
     void refreshFiles();
     void updateFileState(Row& r) const;
@@ -211,8 +215,8 @@ private:
     void loadSkips();
     void setBackfill(const QString& state, int total, int done, int skipped);
 
-    QPointer<tanara::app::AppController> m_controller;
-    bool m_controllerSet = false;
+    QPointer<tanara::processing::IVoiceModelsFacade> m_facade;
+    bool m_explicitFacade = false;
     QString m_demoState;
     QList<QMetaObject::Connection> m_connections;
     tanara::processing::VoiceModelDownloader* m_downloader = nullptr;
@@ -223,7 +227,6 @@ private:
     bool m_dirsOverridden = false;
     std::function<QStringList()> m_getDraft;
     std::function<void(const QStringList&)> m_setDraft;
-    QStringList m_demoEnabled;
     bool m_offline = false;
 
     QString m_bfState;
@@ -234,8 +237,8 @@ private:
 
 // Indicates details in the People window (PeopleDetailPane): how many of the selected
 // person's samples could not be backfilled in the latest voiceprint backfill ("1 sample
-// cannot be backfilled: missing recording"). Binds to App.controller by itself; without a
-// controller (demo) the "samplesModels" state shows a fictional skipped sample.
+// cannot be backfilled: missing recording"). It takes the voice-model facade of
+// AppContext::services(); the fictional one shows a skipped sample in the "samplesModels" state.
 //   BackfillSkipNote { person: vm.selectedName; demoState: vm.demoState }
 class BackfillSkipNote : public QObject {
     Q_OBJECT
@@ -256,8 +259,8 @@ public:
     int count() const { return m_entries.size(); }
     QString text() const;
     QString detail() const;
-    // Test seam (without QML).
-    void setController(tanara::app::AppController* c);
+    // Test seam (without QML): an explicit facade.
+    void setFacade(tanara::processing::IVoiceModelsFacade* facade);
 
 signals:
     void personChanged();
@@ -265,7 +268,9 @@ signals:
 
 private:
     void reload();
-    QPointer<tanara::app::AppController> m_controller;
+    void resolveServices();
+    QPointer<tanara::processing::IVoiceModelsFacade> m_facade;
+    bool m_explicitFacade = false;
     QString m_person, m_demoState;
     QVariantList m_entries;
     QList<QMetaObject::Connection> m_connections;

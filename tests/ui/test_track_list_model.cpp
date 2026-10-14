@@ -1,7 +1,9 @@
 // TrackListModel + WaveformItem: the model of the Tracks tab on an isolated TANARA_HOME: names,
 // renaming, restoring / permanently deleting a dropped track, locating a missing file,
 // waveform peaks and the mixdown state (with a real ffmpeg, if available).
+#include "AppContext.h"
 #include "JobTestSupport.h"
+#include "UiServices.h"
 #include "TrackListModel.h"
 #include "WaveformItem.h"
 
@@ -100,7 +102,7 @@ private slots:
 
         TrackListModel model;
         QAbstractItemModelTester tester(&model, QAbstractItemModelTester::FailureReportingMode::QtTest);
-        model.setController(sb.app.get());
+        model.setFacade(tanara_qml::AppContext::instance()->servicesFor(sb.app.get()).tracks(QString(), nullptr));
         model.setMeetingId(m.id);
         QCOMPARE(model.count(), 3);
         QCOMPARE(cell(model, 1, TrackListModel::TrackIdRole).toString(), QStringLiteral("loop"));
@@ -136,7 +138,7 @@ private slots:
 
         TrackListModel model;
         QAbstractItemModelTester tester(&model, QAbstractItemModelTester::FailureReportingMode::QtTest);
-        model.setController(sb.app.get());
+        model.setFacade(tanara_qml::AppContext::instance()->servicesFor(sb.app.get()).tracks(QString(), nullptr));
         QCOMPARE(model.count(), 0);
         model.setMeetingId(m.id);
         QVERIFY(!model.demo());
@@ -190,7 +192,7 @@ private slots:
         QVERIFY(QFile::exists(bDropped));
 
         TrackListModel model;
-        model.setController(sb.app.get());
+        model.setFacade(tanara_qml::AppContext::instance()->servicesFor(sb.app.get()).tracks(QString(), nullptr));
         model.setMeetingId(a.id);
         const QString aTrack = model.trackIdAt(0);
         QVERIFY(!aTrack.isEmpty());
@@ -221,7 +223,7 @@ private slots:
         QVERIFY(QFile::rename(original, moved));
 
         TrackListModel model;
-        model.setController(sb.app.get());
+        model.setFacade(tanara_qml::AppContext::instance()->servicesFor(sb.app.get()).tracks(QString(), nullptr));
         model.setMeetingId(m.id);
         QVERIFY(cell(model, 0, TrackListModel::MissingRole).toBool());
         QCOMPARE(cell(model, 0, TrackListModel::DurationTextRole).toString(), QStringLiteral("–"));
@@ -246,7 +248,7 @@ private slots:
         const Meeting m = sb.recording("Hullámforma", 2, /*secondTrack*/ true);
 
         TrackListModel model;
-        model.setController(sb.app.get());
+        model.setFacade(tanara_qml::AppContext::instance()->servicesFor(sb.app.get()).tracks(QString(), nullptr));
         model.setMeetingId(m.id);
         QCOMPARE(cell(model, 0, TrackListModel::PeaksStateRole).toString(), QStringLiteral("none"));
         QCOMPARE(model.mixdownState(), QStringLiteral("none"));
@@ -262,7 +264,7 @@ private slots:
 
         // A new model on the same meeting: available at once from the cache (without a request).
         TrackListModel second;
-        second.setController(sb.app.get());
+        second.setFacade(tanara_qml::AppContext::instance()->servicesFor(sb.app.get()).tracks(QString(), nullptr));
         second.setMeetingId(m.id);
         QCOMPARE(cell(second, 0, TrackListModel::PeaksStateRole).toString(), QStringLiteral("ready"));
 

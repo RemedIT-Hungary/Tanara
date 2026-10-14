@@ -3,8 +3,6 @@
 #include "PeopleWindowHost.h"
 #include "TagsWindowHost.h"
 
-#include "tanara/app/AppController.h"
-
 #include <QApplication>
 #include <QDesktopServices>
 #include <QDialog>

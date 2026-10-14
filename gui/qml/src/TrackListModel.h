@@ -4,16 +4,17 @@
 // (friendly name, raw device name, state: active / dropped / missing file), per track the
 // cached waveform peaks, and the mixdown state (ready / stale / running %).
 //
-// Sources: TrackCatalog (names, rename, locate, delete dropped), WaveformService (peaks:
-// async, requested by requestWaveforms() when the tab first shows), AppController's
-// restoreTrack / regenerateMixdown, the MeetingJobTracker (whether a mixdown runs).
-// Updates per row on the core's signals (with an unchanged track order only dataChanged goes out).
+// Source: a tanara::library::ITracksFacade (TrackCatalog names / rename / locate / delete,
+// WaveformService peaks: async, requested by requestWaveforms() when the tab first shows, the
+// restore / include / remix operations, the mixdown job). Updates per row on the facade's signals
+// (with an unchanged track order only dataChanged goes out). The QML default constructor takes the
+// facade of AppContext::services().
 //
-// Without a controller or with App.demo, fictional sample data; demoState: "default" (the
-// design sketch: the mixdown is running) | "loading" (computing peaks) | "idle" (all done).
+// On the fictional facade (tanara_demo) the design state's track list; demoState: "default" (the
+// design sketch: the mixdown is running) | "loading" (computing peaks) | "idle" (all done) |
+// "overview*".
 //
-#include "tanara/library/tracks/TrackCatalog.h"
-#include "tanara/library/tracks/WaveformService.h"
+#include "tanara/library/tracks/ITracksFacade.h"
 
 #include <QAbstractListModel>
 #include <QList>
@@ -22,17 +23,12 @@
 #include <QVector>
 #include <QtQml/qqmlregistration.h>
 
-namespace tanara {
-namespace app { class AppController; }
-}
-
 namespace tanara_qml {
 
 class TrackListModel : public QAbstractListModel {
     Q_OBJECT
     QML_ELEMENT
 
-    Q_PROPERTY(QObject* controller READ controllerObject WRITE setController NOTIFY controllerChanged)
     Q_PROPERTY(QString meetingId READ meetingId WRITE setMeetingId NOTIFY meetingIdChanged)
     Q_PROPERTY(QString demoState READ demoState WRITE setDemoState NOTIFY demoStateChanged)
     Q_PROPERTY(bool demo READ demo NOTIFY changed)
@@ -103,8 +99,8 @@ public:
     QVariant data(const QModelIndex& index, int role) const override;
     QHash<int, QByteArray> roleNames() const override;
 
-    QObject* controllerObject() const;
-    void setController(QObject* controller);
+    // An explicit facade (tests); from now on the process's services no longer apply.
+    void setFacade(tanara::library::ITracksFacade* facade);
     QString meetingId() const { return m_meetingId; }
     void setMeetingId(const QString& id);
     QString demoState() const { return m_demoState; }
@@ -133,7 +129,7 @@ public:
     // Restores a dropped track to active.
     Q_INVOKABLE void restore(int row);
     // "Include" / toggle: the track back into the mixdown, or a manual exclusion
-    // (AppController::includeTrack / excludeTrack; then a remix).
+    // (ITracksFacade::setTrackIncluded; then a remix).
     Q_INVOKABLE void setIncluded(int row, bool included);
     // Locates a missing file: the chosen file is copied into the meeting's folder. An empty
     // return = success; otherwise the human error message.
@@ -152,14 +148,13 @@ public:
     Q_INVOKABLE QString relocateTrack(const QString& meetingId, const QString& trackId,
                                       const QString& filePath);
     Q_INVOKABLE int deleteDroppedIn(const QString& meetingId);
-    // Permanently deletes ONE track (the audio file too; AppController::deleteTrack). The
+    // Permanently deletes ONE track (the audio file too; ITracksFacade::deleteTrack). The
     // confirmation is the caller's job; the meeting check as in deleteDroppedIn. True: deleted.
     Q_INVOKABLE bool deleteTrackIn(const QString& meetingId, const QString& trackId);
     // Makes the mixdown (again) from the active tracks.
     Q_INVOKABLE void refreshMixdown();
 
 signals:
-    void controllerChanged();
     void meetingIdChanged();
     void demoStateChanged();
     void mixdownPercentChanged();
@@ -176,20 +171,20 @@ private:
         int colorIndex = 0;
     };
 
-    tanara::app::AppController* app() const;
-    void connectController();
+    void resolveServices();
+    void useFacade(tanara::library::ITracksFacade* facade);
+    bool mine(const QString& meetingId) const;
     void reload();
     void reloadMixdown();
-    void loadDemo();
+    void applyFixture(const tanara::library::TrackListFixture& fixture);
     void applyPeaks(const QString& trackId, const tanara::library::TrackPeaks& peaks, bool failed);
     static QList<qreal> toList(const QVector<float>& v);
     static QList<qreal> levelsOf(const tanara::library::TrackPeaks& peaks);
     static QString iconFor(tanara::library::TrackRole role);
 
-    QPointer<QObject> m_injected;
-    QPointer<tanara::app::AppController> m_connected;
+    QPointer<tanara::library::ITracksFacade> m_facade;
+    bool m_explicitFacade = false;
     QList<QMetaObject::Connection> m_connections;
-    QMap<QString, QString> m_deviceNames;   // last seen state of the device renames
 
     QString m_meetingId;
     QString m_demoState;

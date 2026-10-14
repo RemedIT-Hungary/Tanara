@@ -11,17 +11,18 @@
 // `base` and `draft`. "Next" applies the DIFFERENCE of the CURRENT step's fields onto the
 // core's currently effective settings (it touches no other field, like the Settings
 // window); "Skip" discards the step's draft and moves on. The name goes through the core's
-// separate operation (AppController::setUserSpeakerName, which updates the person DB too);
+// separate operation (ISettingsFacade::setUserSpeakerName, which updates the person DB too);
 // the theme shows immediately in the running UI (preview) and is kept only when the step is
 // accepted (themeModeSaved: the main window remembers it). On close the unsaved step is lost
 // (discardPending) and `onboardingDone` becomes true (markDone), so the window opens by
 // itself only once.
 //
-// Without a controller (--qml-shot, tests) it provides FICTIONAL data; `demoState`
-// ("welcome" | "you" | "folders" | "providers" | "watcher" | "done") sets the step.
+// It works on a tanara::app::ISettingsFacade: the QML default constructor takes AppContext::
+// services()'s; on the fictional one (tanara_demo: --qml-shot, tests) `demoState` ("welcome" |
+// "you" | "folders" | "providers" | "watcher" | "done") picks the step.
 //
-#include "tanara/domain/Types.h"
 #include "tanara/app/AppSettings.h"
+#include "tanara/app/ISettingsFacade.h"
 
 #include <QObject>
 #include <QPointer>
@@ -31,7 +32,7 @@
 #include <QtQml/qqmlregistration.h>
 
 namespace tanara {
-namespace app { class AppController; }
+namespace providers { class ProviderRegistry; }
 }
 
 namespace tanara_qml {
@@ -42,10 +43,9 @@ class OnboardingViewModel : public QObject {
     Q_OBJECT
     QML_ELEMENT
 
-    Q_PROPERTY(QObject* controller READ controllerObject WRITE setControllerObject NOTIFY controllerChanged)
     Q_PROPERTY(QObject* dialogs READ dialogsObject WRITE setDialogsObject NOTIFY dialogsChanged)
     Q_PROPERTY(QString demoState READ demoState WRITE setDemoState NOTIFY demoStateChanged)
-    Q_PROPERTY(bool demo READ demo NOTIFY controllerChanged)
+    Q_PROPERTY(bool demo READ demo NOTIFY facadeChanged)
 
     // ---- steps ----
     // [{ key, label, icon }]: the order is the wizard's order.
@@ -85,18 +85,18 @@ class OnboardingViewModel : public QObject {
     Q_PROPERTY(bool done READ isDone NOTIFY doneChanged)
 
 public:
+    // QML: the facade of AppContext::services() (the fictional one follows demoState).
     explicit OnboardingViewModel(QObject* parent = nullptr);
+    // An explicit facade (tests, hosts).
+    explicit OnboardingViewModel(tanara::app::ISettingsFacade* facade, QObject* parent = nullptr);
     ~OnboardingViewModel() override;
 
-    QObject* controllerObject() const;
-    void setControllerObject(QObject* controller);
-    tanara::app::AppController* controller() const;
-    void setController(tanara::app::AppController* controller);
+    tanara::app::ISettingsFacade* facade() const { return m_facade; }
     QObject* dialogsObject() const;
     void setDialogsObject(QObject* dialogs);
     QString demoState() const { return m_demoState; }
     void setDemoState(const QString& state);
-    bool demo() const { return m_controller.isNull(); }
+    bool demo() const { return !m_live; }
 
     QVariantList steps() const;
     QString step() const { return m_step; }
@@ -155,10 +155,11 @@ public:
     Q_INVOKABLE void refreshReadiness();
 
     // For tests / the host: the provider's short name ("LM Studio · gemma-4-12b").
-    static QString providerLabel(const tanara::app::AppSettings& s, bool stt);
+    static QString providerLabel(const tanara::app::AppSettings& s, bool stt,
+                                 const tanara::providers::ProviderRegistry& registry);
 
 signals:
-    void controllerChanged();
+    void facadeChanged();
     void dialogsChanged();
     void demoStateChanged();
     void stepChanged();
@@ -180,9 +181,9 @@ signals:
     void saved();
 
 private:
-    void attach();
+    void resolveServices();
+    void useFacade(tanara::app::ISettingsFacade* facade);
     void loadFromCore();
-    void loadDemo();
     bool applyStep(const QString& step);
     void discardStep(const QString& step);
     void advance(const QString& mark);
@@ -191,8 +192,9 @@ private:
     QString defaultFolder(const QString& key) const;
     QString folderPath(const QString& key) const;
 
-    QPointer<tanara::app::AppController> m_controller;
-    bool m_controllerSet = false;
+    QPointer<tanara::app::ISettingsFacade> m_facade;
+    bool m_explicitFacade = false;
+    bool m_live = false;
     QPointer<SettingsDialogs> m_dialogs;
     QString m_demoState;
     QList<QMetaObject::Connection> m_connections;

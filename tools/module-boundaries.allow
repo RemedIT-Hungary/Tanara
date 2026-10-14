@@ -31,23 +31,10 @@ core/src/processing/analysis/ParticipantAnalysis.cpp -> tanara/editing/session/T
 
 # ---- P15 (35 lines) ----
 gui/qml/src/AppContext.cpp -> tanara/app/AppController.h   # GUI -> AppController.h -> P15
-gui/qml/src/JobSupport.cpp -> tanara/app/AppController.h   # GUI -> AppController.h -> P15
-gui/qml/src/MeetingNoteModel.cpp -> tanara/app/AppController.h   # GUI -> AppController.h -> P15
 gui/qml/src/OnboardingViewModel.cpp -> platform:Q_OS_LINUX   # platform (gui) -> P15
 gui/qml/src/OnboardingViewModel.cpp -> platform:Q_OS_WIN   # platform (gui) -> P15
-gui/qml/src/OnboardingViewModel.cpp -> tanara/app/AppController.h   # GUI -> AppController.h -> P15
-gui/qml/src/OnboardingWindowHost.cpp -> tanara/app/AppController.h   # GUI -> AppController.h -> P15
-gui/qml/src/PlayerController.cpp -> tanara/app/AppController.h   # GUI -> AppController.h -> P15
-gui/qml/src/SettingsEmbeddingModel.cpp -> tanara/app/AppController.h   # GUI -> AppController.h -> P15
-gui/qml/src/SettingsProviderModel.cpp -> tanara/app/AppController.h   # GUI -> AppController.h -> P15
-gui/qml/src/SettingsViewModel.cpp -> tanara/app/AppController.h   # GUI -> AppController.h -> P15
-gui/qml/src/SettingsWindowHost.cpp -> tanara/app/AppController.h   # GUI -> AppController.h -> P15
-gui/qml/src/ShellUiState.cpp -> tanara/app/AppController.h   # GUI -> AppController.h -> P15
-gui/qml/src/TrackListModel.cpp -> tanara/app/AppController.h   # GUI -> AppController.h -> P15
-gui/qml/src/VoiceModelListModel.cpp -> tanara/app/AppController.h   # GUI -> AppController.h -> P15
 gui/src/AnalyzerSingleton.h -> platform:Q_OS_WIN   # platform (gui) -> P15
 gui/src/QmlShellBridge.cpp -> tanara/app/AppController.h   # GUI -> AppController.h -> P15
-gui/src/SettingsWidgetsDialogs.cpp -> tanara/app/AppController.h   # GUI -> AppController.h -> P15
 gui/src/ShellQaHook.h -> tanara/app/AppController.h   # GUI -> AppController.h -> P15
 gui/src/main.cpp -> platform:Q_OS_LINUX   # platform (gui) -> P15
 gui/src/main.cpp -> tanara/app/AppController.h   # GUI -> AppController.h -> P15

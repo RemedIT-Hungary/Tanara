@@ -2,11 +2,10 @@
 #include "tanara/library/MeetingLayout.h"
 
 #include "AppContext.h"
-#include "demo/LibraryDemoData.h"
+#include "UiServices.h"
 
-#include "tanara/app/AppController.h"
+#include "tanara/library/tracks/ITracksFacade.h"
 #include "tanara/library/tracks/TrackCatalog.h"
-#include "tanara/library/store/MeetingRepository.h"
 
 #include <QDir>
 #include <QElapsedTimer>
@@ -161,13 +160,9 @@ PlayerController::PlayerController(QObject* parent) : QObject(parent)
     connect(&m_tick, &QTimer::timeout, this, &PlayerController::onTick);
 
     AppContext* ctx = AppContext::instance();
-    m_controller = ctx->controller();
-    connect(ctx, &AppContext::controllerChanged, this, [this, ctx] {
-        if (m_controllerInjected) return;
-        m_controller = ctx->controller();
-        attach();
-    });
-    attach();
+    connect(ctx, &AppContext::controllerChanged, this, &PlayerController::resolveServices);
+    connect(ctx, &AppContext::demoChanged, this, &PlayerController::resolveServices);
+    resolveServices();
 }
 
 PlayerController::~PlayerController()
@@ -176,26 +171,38 @@ PlayerController::~PlayerController()
         m_backend->pause();
 }
 
-void PlayerController::setController(tanara::app::AppController* controller)
+void PlayerController::setFacade(tanara::library::ITracksFacade* facade)
 {
-    m_controllerInjected = true;
-    m_controller = controller;
-    attach();
+    m_explicitFacade = true;
+    attach(facade);
 }
 
-void PlayerController::attach()
+void PlayerController::resolveServices()
 {
-    if (m_controller != m_attached) {
-        if (m_attached)
-            m_attached->disconnect(this);
-        m_attached = m_controller;
-        if (m_controller) {
+    if (m_explicitFacade) return;
+    attach(AppContext::instance()->services().tracks(QString(), this));
+}
+
+bool PlayerController::live() const
+{
+    return m_facade && m_facade->live();
+}
+
+void PlayerController::attach(tanara::library::ITracksFacade* facade)
+{
+    if (facade != m_facade) {
+        for (const QMetaObject::Connection& c : std::as_const(m_connections))
+            disconnect(c);
+        m_connections.clear();
+        if (m_facade && m_facade->parent() == this) m_facade->deleteLater();   // a fictional facade of ours
+        m_facade = facade;
+        if (facade) {
             // The mixdown became ready / changed, or the tracks changed -> re-resolve the source
             // (during playback a track change does not interrupt the audio).
-            connect(m_controller, &tanara::app::AppController::mixdownUpdated, this,
-                    [this](const QString& id, bool) { if (id == m_meetingId) reload(); });
-            connect(m_controller, &tanara::app::AppController::tracksChanged, this,
-                    [this](const QString& id) { if (id == m_meetingId && !m_playing) reload(); });
+            m_connections << connect(facade, &tanara::library::ITracksFacade::mixdownUpdated, this,
+                                     [this](const QString& id, bool) { if (id == m_meetingId) reload(); });
+            m_connections << connect(facade, &tanara::library::ITracksFacade::tracksChanged, this,
+                                     [this](const QString& id) { if (id == m_meetingId && !m_playing) reload(); });
         }
     }
     resolveSource();
@@ -227,17 +234,14 @@ void PlayerController::resolveSource()
     qint64 duration = 0;
     bool available = false;
     if (!m_meetingId.isEmpty()) {
-        if (m_controller && m_controller->store()) {
-            const tanara::Meeting m = m_controller->store()->load(m_meetingId);
-            if (!m.id.isEmpty()) {
+        const tanara::Meeting m = m_facade ? m_facade->meeting(m_meetingId) : tanara::Meeting();
+        if (!m.id.isEmpty()) {
+            duration = m.durationMs;
+            if (live()) {
                 path = meetingAudioPath(m);
-                duration = m.durationMs;
                 available = !path.isEmpty();
-            }
-        } else if (AppContext::instance()->demo()) {
-            if (const tanara_demo::DemoMeeting* d = tanara_demo::find(m_meetingId)) {
-                duration = d->entry.durationMs;
-                available = true;
+            } else {
+                available = true;   // fictional: the silent engine "plays" over the meeting's length
             }
         }
     }
@@ -406,8 +410,8 @@ void PlayerController::playTrack(const QString& trackId, int meetingMs)
         return;
     QString path;
     TrackSeek seek;
-    if (m_controller && m_controller->store() && !m_meetingId.isEmpty()) {
-        const tanara::Meeting m = m_controller->store()->load(m_meetingId);
+    if (live() && !m_meetingId.isEmpty()) {
+        const tanara::Meeting m = m_facade->meeting(m_meetingId);
         qint64 at = meetingMs;
         if (at < 0) {
             // Resume: same track -> where it left off; otherwise the track's start.
@@ -425,7 +429,7 @@ void PlayerController::playTrack(const QString& trackId, int meetingMs)
             return;
         }
         m_previewSegmentId = t.id;
-    } else if (AppContext::instance()->demo() || !m_controller) {
+    } else if (!live()) {
         // Demo: no file, the silent engine "plays" over the meeting's length.
         seek.leaderId = trackId;
         seek.fileMs = meetingMs >= 0 ? meetingMs
@@ -565,8 +569,8 @@ void PlayerController::onBackendFinished()
 {
     if (!m_previewPath.isEmpty()) {
         // Track preview: the logical track's next segment (if any) continues.
-        if (!m_previewTrackId.isEmpty() && m_controller && m_controller->store() && !m_meetingId.isEmpty()) {
-            const tanara::Meeting m = m_controller->store()->load(m_meetingId);
+        if (!m_previewTrackId.isEmpty() && live() && !m_meetingId.isEmpty()) {
+            const tanara::Meeting m = m_facade->meeting(m_meetingId);
             const qint64 here = m_previewOffsetMs;
             qint64 next = -1;
             const TrackSeek cur = resolveTrackSeek(m.tracks, m_previewTrackId, here);

@@ -5,6 +5,7 @@
 //  - with a real AppController in an ISOLATED TANARA_HOME: the download goes from a file://
 //    URL (NO NETWORK), the models' "loading" is fake (setVoiceEmbedderLoader), availability overridden.
 #include "AppContext.h"
+#include "UiServices.h"
 #include "QmlApp.h"
 #include "SettingsViewModel.h"
 #include "VoiceModelListModel.h"
@@ -80,6 +81,8 @@ class TestVoiceModelListModel : public QObject {
     std::unique_ptr<QTemporaryDir> m_home;
     std::unique_ptr<QTemporaryDir> m_src;
     std::unique_ptr<AppController> m_app;
+    // The real facade set of the test's controller.
+    const UiServices& services() { return AppContext::instance()->servicesFor(m_app.get()); }
 
     void startApp()
     {
@@ -243,7 +246,7 @@ private slots:
         startApp();
         VoiceModelListModel m;
         m.setSpecsForTest(localSpecs());
-        m.setController(m_app.get());
+        m.setFacade(services().voiceModels(QString(), nullptr));
         m.downloader()->setReachableOverride(true);
         m.refresh();
         QVERIFY(!m.anyAvailable());
@@ -275,9 +278,8 @@ private slots:
     {
         startApp();
         placeModel(kWe, 10);
-        SettingsViewModel vm;
+        SettingsViewModel vm(services());
         vm.voiceModels()->setSpecsForTest(localSpecs());
-        vm.setController(m_app.get());
         VoiceModelListModel* m = vm.voiceModels();
         m->downloader()->setReachableOverride(true);
         // The placeholder's size differs from the descriptor's, so "corrupt", so an error.
@@ -318,7 +320,7 @@ private slots:
         startApp();
         VoiceModelListModel m;
         m.setSpecsForTest(localSpecs());
-        m.setController(m_app.get());
+        m.setFacade(services().voiceModels(QString(), nullptr));
         m.downloader()->setReachableOverride(true);
         m.refresh();
 
@@ -384,7 +386,7 @@ private slots:
         m_app->voiceprints()->addPrint(m_app->people()->ensure(QStringLiteral("Fehér Gábor")), orphan);
 
         VoiceModelListModel m;
-        m.setController(m_app.get());
+        m.setFacade(services().voiceModels(QString(), nullptr));
         QCOMPARE(m.backfillState(), QString());   // nothing is missing from the models in use
 
         QStringList seen;
@@ -408,7 +410,7 @@ private slots:
 
         // The People window's details: the person's own indicator.
         BackfillSkipNote note;
-        note.setController(m_app.get());
+        note.setFacade(services().voiceModels(QString(), nullptr));
         note.setPerson(QStringLiteral("Kovács Lilla"));
         QCOMPARE(note.count(), 1);
         QCOMPARE(note.text(), QStringLiteral("1 minta nem pótolható: hiányzó felvétel"));
@@ -423,7 +425,7 @@ private slots:
         QTest::qWait(50);
         QCOMPARE(m.backfillState(), QStringLiteral("partial"));
         VoiceModelListModel again;
-        again.setController(m_app.get());
+        again.setFacade(services().voiceModels(QString(), nullptr));
         QCOMPARE(again.backfillState(), QStringLiteral("partial"));
         QCOMPARE(again.backfillSkipped(), 2);
     }
@@ -433,7 +435,7 @@ private slots:
     {
         startApp();
         VoiceModelListModel m;
-        m.setController(m_app.get());
+        m.setFacade(services().voiceModels(QString(), nullptr));
         QCOMPARE(m.backfillState(), QString());
         emit m_app->voiceprintBackfillStarted(5);
         QCOMPARE(m.backfillState(), QStringLiteral("running"));
@@ -458,7 +460,7 @@ private slots:
         startApp();
         VoiceModelListModel m;
         m.setSpecsForTest(localSpecs());
-        m.setController(m_app.get());
+        m.setFacade(services().voiceModels(QString(), nullptr));
         m.downloader()->setReachableOverride(true);
         m.refresh();
         QSignalSpy done(&m, &VoiceModelListModel::downloadFinished);
@@ -507,7 +509,7 @@ private slots:
         startApp();
         m_app->settings()->setEnabledVoiceModels({kWe});
         VoiceModelListModel m;
-        m.setController(m_app.get());
+        m.setFacade(services().voiceModels(QString(), nullptr));
         m.downloader()->setReachableOverride(true);
         QCOMPARE(m.defaultState(), QStringLiteral("missing"));
         QVERIFY(m_app->activeVoiceModelIds().isEmpty());

@@ -2,7 +2,7 @@
 //
 // ShellUiState: the main window's remembered UI state (window size, selected meeting, player
 // volume / speed). It lives in the metadata folder (<TANARA_HOME or ~/.tanara>/ui-state.json),
-// so a TANARA_HOME sandbox does not touch the user's real state. Without a controller (demo,
+// so a TANARA_HOME sandbox does not touch the user's real state. On the fictional services (demo,
 // screenshot, test) it only keeps it in memory and writes nothing to disk.
 //
 #include <QJsonObject>

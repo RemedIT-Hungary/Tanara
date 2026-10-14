@@ -1,48 +1,20 @@
 #include "MeetingNoteModel.h"
 
-#include "DemoText.h"
+#include "demo/NoteDemoData.h"
 
-#include "JobSupport.h"
 #include "ShellFormat.h"
 
-#include "tanara/app/AppController.h"
-#include "tanara/library/MeetingLibrary.h"
-#include "tanara/library/store/MeetingRepository.h"
-#include "tanara/library/tags/TagService.h"
+#include "tanara/library/IMeetingNoteFacade.h"
 
 namespace tanara_qml {
 
 using namespace tanara;
 
-namespace {
-
-// The source meeting's tag names (for the card's mini chips), in the meeting's order.
-QStringList tagNamesOf(app::AppController* c, const QString& meetingId)
-{
-    QStringList out;
-    library::TagService* tags = c ? c->tags() : nullptr;
-    if (!tags || meetingId.isEmpty()) return out;
-    for (const QString& id : tags->tagsOf(meetingId)) {
-        const Tag t = tags->tag(id);
-        if (t.isValid()) out << t.name;
-    }
-    return out;
-}
-
-} // namespace
-
 MeetingNoteModel::MeetingNoteModel(QObject* parent) : QObject(parent) {}
 
-app::AppController* MeetingNoteModel::app() const
+void MeetingNoteModel::setController(QObject* noteFacade)
 {
-    return jobsupport::resolveController(m_injected);
-}
-
-bool MeetingNoteModel::demo() const { return jobsupport::demoMode(app()); }
-
-void MeetingNoteModel::setController(QObject* injected)
-{
-    m_injected = injected;
+    m_facade = qobject_cast<library::IMeetingNoteFacade*>(noteFacade);
 }
 
 void MeetingNoteModel::setMeetingId(const QString& id)
@@ -77,9 +49,8 @@ void MeetingNoteModel::commitDraft()
         return;
     }
     // The draft belongs to a meeting that is no longer selected: we save it directly there.
-    app::AppController* c = app();
-    if (!jobsupport::demoMode(c) && !target.isEmpty())
-        c->setMeetingContextNote(target, text);
+    if (m_facade && !target.isEmpty())
+        m_facade->setNote(target, text);
 }
 
 void MeetingNoteModel::setNote(const QString& note)
@@ -87,9 +58,8 @@ void MeetingNoteModel::setNote(const QString& note)
     if (note == m_note)
         return;
     m_note = note;
-    app::AppController* c = app();
-    if (!jobsupport::demoMode(c) && !m_meetingId.isEmpty())
-        c->setMeetingContextNote(m_meetingId, note);   // -> meetingUpdated -> the owner's reload()
+    if (m_facade && !m_meetingId.isEmpty())
+        m_facade->setNote(m_meetingId, note);   // -> meetingUpdated -> the owner's reload()
     emit noteChanged();
     reloadSuggestions();   // the note just pasted / typed is no longer a suggestion
 }
@@ -110,8 +80,7 @@ void MeetingNoteModel::applySuggestion(const QString& suggestion, const QString&
 
 void MeetingNoteModel::reload()
 {
-    app::AppController* c = app();
-    if (jobsupport::demoMode(c))
+    if (!m_facade)
         return;   // the owner provides the demo content (setDemoContent)
     const QString oldNote = m_note;
     const QString oldApp = m_detectedCallApp;
@@ -119,9 +88,9 @@ void MeetingNoteModel::reload()
         m_note.clear();
         m_detectedCallApp.clear();
     } else {
-        const Meeting m = c->store()->load(m_meetingId);
-        m_note = m.contextNote;
-        m_detectedCallApp = m.detectedCallApp;
+        const library::IMeetingNoteFacade::Note n = m_facade->note(m_meetingId);
+        m_note = n.text;
+        m_detectedCallApp = n.detectedCallApp;
     }
     if (m_note != oldNote)
         emit noteChanged();
@@ -132,8 +101,7 @@ void MeetingNoteModel::reload()
 
 void MeetingNoteModel::reloadSuggestions()
 {
-    app::AppController* c = app();
-    if (jobsupport::demoMode(c)) {
+    if (!m_facade) {
         // In the demo too, an already pasted suggestion should disappear (enough for the screenshot states).
         QVariantList keep;
         for (const QVariant& v : std::as_const(m_suggestions))
@@ -146,16 +114,15 @@ void MeetingNoteModel::reloadSuggestions()
         return;
     }
     QVariantList list;
-    if (!m_meetingId.isEmpty() && c->library()) {
-        const QVector<library::meetingnotes::NoteSuggestion> hits =
-            c->library()->noteSuggestions(m_meetingId, m_note, 3);
+    if (!m_meetingId.isEmpty()) {
+        const QVector<library::meetingnotes::NoteSuggestion> hits = m_facade->suggestions(m_meetingId, m_note, 3);
         for (const library::meetingnotes::NoteSuggestion& s : hits)
             list << QVariantMap{{QStringLiteral("meetingId"), s.meetingId},
                                 {QStringLiteral("title"), s.title},
                                 {QStringLiteral("dateText"), fmt::longDate(s.startedAt)},
                                 {QStringLiteral("preview"), previewOf(s.note)},
                                 {QStringLiteral("note"), s.note},
-                                {QStringLiteral("tags"), tagNamesOf(c, s.meetingId)}};
+                                {QStringLiteral("tags"), m_facade->tagNames(s.meetingId)}};
     }
     if (list != m_suggestions) {
         m_suggestions = list;
@@ -185,23 +152,17 @@ QString MeetingNoteModel::previewOf(const QString& note)
     return s;
 }
 
-// Fictional template suggestions (demo): earlier occurrences of the "Nordvik weekly meeting".
+// The fictional template suggestions of tanara_demo (the owners' demo states), as the list rows.
 QVariantList MeetingNoteModel::demoSuggestions()
 {
-    auto item = [](const QString& title, const QString& date, const QString& note) {
-        return QVariantMap{{QStringLiteral("meetingId"), QString()}, {QStringLiteral("title"), title},
-                           {QStringLiteral("dateText"), date},
-                           {QStringLiteral("preview"), previewOf(note)},
-                           {QStringLiteral("note"), note},
-                           {QStringLiteral("tags"), QStringList{QStringLiteral("Nordvik")}}};
-    };
-    return {
-        item(demoText("Nordvik heti meeting", "Nordvik weekly meeting"), demoText("2026. szept. 29.", "Sep 29, 2026"),
-             demoText("Résztvevők: Kovács Anna, Szabó Bence, Lantos Réka. A „Nordwig” helyesen: Nordvik. "
-                "A „kvarc modul” helyesen: Qvarko-modul. Téma: a bevezetés ütemezése.", "Participants: Anna Carter, Noah Turner, Rachel Lane. “Nordwig” is really Nordvik. “quark module” is really Qvarko module. Topic: rollout schedule.")),
-        item(demoText("Nordvik heti meeting – demó előtt", "Nordvik weekly meeting – before the demo"), demoText("2026. szept. 22.", "Sep 22, 2026"),
-             demoText("A „pixel tár” helyesen: PixelTár. Résztvevők: Kovács Anna, Szabó Bence.", "“pixel vault” is really PixelVault. Participants: Anna Carter, Noah Turner.")),
-    };
+    QVariantList out;
+    for (const tanara_demo::DemoNoteSuggestion& d : tanara_demo::noteSuggestions())
+        out << QVariantMap{{QStringLiteral("meetingId"), QString()}, {QStringLiteral("title"), d.title},
+                           {QStringLiteral("dateText"), d.dateText},
+                           {QStringLiteral("preview"), previewOf(d.note)},
+                           {QStringLiteral("note"), d.note},
+                           {QStringLiteral("tags"), d.tags}};
+    return out;
 }
 
 } // namespace tanara_qml

@@ -1,14 +1,12 @@
 #include "SettingsWindowHost.h"
 
+#include "AppContext.h"
 #include "QmlApp.h"
 #include "SettingsDialogs.h"
 #include "SettingsViewModel.h"
 #include "ShellUiState.h"
 
-#include "tanara/app/AppController.h"
 #include "tanara/foundation/log/Logging.h"
-#include "tanara/foundation/paths/AppPaths.h"
-#include "tanara/app/SettingsManager.h"
 
 #include <QDir>
 #include <QQmlComponent>
@@ -23,6 +21,7 @@ SettingsWindowHost::SettingsWindowHost(app::AppController* controller, SettingsD
                                        QObject* parent)
     : QObject(parent), m_controller(controller), m_dialogs(dialogs)
 {
+    AppContext::instance()->useControllerIfNone(controller);
 }
 
 SettingsWindowHost::~SettingsWindowHost()
@@ -41,7 +40,6 @@ bool SettingsWindowHost::ensureWindow()
     QQmlComponent comp(m_engine);
     comp.loadFromModule("Tanara", "SettingsWindow");
     QObject* obj = comp.isError() ? nullptr : comp.createWithInitialProperties({
-        {QStringLiteral("hostController"), QVariant::fromValue<QObject*>(m_controller.data())},
         {QStringLiteral("hostDialogs"), QVariant::fromValue<QObject*>(m_dialogs.data())},
     });
     auto* win = qobject_cast<QQuickWindow*>(obj);
@@ -59,10 +57,11 @@ bool SettingsWindowHost::ensureWindow()
     if (m_vm) {
         connect(m_vm, &SettingsViewModel::saved, this, &SettingsWindowHost::saved);
         connect(m_vm, &SettingsViewModel::themeModeSaved, this, [this](const QString& mode) {
-            if (m_persistTheme && m_controller) {
+            const QString uiState = m_controller ? AppContext::instance()->servicesFor(m_controller).uiStateFile : QString();
+            if (m_persistTheme && !uiState.isEmpty()) {
                 // There is no main window to remember it: we write to the shared ui-state.json.
                 ShellUiState state;
-                state.setFilePath(m_controller->settings()->paths().stateFile(paths::files::UiState));
+                state.setFilePath(uiState);
                 state.setValue(QStringLiteral("themeMode"), mode);
                 state.flush();
             }

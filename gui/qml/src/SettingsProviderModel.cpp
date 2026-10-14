@@ -3,7 +3,7 @@
 
 #include "SettingsViewModel.h"
 
-#include "tanara/app/AppController.h"
+#include "tanara/app/ISettingsFacade.h"
 #include "tanara/providers/embedding/ITextEmbedder.h"
 #include "tanara/providers/core/ProviderRegistry.h"
 
@@ -63,21 +63,29 @@ QString typeName(providers::ConfigFieldType t)
 SettingsProviderModel::SettingsProviderModel(SettingsViewModel* vm, providers::CapabilityKind kind)
     : QObject(vm), m_vm(vm), m_kind(kind)
 {
-    setTester(new providers::ConnectionTester(this));
 }
 
-void SettingsProviderModel::setTester(providers::ConnectionTester* tester)
+void SettingsProviderModel::attach()
 {
-    if (m_tester == tester) return;
-    if (m_tester) {
-        m_tester->cancelAll();
-        disconnect(m_tester, nullptr, this, nullptr);
-        if (m_tester->parent() == this) m_tester->deleteLater();
-    }
-    m_tester = tester;
+    for (const QMetaObject::Connection& c : std::as_const(m_connections)) disconnect(c);
+    m_connections.clear();
     m_testId = m_fetchId = 0;
-    if (m_tester)
-        connect(m_tester, &providers::ConnectionTester::finished, this, &SettingsProviderModel::onFinished);
+    m_probing = false;
+    app::ISettingsFacade* f = m_vm->facade();
+    if (!f) return;
+    m_connections << connect(f, &app::ISettingsFacade::connectionTested, this, &SettingsProviderModel::onFinished);
+    m_connections << connect(f, &app::ISettingsFacade::llmServerProbed, this,
+                             [this](const providers::llmctx::LlmServerInfo& info) {
+        if (!m_probing) return;
+        m_probing = false;
+        setServerInfo(info);
+    });
+}
+
+const providers::ProviderRegistry* SettingsProviderModel::registry() const
+{
+    const app::ISettingsFacade* f = m_vm->facade();
+    return f ? &f->registry() : nullptr;
 }
 
 QString SettingsProviderModel::kindName() const
@@ -100,9 +108,9 @@ QString& SettingsProviderModel::selectedId() const
 
 QVector<providers::ProviderDescriptor> SettingsProviderModel::allDescriptors() const
 {
-    QVector<providers::ProviderDescriptor> all = m_kind == providers::CapabilityKind::Transcription ? providers::ProviderRegistry::defaultInstance().descriptors(providers::CapabilityKind::Transcription)
-        : m_kind == providers::CapabilityKind::TextEmbedding ? providers::ProviderRegistry::defaultInstance().descriptors(providers::CapabilityKind::TextEmbedding)
-                                            : providers::ProviderRegistry::defaultInstance().descriptors(providers::CapabilityKind::Chat);
+    const providers::ProviderRegistry* reg = registry();
+    if (!reg) return {};
+    QVector<providers::ProviderDescriptor> all = reg->descriptors(m_kind);
     // The registry's hash order is not stable: own-key ones by name, the sign-in one last.
     std::sort(all.begin(), all.end(), [](const providers::ProviderDescriptor& a, const providers::ProviderDescriptor& b) {
         const bool la = a.authMode == providers::AuthMode::Login, lb = b.authMode == providers::AuthMode::Login;
@@ -114,9 +122,8 @@ QVector<providers::ProviderDescriptor> SettingsProviderModel::allDescriptors() c
 
 providers::ProviderDescriptor SettingsProviderModel::descriptor(const QString& id) const
 {
-    if (m_kind == providers::CapabilityKind::TextEmbedding) return providers::ProviderRegistry::defaultInstance().descriptor(providers::CapabilityKind::TextEmbedding, id);
-    return m_kind == providers::CapabilityKind::Transcription ? providers::ProviderRegistry::defaultInstance().descriptor(providers::CapabilityKind::Transcription, id)
-                                       : providers::ProviderRegistry::defaultInstance().descriptor(providers::CapabilityKind::Chat, id);
+    const providers::ProviderRegistry* reg = registry();
+    return reg ? reg->descriptor(m_kind, id) : providers::ProviderDescriptor();
 }
 
 providers::ProviderDescriptor SettingsProviderModel::descriptor() const
@@ -366,7 +373,7 @@ void SettingsProviderModel::setServerInfo(const providers::llmctx::LlmServerInfo
 
 void SettingsProviderModel::clearServerInfo()
 {
-    if (m_serverProbe) m_serverProbe->cancel();
+    m_probing = false;
     if (!m_server.isLmStudio() && m_serverText.isEmpty()) return;
     m_server = {};
     m_serverText.clear();
@@ -375,13 +382,10 @@ void SettingsProviderModel::clearServerInfo()
 
 void SettingsProviderModel::refreshServerInfo()
 {
-    if (!reasoningAvailable() || !m_vm->controller()) return;
-    if (!m_serverProbe) {
-        m_serverProbe = new providers::LlmServerProbe(this);
-        connect(m_serverProbe, &providers::LlmServerProbe::finished, this,
-                [this](const providers::llmctx::LlmServerInfo& info) { setServerInfo(info); });
-    }
-    m_serverProbe->probe(runtimeConfig());
+    app::ISettingsFacade* f = m_vm->facade();
+    if (!reasoningAvailable() || !f) return;
+    m_probing = true;
+    f->probeLlmServer(runtimeConfig());
 }
 
 void SettingsProviderModel::setAdvancedOpen(bool open)
@@ -512,11 +516,11 @@ void SettingsProviderModel::invalidateTest()
     // The fetch in progress belonged to the OLD address / provider: we drop it so its list does
     // not show under the new setting.
     if (m_fetchId) {
-        if (m_tester) m_tester->cancel(m_fetchId);
+        if (m_vm->facade()) m_vm->facade()->cancelConnectionTest(m_fetchId);
         m_fetchId = 0;
         emit fetchChanged();
     }
-    if (m_testId && m_tester) m_tester->cancel(m_testId);
+    if (m_testId && m_vm->facade()) m_vm->facade()->cancelConnectionTest(m_testId);
     m_testId = 0;
     clearServerInfo();   // the address / model may have changed; the old server data would mislead
     if (m_testState.isEmpty()) return;
@@ -531,34 +535,18 @@ void SettingsProviderModel::test()
     m_result = {};
     m_testState = QStringLiteral("testing");
     emit testChanged();
-    if (!m_vm->controller()) {
-        // Demo: no network; a fictional but realistic result.
-        providers::ConnectionTestResult r;
-        r.status = providers::ConnectionTestResult::Status::Ok;
-        r.latencyMs = m_kind == providers::CapabilityKind::Transcription ? 210 : 48;
-        m_result = r;
-        m_testState = QStringLiteral("ok");
-        emit testChanged();
-        return;
-    }
-    m_testId = m_tester->test(descriptor(), runtimeConfig());
+    app::ISettingsFacade* f = m_vm->facade();
+    if (!f) return;
+    m_testId = f->testConnection(descriptor(), runtimeConfig());
 }
 
 void SettingsProviderModel::fetchModels()
 {
     if (!testable() || m_fetchId) return;
     m_fetchError.clear();
-    if (!m_vm->controller()) {
-        m_models = m_kind == providers::CapabilityKind::TextEmbedding
-            ? QStringList{QStringLiteral("text-embedding-nomic-embed-text-v1.5"),
-                          QStringLiteral("nomic-embed-text-v2-moe"), QStringLiteral("text-embedding-bge-m3")}
-            : QStringList{QStringLiteral("google/gemma-4-12b-qat"), QStringLiteral("qwen/qwen3-coder-30b")};
-        m_modelsFor = providerId();
-        emit fetchChanged();
-        bumpValues();
-        return;
-    }
-    m_fetchId = m_tester->test(descriptor(), runtimeConfig());
+    app::ISettingsFacade* f = m_vm->facade();
+    if (!f) return;
+    m_fetchId = f->testConnection(descriptor(), runtimeConfig());
     emit fetchChanged();
 }
 
@@ -609,7 +597,10 @@ void SettingsProviderModel::setDemoResult(const QString& state, int latencyMs,
 
 void SettingsProviderModel::reset()
 {
-    if (m_tester) m_tester->cancelAll();
+    if (app::ISettingsFacade* f = m_vm->facade()) {
+        if (m_testId) f->cancelConnectionTest(m_testId);
+        if (m_fetchId) f->cancelConnectionTest(m_fetchId);
+    }
     m_testId = m_fetchId = 0;
     m_testState.clear();
     m_result = {};

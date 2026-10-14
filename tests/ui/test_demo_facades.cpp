@@ -9,8 +9,16 @@
 #include "demo/LibraryDemoFacade.h"
 #include "demo/OverviewDemoFacade.h"
 #include "demo/ShellDemoFacade.h"
+#include "demo/SettingsDemoFacade.h"
+#include "demo/TracksDemoFacade.h"
+#include "demo/VoiceModelsDemoFacade.h"
 
 #include "tanara/app/AppController.h"
+#include "tanara/app/ISettingsFacade.h"
+#include "tanara/library/IMeetingNoteFacade.h"
+#include "tanara/library/tracks/ITracksFacade.h"
+#include "tanara/processing/voiceid/IVoiceModelsFacade.h"
+#include "tanara/recording/IRecorderFacade.h"
 
 #include <QPointer>
 #include <QSignalSpy>
@@ -148,6 +156,65 @@ private slots:
         QVERIFY(empty.snapshot(QString()).analysisRunning);
     }
 
+    // P15-6a: the settings facade serves a design state and keeps everything in memory.
+    void settingsFacadeServesTheDesignStates()
+    {
+        QObject owner;
+        const UiServices& demo = AppContext::instance()->demoServices();
+        tanara::app::ISettingsFacade* b04 = demo.settings(QStringLiteral("B04"), &owner);
+        QVERIFY(qobject_cast<tanara_demo::SettingsDemoFacade*>(b04));
+        QCOMPARE(b04->parent(), &owner);
+        QVERIFY(!b04->live());
+        QVERIFY(!b04->hasSecret(QStringLiteral("soniox.apiKey")));            // B04: the key is missing
+        QCOMPARE(b04->scenario()->page, QStringLiteral("services"));
+        QCOMPARE(b04->scenario()->focusField, QStringLiteral("stt"));
+        QVERIFY(b04->registry().has(tanara::providers::CapabilityKind::Transcription, QStringLiteral("soniox")));
+        QVERIFY(b04->devices() && !b04->devices()->captureDevices().isEmpty());
+        QSignalSpy changed(b04, &tanara::app::ISettingsFacade::settingsChanged);
+        tanara::app::AppSettings s = b04->settings();
+        s.recording.audioQuality = QStringLiteral("best");
+        b04->setSettings(s);
+        QCOMPARE(changed.count(), 1);
+        QCOMPARE(b04->settings().recording.audioQuality, QStringLiteral("best"));
+        // The connection test answers without the network, in the next turn.
+        QSignalSpy tested(b04, &tanara::app::ISettingsFacade::connectionTested);
+        const tanara::providers::ProviderDescriptor d = b04->registry().descriptor(
+            tanara::providers::CapabilityKind::Chat, QStringLiteral("openai-compat"));
+        const int id = b04->testConnection(d, {});
+        QCOMPARE(tested.count(), 0);
+        QVERIFY(tested.wait(1000));
+        QCOMPARE(tested.at(0).at(0).toInt(), id);
+
+        tanara::app::ISettingsFacade* onboarding = demo.onboarding(QStringLiteral("watcher"), &owner);
+        QCOMPARE(onboarding->scenario()->onboardingStep, QStringLiteral("watcher"));
+        QCOMPARE(onboarding->scenario()->onboardingStatus.value(QStringLiteral("folders")), QStringLiteral("skipped"));
+        QVERIFY(demo.meetingNotes == nullptr);
+        QVERIFY(demo.uiStateFile.isEmpty());
+    }
+
+    void voiceModelAndTrackFacadesServeTheDesignStates()
+    {
+        QObject owner;
+        const UiServices& demo = AppContext::instance()->demoServices();
+        tanara::processing::IVoiceModelsFacade* partial = demo.voiceModels(QStringLiteral("B08partial"), &owner);
+        QVERIFY(!partial->live());
+        QCOMPARE(partial->backfillSkips().size(), 3);
+        QCOMPARE(partial->scenario()->backfillState, QStringLiteral("partial"));
+        tanara::processing::IVoiceModelsFacade* note = demo.voiceModels(QStringLiteral("samplesModels"), &owner);
+        QCOMPARE(note->backfillSkips(QStringLiteral("Valaki")).size(), 1);
+        QVERIFY(note->backfillSkips().isEmpty());
+
+        tanara::library::ITracksFacade* tracks = demo.tracks(QStringLiteral("default"), &owner);
+        const auto fixture = tracks->fixture(QString());
+        QVERIFY(fixture && fixture->rows.size() == 4);
+        QCOMPARE(fixture->mixdownState, QStringLiteral("running"));
+        QSignalSpy changed(tracks, &tanara::library::ITracksFacade::tracksChanged);
+        QCOMPARE(tracks->deleteDroppedTracks(QStringLiteral("m")), 1);   // the dropped system audio
+        QCOMPARE(changed.count(), 1);
+        QCOMPARE(tracks->fixture(QString())->rows.size(), 3);
+        QVERIFY(tracks->meeting(QStringLiteral("nincs")).id.isEmpty());
+    }
+
     // A controller's set (isolated TANARA_HOME): real, cached, and gone with the controller.
     void realFacadesAreBuiltPerController()
     {
@@ -174,6 +241,14 @@ private slots:
             QVERIFY(set.shell->meeting(QStringLiteral("nincs")).id.isEmpty());
             QCOMPARE(set.library->query({}).totalMeetings, 0);
             QVERIFY(set.overview(QString(), &owner)->snapshot(QStringLiteral("nincs")).participants.isEmpty());
+            // P15-6a: the settings / voice models / tracks / note facades are real and shared.
+            QVERIFY(set.settings(QString(), &owner)->live());
+            QCOMPARE(set.settings(QString(), &owner), set.onboarding(QStringLiteral("x"), &owner));
+            QVERIFY(set.voiceModels(QString(), &owner)->live());
+            QVERIFY(set.tracks(QString(), &owner)->live());
+            QVERIFY(!set.tracks(QString(), &owner)->fixture(QStringLiteral("nincs")));
+            QVERIFY(set.meetingNotes);
+            QVERIFY(set.uiStateFile.startsWith(home.path()));
             shell = set.shell;
         }
         QVERIFY(shell.isNull());

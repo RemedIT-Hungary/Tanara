@@ -1,9 +1,8 @@
 #pragma once
 //
 // Tanara QML: shared helpers of the "views" slice's view models (pre-transcript view,
-// Summary, Tracks): resolving the controller (injected or the App singleton's), time
-// formatting, translating the core's machine hints (fixActionHint) into a button label +
-// Settings page, and naming the provider. Stateless functions.
+// Summary, Tracks): time formatting, translating the core's machine hints (fixActionHint) into
+// a button label + Settings page, and naming the provider. Stateless functions.
 //
 #include "tanara/domain/Job.h"
 #include "tanara/providers/core/ReadinessModel.h"
@@ -11,20 +10,12 @@
 #include <QString>
 #include <QVariantMap>
 
-class QObject;
-
 namespace tanara {
-namespace app { class AppController; }
+namespace app { struct AppSettings; }
+namespace providers { class ProviderRegistry; }
 }
 
 namespace tanara_qml::jobsupport {
-
-// The injected controller (test), otherwise the App singleton's. May be nullptr.
-tanara::app::AppController* resolveController(QObject* injected);
-
-// True if the view model must show built-in (fictional) sample data: App.demo, or there is
-// no controller.
-bool demoMode(tanara::app::AppController* controller);
 
 // "30:34", above an hour "1:16:04". Negative -> "-".
 QString formatDuration(qint64 ms);
@@ -51,10 +42,13 @@ FixAction fixActionForError(const tanara::JobError& error);
 
 // Gating (canRun) -> the warning bar's content: { title, text, actionLabel, actionPage,
 // reason }; reason is the short justification next to the disabled start button. step: Transcribe / Summarize.
-QVariantMap blockerInfo(tanara::app::AppController* controller, tanara::providers::WorkflowStep step,
-                        const tanara::providers::ReadinessResult& result);
+QVariantMap blockerInfo(tanara::providers::WorkflowStep step, const tanara::providers::ReadinessResult& result);
 
-// "Soniox · own key" / "Tanara Cloud": the chosen provider of the given step.
-QString providerLabel(tanara::app::AppController* controller, tanara::providers::WorkflowStep step);
+// "Soniox · own key" / "Tanara Cloud": the chosen provider of the given step (usesCloud: the step
+// runs on Tanara Cloud; the provider names come from the registry).
+QString providerLabel(bool usesCloud, const tanara::app::AppSettings& settings,
+                      const tanara::providers::ProviderRegistry& registry, tanara::providers::WorkflowStep step);
+// The same without settings (no controller): "own key".
+QString providerLabel();
 
 } // namespace tanara_qml::jobsupport

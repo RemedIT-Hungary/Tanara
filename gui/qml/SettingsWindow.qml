@@ -21,8 +21,8 @@ import QtQuick.Templates as T
 ApplicationWindow {
     id: window
 
-    // Passed by the host (as initial properties); without them App.controller / demo applies.
-    property QtObject hostController: null
+    // Passed by the host (as an initial property). The view model takes the App's services (the
+    // fictional ones in the demo / screenshot, where demoState picks the design state).
     property QtObject hostDialogs: null
     property string demoState: ""
     property alias vm: model
@@ -46,9 +46,7 @@ ApplicationWindow {
 
     Component.onCompleted: {
         if (hostDialogs) model.dialogs = hostDialogs
-        if (hostController) {
-            model.controller = hostController
-        } else if (demoState !== "") {
+        if (demoState !== "") {
             // Screenshot / demo: the helper states (popups) also select a page.
             const base = demoState === "addApp" ? "B03" : demoState === "reset" ? "B07" : demoState === "rejectedReset" ? "B04embeddingDone" : demoState
             model.demoState = base

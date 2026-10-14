@@ -4,28 +4,23 @@
 #include "DemoText.h"
 
 #include "AppContext.h"
+#include "UiServices.h"
 #include "SettingsDeviceModel.h"
 #include "SettingsDialogs.h"
 #include "SettingsEmbeddingModel.h"
 #include "SettingsProviderModel.h"
 
-#include "tanara/app/AppController.h"
+#include "tanara/app/ISettingsFacade.h"
+#include "tanara/cloud/CloudTypes.h"
+#include "tanara/domain/Types.h"
 #include "tanara/foundation/i18n/Localization.h"
 #include "tanara/foundation/paths/AppPaths.h"
 #include "tanara/processing/summary/PromptLibrary.h"
-#include "tanara/app/SettingsManager.h"
-#include "tanara/recording/audio/DeviceManager.h"
-#include "tanara/cloud/CloudTypes.h"
-#include "tanara/app/Services.h"
-#include "tanara/watcher/detect/Autostart.h"
-#include "tanara/watcher/detect/DetectorRegistry.h"
-#include "tanara/watcher/RunningApps.h"
-#include "tanara/watcher/detect/IMeetingDetector.h"
-#include "tanara/watcher/PipeWireGraph.h"
-#include "tanara/providers/embedding/ITextEmbedder.h"
 #include "tanara/providers/core/ProviderRegistry.h"
-#include "tanara/library/store/VoiceprintStore.h"
-#include "tanara/library/store/MeetingRepository.h"
+#include "tanara/providers/embedding/ITextEmbedder.h"
+#include "tanara/recording/IRecorderFacade.h"
+#include "tanara/watcher/PipeWireGraph.h"
+#include "tanara/watcher/detect/IMeetingDetector.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -121,28 +116,6 @@ bool looksSynced(const QString& path)
     return false;
 }
 
-struct FolderUsage { qint64 bytes = 0; int meetings = 0; bool exists = false; };
-
-// Folder size (recursive) + number of meeting folders (direct subfolders with a meeting.json).
-FolderUsage measureFolder(const QString& path, bool countMeetings)
-{
-    FolderUsage u;
-    const QDir dir(path);
-    if (path.isEmpty() || !dir.exists()) return u;
-    u.exists = true;
-    QDirIterator it(path, QDir::Files | QDir::Hidden | QDir::NoSymLinks, QDirIterator::Subdirectories);
-    while (it.hasNext()) {
-        it.next();
-        u.bytes += it.fileInfo().size();
-    }
-    if (countMeetings) {
-        const QStringList subs = dir.entryList(QDir::Dirs | QDir::NoDotAndDotDot);
-        for (const QString& s : subs)
-            if (QFile::exists(dir.filePath(s + QStringLiteral("/meeting.json")))) ++u.meetings;
-    }
-    return u;
-}
-
 void collectLeaves(const QJsonValue& v, const QString& path, QHash<QString, QJsonValue>* out)
 {
     if (v.isObject()) {
@@ -217,6 +190,23 @@ QString SettingsViewModel::formatBytes(qint64 bytes)
 
 SettingsViewModel::SettingsViewModel(QObject* parent) : QObject(parent)
 {
+    init();
+    AppContext* ctx = AppContext::instance();
+    connect(ctx, &AppContext::controllerChanged, this, &SettingsViewModel::resolveServices);
+    connect(ctx, &AppContext::demoChanged, this, &SettingsViewModel::resolveServices);
+    resolveServices();
+}
+
+SettingsViewModel::SettingsViewModel(const UiServices& services, QObject* parent)
+    : QObject(parent), m_explicitFacade(true)
+{
+    init();
+    m_voiceModels->useServices(services, QStringLiteral("B08"));
+    useFacade(services.settings(QString(), this));
+}
+
+void SettingsViewModel::init()
+{
     m_devices = new SettingsDeviceModel(this);
     m_stt = new SettingsProviderModel(this, providers::CapabilityKind::Transcription);
     m_llm = new SettingsProviderModel(this, providers::CapabilityKind::Chat);
@@ -237,40 +227,56 @@ SettingsViewModel::SettingsViewModel(QObject* parent) : QObject(parent)
     connect(&m_detectTimer, &QTimer::timeout, this, &SettingsViewModel::pollDetector);
 
     m_baseTheme = m_draftTheme = AppContext::instance()->themeMode();
-
-    // App.controller binds in the next event-loop turn, if by then the caller has not given its
-    // own and has not asked for a demo state.
-    QMetaObject::invokeMethod(this, [this] {
-        if (m_controllerSet) return;
-        if (app::AppController* c = AppContext::instance()->controller())
-            setController(c);
-        else
-            setDemoState(m_demoState.isEmpty() ? QStringLiteral("B01") : m_demoState);
-    }, Qt::QueuedConnection);
 }
 
 SettingsViewModel::~SettingsViewModel()
 {
-    if (m_controller && m_monitoring) m_controller->releaseLevelMonitoring(this);
+    if (m_facade && m_monitoring) m_facade->releaseLevelMonitoring(this);
 }
 
-QObject* SettingsViewModel::controllerObject() const { return m_controller; }
-app::AppController* SettingsViewModel::controller() const { return m_controller; }
 SettingsDialogs* SettingsViewModel::dialogs() const { return m_dialogs; }
 
-void SettingsViewModel::setControllerObject(QObject* controller)
+// The process's services changed (a controller arrived, App.demo flipped), or the design state.
+void SettingsViewModel::resolveServices()
 {
-    setController(qobject_cast<app::AppController*>(controller));
+    if (m_explicitFacade) return;
+    const UiServices& services = AppContext::instance()->services();
+    m_voiceModels->useServices(services, m_demoState.startsWith(QLatin1String("B08")) ? m_demoState : QStringLiteral("B08"));
+    useFacade(services.settings(m_demoState, this));
 }
 
-void SettingsViewModel::setController(app::AppController* controller)
+void SettingsViewModel::useFacade(app::ISettingsFacade* facade)
 {
-    if (m_controllerSet && m_controller == controller) return;
-    if (m_controller && m_monitoring) m_controller->releaseLevelMonitoring(this);
-    m_controller = controller;
-    m_controllerSet = true;
-    attach();
-    emit controllerChanged();
+    for (const QMetaObject::Connection& c : std::as_const(m_connections)) disconnect(c);
+    m_connections.clear();
+    if (m_facade && m_monitoring) m_facade->releaseLevelMonitoring(this);
+    if (m_facade && m_facade != facade && m_facade->parent() == this) m_facade->deleteLater();   // a fictional facade of ours
+    m_facade = facade;
+    m_live = facade && facade->live();
+    m_detector.reset();
+    m_detectorTried = false;
+    m_stt->attach();
+    m_llm->attach();
+    if (m_embedding->card()) m_embedding->card()->attach();
+    m_embedding->attach();
+    if (!facade) return;
+
+    m_connections << connect(facade, &app::ISettingsFacade::settingsChanged, this,
+                             &SettingsViewModel::onExternalSettingsChanged);
+    m_connections << connect(facade, &app::ISettingsFacade::voiceprintsChanged, this, &SettingsViewModel::refreshVoiceprint);
+    if (recording::IRecorderFacade* dev = facade->devices()) {
+        m_connections << connect(dev, &recording::IRecorderFacade::devicesChanged, this, [this] {
+            m_devices->rebuild();
+            applyDefaultSelection();
+        });
+        m_connections << connect(dev, &recording::IRecorderFacade::deviceLevel, this,
+                                 [this](const QString& name, float rms, float peak) {
+            if (m_monitoring) m_devices->onLevel(name, rms, qMax(rms, peak));
+        });
+    }
+    loadFromCore();
+    if (m_monitoring) facade->retainLevelMonitoring(this);
+    emit facadeChanged();
 }
 
 QObject* SettingsViewModel::dialogsObject() const { return m_dialogs; }
@@ -285,51 +291,22 @@ void SettingsViewModel::setDialogsObject(QObject* dialogs)
 
 void SettingsViewModel::setDemoState(const QString& state)
 {
-    if (m_controller) return;            // with real data the demo has no effect
-    m_controllerSet = true;
+    if (m_demoState == state) return;
     m_demoState = state;
-    attach();
+    // A fictional facade serves one design state: a new one for the new state.
+    if (!m_live) resolveServices();
     emit demoStateChanged();
-    emit controllerChanged();
-}
-
-void SettingsViewModel::attach()
-{
-    for (const QMetaObject::Connection& c : std::as_const(m_connections)) disconnect(c);
-    m_connections.clear();
-    m_embedding->attach();
-    m_voiceModels->setController(m_controller);
-
-    app::AppController* c = m_controller;
-    if (!c) {
-        loadDemo();
-        return;
-    }
-    m_connections << connect(c->settings(), &app::SettingsManager::settingsChanged, this,
-                             &SettingsViewModel::onExternalSettingsChanged);
-    m_connections << connect(c, &app::AppController::devicesChanged, this, [this] {
-        m_devices->rebuild();
-        applyDefaultSelection();
-    });
-    m_connections << connect(c, &app::AppController::deviceLevelPeak, this,
-                             [this](const QString& name, float rms, float peak) {
-        if (m_monitoring) m_devices->onLevel(name, rms, qMax(rms, peak));
-    });
-    m_connections << connect(c, &app::AppController::peopleChanged, this, &SettingsViewModel::refreshVoiceprint);
-    m_connections << connect(c, &app::AppController::voiceprintsChanged, this, &SettingsViewModel::refreshVoiceprint);
-    loadFromCore();
-    if (m_monitoring) c->retainLevelMonitoring(this);
 }
 
 void SettingsViewModel::applyDefaultSelection()
 {
     // There was never a saved selection (and the user has not touched it): the system's default
     // devices are the base, without line-in-type inputs, as in the recorder.
-    if (!m_controller || !m_controller->devices() || !m_controller->lastUsedDeviceNames().isEmpty()
-        || !m_baseSelected.isEmpty() || !m_draftSelected.isEmpty())
+    recording::IRecorderFacade* dev = m_facade ? m_facade->devices() : nullptr;
+    if (!dev || !dev->lastUsedDeviceNames().isEmpty() || !m_baseSelected.isEmpty() || !m_draftSelected.isEmpty())
         return;
     QStringList def;
-    for (const AudioDeviceInfo& d : m_controller->devices()->captureDevices())
+    for (const AudioDeviceInfo& d : dev->captureDevices())
         if (d.isDefault && d.kind != TrackKind::Other) def << d.name;
     if (def.isEmpty()) return;
     m_baseSelected = m_draftSelected = def;
@@ -340,19 +317,21 @@ void SettingsViewModel::normalize(tanara::app::AppSettings& s) const
 {
     // The selected providers' empty fields get the descriptor's defaults (as the old window
     // filled them), so this does not count as a "change".
-    const providers::ProviderDescriptor sd = providers::ProviderRegistry::defaultInstance().descriptor(providers::CapabilityKind::Transcription, s.providers.stt.selectedId);
+    if (!m_facade) return;
+    const providers::ProviderRegistry& reg = m_facade->registry();
+    const providers::ProviderDescriptor sd = reg.descriptor(providers::CapabilityKind::Transcription, s.providers.stt.selectedId);
     if (!sd.id.isEmpty()) m_stt->fillDefaults(s.providers.stt.configs[s.providers.stt.selectedId], sd);
-    const providers::ProviderDescriptor ld = providers::ProviderRegistry::defaultInstance().descriptor(providers::CapabilityKind::Chat, s.providers.llm.selectedId);
+    const providers::ProviderDescriptor ld = reg.descriptor(providers::CapabilityKind::Chat, s.providers.llm.selectedId);
     if (!ld.id.isEmpty()) m_llm->fillDefaults(s.providers.llm.configs[s.providers.llm.selectedId], ld);
     m_embedding->normalize(s);
 }
 
 void SettingsViewModel::loadFromCore()
 {
-    app::AppController* c = m_controller;
+    app::ISettingsFacade* c = m_facade;
     if (!c) return;
     m_loading = true;
-    m_base = c->settings()->settings();
+    m_base = c->settings();
     normalize(m_base);
     m_draft = m_base;
 
@@ -364,13 +343,13 @@ void SettingsViewModel::loadFromCore()
                     m_baseSecrets.insert(f.secretKey, c->secret(f.secretKey));
     m_draftSecrets = m_baseSecrets;
 
-    m_baseSelected = m_draftSelected = c->lastUsedDeviceNames();
+    m_baseSelected = m_draftSelected = c->devices() ? c->devices()->lastUsedDeviceNames() : QStringList();
     m_baseTheme = m_draftTheme = AppContext::instance()->themeMode();
 
     m_promptText.clear();
     m_promptDefault.clear();
     for (const QString& id : kPromptIds) {
-        const QString def = processing::promptDefault(id, m_controller ? m_controller->settings()->paths().dataDir() : QString());
+        const QString def = c->promptDefault(id);
         const QString stored = storedPrompt(m_base, id);
         m_promptDefault.insert(id, def);
         m_promptText.insert(id, stored.isEmpty() ? def : stored);
@@ -387,14 +366,14 @@ void SettingsViewModel::loadFromCore()
     m_embedding->reset();
     refreshVoiceprint();
     refreshFolderUsage();
+    applyScenario();
     touch();
     emitAllChanged();
 }
 
 void SettingsViewModel::reload()
 {
-    if (m_controller) loadFromCore();
-    else loadDemo();
+    loadFromCore();
 }
 
 void SettingsViewModel::emitAllChanged()
@@ -415,11 +394,11 @@ void SettingsViewModel::emitAllChanged()
 
 void SettingsViewModel::onExternalSettingsChanged()
 {
-    if (m_saving || m_loading || !m_controller) return;
+    if (m_saving || m_loading || !m_facade) return;
     // Someone else saved (another window, the CLI...): the new state
     // becomes the base, and own unsaved changes are applied on top.
     storePromptsInDraft();
-    tanara::app::AppSettings live = m_controller->settings()->settings();
+    tanara::app::AppSettings live = m_facade->settings();
     normalize(live);
     const QJsonObject merged = mergedSettings(m_base.toJson(), m_draft.toJson(), live.toJson());
     const QString typedName = m_draft.recording.userSpeakerName;
@@ -515,16 +494,14 @@ providers::ReadinessResult SettingsViewModel::draftReadiness(providers::Workflow
     m.hasTranscript = true;
     const providers::ReadinessModel model(m_draft.providers, [this](const QString& key) {
         if (m_draftSecrets.contains(key)) return !m_draftSecrets.value(key).trimmed().isEmpty();
-        if (!m_controller) return false;
-        return m_controller->hasSecret(key);
-    });
+        return m_facade && m_facade->hasSecret(key);
+    }, m_facade ? &m_facade->registry() : nullptr);
     return model.check(step, m);
 }
 
 QString SettingsViewModel::secretsBackend() const
 {
-    // Demo / no controller: the keychain (the fictional user's usual case).
-    return m_controller ? m_controller->secretBackend() : QStringLiteral("keychain");
+    return m_facade ? m_facade->secretBackend() : QStringLiteral("keychain");
 }
 
 QString SettingsViewModel::secretsLocationText() const
@@ -536,7 +513,7 @@ QString SettingsViewModel::secretsLocationText() const
 
 QString SettingsViewModel::secretsWarning() const
 {
-    if (!m_controller || m_controller->secretBackendWarning().isEmpty()) return QString();
+    if (!m_facade || m_facade->secretBackendWarning().isEmpty()) return QString();
     return tr("A rendszer kulcstartója nem érhető el, ezért a kulcsok titkosítatlan fájlban vannak "
               "(csak a te felhasználód olvashatja).");
 }
@@ -622,18 +599,12 @@ void SettingsViewModel::refreshVoiceprint()
 {
     QString text;
     bool has = false;
-    if (m_controller && m_controller->voiceprints()) {
-        const QVector<Voiceprint> prints = m_controller->voiceprints()->printsFor(m_controller->selfPerson().id);
-        // One sample is one item: per-model sibling voiceprints count as one.
-        QSet<QString> meetings, samples;
-        for (const Voiceprint& p : prints) {
-            if (!p.sourceMeetingId.isEmpty()) meetings.insert(p.sourceMeetingId);
-            samples.insert(library::VoiceprintStore::siblingKey(p));
-        }
-        has = !prints.isEmpty();
+    if (m_facade) {
+        const app::VoiceprintSummary prints = m_facade->ownVoiceprints();
+        has = prints.samples > 0;
         if (has)
-            text = tr("Hanglenyomat: %n minta,", nullptr, samples.size()) + QLatin1Char(' ')
-                   + tr("%n megbeszélésből", nullptr, meetings.size());
+            text = tr("Hanglenyomat: %n minta,", nullptr, prints.samples) + QLatin1Char(' ')
+                   + tr("%n megbeszélésből", nullptr, prints.meetings);
         else
             text = tr("Ehhez a névhez még nincs hanglenyomat.");
     }
@@ -665,8 +636,8 @@ QVariantList SettingsViewModel::uiLanguageOptions() const
 
 bool SettingsViewModel::languageNeedsRestart() const
 {
-    if (!m_controller) return false;
-    const QString active = activeUiLanguage();
+    if (!m_facade) return false;
+    const QString active = m_facade->activeUiLanguage();
     return !active.isEmpty() && resolvedUiLanguage(m_draft.ui.language) != active;
 }
 
@@ -709,23 +680,23 @@ QString configuredFolder(const paths::PathSettings& p, const QString& key)
 QString SettingsViewModel::defaultFolder(const QString& key) const
 {
     // The effective folder without a "paths" setting (with TANARA_HOME: the sandbox's).
-    return paths::AppPaths::system(paths::PathSettings()).dir(folderRole(key));
+    return m_facade ? m_facade->defaultFolder(folderRole(key)) : QString();
 }
 
 QString SettingsViewModel::folderPath(const QString& key) const
 {
     if (!folderKeys().contains(key)) return QString();
     // TANARA_HOME pins the data folder (the sandbox).
-    if (key == QLatin1String("meta") && m_controller && !paths::homeOverride().isEmpty())
+    if (key == QLatin1String("meta") && m_live && m_facade->dataDirPinned())
         return paths::homeOverride();
     const QString configured = configuredFolder(m_draft.paths, key);
     if (!configured.isEmpty()) return configured;
-    return m_controller ? defaultFolder(key) : QString();
+    return m_live ? defaultFolder(key) : QString();
 }
 
 QVariantList SettingsViewModel::folders() const
 {
-    const bool metaLocked = m_controller && !paths::homeOverride().isEmpty();
+    const bool metaLocked = m_live && m_facade->dataDirPinned();
     auto mk = [this](const QString& key, const QString& label, const QString& hint, bool locked,
                      const QString& warning) {
         return QVariantMap{
@@ -762,30 +733,35 @@ QVariantList SettingsViewModel::folders() const
 
 void SettingsViewModel::refreshFolderUsage()
 {
-    if (!m_controller) return;
+    if (!m_facade) return;
     const int generation = ++m_usageGeneration;
+    auto usageText = [](const app::FolderUsage& u, bool audio) {
+        if (!u.exists) return SettingsViewModel::tr("még nincs ilyen mappa — mentéskor létrejön");
+        QString text = formatBytes(u.bytes);
+        if (audio) text += QStringLiteral(" · ") + SettingsViewModel::tr("%n megbeszélés", nullptr, u.meetings);
+        return text;
+    };
     QPointer<SettingsViewModel> self(this);
+    QPointer<app::ISettingsFacade> facade(m_facade);
     for (const QString& key : folderKeys()) {
         const QString path = paths::expandHome(folderPath(key).trimmed());
         const bool audio = key == QLatin1String("audio");
-        QThreadPool::globalInstance()->start([self, generation, key, path, audio] {
-            const FolderUsage u = measureFolder(path, audio);
-            QMetaObject::invokeMethod(qApp, [self, generation, key, u, audio] {
+        if (!m_live) {
+            // The fictional facade measures nothing: its sizes are at hand.
+            m_folderUsage.insert(key, usageText(m_facade->folderUsage(path, audio), audio));
+            continue;
+        }
+        QThreadPool::globalInstance()->start([self, facade, generation, key, path, audio, usageText] {
+            if (!facade) return;
+            const app::FolderUsage u = facade->folderUsage(path, audio);
+            QMetaObject::invokeMethod(qApp, [self, generation, key, u, audio, usageText] {
                 if (!self || self->m_usageGeneration != generation) return;
-                QString text;
-                if (!u.exists)
-                    text = SettingsViewModel::tr("még nincs ilyen mappa — mentéskor létrejön");
-                else {
-                    text = formatBytes(u.bytes);
-                    if (audio)
-                        text += QStringLiteral(" · ")
-                                + SettingsViewModel::tr("%n megbeszélés", nullptr, u.meetings);
-                }
-                self->m_folderUsage.insert(key, text);
+                self->m_folderUsage.insert(key, usageText(u, audio));
                 emit self->foldersChanged();
             }, Qt::QueuedConnection);
         });
     }
+    if (!m_live) emit foldersChanged();
 }
 
 void SettingsViewModel::setFolder(const QString& key, const QString& path)
@@ -793,9 +769,9 @@ void SettingsViewModel::setFolder(const QString& key, const QString& path)
     const QString p = path.trimmed();
     if (p == folderPath(key)) return;
     if (!folderKeys().contains(key)) return;
-    if (key == QLatin1String("meta") && m_controller && !paths::homeOverride().isEmpty()) return;   // pinned
+    if (key == QLatin1String("meta") && m_live && m_facade->dataDirPinned()) return;   // pinned
     // The default folder is stored as "no setting" (later default changes then apply).
-    const QString stored = m_controller && paths::normalize(p) == defaultFolder(key) ? QString() : p;
+    const QString stored = m_live && paths::normalize(p) == defaultFolder(key) ? QString() : p;
     if (key == QLatin1String("audio")) m_draft.paths.setPrimaryRecordingRoot(stored);
     else if (key == QLatin1String("notes")) m_draft.paths.notesDir = stored;
     else if (key == QLatin1String("meta")) m_draft.paths.dataDir = stored;
@@ -834,7 +810,7 @@ QVariantList SettingsViewModel::recordingRoots() const
     for (const paths::RecordingRoot& r : m_draft.paths.recordingRoots) {
         const QString path = paths::normalize(r.path);
         if (path.isEmpty() || path == primary) continue;
-        const int meetings = m_controller ? library::MeetingRepository::meetingFolderCount(path) : 0;
+        const int meetings = m_facade ? m_facade->meetingFolderCount(path) : 0;
         out << QVariantMap{{QStringLiteral("path"), r.path},
                            {QStringLiteral("meetings"), meetings},
                            {QStringLiteral("removable"), meetings == 0}};
@@ -856,7 +832,7 @@ void SettingsViewModel::addRecordingRootPath(const QString& path)
     for (const paths::RecordingRoot& r : std::as_const(m_draft.paths.recordingRoots))
         if (paths::normalize(r.path) == p) return;
     // Keeping the effective primary explicit: with only the default primary there is no entry for it yet.
-    if (m_draft.paths.primaryRecordingRoot().isEmpty() && m_controller)
+    if (m_draft.paths.primaryRecordingRoot().isEmpty() && m_live)
         m_draft.paths.recordingRoots.prepend(paths::RecordingRoot{defaultFolder(QStringLiteral("audio")), true});
     m_draft.paths.recordingRoots << paths::RecordingRoot{path.trimmed(), false};
     emit foldersChanged();
@@ -886,7 +862,7 @@ void SettingsViewModel::removeRecordingRoot(const QString& path)
 {
     const QString p = paths::normalize(path);
     if (p.isEmpty() || p == paths::normalize(folderPath(QStringLiteral("audio")))) return;   // not the primary
-    if (library::MeetingRepository::meetingFolderCount(p) > 0) return;   // only an empty root
+    if (m_facade && m_facade->meetingFolderCount(p) > 0) return;   // only an empty root
     const auto before = m_draft.paths.recordingRoots.size();
     m_draft.paths.recordingRoots.removeIf([&p](const paths::RecordingRoot& r) { return paths::normalize(r.path) == p; });
     if (m_draft.paths.recordingRoots.size() == before) return;
@@ -925,9 +901,9 @@ void SettingsViewModel::setMonitoring(bool on)
 {
     if (m_monitoring == on) return;
     m_monitoring = on;
-    if (m_controller) {
-        if (on) m_controller->retainLevelMonitoring(this);
-        else m_controller->releaseLevelMonitoring(this);
+    if (m_facade) {
+        if (on) m_facade->retainLevelMonitoring(this);
+        else m_facade->releaseLevelMonitoring(this);
     }
     m_devices->setTicking(on);
     emit monitoringChanged();
@@ -1073,13 +1049,7 @@ void SettingsViewModel::removeWatchedApp(int index)
 
 QVariantList SettingsViewModel::runningApps() const
 {
-    QStringList names;
-    if (!m_controller) {
-        names = {QStringLiteral("signal-desktop"), QStringLiteral("telegram-desktop"),
-                 QStringLiteral("thunderbird"), QStringLiteral("zoom")};
-    } else {
-        names = watcher::RunningApps::names();
-    }
+    QStringList names = m_facade ? m_facade->runningApps() : QStringList();
     names.sort();
     QVariantList out;
     for (const QString& n : std::as_const(names)) {
@@ -1096,7 +1066,7 @@ void SettingsViewModel::setWatching(bool on)
 {
     if (m_watching == on) return;
     m_watching = on;
-    if (on && (m_controller || m_detector)) {
+    if (on && (m_live || m_detector)) {
         m_detectTimer.start();
         QMetaObject::invokeMethod(this, &SettingsViewModel::pollDetector, Qt::QueuedConnection);
     } else {
@@ -1114,12 +1084,9 @@ void SettingsViewModel::setDetectorForTest(watcher::IMeetingDetector* detector)
 void SettingsViewModel::pollDetector()
 {
     if (!m_watching) return;
-    if (!m_detector && !m_detectorTried && m_controller && m_controller->services()) {
+    if (!m_detector && !m_detectorTried && m_facade) {
         m_detectorTried = true;
-        const watcher::MeetingDetectorRegistry& reg = m_controller->services()->detectors();
-        m_detector.reset(m_draft.watcher.detectorId.isEmpty()
-                             ? reg.createBest()
-                             : reg.create(m_draft.watcher.detectorId));
+        m_detector.reset(m_facade->createDetector(m_draft.watcher.detectorId));
     }
     const bool available = m_detector && m_detector->isAvailable();
     watcher::MeetingSignal sig;
@@ -1330,8 +1297,8 @@ bool SettingsViewModel::save()
     const bool themeChanged = m_baseTheme != m_draftTheme;
     const QString theme = m_draftTheme;
 
-    if (!m_controller) {
-        // Demo: nothing to write to disk; the draft becomes the base.
+    if (!m_live) {
+        // Fictional facade: nothing to write to disk; the draft becomes the base.
         m_draft.recording.userSpeakerName = newName;
         m_base = m_draft;
         m_baseSecrets = m_draftSecrets;
@@ -1342,19 +1309,19 @@ bool SettingsViewModel::save()
         return true;
     }
 
-    app::AppController* c = m_controller;
+    app::ISettingsFacade* c = m_facade;
     m_saving = true;
 
     // 1) settings: only the DIFFERENCE goes onto the core's currently effective state.
-    const tanara::app::AppSettings live = c->settings()->settings();
+    const tanara::app::AppSettings live = c->settings();
     tanara::app::AppSettings draft = m_draft;
     draft.recording.userSpeakerName = m_base.recording.userSpeakerName;   // the core handles the rename as a separate operation
     const QJsonObject liveJson = live.toJson();
     const QJsonObject mergedJson = mergedSettings(m_base.toJson(), draft.toJson(), liveJson);
     if (mergedJson != liveJson) {
         tanara::app::AppSettings merged = tanara::app::AppSettings::fromJson(mergedJson);
-        if (!paths::homeOverride().isEmpty()) merged.paths.dataDir = live.paths.dataDir;
-        c->settings()->setSettings(merged);
+        if (c->dataDirPinned()) merged.paths.dataDir = live.paths.dataDir;
+        c->setSettings(merged);
     }
     // 2) own name: the core carries it through the person DB, the meetings and the voiceprints.
     if (!newName.isEmpty() && newName != m_base.recording.userSpeakerName.trimmed())
@@ -1367,12 +1334,11 @@ bool SettingsViewModel::save()
         QStringList a = m_baseSelected, b = m_draftSelected;
         a.sort();
         b.sort();
-        if (a != b) c->setLastUsedDeviceNames(selectedDevicesForSave());
+        if (a != b && c->devices()) c->devices()->setLastUsedDeviceNames(selectedDevicesForSave());
     }
     // 5) starting the watcher at sign-in: effective immediately (never in a sandbox / test).
     if (m_base.watcher.autostart != m_draft.watcher.autostart)
-        watcher::autostart::applyWatcher(m_draft.watcher.autostart,
-                                watcher::autostart::findWatcherExecutable(QCoreApplication::applicationDirPath()));
+        c->applyWatcherAutostart(m_draft.watcher.autostart);
     m_saving = false;
 
     loadFromCore();
@@ -1421,177 +1387,48 @@ void SettingsViewModel::discard()
     refreshFolderUsage();
 }
 
-// ---- demo (fictional data for the design states) -----------------------------------------
+// ---- design state (fictional facade) -------------------------------------------------------
 
-void SettingsViewModel::loadDemo()
+void SettingsViewModel::applyScenario()
 {
-    const QString st = m_demoState;
-    m_loading = true;
-
-    tanara::app::AppSettings s;
-    s.recording.userSpeakerName = demoName("Kovács Lilla");
-    s.paths.setPrimaryRecordingRoot(demoText("/home/lilla/Tanara/felvetelek", "/home/emma/Tanara/recordings"));
-    s.paths.recordingRoots << paths::RecordingRoot{demoText("/media/lilla/archivum/Tanara", "/media/emma/archive/Tanara"), false};
-    s.paths.notesDir = demoText("/home/lilla/Tanara/jegyzetek", "/home/emma/Tanara/notes");
-    s.paths.dataDir = demoText("/home/lilla/.tanara", "/home/emma/.tanara");
-    s.paths.modelsDir = demoText("/home/lilla/.tanara/models", "/home/emma/.tanara/models");
-    s.ui.language = QStringLiteral("auto");
-    s.recording.autoRecordAllDevices = false;
-    s.recording.audioQuality = QStringLiteral("medium");
-    s.recording.mixdownMode = QStringLiteral("manual");
-    s.processing.summaryLanguage = QStringLiteral("magyar");
-    s.watcher.knownCallApps = {QStringLiteral("zoom"), QStringLiteral("teams"), QStringLiteral("webex"),
-                       QStringLiteral("slack"), QStringLiteral("discord"), QStringLiteral("meet")};
-    s.watcher.autostart = true;
-    s.providers.stt.selectedId = QStringLiteral("soniox");
-    s.providers.llm.selectedId = QStringLiteral("openai-compat");
-    s.providers.stt.configs.clear();
-    s.providers.llm.configs.clear();
-    {
-        providers::ProviderConfig llm;
-        llm.type = s.providers.llm.selectedId;
-        llm.baseUrl = QStringLiteral("http://localhost:1234/v1");
-        llm.model = QStringLiteral("google/gemma-4-12b-qat");
-        llm.temperature = 0.2;
-        llm.maxTokens = 30000;
-        s.providers.llm.configs.insert(s.providers.llm.selectedId, llm);
+    const std::optional<app::SettingsScenario> sc = m_facade ? m_facade->scenario() : std::nullopt;
+    if (!sc) return;
+    if (sc->draft) {
+        // The design state's unsaved changes: its difference from the saved settings, onto the
+        // (normalized) base, as a save would apply it.
+        const QJsonObject raw = m_facade->settings().toJson();
+        m_draft = tanara::app::AppSettings::fromJson(mergedSettings(raw, sc->draft->toJson(), m_base.toJson()));
+        for (const QString& id : kPromptIds) {
+            const QString stored = storedPrompt(m_draft, id);
+            if (!stored.isEmpty()) m_promptText.insert(id, stored);
+        }
     }
-    const QString trust = QStringLiteral("alsa_input.usb-Trust_USB_Microphone-00.mono-fallback");
-    const QString headsetMon = demoText("Monitor of Sennheiser headset - Kommunikáció",
-                                        "Monitor of Sennheiser headset - Communication");
-    const QString kantoMon = demoText("Monitor of Kanto YU4 - Optikai digitális sztereó",
-                                      "Monitor of Kanto YU4 - Digital Stereo (IEC958)");
-    s.recording.deviceNames = {
-        {trust, demoText("Trust USB mikrofon", "Trust USB microphone")},
-        {QStringLiteral("alsa_input.pci-0000_00_1f.3.analog-stereo"), demoText("Sennheiser fejhallgató (analóg)", "Sennheiser headphones (analog)")},
-        {headsetMon, QStringLiteral("Sennheiser headset")},
-        {QStringLiteral("alsa_input.pci-0000_00_1f.3.analog-stereo.line-in"), demoText("Alaplapi vonalbemenet", "Motherboard line-in")},
-    };
-    normalize(s);
-    m_base = s;
-    m_draft = s;
-
-    const bool keyMissing = st == QLatin1String("B04");
-    m_baseSecrets = {{QStringLiteral("soniox.apiKey"), keyMissing ? QString() : QStringLiteral("sk-demo-0000000000003f9a")},
-                     {QStringLiteral("llm.apiKey"), QString()},
-                     {QStringLiteral("stt.whisper.apiKey"), QString()}};
-    m_draftSecrets = m_baseSecrets;
-    m_baseSelected = m_draftSelected = {trust, headsetMon, kantoMon};
-    m_baseTheme = m_draftTheme = AppContext::instance()->themeMode();
-
-    m_promptText.clear();
-    m_promptDefault.clear();
-    for (const QString& id : kPromptIds) {
-        const QString def = processing::promptBuiltin(id);
-        m_promptDefault.insert(id, def);
-        m_promptText.insert(id, def);
-    }
-    m_promptIndex = 0;
-
-    m_folderUsage = {{QStringLiteral("audio"), QStringLiteral("12,4 GB · ") + tr("%n megbeszélés", nullptr, 86)},
-                     {QStringLiteral("notes"), QStringLiteral("38 MB")},
-                     {QStringLiteral("meta"), QStringLiteral("210 MB")},
-                     {QStringLiteral("models"), QStringLiteral("96 MB")}};
-    m_voiceprintText = tr("Hanglenyomat: %n minta,", nullptr, 23) + QLatin1Char(' ')
-                       + tr("%n megbeszélésből", nullptr, 9);
-    m_hasVoiceprint = true;
-    m_serviceMode = QStringLiteral("own");
-    m_focusField.clear();
-    m_liveActive = false;
-    m_liveApp.clear();
-    m_liveAppId.clear();
+    m_page = kPages.contains(sc->page) ? sc->page : QStringLiteral("general");
+    m_focusField = sc->focusField;
+    m_serviceMode = sc->serviceMode == QLatin1String("cloud") ? QStringLiteral("cloud") : QStringLiteral("own");
+    m_promptIndex = std::clamp(sc->promptIndex, 0, int(kPromptIds.size()) - 1);
+    m_liveActive = sc->liveCallActive;
+    m_liveApp = sc->liveCallApp;
+    m_liveAppId = sc->liveCallAppId;
     m_detectorAvailable = true;
-    m_page = QStringLiteral("general");
-    m_loading = false;
-
-    // States of the Embedding card; other pages have no embedding ("base").
-    const QString emb = st == QLatin1String("B04") || st == QLatin1String("B04embedding") ? QStringLiteral("local")
-        : st == QLatin1String("B04embeddingRunning") ? QStringLiteral("localRunning")
-        : st == QLatin1String("B04embeddingError") ? QStringLiteral("localError")
-        : st == QLatin1String("B04embeddingDone") ? QStringLiteral("localDone")
-        : st == QLatin1String("B04embeddingCloud") ? QStringLiteral("cloud")
-        : st == QLatin1String("B04modelChange") ? QStringLiteral("modelChange")
-        : st == QLatin1String("B04embeddingNone") ? QStringLiteral("none") : QString();
-    m_embedding->loadDemo(emb);
-    m_voiceModels->loadDemo(st.startsWith(QLatin1String("B08")) ? st : QStringLiteral("B08"));
-    m_devices->rebuild();
     m_stt->reset();
     m_llm->reset();
+    m_embedding->reset();
     m_stt->setAdvancedOpen(false);
-    m_llm->setAdvancedOpen(false);
-
-    if (st == QLatin1String("B02") || st == QLatin1String("rename")) {
-        m_page = QStringLiteral("recording");
-        m_draft.recording.deviceNames.insert(kantoMon, demoText("Kanto hangfal", "Kanto speakers"));   // 1 unsaved change
-    } else if (st == QLatin1String("B03")) {
-        m_page = QStringLiteral("watcher");
-        m_liveActive = true;
-        m_liveApp = QStringLiteral("Microsoft Teams");
-        m_liveAppId = QStringLiteral("teams");
-    } else if (st == QLatin1String("B04")) {
-        m_page = QStringLiteral("services");
-        m_focusField = QStringLiteral("stt");
-        m_llm->setDemoResult(QStringLiteral("ok"), 48, QString(), QString());
-    } else if (st.startsWith(QLatin1String("B04"))) {
-        // Transcription and summary are already set up -> collapsed cards.
-        m_page = QStringLiteral("services");
-        m_stt->setDemoResult(QStringLiteral("ok"), 210, QString(), QString());
-        m_llm->setDemoResult(QStringLiteral("ok"), 48, QString(), QString());
-    } else if (st == QLatin1String("advanced")) {
-        // The LLM card's "Advanced" part is open (temperature, max tokens, thinking).
-        m_page = QStringLiteral("services");
-        m_llm->setDemoResult(QStringLiteral("ok"), 48, QString(), QString());
-        m_llm->setAdvancedOpen(true);
-        providers::llmctx::LlmServerInfo info;   // LM Studio: the model is loaded, on one thread
-        info.kind = providers::llmctx::LlmServerInfo::Kind::LmStudio;
-        info.modelListed = true;
-        info.modelKey = QStringLiteral("google/gemma-4-12b-qat");
-        info.maxContext = 131072;
-        info.instances = {{info.modelKey, 20480, 1}};
-        m_llm->setDemoServerInfo(info);
-    } else if (st == QLatin1String("B05")) {
-        m_page = QStringLiteral("services");
-        m_stt->setDemoResult(QStringLiteral("ok"), 210, QString(), QString());
-        m_llm->setDemoResult(QStringLiteral("failed"), -1,
-                             tr("A végpont nem válaszol. Fut a helyi szerver (pl. LM Studio), és jó a port?"),
-                             QStringLiteral("ECONNREFUSED"));
-        m_llm->setAdvancedOpen(true);
-    } else if (st == QLatin1String("cloudComingSoon")) {
-        m_page = QStringLiteral("services");
-        m_serviceMode = QStringLiteral("cloud");
-    } else if (st == QLatin1String("cloudSelected")) {
-        // The saved setting names Tanara Cloud (developer setting): not available, own key needed.
-        m_page = QStringLiteral("services");
-        m_draft.providers.stt.selectedId = cloud::ProviderId;
-        m_draft.providers.llm.selectedId = cloud::ProviderId;
-        m_stt->reset();
-        m_llm->reset();
-    } else if (st == QLatin1String("B07") || st == QLatin1String("B07notes") || st == QLatin1String("schema")) {
-        m_page = QStringLiteral("summary");
-        // A prompt extended with an own rule -> "modified".
-        const QString custom = processing::promptBuiltin(QStringLiteral("single"))
-            + QStringLiteral("\nFor each action item, name the owner and the deadline when they were said.\n");
-        m_promptText.insert(QStringLiteral("single"), custom);
-        m_base.processing.summaryPrompt = m_draft.processing.summaryPrompt = custom;
-        if (st == QLatin1String("B07notes"))
-            m_promptIndex = 1;      // the per-part note prompt
-    } else if (st.startsWith(QLatin1String("B08"))) {
-        m_page = QStringLiteral("speakers");
-        // The draft's enabled list follows the demo's model state.
-        m_base.processing.voiceModels = m_draft.processing.voiceModels = QStringList{QStringLiteral("wespeaker-resnet34-lm")};
-    } else if (st == QLatin1String("dirty") || st == QLatin1String("unsaved")) {
-        m_draft.recording.userSpeakerName = demoText("Kovács Lilla Anna", "Emma Anne Carter");
-    }
-
+    m_llm->setAdvancedOpen(sc->llmAdvancedOpen);
+    auto show = [](SettingsProviderModel* card, const std::optional<app::SettingsScenario::TestResult>& r) {
+        if (r) card->setDemoResult(r->state, r->latencyMs, r->message, r->code);
+    };
+    show(m_stt, sc->sttTest);
+    show(m_llm, sc->llmTest);
+    if (sc->llmServer) m_llm->setDemoServerInfo(*sc->llmServer);
     m_devices->refreshFromDraft();
-    touch();
     emit pageChanged();
     emit voiceprintChanged();
     emit liveCallChanged();
     emit deviceCountChanged();
     m_stt->notifyFocusChanged();
     m_llm->notifyFocusChanged();
-    emitAllChanged();
 }
 
 } // namespace tanara_qml

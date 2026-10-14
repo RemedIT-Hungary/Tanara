@@ -9,6 +9,7 @@
 //    switch in both places; a click on the track chip toggles the binding.
 // With G6_SHOT_DIR set: screenshots of the compact rows + chips (light and dark) go there.
 #include "AppContext.h"
+#include "UiServices.h"
 #include "demo/LibraryDemoData.h"
 #include "ParticipantTrackBinder.h"
 #include "PlayerController.h"
@@ -226,7 +227,7 @@ private slots:
             app.store()->saveMeeting(m);
 
             PlayerController p;
-            p.setController(&app);
+            p.setFacade(tanara_qml::AppContext::instance()->servicesFor(&app).tracks(QString(), nullptr));
             p.setMeetingId(m.id);
             p.seek(5000);
             p.playTrack(QStringLiteral("mic"), 70000);

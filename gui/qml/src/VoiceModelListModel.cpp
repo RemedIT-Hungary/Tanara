@@ -1,17 +1,13 @@
 #include "VoiceModelListModel.h"
 #include "tanara/foundation/time/TimeFormat.h"
 
-#include "DemoText.h"
 
 #include "AppContext.h"
+#include "UiServices.h"
 #include "SettingsViewModel.h"
 
-#include "tanara/app/AppController.h"
-#include "tanara/foundation/paths/AppPaths.h"
-#include "tanara/app/SettingsManager.h"
-#include "tanara/library/store/MeetingRepository.h"
-#include "tanara/library/store/VoiceprintStore.h"
 #include "tanara/processing/voiceid/BackfillReport.h"
+#include "tanara/processing/voiceid/IVoiceModelsFacade.h"
 #include "tanara/processing/voiceid/VoiceModelDownloader.h"
 
 #include <QCoreApplication>
@@ -87,14 +83,14 @@ QVariantMap skipEntry(const QString& person, const QString& sample, const QStrin
 
 // The core's skipped samples one item per sample (missing models merged), sorted by person;
 // non-empty person -> only theirs.
-QVariantList skipEntries(app::AppController* c, const QString& person = QString())
+QVariantList skipEntries(const processing::IVoiceModelsFacade* c, const QString& person = QString())
 {
     QVariantList out;
     if (!c) return out;
     QStringList keys;
     QVector<processing::VoiceprintBackfillSkip> first;
     QHash<QString, QStringList> models;
-    for (const processing::VoiceprintBackfillSkip& s : c->backfillSkippedSamples()) {
+    for (const processing::VoiceprintBackfillSkip& s : c->backfillSkips(person)) {
         if (!person.isEmpty() && s.person != person) continue;
         const QString key = s.person + QLatin1Char('|') + s.sourceMeetingId + QLatin1Char('|') + s.sampleRef;
         if (!models.contains(key)) { keys << key; first << s; }
@@ -108,7 +104,7 @@ QVariantList skipEntries(app::AppController* c, const QString& person = QString(
             title = QCoreApplication::translate("VoiceModelListModel", "törölt megbeszélés");
         } else {
             if (!titles.contains(s.sourceMeetingId))
-                titles.insert(s.sourceMeetingId, c->store() ? c->store()->load(s.sourceMeetingId).title : QString());
+                titles.insert(s.sourceMeetingId, c->meetingTitle(s.sourceMeetingId));
             title = titles.value(s.sourceMeetingId);
         }
         // "<folder>/track.ogg#startMs-endMs" -> "12:03-12:06"
@@ -138,11 +134,13 @@ VoiceModelListModel::VoiceModelListModel(QObject* parent) : QAbstractListModel(p
             [this](const QString& id, processing::VoiceModelDownloader::VerifyResult r, const QString&) { onVerified(id, int(r)); });
     rebuild();
 
-    // Standalone instance (from QML, e.g. Getting started): App.controller binds in the next
-    // turn, if by then the host has not given its own and has not asked for a demo.
+    // Standalone instance (from QML, e.g. Getting started): the process's services, in the next
+    // turn (by then QML has set demoState), unless an owner or a test gave a facade meanwhile.
+    AppContext* ctx = AppContext::instance();
+    connect(ctx, &AppContext::controllerChanged, this, &VoiceModelListModel::resolveServices);
+    connect(ctx, &AppContext::demoChanged, this, &VoiceModelListModel::resolveServices);
     QMetaObject::invokeMethod(this, [this] {
-        if (m_controllerSet) return;
-        if (app::AppController* c = AppContext::instance()->controller()) setController(c);
+        if (!m_facade) resolveServices();
     }, Qt::QueuedConnection);
 }
 
@@ -223,29 +221,50 @@ QVariant VoiceModelListModel::data(const QModelIndex& index, int role) const
     return {};
 }
 
-// ---- controller / demo -------------------------------------------------------------------
+// ---- facade / design state ----------------------------------------------------------------
 
-QObject* VoiceModelListModel::controllerObject() const { return m_controller; }
-
-void VoiceModelListModel::setControllerObject(QObject* controller)
+bool VoiceModelListModel::live() const
 {
-    setController(qobject_cast<app::AppController*>(controller));
+    return m_dirsOverridden || (m_facade && m_facade->live());
 }
 
-void VoiceModelListModel::setController(app::AppController* controller)
+void VoiceModelListModel::resolveServices()
 {
-    if (m_controllerSet && m_controller == controller) return;
-    m_controller = controller;
-    m_controllerSet = true;
+    if (m_explicitFacade) return;
+    processing::IVoiceModelsFacade* old = m_facade;
+    m_facade = AppContext::instance()->services().voiceModels(m_demoState, this);
+    if (old && old != m_facade && old->parent() == this) old->deleteLater();   // a fictional facade of ours
     attach();
-    emit controllerChanged();
+}
+
+void VoiceModelListModel::useServices(const UiServices& services, const QString& scenario)
+{
+    m_explicitFacade = true;
+    const bool stateChanged = m_demoState != scenario;
+    m_demoState = scenario;
+    processing::IVoiceModelsFacade* old = m_facade;
+    m_facade = services.voiceModels(scenario, this);
+    if (old && old != m_facade && old->parent() == this) old->deleteLater();
+    attach();
+    if (stateChanged) emit demoStateChanged();
+}
+
+void VoiceModelListModel::setFacade(processing::IVoiceModelsFacade* facade)
+{
+    m_explicitFacade = true;
+    if (m_facade == facade) return;
+    processing::IVoiceModelsFacade* old = m_facade;
+    m_facade = facade;
+    if (old && old->parent() == this) old->deleteLater();
+    attach();
 }
 
 void VoiceModelListModel::setDemoState(const QString& state)
 {
-    if (m_controller) return;
-    m_controllerSet = true;
-    loadDemo(state);
+    if (m_demoState == state && m_facade) return;
+    m_demoState = state;
+    // A fictional facade serves one design state: a new one for the new state.
+    if (!m_explicitFacade && !(m_facade && m_facade->live())) resolveServices();
     emit demoStateChanged();
 }
 
@@ -253,118 +272,69 @@ void VoiceModelListModel::attach()
 {
     for (const QMetaObject::Connection& c : std::as_const(m_connections)) disconnect(c);
     m_connections.clear();
-    app::AppController* c = m_controller;
-    if (!c) {
-        loadDemo(m_demoState);
-        return;
-    }
-    m_connections << connect(c, &app::AppController::voiceModelsChanged, this, [this] { refreshFiles(); });
-    m_connections << connect(c, &app::AppController::voiceprintBackfillStarted, this,
+    processing::IVoiceModelsFacade* c = m_facade;
+    if (!c) return;
+    m_connections << connect(c, &processing::IVoiceModelsFacade::modelsChanged, this, [this] { refreshFiles(); });
+    m_connections << connect(c, &processing::IVoiceModelsFacade::backfillStarted, this,
                              &VoiceModelListModel::onBackfillStarted);
-    m_connections << connect(c, &app::AppController::voiceprintBackfillProgress, this,
+    m_connections << connect(c, &processing::IVoiceModelsFacade::backfillProgress, this,
                              &VoiceModelListModel::onBackfillProgress);
-    m_connections << connect(c, &app::AppController::voiceprintBackfillFinished, this,
+    m_connections << connect(c, &processing::IVoiceModelsFacade::backfillFinished, this,
                              &VoiceModelListModel::onBackfillFinished);
-    m_connections << connect(c->settings(), &app::SettingsManager::settingsChanged, this, [this] {
+    m_connections << connect(c, &processing::IVoiceModelsFacade::settingsChanged, this, [this] {
         if (!m_getDraft) notifyDraftChanged();   // standalone instance: the core's setting is the source
     });
+    if (c->scenario()) {
+        applyScenario();
+        return;
+    }
     m_bfState.clear();
     m_bfSeenRunning = false;
     m_bfSkips.clear();
+    rebuild();
     refresh();
 }
 
-void VoiceModelListModel::loadDemo(const QString& state)
+// The fictional facade's design state: the rows' and the backfill's state as given.
+void VoiceModelListModel::applyScenario()
 {
-    const bool changed = m_demoState != state;
-    m_demoState = state;
-    m_controller.clear();
+    const std::optional<processing::VoiceModelScenario> sc = m_facade ? m_facade->scenario() : std::nullopt;
+    if (!sc) return;
     beginResetModel();
     m_rows.clear();
     const QVector<processing::VoiceModelSpec> specs = ordered(m_specOverride.isEmpty() ? processing::VoiceModelRegistry::builtin() : m_specOverride);
     for (const processing::VoiceModelSpec& s : specs) {
         Row r;
         r.spec = s;
-        r.state = QStringLiteral("downloaded");
+        const processing::VoiceModelScenario::Row given = sc->rows.value(s.id);
+        r.state = given.state;
+        if (r.state == QLatin1String("downloading")) {
+            r.total = s.sizeBytes;
+            r.received = qint64(r.total * given.receivedFraction);
+        }
+        r.errorText = given.errorText;
+        r.corrupt = given.corrupt;
+        if (r.corrupt)
+            r.errorText = tr("A fájl mérete eltér a várttól (%1 helyett %2) — töltsd le újra.")
+                              .arg(SettingsViewModel::formatBytes(s.sizeBytes), SettingsViewModel::formatBytes(given.fileSize));
+        r.hasFile = r.state == QLatin1String("downloaded") || r.state == QLatin1String("verifying") || r.corrupt;
         m_rows << r;
     }
-    auto row = [this](const QString& id) -> Row* {
-        const int i = indexOf(id);
-        return i >= 0 ? &m_rows[i] : nullptr;
-    };
-    m_offline = false;
-    m_demoEnabled = {kWespeaker};
-    if (Row* e = row(kEres)) e->state = QStringLiteral("missing");
-    if (state == QLatin1String("B08download")) {
-        if (Row* w = row(kWespeaker)) {
-            w->state = QStringLiteral("downloading");
-            w->total = w->spec.sizeBytes;
-            w->received = qint64(w->total * 0.46);
-        }
-        m_demoEnabled = {kWespeaker};
-    } else if (state == QLatin1String("B08none")) {
-        for (Row& r : m_rows) r.state = QStringLiteral("missing");
-        m_demoEnabled = {kWespeaker};
-    } else if (state == QLatin1String("B08error")) {
-        if (Row* w = row(kWespeaker)) {
-            w->state = QStringLiteral("error");
-            w->errorText = tr("A letöltés megszakadt: a kapcsolat 12 MB után megszűnt. Semmi nem került a gépre.");
-        }
-        m_demoEnabled = {kWespeaker};
-    } else if (state == QLatin1String("B08offline")) {
-        m_offline = true;
-        if (Row* w = row(kWespeaker)) w->state = QStringLiteral("offline");
-        if (Row* e = row(kEres)) e->state = QStringLiteral("offline");
-        m_demoEnabled = {kWespeaker};
-    } else if (state == QLatin1String("B08bundled")) {
-        if (Row* c = row(kCamplus)) c->state = QStringLiteral("bundled");
-    } else if (state == QLatin1String("B08fallback")) {
-        // WeSpeaker is not downloaded, the bundled CAM++ runs as the fallback.
-        if (Row* w = row(kWespeaker)) w->state = QStringLiteral("missing");
-        if (Row* c = row(kCamplus)) c->state = QStringLiteral("bundled");
-    } else if (state == QLatin1String("B08verify")) {
-        // WeSpeaker was just downloaded: verification; ERes2NetV2's file is corrupt (size mismatch).
-        if (Row* w = row(kWespeaker)) w->state = QStringLiteral("verifying");
-        if (Row* e = row(kEres)) {
-            e->state = QStringLiteral("error");
-            e->corrupt = true;
-            e->errorText = tr("A fájl mérete eltér a várttól (%1 helyett %2) — töltsd le újra.")
-                               .arg(SettingsViewModel::formatBytes(e->spec.sizeBytes),
-                                    SettingsViewModel::formatBytes(e->spec.sizeBytes / 3));
-        }
-    }
-    for (Row& r : m_rows)
-        r.hasFile = r.state == QLatin1String("downloaded") || r.state == QLatin1String("verifying") || r.corrupt;
+    m_offline = sc->offline;
     endResetModel();
 
-    m_bfSkips.clear();
-    if (state == QLatin1String("B08backfill")) {
-        setBackfill(QStringLiteral("running"), 23, 14, 0);
-    } else if (state == QLatin1String("B08partial")) {
-        // Fictional skipped samples (person, sample, reason).
-        const QString missing = reasonText(processing::VoiceprintBackfillSkip::Reason::MissingAudio);
-        m_bfSkips = {
-            skipEntry(demoName("Nagy Péter"), demoText("Partnerdemó – adatimport", "Partner demo – data import") + QStringLiteral(" · 12:40–12:52"), missing,
-                      QStringLiteral("WeSpeaker")),
-            skipEntry(demoName("Szabó Bence"), demoText("Heti egyeztetés", "Weekly sync") + QStringLiteral(" · 3:05–3:14"), missing,
-                      QStringLiteral("WeSpeaker")),
-            skipEntry(demoName("Szabó Bence"), tr("törölt megbeszélés") + QStringLiteral(" · 0:42–0:50"),
-                      reasonText(processing::VoiceprintBackfillSkip::Reason::MissingMeeting), QStringLiteral("WeSpeaker")),
-        };
-        m_bfState.clear();   // the list changed too: signal in any case
-        setBackfill(QStringLiteral("partial"), 23, 20, 3);
-    } else {
-        setBackfill(QString(), 0, 0, 0);
-    }
+    m_bfSkips = skipEntries(m_facade);
+    m_bfState.clear();   // the list may have changed too: signal in any case
+    setBackfill(sc->backfillState, sc->backfillTotal, sc->backfillDone, sc->backfillSkipped);
+    emit backfillChanged();
     emit summaryChanged();
-    if (changed) emit demoStateChanged();
 }
 
 void VoiceModelListModel::setSpecsForTest(const QVector<processing::VoiceModelSpec>& specs)
 {
     m_specOverride = specs;
-    if (m_controller || m_dirsOverridden) { rebuild(); refresh(); }
-    else loadDemo(m_demoState);
+    if (live()) { rebuild(); refresh(); }
+    else applyScenario();
 }
 
 void VoiceModelListModel::setDirsForTest(const QString& metaDir, const QString& appDir)
@@ -380,8 +350,7 @@ void VoiceModelListModel::setDirsForTest(const QString& metaDir, const QString& 
 QString VoiceModelListModel::metaDir() const
 {
     if (m_dirsOverridden) return m_metaOverride;
-    if (!m_controller) return QString();
-    return m_controller->settings()->paths().modelsDir();
+    return m_facade && m_facade->live() ? m_facade->modelsDir() : QString();
 }
 
 QString VoiceModelListModel::appDir() const
@@ -393,16 +362,14 @@ QString VoiceModelListModel::appDir() const
 QStringList VoiceModelListModel::enabledIds() const
 {
     if (m_getDraft) return m_getDraft();
-    if (m_controller) return m_controller->settings()->enabledVoiceModels();
-    return m_demoEnabled;
+    return m_facade ? m_facade->enabledModels() : QStringList();
 }
 
 void VoiceModelListModel::writeEnabled(const QStringList& ids)
 {
     const QStringList norm = processing::VoiceModelRegistry::normalizeIds(ids);
     if (m_setDraft) m_setDraft(norm);
-    else if (m_controller) m_controller->settings()->setEnabledVoiceModels(norm);
-    else m_demoEnabled = norm;
+    else if (m_facade) m_facade->setEnabledModels(norm);
     notifyDraftChanged();
 }
 
@@ -465,7 +432,7 @@ void VoiceModelListModel::rebuild()
     for (const processing::VoiceModelSpec& s : specs) {
         Row r = old.value(s.id);
         r.spec = s;
-        if (m_controller || m_dirsOverridden) updateFileState(r);
+        if (live()) updateFileState(r);
         m_rows << r;
     }
     endResetModel();
@@ -473,7 +440,7 @@ void VoiceModelListModel::rebuild()
 
 void VoiceModelListModel::refresh()
 {
-    if (!m_controller && !m_dirsOverridden) return;   // demo: the fictional state stays
+    if (!live()) return;   // fictional facade: the design state stays
     refreshFiles();
     verifyAllFiles();
     checkBackfill();
@@ -490,7 +457,7 @@ void VoiceModelListModel::verify(const QString& id)
 {
     const int i = indexOf(id);
     if (i < 0) return;
-    if (!m_controller && !m_dirsOverridden) return;   // demo
+    if (!live()) return;   // fictional facade
     Row& r = m_rows[i];
     const QString path = processing::VoiceModelRegistry::resolvePath(r.spec, metaDir(), appDir());
     if (!QFileInfo::exists(path)) return;
@@ -519,8 +486,8 @@ QString VoiceModelListModel::deleteModel(const QString& id)
     if (r.state == QLatin1String("downloading") || r.state == QLatin1String("verifying"))
         return tr("Letöltés vagy ellenőrzés közben nem törölhető.");
     if (!r.hasFile) return tr("Ennek a modellnek nincs letöltött fájlja; a csomagban lévőt nem lehet törölni.");
-    if (!m_controller && !m_dirsOverridden) {
-        // Demo: only the state changes.
+    if (!live()) {
+        // Fictional facade: only the state changes.
         r.state = QStringLiteral("missing");
         r.hasFile = false;
         r.corrupt = false;
@@ -530,8 +497,8 @@ QString VoiceModelListModel::deleteModel(const QString& id)
         return QString();
     }
     QString error;
-    const bool ok = m_controller ? m_controller->deleteVoiceModelFile(id, &error)
-                                 : processing::VoiceModelDownloader::deleteModelFile(r.spec, metaDir(), &error);
+    const bool ok = m_facade && m_facade->live() ? m_facade->deleteModelFile(id, &error)
+                                                 : processing::VoiceModelDownloader::deleteModelFile(r.spec, metaDir(), &error);
     if (!ok) return tr("Nem sikerült törölni: %1").arg(error);
     r.errorText.clear();
     r.corrupt = false;
@@ -541,13 +508,13 @@ QString VoiceModelListModel::deleteModel(const QString& id)
 
 void VoiceModelListModel::rescan()
 {
-    if (m_controller) m_controller->rescanVoiceModels();   // voiceModelsChanged → refreshFiles
+    if (m_facade) m_facade->rescan();   // modelsChanged → refreshFiles
     refresh();
 }
 
 void VoiceModelListModel::refreshFiles()
 {
-    if (!m_controller && !m_dirsOverridden) return;
+    if (!live()) return;
     m_offline = !m_downloader->networkReachable();
     for (int i = 0; i < m_rows.size(); ++i) {
         updateFileState(m_rows[i]);
@@ -645,8 +612,8 @@ void VoiceModelListModel::startDownload(const QString& id, bool overwrite)
     if (i < 0) return;
     Row& r = m_rows[i];
     if (r.state == QLatin1String("bundled") || r.state == QLatin1String("verifying") || m_downloader->isRunning(id)) return;
-    if (!m_controller && !m_dirsOverridden) {
-        // Demo: only the state changes.
+    if (!live()) {
+        // Fictional facade: only the state changes.
         r.state = QStringLiteral("downloading");
         r.total = r.spec.sizeBytes;
         r.received = 0;
@@ -725,10 +692,10 @@ void VoiceModelListModel::onFinished(const QString& id, bool ok, const QString& 
         if (!ids.contains(id)) {
             ids << id;
             writeEnabled(ids);
-        } else if (m_controller && m_controller->settings()->enabledVoiceModels().contains(id)) {
+        } else if (m_facade && m_facade->live() && m_facade->enabledModels().contains(id)) {
             // It was already enabled (e.g. the base model): the core re-reads the file only on a
-            // setting change; writing the same value back recomputes the used models (and backfills).
-            m_controller->settings()->setSettings(m_controller->settings()->settings());
+            // setting change; the facade recomputes the used models (and backfills).
+            m_facade->reloadModels();
         }
     } else {
         switch (m_downloader->lastFailure(id)) {
@@ -775,14 +742,14 @@ void VoiceModelListModel::setBackfill(const QString& state, int total, int done,
 
 void VoiceModelListModel::loadSkips()
 {
-    m_bfSkips = skipEntries(m_controller);
+    m_bfSkips = skipEntries(m_facade);
 }
 
 // The initial state (new instance, e.g. the window reopened): whether it runs, whether a skipped sample remains.
 void VoiceModelListModel::checkBackfill()
 {
-    if (!m_controller) return;
-    if (m_controller->voiceprintBackfillRunning()) {
+    if (!m_facade || !m_facade->live()) return;
+    if (m_facade->backfillRunning()) {
         // k / N arrives with the next progress signal; until then indeterminate.
         m_bfSeenRunning = true;
         if (m_bfState != QLatin1String("running")) setBackfill(QStringLiteral("running"), 0, 0, 0);
@@ -810,7 +777,7 @@ void VoiceModelListModel::onBackfillProgress(int done, int total)
 
 void VoiceModelListModel::onBackfillFinished(int /*added*/, int /*skipped*/)
 {
-    if (!m_controller) return;
+    if (!m_facade || !m_facade->live()) return;
     loadSkips();
     m_bfState.clear();   // the list changed too: signal in any case
     const int skipped = int(m_bfSkips.size());
@@ -843,21 +810,39 @@ QString VoiceModelListModel::backfillText() const
 
 BackfillSkipNote::BackfillSkipNote(QObject* parent) : QObject(parent)
 {
-    // From QML: App.controller binds in the next turn (none in the demo).
+    // From QML: the process's services in the next turn (by then QML has set demoState).
+    AppContext* ctx = AppContext::instance();
+    connect(ctx, &AppContext::controllerChanged, this, &BackfillSkipNote::resolveServices);
+    connect(ctx, &AppContext::demoChanged, this, &BackfillSkipNote::resolveServices);
     QMetaObject::invokeMethod(this, [this] {
-        if (!m_controller)
-            if (app::AppController* c = AppContext::instance()->controller()) setController(c);
+        if (!m_facade) resolveServices();
     }, Qt::QueuedConnection);
 }
 
-void BackfillSkipNote::setController(app::AppController* c)
+void BackfillSkipNote::resolveServices()
 {
+    if (m_explicitFacade) return;
+    processing::IVoiceModelsFacade* old = m_facade;
+    m_facade = AppContext::instance()->services().voiceModels(m_demoState, this);
+    if (old && old != m_facade && old->parent() == this) old->deleteLater();
     for (const QMetaObject::Connection& conn : std::as_const(m_connections)) disconnect(conn);
     m_connections.clear();
-    m_controller = c;
-    if (c) {
-        m_connections << connect(c, &app::AppController::voiceprintBackfillStarted, this, [this] { reload(); });
-        m_connections << connect(c, &app::AppController::voiceprintBackfillFinished, this, [this] { reload(); });
+    if (m_facade) {
+        m_connections << connect(m_facade, &processing::IVoiceModelsFacade::backfillStarted, this, [this] { reload(); });
+        m_connections << connect(m_facade, &processing::IVoiceModelsFacade::backfillFinished, this, [this] { reload(); });
+    }
+    reload();
+}
+
+void BackfillSkipNote::setFacade(processing::IVoiceModelsFacade* facade)
+{
+    m_explicitFacade = true;
+    for (const QMetaObject::Connection& conn : std::as_const(m_connections)) disconnect(conn);
+    m_connections.clear();
+    m_facade = facade;
+    if (facade) {
+        m_connections << connect(facade, &processing::IVoiceModelsFacade::backfillStarted, this, [this] { reload(); });
+        m_connections << connect(facade, &processing::IVoiceModelsFacade::backfillFinished, this, [this] { reload(); });
     }
     reload();
 }
@@ -874,19 +859,14 @@ void BackfillSkipNote::setDemoState(const QString& s)
 {
     if (m_demoState == s) return;
     m_demoState = s;
-    reload();
+    // A fictional facade serves one design state: a new one for the new state.
+    if (!m_explicitFacade && !(m_facade && m_facade->live())) resolveServices();
+    else reload();
 }
 
 void BackfillSkipNote::reload()
 {
-    if (m_controller) {
-        m_entries = m_person.isEmpty() ? QVariantList() : skipEntries(m_controller, m_person);
-    } else if (m_demoState == QLatin1String("samplesModels") && !m_person.isEmpty()) {
-        m_entries = {skipEntry(m_person, tr("Partnerdemó – adatimport") + QStringLiteral(" · 12:40–12:52"),
-                               reasonText(processing::VoiceprintBackfillSkip::Reason::MissingAudio), QStringLiteral("WeSpeaker"))};
-    } else {
-        m_entries.clear();
-    }
+    m_entries = m_person.isEmpty() || !m_facade ? QVariantList() : skipEntries(m_facade, m_person);
     emit changed();
 }
 

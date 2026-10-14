@@ -2,10 +2,7 @@
 #include "tanara/providers/core/ProviderConfig.h"
 #include "tanara/foundation/time/TimeFormat.h"
 
-#include "AppContext.h"
-
-#include "tanara/app/AppController.h"
-#include "tanara/app/SettingsManager.h"
+#include "tanara/app/AppSettings.h"
 #include "tanara/cloud/CloudTypes.h"
 #include "tanara/library/jobs/JobErrors.h"
 #include "tanara/providers/core/ProviderRegistry.h"
@@ -44,18 +41,6 @@ QString trj(const char* text) { return QCoreApplication::translate("JobSupport",
     QT_TRANSLATE_NOOP("JobSupport", "%1 · saját kulcs"),
 };
 } // namespace
-
-tanara::app::AppController* resolveController(QObject* injected)
-{
-    if (auto* c = qobject_cast<tanara::app::AppController*>(injected))
-        return c;
-    return AppContext::instance()->controller();
-}
-
-bool demoMode(tanara::app::AppController* controller)
-{
-    return controller == nullptr || AppContext::instance()->demo();
-}
 
 QString formatDuration(qint64 ms)
 {
@@ -108,8 +93,7 @@ FixAction fixActionForError(const tanara::JobError& error)
     return {trj("Beállítások"), QString()};
 }
 
-QVariantMap blockerInfo(tanara::app::AppController* controller, tanara::providers::WorkflowStep step,
-                        const tanara::providers::ReadinessResult& r)
+QVariantMap blockerInfo(tanara::providers::WorkflowStep step, const tanara::providers::ReadinessResult& r)
 {
     QVariantMap out;
     if (r.runnable)
@@ -172,16 +156,19 @@ QVariantMap blockerInfo(tanara::app::AppController* controller, tanara::provider
     return out;
 }
 
-QString providerLabel(tanara::app::AppController* controller, tanara::providers::WorkflowStep step)
+QString providerLabel()
 {
-    if (!controller)
-        return trj("saját kulcs");
-    if (controller->usesCloud(step))
+    return trj("saját kulcs");
+}
+
+QString providerLabel(bool usesCloud, const tanara::app::AppSettings& s,
+                      const tanara::providers::ProviderRegistry& registry, tanara::providers::WorkflowStep step)
+{
+    if (usesCloud)
         return QStringLiteral("Tanara Cloud");
-    const tanara::app::AppSettings s = controller->settings()->settings();
     const QString name = step == tanara::providers::WorkflowStep::Transcribe
-        ? tanara::providers::ProviderRegistry::defaultInstance().descriptor(tanara::providers::CapabilityKind::Transcription, s.providers.stt.selectedId).displayName
-        : tanara::providers::ProviderRegistry::defaultInstance().descriptor(tanara::providers::CapabilityKind::Chat, s.providers.llm.selectedId).displayName;
+        ? registry.descriptor(tanara::providers::CapabilityKind::Transcription, s.providers.stt.selectedId).displayName
+        : registry.descriptor(tanara::providers::CapabilityKind::Chat, s.providers.llm.selectedId).displayName;
     if (name.isEmpty())
         return trj("saját kulcs");
     return trj("%1 · saját kulcs").arg(name);

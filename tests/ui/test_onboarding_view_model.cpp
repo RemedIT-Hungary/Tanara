@@ -10,6 +10,7 @@
 // Tanara Cloud is off (TANARA_CLOUD=off); an autostart entry is never written with TANARA_HOME
 // (the tanara::autostart guard).
 #include "AppContext.h"
+#include "UiServices.h"
 #include "OnboardingViewModel.h"
 #include "OnboardingWindowHost.h"
 
@@ -37,6 +38,8 @@ class TestOnboardingViewModel : public QObject {
 
     std::unique_ptr<QTemporaryDir> m_home;
     std::unique_ptr<AppController> m_app;
+    // The real settings facade of the test's controller.
+    tanara::app::ISettingsFacade* facade() { return AppContext::instance()->servicesFor(m_app.get()).onboarding(QString(), nullptr); }
 
     void startApp()
     {
@@ -78,8 +81,7 @@ private slots:
     {
         startApp();
         QVERIFY(m_app->settings()->isFirstRun());
-        OnboardingViewModel vm;
-        vm.setController(m_app.get());
+        OnboardingViewModel vm(facade());
         QVERIFY(!vm.demo());
         QCOMPARE(vm.step(), QStringLiteral("welcome"));
         QCOMPARE(vm.stepCount(), 6);
@@ -100,8 +102,7 @@ private slots:
     {
         startApp();
         const QJsonObject before = settingsFile();
-        OnboardingViewModel vm;
-        vm.setController(m_app.get());
+        OnboardingViewModel vm(facade());
         QSignalSpy close(&vm, &OnboardingViewModel::closeRequested);
         QSignalSpy theme(&vm, &OnboardingViewModel::themeModeSaved);
 
@@ -146,8 +147,7 @@ private slots:
     void acceptedStepsLandInSettings()
     {
         startApp();
-        OnboardingViewModel vm;
-        vm.setController(m_app.get());
+        OnboardingViewModel vm(facade());
         QSignalSpy theme(&vm, &OnboardingViewModel::themeModeSaved);
         QSignalSpy saved(&vm, &OnboardingViewModel::saved);
         vm.setStep(QStringLiteral("you"));
@@ -201,8 +201,7 @@ private slots:
     void readinessLineFollowsProviders()
     {
         startApp();
-        OnboardingViewModel vm;
-        vm.setController(m_app.get());
+        OnboardingViewModel vm(facade());
         // Fresh install: no Soniox key, the local LM Studio with the gemma model is filled in.
         QCOMPARE(vm.sttStatus(), QStringLiteral("Átírás: nincs kulcs"));
         QVERIFY(!vm.sttReady());
@@ -223,14 +222,13 @@ private slots:
 
         s.providers.llm.configs[s.providers.llm.selectedId].baseUrl = QStringLiteral("http://localhost:11434/v1");
         s.providers.llm.configs[s.providers.llm.selectedId].model = QStringLiteral("qwen3:8b");
-        QCOMPARE(OnboardingViewModel::providerLabel(s, false), QStringLiteral("Ollama · qwen3:8b"));
+        QCOMPARE(OnboardingViewModel::providerLabel(s, false, m_app->providerRegistry()), QStringLiteral("Ollama · qwen3:8b"));
     }
 
     void externalSaveUpdatesUntouchedFields()
     {
         startApp();
-        OnboardingViewModel vm;
-        vm.setController(m_app.get());
+        OnboardingViewModel vm(facade());
         vm.setStep(QStringLiteral("folders"));
         const QString typed = m_home->filePath(QStringLiteral("begepelt"));
         vm.setFolder(QStringLiteral("notes"), typed);

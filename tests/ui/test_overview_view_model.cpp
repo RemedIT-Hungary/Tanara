@@ -4,6 +4,7 @@
 // transcript, the DATA tiles, the "nobody" state (only anonymous speakers), the tracks' speech
 // share and including them in the mixdown (TrackListModel). Demo data: the four screen states.
 #include "AppContext.h"
+#include "UiServices.h"
 #include "FacadeTestSupport.h"
 #include "OverviewViewModel.h"
 #include "ShellMeetingModel.h"
@@ -316,7 +317,7 @@ private slots:
     {
         const tanara::Meeting m = recording(QStringLiteral("Sávok"));
         TrackListModel tracks;
-        tracks.setController(m_app.get());
+        tracks.setFacade(AppContext::instance()->servicesFor(m_app.get()).tracks(QString(), nullptr));
         tracks.setMeetingId(m.id);
         QCOMPARE(tracks.count(), 2);
         QCOMPARE(tracks.includedCount(), 1);

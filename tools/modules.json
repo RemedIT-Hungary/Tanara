@@ -162,7 +162,8 @@
     "recording",
     "processing",
     "editing",
-    "cloud"
+    "cloud",
+    "app"
    ],
    "namespace": null,
    "enforceNamespace": false

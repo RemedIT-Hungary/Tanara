@@ -6,6 +6,7 @@
 //  - with a real AppController in an isolated TANARA_HOME: resolving the meeting's audio
 //    (the mixdown, failing that the largest active track).
 #include "AppContext.h"
+#include "UiServices.h"
 #include "demo/LibraryDemoData.h"
 #include "PlayerController.h"
 
@@ -289,7 +290,7 @@ private slots:
             app.store()->saveMeeting(m);
 
             PlayerController p;
-            p.setController(&app);
+            p.setFacade(tanara_qml::AppContext::instance()->servicesFor(&app).tracks(QString(), nullptr));
             QSignalSpy availability(&p, &PlayerController::availableChanged);
             p.setMeetingId(m.id);
             QVERIFY(p.available());

@@ -1,15 +1,13 @@
 #include "OnboardingViewModel.h"
 #include "tanara/providers/core/ProviderConfig.h"
 
-#include "DemoText.h"
 
 #include "AppContext.h"
 #include "SettingsDialogs.h"
+#include "UiServices.h"
 
-#include "tanara/app/AppController.h"
-#include "tanara/foundation/i18n/Localization.h"
+#include "tanara/app/ISettingsFacade.h"
 #include "tanara/foundation/paths/AppPaths.h"
-#include "tanara/app/SettingsManager.h"
 #include "tanara/watcher/detect/Autostart.h"
 #include "tanara/providers/core/ConnectionTester.h"
 #include "tanara/providers/core/ProviderRegistry.h"
@@ -46,20 +44,21 @@ bool samePath(const QString& a, const QString& b)
 // transcript, so only the provider setting counts (like the Settings draft validation).
 struct Line { QString text; bool ready = false; };
 
-Line readinessLine(const tanara::app::AppSettings& s, bool stt, const providers::ReadinessModel::SecretProbe& hasSecret)
+Line readinessLine(const tanara::app::AppSettings& s, bool stt, const providers::ReadinessModel::SecretProbe& hasSecret,
+                   const providers::ProviderRegistry& registry)
 {
     Meeting m;
     Track t;
     t.active = true;
     m.tracks << t;
     m.hasTranscript = true;
-    const providers::ReadinessResult r = providers::ReadinessModel(s.providers, hasSecret).check(stt ? providers::WorkflowStep::Transcribe
+    const providers::ReadinessResult r = providers::ReadinessModel(s.providers, hasSecret, &registry).check(stt ? providers::WorkflowStep::Transcribe
                                                                        : providers::WorkflowStep::Summarize, m);
     const QString head = stt ? OnboardingViewModel::tr("Átírás") : OnboardingViewModel::tr("Összefoglaló");
     Line out;
     out.ready = r.runnable;
     if (r.runnable) {
-        out.text = head + QStringLiteral(": ") + OnboardingViewModel::providerLabel(s, stt);
+        out.text = head + QStringLiteral(": ") + OnboardingViewModel::providerLabel(s, stt, registry);
         return out;
     }
     if (r.blockerKind == providers::BlockerKind::Auth) {
@@ -68,8 +67,8 @@ Line readinessLine(const tanara::app::AppSettings& s, bool stt, const providers:
     }
     // A missing secret (API key) or another required field?
     bool secret = false;
-    const providers::ProviderDescriptor d = stt ? providers::ProviderRegistry::defaultInstance().descriptor(providers::CapabilityKind::Transcription, r.providerId)
-                                     : providers::ProviderRegistry::defaultInstance().descriptor(providers::CapabilityKind::Chat, r.providerId);
+    const providers::ProviderDescriptor d = registry.descriptor(stt ? providers::CapabilityKind::Transcription
+                                                                    : providers::CapabilityKind::Chat, r.providerId);
     for (const providers::ConfigField& f : d.fields)
         if (f.key == r.missingFieldKey) secret = f.isSecret;
     out.text = head + QStringLiteral(": ")
@@ -84,35 +83,28 @@ Line readinessLine(const tanara::app::AppSettings& s, bool stt, const providers:
 OnboardingViewModel::OnboardingViewModel(QObject* parent) : QObject(parent)
 {
     m_baseTheme = m_draftTheme = AppContext::instance()->themeMode();
-    // App.controller binds in the next event-loop turn, if by then the caller has not given its
-    // own and has not asked for a demo state.
-    QMetaObject::invokeMethod(this, [this] {
-        if (m_controllerSet) return;
-        if (app::AppController* c = AppContext::instance()->controller())
-            setController(c);
-        else
-            setDemoState(m_demoState.isEmpty() ? QStringLiteral("welcome") : m_demoState);
-    }, Qt::QueuedConnection);
+    AppContext* ctx = AppContext::instance();
+    connect(ctx, &AppContext::controllerChanged, this, &OnboardingViewModel::resolveServices);
+    connect(ctx, &AppContext::demoChanged, this, &OnboardingViewModel::resolveServices);
+    resolveServices();
+}
+
+OnboardingViewModel::OnboardingViewModel(app::ISettingsFacade* facade, QObject* parent)
+    : QObject(parent), m_explicitFacade(true)
+{
+    m_baseTheme = m_draftTheme = AppContext::instance()->themeMode();
+    useFacade(facade);
 }
 
 OnboardingViewModel::~OnboardingViewModel() = default;
 
-QObject* OnboardingViewModel::controllerObject() const { return m_controller; }
-app::AppController* OnboardingViewModel::controller() const { return m_controller; }
 QObject* OnboardingViewModel::dialogsObject() const { return m_dialogs; }
 
-void OnboardingViewModel::setControllerObject(QObject* controller)
+// The process's services changed (a controller arrived, App.demo flipped), or the design state.
+void OnboardingViewModel::resolveServices()
 {
-    setController(qobject_cast<app::AppController*>(controller));
-}
-
-void OnboardingViewModel::setController(app::AppController* controller)
-{
-    if (m_controllerSet && m_controller == controller) return;
-    m_controller = controller;
-    m_controllerSet = true;
-    attach();
-    emit controllerChanged();
+    if (m_explicitFacade) return;
+    useFacade(AppContext::instance()->services().onboarding(m_demoState, this));
 }
 
 void OnboardingViewModel::setDialogsObject(QObject* dialogs)
@@ -125,28 +117,25 @@ void OnboardingViewModel::setDialogsObject(QObject* dialogs)
 
 void OnboardingViewModel::setDemoState(const QString& state)
 {
-    if (m_demoState != state) {
-        m_demoState = state;
-        emit demoStateChanged();
-    }
-    if (m_controller) return;
-    m_controllerSet = true;
-    loadDemo();
+    if (m_demoState == state) return;
+    m_demoState = state;
+    // A fictional facade serves one design state: a new one for the new state.
+    if (!m_live) resolveServices();
+    emit demoStateChanged();
 }
 
-void OnboardingViewModel::attach()
+void OnboardingViewModel::useFacade(app::ISettingsFacade* facade)
 {
     for (const QMetaObject::Connection& c : std::as_const(m_connections)) disconnect(c);
     m_connections.clear();
-    app::AppController* c = m_controller;
-    if (!c) {
-        loadDemo();
-        return;
-    }
-    m_connections << connect(c->settings(), &app::SettingsManager::settingsChanged, this, [this] {
-        if (m_applying || !m_controller) return;
+    if (m_facade && m_facade != facade && m_facade->parent() == this) m_facade->deleteLater();   // a fictional facade of ours
+    m_facade = facade;
+    m_live = facade && facade->live();
+    if (!facade) return;
+    m_connections << connect(facade, &app::ISettingsFacade::settingsChanged, this, [this] {
+        if (m_applying || !m_facade) return;
         // Someone else saved (Settings, cloud window): untouched fields follow, the typed draft stays.
-        const tanara::app::AppSettings live = m_controller->settings()->settings();
+        const tanara::app::AppSettings live = m_facade->settings();
         auto follow = [](auto& base, auto& draft, const auto& now) {
             if (draft == base) draft = now;
             base = now;
@@ -168,16 +157,28 @@ void OnboardingViewModel::attach()
         emitAllChanged();
         refreshReadiness();
     });
+    m_status.clear();
+    m_step = kSteps.first();
     loadFromCore();
+    emit stepStatusChanged();
+    emit stepChanged();
+    emit facadeChanged();
 }
 
 void OnboardingViewModel::loadFromCore()
 {
-    app::AppController* c = m_controller;
+    app::ISettingsFacade* c = m_facade;
     if (!c) return;
-    m_base = m_draft = c->settings()->settings();
+    m_base = m_draft = c->settings();
     m_baseTheme = m_draftTheme = AppContext::instance()->themeMode();
     m_done = m_base.ui.onboardingDone;
+    // The fictional facade's design state: the step, and the earlier steps' marks.
+    if (const std::optional<app::SettingsScenario> sc = c->scenario()) {
+        m_status.clear();
+        for (auto it = sc->onboardingStatus.constBegin(); it != sc->onboardingStatus.constEnd(); ++it)
+            m_status.insert(it.key(), it.value());
+        m_step = kSteps.contains(sc->onboardingStep) ? sc->onboardingStep : kSteps.first();
+    }
     emitAllChanged();
     emit doneChanged();
     refreshReadiness();
@@ -189,8 +190,7 @@ void OnboardingViewModel::reload()
     if (m_draftTheme != m_baseTheme) AppContext::instance()->setThemeMode(m_baseTheme);
     m_status.clear();
     m_step = kSteps.first();
-    if (m_controller) loadFromCore();
-    else loadDemo();
+    loadFromCore();
     emit stepStatusChanged();
     emit stepChanged();
 }
@@ -287,18 +287,18 @@ void OnboardingViewModel::discardPending()
 
 void OnboardingViewModel::markDone()
 {
-    if (!m_controller) {
+    if (!m_live) {
         if (!m_done) {
             m_done = true;
             emit doneChanged();
         }
         return;
     }
-    tanara::app::AppSettings live = m_controller->settings()->settings();
+    tanara::app::AppSettings live = m_facade->settings();
     if (!live.ui.onboardingDone) {
         live.ui.onboardingDone = true;
         m_applying = true;
-        m_controller->settings()->setSettings(live);
+        m_facade->setSettings(live);
         m_applying = false;
     }
     m_base.ui.onboardingDone = m_draft.ui.onboardingDone = true;
@@ -334,9 +334,9 @@ bool OnboardingViewModel::applyStep(const QString& step)
     const bool themeChanged = you && m_draftTheme != m_baseTheme;
     const bool autostartChanged = watcher && m_draft.watcher.autostart != m_base.watcher.autostart;
 
-    if (app::AppController* c = m_controller) {
+    if (app::ISettingsFacade* c = m_live ? m_facade.data() : nullptr) {
         m_applying = true;
-        tanara::app::AppSettings live = c->settings()->settings();
+        tanara::app::AppSettings live = c->settings();
         const tanara::app::AppSettings before = live;
         if (you && m_draft.ui.language != m_base.ui.language) live.ui.language = m_draft.ui.language;
         if (folders && m_draft.paths.primaryRecordingRoot() != m_base.paths.primaryRecordingRoot())
@@ -345,15 +345,13 @@ bool OnboardingViewModel::applyStep(const QString& step)
         if (autostartChanged) live.watcher.autostart = m_draft.watcher.autostart;
         const bool settingsChanged = live.ui.language != before.ui.language || !(live.paths == before.paths)
                                      || live.watcher.autostart != before.watcher.autostart;
-        if (settingsChanged) c->settings()->setSettings(live);
+        if (settingsChanged) c->setSettings(live);
         // The own name: the core carries it through the person DB, the meetings and the voiceprints.
         if (nameChanged) c->setUserSpeakerName(newName);
         // Starting the watcher at sign-in: effective immediately (never in a sandbox / test).
-        if (autostartChanged)
-            watcher::autostart::applyWatcher(m_draft.watcher.autostart,
-                                    watcher::autostart::findWatcherExecutable(QCoreApplication::applicationDirPath()));
+        if (autostartChanged) c->applyWatcherAutostart(m_draft.watcher.autostart);
         m_applying = false;
-        const tanara::app::AppSettings now = c->settings()->settings();
+        const tanara::app::AppSettings now = c->settings();
         if (you) {
             m_base.recording.userSpeakerName = m_draft.recording.userSpeakerName = now.recording.userSpeakerName;
             m_base.ui.language = m_draft.ui.language = now.ui.language;
@@ -364,7 +362,7 @@ bool OnboardingViewModel::applyStep(const QString& step)
         if (watcher) m_base.watcher.autostart = m_draft.watcher.autostart = now.watcher.autostart;
         if (settingsChanged || nameChanged) emit saved();
     } else {
-        // Demo: nothing to write to disk; the draft becomes the base.
+        // Fictional facade: nothing to write to disk; the draft becomes the base.
         m_draft.recording.userSpeakerName = newName.isEmpty() ? m_draft.recording.userSpeakerName : newName;
         if (you) {
             m_base.recording.userSpeakerName = m_draft.recording.userSpeakerName;
@@ -442,8 +440,8 @@ QVariantList OnboardingViewModel::uiLanguageOptions() const
 
 bool OnboardingViewModel::languageNeedsRestart() const
 {
-    if (!m_controller) return m_draft.ui.language != m_base.ui.language;
-    const QString active = activeUiLanguage();
+    if (!m_live) return m_draft.ui.language != m_base.ui.language;
+    const QString active = m_facade->activeUiLanguage();
     return !active.isEmpty() && resolvedUiLanguage(m_draft.ui.language) != active;
 }
 
@@ -471,14 +469,9 @@ QString OnboardingViewModel::folderPath(const QString& key) const
 
 QString OnboardingViewModel::defaultFolder(const QString& key) const
 {
-    if (!m_controller) {
-        // Demo: the fictional user's default folders.
-        return key == QLatin1String("audio") ? demoText("/home/lilla/Tanara/felvetelek", "/home/emma/Tanara/recordings")
-                                             : demoText("/home/lilla/Tanara/jegyzetek", "/home/emma/Tanara/notes");
-    }
     // The effective folder without a "paths" setting (with TANARA_HOME: the sandbox's).
-    return paths::AppPaths::system(paths::PathSettings())
-        .dir(key == QLatin1String("audio") ? paths::Role::Recordings : paths::Role::Notes);
+    if (!m_facade) return QString();
+    return m_facade->defaultFolder(key == QLatin1String("audio") ? paths::Role::Recordings : paths::Role::Notes);
 }
 
 QVariantList OnboardingViewModel::folders() const
@@ -503,7 +496,7 @@ void OnboardingViewModel::setFolder(const QString& key, const QString& path)
     if (p.isEmpty() || p == folderPath(key)) return;
     if (key != QLatin1String("audio") && key != QLatin1String("notes")) return;
     // The default folder is stored as "no setting" (later default changes then apply).
-    const QString stored = m_controller && samePath(p, defaultFolder(key)) ? QString() : p;
+    const QString stored = m_live && samePath(p, defaultFolder(key)) ? QString() : p;
     if (key == QLatin1String("audio")) m_draft.paths.setPrimaryRecordingRoot(stored);
     else m_draft.paths.notesDir = stored;
     emit foldersChanged();
@@ -527,11 +520,12 @@ void OnboardingViewModel::browseFolder(const QString& key)
 
 // ---- Services ----------------------------------------------------------------------------
 
-QString OnboardingViewModel::providerLabel(const tanara::app::AppSettings& s, bool stt)
+QString OnboardingViewModel::providerLabel(const tanara::app::AppSettings& s, bool stt,
+                                           const providers::ProviderRegistry& registry)
 {
     const QString id = stt ? s.providers.stt.selectedId : s.providers.llm.selectedId;
-    const providers::ProviderDescriptor d = stt ? providers::ProviderRegistry::defaultInstance().descriptor(providers::CapabilityKind::Transcription, id)
-                                     : providers::ProviderRegistry::defaultInstance().descriptor(providers::CapabilityKind::Chat, id);
+    const providers::ProviderDescriptor d = registry.descriptor(stt ? providers::CapabilityKind::Transcription
+                                                                    : providers::CapabilityKind::Chat, id);
     if (d.id.isEmpty()) return id;
     const providers::ProviderConfig cfg = stt ? s.providers.stt.selected() : s.providers.llm.selected();
     QString label = d.displayName;
@@ -552,20 +546,15 @@ void OnboardingViewModel::refreshReadiness()
 {
     QString stt, llm;
     bool sttOk = false, llmOk = false;
-    if (app::AppController* c = m_controller) {
-        const tanara::app::AppSettings s = c->settings()->settings();
+    if (app::ISettingsFacade* c = m_facade) {
+        const tanara::app::AppSettings s = c->settings();
         const providers::ReadinessModel::SecretProbe probe = [c](const QString& key) { return c->hasSecret(key); };
-        const Line a = readinessLine(s, true, probe);
-        const Line b = readinessLine(s, false, probe);
+        const Line a = readinessLine(s, true, probe, c->registry());
+        const Line b = readinessLine(s, false, probe, c->registry());
         stt = a.text;
         llm = b.text;
         sttOk = a.ready;
         llmOk = b.ready;
-    } else {
-        // Demo: a fresh install's typical state: no key yet, the local LLM entered.
-        stt = tr("Átírás") + QStringLiteral(": ") + tr("nincs kulcs");
-        llm = tr("Összefoglaló") + QStringLiteral(": ") + QStringLiteral("LM Studio · gemma-4-12b");
-        llmOk = true;
     }
     if (stt == m_sttStatus && llm == m_llmStatus && sttOk == m_sttReady && llmOk == m_llmReady)
         return;
@@ -602,39 +591,9 @@ QString OnboardingViewModel::autostartNote() const
     note = tr("Ezen a rendszeren az automatikus indítás még nem érhető el; a figyelőt kézzel indíthatod.");
 #endif
     // In a sandbox (TANARA_HOME) and in tests the entry is not written; we say so too.
-    if (m_controller && !watcher::autostart::managed() && !watcher::autostart::watcherEntryPath().isEmpty())
+    if (m_live && !watcher::autostart::managed() && !watcher::autostart::watcherEntryPath().isEmpty())
         note += QLatin1Char(' ') + tr("Most nem íródik bejegyzés (elkülönített adatmappával fut a Tanara).");
     return note;
-}
-
-// ---- demo --------------------------------------------------------------------------------
-
-void OnboardingViewModel::loadDemo()
-{
-    tanara::app::AppSettings s;
-    s.recording.userSpeakerName = demoName("Kovács Lilla");
-    s.paths.setPrimaryRecordingRoot(demoText("/home/lilla/Tanara/felvetelek", "/home/emma/Tanara/recordings"));
-    s.paths.notesDir = demoText("/home/lilla/Obsidian/Megbeszélések", "/home/emma/Obsidian/Meetings");
-    s.paths.dataDir = demoText("/home/lilla/.tanara", "/home/emma/.tanara");
-    s.ui.language = QStringLiteral("auto");
-    s.watcher.autostart = true;
-    m_base = m_draft = s;
-    m_baseTheme = m_draftTheme = AppContext::instance()->themeMode();
-    m_done = false;
-
-    m_status.clear();
-    const QString st = kSteps.contains(m_demoState) ? m_demoState : kSteps.first();
-    // The earlier steps: one skipped (Folders), the rest accepted, so the navigation shows both marks.
-    for (const QString& k : kSteps) {
-        if (k == st) break;
-        m_status.insert(k, k == QLatin1String("folders") ? QStringLiteral("skipped") : QStringLiteral("done"));
-    }
-    m_step = st;
-    emit stepStatusChanged();
-    emit stepChanged();
-    emitAllChanged();
-    emit doneChanged();
-    refreshReadiness();
 }
 
 } // namespace tanara_qml

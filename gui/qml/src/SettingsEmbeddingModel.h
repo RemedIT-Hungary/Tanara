@@ -13,9 +13,8 @@
 //  - the two switches (tagSuggestions, llmTagSuggestions) go into the draft; resetting the
 //    rejected suggestions is an IMMEDIATE action (TagService::clearRejected, QML confirms).
 //
-// Created by the SettingsViewModel (vm.embedding); standalone (without a parent) it only
-// shows the demo states' fictional preparation data. demoState: local | localRunning |
-// localError | localDone | cloud | modelChange | none.
+// Created by the SettingsViewModel (vm.embedding): it works on the view model's settings facade
+// (the fictional one of tanara_demo serves the design states' preparation data).
 //
 #include "SettingsProviderModel.h"
 #include "tanara/app/AppSettings.h"
@@ -30,7 +29,7 @@
 #include <QtQml/qqmlregistration.h>
 
 namespace tanara {
-namespace app { class AppController; }
+namespace app { class ISettingsFacade; }
 }
 
 namespace tanara_qml {
@@ -72,7 +71,6 @@ class SettingsEmbeddingModel : public QObject {
     Q_PROPERTY(bool llmTagSuggestions READ llmTagSuggestions WRITE setLlmTagSuggestions NOTIFY changed)
     Q_PROPERTY(int rejectedCount READ rejectedCount NOTIFY rejectedChanged)
 
-    Q_PROPERTY(QString demoState READ demoState WRITE setDemoState NOTIFY demoStateChanged)
 
 public:
     explicit SettingsEmbeddingModel(QObject* parent = nullptr);
@@ -102,9 +100,6 @@ public:
     void setLlmTagSuggestions(bool on);
     int rejectedCount() const;
 
-    QString demoState() const { return m_demoState; }
-    void setDemoState(const QString& state);
-
     Q_INVOKABLE void startPreparation();     // "Prepare"
     Q_INVOKABLE void cancelPreparation();    // "Cancel"
     Q_INVOKABLE void resumePreparation();    // "Resume"
@@ -112,37 +107,30 @@ public:
     Q_INVOKABLE void clearRejected();        // "Reset" (immediate; QML confirms)
 
     // ---- a SettingsViewModelnek ----
-    void attach();                           // wiring the controller (or demo)
+    void attach();                           // wiring the view model's facade
     void reset();                            // the draft reloaded / discarded
     void notifyDraftChanged() { emit changed(); }
     // Fills the selected provider's empty fields with the defaults.
     void normalize(tanara::app::AppSettings& s) const;
-    // Demo: the fictional preparation state + the draft for it (called by the vm's loadDemo).
-    void loadDemo(const QString& state);
     // The computed (and in-test verified) preparation state.
     tanara::library::EmbeddingState prepState() const;
 
 signals:
     void changed();
     void rejectedChanged();
-    void demoStateChanged();
 
 private:
-    tanara::app::AppController* controller() const;
+    tanara::app::ISettingsFacade* facade() const;
     static QString modeOf(const QString& providerId);
     static QString providerFor(const QString& mode);
     // The model the core uses ("" = no embedding): the local endpoint's model, for Cloud the
     // gateway's base model.
-    static QString effectiveModel(const tanara::app::AppSettings& s);
+    QString effectiveModel(const tanara::app::AppSettings& s) const;
     int estimateMinutes(int meetings) const;
 
     SettingsViewModel* m_vm = nullptr;
     SettingsProviderModel* m_card = nullptr;
-    QPointer<tanara::library::EmbeddingPreparer> m_preparer;
     QMetaObject::Connection m_prepConn, m_rejectConn;
-    QString m_demoState;
-    tanara::library::EmbeddingState m_demo;           // demo state (without a controller)
-    int m_demoRejected = 0;
 };
 
 } // namespace tanara_qml

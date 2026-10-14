@@ -1,12 +1,13 @@
 #include "OnboardingWindowHost.h"
 
+#include "AppContext.h"
 #include "OnboardingViewModel.h"
 #include "QmlApp.h"
 #include "SettingsDialogs.h"
+#include "UiServices.h"
 
-#include "tanara/app/AppController.h"
+#include "tanara/app/ISettingsFacade.h"
 #include "tanara/foundation/log/Logging.h"
-#include "tanara/app/SettingsManager.h"
 
 #include <QQmlComponent>
 #include <QQmlEngine>
@@ -20,6 +21,7 @@ OnboardingWindowHost::OnboardingWindowHost(app::AppController* controller, Setti
                                            QObject* parent)
     : QObject(parent), m_controller(controller), m_dialogs(dialogs)
 {
+    AppContext::instance()->useControllerIfNone(controller);
 }
 
 OnboardingWindowHost::~OnboardingWindowHost()
@@ -38,7 +40,6 @@ bool OnboardingWindowHost::ensureWindow()
     QQmlComponent comp(m_engine);
     comp.loadFromModule("Tanara", "OnboardingWindow");
     QObject* obj = comp.isError() ? nullptr : comp.createWithInitialProperties({
-        {QStringLiteral("hostController"), QVariant::fromValue<QObject*>(m_controller.data())},
         {QStringLiteral("hostDialogs"), QVariant::fromValue<QObject*>(m_dialogs.data())},
     });
     auto* win = qobject_cast<QQuickWindow*>(obj);
@@ -92,7 +93,10 @@ bool OnboardingWindowHost::open()
 
 bool OnboardingWindowHost::shouldAutoOpen() const
 {
-    return m_controller && !m_autoOpened && !m_controller->settings()->settings().ui.onboardingDone;
+    if (!m_controller || m_autoOpened) return false;
+    // The real facade is shared (the parent is ignored).
+    const tanara::app::ISettingsFacade* f = AppContext::instance()->servicesFor(m_controller).onboarding(QString(), nullptr);
+    return f && f->live() && !f->settings().ui.onboardingDone;
 }
 
 bool OnboardingWindowHost::openIfNeeded()

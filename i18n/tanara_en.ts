@@ -9252,6 +9252,17 @@
     </message>
 </context>
 <context>
+    <name>tanara_demo::SettingsDemoFacade</name>
+    <message>
+        <source>A végpont nem válaszol. Fut a helyi szerver (pl. LM Studio), és jó a port?</source>
+        <translation>The endpoint does not respond. Is the local server (e.g. LM Studio) running, and is the port right?</translation>
+    </message>
+    <message>
+        <source>a végpont nem válaszol. Fut a helyi szerver?</source>
+        <translation>the endpoint is not responding. Is the local server running?</translation>
+    </message>
+</context>
+<context>
     <name>tanara_demo::ShellDemoFacade</name>
     <message>
         <source>LM Studio · saját kulcs</source>
@@ -9828,6 +9839,25 @@
     </message>
 </context>
 <context>
+    <name>tanara_demo::TracksDemoFacade</name>
+    <message>
+        <source>Saját mikrofon</source>
+        <translation>My microphone</translation>
+    </message>
+    <message>
+        <source>Hívás hangja</source>
+        <translation>Call audio</translation>
+    </message>
+    <message>
+        <source>Rendszerhang</source>
+        <translation>System audio</translation>
+    </message>
+    <message>
+        <source>Második mikrofon</source>
+        <translation>Second microphone</translation>
+    </message>
+</context>
+<context>
     <name>tanara_demo::TranscribeStepDemoFacade</name>
     <message>
         <source>%1 · saját kulcs</source>
@@ -9887,6 +9917,13 @@
     </message>
 </context>
 <context>
+    <name>tanara_demo::VoiceModelsDemoFacade</name>
+    <message>
+        <source>A letöltés megszakadt: a kapcsolat 12 MB után megszűnt. Semmi nem került a gépre.</source>
+        <translation>The download was interrupted: the connection dropped after 12 MB. Nothing was saved to your machine.</translation>
+    </message>
+</context>
+<context>
     <name>tanara_gui::QmlShellBridge</name>
     <message>
         <source>Hangfájl kiválasztása</source>
@@ -9931,10 +9968,6 @@
 </context>
 <context>
     <name>tanara_qml::BackfillSkipNote</name>
-    <message>
-        <source>Partnerdemó – adatimport</source>
-        <translation>Partner demo – data import</translation>
-    </message>
     <message numerus="yes">
         <source>%n minta nem pótolható az új modellel</source>
         <translation>
@@ -11344,10 +11377,6 @@
             <numerusform>%n minutes</numerusform>
         </translation>
     </message>
-    <message>
-        <source>a végpont nem válaszol. Fut a helyi szerver?</source>
-        <translation>the endpoint is not responding. Is the local server running?</translation>
-    </message>
 </context>
 <context>
     <name>tanara_qml::SettingsProviderModel</name>
@@ -11637,10 +11666,6 @@
     <message>
         <source>Elemzés</source>
         <translation>Analysis</translation>
-    </message>
-    <message>
-        <source>A végpont nem válaszol. Fut a helyi szerver (pl. LM Studio), és jó a port?</source>
-        <translation>The endpoint does not respond. Is the local server (e.g. LM Studio) running, and is the port right?</translation>
     </message>
     <message>
         <source>A kulcsok helye: a rendszer kulcstartója. A beállítás-fájlba nem kerülnek.</source>
@@ -12324,22 +12349,6 @@
         <source>A fájlt nem sikerült a megbeszéléshez rendelni.</source>
         <translation>Could not assign the file to the meeting.</translation>
     </message>
-    <message>
-        <source>Saját mikrofon</source>
-        <translation>My microphone</translation>
-    </message>
-    <message>
-        <source>Hívás hangja</source>
-        <translation>Call audio</translation>
-    </message>
-    <message>
-        <source>Rendszerhang</source>
-        <translation>System audio</translation>
-    </message>
-    <message>
-        <source>Második mikrofon</source>
-        <translation>Second microphone</translation>
-    </message>
 </context>
 <context>
     <name>tanara_qml::TranscribeStepServicesFacade</name>
@@ -12843,16 +12852,8 @@
         <translation>%1 dims</translation>
     </message>
     <message>
-        <source>A letöltés megszakadt: a kapcsolat 12 MB után megszűnt. Semmi nem került a gépre.</source>
-        <translation>The download was interrupted: the connection dropped after 12 MB. Nothing was saved to your machine.</translation>
-    </message>
-    <message>
         <source>A fájl mérete eltér a várttól (%1 helyett %2) — töltsd le újra.</source>
         <translation>The file size differs from expected (%2 instead of %1) — download it again.</translation>
-    </message>
-    <message>
-        <source>törölt megbeszélés</source>
-        <translation>deleted meeting</translation>
     </message>
     <message>
         <source>Ismeretlen hangmodell.</source>

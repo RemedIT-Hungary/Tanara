@@ -23,6 +23,11 @@ namespace tanara::editing { class IParticipantsFacade; }
 namespace tanara::processing { class ISummaryFacade; }
 namespace tanara::editing { class ITranscriptEditorFacade; }
 namespace tanara::processing { class ITranscribeStepFacade; }
+// --- P15-6a ---
+namespace tanara::app { class ISettingsFacade; }
+namespace tanara::processing { class IVoiceModelsFacade; }
+namespace tanara::library { class IMeetingNoteFacade; class ITracksFacade; }
+// --- end P15-6a ---
 
 namespace tanara_qml {
 
@@ -62,6 +67,22 @@ struct UiServices {
     // The pre-transcript view (the transcription step, its run and error). A factory: the demo facade
     // serves one design state (its scenario; it lives under `parent`); the real one is shared.
     std::function<tanara::processing::ITranscribeStepFacade*(const QString& scenario, QObject* parent)> transcribeStep;
+    // --- P15-6a: settings, onboarding, voice models, tracks, meeting note, UI state ---
+    // The Settings window's facade. A factory: the demo facade serves one design state (its scenario,
+    // e.g. "B04"; it lives under `parent`); the real one is shared.
+    std::function<tanara::app::ISettingsFacade*(const QString& scenario, QObject* parent)> settings;
+    // The "Getting started" window's: the same surface, the demo facade with the onboarding fixture.
+    std::function<tanara::app::ISettingsFacade*(const QString& scenario, QObject* parent)> onboarding;
+    // The voice-model list (Settings > Speakers, Getting started, the People window's note): the same.
+    std::function<tanara::processing::IVoiceModelsFacade*(const QString& scenario, QObject* parent)> voiceModels;
+    // The Tracks tab and the player: the same (the demo facade keeps its design state's track list).
+    std::function<tanara::library::ITracksFacade*(const QString& scenario, QObject* parent)> tracks;
+    // The meeting note editor's facade (shared); nullptr in the demo, where the owner view model fills
+    // the sample content.
+    tanara::library::IMeetingNoteFacade* meetingNotes = nullptr;
+    // The main window's UI state file (ui-state.json); empty in the demo (nothing is written).
+    QString uiStateFile;
+    // --- end P15-6a ---
 };
 
 } // namespace tanara_qml

@@ -14,14 +14,14 @@
 // SettingsViewModel's draft (secrets the secret draft); on a provider switch the other
 // provider's settings are kept.
 //
-// "Test connection" and "Fetch": tanara::ConnectionTester with the DRAFT's address and key
-// (can be tried before saving). Changing any field makes the previous test's result stale.
+// "Test connection" and "Fetch": the settings facade's connection test with the DRAFT's address
+// and key (can be tried before saving). Changing any field makes the previous test's result stale.
 //
-#include "tanara/domain/Types.h"
 #include "tanara/providers/core/ProviderConfig.h"
 #include "tanara/providers/core/ConnectionTester.h"
 #include "tanara/providers/chat/LlmServer.h"
 #include "tanara/providers/core/ProviderDescriptor.h"
+#include "tanara/providers/core/ProviderRegistry.h"
 
 #include <QObject>
 #include <QString>
@@ -149,13 +149,13 @@ public:
     void reset();
     void notifyFocusChanged();
     bool lastTestFailed() const { return m_testState == QLatin1String("failed"); }
-    // Demo: a fixed test result.
+    // A design state's shown test result (the fictional facade's scenario).
     void setDemoResult(const QString& state, int latencyMs, const QString& message,
                        const QString& code);
-    // Demo: fixed server data (with a loaded LM Studio instance).
+    // A design state's server data (with a loaded LM Studio instance).
     void setDemoServerInfo(const tanara::providers::llmctx::LlmServerInfo& info) { setServerInfo(info); }
-    void setTester(tanara::providers::ConnectionTester* tester);   // for tests (e.g. a short timeout)
-    tanara::providers::ConnectionTester* tester() const { return m_tester; }
+    // Wiring the view model's (new) facade: the connection test and the server probe.
+    void attach();
 
 signals:
     void providersChanged();
@@ -179,7 +179,8 @@ private:
 
     SettingsViewModel* m_vm;
     tanara::providers::CapabilityKind m_kind;
-    tanara::providers::ConnectionTester* m_tester = nullptr;
+    const tanara::providers::ProviderRegistry* registry() const;
+    QList<QMetaObject::Connection> m_connections;
     bool m_advancedOpen = false;
     bool m_expanded = true;
     int m_revision = 0;
@@ -192,7 +193,7 @@ private:
     // warningText, so we do not repeat them there).
     void setServerInfo(const tanara::providers::llmctx::LlmServerInfo& info, bool withWarnings = true);
     void clearServerInfo();
-    tanara::providers::LlmServerProbe* m_serverProbe = nullptr;
+    bool m_probing = false;        // a server probe of ours is pending
     tanara::providers::llmctx::LlmServerInfo m_server;
     QString m_serverText;
     QStringList m_models;          // the fetched model list (for the selected provider)

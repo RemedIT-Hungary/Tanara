@@ -4,6 +4,7 @@
 // the right page, then the start. NO real provider call (the task is canceled right after
 // starting; the provider address is a closed local port).
 #include "AppContext.h"
+#include "UiServices.h"
 #include "FacadeTestSupport.h"
 #include "PlayerController.h"
 #include "ShellActions.h"
@@ -213,7 +214,7 @@ private slots:
         QSignalSpy current(m_shell.get(), &ShellActions::currentMeetingIdChanged);
         QSignalSpy positions(m_shell.get(), &ShellActions::transcriptPositionRequested);
         PlayerController player;
-        player.setController(m_app.get());
+        player.setFacade(AppContext::instance()->servicesFor(m_app.get()).tracks(QString(), nullptr));
         m_shell->setPlayer(&player);
 
         m_shell->showTab(3);

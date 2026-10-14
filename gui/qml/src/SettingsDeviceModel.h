@@ -6,11 +6,11 @@
 //
 // The toggles set the "default sources" draft (selection shared with the recorder,
 // state.json), the names the draft's `deviceNames` table; both take effect when the
-// SettingsViewModel saves. The devices come from a tanara::recording::IRecorderFacade (the real
-// one of the view model's controller, or the fictional list of tanara_demo), the level from the
-// core's level monitoring, the scale is the recorder's (RecorderViewModel::levelSegments).
+// SettingsViewModel saves. The devices come from the settings facade's
+// tanara::recording::IRecorderFacade (the real recorder's, or the fictional list of tanara_demo), the
+// level from the core's level monitoring, the scale is the recorder's (RecorderViewModel::levelSegments).
 //
-#include "tanara/domain/Types.h"
+#include "tanara/domain/Audio.h"
 #include "tanara/recording/IRecorderFacade.h"
 
 #include <QAbstractListModel>
@@ -77,7 +77,6 @@ private:
 
     SettingsViewModel* m_vm;
     QPointer<tanara::recording::IRecorderFacade> m_source;
-    QPointer<tanara::recording::IRecorderFacade> m_demoSource;
     QVector<Row> m_rows;
     QTimer m_tick;
     QElapsedTimer m_clock;

@@ -34,6 +34,8 @@ class SettingsViewModel;
 class SettingsWindowHost : public QObject {
     Q_OBJECT
 public:
+    // controller: the process's controller; it becomes the App singleton's if none is set yet (the
+    // window's view models resolve their services from it).
     SettingsWindowHost(tanara::app::AppController* controller, SettingsDialogs* dialogs,
                        QObject* parent = nullptr);
     ~SettingsWindowHost() override;
@@ -63,7 +65,8 @@ signals:
 private:
     bool ensureWindow();
 
-    QPointer<tanara::app::AppController> m_controller;
+    // The process's controller (it outlives the host); nullptr: the fictional services.
+    tanara::app::AppController* m_controller = nullptr;
     QPointer<SettingsDialogs> m_dialogs;
     QQmlEngine* m_engine = nullptr;
     QPointer<QQuickWindow> m_window;

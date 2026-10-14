@@ -31,6 +31,8 @@ class SettingsDialogs;
 class OnboardingWindowHost : public QObject {
     Q_OBJECT
 public:
+    // controller: the process's controller; it becomes the App singleton's if none is set yet (the
+    // window's view model resolves its services from it).
     OnboardingWindowHost(tanara::app::AppController* controller, SettingsDialogs* dialogs,
                          QObject* parent = nullptr);
     ~OnboardingWindowHost() override;
@@ -63,7 +65,8 @@ private:
     bool ensureWindow();
     void centerOverParent();
 
-    QPointer<tanara::app::AppController> m_controller;
+    // The process's controller (it outlives the host); nullptr: the fictional services.
+    tanara::app::AppController* m_controller = nullptr;
     QPointer<SettingsDialogs> m_dialogs;
     QQmlEngine* m_engine = nullptr;
     QPointer<QQuickWindow> m_window;

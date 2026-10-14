@@ -470,7 +470,7 @@ void SummaryViewModel::reload()
 
     // Gating + provider.
     m_canRun = d.readiness.runnable;
-    m_blocker = jobsupport::blockerInfo(nullptr, providers::WorkflowStep::Summarize, d.readiness);
+    m_blocker = jobsupport::blockerInfo(providers::WorkflowStep::Summarize, d.readiness);
     m_providerLabel = providerLabelFor(d);
     m_cloudSoon = d.cloudSoon;
 

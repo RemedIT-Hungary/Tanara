@@ -9,6 +9,7 @@
 //  - connection test against a local fake HTTP server (NO real provider call).
 // The Tanara Cloud gateway address is a closed local port (TANARA_CLOUD_URL), no sign-in.
 #include "AppContext.h"
+#include "UiServices.h"
 #include "tanara/providers/core/ProviderConfig.h"
 #include "QmlApp.h"
 #include "SettingsDeviceModel.h"
@@ -150,6 +151,8 @@ class TestSettingsViewModel : public QObject {
 
     std::unique_ptr<QTemporaryDir> m_home;
     std::unique_ptr<AppController> m_app;
+    // The real facade set of the test's controller.
+    const UiServices& services() { return AppContext::instance()->servicesFor(m_app.get()); }
     QString m_closedPortBase;
 
     // A fresh, isolated Tanara in a temporary folder. cloud: off | live | teaser.
@@ -343,8 +346,7 @@ private slots:
     void cleanLoadAndDirtyTracking()
     {
         startApp();
-        SettingsViewModel vm;
-        vm.setController(m_app.get());
+        SettingsViewModel vm(services());
         QVERIFY(!vm.demo());
         QVERIFY(!vm.dirty());
         QCOMPARE(vm.changeCount(), 0);
@@ -378,8 +380,7 @@ private slots:
         s.processing.languageHints = {QStringLiteral("de")};
         m_app->settings()->setSettings(s);
 
-        SettingsViewModel vm;
-        vm.setController(m_app.get());
+        SettingsViewModel vm(services());
         vm.setAudioQuality(QStringLiteral("medium"));
         vm.setDetectorIntervalSec(12);
 
@@ -418,8 +419,7 @@ private slots:
     void discardRestoresEverythingIncludingTheThemePreview()
     {
         startApp();
-        SettingsViewModel vm;
-        vm.setController(m_app.get());
+        SettingsViewModel vm(services());
         QCOMPARE(vm.themeMode(), QStringLiteral("light"));
         vm.setThemeMode(QStringLiteral("dark"));
         QCOMPARE(AppContext::instance()->themeMode(), QStringLiteral("dark"));   // live preview
@@ -439,8 +439,7 @@ private slots:
     void themeIsPersistedThroughTheSignal()
     {
         startApp();
-        SettingsViewModel vm;
-        vm.setController(m_app.get());
+        SettingsViewModel vm(services());
         QSignalSpy theme(&vm, &SettingsViewModel::themeModeSaved);
         vm.setThemeMode(QStringLiteral("dark"));
         QCOMPARE(vm.changeCount(), 1);
@@ -456,8 +455,7 @@ private slots:
     void validationBlocksSaveButNotNavigation()
     {
         startApp();
-        SettingsViewModel vm;
-        vm.setController(m_app.get());
+        SettingsViewModel vm(services());
         const QString before = live().recording.userSpeakerName;
         vm.setUserName(QStringLiteral("   "));
         QVERIFY(vm.errors().contains(QStringLiteral("userName")));
@@ -507,9 +505,8 @@ private slots:
         f.close();
         FakeDialogs dialogs;
         dialogs.folderAnswer = extra;
-        SettingsViewModel vm;
+        SettingsViewModel vm(services());
         vm.setDialogsObject(&dialogs);
-        vm.setController(m_app.get());
         QVERIFY(vm.recordingRoots().isEmpty());
         vm.addRecordingRoot();                       // via the folder picker
         vm.addRecordingRootPath(busy);
@@ -541,9 +538,8 @@ private slots:
             f.write(QByteArray(2500, 'x'));
         }
         FakeDialogs dialogs;
-        SettingsViewModel vm;
+        SettingsViewModel vm(services());
         vm.setDialogsObject(&dialogs);
-        vm.setController(m_app.get());
         QVERIFY(waitFor([&] { return !vm.folders().at(0).toMap().value("usage").toString().isEmpty(); }));
         const QString usage = vm.folders().at(0).toMap().value("usage").toString();
         QVERIFY2(usage.contains(QStringLiteral("5 kB")) && usage.contains(QStringLiteral("2")), qPrintable(usage));
@@ -568,8 +564,7 @@ private slots:
     void providersComeFromTheRegistry()
     {
         startApp();
-        SettingsViewModel vm;
-        vm.setController(m_app.get());
+        SettingsViewModel vm(services());
         // The list is the registry's content (the real providers instead of the mock-up's).
         QStringList sttIds, llmIds;
         for (const QVariant& p : vm.stt()->providers()) sttIds << p.toMap().value("value").toString();
@@ -601,8 +596,7 @@ private slots:
     void switchingProviderKeepsTheOtherOnesConfig()
     {
         startApp();
-        SettingsViewModel vm;
-        vm.setController(m_app.get());
+        SettingsViewModel vm(services());
         SettingsProviderModel* stt = vm.stt();
         stt->setValue(QStringLiteral("model"), QStringLiteral("stt-sajat-modell"));
         stt->setValue(QStringLiteral("apiKey"), QStringLiteral("soniox-kulcs"));
@@ -640,8 +634,7 @@ private slots:
         QVERIFY(!f.readAll().contains("soniox-kulcs"));
 
         // Reopened, the same shows.
-        SettingsViewModel again;
-        again.setController(m_app.get());
+        SettingsViewModel again(services());
         QVERIFY(!again.dirty());
         QCOMPARE(again.stt()->providerId(), QStringLiteral("whisper-compat"));
         again.stt()->setProviderId(QStringLiteral("soniox"));
@@ -651,8 +644,7 @@ private slots:
     void fieldValidation()
     {
         startApp();
-        SettingsViewModel vm;
-        vm.setController(m_app.get());
+        SettingsViewModel vm(services());
         vm.llm()->setValue(QStringLiteral("baseUrl"), QStringLiteral("localhost:1234"));
         QVERIFY(!vm.llm()->fieldError(QStringLiteral("baseUrl")).isEmpty());
         vm.setPage(QStringLiteral("general"));
@@ -696,8 +688,7 @@ private slots:
     void warnDotFollowsReadiness()
     {
         startApp();
-        SettingsViewModel vm;
-        vm.setController(m_app.get());
+        SettingsViewModel vm(services());
         // Fresh install: no Soniox key, so a dot next to "Services".
         QVERIFY(vm.servicesWarn());
         QSignalSpy warn(&vm, &SettingsViewModel::servicesWarnChanged);
@@ -716,8 +707,7 @@ private slots:
             if (auth != "Bearer jo-kulcs") return FakeReply{401, "{}"};
             return FakeReply{200, "{\"data\":[{\"id\":\"modell-b\"},{\"id\":\"modell-a\"}]}"};
         };
-        SettingsViewModel vm;
-        vm.setController(m_app.get());
+        SettingsViewModel vm(services());
         vm.stt()->setValue(QStringLiteral("apiKey"), QStringLiteral("x"));   // STT must not disturb the dot
         SettingsProviderModel* llm = vm.llm();
         llm->setValue(QStringLiteral("baseUrl"), http.base());
@@ -793,8 +783,7 @@ private slots:
     {
         startApp();
         m_app->refreshDevices();
-        SettingsViewModel vm;
-        vm.setController(m_app.get());
+        SettingsViewModel vm(services());
         if (vm.deviceCount() == 0)
             QSKIP("Ezen a gépen nincs hangeszköz (a demó-lista átnevezését a demoDeviceRename fedi).");
 
@@ -821,8 +810,7 @@ private slots:
         QCOMPARE(tanara::library::tracknames::friendlyNames({t}).first(), QStringLiteral("Saját mikrofonom"));
 
         // New window: the saved name shows.
-        SettingsViewModel again;
-        again.setController(m_app.get());
+        SettingsViewModel again(services());
         QCOMPARE(row(again, 0, "name").toString(), QStringLiteral("Saját mikrofonom"));
 
         // Empty name goes back to the factory name; the key leaves the settings.
@@ -856,7 +844,7 @@ private slots:
         m_app->store()->saveMeeting(m);
 
         TrackListModel tracks;
-        tracks.setController(m_app.get());
+        tracks.setFacade(services().tracks(QString(), nullptr));
         tracks.setMeetingId(m.id);
         QCOMPARE(tracks.rowCount(), 1);
         const int nameRole = tracks.roleNames().key("displayName");
@@ -898,8 +886,7 @@ private slots:
     {
         startApp();
         m_app->refreshDevices();
-        SettingsViewModel vm;
-        vm.setController(m_app.get());
+        SettingsViewModel vm(services());
         if (vm.deviceCount() == 0)
             QSKIP("Ezen a gépen nincs hangeszköz.");
         const QString raw = row(vm, 0, "rawName").toString();
@@ -915,8 +902,7 @@ private slots:
     void watchedApps()
     {
         startApp();
-        SettingsViewModel vm;
-        vm.setController(m_app.get());
+        SettingsViewModel vm(services());
         const int before = vm.watchedApps().size();
         QVERIFY(before > 0);
         QVERIFY(!vm.addWatchedApp(QStringLiteral("  ")).isEmpty());        // empty
@@ -942,8 +928,7 @@ private slots:
     void liveCallLineFollowsTheDetector()
     {
         startApp();
-        SettingsViewModel vm;
-        vm.setController(m_app.get());
+        SettingsViewModel vm(services());
         auto* detector = new FakeDetector;
         vm.setDetectorForTest(detector);                   // the view model owns it
         QVERIFY(!vm.liveCallActive());
@@ -972,8 +957,7 @@ private slots:
         const QString real = tanara::watcher::autostart::watcherEntryPath();
         const bool existed = !real.isEmpty() && QFile::exists(real);
         const QDateTime stamp = existed ? QFileInfo(real).lastModified() : QDateTime();
-        SettingsViewModel vm;
-        vm.setController(m_app.get());
+        SettingsViewModel vm(services());
         vm.setWatcherAutostart(!vm.watcherAutostart());
         QVERIFY(vm.save());
         QCOMPARE(live().watcher.autostart, vm.watcherAutostart());   // the setting is saved...
@@ -988,8 +972,7 @@ private slots:
     void promptsModifiedAndReset()
     {
         startApp();
-        SettingsViewModel vm;
-        vm.setController(m_app.get());
+        SettingsViewModel vm(services());
         QCOMPARE(vm.promptIndex(), 0);
         const QString def = vm.promptText();
         QVERIFY(def.contains(QStringLiteral("{{LANGUAGE}}")));
@@ -1046,8 +1029,7 @@ private slots:
     void promptGroupsAndNewOverrides()
     {
         startApp();
-        SettingsViewModel vm;
-        vm.setController(m_app.get());
+        SettingsViewModel vm(services());
         const QVariantList tabs = vm.promptTabs();
         QStringList ids, groups;
         for (const QVariant& t : tabs) {
@@ -1087,8 +1069,7 @@ private slots:
         QVERIFY(live().processing.summaryPrompt.isEmpty());           // the single-pass one is untouched
 
         // New view model: the overrides load back, with a "modified" indicator.
-        SettingsViewModel again;
-        again.setController(m_app.get());
+        SettingsViewModel again(services());
         QCOMPARE(again.promptTabs().at(1).toMap().value("modified").toBool(), true);
         QCOMPARE(again.promptTabs().at(2).toMap().value("modified").toBool(), true);
         QCOMPARE(again.promptTabs().at(0).toMap().value("modified").toBool(), false);
@@ -1113,8 +1094,7 @@ private slots:
     void reasoningRoundTrip()
     {
         startApp();
-        SettingsViewModel vm;
-        vm.setController(m_app.get());
+        SettingsViewModel vm(services());
         QVERIFY(vm.llm()->reasoningAvailable());
         QVERIFY(!vm.stt()->reasoningAvailable());           // the transcriber has none
         QCOMPARE(vm.llm()->reasoning(), QStringLiteral("auto"));
@@ -1138,8 +1118,7 @@ private slots:
         tanara::app::AppSettings s = live();
         s.providers.llm.configs[s.providers.llm.selectedId].reasoning = QStringLiteral("on");
         m_app->settings()->setSettings(s);
-        SettingsViewModel again;
-        again.setController(m_app.get());
+        SettingsViewModel again(services());
         QCOMPARE(again.llm()->reasoning(), QStringLiteral("on"));
         again.llm()->setReasoning(QStringLiteral("auto"));
         QVERIFY(again.dirty());
@@ -1151,8 +1130,7 @@ private slots:
     void contextLengthRoundTrip()
     {
         startApp();
-        SettingsViewModel vm;
-        vm.setController(m_app.get());
+        SettingsViewModel vm(services());
         QVERIFY(vm.llm()->contextAvailable());
         QVERIFY(!vm.stt()->contextAvailable());
         QCOMPARE(vm.llm()->contextLength(), 0);                // automatic
@@ -1176,8 +1154,7 @@ private slots:
         tanara::app::AppSettings s = live();
         s.providers.llm.configs[s.providers.llm.selectedId].contextLength = 12345;
         m_app->settings()->setSettings(s);
-        SettingsViewModel again;
-        again.setController(m_app.get());
+        SettingsViewModel again(services());
         QCOMPARE(again.llm()->contextLength(), 12345);
         bool hasCustom = false;
         for (const QVariant& o : again.llm()->contextOptions())
@@ -1197,8 +1174,7 @@ private slots:
     void deepLinkHighlightsAndReturnsAfterSave()
     {
         startApp();
-        SettingsViewModel vm;
-        vm.setController(m_app.get());
+        SettingsViewModel vm(services());
         // The ShellActions page names.
         vm.openPage(QStringLiteral("watcher"));
         QCOMPARE(vm.page(), QStringLiteral("watcher"));
@@ -1244,8 +1220,7 @@ private slots:
         startApp("live");
         if (!m_app->cloudLive())
             QSKIP("A build Tanara Cloud kliens nélkül készült.");
-        SettingsViewModel vm;
-        vm.setController(m_app.get());
+        SettingsViewModel vm(services());
         QCOMPARE(vm.serviceMode(), QStringLiteral("own"));
         QVERIFY(!vm.cloudSelected());
         // On the own-key card Cloud is not among the providers.
@@ -1282,8 +1257,7 @@ private slots:
         s.providers.stt.configs[tanara::cloud::ProviderId].type = tanara::cloud::ProviderId;
         m_app->settings()->setSettings(s);
 
-        SettingsViewModel vm;
-        vm.setController(m_app.get());
+        SettingsViewModel vm(services());
         QCOMPARE(vm.serviceMode(), QStringLiteral("own"));
         QVERIFY(vm.cloudSelected());
         vm.openPage(QStringLiteral("providers"), QStringLiteral("llm"));
@@ -1354,7 +1328,7 @@ private slots:
         SettingsViewModel* vm = host.viewModel();
         QVERIFY(vm);
         QVERIFY(!vm->demo());
-        QCOMPARE(vm->controller(), m_app.get());
+        QCOMPARE(vm->facade(), services().settings(QString(), nullptr));
         QCOMPARE(vm->dialogs(), &dialogs);
         QCOMPARE(vm->page(), QStringLiteral("watcher"));
         QTest::qWait(100);

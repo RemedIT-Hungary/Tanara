@@ -4,6 +4,7 @@
 // FAKE HTTP server, save to the tanara::app::AppSettings fields, the model-change notice before saving,
 // resetting the switches and the rejected suggestions. No real network / LM Studio.
 #include "AppContext.h"
+#include "UiServices.h"
 #include "SettingsEmbeddingModel.h"
 #include "SettingsProviderModel.h"
 #include "SettingsViewModel.h"
@@ -30,6 +31,8 @@ class TestSettingsEmbeddingModel : public QObject {
 
     std::unique_ptr<QTemporaryDir> m_home;
     std::unique_ptr<AppController> m_app;
+    // The real facade set of the test's controller.
+    const UiServices& services() { return AppContext::instance()->servicesFor(m_app.get()); }
 
     void startApp()
     {
@@ -146,18 +149,13 @@ private slots:
         QVERIFY(vm.llm()->expanded());
     }
 
-    void standaloneElementShowsDemoData()
+    void standaloneElementHasNoData()
     {
-        SettingsEmbeddingModel emb;                                       // from QML, without a parent
+        SettingsEmbeddingModel emb;                                       // without a view model: nothing to show
         QVERIFY(!emb.card());
-        emb.setDemoState(QStringLiteral("localRunning"));
-        QCOMPARE(emb.mode(), QStringLiteral("local"));
-        QCOMPARE(emb.prepStatus(), QStringLiteral("running"));
-        emb.setDemoState(QStringLiteral("cloud"));
-        QCOMPARE(emb.mode(), QStringLiteral("cloud"));
-        QCOMPARE(emb.prepStatus(), QStringLiteral("done"));
-        emb.setDemoState(QStringLiteral("modelChange"));
-        QVERIFY(emb.restartPending());
+        QCOMPARE(emb.mode(), QStringLiteral("none"));
+        QVERIFY(!emb.restartPending());
+        QCOMPARE(emb.rejectedCount(), 0);
     }
 
     // ---- real core ----
@@ -165,8 +163,7 @@ private slots:
     void modeIsADraftAndSavesToTheSettings()
     {
         startApp();
-        SettingsViewModel vm;
-        vm.setController(m_app.get());
+        SettingsViewModel vm(services());
         SettingsEmbeddingModel* emb = vm.embedding();
         QCOMPARE(emb->mode(), QStringLiteral("none"));
         QCOMPARE(emb->status(), QStringLiteral("neutral"));
@@ -254,8 +251,7 @@ private slots:
     void invalidLocalFieldsBlockSave()
     {
         startApp();
-        SettingsViewModel vm;
-        vm.setController(m_app.get());
+        SettingsViewModel vm(services());
         vm.setPage(QStringLiteral("general"));
         SettingsEmbeddingModel* emb = vm.embedding();
         emb->setMode(QStringLiteral("local"));
@@ -269,8 +265,7 @@ private slots:
     void rejectedSuggestionsCanBeReset()
     {
         startApp();
-        SettingsViewModel vm;
-        vm.setController(m_app.get());
+        SettingsViewModel vm(services());
         SettingsEmbeddingModel* emb = vm.embedding();
         QCOMPARE(emb->rejectedCount(), 0);
 

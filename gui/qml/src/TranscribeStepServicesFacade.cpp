@@ -69,7 +69,7 @@ processing::TranscribeStepSnapshot TranscribeStepServicesFacade::snapshot(const 
     if (m_deps.canRun) {
         const providers::ReadinessResult r = m_deps.canRun(providers::WorkflowStep::Transcribe, meetingId);
         s.canStart = r.runnable;
-        s.blocker = jobsupport::blockerInfo(nullptr, providers::WorkflowStep::Transcribe, r);
+        s.blocker = jobsupport::blockerInfo(providers::WorkflowStep::Transcribe, r);
         s.cloudSoon = !r.runnable && r.blockerKind == providers::BlockerKind::ProviderConfig;
     }
 

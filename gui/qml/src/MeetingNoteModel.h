@@ -12,18 +12,18 @@
 //    (applySuggestion); nothing is ever filled in on its own.
 //  - Detected call (detectedCallApp): the app recognized by the watcher, info only.
 //
-// In the demo (App.demo / no controller) the owner view model fills the sample data
-// (setDemoContent); saving then happens in memory only.
+// It works on a tanara::library::IMeetingNoteFacade the owner hands over (setController: the owner
+// facade's transitional noteController() object). Without one (the demo) the owner view model fills
+// the sample data (setDemoContent); saving then happens in memory only.
 //
+#include "tanara/library/IMeetingNoteFacade.h"
+
 #include <QObject>
 #include <QPointer>
 #include <QString>
 #include <QVariantList>
 #include <QtQml/qqmlregistration.h>
 
-namespace tanara {
-namespace app { class AppController; }
-}
 
 namespace tanara_qml {
 
@@ -44,8 +44,9 @@ class MeetingNoteModel : public QObject {
 public:
     explicit MeetingNoteModel(QObject* parent = nullptr);
 
-    // Set by the owner view model (the test's injected controller or the App's).
-    void setController(QObject* injected);
+    // Set by the owner view model: its facade's note object (an IMeetingNoteFacade; anything else /
+    // nullptr: demo content).
+    void setController(QObject* noteFacade);
     QString meetingId() const { return m_meetingId; }
     // Before a switch, saves the pending draft into the OLD meeting.
     void setMeetingId(const QString& id);
@@ -74,7 +75,7 @@ public:
 
     // The suggestion's preview: its start on one line, at most ~90 characters.
     static QString previewOf(const QString& note);
-    // Fictional template suggestions for the demo states (pre-transcript view, Summary tab).
+    // The fictional template suggestions of tanara_demo for the demo states (pre-transcript view, Summary tab).
     static QVariantList demoSuggestions();
 
 signals:
@@ -84,11 +85,10 @@ signals:
     void changed();
 
 private:
-    tanara::app::AppController* app() const;
-    bool demo() const;
+    bool demo() const { return m_facade.isNull(); }
     void reloadSuggestions();
 
-    QPointer<QObject> m_injected;
+    QPointer<tanara::library::IMeetingNoteFacade> m_facade;
     QString m_meetingId;
     QString m_note;
     QString m_detectedCallApp;

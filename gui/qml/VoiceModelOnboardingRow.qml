@@ -4,11 +4,10 @@ import QtQuick.Layouts
 // First steps > Services: one row about the voice model. If the recommended model (WeSpeaker)
 // is missing, a "Download voice model (28 MB)" button using the same downloader as Settings >
 // Speakers; skippable (the step's "Skip" or simply "Continue"). Hidden when the model is there.
-//   VoiceModelOnboardingRow { controller: window.hostController; demoState: "B08none" }
+//   VoiceModelOnboardingRow { demoState: "B08none" }   (the list takes the App's services)
 Rectangle {
     id: root
 
-    property QtObject controller: null
     property string demoState: ""
     readonly property string st: list.defaultState
 
@@ -29,10 +28,7 @@ Rectangle {
         id: list
         onOpenUrlRequested: (url) => Qt.openUrlExternally(url)
     }
-    Component.onCompleted: {
-        if (controller) list.controller = controller
-        else if (demoState !== "") list.demoState = demoState
-    }
+    Component.onCompleted: if (demoState !== "") list.demoState = demoState
 
     ColumnLayout {
         id: col

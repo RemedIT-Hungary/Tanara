@@ -1,11 +1,9 @@
 #include "SettingsDeviceModel.h"
 
-#include "AppContext.h"
 #include "RecorderViewModel.h"
 #include "SettingsViewModel.h"
 
-#include "demo/RecorderDemoFacade.h"
-
+#include "tanara/app/ISettingsFacade.h"
 #include "tanara/library/tracks/TrackCatalog.h"
 #include "tanara/recording/IRecorderFacade.h"
 
@@ -88,14 +86,9 @@ IRecorderFacade* SettingsDeviceModel::source()
 {
     if (m_source)
         return m_source;
-    // The settings view model's controller decides: the real recorder facade of that controller,
-    // or (no controller: demo, screenshots, tests) the fictional device list of tanara_demo.
-    if (app::AppController* c = m_vm->controller())
-        return AppContext::instance()->servicesFor(c).recorder;
-    if (!m_demoSource)
-        m_demoSource = new tanara_demo::RecorderDemoFacade(
-            QString(), tanara_demo::RecorderDemoFacade::Fixture::SettingsList, this);
-    return m_demoSource;
+    // The settings view model's facade's devices (the fictional list of tanara_demo in the demo).
+    app::ISettingsFacade* f = m_vm->facade();
+    return f ? f->devices() : nullptr;
 }
 
 void SettingsDeviceModel::rebuild()

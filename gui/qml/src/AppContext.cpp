@@ -38,6 +38,17 @@
 #include "tanara/library/summary/SummaryRepository.h"
 #include "tanara/library/store/TranscriptRepository.h"
 #include "tanara/library/tags/TagService.h"
+// --- P15-6a ---
+#include "MeetingNoteServicesFacade.h"
+#include "SettingsServicesFacade.h"
+#include "TracksServicesFacade.h"
+#include "VoiceModelsServicesFacade.h"
+#include "demo/SettingsDemoFacade.h"
+#include "demo/TracksDemoFacade.h"
+#include "demo/VoiceModelsDemoFacade.h"
+#include "tanara/app/SettingsManager.h"
+#include "tanara/foundation/paths/AppPaths.h"
+// --- end P15-6a ---
 
 #include <QFileInfo>
 #include <QGuiApplication>
@@ -82,6 +93,15 @@ public:
 private:
     tanara::app::AppController* m_controller;
 };
+
+// --- P15-6a ---
+// "Soniox · own key" / "Tanara Cloud" of a step, from the controller's settings and registry.
+QString controllerProviderLabel(const tanara::app::AppController* c, tanara::providers::WorkflowStep step)
+{
+    if (!c || !c->settings()) return jobsupport::providerLabel();
+    return jobsupport::providerLabel(c->usesCloud(step), c->settings()->settings(), c->providerRegistry(), step);
+}
+// --- end P15-6a ---
 
 } // namespace
 
@@ -155,7 +175,7 @@ tanara::SummaryStaleInfo ShellControllerFacade::summaryStale(const tanara::Meeti
 
 QString ShellControllerFacade::providerLabel(tanara::providers::WorkflowStep step) const
 {
-    return jobsupport::providerLabel(m_c, step);
+    return controllerProviderLabel(m_c, step);
 }
 
 tanara::MeetingProcessingState ShellControllerFacade::processingState(const QString& meetingId) const
@@ -771,7 +791,7 @@ tanara::library::OverviewSnapshot OverviewControllerFacade::snapshot(const QStri
         const QVariantMap d = ShellMeetingModel::describeJob(*transcribeJob);
         const int pct = d.value(QStringLiteral("percent")).toInt();
         QStringList sub;
-        const QString provider = jobsupport::providerLabel(c, providers::WorkflowStep::Transcribe).section(QStringLiteral(" · "), 0, 0);
+        const QString provider = controllerProviderLabel(c, providers::WorkflowStep::Transcribe).section(QStringLiteral(" · "), 0, 0);
         if (!provider.isEmpty()) sub << provider;
         if (pct >= 0) sub << QStringLiteral("%1%").arg(pct);
         const int eta = transcribeJob->etaSeconds();
@@ -968,6 +988,20 @@ const UiServices& AppContext::demoServices()
                                             QObject* parent) -> tanara::processing::ITranscribeStepFacade* {
             return new tanara_demo::TranscribeStepDemoFacade(scenario, parent);
         };
+        // --- P15-6a: one fictional facade per asking view model (its design state) ---
+        m_demoServices->settings = [](const QString& scenario, QObject* parent) -> tanara::app::ISettingsFacade* {
+            return new tanara_demo::SettingsDemoFacade(scenario, tanara_demo::SettingsDemoFacade::Fixture::Settings, parent);
+        };
+        m_demoServices->onboarding = [](const QString& scenario, QObject* parent) -> tanara::app::ISettingsFacade* {
+            return new tanara_demo::SettingsDemoFacade(scenario, tanara_demo::SettingsDemoFacade::Fixture::Onboarding, parent);
+        };
+        m_demoServices->voiceModels = [](const QString& scenario, QObject* parent) -> tanara::processing::IVoiceModelsFacade* {
+            return new tanara_demo::VoiceModelsDemoFacade(scenario, parent);
+        };
+        m_demoServices->tracks = [](const QString& scenario, QObject* parent) -> tanara::library::ITracksFacade* {
+            return new tanara_demo::TracksDemoFacade(scenario, parent);
+        };
+        // --- end P15-6a ---
     }
     return *m_demoServices;
 }
@@ -1044,6 +1078,15 @@ const UiServices& AppContext::servicesFor(tanara::app::AppController* c)
     auto* participants = new ParticipantsServicesFacade(qd, c);
     set.participants = [participants](QObject*) -> tanara::editing::IParticipantsFacade* { return participants; };
 
+    // --- P15-6a: the meeting note editor's facade (the summary / pre-transcript facades hand it over) ---
+    MeetingNoteServicesFacade::Deps nd;
+    nd.store = c->store();
+    nd.library = c->library();
+    nd.tags = c->tags();
+    nd.setNote = [c](const QString& id, const QString& text) { c->setMeetingContextNote(id, text); };
+    auto* notes = new MeetingNoteServicesFacade(nd, c);
+    // --- end P15-6a ---
+
     // The summary tab. What is still on the controller facade (gating, speaker editor, stale
     // information, targeted statements) comes in as hooks; its remaining signals are forwarded here.
     SummaryServicesFacade::Deps sd;
@@ -1051,7 +1094,7 @@ const UiServices& AppContext::servicesFor(tanara::app::AppController* c)
     sd.jobs = c->jobs();
     sd.store = c->store();
     sd.settings = c->settings();
-    sd.noteController = c;
+    sd.noteController = notes;
     sd.hooks.canRun = [c](const QString& id) { return c->canRun(tanara::providers::WorkflowStep::Summarize, id); };
     sd.hooks.usesCloud = [c] { return c->usesCloud(tanara::providers::WorkflowStep::Summarize); };
     sd.hooks.speakerEditor = [c](const QString& id) { return c->speakerEditor(id); };
@@ -1086,12 +1129,12 @@ const UiServices& AppContext::servicesFor(tanara::app::AppController* c)
     ts.jobs = c->jobs();
     ts.settings = c->settings();
     ts.canRun = [c](tanara::providers::WorkflowStep step, const QString& id) { return c->canRun(step, id); };
-    ts.providerLabel = [c](tanara::providers::WorkflowStep step) { return jobsupport::providerLabel(c, step); };
+    ts.providerLabel = [c](tanara::providers::WorkflowStep step) { return controllerProviderLabel(c, step); };
     ts.identifyAvailable = [c] { return c->voiceIdentificationAvailable(); };
     ts.identifyAfterTranscription = [c](const QString& id) { return c->identifyAfterTranscription(id); };
     ts.setIdentifyAfterTranscription = [c](const QString& id, bool on) { c->setIdentifyAfterTranscription(id, on); };
     ts.regenerateMixdown = [c](const QString& id) { c->regenerateMixdown(id); };
-    ts.noteController = c;
+    ts.noteController = notes;
     auto* transcribeStep = new TranscribeStepServicesFacade(ts, c);
     connect(c, &tanara::app::AppController::mixdownProgress, transcribeStep,
             &tanara::processing::ITranscribeStepFacade::mixdownProgress);
@@ -1102,6 +1145,71 @@ const UiServices& AppContext::servicesFor(tanara::app::AppController* c)
     set.transcribeStep = [transcribeStep](const QString&, QObject*) -> tanara::processing::ITranscribeStepFacade* {
         return transcribeStep;
     };
+    // --- P15-6a: settings, onboarding, voice models, tracks, meeting note, UI state ---
+    SettingsServicesFacade::Deps sv6;
+    sv6.settings = c->settings();
+    sv6.registry = &c->providerRegistry();
+    sv6.recording = &sv->recording();
+    sv6.devices = set.recorder;
+    sv6.voiceprints = c->voiceprints();
+    sv6.tags = c->tags();
+    sv6.preparer = c->embeddingPreparer();
+    sv6.embeddings = c->embeddings();
+    sv6.detectors = &sv->detectors();
+    sv6.hooks.secret = [c](const QString& key) { return c->secret(key); };
+    sv6.hooks.hasSecret = [c](const QString& key) { return c->hasSecret(key); };
+    sv6.hooks.setSecret = [c](const QString& key, const QString& value) { c->setSecret(key, value); };
+    sv6.hooks.secretBackend = [c] { return c->secretBackend(); };
+    sv6.hooks.secretBackendWarning = [c] { return c->secretBackendWarning(); };
+    sv6.hooks.setUserSpeakerName = [c](const QString& name) { c->setUserSpeakerName(name); };
+    sv6.hooks.selfPersonId = [c] { return c->selfPerson().id; };
+    auto* settingsFacade = new SettingsServicesFacade(sv6, c);
+    connect(events, &ControllerEvents::peopleChanged, settingsFacade, &SettingsServicesFacade::reportVoiceprintsChanged);
+    connect(events, &ControllerEvents::voiceprintsChanged, settingsFacade, &SettingsServicesFacade::reportVoiceprintsChanged);
+    set.settings = [settingsFacade](const QString&, QObject*) -> tanara::app::ISettingsFacade* { return settingsFacade; };
+    set.onboarding = set.settings;
+
+    VoiceModelsServicesFacade::Deps vm6;
+    vm6.settings = c->settings();
+    vm6.store = c->store();
+    vm6.hooks.deleteModelFile = [c](const QString& id, QString* error) { return c->deleteVoiceModelFile(id, error); };
+    vm6.hooks.rescan = [c] { c->rescanVoiceModels(); };
+    vm6.hooks.backfillRunning = [c] { return c->voiceprintBackfillRunning(); };
+    vm6.hooks.backfillSkips = [c] { return c->backfillSkippedSamples(); };
+    auto* voiceModels = new VoiceModelsServicesFacade(vm6, c);
+    connect(c, &tanara::app::AppController::voiceModelsChanged, voiceModels, &VoiceModelsServicesFacade::reportModelsChanged);
+    connect(c, &tanara::app::AppController::voiceprintBackfillStarted, voiceModels,
+            &VoiceModelsServicesFacade::reportBackfillStarted);
+    connect(c, &tanara::app::AppController::voiceprintBackfillProgress, voiceModels,
+            &VoiceModelsServicesFacade::reportBackfillProgress);
+    connect(c, &tanara::app::AppController::voiceprintBackfillFinished, voiceModels,
+            &VoiceModelsServicesFacade::reportBackfillFinished);
+    set.voiceModels = [voiceModels](const QString&, QObject*) -> tanara::processing::IVoiceModelsFacade* { return voiceModels; };
+
+    TracksServicesFacade::Deps tk6;
+    tk6.store = c->store();
+    tk6.tracks = c->tracks();
+    tk6.waveforms = c->waveforms();
+    tk6.jobs = c->jobs();
+    tk6.settings = c->settings();
+    tk6.hooks.requestWaveforms = [c](const QString& id) { c->requestWaveforms(id); };
+    tk6.hooks.restoreTrack = [c](const QString& id, const QString& track) { c->restoreTrack(id, track); };
+    tk6.hooks.setTrackIncluded = [c](const QString& id, const QString& track, bool included) {
+        if (included) c->includeTrack(id, track);
+        else c->excludeTrack(id, track);
+    };
+    tk6.hooks.deleteTrack = [c](const QString& id, const QString& track) { c->deleteTrack(id, track); };
+    tk6.hooks.regenerateMixdown = [c](const QString& id) { c->regenerateMixdown(id); };
+    auto* tracks = new TracksServicesFacade(tk6, c);
+    connect(c, &tanara::app::AppController::tracksChanged, tracks, &TracksServicesFacade::reportTracksChanged);
+    connect(c, &tanara::app::AppController::mixdownUpdated, tracks, &TracksServicesFacade::reportMixdownUpdated);
+    connect(c, &tanara::app::AppController::mixdownProgress, tracks, &TracksServicesFacade::reportMixdownProgress);
+    set.tracks = [tracks](const QString&, QObject*) -> tanara::library::ITracksFacade* { return tracks; };
+
+    set.meetingNotes = notes;
+    if (c->settings())
+        set.uiStateFile = c->settings()->paths().stateFile(tanara::paths::files::UiState);
+    // --- end P15-6a ---
     connect(c, &QObject::destroyed, this, [this, c] { m_realServices.erase(c); });
     return m_realServices.emplace(c, std::move(set)).first->second;
 }

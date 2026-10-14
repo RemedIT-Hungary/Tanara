@@ -6,11 +6,9 @@
 #include "SettingsViewModel.h"
 #include "ShellFormat.h"
 
-#include "tanara/app/AppController.h"
-#include "tanara/library/index/EmbeddingIndex.h"
+#include "tanara/app/ISettingsFacade.h"
 #include "tanara/providers/embedding/ITextEmbedder.h"
 #include "tanara/providers/core/ProviderRegistry.h"
-#include "tanara/library/tags/TagService.h"
 
 #include <cmath>
 
@@ -49,23 +47,18 @@ SettingsEmbeddingModel::SettingsEmbeddingModel(QObject* parent) : QObject(parent
     }
 }
 
-app::AppController* SettingsEmbeddingModel::controller() const
+app::ISettingsFacade* SettingsEmbeddingModel::facade() const
 {
-    return m_vm ? m_vm->controller() : nullptr;
+    return m_vm ? m_vm->facade() : nullptr;
 }
 
 void SettingsEmbeddingModel::attach()
 {
     disconnect(m_prepConn);
     disconnect(m_rejectConn);
-    m_preparer = nullptr;
-    app::AppController* c = controller();
-    if (c) {
-        m_preparer = c->embeddingPreparer();
-        if (m_preparer)
-            m_prepConn = connect(m_preparer, &library::EmbeddingPreparer::stateChanged, this, &SettingsEmbeddingModel::changed);
-        if (c->tags())
-            m_rejectConn = connect(c->tags(), &library::TagService::rejectedChanged, this, &SettingsEmbeddingModel::rejectedChanged);
+    if (app::ISettingsFacade* f = facade()) {
+        m_prepConn = connect(f, &app::ISettingsFacade::embeddingStateChanged, this, &SettingsEmbeddingModel::changed);
+        m_rejectConn = connect(f, &app::ISettingsFacade::rejectedSuggestionsChanged, this, &SettingsEmbeddingModel::rejectedChanged);
     }
     emit changed();
     emit rejectedChanged();
@@ -91,10 +84,11 @@ QString SettingsEmbeddingModel::providerFor(const QString& mode)
     return QString();
 }
 
-QString SettingsEmbeddingModel::effectiveModel(const tanara::app::AppSettings& s)
+QString SettingsEmbeddingModel::effectiveModel(const tanara::app::AppSettings& s) const
 {
     const QString id = s.providers.embedding.selectedId;
-    if (!providers::ProviderRegistry::defaultInstance().has(providers::CapabilityKind::TextEmbedding, id)) return QString();
+    const app::ISettingsFacade* f = facade();
+    if (!f || !f->registry().has(providers::CapabilityKind::TextEmbedding, id)) return QString();
     const QString model = s.providers.embedding.selected().model.trimmed();
     if (model.isEmpty() && id == providers::embeddingproviders::CloudId) return QStringLiteral("default");
     return model;
@@ -102,8 +96,8 @@ QString SettingsEmbeddingModel::effectiveModel(const tanara::app::AppSettings& s
 
 void SettingsEmbeddingModel::normalize(tanara::app::AppSettings& s) const
 {
-    if (!m_card) return;
-    const providers::ProviderDescriptor d = providers::ProviderRegistry::defaultInstance().descriptor(providers::CapabilityKind::TextEmbedding, s.providers.embedding.selectedId);
+    if (!m_card || !facade()) return;
+    const providers::ProviderDescriptor d = facade()->registry().descriptor(providers::CapabilityKind::TextEmbedding, s.providers.embedding.selectedId);
     if (!d.id.isEmpty()) m_card->fillDefaults(s.providers.embedding.configs[s.providers.embedding.selectedId], d);
 }
 
@@ -112,9 +106,7 @@ void SettingsEmbeddingModel::normalize(tanara::app::AppSettings& s) const
 QString SettingsEmbeddingModel::mode() const
 {
     if (m_vm) return modeOf(m_vm->draft().providers.embedding.selectedId);
-    if (m_demoState == QLatin1String("cloud")) return QStringLiteral("cloud");
-    if (m_demoState.isEmpty() || m_demoState == QLatin1String("none")) return QStringLiteral("none");
-    return QStringLiteral("local");
+    return QStringLiteral("none");
 }
 
 void SettingsEmbeddingModel::setMode(const QString& mode)
@@ -128,7 +120,7 @@ void SettingsEmbeddingModel::setMode(const QString& mode)
     if (!id.isEmpty()) {
         // The other mode's settings stay in the map; the new one starts with the defaults.
         providers::ProviderConfig cfg = d.providers.embedding.configs.value(id);
-        m_card->fillDefaults(cfg, providers::ProviderRegistry::defaultInstance().descriptor(providers::CapabilityKind::TextEmbedding, id));
+        m_card->fillDefaults(cfg, facade()->registry().descriptor(providers::CapabilityKind::TextEmbedding, id));
         d.providers.embedding.configs.insert(id, cfg);
     }
     m_card->reset();
@@ -199,8 +191,8 @@ QString SettingsEmbeddingModel::statusText() const
 
 library::EmbeddingState SettingsEmbeddingModel::prepState() const
 {
-    if (controller() && m_preparer) return m_preparer->state();
-    return m_demo;
+    const app::ISettingsFacade* f = facade();
+    return f ? f->embeddingState() : library::EmbeddingState();
 }
 
 bool SettingsEmbeddingModel::prepVisible() const
@@ -264,55 +256,29 @@ QString SettingsEmbeddingModel::doneText() const
 
 void SettingsEmbeddingModel::startPreparation()
 {
-    if (controller()) {
-        if (m_preparer) m_preparer->start();
-        return;
-    }
-    m_demo.status = library::EmbeddingState::Running;
-    if (m_demo.prepared >= m_demo.total) m_demo.prepared = 0;
-    m_demo.etaSec = (m_demo.total - m_demo.prepared) * kSecondsPerMeeting;
-    emit changed();
+    if (app::ISettingsFacade* f = facade()) f->startEmbedding();
 }
 
 void SettingsEmbeddingModel::cancelPreparation()
 {
-    if (controller()) {
-        if (m_preparer) m_preparer->cancel();
-        return;
-    }
-    m_demo.status = library::EmbeddingState::Idle;
-    m_demo.etaSec = -1;
-    emit changed();
+    if (app::ISettingsFacade* f = facade()) f->cancelEmbedding();
 }
 
 void SettingsEmbeddingModel::resumePreparation()
 {
-    if (controller()) {
-        if (m_preparer) m_preparer->resume();
-        return;
-    }
-    m_demo.status = library::EmbeddingState::Running;
-    m_demo.error.clear();
-    m_demo.etaSec = (m_demo.total - m_demo.prepared) * kSecondsPerMeeting;
-    emit changed();
+    if (app::ISettingsFacade* f = facade()) f->resumeEmbedding();
 }
 
 void SettingsEmbeddingModel::reprepare()
 {
-    if (app::AppController* c = controller()) {
-        if (c->embeddings()) c->embeddings()->invalidateAll();
-        if (m_preparer) m_preparer->start();
-        return;
-    }
-    m_demo.prepared = 0;
-    startPreparation();
+    if (app::ISettingsFacade* f = facade()) f->reprepareEmbeddings();
 }
 
 // ---- model change ------------------------------------------------------------------------
 
 bool SettingsEmbeddingModel::restartPending() const
 {
-    if (!m_vm) return m_demoState == QLatin1String("modelChange");
+    if (!m_vm) return false;
     const QString before = effectiveModel(m_vm->base());
     const QString after = effectiveModel(m_vm->draft());
     return !before.isEmpty() && !after.isEmpty() && before != after;
@@ -372,87 +338,13 @@ void SettingsEmbeddingModel::setLlmTagSuggestions(bool on)
 
 int SettingsEmbeddingModel::rejectedCount() const
 {
-    if (app::AppController* c = controller())
-        return c->tags() ? c->tags()->rejectedCount() : 0;
-    return m_demoRejected;
+    const app::ISettingsFacade* f = facade();
+    return f ? f->rejectedSuggestionCount() : 0;
 }
 
 void SettingsEmbeddingModel::clearRejected()
 {
-    if (app::AppController* c = controller()) {
-        if (c->tags()) c->tags()->clearRejected();   // rejectedChanged → rejectedChanged
-        return;
-    }
-    if (m_demoRejected == 0) return;
-    m_demoRejected = 0;
-    emit rejectedChanged();
-}
-
-// ---- demo --------------------------------------------------------------------------------
-
-void SettingsEmbeddingModel::setDemoState(const QString& state)
-{
-    if (controller()) return;                 // with real data the demo has no effect
-    loadDemo(state);
-    if (m_vm) m_vm->touch();
-    emit demoStateChanged();
-}
-
-void SettingsEmbeddingModel::loadDemo(const QString& state)
-{
-    m_demoState = state;
-    const bool local = state == QLatin1String("local") || state == QLatin1String("localRunning")
-                    || state == QLatin1String("localError") || state == QLatin1String("localDone")
-                    || state == QLatin1String("modelChange");
-    const bool cloud = state == QLatin1String("cloud");
-
-    if (m_vm) {
-        tanara::app::AppSettings& base = m_vm->m_base;
-        tanara::app::AppSettings& draft = m_vm->m_draft;
-        for (tanara::app::AppSettings* s : {&base, &draft}) {
-            s->providers.embedding.configs.clear();
-            s->providers.embedding.selectedId = local ? providers::embeddingproviders::LocalId
-                                   : cloud ? providers::embeddingproviders::CloudId : QString();
-            providers::ProviderConfig cfg;
-            cfg.type = providers::embeddingproviders::LocalId;
-            cfg.baseUrl = QStringLiteral("http://localhost:1234/v1");
-            cfg.model = QStringLiteral("text-embedding-nomic-embed-text-v1.5");
-            s->providers.embedding.configs.insert(providers::embeddingproviders::LocalId, cfg);
-            if (cloud) {
-                providers::ProviderConfig c;
-                c.type = providers::embeddingproviders::CloudId;
-                s->providers.embedding.configs.insert(providers::embeddingproviders::CloudId, c);
-            }
-            s->processing.tagSuggestions = true;
-            s->processing.llmTagSuggestions = true;
-        }
-        // The model was edited, not saved yet.
-        if (state == QLatin1String("modelChange"))
-            draft.providers.embedding.configs[providers::embeddingproviders::LocalId].model = QStringLiteral("nomic-embed-text-v2-moe");
-        if (m_card) m_card->reset();
-    }
-
-    m_demo = {};
-    m_demo.provider = local ? providers::embeddingproviders::LocalId : cloud ? providers::embeddingproviders::CloudId : QString();
-    m_demo.total = 40;
-    if (state == QLatin1String("localRunning")) {
-        m_demo.status = library::EmbeddingState::Running;
-        m_demo.prepared = 23;
-        m_demo.etaSec = 230;
-    } else if (state == QLatin1String("localError") || state == QLatin1String("modelChange")) {
-        m_demo.status = library::EmbeddingState::Error;
-        m_demo.prepared = 31;
-        m_demo.error = tr("a végpont nem válaszol. Fut a helyi szerver?");
-    } else if (state == QLatin1String("localDone") || cloud) {
-        m_demo.status = library::EmbeddingState::Done;
-        m_demo.prepared = 40;
-        m_demo.lastRun = QDateTime(QDate(2026, 10, 5), QTime(9, 12));
-    } else if (local) {
-        m_demo.prepared = 12;                  // interrupted preparation: "Prepare" button
-    }
-    m_demoRejected = 12;
-    emit changed();
-    emit rejectedChanged();
+    if (app::ISettingsFacade* f = facade()) f->clearRejectedSuggestions();   // → rejectedChanged
 }
 
 } // namespace tanara_qml
