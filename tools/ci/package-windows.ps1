@@ -7,17 +7,36 @@
        script fails when the tag is not v<version>
     2. configure and build (Release, MinGW 13.1 from Qt, voice-ID on) unless -SkipBuild
     3. dist\ folder: Tanara exes, windeployqt (QML imports, no unused SQL drivers), qoffscreen,
-       onnxruntime.dll, VC++ runtime DLLs (from the Visual Studio Redist folder, never System32),
+       onnxruntime.dll, VC++ runtime DLLs (see "VC++ runtime" below; never System32),
        LGPL FFmpeg (ffmpeg.exe, ffprobe.exe), the CAM++ model (downloaded, SHA256-checked),
        LICENSE, THIRD_PARTY_NOTICES.md, licenses\
     4. smoke test of dist\ on a clean PATH (unless -NoSmokeTest)
-    5. zip, then ISCC (Inno Setup 6; installed through Chocolatey when it is missing)
+    5. zip, then ISCC (Inno Setup 6). With -SkipInstaller the script stops after the zip (exit 0).
+       When ISCC is missing, Chocolatey installs Inno Setup only on CI (CI / GITHUB_ACTIONS set);
+       on a developer machine the script stops with a message instead.
+  VC++ runtime: only onnxruntime.dll (MSVC-built) needs msvcp140.dll, vcruntime140.dll and
+  vcruntime140_1.dll. Tanara's own binaries (MinGW build) do not need the MSVC CRT. Sources, in order:
+    a. -CrtDir <folder with the three DLLs> (a Microsoft.VC14x.CRT folder; System32 is rejected)
+    b. the Visual Studio / Build Tools Redist folder, found automatically
+    c. -DownloadCrt (opt-in): downloads Microsoft's vc_redist.x64.exe into -DepsDir and extracts the
+       DLLs WITHOUT installing it (see Get-CrtFromRedist). The URL is a moving target
+       (https://aka.ms/vs/17/release/vc_redist.x64.exe), so the SHA256 cannot be pinned; instead the
+       Authenticode signature of the exe and of every extracted DLL must be valid and from
+       Microsoft. It is not part of the CI path, so CI stays deterministic.
   Qt, MinGW, the ONNX Runtime and the FFmpeg build come from the same places as in
   tools/ci/build-test.ps1 and tools/ci/windows-deps.ps1 (run that script first: it downloads
   ONNX Runtime and FFmpeg into -DepsDir).
+.PARAMETER SkipInstaller
+  Build, dist, smoke test and zip, then exit 0 without Inno Setup (no ISCC lookup, no Chocolatey).
+.PARAMETER DownloadCrt
+  Opt-in fallback when no -CrtDir and no Visual Studio Redist folder exists: download and unpack
+  Microsoft's vc_redist.x64.exe (signature-checked, not SHA256-pinned).
 .EXAMPLE
   powershell -File tools\ci\windows-deps.ps1 -Dest C:\ci-deps
   powershell -File tools\ci\package-windows.ps1 -DepsDir C:\ci-deps -QtDir C:\Qt\6.11.1\mingw_64 -MingwBin C:\Qt\Tools\mingw1310_64\bin
+.EXAMPLE
+  # laptop without Visual Studio and Inno Setup: zip only, CRT from Microsoft's redistributable
+  powershell -File tools\ci\package-windows.ps1 -DepsDir C:\ci-deps -QtDir ... -MingwBin ... -SkipInstaller -DownloadCrt
 #>
 [CmdletBinding()]
 param(
@@ -31,7 +50,9 @@ param(
     [string]$Iscc = '',
     [int]$Jobs = 4,
     [switch]$SkipBuild,
-    [switch]$NoSmokeTest
+    [switch]$NoSmokeTest,
+    [switch]$SkipInstaller,
+    [switch]$DownloadCrt
 )
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
@@ -51,6 +72,46 @@ $ff  = Join-Path $DepsDir "ffmpeg-lgpl\$ffName"
 
 function Step($m) { Write-Host "== $m" }
 function Need($path, $what) { if (-not (Test-Path $path)) { throw "$what not found: $path" } }
+
+# Download Microsoft's vc_redist.x64.exe and extract the three DLLs without installing anything.
+# The exe is a WiX Burn bundle: "/layout <dir>" copies its payloads (the MSI packages and their
+# cabinets) to a folder and installs nothing; "msiexec /a" (administrative install) then unpacks
+# the files of each MSI into a folder tree without registering anything. Best effort: the layout
+# of the bundle is Microsoft's, so a failure here ends with the three options in the message.
+function Get-CrtFromRedist([string]$work) {
+    $want = 'msvcp140.dll', 'vcruntime140.dll', 'vcruntime140_1.dll'
+    $out = Join-Path $work 'crt'
+    if ($want | Where-Object { -not (Test-Path (Join-Path $out $_)) }) {
+        New-Item -ItemType Directory -Force $work | Out-Null
+        $exe = Join-Path $work 'vc_redist.x64.exe'
+        Step 'download vc_redist.x64.exe (unpinned URL, signature-checked)'
+        Invoke-WebRequest -Uri 'https://aka.ms/vs/17/release/vc_redist.x64.exe' -OutFile $exe
+        $sig = Get-AuthenticodeSignature $exe
+        if ($sig.Status -ne 'Valid' -or $sig.SignerCertificate.Subject -notmatch 'O=Microsoft Corporation') { throw "vc_redist.x64.exe: bad signature ($($sig.Status))" }
+        $layout = Join-Path $work 'layout'
+        $admin = Join-Path $work 'admin'
+        Remove-Item -Recurse -Force $layout, $admin, $out -ErrorAction SilentlyContinue
+        & $exe /layout $layout /quiet /norestart | Out-Null
+        $msis = @(Get-ChildItem $layout -Recurse -Filter *.msi -ErrorAction SilentlyContinue)
+        if (-not $msis) { throw '"vc_redist.x64.exe /layout" produced no MSI packages' }
+        $n = 0
+        foreach ($m in $msis) {
+            $n++
+            $p = Start-Process msiexec.exe -ArgumentList '/a', "`"$($m.FullName)`"", '/qn', "TARGETDIR=`"$admin\$n`"" -Wait -PassThru
+            if ($p.ExitCode -ne 0) { Write-Warning "msiexec /a $($m.Name) exited with $($p.ExitCode)" }
+        }
+        New-Item -ItemType Directory -Force $out | Out-Null
+        foreach ($w in $want) {
+            $f = Get-ChildItem $admin -Recurse -Filter $w -ErrorAction SilentlyContinue | Select-Object -First 1
+            if (-not $f) { throw "$w not found in the extracted redistributable" }
+            $s = Get-AuthenticodeSignature $f.FullName
+            if ($s.Status -ne 'Valid' -or $s.SignerCertificate.Subject -notmatch 'O=Microsoft Corporation') { throw "$w : bad signature ($($s.Status))" }
+            Copy-Item $f.FullName $out
+        }
+        Remove-Item -Recurse -Force $layout, $admin -ErrorAction SilentlyContinue
+    }
+    return $out
+}
 
 # --- 1. version
 $cml = Get-Content (Join-Path $root 'CMakeLists.txt') -Raw
@@ -112,7 +173,19 @@ if (-not $CrtDir) {
             (Test-Path "$($_.FullName)\msvcp140.dll") -and (Test-Path "$($_.FullName)\vcruntime140.dll") -and (Test-Path "$($_.FullName)\vcruntime140_1.dll")
         } | Sort-Object { $_.FullName } | Select-Object -Last 1).FullName
 }
-if (-not $CrtDir) { throw 'VC++ runtime folder not found (Visual Studio ...\VC\Redist\MSVC\<ver>\x64\Microsoft.VC14x.CRT); pass -CrtDir' }
+if (-not $CrtDir -and $DownloadCrt) {
+    try { $CrtDir = Get-CrtFromRedist (Join-Path $DepsDir 'vc-redist') }
+    catch { throw "-DownloadCrt failed: $($_.Exception.Message)`nUse a Visual Studio Redist folder or -CrtDir <folder with the three DLLs> instead." }
+}
+if (-not $CrtDir) {
+    throw @'
+VC++ runtime DLLs not found (needed only by onnxruntime.dll; Tanara's own MinGW binaries do not need the MSVC CRT).
+Options:
+  1. install Visual Studio / Build Tools (...\VC\Redist\MSVC\<ver>\x64\Microsoft.VC14x.CRT is then found automatically)
+  2. pass -CrtDir <folder containing msvcp140.dll, vcruntime140.dll, vcruntime140_1.dll> (not System32)
+  3. pass -DownloadCrt: downloads Microsoft's vc_redist.x64.exe (unpinned URL, signature-checked) and extracts the DLLs without installing
+'@
+}
 if ($CrtDir -match '(?i)\\Windows\\System32') { throw '-CrtDir must not be System32' }
 Write-Host "VC++ runtime from $CrtDir"
 Copy-Item "$CrtDir\msvcp140.dll", "$CrtDir\vcruntime140.dll", "$CrtDir\vcruntime140_1.dll" $dist
@@ -177,6 +250,14 @@ if (Test-Path $zip) { Remove-Item $zip }
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 [IO.Compression.ZipFile]::CreateFromDirectory($dist, $zip, 'Optimal', $false)
 
+if ($SkipInstaller) {
+    $zsha = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+    "$zsha  $(Split-Path $zip -Leaf)" | Out-File -FilePath "$zip.sha256" -Encoding ascii
+    Write-Host ("{0}  {1:N1} MB" -f (Split-Path $zip -Leaf), ((Get-Item $zip).Length / 1MB))
+    Step "done (-SkipInstaller: no installer built): $zip"
+    exit 0
+}
+
 Step 'installer'
 if (-not $Iscc) {
     $cmd = Get-Command ISCC.exe -ErrorAction SilentlyContinue
@@ -189,9 +270,13 @@ if (-not $Iscc) {
     $Iscc = $paths | Select-Object -First 1
 }
 if (-not $Iscc) {
-    Write-Host 'Inno Setup 6 not found: installing it with Chocolatey'
-    choco install innosetup --no-progress -y
-    $Iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+    if ($env:GITHUB_ACTIONS -or $env:CI) {
+        Write-Host 'Inno Setup 6 not found: installing it with Chocolatey (CI)'
+        choco install innosetup --no-progress -y
+        $Iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+    } else {
+        throw 'Inno Setup 6 (ISCC.exe) not found. Install it (winget install JRSoftware.InnoSetup), pass -Iscc <path>, or pass -SkipInstaller to stop after the zip.'
+    }
 }
 Need $Iscc 'ISCC.exe'
 & $Iscc "/DDistDir=$dist" "/DBuildDir=$build" "/DAppVersion=$version" "/DOutputDir=$OutDir" (Join-Path $root 'packaging\windows\tanara.iss')

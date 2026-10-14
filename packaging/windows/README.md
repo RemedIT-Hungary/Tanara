@@ -15,6 +15,9 @@ is in `THIRD_PARTY_NOTICES.md`. Both go into the package (see step 2).
 
 `tools/ci/package-windows.ps1` runs all the steps below (build, `dist` folder, smoke test, zip,
 installer); the release workflow (`.github/workflows/release.yml`) uses it on a `v*` tag.
+`-SkipInstaller` stops after the zip (no Inno Setup needed); `-DownloadCrt` fetches the VC++ runtime DLLs
+from Microsoft's `vc_redist.x64.exe` when no Visual Studio is installed (unpinned download,
+signature-checked; only `onnxruntime.dll` needs them).
 See `docs/BUILD.md`, chapter "Packaging". The manual steps in this file explain what the script does and why.
 
 ## Prerequisites

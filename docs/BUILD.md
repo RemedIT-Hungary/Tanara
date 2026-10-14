@@ -220,9 +220,25 @@ The script builds (unless `-SkipBuild`), assembles `build-release\dist` (windepl
 imports, `qoffscreen`, `onnxruntime.dll`, the VC++ runtime DLLs from the Visual Studio `Redist`
 folder, the LGPL FFmpeg, the CAM++ model downloaded with a SHA256 check, the license files), runs
 a smoke test on a clean `PATH` (`tanara-cli --version`, `paths show`, `tanara --qml-shot`), writes
-the zip and runs Inno Setup (`ISCC`; installed with Chocolatey when it is missing). The result is in
-`build-release\`. These are the scripted steps of `packaging/windows/README.md` (that file explains
+the zip and runs Inno Setup (`ISCC`; on CI it is installed with Chocolatey when it is missing, on a
+developer machine the script stops with a message). The result is in `build-release\`. These are the scripted steps of `packaging/windows/README.md` (that file explains
 why each step is there). Qt 6.11 needs the `qttasktree` add-on module with aqtinstall.
+
+Switches for a machine without Visual Studio and Inno Setup:
+
+- `-SkipInstaller`: build, `dist`, smoke test and zip run, then the script exits 0 without an
+  installer (no ISCC lookup, no Chocolatey).
+- The VC++ runtime DLLs (`msvcp140.dll`, `vcruntime140.dll`, `vcruntime140_1.dll`) are needed only by
+  `onnxruntime.dll`; Tanara's own MinGW binaries do not need the MSVC CRT. The script takes them from
+  `-CrtDir`, else from a Visual Studio / Build Tools `Redist` folder, else (only with `-DownloadCrt`)
+  from Microsoft's `vc_redist.x64.exe`, which it downloads into `-DepsDir` and unpacks without
+  installing it (`/layout`, then `msiexec /a`). That URL is a moving target, so the download is NOT
+  SHA256-pinned; the script checks the Microsoft Authenticode signature of the exe and of each DLL.
+  CI does not use `-DownloadCrt`.
+
+```powershell
+powershell -File tools\ci\package-windows.ps1 -DepsDir C:\ci-deps -QtDir ... -MingwBin ... -SkipInstaller -DownloadCrt
+```
 
 ### AppImage
 
