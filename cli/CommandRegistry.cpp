@@ -124,6 +124,12 @@ int CommandRegistry::dispatch(CliContext& ctx, const QStringList& args) const
     const QString name = args.value(1);
     if (name.isEmpty() || name == QLatin1String("help") || name == QLatin1String("--help") || name == QLatin1String("-h"))
         return help(QStringList{args.value(0), QStringLiteral("help")} + args.mid(2));
+    // `--version` / `version`: the packaging scripts and the AppImage smoke test rely on it.
+    if (name == QLatin1String("--version") || name == QLatin1String("-V") || name == QLatin1String("version")) {
+        out() << "tanara-cli " << libraryVersion() << "\n";
+        out().flush();
+        return 0;
+    }
     const Command* c = find(name);
     if (!c) {
         err() << "Unknown command: " << name << "\n";

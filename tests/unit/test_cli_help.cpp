@@ -87,6 +87,15 @@ private slots:
         QVERIFY(h.code != 0);
     }
 
+    void versionSwitchPrintsTheVersion()
+    {
+        for (const char* sw : {"--version", "-V", "version"}) {
+            const auto r = runCli(m_home.path(), {sw});
+            QVERIFY2(r.code == 0, sw);
+            QVERIFY2(r.out.startsWith("tanara-cli ") && r.out.trimmed().size() > QString("tanara-cli ").size(), sw);
+        }
+    }
+
     void noArgumentsPrintTheHelp()
     {
         const auto r = runCli(m_home.path(), {});
