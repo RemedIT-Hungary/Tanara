@@ -135,6 +135,27 @@ struct PersonInfo {
     QDateTime lastSeen;             // the latest meeting they appear in (tells same-named people apart)
 };
 
+// Composition of one speaker's voice reference in a recheck (for the feedback text; RecheckService).
+struct SpeakerReference {
+    QString speakerKey;
+    QString name;               // displayed name
+    int  lines = 0;             // confirmed / corrected lines (for a fallback: all its lines)
+    int  localPrints = 0;       // voiceprints made in this meeting
+    int  priorPrints = 0;       // earlier voiceprints (from other meetings)
+    bool priorOnly = false;     // no local core: only earlier voiceprints
+    bool fallback = false;      // neither core nor voiceprint: all of the speaker's lines
+    bool priorCapped = false;   // the weight of earlier voiceprints was cut by the cap
+    bool usesPrints() const { return localPrints + priorPrints > 0; }
+};
+
+// Two speakers with very similar voices (cosine of their confirmed cores >= ranking::kSimilarWarn);
+// the same value shown by the "Why them?" "Warning:" line (ranking::similarityWarnings).
+struct SimilarVoices {
+    QString keyA, nameA;
+    QString keyB, nameB;
+    double  similarity = 0.0;
+};
+
 // The voiceprint material / result types live in domain/Voice.h (the People window's library service
 // uses them through the VoiceprintMaterialSource port); the editing names stay as aliases.
 using VoiceprintMaterial = tanara::VoiceprintMaterial;

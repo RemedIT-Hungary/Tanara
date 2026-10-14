@@ -1,16 +1,15 @@
-#include "tanara/processing/voiceid/EmbeddingSet.h"
+#include "tanara/library/store/VoiceFusion.h"
 
 #include "tanara/library/store/VoiceprintStore.h"
-#include "tanara/processing/voiceid/VoiceModelRegistry.h"
 
 #include <cmath>
 
-namespace tanara::processing {
+namespace tanara::library {
 namespace fusion {
 
 QVector<float> fuse(const EmbeddingSet& set, const QStringList& modelIds)
 {
-    const QStringList ids = VoiceModelRegistry::normalizeIds(modelIds);
+    const QStringList ids = voicemodels::normalizeIds(modelIds);
     if (ids.isEmpty()) return {};
     int total = 0;
     for (const QString& id : ids) {
@@ -22,7 +21,7 @@ QVector<float> fuse(const EmbeddingSet& set, const QStringList& modelIds)
     QVector<float> out;
     out.reserve(total);
     for (const QString& id : ids) {
-        const QVector<float> n = library::VoiceprintStore::l2normalize(set.value(id));
+        const QVector<float> n = VoiceprintStore::l2normalize(set.value(id));
         for (float x : n) out.append(float(double(x) * w));
     }
     return out;
@@ -33,10 +32,10 @@ double averageCosine(const EmbeddingSet& a, const EmbeddingSet& b, const QString
 {
     double sum = 0.0;
     int n = 0;
-    for (const QString& id : VoiceModelRegistry::normalizeIds(modelIds)) {
+    for (const QString& id : voicemodels::normalizeIds(modelIds)) {
         const QVector<float> va = a.value(id), vb = b.value(id);
         if (va.isEmpty() || vb.isEmpty()) continue;
-        sum += library::VoiceprintStore::cosineSimilarity(va, vb);
+        sum += VoiceprintStore::cosineSimilarity(va, vb);
         ++n;
     }
     if (used) *used = n;
@@ -44,4 +43,4 @@ double averageCosine(const EmbeddingSet& a, const EmbeddingSet& b, const QString
 }
 
 } // namespace fusion
-} // namespace tanara::processing
+} // namespace tanara::library

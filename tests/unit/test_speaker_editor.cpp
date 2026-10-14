@@ -22,6 +22,7 @@
 #include "tanara/library/store/MeetingRepository.h"
 #include "tanara/library/store/PeopleStore.h"
 #include "tanara/library/store/VoiceprintStore.h"
+#include "tanara/processing/analysis/UtteranceEmbeddings.h"
 
 #include <atomic>
 #include <memory>

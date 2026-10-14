@@ -8,21 +8,20 @@
 // library free of editing (cleanup plan T 1.2).
 #include "tanara/domain/Person.h"
 #include "tanara/domain/Voice.h"
+#include "tanara/providers/voice/IUtteranceEmbedder.h"
 
 #include <QString>
 
 #include <functional>
 #include <memory>
 
-// The utterance embedder of the voice models (a processing type; P13 moves it out of processing). Only
-// named here, for the test seam below; library code never calls it.
-namespace tanara::processing { class IUtteranceEmbedder; }
-
 namespace tanara::library {
 
 class VoiceprintMaterialSource {
 public:
-    using EmbedderFactory = std::function<std::unique_ptr<processing::IUtteranceEmbedder>()>;
+    // The utterance embedder of the voice models (the providers port); only for the test seam below,
+    // library code never calls it.
+    using EmbedderFactory = providers::UtteranceEmbedderFactory;
 
     virtual ~VoiceprintMaterialSource() = default;
 

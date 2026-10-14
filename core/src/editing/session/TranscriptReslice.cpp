@@ -1,7 +1,7 @@
 #include "tanara/editing/session/TranscriptReslice.h"
 #include "tanara/library/MeetingLayout.h"
 
-#include "tanara/processing/analysis/UtteranceEmbeddings.h"
+#include "tanara/library/store/UtteranceEmbeddingCache.h"
 #include "tanara/library/store/MeetingRepository.h"
 #include "tanara/library/store/PeopleStore.h"
 #include "tanara/processing/stt/SonioxTiming.h"
@@ -256,7 +256,7 @@ Plan plan(const QString& folder)
         p.summaryRefs = r.refs;
         p.summaryRenamed = r.renamed;
     }
-    p.embeddingsPresent = QFile::exists(processing::UtteranceEmbeddingCache::filePath(folder));
+    p.embeddingsPresent = QFile::exists(library::UtteranceEmbeddingCache::filePath(folder));
     p.verdict = Verdict::Reslice;
     return p;
 }
@@ -326,9 +326,9 @@ ApplyResult apply(const QString& folder, const Plan& p)
     }
 
     // 6) the utterance-embedding cache is tied to the transcript fingerprint, so it is deleted.
-    if (QFile::exists(processing::UtteranceEmbeddingCache::filePath(folder))) {
-        processing::UtteranceEmbeddingCache::remove(folder);
-        res.embeddingsRemoved = !QFile::exists(processing::UtteranceEmbeddingCache::filePath(folder));
+    if (QFile::exists(library::UtteranceEmbeddingCache::filePath(folder))) {
+        library::UtteranceEmbeddingCache::remove(folder);
+        res.embeddingsRemoved = !QFile::exists(library::UtteranceEmbeddingCache::filePath(folder));
     }
 
     // 7) transcript.md (timestamps) with the resolved names, if there was one.

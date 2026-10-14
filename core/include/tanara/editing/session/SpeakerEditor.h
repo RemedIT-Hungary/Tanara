@@ -1,23 +1,28 @@
 #pragma once
 //
-// SpeakerEditor: the speaker-editor session of ONE open meeting (backend of the transcript
-// editor). UI-independent QObject: a resolved read model (utterances + speakers),
-// operations (each EXACTLY one undo step, persisted immediately), undo/redo,
-// voice-based uncertainty + a "similar lines" suggestion, a manual voiceprint, and the
-// summary's stale flag.
+// SpeakerEditor: TRANSITIONAL FACADE over the split speaker editor (cleanup P13). The same public
+// interface as before the split, so the GUI / CLI / PeopleService callers compile unchanged; every call
+// is delegated to
+//  - SpeakerEditSession (editing/session/SpeakerEditSession.h): read model, line-level operations, undo/redo
+//    (SpeakerUndoStack), suggestions, "To review" analysis, manual voiceprint, summary staleness; the
+//    persistence goes through library::TranscriptRepository;
+//  - RecheckService (editing/recheck/RecheckService.h): background line embeddings (through the
+//    voice-embedding port), the recheck from the confirmed lines and the pairwise review.
+// The facade also installs the two defaults that still come from the processing module: the track-activity
+// cache reader and the voice models' display names.
+// TODO(P15): remove facade -- rewire the callers to SpeakerEditSession / RecheckService and let the
+// composition root (app::Services) install the defaults above.
 //
-// Principles:
-//  - Reassignment applies to a whole utterance; there is no cutting within a line.
-//  - The raw diarization is untouched; corrections live in an overlay (transcript.speakers.json).
-//  - Manual reassignment does NOT train a voiceprint; that happens only on an explicit action.
-//  - A speaker change marks the summary stale; it never regenerates by itself.
-//
+// The member comments below are kept for the callers; the authoritative ones are on SpeakerEditSession /
+// RecheckService.
 // An instance is normally provided by AppController::speakerEditor(meetingId); tests can
 // also create one directly with explicit stores.
+#include "tanara/editing/recheck/RecheckService.h"
 #include "tanara/editing/review/CandidateRanker.h"
 #include "tanara/editing/review/ReviewGroups.h"
+#include "tanara/editing/session/SpeakerEditSession.h"
 #include "tanara/editing/session/SpeakerEditTypes.h"
-#include "tanara/processing/analysis/UtteranceEmbeddings.h"
+#include "tanara/providers/voice/IUtteranceEmbedder.h"
 
 #include <QObject>
 #include <QtNumeric>
@@ -32,7 +37,7 @@ namespace tanara::library { class VoiceprintStore; }
 
 namespace tanara::editing {
 
-
+// TODO(P15): remove facade
 class SpeakerEditor : public QObject {
     Q_OBJECT
 public:
@@ -48,7 +53,7 @@ public:
     void setSelfPerson(const SelfPerson& self);
     // Factory of the utterance embedder. Without it there is no uncertainty / suggestion /
     // manual voiceprint; everything else works (graceful degradation without a model or audio).
-    void setEmbedderFactory(processing::UtteranceEmbedderFactory factory);
+    void setEmbedderFactory(providers::UtteranceEmbedderFactory factory);
     // The speaker models in use (enabled AND available VoiceModelRegistry ids; provided by
     // AppController). Default: {"campplus"}. The analysis works per line with the models'
     // fused vector (fusion::fuse); a line lacking a vector for some model is skipped. A manual
@@ -151,47 +156,10 @@ public:
     // For named speakers the person's stored voiceprints join the reference (SpeakerAnalysis:
     // SpeakerPrior): those made in this meeting as local evidence, earlier ones with a smaller,
     // capped weight (confirmed lines always dominate).
-    // Composition of one speaker's reference (for the feedback text).
-    struct SpeakerReference {
-        QString speakerKey;
-        QString name;               // displayed name
-        int  lines = 0;             // confirmed / corrected lines (for a fallback: all its lines)
-        int  localPrints = 0;       // voiceprints made in this meeting
-        int  priorPrints = 0;       // earlier voiceprints (from other meetings)
-        bool priorOnly = false;     // no local core: only earlier voiceprints
-        bool fallback = false;      // neither core nor voiceprint: all of the speaker's lines
-        bool priorCapped = false;   // the weight of earlier voiceprints was cut by the cap
-        bool usesPrints() const { return localPrints + priorPrints > 0; }
-    };
-    // "Reference: Alice 3 lines + 1 voiceprint from here + 2 earlier voiceprints, Bob 5 lines": only
-    // speakers with a core / voiceprints; empty if no reference used a voiceprint (then there is
-    // nothing new compared to the usual).
+    using SpeakerReference = editing::SpeakerReference;
+    using SimilarVoices = editing::SimilarVoices;
+    using RecheckResult = RecheckService::RecheckResult;
     static QString referenceSummary(const QVector<SpeakerReference>& refs);
-    // Two speakers with very similar voices (cosine of their confirmed cores >= ranking::kSimilarWarn);
-    // the same value shown by the "Why them?" "Warning:" line (ranking::similarityWarnings).
-    struct SimilarVoices {
-        QString keyA, nameA;
-        QString keyB, nameB;
-        double  similarity = 0.0;
-    };
-    struct RecheckResult {
-        int flagged = 0;                    // this many lines flagged doubtful
-        int speakersWithConfirmedCore = 0;  // for this many speakers a centroid was built from their locked lines
-        int confirmedLines = 0;             // this many locked lines formed those cores
-        bool ran = false;                   // whether it ran (whether canRecheck held)
-        QVector<SpeakerReference> references;   // per-speaker reference (those with a core / voiceprints)
-        // For feedback: what the recheck relied on.
-        int localPrints = 0;                // stored samples in the reference: from this meeting
-        int priorPrints = 0;                //   ... and earlier ones (from other meetings)
-        QStringList models;                 // display names of the voice models in use (alphabetical by id)
-        QVector<SimilarVoices> similar;     // speaker pairs with very similar voices (descending similarity)
-        int storedPrints() const { return localPrints + priorPrints; }
-        QString referenceSummary() const { return SpeakerEditor::referenceSummary(references); }
-        // "Based on: 23 confirmed lines, 5 stored samples (2 from this meeting), model: CAM++."
-        QString basisSummary() const { return SpeakerEditor::recheckBasisSummary(*this); }
-        // "Warning: Gabor White and Arpad Varga sound very similar (0.92) ..."; empty if there is no such pair.
-        QString similarityNote() const { return SpeakerEditor::similarVoicesNote(similar); }
-    };
     static QString recheckBasisSummary(const RecheckResult& r);
     static QString similarVoicesNote(const QVector<SimilarVoices>& similar);
     RecheckResult recheckFromConfirmed();
@@ -209,19 +177,7 @@ public:
     // other speaker; same persistence as the recheck (a correction / "Fine as is" clears it). It
     // replaces the earlier recheck flags of lines on A and B; other speakers' are untouched. One
     // undo step (if anything changed).
-    struct PairRecheckResult {
-        int    flagged = 0;
-        int    refLinesA = 0;
-        int    refLinesB = 0;
-        bool   fallbackA = false;
-        bool   fallbackB = false;
-        double centroidSimilarity = qQNaN();    // cosine of the two references' voices
-        SpeakerReference refA;                  // composition of the two references
-        SpeakerReference refB;
-        bool   ran = false;
-        QString blocker;                        // if it did not run: why (a user-facing sentence)
-        QString referenceSummary() const { return SpeakerEditor::referenceSummary({refA, refB}); }
-    };
+    using PairRecheckResult = RecheckService::PairRecheckResult;
     PairRecheckResult recheckPair(const QString& speakerKeyA, const QString& speakerKeyB);
     // If it cannot run now: why; otherwise empty.
     QString pairRecheckBlocker(const QString& speakerKeyA, const QString& speakerKeyB) const;
@@ -280,11 +236,11 @@ public:
     // Source of the track activity (called on a background thread!). Default: only the tracks.activity.bin
     // cache (with both a mic and a loopback track). AppController installs the computing source
     // (processing::loadOrComputeSideActivity: cache, else decode via the media tool and save).
-    using ActivityProvider = std::function<MeetingActivity(const Meeting&)>;
+    using ActivityProvider = SpeakerEditSession::ActivityProvider;
     void setActivityProvider(ActivityProvider provider);
     // The person's MANUAL tags (TagService::tagsOfPerson), only for the quick "+ #Tag" offer;
     // the candidate ranking's evidence comes from setTagEvidenceProvider. Called on the main thread.
-    using PersonTagsFn = std::function<QStringList(const PersonId& person)>;
+    using PersonTagsFn = SpeakerEditSession::PersonTagsFn;
     void setPersonTagsProvider(PersonTagsFn fn);
     // The meeting's tags (Meeting::tagIds, at load) and a person's tags from the source above
     // (empty if no source), for the quick "+ #Tag" offer.
@@ -329,6 +285,10 @@ public:
     // This writes it out at once if an update is pending (exit, export, test). The destructor
     // calls it too.
     void flushPendingWrites();
+
+    // The parts behind the facade (for callers that already move to them; P15).
+    SpeakerEditSession* session() const;
+    RecheckService* recheck() const;
 
 public slots:
     void undo();
@@ -385,8 +345,8 @@ signals:
     void voiceprintsChanged();
 
 private:
-    struct Private;
-    std::unique_ptr<Private> d;
+    std::unique_ptr<SpeakerEditSession> m_session;
+    std::unique_ptr<RecheckService> m_recheck;
 };
 
 } // namespace tanara::editing

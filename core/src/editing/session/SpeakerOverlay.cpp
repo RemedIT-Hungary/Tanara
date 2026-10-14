@@ -2,11 +2,10 @@
 #include "tanara/library/store/TranscriptRepository.h"
 #include "tanara/library/MeetingLayout.h"
 
-#include "tanara/processing/analysis/UtteranceEmbeddings.h"
+#include "tanara/library/store/UtteranceEmbeddingCache.h"
 #include "tanara/library/summary/SummaryRepository.h"
 
 #include <QCoreApplication>
-#include <QCryptographicHash>
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
@@ -48,7 +47,7 @@ void appendUnique(QStringList& list, const QString& s)
 
 QString overlayPath(const QString& meetingFolder)
 {
-    return library::MeetingLayout::path(meetingFolder, library::MeetingLayout::overlayJson());
+    return library::TranscriptRepository::overlayPath(meetingFolder);
 }
 
 QString segmentsPath(const QString& meetingFolder)
@@ -63,197 +62,27 @@ QString mixdownPath(const Meeting& m)
 
 QVector<TranscriptLine> loadTranscriptLines(const QString& meetingFolder)
 {
-    QVector<TranscriptLine> lines;
-    QFile f(segmentsPath(meetingFolder));
-    if (!f.open(QIODevice::ReadOnly)) return lines;
-    const QJsonArray arr = QJsonDocument::fromJson(f.readAll()).array();
-    lines.reserve(arr.size());
-    QHash<QString, int> seen;   // base id -> how many times it occurred
-    for (const QJsonValue& v : arr) {
-        const QJsonObject o = v.toObject();
-        TranscriptLine l;
-        l.startMs  = qint64(o.value(QStringLiteral("startMs")).toDouble());
-        l.endMs    = qint64(o.value(QStringLiteral("endMs")).toDouble());
-        l.rawLabel = o.value(QStringLiteral("speaker")).toString();
-        l.text     = o.value(QStringLiteral("text")).toString();
-        // The id is formed from the start time: stable until the transcript is regenerated, and insensitive to
-        // the file being reordered. The same start time (overlapping speakers) -> a number suffix.
-        const QString base = QStringLiteral("u%1").arg(l.startMs);
-        const int n = ++seen[base];
-        l.id = n == 1 ? base : QStringLiteral("%1-%2").arg(base).arg(n);
-        lines.append(l);
-    }
-    return lines;
+    return library::TranscriptRepository::readLines(meetingFolder);
 }
 
 QString transcriptFingerprint(const QVector<TranscriptLine>& lines)
 {
-    QCryptographicHash h(QCryptographicHash::Sha1);
-    for (const TranscriptLine& l : lines) {
-        h.addData(QByteArray::number(l.startMs));
-        h.addData("|");
-        h.addData(QByteArray::number(l.endMs));
-        h.addData("|");
-        h.addData(l.rawLabel.toUtf8());
-        h.addData("\n");
-    }
-    return QStringLiteral("%1:%2").arg(lines.size())
-        .arg(QString::fromLatin1(h.result().toHex().left(16)));
+    return library::TranscriptRepository::linesFingerprint(lines);
 }
 
 SpeakerOverlay loadOverlay(const QString& meetingFolder)
 {
-    SpeakerOverlay ov;
-    QFile f(overlayPath(meetingFolder));
-    if (!f.open(QIODevice::ReadOnly)) return ov;
-    const QJsonObject root = QJsonDocument::fromJson(f.readAll()).object();
-
-    ov.transcriptFingerprint = root.value(QStringLiteral("transcript")).toString();
-    for (const QJsonValue& v : root.value(QStringLiteral("participants")).toArray()) {
-        const QJsonObject o = v.toObject();
-        OverlayParticipant p;
-        p.key        = o.value(QStringLiteral("key")).toString();
-        p.personId   = PersonId::fromString(o.value(QStringLiteral("personId")).toString());
-        p.label      = o.value(QStringLiteral("label")).toString();
-        p.colorIndex = o.value(QStringLiteral("colorIndex")).toInt();
-        if (!p.key.isEmpty()) ov.participants.append(p);
-    }
-    ov.nextParticipant = qMax(1, root.value(QStringLiteral("nextParticipant")).toInt(1));
-    ov.nextAnonymous   = qMax(1, root.value(QStringLiteral("nextAnonymous")).toInt(1));
-
-    const QJsonObject merged = root.value(QStringLiteral("merged")).toObject();
-    for (auto it = merged.constBegin(); it != merged.constEnd(); ++it)
-        ov.merged.insert(it.key(), it.value().toString());
-    for (const QJsonValue& v : root.value(QStringLiteral("removed")).toArray())
-        ov.removedRaw << v.toString();
-    const QJsonObject tracks = root.value(QStringLiteral("speakerTracks")).toObject();
-    for (auto it = tracks.constBegin(); it != tracks.constEnd(); ++it) {
-        QStringList ids;
-        for (const QJsonValue& v : it.value().toArray())
-            if (!v.toString().isEmpty()) ids << v.toString();
-        if (!ids.isEmpty()) ov.speakerTracks.insert(it.key(), ids);
-    }
-
-    const QJsonObject utts = root.value(QStringLiteral("utterances")).toObject();
-    for (auto it = utts.constBegin(); it != utts.constEnd(); ++it) {
-        const QJsonObject o = it.value().toObject();
-        OverlayUtterance u;
-        u.speaker   = o.value(QStringLiteral("speaker")).toString();
-        u.corrected = o.value(QStringLiteral("corrected")).toBool();
-        u.confirmed = o.value(QStringLiteral("confirmed")).toBool();
-        if (o.contains(QStringLiteral("noisy"))) u.noisy = o.value(QStringLiteral("noisy")).toBool();
-        u.rechecked = o.value(QStringLiteral("rechecked")).toBool();
-        u.recheckHint = o.value(QStringLiteral("recheckHint")).toString();
-        u.ignored = o.value(QStringLiteral("ignored")).toBool();
-        if (!u.isDefault()) ov.utterances.insert(it.key(), u);
-    }
-
-    const QJsonObject ident = root.value(QStringLiteral("identified")).toObject();
-    for (auto it = ident.constBegin(); it != ident.constEnd(); ++it) {
-        const QJsonObject o = it.value().toObject();
-        OverlayIdentification id;
-        id.personId = PersonId::fromString(o.value(QStringLiteral("personId")).toString());
-        if (id.personId.isNull()) continue;
-        id.score  = o.value(QStringLiteral("score")).toDouble(-1.0);
-        ov.identified.insert(it.key(), id);
-    }
-
-    const QJsonObject sum = root.value(QStringLiteral("summary")).toObject();
-    for (const QJsonValue& v : sum.value(QStringLiteral("changedSpeakers")).toArray())
-        ov.changedSinceSummary << v.toString();
-    ov.summaryEpoch = sum.value(QStringLiteral("epoch")).toInt();
-    return ov;
+    return library::TranscriptRepository::readOverlay(meetingFolder);
 }
 
 SpeakerOverlay loadOverlayFor(const QString& meetingFolder, const QVector<TranscriptLine>& lines)
 {
-    SpeakerOverlay ov = loadOverlay(meetingFolder);
-    const QString fp = transcriptFingerprint(lines);
-    if (!ov.transcriptFingerprint.isEmpty() && ov.transcriptFingerprint != fp) {
-        // Corrections belonging to another (earlier) transcript: the utterance boundaries are no longer the same,
-        // so they cannot be applied. Identification / the stale flag are transcript-independent.
-        ov.participants.clear();
-        ov.merged.clear();
-        ov.removedRaw.clear();
-        ov.utterances.clear();
-        ov.speakerTracks.clear();
-        ov.nextParticipant = 1;
-        ov.nextAnonymous = 1;
-    }
-    ov.transcriptFingerprint = fp;
-    return ov;
+    return library::TranscriptRepository::readOverlayFor(meetingFolder, lines);
 }
 
 bool saveOverlay(const QString& meetingFolder, const SpeakerOverlay& ov)
 {
-    const QString path = overlayPath(meetingFolder);
-    if (ov.isEmpty()) {
-        // Nothing to store: we do not leave an empty file in the meeting folder.
-        return !QFile::exists(path) || QFile::remove(path);
-    }
-
-    QJsonObject root;
-    root[QStringLiteral("version")] = 3;   // 3: people by PersonId
-    root[QStringLiteral("transcript")] = ov.transcriptFingerprint;
-
-    QJsonArray parts;
-    for (const OverlayParticipant& p : ov.participants) {
-        QJsonObject o;
-        o[QStringLiteral("key")] = p.key;
-        if (!p.personId.isNull()) o[QStringLiteral("personId")] = p.personId.toString();
-        o[QStringLiteral("label")] = p.label;
-        o[QStringLiteral("colorIndex")] = p.colorIndex;
-        parts.append(o);
-    }
-    root[QStringLiteral("participants")] = parts;
-    root[QStringLiteral("nextParticipant")] = ov.nextParticipant;
-    root[QStringLiteral("nextAnonymous")] = ov.nextAnonymous;
-
-    QJsonObject merged;
-    for (auto it = ov.merged.constBegin(); it != ov.merged.constEnd(); ++it)
-        merged[it.key()] = it.value();
-    root[QStringLiteral("merged")] = merged;
-    root[QStringLiteral("removed")] = QJsonArray::fromStringList(ov.removedRaw);
-    if (!ov.speakerTracks.isEmpty()) {
-        QJsonObject tracks;
-        for (auto it = ov.speakerTracks.constBegin(); it != ov.speakerTracks.constEnd(); ++it)
-            if (!it.value().isEmpty()) tracks[it.key()] = QJsonArray::fromStringList(it.value());
-        root[QStringLiteral("speakerTracks")] = tracks;
-    }
-
-    QJsonObject utts;
-    for (auto it = ov.utterances.constBegin(); it != ov.utterances.constEnd(); ++it) {
-        if (it.value().isDefault()) continue;
-        QJsonObject o;
-        if (!it.value().speaker.isEmpty()) o[QStringLiteral("speaker")] = it.value().speaker;
-        if (it.value().corrected) o[QStringLiteral("corrected")] = true;
-        if (it.value().confirmed) o[QStringLiteral("confirmed")] = true;
-        if (it.value().noisy.has_value()) o[QStringLiteral("noisy")] = *it.value().noisy;
-        if (it.value().ignored) o[QStringLiteral("ignored")] = true;
-        if (it.value().rechecked) {
-            o[QStringLiteral("rechecked")] = true;
-            if (!it.value().recheckHint.isEmpty())
-                o[QStringLiteral("recheckHint")] = it.value().recheckHint;
-        }
-        utts[it.key()] = o;
-    }
-    root[QStringLiteral("utterances")] = utts;
-
-    QJsonObject ident;
-    for (auto it = ov.identified.constBegin(); it != ov.identified.constEnd(); ++it) {
-        QJsonObject o;
-        o[QStringLiteral("personId")] = it.value().personId.toString();
-        o[QStringLiteral("score")] = it.value().score;
-        ident[it.key()] = o;
-    }
-    root[QStringLiteral("identified")] = ident;
-
-    QJsonObject sum;
-    sum[QStringLiteral("changedSpeakers")] = QJsonArray::fromStringList(ov.changedSinceSummary);
-    sum[QStringLiteral("epoch")] = ov.summaryEpoch;
-    root[QStringLiteral("summary")] = sum;
-
-    return writeFile(path, QJsonDocument(root).toJson(QJsonDocument::Indented));
+    return library::TranscriptRepository::writeOverlay(meetingFolder, ov);
 }
 
 // ---- resolution ---------------------------------------------------------------
@@ -571,7 +400,7 @@ QString backupTranscript(const Meeting& m, const PersonNames& names)
 
 void discardForNewTranscript(const QString& meetingFolder)
 {
-    processing::UtteranceEmbeddingCache::remove(meetingFolder);
+    library::UtteranceEmbeddingCache::remove(meetingFolder);
     if (!QFile::exists(overlayPath(meetingFolder))) return;
     SpeakerOverlay ov = loadOverlay(meetingFolder);
     ov.participants.clear();

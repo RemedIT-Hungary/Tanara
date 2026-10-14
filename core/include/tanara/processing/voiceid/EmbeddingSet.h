@@ -1,26 +1,12 @@
 #pragma once
 //
-// The fusion of an EmbeddingSet (the per-model embeddings of an audio slice or voiceprint). The type
-// itself is in domain/Voice.h.
+// The fusion of an EmbeddingSet lives in the library (library/store/VoiceFusion.h, next to the voiceprint
+// store), so the editing module can use it too; processing::fusion stays as an alias for the existing callers.
 #include "tanara/domain/Voice.h"
-
-#include <QString>
-#include <QStringList>
-#include <QVector>
+#include "tanara/library/store/VoiceFusion.h"
 
 namespace tanara::processing {
 
-namespace fusion {
+namespace fusion = library::fusion;
 
-// One common vector: the L2-normalized vector of every requested model concatenated (in the
-// alphabetical order of modelIds), each multiplied by 1/sqrt(k). So the cosine of two fused vectors =
-// the MEAN of the per-model cosines. Empty if any requested model lacks a (non-empty) vector, or modelIds is empty.
-QVector<float> fuse(const EmbeddingSet& set, const QStringList& modelIds);
-
-// The mean of the per-model cosines over the COMMON requested models (non-empty on both sides).
-// No common model -> -1. used: how many models took part (optional).
-double averageCosine(const EmbeddingSet& a, const EmbeddingSet& b, const QStringList& modelIds,
-                     int* used = nullptr);
-
-} // namespace fusion
 } // namespace tanara::processing

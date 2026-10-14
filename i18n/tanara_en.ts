@@ -7823,94 +7823,7 @@
     </message>
 </context>
 <context>
-    <name>tanara::editing::SpeakerEditor</name>
-    <message>
-        <source>Új beszélő %1</source>
-        <translation>New speaker %1</translation>
-    </message>
-    <message numerus="yes">
-        <source>%1: %n sor ide: %2</source>
-        <translation>
-            <numerusform>%1: %n line to %2</numerusform>
-            <numerusform>%1: %n lines to %2</numerusform>
-        </translation>
-    </message>
-    <message numerus="yes">
-        <source>%n sor áthelyezése ide: %1 (nem hangminta)</source>
-        <translation>
-            <numerusform>Move %n line to %1 (not a voice sample)</numerusform>
-            <numerusform>Move %n lines to %1 (not a voice sample)</numerusform>
-        </translation>
-    </message>
-    <message numerus="yes">
-        <source>%n sor áthelyezése ide: %1</source>
-        <translation>
-            <numerusform>Move %n line to %1</numerusform>
-            <numerusform>Move %n lines to %1</numerusform>
-        </translation>
-    </message>
-    <message>
-        <source>Beszélő cseréje: %1 → %2</source>
-        <translation>Change speaker: %1 → %2</translation>
-    </message>
-    <message>
-        <source>Névtelenre állítás: %1</source>
-        <translation>Make anonymous: %1</translation>
-    </message>
-    <message>
-        <source>Összevonás: %1 → %2</source>
-        <translation>Merge: %1 → %2</translation>
-    </message>
-    <message>
-        <source>Résztvevő hozzáadása: %1</source>
-        <translation>Add participant: %1</translation>
-    </message>
-    <message>
-        <source>Résztvevő eltávolítása: %1</source>
-        <translation>Remove participant: %1</translation>
-    </message>
-    <message numerus="yes">
-        <source>%n sor megerősítése (nem hangminta)</source>
-        <translation>
-            <numerusform>Confirm %n line (not a voice sample)</numerusform>
-            <numerusform>Confirm %n lines (not a voice sample)</numerusform>
-        </translation>
-    </message>
-    <message numerus="yes">
-        <source>%n sor megerősítése</source>
-        <translation>
-            <numerusform>Confirm %n line</numerusform>
-            <numerusform>Confirm %n lines</numerusform>
-        </translation>
-    </message>
-    <message numerus="yes">
-        <source>%n sor: nem hangminta</source>
-        <translation>
-            <numerusform>%n line: not a voice sample</numerusform>
-            <numerusform>%n lines: not a voice sample</numerusform>
-        </translation>
-    </message>
-    <message numerus="yes">
-        <source>%n sor: mintának használható</source>
-        <translation>
-            <numerusform>%n line: usable as a sample</numerusform>
-            <numerusform>%n lines: usable as a sample</numerusform>
-        </translation>
-    </message>
-    <message numerus="yes">
-        <source>%n sor: nem azonosítható</source>
-        <translation>
-            <numerusform>%n line: not identifiable</numerusform>
-            <numerusform>%n lines: not identifiable</numerusform>
-        </translation>
-    </message>
-    <message numerus="yes">
-        <source>%n sor: újra azonosítható</source>
-        <translation>
-            <numerusform>%n line: identifiable again</numerusform>
-            <numerusform>%n lines: identifiable again</numerusform>
-        </translation>
-    </message>
+    <name>tanara::editing::RecheckService</name>
     <message>
         <source>Ennek a megbeszélésnek nincs szerkeszthető átirata.</source>
         <translation>This meeting has no editable transcript.</translation>
@@ -8023,6 +7936,96 @@
     <message>
         <source>Átnézés: %1 és %2</source>
         <translation>Review: %1 and %2</translation>
+    </message>
+</context>
+<context>
+    <name>tanara::editing::SpeakerEditSession</name>
+    <message>
+        <source>Új beszélő %1</source>
+        <translation>New speaker %1</translation>
+    </message>
+    <message numerus="yes">
+        <source>%1: %n sor ide: %2</source>
+        <translation>
+            <numerusform>%1: %n line to %2</numerusform>
+            <numerusform>%1: %n lines to %2</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>%n sor áthelyezése ide: %1 (nem hangminta)</source>
+        <translation>
+            <numerusform>Move %n line to %1 (not a voice sample)</numerusform>
+            <numerusform>Move %n lines to %1 (not a voice sample)</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>%n sor áthelyezése ide: %1</source>
+        <translation>
+            <numerusform>Move %n line to %1</numerusform>
+            <numerusform>Move %n lines to %1</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Beszélő cseréje: %1 → %2</source>
+        <translation>Change speaker: %1 → %2</translation>
+    </message>
+    <message>
+        <source>Névtelenre állítás: %1</source>
+        <translation>Make anonymous: %1</translation>
+    </message>
+    <message>
+        <source>Összevonás: %1 → %2</source>
+        <translation>Merge: %1 → %2</translation>
+    </message>
+    <message>
+        <source>Résztvevő hozzáadása: %1</source>
+        <translation>Add participant: %1</translation>
+    </message>
+    <message>
+        <source>Résztvevő eltávolítása: %1</source>
+        <translation>Remove participant: %1</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n sor megerősítése (nem hangminta)</source>
+        <translation>
+            <numerusform>Confirm %n line (not a voice sample)</numerusform>
+            <numerusform>Confirm %n lines (not a voice sample)</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>%n sor megerősítése</source>
+        <translation>
+            <numerusform>Confirm %n line</numerusform>
+            <numerusform>Confirm %n lines</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>%n sor: nem hangminta</source>
+        <translation>
+            <numerusform>%n line: not a voice sample</numerusform>
+            <numerusform>%n lines: not a voice sample</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>%n sor: mintának használható</source>
+        <translation>
+            <numerusform>%n line: usable as a sample</numerusform>
+            <numerusform>%n lines: usable as a sample</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>%n sor: nem azonosítható</source>
+        <translation>
+            <numerusform>%n line: not identifiable</numerusform>
+            <numerusform>%n lines: not identifiable</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>%n sor: újra azonosítható</source>
+        <translation>
+            <numerusform>%n line: identifiable again</numerusform>
+            <numerusform>%n lines: identifiable again</numerusform>
+        </translation>
     </message>
     <message numerus="yes">
         <source>Javaslat elfogadása: %n sor ide: %1</source>

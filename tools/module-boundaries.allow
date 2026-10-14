@@ -22,11 +22,8 @@ core/src/library/tags/MeetingProfiles.cpp -> tanara/editing/session/SpeakerOverl
 
 # ---- P13 (10 lines) ----
 core/include/tanara/editing/review/SideAnalysis.h -> tanara/processing/analysis/TrackActivity.h   # editing -> processing (TrackActivity/UtteranceEmbeddings) -> P13
-core/include/tanara/editing/session/SpeakerEditor.h -> tanara/processing/analysis/UtteranceEmbeddings.h   # editing -> processing (TrackActivity/UtteranceEmbeddings) -> P13
 core/src/editing/session/SpeakerEditor.cpp -> tanara/processing/analysis/TrackActivity.h   # editing -> processing (TrackActivity/UtteranceEmbeddings/VoiceModelRegistry) -> P13
 core/src/editing/session/SpeakerEditor.cpp -> tanara/processing/voiceid/VoiceModelRegistry.h   # editing -> processing (TrackActivity/UtteranceEmbeddings/VoiceModelRegistry) -> P13
-core/src/editing/session/SpeakerOverlay.cpp -> tanara/processing/analysis/UtteranceEmbeddings.h   # editing -> processing (TrackActivity/UtteranceEmbeddings/VoiceModelRegistry) -> P13
-core/src/editing/session/TranscriptReslice.cpp -> tanara/processing/analysis/UtteranceEmbeddings.h   # editing -> processing (TrackActivity/UtteranceEmbeddings/VoiceModelRegistry) -> P13
 core/src/editing/session/TranscriptReslice.cpp -> tanara/processing/stt/SonioxTiming.h   # editing -> processing (TrackActivity/UtteranceEmbeddings/VoiceModelRegistry) -> P13
 core/src/processing/analysis/ParticipantAnalysis.cpp -> tanara/editing/review/CandidateRanker.h   # K7 (processing ParticipantAnalysis -> editing review algorithms; not a type edge, left after P4) -> P13
 core/src/processing/analysis/ParticipantAnalysis.cpp -> tanara/editing/review/SideAnalysis.h   # K7 (processing ParticipantAnalysis -> editing review algorithms; not a type edge, left after P4) -> P13

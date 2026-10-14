@@ -1,13 +1,15 @@
 #pragma once
 //
-// Per-utterance speaker embedding: the abstract embedder (so unit tests can inject a fake), the
-// factory of the real (VoiceEmbedder / ONNX) implementation, and the per-model cache living in the
-// meeting folder (transcript.embeddings.bin, v2).
+// Per-utterance speaker embedding: the factory of the real (VoiceEmbedder / ONNX) implementation of the
+// utterance-embedder port (providers::IUtteranceEmbedder). The per-model cache of the meeting folder
+// (transcript.embeddings.bin, v2) is library::UtteranceEmbeddingCache.
 //
 // The real implementation decodes the audio ONCE to 16 kHz mono (one media-tool / ffmpeg run) and slices from it:
 // an ffmpeg per utterance would be too slow at 400-1500 lines. Even with several models there is one
 // decode: every model computes from the same PCM.
+#include "tanara/library/store/UtteranceEmbeddingCache.h"
 #include "tanara/media/MediaTool.h"
+#include "tanara/providers/voice/IUtteranceEmbedder.h"
 #include "tanara/processing/voiceid/EmbeddingSet.h"
 #include "tanara/processing/voiceid/VoiceEmbedder.h"
 #include "tanara/processing/voiceid/VoiceModelRegistry.h"
@@ -24,23 +26,12 @@
 
 namespace tanara::processing {
 
-class IUtteranceEmbedder {
-public:
-    virtual ~IUtteranceEmbedder() = default;
-    // Opens the meeting's audio (a one-time decode). false = no model / audio.
-    virtual bool open(const QString& audioPath) = 0;
-    // L2-normalized embedding of the [startMs,endMs] slice with the base model
-    // (VoiceModelRegistry::defaultModelId()). An empty vector = failed.
-    virtual QVector<float> embed(qint64 startMs, qint64 endMs) = 0;
-    // Embedding of the slice with the requested models. The result has the key of every requested model
-    // this embedder knows (an empty vector = failed, do not retry); a missing key = this model is not
-    // available here. Default: only the base model, via embed() (single-model fake embedders keep working unchanged).
-    virtual EmbeddingSet embedAll(qint64 startMs, qint64 endMs, const QStringList& modelIds);
-    virtual QString lastError() const { return QString(); }
-};
-
+// The embedder port and its factory are in providers (providers/voice/IUtteranceEmbedder.h), the cache in
+// the library (library/store/UtteranceEmbeddingCache.h); these aliases keep the existing callers unchanged.
+using IUtteranceEmbedder = providers::IUtteranceEmbedder;
 // Factory: the background thread creates ITS OWN instance with it (the embedder is not shared between threads).
-using UtteranceEmbedderFactory = std::function<std::unique_ptr<IUtteranceEmbedder>()>;
+using UtteranceEmbedderFactory = providers::UtteranceEmbedderFactory;
+using UtteranceEmbeddingCache = library::UtteranceEmbeddingCache;
 
 // A model for the real embedder: id + ONNX file + fbank parameters.
 struct UtteranceModel {
@@ -66,33 +57,5 @@ QVector<UtteranceModel> utteranceModelsFor(const QVector<VoiceModelSpec>& specs,
 // Single-model shorthand: the base model (VoiceModelRegistry::defaultModelId()) from the given file.
 UtteranceEmbedderFactory voiceUtteranceEmbedderFactory(
     const QString& modelPath, media::MediaToolPtr media);
-
-// Model -> (utterance id -> embedding), persisted in the meeting folder (v2). Tied to the
-// transcript's fingerprint: another transcript -> an empty cache. A v1 (single-model) file is
-// dropped at load. An empty vector = tried, failed (do not retry).
-struct UtteranceEmbeddingCache {
-    QString fingerprint;
-    QMap<QString, QHash<QString, QVector<float>>> models;   // modelId -> utteranceId -> vector
-
-    // All vectors of one model (an empty hash if none).
-    QHash<QString, QVector<float>> vectors(const QString& modelId) const { return models.value(modelId); }
-    void set(const QString& modelId, const QString& utteranceId, const QVector<float>& vec)
-    {
-        models[modelId].insert(utteranceId, vec);
-    }
-    // Whether this line has already been tried (even unsuccessfully) with this model.
-    bool has(const QString& modelId, const QString& utteranceId) const;
-    // The line's vectors with the requested models (only the non-empty ones).
-    EmbeddingSet setFor(const QString& utteranceId, const QStringList& modelIds) const;
-    // Of the listed lines, those not yet tried with this model (order kept).
-    QStringList missingFor(const QString& modelId, const QStringList& utteranceIds) const;
-    // There is no entry at all (with any model).
-    bool isEmpty() const;
-
-    static QString filePath(const QString& meetingFolder);   // transcript.embeddings.bin
-    static UtteranceEmbeddingCache load(const QString& meetingFolder, const QString& fingerprint);
-    bool save(const QString& meetingFolder) const;
-    static void remove(const QString& meetingFolder);
-};
 
 } // namespace tanara::processing
