@@ -15,13 +15,16 @@
 // gating); it only provides state and saves the meeting's settings (context,
 // identification switch).
 //
-// Without a controller or with App.demo it shows built-in FICTIONAL sample data; demoState
-// selects the state ("steps" | "ready" | "running" | "uploading" | "failed" |
-// "note": steps with template suggestions and a detected call | "readyNote": can start, with
-// template suggestions and a detected call; the Overview's demo).
+// What it shows comes from the transcription step's facade (tanara::processing::ITranscribeStepFacade)
+// as a snapshot: from QML the App singleton's services (AppContext::services().transcribeStep), from
+// C++ the given services. With App.demo / without a controller that is the FICTIONAL facade of
+// tanara_demo; demoState selects its design state ("steps" | "ready" | "mixing" | "running" |
+// "uploading" | "failed" | "note": steps with template suggestions and a detected call |
+// "readyNote": can start, with template suggestions and a detected call; the Overview's demo).
 //
 #include "MeetingNoteModel.h"
 #include "MeetingTagsModel.h"
+#include "UiServices.h"
 
 #include "tanara/domain/Job.h"
 
@@ -33,9 +36,7 @@
 #include <QVariantMap>
 #include <QtQml/qqmlregistration.h>
 
-namespace tanara {
-namespace app { class AppController; }
-}
+namespace tanara::processing { class ITranscribeStepFacade; struct TranscribeStepSnapshot; }
 
 namespace tanara_qml {
 
@@ -43,8 +44,6 @@ class PreTranscriptViewModel : public QObject {
     Q_OBJECT
     QML_ELEMENT
 
-    // Defaults to the App singleton's controller; injectable in tests.
-    Q_PROPERTY(QObject* controller READ controllerObject WRITE setController NOTIFY controllerChanged)
     Q_PROPERTY(QString meetingId READ meetingId WRITE setMeetingId NOTIFY meetingIdChanged)
     Q_PROPERTY(QString demoState READ demoState WRITE setDemoState NOTIFY demoStateChanged)
     Q_PROPERTY(bool demo READ demo NOTIFY changed)
@@ -94,10 +93,11 @@ class PreTranscriptViewModel : public QObject {
     Q_PROPERTY(QString fixActionPage READ fixActionPage NOTIFY changed)
 
 public:
+    // From QML: follows the App singleton's services (App.controller / App.demo).
     explicit PreTranscriptViewModel(QObject* parent = nullptr);
+    // On the given services (tests, hosts); they must outlive the view model.
+    explicit PreTranscriptViewModel(const UiServices& services, QObject* parent = nullptr);
 
-    QObject* controllerObject() const;
-    void setController(QObject* controller);
     QString meetingId() const { return m_meetingId; }
     void setMeetingId(const QString& id);
     QString demoState() const { return m_demoState; }
@@ -153,7 +153,6 @@ public:
     Q_INVOKABLE void clearError();
 
 signals:
-    void controllerChanged();
     void meetingIdChanged();
     void demoStateChanged();
     void contextNoteChanged();
@@ -165,16 +164,19 @@ signals:
     void changed();
 
 private:
-    tanara::app::AppController* app() const;
-    void connectController();
+    void init();
+    // The facade of the current services and the design state (a fictional facade serves one state).
+    void resolveFacade();
+    void attachFacade(tanara::processing::ITranscribeStepFacade* facade);
+    bool live() const;
     void reload();
-    void loadDemo();
+    void applySnapshot(const tanara::processing::TranscribeStepSnapshot& s);
     void applyJob(const tanara::JobProgress& job);
     void reloadTagSuggestions();
 
-    QPointer<QObject> m_injected;
-    QPointer<tanara::app::AppController> m_connected;
-    QList<QMetaObject::Connection> m_connections;
+    const UiServices* m_services = nullptr;        // given services (null: the App singleton's)
+    const UiServices* m_facadeSet = nullptr;       // the set the facade came from
+    QPointer<tanara::processing::ITranscribeStepFacade> m_facade;
 
     QString m_meetingId;
     QString m_demoState;
@@ -201,7 +203,7 @@ private:
     bool m_cancellable = true;
     bool m_cancelling = false;
     tanara::JobProgress m_job;      // for the ETA (startedAt + estimate)
-    QString m_demoEta;
+    int m_fixedEta = -1;            // a fixed remaining time (design state); -1: from m_job
     QTimer m_etaTimer;
 
     QString m_errorMessage;

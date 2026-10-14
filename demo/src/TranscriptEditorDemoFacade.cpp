@@ -1,12 +1,14 @@
-#include "TranscriptDemoSession.h"
+#include "demo/TranscriptEditorDemoFacade.h"
 
-#include "DemoText.h"
+#include "demo/DemoText.h"
 
 #include "tanara/domain/Types.h"
-#include "tanara/editing/session/SpeakerEditor.h"
+#include "tanara/editing/recheck/RecheckService.h"
+#include "tanara/editing/session/SpeakerEditSession.h"
 #include "tanara/editing/session/SpeakerOverlay.h"
 #include "tanara/processing/analysis/TrackActivity.h"
 #include "tanara/processing/analysis/UtteranceEmbeddings.h"
+#include "tanara/processing/voiceid/VoiceModelRegistry.h"
 #include "tanara/library/store/MeetingRepository.h"
 #include "tanara/library/store/PeopleStore.h"
 #include "tanara/library/store/VoiceprintStore.h"
@@ -22,7 +24,7 @@
 
 using namespace tanara;
 
-namespace tanara_qml {
+namespace tanara_demo {
 
 namespace {
 
@@ -238,7 +240,7 @@ const char* const kLineEn[][2] = {
 // The line's text in the demo language (an unknown line stays unchanged).
 QString lineText(const QString& hu)
 {
-    if (!tanara_qml::demotext::english()) return hu;
+    if (!demotext::english()) return hu;
     static const QHash<QString, QString> map = [] {
         QHash<QString, QString> m;
         for (const auto& p : kLineEn) m.insert(QString::fromUtf8(p[0]), QString::fromUtf8(p[1]));
@@ -593,7 +595,8 @@ void writeJson(const QString& path, const QJsonDocument& doc)
 
 } // namespace
 
-TranscriptDemoSession::TranscriptDemoSession(const QString& variant)
+TranscriptEditorDemoFacade::TranscriptEditorDemoFacade(const QString& variant, QObject* parent)
+    : ITranscriptEditorFacade(parent)
 {
     Scenario sc;
     if (variant == QLatin1String("two")) sc = twoSpeakers();
@@ -669,19 +672,25 @@ TranscriptDemoSession::TranscriptDemoSession(const QString& variant)
     auto idOf = [this](const QString& name) { return m_people->ensure(name); };
     if (sc.v3) m_people->setDefaultSide(idOf(demoName("Fehér Gábor")), QStringLiteral("remote"));
 
-    m_editor = std::make_unique<editing::SpeakerEditor>(m_store.get(), m_people.get(), m_prints.get(), m.id);
+    m_session = std::make_unique<editing::SpeakerEditSession>(m_store.get(), m_people.get(), m_prints.get(), m.id);
+    m_recheck = std::make_unique<editing::RecheckService>(m_session.get());
+    // The recheck's feedback names the voice models as the application does ("CAM++").
+    m_recheck->setModelNameResolver([](const QString& id) {
+        const auto spec = processing::VoiceModelRegistry::spec(id);
+        return spec ? spec->displayName : QString();
+    });
     if (sc.v3) {
         m_selfName = demoName("Kovács Lilla");
         m_selfId = idOf(m_selfName);
         m_people->setSelfId(m_selfId);
-        m_editor->setSelfPerson(SelfPerson{m_selfId, m_selfName});
+        m_session->setSelfPerson(SelfPerson{m_selfId, m_selfName});
         const auto activity = std::make_shared<const MeetingActivity>(demoActivity(sc));
-        m_editor->setActivityProvider([activity](const Meeting&) { return *activity; });
+        m_session->setActivityProvider([activity](const Meeting&) { return *activity; });
         m_personTags->insert(idOf(demoName("Fehér Gábor")), {QStringLiteral("nordvik")});
         m_personTags->insert(idOf(demoName("Varga Árpád")), {QStringLiteral("nordvik")});
         m_personTags->insert(idOf(demoName("Molnár Eszter")), {QStringLiteral("piac")});
         const auto tags = m_personTags;
-        m_editor->setPersonTagsProvider([tags](const PersonId& person) { return tags->value(person); });
+        m_session->setPersonTagsProvider([tags](const PersonId& person) { return tags->value(person); });
         // Tag evidence from fictional history: of the 14 meetings tagged #Nordvik, Gábor was in 11
         // (manual tag too), Árpád in 6 (learned only); Eszter's manual tag is
         // #MarketResearch, she was never at a #Nordvik meeting -> contradicts.
@@ -703,7 +712,7 @@ TranscriptDemoSession::TranscriptDemoSession(const QString& variant)
         snap.names = m_people->names();
         // The manual tags come from the demo's live map (the quick "+ #Tag" writes there), the
         // learned statistics from the fictional history above.
-        m_editor->setTagEvidenceProvider([snap, tags](const PersonId& person, const QStringList& meetingTags,
+        m_session->setTagEvidenceProvider([snap, tags](const PersonId& person, const QStringList& meetingTags,
                                                       const QString& mid) {
             library::PersonTagSnapshot live = snap;
             live.manual = *tags;
@@ -714,7 +723,9 @@ TranscriptDemoSession::TranscriptDemoSession(const QString& variant)
     if (variant != QLatin1String("novoice")) {
         const auto lines = std::make_shared<const QVector<Line>>(sc.lines);
         const bool noisy = sc.v3;
-        m_editor->setEmbedderFactory([lines, dim, noisy] { return std::make_unique<DemoEmbedder>(lines, dim, noisy); });
+        const auto factory = [lines, dim, noisy] { return std::make_unique<DemoEmbedder>(lines, dim, noisy); };
+        m_session->setEmbedderFactory(factory);
+        m_recheck->setEmbedderFactory(factory);
     }
     m_v3 = sc.v3;
     for (const Line& l : std::as_const(sc.lines)) {
@@ -723,12 +734,12 @@ TranscriptDemoSession::TranscriptDemoSession(const QString& variant)
         m_lineDur << l.durMs;
     }
     if (sc.transcript && sc.seedLine >= 0) {
-        m_seedId = m_editor->utteranceAt(sc.seedLine).id;
+        m_seedId = m_session->utteranceAt(sc.seedLine).id;
         m_seedTarget = sc.cast[sc.seedTarget].raw;
     }
 }
 
-bool TranscriptDemoSession::addPersonTag(const PersonId& person, const QString& tagId)
+bool TranscriptEditorDemoFacade::addPersonTag(const PersonId& person, const QString& tagId)
 {
     if (person.isNull() || tagId.isEmpty() || person == m_selfId) return false;
     QStringList& tags = (*m_personTags)[person];
@@ -736,16 +747,36 @@ bool TranscriptDemoSession::addPersonTag(const PersonId& person, const QString& 
     return true;
 }
 
-TranscriptDemoSession::~TranscriptDemoSession()
+TranscriptEditorDemoFacade::~TranscriptEditorDemoFacade()
 {
-    m_editor.reset();   // waiting for the background thread before the stores go away
+    // Waiting for the background thread before the stores go away; the service works on the session.
+    m_recheck.reset();
+    m_session.reset();
 }
 
-bool TranscriptDemoSession::stageV3(const QString& state)
+editing::ITranscriptEditorFacade::Session TranscriptEditorDemoFacade::open(const QString&)
 {
-    if (!m_v3 || !m_editor || m_editor->utteranceCount() != m_lineSpeaker.size()) return false;
+    Session s;
+    s.session = m_session.get();
+    s.recheck = m_recheck.get();
+    return s;
+}
+
+QVector<library::PersonTagQuestion> TranscriptEditorDemoFacade::newPersonTagQuestions(const QString&,
+                                                                                     const PersonId& person,
+                                                                                     const QString& name)
+{
+    if (!m_tagQuestion) return {};
+    return {library::PersonTagQuestion{QStringLiteral("nordvik"), QStringLiteral("Nordvik"), {person},
+                                       {name.trimmed()}, true}};
+}
+
+bool TranscriptEditorDemoFacade::stage(const QString& state)
+{
+    m_tagQuestion = state == QLatin1String("newPersonTag");
+    if (!m_v3 || !m_session || m_session->utteranceCount() != m_lineSpeaker.size()) return false;
     constexpr int kScript = 9;      // number of rows at the script's start (new-person flow)
-    auto id = [this](int i) { return m_editor->utteranceAt(i).id; };
+    auto id = [this](int i) { return m_session->utteranceAt(i).id; };
     // Confirmed core: the named speakers' first 4 clean, own-voice rows + the first row of the new-person flow.
     QStringList confirm{id(0)};
     QHash<int, int> per;
@@ -765,23 +796,23 @@ bool TranscriptDemoSession::stageV3(const QString& state)
             ++added;
         }
     }
-    m_editor->confirmUtterances(confirm);
-    m_editor->setUtterancesNoisy({id(4)}, true);
+    m_session->confirmUtterances(confirm);
+    m_session->setUtterancesNoisy({id(4)}, true);
     // "fixed": Eszter's voice under Árpád's name -> moved to Eszter by hand.
-    if (state == QLatin1String("markers")) m_editor->moveUtterances({id(3)}, demoRaw(QStringLiteral("Beszélő 4")));
+    if (state == QLatin1String("markers")) m_session->moveUtterances({id(3)}, demoRaw(QStringLiteral("Beszélő 4")));
     if (state == QLatin1String("speakerWhy")) {
         // Gábor speaks on two tracks too (manual assignment, several tracks); Árpád has no #Nordvik
         // yet (the quick "+ #Nordvik" shows on the "NOT them?" candidate).
-        for (const editing::EditorSpeaker& sp : m_editor->speakers())
+        for (const editing::EditorSpeaker& sp : m_session->speakers())
             if (sp.personId == m_people->idForName(demoName("Fehér Gábor")))
-                m_editor->setTrackAssignment(sp.key, {QStringLiteral("mic"), QStringLiteral("loopback")});
+                m_session->setTrackAssignment(sp.key, {QStringLiteral("mic"), QStringLiteral("loopback")});
         m_personTags->remove(m_people->idForName(demoName("Varga Árpád")));
-        m_editor->notifyPersonTagsChanged();
+        m_session->notifyPersonTagsChanged();
     }
     return true;
 }
 
-QVector<editing::PersonInfo> TranscriptDemoSession::people() const
+QVector<editing::PersonInfo> TranscriptEditorDemoFacade::people() const
 {
     // Fictional name list for the pickers; the meeting's people with their real voiceprint state.
     struct P { const char* name; bool vp; int meetings; };
@@ -821,4 +852,4 @@ QVector<editing::PersonInfo> TranscriptDemoSession::people() const
     return out;
 }
 
-} // namespace tanara_qml
+} // namespace tanara_demo

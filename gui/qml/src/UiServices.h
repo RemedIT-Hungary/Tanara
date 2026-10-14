@@ -21,6 +21,8 @@ namespace tanara::library { class IOverviewFacade; }
 namespace tanara::library { class IPeopleFacade; class TagBackend; }
 namespace tanara::editing { class IParticipantsFacade; }
 namespace tanara::processing { class ISummaryFacade; }
+namespace tanara::editing { class ITranscriptEditorFacade; }
+namespace tanara::processing { class ITranscribeStepFacade; }
 
 namespace tanara_qml {
 
@@ -53,6 +55,13 @@ struct UiServices {
     // The Summary tab's facade. A factory: the demo facade is a fixture of the asking view model's
     // demoState (it lives under `parent`); the real facade is shared (one per controller).
     std::function<tanara::processing::ISummaryFacade*(const QString& scenario, QObject* parent)> summary;
+    // The Transcript tab (editor sessions, the pickers' people, the tag side). A factory: the demo
+    // facade builds its own fictional meeting of the given variant (it lives under `parent`); the
+    // real one is shared.
+    std::function<tanara::editing::ITranscriptEditorFacade*(const QString& variant, QObject* parent)> transcriptEditor;
+    // The pre-transcript view (the transcription step, its run and error). A factory: the demo facade
+    // serves one design state (its scenario; it lives under `parent`); the real one is shared.
+    std::function<tanara::processing::ITranscribeStepFacade*(const QString& scenario, QObject* parent)> transcribeStep;
 };
 
 } // namespace tanara_qml

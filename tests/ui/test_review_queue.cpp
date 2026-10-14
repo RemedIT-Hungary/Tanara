@@ -18,7 +18,7 @@ namespace {
 bool waitIdle(const TranscriptEditorViewModel& vm)
 {
     return QTest::qWaitFor([&] {
-        return !vm.embeddingRunning() && vm.editor() && vm.editor()->embeddingsComplete() && !vm.reviewRunning();
+        return !vm.embeddingRunning() && vm.session() && vm.recheck()->embeddingsComplete() && !vm.reviewRunning();
     }, 15000);
 }
 

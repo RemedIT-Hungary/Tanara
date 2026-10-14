@@ -122,8 +122,7 @@ private slots:
         setNote(sb, other.id, QStringLiteral("Más téma."), base.addDays(8));
         setNote(sb, self.id, QString(), base.addDays(14));
 
-        PreTranscriptViewModel vm;
-        vm.setController(sb.app.get());
+        PreTranscriptViewModel vm(tanara_qml::AppContext::instance()->servicesFor(sb.app.get()));
         vm.setMeetingId(self.id);
         MeetingNoteModel* note = vm.note();
         QVariantList s = note->suggestions();
@@ -167,8 +166,7 @@ private slots:
         m.contextNote = QStringLiteral("Automatikusan észlelt hívás: Microsoft Teams");
         sb.app->store()->saveMeeting(m);
 
-        PreTranscriptViewModel vm;
-        vm.setController(sb.app.get());
+        PreTranscriptViewModel vm(tanara_qml::AppContext::instance()->servicesFor(sb.app.get()));
         vm.setMeetingId(m.id);
         QVERIFY(vm.contextNote().isEmpty());
         QCOMPARE(vm.note()->detectedCallApp(), QStringLiteral("Microsoft Teams"));

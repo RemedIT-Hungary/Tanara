@@ -10,7 +10,6 @@
 #include "ReviewQueueModel.h"
 #include "TranscriptEditorViewModel.h"
 #include "TranscriptListModel.h"
-#include "tanara/editing/session/SpeakerEditor.h"
 #include "tanara/library/store/detail/MeetingJson.h"
 #include "tanara/library/store/ParticipantJson.h"
 
@@ -439,13 +438,13 @@ private slots:
         m_tab->forceActiveFocus();
 
         // Yes: one step.
-        const int undoBefore = int(m_vm->editor()->undoSerials().size());
+        const int undoBefore = int(m_vm->session()->undoSerials().size());
         key(Qt::Key_I);
         for (const QString& id : ahead) {
             QCOMPARE(utt(id).speakerKey, to);
             QVERIFY(!utt(id).noisy);
         }
-        QCOMPARE(int(m_vm->editor()->undoSerials().size()), undoBefore + 1);
+        QCOMPARE(int(m_vm->session()->undoSerials().size()), undoBefore + 1);
         QVERIFY(m_vm->lastDecision().value(QStringLiteral("text")).toString().startsWith(QStringLiteral("Mind ")));
         QTRY_VERIFY(!visual("reviewFocusOffer"));
         QCOMPARE(cardY(), y);

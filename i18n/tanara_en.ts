@@ -9828,6 +9828,65 @@
     </message>
 </context>
 <context>
+    <name>tanara_demo::TranscribeStepDemoFacade</name>
+    <message>
+        <source>%1 · saját kulcs</source>
+        <translation>%1 · own key</translation>
+    </message>
+    <message>
+        <source>Lekeverés</source>
+        <translation>Mixdown</translation>
+    </message>
+    <message>
+        <source>Feltöltés</source>
+        <translation>Upload</translation>
+    </message>
+    <message>
+        <source>%1 perc, %2 sáv</source>
+        <translation>%1 min, %2 tracks</translation>
+    </message>
+    <message>
+        <source>Átírás</source>
+        <translation>Transcription</translation>
+    </message>
+    <message>
+        <source>Beszélők szétválasztása</source>
+        <translation>Speaker separation</translation>
+    </message>
+    <message>
+        <source>Résztvevők azonosítása</source>
+        <translation>Identifying participants</translation>
+    </message>
+    <message>
+        <source>A szolgáltató nem fogadta el az API-kulcsot. Ellenőrizd vagy cseréld a kulcsot a Beállításokban.</source>
+        <translation>The provider rejected the API key. Check or replace the key in Settings.</translation>
+    </message>
+    <message>
+        <source>szept. 30. 16:42</source>
+        <translation>Sep 30, 16:42</translation>
+    </message>
+    <message>
+        <source>Kulcs módosítása</source>
+        <translation>Change key</translation>
+    </message>
+    <message>
+        <source>Nincs beállítva átíró szolgáltató</source>
+        <translation>No transcription provider is set up</translation>
+    </message>
+    <message>
+        <source>Hiányzik: API-kulcs (Soniox). Add meg a saját szolgáltatód adatait a Beállításokban.</source>
+        <translation>Missing: API key (Soniox). Enter your own provider details in Settings.</translation>
+    </message>
+    <message>
+        <source>Szolgáltató beállítása</source>
+        <translation>Set up provider</translation>
+    </message>
+    <message>
+        <source>A szolgáltató beállítása után indítható.</source>
+        <translation>Can be started once a provider is set up.</translation>
+    </message>
+</context>
+<context>
     <name>tanara_gui::QmlShellBridge</name>
     <message>
         <source>Hangfájl kiválasztása</source>
@@ -11045,10 +11104,6 @@
 <context>
     <name>tanara_qml::PreTranscriptViewModel</name>
     <message>
-        <source>MMM d. HH:mm</source>
-        <translation>MMM d, HH:mm</translation>
-    </message>
-    <message>
         <source>hasonló cím: „%1”</source>
         <translation>similar title: &quot;%1&quot;</translation>
     </message>
@@ -11071,62 +11126,6 @@
     <message>
         <source>Átírás folyamatban</source>
         <translation>Transcription in progress</translation>
-    </message>
-    <message>
-        <source>%1 · saját kulcs</source>
-        <translation>%1 · own key</translation>
-    </message>
-    <message>
-        <source>Lekeverés</source>
-        <translation>Mixdown</translation>
-    </message>
-    <message>
-        <source>Feltöltés</source>
-        <translation>Upload</translation>
-    </message>
-    <message>
-        <source>%1 perc, %2 sáv</source>
-        <translation>%1 min, %2 tracks</translation>
-    </message>
-    <message>
-        <source>Átírás</source>
-        <translation>Transcription</translation>
-    </message>
-    <message>
-        <source>Beszélők szétválasztása</source>
-        <translation>Speaker separation</translation>
-    </message>
-    <message>
-        <source>Résztvevők azonosítása</source>
-        <translation>Identifying participants</translation>
-    </message>
-    <message>
-        <source>A szolgáltató nem fogadta el az API-kulcsot. Ellenőrizd vagy cseréld a kulcsot a Beállításokban.</source>
-        <translation>The provider rejected the API key. Check or replace the key in Settings.</translation>
-    </message>
-    <message>
-        <source>szept. 30. 16:42</source>
-        <translation>Sep 30, 16:42</translation>
-    </message>
-    <message>
-        <source>Kulcs módosítása</source>
-        <translation>Change key</translation>
-    </message>
-    <message>
-        <source>Nincs beállítva átíró szolgáltató</source>
-        <translation>No transcription provider is set up</translation>
-    </message>
-    <message>
-        <source>Hiányzik: API-kulcs (Soniox). Add meg a saját szolgáltatód adatait a Beállításokban.</source>
-        <translation>Missing: API key (Soniox). Enter your own provider details in Settings.</translation>
-    </message>
-    <message>
-        <source>Szolgáltató beállítása</source>
-        <translation>Set up provider</translation>
-    </message>
-    <message>
-        <source>A szolgáltató beállítása után indítható.</source>
-        <translation>Can be started once a provider is set up.</translation>
     </message>
     <message>
         <source>Kontextus: „%1”</source>
@@ -12340,6 +12339,13 @@
     <message>
         <source>Második mikrofon</source>
         <translation>Second microphone</translation>
+    </message>
+</context>
+<context>
+    <name>tanara_qml::TranscribeStepServicesFacade</name>
+    <message>
+        <source>MMM d. HH:mm</source>
+        <translation>MMM d, HH:mm</translation>
     </message>
 </context>
 <context>

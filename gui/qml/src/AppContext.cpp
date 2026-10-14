@@ -10,6 +10,8 @@
 #include "ShellMeetingModel.h"
 #include "SummaryServicesFacade.h"
 #include "TrackActivitySource.h"
+#include "TranscribeStepServicesFacade.h"
+#include "TranscriptEditorServicesFacade.h"
 
 #include "demo/ImportDemoFacade.h"
 #include "demo/LibraryDemoFacade.h"
@@ -24,6 +26,8 @@
 #include "demo/PeopleDemoFacade.h"
 #include "demo/TagDemoBackend.h"
 #include "demo/SummaryDemoFacade.h"
+#include "demo/TranscribeStepDemoFacade.h"
+#include "demo/TranscriptEditorDemoFacade.h"
 
 #include "tanara/app/AppController.h"
 #include "tanara/app/Services.h"
@@ -956,6 +960,14 @@ const UiServices& AppContext::demoServices()
         m_demoServices->summary = [](const QString& scenario, QObject* parent) -> tanara::processing::ISummaryFacade* {
             return new tanara_demo::SummaryDemoFacade(scenario, parent);
         };
+        m_demoServices->transcriptEditor = [](const QString& variant,
+                                              QObject* parent) -> tanara::editing::ITranscriptEditorFacade* {
+            return new tanara_demo::TranscriptEditorDemoFacade(variant, parent);
+        };
+        m_demoServices->transcribeStep = [](const QString& scenario,
+                                            QObject* parent) -> tanara::processing::ITranscribeStepFacade* {
+            return new tanara_demo::TranscribeStepDemoFacade(scenario, parent);
+        };
     }
     return *m_demoServices;
 }
@@ -1053,6 +1065,43 @@ const UiServices& AppContext::servicesFor(tanara::app::AppController* c)
             [summary](const QString& id, const QString&) { summary->reportChanged(id); });
     connect(c, &tanara::app::AppController::speakerMapChanged, summary, &SummaryServicesFacade::reportSpeakersChanged);
     set.summary = [summary](const QString&, QObject*) -> tanara::processing::ISummaryFacade* { return summary; };
+    TranscriptEditorServicesFacade::Deps td;
+    td.sessions = &sv->editorSessions();
+    td.store = c->store();
+    td.uiState = c->uiState();
+    td.people = c->people();
+    td.voiceprints = c->voiceprints();
+    td.tags = c->tags();
+    td.settings = c->settings();
+    auto* transcriptEditor = new TranscriptEditorServicesFacade(td, c);
+    connect(events, &ControllerEvents::peopleChanged, transcriptEditor,
+            &tanara::editing::ITranscriptEditorFacade::peopleChanged);
+    connect(events, &ControllerEvents::voiceprintsChanged, transcriptEditor,
+            &tanara::editing::ITranscriptEditorFacade::peopleChanged);
+    set.transcriptEditor = [transcriptEditor](const QString&, QObject*) -> tanara::editing::ITranscriptEditorFacade* {
+        return transcriptEditor;
+    };
+    TranscribeStepServicesFacade::Deps ts;
+    ts.store = c->store();
+    ts.jobs = c->jobs();
+    ts.settings = c->settings();
+    ts.canRun = [c](tanara::providers::WorkflowStep step, const QString& id) { return c->canRun(step, id); };
+    ts.providerLabel = [c](tanara::providers::WorkflowStep step) { return jobsupport::providerLabel(c, step); };
+    ts.identifyAvailable = [c] { return c->voiceIdentificationAvailable(); };
+    ts.identifyAfterTranscription = [c](const QString& id) { return c->identifyAfterTranscription(id); };
+    ts.setIdentifyAfterTranscription = [c](const QString& id, bool on) { c->setIdentifyAfterTranscription(id, on); };
+    ts.regenerateMixdown = [c](const QString& id) { c->regenerateMixdown(id); };
+    ts.noteController = c;
+    auto* transcribeStep = new TranscribeStepServicesFacade(ts, c);
+    connect(c, &tanara::app::AppController::mixdownProgress, transcribeStep,
+            &tanara::processing::ITranscribeStepFacade::mixdownProgress);
+    connect(c, &tanara::app::AppController::mixdownUpdated, transcribeStep,
+            [transcribeStep](const QString& id, bool) { emit transcribeStep->changed(id); });
+    connect(c, &tanara::app::AppController::tracksChanged, transcribeStep,
+            &tanara::processing::ITranscribeStepFacade::changed);
+    set.transcribeStep = [transcribeStep](const QString&, QObject*) -> tanara::processing::ITranscribeStepFacade* {
+        return transcribeStep;
+    };
     connect(c, &QObject::destroyed, this, [this, c] { m_realServices.erase(c); });
     return m_realServices.emplace(c, std::move(set)).first->second;
 }

@@ -25,9 +25,9 @@ import QtQuick.Templates as T
 //    "All N lines of <source>".
 //  - Merging two speakers asks for confirmation with numbers (a single line / selection never asks).
 //
-// For screenshots (fictional sample data, see TranscriptDemoSession):
+// For screenshots (fictional sample data, see demo/TranscriptEditorDemoFacade):
 //   demoVariant: "" | "two" | "many" | "long" | "novoice" | "none"
-//   demoState:   see TranscriptEditorViewModelQueue.cpp and TranscriptDemoSession for the full
+//   demoState:   see TranscriptEditorViewModelDemo.cpp and TranscriptEditorDemoFacade for the full
 //                list of values (rail, playing, selection, suggestion, filter, search,
 //                linePopover, speakerPopover, personPicker, drag, mergeConfirm, voiceprint*,
 //                review*, sweep*, imentWarning, shiftPreview, ignoredRows, sampleFilter, ...)

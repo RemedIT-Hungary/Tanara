@@ -19,7 +19,7 @@ namespace {
 bool waitIdle(const TranscriptEditorViewModel& vm)
 {
     return QTest::qWaitFor([&] {
-        return !vm.embeddingRunning() && vm.editor() && vm.editor()->embeddingsComplete() && !vm.reviewRunning();
+        return !vm.embeddingRunning() && vm.session() && vm.recheck()->embeddingsComplete() && !vm.reviewRunning();
     }, 15000);
 }
 
@@ -277,7 +277,7 @@ private slots:
         QVERIFY(vm.addQuickTag(QStringLiteral("Molnár Eszter"), QStringLiteral("nordvik")));
         QVERIFY(review.count() > 0);
         QVERIFY(vm.quickTagFor(QStringLiteral("Molnár Eszter")).isEmpty());
-        QVERIFY(vm.editor()->personTagIds(vm.editor()->personChoice(QStringLiteral("Molnár Eszter")).id).contains(QStringLiteral("nordvik")));
+        QVERIFY(vm.session()->personTagIds(vm.session()->personChoice(QStringLiteral("Molnár Eszter")).id).contains(QStringLiteral("nordvik")));
         QVERIFY(!vm.addQuickTag(QStringLiteral("Kovács Lilla"), QStringLiteral("nordvik")));
         QVERIFY(settle(vm));
         // The tag evidence already shows the shared tag.
@@ -298,7 +298,7 @@ private slots:
         vm.applyDemoState(QStringLiteral("speakerWhy"));
         QVERIFY(settle(vm));
         const QString gabor = keyOf(vm, QStringLiteral("Fehér Gábor"));
-        QCOMPARE(vm.editor()->trackAssignment(gabor), (QStringList{QStringLiteral("mic"), QStringLiteral("loopback")}));
+        QCOMPARE(vm.session()->trackAssignment(gabor), (QStringList{QStringLiteral("mic"), QStringLiteral("loopback")}));
         const QVariantList tracks = vm.trackOptions(gabor);
         QCOMPARE(tracks.size(), 2);
         QVERIFY(tracks.at(0).toMap().value(QStringLiteral("checked")).toBool());

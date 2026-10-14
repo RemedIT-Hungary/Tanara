@@ -6,9 +6,9 @@
 #include "DemoText.h"
 #include "demo/LibraryDemoData.h"
 #include "OverviewViewModel.h"
-#include "TranscriptDemoSession.h"
+#include "demo/TranscriptEditorDemoFacade.h"
 
-#include "tanara/editing/session/SpeakerEditor.h"
+#include "tanara/editing/session/SpeakerEditSession.h"
 
 #include <QRegularExpression>
 #include <QtTest>
@@ -30,10 +30,10 @@ struct Shape {
     QStringList rawOrder;
 };
 
-Shape shapeOf(const TranscriptDemoSession& s)
+Shape shapeOf(const tanara_demo::TranscriptEditorDemoFacade& s)
 {
     Shape out;
-    tanara::editing::SpeakerEditor* ed = s.editor();
+    tanara::editing::SpeakerEditSession* ed = s.session();
     out.lines = ed->utteranceCount();
     for (int i = 0; i < out.lines; ++i) {
         const tanara::editing::EditorUtterance u = ed->utteranceAt(i);
@@ -95,12 +95,12 @@ private slots:
     void transcriptIsEnglishWithSameShape()
     {
         demotext::setLanguageOverride(QStringLiteral("hu"));
-        TranscriptDemoSession hu(QStringLiteral("v3"));
+        tanara_demo::TranscriptEditorDemoFacade hu(QStringLiteral("v3"));
         const Shape huShape = shapeOf(hu);
         QCOMPARE(hu.selfName(), QStringLiteral("Kovács Lilla"));
 
         demotext::setLanguageOverride(QStringLiteral("en"));
-        TranscriptDemoSession en(QStringLiteral("v3"));
+        tanara_demo::TranscriptEditorDemoFacade en(QStringLiteral("v3"));
         const Shape enShape = shapeOf(en);
         QCOMPARE(en.selfName(), QStringLiteral("Emma Carter"));
 
@@ -113,13 +113,13 @@ private slots:
             QCOMPARE(enShape.rawOrder.at(i), demoRaw(huShape.rawOrder.at(i)));
         }
 
-        const QString firstLine = en.editor()->utteranceAt(0).text;
+        const QString firstLine = en.session()->utteranceAt(0).text;
         QVERIFY(firstLine.startsWith(QStringLiteral("Yes, and on top of that")));
         for (int i = 0; i < enShape.lines; ++i) {
-            const QString t = en.editor()->utteranceAt(i).text;
+            const QString t = en.session()->utteranceAt(i).text;
             QVERIFY2(!hasHungarianAccent(t), qPrintable(QStringLiteral("%1: %2").arg(i).arg(t)));
         }
-        for (const tanara::editing::EditorSpeaker& sp : en.editor()->speakers())
+        for (const tanara::editing::EditorSpeaker& sp : en.session()->speakers())
             QVERIFY2(!hasHungarianAccent(sp.displayName), qPrintable(sp.displayName));
     }
 

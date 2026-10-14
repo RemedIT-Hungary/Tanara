@@ -32,7 +32,7 @@ QString speakerOf(const TranscriptEditorViewModel& vm, int row)
 // Waiting for the audio analysis (background thread).
 bool waitVoice(const TranscriptEditorViewModel& vm)
 {
-    return QTest::qWaitFor([&] { return !vm.embeddingRunning() && vm.editor()->embeddingsComplete(); }, 10000);
+    return QTest::qWaitFor([&] { return !vm.embeddingRunning() && vm.recheck()->embeddingsComplete(); }, 10000);
 }
 
 // The speaker's voiceprint indicator on the overview ("has" | "none" | "anonymous").
@@ -119,7 +119,7 @@ private slots:
         auto ed = fx.editor(/*withEmbedder*/ false);
         TranscriptEditorViewModel vm;
         QVERIFY(!vm.hasTranscript());
-        vm.setEditor(ed.get());
+        vm.setSession(ed->session(), ed->recheck());
 
         QVERIFY(vm.hasTranscript());
         QVERIFY(!vm.demo());
@@ -184,7 +184,7 @@ private slots:
         fx.setSpeakerMap({{kB1, QStringLiteral("Tamás")}, {kB2, QStringLiteral("Tamás")}});
         auto ed = fx.editor(/*withEmbedder*/ false);
         TranscriptEditorViewModel vm;
-        vm.setEditor(ed.get());
+        vm.setSession(ed->session(), ed->recheck());
 
         QCOMPARE(vm.speakerCount(), 2);
         for (const QVariant& v : vm.speakers()) {
@@ -208,7 +208,7 @@ private slots:
         Fixture fx;
         auto ed = fx.editor(false);
         TranscriptEditorViewModel vm;
-        vm.setEditor(ed.get());
+        vm.setSession(ed->session(), ed->recheck());
 
         QSignalSpy resets(vm.rows(), &QAbstractItemModel::modelReset);
         QSignalSpy inserted(vm.rows(), &QAbstractItemModel::rowsInserted);
@@ -255,7 +255,7 @@ private slots:
         Fixture fx;
         auto ed = fx.editor(false);
         TranscriptEditorViewModel vm;
-        vm.setEditor(ed.get());
+        vm.setSession(ed->session(), ed->recheck());
         QSignalSpy resets(vm.rows(), &QAbstractItemModel::modelReset);
         QSignalSpy selection(&vm, &TranscriptEditorViewModel::selectionChanged);
 
@@ -321,7 +321,7 @@ private slots:
         Fixture fx;
         auto ed = fx.editor(false);
         TranscriptEditorViewModel vm;
-        vm.setEditor(ed.get());
+        vm.setSession(ed->session(), ed->recheck());
         QVERIFY(vm.reassignSpeaker(kB2, QStringLiteral("Szabó Áron"), false));
         fx.people->addAlias(fx.people->idForName(QStringLiteral("Szabó Áron")), QStringLiteral("Dönci"));
 
@@ -343,7 +343,7 @@ private slots:
         Fixture fx;
         auto ed = fx.editor(false);
         TranscriptEditorViewModel vm;
-        vm.setEditor(ed.get());
+        vm.setSession(ed->session(), ed->recheck());
         QSignalSpy resets(vm.rows(), &QAbstractItemModel::modelReset);
         QSignalSpy speakers(&vm, &TranscriptEditorViewModel::speakersChanged);
 
@@ -385,7 +385,7 @@ private slots:
         fx.setSpeakerMap({{kB1, QStringLiteral("Anna")}, {kB2, QStringLiteral("Béla")}});
         auto ed = fx.editor();
         TranscriptEditorViewModel vm;
-        vm.setEditor(ed.get());                             // starts the audio analysis
+        vm.setSession(ed->session(), ed->recheck());                             // starts the audio analysis
         QVERIFY(vm.voiceAvailable());
         QVERIFY(waitVoice(vm));
         QCOMPARE(vm.embeddingProgress(), 1.0);
@@ -439,7 +439,7 @@ private slots:
         Fixture fx;
         auto ed = fx.editor();
         TranscriptEditorViewModel vm;
-        vm.setEditor(ed.get());
+        vm.setSession(ed->session(), ed->recheck());
         QVERIFY(waitVoice(vm));
         QCOMPARE(vm.uncertainCount(), 1);                   // line 17 (A's voice on label 2)
         QVERIFY(cell(vm, 17, Role::UncertainRole).toBool());
@@ -501,7 +501,7 @@ private slots:
         Fixture fx;
         auto ed = fx.editor();
         TranscriptEditorViewModel vm;
-        vm.setEditor(ed.get());
+        vm.setSession(ed->session(), ed->recheck());
         QVERIFY(waitVoice(vm));
         QVERIFY(!vm.canRecheck());
         QVERIFY(vm.recheckBlocker().contains(QStringLiteral("legalább 3 sort")));
@@ -558,7 +558,7 @@ private slots:
         PairScene sc(/*similar*/ true);
         auto ed = sc.editor();
         TranscriptEditorViewModel vm;
-        vm.setEditor(ed.get());
+        vm.setSession(ed->session(), ed->recheck());
         QVERIFY(waitVoice(vm));
         QSignalSpy notices(&vm, &TranscriptEditorViewModel::notice);
 
@@ -636,7 +636,7 @@ private slots:
         PairScene sc(/*similar*/ false);
         auto ed = sc.editor();
         TranscriptEditorViewModel vm;
-        vm.setEditor(ed.get());
+        vm.setSession(ed->session(), ed->recheck());
         QVERIFY(waitVoice(vm));
         QVERIFY(ed->confirmUtterances({PairScene::id(0), PairScene::id(2), PairScene::id(5),
                                        PairScene::id(1), PairScene::id(4), PairScene::id(7)}));
@@ -665,7 +665,7 @@ private slots:
         sc.prints->addPrint(sc.people->ensure(QStringLiteral("Béla")), earlier);
         auto ed = sc.editor();
         TranscriptEditorViewModel vm;
-        vm.setEditor(ed.get());
+        vm.setSession(ed->session(), ed->recheck());
         QVERIFY(waitVoice(vm));
         QSignalSpy notices(&vm, &TranscriptEditorViewModel::notice);
         QVERIFY(ed->confirmUtterances({PairScene::id(0), PairScene::id(2), PairScene::id(5)}));
@@ -691,7 +691,7 @@ private slots:
         Fixture fx;
         auto ed = fx.editor();
         TranscriptEditorViewModel vm;
-        vm.setEditor(ed.get());
+        vm.setSession(ed->session(), ed->recheck());
         QVERIFY(waitVoice(vm));
         QVERIFY(!cell(vm, 17, Role::NoisyRole).toBool());   // there is no overlap in the scenario
 
@@ -719,7 +719,7 @@ private slots:
         Fixture fx;
         auto ed = fx.editor();
         TranscriptEditorViewModel vm;
-        vm.setEditor(ed.get());
+        vm.setSession(ed->session(), ed->recheck());
         QVERIFY(waitVoice(vm));
         vm.setUncertainOnly(true);
         QSignalSpy resets(vm.rows(), &QAbstractItemModel::modelReset);
@@ -751,7 +751,7 @@ private slots:
         Fixture fx;
         auto ed = fx.editor(/*withEmbedder*/ false);
         TranscriptEditorViewModel vm;
-        vm.setEditor(ed.get());
+        vm.setSession(ed->session(), ed->recheck());
         QVERIFY(!vm.changeActive());
         QSignalSpy changes(&vm, &TranscriptEditorViewModel::changeChanged);
 
@@ -834,7 +834,7 @@ private slots:
         Fixture fx;
         auto ed = fx.editor();
         TranscriptEditorViewModel vm;
-        vm.setEditor(ed.get());
+        vm.setSession(ed->session(), ed->recheck());
         QVERIFY(waitVoice(vm));
         vm.setUncertainOnly(true);
         const int filtered = vm.rows()->rowCount();
@@ -870,7 +870,7 @@ private slots:
         Fixture fx;
         auto ed = fx.editor(false);
         TranscriptEditorViewModel vm;
-        vm.setEditor(ed.get());
+        vm.setSession(ed->session(), ed->recheck());
         QSignalSpy reveal(&vm, &TranscriptEditorViewModel::revealRequested);
         QSignalSpy resets(vm.rows(), &QAbstractItemModel::modelReset);
 
@@ -905,7 +905,7 @@ private slots:
         Fixture fx;
         auto ed = fx.editor();
         TranscriptEditorViewModel vm;
-        vm.setEditor(ed.get());
+        vm.setSession(ed->session(), ed->recheck());
         QVERIFY(waitVoice(vm));
         QSignalSpy playing(&vm, &TranscriptEditorViewModel::playingRowChanged);
 
@@ -932,7 +932,7 @@ private slots:
         Fixture fx;
         auto ed = fx.editor();
         TranscriptEditorViewModel vm;
-        vm.setEditor(ed.get());
+        vm.setSession(ed->session(), ed->recheck());
         QVERIFY(waitVoice(vm));
         QSignalSpy notice(&vm, &TranscriptEditorViewModel::notice);
 
@@ -977,7 +977,7 @@ private slots:
         fx.prints->addPrint(fx.people->ensure(QStringLiteral("Anna")), old);    // Anna already has an older sample
         auto ed = fx.editor();
         TranscriptEditorViewModel vm;
-        vm.setEditor(ed.get());
+        vm.setSession(ed->session(), ed->recheck());
         QVERIFY(waitVoice(vm));
 
         QTRY_COMPARE(overviewVoiceprint(vm, kB1), QStringLiteral("anonymous"));
@@ -1029,7 +1029,7 @@ private slots:
         Fixture fx;
         auto ed = fx.editor();
         TranscriptEditorViewModel vm;
-        vm.setEditor(ed.get());
+        vm.setSession(ed->session(), ed->recheck());
         QVERIFY(waitVoice(vm));
         QSignalSpy notice(&vm, &TranscriptEditorViewModel::notice);
 
@@ -1107,7 +1107,7 @@ private slots:
         Fixture fx;
         auto ed = fx.editor(/*withEmbedder*/ false);
         TranscriptEditorViewModel vm;
-        vm.setEditor(ed.get());
+        vm.setSession(ed->session(), ed->recheck());
         QVERIFY(vm.reassignSpeaker(kB2, QStringLiteral("Béla"), false));
         QVERIFY(vm.changeActive());
         QVERIFY(!vm.changeVoiceprintOffer());
@@ -1125,7 +1125,7 @@ private slots:
         Fixture fx;
         auto ed = fx.editor(/*withEmbedder*/ false);
         TranscriptEditorViewModel vm;
-        vm.setEditor(ed.get());
+        vm.setSession(ed->session(), ed->recheck());
         QVERIFY(!vm.voiceAvailable());
         QVERIFY(!vm.embeddingRunning());
         QVERIFY(!vm.voiceNote().isEmpty());                 // we say it once, clearly
@@ -1145,7 +1145,7 @@ private slots:
         {
             TranscriptEditorViewModel vm;
             vm.setUiStatePath(statePath);
-            vm.setEditor(ed.get());
+            vm.setSession(ed->session(), ed->recheck());
             QVERIFY(!vm.railVisible());
             vm.setRailVisible(true);
         }
@@ -1153,13 +1153,13 @@ private slots:
         {
             TranscriptEditorViewModel vm;
             vm.setUiStatePath(statePath);
-            vm.setEditor(ed.get());
+            vm.setSession(ed->session(), ed->recheck());
             QVERIFY(vm.railVisible());
             vm.setRailVisible(false);
         }
         TranscriptEditorViewModel vm;
         vm.setUiStatePath(statePath);
-        vm.setEditor(ed.get());
+        vm.setSession(ed->session(), ed->recheck());
         QVERIFY(!vm.railVisible());
     }
 
@@ -1169,7 +1169,7 @@ private slots:
         fx.setSpeakerMap({{kB2, QStringLiteral("Béla")}});
         auto ed = fx.editor(false);
         TranscriptEditorViewModel vm;
-        vm.setEditor(ed.get());
+        vm.setSession(ed->session(), ed->recheck());
         vm.setPeopleProvider([] {
             QVector<editing::PersonInfo> all;
             for (const char* n : {"Anna", "Béla", "Ödön", "Őri Áron"}) {
@@ -1218,7 +1218,7 @@ private slots:
         Fixture fx;
         auto ed = fx.editor();
         TranscriptEditorViewModel vm;
-        vm.setEditor(ed.get());
+        vm.setSession(ed->session(), ed->recheck());
         QVERIFY(waitVoice(vm));
         QVERIFY(vm.lastDecision().isEmpty());
 

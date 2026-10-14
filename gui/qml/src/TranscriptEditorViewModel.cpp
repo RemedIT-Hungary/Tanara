@@ -2,23 +2,15 @@
 #include "tanara/library/store/TranscriptRepository.h"
 #include "tanara/library/store/UiStateRepository.h"
 
-#include "DemoText.h"
 
 #include "AppContext.h"
 #include "ReviewQueueModel.h"
 #include "TagLearning.h"
-#include "TranscriptDemoSession.h"
 
-#include "tanara/app/AppController.h"
 #include "tanara/foundation/log/Logging.h"
-#include "tanara/foundation/paths/AppPaths.h"
-#include "tanara/app/SettingsManager.h"
 #include "tanara/editing/session/PeopleDirectory.h"
 #include "tanara/editing/review/SideAnalysis.h"
 #include "tanara/editing/review/SpeakerAnalysis.h"
-#include "tanara/editing/session/SpeakerEditor.h"
-#include "tanara/library/store/MeetingRepository.h"
-#include "tanara/library/tags/TagService.h"
 
 #include <QClipboard>
 #include <QElapsedTimer>
@@ -107,6 +99,13 @@ TranscriptEditorViewModel::TranscriptEditorViewModel(QObject* parent)
     connect(&m_sweepDockTimer, &QTimer::timeout, this, &TranscriptEditorViewModel::sweepRebuildDock);
 }
 
+TranscriptEditorViewModel::TranscriptEditorViewModel(editing::ITranscriptEditorFacade* facade, QObject* parent)
+    : TranscriptEditorViewModel(parent)
+{
+    m_facadeInjected = true;
+    attachFacade(facade);
+}
+
 void TranscriptEditorViewModel::componentComplete()
 {
     m_deferred = false;
@@ -116,6 +115,8 @@ void TranscriptEditorViewModel::componentComplete()
 TranscriptEditorViewModel::~TranscriptEditorViewModel()
 {
     detach();
+    // An owned (fictional) facade goes with the view model: the session must be released first.
+    if (m_facade && m_facade->parent() == this && !m_facadeInjected) delete m_facade.data();
 }
 
 // ---- session -------------------------------------------------------------
@@ -133,20 +134,7 @@ void TranscriptEditorViewModel::setDemoVariant(const QString& variant)
     if (m_demoVariant == variant) return;
     m_demoVariant = variant;
     emit demoVariantChanged();
-    if (m_demoSession) {
-        detach();
-        m_demoSession.reset();
-    }
-    resolveSession();
-}
-
-void TranscriptEditorViewModel::setController(app::AppController* controller)
-{
-    m_controllerInjected = true;
-    if (m_controller == controller) return;
-    if (m_controller) m_controller->disconnect(this);
-    m_controller = controller;
-    resolveSession();
+    resolveSession();   // a fictional facade serves one variant: a new one is asked for
 }
 
 void TranscriptEditorViewModel::setPeopleProvider(std::function<QVector<editing::PersonInfo>()> provider)
@@ -161,92 +149,100 @@ void TranscriptEditorViewModel::setUiStatePath(const QString& path)
     m_uiStatePathSet = true;
 }
 
-void TranscriptEditorViewModel::setEditor(editing::SpeakerEditor* editor)
+void TranscriptEditorViewModel::setSession(editing::SpeakerEditSession* session, editing::RecheckService* recheck)
 {
-    m_editorInjected = editor != nullptr;
+    m_sessionInjected = session != nullptr;
     detach();
-    m_demoSession.reset();
-    if (editor) attach(editor);
+    if (session && recheck) attach(session, recheck);
     else reloadAll();
+}
+
+// The facade of the App singleton's current services (unless one was given): the real one is shared,
+// a fictional one serves this view model's demoVariant and is its child.
+void TranscriptEditorViewModel::resolveFacade()
+{
+    if (m_facadeInjected) return;
+    AppContext* ctx = AppContext::instance();
+    const UiServices& set = ctx->services();
+    const bool fictional = &set == &ctx->demoServices();
+    if (m_facade && m_facadeSet == &set && (!fictional || m_facadeVariant == m_demoVariant)) return;
+    if (!set.transcriptEditor) {
+        attachFacade(nullptr);
+        return;
+    }
+    m_facadeSet = &set;
+    m_facadeVariant = m_demoVariant;
+    attachFacade(set.transcriptEditor(m_demoVariant, this));
+}
+
+void TranscriptEditorViewModel::attachFacade(editing::ITranscriptEditorFacade* facade)
+{
+    if (facade == m_facade) return;
+    if (m_facade) {
+        detach();
+        m_facade->disconnect(this);
+        if (m_facade->parent() == this && !m_facadeInjected) delete m_facade.data();
+    }
+    m_facade = facade;
+    if (facade)
+        connect(facade, &editing::ITranscriptEditorFacade::peopleChanged, this,
+                &TranscriptEditorViewModel::peopleChanged);
+    emit reviewAutoPlayChanged();   // the switch is the facade's
 }
 
 void TranscriptEditorViewModel::resolveSession()
 {
-    if (m_deferred || m_editorInjected) return;
-    if (!m_controllerInjected) {
-        app::AppController* c = AppContext::instance()->controller();
-        if (m_controller != c) {
-            if (m_controller) m_controller->disconnect(this);
-            m_controller = c;
-        }
-    }
-    if (m_controller) {
-        connect(m_controller, &app::AppController::peopleChanged,
-                this, &TranscriptEditorViewModel::peopleChanged, Qt::UniqueConnection);
-        connect(m_controller, &app::AppController::voiceprintsChanged,
-                this, &TranscriptEditorViewModel::peopleChanged, Qt::UniqueConnection);
-        if (!m_uiStatePathSet)
-            m_uiStatePath = m_controller->uiState()->filePath();
-        m_demoSession.reset();
-        editing::SpeakerEditor* ed = m_meetingId.isEmpty() ? nullptr : m_controller->speakerEditor(m_meetingId);
-        const Meeting meeting = ed ? m_controller->store()->load(m_meetingId) : Meeting();
-        m_legacyTranscript = ed && !ed->hasTranscript() && meeting.hasTranscript;
-        m_legacyText.clear();
-        if (m_legacyTranscript) {
-            // An old transcript stays readable: the text of transcript.md (with an upper limit).
-            m_legacyText = library::TranscriptRepository::readMarkdown(meeting.folder, 4 * 1024 * 1024);
-            // Shown as plain text: without Markdown markers (`[00:06]`, **Name**).
-            m_legacyText.remove(QLatin1Char('`')).remove(QStringLiteral("**"));
-        }
-        if (ed == m_editor && ed) return;
-        detach();
-        if (ed) attach(ed);
-        else reloadAll();
-        return;
-    }
-    // No controller (demo / screenshot / gallery): the built-in fictional meeting.
-    if (m_demoSession) return;
+    if (m_deferred || m_sessionInjected) return;
+    resolveFacade();
+    const editing::ITranscriptEditorFacade::Session s =
+        m_facade ? m_facade->open(m_meetingId) : editing::ITranscriptEditorFacade::Session();
+    m_legacyTranscript = s.legacyTranscript;
+    m_legacyText = s.legacyText;
+    if (s.session == m_session && s.session) return;
     detach();
-    m_demoSession = std::make_unique<TranscriptDemoSession>(m_demoVariant);
-    attach(m_demoSession->editor());
+    if (s.session && s.recheck) attach(s.session, s.recheck);
+    else reloadAll();
 }
 
-void TranscriptEditorViewModel::attach(editing::SpeakerEditor* editor)
+void TranscriptEditorViewModel::attach(editing::SpeakerEditSession* session, editing::RecheckService* recheck)
 {
-    m_editor = editor;
-    connect(editor, &editing::SpeakerEditor::utterancesChanged, this, &TranscriptEditorViewModel::onUtterancesChanged);
-    connect(editor, &editing::SpeakerEditor::speakersChanged, this, &TranscriptEditorViewModel::onSpeakersChanged);
-    connect(editor, &editing::SpeakerEditor::uncertainCountChanged, this, [this](int n) {
+    m_session = session;
+    m_recheck = recheck;
+    using editing::SpeakerEditSession;
+    using editing::RecheckService;
+    connect(session, &SpeakerEditSession::utterancesChanged, this, &TranscriptEditorViewModel::onUtterancesChanged);
+    connect(session, &SpeakerEditSession::speakersChanged, this, &TranscriptEditorViewModel::onSpeakersChanged);
+    connect(session, &SpeakerEditSession::uncertainCountChanged, this, [this](int n) {
         if (m_uncertainCount == n) return;
         m_uncertainCount = n;
         emit uncertainCountChanged();
     });
-    connect(editor, &editing::SpeakerEditor::undoStateChanged, this, [this] {
+    connect(session, &SpeakerEditSession::undoStateChanged, this, [this] {
         // Not our own action (the one that writes the lane): undo, redo, confirmation, participant...
         // the latest reassignment's notice is no longer valid.
         if (m_opDepth == 0) clearChange();
         pruneDecisions();
         emit undoStateChanged();
     });
-    connect(editor, &editing::SpeakerEditor::sampleDeviationChanged, this, &TranscriptEditorViewModel::updateSampleDeviation);
-    connect(editor, &editing::SpeakerEditor::sampleStatsChanged, this, &TranscriptEditorViewModel::updateSampleStats);
-    connect(editor, &editing::SpeakerEditor::suggestionChanged, this, &TranscriptEditorViewModel::onSuggestionChanged);
-    connect(editor, &editing::SpeakerEditor::embeddingRunningChanged, this, [this](bool running) {
+    connect(session, &SpeakerEditSession::sampleDeviationChanged, this, &TranscriptEditorViewModel::updateSampleDeviation);
+    connect(session, &SpeakerEditSession::sampleStatsChanged, this, &TranscriptEditorViewModel::updateSampleStats);
+    connect(session, &SpeakerEditSession::suggestionChanged, this, &TranscriptEditorViewModel::onSuggestionChanged);
+    connect(recheck, &RecheckService::embeddingRunningChanged, this, [this](bool running) {
         if (running) m_embeddingProgress = 0.0;
         emit voiceStateChanged();
         updateRecheckState();
     });
-    connect(editor, &editing::SpeakerEditor::recheckFinished, this,
+    connect(recheck, &RecheckService::recheckFinished, this,
             [this](int flagged, int speakers, int lines) {
         // If it found doubtful lines, switch to the "Uncertain" filter right away (to step through them there).
         if (flagged > 0) setUncertainOnly(true);
         emit recheckFinished(flagged, speakers, lines);
     });
-    connect(editor, &editing::SpeakerEditor::embeddingProgress, this, [this](int done, int total) {
+    connect(recheck, &RecheckService::embeddingProgress, this, [this](int done, int total) {
         m_embeddingProgress = total > 0 ? qreal(done) / qreal(total) : 0.0;
         emit voiceStateChanged();
     });
-    connect(editor, &editing::SpeakerEditor::embeddingFinished, this, [this](bool complete) {
+    connect(recheck, &RecheckService::embeddingFinished, this, [this](bool complete) {
         m_embeddingFailed = !complete && !m_cancelRequested;
         m_cancelRequested = false;
         if (complete) m_embeddingProgress = 1.0;
@@ -255,12 +251,14 @@ void TranscriptEditorViewModel::attach(editing::SpeakerEditor* editor)
         updateRecheckState();
         applyPendingDemoState();
     });
-    connect(editor, &editing::SpeakerEditor::reloaded, this, &TranscriptEditorViewModel::reloadAll);
+    connect(session, &SpeakerEditSession::reloaded, this, &TranscriptEditorViewModel::reloadAll);
     // At the end of the background analysis (side analysis, candidates, "To review" groups).
-    connect(editor, &editing::SpeakerEditor::reviewGroupsChanged, this, &TranscriptEditorViewModel::rebuildReview);
-    connect(editor, &editing::SpeakerEditor::reviewRunningChanged, this, [this] { emit reviewChanged(); });
-    connect(editor, &QObject::destroyed, this, [this] {
-        m_editor = nullptr;
+    connect(session, &SpeakerEditSession::reviewGroupsChanged, this, &TranscriptEditorViewModel::rebuildReview);
+    connect(session, &SpeakerEditSession::reviewRunningChanged, this, [this] { emit reviewChanged(); });
+    // The session closes (its recheck service is gone by then).
+    connect(session, &QObject::destroyed, this, [this] {
+        m_session = nullptr;
+        m_recheck = nullptr;
         reloadAll();
     });
     reloadAll();
@@ -268,17 +266,21 @@ void TranscriptEditorViewModel::attach(editing::SpeakerEditor* editor)
 
 void TranscriptEditorViewModel::detach()
 {
-    if (!m_editor) return;
-    m_editor->disconnect(this);
-    // The background audio analysis must not keep working on a meeting that is no longer shown
-    // (the finished part stays in the cache; it resumes from there on return).
-    if (!m_editorInjected && m_editor->isEmbeddingRunning()) m_editor->cancelEmbedding();
-    m_editor = nullptr;
+    if (!m_session) return;
+    m_session->disconnect(this);
+    if (m_recheck) {
+        m_recheck->disconnect(this);
+        // The background audio analysis must not keep working on a meeting that is no longer shown
+        // (the finished part stays in the cache; it resumes from there on return).
+        if (!m_sessionInjected && m_recheck->isEmbeddingRunning()) m_recheck->cancelEmbedding();
+    }
+    m_session = nullptr;
+    m_recheck = nullptr;
 }
 
 void TranscriptEditorViewModel::reloadAll()
 {
-    m_utts = m_editor ? m_editor->utterances() : QVector<editing::EditorUtterance>();
+    m_utts = m_session ? m_session->utterances() : QVector<editing::EditorUtterance>();
     m_uttIndex.clear();
     m_uttIndex.reserve(m_utts.size());
     for (int i = 0; i < m_utts.size(); ++i) m_uttIndex.insert(m_utts[i].id, i);
@@ -297,7 +299,7 @@ void TranscriptEditorViewModel::reloadAll()
     m_lanesExpanded = false;
     m_embeddingFailed = false;
     m_embeddingProgress = 0.0;
-    m_uncertainCount = m_editor ? m_editor->uncertainCount() : 0;
+    m_uncertainCount = m_session ? m_session->uncertainCount() : 0;
     m_uncertainOnly = false;
     m_sticky.clear();
     m_change = Change();
@@ -367,12 +369,12 @@ void TranscriptEditorViewModel::reloadAll()
 
 void TranscriptEditorViewModel::startEmbeddingIfNeeded()
 {
-    if (!m_editor || m_utts.isEmpty()) return;
-    if (!m_editor->embeddingsSupported() || m_editor->embeddingsComplete()
-        || m_editor->isEmbeddingRunning())
+    if (!m_session || m_utts.isEmpty()) return;
+    if (!m_recheck->embeddingsSupported() || m_recheck->embeddingsComplete()
+        || m_recheck->isEmbeddingRunning())
         return;
     m_cancelRequested = false;
-    m_editor->startEmbedding();
+    m_recheck->startEmbedding();
 }
 
 // ---- the editor's signals -----------------------------------------------------
@@ -380,7 +382,7 @@ void TranscriptEditorViewModel::startEmbeddingIfNeeded()
 void TranscriptEditorViewModel::onUtterancesChanged(const QStringList& ids)
 {
     tanara::PerfScope perfScope("TranscriptEditorViewModel::onUtterancesChanged", 10);
-    if (!m_editor) return;
+    if (!m_session) return;
     QVector<int> changed;
     changed.reserve(ids.size());
     bool ignoredChanged = false;
@@ -388,7 +390,7 @@ void TranscriptEditorViewModel::onUtterancesChanged(const QStringList& ids)
         const int i = m_uttIndex.value(id, -1);
         if (i < 0) continue;
         const editing::EditorUtterance before = m_utts[i];
-        m_utts[i] = m_editor->utterance(id);
+        m_utts[i] = m_session->utterance(id);
         sweepFilterIncoming(i, before);     // frozen window
         changed.append(i);
         const editing::EditorUtterance& after = m_utts[i];
@@ -435,7 +437,7 @@ void TranscriptEditorViewModel::onSpeakersChanged()
         m_queue->refreshAll();      // S3
     }
     if (m_suggestionAnchor >= 0) {
-        const QString name = m_views.value(m_editor ? m_editor->suggestion().targetSpeaker : QString()).name;
+        const QString name = m_views.value(m_session ? m_session->suggestion().targetSpeaker : QString()).name;
         if (name != m_suggestionTargetName) {
             m_suggestionTargetName = name;
             emit suggestionChanged();
@@ -448,11 +450,11 @@ void TranscriptEditorViewModel::onSpeakersChanged()
         scheduleReview();
     }
     // "Voiceprint when enough": as soon as the material suffices, the requested voiceprint is made.
-    if (!m_voiceprintWhenReady.isEmpty() && m_editor) {
-        const editing::EditorSpeaker sp = m_editor->speaker(m_voiceprintWhenReady);
+    if (!m_voiceprintWhenReady.isEmpty() && m_session) {
+        const editing::EditorSpeaker sp = m_session->speaker(m_voiceprintWhenReady);
         if (sp.key.isEmpty() || sp.anonymous || sp.hasVoiceprint) {
             m_voiceprintWhenReady.clear();
-        } else if (m_editor->voiceprintMaterial(sp.key).sufficient) {
+        } else if (m_session->voiceprintMaterial(sp.key).sufficient) {
             const QString key = m_voiceprintWhenReady;
             m_voiceprintWhenReady.clear();
             QTimer::singleShot(0, this, [this, key] { createVoiceprint(key); emit reviewChanged(); });
@@ -475,9 +477,9 @@ void TranscriptEditorViewModel::onSuggestionChanged()
     m_suggestionAnchor = -1;
     m_suggestionTargetName.clear();
     if (!m_demoPairOffer)
-        m_pairOffer = m_editor && m_editor->hasPairOffer() ? m_editor->pairOffer() : tanara::editing::PairRecheckOffer();
-    if (m_editor && m_editor->hasSuggestion()) {
-        const editing::SpeakerSuggestion s = m_editor->suggestion();
+        m_pairOffer = m_session && m_session->hasPairOffer() ? m_session->pairOffer() : tanara::editing::PairRecheckOffer();
+    if (m_session && m_session->hasSuggestion()) {
+        const editing::SpeakerSuggestion s = m_session->suggestion();
         for (const QString& id : s.utteranceIds) {
             const int i = m_uttIndex.value(id, -1);
             if (i >= 0) m_suggested.insert(i);
@@ -501,7 +503,7 @@ void TranscriptEditorViewModel::onSuggestionChanged()
 
 void TranscriptEditorViewModel::rebuildSpeakers(bool recomputeCollapsed)
 {
-    m_speakers = m_editor ? m_editor->speakers() : QVector<editing::EditorSpeaker>();
+    m_speakers = m_session ? m_session->speakers() : QVector<editing::EditorSpeaker>();
     // Myself first; the others in order of first appearance (colorIndex): this order does not
     // jump around while editing.
     std::stable_sort(m_speakers.begin(), m_speakers.end(),
@@ -647,16 +649,24 @@ void TranscriptEditorViewModel::rebuildOverview()
 
 // ---- rail / filter ------------------------------------------------------------
 
+// The rail's remembered state: the facade's view state, or the file given by setUiStatePath (tests).
 bool TranscriptEditorViewModel::loadRailState() const
 {
-    if (m_uiStatePath.isEmpty() || !m_editor) return false;
-    return library::UiStateRepository(m_uiStatePath).railVisible(m_editor->meetingId());
+    if (!m_session) return false;
+    if (m_uiStatePathSet)
+        return !m_uiStatePath.isEmpty() && library::UiStateRepository(m_uiStatePath).railVisible(m_session->meetingId());
+    return m_facade && m_facade->railVisible(m_session->meetingId());
 }
 
 void TranscriptEditorViewModel::saveRailState() const
 {
-    if (m_uiStatePath.isEmpty() || !m_editor || m_demoSession) return;
-    library::UiStateRepository(m_uiStatePath).setRailVisible(m_editor->meetingId(), m_railVisible);
+    if (!m_session) return;
+    if (m_uiStatePathSet) {
+        if (!m_uiStatePath.isEmpty())
+            library::UiStateRepository(m_uiStatePath).setRailVisible(m_session->meetingId(), m_railVisible);
+    } else if (m_facade) {
+        m_facade->setRailVisible(m_session->meetingId(), m_railVisible);
+    }
 }
 
 void TranscriptEditorViewModel::setRailVisible(bool visible)
@@ -685,29 +695,29 @@ void TranscriptEditorViewModel::setUncertainOnly(bool on)
 
 // ---- undo / suggestion --------------------------------------------------------
 
-bool TranscriptEditorViewModel::canUndo() const { return m_editor && m_editor->canUndo(); }
-bool TranscriptEditorViewModel::canRedo() const { return m_editor && m_editor->canRedo(); }
-QString TranscriptEditorViewModel::undoText() const { return m_editor ? m_editor->undoText() : QString(); }
-QString TranscriptEditorViewModel::redoText() const { return m_editor ? m_editor->redoText() : QString(); }
+bool TranscriptEditorViewModel::canUndo() const { return m_session && m_session->canUndo(); }
+bool TranscriptEditorViewModel::canRedo() const { return m_session && m_session->canRedo(); }
+QString TranscriptEditorViewModel::undoText() const { return m_session ? m_session->undoText() : QString(); }
+QString TranscriptEditorViewModel::redoText() const { return m_session ? m_session->redoText() : QString(); }
 
 void TranscriptEditorViewModel::undo()
 {
     const QScopedValueRollback<bool> userEdit(m_sweepUserEdit, true);   // not a background change
-    if (m_editor) m_editor->undo();
+    if (m_session) m_session->undo();
 }
 
 void TranscriptEditorViewModel::redo()
 {
-    if (!m_editor || !m_editor->canRedo()) return;
-    const QString text = m_editor->redoText();
+    if (!m_session || !m_session->canRedo()) return;
+    const QString text = m_session->redoText();
     {
         const QScopedValueRollback<bool> userEdit(m_sweepUserEdit, true);   // S6
-        m_editor->redo();
+        m_session->redo();
     }
     // The restored step goes on top of the "Just now" row (its row number is the same as originally).
     Decision d;
     d.text = tr("Újra: %1").arg(text);
-    const QVector<quint64> serials = m_editor->undoSerials();
+    const QVector<quint64> serials = m_session->undoSerials();
     d.serial = serials.isEmpty() ? 0 : serials.last();
     m_decisions.append(d);
     emit decisionsChanged();
@@ -737,8 +747,8 @@ void TranscriptEditorViewModel::setSuggestionShown(bool shown)
 
 bool TranscriptEditorViewModel::acceptSuggestion()
 {
-    if (!m_editor || !m_editor->hasSuggestion()) return false;
-    const editing::SpeakerSuggestion sg = m_editor->suggestion();
+    if (!m_session || !m_session->hasSuggestion()) return false;
+    const editing::SpeakerSuggestion sg = m_session->suggestion();
     int moved = 0, last = -1;
     for (const QString& id : sg.utteranceIds) {
         const int i = m_uttIndex.value(id, -1);
@@ -748,7 +758,7 @@ bool TranscriptEditorViewModel::acceptSuggestion()
     }
     ++m_opDepth;
     beginDecision(sg.utteranceIds);
-    const bool ok = m_editor->acceptSuggestion();
+    const bool ok = m_session->acceptSuggestion();
     --m_opDepth;
     if (!ok) {
         m_tracking = false;
@@ -768,7 +778,7 @@ void TranscriptEditorViewModel::dismissSuggestion()
         m_pairOffer = editing::PairRecheckOffer();
         emit suggestionChanged();
     }
-    if (m_editor) m_editor->dismissSuggestion();
+    if (m_session) m_session->dismissSuggestion();
 }
 
 // ---- pairwise review -----------------------------------------------------
@@ -784,10 +794,10 @@ QVariantMap TranscriptEditorViewModel::recheckPair(const QString& speakerKeyA, c
 {
     QVariantMap out;
     out[QStringLiteral("ran")] = false;
-    if (!m_editor) return out;
+    if (!m_session) return out;
     const QString nameA = m_views.value(speakerKeyA).name;
     const QString nameB = m_views.value(speakerKeyB).name;
-    const editing::SpeakerEditor::PairRecheckResult r = m_editor->recheckPair(speakerKeyA, speakerKeyB);
+    const editing::RecheckService::PairRecheckResult r = m_recheck->recheckPair(speakerKeyA, speakerKeyB);
     out[QStringLiteral("ran")] = r.ran;
     out[QStringLiteral("blocker")] = r.blocker;
     if (!r.ran) {
@@ -847,13 +857,13 @@ void TranscriptEditorViewModel::declinePairOffer()
         emit suggestionChanged();
         return;
     }
-    if (m_editor) m_editor->declinePairOffer();
+    if (m_session) m_session->declinePairOffer();
 }
 
 QVariantList TranscriptEditorViewModel::pairCandidates(const QString& speakerKey) const
 {
     QVariantList out;
-    const PersonId self = m_views.contains(speakerKey) && m_editor ? m_editor->speaker(speakerKey).personId : PersonId();
+    const PersonId self = m_views.contains(speakerKey) && m_session ? m_session->speaker(speakerKey).personId : PersonId();
     for (const editing::EditorSpeaker& s : m_speakers) {
         if (s.key == speakerKey || s.anonymous || s.utteranceCount <= 0) continue;
         if (!self.isNull() && s.personId == self) continue;
@@ -869,19 +879,19 @@ QVariantList TranscriptEditorViewModel::pairCandidates(const QString& speakerKey
 
 bool TranscriptEditorViewModel::voiceAvailable() const
 {
-    return m_editor && m_editor->embeddingsSupported() && !m_embeddingFailed;
+    return m_session && m_recheck->embeddingsSupported() && !m_embeddingFailed;
 }
 
 bool TranscriptEditorViewModel::embeddingRunning() const
 {
-    return m_editor && m_editor->isEmbeddingRunning();
+    return m_session && m_recheck->isEmbeddingRunning();
 }
 
 void TranscriptEditorViewModel::updateVoiceNote()
 {
     QString note;
-    if (m_editor && !m_utts.isEmpty()) {
-        if (!m_editor->embeddingsSupported())
+    if (m_session && !m_utts.isEmpty()) {
+        if (!m_recheck->embeddingsSupported())
             note = tr("Nincs letöltve a hangmodell, ezért a bizonytalan sorok jelölése, a hasonló sorok "
                       "felajánlása és a kézi hanglenyomat most nem érhető el. A szerkesztés enélkül is működik.");
         else if (m_embeddingFailed)
@@ -1249,7 +1259,7 @@ void TranscriptEditorViewModel::afterMove(const QString& targetKey)
 QString TranscriptEditorViewModel::moveLines(const QStringList& ids, MoveTarget kind, const QString& value,
                                              bool noisy)
 {
-    if (!m_editor || ids.isEmpty()) return {};
+    if (!m_session || ids.isEmpty()) return {};
     // The speakers before the action: shows how many rows actually moved, and from where.
     QVector<QPair<int, QString>> before;
     before.reserve(ids.size());
@@ -1264,13 +1274,13 @@ QString TranscriptEditorViewModel::moveLines(const QStringList& ids, MoveTarget 
     beginDecision(ids);
     switch (kind) {
     case MoveTarget::Speaker:
-        if (m_editor->moveUtterances(ids, value, noisy)) key = value;
+        if (m_session->moveUtterances(ids, value, noisy)) key = value;
         break;
     case MoveTarget::Person:
-        key = m_editor->moveUtterancesToPerson(ids, m_editor->personChoice(value), noisy);
+        key = m_session->moveUtterancesToPerson(ids, m_session->personChoice(value), noisy);
         break;
     case MoveTarget::NewParticipant:
-        key = m_editor->moveUtterancesToNewParticipant(ids, noisy);
+        key = m_session->moveUtterancesToNewParticipant(ids, noisy);
         break;
     }
     --m_opDepth;
@@ -1320,7 +1330,7 @@ bool TranscriptEditorViewModel::moveRowToLane(int row, int lane, bool noisy)
 {
     const int u = m_rows->utteranceOfRow(row);
     const QString key = laneKey(lane);
-    if (!m_editor || u < 0 || key.isEmpty()) return false;
+    if (!m_session || u < 0 || key.isEmpty()) return false;
     const bool wholeSelection = m_selected.size() > 1 && m_selected.contains(u);
     const QStringList ids = wholeSelection ? selectedIds() : QStringList{m_utts[u].id};
     if (moveLines(ids, MoveTarget::Speaker, key, noisy).isEmpty()) return false;
@@ -1331,7 +1341,7 @@ bool TranscriptEditorViewModel::moveRowToLane(int row, int lane, bool noisy)
 bool TranscriptEditorViewModel::moveRowsToLane(int fromRow, int toRow, int lane, bool noisy)
 {
     const QString key = laneKey(lane);
-    if (!m_editor || key.isEmpty()) return false;
+    if (!m_session || key.isEmpty()) return false;
     return !moveLines(idsOfRows(fromRow, toRow), MoveTarget::Speaker, key, noisy).isEmpty();
 }
 
@@ -1342,7 +1352,7 @@ bool TranscriptEditorViewModel::moveSelectionToLane(int lane, bool noisy)
 
 bool TranscriptEditorViewModel::moveSelectionToSpeaker(const QString& speakerKey, bool noisy)
 {
-    if (!m_editor || m_selected.isEmpty() || speakerKey.isEmpty()) return false;
+    if (!m_session || m_selected.isEmpty() || speakerKey.isEmpty()) return false;
     if (moveLines(selectedIds(), MoveTarget::Speaker, speakerKey, noisy).isEmpty()) return false;
     clearSelection();
     return true;
@@ -1351,7 +1361,7 @@ bool TranscriptEditorViewModel::moveSelectionToSpeaker(const QString& speakerKey
 bool TranscriptEditorViewModel::moveSelectionToPerson(const QString& personName, bool noisy)
 {
     const QString name = personName.trimmed();
-    if (!m_editor || m_selected.isEmpty() || name.isEmpty()) return false;
+    if (!m_session || m_selected.isEmpty() || name.isEmpty()) return false;
     if (moveLines(selectedIds(), MoveTarget::Person, name, noisy).isEmpty()) return false;
     clearSelection();
     return true;
@@ -1359,7 +1369,7 @@ bool TranscriptEditorViewModel::moveSelectionToPerson(const QString& personName,
 
 bool TranscriptEditorViewModel::moveSelectionToNewParticipant(bool noisy)
 {
-    if (!m_editor || m_selected.isEmpty()) return false;
+    if (!m_session || m_selected.isEmpty()) return false;
     if (moveLines(selectedIds(), MoveTarget::NewParticipant, QString(), noisy).isEmpty()) return false;
     clearSelection();
     return true;
@@ -1392,10 +1402,10 @@ bool TranscriptEditorViewModel::moveUtteranceToNewParticipant(const QString& utt
 
 bool TranscriptEditorViewModel::setUtteranceIgnored(const QString& utteranceId, bool ignored)
 {
-    if (!m_editor || !m_uttIndex.contains(utteranceId)) return false;
+    if (!m_session || !m_uttIndex.contains(utteranceId)) return false;
     const QStringList ids{utteranceId};
     beginDecision(ids);
-    const bool ok = m_editor->setUtterancesIgnored(ids, ignored);
+    const bool ok = m_session->setUtterancesIgnored(ids, ignored);
     if (!ok) {
         m_tracking = false;
         return false;
@@ -1407,10 +1417,10 @@ bool TranscriptEditorViewModel::setUtteranceIgnored(const QString& utteranceId, 
 
 bool TranscriptEditorViewModel::setSelectionIgnored(bool ignored)
 {
-    if (!m_editor || m_selected.isEmpty()) return false;
+    if (!m_session || m_selected.isEmpty()) return false;
     const QStringList ids = selectedIds();
     beginDecision(ids);
-    const bool ok = m_editor->setUtterancesIgnored(ids, ignored);
+    const bool ok = m_session->setUtterancesIgnored(ids, ignored);
     if (!ok) {
         m_tracking = false;
         return false;
@@ -1429,10 +1439,10 @@ bool TranscriptEditorViewModel::setRowIgnored(int row, bool ignored)
 
 bool TranscriptEditorViewModel::confirmSelection(bool asNoisy)
 {
-    if (!m_editor || m_selected.isEmpty()) return false;
+    if (!m_session || m_selected.isEmpty()) return false;
     const QStringList ids = selectedIds();
     beginDecision(ids);
-    if (!m_editor->confirmUtterances(ids, asNoisy)) {
+    if (!m_session->confirmUtterances(ids, asNoisy)) {
         m_tracking = false;
         return false;
     }
@@ -1495,7 +1505,7 @@ void TranscriptEditorViewModel::publishWholeSpeakerChange(const QString& fromNam
 {
     const QString target = m_views.value(targetKey).name;
     QString text;
-    if (lines <= 0 || target.isEmpty()) text = m_editor ? m_editor->undoText() : QString();
+    if (lines <= 0 || target.isEmpty()) text = m_session ? m_session->undoText() : QString();
     else if (needsAz(lines)) text = tr("%1 mind az %n sora átkerült ide: %2", nullptr, lines).arg(fromName, target);
     else text = tr("%1 mind a %n sora átkerült ide: %2", nullptr, lines).arg(fromName, target);
     // A complete speaker just got (or changed) a person: if that person has no voiceprint yet
@@ -1507,17 +1517,17 @@ void TranscriptEditorViewModel::publishWholeSpeakerChange(const QString& fromNam
 
 bool TranscriptEditorViewModel::canOfferVoiceprint(const QString& speakerKey) const
 {
-    if (!m_editor || !voiceAvailable()) return false;
-    const editing::EditorSpeaker s = m_editor->speaker(speakerKey);
+    if (!m_session || !voiceAvailable()) return false;
+    const editing::EditorSpeaker s = m_session->speaker(speakerKey);
     if (s.key.isEmpty() || s.anonymous || s.hasVoiceprint) return false;
-    return m_editor->voiceprintMaterial(speakerKey).sufficient;      // with little material we do not nag
+    return m_session->voiceprintMaterial(speakerKey).sufficient;      // with little material we do not nag
 }
 
 bool TranscriptEditorViewModel::createVoiceprintFromChange()
 {
-    if (!m_editor || !changeVoiceprintOffer()) return false;
+    if (!m_session || !changeVoiceprintOffer()) return false;
     const QString name = m_views.value(m_change.targetKey).name;
-    const editing::VoiceprintResult r = m_editor->createVoiceprint(m_change.targetKey);
+    const editing::VoiceprintResult r = m_session->createVoiceprint(m_change.targetKey);
     m_change.utterance = -1;
     if (!r.ok) {
         // Failed (e.g. the audio vanished meanwhile): the offer goes away, the reason is shown once.
@@ -1551,7 +1561,7 @@ void TranscriptEditorViewModel::undoChange()
     // The voiceprint is not part of the undo stack: here exactly the voiceprint just made is
     // deleted, the reassignment (naming) stays; that can still be undone with Ctrl+Z.
     const QString name = m_views.value(m_change.targetKey).name;
-    if (m_editor) m_editor->removeVoiceprint(m_change.printId);
+    if (m_session) m_session->removeVoiceprint(m_change.printId);
     m_change.voiceprint = Change::Removed;
     m_change.printId.clear();
     m_change.text = tr("A most készült hanglenyomat törölve: %1").arg(name);
@@ -1568,27 +1578,27 @@ void TranscriptEditorViewModel::dismissChange()
 
 QString TranscriptEditorViewModel::addParticipant(const QString& personName)
 {
-    if (!m_editor) return QString();
-    const QString key = m_editor->addParticipant(m_editor->personChoice(personName));
+    if (!m_session) return QString();
+    const QString key = m_session->addParticipant(m_session->personChoice(personName));
     afterMove(key);
     return key;
 }
 
 bool TranscriptEditorViewModel::removeParticipant(const QString& speakerKey)
 {
-    return m_editor && m_editor->removeParticipant(speakerKey);
+    return m_session && m_session->removeParticipant(speakerKey);
 }
 
 bool TranscriptEditorViewModel::reassignSpeaker(const QString& speakerKey, const QString& personName,
                                                 bool fixVoiceprints)
 {
     const QString name = personName.trimmed();
-    if (!m_editor || name.isEmpty()) return false;
+    if (!m_session || name.isEmpty()) return false;
     const QString fromName = m_views.value(speakerKey).name;
     const int lines = speakerInfo(speakerKey).value(QStringLiteral("utteranceCount")).toInt();
     ++m_opDepth;
-    const PersonChoice choice = m_editor->personChoice(name);
-    const bool ok = m_editor->reassignSpeaker(speakerKey, choice, fixVoiceprints);
+    const PersonChoice choice = m_session->personChoice(name);
+    const bool ok = m_session->reassignSpeaker(speakerKey, choice, fixVoiceprints);
     --m_opDepth;
     if (!ok) return false;
     const QString target = speakerKeyForPerson(choice.id.isNull() ? name : choice.id.toString());
@@ -1599,11 +1609,11 @@ bool TranscriptEditorViewModel::reassignSpeaker(const QString& speakerKey, const
 
 bool TranscriptEditorViewModel::revertSpeakerToAnonymous(const QString& speakerKey, bool fixVoiceprints)
 {
-    if (!m_editor) return false;
+    if (!m_session) return false;
     const QString fromName = m_views.value(speakerKey).name;
     const int lines = speakerInfo(speakerKey).value(QStringLiteral("utteranceCount")).toInt();
     ++m_opDepth;
-    const bool ok = m_editor->revertSpeakerToAnonymous(speakerKey, fixVoiceprints);
+    const bool ok = m_session->revertSpeakerToAnonymous(speakerKey, fixVoiceprints);
     --m_opDepth;
     if (!ok) return false;
     publishWholeSpeakerChange(fromName, lines, speakerKey);
@@ -1612,11 +1622,11 @@ bool TranscriptEditorViewModel::revertSpeakerToAnonymous(const QString& speakerK
 
 bool TranscriptEditorViewModel::mergeSpeakers(const QString& fromKey, const QString& intoKey)
 {
-    if (!m_editor) return false;
+    if (!m_session) return false;
     const QString fromName = m_views.value(fromKey).name;
     const int lines = speakerInfo(fromKey).value(QStringLiteral("utteranceCount")).toInt();
     ++m_opDepth;
-    const bool ok = m_editor->mergeSpeakers(fromKey, intoKey);
+    const bool ok = m_session->mergeSpeakers(fromKey, intoKey);
     --m_opDepth;
     if (!ok) return false;
     afterMove(intoKey);
@@ -1644,10 +1654,10 @@ bool TranscriptEditorViewModel::setRowNoisy(int row, bool noisy)
 
 bool TranscriptEditorViewModel::setUtteranceNoisy(const QString& utteranceId, bool noisy)
 {
-    if (!m_editor || !m_uttIndex.contains(utteranceId)) return false;
+    if (!m_session || !m_uttIndex.contains(utteranceId)) return false;
     const QStringList ids{utteranceId};
     beginDecision(ids);
-    if (!m_editor->setUtterancesNoisy(ids, noisy)) {
+    if (!m_session->setUtterancesNoisy(ids, noisy)) {
         m_tracking = false;
         return false;
     }
@@ -1660,8 +1670,8 @@ bool TranscriptEditorViewModel::setUtteranceNoisy(const QString& utteranceId, bo
 
 void TranscriptEditorViewModel::updateRecheckState()
 {
-    const bool can = m_editor && m_editor->canRecheck();
-    const QString blocker = !m_editor ? QString() : can ? QString() : m_editor->recheckBlocker();
+    const bool can = m_session && m_recheck->canRecheck();
+    const QString blocker = !m_session ? QString() : can ? QString() : m_recheck->recheckBlocker();
     if (can == m_canRecheck && blocker == m_recheckBlocker) return;
     m_canRecheck = can;
     m_recheckBlocker = blocker;
@@ -1671,17 +1681,17 @@ void TranscriptEditorViewModel::updateRecheckState()
 QVariantMap TranscriptEditorViewModel::recheckSpeakers()
 {
     QVariantMap out;
-    if (!m_editor) {
+    if (!m_session) {
         out[QStringLiteral("ran")] = false;
         return out;
     }
-    if (!m_editor->canRecheck()) {
+    if (!m_recheck->canRecheck()) {
         out[QStringLiteral("ran")] = false;
-        out[QStringLiteral("blocker")] = m_editor->recheckBlocker();
+        out[QStringLiteral("blocker")] = m_recheck->recheckBlocker();
         return out;
     }
     // The filter switch and the signal come from the editor's recheckFinished (the shell triggers it too).
-    const editing::SpeakerEditor::RecheckResult r = m_editor->recheckFromConfirmed();
+    const editing::RecheckService::RecheckResult r = m_recheck->recheckFromConfirmed();
     out[QStringLiteral("ran")] = r.ran;
     out[QStringLiteral("flagged")] = r.flagged;
     out[QStringLiteral("speakersWithConfirmedCore")] = r.speakersWithConfirmedCore;
@@ -1694,7 +1704,7 @@ QVariantMap TranscriptEditorViewModel::recheckSpeakers()
     out[QStringLiteral("basisSummary")] = r.basisSummary();
     out[QStringLiteral("similarityNote")] = r.similarityNote();
     QVariantList similar;
-    for (const editing::SpeakerEditor::SimilarVoices& v : r.similar)
+    for (const editing::SimilarVoices& v : r.similar)
         similar << QVariantMap{{QStringLiteral("nameA"), v.nameA}, {QStringLiteral("nameB"), v.nameB},
                                {QStringLiteral("similarity"), v.similarity}};
     out[QStringLiteral("similar")] = similar;
@@ -1854,8 +1864,8 @@ QVariantList TranscriptEditorViewModel::speakersMatching(const QString& query, c
         // By name OR nickname: a person in the meeting is also found by their nickname.
         QString matchedAlias;
         if (!needle.isEmpty() && !text::foldForSearch(s.displayName).contains(needle)) {
-            if (m_editor && !s.anonymous)
-                for (const QString& a : m_editor->personAliases(s.personId))
+            if (m_session && !s.anonymous)
+                for (const QString& a : m_session->personAliases(s.personId))
                     if (text::foldForSearch(a).contains(needle)) { matchedAlias = a; break; }
             if (matchedAlias.isEmpty()) continue;
         }
@@ -1886,10 +1896,10 @@ QVariantMap TranscriptEditorViewModel::voiceprintMaterial(const QString& speaker
                     {QStringLiteral("usableSec"), 0},
                     {QStringLiteral("missingSec"), 0},
                     {QStringLiteral("sufficient"), false}};
-    if (!m_editor) return out;
-    if (!m_editor->embeddingsSupported()) out[QStringLiteral("reason")] = QStringLiteral("model");
+    if (!m_session) return out;
+    if (!m_recheck->embeddingsSupported()) out[QStringLiteral("reason")] = QStringLiteral("model");
     else if (m_embeddingFailed) out[QStringLiteral("reason")] = QStringLiteral("audio");
-    const editing::VoiceprintMaterial m = m_editor->voiceprintMaterial(speakerKey);
+    const editing::VoiceprintMaterial m = m_session->voiceprintMaterial(speakerKey);
     out[QStringLiteral("usableLines")] = m.usableLines;
     out[QStringLiteral("usableSec")] = int(m.usableMs / 1000);
     out[QStringLiteral("missingSec")] = int((m.missingMs + 999) / 1000);
@@ -1900,9 +1910,9 @@ QVariantMap TranscriptEditorViewModel::voiceprintMaterial(const QString& speaker
 QVariantMap TranscriptEditorViewModel::createVoiceprint(const QString& speakerKey)
 {
     QVariantMap out{{QStringLiteral("ok"), false}, {QStringLiteral("message"), QString()}};
-    if (!m_editor) return out;
+    if (!m_session) return out;
     const QString name = m_views.value(speakerKey).name;
-    const editing::VoiceprintResult r = m_editor->createVoiceprint(speakerKey);
+    const editing::VoiceprintResult r = m_session->createVoiceprint(speakerKey);
     out[QStringLiteral("ok")] = r.ok;
     out[QStringLiteral("printId")] = r.printId;
     out[QStringLiteral("usedLines")] = r.usedLines;
@@ -1921,9 +1931,9 @@ QVariantMap TranscriptEditorViewModel::lineSampleInfo(const QString& utteranceId
     QVariantMap out{{QStringLiteral("ok"), false}, {QStringLiteral("reason"), QString()},
                     {QStringLiteral("seconds"), 0}, {QStringLiteral("personName"), QString()}};
     const int i = m_uttIndex.value(utteranceId, -1);
-    if (i < 0 || !m_editor) return out;
+    if (i < 0 || !m_session) return out;
     const editing::EditorUtterance& u = m_utts.at(i);
-    const editing::EditorSpeaker sp = m_editor->speaker(u.speakerKey);
+    const editing::EditorSpeaker sp = m_session->speaker(u.speakerKey);
     out[QStringLiteral("seconds")] = int((u.endMs - u.startMs) / 1000);
     out[QStringLiteral("personName")] = sp.anonymous ? QString() : sp.displayName;
     out[QStringLiteral("personId")] = sp.personId.toString();
@@ -1947,13 +1957,13 @@ QVariantMap TranscriptEditorViewModel::createVoiceprintFromLine(const QString& u
 {
     QVariantMap out{{QStringLiteral("ok"), false}, {QStringLiteral("message"), QString()}};
     const int i = m_uttIndex.value(utteranceId, -1);
-    if (i < 0 || !m_editor) return out;
+    if (i < 0 || !m_session) return out;
     const QString key = m_utts.at(i).speakerKey;
     const QString name = m_views.value(key).name;
     // From an uncertain row: confirm first (same as "Looks right"), then it becomes a sample.
     if (m_utts.at(i).uncertain)
-        m_editor->confirmUtterances({utteranceId}, /*asNoisy*/ false);
-    const editing::VoiceprintResult r = m_editor->createVoiceprintFromLines(key, {utteranceId});
+        m_session->confirmUtterances({utteranceId}, /*asNoisy*/ false);
+    const editing::VoiceprintResult r = m_session->createVoiceprintFromLines(key, {utteranceId});
     out[QStringLiteral("ok")] = r.ok;
     out[QStringLiteral("printId")] = r.printId;
     out[QStringLiteral("message")] = r.ok
@@ -1973,7 +1983,7 @@ QString TranscriptEditorViewModel::voiceprintMessage(const QString& name, const 
 
 bool TranscriptEditorViewModel::removeVoiceprint(const QString& printId)
 {
-    if (!m_editor || !m_editor->removeVoiceprint(printId)) return false;
+    if (!m_session || !m_session->removeVoiceprint(printId)) return false;
     emit peopleChanged();
     return true;
 }
@@ -1983,9 +1993,7 @@ bool TranscriptEditorViewModel::removeVoiceprint(const QString& printId)
 QVector<editing::PersonInfo> TranscriptEditorViewModel::people() const
 {
     if (m_peopleProvider) return m_peopleProvider();
-    if (m_demoSession) return m_demoSession->people();
-    if (m_controller) return m_controller->peopleDirectory();
-    return {};
+    return m_facade ? m_facade->people() : QVector<editing::PersonInfo>();
 }
 
 bool TranscriptEditorViewModel::isMeetingPerson(const QString& name) const
@@ -2013,7 +2021,7 @@ QString percentText(double v) { return QStringLiteral("%1%").arg(qRound(std::cla
 
 bool TranscriptEditorViewModel::reviewRunning() const
 {
-    return m_editor && m_editor->isReviewRunning();
+    return m_session && m_session->isReviewRunning();
 }
 
 bool TranscriptEditorViewModel::isShort(int utterance) const
@@ -2025,15 +2033,8 @@ bool TranscriptEditorViewModel::isShort(int utterance) const
 
 QString TranscriptEditorViewModel::tagLabel(const QString& id) const
 {
-    if (m_controller && m_controller->tags()) {
-        const QString name = m_controller->tags()->tag(id).name;
-        if (!name.isEmpty()) return name;
-    }
-    if (m_demoSession) {
-        const QString name = m_demoSession->tagName(id);
-        if (!name.isEmpty()) return name;
-    }
-    return id;
+    const QString name = m_facade ? m_facade->tagName(id) : QString();
+    return name.isEmpty() ? id : name;
 }
 
 QVariantMap TranscriptEditorViewModel::evidenceMap(const Evidence& e, const QString& sideContext, bool forLine) const
@@ -2143,8 +2144,8 @@ QString TranscriptEditorViewModel::speakerSideName(const QString& speakerKey) co
 
 QString TranscriptEditorViewModel::lineSideName(const QString& utteranceId) const
 {
-    if (!m_editor) return QStringLiteral("unknown");
-    const editing::SideReport r = m_editor->sideReport();
+    if (!m_session) return QStringLiteral("unknown");
+    const editing::SideReport r = m_session->sideReport();
     if (!r.active) return QStringLiteral("unknown");
     for (const editing::LineSide& l : r.lines)
         if (l.utteranceId == utteranceId) return sideOf(l.side);
@@ -2153,27 +2154,27 @@ QString TranscriptEditorViewModel::lineSideName(const QString& utteranceId) cons
 
 QVector<Candidate> TranscriptEditorViewModel::candidatesForLine(const QString& utteranceId) const
 {
-    return m_editor ? m_editor->lineCandidates(utteranceId) : QVector<Candidate>();
+    return m_session ? m_session->lineCandidates(utteranceId) : QVector<Candidate>();
 }
 
 QVector<Candidate> TranscriptEditorViewModel::candidatesForSpeaker(const QString& speakerKey) const
 {
-    return m_editor ? m_editor->speakerCandidates(speakerKey) : QVector<Candidate>();
+    return m_session ? m_session->speakerCandidates(speakerKey) : QVector<Candidate>();
 }
 
 QVariantList TranscriptEditorViewModel::whyNot(const QString& utteranceId) const
 {
     const int i = m_uttIndex.value(utteranceId, -1);
-    if (!m_editor || i < 0) return {};
+    if (!m_session || i < 0) return {};
     const QString speakerKey = m_utts[i].speakerKey;
     const QString lineSide = lineSideName(utteranceId);
     const QString speakerSide = speakerSideName(speakerKey);
     // The short name ("Lilla") in the sentence: for a named person, the first name.
     QString shortName = m_views.value(speakerKey).name;
-    if (!m_editor->speaker(speakerKey).anonymous && shortName.contains(QLatin1Char(' ')))
+    if (!m_session->speaker(speakerKey).anonymous && shortName.contains(QLatin1Char(' ')))
         shortName = shortName.section(QLatin1Char(' '), -1);
     QVariantList out;
-    for (const Evidence& e : m_editor->whyNot(utteranceId)) {
+    for (const Evidence& e : m_session->whyNot(utteranceId)) {
         QVariantMap m = evidenceMap(e, speakerSide, /*forLine*/ true);
         if ((e.kind == EvidenceKind::Side || e.kind == EvidenceKind::Manual) && e.polarity == Polarity::Contradict
             && !sidePhrase(lineSide).isEmpty() && !sidePhrase(speakerSide).isEmpty()) {
@@ -2187,8 +2188,8 @@ QVariantList TranscriptEditorViewModel::whyNot(const QString& utteranceId) const
 
 QVariantList TranscriptEditorViewModel::speakerEvidence(const QString& speakerKey) const
 {
-    if (!m_editor) return {};
-    QVariantList out = evidenceList(m_editor->speakerEvidence(speakerKey), speakerSideName(speakerKey), false,
+    if (!m_session) return {};
+    QVariantList out = evidenceList(m_session->speakerEvidence(speakerKey), speakerSideName(speakerKey), false,
                                     /*chipsOnly*/ true);
     // The contaminated core ("Why?"): its confirmed rows fall on two voices -> Split.
     if (m_contaminated.value(QStringLiteral("speakerKey")).toString() == speakerKey) {
@@ -2220,10 +2221,8 @@ QVariantMap TranscriptEditorViewModel::lineInfo(const QString& utteranceId) cons
 
 QVariantList TranscriptEditorViewModel::trackOptions(const QString& speakerKey) const
 {
-    QVector<Track> tracks;
-    if (m_demoSession) tracks = m_demoSession->tracks();
-    else if (m_controller && !m_meetingId.isEmpty()) tracks = m_controller->store()->load(m_meetingId).tracks;
-    const QStringList assigned = m_editor ? m_editor->trackAssignment(speakerKey) : QStringList();
+    const QVector<Track> tracks = m_facade ? m_facade->tracks(m_meetingId) : QVector<Track>();
+    const QStringList assigned = m_session ? m_session->trackAssignment(speakerKey) : QStringList();
     int mics = 0, loops = 0;
     for (const Track& t : std::as_const(tracks)) {
         if (!t.active) continue;
@@ -2254,24 +2253,22 @@ QVariantList TranscriptEditorViewModel::trackOptions(const QString& speakerKey) 
 
 bool TranscriptEditorViewModel::setSpeakerTracks(const QString& speakerKey, const QStringList& trackIds)
 {
-    if (!m_editor) return false;
-    const bool ok = m_editor->setTrackAssignment(speakerKey, trackIds);
+    if (!m_session) return false;
+    const bool ok = m_session->setTrackAssignment(speakerKey, trackIds);
     if (ok) emit reviewChanged();
     return ok;
 }
 
 QVariantMap TranscriptEditorViewModel::quickTagFor(const QString& personName) const
 {
-    if (!m_editor) return {};
-    const PersonId person = m_editor->personChoice(personName).id;
+    if (!m_session) return {};
+    const PersonId person = m_session->personChoice(personName).id;
     if (person.isNull()) return {};
     // The own person is excluded from every tag rule.
-    PersonId self;
-    if (m_demoSession) self = m_demoSession->selfId();
-    else if (m_controller && m_controller->tags()) self = m_controller->tags()->selfId();
+    const PersonId self = m_facade ? m_facade->selfId() : PersonId();
     if (!self.isNull() && self == person) return {};
-    const QStringList has = m_editor->personTagIds(person);
-    for (const QString& id : m_editor->meetingTagIds()) {
+    const QStringList has = m_session->personTagIds(person);
+    for (const QString& id : m_session->meetingTagIds()) {
         if (has.contains(id, Qt::CaseInsensitive)) continue;
         const QString name = tagLabel(id);
         if (name.isEmpty()) continue;
@@ -2284,21 +2281,18 @@ QVariantMap TranscriptEditorViewModel::quickTagFor(const QString& personName) co
 
 bool TranscriptEditorViewModel::addQuickTag(const QString& personName, const QString& tagId)
 {
-    const PersonId person = m_editor ? m_editor->personChoice(personName).id : PersonId();
-    if (!m_editor || person.isNull() || tagId.isEmpty()) return false;
-    bool ok = false;
-    if (m_demoSession) ok = m_demoSession->addPersonTag(person, tagId);
-    else if (m_controller && m_controller->tags()) ok = m_controller->tags()->addPersonTag(person, tagId).isValid();
-    if (!ok) return false;
-    m_editor->notifyPersonTagsChanged();
+    const PersonId person = m_session ? m_session->personChoice(personName).id : PersonId();
+    if (!m_session || person.isNull() || tagId.isEmpty()) return false;
+    if (!m_facade || !m_facade->addPersonTag(person, tagId)) return false;
+    m_session->notifyPersonTagsChanged();
     emit reviewChanged();
     return true;
 }
 
 QString TranscriptEditorViewModel::sideBasisText(const QString& speakerKey) const
 {
-    if (!m_editor) return {};
-    const editing::SideReport r = m_editor->sideReport();
+    if (!m_session) return {};
+    const editing::SideReport r = m_session->sideReport();
     for (const editing::PersonSide& p : r.persons) {
         if (p.speakerKey != speakerKey) continue;
         if (p.basis == QLatin1String("manual")) {
@@ -2323,8 +2317,8 @@ QString TranscriptEditorViewModel::sideBasisText(const QString& speakerKey) cons
 
 QString TranscriptEditorViewModel::personOf(const QString& speakerKey) const
 {
-    if (!m_editor) return {};
-    const editing::EditorSpeaker s = m_editor->speaker(speakerKey);
+    if (!m_session) return {};
+    const editing::EditorSpeaker s = m_session->speaker(speakerKey);
     return s.anonymous ? QString() : s.displayName;
 }
 
@@ -2341,20 +2335,20 @@ void TranscriptEditorViewModel::rebuildReview()
     m_newPersonGroupId.clear();
     QSet<QString> sideConflicts;
     QHash<QString, QString> sides;
-    if (m_editor && !m_utts.isEmpty()) {
-        const editing::SideReport sr = m_editor->sideReport();
+    if (m_session && !m_utts.isEmpty()) {
+        const editing::SideReport sr = m_session->sideReport();
         if (sr.active) {
             for (const editing::SideConflict& c : sr.conflicts) sideConflicts.insert(c.utteranceId);
             for (const editing::PersonSide& p : sr.persons) sides.insert(p.speakerKey, sideOf(p.side));
         }
         QSet<QString> covered;
         QVector<ReviewView> shortViews;
-        for (const editing::ReviewGroup& g : m_editor->reviewGroups()) {
+        for (const editing::ReviewGroup& g : m_session->reviewGroups()) {
             for (const QString& id : g.utteranceIds) covered.insert(id);
             if (m_skippedGroups.contains(g.id)) continue;
             if (g.kind == editing::ReviewKind::ContaminatedCore) {
                 if (!m_contaminated.isEmpty()) continue;
-                const editing::EditorSpeaker sp = m_editor->speaker(g.currentSpeakerKey);
+                const editing::EditorSpeaker sp = m_session->speaker(g.currentSpeakerKey);
                 m_contaminated = {{QStringLiteral("groupId"), g.id},
                                   {QStringLiteral("speakerKey"), g.currentSpeakerKey},
                                   {QStringLiteral("name"), sp.displayName},
@@ -2541,10 +2535,10 @@ QVariantMap TranscriptEditorViewModel::newPersonSimilar() const
 
 QVariantMap TranscriptEditorViewModel::newPersonReadiness() const
 {
-    if (!m_editor || m_newPersonKey.isEmpty() || !voiceAvailable()) return {};
-    const editing::EditorSpeaker sp = m_editor->speaker(m_newPersonKey);
+    if (!m_session || m_newPersonKey.isEmpty() || !voiceAvailable()) return {};
+    const editing::EditorSpeaker sp = m_session->speaker(m_newPersonKey);
     if (sp.key.isEmpty() || sp.anonymous || sp.hasVoiceprint) return {};
-    const editing::VoiceprintMaterial m = m_editor->voiceprintMaterial(m_newPersonKey);
+    const editing::VoiceprintMaterial m = m_session->voiceprintMaterial(m_newPersonKey);
     const int now = int(m.usableMs / 1000);
     const int missing = int((m.missingMs + 999) / 1000);
     const bool pending = m_voiceprintWhenReady == m_newPersonKey;
@@ -2560,8 +2554,8 @@ QVariantMap TranscriptEditorViewModel::newPersonReadiness() const
 
 QVariantMap TranscriptEditorViewModel::requestNewPersonVoiceprint()
 {
-    if (!m_editor || m_newPersonKey.isEmpty()) return {{QStringLiteral("ok"), false}};
-    if (m_editor->voiceprintMaterial(m_newPersonKey).sufficient) {
+    if (!m_session || m_newPersonKey.isEmpty()) return {{QStringLiteral("ok"), false}};
+    if (m_session->voiceprintMaterial(m_newPersonKey).sufficient) {
         QVariantMap r = createVoiceprint(m_newPersonKey);
         emit reviewChanged();
         return r;
@@ -2573,7 +2567,7 @@ QVariantMap TranscriptEditorViewModel::requestNewPersonVoiceprint()
 
 bool TranscriptEditorViewModel::applyReviewGroup(const QString& groupId, bool noisy)
 {
-    if (!m_editor) return false;
+    if (!m_session) return false;
     // The queue's opening suggestion (TranscriptEditorViewModelQueue.cpp).
     bool opener = false;
     const bool openerOk = applyQueueOpener(groupId, noisy, &opener);
@@ -2608,8 +2602,8 @@ bool TranscriptEditorViewModel::applyReviewGroup(const QString& groupId, bool no
     const QList<QString> keysBefore = m_views.keys();
     ++m_opDepth;
     beginDecision(v.ids);
-    const bool ok = v.kind == QLatin1String("uncertain") ? m_editor->moveUtterances(v.ids, v.proposedKey)
-                                                         : m_editor->applyReviewGroup(groupId);
+    const bool ok = v.kind == QLatin1String("uncertain") ? m_session->moveUtterances(v.ids, v.proposedKey)
+                                                         : m_session->applyReviewGroup(groupId);
     --m_opDepth;
     if (!ok) {
         m_tracking = false;
@@ -2637,17 +2631,17 @@ void TranscriptEditorViewModel::skipReviewGroup(const QString& groupId)
 
 bool TranscriptEditorViewModel::splitSpeaker(const QString& speakerKey)
 {
-    if (!m_editor) return false;
+    if (!m_session) return false;
     const int count = m_contaminated.value(QStringLiteral("count")).toInt();
     const QList<QString> keysBefore = m_views.keys();
     // The target: the contaminated-core group's suggestion (the core recomputes the same).
     QString proposed;
-    for (const editing::ReviewGroup& g : m_editor->reviewGroups())
+    for (const editing::ReviewGroup& g : m_session->reviewGroups())
         if (g.kind == editing::ReviewKind::ContaminatedCore && g.currentSpeakerKey == speakerKey)
             proposed = !g.proposedSpeakerKey.isEmpty() ? g.proposedSpeakerKey
                                                        : speakerKeyForPerson(g.proposedPersonId.toString());
     ++m_opDepth;
-    const bool ok = m_editor->splitSpeaker(speakerKey);
+    const bool ok = m_session->splitSpeaker(speakerKey);
     --m_opDepth;
     if (!ok) return false;
     QString target = proposed;
@@ -2664,10 +2658,10 @@ bool TranscriptEditorViewModel::splitSpeaker(const QString& speakerKey)
 
 bool TranscriptEditorViewModel::confirmUtterance(const QString& utteranceId, bool asNoisy)
 {
-    if (!m_editor || !m_uttIndex.contains(utteranceId)) return false;
+    if (!m_session || !m_uttIndex.contains(utteranceId)) return false;
     const QStringList ids{utteranceId};
     beginDecision(ids);
-    if (!m_editor->confirmUtterances(ids, asNoisy)) {
+    if (!m_session->confirmUtterances(ids, asNoisy)) {
         m_tracking = false;
         return false;
     }
@@ -2716,7 +2710,7 @@ void TranscriptEditorViewModel::beginDecision(const QStringList& ids)
 void TranscriptEditorViewModel::endDecision(const QString& text, const QStringList& ids, const QString& kind)
 {
     m_tracking = false;
-    if (!m_editor) return;
+    if (!m_session) return;
     Decision d;
     d.text = text;
     // The decision's verb (the Just now row's icon): move / keep / cannot be identified.
@@ -2731,7 +2725,7 @@ void TranscriptEditorViewModel::endDecision(const QString& text, const QStringLi
         d.verb = moved ? QStringLiteral("move") : QStringLiteral("keep");
     }
     m_trackKeys.clear();
-    const QVector<quint64> serials = m_editor->undoSerials();
+    const QVector<quint64> serials = m_session->undoSerials();
     d.serial = serials.isEmpty() ? 0 : serials.last();
     int first = -1;
     for (const QString& id : ids) {
@@ -2769,8 +2763,8 @@ void TranscriptEditorViewModel::endDecision(const QString& text, const QStringLi
 
 void TranscriptEditorViewModel::pruneDecisions()
 {
-    if (!m_editor || m_decisions.isEmpty()) return;
-    const QVector<quint64> serials = m_editor->undoSerials();
+    if (!m_session || m_decisions.isEmpty()) return;
+    const QVector<quint64> serials = m_session->undoSerials();
     const QSet<quint64> alive(serials.cbegin(), serials.cend());
     QStringList undone;
     for (int i = int(m_decisions.size()) - 1; i >= 0; --i) {
@@ -2823,8 +2817,8 @@ QString TranscriptEditorViewModel::sampleState(int utterance) const
 void TranscriptEditorViewModel::updateSampleDeviation()
 {
     QVariantMap next;
-    if (m_editor) {
-        const editing::SampleDeviation dev = m_editor->lastSampleDeviation();
+    if (m_session) {
+        const editing::SampleDeviation dev = m_session->lastSampleDeviation();
         if (dev.isValid() && dev.deviates && m_uttIndex.contains(dev.utteranceId)) {
             const QString name = m_views.value(dev.speakerKey).name;
             const int pct = int(std::lround(std::clamp(dev.similarity, 0.0, 1.0) * 100.0));
@@ -2845,8 +2839,8 @@ void TranscriptEditorViewModel::updateSampleDeviation()
 void TranscriptEditorViewModel::updateSampleStats()
 {
     QVariantList next;
-    if (m_editor) {
-        for (const editing::SpeakerSampleStats& st : m_editor->sampleStats()) {
+    if (m_session) {
+        for (const editing::SpeakerSampleStats& st : m_session->sampleStats()) {
             if (st.sampleLines == 0 && st.sessionAdded == 0) continue;
             const SpeakerView v = m_views.value(st.speakerKey);
             QString text = tr("%n minta", nullptr, st.sampleLines);
@@ -2946,23 +2940,14 @@ void TranscriptEditorViewModel::clearSampleFilter()
     if (row >= 0) emit revealRequested(row);
 }
 
-// ---- demo states ---------------------------------------------------------
-
 // ---- new person: tag question ---------------------------------------------------
 
 void TranscriptEditorViewModel::askNewPersonTag(const QString& name)
 {
     if (!m_change.active || !m_change.newPerson || name.trimmed().isEmpty()) return;
-    QVector<library::PersonTagQuestion> questions;
-    const PersonId person = m_editor ? m_editor->personChoice(name).id : PersonId();
-    if (demo()) {
-        if (m_demoTagQuestion)
-            questions = {library::PersonTagQuestion{QStringLiteral("nordvik"), QStringLiteral("Nordvik"),
-                                                    {person}, {name.trimmed()}, true}};
-    } else if (m_controller && m_controller->tags() && !person.isNull()) {
-        questions = m_controller->tags()->learningQuestions(m_meetingId, {person});
-        m_controller->tags()->markLearningAsked(m_meetingId, questions);
-    }
+    const PersonId person = m_session ? m_session->personChoice(name).id : PersonId();
+    const QVector<library::PersonTagQuestion> questions =
+        m_facade ? m_facade->newPersonTagQuestions(m_meetingId, person, name) : QVector<library::PersonTagQuestion>();
     if (questions.isEmpty()) return;
     m_change.tagQuestions = questions;
     m_change.tagAnswer.clear();
@@ -2981,7 +2966,7 @@ QVariantMap TranscriptEditorViewModel::changeTagQuestion() const
 
 void TranscriptEditorViewModel::answerTagQuestion(const library::PersonTagQuestion& q, bool yes)
 {
-    if (!demo() && m_controller && m_controller->tags()) m_controller->tags()->answerLearning(q, yes);
+    if (m_facade) m_facade->answerTagQuestion(q, yes);
     m_change.tagAnswer = taglearning::answeredText(q, yes);
 }
 
@@ -3009,222 +2994,9 @@ void TranscriptEditorViewModel::answerChangeTagPair(int index, bool yes)
 void TranscriptEditorViewModel::undoChangeTagAnswer()
 {
     if (m_change.tagAnswer.isEmpty()) return;
-    if (!demo() && m_controller && m_controller->tags() && m_controller->tags()->canUndo())
-        m_controller->tags()->undo();
+    if (m_facade) m_facade->undoTagAnswer();
     m_change.tagAnswer.clear();
     emit changeChanged();
-}
-
-// Demo states (on the fictional v3 meeting, after stageV3): "Just now" row with a warning and
-// log, rows that cannot be identified + sample marks, the sample meter's filter.
-void TranscriptEditorViewModel::stageS2Demo(const QString& state)
-{
-    if (!m_editor || m_utts.size() < 12) return;
-    auto keyOfPerson = [this](const QString& name) { return speakerKeyForPerson(name); };
-    if (state == QLatin1String("ignoredRows")) {
-        // Fixed + sample, Looks right + not a sample, two rows that cannot be identified.
-        const QString eszter = keyOfPerson(demoName("Molnár Eszter"));
-        if (!eszter.isEmpty()) moveUtteranceToSpeaker(m_utts[3].id, eszter);
-        confirmUtterance(m_utts[5].id, /*asNoisy*/ true);
-        setUtteranceIgnored(m_utts[2].id, true);
-        setUtteranceIgnored(m_utts[6].id, true);
-        clearChange();
-        emit revealRequested(0);
-    } else if (state == QLatin1String("imentWarning") || state == QLatin1String("imentLog")) {
-        // A row moved as a sample whose voice differs from the target's other rows: found by trial
-        // (and undone), then actually done after a small decision row.
-        QString hitId, hitKey;
-        for (int i = 9; i < m_utts.size() && hitId.isEmpty(); ++i) {
-            const editing::EditorUtterance u = m_utts[i];
-            if (u.ignored || u.noisy || u.endMs - u.startMs < 2500) continue;
-            for (const QString& key : std::as_const(m_laneKeys)) {
-                if (key == u.speakerKey || m_editor->speaker(key).anonymous) continue;
-                if (!m_editor->moveUtterances({u.id}, key)) continue;
-                const bool deviates = m_editor->lastSampleDeviation().deviates;
-                m_editor->undo();
-                if (deviates) {
-                    hitId = u.id;
-                    hitKey = key;
-                    break;
-                }
-            }
-            if (i > 40) break;
-        }
-        m_decisions.clear();
-        confirmUtterance(m_utts[5].id, false);
-        setUtteranceIgnored(m_utts[6].id, true);
-        confirmUtterance(m_utts[7].id, /*asNoisy*/ true);
-        if (!hitId.isEmpty()) {
-            moveUtteranceToSpeaker(hitId, hitKey);
-            const int row = m_rows->rowOfUtterance(m_uttIndex.value(hitId, -1));
-            if (row >= 0) emit revealRequested(row);
-        }
-        clearChange();
-    } else if (state == QLatin1String("sampleFilter")) {
-        const QString gabor = keyOfPerson(demoName("Fehér Gábor"));
-        showSessionSamples(gabor.isEmpty() ? m_laneKeys.value(0) : gabor);
-    }
-}
-
-void TranscriptEditorViewModel::applyDemoState(const QString& state)
-{
-    m_pendingDemoState = state;
-    if (m_editor && m_editor->isEmbeddingRunning()) return;    // at the end of the audio analysis
-    applyPendingDemoState();
-}
-
-void TranscriptEditorViewModel::applyPendingDemoState()
-{
-    const QString state = m_pendingDemoState;
-    m_pendingDemoState.clear();
-    if (state.isEmpty() || !m_editor || m_utts.isEmpty()) return;
-    if (applyQueueDemoState(state)) return;     // S3: "reviewQueue*"
-
-    if (state == QLatin1String("selection")) {
-        setRailVisible(true);
-        QSet<int> sel;
-        for (int i = 2; i <= 4 && i < m_utts.size(); ++i) sel.insert(i);
-        setSelection(sel, 2);
-    } else if (state == QLatin1String("suggestion") || state == QLatin1String("suggestionShown")) {
-        setRailVisible(true);
-        if (m_demoSession && !m_demoSession->suggestionSeedUtteranceId().isEmpty()) {
-            moveUtteranceToSpeaker(m_demoSession->suggestionSeedUtteranceId(),
-                                   m_demoSession->suggestionTargetKey());
-            if (state == QLatin1String("suggestionShown")) setSuggestionShown(true);
-            const int row = m_rows->nearestRow(m_suggestionAnchor);
-            if (row >= 0) emit revealRequested(row);
-        }
-    } else if (state == QLatin1String("filter")) {
-        setRailVisible(true);
-        setUncertainOnly(true);
-    } else if (state == QLatin1String("search")) {
-        setSearchQuery(demoText("sugo", "help"));
-    } else if (state == QLatin1String("searchEmpty")) {
-        setSearchQuery(demoText("zsiráf", "giraffe"));
-    } else if (state == QLatin1String("rail")) {
-        setRailVisible(true);
-    } else if (state == QLatin1String("changeLine")) {
-        // A row moves to the adjacent column: no similar-row suggestion, only the "all N rows"
-        // continuation.
-        setRailVisible(true);
-        if (m_utts.size() > 3 && m_laneKeys.size() > 1)
-            moveUtteranceToSpeaker(m_utts[3].id, m_laneKeys[m_utts[3].speakerKey == m_laneKeys[1] ? 0 : 1]);
-    } else if (state == QLatin1String("changeSelection")) {
-        setRailVisible(true);
-        QSet<int> sel;
-        for (int i = 2; i <= 4 && i < m_utts.size(); ++i) sel.insert(i);
-        setSelection(sel, 2);
-        moveSelectionToSpeaker(m_laneKeys.value(std::min<int>(2, int(m_laneKeys.size()) - 1)));
-    } else if (state == QLatin1String("changeSpeaker")) {
-        setRailVisible(true);
-        reassignSpeaker(m_laneKeys.value(0), demoName("Molnár Eszter"), false);
-    } else if (state == QLatin1String("changeVoiceprint") || state == QLatin1String("changeVoiceprintDone")) {
-        // An anonymous speaker gets a name (the person has no voiceprint): the lane offers one.
-        setRailVisible(true);
-        for (const editing::EditorSpeaker& s : std::as_const(m_speakers)) {
-            if (!s.anonymous || m_views.value(s.key).lane < 0) continue;
-            reassignSpeaker(s.key, demoName("Bálint Péter"), false);
-            break;
-        }
-        if (state == QLatin1String("changeVoiceprintDone")) createVoiceprintFromChange();
-    } else if (state == QLatin1String("voiceprintNone") || state == QLatin1String("voiceprintDone")) {
-        // Make it a named speaker without a voiceprint (the panel is opened by TranscriptTab).
-        bool exists = false;
-        for (const editing::EditorSpeaker& s : std::as_const(m_speakers)) exists = exists || (!s.anonymous && !s.hasVoiceprint);
-        for (const editing::EditorSpeaker& s : std::as_const(m_speakers)) {
-            if (exists || !s.anonymous) continue;
-            reassignSpeaker(s.key, demoName("Bálint Péter"), false);
-            break;
-        }
-        dismissChange();
-    } else if (state == QLatin1String("voiceprintShort")) {
-        // A single short row for a new person: no voiceprint can be made from it.
-        if (m_utts.size() > 3) moveUtteranceToPerson(m_utts[3].id, demoName("Bálint Péter"));
-        dismissChange();
-    } else if (state == QLatin1String("recheck") || state == QLatin1String("recheckReady")) {
-        // 3 sure rows confirmed per speaker. recheckReady: the current uncertain ones are decided
-        // too ("Looks right") -> the filter button offers the re-check; recheck: it runs as well.
-        setRailVisible(true);
-        const bool ready = state == QLatin1String("recheckReady");
-        QStringList ids = ready ? m_editor->uncertainUtteranceIds() : QStringList();
-        QHash<QString, int> perSpeaker;
-        for (const editing::EditorUtterance& u : std::as_const(m_utts)) {
-            if (u.uncertain || u.endMs - u.startMs < 3000) continue;
-            if (perSpeaker.value(u.speakerKey) >= 3) continue;
-            ++perSpeaker[u.speakerKey];
-            ids << u.id;
-        }
-        m_editor->confirmUtterances(ids);
-        if (!ready) recheckSpeakers();
-    } else if (state == QLatin1String("noisy")) {
-        // A longer row gets the "Looks right, but don't use as a sample" flag.
-        for (const editing::EditorUtterance& u : std::as_const(m_utts)) {
-            if (u.uncertain || u.noisy || u.endMs - u.startMs < 3000) continue;
-            m_editor->confirmUtterances({u.id}, /*asNoisy*/ true);
-            const int row = m_rows->rowOfUtterance(m_uttIndex.value(u.id, -1));
-            if (row >= 0) emit revealRequested(row);
-            break;
-        }
-    } else if (state == QLatin1String("changePairOffer")) {
-        // A row moves to another named speaker; the lane offers reviewing the two together (the
-        // fictional voices are too different for this, so the offer is fictional here).
-        setRailVisible(true);
-        QString from, to;
-        int moved = -1;
-        for (int i = 3; i < m_utts.size() && moved < 0; ++i) {
-            if (m_editor->speaker(m_utts[i].speakerKey).anonymous) continue;
-            for (const QString& key : std::as_const(m_laneKeys)) {
-                if (key == m_utts[i].speakerKey || m_editor->speaker(key).anonymous) continue;
-                from = m_utts[i].speakerKey;
-                to = key;
-                moved = i;
-                break;
-            }
-        }
-        if (moved >= 0 && moveUtteranceToSpeaker(m_utts[moved].id, to)) {
-            m_editor->dismissSuggestion();      // the two never show together
-            m_demoPairOffer = true;
-            m_pairOffer.sourceSpeakerKey = from;
-            m_pairOffer.targetSpeakerKey = to;
-            m_pairOffer.centroidSimilarity = 0.82;
-            emit suggestionChanged();
-        }
-    } else if (state == QLatin1String("markers") || state == QLatin1String("fixLinePopover")
-               || state == QLatin1String("reviewGroups") || state == QLatin1String("reviewExpanded")
-               || state == QLatin1String("contaminatedCore") || state == QLatin1String("speakerWhy")
-               || state == QLatin1String("newPersonSimilar") || state == QLatin1String("newPersonTag")
-               || state == QLatin1String("imentWarning") || state == QLatin1String("imentLog")
-               || state == QLatin1String("shiftPreview") || state == QLatin1String("ignoredRows")
-               || state == QLatin1String("sampleFilter")) {
-        // Fix mode (on the fictional "v3" meeting): confirmed cores, markers; the panel / opening
-        // the group is done by TranscriptTab.
-        setRailVisible(true);
-        if (m_demoSession) m_demoSession->stageV3(state);
-        if (state.startsWith(QLatin1String("review")) || state == QLatin1String("contaminatedCore"))
-            setUncertainOnly(true);
-        m_demoTagQuestion = state == QLatin1String("newPersonTag");
-        if ((state == QLatin1String("newPersonSimilar") || m_demoTagQuestion) && m_utts.size() > 8) {
-            setSelection({6, 7, 8}, 6);
-            moveSelectionToPerson(demoName("Nagy Péter"));
-            const int row = m_rows->nearestRow(6);
-            if (row >= 0) emit revealRequested(row);
-        }
-        if (state == QLatin1String("markers")) clearChange();
-        stageS2Demo(state);
-    } else if (state == QLatin1String("changeFilter")) {
-        // A row fixed in the filter stays in place ("fixed"), the lane below it.
-        setUncertainOnly(true);
-        for (const TranscriptListModel::Row& r : m_rows->rows()) {
-            if (r.gap) continue;
-            const QString from = m_utts[r.utterance].speakerKey;
-            for (const QString& key : std::as_const(m_laneKeys)) {
-                if (key == from) continue;
-                moveUtteranceToSpeaker(m_utts[r.utterance].id, key);
-                break;
-            }
-            break;
-        }
-    }
 }
 
 // =============================================================================================
@@ -3598,7 +3370,7 @@ void TranscriptEditorViewModel::sweepOnPosition()
 bool TranscriptEditorViewModel::sweepDecide(int row, const QString& action, int lane, bool noisy)
 {
     const int u = m_rows->utteranceOfRow(row);
-    if (u < 0 || !m_editor) return false;
+    if (u < 0 || !m_session) return false;
     const QString id = m_utts[u].id;
     const QString speaker = m_utts[u].speakerKey;
     if (action == QLatin1String("replay")) {
@@ -3895,7 +3667,7 @@ void TranscriptEditorViewModel::sweepRebuildDock()
 
 int TranscriptEditorViewModel::stageSweepDemo(const QString& state)
 {
-    if (!m_editor || m_utts.size() < 12) return -1;
+    if (!m_session || m_utts.size() < 12) return -1;
     setRailVisible(true);
     setSweepActive(true);
     // The fictional meeting is short: four equal time slices.

@@ -9,7 +9,6 @@
 #include "QmlApp.h"
 #include "TranscriptEditorViewModel.h"
 #include "TranscriptListModel.h"
-#include "tanara/editing/session/SpeakerEditor.h"
 
 #include <QQmlComponent>
 #include <QQmlEngine>
@@ -29,7 +28,7 @@ namespace {
 bool waitIdle(const TranscriptEditorViewModel& vm)
 {
     return QTest::qWaitFor([&] {
-        return !vm.embeddingRunning() && vm.editor() && vm.editor()->embeddingsComplete() && !vm.reviewRunning();
+        return !vm.embeddingRunning() && vm.session() && vm.recheck()->embeddingsComplete() && !vm.reviewRunning();
     }, 15000);
 }
 
@@ -297,7 +296,7 @@ private slots:
         const QString insideId = cell(vm, inside, Role::UtteranceIdRole).toString();
         const QString outsideId = cell(vm, outside, Role::UtteranceIdRole).toString();
         QSignalSpy markers(&vm, &TranscriptEditorViewModel::sweepMarkersChanged);
-        QVERIFY(vm.editor()->confirmUtterances({insideId, outsideId}));
+        QVERIFY(vm.session()->confirmUtterances({insideId, outsideId}));
         // Within the window the marker does not change (pending), outside it does at once.
         QVERIFY(cell(vm, inside, Role::UncertainRole).toBool());
         QVERIFY(!cell(vm, outside, Role::UncertainRole).toBool());
@@ -328,13 +327,13 @@ private slots:
         const int last = vm.rows()->rowCount() - 1;
         const QString id = cell(vm, behind, Role::UtteranceIdRole).toString();
         // The line is marked OK by the "background", then doubtful again, after playback has passed it.
-        QVERIFY(vm.editor()->confirmUtterances({id}));
+        QVERIFY(vm.session()->confirmUtterances({id}));
         QVERIFY(!cell(vm, behind, Role::UncertainRole).toBool());
         vm.setSweepActive(true);
         vm.setPlaybackPosition(vm.rowStartMs(last), true);
         vm.setSweepWindow(last - 3, last);
         QCOMPARE(vm.rebehindCount(), 0);
-        vm.editor()->undo();                                // not the VM's path: looks like a background change
+        vm.session()->undo();                                // not the VM's path: looks like a background change
         QVERIFY(cell(vm, behind, Role::UncertainRole).toBool());
         QCOMPARE(vm.rebehindCount(), 1);
         const QVariantList list = vm.rebehindRows();

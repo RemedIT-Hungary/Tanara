@@ -1,21 +1,26 @@
 #pragma once
 //
 // TranscriptEditorViewModel: view model of the "Transcript" tab (transcript editor): the
-// editing session of ONE open meeting, exposed to QML. It builds on the core
-// tanara::SpeakerEditor (which performs the actions, undo and audio analysis); this class adds
-// the display state: list model, tracks (collapse rule), overview, selection, "Uncertain"
-// filter, search, playback following, suggestion, audio-analysis state.
+// editing session of ONE open meeting, exposed to QML. It builds on the core editing session
+// (tanara::editing::SpeakerEditSession: the actions, undo, suggestions, "To review" analysis) and
+// its RecheckService (the audio analysis and the re-checks); this class adds the display state:
+// list model, tracks (collapse rule), overview, selection, "Uncertain" filter, search, playback
+// following, suggestion, audio-analysis state.
 //
-// Where the session comes from:
-//  - with an AppController (live):  meetingId -> AppController::speakerEditor(id)
-//  - without (App.demo, --qml-shot, --demo):  built-in FICTIONAL meeting (TranscriptDemoSession)
-//  - tests:  setEditor() + setPeopleProvider() directly
+// Where the session comes from: the transcript editor's facade (tanara::editing::ITranscriptEditorFacade)
+// opens it for the meetingId:
+//  - from QML: the App singleton's services (AppContext::services().transcriptEditor): the real one
+//    (the application's editor sessions), or with App.demo / without a controller the FICTIONAL
+//    meeting of tanara_demo (TranscriptEditorDemoFacade, one per demoVariant)
+//  - from C++: a given facade (constructor)
+//  - tests: setSession() + setPeopleProvider() directly
 //
 #include "TranscriptListModel.h"
-#include "tanara/app/AppSettings.h"
 
+#include "tanara/editing/ITranscriptEditorFacade.h"
+#include "tanara/editing/recheck/RecheckService.h"
+#include "tanara/editing/session/SpeakerEditSession.h"
 #include "tanara/editing/session/SpeakerEditTypes.h"
-#include "tanara/editing/session/SpeakerEditor.h"
 #include "tanara/library/tags/PersonTags.h"
 
 #include <QColor>
@@ -34,14 +39,8 @@
 #include <functional>
 #include <memory>
 
-namespace tanara {
-namespace app { class AppController; }
-namespace editing { class SpeakerEditor; }
-}
-
 namespace tanara_qml {
 
-class TranscriptDemoSession;
 class ReviewQueueModel;     // ReviewQueueModel.h includes this header
 
 class TranscriptEditorViewModel : public QObject, public QQmlParserStatus {
@@ -52,7 +51,7 @@ class TranscriptEditorViewModel : public QObject, public QQmlParserStatus {
 
     Q_PROPERTY(QString meetingId READ meetingId WRITE setMeetingId NOTIFY meetingIdChanged)
     Q_PROPERTY(QString demoVariant READ demoVariant WRITE setDemoVariant NOTIFY demoVariantChanged)
-    // True: the session is the built-in fictional meeting (no AppController).
+    // True: the session is the fictional meeting of a demo facade.
     Q_PROPERTY(bool demo READ demo NOTIFY sessionChanged)
     Q_PROPERTY(bool hasTranscript READ hasTranscript NOTIFY sessionChanged)
     // The meeting HAS a transcript but in the old format (no utterance list), so it cannot be
@@ -183,11 +182,11 @@ class TranscriptEditorViewModel : public QObject, public QQmlParserStatus {
     Q_PROPERTY(QVariantMap lastDecision READ lastDecision NOTIFY decisionsChanged)
     // The previous decisions (at most 5, newest first), with the elements of lastDecision.
     Q_PROPERTY(QVariantList decisionLog READ decisionLog NOTIFY decisionsChanged)
-    // Deviating sample (SpeakerEditor::lastSampleDeviation, only if deviates): { utteranceId,
+    // Deviating sample (SpeakerEditSession::lastSampleDeviation, only if deviates): { utteranceId,
     // speakerKey, name, pct (0..100), similarity, text: "This sample differs from X's other
     // lines (voice 41%). Sure?" }; empty map: no warning.
     Q_PROPERTY(QVariantMap sampleDeviation READ sampleDeviation NOTIFY sampleDeviationChanged)
-    // Sample meter (SpeakerEditor::sampleStats): [{ key, name, colorIndex, sampleLines, sampleMs,
+    // Sample meter (SpeakerEditSession::sampleStats): [{ key, name, colorIndex, sampleLines, sampleMs,
     // sessionAdded, sessionAddedIds, durationText ("1 min 12 s"), text ("23 samples, +4 now") }].
     Q_PROPERTY(QVariantList sampleStats READ sampleStats NOTIFY sampleStatsChanged)
     // Number of "Cannot be identified" lines; the Fix list can hide them (hideIgnored).
@@ -240,8 +239,8 @@ class TranscriptEditorViewModel : public QObject, public QQmlParserStatus {
     // The dock's sweep layer: { uncertain: [x...], decided: [x...], frozenStart, frozenEnd, sections:
     // [{ start, end, done, active }], doneCount, total, aheadCount } (0..1); empty map: no sweep.
     Q_PROPERTY(QVariantMap sweepDock READ sweepDock NOTIFY sweepDockChanged)
-    // Auto-play of the "To review" focus view (tanara::app::AppSettings::reviewAutoPlay; without an
-    // AppController, i.e. demo or test, in memory only). On by default.
+    // Auto-play of the "To review" focus view (the facade's switch: settings.json reviewAutoPlay; the
+    // demo facade and a test without a facade keep it in memory). On by default.
     Q_PROPERTY(bool reviewAutoPlay READ reviewAutoPlay WRITE setReviewAutoPlay NOTIFY reviewAutoPlayChanged)
 
 public:
@@ -251,13 +250,16 @@ public:
         int lane = -1;
     };
 
+    // From QML: the facade comes from the App singleton's services (AppContext::services()).
     explicit TranscriptEditorViewModel(QObject* parent = nullptr);
+    // With a given facade (hosts, tests); it is not taken over.
+    explicit TranscriptEditorViewModel(tanara::editing::ITranscriptEditorFacade* facade, QObject* parent = nullptr);
     ~TranscriptEditorViewModel() override;
 
     // When instantiated from QML, the session resolves AFTER the properties are set.
     void classBegin() override { m_deferred = true; }
     void componentComplete() override;
-    // From C++ (tests): resolves the session from the current meetingId / demoVariant.
+    // From C++ (tests): opens the session of the current meetingId (demoVariant: the fictional one's variant).
     void resolveSession();
 
     // ---- session -------------------------------------------------------
@@ -265,20 +267,21 @@ public:
     void setMeetingId(const QString& id);
     QString demoVariant() const { return m_demoVariant; }
     void setDemoVariant(const QString& variant);
-    bool demo() const { return m_demoSession != nullptr; }
+    bool demo() const { return m_facade && !m_facade->live(); }
     bool hasTranscript() const { return !m_utts.isEmpty(); }
     bool legacyTranscript() const { return m_legacyTranscript && m_utts.isEmpty(); }
     QString legacyText() const { return legacyTranscript() ? m_legacyText : QString(); }
     TranscriptListModel* rows() const { return m_rows; }
 
-    // For tests / embedding: sets the editor and the person list directly. The caller keeps
-    // ownership of the given editor. nullptr -> empty session.
-    void setEditor(tanara::editing::SpeakerEditor* editor);
-    tanara::editing::SpeakerEditor* editor() const { return m_editor; }
+    // For tests / embedding: sets the session (and its recheck service) and the person list
+    // directly. The caller keeps ownership. nullptr -> empty session.
+    void setSession(tanara::editing::SpeakerEditSession* session, tanara::editing::RecheckService* recheck);
+    tanara::editing::SpeakerEditSession* session() const { return m_session; }
+    tanara::editing::RecheckService* recheck() const { return m_recheck; }
+    tanara::editing::ITranscriptEditorFacade* facade() const { return m_facade; }
     void setPeopleProvider(std::function<QVector<tanara::editing::PersonInfo>()> provider);
-    // Sets the AppController (defaults to the App singleton's). The meetingId resolves through it.
-    void setController(tanara::app::AppController* controller);
-    // Lane visibility (per meeting) is stored in this JSON file; empty -> in memory only.
+    // Lane visibility (per meeting) is stored in this JSON file instead of the facade's view state
+    // (tests); empty -> in memory only.
     void setUiStatePath(const QString& path);
 
     // ---- read state ---------------------------------------------------
@@ -462,7 +465,7 @@ public:
     // Click into another column of the row. If the row is part of a multi-row selection, the
     // whole selection moves.
     // noisy (Shift = "not a sample"): the row also gets an "overlapping speech" flag, in the SAME
-    // undo step (SpeakerEditor::moveUtterances noisy); on every move.
+    // undo step (SpeakerEditSession::moveUtterances noisy); on every move.
     Q_INVOKABLE bool moveRowToLane(int row, int lane, bool noisy = false);
     // Drag: rows [fromRow, toRow] to the speaker of column `lane`.
     Q_INVOKABLE bool moveRowsToLane(int fromRow, int toRow, int lane, bool noisy = false);
@@ -478,7 +481,7 @@ public:
                                            bool noisy = false);
     Q_INVOKABLE bool moveUtteranceToNewParticipant(const QString& utteranceId, bool noisy = false);
     // "Cannot be identified" (key 0, row button) / "identifiable again" (false): one step
-    // (SpeakerEditor::setUtterancesIgnored). The row keeps its name.
+    // (SpeakerEditSession::setUtterancesIgnored). The row keeps its name.
     Q_INVOKABLE bool setUtteranceIgnored(const QString& utteranceId, bool ignored);
     Q_INVOKABLE bool setSelectionIgnored(bool ignored);
     Q_INVOKABLE bool setRowIgnored(int row, bool ignored);
@@ -511,7 +514,7 @@ public:
     Q_INVOKABLE bool setUtteranceNoisy(const QString& utteranceId, bool noisy);
     // Re-check from the audio of confirmed / corrected lines. { ran, flagged,
     // speakersWithConfirmedCore, confirmedLines, referenceSummary, blocker } (referenceSummary:
-    // "Reference: ..." if a stored voiceprint took part; see SpeakerEditor::referenceSummary).
+    // "Reference: ..." if a stored voiceprint took part; see RecheckService::referenceSummary).
     // If it found doubtful lines, the "Uncertain" filter turns on.
     Q_INVOKABLE QVariantMap recheckSpeakers();
     Q_INVOKABLE bool acceptSuggestion();
@@ -754,7 +757,9 @@ signals:
     void notice(const QString& text);
 
 private:
-    void attach(tanara::editing::SpeakerEditor* editor);
+    void resolveFacade();
+    void attachFacade(tanara::editing::ITranscriptEditorFacade* facade);
+    void attach(tanara::editing::SpeakerEditSession* session, tanara::editing::RecheckService* recheck);
     void detach();
     void reloadAll();
     void startEmbeddingIfNeeded();
@@ -828,11 +833,13 @@ private:
     QString m_legacyText;
     QString m_meetingId;
     QString m_demoVariant;
-    QPointer<tanara::app::AppController> m_controller;
-    bool m_controllerInjected = false;
-    QPointer<tanara::editing::SpeakerEditor> m_editor;
-    bool m_editorInjected = false;
-    std::unique_ptr<TranscriptDemoSession> m_demoSession;
+    QPointer<tanara::editing::ITranscriptEditorFacade> m_facade;
+    bool m_facadeInjected = false;
+    const void* m_facadeSet = nullptr;  // the services set the facade came from (AppContext)
+    QString m_facadeVariant;            // the demoVariant it was asked for
+    QPointer<tanara::editing::SpeakerEditSession> m_session;
+    QPointer<tanara::editing::RecheckService> m_recheck;
+    bool m_sessionInjected = false;
     std::function<QVector<tanara::editing::PersonInfo>()> m_peopleProvider;
     QString m_uiStatePath;
     bool m_uiStatePathSet = false;
@@ -919,7 +926,6 @@ private:
     QSet<QString> m_sideConflicts;          // ids of the lane-contradicting rows
     QHash<QString, QString> m_speakerSides; // speaker key -> "local" | "remote" | "mixed" | "unknown"
     QString m_newPersonKey;
-    bool m_demoTagQuestion = false;     // demo: the new person's tag question (newPersonTag)
     void askNewPersonTag(const QString& name);
     void answerTagQuestion(const tanara::library::PersonTagQuestion& q, bool yes);
     QString m_newPersonGroupId;
@@ -997,7 +1003,7 @@ private:
     QVariantMap m_sweepSummary;
     QTimer m_sweepDockTimer;
     QVariantMap m_sweepDockCache;
-    bool m_reviewAutoPlay = true;           // without an AppController (demo, test)
+    bool m_reviewAutoPlay = true;           // without a facade (test)
     int m_queueDemoGen = 0;                 // silence wait of the focus demos
     bool m_queueDemoQuiet = false;
 };

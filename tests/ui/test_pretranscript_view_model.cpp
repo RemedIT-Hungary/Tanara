@@ -1,8 +1,11 @@
 // PreTranscriptViewModel: the states of the pre-transcript view (steps, running, error) on an
 // isolated TANARA_HOME with a fake HTTP server (no real provider call).
+#include "AppContext.h"
 #include "JobTestSupport.h"
 #include "PreTranscriptViewModel.h"
 
+#include "tanara/app/Services.h"
+#include "tanara/library/tags/TagSuggestionService.h"
 #include "tanara/library/tags/TagService.h"
 
 #include "../unit/tags_fixture.h"
@@ -11,6 +14,7 @@
 #include <QtTest>
 
 using namespace tanara;
+using tanara_qml::AppContext;
 using tanara_qml::PreTranscriptViewModel;
 
 class TestPreTranscriptViewModel : public QObject {
@@ -45,8 +49,7 @@ private slots:
         jobtest::Sandbox sb;
         const Meeting m = sb.recording("Kapuzás", 1);
 
-        PreTranscriptViewModel vm;
-        vm.setController(sb.app.get());
+        PreTranscriptViewModel vm(AppContext::instance()->servicesFor(sb.app.get()));
         QCOMPARE(vm.state(), QStringLiteral("none"));          // no meeting selected
         vm.setMeetingId(m.id);
         QVERIFY(!vm.demo());
@@ -120,8 +123,7 @@ private slots:
         sb.http->handler = [](const jobtest::FakeRequest& r) { return jobtest::sonioxOk(r, "processing"); };
         const Meeting m = sb.recording("Futó átírás", 2);
 
-        PreTranscriptViewModel vm;
-        vm.setController(sb.app.get());
+        PreTranscriptViewModel vm(AppContext::instance()->servicesFor(sb.app.get()));
         vm.setMeetingId(m.id);
         QCOMPARE(vm.state(), QStringLiteral("steps"));
 
@@ -164,8 +166,7 @@ private slots:
         };
         const Meeting m = sb.recording("Bukó átírás", 2);
 
-        PreTranscriptViewModel vm;
-        vm.setController(sb.app.get());
+        PreTranscriptViewModel vm(AppContext::instance()->servicesFor(sb.app.get()));
         vm.setMeetingId(m.id);
         sb.app->transcribeMeeting(m.id);
         QTRY_COMPARE_WITH_TIMEOUT(vm.state(), QStringLiteral("failed"), 30000);
@@ -175,8 +176,7 @@ private slots:
         QCOMPARE(vm.fixActionPage(), QStringLiteral("providers"));
 
         // Another view model (after a restart / switching back) sees the same error.
-        PreTranscriptViewModel again;
-        again.setController(sb.app.get());
+        PreTranscriptViewModel again(AppContext::instance()->servicesFor(sb.app.get()));
         again.setMeetingId(m.id);
         QCOMPARE(again.state(), QStringLiteral("failed"));
 
@@ -220,9 +220,13 @@ private slots:
         tags->addTag(lib.nordvik2, nordvik.id);
         sb.app->setMeetingContextNote(lib.nordvik1, QStringLiteral("Résztvevők: Kovács Anna."));
         const Meeting m = sb.recording("Nordvik heti egyeztetés", 1);
+        // The title-based suggestion reads the meeting profiles' statistics, refreshed on a background
+        // thread (the first read of a stale snapshot only queues the refresh): wait until it is there,
+        // so the view model's first read is not racing the build under load.
+        QTRY_VERIFY_WITH_TIMEOUT(
+            !sb.app->services()->tagSuggestions().draft(QStringLiteral("Nordvik heti egyeztetés")).isEmpty(), 15000);
 
-        PreTranscriptViewModel vm;
-        vm.setController(sb.app.get());
+        PreTranscriptViewModel vm(AppContext::instance()->servicesFor(sb.app.get()));
         vm.setMeetingId(m.id);
         QCOMPARE(vm.state(), QStringLiteral("steps"));
         QVERIFY(vm.tags()->tags().isEmpty());
@@ -274,8 +278,7 @@ private slots:
             return {200, "{}"};
         };
         const Meeting m = sb.recording("Hiba elvetése", 2);
-        PreTranscriptViewModel vm;
-        vm.setController(sb.app.get());
+        PreTranscriptViewModel vm(AppContext::instance()->servicesFor(sb.app.get()));
         vm.setMeetingId(m.id);
         sb.app->transcribeMeeting(m.id);
         QTRY_COMPARE_WITH_TIMEOUT(vm.state(), QStringLiteral("failed"), 30000);

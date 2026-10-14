@@ -754,18 +754,18 @@ private slots:
         QTRY_VERIFY(visual("tracksBlock"));
         const QList<QQuickItem*> chips = visuals("trackChip");
         QCOMPARE(int(chips.size()), 2);
-        QVERIFY(m_vm->editor()->trackAssignment(key).isEmpty());
+        QVERIFY(m_vm->session()->trackAssignment(key).isEmpty());
         click(center(chips.at(1)));                         // "Call audio"
-        QCOMPARE(m_vm->editor()->trackAssignment(key), QStringList{QStringLiteral("loopback")});
+        QCOMPARE(m_vm->session()->trackAssignment(key), QStringList{QStringLiteral("loopback")});
         QTRY_VERIFY(visuals("trackChip").at(1)->property("checked").toBool());
         click(center(visuals("trackChip").at(1)));          // again: clears the constraint
-        QVERIFY(m_vm->editor()->trackAssignment(key).isEmpty());
+        QVERIFY(m_vm->session()->trackAssignment(key).isEmpty());
         QTest::keyClick(m_window.get(), Qt::Key_Escape);
         QTRY_VERIFY(popupGone("speakerWhyPopover"));
         undoKey();
-        QCOMPARE(m_vm->editor()->trackAssignment(key), QStringList{QStringLiteral("loopback")});
+        QCOMPARE(m_vm->session()->trackAssignment(key), QStringList{QStringLiteral("loopback")});
         undoKey();
-        QVERIFY(m_vm->editor()->trackAssignment(key).isEmpty());
+        QVERIFY(m_vm->session()->trackAssignment(key).isEmpty());
     }
 
     // The track chips are switches: several tracks can be marked, each click is one undo step.
@@ -779,21 +779,21 @@ private slots:
         QTRY_VERIFY(popupOpen("speakerWhyPopover"));
         QTRY_VERIFY(visual("tracksBlock"));
         click(center(visuals("trackChip").at(1)));          // call
-        QCOMPARE(m_vm->editor()->trackAssignment(key), QStringList{QStringLiteral("loopback")});
+        QCOMPARE(m_vm->session()->trackAssignment(key), QStringList{QStringLiteral("loopback")});
         click(center(visuals("trackChip").at(0)));          // + microphone: both
-        QCOMPARE(m_vm->editor()->trackAssignment(key),
+        QCOMPARE(m_vm->session()->trackAssignment(key),
                  (QStringList{QStringLiteral("mic"), QStringLiteral("loopback")}));
         QTRY_VERIFY(visuals("trackChip").at(0)->property("checked").toBool());
         QVERIFY(visuals("trackChip").at(1)->property("checked").toBool());
         click(center(visuals("trackChip").at(1)));          // - call
-        QCOMPARE(m_vm->editor()->trackAssignment(key), QStringList{QStringLiteral("mic")});
+        QCOMPARE(m_vm->session()->trackAssignment(key), QStringList{QStringLiteral("mic")});
         QTest::keyClick(m_window.get(), Qt::Key_Escape);
         QTRY_VERIFY(popupGone("speakerWhyPopover"));
         undoKey();
-        QCOMPARE(m_vm->editor()->trackAssignment(key),
+        QCOMPARE(m_vm->session()->trackAssignment(key),
                  (QStringList{QStringLiteral("mic"), QStringLiteral("loopback")}));
         undoKey();
-        QCOMPARE(m_vm->editor()->trackAssignment(key), QStringList{QStringLiteral("loopback")});
+        QCOMPARE(m_vm->session()->trackAssignment(key), QStringList{QStringLiteral("loopback")});
     }
 
     // Quick "+ #Nordvik" in the "Why them?" panel's tag row and on the candidate rows: one click
@@ -812,7 +812,7 @@ private slots:
         QCOMPARE(textOf("quickTagLink"), QStringLiteral("+ #Nordvik ráteszem"));
         QVERIFY(visual("fixLink"));                         // the "Tags" link stays
         click(center(visual("quickTagLink")));
-        QVERIFY(m_vm->editor()->personTagIds(m_vm->editor()->personChoice(QStringLiteral("Molnár Eszter")).id).contains(QStringLiteral("nordvik")));
+        QVERIFY(m_vm->session()->personTagIds(m_vm->session()->personChoice(QStringLiteral("Molnár Eszter")).id).contains(QStringLiteral("nordvik")));
         QVERIFY(m_shell->property("toasts").toString().contains(QStringLiteral("Molnár Eszter címkéje lett: #Nordvik")));
         QTRY_VERIFY(!visual("quickTagLink"));
         QVERIFY(popupOpen("speakerWhyPopover"));            // the panel stays open
@@ -835,7 +835,7 @@ private slots:
         QVERIFY(chip && chip->isVisible());
         QCOMPARE(chip->property("width").toReal() > 0, true);
         click(center(chip));
-        QVERIFY(m_vm->editor()->personTagIds(m_vm->editor()->personChoice(QStringLiteral("Molnár Eszter")).id).contains(QStringLiteral("nordvik")));
+        QVERIFY(m_vm->session()->personTagIds(m_vm->session()->personChoice(QStringLiteral("Molnár Eszter")).id).contains(QStringLiteral("nordvik")));
         QCOMPARE(speakerOf(2), before);
         QVERIFY(popupOpen("linePopover"));
         QVERIFY(m_shell->property("toasts").toString().contains(QStringLiteral("#Nordvik")));
@@ -1110,7 +1110,7 @@ private slots:
         const int before = m_vm->uncertainCount();
         click(center(visual("reviewFocusConfirm")));
         QCOMPARE(m_vm->uncertainCount(), before - 1);
-        QVERIFY(m_vm->editor()->utterance(id).confirmed);
+        QVERIFY(m_vm->session()->utterance(id).confirmed);
         QVERIFY(m_vm->canUndo());
         QVERIFY(focusLine() != id);
 

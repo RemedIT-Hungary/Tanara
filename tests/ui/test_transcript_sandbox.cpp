@@ -18,7 +18,6 @@
 #include "TranscriptListModel.h"
 
 #include "tanara/app/AppController.h"
-#include "tanara/editing/session/SpeakerEditor.h"
 #include "tanara/library/store/MeetingRepository.h"
 
 #include <QElapsedTimer>
