@@ -1,7 +1,7 @@
 #pragma once
 //
 // CandidateListModel: candidates with evidence ("SUGGESTED" for a row, "NOT THEM? ACTUALLY..."
-// for a speaker). For a row (utteranceId) the ranking of SpeakerEditor::lineCandidates, for a
+// for a speaker). For a row (utteranceId) the ranking of SpeakerEditSession::lineCandidates, for a
 // whole speaker (speakerKey, with an empty utteranceId) speakerCandidates. In per-row mode the
 // current speaker is at the end of the list ("is them now", dim, with the evidence against);
 // a candidate speaking on the other track is dim but selectable. A candidate excluded by the

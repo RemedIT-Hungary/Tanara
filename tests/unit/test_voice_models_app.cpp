@@ -13,7 +13,8 @@
 #include "tanara/app/AppController.h"
 #include "tanara/library/store/PeopleStore.h"
 #include "tanara/app/SettingsManager.h"
-#include "tanara/editing/session/SpeakerEditor.h"
+#include "tanara/editing/recheck/RecheckService.h"
+#include "tanara/editing/session/SpeakerEditSession.h"
 #include "tanara/library/people/PeopleService.h"
 #include "tanara/library/store/MeetingRepository.h"
 #include "tanara/library/store/VoiceprintStore.h"
@@ -215,10 +216,10 @@ void VoiceModelsAppTest::enrolSpeakerFromTranscript_hasSourceRefs()
 void VoiceModelsAppTest::editorGetsActiveModels()
 {
     const Meeting m = makeMeeting("Szerkesztő");
-    editing::SpeakerEditor* ed = m_app->speakerEditor(m.id);
+    editing::SpeakerEditSession* ed = m_app->editSession(m.id);
     QVERIFY(ed);
     QCOMPARE(ed->voiceModelIds(), QStringList({kCamp, kWe}));
-    QVERIFY(ed->embeddingsSupported());
+    QVERIFY(m_app->recheckService(m.id)->embeddingsSupported());
     QSignalSpy models(m_app.get(), &app::AppController::voiceModelsChanged);
     enable({kCamp});
     QCOMPARE(models.count(), 1);

@@ -33,7 +33,7 @@ A fresh build directory is always fine. (The same holds for a new `QObject` head
 
 - **`MeetingUndoService`** (`core/include/tanara/edit/MeetingUndo.h`, `AppController::meetingUndo(meetingId)`):
   ONE shared undo timeline per meeting. It orders the steps of the three sources by time and undoes the
-  newest through its own source: the transcript editor's stack (`SpeakerEditor`), the tag steps of the
+  newest through its own source: the transcript editor's stack (`SpeakerEditSession`), the tag steps of the
   meeting (`TagService`, global stack, only the meeting's own steps count) and its own participant
   steps (approve, skip, "Csak én beszéltem", track bind, add / delete a participant, note). So `Ctrl+Z`
   and the toast / change-bar "Visszavonás" take back whatever was done last, in the Áttekintés as well.
@@ -613,7 +613,7 @@ line's speaker name meant the whole speaker.
 ### Voiceprints in the transcript editor
 
 A voiceprint is made **only on an explicit user action**, never automatically, and only for a
-named speaker with enough material (the core decides: `SpeakerEditor::voiceprintMaterial`). The
+named speaker with enough material (the core decides: `SpeakerEditSession::voiceprintMaterial`). The
 content is one component, `VoiceprintPanel.qml` (state in plain words, usable lines / seconds,
 what is missing and what helps, the create button, and "Visszavonás" for the print just made).
 When voice analysis is unavailable it says why once (`voiceprintMaterial().reason`: `model` /
@@ -639,10 +639,10 @@ When voice analysis is unavailable it says why once (`voiceprintMaterial().reaso
 Undo: a voiceprint is not part of the editor's undo stack. The print just made can be taken
 back where it was made — "Visszavonás" in the panel (`removeVoiceprint(printId)`), or on the
 bar, where after creation `undoChange()` removes exactly that print
-(`SpeakerEditor::removeVoiceprint`) and leaves the rename in place (the rename is still undone
+(`SpeakerEditSession::removeVoiceprint`) and leaves the rename in place (the rename is still undone
 with Ctrl+Z; `changeUndoable` turns false once the print is removed).
 
-Re-check from confirmed lines (`SpeakerEditor::recheckFromConfirmed`, view-model
+Re-check from confirmed lines (`RecheckService::recheckFromConfirmed`, view-model
 `recheckSpeakers()` / `canRecheck` / `recheckBlocker`): per speaker the voice centroid is built
 only from the confirmed / corrected lines (when there are ≥ 3), and every other line is judged
 against these. Doubtful lines stay "bizonytalan" (persisted in the overlay as `rechecked`) until
@@ -653,7 +653,7 @@ empty uncertain filter.
 
 Stored voiceprints in the re-check references (`SpeakerPrior` in `SpeakerAnalysis.h`; only
 `recheckFromConfirmed` and `recheckPair` — the automatic uncertainty and the similarity
-suggestion do not use them). For a named speaker, `SpeakerEditor` passes the person's prints from
+suggestion do not use them). For a named speaker, `RecheckService` passes the person's prints from
 `VoiceprintStore` (prints of another model dimension are skipped). Weights, in ms-equivalent: a
 confirmed line weighs its duration (capped at `kMaxEmbedMs` = 10 s); a print made **in this
 meeting** (`sourceMeetingId`) is local evidence of this recording's acoustics: `kLocalPrintMs`
@@ -666,10 +666,10 @@ prints, plus the capped earlier prints), `Prior` (no local core: the earlier pri
 (`sampleRef` start time) is itself a confirmed line of the speaker, that line is left out of the
 reference and only the print counts. The result carries the composition
 (`RecheckResult::references`, `PairRecheckResult::refA/refB`); when any print was used, the toast
-appends `SpeakerEditor::referenceSummary`, e.g. "Referencia: Dompa 3 sor + 1 itteni lenyomat + 2
+appends `RecheckService::referenceSummary`, e.g. "Referencia: Dompa 3 sor + 1 itteni lenyomat + 2
 korábbi lenyomat, Gábor 5 sor." (view-model: `referenceSummary` in the result maps).
 
-Pairwise review between two speakers ("Átnézés A és B között"; `SpeakerEditor::recheckPair`,
+Pairwise review between two speakers ("Átnézés A és B között"; `RecheckService::recheckPair`,
 analysis `computePairRecheck`, view-model `recheckPair(a, b)`): only the lines of A and B, only
 their two voices. Each reference is built from the speaker's confirmed / corrected clean lines
 (≥ 3) plus the stored voiceprints (see above), else from the earlier prints alone, else from
@@ -846,7 +846,7 @@ Core behind it (`core/include/tanara/people/`, `library/store/PeopleStore.h`):
   (`TrackCatalog` / `devicenames`), rename (old name becomes an alias; through the global
   `renamePerson` / `setUserSpeakerName`), aliases, note, sample delete / move / new person from a
   sample, voiceprint from the meetings with manually assigned lines (the per-meeting
-  `SpeakerEditor::createVoiceprint`), merge, delete, undo.
+  `SpeakerEditSession::createVoiceprint`), merge, delete, undo.
 - **`PeopleStats`** (`AppController::peopleStats()`): meeting count, talk time and last-seen per
   person, computed on a worker thread and cached per meeting (key: mtime + size of
   `meeting.json`, `transcript.segments.json`, `transcript.speakers.json`); the list shows names and

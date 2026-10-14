@@ -52,7 +52,8 @@
 #include "StatementListModel.h"
 #include "TopicListModel.h"
 
-#include "tanara/domain/Types.h"
+#include "tanara/domain/Person.h"
+#include "tanara/domain/Summary.h"
 #include "tanara/domain/Job.h"
 #include "tanara/processing/summary/ISummaryFacade.h"
 

@@ -3,7 +3,7 @@
 // PeopleEditingAdapter: the editing module's implementation of the two library ports of the People
 // window's service (cleanup plan T 1.2, library <- editing inversion):
 //  - library::VoiceprintMaterialSource: voiceprint material / creation from a meeting through a temporary
-//    SpeakerEditor session (the undo stack of an editor open in the main window is not touched; the
+//    SpeakerEditSession session (the undo stack of an editor open in the main window is not touched; the
 //    voiceprint goes into the shared store);
 //  - library::PersonReferenceEditor: the speaker overlay, the summary stale marks and transcript.md
 //    (editing::speakeredit).

@@ -1,4 +1,4 @@
-// SpeakerEditSession without the SpeakerEditor facade: the line-level operations, their persistence
+// SpeakerEditSession on its own: the line-level operations, their persistence
 // (library::TranscriptRepository) and undo / redo (SpeakerUndoStack). In a temporary folder with made-up
 // data; no embeddings (no model, no audio).
 #include <QtTest>
@@ -8,7 +8,8 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 
-#include "tanara/domain/Types.h"
+#include "tanara/domain/Meeting.h"
+#include "tanara/domain/Overlay.h"
 #include "tanara/editing/session/SpeakerEditSession.h"
 #include "tanara/editing/undo/SpeakerUndoStack.h"
 #include "tanara/library/store/MeetingRepository.h"

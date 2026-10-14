@@ -17,7 +17,7 @@
 //              call tracks with fictional activity, #Nordvik tag, rows for "To review" groups
 //   "none"     no transcript
 //
-#include "tanara/domain/Types.h"
+#include "tanara/domain/Meeting.h"
 #include "tanara/editing/ITranscriptEditorFacade.h"
 #include "tanara/editing/session/SpeakerEditTypes.h"
 

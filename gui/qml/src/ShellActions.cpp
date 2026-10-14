@@ -7,7 +7,8 @@
 
 #include "tanara/editing/IShellFacade.h"
 #include "tanara/editing/undo/MeetingUndo.h"
-#include "tanara/editing/session/SpeakerEditor.h"
+#include "tanara/editing/recheck/RecheckService.h"
+#include "tanara/editing/session/SpeakerEditSession.h"
 #include "tanara/library/store/MeetingArchive.h"
 
 #include <QDesktopServices>
@@ -697,7 +698,7 @@ void ShellActions::identifyParticipants(const QString& meetingId)
         }
         bool anonymous = false;
         bool anySpeaker = false;
-        if (tanara::editing::SpeakerEditor* ed = m_facade->speakerEditor(meetingId))
+        if (tanara::editing::SpeakerEditSession* ed = m_facade->editSession(meetingId))
             for (const tanara::editing::EditorSpeaker& sp : ed->speakers()) {
                 if (sp.utteranceCount <= 0) continue;
                 anySpeaker = true;
@@ -744,24 +745,25 @@ void ShellActions::runRecheck(const QString& meetingId, const QString& title, co
 {
     if (!m_facade || !m_facade->live() || meetingId.isEmpty())
         return;
-    tanara::editing::SpeakerEditor* ed = m_facade->speakerEditor(meetingId);
-    if (!ed || !ed->hasTranscript()) {
+    tanara::editing::SpeakerEditSession* ed = m_facade->editSession(meetingId);
+    tanara::editing::RecheckService* recheck = ed ? m_facade->recheckService(meetingId) : nullptr;
+    if (!ed || !recheck || !ed->hasTranscript()) {
         toast(tr("Ennek a megbeszélésnek nincs szerkeszthető átirata."));
         return;
     }
-    if (!ed->canRecheck()) {
-        toast(ed->recheckBlocker());
+    if (!recheck->canRecheck()) {
+        toast(recheck->recheckBlocker());
         return;
     }
     if (!confirm(title, text, tr("Újraellenőrzés"), false))
         return;
     // The state may have changed during the dialog (e.g. audio analysis started).
-    if (!ed->canRecheck()) {
-        toast(ed->recheckBlocker());
+    if (!recheck->canRecheck()) {
+        toast(recheck->recheckBlocker());
         return;
     }
     // The editor's view model switches the "To review" view on (recheckFinished signal).
-    const tanara::editing::SpeakerEditor::RecheckResult r = ed->recheckFromConfirmed();
+    const tanara::editing::RecheckService::RecheckResult r = recheck->recheckFromConfirmed();
     QString msg;
     if (r.flagged > 0) {
         if (meetingId == m_currentMeetingId) showTab(1);   // the Transcript tab
@@ -914,7 +916,7 @@ void ShellActions::deleteMeeting(const QString& meetingId)
     m_facade->cancelAllJobs(meetingId);
     if (m_player && m_player->meetingId() == meetingId)
         m_player->setMeetingId(QString());
-    m_facade->closeSpeakerEditor(meetingId);
+    m_facade->closeEditSession(meetingId);
     if (meetingId == m_currentMeetingId)
         setCurrentMeetingId(QString());
     m_facade->deleteMeeting(meetingId);

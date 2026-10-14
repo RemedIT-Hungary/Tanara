@@ -2,7 +2,7 @@
 
 #include "tanara/app/AppSettings.h"
 #include "tanara/app/SettingsManager.h"
-#include "tanara/editing/session/SpeakerEditor.h"
+#include "tanara/editing/session/SpeakerEditSession.h"
 #include "tanara/library/jobs/MeetingJobTracker.h"
 #include "tanara/library/store/MeetingRepository.h"
 #include "tanara/processing/summary/SummarizationService.h"
@@ -103,13 +103,13 @@ SummaryJobs SummaryServicesFacade::jobs(const QString& meetingId) const
     return out;
 }
 
-void SummaryServicesFacade::watchEditor(const QString& meetingId, editing::SpeakerEditor* editor) const
+void SummaryServicesFacade::watchEditor(const QString& meetingId, editing::SpeakerEditSession* editor) const
 {
     if (!editor || m_watched.value(meetingId) == editor)
         return;
     m_watched.insert(meetingId, editor);
     auto* self = const_cast<SummaryServicesFacade*>(this);   // a lazily made, mutable connection
-    connect(editor, &editing::SpeakerEditor::speakersChanged, self,
+    connect(editor, &editing::SpeakerEditSession::speakersChanged, self,
             [self, meetingId] { emit self->speakersChanged(meetingId); });
 }
 
@@ -118,7 +118,7 @@ SummarySpeakers SummaryServicesFacade::speakers(const QString& meetingId) const
     SummarySpeakers out;
     if (meetingId.isEmpty())
         return out;
-    editing::SpeakerEditor* editor = m_deps.hooks.speakerEditor(meetingId);
+    editing::SpeakerEditSession* editor = m_deps.hooks.editSession(meetingId);
     watchEditor(meetingId, editor);
     if (!editor)
         return out;
@@ -136,7 +136,7 @@ SummaryQuote SummaryServicesFacade::quote(const QString& meetingId, const QStrin
     SummaryQuote q;
     if (meetingId.isEmpty())
         return q;
-    editing::SpeakerEditor* editor = m_deps.hooks.speakerEditor(meetingId);
+    editing::SpeakerEditSession* editor = m_deps.hooks.editSession(meetingId);
     if (!editor)
         return q;
     const int idx = editor->indexOf(utteranceId);
@@ -158,8 +158,9 @@ SummaryQuote SummaryServicesFacade::quote(const QString& meetingId, const QStrin
 
 QString SummaryServicesFacade::chatProviderName(const QString& providerId) const
 {
-    return providers::ProviderRegistry::defaultInstance()
-        .descriptor(providers::CapabilityKind::Chat, providerId).displayName;
+    if (!m_deps.registry)
+        return {};
+    return m_deps.registry->descriptor(providers::CapabilityKind::Chat, providerId).displayName;
 }
 
 bool SummaryServicesFacade::topicsResumable(const QString& meetingId) const

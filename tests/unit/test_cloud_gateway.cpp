@@ -21,7 +21,10 @@
 #include <QStandardPaths>
 #include <QTemporaryDir>
 
-#include "tanara/domain/Types.h"
+#include "tanara/domain/Tag.h"
+#include "tanara/domain/Transcript.h"
+#include "tanara/foundation/Version.h"
+#include "tanara/domain/Voice.h"
 #include "tanara/cloud/CloudSession.h"
 #include "tanara/cloud/CloudRunLedger.h"
 #include "tanara/cloud/CloudCapabilities.h"

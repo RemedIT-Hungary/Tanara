@@ -206,7 +206,7 @@ public:
     PeopleOpResult moveSample(const QString& printId, const PersonChoice& to);
 
     VoiceprintPlan voiceprintPlan(const PersonId& person) const;
-    // One sample from a meeting (with the existing SpeakerEditor::createVoiceprint logic, through the
+    // One sample from a meeting (with the existing SpeakerEditSession::createVoiceprint logic, through the
     // VoiceprintMaterialSource port).
     VoiceprintResult createVoiceprintFromMeeting(const PersonId& person, const QString& meetingId);
 

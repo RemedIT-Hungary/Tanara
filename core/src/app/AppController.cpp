@@ -10,9 +10,10 @@
 #include "tanara/cloud/CloudRunLedger.h"
 #include "tanara/cloud/CloudSession.h"
 #include "tanara/editing/participants/ParticipantService.h"
+#include "tanara/editing/recheck/RecheckService.h"
 #include "tanara/editing/session/EditorSessions.h"
 #include "tanara/editing/session/PeopleDirectory.h"
-#include "tanara/editing/session/SpeakerEditor.h"
+#include "tanara/editing/session/SpeakerEditSession.h"
 #include "tanara/editing/session/SpeakerOverlay.h"
 #include "tanara/editing/undo/MeetingUndoRegistry.h"
 #include "tanara/foundation/i18n/Localization.h"
@@ -193,14 +194,12 @@ AppController::AppController(QObject* parent)
     connect(d->cloudLedger, &cloud::CloudRunLedger::refunded, this, &AppController::cloudRefunded);
     connect(d->cloudLedger, &cloud::CloudRunLedger::failed, this, &AppController::cloudError);
     if (d->cloudMode.live) {
-        // Feature flag (kill criterion): without it the "tanara-cloud" ids do not even exist. The default
-        // registry (GUI listing, TODO(P15): remove) gets them too.
+        // Feature flag (kill criterion): without it the "tanara-cloud" ids do not even exist.
         cloud::CloudCapabilityDeps deps;
         deps.media = [self = QPointer<AppController>(this)]() {
             return self ? self->d->media : media::MediaToolPtr();
         };
         cloud::registerInto(d->providerRegistry, *d->cloud, deps);
-        cloud::registerInto(providers::ProviderRegistry::defaultInstance(), *d->cloud, deps);
     }
     d->media   = media::FfmpegMediaTool::fromSettings(s.media);
     // Every recording root (the first is the primary: new recordings, imports).
@@ -289,9 +288,9 @@ AppController::AppController(QObject* parent)
         sd.peopleStats = d->peopleStats;
         sd.modelsDir = d->modelsDir;
         sd.appDir = d->appDir;
-        sd.editorFor = [this](const QString& id) { return speakerEditor(id); };
+        sd.editorFor = [this](const QString& id) { return editSession(id); };
         // (The services are reset before the facade dies: then there is no open editor.)
-        sd.existingEditor = [this](const QString& id) -> editing::SpeakerEditor* {
+        sd.existingEditor = [this](const QString& id) -> editing::SpeakerEditSession* {
             return d->services ? d->services->editorSessions().existing(id) : nullptr;
         };
         // The transcript's identity and the speech check's state: the transcription step / the workflows (P12f).
@@ -526,8 +525,10 @@ void AppController::applyVoiceModels()
     const processing::VoiceAnalysisService::ModelChange change = d->voice->applyModels();
     if (!change.changed) return;   // another setting changed
     // The open editors continue with the new model list and factory.
-    d->editors->forEach([this](editing::SpeakerEditor* ed) {
-        ed->setEmbedderFactory(utteranceEmbedderFactory());
+    d->editors->forEach([this](editing::SpeakerEditSession* ed, editing::RecheckService* recheck) {
+        const auto factory = utteranceEmbedderFactory();
+        ed->setEmbedderFactory(factory);
+        if (recheck) recheck->setEmbedderFactory(factory);
         ed->setVoiceModelIds(d->voice->editorModelIds());
     });
     emit voiceModelsChanged();
@@ -659,7 +660,7 @@ void AppController::deleteMeeting(const QString& meetingId) {
     cancelAllJobs(meetingId);
     d->voice->cancelAnalysis(meetingId);   // the voice analysis's result no longer goes to the deleted meeting
     d->waveforms->cancel(meetingId);
-    closeSpeakerEditor(meetingId);   // the open speaker editor must not write into the deleted folder
+    closeEditSession(meetingId);   // the open speaker editor must not write into the deleted folder
     d->transcription->forget(meetingId);
     d->store->deleteMeeting(meetingId);   // the meetingRemoved signal from the store
 }
@@ -967,12 +968,17 @@ void AppController::requestWaveforms(const QString& meetingId)
 
 // ---- transcript editor (speaker correction) ----------------------------------
 
-editing::SpeakerEditor* AppController::speakerEditor(const QString& meetingId)
+editing::SpeakerEditSession* AppController::editSession(const QString& meetingId)
 {
     return d->services ? d->services->editorSessions().editor(meetingId) : nullptr;
 }
 
-void AppController::closeSpeakerEditor(const QString& meetingId) { d->editors->close(meetingId); }
+editing::RecheckService* AppController::recheckService(const QString& meetingId)
+{
+    return d->services ? d->services->editorSessions().recheck(meetingId) : nullptr;
+}
+
+void AppController::closeEditSession(const QString& meetingId) { d->editors->close(meetingId); }
 
 QVector<editing::PersonInfo> AppController::peopleDirectory() const
 {

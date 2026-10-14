@@ -8,6 +8,7 @@
 // One per controller, built by AppContext::servicesFor().
 //
 #include "tanara/app/ISettingsFacade.h"
+#include "tanara/domain/Person.h"
 
 #include <QPointer>
 

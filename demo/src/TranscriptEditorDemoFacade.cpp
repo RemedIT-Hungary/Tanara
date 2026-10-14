@@ -2,7 +2,9 @@
 
 #include "demo/DemoText.h"
 
-#include "tanara/domain/Types.h"
+#include "tanara/domain/Activity.h"
+#include "tanara/domain/Meeting.h"
+#include "tanara/domain/Overlay.h"
 #include "tanara/editing/recheck/RecheckService.h"
 #include "tanara/editing/session/SpeakerEditSession.h"
 #include "tanara/editing/session/SpeakerOverlay.h"

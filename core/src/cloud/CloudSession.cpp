@@ -1,7 +1,7 @@
 #include "tanara/cloud/CloudSession.h"
 #include "tanara/foundation/secrets/SecretStore.h"
 #include "tanara/foundation/paths/AppPaths.h"
-#include "tanara/domain/Types.h"
+#include "tanara/domain/Summary.h"
 #include "tanara/foundation/Version.h"
 
 #include <QDir>

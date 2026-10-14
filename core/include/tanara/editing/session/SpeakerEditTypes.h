@@ -48,7 +48,7 @@ struct EditorUtterance {
     QString uncertainReason;
 };
 
-// "Deviating sample" flag (SpeakerEditor::lastSampleDeviation): after a positive, sample-giving
+// "Deviating sample" flag (SpeakerEditSession::lastSampleDeviation): after a positive, sample-giving
 // decision (a confirmation, or a move as a sample), the decided line farthest from the target
 // speaker's core. deviates = the similarity is below the threshold (speakeredit::kSampleDeviationFit).
 struct SampleDeviation {
@@ -64,7 +64,7 @@ struct SampleDeviation {
     bool operator!=(const SampleDeviation& o) const { return !(*this == o); }
 };
 
-// Sample meter (SpeakerEditor::sampleStats): per speaker, the lines counting as voice samples. A sample
+// Sample meter (SpeakerEditSession::sampleStats): per speaker, the lines counting as voice samples. A sample
 // line = locked (confirmed / corrected), not "talked over each other", not "unidentifiable", and at least
 // speakeredit::kMinEmbedMs long (embeddable). The "session" runs since the editor was opened (or the
 // last new transcript).

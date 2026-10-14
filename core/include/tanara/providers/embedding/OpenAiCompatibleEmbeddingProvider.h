@@ -7,7 +7,6 @@
 #include "tanara/providers/embedding/ITextEmbedder.h"
 #include "tanara/providers/core/ProviderConfig.h"
 #include "tanara/providers/core/ProviderContext.h"
-#include "tanara/domain/Types.h"
 
 #include <QPointer>
 

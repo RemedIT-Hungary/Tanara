@@ -1,13 +1,14 @@
 #pragma once
 // Shared test environment for the transcript editor's UI tests: a SYNTHETIC meeting built in
-// a temporary folder with a REAL tanara::SpeakerEditor and a FAKE embedder (the "audio" is
+// a temporary folder with a REAL speaker-editor session (SpeakerEditSession + RecheckService) and a FAKE embedder (the "audio" is
 // derived from the utterance's start time). It uses no real data, model or ffmpeg.
 //
 // The scenario is the same as in core's tests/unit/test_speaker_editor.cpp: diarization gave
 // two labels ("Speaker 1", "Speaker 2"), but "Speaker 1" is really TWO people (A, C);
 // "Speaker 2" = B, one of whose lines (17th) was wrongly attached (A's voice).
-#include "tanara/domain/Types.h"
-#include "tanara/editing/session/SpeakerEditor.h"
+#include "tanara/domain/Meeting.h"
+#include "tanara/domain/Overlay.h"
+#include "../support/EditSessionHarness.h"
 #include "tanara/editing/session/SpeakerOverlay.h"
 #include "tanara/processing/analysis/UtteranceEmbeddings.h"
 #include "tanara/library/store/MeetingRepository.h"
@@ -123,10 +124,10 @@ struct Fixture {
         store->saveMeeting(meeting);
     }
 
-    std::unique_ptr<tanara::editing::SpeakerEditor> editor(bool withEmbedder = true)
+    test_support::EditSessionHarness editor(bool withEmbedder = true)
     {
-        auto ed = std::make_unique<tanara::editing::SpeakerEditor>(store.get(), people.get(), prints.get(), meeting.id);
-        if (withEmbedder) ed->setEmbedderFactory([] { return std::make_unique<FakeEmbedder>(); });
+        auto ed = test_support::EditSessionHarness(store.get(), people.get(), prints.get(), meeting.id);
+        if (withEmbedder) ed.setEmbedderFactory([] { return std::make_unique<FakeEmbedder>(); });
         return ed;
     }
 };

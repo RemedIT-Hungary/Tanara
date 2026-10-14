@@ -15,7 +15,6 @@
 #include "tanara/domain/Meeting.h"
 #include "tanara/domain/Person.h"
 #include "tanara/domain/Summary.h"
-#include "tanara/domain/Types.h"
 #include "tanara/editing/session/SpeakerEditTypes.h"
 #include "tanara/providers/core/ReadinessModel.h"
 
@@ -23,7 +22,7 @@
 #include <QString>
 #include <QVector>
 
-namespace tanara::editing { class MeetingUndoService; class SpeakerEditor; }
+namespace tanara::editing { class MeetingUndoService; class RecheckService; class SpeakerEditSession; }
 
 namespace tanara::editing {
 
@@ -77,8 +76,10 @@ public:
     virtual bool identifyAsync(const QString& meetingId) = 0;
     virtual bool voiceIdentificationAvailable() const = 0;
     virtual bool participantApprovalPending(const QString& meetingId) const = 0;
-    // The transcript's speakers (identification / re-check); nullptr without an editable transcript.
-    virtual editing::SpeakerEditor* speakerEditor(const QString& meetingId) = 0;
+    // The transcript's editor session (its speakers) and its voice analysis (re-check); nullptr for an
+    // unknown meeting / without a live backend.
+    virtual editing::SpeakerEditSession* editSession(const QString& meetingId) = 0;
+    virtual editing::RecheckService* recheckService(const QString& meetingId) = 0;
     // The display name of a person (the people list refreshed first); empty if unknown.
     virtual QString personName(const PersonId& person) = 0;
     virtual void requestLlmContext(int tokens) = 0;
@@ -89,7 +90,7 @@ public:
     // Deleting a meeting: the shell first cancels the running tasks (they must not write into the
     // deleted folder) and closes the editor session, then deletes.
     virtual void cancelAllJobs(const QString& meetingId) = 0;
-    virtual void closeSpeakerEditor(const QString& meetingId) = 0;
+    virtual void closeEditSession(const QString& meetingId) = 0;
     virtual void deleteMeeting(const QString& meetingId) = 0;
     virtual void stopRecording() = 0;
 

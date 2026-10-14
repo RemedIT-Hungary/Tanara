@@ -5,7 +5,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 
-#include "tanara/domain/Types.h"
+#include "tanara/foundation/Version.h"
 #include "tanara/cloud/CloudTypes.h"
 #include "tanara/cloud/CloudCapabilities.h"
 #include "tanara/cloud/CloudEstimator.h"

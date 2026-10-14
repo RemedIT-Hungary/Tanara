@@ -17,9 +17,10 @@
 
 namespace tanara {
 namespace app { class SettingsManager; }
-namespace editing { class SpeakerEditor; }
+namespace editing { class SpeakerEditSession; }
 namespace library { class MeetingJobTracker; class MeetingRepository; }
 namespace processing { class SummarizationService; }
+namespace providers { class ProviderRegistry; }
 }
 
 namespace tanara_qml {
@@ -30,7 +31,7 @@ public:
     struct Hooks {
         std::function<tanara::providers::ReadinessResult(const QString& meetingId)> canRun;
         std::function<bool()> usesCloud;
-        std::function<tanara::editing::SpeakerEditor*(const QString& meetingId)> speakerEditor;
+        std::function<tanara::editing::SpeakerEditSession*(const QString& meetingId)> editSession;
         std::function<tanara::SummaryStaleInfo(const tanara::Meeting& meeting)> staleOfMeeting;
         std::function<tanara::SummaryStaleInfo(const QString& meetingId)> staleOfId;
         std::function<QVector<tanara::SummaryStatement>(const QString& meetingId)> statements;
@@ -41,6 +42,7 @@ public:
         tanara::library::MeetingJobTracker* jobs = nullptr;
         tanara::library::MeetingRepository* store = nullptr;
         tanara::app::SettingsManager* settings = nullptr;
+        const tanara::providers::ProviderRegistry* registry = nullptr;   // the chat providers' display names
         QObject* noteController = nullptr;   // transitional, see ISummaryFacade::noteController()
         Hooks hooks;
     };
@@ -71,11 +73,11 @@ public:
 
 private:
     // The editor's speakersChanged goes out as ours for its meeting (once per editor).
-    void watchEditor(const QString& meetingId, tanara::editing::SpeakerEditor* editor) const;
+    void watchEditor(const QString& meetingId, tanara::editing::SpeakerEditSession* editor) const;
 
     Deps m_deps;
     QPointer<QObject> m_noteController;
-    mutable QHash<QString, QPointer<tanara::editing::SpeakerEditor>> m_watched;
+    mutable QHash<QString, QPointer<tanara::editing::SpeakerEditSession>> m_watched;
 };
 
 } // namespace tanara_qml

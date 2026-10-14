@@ -76,13 +76,20 @@ ReadinessResult checkProviderConfig(const ProviderDescriptor& desc,
     return ReadinessResult{ /*runnable*/ true };
 }
 
+// The registry of a model without one: nothing is registered.
+const ProviderRegistry& emptyRegistry()
+{
+    static const ProviderRegistry s_empty;
+    return s_empty;
+}
+
 } // namespace
 
 ReadinessModel::ReadinessModel(const ProviderSettings& settings, SecretProbe hasSecret,
                                const ProviderRegistry* registry)
     : m_settings(settings)
     , m_hasSecret(std::move(hasSecret))
-    , m_registry(registry ? registry : &ProviderRegistry::defaultInstance())
+    , m_registry(registry ? registry : &emptyRegistry())
 {
 }
 

@@ -35,9 +35,8 @@ public:
     using SecretProbe = std::function<bool(const QString& secretKey)>;
 
     // registry: where the selected providers' descriptors come from (not owned; must outlive the
-    // model); nullptr = ProviderRegistry::defaultInstance() (TODO(P15): required).
-    ReadinessModel(const ProviderSettings& settings, SecretProbe hasSecret,
-                   const ProviderRegistry* registry = nullptr);
+    // model). nullptr = no provider is registered (every selected provider is "unknown").
+    ReadinessModel(const ProviderSettings& settings, SecretProbe hasSecret, const ProviderRegistry* registry);
 
     ReadinessResult check(WorkflowStep step, const Meeting& meeting) const;
 

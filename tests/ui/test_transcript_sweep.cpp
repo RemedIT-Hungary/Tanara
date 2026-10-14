@@ -1,4 +1,4 @@
-// The Edit view's sweep mode on the built-in MADE-UP meeting (real SpeakerEditor, fake audio):
+// The Edit view's sweep mode on the built-in MADE-UP meeting (real SpeakerEditSession, fake audio):
 // a stop at the end of a doubtful line (+0.1 s), a decision on the target line and then
 // continuing; continuous mode's 3 s trailing window; the frozen window (in lines): there the
 // background marker change stays pending, outside it shows at once; "N lines doubtful again"

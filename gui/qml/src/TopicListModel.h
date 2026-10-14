@@ -12,7 +12,7 @@
 // SummaryViewModel owns it (from QML: summaryVm.topics); with the fictional facade it works with
 // sample data, and editing then happens in the fixture's memory.
 //
-#include "tanara/domain/Types.h"
+#include "tanara/domain/Summary.h"
 #include "tanara/domain/Job.h"
 #include "tanara/processing/summary/ISummaryFacade.h"
 

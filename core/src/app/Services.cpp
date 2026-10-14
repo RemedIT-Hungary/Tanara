@@ -1,5 +1,6 @@
 #include "tanara/app/Services.h"
 
+#include "tanara/app/EditorDefaults.h"
 #include "tanara/app/SettingsManager.h"
 #include "tanara/foundation/paths/AppPaths.h"
 #include "tanara/library/import/ImportService.h"
@@ -13,7 +14,8 @@
 // --- P12d ---
 #include "tanara/editing/participants/ParticipantService.h"
 #include "tanara/editing/people/PeopleEditingAdapter.h"
-#include "tanara/editing/session/SpeakerEditor.h"
+#include "tanara/editing/recheck/RecheckService.h"
+#include "tanara/editing/session/SpeakerEditSession.h"
 #include "tanara/editing/session/SpeakerOverlay.h"
 #include "tanara/editing/undo/MeetingUndoRegistry.h"
 #include "tanara/library/people/PeopleService.h"
@@ -238,9 +240,14 @@ editing::EditorSessions::Deps editorSessionDeps(const ServicesDeps& deps, proces
     ed.undo = undo;
     ed.self = [people]() { return people->selfPerson(); };
     ed.personNames = [people]() { return people->personNames(); };
-    ed.configure = [voice, media = deps.media, tags = deps.tags](editing::SpeakerEditor* editor) {
+    ed.configure = [voice, media = deps.media, tags = deps.tags](editing::SpeakerEditSession* editor,
+                                                                 editing::RecheckService* recheck) {
+        // The fallback activity source (the cache) and the voice models' display names (processing).
+        installEditorDefaults(*editor, *recheck);
         editor->setVoiceModelIds(voice->editorModelIds());
-        editor->setEmbedderFactory(voice->utteranceEmbedderFactory());
+        const providers::UtteranceEmbedderFactory factory = voice->utteranceEmbedderFactory();
+        editor->setEmbedderFactory(factory);
+        recheck->setEmbedderFactory(factory);
         // The track activity of the side check: cache, else decoded via the media port and saved.
         editor->setActivityProvider([media](const Meeting& mm) {
             return processing::loadOrComputeSideActivity(mm, *media);

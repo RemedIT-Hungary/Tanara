@@ -2,7 +2,7 @@
 //
 // One registry holds every capability, keyed by (CapabilityKind, id); a provider is added with a
 // typed factory and created by id with a ProviderContext + ProviderConfig. Every test builds its OWN
-// registry (it is not a singleton); defaultInstance() is the transitional exception (P15 removes it).
+// registry (it is not a singleton).
 //
 // IMPORTANT: the tests/unit/*.cpp files compile into SEPARATE test exes (see tests/CMakeLists.txt
 // GLOB), each bringing its OWN main. Core (tanara_core) does NOT link Qt Widgets, hence
@@ -158,8 +158,6 @@ private slots:
         providers::registerCloudProviders(b);
         QVERIFY(b.has(CapabilityKind::Chat, QStringLiteral("tanara-cloud")));
         QVERIFY(!a.has(CapabilityKind::Chat, QStringLiteral("tanara-cloud")));
-        // The default instance has the built-ins on first use.
-        QVERIFY(providers::ProviderRegistry::defaultInstance().has(CapabilityKind::Chat, QStringLiteral("openai-compat")));
     }
 
     // The built-ins: Soniox + Whisper STT, OpenAI-compatible chat + its LM Studio server handler,

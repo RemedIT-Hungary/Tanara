@@ -12,7 +12,7 @@
 //
 #include "PlayerController.h"
 
-#include "tanara/domain/Types.h"
+#include "tanara/domain/Meeting.h"
 #include "tanara/domain/Job.h"
 #include "tanara/providers/core/ReadinessModel.h"
 
@@ -98,7 +98,7 @@ public:
     Q_INVOKABLE void analyzeTopic(const QString& meetingId, const QString& topicId);
     Q_INVOKABLE void identifyParticipants(const QString& meetingId);
     // Re-check based on the confirmed / corrected lines' audio (header "..." menu, the
-    // transcript's "Uncertain 0" button): confirm dialog -> SpeakerEditor::recheckFromConfirmed ->
+    // transcript's "Uncertain 0" button): confirm dialog -> RecheckService::recheckFromConfirmed ->
     // feedback; if it cannot run, it says why. "Identify participants" ends up here too once
     // every speaker has a name.
     Q_INVOKABLE void recheckSpeakers(const QString& meetingId);

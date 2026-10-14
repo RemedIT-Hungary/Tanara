@@ -10,7 +10,7 @@
 // --gallery, tests: made-up devices and levels, the design states "R01" ... "R10"). The view
 // model does not know which one it has.
 //
-#include "tanara/domain/Types.h"
+#include "tanara/domain/Audio.h"
 #include "tanara/recording/IRecorderFacade.h"
 
 #include <QAbstractListModel>

@@ -3,7 +3,7 @@
 
 #include "tanara/app/AppController.h"
 #include "tanara/app/SettingsManager.h"
-#include "tanara/domain/Types.h"
+#include "tanara/domain/Audio.h"
 #include "tanara/recording/audio/DeviceManager.h"
 #include "tanara/foundation/Version.h"
 #include "tanara/foundation/log/Logging.h"

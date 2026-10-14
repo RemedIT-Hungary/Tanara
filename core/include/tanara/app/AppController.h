@@ -3,7 +3,9 @@
 // AppController: the ONE object the UI binds to (the QML view models, the CLI).
 // Wires the modules together: settings, devices, recording, store, STT, LLM, summary.
 // RULE: no Widgets dependency here either; a plain QObject API (signals/slots + value DTOs).
-#include "tanara/domain/Types.h"
+#include "tanara/domain/Activity.h"
+#include "tanara/domain/Meeting.h"
+#include "tanara/domain/Summary.h"
 #include "tanara/providers/core/ProviderConfig.h"
 #include "tanara/providers/core/ReadinessModel.h"
 #include "tanara/editing/session/SpeakerEditTypes.h"
@@ -30,7 +32,7 @@ namespace tanara::library { class TranscriptRepository; }
 namespace tanara::library { class UiStateRepository; }
 namespace tanara::library { class VoiceprintStore; }
 namespace tanara::library { class PeopleStore; }
-namespace tanara::editing { class SpeakerEditor; }
+namespace tanara::editing { class RecheckService; class SpeakerEditSession; }
 namespace tanara::cloud { class CloudSession; }
 namespace tanara::providers { struct ProviderContext; class ProviderRegistry; }
 namespace tanara::library { class MeetingJobTracker; }
@@ -156,7 +158,7 @@ public:
     QStringList activeVoiceModelIds() const;
     // The set of models in use (an unloaded copy; the caller's own instance).
     processing::VoiceEmbedderSet voiceEmbedderSet() const;
-    // Utterance-embedder factory for the models in use (SpeakerEditor / PeopleService); empty if
+    // Utterance-embedder factory for the models in use (SpeakerEditSession / PeopleService); empty if
     // there is no usable model.
     processing::UtteranceEmbedderFactory utteranceEmbedderFactory() const;
     // Test seam: the loader of the models (a fake "model" without ONNX). Empty = the real one.
@@ -212,12 +214,14 @@ public:
     QVector<tanara::TopicAnalysis> topicAnalyses(const QString& meetingId) const;
 
     // ---- transcript editor (speaker correction) ------------------------------
-    // The meeting's speaker-editor session (see editing/session/SpeakerEditor.h). ONE instance lives per
-    // meeting (AppController is its parent); the undo stack survives until it is closed.
+    // The meeting's speaker-editor session (see editing/session/SpeakerEditSession.h). ONE instance lives per
+    // meeting (editing::EditorSessions owns it); the undo stack survives until it is closed.
     // Unknown meeting = nullptr. If a voice-ID model exists, the embedder is wired in.
-    editing::SpeakerEditor* speakerEditor(const QString& meetingId);
+    editing::SpeakerEditSession* editSession(const QString& meetingId);
+    // The voice analysis (embeddings, recheck) of the same session (created with it on demand).
+    editing::RecheckService* recheckService(const QString& meetingId);
     // Closes the session (undo stack dropped; the corrections stay on disk).
-    void closeSpeakerEditor(const QString& meetingId);
+    void closeEditSession(const QString& meetingId);
 
     // Known people for the picker panel: name, whether there is a voiceprint, in how many meetings they appear.
     // (Filtering: editing/session/PeopleDirectory.h, filterPeople / matchesSearch.)
@@ -487,7 +491,7 @@ public slots:
     bool bindRawSpeakers(const QString& meetingId);
     // "Continue": approves the checked participants. Existing ones by id (the name is editable),
     // those with an unknown id as new manual participants. If there is a transcript: the raw
-    // speakers get the names in ONE undo step (SpeakerEditor::applyBindings), raw speakers bound
+    // speakers get the names in ONE undo step (SpeakerEditSession::applyBindings), raw speakers bound
     // to unchecked ones stay anonymous; if not, the binding runs when the transcript arrives. approval saved.
     bool approveParticipants(const QString& meetingId, const QVector<tanara::Participant>& accepted);
     // "Skip": a decision without binding (the banner disappears, the candidates stay).

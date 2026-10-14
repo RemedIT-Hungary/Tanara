@@ -11,7 +11,6 @@
 // model actually loads or that the account has quota; only a real run shows that.
 //
 // Headless (core): QtNetwork. The provider-specific knowledge is in the descriptor (ProviderDescriptor::probe).
-#include "tanara/domain/Types.h"
 #include "tanara/providers/core/ProviderConfig.h"
 #include "tanara/providers/core/ProviderDescriptor.h"
 #include "tanara/providers/chat/LlmContext.h"

@@ -1,6 +1,6 @@
 #include "tanara/editing/undo/MeetingUndo.h"
 
-#include "tanara/editing/session/SpeakerEditor.h"
+#include "tanara/editing/session/SpeakerEditSession.h"
 #include "tanara/library/tags/TagService.h"
 
 #include <QSet>
@@ -24,7 +24,7 @@ struct MeetingUndoService::Impl {
 
     MeetingUndoService* q = nullptr;
     QString meetingId;
-    QPointer<SpeakerEditor> editor;
+    QPointer<SpeakerEditSession> editor;
     QPointer<library::TagService> tags;
     QVector<QMetaObject::Connection> editorConns, tagConns;
     QVector<Entry> entries;              // in time order (the most recent last)
@@ -136,10 +136,10 @@ MeetingUndoService::~MeetingUndoService()
 }
 
 QString MeetingUndoService::meetingId() const { return d->meetingId; }
-SpeakerEditor* MeetingUndoService::speakerEditor() const { return d->editor; }
+SpeakerEditSession* MeetingUndoService::editSession() const { return d->editor; }
 library::TagService* MeetingUndoService::tagService() const { return d->tags; }
 
-void MeetingUndoService::attachSpeakerEditor(SpeakerEditor* editor)
+void MeetingUndoService::attachEditSession(SpeakerEditSession* editor)
 {
     if (d->editor == editor) return;
     if (d->editor) d->detachEditor();
@@ -147,9 +147,9 @@ void MeetingUndoService::attachSpeakerEditor(SpeakerEditor* editor)
     d->editor = editor;
     const QVector<quint64> pre = editor->undoSerials();
     d->ignoredEditor = QSet<quint64>(pre.cbegin(), pre.cend());
-    d->editorConns << connect(editor, &SpeakerEditor::undoStateChanged, this,
+    d->editorConns << connect(editor, &SpeakerEditSession::undoStateChanged, this,
                               [this] { d->reconcileAndNotify(Source::Speakers); });
-    d->editorConns << connect(editor, &SpeakerEditor::reloaded, this,
+    d->editorConns << connect(editor, &SpeakerEditSession::reloaded, this,
                               [this] { d->reconcileAndNotify(Source::Speakers); });
     d->editorConns << connect(editor, &QObject::destroyed, this, [this] { d->detachEditor(); });
 }

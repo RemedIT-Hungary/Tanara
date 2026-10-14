@@ -88,7 +88,7 @@ Signal `transcriptPositionRequested(int ms)`: the Editor scrolls to the utteranc
 
 ## Core API to build on (all reachable from `AppContext::instance()->controller()`)
 
-- Speaker editing: `AppController::speakerEditor(meetingId)` → `tanara::SpeakerEditor`
+- Speaker editing: `AppController::editSession(meetingId)` → `tanara::editing::SpeakerEditSession` (+ `recheckService(meetingId)` → `tanara::editing::RecheckService`)
   (`core/include/tanara/edit/*.h`), `peopleDirectory()`, `summaryStale()`,
   `retranscribeImpact()`, `dismissSummaryStale()`.
 - Jobs and state: `jobs()` → `MeetingJobTracker`, `processingState(id)`, `cancelJob`,

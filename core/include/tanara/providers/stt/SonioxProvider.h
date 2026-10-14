@@ -7,7 +7,7 @@
 #include "tanara/providers/stt/ISttProvider.h"
 #include "tanara/providers/core/ProviderConfig.h"
 #include "tanara/providers/core/ProviderContext.h"
-#include "tanara/domain/Types.h"
+#include "tanara/domain/Job.h"
 
 #include <QObject>
 #include <QString>

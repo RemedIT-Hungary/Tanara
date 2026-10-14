@@ -25,14 +25,14 @@ class TagService;
 namespace tanara::editing {
 
 class MeetingUndoService;
-class SpeakerEditor;
+class SpeakerEditSession;
 
 class MeetingUndoRegistry : public QObject {
     Q_OBJECT
 public:
     // existingEditor: the meeting's open transcript-editor session, without creating one (nullptr: none).
     MeetingUndoRegistry(library::MeetingRepository* store, library::TagService* tags,
-                        std::function<SpeakerEditor*(const QString& meetingId)> existingEditor,
+                        std::function<SpeakerEditSession*(const QString& meetingId)> existingEditor,
                         QObject* parent = nullptr);
     ~MeetingUndoRegistry() override;
 
@@ -53,7 +53,7 @@ private:
 
     library::MeetingRepository* m_store = nullptr;
     library::TagService* m_tags = nullptr;
-    std::function<SpeakerEditor*(const QString&)> m_existingEditor;
+    std::function<SpeakerEditSession*(const QString&)> m_existingEditor;
     QHash<QString, QPointer<MeetingUndoService>> m_services;   // meetingId -> shared stack
     QHash<QString, int> m_scopeDepth;                           // nesting of ParticipantUndoScope
 };

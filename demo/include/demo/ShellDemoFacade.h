@@ -43,14 +43,15 @@ public:
     bool identifyAsync(const QString&) override { return false; }
     bool voiceIdentificationAvailable() const override { return false; }
     bool participantApprovalPending(const QString&) const override { return false; }
-    tanara::editing::SpeakerEditor* speakerEditor(const QString&) override { return nullptr; }
+    tanara::editing::SpeakerEditSession* editSession(const QString&) override { return nullptr; }
+    tanara::editing::RecheckService* recheckService(const QString&) override { return nullptr; }
     QString personName(const tanara::PersonId&) override { return {}; }
     void requestLlmContext(int) override {}
     void cancelJob(const QString&, tanara::JobKind) override {}
 
     void renameMeeting(const QString&, const QString&) override {}
     void cancelAllJobs(const QString&) override {}
-    void closeSpeakerEditor(const QString&) override {}
+    void closeEditSession(const QString&) override {}
     void deleteMeeting(const QString&) override {}
     void stopRecording() override {}
 

@@ -12,7 +12,7 @@
 #include <QJsonObject>
 
 #include "tanara/editing/participants/ParticipantService.h"
-#include "tanara/editing/session/SpeakerEditor.h"
+#include "tanara/editing/session/SpeakerEditSession.h"
 #include "tanara/editing/session/SpeakerOverlay.h"
 #include "tanara/editing/undo/MeetingUndo.h"
 #include "tanara/editing/undo/MeetingUndoRegistry.h"
@@ -82,7 +82,7 @@ private slots:
 private:
     Meeting makeMeeting();
     void writeTranscript(Meeting& m, const QVector<std::tuple<qint64, qint64, QString>>& rows);
-    editing::SpeakerEditor* editorFor(const QString& meetingId);
+    editing::SpeakerEditSession* editorFor(const QString& meetingId);
 
     std::unique_ptr<QTemporaryDir> m_home;
     std::unique_ptr<library::MeetingRepository> m_store;
@@ -92,7 +92,7 @@ private:
     std::unique_ptr<editing::MeetingUndoRegistry> m_undo;
     std::unique_ptr<FakeAnalysis> m_analysis;
     std::unique_ptr<ParticipantService> m_svc;
-    QHash<QString, QPointer<editing::SpeakerEditor>> m_editors;
+    QHash<QString, QPointer<editing::SpeakerEditSession>> m_editors;
     QString m_selfName;
 };
 
@@ -116,7 +116,7 @@ void ParticipantServiceTest::init()
     pd.setSelfName = [this](const QString& n) { m_selfName = n; };
     m_peopleSvc = std::make_unique<library::PeopleService>(pd);
     m_undo = std::make_unique<editing::MeetingUndoRegistry>(
-        m_store.get(), nullptr, [this](const QString& id) -> editing::SpeakerEditor* { return m_editors.value(id); });
+        m_store.get(), nullptr, [this](const QString& id) -> editing::SpeakerEditSession* { return m_editors.value(id); });
     m_analysis = std::make_unique<FakeAnalysis>();
     ParticipantService::Deps deps;
     deps.store = m_store.get();
@@ -125,7 +125,7 @@ void ParticipantServiceTest::init()
     deps.undo = m_undo.get();
     deps.analysis = m_analysis.get();
     deps.editorFor = [this](const QString& id) { return editorFor(id); };
-    deps.existingEditor = [this](const QString& id) -> editing::SpeakerEditor* { return m_editors.value(id); };
+    deps.existingEditor = [this](const QString& id) -> editing::SpeakerEditSession* { return m_editors.value(id); };
     m_svc = std::make_unique<ParticipantService>(deps);
 }
 
@@ -143,11 +143,11 @@ void ParticipantServiceTest::cleanup()
     m_home.reset();
 }
 
-editing::SpeakerEditor* ParticipantServiceTest::editorFor(const QString& meetingId)
+editing::SpeakerEditSession* ParticipantServiceTest::editorFor(const QString& meetingId)
 {
-    if (editing::SpeakerEditor* ed = m_editors.value(meetingId)) return ed;
+    if (editing::SpeakerEditSession* ed = m_editors.value(meetingId)) return ed;
     if (m_store->load(meetingId).id.isEmpty()) return nullptr;
-    auto* ed = new editing::SpeakerEditor(m_store.get(), m_people.get(), m_prints.get(), meetingId);
+    auto* ed = new editing::SpeakerEditSession(m_store.get(), m_people.get(), m_prints.get(), meetingId);
     m_editors.insert(meetingId, ed);
     m_undo->forMeeting(meetingId);   // the shared undo follows from the editor's first step
     return ed;

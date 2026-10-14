@@ -15,7 +15,7 @@
 // it talks to; live() only says whether what it does is kept (a fictional facade keeps the view
 // state and the switches in memory).
 #include "tanara/domain/Person.h"
-#include "tanara/domain/Types.h"
+#include "tanara/domain/Meeting.h"
 #include "tanara/editing/session/SpeakerEditTypes.h"
 #include "tanara/library/tags/PersonTags.h"
 

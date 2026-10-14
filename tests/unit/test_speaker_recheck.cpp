@@ -1,5 +1,5 @@
 // Recheck from the confirmed lines + "they talked over each other" (noisy line): the pure
-// analysis functions (SpeakerAnalysis) and SpeakerEditor's persistent path. In a temporary
+// analysis functions (SpeakerAnalysis) and the editor session's persistent path. In a temporary
 // folder, with MADE-UP data; the embeddings go straight into the cache (no model, no audio, no ffmpeg).
 //
 // The scenario: under diarization's "Speaker 1" (Anna) label 3 lines got in that are really
@@ -15,9 +15,11 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 
-#include "tanara/domain/Types.h"
+#include "tanara/domain/Meeting.h"
+#include "tanara/domain/Overlay.h"
+#include "tanara/domain/Voice.h"
 #include "tanara/editing/review/SpeakerAnalysis.h"
-#include "tanara/editing/session/SpeakerEditor.h"
+#include "../support/EditSessionHarness.h"
 #include "tanara/editing/session/SpeakerOverlay.h"
 #include "tanara/processing/analysis/UtteranceEmbeddings.h"
 #include "tanara/library/store/MeetingRepository.h"
@@ -127,10 +129,10 @@ struct Fixture {
         QVERIFY(c.save(meeting.folder));
     }
 
-    std::unique_ptr<editing::SpeakerEditor> editor(bool withFactory = false)
+    test_support::EditSessionHarness editor(bool withFactory = false)
     {
-        auto ed = std::make_unique<editing::SpeakerEditor>(store.get(), people.get(), prints.get(), meeting.id);
-        if (withFactory) ed->setEmbedderFactory([] { return std::make_unique<NullEmbedder>(); });
+        auto ed = test_support::EditSessionHarness(store.get(), people.get(), prints.get(), meeting.id);
+        if (withFactory) ed.setEmbedderFactory([] { return std::make_unique<NullEmbedder>(); });
         return ed;
     }
 
@@ -263,9 +265,9 @@ struct PairFixture {
         c.save(meeting.folder);
     }
 
-    std::unique_ptr<editing::SpeakerEditor> editor()
+    test_support::EditSessionHarness editor()
     {
-        return std::make_unique<editing::SpeakerEditor>(store.get(), people.get(), prints.get(), meeting.id);
+        return test_support::EditSessionHarness(store.get(), people.get(), prints.get(), meeting.id);
     }
 
     QJsonObject overlayUtterance(const QString& id) const
@@ -511,7 +513,7 @@ private slots:
         QVERIFY(!editing::speakeredit::computePairRecheck(p.build(), 0, -1).valid);
     }
 
-    // ---- pairwise review (SpeakerEditor) ----
+    // ---- pairwise review (RecheckService) ----
 
     void editor_pairRecheck_replacesOnlyPairMarks_persistsAndUndoes()
     {
@@ -521,14 +523,14 @@ private slots:
 
         // First the global recheck: for Anna 3, 7, 15 (Béla), 13 (unknown voice), for Béla 17 (Anna),
         // for Csaba 12 (Anna). The m line (10) stays below the global threshold.
-        const editing::SpeakerEditor::RecheckResult g = ed->recheckFromConfirmed();
+        const editing::RecheckService::RecheckResult g = ed.recheck()->recheckFromConfirmed();
         QCOMPARE(g.flagged, 6);
         QVERIFY(ed->utterance(pid(13)).rechecked);
         QVERIFY(!ed->utterance(pid(10)).rechecked);
         QCOMPARE(ed->utterance(pid(12)).likelySpeakerKey, kB1);
 
-        QSignalSpy undoSpy(ed.get(), &editing::SpeakerEditor::undoStateChanged);
-        const editing::SpeakerEditor::PairRecheckResult r = ed->recheckPair(kB1, kB2);
+        QSignalSpy undoSpy(ed.get(), &editing::SpeakerEditSession::undoStateChanged);
+        const editing::RecheckService::PairRecheckResult r = ed.recheck()->recheckPair(kB1, kB2);
         QVERIFY(r.ran);
         QVERIFY(r.blocker.isEmpty());
         QCOMPARE(r.flagged, 5);
@@ -576,9 +578,9 @@ private slots:
         QVERIFY(!ed->utterance(pid(10)).rechecked);
         QVERIFY(ed->moveUtterances({pid(3)}, kB2));
         QVERIFY(!ed->utterance(pid(3)).rechecked);
-        ed->recheckPair(kB1, kB2);
+        ed.recheck()->recheckPair(kB1, kB2);
         const QString undo = ed->undoText();
-        QCOMPARE(ed->recheckPair(kB1, kB2).flagged, 3);
+        QCOMPARE(ed.recheck()->recheckPair(kB1, kB2).flagged, 3);
         QCOMPARE(ed->undoText(), undo);
     }
 
@@ -586,11 +588,11 @@ private slots:
     {
         PairFixture fx;
         auto ed = fx.editor();
-        QVERIFY(!ed->pairRecheckBlocker(kB1, kB1).isEmpty());
-        QVERIFY(!ed->pairRecheckBlocker(kB1, QStringLiteral("nincs ilyen")).isEmpty());
+        QVERIFY(!ed.recheck()->pairRecheckBlocker(kB1, kB1).isEmpty());
+        QVERIFY(!ed.recheck()->pairRecheckBlocker(kB1, QStringLiteral("nincs ilyen")).isEmpty());
         // It runs without confirmation too (with all clean lines; the fallback signals this).
-        QVERIFY(ed->pairRecheckBlocker(kB1, kB2).isEmpty());
-        const editing::SpeakerEditor::PairRecheckResult r = ed->recheckPair(kB1, kB2);
+        QVERIFY(ed.recheck()->pairRecheckBlocker(kB1, kB2).isEmpty());
+        const editing::RecheckService::PairRecheckResult r = ed.recheck()->recheckPair(kB1, kB2);
         QVERIFY(r.ran);
         QVERIFY(r.fallbackA && r.fallbackB);
         QCOMPARE(r.refLinesA, 8);
@@ -598,9 +600,9 @@ private slots:
 
         // Few lines: 3 of Csaba's 5 lines go elsewhere.
         QVERIFY(ed->moveUtterances(pids({6, 9, 11}), kB1));
-        const QString why = ed->pairRecheckBlocker(kB3, kB2);
+        const QString why = ed.recheck()->pairRecheckBlocker(kB3, kB2);
         QVERIFY2(why.startsWith(QStringLiteral("Csaba hangjához kevés a minta")), qPrintable(why));
-        QVERIFY(!ed->recheckPair(kB3, kB2).ran);
+        QVERIFY(!ed.recheck()->recheckPair(kB3, kB2).ran);
     }
 
     void editor_pairOffer_onlyWhenGuardBlocksAndBothHaveConfirmedLines()
@@ -613,7 +615,7 @@ private slots:
         ed->undo();
 
         QVERIFY(ed->confirmUtterances(pids({0, 2, 5, 1, 4, 8})));
-        QSignalSpy spy(ed.get(), &editing::SpeakerEditor::suggestionChanged);
+        QSignalSpy spy(ed.get(), &editing::SpeakerEditSession::suggestionChanged);
         QVERIFY(ed->moveUtterances({pid(3)}, kB2));
         QVERIFY(!ed->hasSuggestion());
         QVERIFY(ed->hasPairOffer());
@@ -647,7 +649,7 @@ private slots:
         QVERIFY(!ed2->hasPairOffer());
     }
 
-    // ---- SpeakerEditor -----------------------------------------------------
+    // ---- SpeakerEditSession + RecheckService -----------------------------------------------------
 
     void editor_overlapMarksCrossTalkAutomatically()
     {
@@ -668,18 +670,18 @@ private slots:
         Fixture fx;
         auto ed = fx.editor();
         QCOMPARE(ed->uncertainCount(), 0);              // the regular verdict does not see them
-        QVERIFY(!ed->canRecheck());
-        QVERIFY(ed->recheckBlocker().contains(QStringLiteral("Előbb erősíts meg vagy javíts legalább 3 sort egy beszélőnél")));
-        QVERIFY(!ed->recheckFromConfirmed().ran);
+        QVERIFY(!ed.recheck()->canRecheck());
+        QVERIFY(ed.recheck()->recheckBlocker().contains(QStringLiteral("Előbb erősíts meg vagy javíts legalább 3 sort egy beszélőnél")));
+        QVERIFY(!ed.recheck()->recheckFromConfirmed().ran);
 
         QVERIFY(ed->confirmUtterances(uids({0, 2, 5})));
-        QVERIFY(ed->canRecheck());
-        QVERIFY(ed->recheckBlocker().isEmpty());
+        QVERIFY(ed.recheck()->canRecheck());
+        QVERIFY(ed.recheck()->recheckBlocker().isEmpty());
 
-        QSignalSpy finished(ed.get(), &editing::SpeakerEditor::recheckFinished);
-        QSignalSpy count(ed.get(), &editing::SpeakerEditor::uncertainCountChanged);
-        QSignalSpy changed(ed.get(), &editing::SpeakerEditor::utterancesChanged);
-        const editing::SpeakerEditor::RecheckResult r = ed->recheckFromConfirmed();
+        QSignalSpy finished(ed.recheck(), &editing::RecheckService::recheckFinished);
+        QSignalSpy count(ed.get(), &editing::SpeakerEditSession::uncertainCountChanged);
+        QSignalSpy changed(ed.get(), &editing::SpeakerEditSession::utterancesChanged);
+        const editing::RecheckService::RecheckResult r = ed.recheck()->recheckFromConfirmed();
         QVERIFY(r.ran);
         QCOMPARE(r.flagged, 3);
         QCOMPARE(r.speakersWithConfirmedCore, 1);
@@ -714,7 +716,7 @@ private slots:
         Fixture fx;
         auto ed = fx.editor();
         ed->confirmUtterances(uids({0, 2, 5}));
-        ed->recheckFromConfirmed();
+        ed.recheck()->recheckFromConfirmed();
         QCOMPARE(ed->uncertainCount(), 3);
 
         // "Fine as is": not uncertain; undo: it is again.
@@ -751,12 +753,12 @@ private slots:
         Fixture fx;
         auto ed = fx.editor();
         ed->confirmUtterances(uids({0, 2, 5}));
-        QCOMPARE(ed->recheckFromConfirmed().flagged, 3);
+        QCOMPARE(ed.recheck()->recheckFromConfirmed().flagged, 3);
 
         // We confirm one of the doubtful lines as Anna's: the core now contains the P voice too, so
         // the other two are not doubtful, so the next recheck releases them.
         QVERIFY(ed->confirmUtterances({uid(3)}));
-        const editing::SpeakerEditor::RecheckResult r = ed->recheckFromConfirmed();
+        const editing::RecheckService::RecheckResult r = ed.recheck()->recheckFromConfirmed();
         QCOMPARE(r.flagged, 0);
         QCOMPARE(r.confirmedLines, 4);
         QCOMPARE(ed->uncertainCount(), 0);
@@ -765,7 +767,7 @@ private slots:
 
         // With an unchanged result there is no new undo step.
         const QString undo = ed->undoText();
-        ed->recheckFromConfirmed();
+        ed.recheck()->recheckFromConfirmed();
         QCOMPARE(ed->undoText(), undo);
     }
 
@@ -774,21 +776,21 @@ private slots:
         {
             Fixture fx(/*withCache*/ false);
             auto ed = fx.editor(/*withFactory*/ false);
-            QVERIFY(!ed->canRecheck());
-            QVERIFY(ed->recheckBlocker().contains(QStringLiteral("hangmodell")));
+            QVERIFY(!ed.recheck()->canRecheck());
+            QVERIFY(ed.recheck()->recheckBlocker().contains(QStringLiteral("hangmodell")));
         }
         {
             Fixture fx(/*withCache*/ false);
             auto ed = fx.editor(/*withFactory*/ true);
-            QVERIFY(!ed->canRecheck());
-            QVERIFY(ed->recheckBlocker().contains(QStringLiteral("hang-elemzése még nem")));
+            QVERIFY(!ed.recheck()->canRecheck());
+            QVERIFY(ed.recheck()->recheckBlocker().contains(QStringLiteral("hang-elemzése még nem")));
         }
         {
             // The cache is enough (even without the model): only the confirmed lines are missing.
             Fixture fx;
             auto ed = fx.editor(/*withFactory*/ false);
             ed->confirmUtterances(uids({0, 2, 5}));
-            QVERIFY(ed->canRecheck());
+            QVERIFY(ed.recheck()->canRecheck());
         }
     }
 
@@ -990,21 +992,21 @@ private slots:
                             makePrint({0.0f, 1.0f, 0.0f, 0.0f}, QStringLiteral("regi-modell")));
         auto ed = fx.editor();
         // A voiceprint made here is a local core by itself, so the recheck runs without confirmation too.
-        QVERIFY(ed->canRecheck());
+        QVERIFY(ed.recheck()->canRecheck());
 
         QVERIFY(ed->confirmUtterances(uids({0, 2, 5})));
-        const editing::SpeakerEditor::RecheckResult r = ed->recheckFromConfirmed();
+        const editing::RecheckService::RecheckResult r = ed.recheck()->recheckFromConfirmed();
         QVERIFY(r.ran);
         QCOMPARE(r.flagged, 3);
         QCOMPARE(ed->uncertainUtteranceIds(), uids({3, 6, 9}));
         QCOMPARE(ed->utterance(uid(3)).likelySpeakerKey, kB2);
         QCOMPARE(r.references.size(), 2);
-        const editing::SpeakerEditor::SpeakerReference& anna = r.references[0];
+        const editing::SpeakerReference& anna = r.references[0];
         QCOMPARE(anna.speakerKey, kB1);
         QCOMPARE(anna.lines, 2);                        // line 0 counts in the voiceprint
         QCOMPARE(anna.localPrints, 1);
         QCOMPARE(anna.priorPrints, 0);
-        const editing::SpeakerEditor::SpeakerReference& bela = r.references[1];
+        const editing::SpeakerReference& bela = r.references[1];
         QVERIFY(bela.priorOnly);
         QCOMPARE(bela.priorPrints, 1);
         QCOMPARE(r.confirmedLines, 2);
@@ -1023,18 +1025,18 @@ private slots:
     // The text of the "two very similar voices" warning (decimal separator, the strongest pair).
     void recheck_similarVoicesNote()
     {
-        QVERIFY(editing::SpeakerEditor::similarVoicesNote({}).isEmpty());
-        editing::SpeakerEditor::SimilarVoices a;
+        QVERIFY(editing::RecheckService::similarVoicesNote({}).isEmpty());
+        editing::SimilarVoices a;
         a.nameA = QStringLiteral("Fehér Gábor");
         a.nameB = QStringLiteral("Varga Árpád");
         a.similarity = 0.9234;
-        QCOMPARE(editing::SpeakerEditor::similarVoicesNote({a}),
+        QCOMPARE(editing::RecheckService::similarVoicesNote({a}),
                  QStringLiteral("Figyelem: Fehér Gábor és Varga Árpád hangja nagyon hasonló (0,92), "
                                 "kettejük sorait érdemes átnézni."));
-        editing::SpeakerEditor::SimilarVoices b = a;
+        editing::SimilarVoices b = a;
         b.similarity = 0.91;
-        QVERIFY(editing::SpeakerEditor::similarVoicesNote({a, b}).endsWith(QStringLiteral("(További 1 hasonló pár.)")));
-        editing::SpeakerEditor::RecheckResult none;
+        QVERIFY(editing::RecheckService::similarVoicesNote({a, b}).endsWith(QStringLiteral("(További 1 hasonló pár.)")));
+        editing::RecheckService::RecheckResult none;
         QVERIFY(none.basisSummary().isEmpty());     // did not run
     }
 
@@ -1043,7 +1045,7 @@ private slots:
         Fixture fx;
         auto ed = fx.editor();
         QVERIFY(ed->confirmUtterances(uids({0, 2, 5})));
-        const editing::SpeakerEditor::RecheckResult r = ed->recheckFromConfirmed();
+        const editing::RecheckService::RecheckResult r = ed.recheck()->recheckFromConfirmed();
         QCOMPARE(r.references.size(), 1);
         QCOMPARE(r.references[0].lines, 3);
         QVERIFY(r.referenceSummary().isEmpty());
@@ -1058,7 +1060,7 @@ private slots:
         fx.prints->addPrint(fx.people->ensure(QStringLiteral("Béla")), makePrint(pb, QStringLiteral("masik-megbeszeles")));
         auto ed = fx.editor();
         QVERIFY(ed->confirmUtterances(pids({0, 2, 5, 1})));     // Béla has only 1 confirmed line
-        const editing::SpeakerEditor::PairRecheckResult r = ed->recheckPair(kB1, kB2);
+        const editing::RecheckService::PairRecheckResult r = ed.recheck()->recheckPair(kB1, kB2);
         QVERIFY(r.ran);
         QVERIFY(!r.fallbackB);
         QVERIFY(r.refB.priorOnly);

@@ -39,7 +39,7 @@ class MeetingUndoRegistry;
 class ParticipantAnalysisPort;
 class ParticipantService;
 class PeopleEditingAdapter;
-class SpeakerEditor;
+class SpeakerEditSession;
 }
 namespace tanara::processing { class VoiceAnalysisService; }
 // --- end P12d ---
@@ -90,8 +90,8 @@ struct ServicesDeps {
     QString modelsDir;          // AppPaths::modelsDir()
     QString appDir;             // location of the packaged models
     // The transcript-editor sessions (editing::EditorSessions, P12f): created on demand / only an open one.
-    std::function<editing::SpeakerEditor*(const QString&)> editorFor;
-    std::function<editing::SpeakerEditor*(const QString&)> existingEditor;
+    std::function<editing::SpeakerEditSession*(const QString&)> editorFor;
+    std::function<editing::SpeakerEditSession*(const QString&)> existingEditor;
     // The transcript's identity (the identification drops a result that belongs to an older transcript).
     std::function<QString(const QString& meetingId, const QString& folder)> transcriptStamp;
     // The tracks' speech check is still pending (running, or not yet done for a meeting that needs it).

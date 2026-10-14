@@ -839,7 +839,7 @@ private slots:
     {
         startApp();
         scenario();
-        // A second store on the same people.json (the path of learning: SpeakerEditor / PeopleService).
+        // A second store on the same people.json (the path of learning: SpeakerEditSession / PeopleService).
         library::PeopleStore learner(m_app->settings()->paths().dataFile(paths::files::People));
         PeopleViewModel vm(services());
         vm.setSelectedName(kGergely);

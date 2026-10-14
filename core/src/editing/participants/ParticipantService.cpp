@@ -1,7 +1,7 @@
 #include "tanara/editing/participants/ParticipantService.h"
 
 #include "tanara/editing/review/SideAnalysis.h"
-#include "tanara/editing/session/SpeakerEditor.h"
+#include "tanara/editing/session/SpeakerEditSession.h"
 #include "tanara/editing/session/SpeakerOverlay.h"
 #include "tanara/editing/undo/MeetingUndoRegistry.h"
 #include "tanara/library/people/PeopleService.h"
@@ -66,12 +66,12 @@ ParticipantService::ParticipantService(const Deps& deps, QObject* parent) : QObj
 
 ParticipantService::~ParticipantService() = default;
 
-SpeakerEditor* ParticipantService::editorFor(const QString& meetingId) const
+SpeakerEditSession* ParticipantService::editorFor(const QString& meetingId) const
 {
     return m_deps.editorFor ? m_deps.editorFor(meetingId) : nullptr;
 }
 
-SpeakerEditor* ParticipantService::existingEditor(const QString& meetingId) const
+SpeakerEditSession* ParticipantService::existingEditor(const QString& meetingId) const
 {
     return m_deps.existingEditor ? m_deps.existingEditor(meetingId) : nullptr;
 }
@@ -95,7 +95,7 @@ bool ParticipantService::participantApprovalPending(const QString& meetingId) co
 QStringList ParticipantService::speakerKeysFor(const Meeting& m, const QString& id)
 {
     if (!m.hasTranscript || id.isEmpty()) return {};
-    SpeakerEditor* ed = editorFor(m.id);
+    SpeakerEditSession* ed = editorFor(m.id);
     if (!ed || !ed->hasTranscript()) return {};
     const QVector<EditorSpeaker> speakers = ed->speakers();
     const Participant* p = participantById(m, id);
@@ -145,7 +145,7 @@ bool ParticipantService::setParticipantTracks(const QString& meetingId, const QS
         changed = true;
     }
     if (!keys.isEmpty())
-        if (SpeakerEditor* ed = editorFor(meetingId))
+        if (SpeakerEditSession* ed = editorFor(meetingId))
             for (const QString& key : keys)
                 changed = ed->setTrackAssignment(key, ids) || changed;
     if (changed) emit participantsChanged(meetingId);
@@ -159,7 +159,7 @@ ParticipantTrackBinding ParticipantService::participantTracks(const QString& mee
     if (m.id.isEmpty()) return b;
     const Participant* p = participantById(m, id);
     const QStringList keys = speakerKeysFor(m, id);
-    SpeakerEditor* ed = keys.isEmpty() ? nullptr : editorFor(meetingId);
+    SpeakerEditSession* ed = keys.isEmpty() ? nullptr : editorFor(meetingId);
     // Manual: after the transcript the editor's assignment is the truth (the "Why them?" chips), before it the participant's.
     if (ed) {
         for (const QString& key : keys) {
@@ -197,7 +197,7 @@ void ParticipantService::copyParticipantTracksToOverlay(const QString& meetingId
 {
     const Meeting m = m_deps.store->load(meetingId);
     if (m.id.isEmpty() || !m.hasTranscript) return;
-    SpeakerEditor* ed = editorFor(meetingId);
+    SpeakerEditSession* ed = editorFor(meetingId);
     if (!ed || !ed->hasTranscript()) return;
     for (const Participant& p : m.participants) {
         if (p.tracks.isEmpty()) continue;
@@ -224,7 +224,7 @@ bool ParticipantService::applySpeakerBindings(const QString& meetingId, const QV
                                               const QString& undoText)
 {
     if (bindings.isEmpty()) return false;
-    SpeakerEditor* ed = editorFor(meetingId);
+    SpeakerEditSession* ed = editorFor(meetingId);
     if (!ed || !ed->hasTranscript()) return false;
     return ed->applyBindings(bindings, undoText);
 }
@@ -346,7 +346,7 @@ bool ParticipantService::unbindParticipant(const QString& meetingId, const QStri
                 bindings.append(b);
             }
         if (!p.personId.isNull())
-            if (SpeakerEditor* ed = editorFor(meetingId))
+            if (SpeakerEditSession* ed = editorFor(meetingId))
                 for (const EditorSpeaker& s : ed->speakers())
                     if (s.personId == p.personId)
                         bindings.append({s.key, PersonId(), {}});
@@ -435,7 +435,7 @@ bool ParticipantService::removeParticipant(const QString& meetingId, const QStri
     if (it0 == m0.participants.cend()) {
         // There is no participant record (the meeting got names before participant analysis): the id is the
         // transcript speaker's key; its lines go anonymous (one step).
-        SpeakerEditor* ed = m0.hasTranscript ? editorFor(meetingId) : nullptr;
+        SpeakerEditSession* ed = m0.hasTranscript ? editorFor(meetingId) : nullptr;
         if (!ed) return false;
         for (const EditorSpeaker& s : ed->speakers()) {
             if (s.key != participantId || s.anonymous) continue;
@@ -470,7 +470,7 @@ QVector<Participant> ParticipantService::unheardParticipants(const QString& meet
     if (m.id.isEmpty() || !m.hasTranscript) return {};
     // The persons of the transcript's speakers: from the open editor, otherwise resolved from disk.
     QSet<PersonId> heard;
-    if (SpeakerEditor* ed = existingEditor(meetingId)) {
+    if (SpeakerEditSession* ed = existingEditor(meetingId)) {
         for (const EditorSpeaker& s : ed->speakers())
             if (s.utteranceCount > 0 && !s.personId.isNull()) heard.insert(s.personId);
     } else {

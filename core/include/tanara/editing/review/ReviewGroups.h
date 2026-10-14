@@ -1,7 +1,7 @@
 #pragma once
 //
 // "To review" groups: the doubtful lines arranged into groups, one decision (and one undo step)
-// per group. Pure functions on a snapshot (ReviewInput); SpeakerEditor calls them on a background
+// per group. Pure functions on a snapshot (ReviewInput); SpeakerEditSession calls them on a background
 // thread, the CLI (`tanara-cli review`) directly.
 //
 // Group kinds (by priority; a line is in at most one group):

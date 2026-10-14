@@ -14,7 +14,9 @@
 #include <QJsonObject>
 #include <functional>
 
-#include "tanara/domain/Types.h"
+#include "tanara/domain/Meeting.h"
+#include "tanara/domain/Overlay.h"
+#include "tanara/domain/Summary.h"
 #include "tanara/processing/summary/PromptLibrary.h"
 #include "tanara/processing/summary/SummaryService.h"
 #include "tanara/editing/session/SpeakerOverlay.h"

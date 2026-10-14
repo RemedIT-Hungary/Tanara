@@ -25,7 +25,8 @@
 //
 #include "UiServices.h"
 
-#include "tanara/domain/Types.h"
+#include "tanara/domain/Participant.h"
+#include "tanara/domain/Tag.h"
 #include "tanara/domain/Person.h"
 #include "tanara/editing/session/SpeakerEditTypes.h"
 #include "tanara/library/tags/PersonTags.h"

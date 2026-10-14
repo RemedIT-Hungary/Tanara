@@ -13,7 +13,7 @@
 
 #include "tanara/media/FfmpegMediaTool.h"
 #include "tanara/editing/review/SpeakerAnalysis.h"
-#include "tanara/editing/session/SpeakerEditor.h"
+#include "../support/EditSessionHarness.h"
 #include "tanara/editing/session/SpeakerOverlay.h"
 #include "tanara/processing/analysis/UtteranceEmbeddings.h"
 #include "tanara/library/store/MeetingRepository.h"
@@ -75,43 +75,43 @@ void SpeakerSandboxTest::measure()
         const bool fresh = qEnvironmentVariableIsSet("TANARA_SANDBOX_FRESH");
         if (fresh) processing::UtteranceEmbeddingCache::remove(m.folder);
 
-        editing::SpeakerEditor ed(&store, &people, &prints, m.id);
+        test_support::EditSessionHarness ed(&store, &people, &prints, m.id);
         ed.setEmbedderFactory(processing::voiceUtteranceEmbedderFactory(model, media::FfmpegMediaTool::fromSettings({})));
-        QSignalSpy done(&ed, &editing::SpeakerEditor::embeddingFinished);
+        QSignalSpy done(ed.recheck(), &editing::RecheckService::embeddingFinished);
         QElapsedTimer timer;
         timer.start();
-        ed.startEmbedding();
+        ed.recheck()->startEmbedding();
         if (done.isEmpty()) QVERIFY(done.wait(15 * 60 * 1000));
         const double secs = timer.elapsed() / 1000.0;
-        QVERIFY2(done.last().at(0).toBool(), qPrintable(ed.embeddingError()));
+        QVERIFY2(done.last().at(0).toBool(), qPrintable(ed.recheck()->embeddingError()));
 
         int embeddable = 0;
         for (const TranscriptLine& l : lines)
             if (l.endMs - l.startMs >= editing::speakeredit::kMinEmbedMs) ++embeddable;
-        const int unc = ed.uncertainCount();
+        const int unc = ed->uncertainCount();
         qInfo().noquote() << QStringLiteral(
             "MEETING #%1: %2 perc, %3 sor (%4 embeddelhető), %5 beszélő | embedding %6 mp | "
             "bizonytalan %7 sor = %8% (az embeddelhetők %9%-a)")
             .arg(n).arg(m.durationMs / 60000.0, 0, 'f', 1).arg(lines.size()).arg(embeddable)
-            .arg(ed.speakers().size()).arg(secs, 0, 'f', 1).arg(unc)
+            .arg(ed->speakers().size()).arg(secs, 0, 'f', 1).arg(unc)
             .arg(100.0 * unc / lines.size(), 0, 'f', 1)
             .arg(embeddable ? 100.0 * unc / embeddable : 0.0, 0, 'f', 1);
 
         // ---- the time of one real operation (overlay + meeting.json + transcript.md write), then undo ----
         {
             QString firstLong;
-            for (const editing::EditorUtterance& u : ed.utterances())
+            for (const editing::EditorUtterance& u : ed->utterances())
                 if (u.endMs - u.startMs >= editing::speakeredit::kReliableMs) { firstLong = u.id; break; }
             if (!firstLong.isEmpty()) {
                 QElapsedTimer op;
                 op.start();
-                const QString key = ed.moveUtterancesToNewParticipant({firstLong});
+                const QString key = ed->moveUtterancesToNewParticipant({firstLong});
                 const qint64 moveMs = op.restart();
-                const int suggested = ed.suggestion().utteranceIds.size();
-                ed.undo();
+                const int suggested = ed->suggestion().utteranceIds.size();
+                ed->undo();
                 const qint64 undoMs = op.elapsed();
                 QVERIFY(!key.isEmpty());
-                QVERIFY(!ed.canUndo());
+                QVERIFY(!ed->canUndo());
                 QVERIFY(!editing::speakeredit::loadOverlay(m.folder).hasEdits());    // the sandbox is back
                 qInfo().noquote() << QStringLiteral(
                     "   művelet: 1 sor áthelyezése %1 ms (javaslat: %2 sor), visszavonás %3 ms")

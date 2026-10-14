@@ -5,7 +5,7 @@
 // remove a participant, the speaker -> track binding, binding the voice candidates to the transcript's raw
 // speakers, and committing a voice identification. Every operation that changes the participant state is
 // one step of the meeting's shared undo (ParticipantUndoScope); the bindings go through the meeting's
-// transcript-editor session (SpeakerEditor::applyBindings, one editor step absorbed by the shared step).
+// transcript-editor session (SpeakerEditSession::applyBindings, one editor step absorbed by the shared step).
 //
 // The voice-analysis side (evidence, the analysis file's clusters, the approval bindings) comes through
 // ParticipantAnalysisPort, which app::Services implements over processing::VoiceAnalysisService: editing
@@ -33,7 +33,7 @@ class PeopleStore;
 namespace tanara::editing {
 
 class MeetingUndoRegistry;
-class SpeakerEditor;
+class SpeakerEditSession;
 
 // The voice-analysis side of the participant operations.
 class ParticipantAnalysisPort {
@@ -67,8 +67,8 @@ public:
         MeetingUndoRegistry*        undo = nullptr;
         ParticipantAnalysisPort*    analysis = nullptr;
         // The meeting's transcript-editor session: created on demand / only an open one.
-        std::function<SpeakerEditor*(const QString& meetingId)> editorFor;
-        std::function<SpeakerEditor*(const QString& meetingId)> existingEditor;
+        std::function<SpeakerEditSession*(const QString& meetingId)> editorFor;
+        std::function<SpeakerEditSession*(const QString& meetingId)> existingEditor;
     };
 
     explicit ParticipantService(const Deps& deps, QObject* parent = nullptr);
@@ -117,8 +117,8 @@ private:
     // The bindings through the editor, in one undo step.
     bool applySpeakerBindings(const QString& meetingId, const QVector<SpeakerBinding>& bindings,
                               const QString& undoText);
-    SpeakerEditor* editorFor(const QString& meetingId) const;
-    SpeakerEditor* existingEditor(const QString& meetingId) const;
+    SpeakerEditSession* editorFor(const QString& meetingId) const;
+    SpeakerEditSession* existingEditor(const QString& meetingId) const;
 
     Deps m_deps;
 };

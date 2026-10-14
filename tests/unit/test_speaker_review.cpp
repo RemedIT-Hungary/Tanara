@@ -1,4 +1,4 @@
-// SpeakerEditor v3: manual track assignment (undo), review queue groups computed in the
+// SpeakerEditSession v3: manual track assignment (undo), review queue groups computed in the
 // background, executing a group in one undo step, splitting, the "uncertain, track" reason,
 // learned track side and the candidates. In a temporary folder, with MADE-UP data: the
 // embeddings go straight into the cache, the track activity is synthetic
@@ -10,8 +10,11 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 
-#include "tanara/domain/Types.h"
-#include "tanara/editing/session/SpeakerEditor.h"
+#include "tanara/domain/Activity.h"
+#include "tanara/domain/Meeting.h"
+#include "tanara/domain/Overlay.h"
+#include "tanara/domain/Tag.h"
+#include "../support/EditSessionHarness.h"
 #include "tanara/editing/session/SpeakerOverlay.h"
 #include "tanara/processing/analysis/TrackActivity.h"
 #include "tanara/processing/analysis/UtteranceEmbeddings.h"
@@ -105,9 +108,9 @@ struct Fixture {
     // A person by name (people.json; created if missing).
     PersonId pid(const QString& name) { return people->ensure(name); }
 
-    std::unique_ptr<editing::SpeakerEditor> editor()
+    test_support::EditSessionHarness editor()
     {
-        auto ed = std::make_unique<editing::SpeakerEditor>(store.get(), people.get(), prints.get(), meeting.id);
+        auto ed = test_support::EditSessionHarness(store.get(), people.get(), prints.get(), meeting.id);
         ed->setSelfPerson(SelfPerson{pid("Ádám"), "Ádám"});
         const MeetingActivity a = act;
         ed->setActivityProvider([a](const Meeting&) { return a; });
@@ -115,9 +118,9 @@ struct Fixture {
     }
 };
 
-bool waitReview(editing::SpeakerEditor& ed)
+bool waitReview(tanara::editing::SpeakerEditSession& ed)
 {
-    QSignalSpy spy(&ed, &editing::SpeakerEditor::reviewGroupsChanged);
+    QSignalSpy spy(&ed, &editing::SpeakerEditSession::reviewGroupsChanged);
     return spy.wait(5000);
 }
 

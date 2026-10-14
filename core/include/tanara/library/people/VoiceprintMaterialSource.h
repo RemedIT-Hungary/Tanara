@@ -2,7 +2,7 @@
 //
 // VoiceprintMaterialSource: the port through which the People window's service (library::PeopleService)
 // gets voiceprint material from a meeting: how much sure, long speech a person has there, and a
-// voiceprint made from it. The transcript editor knows this (editing::SpeakerEditor's
+// voiceprint made from it. The transcript editor knows this (editing::SpeakerEditSession's
 // voiceprintMaterial / createVoiceprint), so the editing module implements the port
 // (editing::PeopleEditingAdapter) and app::Services wires it in: the dependency inversion that keeps
 // library free of editing (cleanup plan T 1.2).

@@ -8,7 +8,7 @@
 #include <QFile>
 #include <functional>
 
-#include "tanara/domain/Types.h"
+#include "tanara/domain/Summary.h"
 #include "tanara/processing/summary/PromptLibrary.h"
 #include "tanara/processing/summary/SummaryService.h"
 #include "tanara/processing/summary/SummaryPipeline.h"

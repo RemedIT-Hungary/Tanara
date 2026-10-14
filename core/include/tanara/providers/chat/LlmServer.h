@@ -15,7 +15,6 @@
 //
 // LlmModelPreparer is the ILocalModelServer handler of the "openai-compat" chat provider
 // (registerBuiltinProviders()). The Tanara Cloud path does not use these (it has no native API).
-#include "tanara/domain/Types.h"
 #include "tanara/providers/core/ProviderConfig.h"
 #include "tanara/providers/core/ProviderContext.h"
 #include "tanara/domain/Job.h"

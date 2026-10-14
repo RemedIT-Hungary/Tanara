@@ -3,7 +3,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include "tanara/library/store/VoiceprintStore.h"
-#include "tanara/domain/Types.h"
+#include "tanara/domain/Voice.h"
 
 #include <cmath>
 

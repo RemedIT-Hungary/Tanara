@@ -1,5 +1,5 @@
 {
- "_comment": "Module map for tools/check_modules.py. 'modules' = the module layout (paths are globs from the repo root; first match wins, so ui-common precedes ui). enforceNamespace: every file of the module must open namespace <namespace> (foundation/domain live in plain `tanara`). tests/** and third_party/** are not checked.",
+ "_comment": "Module map for tools/check_modules.py. 'modules' = the module layout (paths are globs from the repo root; first match wins, so ui-common precedes ui). enforceNamespace: every file of the module must open namespace <namespace> (foundation/domain live in plain `tanara`). tests/** and third_party/** are not checked. forbiddenIncludes: the ui module (and the demo lib) may not include app/AppController.h; the GUI composition roots (gui/qml/src/AppContext.cpp, gui/src/QmlShellBridge.cpp, gui/src/main.cpp) and the developer QA hook (gui/src/ShellQaHook.h) are the only exceptions, kept as tolerated lines in tools/module-boundaries.allow (this file has no per-file exceptions).",
  "modules": {
   "foundation": {
    "paths": [
@@ -238,6 +238,9 @@
  "forbiddenIncludes": {
   "ui": [
    "tanara/AppController.h",
+   "tanara/app/AppController.h"
+  ],
+  "demo": [
    "tanara/app/AppController.h"
   ]
  }

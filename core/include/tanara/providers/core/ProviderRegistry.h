@@ -14,8 +14,6 @@
 // "openai-compat" is a Chat provider and has a LocalModelServer handler under the same id).
 //
 // NOT a singleton: the AppController (later app::Services) owns one, the tests build their own.
-// Transitional: defaultInstance() serves the callers that have no owner at hand yet (GUI view models,
-// the readiness model); it registers the built-in providers on first use. TODO(P15): remove.
 //
 // Headless (core); does NOT link Qt Widgets.
 #include "tanara/providers/core/ProviderConfig.h"
@@ -39,9 +37,6 @@ public:
     using Factory = std::function<Port*(const ProviderContext&, const ProviderConfig&, QObject*)>;
 
     ProviderRegistry() = default;
-
-    // TODO(P15): remove (the owners pass their registry instead).
-    static ProviderRegistry& defaultInstance();
 
     // Adds (or replaces) a provider; the descriptor's capability is set from the port.
     template <class Port>

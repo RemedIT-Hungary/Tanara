@@ -17,7 +17,7 @@
 #include "tanara/app/AppController.h"
 #include "tanara/app/SettingsManager.h"
 #include "tanara/editing/session/PeopleDirectory.h"
-#include "tanara/editing/session/SpeakerEditor.h"
+#include "tanara/editing/session/SpeakerEditSession.h"
 #include "tanara/editing/session/SpeakerOverlay.h"
 #include "tanara/editing/review/SideAnalysis.h"
 #include "tanara/library/people/PeopleService.h"
@@ -335,7 +335,7 @@ void PeopleServiceTest::statsCountMeetingsTalkTimeAndLastSeen()
                                   {{"Beszélő 2", kGergely}, {"Beszélő 1", kEszter}}, true);
     // Manual fix: the second meeting's first line is really Gergely's (per-line override).
     {
-        editing::SpeakerEditor ed(m_app->store(), nullptr, nullptr, m2.id);
+        editing::SpeakerEditSession ed(m_app->store(), nullptr, nullptr, m2.id);
         QVERIFY(ed.moveUtterances({"u0"}, "Beszélő 2"));
     }
     library::PeopleStats* stats = m_app->peopleStats();
@@ -422,7 +422,7 @@ void PeopleServiceTest::renameIsOneFieldKeepsOldNameAsAlias()
     QCOMPARE(readFile(metaFile("voiceprints.json")), printsBefore);
     QCOMPARE(m_app->store()->load(m.id).speakerMap.value("Beszélő 1"), g);
     // The editor (and transcript.md) shows the new name.
-    editing::SpeakerEditor* ed = m_app->speakerEditor(m.id);
+    editing::SpeakerEditSession* ed = m_app->editSession(m.id);
     QCOMPARE(ed->speaker("Beszélő 1").displayName, QStringLiteral("Bárány Gergő"));
     // Under the old name the person picker still finds it.
     QCOMPARE(filterPeople(m_app->peopleDirectory(), "gergely").size(), 1);
@@ -730,7 +730,7 @@ void PeopleServiceTest::mergeWithOpenEditorShowsStale()
                                  {{"Beszélő 1", kGergo}}, true);
     QVERIFY(svc()->addPerson(kGergely).ok);
     // In the main window the transcript editor is open: it must follow without a restart.
-    editing::SpeakerEditor* ed = m_app->speakerEditor(m.id);
+    editing::SpeakerEditSession* ed = m_app->editSession(m.id);
     QVERIFY(ed);
     QVERIFY(!ed->summaryStale().stale);
     QVERIFY(svc()->merge(find(kGergo), find(kGergely)).ok);

@@ -1,6 +1,6 @@
 #include <QtTest>
 #include "tanara/processing/summary/TranscriptMerger.h"
-#include "tanara/domain/Types.h"
+#include "tanara/domain/Transcript.h"
 
 using namespace tanara;
 

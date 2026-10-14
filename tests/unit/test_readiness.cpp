@@ -17,7 +17,7 @@
 #include <QTemporaryDir>
 #include <QStringList>
 
-#include "tanara/domain/Types.h"
+#include "tanara/domain/Meeting.h"
 #include "tanara/providers/core/ProviderRegistry.h"
 #include "tanara/providers/core/ReadinessModel.h"
 
@@ -95,13 +95,12 @@ class ReadinessTests : public QObject {
     Q_OBJECT
 private slots:
 
-    // The descriptors' (Soniox / OpenAI-compat) required fields need the built-in providers: we
-    // ensure registration before every test (idempotent, see the built-in registration).
+    // The descriptors' (Soniox / OpenAI-compat) required fields need the built-in providers: the
+    // test's own registry gets them once.
     void initTestCase()
     {
-        // The readiness model reads the default registry (it has the built-ins on first use).
-        QVERIFY(providers::ProviderRegistry::defaultInstance().has(providers::CapabilityKind::Transcription,
-                                                                   QStringLiteral("soniox")));
+        providers::registerBuiltinProviders(m_registry);
+        QVERIFY(m_registry.has(providers::CapabilityKind::Transcription, QStringLiteral("soniox")));
     }
 
     // Transcribe blocks if there is NO (active) audio track: the recording has not happened yet.
@@ -110,7 +109,7 @@ private slots:
     {
         // (a) completely empty tracks
         {
-            providers::ReadinessModel model(makeSettings().providers, secretsPresent({ QStringLiteral("soniox.apiKey") }));
+            providers::ReadinessModel model(makeSettings().providers, secretsPresent({ QStringLiteral("soniox.apiKey") }), &m_registry);
             Meeting m;
             m.id = QStringLiteral("m-empty");
 
@@ -122,7 +121,7 @@ private slots:
 
         // (b) there is a track, but all inactive (judged silent after the recording)
         {
-            providers::ReadinessModel model(makeSettings().providers, secretsPresent({ QStringLiteral("soniox.apiKey") }));
+            providers::ReadinessModel model(makeSettings().providers, secretsPresent({ QStringLiteral("soniox.apiKey") }), &m_registry);
             Meeting m = meetingWithActiveTrack();
             m.tracks[0].active = false;
 
@@ -137,7 +136,7 @@ private slots:
     // secret (apiKey) is missing. The provider config is the blocker, the missing field is "apiKey".
     void transcribe_blocksWhenSonioxKeyMissing()
     {
-        providers::ReadinessModel model(makeSettings().providers, noSecrets());   // hasSecret is always false
+        providers::ReadinessModel model(makeSettings().providers, noSecrets(), &m_registry);   // hasSecret is always false
         const Meeting m = meetingWithActiveTrack();          // there is an active track
 
         const providers::ReadinessResult r = model.check(providers::WorkflowStep::Transcribe, m);
@@ -151,7 +150,7 @@ private slots:
     void transcribe_runnableWithTrackAndKey()
     {
         providers::ReadinessModel model(makeSettings().providers,
-                             secretsPresent({ QStringLiteral("soniox.apiKey") }));
+                             secretsPresent({ QStringLiteral("soniox.apiKey") }), &m_registry);
         const Meeting m = meetingWithActiveTrack();
 
         const providers::ReadinessResult r = model.check(providers::WorkflowStep::Transcribe, m);
@@ -167,7 +166,7 @@ private slots:
         QVERIFY(dir.isValid());
 
         providers::ReadinessModel model(makeSettings().providers,
-                             secretsPresent({ QStringLiteral("llm.apiKey") }));
+                             secretsPresent({ QStringLiteral("llm.apiKey") }), &m_registry);
 
         Meeting m = meetingWithActiveTrack();
         m.folder        = dir.path();   // empty folder: no transcript file
@@ -191,7 +190,7 @@ private slots:
         tanara::app::AppSettings s = makeSettings();
         s.providers.llm.configs[QStringLiteral("openai-compat")].baseUrl = QString();   // the required field is empty
 
-        providers::ReadinessModel model(s.providers, secretsPresent({ QStringLiteral("llm.apiKey") }));
+        providers::ReadinessModel model(s.providers, secretsPresent({ QStringLiteral("llm.apiKey") }), &m_registry);
 
         Meeting m = meetingWithActiveTrack();
         m.folder        = dir.path();   // there is a transcript.tokens.json
@@ -209,25 +208,28 @@ private slots:
     // the descriptor's loginSecretKey (tanara.cloud.apiKey).
     void cloud_blocksUntilLoggedIn()
     {
-        providers::registerCloudProviders(providers::ProviderRegistry::defaultInstance());
+        providers::registerCloudProviders(m_registry);
         tanara::app::AppSettings s = makeSettings();
         s.providers.stt.selectedId = QStringLiteral("tanara-cloud");
         s.providers.llm.selectedId = QStringLiteral("tanara-cloud");
         const Meeting m = meetingWithActiveTrack();
 
-        providers::ReadinessModel out(s.providers, noSecrets());
+        providers::ReadinessModel out(s.providers, noSecrets(), &m_registry);
         const providers::ReadinessResult r = out.check(providers::WorkflowStep::Transcribe, m);
         QVERIFY(!r.runnable);
         QCOMPARE(r.blockerKind, providers::BlockerKind::Auth);
         QCOMPARE(r.fixActionHint, QStringLiteral("login:tanara-cloud"));
         QCOMPARE(r.detail, QStringLiteral("Jelentkezz be a Tanara Cloudba"));
 
-        providers::ReadinessModel in(s.providers, secretsPresent({ QStringLiteral("tanara.cloud.apiKey") }));
+        providers::ReadinessModel in(s.providers, secretsPresent({ QStringLiteral("tanara.cloud.apiKey") }), &m_registry);
         QVERIFY(in.check(providers::WorkflowStep::Transcribe, m).runnable);
         // The old "<id>.token" convention does not count as a sign-in for the cloud.
-        providers::ReadinessModel legacy(s.providers, secretsPresent({ QStringLiteral("tanara-cloud.token") }));
+        providers::ReadinessModel legacy(s.providers, secretsPresent({ QStringLiteral("tanara-cloud.token") }), &m_registry);
         QVERIFY(!legacy.check(providers::WorkflowStep::Transcribe, m).runnable);
     }
+
+private:
+    providers::ProviderRegistry m_registry;   // the test's own registry (the built-ins; the cloud ones later)
 };
 
 QTEST_GUILESS_MAIN(ReadinessTests)

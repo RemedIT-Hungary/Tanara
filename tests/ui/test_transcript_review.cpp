@@ -1,4 +1,4 @@
-// The v3 Edit mode's view model on the built-in MADE-UP "v3" meeting (real SpeakerEditor, fake
+// The v3 Edit mode's view model on the built-in MADE-UP "v3" meeting (real SpeakerEditSession, fake
 // audio, made-up track activity): review queue groups (track contradiction, core mismatch,
 // short lines, doubtful lines outside the groups), executing a group = one undo step,
 // contaminated core + splitting, candidates with evidence, "Why not X?", manual track

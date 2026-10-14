@@ -5,7 +5,6 @@
 #include "tanara/providers/chat/IChatProvider.h"
 #include "tanara/providers/core/ProviderConfig.h"
 #include "tanara/providers/core/ProviderContext.h"
-#include "tanara/domain/Types.h"
 
 #include <QObject>
 #include <QPointer>

@@ -15,7 +15,7 @@
 #include "tanara/library/store/PeopleStore.h"
 #include "tanara/app/SettingsManager.h"
 #include "tanara/editing/undo/MeetingUndo.h"
-#include "tanara/editing/session/SpeakerEditor.h"
+#include "tanara/editing/session/SpeakerEditSession.h"
 #include "tanara/library/store/MeetingRepository.h"
 #include "tanara/library/tags/TagService.h"
 
@@ -134,9 +134,9 @@ void MeetingUndoTest::orderAcrossSources()
     QVERIFY(u);
     QCOMPARE(m_app->meetingUndo(m.id), u);
     QVERIFY(!m_app->meetingUndo(QStringLiteral("nincs-ilyen")));
-    editing::SpeakerEditor* ed = m_app->speakerEditor(m.id);
+    editing::SpeakerEditSession* ed = m_app->editSession(m.id);
     QVERIFY(ed);
-    QCOMPARE(u->speakerEditor(), ed);
+    QCOMPARE(u->editSession(), ed);
     library::TagService* tags = m_app->tags();
     QVERIFY(!u->canUndo());
     QSignalSpy changed(u, &editing::MeetingUndoService::changed);
@@ -188,7 +188,7 @@ void MeetingUndoTest::orderAcrossSources()
 void MeetingUndoTest::editorUndoRedoAndTagGroups()
 {
     const Meeting m = makeMeeting("Szerkesztő");
-    editing::SpeakerEditor* ed = m_app->speakerEditor(m.id);
+    editing::SpeakerEditSession* ed = m_app->editSession(m.id);
     editing::MeetingUndoService* u = m_app->meetingUndo(m.id);
     QVERIFY(ed && u);
     library::TagService* tags = m_app->tags();
@@ -225,7 +225,7 @@ void MeetingUndoTest::editorUndoRedoAndTagGroups()
     QVERIFY(ed->reassignSpeaker(ed->speakers().first().key, choice(QStringLiteral("Varga Árpád"))));
     QCOMPARE(u->count(), 1);
     QSignalSpy changed(u, &editing::MeetingUndoService::changed);
-    m_app->closeSpeakerEditor(m.id);
+    m_app->closeEditSession(m.id);
     QTRY_COMPARE(u->count(), 0);
 }
 
@@ -233,7 +233,7 @@ void MeetingUndoTest::soloAbsorbsEditorStep()
 {
     const Meeting m = makeMeeting("Csak én");
     editing::MeetingUndoService* u = m_app->meetingUndo(m.id);
-    editing::SpeakerEditor* ed = m_app->speakerEditor(m.id);
+    editing::SpeakerEditSession* ed = m_app->editSession(m.id);
     QVERIFY(u && ed);
 
     QVERIFY(m_app->setSoloMeeting(m.id));

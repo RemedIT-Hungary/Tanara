@@ -18,16 +18,6 @@ QString capabilityName(CapabilityKind kind)
     return QString();
 }
 
-ProviderRegistry& ProviderRegistry::defaultInstance()
-{
-    static ProviderRegistry* s_instance = [] {
-        auto* r = new ProviderRegistry;   // intentionally leaked: no static-destruction order issues
-        registerBuiltinProviders(*r);
-        return r;
-    }();
-    return *s_instance;
-}
-
 void ProviderRegistry::addErased(const ProviderDescriptor& desc, ErasedFactory factory)
 {
     const Key key{int(desc.capability), desc.id};

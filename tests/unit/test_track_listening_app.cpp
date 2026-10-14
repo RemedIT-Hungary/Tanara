@@ -15,7 +15,7 @@
 #include "tanara/app/AppController.h"
 #include "tanara/library/store/PeopleStore.h"
 #include "tanara/processing/analysis/ParticipantAnalysis.h"
-#include "tanara/editing/session/SpeakerEditor.h"
+#include "tanara/editing/session/SpeakerEditSession.h"
 #include "tanara/processing/analysis/TrackActivity.h"
 #include "tanara/library/store/detail/MeetingJson.h"
 #include "tanara/library/store/ParticipantJson.h"
@@ -239,7 +239,7 @@ void TrackListeningAppTest::bindingAfterTranscriptIsTheEditorAssignment()
 {
     Meeting m = makeMeeting();
     writeTranscript(m);
-    editing::SpeakerEditor* ed = m_app->speakerEditor(m.id);
+    editing::SpeakerEditSession* ed = m_app->editSession(m.id);
     QVERIFY(ed && ed->hasTranscript());
 
     // Participant id: its raw speaker (without the "@loopback" suffix) in the editor.
@@ -274,7 +274,7 @@ void TrackListeningAppTest::bindingCopiedToOverlayOnTranscript()
     writeTranscript(m);
     // The transcript-arrival hook is private: re-applying the approval goes the same way.
     QVERIFY(m_app->approveParticipants(m.id, m_app->participants(m.id)));
-    editing::SpeakerEditor* ed = m_app->speakerEditor(m.id);
+    editing::SpeakerEditSession* ed = m_app->editSession(m.id);
     QVERIFY(ed);
     QCOMPARE(ed->trackAssignment(QStringLiteral("Beszélő 1")), (QStringList{"mic", "loop"}));
     QCOMPARE(m_app->participantTracks(m.id, "v1").trackIds, (QStringList{"mic", "loop"}));

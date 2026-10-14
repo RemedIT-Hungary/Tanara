@@ -1,4 +1,9 @@
-#include "tanara/domain/Types.h"
+#include "tanara/domain/Activity.h"
+#include "tanara/domain/Job.h"
+#include "tanara/domain/Meeting.h"
+#include "tanara/domain/Summary.h"
+#include "tanara/domain/Tag.h"
+#include "tanara/foundation/Version.h"
 #include "AppContext.h"
 
 #include "ControllerFacades.h"
@@ -31,7 +36,7 @@
 
 #include "tanara/app/AppController.h"
 #include "tanara/app/Services.h"
-#include "tanara/editing/session/SpeakerEditor.h"
+#include "tanara/editing/session/SpeakerEditSession.h"
 #include "tanara/library/jobs/MeetingJobTracker.h"
 #include "tanara/library/store/MeetingRepository.h"
 #include "tanara/library/store/PeopleStore.h"
@@ -269,9 +274,14 @@ bool ShellControllerFacade::participantApprovalPending(const QString& meetingId)
     return m_c && m_c->participantApprovalPending(meetingId);
 }
 
-tanara::editing::SpeakerEditor* ShellControllerFacade::speakerEditor(const QString& meetingId)
+tanara::editing::SpeakerEditSession* ShellControllerFacade::editSession(const QString& meetingId)
 {
-    return m_c ? m_c->speakerEditor(meetingId) : nullptr;
+    return m_c ? m_c->editSession(meetingId) : nullptr;
+}
+
+tanara::editing::RecheckService* ShellControllerFacade::recheckService(const QString& meetingId)
+{
+    return m_c ? m_c->recheckService(meetingId) : nullptr;
 }
 
 QString ShellControllerFacade::personName(const tanara::PersonId& person)
@@ -297,9 +307,9 @@ void ShellControllerFacade::renameMeeting(const QString& meetingId, const QStrin
 
 void ShellControllerFacade::cancelAllJobs(const QString& meetingId) { if (m_c) m_c->cancelAllJobs(meetingId); }
 
-void ShellControllerFacade::closeSpeakerEditor(const QString& meetingId)
+void ShellControllerFacade::closeEditSession(const QString& meetingId)
 {
-    if (m_c) m_c->closeSpeakerEditor(meetingId);
+    if (m_c) m_c->closeEditSession(meetingId);
 }
 
 void ShellControllerFacade::deleteMeeting(const QString& meetingId) { if (m_c) m_c->deleteMeeting(meetingId); }
@@ -613,7 +623,7 @@ tanara::library::OverviewSnapshot OverviewControllerFacade::snapshot(const QStri
     s.candidateCount = int(std::count_if(parts.cbegin(), parts.cend(), [](const Participant& p) {
         return p.source != ParticipantSource::Manual;
     }));
-    editing::SpeakerEditor* ed = m.hasTranscript ? c->speakerEditor(m.id) : nullptr;
+    editing::SpeakerEditSession* ed = m.hasTranscript ? c->editSession(m.id) : nullptr;
     const QVector<editing::EditorSpeaker> speakers = ed ? ed->speakers() : QVector<editing::EditorSpeaker>();
 
     QVariantList rows;
@@ -1094,10 +1104,11 @@ const UiServices& AppContext::servicesFor(tanara::app::AppController* c)
     sd.jobs = c->jobs();
     sd.store = c->store();
     sd.settings = c->settings();
+    sd.registry = &c->providerRegistry();
     sd.noteController = notes;
     sd.hooks.canRun = [c](const QString& id) { return c->canRun(tanara::providers::WorkflowStep::Summarize, id); };
     sd.hooks.usesCloud = [c] { return c->usesCloud(tanara::providers::WorkflowStep::Summarize); };
-    sd.hooks.speakerEditor = [c](const QString& id) { return c->speakerEditor(id); };
+    sd.hooks.editSession = [c](const QString& id) { return c->editSession(id); };
     sd.hooks.staleOfMeeting = [c](const tanara::Meeting& m) { return c->summaryStale(m); };
     sd.hooks.staleOfId = [c](const QString& id) { return c->summaryStale(id); };
     sd.hooks.statements = [c](const QString& id) { return c->summaryStatements(id); };

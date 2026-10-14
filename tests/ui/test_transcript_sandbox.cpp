@@ -1,5 +1,5 @@
 // Measures the transcript editor on REAL (disposable) sample meetings, over the full path:
-// AppController -> speakerEditor(meetingId) -> TranscriptEditorViewModel -> TranscriptTab.qml.
+// AppController -> editSession(meetingId) -> TranscriptEditorViewModel -> TranscriptTab.qml.
 // SKIPPED by default; it runs only with the TANARA_SANDBOX environment variable:
 //
 //   TANARA_SANDBOX=<folder> QT_QPA_PLATFORM=offscreen ./build/tests/test_transcript_sandbox
@@ -120,7 +120,7 @@ void TestTranscriptSandbox::measure()
         const QString tag = QStringLiteral("meeting #%1").arg(n);
         QElapsedTimer t;
         t.start();
-        window->setProperty("meeting", entry.id);       // speakerEditor() + model construction
+        window->setProperty("meeting", entry.id);       // editSession() + model construction
         const double openMs = ms(t.nsecsElapsed());
         const double firstFrameMs = frame();
         QCOMPARE(vm->meetingId(), entry.id);

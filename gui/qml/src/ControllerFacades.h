@@ -53,14 +53,15 @@ public:
     bool identifyAsync(const QString& meetingId) override;
     bool voiceIdentificationAvailable() const override;
     bool participantApprovalPending(const QString& meetingId) const override;
-    tanara::editing::SpeakerEditor* speakerEditor(const QString& meetingId) override;
+    tanara::editing::SpeakerEditSession* editSession(const QString& meetingId) override;
+    tanara::editing::RecheckService* recheckService(const QString& meetingId) override;
     QString personName(const tanara::PersonId& person) override;
     void requestLlmContext(int tokens) override;
     void cancelJob(const QString& meetingId, tanara::JobKind kind) override;
 
     void renameMeeting(const QString& meetingId, const QString& title) override;
     void cancelAllJobs(const QString& meetingId) override;
-    void closeSpeakerEditor(const QString& meetingId) override;
+    void closeEditSession(const QString& meetingId) override;
     void deleteMeeting(const QString& meetingId) override;
     void stopRecording() override;
 

@@ -1,5 +1,5 @@
 // The review queue's work list (ReviewQueueModel) on the built-in MADE-UP "v3" meeting (real
-// SpeakerEditor, fake audio): frozen chronological snapshot, cursor, Later, the arrivals set,
+// SpeakerEditSession, fake audio): frozen chronological snapshot, cursor, Later, the arrivals set,
 // promotion to the end, alreadyDecided, suggestion refresh, round end + consequence marking,
 // pattern counter, opener suggestions, demo states. Runs without a display; it touches no
 // user data. The "hand-assembled" group cases (syncFromReview / startFrom with explicit input)

@@ -1,7 +1,7 @@
 #include "tanara/editing/people/PeopleEditingAdapter.h"
 
 #include "tanara/editing/review/SideAnalysis.h"
-#include "tanara/editing/session/SpeakerEditor.h"
+#include "tanara/editing/session/SpeakerEditSession.h"
 #include "tanara/editing/session/SpeakerOverlay.h"
 #include "tanara/library/people/PeopleService.h"
 #include "tanara/library/store/TranscriptRepository.h"
@@ -15,7 +15,7 @@ namespace tanara::editing {
 namespace {
 
 // The person's speaker keys in an editor session.
-QStringList speakerKeysOf(const SpeakerEditor& ed, const PersonId& person)
+QStringList speakerKeysOf(const SpeakerEditSession& ed, const PersonId& person)
 {
     QStringList keys;
     for (const EditorSpeaker& s : ed.speakers())
@@ -47,7 +47,7 @@ qint64 PeopleEditingAdapter::bestUsableMs(const QString& meetingId, const Person
 {
     // The existing editor logic tells whether there is a sure (not doubtful), long line. The plan's editor runs
     // with the models in use but without the embedder (with an injected factory the editor's default stays).
-    SpeakerEditor ed(m_deps.store, m_deps.people, m_deps.voiceprints, meetingId);
+    SpeakerEditSession ed(m_deps.store, m_deps.people, m_deps.voiceprints, meetingId);
     if (!m_factoryInjected && m_deps.editorModelIds) ed.setVoiceModelIds(m_deps.editorModelIds());
     qint64 best = 0;
     for (const QString& key : speakerKeysOf(ed, person)) {
@@ -64,7 +64,7 @@ VoiceprintResult PeopleEditingAdapter::createVoiceprint(const QString& meetingId
     const EmbedderFactory factory = currentFactory();
     // Its own, temporary editor session: with the models in use (with an injected factory the editor's
     // default model list stays) and the embedder.
-    SpeakerEditor ed(m_deps.store, m_deps.people, m_deps.voiceprints, meetingId);
+    SpeakerEditSession ed(m_deps.store, m_deps.people, m_deps.voiceprints, meetingId);
     if (!m_factoryInjected && m_deps.editorModelIds) ed.setVoiceModelIds(m_deps.editorModelIds());
     if (factory) ed.setEmbedderFactory(factory);
     QString bestKey;

@@ -46,7 +46,7 @@ struct Candidate {
 // Where a participant came from: added by hand, voice analysis, tag suggestion, calendar (later).
 enum class ParticipantSource { Manual, Voice, Tag, Calendar };
 
-// A binding for the participant approval (SpeakerEditor::applyBindings): the raw speaker (or
+// A binding for the participant approval (SpeakerEditSession::applyBindings): the raw speaker (or
 // only its given lines) goes to a person; null personId = set anonymous.
 struct SpeakerBinding {
     QString     rawLabel;

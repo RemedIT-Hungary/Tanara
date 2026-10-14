@@ -1,10 +1,10 @@
 #include "TranscriptEditorServicesFacade.h"
 
 #include "tanara/app/SettingsManager.h"
+#include "tanara/editing/recheck/RecheckService.h"
 #include "tanara/editing/session/EditorSessions.h"
 #include "tanara/editing/session/PeopleDirectory.h"
 #include "tanara/editing/session/SpeakerEditSession.h"
-#include "tanara/editing/session/SpeakerEditor.h"
 #include "tanara/library/store/MeetingRepository.h"
 #include "tanara/library/store/PeopleStore.h"
 #include "tanara/library/store/TranscriptRepository.h"
@@ -32,13 +32,10 @@ editing::ITranscriptEditorFacade::Session TranscriptEditorServicesFacade::open(c
     Session s;
     if (meetingId.isEmpty() || !m_sessions)
         return s;
-    // TODO(P15-6): EditorSessions hands out the SpeakerEditor facade until P15-6 removes it; only its
-    // two parts are taken from it here.
-    editing::SpeakerEditor* ed = m_sessions->editor(meetingId);
-    if (!ed)
+    s.session = m_sessions->editor(meetingId);
+    if (!s.session)
         return s;
-    s.session = ed->session();
-    s.recheck = ed->recheck();
+    s.recheck = m_sessions->recheck(meetingId);
     const Meeting meeting = m_store ? m_store->load(meetingId) : Meeting();
     s.legacyTranscript = !s.session->hasTranscript() && meeting.hasTranscript;
     if (s.legacyTranscript) {

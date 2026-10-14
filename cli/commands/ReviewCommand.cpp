@@ -276,7 +276,7 @@ int setIgnored(const QString& folder, const QVector<TranscriptLine>& lines, cons
         }
         if (it->ignored == ignored) continue;
         it->ignored = ignored;
-        if (ignored) {          // as in SpeakerEditor::setUtterancesIgnored
+        if (ignored) {          // as in SpeakerEditSession::setUtterancesIgnored
             it->rechecked = false;
             it->recheckHint.clear();
         }

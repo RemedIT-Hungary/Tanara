@@ -22,22 +22,20 @@ core/src/library/tags/MeetingProfiles.cpp -> tanara/editing/session/SpeakerOverl
 
 # ---- P13 (10 lines) ----
 core/include/tanara/editing/review/SideAnalysis.h -> tanara/processing/analysis/TrackActivity.h   # editing -> processing (TrackActivity/UtteranceEmbeddings) -> P13
-core/src/editing/session/SpeakerEditor.cpp -> tanara/processing/analysis/TrackActivity.h   # editing -> processing (TrackActivity/UtteranceEmbeddings/VoiceModelRegistry) -> P13
-core/src/editing/session/SpeakerEditor.cpp -> tanara/processing/voiceid/VoiceModelRegistry.h   # editing -> processing (TrackActivity/UtteranceEmbeddings/VoiceModelRegistry) -> P13
 core/src/editing/session/TranscriptReslice.cpp -> tanara/processing/stt/SonioxTiming.h   # editing -> processing (TrackActivity/UtteranceEmbeddings/VoiceModelRegistry) -> P13
 core/src/processing/analysis/ParticipantAnalysis.cpp -> tanara/editing/review/CandidateRanker.h   # K7 (processing ParticipantAnalysis -> editing review algorithms; not a type edge, left after P4) -> P13
 core/src/processing/analysis/ParticipantAnalysis.cpp -> tanara/editing/review/SideAnalysis.h   # K7 (processing ParticipantAnalysis -> editing review algorithms; not a type edge, left after P4) -> P13
 core/src/processing/analysis/ParticipantAnalysis.cpp -> tanara/editing/session/TrackSpeech.h   # K7 (processing ParticipantAnalysis -> editing review algorithms; not a type edge, left after P4) -> P13
 
 # ---- P15 (35 lines) ----
-gui/qml/src/AppContext.cpp -> tanara/app/AppController.h   # GUI -> AppController.h -> P15
+gui/qml/src/AppContext.cpp -> tanara/app/AppController.h   # composition root (modules.json forbiddenIncludes.ui has no per-file exception)
 gui/qml/src/OnboardingViewModel.cpp -> platform:Q_OS_LINUX   # platform (gui) -> P15
 gui/qml/src/OnboardingViewModel.cpp -> platform:Q_OS_WIN   # platform (gui) -> P15
 gui/src/AnalyzerSingleton.h -> platform:Q_OS_WIN   # platform (gui) -> P15
-gui/src/QmlShellBridge.cpp -> tanara/app/AppController.h   # GUI -> AppController.h -> P15
-gui/src/ShellQaHook.h -> tanara/app/AppController.h   # GUI -> AppController.h -> P15
+gui/src/QmlShellBridge.cpp -> tanara/app/AppController.h   # composition root (modules.json forbiddenIncludes.ui has no per-file exception)
+gui/src/ShellQaHook.h -> tanara/app/AppController.h   # qa hook (developer QA, included only by gui/src/main.cpp; renameEverywhere/knownNames have no facade equivalent)
 gui/src/main.cpp -> platform:Q_OS_LINUX   # platform (gui) -> P15
-gui/src/main.cpp -> tanara/app/AppController.h   # GUI -> AppController.h -> P15
+gui/src/main.cpp -> tanara/app/AppController.h   # composition root (modules.json forbiddenIncludes.ui has no per-file exception)
 
 # ---- P16 (24 lines) ----
 core/src/processing/voiceid/VoiceEmbedder.cpp -> platform:_WIN32   # compiler/ABI, not OS: MinGW SAL shims + ORTCHAR_T path type for onnxruntime (kept, justified by P16)

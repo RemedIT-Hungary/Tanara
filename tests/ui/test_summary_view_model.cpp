@@ -10,7 +10,7 @@
 
 #include "demo/SummaryDemoFacade.h"
 
-#include "tanara/editing/session/SpeakerEditor.h"
+#include "tanara/editing/session/SpeakerEditSession.h"
 
 #include <QAbstractItemModelTester>
 #include <QSignalSpy>
@@ -430,7 +430,7 @@ private slots:
         QVERIFY(!vm.stale());
 
         // A speaker fix after the summary makes it stale, with a real count; "Fine as is" releases it.
-        editing::SpeakerEditor* editor = sb.app->speakerEditor(m.id);
+        editing::SpeakerEditSession* editor = sb.app->editSession(m.id);
         QVERIFY(editor);
         QVERIFY(editor->reassignSpeaker(QStringLiteral("Beszélő 2"), editor->personChoice(QStringLiteral("Minta Márta"))));
         QTRY_VERIFY_WITH_TIMEOUT(vm.stale(), 5000);
@@ -889,7 +889,7 @@ private slots:
         QVERIFY(!vm.flagStatement(QStringLiteral("nincs-ilyen")));
 
         // Speaker fix: the claims pointing to "Speaker 2"'s lines and the action item's owner are affected.
-        editing::SpeakerEditor* editor = sb.app->speakerEditor(m.id);
+        editing::SpeakerEditSession* editor = sb.app->editSession(m.id);
         QVERIFY(editor->reassignSpeaker(QStringLiteral("Beszélő 2"), editor->personChoice(QStringLiteral("Minta Márta"))));
         QTRY_VERIFY_WITH_TIMEOUT(vm.stale(), 5000);
         QVERIFY(vm.staleTargeted());

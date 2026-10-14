@@ -2,7 +2,7 @@
 // sample teaching (shared base of the To review redesign). On MADE-UP data:
 //  - EVERY branch of the audio analysis skips the ignored line (SpeakerAnalysis, SideAnalysis,
 //    ReviewGroups / candidate profiles, voiceprint collection), and it is never uncertain;
-//  - SpeakerEditor: setUtterancesIgnored is one undo step, persists; a not-a-sample move in
+//  - SpeakerEditSession: setUtterancesIgnored is one undo step, persists; a not-a-sample move in
 //    one step; mismatched-sample warning; sample meter.
 // The "voices" are low-dimensional unit vectors; no audio, no ffmpeg, the track activity is synthetic.
 #include <QtTest>
@@ -12,11 +12,13 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 
-#include "tanara/domain/Types.h"
+#include "tanara/domain/Activity.h"
+#include "tanara/domain/Meeting.h"
+#include "tanara/domain/Overlay.h"
 #include "tanara/editing/review/ReviewGroups.h"
 #include "tanara/editing/review/SideAnalysis.h"
 #include "tanara/editing/review/SpeakerAnalysis.h"
-#include "tanara/editing/session/SpeakerEditor.h"
+#include "../support/EditSessionHarness.h"
 #include "tanara/editing/session/SpeakerOverlay.h"
 #include "tanara/processing/analysis/TrackActivity.h"
 #include "tanara/processing/analysis/UtteranceEmbeddings.h"
@@ -187,9 +189,9 @@ struct Fixture {
 
     QString uid(int i) const { return QStringLiteral("u%1").arg(i * 5000); }
 
-    std::unique_ptr<editing::SpeakerEditor> editor()
+    test_support::EditSessionHarness editor()
     {
-        auto ed = std::make_unique<editing::SpeakerEditor>(store.get(), people.get(), prints.get(), meeting.id);
+        auto ed = test_support::EditSessionHarness(store.get(), people.get(), prints.get(), meeting.id);
         ed->setSelfPerson(SelfPerson{pid("Ádám"), "Ádám"});
         const MeetingActivity a = act;
         ed->setActivityProvider([a](const Meeting&) { return a; });
@@ -197,9 +199,9 @@ struct Fixture {
     }
 };
 
-bool waitReview(editing::SpeakerEditor& ed)
+bool waitReview(tanara::editing::SpeakerEditSession& ed)
 {
-    QSignalSpy spy(&ed, &editing::SpeakerEditor::reviewGroupsChanged);
+    QSignalSpy spy(&ed, &editing::SpeakerEditSession::reviewGroupsChanged);
     return spy.wait(5000);
 }
 
@@ -383,7 +385,7 @@ private slots:
         QVERIFY(r.sideConflicts.contains("u25000"));
     }
 
-    // ---- SpeakerEditor ---------------------------------------------------------------
+    // ---- SpeakerEditSession + RecheckService ---------------------------------------------------------------
     void editorIgnoreUndoRedoPersist()
     {
         Fixture fx(sideScenario(), {{"B1", "Ádám"}, {"B2", "Béla"}});
@@ -392,7 +394,7 @@ private slots:
         QVERIFY(ed->utterance(fx.uid(3)).uncertain);
         const QVector<editing::EditorSpeaker> before = ed->speakers();
 
-        QSignalSpy changed(ed.get(), &editing::SpeakerEditor::utterancesChanged);
+        QSignalSpy changed(ed.get(), &editing::SpeakerEditSession::utterancesChanged);
         QVERIFY(ed->setUtterancesIgnored({fx.uid(3)}, true));
         QVERIFY(!ed->setUtterancesIgnored({fx.uid(3)}, true));     // already that
         editing::EditorUtterance u = ed->utterance(fx.uid(3));
@@ -479,7 +481,7 @@ private slots:
     {
         Fixture fx(sideScenario(), {{"B1", "Ádám"}, {"B2", "Béla"}});
         auto ed = fx.editor();
-        QSignalSpy undoSpy(ed.get(), &editing::SpeakerEditor::undoStateChanged);
+        QSignalSpy undoSpy(ed.get(), &editing::SpeakerEditSession::undoStateChanged);
 
         QVERIFY(ed->moveUtterances({fx.uid(3)}, "B2", /*noisy*/ true));
         QCOMPARE(ed->undoSerials().size(), 1);
@@ -515,7 +517,7 @@ private slots:
     {
         Fixture fx(sideScenario(), {{"B1", "Ádám"}, {"B2", "Béla"}});
         auto ed = fx.editor();
-        QSignalSpy spy(ed.get(), &editing::SpeakerEditor::sampleDeviationChanged);
+        QSignalSpy spy(ed.get(), &editing::SpeakerEditSession::sampleDeviationChanged);
         QVERIFY(!ed->lastSampleDeviation().isValid());
 
         // A line in Béla's voice to Béla: fits.
@@ -573,7 +575,7 @@ private slots:
         QCOMPARE(bela->sessionAdded, 0);
         QCOMPARE(statsOf(st, "B1")->sampleLines, 0);
 
-        QSignalSpy spy(ed.get(), &editing::SpeakerEditor::sampleStatsChanged);
+        QSignalSpy spy(ed.get(), &editing::SpeakerEditSession::sampleStatsChanged);
         QVERIFY(ed->moveUtterances({fx.uid(3)}, "B2"));
         QCOMPARE(spy.count(), 1);
         st = ed->sampleStats();

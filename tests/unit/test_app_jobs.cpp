@@ -25,7 +25,7 @@
 #include "tanara/library/jobs/MeetingJobTracker.h"
 #include "tanara/library/MeetingLibrary.h"
 #include "tanara/library/store/MeetingRepository.h"
-#include "tanara/editing/session/SpeakerEditor.h"
+#include "tanara/editing/session/SpeakerEditSession.h"
 #include "tanara/editing/session/SpeakerOverlay.h"
 #include "tanara/library/jobs/JobErrors.h"
 #include "tanara/providers/chat/LlmServer.h"
@@ -452,11 +452,11 @@ void AppJobsTest::cancelTranscriptionAtProvider()
 
     // There is a manual per-line fix (overlay) too, which must survive the cancel as well.
     {
-        editing::SpeakerEditor* ed = m_app->speakerEditor(m.id);
+        editing::SpeakerEditSession* ed = m_app->editSession(m.id);
         QVERIFY(ed);
         QCOMPARE(ed->utteranceCount(), 2);
         QVERIFY(!ed->moveUtterancesToPerson({ed->utteranceAt(1).id}, choice("Kovács Lilla")).isEmpty());
-        m_app->closeSpeakerEditor(m.id);
+        m_app->closeEditSession(m.id);
     }
     QCOMPARE(m_app->retranscribeImpact(m.id).correctedUtterances, 1);
     QVERIFY(QFile::exists(editing::speakeredit::overlayPath(m.folder)));
@@ -1302,7 +1302,7 @@ void AppJobsTest::retranscribeSuccessClearsNamesAndCorrections()
     Meeting m = transcribed("Sikeres újra-átírás");
     m.speakerMap.insert("Beszélő 1", pid("Ödön"));
     m_app->store()->saveMeeting(m);
-    editing::SpeakerEditor* ed = m_app->speakerEditor(m.id);
+    editing::SpeakerEditSession* ed = m_app->editSession(m.id);
     QVERIFY(ed);
     QVERIFY(!ed->moveUtterancesToPerson({ed->utteranceAt(1).id}, choice("Kovács Lilla")).isEmpty());
     QCOMPARE(m_app->retranscribeImpact(m.id).correctedUtterances, 1);
@@ -1332,7 +1332,7 @@ void AppJobsTest::retranscribeSuccessClearsNamesAndCorrections()
 
     // Deleting with an open editor: the editor closes too (a new request finds no meeting, so null).
     m_app->deleteMeeting(m.id);
-    QVERIFY(m_app->speakerEditor(m.id) == nullptr);
+    QVERIFY(m_app->editSession(m.id) == nullptr);
     QVERIFY(!QDir(m.folder).exists());
 }
 
@@ -1483,10 +1483,10 @@ void AppJobsTest::emptySttResultKeepsOldTranscript()
     m.speakerMap.insert("Beszélő 1", pid("Ödön"));
     m_app->store()->saveMeeting(m);
     {
-        editing::SpeakerEditor* ed = m_app->speakerEditor(m.id);
+        editing::SpeakerEditSession* ed = m_app->editSession(m.id);
         QVERIFY(ed);
         QVERIFY(!ed->moveUtterancesToPerson({ed->utteranceAt(1).id}, choice("Kovács Lilla")).isEmpty());
-        m_app->closeSpeakerEditor(m.id);
+        m_app->closeEditSession(m.id);
     }
     const QString tokensPath = QDir(m.folder).filePath("transcript.tokens.json");
     const QString segmentsPath = QDir(m.folder).filePath("transcript.segments.json");

@@ -12,7 +12,7 @@
 
 #include "tanara/app/ISettingsFacade.h"
 #include "tanara/cloud/CloudTypes.h"
-#include "tanara/domain/Types.h"
+#include "tanara/domain/Meeting.h"
 #include "tanara/foundation/i18n/Localization.h"
 #include "tanara/foundation/paths/AppPaths.h"
 #include "tanara/processing/summary/PromptLibrary.h"

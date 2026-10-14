@@ -196,7 +196,7 @@ public:
     // is used (setDefaultActivityProvider); without that, there is no track activity.
     using ActivityProvider = std::function<MeetingActivity(const Meeting&)>;
     void setActivityProvider(ActivityProvider provider);
-    // The fallback when no provider is set (the transitional facade installs the tracks.activity.bin cache reader).
+    // The fallback when no provider is set (app::installEditorDefaults installs the tracks.activity.bin cache reader).
     void setDefaultActivityProvider(ActivityProvider provider);
     // The person's MANUAL tags (TagService::tagsOfPerson), only for the quick "+ #Tag" offer;
     // the candidate ranking's evidence comes from setTagEvidenceProvider. Called on the main thread.

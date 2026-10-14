@@ -1,4 +1,4 @@
-// RecheckService without the SpeakerEditor facade: the line embeddings come from a FAKE voice-embedding
+// RecheckService on its own: the line embeddings come from a FAKE voice-embedding
 // provider (providers::IVoiceEmbedder; no model, no audio, no ffmpeg), then the recheck from the confirmed
 // lines and the pairwise review run on a SpeakerEditSession. In a temporary folder with made-up data.
 //
@@ -11,7 +11,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 
-#include "tanara/domain/Types.h"
+#include "tanara/domain/Meeting.h"
 #include "tanara/editing/recheck/FactoryVoiceEmbedder.h"
 #include "tanara/editing/recheck/RecheckService.h"
 #include "tanara/editing/session/SpeakerEditSession.h"

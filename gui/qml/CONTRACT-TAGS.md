@@ -72,7 +72,7 @@ struct TagProfile {                // derived, read-only
 };
 ```
 
-`Meeting` (domain/Types.h) gets `QStringList tagIds;` persisted in `meeting.json` as `"tags": [...]`.
+`Meeting` (domain/Meeting.h) gets `QStringList tagIds;` persisted in `meeting.json` as `"tags": [...]`.
 `LibraryEntry` gets `QStringList tagIds, tagNames;` and `bool tagMatch` + `QString tagMatchName`
 (search hit in a tag). `LibraryQuery` gets `QStringList tags; bool tagsAll = false; bool untagged = false;`
 (tags = ids; `tagsAll` = AND, else OR) and `isEmpty()` accounts for them. Search text also

@@ -17,7 +17,7 @@
 #include <QDir>
 #include <QFile>
 
-#include "tanara/domain/Types.h"
+#include "tanara/domain/Meeting.h"
 #include "tanara/app/SettingsManager.h"
 #include "tanara/library/store/detail/MeetingJson.h"
 #include "tanara/library/store/ParticipantJson.h"

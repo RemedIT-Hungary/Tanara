@@ -12,7 +12,8 @@
 #include "tanara/app/AppController.h"
 #include "tanara/library/store/PeopleStore.h"
 #include "tanara/app/SettingsManager.h"
-#include "tanara/editing/session/SpeakerEditor.h"
+#include "tanara/editing/recheck/RecheckService.h"
+#include "tanara/editing/session/SpeakerEditSession.h"
 #include "tanara/editing/session/SpeakerOverlay.h"
 #include "tanara/library/store/MeetingRepository.h"
 
@@ -114,30 +115,30 @@ Meeting SpeakerControllerTest::makeMeeting(const QString& title, bool hasSummary
 void SpeakerControllerTest::sessionLifecycle()
 {
     const Meeting m = makeMeeting(QStringLiteral("Munkamenet"), false);
-    QVERIFY(m_app->speakerEditor(QStringLiteral("nincs-ilyen")) == nullptr);
+    QVERIFY(m_app->editSession(QStringLiteral("nincs-ilyen")) == nullptr);
 
-    editing::SpeakerEditor* ed = m_app->speakerEditor(m.id);
+    editing::SpeakerEditSession* ed = m_app->editSession(m.id);
     QVERIFY(ed);
-    QCOMPARE(m_app->speakerEditor(m.id), ed);       // one session per meeting
+    QCOMPARE(m_app->editSession(m.id), ed);       // one session per meeting
     QCOMPARE(ed->utteranceCount(), 4);
-    QVERIFY(!ed->embeddingsSupported());            // the isolated HOME has no model, so it degrades
+    QVERIFY(!m_app->recheckService(m.id)->embeddingsSupported());            // the isolated HOME has no model, so it degrades
 
     QVERIFY(ed->moveUtterances({QStringLiteral("u0")}, kB2));
     QVERIFY(ed->canUndo());
     // Closing: the undo stack is dropped, the fix stays on disk.
-    m_app->closeSpeakerEditor(m.id);
-    editing::SpeakerEditor* again = m_app->speakerEditor(m.id);
+    m_app->closeEditSession(m.id);
+    editing::SpeakerEditSession* again = m_app->editSession(m.id);
     QVERIFY(again != nullptr);
     QVERIFY(!again->canUndo());
     QCOMPARE(again->utterance(QStringLiteral("u0")).speakerKey, kB2);
-    m_app->closeSpeakerEditor(m.id);
+    m_app->closeEditSession(m.id);
     QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
 }
 
 void SpeakerControllerTest::editorAndLegacyRenameCoexist()
 {
     const Meeting m = makeMeeting(QStringLiteral("Együttélés"), true);
-    editing::SpeakerEditor* ed = m_app->speakerEditor(m.id);
+    editing::SpeakerEditSession* ed = m_app->editSession(m.id);
     QSignalSpy mapSig(m_app.get(), &app::AppController::speakerMapChanged);
     QSignalSpy staleSig(m_app.get(), &app::AppController::summaryStaleChanged);
     QSignalSpy peopleSig(m_app.get(), &app::AppController::peopleChanged);
@@ -156,7 +157,7 @@ void SpeakerControllerTest::editorAndLegacyRenameCoexist()
 
     // The OLD path (CLI): renaming a raw label. The editor takes it over, the per-line fix
     // stays, and transcript.md reflects both.
-    QSignalSpy speakers(ed, &editing::SpeakerEditor::speakersChanged);
+    QSignalSpy speakers(ed, &editing::SpeakerEditSession::speakersChanged);
     m_app->renameSpeaker(m.id, kB2, choice(QStringLiteral("Béla")), /*enroll*/ false);
     QVERIFY(speakers.count() >= 1);
     QCOMPARE(nameOf(ed->speaker(kB2).personId), QStringLiteral("Béla"));
@@ -173,7 +174,7 @@ void SpeakerControllerTest::editorAndLegacyRenameCoexist()
     // "Fine as is".
     m_app->dismissSummaryStale(m.id);
     QVERIFY(!m_app->summaryStale(m.id).stale);
-    m_app->closeSpeakerEditor(m.id);
+    m_app->closeEditSession(m.id);
 }
 
 void SpeakerControllerTest::summaryReady_clearsStale()
@@ -189,19 +190,19 @@ void SpeakerControllerTest::summaryReady_clearsStale()
     QVERIFY(!m_app->summaryStale(m.id).stale);
 
     // The same with an open editor.
-    editing::SpeakerEditor* ed = m_app->speakerEditor(m.id);
+    editing::SpeakerEditSession* ed = m_app->editSession(m.id);
     QVERIFY(ed->moveUtterances({QStringLiteral("u0")}, kB2));
     QVERIFY(ed->summaryStale().stale);
     emit m_app->summaryReady(m.id, QString());
     QVERIFY(!ed->summaryStale().stale);
     QVERIFY(!m_app->summaryStale(m.id).stale);
-    m_app->closeSpeakerEditor(m.id);
+    m_app->closeEditSession(m.id);
 }
 
 void SpeakerControllerTest::transcriptReady_discardsOverlay()
 {
     const Meeting m = makeMeeting(QStringLiteral("Újraírt"), false);
-    editing::SpeakerEditor* ed = m_app->speakerEditor(m.id);
+    editing::SpeakerEditSession* ed = m_app->editSession(m.id);
     ed->moveUtterancesToPerson({QStringLiteral("u0")}, choice(QStringLiteral("Dóra")));
     QVERIFY(ed->confirmUtterances({QStringLiteral("u6000")}));
     QCOMPARE(m_app->retranscribeImpact(m.id).manualCorrections(), 2);
@@ -209,20 +210,20 @@ void SpeakerControllerTest::transcriptReady_discardsOverlay()
 
     // A new transcript was made (emitted by AppController at the end of transcription): the
     // manual fixes dropped, the session reloaded, the undo stack empty.
-    QSignalSpy reloaded(ed, &editing::SpeakerEditor::reloaded);
+    QSignalSpy reloaded(ed, &editing::SpeakerEditSession::reloaded);
     emit m_app->transcriptReady(m.id, QDir(m.folder).filePath(QStringLiteral("transcript.md")));
     QCOMPARE(reloaded.count(), 1);
     QCOMPARE(ed->speakers().size(), 2);
     QVERIFY(!ed->canUndo());
     QCOMPARE(m_app->retranscribeImpact(m.id).manualCorrections(), 0);
     QVERIFY(!editing::speakeredit::loadOverlay(m.folder).hasEdits());
-    m_app->closeSpeakerEditor(m.id);
+    m_app->closeEditSession(m.id);
 }
 
 void SpeakerControllerTest::globalPersonRename_reachesParticipants()
 {
     const Meeting m = makeMeeting(QStringLiteral("Átnevezés"), false);
-    editing::SpeakerEditor* ed = m_app->speakerEditor(m.id);
+    editing::SpeakerEditSession* ed = m_app->editSession(m.id);
     const QString p = ed->moveUtterancesToPerson({QStringLiteral("u0")}, choice(QStringLiteral("Emese")));
     QVERIFY(ed->reassignSpeaker(kB2, choice(QStringLiteral("Feri"))));
 
@@ -236,7 +237,7 @@ void SpeakerControllerTest::globalPersonRename_reachesParticipants()
     m_app->removePerson(idOf(QStringLiteral("Emőke")));
     QVERIFY(ed->speaker(p).anonymous);
     QCOMPARE(ed->speaker(p).utteranceCount, 1);
-    m_app->closeSpeakerEditor(m.id);
+    m_app->closeEditSession(m.id);
 }
 
 void SpeakerControllerTest::peopleAndImpact()

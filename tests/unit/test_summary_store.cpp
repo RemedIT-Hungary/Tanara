@@ -6,7 +6,7 @@
 #include <QJsonObject>
 
 #include "tanara/library/summary/SummaryRepository.h"
-#include "tanara/domain/Types.h"
+#include "tanara/domain/Summary.h"
 
 using namespace tanara;
 

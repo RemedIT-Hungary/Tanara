@@ -16,7 +16,7 @@
 #include "tanara/library/store/PeopleStore.h"
 #include "tanara/app/SettingsManager.h"
 #include "tanara/cloud/CloudTypes.h"
-#include "tanara/editing/session/SpeakerEditor.h"
+#include "tanara/editing/session/SpeakerEditSession.h"
 #include "tanara/editing/session/SpeakerOverlay.h"
 #include "tanara/processing/analysis/UtteranceEmbeddings.h"
 #include "tanara/library/jobs/MeetingJobTracker.h"
@@ -687,7 +687,7 @@ private slots:
     void identifyWithEveryoneNamedOffersRecheck()
     {
         const tanara::Meeting m = namedWithVoices(QStringLiteral("Mindenki megvan"));
-        tanara::editing::SpeakerEditor* ed = m_app->speakerEditor(m.id);
+        tanara::editing::SpeakerEditSession* ed = m_app->editSession(m.id);
         QVERIFY(ed);
         QStringList shown;
         bool answer = true;

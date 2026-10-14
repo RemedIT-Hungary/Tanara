@@ -1,6 +1,6 @@
 #include <QtTest>
 #include "tanara/app/AppSettings.h"
-#include "tanara/domain/Types.h"
+#include "tanara/foundation/Version.h"
 
 class SmokeTest : public QObject {
     Q_OBJECT

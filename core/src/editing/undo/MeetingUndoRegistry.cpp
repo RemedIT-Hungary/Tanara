@@ -1,6 +1,6 @@
 #include "tanara/editing/undo/MeetingUndoRegistry.h"
 
-#include "tanara/editing/session/SpeakerEditor.h"
+#include "tanara/editing/session/SpeakerEditSession.h"
 #include "tanara/editing/undo/MeetingUndo.h"
 #include "tanara/library/store/MeetingRepository.h"
 #include "tanara/library/store/ParticipantJson.h"
@@ -27,7 +27,7 @@ QJsonObject participantUndoState(const Meeting& m)
                        {QStringLiteral("tracks"), ts}};
 }
 
-quint64 editorTop(SpeakerEditor* ed)
+quint64 editorTop(SpeakerEditSession* ed)
 {
     if (!ed) return 0;
     const QVector<quint64> s = ed->undoSerials();
@@ -37,7 +37,7 @@ quint64 editorTop(SpeakerEditor* ed)
 } // namespace
 
 MeetingUndoRegistry::MeetingUndoRegistry(library::MeetingRepository* store, library::TagService* tags,
-                                         std::function<SpeakerEditor*(const QString&)> existingEditor,
+                                         std::function<SpeakerEditSession*(const QString&)> existingEditor,
                                          QObject* parent)
     : QObject(parent), m_store(store), m_tags(tags), m_existingEditor(std::move(existingEditor))
 {
@@ -48,16 +48,16 @@ MeetingUndoRegistry::~MeetingUndoRegistry() = default;
 MeetingUndoService* MeetingUndoRegistry::forMeeting(const QString& meetingId)
 {
     if (meetingId.isEmpty()) return nullptr;
-    SpeakerEditor* ed = m_existingEditor ? m_existingEditor(meetingId) : nullptr;
+    SpeakerEditSession* ed = m_existingEditor ? m_existingEditor(meetingId) : nullptr;
     if (MeetingUndoService* u = m_services.value(meetingId)) {
-        if (ed) u->attachSpeakerEditor(ed);
+        if (ed) u->attachEditSession(ed);
         return u;
     }
     if (!m_store || m_store->load(meetingId).id.isEmpty()) return nullptr;
     // The stack's parent stays the facade's object tree owner (this registry).
     auto* u = new MeetingUndoService(meetingId, this);
     u->attachTagService(m_tags);
-    if (ed) u->attachSpeakerEditor(ed);
+    if (ed) u->attachEditSession(ed);
     m_services.insert(meetingId, u);
     connect(m_store, &library::MeetingRepository::meetingRemoved, u, [this, u](const QString& id) {
         if (id != u->meetingId()) return;

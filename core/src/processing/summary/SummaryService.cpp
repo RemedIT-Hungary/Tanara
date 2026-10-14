@@ -466,7 +466,7 @@ void SummaryService::startSingle()
 // implemented here, hence in namespace tanara.
 namespace tanara {
 
-// ---- Summary::renderMarkdown (declared in domain/Types.h) --------------------
+// ---- Summary::renderMarkdown (declared in domain/Summary.h) --------------------
 
 namespace {
 QString renderActionItem(const ActionItem& ai)
@@ -545,7 +545,7 @@ QString Summary::renderMarkdown() const
     return md;
 }
 
-// ---- TopicAnalysis::renderMarkdown (declared in domain/Types.h) ---------------
+// ---- TopicAnalysis::renderMarkdown (declared in domain/Summary.h) ---------------
 
 QString TopicAnalysis::renderMarkdown() const
 {

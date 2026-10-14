@@ -16,7 +16,7 @@
 #include "tanara/recording/audio/MixdownPlan.h"
 #include "tanara/processing/analysis/ParticipantAnalysis.h"
 #include "tanara/editing/undo/MeetingUndo.h"
-#include "tanara/editing/session/SpeakerEditor.h"
+#include "tanara/editing/session/SpeakerEditSession.h"
 #include "tanara/editing/session/TrackSpeech.h"
 #include "tanara/library/store/MeetingRepository.h"
 #include "tanara/library/store/VoiceprintStore.h"
@@ -264,7 +264,7 @@ void ParticipantsAppTest::analysisApproveUndoUnbindSolo()
     QVERIFY(m.approval.has_value());
     QCOMPARE(m.approval->candidates.size(), 2);
     QVERIFY(!m_app->participantApprovalPending(m.id));
-    editing::SpeakerEditor* ed = m_app->speakerEditor(m.id);
+    editing::SpeakerEditSession* ed = m_app->editSession(m.id);
     QVERIFY(ed && ed->canUndo());
     ed->undo();
     m = m_app->store()->load(m.id);
@@ -373,7 +373,7 @@ void ParticipantsAppTest::removeNamedSpeakerWithoutRecord()
     m_app->store()->saveMeeting(m);
     QVERIFY(m_app->participants(m.id).isEmpty());
 
-    editing::SpeakerEditor* ed = m_app->speakerEditor(m.id);
+    editing::SpeakerEditSession* ed = m_app->editSession(m.id);
     QVERIFY(ed);
     QString belaKey, anonKey;
     for (const editing::EditorSpeaker& s : ed->speakers()) {

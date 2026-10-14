@@ -1,6 +1,6 @@
 #include "tanara/recording/RecordingService.h"
 
-#include "tanara/domain/Types.h"
+#include "tanara/domain/Meeting.h"
 #include "tanara/foundation/log/Logging.h"
 #include "tanara/library/store/MeetingRepository.h"
 #include "tanara/library/tags/TagService.h"
