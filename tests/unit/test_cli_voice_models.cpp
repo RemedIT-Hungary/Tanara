@@ -129,6 +129,57 @@ private slots:
         QCOMPARE(cli({"voice-models", "delete"}).code, 2);
     }
 
+    // The segmentation models are listed (kind + state), cannot be enabled as speaker models, and the
+    // SHA-256 override flow works on the CLI: a same-size but different file is a MISMATCH, `accept`
+    // marks it unverified (exit 0 from then on), the list shows the state.
+    void segmentationListedAndShaOverride()
+    {
+        Run r = cli({"voice-models", "list"});
+        QCOMPARE(r.code, 0);
+        QVERIFY2(r.out.contains("pyannote-segmentation-3.0 "), qPrintable(r.out));
+        QVERIFY(r.out.contains("pyannote-segmentation-3.0-int8"));
+        QVERIFY(r.out.contains("segmentation"));
+        QVERIFY(r.out.contains("STATE"));
+        QVERIFY(r.out.contains("note: pyannote-segmentation-3.0-int8: optional"));
+        QCOMPARE(cli({"voice-models", "enable", "pyannote-segmentation-3.0"}).code, 1);
+
+        const QString id = QStringLiteral("pyannote-segmentation-3.0-int8");
+        const auto spec = *processing::VoiceModelRegistry::spec(id);
+        const QString file = modelFile(id);
+        QDir().mkpath(QFileInfo(file).absolutePath());
+        {
+            QFile f(file);
+            QVERIFY(f.open(QIODevice::WriteOnly));
+            f.write(QByteArray(int(spec.sizeBytes), 'z'));    // right size, wrong content
+        }
+        r = cli({"voice-models", "verify", id});
+        QCOMPARE(r.code, 1);
+        QVERIFY2(r.out.contains("SHA-256 MISMATCH"), qPrintable(r.out));
+        QVERIFY(r.out.contains("does not match the pinned SHA-256"));
+        r = cli({"voice-models", "list"});
+        QVERIFY(r.out.contains("MISMATCH (SHA-256)"));
+
+        QCOMPARE(cli({"voice-models", "accept"}).code, 2);
+        r = cli({"voice-models", "accept", id});
+        QCOMPARE(r.code, 0);
+        r = cli({"voice-models", "verify", id});
+        QCOMPARE(r.code, 0);                                   // accepted by the user: not an error
+        QVERIFY2(r.out.contains("UNVERIFIED"), qPrintable(r.out));
+        QVERIFY(cli({"voice-models", "list"}).out.contains("unverified (SHA-256 override)"));
+
+        // `verify` without an id checks every model that has a file (and is quiet about missing ones).
+        r = cli({"voice-models", "verify"});
+        QCOMPARE(r.code, 0);
+        QVERIFY(r.out.contains(id));
+        QVERIFY(!r.out.contains("MISSING"));
+
+        // Deleting removes the file and its override record.
+        QCOMPARE(cli({"voice-models", "delete", id}).code, 0);
+        QVERIFY(!QFileInfo::exists(file));
+        QVERIFY(!QFileInfo::exists(file + ".accepted-sha256"));
+        QCOMPARE(cli({"voice-models", "accept", id}).code, 1);   // nothing to accept any more
+    }
+
     void voiceEvalArgumentErrors()
     {
         QCOMPARE(cli({"voice-eval"}).code, 2);

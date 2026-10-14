@@ -72,6 +72,12 @@ VoiceModelsDemoFacade::VoiceModelsDemoFacade(const QString& designState, QObject
         if (const auto spec = processing::VoiceModelRegistry::spec(kEres)) e.fileSize = spec->sizeBytes / 3;
         sc.rows.insert(kEres, e);
     }
+    if (state == QLatin1String("B08mismatch")) {
+        // ERes2NetV2 arrived but its SHA-256 differs from the pinned one: parked, waiting for "Mégis használom".
+        sc.rows.insert(kEres, row(QStringLiteral("mismatch")));
+    } else if (state == QLatin1String("B08unverified")) {
+        sc.rows.insert(kEres, row(QStringLiteral("unverified")));
+    }
     if (state == QLatin1String("B08backfill")) {
         sc.backfillState = QStringLiteral("running");
         sc.backfillTotal = 23;

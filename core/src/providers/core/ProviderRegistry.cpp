@@ -13,6 +13,7 @@ QString capabilityName(CapabilityKind kind)
     case CapabilityKind::TagSuggestion:             return QStringLiteral("tag-suggestion");
     case CapabilityKind::ParticipantIdentification: return QStringLiteral("participant-identification");
     case CapabilityKind::ModelCatalog:              return QStringLiteral("model-catalog");
+    case CapabilityKind::Diarization:               return QStringLiteral("diarization");
     case CapabilityKind::LocalModelServer:          return QStringLiteral("local-model-server");
     }
     return QString();

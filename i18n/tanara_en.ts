@@ -4556,6 +4556,14 @@
         <translation>verifying…</translation>
     </message>
     <message>
+        <source>SHA nem egyezik</source>
+        <translation>SHA mismatch</translation>
+    </message>
+    <message>
+        <source>ellenőrizetlen</source>
+        <translation>unverified</translation>
+    </message>
+    <message>
         <source>hiba (méret nem egyezik)</source>
         <translation>error (size mismatch)</translation>
     </message>
@@ -4626,6 +4634,10 @@
     <message>
         <source>Újra</source>
         <translation>Retry</translation>
+    </message>
+    <message>
+        <source>Mégis használom</source>
+        <translation>Use it anyway</translation>
     </message>
     <message>
         <source>Letöltés újrapróbálása</source>
@@ -12877,6 +12889,18 @@
         <translation>The file size differs from expected (%2 instead of %1) — download it again.</translation>
     </message>
     <message>
+        <source>A letöltött fájl nem egyezik a rögzített SHA-val, ezért félretettem; amíg nem döntesz, nem használom.</source>
+        <translation>The downloaded file does not match the pinned SHA, so I set it aside; I will not use it until you decide.</translation>
+    </message>
+    <message>
+        <source>Ellenőrizetlen: a fájl nem egyezik a rögzített SHA-val, de jóváhagytad.</source>
+        <translation>Unverified: the file does not match the pinned SHA, but you approved it.</translation>
+    </message>
+    <message>
+        <source>A fájl nem egyezik a rögzített SHA-val. Használhatod így is, de a modell ellenőrizetlenként lesz megjelölve.</source>
+        <translation>The file does not match the pinned SHA. You can still use it, but the model will be marked as unverified.</translation>
+    </message>
+    <message>
         <source>Ismeretlen hangmodell.</source>
         <translation>Unknown voice model.</translation>
     </message>
@@ -12891,6 +12915,10 @@
     <message>
         <source>Nem sikerült törölni: %1</source>
         <translation>Could not delete: %1</translation>
+    </message>
+    <message>
+        <source>Nem sikerült jóváhagyni: %1</source>
+        <translation>Could not approve it: %1</translation>
     </message>
     <message>
         <source>A letöltött fájl mérete nem egyezik a várttal, ezért nem mentettem el.</source>

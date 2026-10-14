@@ -47,7 +47,14 @@ QString mb(qint64 bytes) { return QString::number(qRound64(bytes / 1e6)); }
 bool usable(const QString& state)
 {
     return state == QLatin1String("downloaded") || state == QLatin1String("bundled")
-        || state == QLatin1String("verifying");
+        || state == QLatin1String("verifying") || state == QLatin1String("unverified");
+}
+
+// A "mismatch" file that sits at its place (copied by hand) is loaded by the core like any other; a
+// downloaded one that is parked aside (<file>.mismatch) is not in use until the user accepts it.
+template <class Row> bool usableRow(const Row& r)
+{
+    return usable(r.state) || (r.state == QLatin1String("mismatch") && !r.parked);
 }
 
 // "12:03" / "1:02:03" (meeting time, ms).
@@ -210,7 +217,7 @@ QVariant VoiceModelListModel::data(const QModelIndex& index, int role) const
                            : QStringLiteral("%1 MB").arg(mb(r.received));
     case ErrorTextRole: return r.errorText;
     case EnabledRole: return enabledIds().contains(s.id);
-    case CanEnableRole: return usable(r.state);
+    case CanEnableRole: return usableRow(r);
     case RecommendedRole: return s.id == kWespeaker;
     case NotRecommendedRole: return s.id == kEres;
     case CorruptRole: return r.corrupt;
@@ -317,7 +324,13 @@ void VoiceModelListModel::applyScenario()
         if (r.corrupt)
             r.errorText = tr("A fájl mérete eltér a várttól (%1 helyett %2) — töltsd le újra.")
                               .arg(SettingsViewModel::formatBytes(s.sizeBytes), SettingsViewModel::formatBytes(given.fileSize));
-        r.hasFile = r.state == QLatin1String("downloaded") || r.state == QLatin1String("verifying") || r.corrupt;
+        r.parked = r.state == QLatin1String("mismatch");
+        if (r.parked || r.state == QLatin1String("unverified"))
+            r.errorText = r.parked
+                ? tr("A letöltött fájl nem egyezik a rögzített SHA-val, ezért félretettem; amíg nem döntesz, nem használom.")
+                : tr("Ellenőrizetlen: a fájl nem egyezik a rögzített SHA-val, de jóváhagytad.");
+        r.hasFile = r.state == QLatin1String("downloaded") || r.state == QLatin1String("verifying") || r.corrupt
+                    || r.parked || r.state == QLatin1String("unverified");
         m_rows << r;
     }
     m_offline = sc->offline;
@@ -396,7 +409,8 @@ void VoiceModelListModel::updateFileState(Row& r) const
 {
     const QString meta = metaDir(), app = appDir();
     const QString user = processing::VoiceModelDownloader::targetPath(r.spec, meta);
-    r.hasFile = !meta.isEmpty() && QFileInfo(user).isFile();
+    r.parked = !meta.isEmpty() && processing::VoiceModelDownloader::hasQuarantined(r.spec, meta);
+    r.hasFile = !meta.isEmpty() && (QFileInfo(user).isFile() || r.parked);
     if (m_downloader->isRunning(r.spec.id)) { r.state = QStringLiteral("downloading"); return; }
     const QString path = processing::VoiceModelRegistry::resolvePath(r.spec, meta, app);
     const QFileInfo fi(path);
@@ -407,14 +421,31 @@ void VoiceModelListModel::updateFileState(Row& r) const
         if (m_downloader->isVerifying(r.spec.id)) { r.state = QStringLiteral("verifying"); return; }
         // Windows: the base model is in <appDir>/models (the installer brings it); not downloadable.
         r.state = path != user ? QStringLiteral("bundled") : QStringLiteral("downloaded");
-        if (r.state == QLatin1String("downloaded")
-            && processing::VoiceModelDownloader::verifyFile(r.spec, path) == processing::VoiceModelDownloader::VerifyResult::SizeMismatch) {
+        // (A file the user accepted despite a hash mismatch is exempt from the size check as well.)
+        const bool accepted = r.trust == QLatin1String("unverified")
+                              || processing::VoiceModelDownloader::hasAcceptedRecord(r.spec, meta);
+        if (r.state == QLatin1String("downloaded") && !accepted
+            && processing::VoiceModelDownloader::verifyFile(r.spec, path, nullptr, false) == processing::VoiceModelDownloader::VerifyResult::SizeMismatch) {
             r.corrupt = true;
             r.state = QStringLiteral("error");
             r.errorText = tr("A fájl mérete eltér a várttól (%1 helyett %2) — töltsd le újra.")
                               .arg(SettingsViewModel::formatBytes(r.spec.sizeBytes),
                                    SettingsViewModel::formatBytes(fi.size()));
+        } else if (r.state == QLatin1String("downloaded") && r.trust == QLatin1String("mismatch")) {
+            // The (asynchronous) SHA-256 check found a different file; the user has not accepted it.
+            r.state = QStringLiteral("mismatch");
+            r.errorText = tr("A fájl nem egyezik a rögzített SHA-val. Használhatod így is, de a modell ellenőrizetlenként lesz megjelölve.");
+        } else if (r.state == QLatin1String("downloaded") && r.trust == QLatin1String("unverified")) {
+            r.state = QStringLiteral("unverified");
+            r.errorText = tr("Ellenőrizetlen: a fájl nem egyezik a rögzített SHA-val, de jóváhagytad.");
         }
+        return;
+    }
+    r.trust.clear();
+    // A downloaded file whose SHA-256 differed waits aside, unused, until the user decides.
+    if (r.parked) {
+        r.state = QStringLiteral("mismatch");
+        r.errorText = tr("A letöltött fájl nem egyezik a rögzített SHA-val, ezért félretettem; amíg nem döntesz, nem használom.");
         return;
     }
     // Missing: the latest download's error stays until the user retries.
@@ -449,7 +480,8 @@ void VoiceModelListModel::refresh()
 void VoiceModelListModel::verifyAllFiles()
 {
     for (const Row& r : std::as_const(m_rows))
-        if (r.state == QLatin1String("downloaded") || r.state == QLatin1String("bundled") || r.corrupt)
+        if (r.state == QLatin1String("downloaded") || r.state == QLatin1String("bundled") || r.corrupt
+            || ((r.state == QLatin1String("mismatch") || r.state == QLatin1String("unverified")) && !r.parked))
             verify(r.spec.id);
 }
 
@@ -471,11 +503,15 @@ void VoiceModelListModel::onVerified(const QString& id, int result)
 {
     const int i = indexOf(id);
     if (i < 0) return;
+    const auto r = processing::VoiceModelDownloader::VerifyResult(result);
+    m_rows[i].trust = r == processing::VoiceModelDownloader::VerifyResult::ShaMismatch ? QStringLiteral("mismatch")
+                    : r == processing::VoiceModelDownloader::VerifyResult::Unverified ? QStringLiteral("unverified")
+                    : QString();
     updateFileState(m_rows[i]);
     emitRow(i);
     emit summaryChanged();
-    const auto r = processing::VoiceModelDownloader::VerifyResult(result);
-    emit verifyFinished(id, r == processing::VoiceModelDownloader::VerifyResult::Ok || r == processing::VoiceModelDownloader::VerifyResult::Unverifiable);
+    emit verifyFinished(id, r == processing::VoiceModelDownloader::VerifyResult::Ok || r == processing::VoiceModelDownloader::VerifyResult::Unverifiable
+                                || r == processing::VoiceModelDownloader::VerifyResult::Unverified);
 }
 
 QString VoiceModelListModel::deleteModel(const QString& id)
@@ -491,6 +527,8 @@ QString VoiceModelListModel::deleteModel(const QString& id)
         r.state = QStringLiteral("missing");
         r.hasFile = false;
         r.corrupt = false;
+        r.parked = false;
+        r.trust.clear();
         r.errorText.clear();
         emitRow(i);
         emit summaryChanged();
@@ -502,6 +540,7 @@ QString VoiceModelListModel::deleteModel(const QString& id)
     if (!ok) return tr("Nem sikerült törölni: %1").arg(error);
     r.errorText.clear();
     r.corrupt = false;
+    r.trust.clear();
     refreshFiles();
     return QString();
 }
@@ -540,7 +579,7 @@ void VoiceModelListModel::emitRow(int i)
 bool VoiceModelListModel::anyAvailable() const
 {
     for (const Row& r : m_rows)
-        if (usable(r.state)) return true;
+        if (usableRow(r)) return true;
     return false;
 }
 
@@ -549,7 +588,7 @@ int VoiceModelListModel::activeCount() const
     const QStringList on = enabledIds();
     int n = 0;
     for (const Row& r : m_rows)
-        if (on.contains(r.spec.id) && usable(r.state)) ++n;
+        if (on.contains(r.spec.id) && usableRow(r)) ++n;
     return n;
 }
 
@@ -558,7 +597,7 @@ bool VoiceModelListModel::fallbackActive() const
     // The same rule as VoiceModelRegistry::active()'s, per the draft.
     if (activeCount() > 0) return false;
     const int i = indexOf(kCamplus);
-    return i >= 0 && usable(m_rows.at(i).state);
+    return i >= 0 && usableRow(m_rows.at(i));
 }
 
 QString VoiceModelListModel::defaultState() const
@@ -603,7 +642,8 @@ void VoiceModelListModel::download(const QString& id) { startDownload(id, false)
 void VoiceModelListModel::retry(const QString& id)
 {
     const int i = indexOf(id);
-    startDownload(id, i >= 0 && m_rows.at(i).corrupt);
+    const QString st = i >= 0 ? m_rows.at(i).state : QString();
+    startDownload(id, i >= 0 && (m_rows.at(i).corrupt || st == QLatin1String("mismatch") || st == QLatin1String("unverified")));
 }
 
 void VoiceModelListModel::startDownload(const QString& id, bool overwrite)
@@ -622,6 +662,7 @@ void VoiceModelListModel::startDownload(const QString& id, bool overwrite)
         return;
     }
     r.errorText.clear();
+    r.trust.clear();
     r.received = 0;
     r.total = r.spec.sizeBytes;
     r.state = QStringLiteral("downloading");
@@ -648,7 +689,7 @@ void VoiceModelListModel::setEnabled(const QString& id, bool on)
 {
     const int i = indexOf(id);
     if (i < 0) return;
-    if (on && !usable(m_rows.at(i).state)) return;
+    if (on && !usableRow(m_rows.at(i))) return;
     QStringList ids = enabledIds();
     if (on == ids.contains(id)) return;
     if (on) ids << id;
@@ -660,6 +701,43 @@ void VoiceModelListModel::openSource(const QString& id)
 {
     const int i = indexOf(id);
     if (i >= 0 && !m_rows.at(i).spec.sourceUrl.isEmpty()) emit openUrlRequested(m_rows.at(i).spec.sourceUrl);
+}
+
+QString VoiceModelListModel::acceptMismatch(const QString& id)
+{
+    const int i = indexOf(id);
+    if (i < 0) return tr("Ismeretlen hangmodell.");
+    Row& r = m_rows[i];
+    if (r.state != QLatin1String("mismatch")) return QString();
+    const bool wasParked = r.parked;
+    if (!live()) {
+        // Fictional facade: only the state changes.
+        r.state = QStringLiteral("unverified");
+        r.parked = false;
+        r.hasFile = true;
+        r.errorText = tr("Ellenőrizetlen: a fájl nem egyezik a rögzített SHA-val, de jóváhagytad.");
+        emitRow(i);
+        emit summaryChanged();
+        return QString();
+    }
+    QString error;
+    if (!processing::VoiceModelDownloader::acceptMismatch(r.spec, metaDir(), &error))
+        return tr("Nem sikerült jóváhagyni: %1").arg(error);
+    r.trust = QStringLiteral("unverified");
+    updateFileState(r);
+    emitRow(i);
+    if (wasParked) {
+        // The same as after a successful download: enable it in the draft, let the core re-read the files.
+        QStringList ids = enabledIds();
+        if (!ids.contains(id)) {
+            ids << id;
+            writeEnabled(ids);
+        } else if (m_facade && m_facade->live() && m_facade->enabledModels().contains(id)) {
+            m_facade->reloadModels();
+        }
+    }
+    emit summaryChanged();
+    return QString();
 }
 
 void VoiceModelListModel::onProgress(const QString& id, qint64 received, qint64 total)
@@ -712,6 +790,15 @@ void VoiceModelListModel::onFinished(const QString& id, bool ok, const QString& 
         case processing::VoiceModelDownloader::Failure::SizeMismatch:
             r.state = QStringLiteral("error");
             r.errorText = tr("A letöltött fájl mérete nem egyezik a várttal, ezért nem mentettem el.");
+            break;
+        case processing::VoiceModelDownloader::Failure::ShaMismatch:
+            r.trust.clear();
+            updateFileState(r);   // parked: state "mismatch" + the warning text
+            if (r.state != QLatin1String("mismatch")) {
+                r.state = QStringLiteral("mismatch");
+                r.parked = true;
+                r.errorText = tr("A letöltött fájl nem egyezik a rögzített SHA-val, ezért félretettem; amíg nem döntesz, nem használom.");
+            }
             break;
         case processing::VoiceModelDownloader::Failure::Write:
             r.state = QStringLiteral("error");

@@ -16,6 +16,15 @@
 
 namespace tanara::providers {
 
+// The integrity state of a local model file against the catalog's pinned SHA-256.
+enum class ModelState {
+    Unchecked,    // not examined (a Cloud model, or no file)
+    Verified,     // size and SHA-256 match the pinned values
+    Unverified,   // the SHA-256 differs, but the user accepted exactly this file ("use it anyway")
+    Mismatch,     // the SHA-256 differs and was not accepted (or a download is parked as <file>.mismatch)
+    Corrupt,      // the size differs from the expected one
+};
+
 struct ModelInfo {
     QString id;
     QString displayName;
@@ -29,6 +38,9 @@ struct ModelInfo {
     QString license;
     QString sourceUrl;
     QString localPath;              // local: the resolved (or expected) file
+    QString sha256;                 // local: the pinned SHA-256 (empty = not pinned)
+    ModelState state = ModelState::Unchecked;   // local: of the file, if there is one (see ModelState)
+    QString note;                   // one English sentence (e.g. "optional: smaller and faster")
 };
 
 // Where a model is, once available: a local file OR a remote id (exactly one is set).

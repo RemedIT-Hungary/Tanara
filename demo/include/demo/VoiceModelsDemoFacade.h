@@ -4,7 +4,7 @@
 // --demo, --gallery, --qml-shot and the tests. No file is read, downloaded or deleted; the design
 // state (scenario()) says how the voice models and the voiceprint backfill look:
 //   B08 (default) | B08download | B08none | B08error | B08offline | B08bundled | B08fallback |
-//   B08verify | B08backfill | B08partial (three skipped samples) | samplesModels (the People
+//   B08verify | B08mismatch | B08unverified | B08backfill | B08partial (three skipped samples) | samplesModels (the People
 //   window's note: one skipped sample of the asked person).
 // Enabling changes only the in-memory list.
 #include "tanara/processing/voiceid/IVoiceModelsFacade.h"

@@ -12,7 +12,7 @@ LocalVoiceModelCatalog::LocalVoiceModelCatalog(QString modelsDir, QString appDir
     : QObject(parent)
     , m_modelsDir(std::move(modelsDir))
     , m_appDir(std::move(appDir))
-    , m_specs(specs.isEmpty() ? VoiceModelRegistry::builtin() : std::move(specs))
+    , m_specs(specs.isEmpty() ? VoiceModelRegistry::catalog() : std::move(specs))
     , m_downloader(new VoiceModelDownloader(this))
 {
     if (http) m_downloader->setHttpClient(http);
@@ -22,20 +22,39 @@ providers::ModelListJob* LocalVoiceModelCatalog::list(CapabilityKind capability)
 {
     return new providers::FunctionJob<QVector<providers::ModelInfo>>(
         [this, capability](QVector<providers::ModelInfo>* out, Error*) {
-            if (capability != CapabilityKind::VoiceEmbedding) return true;   // only speaker models here
+            // Speaker-embedding models serve VoiceEmbedding, segmentation models serve Diarization.
+            if (capability != CapabilityKind::VoiceEmbedding && capability != CapabilityKind::Diarization)
+                return true;
+            const VoiceModelKind wanted = capability == CapabilityKind::Diarization ? VoiceModelKind::Segmentation
+                                                                                    : VoiceModelKind::SpeakerEmbedding;
             for (const VoiceModelSpec& s : m_specs) {
+                if (s.kind != wanted) continue;
                 providers::ModelInfo i;
                 i.id = s.id;
                 i.displayName = s.displayName;
-                i.capability = CapabilityKind::VoiceEmbedding;
+                i.capability = capability;
                 i.origin = providers::Origin::Local;
                 i.localPath = VoiceModelRegistry::resolvePath(s, m_modelsDir, m_appDir);
                 i.available = QFileInfo::exists(i.localPath);
-                i.recommended = s.id == VoiceModelRegistry::recommendedModelId();
+                i.recommended = s.id == VoiceModelRegistry::recommendedModelId()
+                                || s.id == VoiceModelRegistry::defaultSegmentationModelId();
                 i.dim = s.dim;
                 i.sizeBytes = s.sizeBytes;
                 i.license = s.license;
                 i.sourceUrl = s.sourceUrl;
+                i.sha256 = s.sha256;
+                i.note = s.note;
+                if (i.available) {
+                    switch (VoiceModelDownloader::verifyFile(s, i.localPath)) {
+                    case VoiceModelDownloader::VerifyResult::Ok:           i.state = providers::ModelState::Verified; break;
+                    case VoiceModelDownloader::VerifyResult::Unverified:   i.state = providers::ModelState::Unverified; break;
+                    case VoiceModelDownloader::VerifyResult::ShaMismatch:  i.state = providers::ModelState::Mismatch; break;
+                    case VoiceModelDownloader::VerifyResult::SizeMismatch: i.state = providers::ModelState::Corrupt; break;
+                    default:                                               i.state = providers::ModelState::Unchecked; break;
+                    }
+                } else if (VoiceModelDownloader::hasQuarantined(s, m_modelsDir)) {
+                    i.state = providers::ModelState::Mismatch;   // downloaded, parked: waits for the user's decision
+                }
                 out->append(i);
             }
             return true;
@@ -89,7 +108,8 @@ providers::ModelReadyJob* LocalVoiceModelCatalog::ensureAvailable(const QString&
         case VoiceModelDownloader::Failure::NoUrl:     e.kind = Error::Kind::Unsupported; break;
         default:                                       e.kind = Error::Kind::Service; break;
         }
-        e.code = QStringLiteral("download_failed");
+        e.code = m_downloader->lastFailure(id) == VoiceModelDownloader::Failure::ShaMismatch
+                     ? QStringLiteral("sha_mismatch") : QStringLiteral("download_failed");
         e.detail = error;
         guard->failLater(e);
     });
@@ -100,6 +120,14 @@ providers::ModelReadyJob* LocalVoiceModelCatalog::ensureAvailable(const QString&
     // "Already downloading" returns false without a signal: the running download's finished serves us.
     m_downloader->start(*spec, target);
     return job;
+}
+
+bool LocalVoiceModelCatalog::acceptMismatch(const QString& modelId, QString* error)
+{
+    for (const VoiceModelSpec& s : m_specs)
+        if (s.id == modelId) return VoiceModelDownloader::acceptMismatch(s, m_modelsDir, error);
+    if (error) *error = QStringLiteral("Unknown model: %1").arg(modelId);
+    return false;
 }
 
 } // namespace tanara::processing

@@ -19,6 +19,7 @@ enum class CapabilityKind {
     TagSuggestion,              // ITagSuggester (providers/tags)
     ParticipantIdentification,  // IParticipantIdentifier (providers/voice): ready vectors -> who
     ModelCatalog,               // IModelCatalog (providers/catalog): models of a capability, download
+    Diarization,                // IDiarizer (providers/voice): audio tracks -> who speaks when
     LocalModelServer,           // optional: ILocalModelServer (LM Studio model preparation), keyed by the chat id
 };
 // Stable machine name ("transcription", "chat", ...): logs, tests, the CLI.

@@ -6,7 +6,8 @@ import QtQuick.Templates as T
 // switch (only for an existing model), menu of the downloaded file (Verify again, Delete...);
 // a sentence on what it is for; license + source link + size + dimension (visible BEFORE
 // download); state-dependent action: Download / progress + Cancel / verifying... / error (e.g.
-// "size mismatch") + Retry / offline. The page owns the delete confirmation (deleteRequested).
+// "size mismatch") + Retry / offline; a SHA-256 mismatch: a warning + "Mégis használom" (the override;
+// the model is then marked "ellenőrizetlen") + Retry. The page owns the delete confirmation (deleteRequested).
 //   SettingsVoiceModelCard { list: vm.voiceModels; model: <one row of VoiceModelListModel> }
 Rectangle {
     id: root
@@ -22,7 +23,7 @@ Rectangle {
     property string sourceUrl: ""
     property string sizeText: ""
     property string dimText: ""
-    property string state_: "missing"    // missing | downloading | verifying | downloaded | bundled | error | offline
+    property string state_: "missing"    // missing | downloading | verifying | downloaded | bundled | error | offline | mismatch | unverified
     property real progress: -1
     property string progressText: ""
     property string errorText: ""
@@ -48,7 +49,7 @@ Rectangle {
     radius: Theme.radiusPopup
     color: Theme.surface
     border.width: 1
-    border.color: failed ? Theme.dangerLine : Theme.border
+    border.color: failed ? Theme.dangerLine : state_ === "mismatch" ? Theme.warnLine : Theme.border
 
     // Small text link (the source page).
     component LinkButton: T.AbstractButton {
@@ -111,11 +112,13 @@ Rectangle {
                 objectName: "voiceModelStatus-" + root.modelId
                 status: root.state_ === "downloaded" || root.state_ === "bundled" ? "ok"
                       : root.state_ === "downloading" || root.state_ === "verifying" ? "testing"
-                      : root.state_ === "error" ? "failed" : "neutral"
+                      : root.state_ === "error" || root.state_ === "mismatch" ? "failed" : "neutral"
                 text: root.state_ === "downloaded" ? qsTr("letöltve")
                     : root.state_ === "bundled" ? qsTr("a csomagban")
                     : root.state_ === "downloading" ? qsTr("letöltés… %1").arg(root.progressText)
                     : root.state_ === "verifying" ? qsTr("ellenőrzés…")
+                    : root.state_ === "mismatch" ? qsTr("SHA nem egyezik")
+                    : root.state_ === "unverified" ? qsTr("ellenőrizetlen")
                     : root.state_ === "error" && root.corrupt ? qsTr("hiba (méret nem egyezik)")
                     : root.state_ === "error" ? qsTr("hiba")
                     : root.state_ === "offline" ? qsTr("offline")
@@ -293,6 +296,57 @@ Rectangle {
                     onClicked: root.list.retry(root.modelId)
                 }
             }
+        }
+
+        // ---- SHA-256 mismatch: warning + "Mégis használom" (override) + Retry ----
+        Rectangle {
+            visible: root.state_ === "mismatch"
+            Layout.fillWidth: true
+            Layout.topMargin: 2
+            implicitHeight: shaRow.implicitHeight + 16
+            radius: Theme.radiusControl
+            color: Theme.warnSoft
+            border.width: 1
+            border.color: Theme.warnLine
+            RowLayout {
+                id: shaRow
+                x: 10; y: 8
+                width: parent.width - 20
+                spacing: 10
+                TLabel {
+                    objectName: "voiceModelShaWarning-" + root.modelId
+                    Layout.fillWidth: true
+                    text: root.errorText
+                    color: Theme.warnInk
+                    font.pixelSize: Theme.fontSmall
+                    cssLineHeight: 1.4
+                    wrapMode: Text.Wrap
+                }
+                TButton {
+                    objectName: "voiceModelAccept-" + root.modelId
+                    size: "small"
+                    text: qsTr("Mégis használom")
+                    onClicked: root.list.acceptMismatch(root.modelId)
+                }
+                TButton {
+                    objectName: "voiceModelShaRetry-" + root.modelId
+                    size: "small"
+                    text: qsTr("Újra")
+                    onClicked: root.list.retry(root.modelId)
+                }
+            }
+        }
+
+        // ---- accepted despite the SHA-256 mismatch: a standing note ----
+        TLabel {
+            objectName: "voiceModelUnverified-" + root.modelId
+            visible: root.state_ === "unverified"
+            Layout.fillWidth: true
+            text: root.errorText
+            color: Theme.warnInk
+            font.pixelSize: Theme.fontSmall
+            cssLineHeight: 1.4
+            wrapMode: Text.Wrap
         }
 
         // ---- offline: download does not start (explained once at the top of the page) ----

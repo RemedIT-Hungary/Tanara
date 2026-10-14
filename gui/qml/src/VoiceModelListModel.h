@@ -4,7 +4,9 @@
 // Getting started): download, enabling, the voiceprint backfill state.
 //
 //  - rows: the VoiceModelRegistry's built-in descriptors (name, one sentence, license, source,
-//    size, dimension) + state: missing | downloading | verifying | downloaded | bundled | error | offline;
+//    size, dimension) + state: missing | downloading | verifying | downloaded | bundled | error | offline
+//    | mismatch (the SHA-256 differs from the pinned one: warning + "Mégis használom") | unverified
+//    (the user accepted that file; usable, flagged);
 //  - verification: after a download and when the page opens (refresh), the core's
 //    VoiceModelDownloader::verify (file size); meanwhile "verifying", on a mismatch "error" +
 //    corrupt (Retry: replaces it);
@@ -22,7 +24,7 @@
 // It works on a tanara::processing::IVoiceModelsFacade: from QML the one of AppContext::services();
 // inside Settings the view model's (useServices). On the fictional facade (tanara_demo: demo,
 // --qml-shot) the rows show a design state; demoState: B08 | B08download | B08none | B08fallback |
-// B08error | B08offline | B08backfill | B08partial | B08bundled | B08verify | B08delete.
+// B08error | B08offline | B08backfill | B08partial | B08bundled | B08verify | B08delete | B08mismatch | B08unverified.
 //
 #include "tanara/processing/voiceid/IVoiceModelsFacade.h"
 #include "tanara/processing/voiceid/VoiceModelRegistry.h"
@@ -151,6 +153,10 @@ public:
     Q_INVOKABLE void refresh();
     // Verifies one model file (size): "verifying" meanwhile.
     Q_INVOKABLE void verify(const QString& id);
+    // "Mégis használom": the user overrides a SHA-256 mismatch. A parked download moves into place (and is
+    // enabled like after a normal download); the model is then marked "unverified". Empty: succeeded;
+    // otherwise a human error message.
+    Q_INVOKABLE QString acceptMismatch(const QString& id);
     // Deletes the downloaded model file. Empty: succeeded; otherwise a human error message.
     Q_INVOKABLE QString deleteModel(const QString& id);
     // After a manually copied model file: the core recomputes the used models, the list refreshes.
@@ -185,7 +191,9 @@ private:
         qint64 received = 0, total = 0;
         QString errorText;
         bool corrupt = false;       // the existing file's size differs from the expected
-        bool hasFile = false;       // there is a downloaded file (<metaDir>/models)
+        bool hasFile = false;       // there is a downloaded file (<metaDir>/models) or a parked one
+        bool parked = false;        // a SHA-mismatching download waits aside as <file>.mismatch (not in use)
+        QString trust;              // the last SHA-256 verification: "" (ok / unknown) | "mismatch" | "unverified"
     };
 
     void resolveServices();

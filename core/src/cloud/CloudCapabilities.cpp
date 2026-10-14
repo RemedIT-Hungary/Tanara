@@ -98,6 +98,7 @@ QStringList gatewayKindsFor(CapabilityKind capability)
     case CapabilityKind::VoiceEmbedding:
     case CapabilityKind::ParticipantIdentification: return { QStringLiteral("voice_embedding") };
     case CapabilityKind::ModelCatalog:
+    case CapabilityKind::Diarization:               // no gateway diarizer yet
     case CapabilityKind::LocalModelServer:          return {};
     }
     return {};

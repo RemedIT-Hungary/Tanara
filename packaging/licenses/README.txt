@@ -32,6 +32,12 @@ CC-BY-4.0.txt                 Creative Commons BY 4.0    WeSpeaker ResNet34-LM s
                                                          Tanara downloads it only when the user runs
                                                          "tanara-cli voice-models fetch".
 
+MIT-pyannote-segmentation.txt MIT (Copyright (c) 2022 CNRS) pyannote segmentation-3.0 speaker-segmentation
+                                                         model (ONNX export via sherpa-onnx). NOT bundled:
+                                                         Tanara downloads it only when the user runs
+                                                         "tanara-cli voice-models fetch" (the LICENSE file
+                                                         is fetched next to the model).
+
 miniaudio is public domain / MIT-0; its license statement is at the end of
 third_party/miniaudio/miniaudio.h and needs no separate file.
 

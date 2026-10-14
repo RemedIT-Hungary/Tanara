@@ -6,8 +6,16 @@
 //
 //  - asynchronous (QNetworkAccessManager on the caller's thread, no own event loop): does not block
 //    the GUI thread; several models can download at once (by id);
-//  - QSaveFile: the target file appears only after a successful, size-checked download (on error,
-//    cancel or size mismatch no half-written file stays);
+//  - the target file appears only after a successful, size-checked download (it is written as
+//    <target>.part and renamed; on error, cancel or size mismatch no half-written file stays);
+//  - SHA-256: when the spec pins one, the downloaded file is hashed while it streams. A mismatch is a
+//    WARNING, not a hard error: the file is kept as <target>.mismatch (the registry does not see it),
+//    finished(id, false, ...) comes with Failure::ShaMismatch, and the user may OVERRIDE
+//    (acceptMismatch: "use it anyway"): the file moves to <target> and the actual hash is recorded in
+//    <target>.accepted-sha256. From then on verifyFile() says Unverified (usable, flagged) for that exact
+//    file (whatever its size: a test build of the model may differ in size too); a different file with
+//    another hash is a mismatch again;
+//  - companion files (VoiceModelSpec::companions, e.g. the LICENSE) go into the main file's folder first;
 //  - does NOT overwrite an existing file unless `overwrite` is explicit (CLI: --force);
 //  - without a network (QNetworkInformation: Disconnected) it does not even start: Failure::Offline.
 //
@@ -36,6 +44,7 @@ public:
         Offline,        // no network (before or during the start: the machine cannot reach the server)
         Network,        // other network / HTTP error
         SizeMismatch,   // the downloaded size differs from the expected one; nothing was written
+        ShaMismatch,    // the SHA-256 differs from the pinned one; the file waits as <target>.mismatch
         Write,          // the target file is not writable
         Exists,         // the target file already exists (without overwrite)
         Cancelled,      // cancel()
@@ -43,13 +52,15 @@ public:
     };
     Q_ENUM(Failure)
 
-    // Check of an existing model file (the Settings > Speakers "verifying" state). For now the file size
-    // matching the descriptor's sizeBytes; a hash later.
+    // Check of an existing model file (the Settings > Speakers "verifying" state): the size, then the
+    // pinned SHA-256.
     enum class VerifyResult {
-        Ok,             // the size matches
+        Ok,             // the size and the pinned SHA-256 match (or the size matches and no hash is pinned)
         Missing,        // no such file
         SizeMismatch,   // the size differs (corrupt / interrupted / another file)
-        Unverifiable,   // the descriptor gives no size, nothing to measure against (usable)
+        Unverifiable,   // the descriptor pins neither size nor hash, nothing to measure against (usable)
+        ShaMismatch,    // the hash differs from the pinned one and the user has not accepted this file
+        Unverified,     // the hash differs, but the user accepted exactly this file ("use it anyway")
     };
     Q_ENUM(VerifyResult)
 
@@ -61,6 +72,13 @@ public:
 
     // The download target: <modelsDir>/<fileName> (the first resolution place of VoiceModelRegistry).
     static QString targetPath(const VoiceModelSpec& spec, const QString& modelsDir);
+    // Where a SHA-mismatching download waits for the user's decision: <target>.mismatch.
+    static QString quarantinePath(const VoiceModelSpec& spec, const QString& modelsDir);
+    static bool hasQuarantined(const VoiceModelSpec& spec, const QString& modelsDir);
+    // Whether the user's override record (<target>.accepted-sha256) exists for the model file.
+    static bool hasAcceptedRecord(const VoiceModelSpec& spec, const QString& modelsDir);
+    // Lowercase hex SHA-256 of a file (empty if unreadable).
+    static QString sha256OfFile(const QString& path);
 
     // Starts a download into the `target` file. true: it started (finished comes at the end). false: it
     // did not start (NoUrl / Exists / Write / Offline); then the finished(id, false, ...) signal is emitted
@@ -86,7 +104,9 @@ public:
 
     // ---- verification and deletion ----
     // Synchronous check (CLI, tests). detail: a technical line (English), may be empty.
-    static VerifyResult verifyFile(const VoiceModelSpec& spec, const QString& path, QString* detail = nullptr);
+    // checkSha = false: only the (cheap) size check; the hash of a 70 MB file is for the async verify().
+    static VerifyResult verifyFile(const VoiceModelSpec& spec, const QString& path, QString* detail = nullptr,
+                                   bool checkSha = true);
     // Asynchronous check for the UI: verifyStarted(id) within the call, verified(id, ...) in the next
     // event-loop turn (until then isVerifying(id) is true: the "verifying" state).
     // false: already verifying or currently downloading (no signal).
@@ -97,7 +117,13 @@ public:
     // Deletes the DOWNLOADED model file: only <modelsDir>/<fileName> (targetPath); does not touch the
     // one bundled in the package (<appDir>/models). false (+ *error, English): no downloaded file / not
     // deletable. The caller excludes a running download / verification (isRunning / isVerifying).
+    // Also removes a quarantined file and the recorded override; the companions (LICENSE) go when no other
+    // model file is left in the folder.
     static bool deleteModelFile(const VoiceModelSpec& spec, const QString& modelsDir, QString* error = nullptr);
+    // The override: "use it anyway". Moves a quarantined (SHA-mismatching) file into place and records the
+    // accepted hash of every mismatching file of the model (also one that already sits at the target, e.g.
+    // copied by hand). false (+ *error, English): nothing to accept.
+    static bool acceptMismatch(const VoiceModelSpec& spec, const QString& modelsDir, QString* error = nullptr);
 
 signals:
     void started(const QString& id);
@@ -110,6 +136,7 @@ signals:
 
 private:
     struct Job;
+    bool beginFile(const QString& id);
     void finishJob(const QString& id);
     void fail(const QString& id, Failure why, const QString& error);
     net::HttpClient* http();

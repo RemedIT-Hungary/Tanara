@@ -43,20 +43,48 @@ QString modelsDirOf(const app::SettingsManager& sm)
 
 QString pad(const QString& s, int w) { return s.leftJustified(w, QLatin1Char(' ')); }
 
+using processing::VoiceModelDownloader;
+using processing::VoiceModelKind;
+using processing::VoiceModelRegistry;
+using processing::VoiceModelSpec;
+
+const char* kShaWarning = "The downloaded file does not match the pinned SHA-256.";
+
+// The integrity state of a model, for `voice-models list`.
+QString stateOf(const VoiceModelSpec& s, const QString& modelsDir, const QString& path)
+{
+    if (!QFileInfo::exists(path)) {
+        return VoiceModelDownloader::hasQuarantined(s, modelsDir) ? QStringLiteral("MISMATCH (downloaded, parked: not in use)")
+                                                                  : QStringLiteral("missing");
+    }
+    switch (VoiceModelDownloader::verifyFile(s, path)) {
+    case VoiceModelDownloader::VerifyResult::Ok:           return QStringLiteral("verified");
+    case VoiceModelDownloader::VerifyResult::Unverified:   return QStringLiteral("unverified (SHA-256 override)");
+    case VoiceModelDownloader::VerifyResult::ShaMismatch:  return QStringLiteral("MISMATCH (SHA-256)");
+    case VoiceModelDownloader::VerifyResult::SizeMismatch: return QStringLiteral("SIZE MISMATCH");
+    default:                                               return QStringLiteral("present (not pinned)");
+    }
+}
+
 int listModels(const app::SettingsManager& sm)
 {
     const QString meta = modelsDirOf(sm);
     const QStringList enabled = sm.enabledVoiceModels();
-    const QStringList head{"ID", "NAME", "ENABLED", "FILE", "DIM", "LICENSE", "SOURCE"};
+    const QStringList head{"ID", "NAME", "KIND", "ENABLED", "STATE", "FILE", "DIM", "LICENSE", "SOURCE"};
     QVector<QStringList> rows;
-    for (const processing::VoiceModelSpec& s : processing::VoiceModelRegistry::builtin()) {
-        const QString path = processing::VoiceModelRegistry::resolvePath(s, meta, appDir());
+    QStringList notes;
+    for (const VoiceModelSpec& s : VoiceModelRegistry::catalog()) {
+        const bool embedding = s.kind == VoiceModelKind::SpeakerEmbedding;
+        const QString path = VoiceModelRegistry::resolvePath(s, meta, appDir());
         rows.append({s.id,
-                     s.id == processing::VoiceModelRegistry::recommendedModelId() ? s.displayName + QStringLiteral(" (recommended)")
-                                                                       : s.displayName,
-                     enabled.contains(s.id) ? "yes" : "no",
+                     s.id == VoiceModelRegistry::recommendedModelId() ? s.displayName + QStringLiteral(" (recommended)")
+                                                                      : s.displayName,
+                     embedding ? QStringLiteral("speaker-embedding") : QStringLiteral("segmentation"),
+                     embedding ? (enabled.contains(s.id) ? "yes" : "no") : QStringLiteral("-"),
+                     stateOf(s, meta, path),
                      QFileInfo::exists(path) ? QDir::toNativeSeparators(path) : QStringLiteral("-"),
                      s.dim > 0 ? QString::number(s.dim) : QStringLiteral("?"), s.license, s.sourceUrl});
+        if (!s.note.isEmpty()) notes << QStringLiteral("note: %1: %2").arg(s.id, s.note);
     }
     QVector<int> width(head.size());
     for (int c = 0; c < head.size(); ++c) {
@@ -70,8 +98,9 @@ int listModels(const app::SettingsManager& sm)
     };
     print(head);
     for (const QStringList& r : rows) print(r);
+    for (const QString& n : notes) out() << n << "\n";
     for (const QString& id : enabled)
-        if (!processing::VoiceModelRegistry::spec(id))
+        if (const auto sp = VoiceModelRegistry::spec(id); !sp || sp->kind != VoiceModelKind::SpeakerEmbedding)
             out() << "warning: unknown model id enabled in settings: " << id << "\n";
     out().flush();
     return 0;
@@ -79,8 +108,14 @@ int listModels(const app::SettingsManager& sm)
 
 int setEnabled(app::SettingsManager& sm, const QString& id, bool on)
 {
-    if (!processing::VoiceModelRegistry::spec(id)) {
+    const auto known = processing::VoiceModelRegistry::spec(id);
+    if (!known) {
         err() << "Unknown voice model: " << id << " (see: tanara-cli voice-models)\n";
+        err().flush();
+        return 1;
+    }
+    if (known->kind != VoiceModelKind::SpeakerEmbedding) {
+        err() << id << " is a " << "segmentation model; only speaker-embedding models can be enabled.\n";
         err().flush();
         return 1;
     }
@@ -100,7 +135,7 @@ int setEnabled(app::SettingsManager& sm, const QString& id, bool on)
     return 0;
 }
 
-int fetchModel(const app::SettingsManager& sm, const QString& id, bool force)
+int fetchModel(const app::SettingsManager& sm, const QString& id, bool force, bool acceptMismatch)
 {
     const auto spec = processing::VoiceModelRegistry::spec(id);
     if (!spec) {
@@ -116,6 +151,7 @@ int fetchModel(const app::SettingsManager& sm, const QString& id, bool force)
           << "License:  " << spec->license << "\n"
           << "Source:   " << spec->sourceUrl << "\n"
           << "Download: " << spec->downloadUrl << "\n"
+          << "SHA-256:  " << (spec->sha256.isEmpty() ? QStringLiteral("(not pinned)") : spec->sha256) << "\n"
           << "Target:   " << QDir::toNativeSeparators(target) << "\n";
     out().flush();
 
@@ -141,6 +177,25 @@ int fetchModel(const app::SettingsManager& sm, const QString& id, bool force)
     });
     if (dl.start(*spec, target, force) && !done) loop.exec();
     if (lastPct >= 0) err() << "\n";
+    bool unverified = false;
+    if (!ok && dl.lastFailure(id) == VoiceModelDownloader::Failure::ShaMismatch) {
+        err() << "warning: " << kShaWarning << "\n" << error << "\n";
+        if (!acceptMismatch) {
+            err() << "The file is kept aside and is NOT used. To use it anyway: tanara-cli voice-models fetch "
+                  << id << " --accept-mismatch (or: voice-models accept " << id << ")\n";
+            err().flush();
+            return 1;
+        }
+        QString acceptError;
+        if (!VoiceModelDownloader::acceptMismatch(*spec, modelsDirOf(sm), &acceptError)) {
+            err() << "Cannot accept the file: " << acceptError << "\n";
+            err().flush();
+            return 1;
+        }
+        err() << "Accepted anyway (--accept-mismatch): the model is marked unverified.\n";
+        ok = true;
+        unverified = true;
+    }
     if (!ok) {
         if (dl.lastFailure(id) == processing::VoiceModelDownloader::Failure::Exists)
             err() << "The file already exists; use --force to overwrite it.\n";
@@ -149,39 +204,82 @@ int fetchModel(const app::SettingsManager& sm, const QString& id, bool force)
         err().flush();
         return 1;
     }
-    out() << "Saved " << QFileInfo(target).size() << " bytes to " << QDir::toNativeSeparators(target) << "\n"
-          << "Enable it with: tanara-cli voice-models enable " << id << "\n";
+    out() << "Saved " << QFileInfo(target).size() << " bytes to " << QDir::toNativeSeparators(target)
+          << (unverified ? " (unverified)" : "") << "\n";
+    if (spec->kind == VoiceModelKind::SpeakerEmbedding)
+        out() << "Enable it with: tanara-cli voice-models enable " << id << "\n";
     out().flush();
     return 0;
 }
 
-// voice-models verify <id>: checks the model file (size match). Exit 0: OK (or nothing to
-// compare against), 1: missing / mismatch / unknown id.
-int verifyModel(const app::SettingsManager& sm, const QString& id)
+// voice-models verify [<id>]: checks the model file (size + pinned SHA-256). Without an id every
+// model that has a file is checked. Exit 0: OK / unverified-by-choice / nothing to compare against,
+// 1: missing / mismatch / unknown id.
+int verifyOne(const app::SettingsManager& sm, const VoiceModelSpec& spec, bool quietMissing)
 {
-    const auto spec = processing::VoiceModelRegistry::spec(id);
-    if (!spec) { err() << "Unknown voice model: " << id << "\n"; return 1; }
-    const QString path = processing::VoiceModelRegistry::resolvePath(*spec, modelsDirOf(sm), appDir());
+    const QString path = VoiceModelRegistry::resolvePath(spec, modelsDirOf(sm), appDir());
     QString detail;
-    const processing::VoiceModelDownloader::VerifyResult r = processing::VoiceModelDownloader::verifyFile(*spec, path, &detail);
-    out() << "File:   " << QDir::toNativeSeparators(path) << "\n";
+    const VoiceModelDownloader::VerifyResult r = VoiceModelDownloader::verifyFile(spec, path, &detail);
+    if (r == VoiceModelDownloader::VerifyResult::Missing && quietMissing) {
+        if (VoiceModelDownloader::hasQuarantined(spec, modelsDirOf(sm)))
+            out() << spec.id << ": MISMATCH - a downloaded file is parked and not in use (" << kShaWarning << ")\n";
+        return 0;
+    }
+    out() << "Model:  " << spec.id << "\nFile:   " << QDir::toNativeSeparators(path) << "\n";
     switch (r) {
-    case processing::VoiceModelDownloader::VerifyResult::Ok:
-        out() << "Result: OK (" << spec->sizeBytes << " bytes)\n";
+    case VoiceModelDownloader::VerifyResult::Ok:
+        out() << "Result: OK (" << spec.sizeBytes << " bytes" << (spec.sha256.isEmpty() ? "" : ", SHA-256 matches") << ")\n";
         break;
-    case processing::VoiceModelDownloader::VerifyResult::Unverifiable:
+    case VoiceModelDownloader::VerifyResult::Unverifiable:
         out() << "Result: present, not verifiable (" << detail << ")\n";
         break;
-    case processing::VoiceModelDownloader::VerifyResult::Missing:
+    case VoiceModelDownloader::VerifyResult::Unverified:
+        out() << "Result: UNVERIFIED - " << kShaWarning << " You accepted this file.\n" << detail << "\n";
+        break;
+    case VoiceModelDownloader::VerifyResult::ShaMismatch:
+        out() << "Result: SHA-256 MISMATCH - " << kShaWarning << "\n" << detail << "\n"
+              << "Use it anyway with: tanara-cli voice-models accept " << spec.id
+              << " (or fetch it again with: tanara-cli voice-models fetch " << spec.id << " --force)\n";
+        break;
+    case VoiceModelDownloader::VerifyResult::Missing:
         out() << "Result: MISSING\n";
         break;
-    case processing::VoiceModelDownloader::VerifyResult::SizeMismatch:
+    case VoiceModelDownloader::VerifyResult::SizeMismatch:
         out() << "Result: SIZE MISMATCH (" << detail << ")\n"
-              << "Fetch it again with: tanara-cli voice-models fetch " << id << " --force\n";
+              << "Fetch it again with: tanara-cli voice-models fetch " << spec.id << " --force\n";
         break;
     }
     out().flush();
-    return (r == processing::VoiceModelDownloader::VerifyResult::Ok || r == processing::VoiceModelDownloader::VerifyResult::Unverifiable) ? 0 : 1;
+    return (r == VoiceModelDownloader::VerifyResult::Ok || r == VoiceModelDownloader::VerifyResult::Unverifiable
+            || r == VoiceModelDownloader::VerifyResult::Unverified) ? 0 : 1;
+}
+
+int verifyModel(const app::SettingsManager& sm, const QString& id)
+{
+    if (id.isEmpty()) {
+        int code = 0;
+        for (const VoiceModelSpec& s : VoiceModelRegistry::catalog()) code = std::max(code, verifyOne(sm, s, true));
+        return code;
+    }
+    const auto spec = VoiceModelRegistry::spec(id);
+    if (!spec) { err() << "Unknown voice model: " << id << "\n"; return 1; }
+    return verifyOne(sm, *spec, false);
+}
+
+// voice-models accept <id>: "use it anyway" for a SHA-mismatching file (parked or in place).
+int acceptModel(const app::SettingsManager& sm, const QString& id)
+{
+    const auto spec = VoiceModelRegistry::spec(id);
+    if (!spec) { err() << "Unknown voice model: " << id << "\n"; return 1; }
+    QString error;
+    if (!VoiceModelDownloader::acceptMismatch(*spec, modelsDirOf(sm), &error)) {
+        err() << error << "\n";
+        err().flush();
+        return 1;
+    }
+    out() << "Accepted " << id << ": it is used, marked unverified.\n";
+    out().flush();
+    return 0;
 }
 
 // voice-models delete <id>: deletes the DOWNLOADED file (<metaDir>/models), not a bundled one.
@@ -253,15 +351,16 @@ int runVoiceModelsCommand(const QStringList& args)
     }
     if (sub == "fetch") {
         const QString id = args.value(3);
-        if (id.isEmpty()) { err() << "Usage: voice-models fetch <id> [--force]\n"; return 2; }
-        return fetchModel(sm, id, args.contains(QStringLiteral("--force")));
+        if (id.isEmpty()) { err() << "Usage: voice-models fetch <id> [--force] [--accept-mismatch]\n"; return 2; }
+        return fetchModel(sm, id, args.contains(QStringLiteral("--force")), args.contains(QStringLiteral("--accept-mismatch")));
     }
-    if (sub == "verify" || sub == "delete") {
+    if (sub == "verify") return verifyModel(sm, args.value(3));
+    if (sub == "delete" || sub == "accept") {
         const QString id = args.value(3);
         if (id.isEmpty()) { err() << "Usage: voice-models " << sub << " <id>\n"; return 2; }
-        return sub == "verify" ? verifyModel(sm, id) : deleteModel(sm, id);
+        return sub == "accept" ? acceptModel(sm, id) : deleteModel(sm, id);
     }
-    err() << "Usage: voice-models [list | enable <id> | disable <id> | fetch <id> [--force] | verify <id> | delete <id>]\n";
+    err() << "Usage: voice-models [list | enable <id> | disable <id> | fetch <id> [--force] [--accept-mismatch] | verify [<id>] | accept <id> | delete <id>]\n";
     return 2;
 }
 

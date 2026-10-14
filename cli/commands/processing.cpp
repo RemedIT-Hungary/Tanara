@@ -249,8 +249,8 @@ void registerProcessingCommands(CommandRegistry& r)
            "summarize <meetingId> [--yes] [--complex]", true, cmd_transcribe});
     // TODO(P12d): identify runs on the voice-analysis service.
     r.add({"identify", m, "Identify the speakers of a meeting from the voiceprints", "identify <meetingId>", true, cmd_identify});
-    r.add({"voice-models", m, "List / enable / disable / fetch / verify / delete the speaker models",
-           "voice-models [enable|disable|fetch <id> [--force]|verify <id>|delete <id>]", false,
+    r.add({"voice-models", m, "List / enable / disable / fetch / verify / accept / delete the voice models (speaker + segmentation)",
+           "voice-models [enable|disable|fetch <id> [--force] [--accept-mismatch]|verify [<id>]|accept <id>|delete <id>]", false,
            [](CliContext&, const QStringList& a) { return runVoiceModelsCommand(a); }});
     r.add({"voice-eval", m, "Compare the speaker models on a meeting folder (read-only)",
            "voice-eval <meeting-folder> [--models a,b] [--min-ms N] [--json]", false,

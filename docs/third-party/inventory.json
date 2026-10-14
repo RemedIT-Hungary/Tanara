@@ -488,6 +488,37 @@
     "delivery": "downloaded by the user (tanara-cli voice-models fetch); NOT bundled"
   },
   {
+    "version": "pyannote/segmentation-3.0 ONNX export by sherpa-onnx: model.onnx (5,992,913 B, SHA256 220ad67c...e1079) and model.int8.onnx (1,540,506 B, SHA256 d582f4b4...b5d); archive sherpa-onnx-pyannote-segmentation-3-0.tar.bz2 (6,958,444 B, SHA256 24615ee8...6488), release speaker-segmentation-models",
+    "licenseVerifiedFrom": "LICENSE inside the sherpa-onnx archive: 'MIT License, Copyright (c) 2022 CNRS' (SHA256 14d7016a...b8ba); HF model card https://huggingface.co/pyannote/segmentation-3.0 (License: MIT)",
+    "licenseTextInRepo": "packaging/licenses/MIT-pyannote-segmentation.txt",
+    "sourceUrl": "https://huggingface.co/pyannote/segmentation-3.0 ; ONNX export https://github.com/k2-fsa/sherpa-onnx/releases/tag/speaker-segmentation-models ; files downloaded one by one from https://huggingface.co/csukuangfj/sherpa-onnx-pyannote-segmentation-3-0",
+    "shippedIn": [
+      "none"
+    ],
+    "notes": "Added by slice D2 (not used for inference yet). Downloaded by the user, SHA-256 pinned in VoiceModelRegistry; a mismatch warns and can be overridden. HF 'gating' on the original repo is access control, not a licence condition; the files are fetched from the public sherpa-onnx export. Training data (AISHELL, AliMeeting, AMI, AVA-AVD, DIHARD, Ego4D, MSDWild, REPERE, VoxConverse) carries no stated limit on the weights. The Reverb diarization models (sherpa-onnx-reverb-diarization-v1/v2) are NON-COMMERCIAL and must never be listed or bundled.",
+    "id": "model-pyannote-segmentation",
+    "name": "pyannote segmentation-3.0 (speaker segmentation / overlapped-speech detection), ONNX export via sherpa-onnx",
+    "category": "model",
+    "license": "MIT",
+    "homepage": "https://huggingface.co/pyannote/segmentation-3.0",
+    "usedFor": {
+      "hu": "Beszélő-szegmentálás (ki mikor beszél, átfedő beszéddel) a helyi beszélő-elkülönítéshez; a felhasználó tölti le, nem része a csomagnak.",
+      "en": "Speaker segmentation (who speaks when, including overlapped speech) for local diarization; downloaded by the user, not part of any package."
+    },
+    "whereInCode": [
+      "core/src/processing/voiceid/VoiceModelRegistry.cpp",
+      "core/include/tanara/providers/voice/IDiarizer.h",
+      "cli/commands/VoiceCommands.cpp"
+    ],
+    "attribution": {
+      "required": true,
+      "requirements": "MIT: keep the copyright line 'Copyright (c) 2022 CNRS' and the licence text with any redistributed copy (the downloader fetches the LICENSE file next to the model). Credit: pyannote.audio authors (Herve Bredin, Alexis Plaquet; model by Severin Baroudi), ONNX export by k2-fsa/sherpa-onnx (Apache-2.0).",
+      "currentlyMet": true,
+      "gap": ""
+    },
+    "delivery": "downloaded by the user (tanara-cli voice-models fetch pyannote-segmentation-3.0); NOT bundled (decision 2026-10-14)"
+  },
+  {
     "version": "default model id 'google/gemma-4-12b' (core/src/provider/BuiltinProviders.cpp:78); GGUF/quant chosen by user in LM Studio",
     "licenseVerifiedFrom": "https://ai.google.dev/gemma/terms (Gemma Terms of Use; custom license, not an SPDX OSS license); Prohibited Use Policy https://ai.google.dev/gemma/prohibited_use_policy",
     "licenseTextInRepo": "MISSING",

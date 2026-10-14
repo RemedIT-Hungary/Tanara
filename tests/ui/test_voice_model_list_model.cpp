@@ -22,6 +22,7 @@
 #include <QQmlEngine>
 #include <QQuickItem>
 #include <QQuickWindow>
+#include <QCryptographicHash>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QUrl>
@@ -114,10 +115,12 @@ class TestVoiceModelListModel : public QObject {
         for (VoiceModelSpec s : VoiceModelRegistry::builtin()) {
             const QString src = m_src->filePath(s.fileName);
             QFile f(src);
-            if (f.open(QIODevice::WriteOnly)) f.write(QByteArray(64 * 1024 + s.id.size(), 'x'));
+            const QByteArray data(64 * 1024 + s.id.size(), 'x');
+            if (f.open(QIODevice::WriteOnly)) f.write(data);
             f.close();
             s.downloadUrl = QUrl::fromLocalFile(src).toString();
             s.sizeBytes = QFileInfo(src).size();
+            s.sha256 = QString::fromLatin1(QCryptographicHash::hash(data, QCryptographicHash::Sha256).toHex());
             out << s;
         }
         return out;
@@ -313,6 +316,59 @@ private slots:
         vm.discard();
         QVERIFY(role(*m, rowOf(*m, kCamp), "enabled").toBool());
         QCOMPARE(m_app->settings()->enabledVoiceModels(), QStringList({kCamp, kWe}));
+    }
+
+    // A download whose SHA-256 differs from the pinned one is parked: warning state "mismatch", not usable,
+    // "Mégis használom" (acceptMismatch) moves it in, enables it and marks it "unverified" (usable).
+    void shaMismatchWarnsAndTheOverrideMarksItUnverified()
+    {
+        startApp();
+        VoiceModelListModel m;
+        QVector<VoiceModelSpec> specs = localSpecs();
+        for (VoiceModelSpec& s : specs)
+            if (s.id == kEres) s.sha256 = QString(64, QLatin1Char('0'));
+        m.setSpecsForTest(specs);
+        m.setFacade(services().voiceModels(QString(), nullptr));
+        m.downloader()->setReachableOverride(true);
+        m.refresh();
+
+        QSignalSpy done(&m, &VoiceModelListModel::downloadFinished);
+        m.download(kEres);
+        QVERIFY(done.wait(5000));
+        QVERIFY(!done.first().at(1).toBool());
+        QCOMPARE(stateOf(m, kEres), QStringLiteral("mismatch"));
+        const int row = rowOf(m, kEres);
+        QVERIFY(role(m, row, "errorText").toString().contains(QStringLiteral("rögzített SHA-val")));
+        QVERIFY(!role(m, row, "canEnable").toBool());                 // parked: not in use
+        QVERIFY(role(m, row, "hasFile").toBool());                    // but it can be deleted
+        QVERIFY(!QFileInfo::exists(modelPath(kEres)));
+        m.setEnabled(kEres, true);
+        QVERIFY(!m.facade()->enabledModels().contains(kEres));
+
+        QCOMPARE(m.acceptMismatch(kEres), QString());
+        QVERIFY(QTest::qWaitFor([&] { return stateOf(m, kEres) == QLatin1String("unverified"); }, 3000));
+        QVERIFY(QFileInfo::exists(modelPath(kEres)));
+        QVERIFY(role(m, row, "canEnable").toBool());
+        QVERIFY(role(m, row, "enabled").toBool());                    // enabled in the draft like after a download
+        QVERIFY(role(m, row, "errorText").toString().contains(QStringLiteral("Ellenőrizetlen")));
+
+        // The record survives a re-verification (the page opening again).
+        m.refresh();
+        QVERIFY(QTest::qWaitFor([&] { return stateOf(m, kEres) == QLatin1String("unverified"); }, 3000));
+
+        // Delete removes the file and the override.
+        QCOMPARE(m.deleteModel(kEres), QString());
+        QCOMPARE(stateOf(m, kEres), QStringLiteral("missing"));
+        QVERIFY(!QFileInfo::exists(modelPath(kEres) + QStringLiteral(".accepted-sha256")));
+
+        // The design states.
+        VoiceModelListModel d;
+        d.setDemoState(QStringLiteral("B08mismatch"));
+        QCOMPARE(stateOf(d, kEres), QStringLiteral("mismatch"));
+        QCOMPARE(d.acceptMismatch(kEres), QString());
+        QCOMPARE(stateOf(d, kEres), QStringLiteral("unverified"));
+        d.setDemoState(QStringLiteral("B08unverified"));
+        QCOMPARE(stateOf(d, kEres), QStringLiteral("unverified"));
     }
 
     void cancelOfflineAndBundled()
