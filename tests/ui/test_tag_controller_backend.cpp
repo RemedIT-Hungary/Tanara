@@ -1,9 +1,9 @@
-// TagControllerBackend: the TagBackend seam over a real AppController + TagService.
+// TagControllerBackend: the TagBackend facade over the real services (TagService + TagSuggestionService).
 //  - set, recents, apply / remove, forwarding core's signals;
 //  - suggestions: Computing to Ready (computing flag), items from pendingTagSuggestions
 //    (reason, similar meeting), co-occurring (baseTagId), rejection;
 //  - profile (meetings with their length), rename / merge / delete, undo group;
-//  - MeetingTagsModel with the controller (the factory returns this backend);
+//  - MeetingTagsModel on the controller's services (UiServices::tagBackend returns this backend);
 //  - draft suggestion by title.
 // Isolated TANARA_HOME (QTemporaryDir), made-up test library; no network / LM Studio.
 #include "AppContext.h"
@@ -42,7 +42,7 @@ private slots:
         m_app = std::make_unique<tanara::app::AppController>();
         QVERIFY(m_app->settings()->paths().primaryRecordingRoot().startsWith(m_home->path()));
         m_lib = tagsfixture::buildLibrary(*m_app->store(), m_app->people());
-        m_backend.reset(createTagBackend(m_app.get(), nullptr));
+        m_backend.reset(services().tagBackend(nullptr));
         QVERIFY(dynamic_cast<TagControllerBackend*>(m_backend.get()));
     }
     void cleanup()
@@ -180,8 +180,7 @@ private slots:
         QVERIFY(!p.participants.isEmpty());
 
         // The manager view model sees it the same way (the length as text).
-        TagsViewModel vm;
-        vm.setController(m_app.get());
+        TagsViewModel vm(services());
         vm.setSelectedId(a);
         const QVariantList meetings = vm.detail().value("meetings").toList();
         QCOMPARE(meetings.size(), 2);
@@ -201,8 +200,7 @@ private slots:
 
     void meetingTagsModelWithController()
     {
-        MeetingTagsModel m;
-        m.setController(m_app.get());
+        MeetingTagsModel m(services());
         QVERIFY(dynamic_cast<TagControllerBackend*>(m.backend()));
         // With a controller there is no demo meeting: without a meetingId it is empty.
         QVERIFY(m.tags().isEmpty());
@@ -249,8 +247,7 @@ private slots:
         m_app->addParticipant(mid, m_app->people()->choiceFor(QStringLiteral("Fehér Gábor")));
         m_app->addParticipant(mid, m_app->people()->choiceFor(QStringLiteral("Varga Árpád")));
 
-        MeetingTagsModel m;
-        m.setController(m_app.get());
+        MeetingTagsModel m(services());
         m.setMeetingId(mid);
         m.requestSuggestions();
         QTRY_VERIFY_WITH_TIMEOUT(!m.suggestions().isEmpty() && !m.computing(), 10000);
@@ -282,11 +279,14 @@ private slots:
         QVERIFY(!draft.isEmpty());
         QCOMPARE(draft.first().tagId, nordvik);
         // The demo backend returns the made-up suggestion.
-        std::unique_ptr<TagBackend> demo(createTagBackend(nullptr, nullptr));
+        std::unique_ptr<TagBackend> demo(AppContext::instance()->demoServices().tagBackend(nullptr));
         QCOMPARE(demo->draftSuggestions(QStringLiteral("Nordvik")).value(0).name, QStringLiteral("Ügyféltámogatás"));
     }
 
 private:
+    // The facades of the test controller (the view models are built on them).
+    const UiServices& services() { return AppContext::instance()->servicesFor(m_app.get()); }
+
     std::unique_ptr<QTemporaryDir> m_home;
     std::unique_ptr<tanara::app::AppController> m_app;
     std::unique_ptr<TagBackend> m_backend;

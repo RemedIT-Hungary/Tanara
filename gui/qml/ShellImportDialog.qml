@@ -335,7 +335,6 @@ TDialog {
 
         TagInputModel {
             id: importTagInput
-            controller: App.controller
             excludeIds: root.model ? root.model.tagIds : []
         }
         TLabel { text: qsTr("Címkék"); font.pixelSize: Theme.fontSmall; font.weight: Theme.weightMedium }

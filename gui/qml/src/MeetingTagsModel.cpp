@@ -2,7 +2,7 @@
 
 #include "AppContext.h"
 #include "ShellFormat.h"
-#include "TagDemoBackend.h"
+#include "demo/TagDemoBackend.h"
 #include "TagMatching.h"
 
 #include <QVariantMap>
@@ -11,20 +11,39 @@ namespace tanara_qml {
 
 MeetingTagsModel::MeetingTagsModel(QObject* parent) : QObject(parent)
 {
-    m_controller = AppContext::instance()->controllerObject();
-    m_ownBackend = createTagBackend(m_controller, this);
+    AppContext* ctx = AppContext::instance();
+    connect(ctx, &AppContext::controllerChanged, this, &MeetingTagsModel::resolveBackend);
+    connect(ctx, &AppContext::demoChanged, this, &MeetingTagsModel::resolveBackend);
+    m_ownBackend = ctx->services().tagBackend(this);
     attach(m_ownBackend);
+}
+
+MeetingTagsModel::MeetingTagsModel(const UiServices& services, QObject* parent) : QObject(parent), m_explicitServices(true)
+{
+    m_ownBackend = services.tagBackend(this);
+    attach(m_ownBackend);
+}
+
+// The process's services changed (a controller arrived, App.demo flipped): the own backend follows,
+// unless a host-given one is in use.
+void MeetingTagsModel::resolveBackend()
+{
+    if (m_explicitServices || m_backend != m_ownBackend) return;
+    TagBackend* old = m_ownBackend;
+    m_ownBackend = AppContext::instance()->services().tagBackend(this);
+    attach(m_ownBackend);
+    if (old) old->deleteLater();
 }
 
 void MeetingTagsModel::setController(QObject* controller)
 {
-    if (m_controller == controller && m_backend == m_ownBackend) return;
-    m_controller = controller;
+    if (m_explicitServices && m_handedController == controller && m_backend == m_ownBackend) return;
+    m_explicitServices = true;
+    m_handedController = controller;
     TagBackend* old = m_ownBackend;
-    m_ownBackend = createTagBackend(controller, this);
+    m_ownBackend = AppContext::instance()->servicesForObject(controller).tagBackend(this);
     attach(m_ownBackend);
     if (old) old->deleteLater();
-    emit controllerChanged();
 }
 
 void MeetingTagsModel::setBackend(TagBackend* backend)
@@ -57,7 +76,7 @@ void MeetingTagsModel::attach(TagBackend* backend)
 
 QString MeetingTagsModel::effectiveMeetingId() const
 {
-    if (m_meetingId.isEmpty() && qobject_cast<TagDemoBackend*>(m_backend)) return TagDemoBackend::demoMeetingId();
+    if (m_meetingId.isEmpty() && qobject_cast<tanara_demo::TagDemoBackend*>(m_backend)) return tanara_demo::TagDemoBackend::demoMeetingId();
     return m_meetingId;
 }
 
@@ -91,7 +110,7 @@ void MeetingTagsModel::setDraftTitle(const QString& title)
 void MeetingTagsModel::applyDemoState()
 {
     // Only on the own (fictional) backend: the demo state must not overwrite real data.
-    auto* demo = qobject_cast<TagDemoBackend*>(m_backend);
+    auto* demo = qobject_cast<tanara_demo::TagDemoBackend*>(m_backend);
     if (!demo || m_demoState.isEmpty() || m_backend != m_ownBackend) return;
     demo->loadMeetingDemo(effectiveMeetingId(), m_demoState);
 }

@@ -17,8 +17,6 @@ import QtQuick.Layouts
 ApplicationWindow {
     id: window
 
-    // The host passes it in (as an initial property); without it App.controller / the demo applies.
-    property QtObject hostController: null
     property string demoState: ""
     property alias vm: model
     property alias listPane: listPane
@@ -51,8 +49,7 @@ ApplicationWindow {
     }
 
     Component.onCompleted: {
-        if (hostController) model.controller = hostController
-        else if (demoState !== "") {
+        if (demoState !== "") {
             model.demoState = demoState
             Qt.callLater(window.applyDemoOverlay)
         }

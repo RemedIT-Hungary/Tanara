@@ -107,7 +107,8 @@ RecorderViewModel::~RecorderViewModel()
         m_facade->stopLevelMonitoring();
 }
 
-QObject* RecorderViewModel::controllerObject() const { return m_facade ? m_facade->tagController() : nullptr; }
+
+QObject* RecorderViewModel::tagBackendObject() const { return m_facade ? m_facade->tagBackend() : nullptr; }
 
 void RecorderViewModel::attachTags()
 {

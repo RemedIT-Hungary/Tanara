@@ -18,8 +18,6 @@ import QtQuick.Layouts
 ApplicationWindow {
     id: window
 
-    // Passed by the host (as initial properties); without it App.controller / demo applies.
-    property QtObject hostController: null
     property string demoState: ""
     property alias vm: model
     property alias detailPane: detail
@@ -48,8 +46,7 @@ ApplicationWindow {
     }
 
     Component.onCompleted: {
-        if (hostController) model.controller = hostController
-        else if (demoState !== "") {
+        if (demoState !== "") {
             model.demoState = ["P01", "P02", "P03", "P04", "P05", "P06", "noResult", "creating",
                                          "tagsSection", "tagsSuggested", "tagsSelf", "samplesModels", "backfill",
                                          "tagsFocus"].indexOf(demoState) >= 0

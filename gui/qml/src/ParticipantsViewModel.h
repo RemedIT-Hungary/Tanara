@@ -1,10 +1,10 @@
 #pragma once
 //
 // ParticipantsViewModel: view model of the "Who was there?" dialog (ParticipantsDialog.qml).
-// It splits the meeting's participant candidates (AppController::participants) into groups
+// It splits the meeting's participant candidates (IParticipantsFacade::state) into groups
 // (Sure / Doubtful / Invited but not heard + the manually added, not yet heard), and keeps
 // the checkmarks on a WORKING COPY: checking, adding and naming reach the meeting only on
-// "Continue" (approve -> AppController::approveParticipants); "Skip" (skip -> skipApproval)
+// "Continue" (approve -> IParticipantsFacade::approve); "Skip" (skip -> skip)
 // decides without binding.
 //
 // Default checks: if there was an approval before (not a skip), that decision; otherwise
@@ -19,10 +19,12 @@
 // in the "One by one..." list). Asks only once (TagService::markLearningAsked). "Yes" / "No"
 // are one undo step each on the tag stack.
 //
-// Without a controller or with App.demo, FICTIONAL sample data; demoState chooses: allSure |
+// On the fictional facade (demo, screenshot: tanara_demo), FICTIONAL sample data; demoState chooses: allSure |
 // doubts | invitedNotHeard | addPerson | running | noTranscriptYet | learnQuestion (question
 // after approval, several pairs) | learnNewPerson (new person).
 //
+#include "UiServices.h"
+
 #include "tanara/domain/Types.h"
 #include "tanara/domain/Person.h"
 #include "tanara/editing/session/SpeakerEditTypes.h"
@@ -37,9 +39,7 @@
 #include <QVector>
 #include <QtQml/qqmlregistration.h>
 
-namespace tanara {
-namespace app { class AppController; }
-}
+namespace tanara::editing { class IParticipantsFacade; }
 
 namespace tanara_qml {
 
@@ -47,8 +47,6 @@ class ParticipantsViewModel : public QObject {
     Q_OBJECT
     QML_ELEMENT
 
-    // Defaults to the App singleton's controller; injectable in tests.
-    Q_PROPERTY(QObject* controller READ controllerObject WRITE setController NOTIFY controllerChanged)
     Q_PROPERTY(QString meetingId READ meetingId WRITE setMeetingId NOTIFY meetingIdChanged)
     Q_PROPERTY(QString demoState READ demoState WRITE setDemoState NOTIFY demoStateChanged)
 
@@ -78,10 +76,11 @@ class ParticipantsViewModel : public QObject {
     Q_PROPERTY(QVariantMap learnQuestion READ learnQuestion NOTIFY learnChanged)
 
 public:
+    // QML: the services of the moment (follows App.controller / App.demo).
     explicit ParticipantsViewModel(QObject* parent = nullptr);
+    // The participants facade of the given services.
+    explicit ParticipantsViewModel(const UiServices& services, QObject* parent = nullptr);
 
-    QObject* controllerObject() const;
-    void setController(QObject* controller);
     QString meetingId() const { return m_meetingId; }
     void setMeetingId(const QString& id);
     QString demoState() const { return m_demoState; }
@@ -105,7 +104,7 @@ public:
     QVector<tanara::editing::PersonInfo> people() const;
     bool isMeetingPerson(const QString& name) const;
 
-    // Re-read from the controller; the working copy (checks, additions, names) is discarded.
+    // Re-read from the facade; the working copy (checks, additions, names) is discarded.
     // Called when the dialog opens.
     Q_INVOKABLE void reload();
     Q_INVOKABLE void setChecked(const QString& id, bool checked);
@@ -118,7 +117,7 @@ public:
     Q_INVOKABLE void nameRow(const QString& id, const QString& name);
     // Discards a row added in the dialog.
     Q_INVOKABLE void removeAdded(const QString& id);
-    // "Continue": approves the checked ones. False: no meeting / the controller rejected it.
+    // "Continue": approves the checked ones. False: no meeting / the core rejected it.
     Q_INVOKABLE bool approve();
     QVariantMap learnQuestion() const;
     // Answers the question (Yes: the tag onto the people; No: lasting rejection). Returns the
@@ -134,7 +133,6 @@ public:
     Q_INVOKABLE bool unbind(const QString& participantId);
 
 signals:
-    void controllerChanged();
     void meetingIdChanged();
     void demoStateChanged();
     void changed();
@@ -156,11 +154,9 @@ private:
         int colorIndex = 0;
     };
 
-    tanara::app::AppController* app() const;
-    void connectController();
+    void resolveServices();
+    void useServices(const UiServices& services);
     void load();
-    void loadDemo();
-    void loadDemoLearn();
     void reloadTagSuggestions();
     QVariantMap rowMap(const Row& r) const;
     bool rawBoundToChecked(const QString& rawLabel, const QString& exceptId) const;
@@ -168,8 +164,8 @@ private:
     int indexOfName(const QString& name) const;
     QString nextAddedId();
 
-    QPointer<QObject> m_injected;
-    QPointer<tanara::app::AppController> m_connected;
+    bool m_explicitServices = false;
+    tanara::editing::IParticipantsFacade* m_facade = nullptr;   // shared (real) or ours (fictional)
     QList<QMetaObject::Connection> m_connections;
 
     QString m_meetingId;
@@ -187,12 +183,10 @@ private:
     struct TagSuggestion { QString name; QString tagName; int shared = 0; int total = 0; tanara::PersonId personId; };
     QString m_tagLabel;
     QVector<TagSuggestion> m_tagSuggestions;
-    QString m_demoInfo;                 // the demo footer line (if not computable)
     void setLearn(const QVector<tanara::library::PersonTagQuestion>& questions);
     QString answer(const tanara::library::PersonTagQuestion& q, bool yes);
     QVector<tanara::library::PersonTagQuestion> m_learn;   // the question: the first; the others in "One by one..."
     QVector<tanara::library::PersonTagQuestion> m_learnPairs;
-    QVector<tanara::editing::PersonInfo> m_demoPeople;
 };
 
 } // namespace tanara_qml

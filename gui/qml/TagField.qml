@@ -38,7 +38,6 @@ Rectangle {
     // (recent, matches), without it the demo set - so autocomplete is the same everywhere.
     TagInputModel {
         id: ownInputModel
-        controller: App.controller
         excludeIds: root.tags.map(t => t.id)
     }
 

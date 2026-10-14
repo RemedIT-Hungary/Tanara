@@ -124,6 +124,9 @@ class TestParticipantsDialog : public QObject {
     std::unique_ptr<app::AppController> m_app;
     QString m_meetingId;
 
+    // The facades of the test controller (the view model is built on them).
+    const UiServices& services() { return AppContext::instance()->servicesFor(m_app.get()); }
+
     PersonId pid(const QString& name) { return name.isEmpty() ? PersonId() : m_app->people()->ensure(name); }
     QString nameOf(const PersonId& id) const { return m_app->people()->displayName(id); }
 
@@ -208,8 +211,7 @@ private slots:
     void groupsAndDefaults()
     {
         seedMeeting(true);
-        ParticipantsViewModel vm;
-        vm.setController(m_app.get());
+        ParticipantsViewModel vm(services());
         vm.setMeetingId(m_meetingId);
         QVERIFY(!vm.demo());
         QVERIFY(vm.approvalPending());
@@ -239,8 +241,7 @@ private slots:
     void noTranscriptMapping()
     {
         seedMeeting(false);
-        ParticipantsViewModel vm;
-        vm.setController(m_app.get());
+        ParticipantsViewModel vm(services());
         vm.setMeetingId(m_meetingId);
         QCOMPARE(rowOf(vm, "v1").value("mapping").toString(), QStringLiteral("átirat után"));
         QVERIFY(rowOf(vm, "v1").value("mappingPending").toBool());
@@ -251,8 +252,7 @@ private slots:
     void workingCopyThenApprove()
     {
         seedMeeting(false);
-        ParticipantsViewModel vm;
-        vm.setController(m_app.get());
+        ParticipantsViewModel vm(services());
         vm.setMeetingId(m_meetingId);
 
         vm.setChecked("v2", false);
@@ -298,8 +298,7 @@ private slots:
     void skipAndUnbind()
     {
         seedMeeting(false);
-        ParticipantsViewModel vm;
-        vm.setController(m_app.get());
+        ParticipantsViewModel vm(services());
         vm.setMeetingId(m_meetingId);
         QVERIFY(vm.skip());
         Meeting m = m_app->store()->load(m_meetingId);
@@ -320,8 +319,7 @@ private slots:
     void tagSuggestionExcludesPresent()
     {
         seedMeeting(false);
-        ParticipantsViewModel vm;
-        vm.setController(m_app.get());
+        ParticipantsViewModel vm(services());
         vm.setMeetingId(m_meetingId);
         // Without a tag there is no suggestion (the TagService computation is covered by core's tests).
         QVERIFY(vm.tagSuggestions().isEmpty());
@@ -362,8 +360,7 @@ private slots:
         tags->addTag(m_meetingId, nord);
         tags->refreshPersonStatsNow();   // computed on a background thread in the app; here, right now
 
-        ParticipantsViewModel vm;
-        vm.setController(m_app.get());
+        ParticipantsViewModel vm(services());
         vm.setMeetingId(m_meetingId);
         QVERIFY(vm.learnQuestion().isEmpty());
         vm.addPerson(QStringLiteral("Szabó Bence"));

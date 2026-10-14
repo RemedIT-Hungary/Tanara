@@ -9,25 +9,35 @@ namespace tanara_qml {
 
 TagInputModel::TagInputModel(QObject* parent) : QObject(parent)
 {
-    m_controller = AppContext::instance()->controllerObject();
-    m_ownBackend = createTagBackend(m_controller, this);
+    AppContext* ctx = AppContext::instance();
+    connect(ctx, &AppContext::controllerChanged, this, &TagInputModel::resolveBackend);
+    connect(ctx, &AppContext::demoChanged, this, &TagInputModel::resolveBackend);
+    m_ownBackend = ctx->services().tagBackend(this);
     attach(m_ownBackend);
 }
 
-void TagInputModel::setController(QObject* controller)
+TagInputModel::TagInputModel(const UiServices& services, QObject* parent) : QObject(parent), m_explicitServices(true)
 {
-    if (m_controller == controller && m_backend == m_ownBackend) return;
-    m_controller = controller;
+    m_ownBackend = services.tagBackend(this);
+    attach(m_ownBackend);
+}
+
+// The process's services changed (a controller arrived, App.demo flipped): the own backend follows,
+// unless a host-given one is in use.
+void TagInputModel::resolveBackend()
+{
+    if (m_explicitServices || m_backend != m_ownBackend) return;
     TagBackend* old = m_ownBackend;
-    m_ownBackend = createTagBackend(controller, this);
+    m_ownBackend = AppContext::instance()->services().tagBackend(this);
     attach(m_ownBackend);
     if (old) old->deleteLater();
-    emit controllerChanged();
 }
 
 void TagInputModel::setBackend(TagBackend* backend)
 {
+    if (backend == m_backend || (!backend && m_backend == m_ownBackend)) return;
     attach(backend ? backend : m_ownBackend);
+    emit backendChanged();
 }
 
 void TagInputModel::attach(TagBackend* backend)

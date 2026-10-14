@@ -3,7 +3,7 @@
 // PersonListModel: the known people for the picker panels (the "+" column's person picker
 // and the full-speaker popover's "Another person" list). Filters on typing (accent- and
 // case-insensitive, name fragments too); with an empty search the frequent ones come first.
-// The list comes from TranscriptEditorViewModel (live: AppController::peopleDirectory,
+// The list comes from TranscriptEditorViewModel (live: the people directory,
 // demo: fictional names).
 //
 // Tag ranking (UX plan, "Person picker"): already a participant -> shared tag (the person
@@ -13,11 +13,12 @@
 // #Nordvik"), the rows' `group` role: "meeting" | "tag" | "other".
 // `tagId` mode (Tags window "+ Person"): the tag is the reference, those who have it manually
 // are left out; then without editor / participants the full name list
-// (AppController::peopleDirectory, in the demo fictional names) is the source.
+// (IParticipantsFacade::peopleDirectory, in the demo fictional names) is the source.
 //
 #include "ParticipantsViewModel.h"
 #include "TranscriptEditorViewModel.h"
 #include "TagBackend.h"
+#include "UiServices.h"
 
 #include "tanara/editing/session/SpeakerEditTypes.h"
 
@@ -54,7 +55,10 @@ public:
     enum Role { NameRole = Qt::UserRole + 1, HasVoiceprintRole, MeetingCountRole, InMeetingRole, MatchedAliasRole,
                 TagHintRole, GroupRole };
 
+    // QML: the services of the moment (follows App.controller / App.demo).
     explicit PersonListModel(QObject* parent = nullptr);
+    // The tag backend and the people directory of the given services.
+    explicit PersonListModel(const UiServices& services, QObject* parent = nullptr);
 
     int rowCount(const QModelIndex& parent = QModelIndex()) const override;
     QVariant data(const QModelIndex& index, int role) const override;
@@ -96,6 +100,7 @@ signals:
 
 private:
     void refilter();
+    void dropServices();
     TagBackend* tagBackend();
     QStringList contextTagIds() const;
 
@@ -115,6 +120,8 @@ private:
     QString m_tagSection;
     TagBackend* m_tags = nullptr;
     bool m_ownTags = false;
+    tanara::editing::IParticipantsFacade* m_directory = nullptr;   // the standalone (tag mode) name list
+    bool m_explicitServices = false;
 };
 
 } // namespace tanara_qml

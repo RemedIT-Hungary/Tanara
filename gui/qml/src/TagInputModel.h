@@ -8,10 +8,13 @@
 // "..."" (rules: TagMatching.h). The selection moves with the arrows; Enter =
 // chooseSelected() -> chosen(name, isNew).
 //
-// Data source: TagBackend (without a controller the fictional 12 tags). The `controller`
-// property is the controller wiring point; in tests a fake backend can be given with setBackend().
+// Data source: TagBackend, from UiServices::tagBackend (the real one, or the fictional 12 tags). A
+// view model that has its own data source (the recorder's) gives it through the `backend` property;
+// in tests a fake backend can be given with setBackend().
 //
+#include "TagBackend.h"
 #include "TagMatching.h"
+#include "UiServices.h"
 
 #include <QObject>
 #include <QPointer>
@@ -21,13 +24,12 @@
 
 namespace tanara_qml {
 
-class TagBackend;
-
 class TagInputModel : public QObject {
     Q_OBJECT
     QML_ELEMENT
 
-    Q_PROPERTY(QObject* controller READ controller WRITE setController NOTIFY controllerChanged)
+    // The data source handed in by the host (null: the services' own).
+    Q_PROPERTY(QObject* backend READ backendObject WRITE setBackendObject NOTIFY backendChanged)
     Q_PROPERTY(QString text READ text WRITE setText NOTIFY textChanged)
     // [{ kind, id, name, count, matchStart, matchLen, before, match, after }]
     //   kind: "recent" | "match" | "new" | "nearDuplicate" | "forceNew"
@@ -41,10 +43,13 @@ class TagInputModel : public QObject {
     Q_PROPERTY(QStringList excludeIds READ excludeIds WRITE setExcludeIds NOTIFY excludeIdsChanged)
 
 public:
+    // QML: the services of the moment (follows App.controller / App.demo).
     explicit TagInputModel(QObject* parent = nullptr);
+    // The tag backend of the given services.
+    explicit TagInputModel(const UiServices& services, QObject* parent = nullptr);
 
-    QObject* controller() const { return m_controller; }
-    void setController(QObject* controller);
+    QObject* backendObject() const { return m_backend; }
+    void setBackendObject(QObject* backend) { setBackend(qobject_cast<TagBackend*>(backend)); }
     // For tests / a shared backend: does not take ownership.
     void setBackend(TagBackend* backend);
     TagBackend* backend() const { return m_backend; }
@@ -69,7 +74,7 @@ public:
     Q_INVOKABLE bool choose(int row);
 
 signals:
-    void controllerChanged();
+    void backendChanged();
     void textChanged();
     void rowsChanged();
     void selectedRowChanged();
@@ -79,9 +84,10 @@ signals:
 
 private:
     void attach(TagBackend* backend);
+    void resolveBackend();
     void rebuild();
 
-    QPointer<QObject> m_controller;
+    bool m_explicitServices = false;
     TagBackend* m_backend = nullptr;
     TagBackend* m_ownBackend = nullptr;
     QMetaObject::Connection m_conn;

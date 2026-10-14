@@ -8,11 +8,8 @@
 #include "TagBackend.h"
 #include "TagsViewModel.h"
 
-#include "tanara/app/AppController.h"
-#include "tanara/editing/session/PeopleDirectory.h"
-#include "tanara/library/people/PeopleService.h"
-#include "tanara/library/people/PeopleStats.h"
-#include "tanara/library/store/VoiceprintStore.h"
+#include "tanara/foundation/text/Text.h"
+#include "tanara/library/people/IPeopleFacade.h"
 #include "tanara/processing/voiceid/VoiceModelRegistry.h"
 
 #include <QCollator>
@@ -40,19 +37,6 @@ QString capitalized(QString text)
 
 const QString kTagsUndo = QStringLiteral("tags");
 const QString kPeopleUndo = QStringLiteral("people");
-
-// The tag demo states (with the design packages' further fictional people).
-bool tagDemoState(const QString& state)
-{
-    return state == QLatin1String("tagsSection") || state == QLatin1String("tagsSuggested")
-        || state == QLatin1String("tagsSelf") || state == QLatin1String("tagsFocus");
-}
-
-// Demo states showing the samples' model labels.
-bool modelDemoState(const QString& state)
-{
-    return state == QLatin1String("samplesModels") || state == QLatin1String("backfill");
-}
 
 // Monogram: the words' initials (at most two); a leading abbreviation in the name ("B. Gergő") is skipped.
 QString monogramOf(const QString& name)
@@ -114,6 +98,23 @@ bool matchRange(const QString& name, const QString& foldedNeedle, int* pos, int*
 
 PeopleViewModel::PeopleViewModel(QObject* parent) : QObject(parent)
 {
+    initTimers();
+    AppContext* ctx = AppContext::instance();
+    connect(ctx, &AppContext::controllerChanged, this, &PeopleViewModel::resolveServices);
+    connect(ctx, &AppContext::demoChanged, this, &PeopleViewModel::resolveServices);
+    resolveServices();
+}
+
+PeopleViewModel::PeopleViewModel(const UiServices& services, QObject* parent) : QObject(parent), m_explicitServices(true)
+{
+    initTimers();
+    useServices(services);
+}
+
+PeopleViewModel::~PeopleViewModel() = default;
+
+void PeopleViewModel::initTimers()
+{
     m_playTick.setInterval(50);
     connect(&m_playTick, &QTimer::timeout, this, [this] {
         if (m_backend && m_playEndMs > 0 && m_backend->position() >= m_playEndMs) finishPlayback();
@@ -121,67 +122,42 @@ PeopleViewModel::PeopleViewModel(QObject* parent) : QObject(parent)
 
     m_backfillPoll.setInterval(1000);
     connect(&m_backfillPoll, &QTimer::timeout, this, &PeopleViewModel::refreshBackfill);
-
-    AppContext* ctx = AppContext::instance();
-    m_controller = ctx->controller();
-    connect(ctx, &AppContext::controllerChanged, this, [this, ctx] {
-        if (m_controllerInjected) return;
-        m_controller = ctx->controller();
-        attach();
-    });
-    attach();
 }
 
-PeopleViewModel::~PeopleViewModel() = default;
-
-QObject* PeopleViewModel::controllerObject() const { return m_controller; }
-
-void PeopleViewModel::setControllerObject(QObject* controller)
+// The process's services changed (a controller arrived, App.demo flipped).
+void PeopleViewModel::resolveServices()
 {
-    setController(qobject_cast<app::AppController*>(controller));
+    if (m_explicitServices) return;
+    useServices(AppContext::instance()->services());
 }
 
-void PeopleViewModel::setController(app::AppController* controller)
-{
-    m_controllerInjected = true;
-    if (m_controller == controller && m_attached == controller) return;
-    m_controller = controller;
-    attach();
-    emit controllerChanged();
-}
-
-void PeopleViewModel::attach()
+void PeopleViewModel::useServices(const UiServices& services)
 {
     for (const QMetaObject::Connection& c : std::as_const(m_connections)) disconnect(c);
     m_connections.clear();
-    m_attached = m_controller;
-    m_service = m_controller ? m_controller->peopleService() : nullptr;
-    m_stats = m_controller ? m_controller->peopleStats() : nullptr;
-    m_demo = !m_service;
+    if (m_facade && m_facade->parent() == this) m_facade->deleteLater();   // a fictional facade of ours
+    m_facade = services.people(this);
+    m_demo = m_facade->readOnly();
+    m_facade->applyDemoState(m_demoState);
     m_selected.clear();
     m_planFor.clear();
-    if (m_service) {
-        app::AppController* c = m_controller;
-        auto dirty = [this] { m_planFor.clear(); scheduleRebuild(); };
-        m_connections << connect(m_service, &library::PeopleService::changed, this, &PeopleViewModel::scheduleRebuild);
-        m_connections << connect(m_service, &library::PeopleService::undoChanged, this, &PeopleViewModel::undoChanged);
-        m_connections << connect(m_stats, &library::PeopleStats::changed, this, dirty);
-        m_connections << connect(c, &app::AppController::peopleChanged, this, &PeopleViewModel::scheduleRebuild);
-        m_connections << connect(c, &app::AppController::voiceprintsChanged, this, dirty);
-        // There is no signal for the start of the backfill: we check on a model change (where it starts) and at the end.
-        m_connections << connect(c, &app::AppController::voiceModelsChanged, this, [this, dirty] {
-            dirty();
-            QTimer::singleShot(0, this, &PeopleViewModel::refreshBackfill);
-        });
-        m_connections << connect(c, &app::AppController::voiceprintBackfillFinished, this, [this, dirty] {
-            dirty();
-            refreshBackfill();
-        });
-    } else {
-        loadDemo();
-    }
+    auto dirty = [this] { m_planFor.clear(); scheduleRebuild(); };
+    m_connections << connect(m_facade, &library::IPeopleFacade::changed, this, &PeopleViewModel::scheduleRebuild);
+    m_connections << connect(m_facade, &library::IPeopleFacade::undoChanged, this, &PeopleViewModel::undoChanged);
+    m_connections << connect(m_facade, &library::IPeopleFacade::statsChanged, this, dirty);
+    m_connections << connect(m_facade, &library::IPeopleFacade::peopleChanged, this, &PeopleViewModel::scheduleRebuild);
+    m_connections << connect(m_facade, &library::IPeopleFacade::voiceprintsChanged, this, dirty);
+    // There is no signal for the start of the backfill: we check on a model change (where it starts) and at the end.
+    m_connections << connect(m_facade, &library::IPeopleFacade::voiceModelsChanged, this, [this, dirty] {
+        dirty();
+        QTimer::singleShot(0, this, &PeopleViewModel::refreshBackfill);
+    });
+    m_connections << connect(m_facade, &library::IPeopleFacade::backfillFinished, this, [this, dirty] {
+        dirty();
+        refreshBackfill();
+    });
     TagBackend* old = m_ownTagBackend;
-    m_ownTagBackend = createTagBackend(m_controller, this);
+    m_ownTagBackend = services.tagBackend(this);
     attachTags(m_ownTagBackend);
     if (old) old->deleteLater();
     m_undoOrder.clear();
@@ -210,8 +186,7 @@ void PeopleViewModel::attachTags(TagBackend* backend)
 
 void PeopleViewModel::refreshBackfill()
 {
-    const bool running = m_controller ? m_controller->voiceprintBackfillRunning()
-                                      : m_demo && m_demoState == QLatin1String("backfill");
+    const bool running = m_facade->backfillRunning();
     if (running && !m_backfillPoll.isActive() && !m_demo) m_backfillPoll.start();
     if (!running) m_backfillPoll.stop();
     if (running == m_backfillRunning) return;
@@ -225,7 +200,7 @@ void PeopleViewModel::setDemoState(const QString& state)
     m_demoState = state;
     emit demoStateChanged();
     if (!m_demo) return;
-    loadDemo();
+    m_facade->applyDemoState(state);
     m_selected.clear();
     if (state == QStringLiteral("P02")) m_query = demoText("ger", "greg");
     else if (state == QStringLiteral("noResult")) m_query = demoText("bár g", "barn g");
@@ -255,10 +230,10 @@ void PeopleViewModel::setDemoState(const QString& state)
 
 void PeopleViewModel::refresh()
 {
-    if (!m_service) return;
+    if (m_demo) return;
     m_planFor.clear();
     rebuild();
-    if (m_stats) m_stats->refresh();
+    m_facade->refreshStats();
     refreshBackfill();
 }
 
@@ -287,32 +262,28 @@ tanara::PersonId PeopleViewModel::idOf(const QString& name) const
 
 void PeopleViewModel::rebuild()
 {
-    if (m_service) {
-        m_service->reload();
-        m_statsReady = m_stats && m_stats->ready();
-        m_persons.clear();
-        const QVector<library::PersonRecord> records = m_service->persons();
-        m_persons.reserve(records.size());
-        for (const library::PersonRecord& r : records) {
-            Person p;
-            p.id = r.id;
-            p.name = r.name;
-            p.isSelf = r.isSelf;
-            p.aliases = r.aliases;
-            p.note = r.note;
-            p.sampleCount = r.sampleCount;
-            p.defaultSide = r.defaultSide;
-            p.defaultSideManual = r.defaultSideManual;
-            if (m_statsReady) {
-                const library::PersonStats s = m_stats->stats(r.id);
-                p.meetingCount = s.meetingCount;
-                p.talkMs = s.talkMs;
-                p.lastSeen = s.lastSeen;
-            }
-            m_persons.append(p);
+    m_facade->reload();
+    m_statsReady = m_facade->statsReady();
+    m_persons.clear();
+    const QVector<library::PersonRecord> records = m_facade->persons();
+    m_persons.reserve(records.size());
+    for (const library::PersonRecord& r : records) {
+        Person p;
+        p.id = r.id;
+        p.name = r.name;
+        p.isSelf = r.isSelf;
+        p.aliases = r.aliases;
+        p.note = r.note;
+        p.sampleCount = r.sampleCount;
+        p.defaultSide = r.defaultSide;
+        p.defaultSideManual = r.defaultSideManual;
+        if (m_statsReady) {
+            const library::PersonStats st = m_facade->stats(r.id);
+            p.meetingCount = st.meetingCount;
+            p.talkMs = st.talkMs;
+            p.lastSeen = st.lastSeen;
         }
-    } else {
-        m_statsReady = true;
+        m_persons.append(p);
     }
 
     // Keeps the selection; if the person is gone, the row in its place (or the own one).
@@ -446,8 +417,8 @@ void PeopleViewModel::refreshDetail()
     m_meetings.clear();
     QSet<QString> sources;
 
-    if (p && m_service) {
-        for (const library::VoiceSample& s : m_service->samples(p->id)) {
+    if (p) {
+        for (const library::VoiceSample& s : m_facade->samples(p->id)) {
             QString label = s.deviceLabel;
             if (label.isEmpty())
                 label = s.sourceKind == QStringLiteral("mix") ? tr("A megbeszélés lekevert hangja")
@@ -469,33 +440,14 @@ void PeopleViewModel::refreshDetail()
                 {QStringLiteral("endMs"), s.endMs},
             });
         }
-        if (m_statsReady && m_stats) {
-            for (const library::PersonMeetingStat& m : m_stats->stats(p->id).meetings)
+        if (m_statsReady) {
+            for (const library::PersonMeetingStat& m : m_facade->stats(p->id).meetings)
                 m_meetings.append(QVariantMap{
                     {QStringLiteral("title"), m.title},
                     {QStringLiteral("date"), m.startedAt.toString(QStringLiteral("yyyy-MM-dd"))},
                     {QStringLiteral("talk"), m.talkMs > 0 ? fmt::shortDuration(m.talkMs) : QStringLiteral("–")},
                 });
         }
-    } else if (p) {
-        int i = 0;
-        for (const DemoSample& s : m_demoSamples.value(p->name)) {
-            sources.insert(s.kind + QLatin1Char('|') + s.label);
-            m_samples.append(QVariantMap{
-                {QStringLiteral("id"), QStringLiteral("demo-%1").arg(i++)},
-                {QStringLiteral("kind"), s.kind},
-                {QStringLiteral("icon"), sampleIcon(s.kind)},
-                {QStringLiteral("label"), s.label},
-                {QStringLiteral("meetingTitle"), s.meeting},
-                {QStringLiteral("date"), s.date},
-                {QStringLiteral("length"), s.length},
-                {QStringLiteral("playable"), true},
-            });
-        }
-        for (const DemoMeeting& m : m_demoMeetings.value(p->name))
-            m_meetings.append(QVariantMap{{QStringLiteral("title"), m.title},
-                                          {QStringLiteral("date"), m.date},
-                                          {QStringLiteral("talk"), m.talk}});
     }
     m_samplesSub = m_samples.isEmpty() ? QString()
         : tr("%n minta", "", int(m_samples.size())) + QStringLiteral(" · ")
@@ -517,9 +469,7 @@ void PeopleViewModel::refreshDetail()
 // The sample's model label: which used voice model has a voiceprint of it (from the sibling group).
 void PeopleViewModel::decorateSamples()
 {
-    QStringList active;
-    if (m_controller) active = m_controller->activeVoiceModelIds();
-    else if (m_demo && modelDemoState(m_demoState)) active = {QStringLiteral("campplus"), QStringLiteral("eres2netv2")};
+    const QStringList active = m_facade->activeVoiceModelIds();
     if (active.isEmpty()) return;
     QHash<QString, QString> display;
     for (const processing::VoiceModelSpec& spec : processing::VoiceModelRegistry::builtin()) display.insert(spec.id, spec.displayName);
@@ -528,17 +478,9 @@ void PeopleViewModel::decorateSamples()
         for (const QString& id : ids) out << display.value(id, id);
         return out.join(QStringLiteral(", "));
     };
-    library::VoiceprintStore* prints = m_controller ? m_controller->voiceprints() : nullptr;
     for (int i = 0; i < m_samples.size(); ++i) {
         QVariantMap sample = m_samples[i].toMap();
-        QStringList have;
-        if (prints) {
-            for (const Voiceprint& vp : prints->siblingsOf(sample.value(QStringLiteral("id")).toString()))
-                if (!have.contains(vp.model)) have << vp.model;
-        } else {
-            // Demo: every third sample exists only with the base model.
-            have = i % 3 == 2 ? QStringList{QStringLiteral("campplus")} : active;
-        }
+        const QStringList have = m_facade->voiceprintModels(sample.value(QStringLiteral("id")).toString());
         QStringList present, missing;
         for (const QString& id : std::as_const(active)) (have.contains(id) ? present : missing) << id;
         // With one model, if present, there is nothing to indicate.
@@ -681,15 +623,6 @@ void PeopleViewModel::refreshPlan()
         }
         return;
     }
-    if (m_demo) {
-        m_planReady = m_planPossible = true;
-        m_planText = tr("Kézzel rendelted hozzá %n megbeszélés sorait, ezért eddig nem ismerjük fel "
-                        "magától. A biztos sorokból mintát vehetünk.", "", m_detail.meetingCount);
-        m_planButton = tr("Minta %n megbeszélésből", "", m_detail.meetingCount);
-        m_planNote = tr("kb. %1 hang, a gépen marad").arg(tr("%n perc", "", 2));
-        emit planChanged();
-        return;
-    }
     if (m_planFor == m_selected && m_planReady) return;   // nothing changed that affects the plan
     if (!m_statsReady) {
         m_planReady = false;
@@ -703,8 +636,8 @@ void PeopleViewModel::refreshPlan()
     // Reviewing the meetings (row-by-row material) can take a few tenths of a second: the
     // selection shows first, the plan afterwards.
     QTimer::singleShot(0, this, [this, generation, name] {
-        if (generation != m_planGeneration || !m_service) return;
-        const library::VoiceprintPlan plan = m_service->voiceprintPlan(idOf(name));
+        if (generation != m_planGeneration) return;
+        const library::VoiceprintPlan plan = m_facade->voiceprintPlan(idOf(name));
         const int usable = plan.usableMeetingIds.size();
         m_planFor = name;
         m_planMeetingIds = plan.usableMeetingIds;
@@ -741,7 +674,7 @@ void PeopleViewModel::refreshPlan()
 
 void PeopleViewModel::createVoiceprint()
 {
-    if (!m_service || m_creating || !m_planPossible || m_planMeetingIds.isEmpty()) return;
+    if (m_demo || m_creating || !m_planPossible || m_planMeetingIds.isEmpty()) return;
     m_creating = true;
     m_creatingFor = m_selected;
     m_createQueue = m_planMeetingIds;
@@ -758,7 +691,7 @@ void PeopleViewModel::createVoiceprint()
 void PeopleViewModel::runNextVoiceprint()
 {
     if (!m_creating) return;
-    if (!m_service || m_createQueue.isEmpty()) {
+    if (m_demo || m_createQueue.isEmpty()) {
         m_creating = false;
         m_planFor.clear();
         QString text = m_createOk > 0 ? tr("%n minta készült.", "", m_createOk)
@@ -772,7 +705,7 @@ void PeopleViewModel::runNextVoiceprint()
         return;
     }
     const QString meetingId = m_createQueue.takeFirst();
-    const editing::VoiceprintResult r = m_service->createVoiceprintFromMeeting(idOf(m_creatingFor), meetingId);
+    const VoiceprintResult r = m_facade->createVoiceprintFromMeeting(idOf(m_creatingFor), meetingId);
     if (r.ok) ++m_createOk;
     else {
         ++m_createFailed;
@@ -820,7 +753,6 @@ QString PeopleViewModel::countText() const
 
 bool PeopleViewModel::onlySelf() const
 {
-    if (m_demo && m_demoState == QStringLiteral("P06")) return true;
     return m_persons.isEmpty() || (m_persons.size() == 1 && m_persons.first().isSelf);
 }
 
@@ -855,15 +787,15 @@ bool PeopleViewModel::canUndo() const
 {
     if (!m_undoOrder.isEmpty() && m_undoOrder.last() == kTagsUndo && m_tagBackend && m_tagBackend->canUndo())
         return true;
-    return m_service && m_service->canUndo();
+    return m_facade->canUndo();
 }
 
 // ---- actions ------------------------------------------------------------------
 
 QString PeopleViewModel::addPerson(const QString& name)
 {
-    if (!m_service) return QString();
-    const library::PeopleOpResult r = m_service->addPerson(name);
+    if (m_demo) return QString();
+    const library::PeopleOpResult r = m_facade->addPerson(name);
     rebuild();
     // For an existing name too, the person gets selected (the caller shows the error).
     if (!r.name.isEmpty()) selectPerson(r.name);
@@ -872,9 +804,9 @@ QString PeopleViewModel::addPerson(const QString& name)
 
 QString PeopleViewModel::rename(const QString& newName)
 {
-    if (!m_service || m_selected.isEmpty()) return QString();
+    if (m_demo || m_selected.isEmpty()) return QString();
     const QString old = m_selected;
-    const library::PeopleOpResult r = m_service->renamePerson(idOf(old), newName);
+    const library::PeopleOpResult r = m_facade->renamePerson(idOf(old), newName);
     if (!r.ok) return r.error;
     m_selected = r.name;
     rebuild();
@@ -888,16 +820,16 @@ QString PeopleViewModel::rename(const QString& newName)
 
 QString PeopleViewModel::addAlias(const QString& alias)
 {
-    if (!m_service || m_selected.isEmpty()) return QString();
-    const library::PeopleOpResult r = m_service->addAlias(idOf(m_selected), alias);
+    if (m_demo || m_selected.isEmpty()) return QString();
+    const library::PeopleOpResult r = m_facade->addAlias(idOf(m_selected), alias);
     rebuild();
     return r.ok ? QString() : r.error;
 }
 
 void PeopleViewModel::removeAlias(const QString& alias)
 {
-    if (!m_service || m_selected.isEmpty()) return;
-    if (!m_service->removeAlias(idOf(m_selected), alias)) return;
+    if (m_demo || m_selected.isEmpty()) return;
+    if (!m_facade->removeAlias(idOf(m_selected), alias)) return;
     rebuild();
     m_undoOrder << kPeopleUndo;
     emit toast(tr("Becenév törölve: %1").arg(alias), true);
@@ -918,16 +850,7 @@ void PeopleViewModel::setDefaultSide(const QString& side)
 {
     if (m_selected.isEmpty() || !defaultSideVisible()) return;
     const QString clean = side == QLatin1String("local") || side == QLatin1String("remote") ? side : QString();
-    if (m_demo) {
-        for (Person& p : m_persons)
-            if (p.name == m_selected) {
-                p.defaultSide = clean;
-                p.defaultSideManual = !clean.isEmpty();
-            }
-        refreshDetail();
-        return;
-    }
-    if (!m_service || !m_service->setDefaultSide(idOf(m_selected), clean)) return;
+    if (!m_facade->setDefaultSide(idOf(m_selected), clean)) return;
     rebuild();
 }
 
@@ -938,32 +861,32 @@ void PeopleViewModel::requestSection(const QString& section)
 
 void PeopleViewModel::setNote(const QString& note)
 {
-    if (!m_service || m_selected.isEmpty() || note == m_detail.note) return;
-    m_service->setNote(idOf(m_selected), note);
+    if (m_demo || m_selected.isEmpty() || note == m_detail.note) return;
+    m_facade->setNote(idOf(m_selected), note);
     rebuild();
 }
 
 void PeopleViewModel::removeSample(const QString& sampleId)
 {
-    if (!m_service) return;
-    const library::PeopleOpResult r = m_service->removeSample(sampleId);
+    if (m_demo) return;
+    const library::PeopleOpResult r = m_facade->removeSample(sampleId);
     rebuild();
     if (!r.ok) {
         emit toast(r.error, false);
         return;
     }
     m_undoOrder << kPeopleUndo;
-    const QString title = m_service->undoInfo().detail;
+    const QString title = m_facade->undoInfo().detail;
     emit toast(title.isEmpty() ? tr("Minta törölve") : tr("Minta törölve: %1").arg(title), true);
 }
 
 QString PeopleViewModel::moveSample(const QString& sampleId, const QString& toName)
 {
-    if (!m_service) return QString();
+    if (m_demo) return QString();
     // The target: a listed person by name, otherwise a new person with that name.
     const tanara::PersonId target = idOf(toName);
     const bool existed = !target.isNull();
-    const library::PeopleOpResult r = m_service->moveSample(
+    const library::PeopleOpResult r = m_facade->moveSample(
         sampleId, existed ? tanara::PersonChoice::existing(target) : tanara::PersonChoice::create(toName));
     if (!r.ok) return r.error;
     rebuild();
@@ -1015,12 +938,8 @@ QVariantList PeopleViewModel::mergeCandidates(const QString& query) const
             if (aliasHit.isEmpty()) continue;
         }
         int percent = -1;
-        if (m_service) {
-            const double s = m_service->similarity(idOf(m_selected), p.id);
-            if (s >= 0) percent = qRound(s * 100);
-        } else if (p.name == demoName("B. Gergő") && m_selected == demoName("Bárány Gergely")) {
-            percent = 88;
-        }
+        const double sim = m_facade->similarity(idOf(m_selected), p.id);
+        if (sim >= 0) percent = qRound(sim * 100);
         list.append(Candidate{&p, percent, aliasHit});
     }
     // By voice similarity (those without a voiceprint last), alphabetical within equal ones.
@@ -1049,17 +968,10 @@ QString PeopleViewModel::mergeResultText(const QString& other, bool keepSelected
     if (!o || m_selected.isEmpty()) return QString();
     const QString loser = keepSelected ? o->name : m_selected;
     const QString survivor = keepSelected ? m_selected : o->name;
-    int meetingsN = 0, samplesN = 0, stale = 0;
-    if (m_service) {
-        const library::MergePreview p = m_service->mergePreview(idOf(loser), idOf(survivor));
-        meetingsN = p.meetingCount;
-        samplesN = p.sampleCount;
-        stale = p.staleSummaries;
-    } else {
-        meetingsN = m_detail.meetingCount + o->meetingCount;
-        samplesN = m_detail.sampleCount + o->sampleCount;
-        stale = 3;
-    }
+    const library::MergePreview preview = m_facade->mergePreview(idOf(loser), idOf(survivor));
+    const int meetingsN = preview.meetingCount;
+    const int samplesN = preview.sampleCount;
+    const int stale = preview.staleSummaries;
     QString text = tr("Eredmény: <b>%1</b>, <b>%2</b>. „%3” becenév lesz.")
         .arg(tr("%n megbeszélés", "", meetingsN), tr("%n minta", "", samplesN), loser.toHtmlEscaped());
     if (stale > 0) text += QLatin1Char(' ') + tr("%n érintett összefoglaló elavultnak jelölődik.", "", stale);
@@ -1081,10 +993,10 @@ QString PeopleViewModel::mergeResultText(const QString& other, bool keepSelected
 
 QString PeopleViewModel::merge(const QString& other, bool keepSelected)
 {
-    if (!m_service || m_selected.isEmpty()) return QString();
+    if (m_demo || m_selected.isEmpty()) return QString();
     const QString loser = keepSelected ? other : m_selected;
     const QString survivor = keepSelected ? m_selected : other;
-    const library::PeopleOpResult r = m_service->merge(idOf(loser), idOf(survivor));
+    const library::PeopleOpResult r = m_facade->merge(idOf(loser), idOf(survivor));
     if (!r.ok) return r.error;
     m_selected = r.name;
     rebuild();
@@ -1101,14 +1013,7 @@ bool PeopleViewModel::deleteHasSamples() const { return m_detail.sampleCount > 0
 QString PeopleViewModel::deleteText(bool keepSamples) const
 {
     if (m_selected.isEmpty()) return QString();
-    library::DeletePreview p;
-    if (m_service) {
-        p = m_service->deletePreview(idOf(m_selected));
-    } else {
-        p.meetingCount = m_detail.meetingCount;
-        p.sampleCount = m_detail.sampleCount;
-        p.exampleLabel = demoRaw(QStringLiteral("Távoli 2"));
-    }
+    const library::DeletePreview p = m_facade->deletePreview(idOf(m_selected));
     QStringList parts;
     if (p.meetingCount <= 0)
         parts << tr("Egy megbeszélésen sem szerepel.");
@@ -1131,9 +1036,9 @@ QString PeopleViewModel::deleteText(bool keepSamples) const
 
 QString PeopleViewModel::deletePerson(bool keepSamples)
 {
-    if (!m_service || m_selected.isEmpty()) return QString();
+    if (m_demo || m_selected.isEmpty()) return QString();
     const QString name = m_selected;
-    const library::PeopleOpResult r = m_service->removePerson(idOf(name), keepSamples);
+    const library::PeopleOpResult r = m_facade->removePerson(idOf(name), keepSamples);
     if (!r.ok) return r.error;
     rebuild();
     if (!r.name.isEmpty()) {
@@ -1162,8 +1067,8 @@ void PeopleViewModel::undo()
     } else if (!m_undoOrder.isEmpty()) {
         m_undoOrder.removeLast();
     }
-    if (!m_service || !m_service->canUndo()) return;
-    const library::PeopleUndoInfo info = m_service->undo();
+    if (m_demo || !m_facade->canUndo()) return;
+    const library::PeopleUndoInfo info = m_facade->undo();
     rebuild();
     if (!info.person.isNull())
         for (const Person& p : std::as_const(m_persons))
@@ -1235,108 +1140,6 @@ void PeopleViewModel::toggleSample(const QString& sampleId)
     m_playingId = sampleId;
     m_playTick.start();
     emit playingChanged();
-}
-
-// ---- demo: fictional people ---------------------------------------------------------
-
-void PeopleViewModel::loadDemo()
-{
-    m_persons.clear();
-    m_demoSamples.clear();
-    m_demoMeetings.clear();
-    struct Row { const char* name; int meetings; int samples; bool self; };
-    static const Row rows[] = {
-        {"Kovács Lilla", 41, 23, true}, {"Albert Noémi", 6, 3, false}, {"Antal Benedek", 2, 0, false},
-        {"Bárány Gergely", 23, 9, false}, {"B. Gergő", 4, 2, false}, {"Balogh Réka", 11, 5, false},
-        {"Csonka Ferenc", 3, 0, false}, {"Dénes Zsófia", 17, 6, false}, {"Erdei Márton", 8, 4, false},
-        {"Fazekas Ilona", 5, 2, false}, {"Gál Bence", 12, 7, false}, {"Halász Dóra", 9, 3, false},
-        {"Szilágyi Bálint", 14, 5, false}, {"Tóth Eszter", 3, 0, false},
-    };
-    // For the tag states the fictional people of the UX plan too.
-    static const Row tagRows[] = {
-        {"Fehér Gábor", 16, 6, false}, {"Varga Árpád", 12, 4, false}, {"Szabó Bence", 8, 3, false},
-        {"Molnár Eszter", 0, 0, false},
-    };
-    const DemoSample samplePool[] = {
-        {QStringLiteral("mic"), demoText("Trust USB mikrofon", "Trust USB microphone"),
-         demoText("Termékcsapat heti egyeztetés – Q4 ütemterv és a mobilos kiadás kockázatai", "Product team weekly sync – Q4 roadmap and mobile release risks"),
-         QStringLiteral("2026-10-01"), QStringLiteral("0:42")},
-        {QStringLiteral("call"), demoText("Hívás hangja · Teams", "Call audio · Teams"),
-         demoText("Northwind átadás: ügyféltámogatási folyamatok, eszkalációs szintek és SLA", "Northwind handover: support processes, escalation levels and SLA"),
-         QStringLiteral("2026-09-30"), QStringLiteral("1:15")},
-        {QStringLiteral("call"), demoText("Hívás hangja · Zoom", "Call audio · Zoom"), demoText("Partnerdemó – adatimport", "Partner demo – data import"),
-         QStringLiteral("2026-09-24"), QStringLiteral("0:38")},
-        {QStringLiteral("unknown"), demoText("ismeretlen eszköz", "unknown device"),
-         demoText("Régi felvétel importálva (hangfájl)", "Old recording imported (audio file)"), QStringLiteral("2026-08-28"), QStringLiteral("0:51")},
-        {QStringLiteral("mic"), demoText("Trust USB mikrofon", "Trust USB microphone"), demoText("Belső retró, szeptember", "Internal retro, September"),
-         QStringLiteral("2026-08-18"), QStringLiteral("0:27")},
-        {QStringLiteral("call"), demoText("Hívás hangja · Teams", "Call audio · Teams"), demoText("Roadmap-áttekintés", "Roadmap review"),
-         QStringLiteral("2026-08-11"), QStringLiteral("0:33")},
-        {QStringLiteral("mix"), demoText("A megbeszélés lekevert hangja", "Meeting mixdown"),
-         demoText("Kiadási egyeztetés", "Release sync"), QStringLiteral("2026-08-04"), QStringLiteral("0:19")},
-        {QStringLiteral("mic"), demoText("Trust USB mikrofon", "Trust USB microphone"), demoText("Sprint tervezés", "Sprint planning"),
-         QStringLiteral("2026-07-28"), QStringLiteral("0:46")},
-        {QStringLiteral("call"), demoText("Hívás hangja · Zoom", "Call audio · Zoom"), demoText("Hibajavítási kör", "Bug-fix round"),
-         QStringLiteral("2026-07-21"), QStringLiteral("0:24")},
-    };
-    const DemoMeeting meetingPool[] = {
-        {demoText("Termékcsapat heti egyeztetés – Q4 ütemterv és a mobilos kiadás kockázatai", "Product team weekly sync – Q4 roadmap and mobile release risks"),
-         QStringLiteral("2026-10-01"), demoText("18 p", "18 min")},
-        {demoText("Northwind átadás: ügyféltámogatási folyamatok, eszkalációs szintek és SLA", "Northwind handover: support processes, escalation levels and SLA"),
-         QStringLiteral("2026-09-30"), demoText("31 p", "31 min")},
-        {demoText("Partnerdemó – adatimport", "Partner demo – data import"), QStringLiteral("2026-09-24"), demoText("9 p", "9 min")},
-        {demoText("Belső retró, szeptember", "Internal retro, September"), QStringLiteral("2026-09-18"), demoText("12 p", "12 min")},
-        {demoText("Roadmap-áttekintés", "Roadmap review"), QStringLiteral("2026-09-11"), demoText("22 p", "22 min")},
-        {demoText("Kiadási egyeztetés", "Release sync"), QStringLiteral("2026-09-04"), demoText("7 p", "7 min")},
-        {demoText("Sprint tervezés", "Sprint planning"), QStringLiteral("2026-08-28"), demoText("15 p", "15 min")},
-        {demoText("Hibajavítási kör", "Bug-fix round"), QStringLiteral("2026-08-21"), demoText("5 p", "5 min")},
-    };
-    const int samplePoolSize = int(std::size(samplePool));
-    const int meetingPoolSize = int(std::size(meetingPool));
-    const bool empty = m_demoState == QStringLiteral("P06");
-    int n = 0;
-    QVector<Row> all(std::begin(rows), std::end(rows));
-    if (tagDemoState(m_demoState)) all.append(QVector<Row>(std::begin(tagRows), std::end(tagRows)));
-    for (const Row& row : std::as_const(all)) {
-        if (empty && !row.self) continue;
-        Person p;
-        p.name = demoName(row.name);
-        p.isSelf = row.self;
-        p.meetingCount = row.meetings;
-        p.sampleCount = row.samples;
-        p.talkMs = qint64(row.meetings) * 14 * 60000;
-        p.lastSeen = QDateTime(QDate(2026, 10, 1).addDays(-(n * 3) % 40), QTime(10, 0));
-        QVector<DemoSample> samples;
-        for (int i = 0; i < row.samples; ++i) samples.append(samplePool[i % samplePoolSize]);
-        QVector<DemoMeeting> meetings;
-        for (int i = 0; i < row.meetings; ++i) meetings.append(meetingPool[i % meetingPoolSize]);
-        if (p.name == demoName("Bárány Gergely")) {
-            p.aliases = {demoText("Gergely", "Gregory"), demoText("G. Bárány", "G. Barnes")};
-            p.note = demoText("Northwind oldali projektvezető. Gyakran telefonról csatlakozik, ilyenkor halkabb.", "Project lead on the Northwind side. Often joins by phone, and sounds quieter then.");
-            p.talkMs = (6 * 60 + 12) * 60000;
-            p.lastSeen = QDateTime(QDate(2026, 10, 1), QTime(10, 0));
-        } else if (p.name == demoName("Tóth Eszter")) {
-            p.aliases = {demoText("Eszti", "Hannie")};
-            p.talkMs = 22 * 60000;
-            p.lastSeen = QDateTime(QDate(2026, 9, 26), QTime(10, 0));
-            meetings = {{demoText("Pénzügyi zárás, szeptember", "Financial close, September"), QStringLiteral("2026-09-26"), demoText("8 p", "8 min")},
-                        {demoText("Beszállítói egyeztetés – Contoso", "Vendor sync – Contoso"), QStringLiteral("2026-09-12"), demoText("11 p", "11 min")},
-                        {demoText("Kickoff: új számlázó", "Kickoff: new billing system"), QStringLiteral("2026-09-03"), demoText("3 p", "3 min")}};
-        } else if (p.name == demoName("Gál Bence")) {
-            p.aliases = {demoText("Gergő kollégája", "Greg's colleague")};
-        }
-        // Learned / manual track side ("Usually: ...").
-        if (p.name == demoName("Bárány Gergely") || p.name == demoName("Fehér Gábor"))
-            p.defaultSide = QStringLiteral("remote");
-        else if (p.name == demoName("Varga Árpád") || p.name == demoName("Dénes Zsófia")) {
-            p.defaultSide = QStringLiteral("local");
-            p.defaultSideManual = true;
-        }
-        m_demoSamples.insert(p.name, samples);
-        m_demoMeetings.insert(p.name, meetings);
-        m_persons.append(p);
-        ++n;
-    }
 }
 
 } // namespace tanara_qml

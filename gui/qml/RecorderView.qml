@@ -69,7 +69,7 @@ Item {
 
     TagInputModel {
         id: tagInputModel
-        controller: root.vm ? root.vm.controller : null
+        backend: root.vm ? root.vm.tagBackend : null
         excludeIds: root.vm ? root.vm.tagIds : []
     }
     Connections {

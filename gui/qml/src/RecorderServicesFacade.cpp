@@ -21,7 +21,7 @@ using namespace tanara;
 namespace tanara_qml {
 
 RecorderServicesFacade::RecorderServicesFacade(const Deps& deps, QObject* parent)
-    : IRecorderFacade(parent), m_deps(deps), m_tagController(deps.tagController)
+    : IRecorderFacade(parent), m_deps(deps)
 {
     recording::RecordingService* rec = m_deps.recording;
     connect(rec->devices(), &recording::DeviceManager::devicesChanged, this, &IRecorderFacade::devicesChanged);

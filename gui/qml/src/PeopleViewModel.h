@@ -23,11 +23,13 @@
 // models") and `modelTip` show which used voice model has a voiceprint of it. While the
 // voiceprint backfill runs (`backfillRunning`), the header shows it.
 //
-// Without a controller (demo, screenshot) it serves fictional people (`demoState`:
+// On the fictional facade (demo, screenshot: tanara_demo) it serves fictional people (`demoState`:
 // P01 ... P06 and the helper states, see PeopleWindow.qml); then person actions do nothing,
 // and tag actions run on the fictional tag pool.
 //
 #include "PeopleListModel.h"
+#include "TagBackend.h"
+#include "UiServices.h"
 #include "tanara/domain/Person.h"
 
 #include <QDateTime>
@@ -40,22 +42,16 @@
 #include <QVector>
 #include <QtQml/qqmlregistration.h>
 
-namespace tanara {
-namespace app { class AppController; }
-namespace library { class PeopleService; }
-namespace library { class PeopleStats; }
-}
+namespace tanara::library { class IPeopleFacade; }
 
 namespace tanara_qml {
 
 class PlayerBackend;
-class TagBackend;
 
 class PeopleViewModel : public QObject {
     Q_OBJECT
     QML_ELEMENT
 
-    Q_PROPERTY(QObject* controller READ controllerObject WRITE setControllerObject NOTIFY controllerChanged)
     Q_PROPERTY(QString demoState READ demoState WRITE setDemoState NOTIFY demoStateChanged)
 
     // ---- list ----
@@ -126,12 +122,12 @@ class PeopleViewModel : public QObject {
     Q_PROPERTY(bool backfillRunning READ backfillRunning NOTIFY backfillChanged)
 
 public:
+    // QML: the services of the moment (follows App.controller / App.demo).
     explicit PeopleViewModel(QObject* parent = nullptr);
+    // The people facade and the tag backend of the given services.
+    explicit PeopleViewModel(const UiServices& services, QObject* parent = nullptr);
     ~PeopleViewModel() override;
 
-    QObject* controllerObject() const;
-    void setControllerObject(QObject* controller);
-    void setController(tanara::app::AppController* controller);
     QString demoState() const { return m_demoState; }
     void setDemoState(const QString& state);
 
@@ -234,7 +230,6 @@ public:
     void setTagBackend(TagBackend* backend);
 
 signals:
-    void controllerChanged();
     void demoStateChanged();
     void queryChanged();
     void sortChanged();
@@ -265,10 +260,9 @@ private:
         QString defaultSide;            // "local" | "remote" | ""
         bool defaultSideManual = false;
     };
-    struct DemoSample { QString kind, label, meeting, date, length; };
-    struct DemoMeeting { QString title, date, talk; };
-
-    void attach();
+    void initTimers();
+    void resolveServices();
+    void useServices(const UiServices& services);
     void scheduleRebuild();
     void rebuild();
     void rebuildList();
@@ -281,7 +275,6 @@ private:
     tanara::PersonId idOf(const QString& name) const;
     QString rowMeta(const Person& p, const QString& aliasHit) const;
     QString personMeta(const Person& p) const;
-    void loadDemo();
     void ensureBackend();
     void finishPlayback();
     void attachTags(TagBackend* backend);
@@ -292,17 +285,12 @@ private:
     bool isPlaceholderName(const QString& name) const;
     void decorateSamples();
 
-    QPointer<tanara::app::AppController> m_controller;
-    QPointer<tanara::app::AppController> m_attached;
-    bool m_controllerInjected = false;
-    tanara::library::PeopleService* m_service = nullptr;
-    tanara::library::PeopleStats* m_stats = nullptr;
+    bool m_explicitServices = false;
+    tanara::library::IPeopleFacade* m_facade = nullptr;   // shared (real) or ours (fictional)
     QList<QMetaObject::Connection> m_connections;
 
     QString m_demoState;
-    bool m_demo = false;
-    QHash<QString, QVector<DemoSample>> m_demoSamples;
-    QHash<QString, QVector<DemoMeeting>> m_demoMeetings;
+    bool m_demo = false;                // the facade is fictional (read-only)
 
     PeopleListModel m_list;
     QVector<Person> m_persons;

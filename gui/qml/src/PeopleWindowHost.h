@@ -28,6 +28,8 @@ class PeopleViewModel;
 class PeopleWindowHost : public QObject {
     Q_OBJECT
 public:
+    // controller: the process's controller; it becomes the App singleton's if none is set yet (the
+    // window's view models resolve their services from it).
     explicit PeopleWindowHost(tanara::app::AppController* controller, QObject* parent = nullptr);
     ~PeopleWindowHost() override;
 
@@ -49,7 +51,6 @@ signals:
 private:
     bool ensureWindow();
 
-    QPointer<tanara::app::AppController> m_controller;
     QQmlEngine* m_engine = nullptr;
     QPointer<QQuickWindow> m_window;
     QPointer<PeopleViewModel> m_vm;

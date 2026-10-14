@@ -94,8 +94,8 @@ class RecorderViewModel : public QObject {
     Q_PROPERTY(QVariantList tags READ tags NOTIFY tagsChanged)
     Q_PROPERTY(QStringList tagIds READ tagIds NOTIFY tagsChanged)
     Q_PROPERTY(bool tagsEditable READ tagsEditable NOTIFY stateChanged)
-    // What the tag input (TagInputModel.controller) wires to: transitional, from the facade.
-    Q_PROPERTY(QObject* controller READ controllerObject CONSTANT)
+    // The tag input's data source (TagInputModel.backend): from the facade.
+    Q_PROPERTY(QObject* tagBackend READ tagBackendObject CONSTANT)
 
 public:
     // How much of the facade the view model wires.
@@ -127,7 +127,7 @@ public:
     QString doneProblem() const { return m_doneProblem; }
     QString errorText() const { return m_errorText; }
     int silenceWarnMinutes() const { return 3; }
-    QObject* controllerObject() const;
+    QObject* tagBackendObject() const;
 
     // The automatic name: "<App> call · Oct 3, 2:02 PM", without an app "Meeting · ...".
     static QString automaticTitle(const QString& appName, const QDateTime& when);

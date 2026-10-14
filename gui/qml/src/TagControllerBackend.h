@@ -1,21 +1,21 @@
 #pragma once
 //
-// TagControllerBackend: the real implementation of the TagBackend seam: tanara::AppController +
-// tanara::TagService (CONTRACT-TAGS.md, "Core API").
+// TagControllerBackend: the real implementation of the TagBackend facade: tanara::TagService +
+// the tag-suggestion service + the people store (CONTRACT-TAGS.md, "Core API"); no AppController.
 //
 // Threading: every call and every signal runs on the GUI thread. The core builds the profiles
 // on a background thread but emits the suggestion signals (tagSuggestionsComputing ->
 // tagSuggestionsReady) on the GUI thread; this class only forwards them.
 //
-// Signal order: when a tag is attached, on TagService::meetingTagsChanged the controller
-// FIRST re-emits the filtered suggestion list (tagSuggestionsReady -> suggestionsChanged),
+// Signal order: when a tag is attached, on TagService::meetingTagsChanged the suggestion service
+// FIRST re-emits the filtered suggestion list (suggestionsReady -> suggestionsChanged),
 // then the forwarded meetingTagsChanged follows; the view model refreshes on both, so the order does not matter.
 //
 // The suggestion state: per meeting the last FRESH list (preceded by a Computing). After an
 // attach / reject the core re-emits the filtered list (without Computing); the backend does
 // not take it over if it is a subset of the earlier one; the view model does the
 // filtering, so after an undo the suggestion comes back. What has not arrived here yet comes
-// from the controller's pendingTagSuggestions() (for a view model that connects later). The
+// from the suggestion service's pending() (for a view model that connects later). The
 // `computing` flag is true from the Computing signal until the next Ready; an item pointing
 // to a deleted tag is dropped.
 //
@@ -29,15 +29,23 @@
 #include <QSet>
 
 namespace tanara {
-namespace app { class AppController; }
-namespace library { class TagService; }
+namespace library {
+class PeopleStore;
+class TagService;
+class TagSuggestionService;
+}
 } // namespace tanara
 
 namespace tanara_qml {
 
 class TagControllerBackend : public TagBackend {
 public:
-    TagControllerBackend(tanara::app::AppController* controller, QObject* parent = nullptr);
+    struct Deps {
+        tanara::library::TagService* tags = nullptr;
+        tanara::library::TagSuggestionService* suggestions = nullptr;
+        tanara::library::PeopleStore* people = nullptr;   // display names <-> PersonId
+    };
+    explicit TagControllerBackend(const Deps& deps, QObject* parent = nullptr);
 
     QVector<TagItem> tags() const override;
     QVector<TagItem> recent(int limit) const override;
@@ -77,12 +85,12 @@ public:
     static TagSuggestionItem toItem(const tanara::TagSuggestion& s);
 
 private:
-    tanara::library::TagService* service() const;
+    tanara::library::TagService* service() const { return m_d.tags; }
     // The GUI hands over a person's display name (or a PersonId): the person behind it, and back.
     tanara::PersonId personOf(const QString& nameOrId) const;
     QString nameOf(const tanara::PersonId& person) const;
 
-    QPointer<tanara::app::AppController> m_controller;
+    Deps m_d;
     QSet<QString> m_computing;   // meetingIds for which no Ready has come after the Computing
     QHash<QString, QVector<tanara::TagSuggestion>> m_lists;   // meetingId -> last fresh list
 };

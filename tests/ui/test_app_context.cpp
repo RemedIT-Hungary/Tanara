@@ -6,6 +6,10 @@
 #include "TrackActivitySource.h"
 
 #include "demo/RecorderDemoFacade.h"
+#include "demo/TagDemoBackend.h"
+
+#include "tanara/editing/participants/IParticipantsFacade.h"
+#include "tanara/library/people/IPeopleFacade.h"
 
 #include "tanara/app/AppController.h"
 #include "tanara/recording/IRecorderFacade.h"
@@ -78,6 +82,21 @@ private slots:
         QVERIFY(a->activity(QStringLiteral("x")).isEmpty());
         tanara_qml::TrackActivitySource* b = demo.trackActivity(QString(), &owner);
         QVERIFY(!b->computing(QStringLiteral("x")));
+
+        // The tag / people / participants sides: a fictional facade of the asking model's own each time.
+        QVERIFY(demo.tagBackend && demo.people && demo.participants);
+        tanara::library::TagBackend* tags1 = demo.tagBackend(&owner);
+        tanara::library::TagBackend* tags2 = demo.tagBackend(&owner);
+        QVERIFY(qobject_cast<tanara_demo::TagDemoBackend*>(tags1) && tags1 != tags2 && tags1->parent() == &owner);
+        QVERIFY(!tags1->tags().isEmpty());
+        tanara::library::IPeopleFacade* people = demo.people(&owner);
+        QVERIFY(people->readOnly() && people->parent() == &owner);
+        QCOMPARE(people->persons().size(), 14);
+        people->applyDemoState(QStringLiteral("P06"));
+        QCOMPARE(people->persons().size(), 1);                    // only the own person
+        tanara::editing::IParticipantsFacade* parts = demo.participants(&owner);
+        QVERIFY(parts->fictional() && parts->parent() == &owner);
+        QVERIFY(parts->state(QString()).found);
         QCOMPARE(b->activity(QStringLiteral("x")).tracks.size(), 4);
         QCOMPARE(b->meeting(QString()).durationMs, qint64((30 * 60 + 34) * 1000));
     }
@@ -93,12 +112,25 @@ private slots:
             QVERIFY(set.recorder);
             QVERIFY(!qobject_cast<tanara_demo::RecorderDemoFacade*>(set.recorder));
             QCOMPARE(&ctx->servicesFor(&c), &set);                    // cached
-            QCOMPARE(set.recorder->tagController(), static_cast<QObject*>(&c));
+            QVERIFY(set.recorder->tagBackend());                          // the tag input's data source
+            // The people / participants facades are shared per controller; a tag backend is per asker.
+            QVERIFY(set.people && set.participants && set.tagBackend);
+            QVERIFY(!set.people(nullptr)->readOnly());
+            QCOMPARE(set.people(nullptr), set.people(nullptr));
+            QVERIFY(!set.participants(nullptr)->fictional());
+            QCOMPARE(set.participants(nullptr), set.participants(nullptr));
+            QObject asker;
+            QVERIFY(set.tagBackend(&asker) != set.tagBackend(&asker));
+            QCOMPARE(&ctx->servicesForObject(&c), &set);
+            QCOMPARE(&ctx->servicesForObject(nullptr), &ctx->demoServices());
             QCOMPARE(set.recorder->parent(), static_cast<QObject*>(&c));   // lives and dies with the controller
             QVERIFY(set.recorder != ctx->demoServices().recorder);
             first = set.recorder;
             // services() follows the process controller, unless App.demo is on.
-            ctx->setController(&c);
+            ctx->useControllerIfNone(&c);                              // a host adopts its controller ...
+            QCOMPARE(ctx->controller(), &c);
+            ctx->useControllerIfNone(nullptr);                         // ... and nothing changes without one
+            QCOMPARE(ctx->controller(), &c);
             QCOMPARE(ctx->services().recorder, set.recorder);
             ctx->setDemo(true);
             QCOMPARE(ctx->services().recorder, ctx->demoServices().recorder);

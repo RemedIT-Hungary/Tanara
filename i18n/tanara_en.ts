@@ -9882,14 +9882,6 @@
 <context>
     <name>tanara_qml::ParticipantTrackBinder</name>
     <message>
-        <source>Saját mikrofon</source>
-        <translation>My microphone</translation>
-    </message>
-    <message>
-        <source>Hívás hangja</source>
-        <translation>Call audio</translation>
-    </message>
-    <message>
         <source>mikrofon</source>
         <translation>microphone</translation>
     </message>
@@ -12036,45 +12028,6 @@
     <message>
         <source>Lezárás, teendők</source>
         <translation>Wrap-up, action items</translation>
-    </message>
-</context>
-<context>
-    <name>tanara_qml::TagDemoBackend</name>
-    <message>
-        <source>Címke a személyen</source>
-        <translation>Tag on a person</translation>
-    </message>
-    <message>
-        <source>Címke levétele a személyről</source>
-        <translation>Remove tag from a person</translation>
-    </message>
-    <message>
-        <source>Javaslat elutasítása</source>
-        <translation>Dismiss suggestion</translation>
-    </message>
-    <message>
-        <source>Címke hozzáadva</source>
-        <translation>Tag added</translation>
-    </message>
-    <message>
-        <source>Címke eltávolítva</source>
-        <translation>Tag removed</translation>
-    </message>
-    <message>
-        <source>Javaslat elutasítva</source>
-        <translation>Suggestion dismissed</translation>
-    </message>
-    <message>
-        <source>Átnevezés</source>
-        <translation>Rename</translation>
-    </message>
-    <message>
-        <source>Összevonás</source>
-        <translation>Merge</translation>
-    </message>
-    <message>
-        <source>Címke törölve</source>
-        <translation>Tag deleted</translation>
     </message>
 </context>
 <context>

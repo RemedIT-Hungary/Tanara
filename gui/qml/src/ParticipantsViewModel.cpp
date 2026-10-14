@@ -3,16 +3,10 @@
 #include "DemoText.h"
 
 #include "AppContext.h"
-#include "JobSupport.h"
 #include "TagLearning.h"
 
-#include "tanara/app/AppController.h"
-#include "tanara/app/SettingsManager.h"
+#include "tanara/editing/participants/IParticipantsFacade.h"
 #include "tanara/processing/analysis/ParticipantAnalysis.h"
-#include "tanara/editing/session/SpeakerOverlay.h"
-#include "tanara/library/store/MeetingRepository.h"
-#include "tanara/library/store/PeopleStore.h"
-#include "tanara/library/tags/TagService.h"
 #include "tanara/processing/voiceid/VoiceModelRegistry.h"
 
 #include <QDateTime>
@@ -94,29 +88,20 @@ Evidence ev(EvidenceKind k, Polarity p, const QString& text)
 ParticipantsViewModel::ParticipantsViewModel(QObject* parent) : QObject(parent)
 {
     AppContext* ctx = AppContext::instance();
-    connect(ctx, &AppContext::controllerChanged, this, [this]() { connectController(); reload(); });
-    connect(ctx, &AppContext::demoChanged, this, &ParticipantsViewModel::reload);
-    connectController();
+    connect(ctx, &AppContext::controllerChanged, this, [this]() { resolveServices(); reload(); });
+    connect(ctx, &AppContext::demoChanged, this, [this]() { resolveServices(); reload(); });
+    resolveServices();
     reload();
 }
 
-app::AppController* ParticipantsViewModel::app() const { return jobsupport::resolveController(m_injected); }
-
-QObject* ParticipantsViewModel::controllerObject() const { return app(); }
-
-void ParticipantsViewModel::setController(QObject* controller)
+ParticipantsViewModel::ParticipantsViewModel(const UiServices& services, QObject* parent)
+    : QObject(parent), m_explicitServices(true)
 {
-    if (m_injected == controller) return;
-    m_injected = controller;
-    connectController();
-    emit controllerChanged();
+    useServices(services);
     reload();
 }
 
-bool ParticipantsViewModel::demo() const
-{
-    return !m_demoState.isEmpty() || jobsupport::demoMode(app());
-}
+bool ParticipantsViewModel::demo() const { return m_facade->fictional(); }
 
 void ParticipantsViewModel::setMeetingId(const QString& id)
 {
@@ -130,40 +115,45 @@ void ParticipantsViewModel::setDemoState(const QString& state)
 {
     if (state == m_demoState) return;
     m_demoState = state;
+    m_facade->applyDemoState(state);
     emit demoStateChanged();
     reload();
 }
 
-void ParticipantsViewModel::connectController()
+// The process's services changed (a controller arrived, App.demo flipped).
+void ParticipantsViewModel::resolveServices()
 {
-    app::AppController* c = app();
-    if (c == m_connected) return;
+    if (m_explicitServices) return;
+    useServices(AppContext::instance()->services());
+}
+
+void ParticipantsViewModel::useServices(const UiServices& services)
+{
     for (const auto& conn : std::as_const(m_connections)) disconnect(conn);
     m_connections.clear();
-    m_connected = c;
-    if (!c) return;
+    if (m_facade && m_facade->parent() == this) m_facade->deleteLater();   // a fictional facade of ours
+    m_facade = services.participants(this);
+    m_facade->applyDemoState(m_demoState);
     // End of the analysis / change of the meeting's participants: the groups are recomputed. The
     // user's checks stay (the working copy is restored by id).
     auto refreshFor = [this](const QString& meetingId) {
         if (meetingId != m_meetingId || demo()) return;
         load();
     };
-    m_connections << connect(c, &app::AppController::participantsChanged, this, refreshFor);
-    m_connections << connect(c, &app::AppController::participantAnalysisStarted, this, refreshFor);
-    m_connections << connect(c, &app::AppController::participantAnalysisFinished, this, refreshFor);
+    m_connections << connect(m_facade, &editing::IParticipantsFacade::participantsChanged, this, refreshFor);
+    m_connections << connect(m_facade, &editing::IParticipantsFacade::participantAnalysisStarted, this, refreshFor);
+    m_connections << connect(m_facade, &editing::IParticipantsFacade::participantAnalysisFinished, this, refreshFor);
 }
 
 void ParticipantsViewModel::reload()
 {
     m_rows.clear();
     m_addedSeq = 0;
-    if (demo()) loadDemo();
-    else load();
+    load();
 }
 
 void ParticipantsViewModel::load()
 {
-    app::AppController* c = app();
     // The working copy: the current checks / additions / names are kept by id.
     const QVector<Row> previous = m_rows;
 
@@ -174,55 +164,44 @@ void ParticipantsViewModel::load()
     m_metaText.clear();
     m_rawLabels.clear();
     m_tagIds.clear();
-    m_demoInfo.clear();
     m_selfName.clear();
 
-    const Meeting m = (c && !m_meetingId.isEmpty()) ? c->store()->load(m_meetingId) : Meeting();
-    if (m.id.isEmpty()) {
+    const editing::ParticipantsState st = m_facade->state(m_meetingId);
+    if (!st.found) {
         reloadTagSuggestions();
         emit changed();
         return;
     }
-    m_selfName = c->settings()->settings().recording.userSpeakerName.trimmed();
-    PersonNames names;
-    if (c->people()) { c->people()->refresh(); names = c->people()->names(); }
-    m_running = c->participantAnalysisRunning(m.id);
-    m_pending = c->participantApprovalPending(m.id);
-    m_hasTranscript = m.hasTranscript;
-    m_tagIds = m.tagIds;
+    m_selfName = st.selfName;
+    m_running = st.running;
+    m_pending = st.approvalPending;
+    m_hasTranscript = st.hasTranscript;
+    m_tagIds = st.tagIds;
+    m_rawLabels = st.rawLabels;
 
-    const processing::ParticipantAnalysisFile file = processing::ParticipantAnalysisFile::load(m.folder);
-    if (!file.isEmpty()) {
+    if (!st.analysisModelIds.isEmpty() || st.analysisAt.isValid()) {
         QStringList models;
-        for (const QString& id : file.modelIds) models << shortModelName(id);
+        for (const QString& id : st.analysisModelIds) models << shortModelName(id);
         QStringList parts{tr("hanglenyomat-elemzés")};
         if (!models.isEmpty()) parts << models.join(QStringLiteral(" + "));
-        const QString age = ageText(QDateTime::fromString(file.at, Qt::ISODate));
+        const QString age = ageText(st.analysisAt);
         if (!age.isEmpty()) parts << age;
         m_metaText = parts.join(QStringLiteral(" · "));
     }
 
-    if (m_hasTranscript) {
-        for (const TranscriptLine& l : editing::speakeredit::loadTranscriptLines(m.folder))
-            if (!l.rawLabel.isEmpty() && !m_rawLabels.contains(l.rawLabel)) m_rawLabels << l.rawLabel;
-    }
-
-    // If there was a (non-skipped) decision -> that check; otherwise the default.
-    const bool decided = m.approval && !m.approval->skipped && !m.approval->solo;
     int color = 0;
-    for (const Participant& p : m.participants) {
+    for (const editing::ParticipantCandidate& c : st.candidates) {
         Row r;
-        r.id = p.id;
-        r.personId = p.personId;
-        r.name = personName(names, p.personId);
-        r.group = groupOf(processing::participants::participantGroup(p));
-        // An invited but not heard candidate is unchecked by default: there is nobody to bind the name to.
-        r.checked = decided ? p.approved : (r.group != 2 && processing::participants::defaultChecked(p));
-        r.evidence = p.evidence;
-        r.rawIds = p.rawSpeakerIds;
-        r.sides = p.sides;
-        r.heard = !p.sides.isEmpty();
-        r.manual = p.source == ParticipantSource::Manual;
+        r.id = c.id;
+        r.personId = c.personId;
+        r.name = c.name;
+        r.group = groupOf(c.group);
+        r.checked = c.checked;
+        r.evidence = c.evidence;
+        r.rawIds = c.rawIds;
+        r.sides = c.sides;
+        r.heard = !c.sides.isEmpty();
+        r.manual = c.manual;
         r.colorIndex = color++;
         for (const Row& old : previous)
             if (old.id == r.id && !old.added) {
@@ -242,146 +221,32 @@ void ParticipantsViewModel::load()
         }
 
     reloadTagSuggestions();
-    emit changed();
-}
-
-void ParticipantsViewModel::loadDemo()
-{
-    const QString s = m_demoState.isEmpty() ? QStringLiteral("doubts") : m_demoState;
-    m_running = s == QLatin1String("running");
-    m_hasTranscript = s != QLatin1String("noTranscriptYet") && !m_running;
-    m_pending = !m_running;
-    // The model name is of the models really used (without a controller: the recommended default).
-    QStringList models;
-    const app::AppController* c = app();
-    for (const QString& id : c && !c->activeVoiceModelIds().isEmpty() ? c->activeVoiceModelIds()
-                                                                     : processing::VoiceModelRegistry::defaultEnabledIds())
-        models << shortModelName(id);
-    m_metaText = tr("hanglenyomat-elemzés") + QStringLiteral(" · ") + models.join(QStringLiteral(" + "))
-               + QStringLiteral(" · ") + tr("%n perce", "", 3);
-    m_selfName = demoName("Kovács Lilla");
-    m_tagIds = {QStringLiteral("demo-nordvik")};
-    m_rawLabels.clear();
-    m_demoInfo.clear();
-    m_demoPeople = {
-        {{}, demoName("Szabó Bence"), true, 2, 11, {}, {}},
-        {{}, demoName("Szabó Dóra"), false, 0, 2, {}, {}},
-        {{}, demoName("Nagy Péter"), true, 1, 6, {}, {}},
-        {{}, demoName("Kiss Anna"), true, 3, 9, {}, {}},
-    };
-
-    const auto S = Polarity::Support, N = Polarity::Neutral, X = Polarity::Contradict;
-    auto row = [this](const QString& id, const QString& name, int group, bool checked,
-                      QVector<Evidence> evs, const QStringList& raw, const QStringList& sides) {
-        Row r;
-        r.id = id;
-        r.name = name;
-        r.group = group;
-        r.checked = checked;
-        r.evidence = std::move(evs);
-        r.rawIds = raw;
-        r.sides = sides;
-        r.heard = !sides.isEmpty();
-        r.colorIndex = int(m_rows.size());
-        m_rows.append(r);
-    };
-    const QString mic = processing::participants::kSideMic, loop = processing::participants::kSideLoopback;
-    if (m_running) {
-        // During the analysis only participants added manually (on the Overview) show.
-        row("m-lilla", demoName("Kovács Lilla"), 1, true, {ev(EvidenceKind::Manual, S, tr("kézzel felvéve"))}, {}, {});
-        m_rows.last().manual = true;
-        reloadTagSuggestions();
-        emit changed();
-        return;
-    }
-
-    row("v-lilla", demoName("Kovács Lilla"), 0, true,
-        {ev(EvidenceKind::Side, S, demoText("mikrofon", "microphone")), ev(EvidenceKind::Voice, S, demoText("hang 96%", "voice 96%"))},
-        {demoRaw(QStringLiteral("Beszélő 1@mic"))}, {mic});
-    row("v-gabor", demoName("Fehér Gábor"), 0, true,
-        {ev(EvidenceKind::Voice, S, demoText("hang 84%", "voice 84%")), ev(EvidenceKind::Calendar, S, demoText("naptár", "calendar")),
-         ev(EvidenceKind::Tag, S, "címke: Nordvik")},
-        {demoRaw(QStringLiteral("Beszélő 1@loopback"))}, {loop});
-    row("v-arpad", demoName("Varga Árpád"), 0, true,
-        {ev(EvidenceKind::Voice, S, demoText("hang 81%", "voice 81%")), ev(EvidenceKind::Calendar, S, demoText("naptár", "calendar"))},
-        {demoRaw(QStringLiteral("Beszélő 3"))}, {loop});
-    if (s != QLatin1String("allSure")) {
-        row("v-eszter", demoName("Molnár Eszter"), 1, true,
-            {ev(EvidenceKind::Voice, S, demoText("hang 61%", "voice 61%")), ev(EvidenceKind::Calendar, S, demoText("naptár", "calendar"))},
-            {demoRaw(QStringLiteral("Beszélő 2"))}, {loop});
-        row("v-bence", demoName("Tóth Bence"), 1, false,
-            {ev(EvidenceKind::Voice, S, demoText("hang 58%", "voice 58%")), ev(EvidenceKind::Calendar, X, demoText("nincs a meghívottak közt", "not on the invite list")),
-             ev(EvidenceKind::Tag, X, demoText("más címkéken szokott lenni", "usually on other tags"))},
-            {demoRaw(QStringLiteral("Beszélő 2"))}, {loop});
-    }
-    if (s == QLatin1String("invitedNotHeard") || s == QLatin1String("addPerson")
-        || s == QLatin1String("noTranscriptYet")) {
-        row("c-reka", demoName("Lantos Réka"), 2, false,
-            {ev(EvidenceKind::Calendar, N, demoText("naptár · elfogadta", "calendar · accepted")), ev(EvidenceKind::Voice, X, demoText("nincs hanglenyomata", "has no voiceprint"))},
-            {}, {});
-    }
-    m_rawLabels = QStringList{demoRaw(QStringLiteral("Beszélő 1")), demoRaw(QStringLiteral("Beszélő 2")),
-                              demoRaw(QStringLiteral("Beszélő 3")), demoRaw(QStringLiteral("Beszélő 4"))};
-    if (s == QLatin1String("allSure")) m_rawLabels = {demoRaw(QStringLiteral("Beszélő 1")), demoRaw(QStringLiteral("Beszélő 3"))};
-    if (!m_hasTranscript) {
-        m_rawLabels.clear();
-        for (Row& r : m_rows) r.rawIds.clear();
-    }
-    if (s == QLatin1String("addPerson")) {
-        reloadTagSuggestions();
+    // The design state "addPerson" (screenshot): the tag suggestion accepted and a name added.
+    if (demo() && m_demoState == QLatin1String("addPerson")) {
         acceptTagSuggestion(0);       // "+ Alex Smith" based on #Nordvik
         addPerson(demoName("Kiss Anna"));
         return;
     }
-    reloadTagSuggestions();
     emit changed();
-}
-
-// A fictional sample of the question after approval (screenshot, demo).
-void ParticipantsViewModel::loadDemoLearn()
-{
-    if (m_demoState == QLatin1String("learnNewPerson")) {
-        setLearn({library::PersonTagQuestion{QStringLiteral("demo-nordvik"), QStringLiteral("Nordvik"),
-                                    {PersonId()}, {demoName("Szabó Bence")}, true}});
-        return;
-    }
-    // The demo's people have no ids (the answer does not reach the core).
-    setLearn({library::PersonTagQuestion{QStringLiteral("demo-nordvik"), QStringLiteral("Nordvik"),
-                                {PersonId(), PersonId()}, {demoName("Fehér Gábor"), demoName("Varga Árpád")}, false},
-              library::PersonTagQuestion{QStringLiteral("demo-partnerek"), demoText("Partnerek", "Partners"),
-                                {PersonId()}, {demoName("Fehér Gábor")}, false}});
 }
 
 void ParticipantsViewModel::reloadTagSuggestions()
 {
     m_tagLabel.clear();
     m_tagSuggestions.clear();
-    if (demo()) {
-        if (m_running || indexOfName(demoName("Szabó Bence")) >= 0) return;
-        m_tagLabel = tr("A #%1 alapján:").arg(QStringLiteral("Nordvik"));
-        m_tagSuggestions.append({demoName("Szabó Bence"), QStringLiteral("Nordvik"), 11, 14});
-        return;
-    }
-    app::AppController* c = app();
-    library::TagService* tags = c ? c->tags() : nullptr;
-    if (!tags) return;
-    // The people already in the dialog (a typed name: the person with that name) and the own person.
-    PersonIds present;
+    // The people already in the dialog (a typed name: resolved by name) and, in the facade, the own person.
+    PersonIds presentIds;
+    QStringList presentNames;
     for (const Row& r : std::as_const(m_rows)) {
-        if (!r.personId.isNull()) present << r.personId;
-        else if (!r.name.isEmpty() && c->people()) present << c->people()->idForName(r.name);
+        if (!r.personId.isNull()) presentIds << r.personId;
+        else if (!r.name.isEmpty()) presentNames << r.name;
     }
-    present << c->selfPerson().id;
     // The first tag that has a suggestion; at most 3 people.
-    for (const QString& tagId : std::as_const(m_tagIds)) {
-        const QVector<library::PersonTagStat> stats = tags->suggestPeopleForTag(tagId, present, 3);
-        if (stats.isEmpty()) continue;
-        const QString tagName = tags->tag(tagId).name;
-        m_tagLabel = tr("A #%1 alapján:").arg(tagName);
-        for (const library::PersonTagStat& st : stats)
-            m_tagSuggestions.append({st.name, tagName, st.shared, st.tagTotal, st.personId});
-        break;
-    }
+    const editing::TagPeopleHint hint = m_facade->suggestPeople(m_tagIds, presentIds, presentNames, 3);
+    if (hint.people.isEmpty()) return;
+    m_tagLabel = tr("A #%1 alapján:").arg(hint.tagName);
+    for (const library::PersonTagStat& st : hint.people)
+        m_tagSuggestions.append({st.name, hint.tagName, st.shared, st.tagTotal, st.personId});
 }
 
 QVariantList ParticipantsViewModel::tagSuggestions() const
@@ -506,12 +371,7 @@ QString ParticipantsViewModel::infoText() const
               int(unbound.size())).arg(unbound.join(QStringLiteral(", ")));
 }
 
-QVector<editing::PersonInfo> ParticipantsViewModel::people() const
-{
-    if (demo()) return m_demoPeople;
-    app::AppController* c = app();
-    return c ? c->peopleDirectory() : QVector<editing::PersonInfo>();
-}
+QVector<editing::PersonInfo> ParticipantsViewModel::people() const { return m_facade->dialogPeople(); }
 
 bool ParticipantsViewModel::isMeetingPerson(const QString& name) const { return indexOfName(name) >= 0; }
 
@@ -609,35 +469,16 @@ void ParticipantsViewModel::removeAdded(const QString& id)
 
 bool ParticipantsViewModel::approve()
 {
-    if (demo()) {
-        if (m_demoState.startsWith(QLatin1String("learn"))) loadDemoLearn();
-        return true;
-    }
-    app::AppController* c = app();
-    if (!c || m_meetingId.isEmpty()) return false;
-    QVector<Participant> accepted;
+    if (!demo() && m_meetingId.isEmpty()) return false;
+    QVector<editing::ApprovedRow> accepted;
     for (const Row& r : std::as_const(m_rows)) {
         if (!r.checked || r.name.isEmpty()) continue;
-        Participant p;
-        p.id = r.added ? QString() : r.id;
-        // The row's person; a name typed in the dialog: a known person with that name, else a new person.
-        p.personId = !r.personId.isNull() ? r.personId
-                   : c->people() ? c->people()->resolve(c->people()->choiceFor(r.name)) : PersonId();
-        if (p.personId.isNull()) continue;
-        p.rawSpeakerIds = r.rawIds;
-        p.sides = r.sides;
-        accepted.append(p);
+        accepted.append({r.added ? QString() : r.id, r.personId, r.name, r.rawIds, r.sides});
     }
-    if (!c->approveParticipants(m_meetingId, accepted)) return false;
+    const editing::ApprovalOutcome outcome = m_facade->approve(m_meetingId, accepted);
+    if (!outcome.ok) return false;
     // Learning question: once, for the approved names.
-    QVector<library::PersonTagQuestion> questions;
-    if (library::TagService* tags = c->tags()) {
-        PersonIds people;
-        for (const Participant& p : std::as_const(accepted)) people << p.personId;
-        questions = tags->learningQuestions(m_meetingId, people);
-        tags->markLearningAsked(m_meetingId, questions);
-    }
-    setLearn(questions);
+    setLearn(outcome.questions);
     return true;
 }
 
@@ -661,8 +502,7 @@ QVariantMap ParticipantsViewModel::learnQuestion() const
 
 QString ParticipantsViewModel::answer(const library::PersonTagQuestion& q, bool yes)
 {
-    if (!demo())
-        if (app::AppController* c = app(); c && c->tags()) c->tags()->answerLearning(q, yes);
+    m_facade->answerLearning(q, yes);
     return taglearning::answeredText(q, yes);
 }
 
@@ -694,9 +534,7 @@ void ParticipantsViewModel::dismissLearn()
 
 bool ParticipantsViewModel::skip()
 {
-    if (demo()) return true;
-    app::AppController* c = app();
-    return c && !m_meetingId.isEmpty() && c->skipApproval(m_meetingId);
+    return (demo() || !m_meetingId.isEmpty()) && m_facade->skip(m_meetingId);
 }
 
 bool ParticipantsViewModel::unbind(const QString& participantId)
@@ -709,11 +547,10 @@ bool ParticipantsViewModel::unbind(const QString& participantId)
         emit changed();
         return true;
     }
-    app::AppController* c = app();
-    if (!c || m_meetingId.isEmpty()) return false;
+    if (m_meetingId.isEmpty()) return false;
     // Removed from the working copy too (the reload after participantsChanged would keep it).
     if (const int i = indexOf(participantId); i >= 0) m_rows[i].checked = false;
-    return c->unbindParticipant(m_meetingId, participantId);
+    return m_facade->unbind(m_meetingId, participantId);
 }
 
 } // namespace tanara_qml

@@ -1,11 +1,8 @@
 #include "ParticipantTrackBinder.h"
 
 #include "AppContext.h"
-#include "JobSupport.h"
 
-#include "tanara/app/AppController.h"
-#include "tanara/library/tracks/TrackCatalog.h"
-#include "tanara/library/store/MeetingRepository.h"
+#include "tanara/editing/participants/IParticipantsFacade.h"
 
 #include <algorithm>
 
@@ -13,37 +10,43 @@ namespace tanara_qml {
 
 using namespace tanara;
 
-namespace {
-
-QString iconOf(const library::TrackView& v)
-{
-    if (v.role == library::TrackRole::OwnMic || v.track.kind == TrackKind::Mic) return QStringLiteral("mic");
-    if (v.role == library::TrackRole::CallAudio || v.track.kind == TrackKind::Loopback) return QStringLiteral("phone");
-    return QStringLiteral("audio-lines");
-}
-
-} // namespace
-
 ParticipantTrackBinder::ParticipantTrackBinder(QObject* parent) : QObject(parent)
 {
     AppContext* ctx = AppContext::instance();
-    connect(ctx, &AppContext::controllerChanged, this, [this]() { connectController(); reload(); });
-    connect(ctx, &AppContext::demoChanged, this, &ParticipantTrackBinder::reload);
-    connectController();
+    connect(ctx, &AppContext::controllerChanged, this, [this]() { resolveServices(); reload(); });
+    connect(ctx, &AppContext::demoChanged, this, [this]() { resolveServices(); reload(); });
+    resolveServices();
     reload();
 }
 
-app::AppController* ParticipantTrackBinder::app() const { return jobsupport::resolveController(m_injected); }
-QObject* ParticipantTrackBinder::controllerObject() const { return app(); }
-
-void ParticipantTrackBinder::setController(QObject* controller)
+ParticipantTrackBinder::ParticipantTrackBinder(const UiServices& services, QObject* parent)
+    : QObject(parent), m_explicitServices(true)
 {
-    if (m_injected == controller)
-        return;
-    m_injected = controller;
-    connectController();
-    emit controllerChanged();
+    useServices(services);
     reload();
+}
+
+// The process's services changed (a controller arrived, App.demo flipped).
+void ParticipantTrackBinder::resolveServices()
+{
+    if (m_explicitServices) return;
+    useServices(AppContext::instance()->services());
+}
+
+void ParticipantTrackBinder::useServices(const UiServices& services)
+{
+    for (const QMetaObject::Connection& conn : std::as_const(m_connections))
+        disconnect(conn);
+    m_connections.clear();
+    if (m_facade && m_facade->parent() == this) m_facade->deleteLater();   // a fictional facade of ours
+    m_facade = services.participants(this);
+    auto mine = [this](const QString& id) { return !m_meetingId.isEmpty() && id == m_meetingId; };
+    m_connections << connect(m_facade, &editing::IParticipantsFacade::tracksChanged, this,
+                             [this, mine](const QString& id) { if (mine(id)) reload(); });
+    m_connections << connect(m_facade, &editing::IParticipantsFacade::participantsChanged, this,
+                             [this, mine](const QString& id) { if (mine(id)) reload(); });
+    m_connections << connect(m_facade, &editing::IParticipantsFacade::speakerMapChanged, this,
+                             [this, mine](const QString& id) { if (mine(id)) reload(); });
 }
 
 void ParticipantTrackBinder::setMeetingId(const QString& id)
@@ -60,57 +63,18 @@ bool ParticipantTrackBinder::available() const
     return m_tracks.size() >= 2;
 }
 
-void ParticipantTrackBinder::connectController()
-{
-    app::AppController* c = app();
-    if (c == m_connected)
-        return;
-    for (const QMetaObject::Connection& conn : std::as_const(m_connections))
-        disconnect(conn);
-    m_connections.clear();
-    m_connected = c;
-    if (!c)
-        return;
-    auto mine = [this](const QString& id) { return !m_meetingId.isEmpty() && id == m_meetingId; };
-    m_connections << connect(c, &app::AppController::tracksChanged, this,
-                             [this, mine](const QString& id) { if (mine(id)) reload(); });
-    m_connections << connect(c, &app::AppController::participantsChanged, this,
-                             [this, mine](const QString& id) { if (mine(id)) reload(); });
-    m_connections << connect(c, &app::AppController::speakerMapChanged, this,
-                             [this, mine](const QString& id) { if (mine(id)) reload(); });
-}
-
 void ParticipantTrackBinder::reload()
 {
     m_tracks.clear();
-    app::AppController* c = app();
-    if (jobsupport::demoMode(c)) {
-        m_tracks = {{QStringLiteral("mic"), tr("Saját mikrofon"), QStringLiteral("mic")},
-                    {QStringLiteral("call"), tr("Hívás hangja"), QStringLiteral("phone")}};
-        if (m_demoManual.isEmpty())
-            m_demoManual.insert(QStringLiteral("p3"), {QStringLiteral("mic"), QStringLiteral("call")});
-    } else if (!m_meetingId.isEmpty() && c->store()) {
-        const Meeting m = c->store()->load(m_meetingId);
-        // The selectable tracks: the logical tracks included in the mixdown (once per segment).
-        for (const library::TrackView& v : library::TrackCatalog::tracks(m)) {
-            if (v.segment > 1 || !v.track.included() || v.fileMissing) continue;
-            m_tracks.append({v.track.id, v.displayName, iconOf(v)});
-        }
-    }
+    for (const editing::ParticipantTrackChoice& t : m_facade->selectableTracks(m_meetingId))
+        m_tracks.append({t.id, t.name, t.icon});
     ++m_revision;
     emit changed();
 }
 
 QStringList ParticipantTrackBinder::binding(const QString& id, bool* manual) const
 {
-    app::AppController* c = app();
-    if (jobsupport::demoMode(c)) {
-        const QStringList m = m_demoManual.value(id);
-        *manual = !m.isEmpty();
-        if (*manual) return m;
-        return {id == QLatin1String("p1") ? QStringLiteral("mic") : QStringLiteral("call")};
-    }
-    const ParticipantTrackBinding b = c->participantTracks(m_meetingId, id);
+    const ParticipantTrackBinding b = m_facade->participantTracks(m_meetingId, id);
     *manual = b.manual;
     return b.trackIds;
 }
@@ -139,18 +103,12 @@ QVariantList ParticipantTrackBinder::chips(const QString& id) const
 
 bool ParticipantTrackBinder::setTracks(const QString& id, const QStringList& trackIds)
 {
-    app::AppController* c = app();
-    if (jobsupport::demoMode(c)) {
-        if (trackIds.isEmpty()) m_demoManual.remove(id);
-        else m_demoManual.insert(id, trackIds);
-        ++m_revision;
-        emit changed();
-        return true;
-    }
-    if (m_meetingId.isEmpty())
+    if (m_meetingId.isEmpty() && !m_facade->fictional())
         return false;
-    // The change signal (participantsChanged) comes from the core -> reload.
-    return c->setParticipantTracks(m_meetingId, id, trackIds);
+    // The change signal (participantsChanged) comes from the core -> reload; the fictional facade has no meeting to signal for.
+    const bool ok = m_facade->setParticipantTracks(m_meetingId, id, trackIds);
+    if (ok && m_facade->fictional()) reload();
+    return ok;
 }
 
 bool ParticipantTrackBinder::toggle(const QString& id, const QString& trackId)

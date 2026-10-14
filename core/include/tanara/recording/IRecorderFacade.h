@@ -9,6 +9,7 @@
 // never learns which implementation it talks to: everything the fixtures have to pin (a device
 // row's level, the question being open, the finished state ...) is part of this surface.
 #include "tanara/domain/Audio.h"
+#include "tanara/library/tags/TagBackend.h"
 
 #include <QDateTime>
 #include <QMetaType>
@@ -118,6 +119,9 @@ public:
     // Creates the tag for a name (the existing one for an existing key); invalid: failed.
     virtual RecorderTag createTag(const QString& name) = 0;
     virtual std::optional<RecorderTag> tag(const QString& id) const = 0;   // nullopt: no such tag
+    // The tag input's data (the whole pool, the recent ones, the suggestions); the recorder window's
+    // TagInputModel attaches to it. nullptr: no tag input data.
+    virtual library::TagBackend* tagBackend() const { return nullptr; }
 
     // ---- session ----
     virtual RecorderSession session() const { return {}; }
@@ -127,9 +131,6 @@ public:
     virtual QString windowStatePath() const { return {}; }
     // The recording.lock file the window host maintains; empty: no lock.
     virtual QString lockFilePath() const { return {}; }
-    // Transitional: the object the tag input (TagInputModel.controller) wires to until the
-    // tag input gets its own facade (P15 sub-slice 5). nullptr -> the fictional tag set.
-    virtual QObject* tagController() const { return nullptr; }
 
 signals:
     void devicesChanged();

@@ -97,6 +97,9 @@ class TestPeopleViewModel : public QObject {
         m_app->setUserSpeakerName(kSelf);
     }
 
+    // The facades of the test controller (the view models are built on them).
+    const UiServices& services() { return AppContext::instance()->servicesFor(m_app.get()); }
+
     // The id of an existing person by name (null if none).
     PersonId id(const QString& name) const { return m_app->people()->idForName(name); }
     PersonId ensurePerson(const QString& name)
@@ -193,7 +196,7 @@ private slots:
         vm.setDemoState("P03");
         QCOMPARE(vm.selectedName(), kEszter);
         QCOMPARE(vm.sampleCount(), 0);
-        QVERIFY(vm.planReady());
+        QTRY_VERIFY(vm.planReady());                               // the fictional facade answers like the real one: a turn later
         QVERIFY(vm.planPossible());
         QCOMPARE(vm.planButtonText(), QStringLiteral("Minta 3 megbeszélésből"));
 
@@ -330,8 +333,7 @@ private slots:
         tags->addTag(b.id, nordvik);
         tags->refreshPersonStatsNow();
 
-        PeopleViewModel vm;
-        vm.setController(m_app.get());
+        PeopleViewModel vm(services());
         vm.setSelectedName(kGergely);
         QCOMPARE(vm.tagsMode(), QStringLiteral("edit"));
         QVERIFY(vm.personTags().isEmpty());
@@ -378,9 +380,8 @@ private slots:
     {
         startApp();
         scenario();
-        PeopleViewModel vm;
+        PeopleViewModel vm(services());
         QSignalSpy listChanged(&vm, &PeopleViewModel::listChanged);
-        vm.setController(m_app.get());
         // At once: names + sample count, the meeting count is not there yet.
         QCOMPARE(vm.totalCount(), 4);
         QVERIFY(!vm.statsReady());
@@ -421,8 +422,7 @@ private slots:
         scenario();
         m_app->peopleService()->addAlias(id(kEszter), "Gergő felesége");
         m_app->peopleStats()->refreshNow();
-        PeopleViewModel vm;
-        vm.setController(m_app.get());
+        PeopleViewModel vm(services());
         QVERIFY(vm.statsReady());
 
         // Alphabetical: "You", then initials (an accented letter files under its base letter); the own person always first.
@@ -468,8 +468,7 @@ private slots:
         Meeting a;
         scenario(&a);
         m_app->peopleStats()->refreshNow();
-        PeopleViewModel vm;
-        vm.setController(m_app.get());
+        PeopleViewModel vm(services());
         QSignalSpy toast(&vm, &PeopleViewModel::toast);
 
         // New person: added and selected; for an existing name an error + the existing one selected.
@@ -528,8 +527,7 @@ private slots:
         Meeting a, b;
         scenario(&a, &b);
         m_app->peopleStats()->refreshNow();
-        PeopleViewModel vm;
-        vm.setController(m_app.get());
+        PeopleViewModel vm(services());
         vm.setSelectedName(kGergely);
         QSignalSpy toast(&vm, &PeopleViewModel::toast);
 
@@ -577,8 +575,7 @@ private slots:
         startApp();
         scenario();
         m_app->peopleStats()->refreshNow();
-        PeopleViewModel vm;
-        vm.setController(m_app.get());
+        PeopleViewModel vm(services());
         vm.setSelectedName(kGergely);
         QSignalSpy playing(&vm, &PeopleViewModel::playingChanged);
 
@@ -609,8 +606,7 @@ private slots:
         startApp();
         scenario();
         m_app->peopleStats()->refreshNow();
-        PeopleViewModel vm;
-        vm.setController(m_app.get());
+        PeopleViewModel vm(services());
         vm.setSelectedName(kGergely);
 
         // By voice similarity; a percentage only for someone who has a voiceprint.
@@ -658,8 +654,7 @@ private slots:
         Meeting a;
         scenario(&a);
         m_app->peopleStats()->refreshNow();
-        PeopleViewModel vm;
-        vm.setController(m_app.get());
+        PeopleViewModel vm(services());
         vm.setSelectedName(kGergely);
         QVERIFY(vm.deleteHasSamples());
         QCOMPARE(vm.deleteText(false),
@@ -692,8 +687,7 @@ private slots:
         Meeting a, b;
         scenario(&a, &b);
         m_app->peopleStats()->refreshNow();
-        PeopleViewModel vm;
-        vm.setController(m_app.get());
+        PeopleViewModel vm(services());
         vm.setSelectedName(kEszter);
 
         // Without a voice model: the text says so, there is no button.
@@ -731,8 +725,7 @@ private slots:
         startApp();
         for (int i = 0; i < 120; ++i)
             m_app->peopleService()->addPerson(QStringLiteral("Személy %1").arg(i, 3, 10, QLatin1Char('0')));
-        PeopleViewModel vm;
-        vm.setController(m_app.get());
+        PeopleViewModel vm(services());
         QCOMPARE(vm.totalCount(), 121);
         QElapsedTimer timer;
         timer.start();
@@ -749,8 +742,7 @@ private slots:
         startApp();
         scenario();
         m_app->peopleStats()->refreshNow();
-        PeopleViewModel vm;
-        vm.setController(m_app.get());
+        PeopleViewModel vm(services());
         // A change coming from another window (transcript editor, Settings): the list follows by itself.
         m_app->renamePerson(id(kGergo), "Balla Gergő");
         QVERIFY(waitFor([&] { return vm.personExists("Balla Gergő"); }));
@@ -777,7 +769,6 @@ private slots:
         QVERIFY(host.isVisible());
         PeopleViewModel* vm = host.viewModel();
         QVERIFY(vm);
-        QCOMPARE(vm->controllerObject(), m_app.get());
         QCOMPARE(vm->selectedName(), kEszter);
         QVERIFY(waitFor([&] { return vm->statsReady(); }));       // counts in the background on opening
         QCOMPARE(vm->meetingCount(), 2);
@@ -850,8 +841,7 @@ private slots:
         scenario();
         // A second store on the same people.json (the path of learning: SpeakerEditor / PeopleService).
         library::PeopleStore learner(m_app->settings()->paths().dataFile(paths::files::People));
-        PeopleViewModel vm;
-        vm.setController(m_app.get());
+        PeopleViewModel vm(services());
         vm.setSelectedName(kGergely);
         QVERIFY(vm.defaultSideVisible());
         QCOMPARE(vm.defaultSide(), QString());

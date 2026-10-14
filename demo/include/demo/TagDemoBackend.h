@@ -1,20 +1,31 @@
 #pragma once
 //
-// TagDemoBackend: the fictional-data implementation of TagBackend (without a controller:
-// --qml-shot, --gallery, --demo, tests). The 12 tags, the numbers and the names come from the
-// handoff images, all fictional.
+// TagDemoBackend: the fictional-data implementation of TagBackend (--qml-shot, --gallery, --demo,
+// tests; UiServices::tagBackend of the demo set). The 12 tags (demo/TagPool.h), the numbers and
+// the names come from the handoff images, all fictional.
 //
 // It lives in memory but with REAL rules: add / remove / reject / rename / merge / delete
 // change the state, co-occurrence (>= 2 meetings, >= 50 % of the tag's meetings) is
 // computed, and every group is one undoable step (snapshot-based stack, at most 50).
 //
-#include "DemoText.h"
-#include "TagBackend.h"
+#include "demo/DemoText.h"
+
+#include "tanara/library/tags/TagBackend.h"
 
 #include <QHash>
 #include <QSet>
 
-namespace tanara_qml {
+namespace tanara_demo {
+
+using tanara::library::PersonTagItem;
+using tanara::library::TagAddSource;
+using tanara::library::TagBackend;
+using tanara::library::TagItem;
+using tanara::library::TagMeetingItem;
+using tanara::library::TagReasonItem;
+using tanara::library::TagProfileItem;
+using tanara::library::TagSuggestionItem;
+using tanara::library::TagSuggestionState;
 
 class TagDemoBackend : public TagBackend {
     Q_OBJECT
@@ -99,4 +110,4 @@ private:
     bool m_statsBusy = false;
 };
 
-} // namespace tanara_qml
+} // namespace tanara_demo

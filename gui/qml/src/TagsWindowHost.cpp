@@ -1,9 +1,9 @@
 #include "TagsWindowHost.h"
 
+#include "AppContext.h"
 #include "QmlApp.h"
 #include "TagsViewModel.h"
 
-#include "tanara/app/AppController.h"
 #include "tanara/foundation/log/Logging.h"
 
 #include <QQmlComponent>
@@ -15,8 +15,9 @@ using namespace tanara;
 namespace tanara_qml {
 
 TagsWindowHost::TagsWindowHost(app::AppController* controller, QObject* parent)
-    : QObject(parent), m_controller(controller)
+    : QObject(parent)
 {
+    AppContext::instance()->useControllerIfNone(controller);
 }
 
 TagsWindowHost::~TagsWindowHost()
@@ -34,9 +35,7 @@ bool TagsWindowHost::ensureWindow()
     }
     QQmlComponent comp(m_engine);
     comp.loadFromModule("Tanara", "TagsWindow");
-    QObject* obj = comp.isError() ? nullptr : comp.createWithInitialProperties({
-        {QStringLiteral("hostController"), QVariant::fromValue<QObject*>(m_controller.data())},
-    });
+    QObject* obj = comp.isError() ? nullptr : comp.create();
     auto* win = qobject_cast<QQuickWindow*>(obj);
     if (!win) {
         for (const QQmlError& e : comp.errors())

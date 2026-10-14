@@ -9,8 +9,9 @@
 // (--demo) modes an AppController is INTENTIONALLY not created (so the user's data is not
 // touched), and in the tests/ui tests it is not mandatory either. services() then (and with
 // App.demo) hands out the fictional facades of tanara_demo, so view models never branch on it.
-// View models ported to facades (the recorder) take them in their constructor; the rest still
-// read controller() until their P15 sub-slice.
+// View models ported to facades (the recorder, the people / tag / participant models) take them in
+// their constructor (the QML default constructors take services()); the rest still read
+// controller() until their P15 sub-slice.
 //
 #include "UiServices.h"
 
@@ -75,6 +76,13 @@ public:
     // The real set of a given controller (cached; lives as long as the controller does).
     // nullptr -> the fictional set.
     const UiServices& servicesFor(tanara::app::AppController* controller);
+    // The same for a controller that is only known as a QObject (transitional callers); not an
+    // AppController -> the fictional set.
+    const UiServices& servicesForObject(QObject* controller);
+    // A process whose windows are built from an AppController that was not registered with
+    // setController (the standalone recorder, `tanara --settings`): the host makes it the process's
+    // controller, unless there is one already, so the windows' view models resolve its services.
+    void useControllerIfNone(tanara::app::AppController* controller);
 
     // For RecorderPreview.qml (screenshots / gallery): a recorder view model on the fictional
     // recorder in the given design state ("R01" ... "R10"). The caller owns the result.

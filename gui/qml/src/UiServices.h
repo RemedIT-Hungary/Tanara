@@ -6,7 +6,8 @@
 // (QmlApp, *WindowHost, the QML default constructors) give a facade to the view model's
 // constructor; the view models themselves never look at the controller.
 //
-// The set grows with the P15 sub-slices (library, transcript, summary, people, settings ...).
+// The set grows with the P15 sub-slices (library, transcript, summary, settings ...); the people, tag
+// and participants side is in since sub-slice 5.
 //
 #include <QObject>
 #include <QString>
@@ -17,6 +18,8 @@ namespace tanara::recording { class IRecorderFacade; }
 namespace tanara::library { class ILibraryFacade; class IImportFacade; }
 namespace tanara::editing { class IShellFacade; }
 namespace tanara::library { class IOverviewFacade; }
+namespace tanara::library { class IPeopleFacade; class TagBackend; }
+namespace tanara::editing { class IParticipantsFacade; }
 
 namespace tanara_qml {
 
@@ -37,6 +40,15 @@ struct UiServices {
     // The Overview tab. A factory: the demo facade serves one design state (its scenario) and keeps
     // its edits, so every asking model gets its own; the real one is shared.
     std::function<tanara::library::IOverviewFacade*(const QString& scenario, QObject* parent)> overview;
+    // The tag side (pool, a meeting's tags, suggestions, people tags, undo). A factory: every view
+    // model gets a backend of its own (the demo one keeps its in-memory state per asking model; the
+    // real one keeps the suggestion state of its view).
+    std::function<tanara::library::TagBackend*(QObject* parent)> tagBackend;
+    // The People window's people side. A factory: the real facade is shared (parent ignored), the
+    // demo one is the asking view model's own (its design state).
+    std::function<tanara::library::IPeopleFacade*(QObject* parent)> people;
+    // The participants side ("Who was there?", the speaker -> track chips, the pickers): the same.
+    std::function<tanara::editing::IParticipantsFacade*(QObject* parent)> participants;
 };
 
 } // namespace tanara_qml

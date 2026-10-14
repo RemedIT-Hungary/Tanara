@@ -26,6 +26,8 @@ class TagsViewModel;
 class TagsWindowHost : public QObject {
     Q_OBJECT
 public:
+    // controller: the process's controller; it becomes the App singleton's if none is set yet (the
+    // window's view models resolve their services from it).
     explicit TagsWindowHost(tanara::app::AppController* controller, QObject* parent = nullptr);
     ~TagsWindowHost() override;
 
@@ -50,7 +52,6 @@ signals:
 private:
     bool ensureWindow();
 
-    QPointer<tanara::app::AppController> m_controller;
     QQmlEngine* m_engine = nullptr;
     QPointer<QQuickWindow> m_window;
     QPointer<TagsViewModel> m_vm;

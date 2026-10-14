@@ -1,5 +1,5 @@
 // TagInputModel + TagMatching: the list of the tag input field.
-//  - without a controller the made-up 12 tags: empty field gives the most recent; typing gives
+//  - on the fictional services the made-up 12 tags: empty field gives the most recent; typing gives
 //    accent- and case-insensitive matches (name start, word start, anywhere) + "New tag"; on
 //    an exact match no "New"; a very similar name gives "SIMILAR EXISTS" + "Create anyway";
 //  - selection, stepping, choosing (chosen signal), excluded ids, limit;
@@ -8,6 +8,8 @@
 #include "TagInputModel.h"
 #include "TagMatching.h"
 #include "test_tag_backend.h"
+
+#include "demo/TagDemoBackend.h"
 
 #include <QSignalSpy>
 #include <QtTest>
@@ -198,6 +200,24 @@ private slots:
         m.setBackend(nullptr);
         m.setText(QString());
         QCOMPARE(names(m).first(), QStringLiteral("Nordvik"));
+    }
+
+    // The backend comes from the given services; a host's own one (the recorder's) goes in through the
+    // `backend` property, and null falls back to the services'.
+    void backendFromServicesAndProperty()
+    {
+        TagInputModel m(AppContext::instance()->demoServices());
+        QVERIFY(qobject_cast<tanara_demo::TagDemoBackend*>(m.backendObject()));
+        QSignalSpy changed(&m, &TagInputModel::backendChanged);
+        FakeTagBackend fake;
+        m.setBackendObject(&fake);
+        QCOMPARE(m.backendObject(), &fake);
+        QCOMPARE(changed.count(), 1);
+        m.setBackendObject(&fake);                          // the same one: no signal
+        QCOMPARE(changed.count(), 1);
+        m.setBackendObject(nullptr);
+        QVERIFY(qobject_cast<tanara_demo::TagDemoBackend*>(m.backendObject()));
+        QCOMPARE(changed.count(), 2);
     }
 };
 

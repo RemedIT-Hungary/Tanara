@@ -2,7 +2,7 @@
 
 #include "AppContext.h"
 #include "ShellFormat.h"
-#include "TagDemoBackend.h"
+#include "demo/TagDemoBackend.h"
 #include "TagMatching.h"
 
 #include "tanara/foundation/text/Text.h"
@@ -52,20 +52,28 @@ QString tagArticle(const QString& name)
 
 TagsViewModel::TagsViewModel(QObject* parent) : QObject(parent)
 {
-    m_controller = AppContext::instance()->controllerObject();
-    m_ownBackend = createTagBackend(m_controller, this);
+    AppContext* ctx = AppContext::instance();
+    connect(ctx, &AppContext::controllerChanged, this, &TagsViewModel::resolveBackend);
+    connect(ctx, &AppContext::demoChanged, this, &TagsViewModel::resolveBackend);
+    m_ownBackend = ctx->services().tagBackend(this);
     attach(m_ownBackend);
 }
 
-void TagsViewModel::setController(QObject* controller)
+TagsViewModel::TagsViewModel(const UiServices& services, QObject* parent) : QObject(parent), m_explicitServices(true)
 {
-    if (m_controller == controller && m_backend == m_ownBackend) return;
-    m_controller = controller;
+    m_ownBackend = services.tagBackend(this);
+    attach(m_ownBackend);
+}
+
+// The process's services changed (a controller arrived, App.demo flipped): the own backend follows,
+// unless a host-given one is in use.
+void TagsViewModel::resolveBackend()
+{
+    if (m_explicitServices || m_backend != m_ownBackend) return;
     TagBackend* old = m_ownBackend;
-    m_ownBackend = createTagBackend(controller, this);
+    m_ownBackend = AppContext::instance()->services().tagBackend(this);
     attach(m_ownBackend);
     if (old) old->deleteLater();
-    emit controllerChanged();
 }
 
 void TagsViewModel::setBackend(TagBackend* backend)
@@ -94,7 +102,7 @@ void TagsViewModel::setDemoState(const QString& state)
     if (m_demoState == state) return;
     m_demoState = state;
     emit demoStateChanged();
-    auto* demo = qobject_cast<TagDemoBackend*>(m_backend);
+    auto* demo = qobject_cast<tanara_demo::TagDemoBackend*>(m_backend);
     if (!demo || m_backend != m_ownBackend) return;
     if (state == QLatin1String("T13")) {
         demo->clearAll();

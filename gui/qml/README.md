@@ -415,7 +415,13 @@ A `Main` demo state needs `App.demo` (set by `--qml-shot`): the shell then picks
 ### Tags in the shell
 
 Spec: `design/handoff-tags/README.md` (C03/C04, C07), contract `CONTRACT-TAGS.md`. The view-models
-reach the core through `TagBackend` → `TagControllerBackend` (`createControllerTagBackend`).
+reach the core through the `TagBackend` facade (`tanara/library/tags/TagBackend.h`): the real
+`TagControllerBackend` (over `TagService` + `TagSuggestionService` + `PeopleStore`) or the fictional
+`tanara_demo::TagDemoBackend`; `UiServices::tagBackend` hands one out per view model (`AppContext::services()`).
+The People window and the "Who was there?" dialog work the same way (`library::IPeopleFacade`,
+`editing::IParticipantsFacade`: the real `PeopleServicesFacade` / `ParticipantsServicesFacade`, or
+`tanara_demo::PeopleDemoFacade` / `ParticipantsDemoFacade`); the view models take them in their
+constructor (`PeopleViewModel(const UiServices&)` …), the QML default constructors take `services()`.
 
 - **Áttekintés** (v3: the header has no tag row any more; `OverviewTab` → `TagRowOverview`, the
   "Címkék" field of the left column): the model is `ShellMeetingModel.tags` (a `MeetingTagsModel` bound to the selected meeting). Suggestions are

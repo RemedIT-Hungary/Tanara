@@ -63,6 +63,9 @@ public:
     tanara::recording::RecorderTag createTag(const QString& name) override;
     std::optional<tanara::recording::RecorderTag> tag(const QString& id) const override;
 
+    // The tag input's data: the made-up tag pool (one per facade).
+    tanara::library::TagBackend* tagBackend() const override;
+
     tanara::recording::RecorderSession session() const override { return m_session; }
 
 private:
@@ -85,6 +88,7 @@ private:
     bool m_recording = false;
     tanara::recording::RecorderSession m_session;
     QHash<QString, tanara::recording::RecorderTag> m_createdTags;
+    mutable tanara::library::TagBackend* m_tagBackend = nullptr;
 };
 
 } // namespace tanara_demo

@@ -25,6 +25,7 @@
 #include <QtQml/qqmlregistration.h>
 
 #include "TagBackend.h"
+#include "UiServices.h"
 
 namespace tanara_qml {
 
@@ -32,7 +33,6 @@ class MeetingTagsModel : public QObject {
     Q_OBJECT
     QML_ELEMENT
 
-    Q_PROPERTY(QObject* controller READ controller WRITE setController NOTIFY controllerChanged)
     Q_PROPERTY(QString meetingId READ meetingId WRITE setMeetingId NOTIFY meetingIdChanged)
     Q_PROPERTY(QString demoState READ demoState WRITE setDemoState NOTIFY demoStateChanged)
     // The meeting's title for the title-based fallback suggestion ("" = no fallback).
@@ -52,10 +52,14 @@ class MeetingTagsModel : public QObject {
     Q_PROPERTY(QString undoLabel READ undoLabel NOTIFY undoChanged)
 
 public:
+    // QML: the services of the moment (follows App.controller / App.demo).
     explicit MeetingTagsModel(QObject* parent = nullptr);
-
-    QObject* controller() const { return m_controller; }
+    // The tag backend of the given services.
+    explicit MeetingTagsModel(const UiServices& services, QObject* parent = nullptr);
+    // Transitional: ShellMeetingModel (P15-2) and PreTranscriptViewModel (P15-3) still hand the
+    // controller over; the services of that controller (null: the fictional ones) are used from then on.
     void setController(QObject* controller);
+
     void setBackend(TagBackend* backend);           // for tests; not taken over
     TagBackend* backend() const { return m_backend; }
 
@@ -93,7 +97,6 @@ public:
     Q_INVOKABLE QString tagName(const QString& tagId) const;
 
 signals:
-    void controllerChanged();
     void meetingIdChanged();
     void demoStateChanged();
     void draftTitleChanged();
@@ -105,13 +108,15 @@ signals:
 
 private:
     void attach(TagBackend* backend);
+    void resolveBackend();
     void applyDemoState();
     void reloadTags();
     void reloadSuggestions();
     bool applied(const TagSuggestionItem& s) const;
     void finishStep();
 
-    QPointer<QObject> m_controller;
+    bool m_explicitServices = false;
+    QPointer<QObject> m_handedController;   // setController (transitional)
     TagBackend* m_backend = nullptr;
     TagBackend* m_ownBackend = nullptr;
     QList<QMetaObject::Connection> m_conns;

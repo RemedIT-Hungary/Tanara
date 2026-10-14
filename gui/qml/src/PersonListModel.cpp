@@ -5,7 +5,7 @@
 #include "AppContext.h"
 #include "TranscriptEditorViewModel.h"
 
-#include "tanara/app/AppController.h"
+#include "tanara/editing/participants/IParticipantsFacade.h"
 #include "tanara/editing/session/PeopleDirectory.h"
 
 #include <algorithm>
@@ -14,7 +14,35 @@ using namespace tanara;
 
 namespace tanara_qml {
 
-PersonListModel::PersonListModel(QObject* parent) : QAbstractListModel(parent) {}
+PersonListModel::PersonListModel(QObject* parent) : QAbstractListModel(parent)
+{
+    // The services of the moment: a new controller / App.demo changes where the lists come from.
+    AppContext* ctx = AppContext::instance();
+    connect(ctx, &AppContext::controllerChanged, this, &PersonListModel::dropServices);
+    connect(ctx, &AppContext::demoChanged, this, &PersonListModel::dropServices);
+}
+
+PersonListModel::PersonListModel(const UiServices& services, QObject* parent) : QAbstractListModel(parent)
+{
+    m_explicitServices = true;
+    m_directory = services.participants(this);
+    setTagBackend(services.tagBackend(this));
+    m_ownTags = true;
+}
+
+void PersonListModel::dropServices()
+{
+    if (m_explicitServices) return;
+    if (m_ownTags && m_tags) {
+        m_tags->disconnect(this);
+        m_tags->deleteLater();
+        m_tags = nullptr;
+        m_ownTags = false;
+    }
+    if (m_directory && m_directory->parent() == this) m_directory->deleteLater();   // a fictional one of ours
+    m_directory = nullptr;
+    refresh();
+}
 
 int PersonListModel::rowCount(const QModelIndex& parent) const
 {
@@ -106,23 +134,6 @@ void PersonListModel::setParticipants(ParticipantsViewModel* participants)
 
 namespace {
 
-// The name list of the Tags window's demo (without a controller; the design packages' fictional names).
-QVector<editing::PersonInfo> demoPeople()
-{
-    const QList<std::pair<const char*, int>> rows{
-        {"Bárány Gergely", 23}, {"Dénes Zsófia", 17}, {"Fehér Gábor", 16}, {"Gál Bence", 12},
-        {"Kovács Lilla", 41}, {"Molnár Eszter", 0}, {"Szabó Bence", 8}, {"Tóth Eszter", 3}, {"Varga Árpád", 12}};
-    QVector<editing::PersonInfo> out;
-    for (const auto& [name, n] : rows) {
-        editing::PersonInfo p;
-        p.name = demoName(name);
-        p.meetingCount = n;
-        p.hasVoiceprint = n > 2;
-        out.append(p);
-    }
-    return out;
-}
-
 // A person's best relation among the reference tags.
 struct TagLink {
     QString tagName;
@@ -164,7 +175,7 @@ void PersonListModel::setTagBackend(TagBackend* backend)
 TagBackend* PersonListModel::tagBackend()
 {
     if (!m_tags) {
-        setTagBackend(createTagBackend(AppContext::instance()->controllerObject(), this));
+        setTagBackend(AppContext::instance()->services().tagBackend(this));
         m_ownTags = true;
     }
     return m_tags;
@@ -184,8 +195,8 @@ void PersonListModel::refresh()
     else if (m_editor) m_all = m_editor->people();
     else if (!m_tagId.isEmpty()) {
         // Standalone (Tags window): the full name list.
-        tanara::app::AppController* app = AppContext::instance()->controller();
-        m_all = app ? app->peopleDirectory() : demoPeople();
+        if (!m_directory) m_directory = AppContext::instance()->services().participants(this);
+        m_all = m_directory->peopleDirectory();
     } else m_all.clear();
     refilter();
 }

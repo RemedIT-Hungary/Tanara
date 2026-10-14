@@ -1,15 +1,16 @@
-#include "TagDemoBackend.h"
+#include "demo/TagDemoBackend.h"
 
-#include "DemoText.h"
+#include "demo/DemoText.h"
+#include "demo/TagPool.h"
 
-#include "TagMatching.h"
+#include "tanara/library/tags/TagNames.h"
 
 #include <QHash>
 
 #include <algorithm>
 #include <tuple>
 
-namespace tanara_qml {
+namespace tanara_demo {
 
 namespace {
 
@@ -21,24 +22,14 @@ QDateTime at(int y, int mo, int d, int h = 10, int mi = 0)
 // The demo's "now": this makes the picture deterministic (an add puts the last use here).
 const QDateTime kNow = at(2026, 10, 5, 10, 0);
 
-// The fictional tag names in the English demo language (ids unchanged; the same pool as in
-// LibraryDemoData). Callable with the Hungarian name, returns its English counterpart.
+// A tag's name in the demo language: from the shared pool (demo/TagPool.h) by its Hungarian name;
+// a name outside the pool (the LLM suggestion "Ügyfélsiker") has its English counterpart here.
 QString tagText(const char* hu)
 {
-    static const QHash<QString, QString> en{
-        {QStringLiteral("Q4 tervezés"), QStringLiteral("Q4 planning")},
-        {QStringLiteral("Termék"), QStringLiteral("Product")},
-        {QStringLiteral("Partnerek"), QStringLiteral("Partners")},
-        {QStringLiteral("Belső"), QStringLiteral("Internal")},
-        {QStringLiteral("MÉM-MDK"), QStringLiteral("Heritage Lab")},
-        {QStringLiteral("Gyűjteménykezelés"), QStringLiteral("Collections")},
-        {QStringLiteral("Ügyféltámogatás"), QStringLiteral("Customer support")},
-        {QStringLiteral("Múzeumi pályázat"), QStringLiteral("Museum grant")},
-        {QStringLiteral("Kutatás"), QStringLiteral("Research")},
-        {QStringLiteral("Ügyfélsiker"), QStringLiteral("Customer success")},
-    };
     const QString s = QString::fromUtf8(hu);
-    return demotext::english() ? en.value(s, s) : s;
+    for (const PoolTag& t : tagpool::all())
+        if (s == QString::fromUtf8(t.hu)) return t.name();
+    return demotext::english() && s == QStringLiteral("Ügyfélsiker") ? QStringLiteral("Customer success") : s;
 }
 
 TagMeetingItem meeting(const QString& id, const QString& title, const QDateTime& when, int minutes)
@@ -127,9 +118,9 @@ QString TagDemoBackend::addPersonTag(const QString& name, const QString& nameOrI
     if (name.trimmed().isEmpty() || name == selfName()) return {};
     QString id = idOf(nameOrId);
     if (!id.isEmpty() && m_state.personTags.value(name).contains(id)) return id;
-    const QString clean = tagmatch::normalizeName(nameOrId);
+    const QString clean = tanara::library::normalizeTagName(nameOrId);
     if (id.isEmpty() && clean.isEmpty()) return {};
-    touch(tr("Címke a személyen"));
+    touch(demoText("Címke a személyen", "Tag on a person"));
     if (id.isEmpty()) {
         id = QStringLiteral("t-new-%1").arg(++m_created);
         m_state.tags.push_back({id, clean, 0, kNow, kNow});
@@ -143,7 +134,7 @@ QString TagDemoBackend::addPersonTag(const QString& name, const QString& nameOrI
 void TagDemoBackend::removePersonTag(const QString& name, const QString& tagId)
 {
     if (!m_state.personTags.value(name).contains(tagId)) return;
-    touch(tr("Címke levétele a személyről"));
+    touch(demoText("Címke levétele a személyről", "Remove tag from a person"));
     m_state.personTags[name].removeAll(tagId);
     emit personTagsChanged(name);
 }
@@ -152,7 +143,7 @@ void TagDemoBackend::rejectPersonTag(const QString& name, const QString& tagId)
 {
     const QString key = name + QLatin1Char('|') + tagId;
     if (m_state.personRejected.contains(key)) return;
-    touch(tr("Javaslat elutasítása"));
+    touch(demoText("Javaslat elutasítása", "Dismiss suggestion"));
     m_state.personRejected.insert(key);
     emit personTagsChanged(name);
 }
@@ -240,9 +231,9 @@ int TagDemoBackend::indexOf(const QString& tagId) const
 QString TagDemoBackend::idOf(const QString& nameOrId) const
 {
     if (indexOf(nameOrId) >= 0) return nameOrId;
-    const QString k = tagmatch::key(nameOrId);
+    const QString k = tanara::library::tagKey(nameOrId);
     for (const TagItem& t : m_state.tags)
-        if (tagmatch::key(t.name) == k) return t.id;
+        if (tanara::library::tagKey(t.name) == k) return t.id;
     return {};
 }
 
@@ -401,9 +392,9 @@ QString TagDemoBackend::addTag(const QString& meetingId, const QString& nameOrId
     QString id = idOf(nameOrId);
     QStringList& onMeeting = m_state.meetingTags[meetingId];
     if (!id.isEmpty() && onMeeting.contains(id)) return id;
-    const QString name = tagmatch::normalizeName(nameOrId);
+    const QString name = tanara::library::normalizeTagName(nameOrId);
     if (id.isEmpty() && name.isEmpty()) return {};
-    touch(tr("Címke hozzáadva"));
+    touch(demoText("Címke hozzáadva", "Tag added"));
     QStringList& tags = m_state.meetingTags[meetingId];
     if (id.isEmpty()) {
         id = QStringLiteral("t-new-%1").arg(++m_created);
@@ -425,7 +416,7 @@ void TagDemoBackend::removeTag(const QString& meetingId, const QString& tagId)
 {
     QStringList tags = m_state.meetingTags.value(meetingId);
     if (!tags.contains(tagId)) return;
-    touch(tr("Címke eltávolítva"));
+    touch(demoText("Címke eltávolítva", "Tag removed"));
     tags.removeAll(tagId);
     m_state.meetingTags.insert(meetingId, tags);
     for (const QString& other : std::as_const(tags)) {
@@ -487,9 +478,9 @@ void TagDemoBackend::requestCooccur(const QString& meetingId, const QString& tag
 
 void TagDemoBackend::reject(const QString& meetingId, const TagSuggestionItem& suggestion)
 {
-    touch(tr("Javaslat elutasítva"));
+    touch(demoText("Javaslat elutasítva", "Suggestion dismissed"));
     m_state.rejected.insert(meetingId + QLatin1Char('|')
-                            + (suggestion.tagId.isEmpty() ? tagmatch::key(suggestion.name) : suggestion.tagId));
+                            + (suggestion.tagId.isEmpty() ? tanara::library::tagKey(suggestion.name) : suggestion.tagId));
     emit suggestionsChanged(meetingId);
 }
 
@@ -497,7 +488,7 @@ bool TagDemoBackend::isRejected(const QString& meetingId, const QString& tagIdOr
 {
     const QString prefix = meetingId + QLatin1Char('|');
     return m_state.rejected.contains(prefix + tagIdOrName)
-        || m_state.rejected.contains(prefix + tagmatch::key(tagIdOrName));
+        || m_state.rejected.contains(prefix + tanara::library::tagKey(tagIdOrName));
 }
 
 TagProfileItem TagDemoBackend::profile(const QString& tagId) const
@@ -548,12 +539,12 @@ TagProfileItem TagDemoBackend::profile(const QString& tagId) const
 bool TagDemoBackend::rename(const QString& tagId, const QString& name)
 {
     const int i = indexOf(tagId);
-    const QString clean = tagmatch::normalizeName(name);
+    const QString clean = tanara::library::normalizeTagName(name);
     if (i < 0 || clean.isEmpty()) return false;
     const QString other = idOf(clean);
     if (!other.isEmpty() && other != tagId) return false;
     if (m_state.tags[i].name == clean) return true;
-    touch(tr("Átnevezés"));
+    touch(demoText("Átnevezés", "Rename"));
     m_state.tags[i].name = clean;
     emitAll();
     return true;
@@ -563,7 +554,7 @@ void TagDemoBackend::merge(const QString& fromId, const QString& keepId)
 {
     const int from = indexOf(fromId), keep = indexOf(keepId);
     if (from < 0 || keep < 0 || fromId == keepId) return;
-    touch(tr("Összevonás"));
+    touch(demoText("Összevonás", "Merge"));
     const int common = m_state.cooccur.value(pairKey(fromId, keepId));
     m_state.tags[keep].meetingCount += m_state.tags[from].meetingCount - common;
     m_state.tags[keep].firstUsedAt = std::min(m_state.tags[keep].firstUsedAt, m_state.tags[from].firstUsedAt);
@@ -599,7 +590,7 @@ void TagDemoBackend::remove(const QString& tagId)
 {
     const int i = indexOf(tagId);
     if (i < 0) return;
-    touch(tr("Címke törölve"));
+    touch(demoText("Címke törölve", "Tag deleted"));
     for (auto it = m_state.meetingTags.begin(); it != m_state.meetingTags.end(); ++it) it.value().removeAll(tagId);
     for (auto it = m_state.cooccur.begin(); it != m_state.cooccur.end();) {
         if (it.key().split(QLatin1Char('|')).contains(tagId)) it = m_state.cooccur.erase(it);
@@ -633,4 +624,4 @@ void TagDemoBackend::emitAll()
     emit undoChanged();
 }
 
-} // namespace tanara_qml
+} // namespace tanara_demo

@@ -28,7 +28,6 @@ Rectangle {
 
     TagInputModel {
         id: inputModel
-        controller: App.controller
         excludeIds: root.tags.map(t => t.id)
     }
     TapHandler { onTapped: input.open() }

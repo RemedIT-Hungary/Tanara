@@ -1,5 +1,8 @@
 #include "demo/RecorderDemoFacade.h"
 
+#include "demo/TagDemoBackend.h"
+#include "demo/TagPool.h"
+
 #include "demo/DemoText.h"
 
 #include <QDate>
@@ -38,24 +41,8 @@ TrackKind kindOf(int group)
     return group == 0 ? TrackKind::Mic : group == 1 ? TrackKind::Loopback : TrackKind::Other;
 }
 
-// The made-up tag pool the recorder's tag input would offer (ids as in the library demo pool).
-struct PoolTag { const char* id; const char* hu; const char* en; };
-const PoolTag kPool[] = {
-    {"t-nordvik", "Nordvik", "Nordvik"},
-    {"t-q4", "Q4 tervezés", "Q4 planning"},
-    {"t-termek", "Termék", "Product"},
-    {"t-partnerek", "Partnerek", "Partners"},
-    {"t-belso", "Belső", "Internal"},
-    {"t-muzeo", "Muzeo", "Muzeo"},
-    {"t-mem", "MÉM-MDK", "Heritage Lab"},
-    {"t-gyujtemeny", "Gyűjteménykezelés", "Collections"},
-    {"t-ugyfel", "Ügyféltámogatás", "Customer support"},
-    {"t-palyazat", "Múzeumi pályázat", "Museum grant"},
-    {"t-nordvikas", "Nordvik AS", "Nordvik AS"},
-    {"t-kutatas", "Kutatás", "Research"},
-};
-
-RecorderTag poolTag(const PoolTag& p) { return {QString::fromLatin1(p.id), demoText(p.hu, p.en)}; }
+// The shared made-up tag pool (demo/TagPool.h) the recorder's tag input would offer.
+RecorderTag poolTag(const PoolTag& p) { return {QString::fromLatin1(p.id), p.name()}; }
 
 } // namespace
 
@@ -154,7 +141,7 @@ bool RecorderDemoFacade::stopDevice(const QString& deviceName)
 RecorderTag RecorderDemoFacade::createTag(const QString& name)
 {
     // The fictional pool (the input list sees the same); an unknown name becomes a new tag.
-    for (const PoolTag& p : kPool) {
+    for (const PoolTag& p : tagpool::all()) {
         const RecorderTag t = poolTag(p);
         if (t.name.compare(name, Qt::CaseInsensitive) == 0) return t;
     }
@@ -163,9 +150,16 @@ RecorderTag RecorderDemoFacade::createTag(const QString& name)
     return created;
 }
 
+tanara::library::TagBackend* RecorderDemoFacade::tagBackend() const
+{
+    if (!m_tagBackend)
+        m_tagBackend = new TagDemoBackend(TagDemoBackend::Content::Sample, const_cast<RecorderDemoFacade*>(this));
+    return m_tagBackend;
+}
+
 std::optional<RecorderTag> RecorderDemoFacade::tag(const QString& id) const
 {
-    for (const PoolTag& p : kPool)
+    for (const PoolTag& p : tagpool::all())
         if (id == QLatin1String(p.id)) return poolTag(p);
     const auto it = m_createdTags.constFind(id);
     if (it != m_createdTags.constEnd()) return it.value();
@@ -235,8 +229,8 @@ void RecorderDemoFacade::loadRecorderState(const QString& st)
     }
     // Fictional tags: one before starting, two during recording.
     if (st != QLatin1String("R09") && st != QLatin1String("R10")) {
-        m_session.tags.append(poolTag(kPool[0]));
-        if (rec) m_session.tags.append(poolTag(kPool[1]));
+        m_session.tags.append(poolTag(tagpool::all()[0]));
+        if (rec) m_session.tags.append(poolTag(tagpool::all()[1]));
     }
     m_session.elapsedMs = quiet ? (41 * 60 + 3) * 1000 : rec ? (12 * 60 + 47) * 1000 : 0;
     if (quiet) m_session.askText = tr("A hívás sávján %n perce csend van. Magamtól nem állítom le.", nullptr, 2);

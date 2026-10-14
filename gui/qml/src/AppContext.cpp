@@ -15,6 +15,13 @@
 #include "demo/OverviewDemoFacade.h"
 #include "demo/RecorderDemoFacade.h"
 #include "demo/ShellDemoFacade.h"
+#include "ControllerEvents.h"
+#include "ParticipantsServicesFacade.h"
+#include "PeopleServicesFacade.h"
+#include "TagControllerBackend.h"
+#include "demo/ParticipantsDemoFacade.h"
+#include "demo/PeopleDemoFacade.h"
+#include "demo/TagDemoBackend.h"
 
 #include "tanara/app/AppController.h"
 #include "tanara/app/Services.h"
@@ -934,6 +941,16 @@ const UiServices& AppContext::demoServices()
         m_demoServices->overview = [](const QString& scenario, QObject* parent) -> tanara::library::IOverviewFacade* {
             return new tanara_demo::OverviewDemoFacade(scenario, parent);
         };
+        // The demo facades keep per-view-model state (the design state): one for each asking model.
+        m_demoServices->tagBackend = [](QObject* parent) -> tanara::library::TagBackend* {
+            return new tanara_demo::TagDemoBackend(tanara_demo::TagDemoBackend::Content::Sample, parent);
+        };
+        m_demoServices->people = [](QObject* parent) -> tanara::library::IPeopleFacade* {
+            return new tanara_demo::PeopleDemoFacade(parent);
+        };
+        m_demoServices->participants = [](QObject* parent) -> tanara::editing::IParticipantsFacade* {
+            return new tanara_demo::ParticipantsDemoFacade(parent);
+        };
     }
     return *m_demoServices;
 }
@@ -948,12 +965,33 @@ const UiServices& AppContext::servicesFor(tanara::app::AppController* c)
 
     // The facades are children of the controller: they go away with it.
     tanara::app::Services* sv = c->services();
+    // The controller still merges several services' signals: the people / participants facades get
+    // them through one object (see ControllerEvents).
+    auto* events = new ControllerEvents(c);
+    connect(c, &tanara::app::AppController::peopleChanged, events, &ControllerEvents::peopleChanged);
+    connect(c, &tanara::app::AppController::voiceprintsChanged, events, &ControllerEvents::voiceprintsChanged);
+    connect(c, &tanara::app::AppController::voiceModelsChanged, events, &ControllerEvents::voiceModelsChanged);
+    connect(c, &tanara::app::AppController::voiceprintBackfillFinished, events,
+            [events](int, int) { emit events->voiceprintBackfillFinished(); });
+    connect(c, &tanara::app::AppController::participantsChanged, events, &ControllerEvents::participantsChanged);
+    connect(c, &tanara::app::AppController::participantAnalysisStarted, events,
+            &ControllerEvents::participantAnalysisStarted);
+    connect(c, &tanara::app::AppController::participantAnalysisFinished, events,
+            &ControllerEvents::participantAnalysisFinished);
+    connect(c, &tanara::app::AppController::tracksChanged, events, &ControllerEvents::tracksChanged);
+    connect(c, &tanara::app::AppController::speakerMapChanged, events, &ControllerEvents::speakerMapChanged);
+
+    TagControllerBackend::Deps tagDeps;
+    tagDeps.tags = c->tags();
+    tagDeps.suggestions = &sv->tagSuggestions();
+    tagDeps.people = c->people();
+
     RecorderServicesFacade::Deps rd;
     rd.recording = &sv->recording();
     rd.store = c->store();
     rd.tags = c->tags();
     rd.settings = c->settings();
-    rd.tagController = c;
+    rd.tagBackend = new TagControllerBackend(tagDeps, c);   // the recorder's tag input, shared
     UiServices set;
     set.recorder = new RecorderServicesFacade(rd, c);
     auto* activity = new TrackActivityControllerSource(c);
@@ -963,8 +1001,45 @@ const UiServices& AppContext::servicesFor(tanara::app::AppController* c)
     set.import = new ImportControllerFacade(c);
     auto* overview = new OverviewControllerFacade(c);
     set.overview = [overview](const QString&, QObject*) -> tanara::library::IOverviewFacade* { return overview; };
+    set.tagBackend = [tagDeps](QObject* parent) -> tanara::library::TagBackend* {
+        return new TagControllerBackend(tagDeps, parent);
+    };
+
+    PeopleServicesFacade::Deps pd;
+    pd.service = &sv->people();
+    pd.stats = c->peopleStats();
+    pd.voiceprints = c->voiceprints();
+    pd.voice = &sv->voiceAnalysis();
+    pd.events = events;
+    auto* people = new PeopleServicesFacade(pd, c);
+    set.people = [people](QObject*) -> tanara::library::IPeopleFacade* { return people; };
+
+    ParticipantsServicesFacade::Deps qd;
+    qd.store = c->store();
+    qd.people = c->people();
+    qd.peopleService = &sv->people();
+    qd.voiceprints = c->voiceprints();
+    qd.tags = c->tags();
+    qd.settings = c->settings();
+    qd.participants = &sv->participants();
+    qd.voice = &sv->voiceAnalysis();
+    qd.events = events;
+    auto* participants = new ParticipantsServicesFacade(qd, c);
+    set.participants = [participants](QObject*) -> tanara::editing::IParticipantsFacade* { return participants; };
+
     connect(c, &QObject::destroyed, this, [this, c] { m_realServices.erase(c); });
     return m_realServices.emplace(c, std::move(set)).first->second;
+}
+
+const UiServices& AppContext::servicesForObject(QObject* controller)
+{
+    return servicesFor(qobject_cast<tanara::app::AppController*>(controller));
+}
+
+void AppContext::useControllerIfNone(tanara::app::AppController* controller)
+{
+    if (controller && !m_controller)
+        setController(controller);
 }
 
 QObject* AppContext::createRecorderDemo(const QString& designState)

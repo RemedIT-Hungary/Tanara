@@ -24,6 +24,7 @@
 #include <QtQml/qqmlregistration.h>
 
 #include "TagBackend.h"
+#include "UiServices.h"
 
 namespace tanara_qml {
 
@@ -31,7 +32,6 @@ class TagsViewModel : public QObject {
     Q_OBJECT
     QML_ELEMENT
 
-    Q_PROPERTY(QObject* controller READ controller WRITE setController NOTIFY controllerChanged)
     Q_PROPERTY(QString demoState READ demoState WRITE setDemoState NOTIFY demoStateChanged)
 
     Q_PROPERTY(tanara_qml::TagListModel* tags READ tags CONSTANT)
@@ -58,10 +58,11 @@ class TagsViewModel : public QObject {
     Q_PROPERTY(QString toastText READ toastText NOTIFY toast)
 
 public:
+    // QML: the services of the moment (follows App.controller / App.demo).
     explicit TagsViewModel(QObject* parent = nullptr);
+    // The tag backend of the given services.
+    explicit TagsViewModel(const UiServices& services, QObject* parent = nullptr);
 
-    QObject* controller() const { return m_controller; }
-    void setController(QObject* controller);
     void setBackend(TagBackend* backend);           // for tests; not taken over
     TagBackend* backend() const { return m_backend; }
     QString demoState() const { return m_demoState; }
@@ -106,7 +107,6 @@ public:
     Q_INVOKABLE void undo();
 
 signals:
-    void controllerChanged();
     void demoStateChanged();
     void filterChanged();
     void sortChanged();
@@ -118,12 +118,13 @@ signals:
 
 private:
     void attach(TagBackend* backend);
+    void resolveBackend();
     void rebuild();
     void refreshDetail();
     void step(const QString& label);
     const TagItem* find(const QString& id) const;
 
-    QPointer<QObject> m_controller;
+    bool m_explicitServices = false;
     TagBackend* m_backend = nullptr;
     TagBackend* m_ownBackend = nullptr;
     QList<QMetaObject::Connection> m_conns;

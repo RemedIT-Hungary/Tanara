@@ -26,7 +26,7 @@ public:
         tanara::library::MeetingRepository* store = nullptr;
         tanara::library::TagService* tags = nullptr;
         tanara::app::SettingsManager* settings = nullptr;
-        QObject* tagController = nullptr;   // transitional, see IRecorderFacade::tagController()
+        tanara::library::TagBackend* tagBackend = nullptr;   // the tag input's data (shared)
     };
     explicit RecorderServicesFacade(const Deps& deps, QObject* parent = nullptr);
     ~RecorderServicesFacade() override;
@@ -64,11 +64,10 @@ public:
 
     QString windowStatePath() const override;
     QString lockFilePath() const override;
-    QObject* tagController() const override { return m_tagController; }
+    tanara::library::TagBackend* tagBackend() const override { return m_deps.tagBackend; }
 
 private:
     Deps m_deps;
-    QPointer<QObject> m_tagController;
     QPointer<tanara::watcher::PlaybackRouteMonitor> m_routes;
     QTimer m_fallbackScan;   // where there is no route watcher: timed re-enumeration
     int m_watchers = 0;
