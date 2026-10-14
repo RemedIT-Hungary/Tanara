@@ -1,0 +1,484 @@
+// app::Workflows on its own (without AppController): the transcribe -> (mixdown) -> STT -> identify chain as a
+// state machine over the meeting's Transcribe job, with a fake media tool (the mix), a fake STT provider and
+// fake voice steps. The chain with and without a mix, cancel at every step, a failure in the middle, a
+// restart, the "Who was there?" decision and the identification toggle, the readiness block, the
+// re-transcription, the standalone identification, the post-recording / import chains and the speech check.
+// Isolated TANARA_HOME; no network, no ffmpeg.
+#include <QtTest>
+#include <QSignalSpy>
+#include <QTemporaryDir>
+
+#include "fake_media_tool.h"
+#include "fake_stt.h"
+
+#include "tanara/app/Workflows.h"
+#include "tanara/library/jobs/JobStats.h"
+#include "tanara/library/jobs/MeetingJobTracker.h"
+#include "tanara/library/store/MeetingRepository.h"
+#include "tanara/processing/stt/TranscriptionService.h"
+#include "tanara/recording/MixdownService.h"
+
+#include <memory>
+
+using namespace tanara;
+using app::Workflows;
+
+class WorkflowsTest : public QObject {
+    Q_OBJECT
+private slots:
+    void init();
+    void cleanup();
+
+    void chainWithMixdownToIdentify();
+    void chainWithoutMixdown();
+    void cancelDuringMixdown();
+    void cancelDuringStt();
+    void cancelDuringIdentify();
+    void mixdownFailureStopsChain();
+    void sttFailureThenRestart();
+    void decisionAndToggleSkipIdentify();
+    void readinessBlocksStart();
+    void retranscribeClearsNamesOnlyOnSuccess();
+    void standaloneIdentify();
+    void cancelOtherKindsAndAll();
+    void afterRecordingAndImport();
+    void speechCheckOncePerProcess();
+
+private:
+    Meeting recorded(const QString& title, bool freshMix = false, bool unmeasured = false);
+    void runToStt(const QString& id);
+    JobOutcome outcome(const QString& id) const { return m_outcomes.value(id, JobOutcome::Done); }
+    void makeWorkflows();
+
+    std::unique_ptr<QTemporaryDir> m_home;
+    std::shared_ptr<testing::FakeMediaTool> m_media;
+    std::unique_ptr<library::MeetingRepository> m_store;
+    std::unique_ptr<library::MeetingJobTracker> m_jobs;
+    std::unique_ptr<library::JobStats> m_stats;
+    std::unique_ptr<recording::MixdownService> m_mix;
+    providers::ProviderRegistry m_registry;
+    std::shared_ptr<testing::FakeSttLog> m_log;
+    std::unique_ptr<testing::FakeTranscriptionPort> m_port;
+    std::unique_ptr<processing::TranscriptionService> m_stt;
+    std::unique_ptr<Workflows> m_wf;
+
+    // The fake voice side.
+    bool m_usable = true;
+    bool m_decided = false;
+    bool m_identifyStarts = true;
+    providers::ReadinessResult m_ready;
+    QString m_mixdownMode = QStringLiteral("auto");
+    QStringList m_calls;   // "identify:<id>:<asStage>", "cancelIdentify:<kind>", "apply", "analyze", "measure"
+    std::function<void(const MeetingActivity&)> m_measureDone;
+    QStringList m_errors;
+    QHash<QString, JobOutcome> m_outcomes;
+    int n = 0;
+};
+
+void WorkflowsTest::init()
+{
+    m_home = std::make_unique<QTemporaryDir>();
+    QVERIFY(m_home->isValid());
+    qputenv("TANARA_HOME", m_home->path().toUtf8());
+    m_media = std::make_shared<testing::FakeMediaTool>();
+    m_store = std::make_unique<library::MeetingRepository>(m_home->filePath(QStringLiteral("rec")),
+                                                           m_home->filePath(QStringLiteral("meta")));
+    m_jobs = std::make_unique<library::MeetingJobTracker>(m_store.get());
+    m_stats = std::make_unique<library::JobStats>();
+    m_mix = std::make_unique<recording::MixdownService>(m_store.get(), m_jobs.get(), m_media);
+    m_log = std::make_shared<testing::FakeSttLog>();
+    testing::registerFakeStt(m_registry, m_log);
+    m_port = std::make_unique<testing::FakeTranscriptionPort>();
+    m_stt = std::make_unique<processing::TranscriptionService>(processing::TranscriptionService::Deps{
+        m_store.get(), m_jobs.get(), m_stats.get(), &m_registry, m_port.get()});
+    m_usable = true;
+    m_decided = false;
+    m_identifyStarts = true;
+    m_ready = providers::ReadinessResult();
+    m_ready.runnable = true;
+    m_mixdownMode = QStringLiteral("auto");
+    m_calls.clear();
+    m_errors.clear();
+    m_outcomes.clear();
+    m_measureDone = {};
+    connect(m_jobs.get(), &library::MeetingJobTracker::jobFinished, this,
+            [this](const QString& id, JobKind kind, JobOutcome o) {
+                if (kind == JobKind::Transcribe) m_outcomes.insert(id, o);
+            });
+    makeWorkflows();
+}
+
+void WorkflowsTest::makeWorkflows()
+{
+    Workflows::Deps d;
+    d.store = m_store.get();
+    d.jobs = m_jobs.get();
+    d.mixdown = m_mix.get();
+    d.transcription = m_stt.get();
+    d.voice.usable = [this]() { return m_usable; };
+    d.voice.startIdentify = [this](const QString& id, bool asStage) {
+        m_calls << QStringLiteral("identify:%1:%2").arg(id).arg(int(asStage));
+        return m_identifyStarts;
+    };
+    d.voice.cancelIdentify = [this](const QString&, JobKind kind) {
+        m_calls << QStringLiteral("cancelIdentify:%1").arg(int(kind));
+        return kind == JobKind::Transcribe && m_identifyStarts;
+    };
+    d.voice.applyParticipants = [this](const QString&) { m_calls << QStringLiteral("apply"); return m_decided; };
+    d.voice.analyzeParticipants = [this](const QString&) { m_calls << QStringLiteral("analyze"); return false; };
+    d.voice.measureActivity = [this](const Meeting&, std::function<void(const MeetingActivity&)> done) {
+        m_calls << QStringLiteral("measure");
+        m_measureDone = std::move(done);
+    };
+    d.readiness = [this](providers::WorkflowStep, const QString&) { return m_ready; };
+    d.mixdownMode = [this]() { return m_mixdownMode; };
+    m_wf = std::make_unique<Workflows>(d);
+    // As the facade does: the mix's signals reach the chains.
+    connect(m_mix.get(), &recording::MixdownService::progress, m_wf.get(), &Workflows::mixdownProgress);
+    connect(m_mix.get(), &recording::MixdownService::runEnded, m_wf.get(), &Workflows::mixdownRunEnded);
+    connect(m_wf.get(), &Workflows::errorOccurred, this, [this](const QString& e) { m_errors << e; });
+    connect(m_stt.get(), &processing::TranscriptionService::errorOccurred, this, [this](const QString& e) { m_errors << e; });
+}
+
+void WorkflowsTest::cleanup()
+{
+    m_wf.reset();
+    m_stt.reset();
+    m_mix.reset();
+    m_jobs.reset();
+    m_store.reset();
+    m_home.reset();
+}
+
+Meeting WorkflowsTest::recorded(const QString& title, bool freshMix, bool unmeasured)
+{
+    Meeting m = m_store->createMeeting(title);
+    m.durationMs = 90000;
+    for (const QString& id : {QStringLiteral("mic"), QStringLiteral("sys")}) {
+        Track t;
+        t.id = id;
+        t.deviceName = id;
+        t.file = QStringLiteral("track_%1.ogg").arg(id);
+        t.active = true;
+        t.speechRatio = unmeasured ? -1.0 : 0.5;
+        m.tracks << t;
+        QFile f(QDir(m.folder).filePath(t.file));
+        if (f.open(QIODevice::WriteOnly)) f.write("x");
+    }
+    if (freshMix) {
+        QFile f(QDir(m.folder).filePath(QStringLiteral("mixdown.mp3")));
+        if (f.open(QIODevice::WriteOnly)) f.write("mix");
+        m.mixdownFile = QStringLiteral("mixdown.mp3");
+        m.mixdownDirty = false;
+    } else {
+        m.mixdownDirty = true;
+    }
+    m_store->saveMeeting(m);
+    return m;
+}
+
+// Starts the chain and waits until the STT step runs (the mix done, if any).
+void WorkflowsTest::runToStt(const QString& id)
+{
+    const int before = m_log->jobs.size();
+    m_wf->transcribe(id);
+    QTRY_COMPARE_WITH_TIMEOUT(m_log->jobs.size(), before + 1, 5000);
+    QVERIFY(m_stt->running(id));
+    QVERIFY(!m_wf->transcriptionInMixdown(id));
+}
+
+void WorkflowsTest::chainWithMixdownToIdentify()
+{
+    const Meeting m = recorded(QStringLiteral("Lánc"));
+    m_wf->transcribe(m.id);
+    JobProgress jp = m_jobs->job(m.id, JobKind::Transcribe);
+    QStringList ids;
+    for (const JobStage& st : jp.stages) ids << st.id;
+    QCOMPARE(ids, QStringList({"mixdown", "upload", "transcribe", "diarize", "identify"}));
+    QVERIFY(jp.stage("upload")->detail.contains(QStringLiteral("2 sáv")));
+    QCOMPARE(jp.stage("mixdown")->state, StageState::Running);
+    QVERIFY(m_wf->transcriptionInMixdown(m.id));
+    QVERIFY(!m_jobs->isRunning(m.id, JobKind::Mixdown));   // the mix is a stage, not its own task
+    QVERIFY(m_calls.contains(QStringLiteral("analyze")));   // the voice analysis runs in parallel
+    QVERIFY(m_calls.contains(QStringLiteral("cancelIdentify:%1").arg(int(JobKind::Identify))));
+    m_wf->transcribe(m.id);                                 // double start: no-op
+    QCOMPARE(m_media->graphs().size(), 1);
+
+    QTRY_COMPARE_WITH_TIMEOUT(m_log->jobs.size(), 1, 5000);
+    jp = m_jobs->job(m.id, JobKind::Transcribe);
+    QCOMPARE(jp.stage("mixdown")->state, StageState::Done);
+    QCOMPARE(jp.stage("upload")->state, StageState::Running);
+
+    emit m_log->jobs.first()->finished(testing::sttResult({{"1", "Szia"}}));
+    QVERIFY(m_calls.contains(QStringLiteral("apply")));
+    QVERIFY(m_calls.contains(QStringLiteral("identify:%1:1").arg(m.id)));
+    // The identification closes the job (its own finish in the voice service).
+    QVERIFY(m_jobs->isRunning(m.id, JobKind::Transcribe));
+    m_jobs->finish(m.id, JobKind::Transcribe);
+    QCOMPARE(outcome(m.id), JobOutcome::Done);
+    QVERIFY(m_store->load(m.id).hasTranscript);
+    QVERIFY(m_errors.isEmpty());
+
+    // Without a usable voice model: no identify stage, and the job finishes right after the STT.
+    m_usable = false;
+    m_identifyStarts = false;
+    const Meeting k = recorded(QStringLiteral("Modell nélkül"), /*freshMix*/ true);
+    runToStt(k.id);
+    ids.clear();
+    for (const JobStage& st : m_jobs->job(k.id, JobKind::Transcribe).stages) ids << st.id;
+    QCOMPARE(ids, QStringList({"upload", "transcribe", "diarize"}));
+    emit m_log->jobs.last()->finished(testing::sttResult({{"1", "Szia"}}));
+    QVERIFY(!m_jobs->isRunning(k.id, JobKind::Transcribe));
+    QCOMPARE(outcome(k.id), JobOutcome::Done);
+}
+
+void WorkflowsTest::chainWithoutMixdown()
+{
+    const Meeting m = recorded(QStringLiteral("Kész keverék"), /*freshMix*/ true);
+    m_wf->transcribe(m.id);
+    QCOMPARE(m_log->jobs.size(), 1);   // the STT starts at once
+    QVERIFY(!m_jobs->job(m.id, JobKind::Transcribe).stage("mixdown"));
+    QCOMPARE(m_media->graphs().size(), 0);
+}
+
+void WorkflowsTest::cancelDuringMixdown()
+{
+    const Meeting m = recorded(QStringLiteral("Megszakítás a keverésben"));
+    m_wf->transcribe(m.id);
+    QVERIFY(m_mix->running(m.id));
+    QVERIFY(m_wf->cancel(m.id, JobKind::Transcribe));
+    QCOMPARE(outcome(m.id), JobOutcome::Cancelled);
+    QVERIFY(!m_wf->transcriptionInMixdown(m.id));
+    QTRY_VERIFY_WITH_TIMEOUT(!m_mix->running(m.id), 5000);   // our own ffmpeg stopped
+    QTest::qWait(50);
+    QCOMPARE(m_log->jobs.size(), 0);                           // the chain is broken: no STT
+    QVERIFY(m_errors.isEmpty());
+    QVERIFY(!m_jobs->lastError(m.id, JobKind::Transcribe).isValid());
+
+    // A standalone mix that was already running is not stopped by the transcription's cancel.
+    const Meeting k = recorded(QStringLiteral("Önálló keverés"));
+    m_mix->regenerate(k.id);
+    m_wf->transcribe(k.id);
+    QVERIFY(m_wf->cancel(k.id, JobKind::Transcribe));
+    QVERIFY(m_mix->running(k.id));
+    QTRY_VERIFY_WITH_TIMEOUT(!m_mix->running(k.id), 5000);
+    QCOMPARE(m_log->jobs.size(), 0);
+}
+
+void WorkflowsTest::cancelDuringStt()
+{
+    m_port->cloud = true;
+    const Meeting m = recorded(QStringLiteral("Megszakítás az átírásban"));
+    runToStt(m.id);
+    QVERIFY(m_wf->cancel(m.id, JobKind::Transcribe));
+    QVERIFY(m_log->jobs.first()->cancelled);
+    QCOMPARE(outcome(m.id), JobOutcome::Cancelled);
+    QCOMPARE(m_port->cancelled, 1);
+    QVERIFY(!m_calls.contains(QStringLiteral("apply")));
+    QVERIFY(m_errors.isEmpty());
+    QVERIFY(!m_store->load(m.id).hasTranscript);
+}
+
+void WorkflowsTest::cancelDuringIdentify()
+{
+    const Meeting m = recorded(QStringLiteral("Megszakítás az azonosításban"), true);
+    runToStt(m.id);
+    emit m_log->jobs.first()->finished(testing::sttResult({{"1", "Szia"}}));
+    QVERIFY(m_jobs->isRunning(m.id, JobKind::Transcribe));   // the identify stage runs
+    m_calls.clear();
+    QVERIFY(m_wf->cancel(m.id, JobKind::Transcribe));
+    QCOMPARE(m_calls, QStringList({QStringLiteral("cancelIdentify:%1").arg(int(JobKind::Transcribe))}));
+    QVERIFY(m_store->load(m.id).hasTranscript);   // the transcript stays
+}
+
+void WorkflowsTest::mixdownFailureStopsChain()
+{
+    m_media->graphOk = false;
+    const Meeting m = recorded(QStringLiteral("Hibás keverés"));
+    m_wf->transcribe(m.id);
+    QTRY_COMPARE_WITH_TIMEOUT(outcome(m.id), JobOutcome::Failed, 5000);
+    QVERIFY(m_jobs->lastError(m.id, JobKind::Transcribe).isValid());
+    QVERIFY(!m_errors.isEmpty());
+    QVERIFY(!m_wf->transcriptionInMixdown(m.id));
+    QCOMPARE(m_log->jobs.size(), 0);
+
+    // Restart after the fix: the chain runs again from the top.
+    m_media->graphOk = true;
+    m_outcomes.clear();
+    runToStt(m.id);
+    emit m_log->jobs.last()->finished(testing::sttResult({{"1", "Szia"}}));
+    m_jobs->finish(m.id, JobKind::Transcribe);
+    QCOMPARE(outcome(m.id), JobOutcome::Done);
+    QVERIFY(!m_jobs->lastError(m.id, JobKind::Transcribe).isValid());
+}
+
+void WorkflowsTest::sttFailureThenRestart()
+{
+    const Meeting m = recorded(QStringLiteral("Hibás átírás"), true);
+    runToStt(m.id);
+    emit m_log->jobs.first()->failed(QStringLiteral("HTTP 500"));
+    QCOMPARE(outcome(m.id), JobOutcome::Failed);
+    QVERIFY(!m_jobs->isRunning(m.id, JobKind::Transcribe));
+    QVERIFY(!m_calls.contains(QStringLiteral("apply")));
+    QCOMPARE(m_errors.size(), 1);
+
+    // Restart (also after a cancel).
+    runToStt(m.id);
+    QVERIFY(m_wf->cancel(m.id, JobKind::Transcribe));
+    QCOMPARE(outcome(m.id), JobOutcome::Cancelled);
+    runToStt(m.id);
+    emit m_log->jobs.last()->finished(testing::sttResult({{"1", "Újra"}}));
+    QVERIFY(m_store->load(m.id).hasTranscript);
+    QVERIFY(m_calls.contains(QStringLiteral("identify:%1:1").arg(m.id)));
+}
+
+void WorkflowsTest::decisionAndToggleSkipIdentify()
+{
+    // The "Who was there?" decision covered the speakers: no automatic identification.
+    m_decided = true;
+    const Meeting m = recorded(QStringLiteral("Döntés"), true);
+    runToStt(m.id);
+    emit m_log->jobs.first()->finished(testing::sttResult({{"1", "Szia"}}));
+    QCOMPARE(outcome(m.id), JobOutcome::Done);
+    QVERIFY(!m_calls.contains(QStringLiteral("identify:%1:1").arg(m.id)));
+
+    // The toggle: the stage is skipped from the start, the job finishes after the STT.
+    m_decided = false;
+    const Meeting k = recorded(QStringLiteral("Kapcsoló"), true);
+    QVERIFY(m_wf->identifyAfterTranscription(k.id));
+    m_wf->setIdentifyAfterTranscription(k.id, false);
+    QVERIFY(!m_wf->identifyAfterTranscription(k.id));
+    runToStt(k.id);
+    QCOMPARE(m_jobs->job(k.id, JobKind::Transcribe).stage("identify")->state, StageState::Skipped);
+    emit m_log->jobs.last()->finished(testing::sttResult({{"1", "Szia"}}));
+    QCOMPARE(outcome(k.id), JobOutcome::Done);
+    QVERIFY(!m_calls.contains(QStringLiteral("identify:%1:1").arg(k.id)));
+    m_wf->setIdentifyAfterTranscription(k.id, true);
+    QVERIFY(m_wf->identifyAfterTranscription(k.id));
+}
+
+void WorkflowsTest::readinessBlocksStart()
+{
+    m_ready.runnable = false;
+    m_ready.detail = QStringLiteral("nincs kulcs");
+    const Meeting m = recorded(QStringLiteral("Nem futtatható"), true);
+    m_wf->transcribe(m.id);
+    QVERIFY(!m_jobs->job(m.id, JobKind::Transcribe).isValid());
+    QCOMPARE(m_errors, QStringList({QStringLiteral("nincs kulcs")}));
+    m_wf->transcribe(QStringLiteral("ismeretlen"));
+    QCOMPARE(m_errors.size(), 2);
+}
+
+void WorkflowsTest::retranscribeClearsNamesOnlyOnSuccess()
+{
+    Meeting m = recorded(QStringLiteral("Újraátírás"), true);
+    m.speakerMap.insert(QStringLiteral("Beszélő 1"), PersonId::generate());
+    m_store->saveMeeting(m);
+
+    // Cancelled: the names stay.
+    m_wf->retranscribe(m.id, false);
+    QCOMPARE(m_log->jobs.size(), 1);
+    QVERIFY(m_wf->cancel(m.id, JobKind::Transcribe));
+    QCOMPARE(m_store->load(m.id).speakerMap.size(), 1);
+
+    // Success (a first transcript, so only the flag clears the names).
+    m_wf->retranscribe(m.id, false);
+    emit m_log->jobs.last()->finished(testing::sttResult({{"1", "Szia"}}));
+    QVERIFY(m_store->load(m.id).speakerMap.isEmpty());
+
+    // A plain transcription of a meeting without a transcript keeps a pre-set map.
+    Meeting k = recorded(QStringLiteral("Sima"), true);
+    k.speakerMap.insert(QStringLiteral("Beszélő 1"), PersonId::generate());
+    m_store->saveMeeting(k);
+    runToStt(k.id);
+    emit m_log->jobs.last()->finished(testing::sttResult({{"1", "Szia"}}));
+    QCOMPARE(m_store->load(k.id).speakerMap.size(), 1);
+}
+
+void WorkflowsTest::standaloneIdentify()
+{
+    const Meeting m = recorded(QStringLiteral("Azonosítás"), true);
+    QVERIFY(m_wf->identify(m.id));
+    QVERIFY(m_calls.contains(QStringLiteral("identify:%1:0").arg(m.id)));
+    runToStt(m.id);
+    m_calls.clear();
+    QVERIFY(!m_wf->identify(m.id));   // the transcription identifies at its end
+    QVERIFY(m_calls.isEmpty());
+}
+
+void WorkflowsTest::cancelOtherKindsAndAll()
+{
+    const Meeting m = recorded(QStringLiteral("Minden"));
+    // Nothing runs: false everywhere (the services that are not wired answer false too).
+    QVERIFY(!m_wf->cancel(m.id, JobKind::Summarize));
+    QVERIFY(!m_wf->cancel(m.id, JobKind::Import));
+    QVERIFY(!m_wf->cancel(m.id, JobKind::Export));
+    QVERIFY(!m_wf->cancel(m.id, JobKind::Mixdown));
+    m_mix->regenerate(m.id);
+    QVERIFY(m_wf->cancel(m.id, JobKind::Mixdown));
+    QTRY_VERIFY_WITH_TIMEOUT(!m_mix->running(m.id), 5000);
+
+    m_wf->transcribe(m.id);
+    m_calls.clear();
+    m_wf->cancelAll(m.id);
+    QCOMPARE(outcome(m.id), JobOutcome::Cancelled);
+    QVERIFY(m_calls.contains(QStringLiteral("cancelIdentify:%1").arg(int(JobKind::Identify))));
+}
+
+void WorkflowsTest::afterRecordingAndImport()
+{
+    // Measured tracks, automatic mode: the mix starts, then the voice analysis.
+    const Meeting m = recorded(QStringLiteral("Felvétel"));
+    m_wf->afterRecording(m);
+    QVERIFY(m_mix->running(m.id));
+    QVERIFY(m_jobs->isRunning(m.id, JobKind::Mixdown));   // a standalone mix is its own task
+    QVERIFY(m_calls.contains(QStringLiteral("analyze")));
+    QTRY_VERIFY_WITH_TIMEOUT(!m_mix->running(m.id), 5000);
+
+    // Manual mode: no mix after an import.
+    m_mixdownMode = QStringLiteral("manual");
+    const Meeting k = recorded(QStringLiteral("Import"));
+    m_wf->afterImport(k);
+    QVERIFY(!m_mix->running(k.id));
+
+    // The standalone recorder process: nothing runs.
+    m_mixdownMode = QStringLiteral("auto");
+    m_wf->setAutoMixdown(false);
+    QVERIFY(!m_wf->autoMixdown());
+    m_calls.clear();
+    const Meeting r = recorded(QStringLiteral("Önálló felvevő"));
+    m_wf->afterRecording(r);
+    QVERIFY(!m_mix->running(r.id));
+    QVERIFY(m_calls.isEmpty());
+    m_wf->setAutoMixdown(true);
+
+    // Unmeasured tracks: the speech check first; the mix starts at its end.
+    const Meeting u = recorded(QStringLiteral("Mérés előbb"), false, /*unmeasured*/ true);
+    QVERIFY(m_wf->speechCheckPending(u));
+    m_wf->afterImport(u);
+    QVERIFY(m_calls.contains(QStringLiteral("measure")));
+    QVERIFY(m_wf->speechCheckRunning(u.id));
+    QVERIFY(!m_mix->running(u.id));
+    QSignalSpy tracks(m_wf.get(), &Workflows::tracksChanged);
+    m_measureDone(MeetingActivity());
+    QCOMPARE(tracks.size(), 1);
+    QVERIFY(!m_wf->speechCheckRunning(u.id));
+    QVERIFY(!m_wf->speechCheckPending(u));
+    QVERIFY(m_mix->running(u.id));
+    QTRY_VERIFY_WITH_TIMEOUT(!m_mix->running(u.id), 5000);
+}
+
+void WorkflowsTest::speechCheckOncePerProcess()
+{
+    const Meeting measured = recorded(QStringLiteral("Mért"));
+    QVERIFY(!m_wf->checkTrackSpeech(measured.id));   // not needed
+    const Meeting u = recorded(QStringLiteral("Méretlen"), false, true);
+    QVERIFY(m_wf->checkTrackSpeech(u.id));
+    QVERIFY(!m_wf->checkTrackSpeech(u.id));          // running
+    m_measureDone(MeetingActivity());
+    QVERIFY(!m_mix->running(u.id));                   // a plain check does not remix
+    QVERIFY(!m_wf->checkTrackSpeech(u.id));          // measured in this process
+}
+
+QTEST_GUILESS_MAIN(WorkflowsTest)
+#include "test_workflows.moc"

@@ -28,6 +28,12 @@
 // --- P12e: summary and topic queue ---
 #include "tanara/processing/summary/SummarizationService.h"
 // --- end P12e ---
+// --- P12f: transcription, workflows, editor sessions ---
+#include "tanara/app/Workflows.h"
+#include "tanara/editing/session/EditorSessions.h"
+#include "tanara/library/tags/TagService.h"
+#include "tanara/processing/stt/TranscriptionService.h"
+// --- end P12f ---
 
 namespace tanara::app {
 
@@ -214,6 +220,75 @@ processing::SummarizationService::Deps summarizationDeps(const ServicesDeps& dep
 }
 // --- end P12e ---
 
+// --- P12f: transcription, workflows, editor sessions ---
+processing::TranscriptionService::Deps transcriptionDeps(const ServicesDeps& deps)
+{
+    return {deps.store, deps.jobs, deps.jobStats, deps.registry, deps.transcriptionPort};
+}
+
+// The editor sessions: the voice side of a new editor comes from the voice analysis (processing), which
+// the editing module must not include.
+editing::EditorSessions::Deps editorSessionDeps(const ServicesDeps& deps, processing::VoiceAnalysisService* voice,
+                                                library::PeopleService* people, editing::MeetingUndoRegistry* undo)
+{
+    editing::EditorSessions::Deps ed;
+    ed.store = deps.store;
+    ed.people = deps.people;
+    ed.voiceprints = deps.voiceprints;
+    ed.undo = undo;
+    ed.self = [people]() { return people->selfPerson(); };
+    ed.personNames = [people]() { return people->personNames(); };
+    ed.configure = [voice, media = deps.media, tags = deps.tags](editing::SpeakerEditor* editor) {
+        editor->setVoiceModelIds(voice->editorModelIds());
+        editor->setEmbedderFactory(voice->utteranceEmbedderFactory());
+        // The track activity of the side check: cache, else decoded via the media port and saved.
+        editor->setActivityProvider([media](const Meeting& mm) {
+            return processing::loadOrComputeSideActivity(mm, *media);
+        });
+        // The tag evidence for the candidate ranking (manual tag + learned association).
+        editor->setTagEvidenceProvider(voice->candidateContext().tagEvidence);
+        // Manual tags for the quick "+ #Tag" offer (the test seam, otherwise the TagService).
+        const auto personTags = voice->personTagsProvider();
+        editor->setPersonTagsProvider(personTags ? personTags : [tags](const PersonId& p) {
+            return tags ? tags->tagsOfPerson(p) : QStringList();
+        });
+    };
+    return ed;
+}
+
+Workflows::Deps workflowDeps(const ServicesDeps& deps, const Services& s)
+{
+    Workflows::Deps wd;
+    wd.store = deps.store;
+    wd.jobs = deps.jobs;
+    wd.mixdown = &s.mixdown();
+    wd.transcription = &s.transcription();
+    processing::VoiceAnalysisService* voice = &s.voiceAnalysis();
+    editing::ParticipantService* participants = &s.participants();
+    wd.voice.usable = [voice]() { return voice->usable(); };
+    wd.voice.startIdentify = [voice](const QString& id, bool asStage) { return voice->startIdentify(id, asStage); };
+    wd.voice.cancelIdentify = [voice](const QString& id, JobKind kind) { return voice->cancel(id, kind); };
+    wd.voice.applyParticipants = [participants](const QString& id) {
+        return participants->applyParticipantsToTranscript(id);
+    };
+    wd.voice.analyzeParticipants = [voice](const QString& id) { return voice->maybeAnalyzeParticipants(id); };
+    wd.voice.measureActivity = [voice](const Meeting& m, std::function<void(const MeetingActivity&)> done) {
+        voice->measureActivity(m, std::move(done));
+    };
+    wd.readiness = deps.readiness;
+    library::PeopleService* people = &s.people();
+    wd.personNames = [people]() { return people->personNames(); };
+    SettingsManager* st = deps.settings;
+    wd.mixdownMode = [st]() { return st ? st->settings().recording.mixdownMode : QString(); };
+    wd.undo = &s.meetingUndo();
+    wd.summarization = &s.summarization();
+    wd.tagSuggestions = &s.tagSuggestions();
+    wd.import = &s.import();
+    wd.archive = &s.archive();
+    return wd;
+}
+// --- end P12f ---
+
 } // namespace
 
 Services::Services(const ServicesDeps& deps)
@@ -239,10 +314,24 @@ Services::Services(const ServicesDeps& deps)
     // --- P12e: summary and topic queue ---
     , m_summarization(std::make_unique<processing::SummarizationService>(summarizationDeps(deps, m_people.get())))
     // --- end P12e ---
+    // --- P12f: transcription, workflows, editor sessions ---
+    , m_transcription(std::make_unique<processing::TranscriptionService>(transcriptionDeps(deps)))
+    , m_workflows(std::make_unique<Workflows>(workflowDeps(deps, *this)))
+    , m_editorSessions(std::make_unique<editing::EditorSessions>(
+          editorSessionDeps(deps, m_voiceAnalysis.get(), m_people.get(), m_meetingUndo.get())))
+    // --- end P12f ---
 {
     // --- P16: detector registry ---
     m_callMonitor->setDetectorRegistry(m_detectors.get());
     // --- end P16 ---
+    // --- P12f: transcription, workflows, editor sessions ---
+    // The asynchronous identification's matches are written by the participant service.
+    editing::ParticipantService* participants = m_participants.get();
+    QObject::connect(m_voiceAnalysis.get(), &processing::VoiceAnalysisService::speakersIdentified, participants,
+                     [participants](const QString& meetingId, const QVector<SpeakerVoiceMatch>& matches) {
+                         participants->commitIdentification(meetingId, matches);
+                     });
+    // --- end P12f ---
 }
 
 Services::~Services()

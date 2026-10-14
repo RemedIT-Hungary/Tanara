@@ -2,29 +2,6 @@
 <!DOCTYPE TS>
 <TS version="2.1" language="en_US" sourcelanguage="hu_HU">
 <context>
-    <name>AppController</name>
-    <message>
-        <source>Hang feltöltése…</source>
-        <translation>Uploading audio…</translation>
-    </message>
-    <message>
-        <source>Várakozás a Soniox sorban…</source>
-        <translation>Waiting in the Soniox queue…</translation>
-    </message>
-    <message>
-        <source>Átírás folyamatban…</source>
-        <translation>Transcription in progress…</translation>
-    </message>
-    <message>
-        <source>Sáv kész</source>
-        <translation>Track done</translation>
-    </message>
-    <message>
-        <source>Hiba</source>
-        <translation>Error</translation>
-    </message>
-</context>
-<context>
     <name>BuiltinProviders</name>
     <message>
         <source>Hasonló meetingek</source>
@@ -2926,6 +2903,17 @@
     <message>
         <source>&lt;2–4 mondatos vezetői összefoglaló&gt;</source>
         <translation>&lt;executive summary of 2–4 sentences&gt;</translation>
+    </message>
+</context>
+<context>
+    <name>ProviderRuns</name>
+    <message>
+        <source>A Tanara Cloudhoz frissítés kell (legalább %1).</source>
+        <translation>Tanara Cloud requires an update (%1 or newer).</translation>
+    </message>
+    <message>
+        <source>töltsd fel az egyenleged</source>
+        <translation>top up your balance</translation>
     </message>
 </context>
 <context>
@@ -7703,16 +7691,19 @@
         <translation>Description changed</translation>
     </message>
     <message>
+        <source>Megszakítva.</source>
+        <translation>Cancelled.</translation>
+    </message>
+</context>
+<context>
+    <name>tanara::app::Workflows</name>
+    <message>
+        <source>Ismeretlen meeting: %1</source>
+        <translation>Unknown meeting: %1</translation>
+    </message>
+    <message>
         <source>Lekeverés</source>
         <translation>Mixdown</translation>
-    </message>
-    <message>
-        <source>A Tanara Cloudhoz frissítés kell (legalább %1).</source>
-        <translation>Tanara Cloud requires an update (%1 or newer).</translation>
-    </message>
-    <message>
-        <source>töltsd fel az egyenleged</source>
-        <translation>top up your balance</translation>
     </message>
     <message>
         <source>Feltöltés</source>
@@ -7745,34 +7736,6 @@
     <message>
         <source>Lekeverés az átíráshoz…</source>
         <translation>Mixing down for transcription…</translation>
-    </message>
-    <message>
-        <source>Ismeretlen STT-provider: %1.</source>
-        <translation>Unknown STT provider: %1.</translation>
-    </message>
-    <message>
-        <source>Átírás indítása…</source>
-        <translation>Starting transcription…</translation>
-    </message>
-    <message>
-        <source>sorban áll</source>
-        <translation>queued</translation>
-    </message>
-    <message>
-        <source>Az átírás üres eredményt adott (a szolgáltató nem talált beszédet a felvételen) — a korábbi átirat megmaradt.</source>
-        <translation>Transcription returned an empty result (the provider found no speech in the recording) — the previous transcript was kept.</translation>
-    </message>
-    <message>
-        <source>Az átírás üres eredményt adott: a szolgáltató nem talált beszédet a felvételen.</source>
-        <translation>Transcription returned an empty result: the provider found no speech in the recording.</translation>
-    </message>
-    <message>
-        <source>Átírás-hiba: %1</source>
-        <translation>Transcription error: %1</translation>
-    </message>
-    <message>
-        <source>Megszakítva.</source>
-        <translation>Cancelled.</translation>
     </message>
     <message>
         <source>Sáv beemelve</source>
@@ -8609,6 +8572,53 @@
     <message>
         <source>Komplex összefoglaló hiba: %1</source>
         <translation>Complex summary error: %1</translation>
+    </message>
+</context>
+<context>
+    <name>tanara::processing::TranscriptionService</name>
+    <message>
+        <source>Hang feltöltése…</source>
+        <translation>Uploading audio…</translation>
+    </message>
+    <message>
+        <source>Várakozás a Soniox sorban…</source>
+        <translation>Waiting in the Soniox queue…</translation>
+    </message>
+    <message>
+        <source>Átírás folyamatban…</source>
+        <translation>Transcription in progress…</translation>
+    </message>
+    <message>
+        <source>Sáv kész</source>
+        <translation>Track done</translation>
+    </message>
+    <message>
+        <source>Hiba</source>
+        <translation>Error</translation>
+    </message>
+    <message>
+        <source>Ismeretlen STT-provider: %1.</source>
+        <translation>Unknown STT provider: %1.</translation>
+    </message>
+    <message>
+        <source>Átírás indítása…</source>
+        <translation>Starting transcription…</translation>
+    </message>
+    <message>
+        <source>sorban áll</source>
+        <translation>queued</translation>
+    </message>
+    <message>
+        <source>Az átírás üres eredményt adott (a szolgáltató nem talált beszédet a felvételen) — a korábbi átirat megmaradt.</source>
+        <translation>Transcription returned an empty result (the provider found no speech in the recording) — the previous transcript was kept.</translation>
+    </message>
+    <message>
+        <source>Az átírás üres eredményt adott: a szolgáltató nem talált beszédet a felvételen.</source>
+        <translation>Transcription returned an empty result: the provider found no speech in the recording.</translation>
+    </message>
+    <message>
+        <source>Átírás-hiba: %1</source>
+        <translation>Transcription error: %1</translation>
     </message>
 </context>
 <context>

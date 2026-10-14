@@ -1,95 +1,66 @@
 #include "tanara/app/AppController.h"
-#include "tanara/providers/core/ProviderConfig.h"
 
-#include "tanara/foundation/log/Logging.h"
-#include "tanara/processing/summary/PromptLibrary.h"
-#include <QTimer>
-#include "tanara/app/SettingsManager.h"
-#include "tanara/recording/audio/DeviceManager.h"
-#include "tanara/recording/MixdownService.h"
-#include "tanara/recording/RecordingService.h"
-#include "tanara/library/store/MeetingRepository.h"
+#include "tanara/app/ProviderRuns.h"
 #include "tanara/app/Services.h"
-#include "tanara/library/import/ImportService.h"
-#include "tanara/library/store/ArchiveService.h"
-#include "tanara/foundation/secrets/SecretStore.h"
-#include "tanara/foundation/paths/AppPaths.h"
-#include "tanara/cloud/CloudTypes.h"
-#include "tanara/library/store/PeopleStore.h"
-#include "tanara/library/people/PeopleService.h"
-#include "tanara/library/people/PeopleStats.h"
-#include "tanara/library/store/VoiceprintStore.h"
-#include "tanara/processing/voiceid/VoiceEmbedder.h"
-#include "tanara/processing/voiceid/VoiceEmbedderSet.h"
-#include "tanara/processing/voiceid/VoiceModelRegistry.h"
-#include "tanara/providers/stt/ISttProvider.h"
-#include "tanara/providers/chat/IChatProvider.h"
-#include "tanara/providers/chat/ILocalModelServer.h"
-#include "tanara/providers/chat/LlmServer.h"
-#include "tanara/providers/core/ProviderRegistry.h"
-#include "tanara/processing/summary/SummaryService.h"
-#include "tanara/processing/summary/SummarizationService.h"
-#include "tanara/processing/summary/TopicQueue.h"
-#include "tanara/processing/ProviderFailureSink.h"
-#include "tanara/processing/summary/TranscriptMerger.h"
-#include "tanara/foundation/i18n/Localization.h"
-#include "tanara/cloud/CloudSession.h"
-#include "tanara/cloud/CloudRunLedger.h"
+#include "tanara/app/SettingsManager.h"
+#include "tanara/app/Workflows.h"
 #include "tanara/cloud/CloudCapabilities.h"
 #include "tanara/cloud/CloudEstimator.h"
 #include "tanara/cloud/CloudMode.h"
-#include "tanara/foundation/net/HttpClient.h"
-#include "tanara/library/jobs/MeetingJobTracker.h"
-#include "tanara/library/jobs/JobErrors.h"
-#include "tanara/library/jobs/JobStats.h"
-#include "tanara/library/MeetingLibrary.h"
-#include "tanara/library/MeetingNotes.h"
-#include "tanara/recording/audio/TrackTiming.h"
-#include "tanara/library/tracks/TrackCatalog.h"
-#include "tanara/library/tracks/WaveformService.h"
-#include "tanara/media/FfmpegMediaTool.h"
+#include "tanara/cloud/CloudRunLedger.h"
+#include "tanara/cloud/CloudSession.h"
+#include "tanara/editing/participants/ParticipantService.h"
+#include "tanara/editing/session/EditorSessions.h"
 #include "tanara/editing/session/PeopleDirectory.h"
 #include "tanara/editing/session/SpeakerEditor.h"
 #include "tanara/editing/session/SpeakerOverlay.h"
-#include "tanara/editing/session/TrackSpeech.h"
-#include "tanara/processing/analysis/ParticipantAnalysis.h"
-#include "tanara/library/tags/TagService.h"
-#include "tanara/library/tags/TagNames.h"
-#include "tanara/library/tags/MeetingProfiles.h"
-#include "tanara/library/tags/TagSuggestionService.h"
-#include "tanara/processing/analysis/LlmTagSuggestionProvider.h"
+#include "tanara/editing/undo/MeetingUndoRegistry.h"
+#include "tanara/foundation/i18n/Localization.h"
+#include "tanara/foundation/log/Logging.h"
+#include "tanara/foundation/net/HttpClient.h"
+#include "tanara/foundation/paths/AppPaths.h"
+#include "tanara/foundation/secrets/SecretStore.h"
+#include "tanara/library/MeetingLayout.h"
+#include "tanara/library/MeetingLibrary.h"
+#include "tanara/library/import/ImportService.h"
 #include "tanara/library/index/EmbeddingIndex.h"
 #include "tanara/library/index/EmbeddingPreparer.h"
-#include "tanara/providers/embedding/ITextEmbedder.h"
-#include "tanara/editing/undo/MeetingUndo.h"
-#include "tanara/editing/undo/MeetingUndoRegistry.h"
-#include "tanara/editing/participants/ParticipantService.h"
-#include "tanara/processing/analysis/VoiceAnalysisService.h"
-#include "tanara/library/store/ParticipantJson.h"
+#include "tanara/library/jobs/JobStats.h"
+#include "tanara/library/jobs/MeetingJobTracker.h"
+#include "tanara/library/people/PeopleService.h"
+#include "tanara/library/people/PeopleStats.h"
+#include "tanara/library/store/ArchiveService.h"
+#include "tanara/library/store/MeetingRepository.h"
+#include "tanara/library/store/PeopleStore.h"
 #include "tanara/library/store/TranscriptRepository.h"
 #include "tanara/library/store/UiStateRepository.h"
-#include "tanara/library/MeetingLayout.h"
+#include "tanara/library/store/VoiceprintStore.h"
+#include "tanara/library/summary/SummaryRepository.h"
+#include "tanara/library/tags/MeetingProfiles.h"
+#include "tanara/library/tags/TagService.h"
+#include "tanara/library/tags/TagSuggestionService.h"
+#include "tanara/library/tracks/TrackCatalog.h"
+#include "tanara/library/tracks/WaveformService.h"
+#include "tanara/media/FfmpegMediaTool.h"
+#include "tanara/processing/analysis/VoiceAnalysisService.h"
+#include "tanara/processing/stt/TranscriptionService.h"
+#include "tanara/processing/summary/SummarizationService.h"
+#include "tanara/processing/summary/TopicQueue.h"
+#include "tanara/processing/voiceid/VoiceEmbedderSet.h"
 #include "tanara/processing/voiceid/VoiceModelDownloader.h"
+#include "tanara/processing/voiceid/VoiceModelRegistry.h"
+#include "tanara/providers/core/ProviderConfig.h"
+#include "tanara/providers/core/ProviderRegistry.h"
+#include "tanara/recording/MixdownService.h"
+#include "tanara/recording/RecordingService.h"
+#include "tanara/recording/audio/DeviceManager.h"
 
 #include <QCoreApplication>
 #include <QDir>
 #include <QFile>
-#include <QJsonDocument>
-#include <QJsonObject>
-#include <QJsonArray>
-#include <QJsonValue>
-#include <QHash>
-#include <QSet>
-#include <QFileInfo>
-#include <QDateTime>
 #include <QPointer>
-#include <QRegularExpression>
-#include <QElapsedTimer>
-#include <QThread>
-#include <QThreadPool>
-#include <algorithm>
-#include <atomic>
-#include <cmath>
+#include <QTimer>
+
 #include <memory>
 
 namespace tanara::app {
@@ -102,22 +73,6 @@ namespace {
 using library::MeetingLayout;
 using library::SummaryRepository;
 using library::TranscriptRepository;
-
-
-QString sttPhase(SttJobState s) {
-    switch (s) {
-    case SttJobState::Uploading:  return QCoreApplication::translate("AppController", "Hang feltöltése…");
-    case SttJobState::Queued:     return QCoreApplication::translate("AppController", "Várakozás a Soniox sorban…");
-    case SttJobState::Processing: return QCoreApplication::translate("AppController", "Átírás folyamatban…");
-    case SttJobState::Completed:  return QCoreApplication::translate("AppController", "Sáv kész");
-    case SttJobState::Failed:     return QCoreApplication::translate("AppController", "Hiba");
-    default:                   return QStringLiteral("…");
-    }
-}
-
-// The last FAILED HTTP exchange of a provider call (for the remembered error's technical line).
-using processing::FailureSink;
-using processing::captureFailures;
 
 } // namespace
 
@@ -133,9 +88,6 @@ struct AppController::Impl {
     std::unique_ptr<library::VoiceprintStore> voiceprints;
     QString          voiceModelPath;    // expected location of the base model (diagnostics)
     QString          appDir;            // location of the packaged models (<appDir>/models)
-    // Per-track speech share: the measurement runs on the voice analysis's pool (P12f moves the rest).
-    QSet<QString>    speechCheckRunning;  // meetingIds being measured now
-    QSet<QString>    speechChecked;       // already measured in this process (not repeated even on error)
     // ---- P12d: participants, people, voice analysis, shared undo (app::Services) ----
     processing::VoiceAnalysisService* voice = nullptr;
     library::PeopleService*           peopleSvc = nullptr;
@@ -151,17 +103,16 @@ struct AppController::Impl {
     // The recording and the mixdown: services()->recording() / mixdown().
     recording::RecordingService* recording = nullptr;
     recording::MixdownService*   mixdown = nullptr;
-    bool        autoMixdown = true;             // automatic mixdown after recording / import
-    QHash<QString, MergedTranscript> mergedCache;
 
     // ---- P12e: the summary and the topic queue (processing::SummarizationService, app::Services) ----
     processing::SummarizationService* summaries = nullptr;
-    struct SummaryLlmAdapter;   // the summarization's SummaryLlmPort (settings, key, Tanara Cloud runs)
-    std::unique_ptr<SummaryLlmAdapter> summaryLlm;
 
-    // Transcript-editor sessions (one per meeting; see speakerEditor()).
-    QHash<QString, QPointer<editing::SpeakerEditor>> speakerEditors;
-    bool editorEmitting = false;   // the editor's own speakerMap signal is going out (do not reload)
+    // ---- P12f: the transcription step, the chains, the editor sessions (app::Services) ----
+    processing::TranscriptionService* transcription = nullptr;
+    app::Workflows*                   workflows = nullptr;
+    editing::EditorSessions*          editors = nullptr;
+    // Who runs a step and who pays: readiness, own key vs. Tanara Cloud run, the processing steps' ports.
+    std::unique_ptr<app::ProviderRuns> runs;
 
     // Tanara Cloud.
     cloud::CloudSession* cloud = nullptr;
@@ -187,109 +138,7 @@ struct AppController::Impl {
     library::EmbeddingIndex*    embeddings = nullptr;
     library::EmbeddingPreparer* embeddingPreparer = nullptr;
 
-    // A running transcription: the connection of the job / the mixdown chain, for cancelling.
-    struct TranscribeRun {
-        QPointer<providers::SttJob> job;
-        std::shared_ptr<QMetaObject::Connection> mixConn;
-        bool mixPhase = false;         // still waiting for the mixdown
-        bool ownsMixdown = false;      // this transcription started the mixdown
-        bool cancelRequested = false;
-    };
-    QHash<QString, TranscribeRun> transcribeRuns;
-    QSet<QString> clearSpeakersOnTranscript;   // re-transcription: the old names are cleared with the new transcript
-    // Meetings where the user TURNED OFF the automatic voice identification after transcription (the
-    // toggle). A process-wide (not persisted) choice.
-    QSet<QString> skipIdentifyAfterTranscribe;
-
-    // Per meeting the transcript's "generation": every new transcript write increments it. The background
-    // identification uses it (and the tokens file's state) to see that a new transcript arrived meanwhile.
-    QHash<QString, int> transcriptGen;
-
-    // The transcript's state at the start of an identification (see startIdentify): if it differs at the
-    // end, the result refers to the labels of the OLD transcript, so it is dropped.
-    QString transcriptStamp(const QString& meetingId, const QString& folder) const {
-        const FileStamp fs = FileStamp::of(TranscriptRepository::tokensPath(folder));
-        return QStringLiteral("%1/%2/%3").arg(transcriptGen.value(meetingId)).arg(fs.mtimeMs).arg(fs.size);
-    }
-
-    bool transcribeInMixPhase(const QString& meetingId) const {
-        const auto it = transcribeRuns.constFind(meetingId);
-        return it != transcribeRuns.constEnd() && it->mixPhase;
-    }
     bool voiceModelUsable() const { return voice && voice->usable(); }
-    // Tag suggestions (P12c): the LLM run's session (cloud bookkeeping) and the embedder factory, handed to
-    // library::TagSuggestionService through app::Services.
-    library::TagSuggestionService::LlmSession tagLlmSession(const QString& meetingId, QObject* parent);
-    providers::ITextEmbedder* makeEmbedder(const QString& providerId, QObject* parent);
-};
-
-// P12e: the summarization's app side (processing::SummaryLlmPort): the settings, the LLM key and the Tanara
-// Cloud run bookkeeping, through the same facade members as before the split (canRun, llmConfigFor,
-// providerContext, finishCloudRun, the ledger's fail). A cloud run travels as an opaque handle.
-struct AppController::Impl::SummaryLlmAdapter final : processing::SummaryLlmPort {
-    struct CloudRunHandle final : RunHandle { CloudRunPtr run; };
-
-    explicit SummaryLlmAdapter(AppController* owner) : q(owner) {}
-
-    static CloudRunPtr unwrap(const Run& run)
-    {
-        const auto* h = static_cast<const CloudRunHandle*>(run.get());
-        return h ? h->run : CloudRunPtr();
-    }
-    static Run wrap(const CloudRunPtr& run)
-    {
-        if (!run) return {};
-        auto h = std::make_shared<CloudRunHandle>();
-        h->run = run;
-        return h;
-    }
-
-    providers::ReadinessResult readiness(const QString& meetingId) const override
-    {
-        return q->canRun(providers::WorkflowStep::Summarize, meetingId);
-    }
-    processing::ProcessingSettings processingSettings() const override { return q->d->settings->settings().processing; }
-    QString chatProviderId() const override { return q->d->settings->settings().providers.llm.selectedId; }
-    providers::ProviderConfig localConfig() const override { return q->d->settings->settings().providers.llm.selected(); }
-    bool cloudSelected() const override { return q->usesCloud(providers::WorkflowStep::Summarize); }
-
-    Run newRun(const QString& meetingId, const QString& kind) override { return wrap(q->newCloudRun(meetingId, kind)); }
-    void setRunKind(const Run& run, const QString& kind) override
-    {
-        if (const CloudRunPtr r = unwrap(run)) r->kind = kind;
-    }
-    providers::ProviderConfig config(Run& run, const QString& meetingId, const QString& kind) override
-    {
-        CloudRunPtr r = unwrap(run);
-        const providers::ProviderConfig cfg = q->llmConfigFor(r, meetingId, kind);
-        if (!run && r) run = wrap(r);
-        return cfg;
-    }
-    providers::ProviderContext context(const Run& run, const QString& summaryMode) const override
-    {
-        return q->providerContext(unwrap(run), summaryMode);
-    }
-    void finishRun(const Run& run) override { q->finishCloudRun(unwrap(run)); }
-    bool failRun(const Run& run) override { return q->d->cloudLedger->fail(unwrap(run)); }
-    bool runError(const Run& run, Error* out) const override
-    {
-        const CloudRunPtr r = unwrap(run);
-        if (!r || !r->lastError.isError()) return false;
-        if (out) *out = cloud::toError(r->lastError);
-        return true;
-    }
-    QString runErrorMessage(const Run& run) const override
-    {
-        const CloudRunPtr r = unwrap(run);
-        return r ? r->lastError.message : QString();
-    }
-    void refreshAccount(const Run& run) override
-    {
-        const CloudRunPtr r = unwrap(run);
-        if (r && (r->balance.isValid() || r->calls > 0)) q->d->cloud->refreshAccount();
-    }
-
-    AppController* q;
 };
 
 AppController::AppController(QObject* parent)
@@ -362,6 +211,11 @@ AppController::AppController(QObject* parent)
     // Temporary folders of an interrupted archive import / root move (e.g. quitting during unpacking). Only
     // older ones: the folder of a currently running (e.g. CLI) import is left alone.
     d->store->removeStaleImportFolders(6 * 3600);
+    d->runs = std::make_unique<app::ProviderRuns>(app::ProviderRuns::Deps{
+        d->settings, d->secrets.get(), d->http, d->cloud, d->cloudLedger, &d->providerRegistry, &d->cloudMode,
+        d->store, d->metaDir,
+        [this](const QString& id) { return d->transcription->cachedTranscript(id); },
+        [this]() { return d->personNames(); }});
     d->transcripts = std::make_unique<library::TranscriptRepository>();
     d->uiState = std::make_unique<library::UiStateRepository>(ap.stateFile(paths::files::UiTranscript));
 
@@ -427,8 +281,8 @@ AppController::AppController(QObject* parent)
         sd.embeddings = d->embeddings;
         sd.embeddingPreparer = d->embeddingPreparer;
         sd.registry = &d->providerRegistry;
-        sd.tagLlm = [this](const QString& meetingId, QObject* parent) { return d->tagLlmSession(meetingId, parent); };
-        sd.embedder = [this](const QString& id, QObject* parent) { return d->makeEmbedder(id, parent); };
+        sd.tagLlm = [this](const QString& meetingId, QObject* parent) { return d->runs->tagLlmSession(meetingId, parent); };
+        sd.embedder = [this](const QString& id, QObject* parent) { return d->runs->makeEmbedder(id, parent); };
         // P12d: participants, people, voice analysis, shared undo. The editor sessions stay here until P12f.
         sd.people = d->people.get();
         sd.voiceprints = d->voiceprints.get();
@@ -436,19 +290,23 @@ AppController::AppController(QObject* parent)
         sd.modelsDir = d->modelsDir;
         sd.appDir = d->appDir;
         sd.editorFor = [this](const QString& id) { return speakerEditor(id); };
-        sd.existingEditor = [this](const QString& id) -> editing::SpeakerEditor* { return d->speakerEditors.value(id); };
-        sd.transcriptStamp = [this](const QString& id, const QString& folder) { return d->transcriptStamp(id, folder); };
-        sd.speechCheckPending = [this](const Meeting& m) {
-            // The measurement is running (its end calls again), or the speechless tracks are not filtered out yet.
-            return d->speechCheckRunning.contains(m.id)
-                || (!m.hasTranscript && editing::trackspeech::needsSpeechCheck(m) && !d->speechChecked.contains(m.id));
+        // (The services are reset before the facade dies: then there is no open editor.)
+        sd.existingEditor = [this](const QString& id) -> editing::SpeakerEditor* {
+            return d->services ? d->services->editorSessions().existing(id) : nullptr;
         };
+        // The transcript's identity and the speech check's state: the transcription step / the workflows (P12f).
+        sd.transcriptStamp = [this](const QString& id, const QString& folder) {
+            return d->services->transcription().transcriptStamp(id, folder);
+        };
+        sd.speechCheckPending = [this](const Meeting& m) { return d->services->workflows().speechCheckPending(m); };
         // P12e: the summary and the topic queue (the app side: settings, key, Tanara Cloud runs).
-        d->summaryLlm = std::make_unique<Impl::SummaryLlmAdapter>(this);
-        sd.summaryLlm = d->summaryLlm.get();
+        sd.summaryLlm = &d->runs->summaryPort();
         sd.jobStats = d->jobStats.get();
         sd.notesDir = d->notesDir;
-        sd.cachedTranscript = [this](const QString& id) { return d->mergedCache.value(id); };
+        sd.cachedTranscript = [this](const QString& id) { return d->services->transcription().cachedTranscript(id); };
+        // P12f: the transcription's app side (settings, STT key, Tanara Cloud runs) and the readiness check.
+        sd.transcriptionPort = &d->runs->transcriptionPort();
+        sd.readiness = [this](providers::WorkflowStep step, const QString& id) { return canRun(step, id); };
         d->services = std::make_unique<app::Services>(sd);
         d->voice = &d->services->voiceAnalysis();
         d->peopleSvc = &d->services->people();
@@ -456,6 +314,9 @@ AppController::AppController(QObject* parent)
         d->undo = &d->services->meetingUndo();
         d->recording = &d->services->recording();
         d->mixdown = &d->services->mixdown();
+        d->transcription = &d->services->transcription();
+        d->workflows = &d->services->workflows();
+        d->editors = &d->services->editorSessions();
         // Facade: the services' signals are re-emitted unchanged.
         library::ArchiveService& arch = d->services->archive();
         arch.setRecordingGuard([this](const Meeting& m) {
@@ -470,13 +331,7 @@ AppController::AppController(QObject* parent)
         connect(&imp, &library::ImportService::rejected, this, &AppController::errorOccurred);
         connect(&imp, &library::ImportService::finished, this, [this](const Meeting& m) {
             emit importFinished(m);
-            // Mixdown: exactly as at the end of a recording (see the RecordingService::readyForProcessing handler): first the
-            // tracks' speech check (a speechless track is left out of the mix).
-            if (d->autoMixdown) {
-                const bool mix = d->settings->settings().recording.mixdownMode != QStringLiteral("manual");
-                if (editing::trackspeech::needsSpeechCheck(m)) startSpeechCheck(m.id, mix);
-                else if (mix) regenerateMixdown(m.id);
-            }
+            d->workflows->afterImport(m);   // speech check -> mixdown, as at the end of a recording
         });
         connect(&imp, &library::ImportService::failed, this, &AppController::importFailed);
         connect(&imp, &library::ImportService::cancelled, this, &AppController::importCancelled);
@@ -494,42 +349,21 @@ AppController::AppController(QObject* parent)
         connect(&rec, &recording::RecordingService::error, this, &AppController::errorOccurred);
         connect(&rec, &recording::RecordingService::callEnded, this, &AppController::callEnded);
         connect(&rec, &recording::RecordingService::silenceDetected, this, &AppController::silenceDetected);
-        connect(&rec, &recording::RecordingService::readyForProcessing, this, [this](const Meeting& m) {
-            // The mixdown is decoupled from stop(): we start it here ASYNCHRONOUSLY, only if the setting is "auto".
-            // It does not block, so a new recording can start at once. In manual mode the user starts it with the
-            // review panel's "Mix" button. (The mixdown is needed only for listening; for transcription the per-track
-            // .ogg files suffice.)
-            // In the standalone recorder process (setAutoMixdownAfterRecording(false)) it does not start: that process
-            // exits after recording, and the analyzer makes the mix when needed.
-            // Before it, the tracks' speech check (on a background thread): a speechless track is left out of the mix
-            // (Track::excludedReason "noSpeech"); the mix starts at the end of the measurement.
-            if (d->autoMixdown) {
-                const bool mix = d->settings->settings().recording.mixdownMode != QStringLiteral("manual")
-                    && m.mixdownFile.isEmpty();
-                if (editing::trackspeech::needsSpeechCheck(m)) startSpeechCheck(m.id, mix);
-                else if (mix) regenerateMixdown(m.id);
-                // The pre-transcript voice analysis from the raw tracks, right after the recording (if the speech
-                // measurement is still pending, its end starts it).
-                maybeAnalyzeParticipants(m.id);
-            }
-        });
+        // The speech check -> mixdown -> voice analysis chain after a recording (app::Workflows).
+        connect(&rec, &recording::RecordingService::readyForProcessing, d->workflows, &app::Workflows::afterRecording);
 
-        // Mixdown: a mix running as a transcription's stage moves that task's "mixdown" stage instead of its own task.
+        // Mixdown: the signals go out first, then the chains follow (a transcription's "mixdown" stage, the
+        // voice analysis after a remix).
         recording::MixdownService& mix = *d->mixdown;
-        mix.setTranscriptionStageProbe([this](const QString& id) { return d->transcribeInMixPhase(id); });
         connect(&mix, &recording::MixdownService::progress, this, [this](const QString& id, int pct) {
             emit mixdownProgress(id, pct);
-            // (100 is only the UI's "done" tick; the stage is closed by the transcription chain.)
-            if (pct < 100 && d->transcribeInMixPhase(id))
-                d->jobs->setStage(id, JobKind::Transcribe, QStringLiteral("mixdown"), StageState::Running, pct);
+            d->workflows->mixdownProgress(id, pct);
         });
         connect(&mix, &recording::MixdownService::error, this, &AppController::errorOccurred);
         connect(&mix, &recording::MixdownService::finished, this, &AppController::mixdownUpdated);
         connect(&mix, &recording::MixdownService::runEnded, this, [this](const QString& id, bool ok) {
             emit tracksChanged(id);   // the view should refresh (button state, mixdownFile)
-            // The pre-transcript voice analysis works from the raw tracks, independent of the mixdown; we try here
-            // only because a mix can also run after a track change (an excluded track).
-            if (ok) maybeAnalyzeParticipants(id);
+            d->workflows->mixdownRunEnded(id, ok);
         });
     }
     d->tags->setProfiles(d->profiles);
@@ -553,7 +387,8 @@ AppController::AppController(QObject* parent)
     // The participants (manual / approved) changed: the "by participants" suggestion goes out again.
     connect(this, &AppController::participantsChanged, &tagSvc, &library::TagSuggestionService::republish);
     connect(this, &AppController::transcriptReady, &tagSvc, &library::TagSuggestionService::transcriptChanged);
-    connect(this, &AppController::summaryReady, &tagSvc, &library::TagSuggestionService::summaryReady);
+    // summarize -> tags (app::Workflows): the new summary's LLM tag suggestions.
+    connect(this, &AppController::summaryReady, d->workflows, &app::Workflows::summaryReady);
     connect(d->settings, &SettingsManager::settingsChanged, this, [this]() {
         d->services->tagSuggestions().applyEmbeddingSettings(true);
     });
@@ -572,11 +407,6 @@ AppController::AppController(QObject* parent)
         connect(&voice, &processing::VoiceAnalysisService::participantAnalysisProgress, this, &AppController::participantAnalysisProgress);
         connect(&voice, &processing::VoiceAnalysisService::participantsChanged, this, &AppController::participantsChanged);
         connect(&voice, &processing::VoiceAnalysisService::trackActivityReady, this, &AppController::trackActivityReady);
-        // The asynchronous identification's matches are written by the participant service.
-        connect(&voice, &processing::VoiceAnalysisService::speakersIdentified, this,
-                [this](const QString& meetingId, const QVector<SpeakerVoiceMatch>& matches) {
-                    d->participants->commitIdentification(meetingId, matches);
-                });
         library::PeopleService& people = *d->peopleSvc;
         connect(&people, &library::PeopleService::peopleChanged, this, &AppController::peopleChanged);
         connect(&people, &library::PeopleService::voiceprintsChanged, this, &AppController::voiceprintsChanged);
@@ -626,21 +456,29 @@ AppController::AppController(QObject* parent)
 
     // Transcript editor: a new summary clears the stale flag; a new transcript drops the manual line
     // corrections (the utterance boundaries changed).
-    connect(this, &AppController::summaryReady, this, [this](const QString& meetingId) {
-        if (editing::SpeakerEditor* ed = d->speakerEditors.value(meetingId)) {
-            ed->notifySummaryRegenerated();
-        } else {
-            const Meeting m = d->store->load(meetingId);
-            if (!m.folder.isEmpty()) editing::speakeredit::clearSummaryStale(m.folder);
-        }
-        emit summaryStaleChanged(meetingId);
-    });
-    connect(this, &AppController::transcriptReady, this, [this](const QString& meetingId) {
-        const Meeting m = d->store->load(meetingId);
-        if (m.folder.isEmpty()) return;
-        editing::speakeredit::discardForNewTranscript(m.folder);
-        if (editing::SpeakerEditor* ed = d->speakerEditors.value(meetingId)) ed->reloadTranscript();
-    });
+    connect(this, &AppController::summaryReady, d->editors, &editing::EditorSessions::summaryRegenerated);
+    connect(this, &AppController::transcriptReady, d->editors, &editing::EditorSessions::transcriptReplaced);
+
+    // P12f facade: the transcription step's, the chains' and the editor sessions' signals are re-emitted unchanged.
+    {
+        processing::TranscriptionService& stt = *d->transcription;
+        connect(&stt, &processing::TranscriptionService::jobProgress, this, &AppController::jobProgress);
+        connect(&stt, &processing::TranscriptionService::transcriptReady, this, &AppController::transcriptReady);
+        connect(&stt, &processing::TranscriptionService::errorOccurred, this, &AppController::errorOccurred);
+        app::Workflows& wf = *d->workflows;
+        connect(&wf, &app::Workflows::jobProgress, this, &AppController::jobProgress);
+        connect(&wf, &app::Workflows::tracksChanged, this, &AppController::tracksChanged);
+        connect(&wf, &app::Workflows::errorOccurred, this, &AppController::errorOccurred);
+        editing::EditorSessions& eds = *d->editors;
+        connect(&eds, &editing::EditorSessions::speakerMapChanged, this, &AppController::speakerMapChanged);
+        connect(&eds, &editing::EditorSessions::peopleChanged, this, &AppController::peopleChanged);
+        connect(&eds, &editing::EditorSessions::voiceprintsChanged, this, &AppController::voiceprintsChanged);
+        connect(&eds, &editing::EditorSessions::summaryStaleChanged, this, &AppController::summaryStaleChanged);
+        // A change from outside (old UI rename, auto-identification, person rename) -> the open editor rereads
+        // the disk; new voiceprints refresh its speakers.
+        connect(this, &AppController::speakerMapChanged, &eds, &editing::EditorSessions::externalSpeakerMapChanged);
+        connect(this, &AppController::voiceprintsChanged, &eds, &editing::EditorSessions::notifyVoiceprintsChanged);
+    }
 }
 
 AppController::~AppController()
@@ -688,11 +526,10 @@ void AppController::applyVoiceModels()
     const processing::VoiceAnalysisService::ModelChange change = d->voice->applyModels();
     if (!change.changed) return;   // another setting changed
     // The open editors continue with the new model list and factory.
-    for (const QPointer<editing::SpeakerEditor>& ed : std::as_const(d->speakerEditors)) {
-        if (!ed) continue;
+    d->editors->forEach([this](editing::SpeakerEditor* ed) {
         ed->setEmbedderFactory(utteranceEmbedderFactory());
         ed->setVoiceModelIds(d->voice->editorModelIds());
-    }
+    });
     emit voiceModelsChanged();
     if (change.grew && !change.first) backfillVoiceprints();
 }
@@ -823,7 +660,7 @@ void AppController::deleteMeeting(const QString& meetingId) {
     d->voice->cancelAnalysis(meetingId);   // the voice analysis's result no longer goes to the deleted meeting
     d->waveforms->cancel(meetingId);
     closeSpeakerEditor(meetingId);   // the open speaker editor must not write into the deleted folder
-    d->mergedCache.remove(meetingId);
+    d->transcription->forget(meetingId);
     d->store->deleteMeeting(meetingId);   // the meetingRemoved signal from the store
 }
 
@@ -884,7 +721,7 @@ void AppController::retainLevelMonitoring(QObject* owner) { d->recording->retain
 
 void AppController::releaseLevelMonitoring(QObject* owner) { d->recording->releaseLevelMonitoring(owner); }
 
-void AppController::setAutoMixdownAfterRecording(bool on) { d->autoMixdown = on; }
+void AppController::setAutoMixdownAfterRecording(bool on) { d->workflows->setAutoMixdown(on); }
 
 QStringList AppController::recordingDeviceNames() const { return d->recording->liveDeviceNames(); }
 
@@ -909,33 +746,7 @@ void AppController::stopRecording() { d->recording->stop(); }
 
 providers::ReadinessResult AppController::canRun(providers::WorkflowStep step, const QString& meetingId) const
 {
-    const Meeting meeting = d->store->load(meetingId);
-    providers::ReadinessModel model(d->settings->settings().providers,
-                         [this](const QString& k) { return !d->secrets->get(k).isEmpty(); },
-                         &d->providerRegistry);
-    providers::ReadinessResult r = model.check(step, meeting);
-    if (!r.runnable || !usesCloud(step))
-        return r;
-
-    // Tanara Cloud-specific obstacles (exactly one CTA in the task strip).
-    const cloud::CloudSession::Blocker blocker = d->cloud->blocker();
-    if (blocker == cloud::CloudSession::Blocker::ClientTooOld) {
-        providers::ReadinessResult c;
-        c.blockerKind   = providers::BlockerKind::Cloud;
-        c.detail        = tr("A Tanara Cloudhoz frissítés kell (legalább %1).").arg(d->cloud->minClient());
-        c.fixActionHint = QStringLiteral("cloud:update");
-        c.providerId    = cloud::ProviderId;
-        return c;
-    }
-    if (blocker == cloud::CloudSession::Blocker::BalanceEmpty) {
-        providers::ReadinessResult c;
-        c.blockerKind   = providers::BlockerKind::Cloud;
-        c.detail        = tr("töltsd fel az egyenleged");
-        c.fixActionHint = QStringLiteral("cloud:topup");
-        c.providerId    = cloud::ProviderId;
-        return c;
-    }
-    return r;
+    return d->runs->canRun(step, meetingId);
 }
 
 // ---- Tanara Cloud ------------------------------------------------------------------------
@@ -945,477 +756,28 @@ bool AppController::cloudLive() const { return d->cloudMode.live; }
 providers::ProviderRegistry& AppController::providerRegistry() const { return d->providerRegistry; }
 bool AppController::cloudTeaser() const { return d->cloudMode.teaser; }
 
-bool AppController::usesCloud(providers::WorkflowStep step) const
-{
-    return d->cloudMode.selects(step, d->settings->settings().providers);
-}
+bool AppController::usesCloud(providers::WorkflowStep step) const { return d->runs->usesCloud(step); }
 
-QString AppController::cloudModelFor(providers::WorkflowStep step) const
-{
-    return d->cloud->modelFor(step == providers::WorkflowStep::Transcribe ? QStringLiteral("stt") : QStringLiteral("llm"),
-                              d->settings->settings().cloud);
-}
+QString AppController::cloudModelFor(providers::WorkflowStep step) const { return d->runs->cloudModelFor(step); }
 
-namespace {
-constexpr int kCloudMaxTokens = cloud::CloudEstimator::kMaxTokens;
-}
-
-// Gathers the meeting's facts for the estimate (the planning rule is cloud::CloudEstimator::plan).
 cloud::EstimateRequest AppController::makeEstimateRequest(const QString& meetingId, const QString& task,
-                                                   const QString& summaryMode) const
+                                                          const QString& summaryMode) const
 {
-    const Meeting m = d->store->load(meetingId);
-    const AppSettings s = d->settings->settings();
-    cloud::EstimateInputs in;
-    in.task = task;
-    in.summaryMode = summaryMode;
-    in.durationMs = m.durationMs;
-    for (const Track& t : m.tracks) if (t.active) ++in.tracks;
-    in.language = s.processing.languageHints.value(0);
-    if (task != QLatin1String("summarize"))
-        in.sttModel = cloudModelFor(providers::WorkflowStep::Transcribe);
-    if (task != QLatin1String("transcribe")) {
-        in.llmModel = cloudModelFor(providers::WorkflowStep::Summarize);
-        // The actual input: system prompt + context + transcript (markdown).
-        MergedTranscript merged = d->mergedCache.value(meetingId);
-        if (merged.tokens.isEmpty() && !m.folder.isEmpty())
-            merged = TranscriptRepository::readTokens(m.folder);
-        if (!merged.tokens.isEmpty()) {
-            editing::speakeredit::applyResolvedSpeakers(merged, m, d->personNames());
-            in.hasTranscript = true;
-            in.transcriptChars = int(merged.renderMarkdown().size() + m.contextNote.size());
-            in.contextNoteChars = int(m.contextNote.size());
-            if (summaryMode == QLatin1String("complex")) {
-                in.topicPromptChars = int(processing::SummarizationService::resolvedPrompt(
-                    s.processing, s.processing.topicExtractionPrompt, "topic").size());
-                in.analysisPromptChars = int(processing::SummarizationService::resolvedPrompt(
-                    s.processing, s.processing.topicAnalysisPrompt, "analysis").size());
-                const QVector<SummaryTopic> topics =
-                    SummaryRepository::readTopics(m.folder);
-                in.topicsKnown = !topics.isEmpty();
-                if (in.topicsKnown) {
-                    QSet<QString> done;
-                    for (const TopicAnalysis& a : SummaryRepository::readAnalyses(m.folder))
-                        done.insert(a.topicId);
-                    for (const SummaryTopic& t : topics) if (!done.contains(t.id)) ++in.missingAnalyses;
-                }
-            } else {
-                const processing::SummaryRequest req =
-                    processing::SummarizationService::requestFor(s.processing, merged, m, in.llmModel, kCloudMaxTokens);
-                const processing::SummaryPlan plan = processing::SummaryService::plan(req);
-                in.singleCall = plan.singleCall;
-                in.parts = plan.parts;
-                in.cachedParts = plan.cachedParts;
-                in.partChars = plan.partChars;
-                in.singlePromptChars = int(req.singlePrompt.size());
-                in.notesPromptChars = int(req.notesPrompt.size());
-                in.mergePromptChars = int(req.mergePrompt.size());
-                in.notesMaxTokens = req.notesMaxTokens;
-            }
-        }
-    }
-    return cloud::CloudEstimator::plan(in);
+    return d->runs->estimateRequest(meetingId, task, summaryMode);
 }
 
-AppController::CloudRunPtr AppController::newCloudRun(const QString& meetingId, const QString& kind) const
-{
-    return d->cloudLedger->newRun(meetingId, kind);
-}
+// ---- the transcription chain (app::Workflows: mixdown -> processing::TranscriptionService -> identify) ----
 
-providers::ProviderConfig AppController::cloudConfig(providers::WorkflowStep step) const
-{
-    return d->cloudLedger->configFor(cloudModelFor(step), kCloudMaxTokens);
-}
-
-providers::ProviderContext AppController::providerContext(const CloudRunPtr& run, const QString& summaryMode) const
-{
-    if (run) return d->cloudLedger->contextFor(run, summaryMode, d->http);
-    providers::ProviderContext ctx;   // own key / address: the config's apiKey, no hooks
-    ctx.http = d->http;
-    return ctx;
-}
-
-providers::ProviderConfig AppController::llmConfigFor(CloudRunPtr& run, const QString& meetingId,
-                                           const QString& kind) const
-{
-    if (!usesCloud(providers::WorkflowStep::Summarize)) {
-        providers::ProviderConfig cfg = d->settings->settings().providers.llm.selected();
-        cfg.apiKey = d->secrets->get(keys::LlmApiKey);   // LM Studio: may be empty
-        return cfg;
-    }
-    if (!run) run = newCloudRun(meetingId, kind);
-    return cloudConfig(providers::WorkflowStep::Summarize);
-}
-
-void AppController::finishCloudRun(const CloudRunPtr& run)
-{
-    d->cloudLedger->finish(run);   // cloudCharged (forwarded)
-}
-
-void AppController::failCloudRun(const CloudRunPtr& run, const QString& fallbackMessage)
-{
-    if (!d->cloudLedger->fail(run))   // cloudRefunded / cloudError (forwarded)
-        emit errorOccurred(fallbackMessage);
-}
-
-void AppController::transcribeMeeting(const QString& meetingId)
-{
-    if (d->jobs->isRunning(meetingId, JobKind::Transcribe))
-        return;   // already running on this meeting (a double click / two views)
-
-    Meeting m = d->store->load(meetingId);
-    if (m.id.isEmpty()) {
-        d->clearSpeakersOnTranscript.remove(meetingId);
-        emit errorOccurred(tr("Ismeretlen meeting: %1").arg(meetingId));
-        return;
-    }
-    // The voice analysis runs in parallel with transcription (if it has not run on these tracks yet).
-    maybeAnalyzeParticipants(meetingId);
-
-    providers::ReadinessResult res = canRun(providers::WorkflowStep::Transcribe, meetingId);
-    if (!res.runnable) {
-        d->clearSpeakersOnTranscript.remove(meetingId);
-        emit errorOccurred(res.detail);
-        return;
-    }
-
-    // A standalone identification refers to the labels of the CURRENT transcript: we stop it so its names
-    // do not land on the NEW transcript about to arrive (its result is dropped at completion by the
-    // transcript-change check too; see startIdentify).
-    cancelJob(meetingId, JobKind::Identify);
-
-    // The transcript is made from the MIXDOWN (a single audio stream: no per-track overlap
-    // merging/duplication, 1x Soniox cost instead of ~Nx). If the mixdown is missing or stale, we make it first
-    // and start the transcription on the mixdownUpdated signal.
-    const QString mixPath =
-        QDir(m.folder).filePath(MeetingLayout::mixdownOf(m));
-    const bool needMix = m.mixdownFile.isEmpty() || m.mixdownDirty || !QFile::exists(mixPath);
-
-    // Structured task: the stage list. The mixdown is a stage only if needed; identification only if there
-    // is a voice model.
-    {
-        int activeTracks = 0;
-        for (const Track& t : m.tracks) if (t.active) ++activeTracks;
-        QVector<JobStage> stages;
-        if (needMix)
-            stages.append({QStringLiteral("mixdown"), tr("Lekeverés"), StageState::Waiting, -1, QString()});
-        stages.append({QStringLiteral("upload"), tr("Feltöltés"), StageState::Waiting, -1,
-                       tr("%1 perc, %2 sáv").arg(qMax<qint64>(1, (m.durationMs + 30000) / 60000))
-                                            .arg(activeTracks)});
-        stages.append({QStringLiteral("transcribe"), tr("Átírás"), StageState::Waiting, -1, QString()});
-        stages.append({QStringLiteral("diarize"), tr("Beszélők szétválasztása"), StageState::Waiting, -1, QString()});
-        if (d->voiceModelUsable())
-            stages.append({QStringLiteral("identify"), tr("Résztvevők azonosítása"),
-                           d->skipIdentifyAfterTranscribe.contains(meetingId) ? StageState::Skipped
-                                                                              : StageState::Waiting,
-                           -1, QString()});
-        d->jobs->begin(meetingId, JobKind::Transcribe, tr("Átírás folyamatban"), stages);
-    }
-    d->transcribeRuns.insert(meetingId, Impl::TranscribeRun{});
-
-    if (needMix) {
-        auto conn = std::make_shared<QMetaObject::Connection>();
-        *conn = connect(this, &AppController::mixdownUpdated, this,
-            [this, meetingId, conn](const QString& id, bool ok) {
-                if (id != meetingId) return;
-                QObject::disconnect(*conn);
-                auto it = d->transcribeRuns.find(meetingId);
-                if (it == d->transcribeRuns.end()) return;   // cancelled meanwhile
-                it->mixPhase = false;
-                it->mixConn.reset();
-                if (ok) {
-                    d->jobs->setStage(meetingId, JobKind::Transcribe, QStringLiteral("mixdown"),
-                                      StageState::Done);
-                    transcribeFromMixdown(meetingId);
-                    return;
-                }
-                d->transcribeRuns.erase(it);
-                d->clearSpeakersOnTranscript.remove(meetingId);
-                const QString msg = tr("A lekeverés sikertelen — az átírás nem indult.");
-                JobError je;
-                je.message = msg;
-                je.detail = d->mixdown->takeFailReason(meetingId);   // e.g. which track's file is missing
-                d->jobs->fail(meetingId, JobKind::Transcribe, je);
-                emit errorOccurred(msg);
-            });
-        Impl::TranscribeRun& tr_ = d->transcribeRuns[meetingId];
-        tr_.mixPhase = true;
-        tr_.mixConn = conn;
-        // If a standalone mix was already running, we wait for it; on cancel we do not stop that one.
-        tr_.ownsMixdown = !d->mixdown->running(meetingId);
-        d->jobs->setStage(meetingId, JobKind::Transcribe, QStringLiteral("mixdown"),
-                          StageState::Running, 0);
-        emit jobProgress(m.id, tr("Lekeverés az átíráshoz…"));
-        regenerateMixdown(meetingId);
-        return;
-    }
-    transcribeFromMixdown(meetingId);
-}
+void AppController::transcribeMeeting(const QString& meetingId) { d->workflows->transcribe(meetingId); }
 
 void AppController::retranscribeMeeting(const QString& meetingId, bool keepBackup)
 {
-    Meeting m = d->store->load(meetingId);
-    if (m.id.isEmpty()) { emit errorOccurred(tr("Ismeretlen meeting: %1").arg(meetingId)); return; }
-    if (d->jobs->isRunning(meetingId, JobKind::Transcribe))
-        return;   // a transcription is already running on this meeting
-    // The current transcript (with the names and manual corrections) stays as a copy, if requested.
-    if (keepBackup) editing::speakeredit::backupTranscript(m, d->personNames());
-    // Both the speaker assignments (speakerMap) AND the manual line corrections (overlay) are cleared when the
-    // NEW transcript arrives, not beforehand: the speakerMap in the transcription's finished branch, the
-    // overlay in the transcriptReady hook. If the re-transcription is cancelled or fails, the old transcript
-    // stays untouched with its names and per-line corrections.
-    d->clearSpeakersOnTranscript.insert(meetingId);
-    transcribeMeeting(meetingId);
-}
-
-void AppController::transcribeFromMixdown(const QString& meetingId)
-{
-    // Closing the task with an error before the provider call (an internal helper).
-    auto abortJob = [this, meetingId](const QString& msg) {
-        d->transcribeRuns.remove(meetingId);
-        d->clearSpeakersOnTranscript.remove(meetingId);
-        JobError je;
-        je.message = msg;
-        d->jobs->fail(meetingId, JobKind::Transcribe, je);
-        emit errorOccurred(msg);
-    };
-
-    Meeting m = d->store->load(meetingId);
-    if (m.id.isEmpty()) {
-        d->transcribeRuns.remove(meetingId);
-        d->clearSpeakersOnTranscript.remove(meetingId);
-        d->jobs->cancelled(meetingId, JobKind::Transcribe);
-        return;
-    }
-
-    const AppSettings s = d->settings->settings();
-    const QString sttId = s.providers.stt.selectedId;
-    providers::ProviderConfig cfg = s.providers.stt.selected();
-    // Tanara Cloud: the same Soniox provider with the gateway config; the run (job id, charge,
-    // write-back, error) is filled from the response hook.
-    CloudRunPtr run;
-    bool cloudDiarization = true;
-    if (usesCloud(providers::WorkflowStep::Transcribe)) {
-        run = newCloudRun(meetingId, QStringLiteral("transcribe"));
-        cfg = cloudConfig(providers::WorkflowStep::Transcribe);
-        const std::optional<cloud::CloudModel> cm = findModel(d->cloud->models(), cfg.model);
-        cloudDiarization = !cm.has_value() || cm->diarization;
-    } else {
-        // The API key's slot is provider-dependent: the descriptor's secretKey tells it (soniox.apiKey /
-        // stt.whisper.apiKey / ...); we do not hardcode it to Soniox.
-        const providers::ProviderDescriptor sttDesc =
-            d->providerRegistry.descriptor(providers::CapabilityKind::Transcription, sttId);
-        for (const providers::ConfigField& f : sttDesc.fields)
-            if (f.isSecret && !f.secretKey.isEmpty()) {
-                cfg.apiKey = d->secrets->get(f.secretKey);
-                break;
-            }
-    }
-    // Remembering the last failed HTTP exchange (in own-key mode too): this becomes the remembered error's
-    // technical line ("HTTP 401 | invalid_api_key").
-    const auto sink = std::make_shared<FailureSink>();
-    providers::ProviderContext pctx = providerContext(run, QString());
-    captureFailures(pctx, sink);
-
-    providers::ISttProvider* provider =
-        d->providerRegistry.create<providers::ISttProvider>(sttId, pctx, cfg, this);
-    if (!provider) {
-        abortJob(tr("Ismeretlen STT-provider: %1.").arg(sttId));
-        return;
-    }
-    QObject* providerObj = dynamic_cast<QObject*>(provider);
-    emit jobProgress(m.id, tr("Átírás indítása…"));
-
-    const QString mixPath =
-        QDir(m.folder).filePath(MeetingLayout::mixdownOf(m));
-
-    // A SINGLE request with the mixdown. Speaker separation comes from Soniox diarization ("Speaker N"
-    // labels); the NAME is resolved afterwards by voice ID / manual rename.
-    providers::SttRequest req;
-    req.audioFilePath = mixPath;
-    req.trackId = QStringLiteral("mixdown");
-    req.languageHints = s.processing.languageHints;
-    // Context envelope -> Soniox's structured "context" object (general/text/terms): the title + the user's
-    // note (names, jargon, mishearing corrections) + the participant names. The detected call app is NOT sent
-    // (it tells the transcriber nothing).
-    library::meetingnotes::fillSttContext(req, m);
-    req.diarization = true;
-    if (run && !cloudDiarization) {
-        // The chosen cloud tier does not diarize (e.g. Fast): everyone becomes "Speaker 1" (the recording's tracks
-        // stay; the pre-run warning covered this).
-        req.diarization = false;
-        req.speakerLabel = QStringLiteral("1");
-    }
-    const bool diarizing = req.diarization;
-
-    providers::SttJob* job = provider->transcribe(req);
-
-    // Structured state: the job for cancelling, the earlier runs' speed for the estimate (with the same
-    // provider/model); without a sample there is no estimate.
-    const QString statsKey = QStringLiteral("transcribe/%1/%2").arg(sttId, cfg.model);
-    {
-        Impl::TranscribeRun& tr_ = d->transcribeRuns[meetingId];
-        tr_.job = job;
-        tr_.mixPhase = false;
-        const int est = d->jobStats->estimateSec(statsKey, double(m.durationMs) / 1000.0);
-        if (est >= 0) {
-            const JobProgress jp = d->jobs->job(meetingId, JobKind::Transcribe);
-            const int elapsed = jp.startedAt.isValid()
-                ? int(jp.startedAt.secsTo(QDateTime::currentDateTime())) : 0;
-            d->jobs->setEstimate(meetingId, JobKind::Transcribe, elapsed + est);
-        }
-        if (!diarizing)
-            d->jobs->setStage(meetingId, JobKind::Transcribe, QStringLiteral("diarize"), StageState::Skipped);
-        d->jobs->setStage(meetingId, JobKind::Transcribe, QStringLiteral("upload"), StageState::Running, 0);
-    }
-    auto sttClock = std::make_shared<QElapsedTimer>();
-    sttClock->start();
-
-    connect(job, &providers::SttJob::uploadProgress, this, [this, meetingId](qint64 sent, qint64 total) {
-        if (total <= 0) return;
-        // Real byte ratio. After 100% the provider's state change closes the stage.
-        const JobProgress jp = d->jobs->job(meetingId, JobKind::Transcribe);
-        const JobStage* st = jp.stage(QStringLiteral("upload"));
-        if (st && st->state == StageState::Running)
-            d->jobs->setStagePercent(meetingId, JobKind::Transcribe, QStringLiteral("upload"),
-                                     int(sent * 100 / total));
-    });
-    connect(job, &providers::SttJob::stateChanged, this, [this, id = m.id, diarizing](SttJobState st) {
-        emit jobProgress(id, sttPhase(st));
-        // During transcription the providers give NO percentage, only a state (upload / queued / processing).
-        // The provider does speaker separation in the same pass as transcription, so the two stages run and
-        // close together.
-        const JobKind k = JobKind::Transcribe;
-        if (st == SttJobState::Uploading) {
-            d->jobs->setStage(id, k, QStringLiteral("upload"), StageState::Running, 0);
-        } else if (st == SttJobState::Queued || st == SttJobState::Processing) {
-            d->jobs->setStage(id, k, QStringLiteral("upload"), StageState::Done);
-            d->jobs->setStage(id, k, QStringLiteral("transcribe"), StageState::Running);
-            d->jobs->setStageDetail(id, k, QStringLiteral("transcribe"),
-                                    st == SttJobState::Queued ? tr("sorban áll") : QString());
-            if (diarizing)
-                d->jobs->setStage(id, k, QStringLiteral("diarize"), StageState::Running);
-        }
-    });
-    // The detailed poll message (elapsed time + heartbeat) should also reach the UI, so that during a long
-    // async processing it shows it is running and the connection is alive.
-    connect(job, &providers::SttJob::progress, this, [this, id = m.id](int, const QString& msg) {
-        emit jobProgress(id, msg);
-        d->jobs->setMessage(id, JobKind::Transcribe, msg);
-    });
-    connect(job, &providers::SttJob::finished, this,
-            [this, meetingId, providerObj, run, job, statsKey, sttClock, diarizing](const TrackTranscript& result) {
-        d->transcribeRuns.remove(meetingId);
-        if (providerObj) providerObj->deleteLater();
-        // The job still sends its best-effort cleanup DELETEs; after that it can be deleted.
-        QTimer::singleShot(30000, job, &QObject::deleteLater);
-
-        // A FRESH meeting: transcription may run for minutes, during which the user may have renamed or edited
-        // (or deleted) the meeting; saving the old instance would overwrite that.
-        Meeting mm = d->store->load(meetingId);
-        if (mm.id.isEmpty()) {
-            d->clearSpeakersOnTranscript.remove(meetingId);
-            d->jobs->cancelled(meetingId, JobKind::Transcribe);
-            finishCloudRun(run);
-            return;
-        }
-
-        // An EMPTY result (the provider returned not a single word) = an ERROR: we do not write it over the
-        // existing transcript. The earlier transcript, speaker names and manual corrections are untouched.
-        if (result.tokens.isEmpty()) {
-            d->clearSpeakersOnTranscript.remove(meetingId);
-            const QString msg = mm.hasTranscript
-                ? tr("Az átírás üres eredményt adott (a szolgáltató nem talált beszédet a felvételen) — "
-                     "a korábbi átirat megmaradt.")
-                : tr("Az átírás üres eredményt adott: a szolgáltató nem talált beszédet a felvételen.");
-            JobError je;
-            je.message = msg;
-            d->jobs->fail(meetingId, JobKind::Transcribe, je);
-            finishCloudRun(run);   // the run closes (any charge shows up this way too)
-            emit errorOccurred(msg);
-            return;
-        }
-        // Whether there was a transcript BEFORE the run (independent of the flag; see below).
-        const bool hadTranscript = mm.hasTranscript
-            || TranscriptRepository::hasTokens(mm.folder);
-
-        TrackTranscript res = result;
-        // We translate Soniox's diarization ids (1,2,...) into a neutral "Speaker N" label.
-        for (TranscriptToken& tok : res.tokens)
-            tok.speaker = tok.speaker.isEmpty()
-                ? QStringLiteral("Beszélő")
-                : QStringLiteral("Beszélő %1").arg(tok.speaker);
-
-        QVector<TrackTranscript> single{res};
-        MergedTranscript merged = processing::mergeTranscripts(single);
-        TranscriptRepository::writeMarkdown(mm.folder, merged.renderMarkdown());
-        TranscriptRepository::writeTokens(mm.folder, merged);
-        TranscriptRepository::writeSegments(mm.folder, merged.segments());
-        d->mergedCache.insert(mm.id, merged);
-        ++d->transcriptGen[meetingId];   // a new transcript: the running identifications' results are stale
-        // Re-transcription: the new diarization's "Speaker N" labels may mean OTHER people, so the old
-        // assignments are cleared together with the NEW transcript. NOT only on retranscribeMeeting's flag: that
-        // is lost on failure, and a plain (retried) transcription after it would leave the old names on the new
-        // labels. So whenever a transcript already existed, we always clear.
-        const bool flagged = d->clearSpeakersOnTranscript.remove(meetingId);
-        if (flagged || hadTranscript)
-            mm.speakerMap.clear();
-        mm.hasTranscript = true;
-        d->store->saveMeeting(mm);
-
-        d->jobStats->addSample(statsKey, double(sttClock->elapsed()) / 1000.0,
-                               double(mm.durationMs) / 1000.0);
-        const JobKind k = JobKind::Transcribe;
-        d->jobs->setStage(meetingId, k, QStringLiteral("upload"), StageState::Done);
-        d->jobs->setStage(meetingId, k, QStringLiteral("transcribe"), StageState::Done);
-        if (diarizing)
-            d->jobs->setStage(meetingId, k, QStringLiteral("diarize"), StageState::Done);
-        d->jobs->markIdentified(meetingId, false);   // identification has not run on the new transcript yet
-
-        emit transcriptReady(mm.id, TranscriptRepository::markdownPath(mm.folder));
-        finishCloudRun(run);   // "This transcription cost $0.41." (cloud runs only)
-        // Voice ID: auto-matching the diarized speakers against the voiceprint DB, on a background thread, as
-        // the last stage of the transcription task (the UI stays usable, cancellable). (If the user skipped it
-        // with the toggle, the transcript finishes with anonymous speakers.) The "Who was there?" decision
-        // (approval / "only me") was made before the transcript: we apply that, and automatic identification is
-        // skipped. Otherwise the candidates' binding + identification.
-        const bool decided = applyParticipantsToTranscript(meetingId);
-        if (decided && d->voiceModelUsable())
-            d->jobs->setStage(meetingId, JobKind::Transcribe, QStringLiteral("identify"),
-                              StageState::Skipped);
-        if (decided || d->skipIdentifyAfterTranscribe.contains(meetingId)
-            || !startIdentify(meetingId, /*asTranscribeStage*/ true))
-            d->jobs->finish(meetingId, JobKind::Transcribe);
-    });
-    connect(job, &providers::SttJob::failed, this, [this, meetingId, providerObj, run, job, sink](QString e) {
-        const Impl::TranscribeRun info = d->transcribeRuns.take(meetingId);
-        d->clearSpeakersOnTranscript.remove(meetingId);
-        if (providerObj) providerObj->deleteLater();
-        QTimer::singleShot(30000, job, &QObject::deleteLater);   // after the cleanup DELETEs
-
-        if (info.cancelRequested) {
-            // Cancel: no error, no errorOccurred. At the provider the job cleaned up (the uploaded audio +
-            // transcript deleted); the earlier transcript (if any) is untouched.
-            if (run) {
-                if (!run->transcriptionId.isEmpty())
-                    d->cloud->removePendingTranscription(run->transcriptionId);
-                if (run->calls > 0 || run->balance.isValid())
-                    d->cloud->refreshAccount();
-            }
-            d->jobs->cancelled(meetingId, JobKind::Transcribe);
-            return;
-        }
-        JobError je = (run && run->lastError.isError())
-            ? library::describeCloudFailure(JobKind::Transcribe, cloud::toError(run->lastError))
-            : library::describeJobFailure(JobKind::Transcribe, e, sink->has ? &sink->ex : nullptr);
-        d->jobs->fail(meetingId, JobKind::Transcribe, je);
-        failCloudRun(run, tr("Átírás-hiba: %1").arg(e));
-    });
+    d->workflows->retranscribe(meetingId, keepBackup);
 }
 
 // ---- summary and topic queue (processing::SummarizationService / TopicQueue) -----------------------
 
-void AppController::summarizeMeeting(const QString& meetingId) { d->summaries->summarize(meetingId); }
+void AppController::summarizeMeeting(const QString& meetingId) { d->workflows->summarize(meetingId); }
 
 void AppController::extractMeetingTopics(const QString& meetingId) { d->summaries->topics().extractTopics(meetingId); }
 
@@ -1518,43 +880,6 @@ QVector<TagSuggestion> AppController::draftTagSuggestions(const QString& title) 
     return d->services->tagSuggestions().draft(title);
 }
 
-// The LLM run of the tag suggester: the chat provider is made by the registry's ITagSuggester ("llm"), the
-// cloud run (if any) is closed when the answer arrives.
-library::TagSuggestionService::LlmSession AppController::Impl::tagLlmSession(const QString& meetingId, QObject* parent)
-{
-    const AppSettings s = settings->settings();
-    CloudRunPtr run;
-    providers::ProviderConfig cfg = q->llmConfigFor(run, meetingId, QStringLiteral("tags"));
-    cfg.type = s.providers.llm.selectedId;
-    library::TagSuggestionService::LlmSession session;
-    session.suggester = providerRegistry.create<providers::ITagSuggester>(
-        processing::LlmTagSuggestionProvider::Id, q->providerContext(run, QStringLiteral("quick")), cfg, parent);
-    if (!session.suggester) return session;
-    session.model = cfg.model;
-    session.systemPrompt = processing::promptDefault(QStringLiteral("tags"), metaDir);
-    session.done = [this, run](bool ok) {
-        if (ok) q->finishCloudRun(run);
-    };
-    return session;
-}
-
-providers::ITextEmbedder* AppController::Impl::makeEmbedder(const QString& id, QObject* parent)
-{
-    const AppSettings cur = settings->settings();
-    providers::ProviderConfig cfg = cur.providers.embedding.configs.value(id);
-    cfg.type = id;
-    providers::ProviderContext pctx;
-    pctx.http = http;
-    if (id == providers::embeddingproviders::CloudId) {
-        // The same sign-in and header set as on the LLM path (/v1/embeddings), outside any run.
-        cfg.baseUrl = cloud->apiBase();
-        pctx = cloudLedger->contextFor(nullptr, QString(), http);
-    } else {
-        cfg.apiKey = secrets->get(providers::embeddingproviders::ApiKeySecret);
-    }
-    return providerRegistry.create<providers::ITextEmbedder>(id, pctx, cfg, parent);
-}
-
 void AppController::setRecordingTags(const QStringList& tagIds) { d->recording->setTags(tagIds); }
 
 QStringList AppController::recordingTags() const { return d->recording->tags(); }
@@ -1602,68 +927,19 @@ void AppController::requestLlmContext(int tokens) { d->summaries->requestLlmCont
 
 bool AppController::cancelJob(const QString& meetingId, JobKind kind)
 {
-    switch (kind) {
-    case JobKind::Transcribe: {
-        auto it = d->transcribeRuns.find(meetingId);
-        if (it == d->transcribeRuns.end()) {
-            // The transcript is already done, the last (identification) stage is running, so only that one is skipped.
-            return d->voice->cancel(meetingId, kind);
-        }
-        d->jobs->setCancelling(meetingId, kind);
-        if (it->mixPhase) {
-            // Mixdown phase: we break the chain; the ffmpeg we started ourselves is stopped (the half-made file is
-            // deleted, the earlier mix and the tracks are untouched).
-            if (it->mixConn) QObject::disconnect(*it->mixConn);
-            const bool owns = it->ownsMixdown;
-            d->transcribeRuns.erase(it);
-            d->clearSpeakersOnTranscript.remove(meetingId);
-            if (owns) d->mixdown->cancelProcess(meetingId);
-            d->jobs->cancelled(meetingId, kind);
-            return true;
-        }
-        if (it->job) {
-            it->cancelRequested = true;
-            it->job->cancel();   // a synchronous failed("cancelled"): the failed branch closes it (without an error)
-            return true;
-        }
-        // (In principle it does not occur: neither a mix nor a job.)
-        d->transcribeRuns.erase(it);
-        d->clearSpeakersOnTranscript.remove(meetingId);
-        d->jobs->cancelled(meetingId, kind);
-        return true;
-    }
-    case JobKind::Summarize:
-    case JobKind::ExtractTopics:
-    case JobKind::AnalyzeTopics:
-        return d->summaries->cancel(meetingId, kind);   // the LLM call / the topic batch
-    case JobKind::Mixdown:
-        return d->mixdown->cancel(meetingId);
-    case JobKind::Import:
-        return d->services->import().cancel(meetingId);
-    case JobKind::Export:
-        return d->services->archive().cancel(meetingId);
-    case JobKind::Identify:
-        return d->voice->cancel(meetingId, kind);   // the thread stops before the next speaker
-    }
-    return false;
+    return d->workflows->cancel(meetingId, kind);   // per kind: the running step's own cancel
 }
 
-void AppController::cancelAllJobs(const QString& meetingId)
-{
-    for (JobKind k : {JobKind::Transcribe, JobKind::Summarize, JobKind::ExtractTopics,
-                      JobKind::AnalyzeTopics, JobKind::Mixdown, JobKind::Identify})
-        cancelJob(meetingId, k);
-}
+void AppController::cancelAllJobs(const QString& meetingId) { d->workflows->cancelAll(meetingId); }
 
 void AppController::setIdentifyAfterTranscription(const QString& meetingId, bool enabled)
 {
-    if (enabled) d->skipIdentifyAfterTranscribe.remove(meetingId);
-    else         d->skipIdentifyAfterTranscribe.insert(meetingId);
+    d->workflows->setIdentifyAfterTranscription(meetingId, enabled);
 }
 
 bool AppController::identifyAfterTranscription(const QString& meetingId) const
 {
-    return !d->skipIdentifyAfterTranscribe.contains(meetingId);
+    return d->workflows->identifyAfterTranscription(meetingId);
 }
 
 bool AppController::voiceIdentificationAvailable() const
@@ -1671,18 +947,7 @@ bool AppController::voiceIdentificationAvailable() const
     return d->voiceModelUsable();
 }
 
-bool AppController::identifyMeetingAsync(const QString& meetingId)
-{
-    if (d->jobs->isRunning(meetingId, JobKind::Transcribe))
-        return false;   // the transcription identifies by itself at the end
-    return startIdentify(meetingId, /*asTranscribeStage*/ false);
-}
-
-bool AppController::startIdentify(const QString& meetingId, bool asStage)
-{
-    // The matches come back on VoiceAnalysisService::speakersIdentified (committed by the participant service).
-    return d->voice->startIdentify(meetingId, asStage);
-}
+bool AppController::identifyMeetingAsync(const QString& meetingId) { return d->workflows->identify(meetingId); }
 
 void AppController::requestWaveforms(const QString& meetingId)
 {
@@ -1704,54 +969,10 @@ void AppController::requestWaveforms(const QString& meetingId)
 
 editing::SpeakerEditor* AppController::speakerEditor(const QString& meetingId)
 {
-    if (editing::SpeakerEditor* existing = d->speakerEditors.value(meetingId)) return existing;
-    const Meeting m = d->store->load(meetingId);
-    if (m.id.isEmpty()) return nullptr;
-
-    auto* ed = new editing::SpeakerEditor(d->store, d->people.get(), d->voiceprints.get(), meetingId, this);
-    ed->setSelfPerson(d->selfPerson());
-    // Without voice ID (no model / TANARA_BUILD_VOICEID=OFF) the editor is fully functional even without
-    // uncertainty and suggestions.
-    ed->setVoiceModelIds(d->voice->editorModelIds());
-    ed->setEmbedderFactory(utteranceEmbedderFactory());
-    // The track activity of the side check: cache, else decoded via the media port and saved.
-    ed->setActivityProvider([media = d->media](const Meeting& mm) {
-        return processing::loadOrComputeSideActivity(mm, *media);
-    });
-    // The tag evidence for the candidate ranking (manual tag + learned association).
-    ed->setTagEvidenceProvider(d->voice->candidateContext().tagEvidence);
-    // Manual tags for the quick "+ #Tag" offer (the test seam, otherwise the TagService).
-    {
-        library::TagService* ts = d->tags;
-        const auto personTags = d->voice->personTagsProvider();
-        ed->setPersonTagsProvider(personTags ? personTags
-                                             : [ts](const PersonId& p) { return ts ? ts->tagsOfPerson(p) : QStringList(); });
-    }
-    d->speakerEditors.insert(meetingId, ed);
-    meetingUndo(meetingId);   // the shared undo follows from the editor's first step
-
-    // The editor's side effects go out on the usual signals (old UI, library).
-    connect(ed, &editing::SpeakerEditor::speakerMapChanged, this, [this](const QString& id) {
-        d->editorEmitting = true;
-        emit speakerMapChanged(id);
-        d->editorEmitting = false;
-    });
-    connect(ed, &editing::SpeakerEditor::peopleChanged, this, &AppController::peopleChanged);
-    connect(ed, &editing::SpeakerEditor::voiceprintsChanged, this, &AppController::voiceprintsChanged);
-    connect(ed, &editing::SpeakerEditor::summaryStaleChanged, this,
-            [this, meetingId] { emit summaryStaleChanged(meetingId); });
-    // A change from outside (old UI rename, auto-identification, person rename) -> the editor rereads the disk.
-    connect(this, &AppController::speakerMapChanged, ed, [this, ed](const QString& id) {
-        if (!d->editorEmitting && id == ed->meetingId()) ed->refreshFromDisk();
-    });
-    connect(this, &AppController::voiceprintsChanged, ed, &editing::SpeakerEditor::speakersChanged);
-    return ed;
+    return d->services ? d->services->editorSessions().editor(meetingId) : nullptr;
 }
 
-void AppController::closeSpeakerEditor(const QString& meetingId)
-{
-    if (editing::SpeakerEditor* ed = d->speakerEditors.take(meetingId)) ed->deleteLater();
-}
+void AppController::closeSpeakerEditor(const QString& meetingId) { d->editors->close(meetingId); }
 
 QVector<editing::PersonInfo> AppController::peopleDirectory() const
 {
@@ -1761,22 +982,12 @@ QVector<editing::PersonInfo> AppController::peopleDirectory() const
 
 SummaryStaleInfo AppController::summaryStale(const QString& meetingId) const
 {
-    const Meeting m = d->store->load(meetingId);
-    editing::SpeakerEditor* ed = d->speakerEditors.value(meetingId);
-    SummaryStaleInfo info = ed ? ed->summaryStale() : editing::speakeredit::summaryStale(m);
-    // The editor persists after every step, so the targeted part can be computed from disk.
-    if (!m.id.isEmpty()) editing::speakeredit::fillTargetedStale(m, d->personNames(), info);
-    return info;
+    return d->editors->summaryStale(meetingId);
 }
 
 QVector<SummaryStatement> AppController::summaryStatements(const QString& meetingId) const
 {
-    const Meeting m = d->store->load(meetingId);
-    if (m.id.isEmpty()) return {};
-    SummaryStaleInfo info;
-    QVector<SummaryStatement> out;
-    editing::speakeredit::fillTargetedStale(m, d->personNames(), info, &out);
-    return out;
+    return d->editors->summaryStatements(meetingId);
 }
 
 bool AppController::flagStatement(const QString& meetingId, const QString& statementId)
@@ -1785,29 +996,14 @@ bool AppController::flagStatement(const QString& meetingId, const QString& state
 }
 
 // The same for an already loaded meeting (the library calls it per row; no further disk read for meeting.json).
-SummaryStaleInfo AppController::summaryStale(const Meeting& meeting) const
-{
-    if (editing::SpeakerEditor* ed = d->speakerEditors.value(meeting.id)) return ed->summaryStale();
-    return editing::speakeredit::summaryStale(meeting);
-}
+SummaryStaleInfo AppController::summaryStale(const Meeting& meeting) const { return d->editors->summaryStale(meeting); }
 
 editing::RetranscribeImpact AppController::retranscribeImpact(const QString& meetingId) const
 {
-    if (editing::SpeakerEditor* ed = d->speakerEditors.value(meetingId)) return ed->retranscribeImpact();
-    return editing::speakeredit::retranscribeImpact(d->store->load(meetingId));
+    return d->editors->retranscribeImpact(meetingId);
 }
 
-void AppController::dismissSummaryStale(const QString& meetingId)
-{
-    if (editing::SpeakerEditor* ed = d->speakerEditors.value(meetingId)) {
-        ed->dismissSummaryStale();   // summaryStaleChanged goes out from the editor's signal
-        return;
-    }
-    const Meeting m = d->store->load(meetingId);
-    if (!m.folder.isEmpty() && editing::speakeredit::clearSummaryStale(m.folder))
-        emit summaryStaleChanged(meetingId);
-}
-
+void AppController::dismissSummaryStale(const QString& meetingId) { d->editors->dismissSummaryStale(meetingId); }
 
 // ---- participants ("Who was there?") and per-track speech share ----------------------------------------
 // The pure logic: editing/session/TrackSpeech.h, processing/analysis/ParticipantAnalysis.h. Here only the threading, saving and
@@ -1834,63 +1030,12 @@ bool AppController::participantApprovalPending(const QString& meetingId) const
     return d->participants->participantApprovalPending(meetingId);
 }
 
-void AppController::startSpeechCheck(const QString& meetingId, bool thenMixdown)
-{
-    if (d->speechCheckRunning.contains(meetingId)) return;
-    const Meeting m = d->store->load(meetingId);
-    if (m.id.isEmpty()) return;
-    d->speechCheckRunning.insert(meetingId);
-    // The measurement runs on the voice analysis's pool (cache, else computed and saved).
-    d->voice->measureActivity(m, [this, meetingId, thenMixdown](const MeetingActivity& act) {
-        finishSpeechCheck(meetingId, act, thenMixdown);
-    });
-}
-
-void AppController::finishSpeechCheck(const QString& meetingId, const MeetingActivity& activity,
-                                      bool thenMixdown)
-{
-    d->speechCheckRunning.remove(meetingId);
-    d->speechChecked.insert(meetingId);   // on error (an undecodable track) we do not repeat either
-    Meeting m = d->store->load(meetingId);
-    if (m.id.isEmpty()) return;
-    const editing::trackspeech::SpeechCheckResult r = editing::trackspeech::applySpeechRatios(m, activity);
-    if (r.changed()) {
-        if (!r.excluded.isEmpty()) {
-            m.mixdownDirty = true;
-            qCInfo(lcAudio).noquote() << "Beszéd nélküli sáv kimarad a lekeverésből:"
-                                      << r.excluded.join(QStringLiteral(", "));
-            // The full measurement becomes the speech strip's cache (so the excluded track shows too and need not be
-            // decoded again); the analysis's cache is that of the included tracks.
-            activity.save(m.folder, MeetingActivity::viewFilePath(m.folder));
-            // The track-activity cache belongs to the included tracks: we save it again without the excluded ones.
-            MeetingActivity kept;
-            kept.fingerprint = processing::trackactivity::activityFingerprint(m, m.folder);
-            for (const TrackActivity& t : activity.tracks)
-                if (!r.excluded.contains(t.trackId)) kept.tracks.append(t);
-            if (!kept.isEmpty()) kept.save(m.folder);
-        }
-        d->store->saveMeeting(m);
-    }
-    // We signal even if nothing changed: the view leaves the "measuring" state only on this.
-    emit tracksChanged(meetingId);
-    if (thenMixdown) regenerateMixdown(meetingId);
-    // The speechless tracks are filtered out: the voice analysis can go on over the remaining raw tracks.
-    if (d->autoMixdown) maybeAnalyzeParticipants(meetingId);
-}
-
 bool AppController::speechCheckRunning(const QString& meetingId) const
 {
-    return d->speechCheckRunning.contains(meetingId);
+    return d->workflows->speechCheckRunning(meetingId);
 }
 
-bool AppController::checkTrackSpeech(const QString& meetingId)
-{
-    if (d->speechCheckRunning.contains(meetingId) || d->speechChecked.contains(meetingId)) return false;
-    const Meeting m = d->store->load(meetingId);
-    if (m.id.isEmpty() || !editing::trackspeech::needsSpeechCheck(m)) return false;
-    startSpeechCheck(meetingId, /*thenMixdown*/ false);
-    return true;
-}
+bool AppController::checkTrackSpeech(const QString& meetingId) { return d->workflows->checkTrackSpeech(meetingId); }
 
 // ---- listening to tracks: speech strip, speaker -> track binding ---------------------------------
 
@@ -1918,56 +1063,12 @@ ParticipantTrackBinding AppController::participantTracks(const QString& meetingI
 
 void AppController::includeTrack(const QString& meetingId, const QString& trackId)
 {
-    editing::ParticipantUndoScope undoScope(d->undo, meetingId, tr("Sáv beemelve"));
-    Meeting m = d->store->load(meetingId);
-    if (m.id.isEmpty()) return;
-    const QVector<library::tracknames::SegmentInfo> seg = library::tracknames::segments(m.tracks);
-    int lead = -1;
-    for (int i = 0; i < m.tracks.size(); ++i)
-        if (m.tracks.at(i).id == trackId) lead = seg.value(i).leader >= 0 ? seg.value(i).leader : i;
-    if (lead < 0) return;
-    bool changed = false;
-    for (int i = 0; i < m.tracks.size(); ++i) {
-        const int l = seg.value(i).leader >= 0 ? seg.value(i).leader : i;
-        Track& t = m.tracks[i];
-        if (l != lead || t.included()) continue;
-        t.active = true;
-        t.excludedReason.clear();
-        changed = true;
-    }
-    if (!changed) return;
-    m.mixdownDirty = true;
-    d->store->saveMeeting(m);
-    emit tracksChanged(meetingId);
-    regenerateMixdown(meetingId);
+    d->workflows->includeTrack(meetingId, trackId);
 }
 
 void AppController::excludeTrack(const QString& meetingId, const QString& trackId)
 {
-    editing::ParticipantUndoScope undoScope(d->undo, meetingId, tr("Sáv kivéve"));
-    Meeting m = d->store->load(meetingId);
-    if (m.id.isEmpty()) return;
-    const QVector<library::tracknames::SegmentInfo> seg = library::tracknames::segments(m.tracks);
-    int lead = -1;
-    for (int i = 0; i < m.tracks.size(); ++i)
-        if (m.tracks.at(i).id == trackId) lead = seg.value(i).leader >= 0 ? seg.value(i).leader : i;
-    if (lead < 0) return;
-    bool changed = false;
-    for (int i = 0; i < m.tracks.size(); ++i) {
-        const int l = seg.value(i).leader >= 0 ? seg.value(i).leader : i;
-        Track& t = m.tracks[i];
-        if (l != lead || t.excludedReason == editing::trackspeech::kManual) continue;
-        t.active = false;
-        t.excludedReason = editing::trackspeech::kManual;
-        changed = true;
-    }
-    if (!changed) return;
-    m.mixdownDirty = true;
-    d->store->saveMeeting(m);
-    emit tracksChanged(meetingId);
-    bool anyIncluded = false;
-    for (const Track& t : m.tracks) anyIncluded = anyIncluded || t.included();
-    if (anyIncluded) regenerateMixdown(meetingId);
+    d->workflows->excludeTrack(meetingId, trackId);
 }
 
 bool AppController::maybeAnalyzeParticipants(const QString& meetingId)
@@ -1983,11 +1084,6 @@ bool AppController::analyzeParticipants(const QString& meetingId)
 bool AppController::bindRawSpeakers(const QString& meetingId)
 {
     return d->participants->bindRawSpeakers(meetingId);
-}
-
-bool AppController::applyParticipantsToTranscript(const QString& meetingId)
-{
-    return d->participants->applyParticipantsToTranscript(meetingId);
 }
 
 bool AppController::approveParticipants(const QString& meetingId, const QVector<Participant>& accepted)

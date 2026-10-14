@@ -31,7 +31,7 @@ namespace tanara::library { class UiStateRepository; }
 namespace tanara::library { class VoiceprintStore; }
 namespace tanara::library { class PeopleStore; }
 namespace tanara::editing { class SpeakerEditor; }
-namespace tanara::cloud { class CloudSession; struct CloudRun; }
+namespace tanara::cloud { class CloudSession; }
 namespace tanara::providers { struct ProviderContext; class ProviderRegistry; }
 namespace tanara::library { class MeetingJobTracker; }
 namespace tanara::app { class Services; }
@@ -700,36 +700,8 @@ signals:
     void errorOccurred(QString message);
 
 private:
-    // Transcribes the finished (fresh) mixdown with a single Soniox request; transcribeMeeting
-    // chains the mixdown's completion to it. Speaker separation comes from Soniox diarization
-    // ("Speaker N" labels); the name is resolved afterwards by voice ID / manual rename.
-    void transcribeFromMixdown(const QString& meetingId);
-
-    // Tanara Cloud processing run (X-Tanara-Job-Id, charge totals, last error): cloud/CloudRunLedger.h.
-    using CloudRunPtr = std::shared_ptr<cloud::CloudRun>;
-    CloudRunPtr newCloudRun(const QString& meetingId, const QString& kind) const;
-    // The step's gateway config (baseUrl, model, max tokens; the key comes from the context's auth).
-    providers::ProviderConfig cloudConfig(providers::WorkflowStep step) const;
-    // The provider context of a call: a cloud run -> the ledger's gateway context (auth, X-Tanara-*
-    // headers incl. summaryMode, response observer, cost sink); no run -> the shared HTTP client only.
-    providers::ProviderContext providerContext(const CloudRunPtr& run, const QString& summaryMode) const;
-    // BYO: the selected LLM config + key (run stays null). Cloud: gateway config; if the run is
-    // still null, a new run starts (by kind).
-    providers::ProviderConfig llmConfigFor(CloudRunPtr& run, const QString& meetingId, const QString& kind) const;
-    void finishCloudRun(const CloudRunPtr& run);                       // cloudCharged
-    // Per-track speech share (background thread), then applied to the finished meeting; thenMixdown = remix.
-    void startSpeechCheck(const QString& meetingId, bool thenMixdown);
-    void finishSpeechCheck(const QString& meetingId, const tanara::MeetingActivity& activity,
-                           bool thenMixdown);
-    // The transcript arrived: binding + applying the decision (approve / "only me"). true if the
-    // decision covered the speakers (automatic identification is skipped). (editing::ParticipantService)
-    bool applyParticipantsToTranscript(const QString& meetingId);
-    // Automatic identification after the transcript, as the last phase of the transcription task (asynchronous).
-    bool startIdentify(const QString& meetingId, bool asTranscribeStage);
     // Recomputes the models in use (on a setting / loader change); backfill when it grows.
     void applyVoiceModels();
-    // Error: a structured gateway error -> cloudError, otherwise errorOccurred(fallback).
-    void failCloudRun(const CloudRunPtr& run, const QString& fallbackMessage);
 
     struct Impl;
     std::unique_ptr<Impl> d;

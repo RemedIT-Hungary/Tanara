@@ -53,6 +53,15 @@ class SummarizationService;
 class SummaryLlmPort;
 }
 // --- end P12e ---
+// --- P12f: transcription, workflows, editor sessions ---
+#include "tanara/providers/core/ReadinessModel.h"
+namespace tanara::processing {
+class TranscriptionPort;
+class TranscriptionService;
+}
+namespace tanara::editing { class EditorSessions; }
+namespace tanara::app { class Workflows; }
+// --- end P12f ---
 
 namespace tanara::app {
 
@@ -80,7 +89,7 @@ struct ServicesDeps {
     library::PeopleStats*     peopleStats = nullptr;
     QString modelsDir;          // AppPaths::modelsDir()
     QString appDir;             // location of the packaged models
-    // The transcript-editor sessions (the app owns them until P12f): created on demand / only an open one.
+    // The transcript-editor sessions (editing::EditorSessions, P12f): created on demand / only an open one.
     std::function<editing::SpeakerEditor*(const QString&)> editorFor;
     std::function<editing::SpeakerEditor*(const QString&)> existingEditor;
     // The transcript's identity (the identification drops a result that belongs to an older transcript).
@@ -94,6 +103,11 @@ struct ServicesDeps {
     QString notesDir;                                   // AppPaths::notesDir() (the summary's copy)
     // The in-memory transcript of a fresh transcription (empty: read from disk).
     std::function<MergedTranscript(const QString& meetingId)> cachedTranscript;
+
+    // ---- P12f: transcription, workflows, editor sessions ----
+    processing::TranscriptionPort* transcriptionPort = nullptr;   // settings, STT key, Tanara Cloud runs (the app)
+    // Whether a step can run on a meeting (provider, key, Tanara Cloud blockers; the app's canRun).
+    std::function<providers::ReadinessResult(providers::WorkflowStep, const QString&)> readiness;
 };
 
 class Services {
@@ -123,6 +137,12 @@ public:
     // The quick summary, and (topics()) the complex summary's topic flow.
     processing::SummarizationService& summarization() const { return *m_summarization; }
     // --- end P12e ---
+    // --- P12f: transcription, workflows, editor sessions ---
+    processing::TranscriptionService& transcription() const { return *m_transcription; }   // the STT step
+    // The transcribe -> mixdown -> STT -> identify chain, the post-recording / import chains, cancel per kind.
+    app::Workflows&                   workflows() const     { return *m_workflows; }
+    editing::EditorSessions&          editorSessions() const { return *m_editorSessions; }   // one editor per meeting
+    // --- end P12f ---
 
 private:
     std::unique_ptr<library::ArchiveService>     m_archive;
@@ -145,6 +165,11 @@ private:
     // --- P12e: summary and topic queue ---
     std::unique_ptr<processing::SummarizationService> m_summarization;
     // --- end P12e ---
+    // --- P12f: transcription, workflows, editor sessions --- (the editors are destroyed before the services)
+    std::unique_ptr<processing::TranscriptionService> m_transcription;
+    std::unique_ptr<app::Workflows>                   m_workflows;
+    std::unique_ptr<editing::EditorSessions>          m_editorSessions;
+    // --- end P12f ---
 };
 
 } // namespace tanara::app
