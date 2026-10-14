@@ -55,8 +55,8 @@
 #include "tanara/library/tags/TagService.h"
 #include "tanara/library/tags/TagNames.h"
 #include "tanara/library/tags/MeetingProfiles.h"
-#include "tanara/library/tags/TagSuggester.h"
-#include "tanara/processing/analysis/LlmTagSuggester.h"
+#include "tanara/library/tags/TagSuggestionService.h"
+#include "tanara/processing/analysis/LlmTagSuggestionProvider.h"
 #include "tanara/library/index/EmbeddingIndex.h"
 #include "tanara/library/index/EmbeddingPreparer.h"
 #include "tanara/providers/embedding/ITextEmbedder.h"
@@ -408,25 +408,6 @@ struct AppController::Impl {
     library::MeetingProfiles*   profiles = nullptr;
     library::EmbeddingIndex*    embeddings = nullptr;
     library::EmbeddingPreparer* embeddingPreparer = nullptr;
-    processing::LlmTagSuggester*   llmTags = nullptr;
-    QString            llmTagsMeetingId;         // the meeting of the running LLM suggestion
-    QPointer<QObject>  llmTagsProvider;
-    CloudRunPtr        llmTagsRun;
-    QHash<QString, QVector<TagSuggestion>> similarCache;    // meetingId -> the similarity-based list
-    QHash<QString, QVector<TagSuggestion>> pendingTags;     // meetingId -> the last list published
-    QSet<QString>      tagRequests;              // requests waiting for the profiles to be ready
-    // The similarity-based list is made on a background thread. At most one runs per meeting; a request
-    // arriving meanwhile gets its result. tagDataGen grows on every cache clear: a result computed from an
-    // older state is dropped and (if still awaited) recomputed.
-    struct TagRun {
-        bool running = false;
-        bool publish = false;    // requestTagSuggestions is waiting for it
-        bool llm = false;        // requestLlmTagSuggestions is waiting for it (for the candidate list)
-    };
-    QHash<QString, TagRun> tagRuns;
-    quint64            tagDataGen = 0;
-    QThreadPool        tagPool;                  // 1 thread; ~AppController waits for it
-    QString            embeddingKey;             // provider|baseUrl|model, to detect a model change
 
     // A running transcription: the connection of the job / the mixdown chain, for cancelling.
     struct TranscribeRun {
@@ -504,6 +485,10 @@ struct AppController::Impl {
     void applyIdentification(const QString& meetingId,
                              const QVector<QPair<QString, EmbeddingSet>>& embeddings);
     bool matchSpeaker(Meeting& m, const QString& rawLabel, const EmbeddingSet& embedding);
+    // Tag suggestions (P12c): the LLM run's session (cloud bookkeeping) and the embedder factory, handed to
+    // library::TagSuggestionService through app::Services.
+    library::TagSuggestionService::LlmSession tagLlmSession(const QString& meetingId, QObject* parent);
+    providers::ITextEmbedder* makeEmbedder(const QString& providerId, QObject* parent);
     void commitIdentification(const Meeting& m, MergedTranscript merged,
                               const QStringList& identifiedLabels);
 };
@@ -869,6 +854,11 @@ AppController::AppController(QObject* parent)
     // Tags: the set + per-meeting tags, classic similarity (profiles built on a background thread),
     // embeddings and library preparation, an LLM suggestion after the summary.
     d->tags = new library::TagService(d->store, ap.dataFile(paths::files::Tags), this);
+    d->profiles = new library::MeetingProfiles(d->store, this);
+    d->embeddings = new library::EmbeddingIndex(d->store, this);
+    d->embeddings->setProfiles(d->profiles);
+    d->embeddingPreparer = new library::EmbeddingPreparer(
+        d->store, d->embeddings, ap.dataFile(paths::files::EmbeddingState), this);
     {
         app::ServicesDeps sd;
         sd.store = d->store;
@@ -876,6 +866,13 @@ AppController::AppController(QObject* parent)
         sd.jobs  = d->jobs;
         sd.media = d->media;
         sd.settings = d->settings;
+        // P12c: tag suggestions (the LLM run's cloud bookkeeping and the embedder's credentials stay here).
+        sd.profiles = d->profiles;
+        sd.embeddings = d->embeddings;
+        sd.embeddingPreparer = d->embeddingPreparer;
+        sd.registry = &d->providerRegistry;
+        sd.tagLlm = [this](const QString& meetingId, QObject* parent) { return d->tagLlmSession(meetingId, parent); };
+        sd.embedder = [this](const QString& id, QObject* parent) { return d->makeEmbedder(id, parent); };
         d->services = std::make_unique<app::Services>(sd);
         d->recording = &d->services->recording();
         d->mixdown = &d->services->mixdown();
@@ -955,7 +952,6 @@ AppController::AppController(QObject* parent)
             if (ok) maybeAnalyzeParticipants(id);
         });
     }
-    d->profiles = new library::MeetingProfiles(d->store, this);
     d->tags->setProfiles(d->profiles);
     // Tags on people: manual tags in people.json; the own person is left out.
     d->tags->setPeopleStore(d->people.get());
@@ -963,84 +959,25 @@ AppController::AppController(QObject* parent)
     connect(this, &AppController::peopleChanged, d->tags, &library::TagService::invalidatePersonStats);
     d->library->setTagService(d->tags);
     d->library->setPeopleStore(d->people.get());
-    d->embeddings = new library::EmbeddingIndex(d->store, this);
-    d->embeddings->setProfiles(d->profiles);
-    d->embeddingPreparer = new library::EmbeddingPreparer(
-        d->store, d->embeddings, ap.dataFile(paths::files::EmbeddingState), this);
-    d->llmTags = new processing::LlmTagSuggester(d->tags, this);
-    d->tagPool.setMaxThreadCount(1);
-    d->tagPool.setObjectName(QStringLiteral("tanara-tag-suggest"));
-    connect(d->profiles, &library::MeetingProfiles::idle, this, [this]() {
-        const QSet<QString> waiting = d->tagRequests;
-        d->tagRequests.clear();
-        for (const QString& id : waiting) startTagSuggestionJob(id);
-    });
     // The profiles' rows (meeting.json files) and phrases are built on a background thread already at
     // startup; from then on the main thread's readers (tag profile, draft suggestion) never load or compute
     // synchronously, they get the finished snapshot.
     d->profiles->ensureBuilt();
     // The person <-> tag statistics also on a background thread (the main thread reads the finished snapshot).
     d->tags->ensurePersonStats();
-    // The similarity-based list stays valid until the tags, transcripts and the index change.
-    auto dropTagCache = [this]() { invalidateTagSuggestions(); };
-    connect(d->tags, &library::TagService::tagsChanged, this, dropTagCache);
-    connect(d->embeddings, &library::EmbeddingIndex::indexChanged, this, dropTagCache);
-    connect(d->embeddings, &library::EmbeddingIndex::indexReset, this, dropTagCache);
-    // An applied / rejected suggestion: the published list goes out again filtered (without recomputation).
-    connect(d->tags, &library::TagService::meetingTagsChanged, this, [this](const QString& id) {
-        invalidateTagSuggestions();
-        if (d->pendingTags.contains(id)) publishTagSuggestions(id, d->pendingTags.value(id));
+    // Tag suggestions (library::TagSuggestionService): the service's own signals are re-emitted unchanged; the
+    // facade forwards the events it owns (participants, transcript, summary, settings).
+    library::TagSuggestionService& tagSvc = d->services->tagSuggestions();
+    connect(&tagSvc, &library::TagSuggestionService::suggestionsReady, this, &AppController::tagSuggestionsReady);
+    connect(&tagSvc, &library::TagSuggestionService::computing, this, &AppController::tagSuggestionsComputing);
+    // The participants (manual / approved) changed: the "by participants" suggestion goes out again.
+    connect(this, &AppController::participantsChanged, &tagSvc, &library::TagSuggestionService::republish);
+    connect(this, &AppController::transcriptReady, &tagSvc, &library::TagSuggestionService::transcriptChanged);
+    connect(this, &AppController::summaryReady, &tagSvc, &library::TagSuggestionService::summaryReady);
+    connect(d->settings, &SettingsManager::settingsChanged, this, [this]() {
+        d->services->tagSuggestions().applyEmbeddingSettings(true);
     });
-    // The participants (manual / approved) and the people's tags changed: the "by participants" suggestion
-    // goes out again (the published list keeps the similarity-based part).
-    connect(this, &AppController::participantsChanged, this, [this](const QString& id) {
-        if (d->pendingTags.contains(id)) publishTagSuggestions(id, d->pendingTags.value(id));
-    });
-    connect(d->tags, &library::TagService::personTagsChanged, this, [this]() {
-        const QStringList ids = d->pendingTags.keys();
-        for (const QString& id : ids) publishTagSuggestions(id, d->pendingTags.value(id));
-    });
-    connect(d->tags, &library::TagService::rejectedChanged, this, [this]() {
-        invalidateTagSuggestions();
-        const QStringList ids = d->pendingTags.keys();
-        for (const QString& id : ids) {
-            const QVector<TagSuggestion> before = d->pendingTags.value(id);
-            publishTagSuggestions(id, before);
-        }
-    });
-    connect(this, &AppController::transcriptReady, this, [this](const QString& meetingId) {
-        invalidateTagSuggestions();
-        d->profiles->invalidate(meetingId);
-        d->embeddingPreparer->enqueue(meetingId);   // only if there is an embedding provider
-    });
-    connect(this, &AppController::summaryReady, this, [this](const QString& meetingId) {
-        // Only if a tag set already exists: with an empty set the user is not tagging yet, and a model call
-        // after every summary (with new-name ideas) would be intrusive and superfluous.
-        const AppSettings st = d->settings->settings();
-        if (st.processing.tagSuggestions && st.processing.llmTagSuggestions && !d->tags->all().isEmpty())
-            requestLlmTagSuggestions(meetingId);
-    });
-    connect(d->llmTags, &processing::LlmTagSuggester::finished, this,
-            [this](const QString& meetingId, const QVector<TagSuggestion>& list) {
-        if (d->llmTagsProvider) d->llmTagsProvider->deleteLater();
-        d->llmTagsProvider = nullptr;
-        finishCloudRun(d->llmTagsRun);
-        d->llmTagsRun.reset();
-        d->llmTagsMeetingId.clear();
-        // An empty LLM response: the earlier suggestions stay.
-        publishTagSuggestions(meetingId, list.isEmpty() ? d->pendingTags.value(meetingId) : list);
-    });
-    connect(d->llmTags, &processing::LlmTagSuggester::failed, this, [this](const QString& meetingId, const QString& error) {
-        if (d->llmTagsProvider) d->llmTagsProvider->deleteLater();
-        d->llmTagsProvider = nullptr;
-        d->llmTagsRun.reset();
-        d->llmTagsMeetingId.clear();
-        // A suggestion is not an obstacle: on error there is no popup, only a log entry; the earlier list stays.
-        qWarning().noquote() << "[tags] LLM-javaslat sikertelen:" << meetingId << error;
-        publishTagSuggestions(meetingId, d->pendingTags.value(meetingId));
-    });
-    connect(d->settings, &SettingsManager::settingsChanged, this, [this]() { applyEmbeddingSettings(true); });
-    applyEmbeddingSettings(false);
+    tagSvc.applyEmbeddingSettings(false);
 
     // Speaker models: the set per the settings now, again on change (backfill when it grows).
     // The startup backfill runs in the first event-loop turn (under the GUI / the CLI's long commands; for a
@@ -1080,8 +1017,7 @@ AppController::~AppController()
     d->analysisPool.clear();
     d->analysisPool.waitForDone();
     // A running tag suggestion reads the profiles / the index: it must finish before them.
-    d->tagPool.clear();
-    d->tagPool.waitForDone();
+    if (d->services) d->services->tagSuggestions().shutdown();
     // Stopping and awaiting the background-thread identifications (the thread no longer hands over a result
     // referring to d: the QPointer is null by then).
     for (auto it = d->identifyRuns.begin(); it != d->identifyRuns.end(); ++it) {
@@ -3136,206 +3072,66 @@ MeetingProcessingState AppController::processingState(const QString& meetingId) 
 
 // ---- tags and tag suggestions ------------------------------------------------------------
 
-void AppController::publishTagSuggestions(const QString& meetingId, QVector<TagSuggestion> list)
-{
-    // The suggestion from the participants' manual tags ("By participants") is always computed fresh: earlier
-    // People items drop out, new ones stand first (the row's source tag comes from these). If a tag is also
-    // suggested by similarity, one item remains and the reasons add up. It works before transcription too
-    // (manual / approved participants).
-    list.erase(std::remove_if(list.begin(), list.end(), [](const TagSuggestion& sg) {
-        return sg.source == SuggestionSource::People;
-    }), list.end());
-    if (d->settings->settings().processing.tagSuggestions) {
-        QVector<TagSuggestion> people = d->tags->suggestMeetingTagsFromParticipants(meetingId);
-        for (TagSuggestion& p : people) {
-            const auto dup = std::find_if(list.begin(), list.end(), [&](const TagSuggestion& sg) {
-                return !sg.isNew && sg.tagId == p.tagId;
-            });
-            if (dup == list.end()) continue;
-            p.reasons += dup->reasons;
-            p.similarMeetings = dup->similarMeetings;
-            list.erase(dup);
-        }
-        list = people + list;
-    }
-    // An already applied and a rejected suggestion are dropped (the LLM's new-name idea too, if a tag with
-    // that name has since been put on the meeting).
-    const QStringList applied = d->tags->tagsOf(meetingId);
-    QStringList appliedKeys;
-    for (const QString& id : applied) appliedKeys << library::tagKey(d->tags->tag(id).name);
-    list.erase(std::remove_if(list.begin(), list.end(), [&](const TagSuggestion& sg) {
-        if (sg.isNew) return appliedKeys.contains(library::tagKey(sg.name)) || d->tags->isRejected(meetingId, sg.name);
-        return applied.contains(sg.tagId) || !d->tags->tag(sg.tagId).isValid()
-            || d->tags->isRejected(meetingId, sg.tagId);
-    }), list.end());
-    d->pendingTags.insert(meetingId, list);
-    emit tagSuggestionsReady(meetingId, list);
-}
-
-// Publishing the cached similarity-based list (the computation runs on a background thread:
-// startTagSuggestionJob).
-void AppController::computeTagSuggestions(const QString& meetingId)
-{
-    tanara::PerfScope perfScope("AppController::computeTagSuggestions", 5);
-    const auto it = d->similarCache.constFind(meetingId);
-    if (it != d->similarCache.constEnd()) publishTagSuggestions(meetingId, *it);
-}
-
-void AppController::invalidateTagSuggestions()
-{
-    d->similarCache.clear();
-    ++d->tagDataGen;
-}
-
-// The profiles (rows + transcript phrases) are built on a background thread; at the end of the round
-// (idle) the suggestion computation starts.
-void AppController::scheduleTagSuggestions(const QString& meetingId)
-{
-    d->tagRequests.insert(meetingId);
-    d->profiles->ensureBuilt();
-}
-
-// Threading: TagService belongs to the main thread, so a small snapshot of the tag data (TagSnapshot) is
-// made here, on the main thread; the background thread uses only that and the thread-safe readers of
-// MeetingProfiles / EmbeddingIndex. The result comes back to the main thread via a queued call
-// (finishTagSuggestionJob). ~AppController waits for the running computation.
-void AppController::startTagSuggestionJob(const QString& meetingId)
-{
-    auto run = d->tagRuns.find(meetingId);
-    if (run == d->tagRuns.end() || (!run->publish && !run->llm)) {
-        d->tagRuns.remove(meetingId);
-        return;
-    }
-    if (run->running) return;   // the running one's result answers (it restarts on a data change)
-    const auto cached = d->similarCache.constFind(meetingId);
-    if (cached != d->similarCache.constEnd()) {
-        finishTagSuggestionJob(meetingId, d->tagDataGen, *cached);
-        return;
-    }
-    run->running = true;
-    library::TagSnapshot snap;
-    {
-        tanara::PerfScope perfScope("AppController::startTagSuggestionJob (pillanatkép, fő szál)", 5);
-        snap = library::TagSuggester::snapshot(*d->tags, meetingId);
-    }
-    const quint64 gen = d->tagDataGen;
-    const library::MeetingProfiles* profiles = d->profiles;
-    const library::EmbeddingIndex* index = d->embeddings;
-    d->tagPool.start([this, snap, gen, profiles, index]() {
-        QVector<TagSuggestion> list;
-        {
-            tanara::PerfScope perfScope("TagSuggester::suggestFrom (háttérszál)", 0);
-            list = library::TagSuggester::suggestFrom(snap, profiles, index);
-        }
-        const QString meetingId = snap.meetingId;
-        QMetaObject::invokeMethod(this, [this, meetingId, gen, list]() {
-            finishTagSuggestionJob(meetingId, gen, list);
-        }, Qt::QueuedConnection);
-    });
-}
-
-void AppController::finishTagSuggestionJob(const QString& meetingId, quint64 dataGen, QVector<TagSuggestion> list)
-{
-    auto run = d->tagRuns.find(meetingId);
-    if (run == d->tagRuns.end()) return;
-    run->running = false;
-    if (dataGen != d->tagDataGen) {
-        // The tags / transcript / index changed meanwhile: the result is stale.
-        if (run->publish || run->llm) scheduleTagSuggestions(meetingId);
-        else d->tagRuns.erase(run);
-        return;
-    }
-    const Impl::TagRun done = *run;
-    d->tagRuns.erase(run);
-    d->similarCache.insert(meetingId, list);
-    if (done.publish) publishTagSuggestions(meetingId, list);
-    if (done.llm) startLlmTagSuggestions(meetingId, list);
-}
-
 void AppController::requestTagSuggestions(const QString& meetingId)
 {
-    if (meetingId.isEmpty()) return;
-    emit tagSuggestionsComputing(meetingId);
-    if (!d->settings->settings().processing.tagSuggestions) {
-        publishTagSuggestions(meetingId, {});
-        return;
-    }
-    if (d->similarCache.contains(meetingId)) {
-        computeTagSuggestions(meetingId);
-        return;
-    }
-    d->tagRuns[meetingId].publish = true;
-    if (!d->tagRuns.value(meetingId).running) scheduleTagSuggestions(meetingId);
+    d->services->tagSuggestions().requestSuggestions(meetingId);
 }
 
 void AppController::requestCooccurSuggestions(const QString& meetingId, const QString& tagId)
 {
-    if (!d->settings->settings().processing.tagSuggestions) return;
-    const library::TagSuggester suggester(d->tags, d->profiles, d->embeddings);
-    const QVector<TagSuggestion> list = suggester.cooccur(meetingId, tagId);
-    if (list.isEmpty()) return;
-    emit tagSuggestionsComputing(meetingId);
-    publishTagSuggestions(meetingId, list);
+    d->services->tagSuggestions().requestCooccur(meetingId, tagId);
 }
 
 void AppController::requestLlmTagSuggestions(const QString& meetingId)
 {
-    const AppSettings s = d->settings->settings();
-    if (!s.processing.tagSuggestions) return;
-    const library::SummaryDocument doc = summaryDocument(meetingId);
-    if (!doc.exists || doc.markdown.trimmed().isEmpty()) return;
-    emit tagSuggestionsComputing(meetingId);
-    // The candidate list (similarity-based suggestions) from the cache, or made on a background thread.
-    if (d->similarCache.contains(meetingId)) {
-        startLlmTagSuggestions(meetingId, d->similarCache.value(meetingId));
-        return;
-    }
-    d->tagRuns[meetingId].llm = true;
-    if (!d->tagRuns.value(meetingId).running) scheduleTagSuggestions(meetingId);
-}
-
-void AppController::startLlmTagSuggestions(const QString& meetingId, const QVector<TagSuggestion>& suggested)
-{
-    const AppSettings s = d->settings->settings();
-    const library::SummaryDocument doc = summaryDocument(meetingId);
-    if (!s.processing.tagSuggestions || !doc.exists || doc.markdown.trimmed().isEmpty()) {
-        publishTagSuggestions(meetingId, d->pendingTags.value(meetingId));
-        return;
-    }
-    // One LLM suggestion runs at a time (the local model works on one thread).
-    if (d->llmTags->isRunning()) {
-        const QString prev = d->llmTagsMeetingId;
-        d->llmTags->cancel();
-        if (d->llmTagsProvider) d->llmTagsProvider->deleteLater();
-        d->llmTagsProvider = nullptr;
-        d->llmTagsRun.reset();
-        if (!prev.isEmpty() && prev != meetingId) publishTagSuggestions(prev, d->pendingTags.value(prev));
-    }
-    CloudRunPtr run;
-    const providers::ProviderConfig cfg = llmConfigFor(run, meetingId, QStringLiteral("tags"));
-    providers::IChatProvider* provider = d->providerRegistry.create<providers::IChatProvider>(
-        s.providers.llm.selectedId, providerContext(run, QStringLiteral("quick")), cfg, this);
-    if (!provider) {
-        publishTagSuggestions(meetingId, d->pendingTags.value(meetingId));
-        return;
-    }
-    d->llmTagsProvider = dynamic_cast<QObject*>(provider);
-    d->llmTagsRun = run;
-    d->llmTagsMeetingId = meetingId;
-    d->llmTags->start(provider, cfg.model, processing::promptDefault(QStringLiteral("tags"), d->metaDir),
-                      meetingId, doc.markdown, suggested);
+    d->services->tagSuggestions().requestLlm(meetingId);
 }
 
 QVector<TagSuggestion> AppController::pendingTagSuggestions(const QString& meetingId) const
 {
-    return d->pendingTags.value(meetingId);
+    return d->services->tagSuggestions().pending(meetingId);
 }
 
 QVector<TagSuggestion> AppController::draftTagSuggestions(const QString& title) const
 {
-    if (!d->settings->settings().processing.tagSuggestions) return {};
-    const library::TagSuggester suggester(d->tags, d->profiles, d->embeddings);
-    return suggester.suggestForDraft(title);
+    return d->services->tagSuggestions().draft(title);
+}
+
+// The LLM run of the tag suggester: the chat provider is made by the registry's ITagSuggester ("llm"), the
+// cloud run (if any) is closed when the answer arrives.
+library::TagSuggestionService::LlmSession AppController::Impl::tagLlmSession(const QString& meetingId, QObject* parent)
+{
+    const AppSettings s = settings->settings();
+    CloudRunPtr run;
+    providers::ProviderConfig cfg = q->llmConfigFor(run, meetingId, QStringLiteral("tags"));
+    cfg.type = s.providers.llm.selectedId;
+    library::TagSuggestionService::LlmSession session;
+    session.suggester = providerRegistry.create<providers::ITagSuggester>(
+        processing::LlmTagSuggestionProvider::Id, q->providerContext(run, QStringLiteral("quick")), cfg, parent);
+    if (!session.suggester) return session;
+    session.model = cfg.model;
+    session.systemPrompt = processing::promptDefault(QStringLiteral("tags"), metaDir);
+    session.done = [this, run](bool ok) {
+        if (ok) q->finishCloudRun(run);
+    };
+    return session;
+}
+
+providers::ITextEmbedder* AppController::Impl::makeEmbedder(const QString& id, QObject* parent)
+{
+    const AppSettings cur = settings->settings();
+    providers::ProviderConfig cfg = cur.providers.embedding.configs.value(id);
+    cfg.type = id;
+    providers::ProviderContext pctx;
+    pctx.http = http;
+    if (id == providers::embeddingproviders::CloudId) {
+        // The same sign-in and header set as on the LLM path (/v1/embeddings), outside any run.
+        cfg.baseUrl = cloud->apiBase();
+        pctx = cloudLedger->contextFor(nullptr, QString(), http);
+    } else {
+        cfg.apiKey = secrets->get(providers::embeddingproviders::ApiKeySecret);
+    }
+    return providerRegistry.create<providers::ITextEmbedder>(id, pctx, cfg, parent);
 }
 
 void AppController::setRecordingTags(const QStringList& tagIds) { d->recording->setTags(tagIds); }
@@ -3352,49 +3148,7 @@ void AppController::setEmbeddingProvider(const QString& providerId, const provid
         cfg.apiKey.clear();   // the key belongs in the SecretStore (setSecret), not in the settings
         s.providers.embedding.configs.insert(providerId, cfg);
     }
-    d->settings->setSettings(s);   // settingsChanged → applyEmbeddingSettings(true)
-}
-
-void AppController::applyEmbeddingSettings(bool restart)
-{
-    const AppSettings s = d->settings->settings();
-    const QString id = d->providerRegistry.has(providers::CapabilityKind::TextEmbedding, s.providers.embedding.selectedId)
-        ? s.providers.embedding.selectedId : QString();
-    providers::ProviderConfig base = s.providers.embedding.selected();
-    // The Tanara Cloud variant has no model field: the gateway's default model.
-    const QString model = id.isEmpty() ? QString()
-        : (!base.model.trimmed().isEmpty() ? base.model.trimmed()
-                                           : (id == providers::embeddingproviders::CloudId ? QStringLiteral("default") : QString()));
-    const QString key = id.isEmpty() || model.isEmpty()
-        ? QString() : id + QLatin1Char('|') + base.baseUrl.trimmed() + QLatin1Char('|') + model;
-    if (key == d->embeddingKey && restart) return;   // another setting changed
-    const QString oldModel = d->embeddingPreparer->state().model;
-    const bool hadProvider = !d->embeddingKey.isEmpty();
-    d->embeddingKey = key;
-
-    library::EmbeddingPreparer::ProviderFactory factory;
-    if (!key.isEmpty()) {
-        factory = [this, id](QObject* parent) -> providers::ITextEmbedder* {
-            const AppSettings cur = d->settings->settings();
-            providers::ProviderConfig cfg = cur.providers.embedding.configs.value(id);
-            cfg.type = id;
-            providers::ProviderContext pctx;
-            pctx.http = d->http;
-            if (id == providers::embeddingproviders::CloudId) {
-                // The same sign-in and header set as on the LLM path (/v1/embeddings), outside any run.
-                cfg.baseUrl = d->cloud->apiBase();
-                pctx = d->cloudLedger->contextFor(nullptr, QString(), d->http);
-            } else {
-                cfg.apiKey = d->secrets->get(providers::embeddingproviders::ApiKeySecret);
-            }
-            return d->providerRegistry.create<providers::ITextEmbedder>(id, pctx, cfg, parent);
-        };
-    }
-    // A model change: the old embeddings cannot be compared to the new ones, so start over.
-    if (restart && hadProvider && !key.isEmpty() && oldModel != model)
-        d->embeddings->invalidateAll();
-    d->embeddingPreparer->setProvider(key.isEmpty() ? QString() : id, model, factory);
-    if (restart && !key.isEmpty()) d->embeddingPreparer->start();
+    d->settings->setSettings(s);   // settingsChanged → TagSuggestionService::applyEmbeddingSettings(true)
 }
 
 library::SummaryDocument AppController::summaryDocument(const QString& meetingId) const

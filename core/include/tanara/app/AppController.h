@@ -743,16 +743,6 @@ private:
                               const QString& undoText);
     // Automatic identification after the transcript, as the last phase of the transcription task (asynchronous).
     bool startIdentify(const QString& meetingId, bool asTranscribeStage);
-    // Tag suggestions: publishing the computed list (filtered), and setting the embedding.
-    void publishTagSuggestions(const QString& meetingId, QVector<tanara::TagSuggestion> list);
-    void computeTagSuggestions(const QString& meetingId);
-    // The similarity-based list on a background thread (see the "tag suggestions" part of app/AppController.cpp).
-    void scheduleTagSuggestions(const QString& meetingId);
-    void startTagSuggestionJob(const QString& meetingId);
-    void finishTagSuggestionJob(const QString& meetingId, quint64 dataGen, QVector<tanara::TagSuggestion> list);
-    void invalidateTagSuggestions();
-    void startLlmTagSuggestions(const QString& meetingId, const QVector<tanara::TagSuggestion>& suggested);
-    void applyEmbeddingSettings(bool restart);
     // Recomputes the models in use (on a setting / loader change); backfill when it grows.
     void applyVoiceModels();
     // Error: a structured gateway error -> cloudError, otherwise errorOccurred(fallback).

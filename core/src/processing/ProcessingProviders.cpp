@@ -44,6 +44,21 @@ IChatProvider* chatFor(const ProviderRegistry& registry, const ProviderContext& 
 
 } // namespace
 
+void registerTagSuggester(ProviderRegistry& registry, library::TagService* tags)
+{
+    ProviderRegistry* reg = &registry;
+    registry.add<ITagSuggester>(
+        localDescriptor(LlmTagSuggestionProvider::Id,
+                        QCoreApplication::translate("BuiltinProviders", "Nyelvi modell"), InputKind::Text),
+        [reg, tags](const ProviderContext& ctx, const ProviderConfig& cfg, QObject* parent) -> ITagSuggester* {
+            auto* t = new LlmTagSuggestionProvider(tags, nullptr, cfg, parent);
+            IChatProvider* chat = chatFor(*reg, ctx, cfg, t);   // the suggester's child
+            if (!chat) { delete t; return nullptr; }
+            t->setChatProvider(chat);
+            return t;
+        });
+}
+
 void registerInto(ProviderRegistry& registry, ProcessingProviderDeps deps)
 {
     // Voice embedding: the ONNX models (needs the model files).
@@ -80,19 +95,7 @@ void registerInto(ProviderRegistry& registry, ProcessingProviderDeps deps)
         s->setChatProvider(chat);
         return s;
     });
-    if (deps.tags) {
-        library::TagService* tags = deps.tags;
-        registry.add<ITagSuggester>(
-            localDescriptor(LlmTagSuggestionProvider::Id,
-                            QCoreApplication::translate("BuiltinProviders", "Nyelvi modell"), InputKind::Text),
-            [reg, tags](const ProviderContext& ctx, const ProviderConfig& cfg, QObject* parent) -> ITagSuggester* {
-                auto* t = new LlmTagSuggestionProvider(tags, nullptr, cfg, parent);
-                IChatProvider* chat = chatFor(*reg, ctx, cfg, t);   // the suggester's child
-                if (!chat) { delete t; return nullptr; }
-                t->setChatProvider(chat);
-                return t;
-            });
-    }
+    if (deps.tags) registerTagSuggester(registry, deps.tags);
 
     ProviderDescriptor catalog = localDescriptor(LocalVoiceModelCatalog::Id,
         QCoreApplication::translate("BuiltinProviders", "Helyi hangmodellek"), InputKind::Text);

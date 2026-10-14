@@ -38,4 +38,7 @@ inline const QString DefaultChatProviderId = QStringLiteral("openai-compat");
 
 void registerInto(providers::ProviderRegistry& registry, ProcessingProviderDeps deps);
 
+// Only the LLM tag suggester (TagSuggestion / "llm"); registerInto calls it when deps.tags is set.
+void registerTagSuggester(providers::ProviderRegistry& registry, library::TagService* tags);
+
 } // namespace tanara::processing
