@@ -4585,6 +4585,89 @@
     </message>
 </context>
 <context>
+    <name>SettingsCapabilityCard</name>
+    <message>
+        <source>Helyben · a Tanara futtatja</source>
+        <translation>Local · run by Tanara</translation>
+    </message>
+    <message>
+        <source>Helyben · saját szerver</source>
+        <translation>Local · your own server</translation>
+    </message>
+    <message>
+        <source>Külső szolgáltató · saját kulcs</source>
+        <translation>External provider · your key</translation>
+    </message>
+    <message>
+        <source>Tanara Cloud</source>
+        <translation>Tanara Cloud</translation>
+    </message>
+    <message>
+        <source>Kérdez minden futás előtt</source>
+        <translation>Asks before every run</translation>
+    </message>
+    <message>
+        <source>Alap · beágyazás nélkül</source>
+        <translation>Basic · no embedding</translation>
+    </message>
+    <message>
+        <source>Beállítva</source>
+        <translation>Configured</translation>
+    </message>
+    <message>
+        <source>Modell hiányzik</source>
+        <translation>Model missing</translation>
+    </message>
+    <message>
+        <source>Ellenőrizetlen modell</source>
+        <translation>Unverified model</translation>
+    </message>
+    <message>
+        <source>Hamarosan</source>
+        <translation>Coming soon</translation>
+    </message>
+    <message>
+        <source>Nincs beállítva</source>
+        <translation>Not set up</translation>
+    </message>
+    <message>
+        <source>Helyben</source>
+        <translation>Local</translation>
+    </message>
+    <message>
+        <source>Külső</source>
+        <translation>External</translation>
+    </message>
+    <message>
+        <source>Külső szolgáltató</source>
+        <translation>External provider</translation>
+    </message>
+    <message>
+        <source>Cloud</source>
+        <translation>Cloud</translation>
+    </message>
+    <message>
+        <source>Kérdezzen</source>
+        <translation>Ask</translation>
+    </message>
+    <message>
+        <source>Kérdezzen minden alkalommal</source>
+        <translation>Ask every time</translation>
+    </message>
+    <message>
+        <source>Alap</source>
+        <translation>Basic</translation>
+    </message>
+    <message>
+        <source>Kinyitás</source>
+        <translation>Expand</translation>
+    </message>
+    <message>
+        <source>Hol fusson?</source>
+        <translation>Where should it run?</translation>
+    </message>
+</context>
+<context>
     <name>SettingsCloudPage</name>
     <message>
         <source>Fiók</source>
@@ -4722,15 +4805,7 @@
     </message>
 </context>
 <context>
-    <name>SettingsEmbeddingCard</name>
-    <message>
-        <source>Beágyazás</source>
-        <translation>Embedding</translation>
-    </message>
-    <message>
-        <source>címkejavaslatokhoz (embedding)</source>
-        <translation>for tag suggestions (embedding)</translation>
-    </message>
+    <name>SettingsEmbeddingPanel</name>
     <message>
         <source>Könyvtár előkészítése</source>
         <translation>Preparing the library</translation>
@@ -4768,8 +4843,8 @@
         <translation>Test connection</translation>
     </message>
     <message>
-        <source>Haladó</source>
-        <translation>Advanced</translation>
+        <source>API-kulcs</source>
+        <translation>API key</translation>
     </message>
 </context>
 <context>
@@ -4847,19 +4922,398 @@
     </message>
 </context>
 <context>
-    <name>SettingsProviderCard</name>
+    <name>SettingsModelList</name>
     <message>
-        <source>Kinyitás</source>
-        <translation>Expand</translation>
+        <source>Törlöd a(z) %1 modellt?</source>
+        <translation>Delete the %1 model?</translation>
     </message>
     <message>
-        <source>Összecsukás</source>
-        <translation>Collapse</translation>
+        <source>A letöltött modellfájl törlődik a gépről. A vele készült hanglenyomatok megmaradnak, és ha később újra letöltöd, ismét használhatók.</source>
+        <translation>The downloaded model file is deleted from this computer. Voiceprints made with it are kept, and they can be used again if you download it later.</translation>
     </message>
     <message>
-        <source>Beállítva</source>
-        <translation>Configured</translation>
+        <source>A letöltött modellfájl törlődik a gépről. Később újra letöltheted.</source>
+        <translation>The downloaded model file is deleted from this machine. You can download it again later.</translation>
     </message>
+    <message>
+        <source>Amíg nincs meg, a felismerés a többi bekapcsolt modellel megy (ha egy sincs, a CAM++ tartalékkal).</source>
+        <translation>Until it is available, recognition runs with the other enabled models (with the CAM++ fallback if there are none).</translation>
+    </message>
+    <message>
+        <source>Amíg nincs szegmentáló modell, a Whisper-átirat beszélők nélkül marad.</source>
+        <translation>Without a segmentation model, a Whisper transcript stays without speakers.</translation>
+    </message>
+    <message>
+        <source>Mégse</source>
+        <translation>Cancel</translation>
+    </message>
+    <message>
+        <source>Törlés</source>
+        <translation>Delete</translation>
+    </message>
+    <message>
+        <source>Ezekkel ismeri fel a Tanara, ki beszél. A modellek a gépeden futnak; a felvétel nem megy sehova.</source>
+        <translation>Tanara uses these to recognize who is speaking. The models run on your machine; the recording goes nowhere.</translation>
+    </message>
+    <message>
+        <source>A hangelemzés ki van kapcsolva</source>
+        <translation>Voice analysis is turned off</translation>
+    </message>
+    <message>
+        <source>Nincs letöltött hangmodell. Az átirat így is szerkeszthető, de a beszélőket nem ismerem fel hangra, és hanglenyomat sem készül.</source>
+        <translation>No voice model is downloaded. The transcript can still be edited, but speakers are not recognized by voice and no voiceprints are created.</translation>
+    </message>
+    <message>
+        <source>WeSpeaker letöltése (%1)</source>
+        <translation>Download WeSpeaker (%1)</translation>
+    </message>
+    <message>
+        <source>letöltés… %1</source>
+        <translation>downloading… %1</translation>
+    </message>
+    <message>
+        <source>Egy hangmodell sincs bekapcsolva, ezért a hangelemzés ki van kapcsolva.</source>
+        <translation>No voice model is turned on, so voice analysis is turned off.</translation>
+    </message>
+    <message>
+        <source>Most a CAM++ tartalék fut, mert a WeSpeaker nincs letöltve.</source>
+        <translation>The CAM++ fallback is running now because WeSpeaker is not downloaded.</translation>
+    </message>
+    <message>
+        <source>Most a CAM++ tartalék fut, mert a WeSpeaker nincs bekapcsolva.</source>
+        <translation>The CAM++ fallback is running now because WeSpeaker is not enabled.</translation>
+    </message>
+    <message>
+        <source>Letöltés (%1)</source>
+        <translation>Download (%1)</translation>
+    </message>
+    <message>
+        <source>Nincs internetkapcsolat: a letöltés most nem indul. A már letöltött modellek működnek.</source>
+        <translation>No internet connection: the download will not start now. Models already downloaded still work.</translation>
+    </message>
+    <message>
+        <source>Több bekapcsolt modell együtt dönt; a lassabb modellek lassítják az elemzést.</source>
+        <translation>Several turned-on models decide together; slower models slow down the analysis.</translation>
+    </message>
+    <message>
+        <source>Ajánlott: WeSpeaker egyedül; a CAM++ tartalék.</source>
+        <translation>Recommended: WeSpeaker alone; CAM++ is the fallback.</translation>
+    </message>
+    <message>
+        <source>Kézzel másoltál be modellfájlt?</source>
+        <translation>Did you copy a model file in manually?</translation>
+    </message>
+    <message>
+        <source>Újraolvasás</source>
+        <translation>Rescan</translation>
+    </message>
+    <message>
+        <source>A modellek mappájának újraolvasása és a fájlok ellenőrzése</source>
+        <translation>Rescan the models folder and verify the files</translation>
+    </message>
+    <message>
+        <source>Nincs szegmentáló modell — a Whisper-átirat beszélők nélkül marad. Töltsd le az alapmodellt.</source>
+        <translation>No segmentation model — a Whisper transcript stays without speakers. Download the base model.</translation>
+    </message>
+    <message>
+        <source>A szegmentáló modell azt mondja meg, ki mikor beszél; a beszélők szétválasztásához a lenti hangmodell is kell.</source>
+        <translation>The segmentation model tells who speaks when; separating the speakers also needs the voice model below.</translation>
+    </message>
+</context>
+<context>
+    <name>SettingsPeoplePage</name>
+    <message>
+        <source>Te</source>
+        <translation>You</translation>
+    </message>
+    <message>
+        <source>Saját neved</source>
+        <translation>Your name</translation>
+    </message>
+    <message>
+        <source>Így jelensz meg az átiratokban; a saját hanglenyomatod ehhez a névhez tartozik.</source>
+        <translation>This is how you appear in transcripts; your own voiceprint belongs to this name.</translation>
+    </message>
+    <message>
+        <source>Személyek kezelése</source>
+        <translation>Manage people</translation>
+    </message>
+    <message>
+        <source>Személyek</source>
+        <translation>People</translation>
+    </message>
+    <message>
+        <source>Melyik minták?</source>
+        <translation>Which samples?</translation>
+    </message>
+    <message>
+        <source>Melyik minták? (%1)</source>
+        <translation>Which samples? (%1)</translation>
+    </message>
+    <message>
+        <source>hiányzik: %1</source>
+        <translation>missing: %1</translation>
+    </message>
+    <message>
+        <source>Ezekhez a mintákhoz már nincs meg a felvétel, ezért csak a régi modellel számolnak. A Személyek ablakban újra felveheted őket.</source>
+        <translation>The recordings for these samples are gone, so they only count with the old model. You can add them again in the People window.</translation>
+    </message>
+    <message>
+        <source>Közben dolgozhatsz; a felismerés a régi mintákkal is működik.</source>
+        <translation>You can keep working; recognition also works with the old samples.</translation>
+    </message>
+</context>
+<context>
+    <name>SettingsProcessingPage</name>
+    <message>
+        <source>kész</source>
+        <translation>done</translation>
+    </message>
+    <message>
+        <source>nincs beállítva</source>
+        <translation>not set up</translation>
+    </message>
+    <message>
+        <source>A Tanara Cloud fizetős, ezért minden futás előtt megkérdezzük, merre menjen: az indítógomb melletti ▾ menüben választasz, és ott látod a becsült időt és költséget is. Ha mindig ugyanazt választod, ott beállíthatod alapértelmezettnek.</source>
+        <translation>Tanara Cloud is paid, so we ask before every run where it should go: you choose in the ▾ menu next to the start button, which also shows the estimated time and cost. If you always pick the same, you can make it the default there.</translation>
+    </message>
+    <message>
+        <source>Külső szolgáltató</source>
+        <translation>External provider</translation>
+    </message>
+    <message>
+        <source>Helyben</source>
+        <translation>Local</translation>
+    </message>
+    <message>
+        <source>Elrejtés</source>
+        <translation>Hide</translation>
+    </message>
+    <message>
+        <source>Beállítás</source>
+        <translation>Configure</translation>
+    </message>
+    <message>
+        <source>Tanara Cloud</source>
+        <translation>Tanara Cloud</translation>
+    </message>
+    <message>
+        <source>a fiókod keretéből; a szintet a Tanara Cloud oldalon választod</source>
+        <translation>from your account&apos;s balance; you choose the level on the Tanara Cloud page</translation>
+    </message>
+    <message>
+        <source>Megnyitás</source>
+        <translation>Open</translation>
+    </message>
+    <message>
+        <source>A beállítás a Tanara Cloudot választja, ami még nem érhető el. Válassz helyi vagy külső utat.</source>
+        <translation>The setting chooses Tanara Cloud, which is not available yet. Choose a local or an external route.</translation>
+    </message>
+    <message>
+        <source>A Tanara Cloud szintjét a Tanara Cloud oldalon, a fiókodhoz választod; itt csak azt döntöd el, hogy ez a lépés oda menjen-e.</source>
+        <translation>You choose the Tanara Cloud level for your account on the Tanara Cloud page; here you only decide whether this step goes there.</translation>
+    </message>
+    <message>
+        <source>Haladó</source>
+        <translation>Advanced</translation>
+    </message>
+    <message>
+        <source>Hang</source>
+        <translation>Audio</translation>
+    </message>
+    <message>
+        <source>a felvételből szöveg és beszélők — ebben a sorrendben fut</source>
+        <translation>from the recording to text and speakers — runs in this order</translation>
+    </message>
+    <message>
+        <source>Átírás</source>
+        <translation>Transcription</translation>
+    </message>
+    <message>
+        <source>A felvételből időbélyeges szöveg lesz; minden további lépés erre épül.</source>
+        <translation>Turns the recording into timestamped text; every later step builds on it.</translation>
+    </message>
+    <message>
+        <source>Helyben: a gépeden vagy a hálózatodon futó, kulcs nélküli szerver (pl. whisper.cpp).</source>
+        <translation>Local: a server on your machine or network, without a key (e.g. whisper.cpp).</translation>
+    </message>
+    <message>
+        <source>Beszélők elkülönítése</source>
+        <translation>Speaker separation</translation>
+    </message>
+    <message>
+        <source>Megmondja, ki mikor beszél egy sávon belül („Beszélő 1”, „Beszélő 2”).</source>
+        <translation>Tells who speaks when within a track (“Speaker 1”, “Speaker 2”).</translation>
+    </message>
+    <message>
+        <source>Hány beszélő? Automatikusan becsüljük; ha tudod, megbeszélésenként, a futtatás előtt adhatod meg.</source>
+        <translation>How many speakers? We estimate it automatically; if you know, you can set it per meeting before the run.</translation>
+    </message>
+    <message>
+        <source>A Soniox-átírás maga elkülöníti a beszélőket.</source>
+        <translation>The Soniox transcription separates the speakers itself.</translation>
+    </message>
+    <message>
+        <source>A Soniox-átírás maga elkülöníti a beszélőket; a mostani átíró nem, ezért Whisper-átírásnál válaszd a Helyben utat, különben az átirat beszélők nélkül marad.</source>
+        <translation>The Soniox transcription separates the speakers itself; the current transcriber does not, so with Whisper choose the Local route, otherwise the transcript stays without speakers.</translation>
+    </message>
+    <message>
+        <source>Beszélők felismerése</source>
+        <translation>Recognize speakers</translation>
+    </message>
+    <message>
+        <source>Hanglenyomatból felismeri a visszatérő embereket, és nevet javasol.</source>
+        <translation>Recognizes returning people by their voiceprint and suggests names.</translation>
+    </message>
+    <message>
+        <source>A hanglenyomat a gépeden marad; ez a lépés akkor sem kerül Cloudra, ha az átírás ott fut.</source>
+        <translation>The voiceprint stays on your machine; this step does not go to the Cloud even if the transcription does.</translation>
+    </message>
+    <message>
+        <source>Szöveg</source>
+        <translation>Text</translation>
+    </message>
+    <message>
+        <source>az átiratból — összefoglaló és címkék</source>
+        <translation>from the transcript — summary and tags</translation>
+    </message>
+    <message>
+        <source>Összefoglaló</source>
+        <translation>Summary</translation>
+    </message>
+    <message>
+        <source>Az átiratból témák, döntések és teendők; egy nyelvi modell írja.</source>
+        <translation>Topics, decisions and action items from the transcript, written by a language model.</translation>
+    </message>
+    <message>
+        <source>A saját utasításod megmarad, és helyben vagy saját kulccsal futtatva érvényes; Tanara Cloudon a kötött sablon fut.</source>
+        <translation>Your own prompt is kept and applies when run locally or with your own key; on Tanara Cloud the fixed template runs.</translation>
+    </message>
+    <message>
+        <source>Helyben: LM Studio vagy más OpenAI-kompatibilis szerver a gépeden vagy a hálózatodon, kulcs nélkül.</source>
+        <translation>Local: LM Studio or another OpenAI-compatible server on your machine or network, without a key.</translation>
+    </message>
+    <message>
+        <source>Nyelve</source>
+        <translation>Language</translation>
+    </message>
+    <message>
+        <source>pl. magyar</source>
+        <translation>e.g. magyar</translation>
+    </message>
+    <message>
+        <source>Bármilyen nyelv; független a felület nyelvétől.</source>
+        <translation>Any language; independent of the interface language.</translation>
+    </message>
+    <message>
+        <source>Haladó — utasítások, kimeneti forma, kontextus</source>
+        <translation>Advanced — prompts, output format, context</translation>
+    </message>
+    <message>
+        <source>Címkejavaslat</source>
+        <translation>Tag suggestions</translation>
+    </message>
+    <message>
+        <source>A hasonló megbeszélések címkéiből javasol címkét; szöveg-beágyazással pontosabb.</source>
+        <translation>Suggests tags from similar meetings; more accurate with text embedding.</translation>
+    </message>
+    <message>
+        <source>A címkejavaslat a háttérben fut, ezért itt nincs „Kérdezzen”.</source>
+        <translation>Tag suggestions run in the background, so there is no “Ask” here.</translation>
+    </message>
+    <message>
+        <source>Címkék javaslása</source>
+        <translation>Suggest tags</translation>
+    </message>
+    <message>
+        <source>Hasonló korábbi megbeszélések és együtt járó címkék alapján. Sosem kerül fel magától.</source>
+        <translation>Based on similar earlier meetings and tags that go together. Never added automatically.</translation>
+    </message>
+    <message>
+        <source>A nyelvi modell is javasoljon az összefoglaló után</source>
+        <translation>Let the language model suggest too, after the summary</translation>
+    </message>
+    <message>
+        <source>Meglévő címkéket, és legfeljebb 2 új címke ötletét.</source>
+        <translation>Existing tags, plus at most 2 new tag ideas.</translation>
+    </message>
+    <message>
+        <source>Elutasított javaslatok: %1</source>
+        <translation>Dismissed suggestions: %1</translation>
+    </message>
+    <message>
+        <source>Visszaállítás</source>
+        <translation>Restore</translation>
+    </message>
+    <message>
+        <source>Az elutasított javaslatokat újra felajánlhatjuk</source>
+        <translation>Dismissed suggestions can be offered again</translation>
+    </message>
+</context>
+<context>
+    <name>SettingsPromptsPanel</name>
+    <message>
+        <source>Tanara Cloudon a sablon kötött; a saját utasítások helyi vagy saját kulcsos útvonalon érvényesek.</source>
+        <translation>On Tanara Cloud the template is fixed; your own prompts apply on the local or own-key route.</translation>
+    </message>
+    <message>
+        <source>Utasítások a modellnek</source>
+        <translation>Instructions for the model</translation>
+    </message>
+    <message>
+        <source>módosítva</source>
+        <translation>modified</translation>
+    </message>
+    <message>
+        <source>Alapértelmezett</source>
+        <translation>Default</translation>
+    </message>
+    <message>
+        <source>Visszaállítás a beépített utasításra</source>
+        <translation>Restore the built-in instruction</translation>
+    </message>
+    <message>
+        <source>A modellnek adott utasítás</source>
+        <translation>The instruction given to the model</translation>
+    </message>
+    <message>
+        <source>Az átirat és a megbeszélés kontextusa az utasítás után, külön üzenetben megy a modellnek.</source>
+        <translation>The transcript and the meeting context are sent to the model after the instruction, in a separate message.</translation>
+    </message>
+    <message>
+        <source>Kimeneti forma:</source>
+        <translation>Output format:</translation>
+    </message>
+    <message>
+        <source>Megtekintés</source>
+        <translation>View</translation>
+    </message>
+</context>
+<context>
+    <name>SettingsProviderFields</name>
+    <message>
+        <source>Kulcs elrejtése</source>
+        <translation>Hide key</translation>
+    </message>
+    <message>
+        <source>Kulcs megmutatása</source>
+        <translation>Show key</translation>
+    </message>
+    <message>
+        <source>Lekérés…</source>
+        <translation>Fetching…</translation>
+    </message>
+    <message>
+        <source>Lekérés</source>
+        <translation>Fetch</translation>
+    </message>
+    <message>
+        <source>A modellek lekérése a megadott címről</source>
+        <translation>Fetch the models from the given address</translation>
+    </message>
+</context>
+<context>
+    <name>SettingsProviderPanel</name>
     <message>
         <source>Szolgáltató</source>
         <translation>Provider</translation>
@@ -4869,8 +5323,8 @@
         <translation>Choose a provider…</translation>
     </message>
     <message>
-        <source>Ez a lépés a Tanara Cloudra van állítva, ami még nem érhető el. Válassz saját kulcsos szolgáltatót.</source>
-        <translation>This step is set to Tanara Cloud, which is not available yet. Pick a provider with your own key.</translation>
+        <source>Kapcsolat tesztelése</source>
+        <translation>Test connection</translation>
     </message>
     <message>
         <source>A modell gondolkodása az összefoglalónál</source>
@@ -4899,37 +5353,6 @@
     <message>
         <source>LM Studiónál a Tanara a feladat előtt ekkorával, egy szálon tölti be a modellt; más szervernél ott kell beállítani.</source>
         <translation>With LM Studio, Tanara loads the model with this context, single-threaded, before the job; on other servers set it there.</translation>
-    </message>
-    <message>
-        <source>Kapcsolat tesztelése</source>
-        <translation>Test connection</translation>
-    </message>
-    <message>
-        <source>Haladó</source>
-        <translation>Advanced</translation>
-    </message>
-</context>
-<context>
-    <name>SettingsProviderFields</name>
-    <message>
-        <source>Kulcs elrejtése</source>
-        <translation>Hide key</translation>
-    </message>
-    <message>
-        <source>Kulcs megmutatása</source>
-        <translation>Show key</translation>
-    </message>
-    <message>
-        <source>Lekérés…</source>
-        <translation>Fetching…</translation>
-    </message>
-    <message>
-        <source>Lekérés</source>
-        <translation>Fetch</translation>
-    </message>
-    <message>
-        <source>A modellek lekérése a megadott címről</source>
-        <translation>Fetch the models from the given address</translation>
     </message>
 </context>
 <context>
@@ -4996,236 +5419,6 @@
     </message>
 </context>
 <context>
-    <name>SettingsServicesPage</name>
-    <message>
-        <source>Saját kulcs</source>
-        <translation>Own keys</translation>
-    </message>
-    <message>
-        <source>A te fiókod a szolgáltatóknál; nekik fizetsz közvetlenül.</source>
-        <translation>Your own accounts with the providers; you pay them directly.</translation>
-    </message>
-    <message>
-        <source>Tanara Cloud</source>
-        <translation>Tanara Cloud</translation>
-    </message>
-    <message>
-        <source>Nincs kulcskezelés: az átírás és az összefoglaló a fiókodon fut.</source>
-        <translation>No key handling: transcription and summaries run on your account.</translation>
-    </message>
-    <message>
-        <source>hamarosan</source>
-        <translation>coming soon</translation>
-    </message>
-    <message>
-        <source>A beállítás a Tanara Cloudot választja, ami még nem érhető el. Válassz saját kulcsos szolgáltatót.</source>
-        <translation>The setting selects Tanara Cloud, which is not available yet. Pick a provider with your own key.</translation>
-    </message>
-    <message>
-        <source>Átírás</source>
-        <translation>Transcription</translation>
-    </message>
-    <message>
-        <source>beszédből szöveg (STT)</source>
-        <translation>speech to text (STT)</translation>
-    </message>
-    <message>
-        <source>Összefoglaló</source>
-        <translation>Summary</translation>
-    </message>
-    <message>
-        <source>nyelvi modell (LLM)</source>
-        <translation>language model (LLM)</translation>
-    </message>
-    <message>
-        <source>Címkejavaslatok</source>
-        <translation>Tag suggestions</translation>
-    </message>
-    <message>
-        <source>Címkék javaslása</source>
-        <translation>Suggest tags</translation>
-    </message>
-    <message>
-        <source>Hasonló korábbi megbeszélések és együtt járó címkék alapján. Sosem kerül fel magától.</source>
-        <translation>Based on similar earlier meetings and tags that go together. Never added automatically.</translation>
-    </message>
-    <message>
-        <source>A nyelvi modell is javasoljon az összefoglaló után</source>
-        <translation>Let the language model suggest too, after the summary</translation>
-    </message>
-    <message>
-        <source>Meglévő címkéket, és legfeljebb 2 új címke ötletét.</source>
-        <translation>Existing tags, plus at most 2 new tag ideas.</translation>
-    </message>
-    <message>
-        <source>Elutasított javaslatok: %1</source>
-        <translation>Dismissed suggestions: %1</translation>
-    </message>
-    <message>
-        <source>Visszaállítás</source>
-        <translation>Restore</translation>
-    </message>
-    <message>
-        <source>Az elutasított javaslatokat újra felajánlhatjuk</source>
-        <translation>Dismissed suggestions can be offered again</translation>
-    </message>
-</context>
-<context>
-    <name>SettingsSpeakersPage</name>
-    <message>
-        <source>Törlöd a(z) %1 modellt?</source>
-        <translation>Delete the %1 model?</translation>
-    </message>
-    <message>
-        <source>A letöltött modellfájl törlődik a gépről. A vele készült hanglenyomatok megmaradnak, és ha később újra letöltöd, ismét használhatók.</source>
-        <translation>The downloaded model file is deleted from this computer. Voiceprints made with it are kept, and they can be used again if you download it later.</translation>
-    </message>
-    <message>
-        <source>A letöltött modellfájl törlődik a gépről. Később újra letöltheted.</source>
-        <translation>The downloaded model file is deleted from this machine. You can download it again later.</translation>
-    </message>
-    <message>
-        <source>Amíg nincs meg, a felismerés a többi bekapcsolt modellel megy (ha egy sincs, a CAM++ tartalékkal).</source>
-        <translation>Until it is available, recognition runs with the other enabled models (with the CAM++ fallback if there are none).</translation>
-    </message>
-    <message>
-        <source>Amíg nincs szegmentáló modell, a Whisper-átirat beszélők nélkül marad.</source>
-        <translation>Without a segmentation model, a Whisper transcript stays without speakers.</translation>
-    </message>
-    <message>
-        <source>Mégse</source>
-        <translation>Cancel</translation>
-    </message>
-    <message>
-        <source>Törlés</source>
-        <translation>Delete</translation>
-    </message>
-    <message>
-        <source>Te</source>
-        <translation>You</translation>
-    </message>
-    <message>
-        <source>Saját neved</source>
-        <translation>Your name</translation>
-    </message>
-    <message>
-        <source>Így jelensz meg az átiratokban; a saját hanglenyomatod ehhez a névhez tartozik.</source>
-        <translation>This is how you appear in transcripts; your own voiceprint belongs to this name.</translation>
-    </message>
-    <message>
-        <source>Személyek kezelése</source>
-        <translation>Manage people</translation>
-    </message>
-    <message>
-        <source>Hangmodellek</source>
-        <translation>Voice models</translation>
-    </message>
-    <message>
-        <source>Ezekkel ismeri fel a Tanara, ki beszél. A modellek a gépeden futnak; a felvétel nem megy sehova.</source>
-        <translation>Tanara uses these to recognize who is speaking. The models run on your machine; the recording goes nowhere.</translation>
-    </message>
-    <message>
-        <source>A hangelemzés ki van kapcsolva</source>
-        <translation>Voice analysis is turned off</translation>
-    </message>
-    <message>
-        <source>Nincs letöltött hangmodell. Az átirat így is szerkeszthető, de a beszélőket nem ismerem fel hangra, és hanglenyomat sem készül.</source>
-        <translation>No voice model is downloaded. The transcript can still be edited, but speakers are not recognized by voice and no voiceprints are created.</translation>
-    </message>
-    <message>
-        <source>WeSpeaker letöltése (%1)</source>
-        <translation>Download WeSpeaker (%1)</translation>
-    </message>
-    <message>
-        <source>Ajánlott: WeSpeaker egyedül; a CAM++ tartalék.</source>
-        <translation>Recommended: WeSpeaker alone; CAM++ is the fallback.</translation>
-    </message>
-    <message>
-        <source>Kézzel másoltál be modellfájlt?</source>
-        <translation>Did you copy a model file in manually?</translation>
-    </message>
-    <message>
-        <source>Újraolvasás</source>
-        <translation>Rescan</translation>
-    </message>
-    <message>
-        <source>A modellek mappájának újraolvasása és a fájlok ellenőrzése</source>
-        <translation>Rescan the models folder and verify the files</translation>
-    </message>
-    <message>
-        <source>Beszélők elkülönítése (helyi)</source>
-        <translation>Speaker separation (local)</translation>
-    </message>
-    <message>
-        <source>Beszélők felismerése helyben, ha a leíró szolgáltató nem adja</source>
-        <translation>Recognize speakers locally when the transcription provider does not give them</translation>
-    </message>
-    <message>
-        <source>A Whisper és a Cloud Fast csomag nem választja szét a beszélőket, ezért ezekhez kell; a Soniox maga megteszi, ahhoz nem. Az átirat után a gépeden fut, a felvétel nem megy sehova.</source>
-        <translation>Whisper and the Cloud Fast tier do not separate the speakers, so they need it; Soniox does it itself and does not. It runs on your machine after the transcript; the recording goes nowhere.</translation>
-    </message>
-    <message>
-        <source>Nincs szegmentáló modell — a Whisper-átirat beszélők nélkül marad. Töltsd le az alapmodellt.</source>
-        <translation>No segmentation model — a Whisper transcript stays without speakers. Download the base model.</translation>
-    </message>
-    <message>
-        <source>A szegmentáló modell azt mondja meg, ki mikor beszél; a beszélők szétválasztásához a lenti hangmodell is kell.</source>
-        <translation>The segmentation model tells who speaks when; separating the speakers also needs the voice model below.</translation>
-    </message>
-    <message>
-        <source>letöltés… %1</source>
-        <translation>downloading… %1</translation>
-    </message>
-    <message>
-        <source>Egy hangmodell sincs bekapcsolva, ezért a hangelemzés ki van kapcsolva.</source>
-        <translation>No voice model is turned on, so voice analysis is turned off.</translation>
-    </message>
-    <message>
-        <source>Most a CAM++ tartalék fut, mert a WeSpeaker nincs letöltve.</source>
-        <translation>The CAM++ fallback is running now because WeSpeaker is not downloaded.</translation>
-    </message>
-    <message>
-        <source>Most a CAM++ tartalék fut, mert a WeSpeaker nincs bekapcsolva.</source>
-        <translation>The CAM++ fallback is running now because WeSpeaker is not enabled.</translation>
-    </message>
-    <message>
-        <source>Letöltés (%1)</source>
-        <translation>Download (%1)</translation>
-    </message>
-    <message>
-        <source>Nincs internetkapcsolat: a letöltés most nem indul. A már letöltött modellek működnek.</source>
-        <translation>No internet connection: the download will not start now. Models already downloaded still work.</translation>
-    </message>
-    <message>
-        <source>Személyek</source>
-        <translation>People</translation>
-    </message>
-    <message>
-        <source>Melyik minták?</source>
-        <translation>Which samples?</translation>
-    </message>
-    <message>
-        <source>Melyik minták? (%1)</source>
-        <translation>Which samples? (%1)</translation>
-    </message>
-    <message>
-        <source>hiányzik: %1</source>
-        <translation>missing: %1</translation>
-    </message>
-    <message>
-        <source>Ezekhez a mintákhoz már nincs meg a felvétel, ezért csak a régi modellel számolnak. A Személyek ablakban újra felveheted őket.</source>
-        <translation>The recordings for these samples are gone, so they only count with the old model. You can add them again in the People window.</translation>
-    </message>
-    <message>
-        <source>Közben dolgozhatsz; a felismerés a régi mintákkal is működik.</source>
-        <translation>You can keep working; recognition also works with the old samples.</translation>
-    </message>
-    <message>
-        <source>Több bekapcsolt modell együtt dönt; a lassabb modellek lassítják az elemzést.</source>
-        <translation>Several turned-on models decide together; slower models slow down the analysis.</translation>
-    </message>
-</context>
-<context>
     <name>SettingsStepper</name>
     <message>
         <source>Kevesebb</source>
@@ -5234,53 +5427,6 @@
     <message>
         <source>Több</source>
         <translation>More</translation>
-    </message>
-</context>
-<context>
-    <name>SettingsSummaryPage</name>
-    <message>
-        <source>Összefoglaló nyelve</source>
-        <translation>Summary language</translation>
-    </message>
-    <message>
-        <source>pl. magyar</source>
-        <translation>e.g. magyar</translation>
-    </message>
-    <message>
-        <source>Bármilyen nyelvet beírhatsz; független a felület nyelvétől.</source>
-        <translation>You can type any language; it is independent of the interface language.</translation>
-    </message>
-    <message>
-        <source>Utasítások a modellnek</source>
-        <translation>Instructions for the model</translation>
-    </message>
-    <message>
-        <source>módosítva</source>
-        <translation>modified</translation>
-    </message>
-    <message>
-        <source>Alapértelmezett</source>
-        <translation>Default</translation>
-    </message>
-    <message>
-        <source>Visszaállítás a beépített utasításra</source>
-        <translation>Restore the built-in instruction</translation>
-    </message>
-    <message>
-        <source>A modellnek adott utasítás</source>
-        <translation>The instruction given to the model</translation>
-    </message>
-    <message>
-        <source>Az átirat és a megbeszélés kontextusa az utasítás után, külön üzenetben megy a modellnek.</source>
-        <translation>The transcript and the meeting context are sent to the model after the instruction, in a separate message.</translation>
-    </message>
-    <message>
-        <source>Kimeneti forma:</source>
-        <translation>Output format:</translation>
-    </message>
-    <message>
-        <source>Megtekintés</source>
-        <translation>View</translation>
     </message>
 </context>
 <context>
@@ -5579,18 +5725,6 @@
     <message>
         <source>Személyek és minták</source>
         <translation>People and samples</translation>
-    </message>
-    <message>
-        <source>Egy szolgáltató beállítása hiányzik vagy nem érhető el</source>
-        <translation>A provider is not set up or cannot be reached</translation>
-    </message>
-    <message>
-        <source>Nincs szegmentáló modell</source>
-        <translation>No segmentation model</translation>
-    </message>
-    <message>
-        <source>Nincs letöltött hangmodell</source>
-        <translation>No voice model downloaded</translation>
     </message>
     <message>
         <source>Elmentve</source>
@@ -12639,10 +12773,6 @@
         <translation>This is already on the list.</translation>
     </message>
     <message>
-        <source>A hangminta nem hagyja el a gépet: a beszélők felismerése mindig helyben fut.</source>
-        <translation>The voiceprint never leaves your computer: speaker recognition always runs locally.</translation>
-    </message>
-    <message>
         <source>A címkejavaslat a háttérben fut, ezért nem tud kérdezni.</source>
         <translation>Tag suggestions run in the background, so they cannot ask.</translation>
     </message>
@@ -12669,6 +12799,38 @@
     <message>
         <source>A beszélők elkülönítésénél ez a lehetőség később érkezik.</source>
         <translation>This option comes later for speaker separation.</translation>
+    </message>
+    <message>
+        <source>A Tanara Cloud még nem érhető el: válassz helyi vagy külső utat</source>
+        <translation>Tanara Cloud is not available yet: choose a local or an external route</translation>
+    </message>
+    <message>
+        <source>Jelentkezz be a Tanara Cloudba</source>
+        <translation>Sign in to Tanara Cloud</translation>
+    </message>
+    <message>
+        <source>Egy szolgáltató beállítása hiányzik</source>
+        <translation>A provider setting is missing</translation>
+    </message>
+    <message>
+        <source>A legutóbbi kapcsolat-teszt nem sikerült</source>
+        <translation>The latest connection test failed</translation>
+    </message>
+    <message>
+        <source>Nincs szegmentáló modell</source>
+        <translation>No segmentation model</translation>
+    </message>
+    <message>
+        <source>Ellenőrizetlen szegmentáló modell</source>
+        <translation>Unverified segmentation model</translation>
+    </message>
+    <message>
+        <source>Nincs letöltött hangmodell</source>
+        <translation>No voice model downloaded</translation>
+    </message>
+    <message>
+        <source>Ellenőrizetlen hangmodell</source>
+        <translation>Unverified voice model</translation>
     </message>
     <message>
         <source>Gyors összefoglaló</source>
@@ -12713,6 +12875,10 @@
     <message>
         <source>Témánkénti elemzés</source>
         <translation>Topic-by-topic analysis</translation>
+    </message>
+    <message>
+        <source>A hanglenyomat a gépeden marad: a beszélők felismerése mindig helyben fut.</source>
+        <translation>The voiceprint stays on your machine: speaker recognition always runs locally.</translation>
     </message>
     <message>
         <source>Elemzés</source>

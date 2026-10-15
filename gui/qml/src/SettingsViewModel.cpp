@@ -46,12 +46,13 @@ const QStringList kPages{QStringLiteral("general"), QStringLiteral("recording"),
                          QStringLiteral("processing"), QStringLiteral("cloud"),
                          QStringLiteral("people")};
 
-// Where an openPage() call lands: page + section, and the card whose key the deep link
-// highlights ("" | "stt" | "llm").
+// Where an openPage() call lands: page + section, the card whose key the deep link highlights
+// ("" | "stt" | "llm"), and whether the summary card's "Haladó" block opens (the old Summary page = the prompts).
 struct PageTarget {
     QString page;
     QString section;
     QString focus;
+    bool advanced = false;
 };
 
 // Maps a page key or a legacy target (the old six-page names, ShellActions.openSettings's
@@ -76,7 +77,7 @@ PageTarget resolvePageTarget(const QString& page, const QString& arg, const QStr
         const QString focus = arg == QLatin1String("stt") || arg == QLatin1String("llm") ? arg : QString();
         return {processing, stt ? QStringLiteral("stt") : QStringLiteral("summary"), focus};
     }
-    if (page == QLatin1String("summary")) return {processing, QStringLiteral("summary"), QString()};
+    if (page == QLatin1String("summary")) return {processing, QStringLiteral("summary"), QString(), true};
     if (page == QLatin1String("speakers") || page == QLatin1String("diarization"))
         return {processing, arg == QLatin1String("voiceModels") ? QStringLiteral("voice") : QStringLiteral("diar"), QString()};
     if (page == QLatin1String("voiceModels")) return {processing, QStringLiteral("voice"), QString()};
@@ -276,6 +277,18 @@ void SettingsViewModel::init()
     });
     // The account texts depend on the draft too (the hours line follows the tier).
     connect(this, &SettingsViewModel::dirtyChanged, this, &SettingsViewModel::cloudChanged);
+    // S2: the cards' status follows the tests, the model lists and the embedding state.
+    for (SettingsProviderModel* card : {m_stt, m_llm, m_embedding->card()}) {
+        connect(card, &SettingsProviderModel::testChanged, this, &SettingsViewModel::refreshProcessing);
+        connect(card, &SettingsProviderModel::valuesChanged, this, &SettingsViewModel::refreshProcessing);
+        connect(card, &SettingsProviderModel::providerChanged, this, &SettingsViewModel::refreshProcessing);
+    }
+    connect(m_embedding, &SettingsEmbeddingModel::changed, this, &SettingsViewModel::refreshProcessing);
+    for (VoiceModelListModel* list : {m_voiceModels, m_segModels}) {
+        connect(list, &VoiceModelListModel::summaryChanged, this, &SettingsViewModel::refreshProcessing);
+        connect(list, &QAbstractItemModel::dataChanged, this, &SettingsViewModel::refreshProcessing);
+        connect(list, &QAbstractItemModel::modelReset, this, &SettingsViewModel::refreshProcessing);
+    }
 
     m_detectTimer.setInterval(4000);
     connect(&m_detectTimer, &QTimer::timeout, this, &SettingsViewModel::pollDetector);
@@ -442,9 +455,8 @@ void SettingsViewModel::emitAllChanged()
     emit recordingChanged();
     emit watcherChanged();
     emit watchedAppsChanged();
-    emit serviceModeChanged();
+    emit routesChanged();
     emit summaryChanged();
-    emit diarizationChanged();
     emit promptsChanged();
     emit promptIndexChanged();
     emit promptTextChanged();
@@ -543,6 +555,7 @@ void SettingsViewModel::touch()
     emit dirtyChanged();
     m_embedding->notifyDraftChanged();
     m_voiceModels->notifyDraftChanged();
+    refreshProcessing();
 }
 
 void SettingsViewModel::validate()
@@ -569,6 +582,11 @@ void SettingsViewModel::validate()
 
 providers::ReadinessResult SettingsViewModel::draftReadiness(providers::WorkflowStep step) const
 {
+    return readiness(step, false);
+}
+
+providers::ReadinessResult SettingsViewModel::readiness(providers::WorkflowStep step, bool ownPath) const
+{
     // Fictional meeting: has an audio track and a transcript, so only the provider setting matters.
     Meeting m;
     Track t;
@@ -578,9 +596,10 @@ providers::ReadinessResult SettingsViewModel::draftReadiness(providers::Workflow
     // S3: the draft routes' providers (Cloud -> the Tanara Cloud adapter; Ask -> the own provider).
     tanara::app::AppSettings d = m_draft;
     d.routes.normalize(d.providers);
-    auto stored = [&d](providers::Capability cap) {
+    auto stored = [&d, ownPath](providers::Capability cap) {
         const providers::Route r = d.routes.route(cap);
-        return r == providers::Route::Ask ? d.routes.fallbackRoute(cap, d.providers) : r;
+        const bool own = r == providers::Route::Ask || (ownPath && r == providers::Route::Cloud);
+        return own ? d.routes.fallbackRoute(cap, d.providers) : r;
     };
     const providers::ProviderSettings eff =
         d.routes.effective(d.providers, stored(providers::Capability::Stt), stored(providers::Capability::Llm));
@@ -666,6 +685,8 @@ void SettingsViewModel::showSection(const QString& page, const QString& section)
 {
     setPage(page);
     setSection(section);
+    // A jump to a processing card opens it.
+    if (m_page == QLatin1String("processing") && !m_section.isEmpty()) setCardExpanded(m_section, true);
     emit sectionRequested(m_section, !m_section.isEmpty());
 }
 
@@ -683,14 +704,9 @@ QString SettingsViewModel::focusBannerText() const
 void SettingsViewModel::openPage(const QString& page, const QString& section)
 {
     const PageTarget target = resolvePageTarget(page, section, m_page);
-    const QString& focusField = section;
     // "" (Ctrl+, / reopening): the last page stays as it was, without scrolling.
+    if (target.advanced) setSummaryAdvancedOpen(true);
     if (!page.isEmpty()) showSection(target.page, target.section);
-
-    if (page == QLatin1String("cloud"))
-        showServiceTab(QStringLiteral("cloud"));
-    else if (page == QLatin1String("providers") && !focusField.isEmpty())
-        showServiceTab(QStringLiteral("own"));
 
     const QString& f = target.focus;
     if (f != m_focusField) {
@@ -1229,34 +1245,6 @@ bool SettingsViewModel::cloudSelected() const
     return m_draft.routes.stt.route == providers::Route::Cloud || m_draft.routes.llm.route == providers::Route::Cloud;
 }
 
-QString SettingsViewModel::serviceMode() const
-{
-    return cloudSelected() || m_serviceMode == QLatin1String("cloud") ? QStringLiteral("cloud") : QStringLiteral("own");
-}
-
-void SettingsViewModel::showServiceTab(const QString& mode)
-{
-    const QString before = serviceMode();
-    m_serviceMode = mode == QLatin1String("cloud") ? QStringLiteral("cloud") : QStringLiteral("own");
-    if (serviceMode() != before) emit serviceModeChanged();
-}
-
-void SettingsViewModel::setServiceMode(const QString& mode)
-{
-    // S3 shim (until S2): the tab maps to the stt + llm routes. Where the Cloud route is not allowed (the cloud
-    // is not live: "coming soon") only the tab changes.
-    const QString before = serviceMode();
-    const bool cloud = mode == QLatin1String("cloud");
-    m_serviceMode = cloud ? QStringLiteral("cloud") : QStringLiteral("own");
-    for (providers::Capability cap : {providers::Capability::Stt, providers::Capability::Llm}) {
-        if (cloud)
-            applyRoute(cap, providers::Route::Cloud);
-        else if (m_draft.routes.route(cap) == providers::Route::Cloud)
-            applyRoute(cap, m_draft.routes.fallbackRoute(cap, m_draft.providers));
-    }
-    if (serviceMode() != before) emit serviceModeChanged();
-}
-
 // ---- S3: processing routes ------------------------------------------------------
 
 providers::RouteContext SettingsViewModel::routeContext(providers::Capability cap) const
@@ -1309,7 +1297,6 @@ bool SettingsViewModel::applyRoute(providers::Capability cap, providers::Route r
         m_embedding->card()->reset();
     }
     emit routesChanged();
-    if (cap == providers::Capability::Diarization) emit diarizationChanged();
     touch();
     return true;
 }
@@ -1330,10 +1317,7 @@ bool SettingsViewModel::setRoute(const QString& cap, const QString& route)
     const std::optional<providers::Route> r = providers::routeFromKey(route);
     if (!c || !r) return false;
     m_draft.routes.normalize(m_draft.providers);
-    const QString before = serviceMode();
-    const bool ok = applyRoute(*c, *r);
-    if (serviceMode() != before) emit serviceModeChanged();
-    return ok;
+    return applyRoute(*c, *r);
 }
 
 QVariantList SettingsViewModel::routeOptions(const QString& cap) const
@@ -1349,7 +1333,7 @@ QVariantList SettingsViewModel::routeOptions(const QString& cap) const
         const QString code = providers::routeBlocker(*c, r, ctx);
         QString reason;
         if (code == QLatin1String("voice_local_only"))
-            reason = tr("A hangminta nem hagyja el a gépet: a beszélők felismerése mindig helyben fut.");
+            reason = tr("A hanglenyomat a gépeden marad: a beszélők felismerése mindig helyben fut.");
         else if (code == QLatin1String("embedding_no_ask"))
             reason = tr("A címkejavaslat a háttérben fut, ezért nem tud kérdezni.");
         else if (code == QLatin1String("not_embedding"))
@@ -1382,11 +1366,152 @@ QString SettingsViewModel::providerKind(const QString& providerId) const
     return providers::providerKindKey(providers::providerKindOf(providerId));
 }
 
-// ---- Speakers: local diarization ------------------------------------------------
+// ---- S2: the Processing page's cards ---------------------------------------------
 
-bool SettingsViewModel::localDiarization() const
+namespace {
+
+// The state of a model list's rows: "ok" (a verified model is usable) | "unverified" (only a model accepted
+// despite a checksum mismatch) | "missing". onlyEnabled: the voice models count only when enabled (the CAM++
+// fallback runs without one: VoiceModelListModel::fallbackActive).
+QString modelListStatus(const VoiceModelListModel* list, bool onlyEnabled)
 {
-    return m_draft.routes.diarization.route == providers::Route::Local;
+    bool verified = false, unverified = false;
+    for (int r = 0; r < list->rowCount(); ++r) {
+        const QModelIndex i = list->index(r);
+        if (onlyEnabled && !list->data(i, VoiceModelListModel::EnabledRole).toBool()) continue;
+        const QString st = list->data(i, VoiceModelListModel::StateRole).toString();
+        if (st == QLatin1String("downloaded") || st == QLatin1String("bundled")) verified = true;
+        else if (st == QLatin1String("unverified")) unverified = true;
+    }
+    if (verified) return QStringLiteral("ok");
+    if (unverified) return QStringLiteral("unverified");
+    return QStringLiteral("missing");
+}
+
+} // namespace
+
+QVariantMap SettingsViewModel::capabilityEntry(const QString& key, providers::Capability cap) const
+{
+    using providers::Route;
+    const QString capKey = providers::capabilityKey(cap);
+    const QString routeStr = route(capKey);
+    tanara::app::AppSettings d = m_draft;
+    d.routes.normalize(d.providers);
+    const Route r = d.routes.route(cap);
+    const Route own = d.routes.fallbackRoute(cap, d.providers);
+    const bool cloudLive = routeContext(cap).hasCloud();
+
+    QString status = QStringLiteral("none");
+    QString warnText;
+    QString where;
+    // A local route: an own server (whisper-compat, LM Studio, the embedding endpoint) or a model Tanara runs.
+    const QString localWhere = cap == providers::Capability::Diarization || cap == providers::Capability::Voice
+        ? QStringLiteral("local-tanara") : QStringLiteral("local-server");
+    switch (r) {
+    case Route::Local: where = localWhere; break;
+    case Route::External: where = QStringLiteral("external"); break;
+    case Route::Cloud: where = QStringLiteral("cloud"); break;
+    case Route::Ask: where = QStringLiteral("ask"); break;
+    case Route::Basic: where = QStringLiteral("basic"); break;
+    }
+
+    if (cap == providers::Capability::Stt || cap == providers::Capability::Llm) {
+        const providers::WorkflowStep step = cap == providers::Capability::Stt ? providers::WorkflowStep::Transcribe
+                                                                              : providers::WorkflowStep::Summarize;
+        const SettingsProviderModel* card = cap == providers::Capability::Stt ? m_stt : m_llm;
+        const bool ownReady = readiness(step, true).runnable;
+        if (r == Route::Cloud) {
+            if (!cloudLive) {
+                status = QStringLiteral("soon");
+                warnText = tr("A Tanara Cloud még nem érhető el: válassz helyi vagy külső utat");
+            } else if (readiness(step, false).runnable) {
+                status = QStringLiteral("ok");
+            } else {
+                warnText = tr("Jelentkezz be a Tanara Cloudba");
+            }
+        } else {
+            status = ownReady ? QStringLiteral("ok") : QStringLiteral("none");
+            if (!ownReady) warnText = tr("Egy szolgáltató beállítása hiányzik");
+            else if (card->lastTestFailed()) warnText = tr("A legutóbbi kapcsolat-teszt nem sikerült");
+        }
+    } else if (cap == providers::Capability::Diarization) {
+        if (r == Route::Local) {
+            status = modelListStatus(m_segModels, false);
+            if (status == QLatin1String("missing")) warnText = tr("Nincs szegmentáló modell");
+            else if (status == QLatin1String("unverified")) warnText = tr("Ellenőrizetlen szegmentáló modell");
+        } else {
+            // External: the transcriber separates the speakers (Soniox; the Tanara Cloud transcription too).
+            const Route stt = d.routes.route(providers::Capability::Stt);
+            bool separates = stt == Route::Cloud;
+            if (m_facade && !separates)
+                separates = m_facade->registry().descriptor(providers::CapabilityKind::Transcription,
+                                                            d.providers.stt.selectedId).supportsDiarization;
+            status = separates ? QStringLiteral("ok") : QStringLiteral("none");
+        }
+    } else if (cap == providers::Capability::Voice) {
+        status = m_voiceModels->fallbackActive() ? QStringLiteral("ok") : modelListStatus(m_voiceModels, true);
+        if (!m_voiceModels->anyAvailable()) status = QStringLiteral("missing");
+        if (status == QLatin1String("missing")) warnText = tr("Nincs letöltött hangmodell");
+        else if (status == QLatin1String("unverified")) warnText = tr("Ellenőrizetlen hangmodell");
+    } else {   // embedding: a background step, never an attention dot
+        if (r == Route::Basic) status = QStringLiteral("ok");
+        else if (r == Route::Cloud) status = cloudLive ? QStringLiteral("ok") : QStringLiteral("soon");
+        else status = m_embedding->card()->configured() ? QStringLiteral("ok") : QStringLiteral("none");
+    }
+
+    return {{QStringLiteral("key"), key},
+            {QStringLiteral("cap"), capKey},
+            {QStringLiteral("route"), routeStr},
+            {QStringLiteral("where"), where},
+            {QStringLiteral("ownRoute"), providers::routeKey(own)},
+            {QStringLiteral("status"), status},
+            {QStringLiteral("warn"), !warnText.isEmpty()},
+            {QStringLiteral("warnText"), warnText},
+            {QStringLiteral("options"), routeOptions(capKey)}};
+}
+
+void SettingsViewModel::refreshProcessing()
+{
+    if (m_loading) return;
+    using providers::Capability;
+    QVariantList caps;
+    caps << capabilityEntry(QStringLiteral("stt"), Capability::Stt)
+         << capabilityEntry(QStringLiteral("diar"), Capability::Diarization)
+         << capabilityEntry(QStringLiteral("voice"), Capability::Voice)
+         << capabilityEntry(QStringLiteral("summary"), Capability::Llm)
+         << capabilityEntry(QStringLiteral("tags"), Capability::Embedding);
+    tanara::app::AppSettings d = m_draft;
+    d.routes.normalize(d.providers);
+    const bool locked = d.routes.route(Capability::Llm) == providers::Route::Cloud;
+    const bool notice = locked && m_base.routes.route(Capability::Llm) != providers::Route::Cloud && anyPromptModified();
+    if (caps == m_capabilities && locked == m_promptsLocked && notice == m_promptNotice) return;
+    m_capabilities = caps;
+    m_promptsLocked = locked;
+    m_promptNotice = notice;
+    emit processingChanged();
+}
+
+void SettingsViewModel::setCardExpanded(const QString& key, bool expanded)
+{
+    if (!sectionsOf(QStringLiteral("processing")).contains(key) || m_expandedCards.contains(key) == expanded) return;
+    if (expanded) m_expandedCards << key;
+    else m_expandedCards.removeAll(key);
+    emit expandedCardsChanged();
+}
+
+void SettingsViewModel::setSummaryAdvancedOpen(bool open)
+{
+    if (m_summaryAdvancedOpen == open) return;
+    m_summaryAdvancedOpen = open;
+    m_llm->setAdvancedOpen(open);   // the LLM's advanced fields live in this block (and refresh the server data)
+    emit summaryAdvancedOpenChanged();
+}
+
+bool SettingsViewModel::anyPromptModified() const
+{
+    for (const QString& id : kPromptIds)
+        if (m_promptText.value(id).trimmed() != m_promptDefault.value(id).trimmed()) return true;
+    return false;
 }
 
 // ---- Summary ------------------------------------------------------------------
@@ -1826,7 +1951,9 @@ void SettingsViewModel::applyScenario()
     m_page = target.page;
     m_section = target.section;
     m_focusField = sc->focusField;
-    m_serviceMode = sc->serviceMode == QLatin1String("cloud") ? QStringLiteral("cloud") : QStringLiteral("own");
+    // The design state's processing card is open (none: all collapsed), its "Haladó" as the state says.
+    m_expandedCards = m_page == QLatin1String("processing") && !m_section.isEmpty() ? QStringList{m_section} : QStringList();
+    m_summaryAdvancedOpen = sc->summaryAdvancedOpen || sc->llmAdvancedOpen || target.advanced;
     m_promptIndex = std::clamp(sc->promptIndex, 0, int(kPromptIds.size()) - 1);
     m_liveActive = sc->liveCallActive;
     m_liveApp = sc->liveCallApp;
@@ -1836,7 +1963,7 @@ void SettingsViewModel::applyScenario()
     m_llm->reset();
     m_embedding->reset();
     m_stt->setAdvancedOpen(false);
-    m_llm->setAdvancedOpen(sc->llmAdvancedOpen);
+    m_llm->setAdvancedOpen(m_summaryAdvancedOpen);
     auto show = [](SettingsProviderModel* card, const std::optional<app::SettingsScenario::TestResult>& r) {
         if (r) card->setDemoResult(r->state, r->latencyMs, r->message, r->code);
     };
@@ -1846,6 +1973,8 @@ void SettingsViewModel::applyScenario()
     m_devices->refreshFromDraft();
     emit pageChanged();
     emit sectionChanged();
+    emit expandedCardsChanged();
+    emit summaryAdvancedOpenChanged();
     emit sectionRequested(m_section, false);
     emit voiceprintChanged();
     emit liveCallChanged();

@@ -8,7 +8,8 @@
 //   source "local"     -> "Beszélők: helyi elkülönítés"
 //   source "none"      -> "Beszélők: nincs — kapcsold be a Beállításokban" (the setting is off) /
 //                         "Beszélők: nincs — tölts le modellt a Beállításokban" (a model is missing), both with
-//                         fixTarget "speakers"; "Beszélők: nincs szétválasztva" when it could run
+//                         fixTarget "diarization" (Settings > Processing > Speaker separation);
+//                         "Beszélők: nincs szétválasztva" when it could run
 //   a failed run       -> "Beszélők: a felismerés nem sikerült — <reason>" (the step needs attention)
 //
 #include <QString>

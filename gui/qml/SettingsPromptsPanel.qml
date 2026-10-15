@@ -2,13 +2,16 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Templates as T
 
-// Summary page: target language, the five prompts in two groups, in tabs (with a "modified"
-// indicator and reset), a monospaced editor with line numbers and {{VARIABLE}} highlighting, a
-// legend of the variables and the read-only output schema.
+// The summary card's prompts (S2, Settings > Processing > Összefoglaló > "Haladó"): the five prompts
+// in two groups, in tabs (with a "modified" indicator and reset), a monospaced editor with line
+// numbers and {{VARIABLE}} highlighting, a legend of the variables and the read-only output schema.
+// `locked` (the Cloud prompt lock: the summary runs on Tanara Cloud): the editors are read-only and
+// one line says why; the own prompts stay and apply on the local / own-key path.
 Column {
     id: root
 
     property var vm: null
+    property bool locked: false
     signal resetRequested()            // the enclosing window asks for confirmation
     signal schemaRequested()
 
@@ -21,35 +24,27 @@ Column {
 
     spacing: 14
 
-    GridLayout {
+    // The Cloud prompt lock.
+    Rectangle {
+        objectName: "promptLock"
+        visible: root.locked
         width: parent.width
-        columns: 2
-        columnSpacing: 16
-        rowSpacing: 4
+        implicitHeight: lockText.implicitHeight + 20
+        radius: Theme.radiusControl
+        color: Theme.sunken
+        border.width: 1
+        border.color: Theme.border
+        TIcon { x: 12; y: 11; name: "lock"; size: 14; color: Theme.textMuted }
         TLabel {
-            Layout.preferredWidth: 150
-            text: qsTr("Összefoglaló nyelve")
-            font.weight: Theme.weightSemiBold
-        }
-        SettingsCombo {
-            Layout.preferredWidth: 260
-            editable: true
-            options: root.vm ? root.vm.summaryLanguageOptions : []
-            value: root.vm ? root.vm.summaryLanguage : ""
-            placeholder: qsTr("pl. magyar")
-            onPicked: (v) => root.vm.summaryLanguage = v
-        }
-        Item { Layout.preferredWidth: 150; implicitHeight: 1 }
-        TLabel {
-            Layout.fillWidth: true
-            text: qsTr("Bármilyen nyelvet beírhatsz; független a felület nyelvétől.")
-            muted: true
+            id: lockText
+            x: 34; y: 10
+            width: parent.width - 46
+            text: qsTr("Tanara Cloudon a sablon kötött; a saját utasítások helyi vagy saját kulcsos útvonalon érvényesek.")
             font.pixelSize: Theme.fontSmall
+            cssLineHeight: 1.45
             wrapMode: Text.Wrap
         }
     }
-
-    Rectangle { width: parent.width; height: 1; color: Theme.border }
 
     Column {
         width: parent.width
@@ -73,7 +68,7 @@ Column {
                 iconName: "rotate-ccw"
                 iconSize: 13
                 text: qsTr("Alapértelmezett")
-                enabled: root.vm && root.vm.promptModified
+                enabled: !root.locked && root.vm && root.vm.promptModified
                 toolTipText: qsTr("Visszaállítás a beépített utasításra")
                 onClicked: root.resetRequested()
             }
@@ -131,8 +126,9 @@ Column {
             height: 318
             radius: Theme.radiusControl
             color: Theme.sunken
+            opacity: root.locked ? 0.75 : 1
             border.width: 1
-            border.color: editor.activeFocus ? Theme.accent : Theme.border
+            border.color: editor.activeFocus && !root.locked ? Theme.accent : Theme.border
             clip: true
 
             readonly property int lineHeightPx: 20      // 12 px x 1.65
@@ -182,6 +178,7 @@ Column {
                     id: editor
                     objectName: "promptEditor"
                     x: 37
+                    readOnly: root.locked
                     width: flick.width - 37
                     leftPadding: 12; rightPadding: 14; topPadding: 10; bottomPadding: 10
                     wrapMode: TextEdit.Wrap

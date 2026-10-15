@@ -134,7 +134,6 @@ void SettingsDemoFacade::loadSettings(const QString& st)
         sc.llmAdvancedOpen = true;
     } else if (st == QLatin1String("cloudComingSoon")) {
         sc.page = QStringLiteral("cloud");
-        sc.serviceMode = QStringLiteral("cloud");
     } else if (st == QLatin1String("cloudSignedOut") || st == QLatin1String("cloudLowBalance")
                || st == QLatin1String("cloudAdvanced")) {
         // The Tanara Cloud page in live mode (the account: loadCloud).
@@ -144,6 +143,29 @@ void SettingsDemoFacade::loadSettings(const QString& st)
             s.cloud.sttTier = s.cloud.llmTier = QStringLiteral("fast");
             s.cloud.fastForLongRecordings = true;
         }
+    } else if (st == QLatin1String("processing")) {
+        // S2: the Processing page with every card collapsed: the whole chain at a glance.
+        sc.page = QStringLiteral("processing");
+        sc.sttTest = app::SettingsScenario::TestResult{QStringLiteral("ok"), 210, {}, {}};
+        sc.llmTest = app::SettingsScenario::TestResult{QStringLiteral("ok"), 48, {}, {}};
+    } else if (st == QLatin1String("processingSttAsk")) {
+        // S2: Tanara Cloud is live, transcription asks before every run (Soniox or Tanara Cloud).
+        providers::registerCloudProviders(*m_registry);
+        s.routes.stt.route = providers::Route::Ask;
+        sc.page = QStringLiteral("processing");
+        sc.section = QStringLiteral("stt");
+        sc.sttTest = app::SettingsScenario::TestResult{QStringLiteral("ok"), 210, {}, {}};
+    } else if (st == QLatin1String("processingSummaryCloud")) {
+        // S2: an own prompt is saved; the summary was just switched to Tanara Cloud (not saved yet): the prompt
+        // editors in "Haladó" are read-only, and the notice says the own prompt stays for the local path.
+        providers::registerCloudProviders(*m_registry);
+        s.processing.summaryPrompt = processing::promptBuiltin(QStringLiteral("single"))
+            + QStringLiteral("\nFor each action item, name the owner and the deadline when they were said.\n");
+        draft = s;
+        draft->routes.llm.route = providers::Route::Cloud;
+        sc.page = QStringLiteral("processing");
+        sc.section = QStringLiteral("summary");
+        sc.summaryAdvancedOpen = true;
     } else if (st == QLatin1String("cloudSelected")) {
         // The saved setting puts transcription and summary on Tanara Cloud (developer setting).
         sc.page = QStringLiteral("providers");

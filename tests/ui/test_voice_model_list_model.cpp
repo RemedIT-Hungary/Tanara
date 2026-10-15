@@ -755,7 +755,7 @@ private slots:
         QVERIFY2(warnings.isEmpty(), qPrintable(warnings.join('\n')));
     }
 
-    // D5: the "Beszélők elkülönítése (helyi)" section: the switch, the banner without a model, the rows without a switch.
+    // D5 / S2: the "Beszélők elkülönítése" card: its route, the banner without a model, the rows without a switch.
     void speakersPageShowsTheDiarizationSection()
     {
         QQmlEngine engine;
@@ -778,7 +778,8 @@ private slots:
             auto* win = qobject_cast<QQuickWindow*>(obj.get());
             QVERIFY(win);
             QVERIFY(findItem(win->contentItem(), QStringLiteral("diarizationSection")));
-            QVERIFY(findItem(win->contentItem(), QStringLiteral("localDiarizationSwitch")));
+            QCOMPARE(findItem(win->contentItem(), QStringLiteral("cardRoute-diar"))->property("value").toString(),
+                     QStringLiteral("local"));
             auto* none = findItem(win->contentItem(), QStringLiteral("segmentationNone"));
             QVERIFY(none);
             QVERIFY(none->isVisible());
@@ -787,7 +788,9 @@ private slots:
             QVERIFY(findItem(win->contentItem(), QStringLiteral("voiceModelDownload-") + kSeg)->isVisible());
             // No enabled switch on a segmentation row; the embedding rows keep theirs.
             QVERIFY(!findItem(win->contentItem(), QStringLiteral("voiceModelSwitch-") + kSeg)->isVisible());
-            QVERIFY(findItem(win->contentItem(), QStringLiteral("voiceModelSwitch-") + kWe)->isVisible());
+            auto* vm = qobject_cast<SettingsViewModel*>(win->property("vm").value<QObject*>());
+            vm->setCardExpanded(QStringLiteral("voice"), true);
+            QTRY_VERIFY(findItem(win->contentItem(), QStringLiteral("voiceModelSwitch-") + kWe)->isVisible());
         }
         {
             auto obj = open(QStringLiteral("B08segmismatch"));
@@ -805,18 +808,21 @@ private slots:
             QVERIFY(findItem(win->contentItem(), QStringLiteral("voiceModelUnverified-") + kSeg)->isVisible());
         }
         {
-            // The switch is on by default; B08diaroff has it off.
+            // Local by default; B08diaroff has the External route (the transcriber separates): no model rows.
             auto obj = open(QStringLiteral("B08diaroff"));
             auto* win = qobject_cast<QQuickWindow*>(obj.get());
             QVERIFY(win);
             auto* vm = qobject_cast<SettingsViewModel*>(win->property("vm").value<QObject*>());
             QVERIFY(vm);
-            QVERIFY(!vm->localDiarization());
-            auto* sw = findItem(win->contentItem(), QStringLiteral("localDiarizationSwitch"));
-            QVERIFY(sw);
-            QCOMPARE(sw->property("checked").toBool(), false);
-            QMetaObject::invokeMethod(sw, "toggled", Q_ARG(bool, true));
-            QVERIFY(vm->localDiarization());
+            QCOMPARE(vm->route(QStringLiteral("diarization")), QStringLiteral("external"));
+            auto* seg = findItem(win->contentItem(), QStringLiteral("cardRoute-diar"));
+            QVERIFY(seg);
+            QCOMPARE(seg->property("value").toString(), QStringLiteral("external"));
+            QVERIFY(findItem(win->contentItem(), QStringLiteral("diarExternalNote"))->isVisible());
+            QVERIFY(!findItem(win->contentItem(), QStringLiteral("diarizationSection"))->isVisible());
+            QMetaObject::invokeMethod(seg, "picked", Q_ARG(QString, QStringLiteral("local")));
+            QCOMPARE(vm->route(QStringLiteral("diarization")), QStringLiteral("local"));
+            QTRY_VERIFY(findItem(win->contentItem(), QStringLiteral("diarizationSection"))->isVisible());
         }
         QVERIFY2(warnings.isEmpty(), qPrintable(warnings.join('\n')));
     }

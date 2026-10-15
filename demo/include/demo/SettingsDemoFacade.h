@@ -7,7 +7,9 @@
 //
 // Fixture::Settings serves the Settings window's design states ("B01" ... "B08*", "advanced",
 // "dirty", "cloudSelected", the Tanara Cloud page's "cloudComingSoon" (teaser) / "cloudSignedOut" /
-// "cloudLowBalance" / "cloudAdvanced" (live), ...): the made-up user's settings and keys, the five made-up devices,
+// "cloudLowBalance" / "cloudAdvanced" (live), the Processing page's "processing" / "processingSttAsk" /
+// "processingSummaryCloud" (the last two with a live Tanara Cloud in the registry), ...): the made-up user's
+// settings and keys, the five made-up devices,
 // the folder sizes, the library preparation's state, and what the window shows on top
 // (scenario()). Fixture::Onboarding serves the "Getting started" window's steps ("welcome" ...
 // "done"): a fresh install's settings with no transcription key yet.

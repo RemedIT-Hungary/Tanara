@@ -14,14 +14,15 @@
 //
 // Sub-models: `devices` (device list with live level), `stt` / `llm` (provider cards from the
 // provider registry), `embedding` (the Embedding
-// card, library preparation and tag-suggestion switches), `voiceModels` (the Speakers page's
-// voice models and the backfill state).
+// card, library preparation and tag-suggestion switches), `voiceModels` / `segmentationModels` (the
+// Processing page's model lists, the People page's backfill state); `capabilities` (S2: the Processing
+// page's cards: route, status pill, attention dot).
 //
 // It works on a tanara::app::ISettingsFacade (and the voice-model list on an IVoiceModelsFacade):
 // the QML default constructor takes them from AppContext::services(); on the fictional facades
 // (tanara_demo: --qml-shot / --demo, tests) `demoState` ("B01" ... "B07", "B07notes", "advanced",
 // "dirty", "unsaved", "schema", "cloudComingSoon", "cloudSignedOut", "cloudLowBalance", "cloudAdvanced",
-// "cloudSelected", "B04embedding" /
+// "cloudSelected", "processing", "processingSttAsk", "processingSummaryCloud", "B04embedding" /
 // "B04embeddingRunning" / "B04embeddingError" / "B04embeddingDone" / "B04embeddingCloud" /
 // "B04embeddingNone" / "B04modelChange", "B08" / "B08download" / "B08none" / "B08fallback" /
 // "B08error" / "B08offline" / "B08backfill" / "B08partial" / "B08bundled") picks the design state.
@@ -132,11 +133,7 @@ class SettingsViewModel : public QObject {
     Q_PROPERTY(bool liveCallActive READ liveCallActive NOTIFY liveCallChanged)
     Q_PROPERTY(QString liveCallApp READ liveCallApp NOTIFY liveCallChanged)
 
-    // ---- Services ----
-    // "own" | "cloud" (S3: a shim over the routes until S2): "cloud" iff the stt or llm route is Cloud, or the
-    // "coming soon" tab is shown (cloud not live). Setting "cloud" puts stt + llm on the Cloud route when
-    // allowed (else only the tab changes); "own" moves a Cloud route back to the own provider.
-    Q_PROPERTY(QString serviceMode READ serviceMode WRITE setServiceMode NOTIFY serviceModeChanged)
+    // ---- Processing: the capability cards ----
     Q_PROPERTY(tanara_qml::SettingsProviderModel* stt READ stt CONSTANT)
     Q_PROPERTY(tanara_qml::SettingsProviderModel* llm READ llm CONSTANT)
     // The draft's stt or llm route is Cloud.
@@ -145,11 +142,27 @@ class SettingsViewModel : public QObject {
 
     // ---- Speakers: voice models (download immediate, enabling goes into the draft), backfill ----
     Q_PROPERTY(tanara_qml::VoiceModelListModel* voiceModels READ voiceModels CONSTANT)
-    // D5: the local speaker separation (S3: read-only shim = the draft's diarization route is Local; set it
-    // with setRoute("diarization", ...)) and the segmentation models' list (same rows as voiceModels, kind
-    // "segmentation", no enabled switch).
-    Q_PROPERTY(bool localDiarization READ localDiarization NOTIFY diarizationChanged)
+    // D5: the segmentation models of the local speaker separation (same rows as voiceModels, kind
+    // "segmentation", no enabled switch); the separation itself is the diarization route.
     Q_PROPERTY(tanara_qml::VoiceModelListModel* segmentationModels READ segmentationModels CONSTANT)
+
+    // ---- S2: the Processing page's cards ----
+    // One entry per card, in the chain's order: [{ key (the section: stt | diar | voice | summary | tags),
+    //   cap (stt | diarization | voice | llm | embedding), route (the draft's: local | external | cloud | ask |
+    //   basic), where (the badge: local-tanara | local-server | external | cloud | ask | basic),
+    //   ownRoute (local | external: the non-cloud path of an Ask / Cloud route), status (ok | none | missing |
+    //   soon | unverified: the pill), warn (the sidebar's attention dot), warnText, options (= routeOptions) }].
+    // Recomputed from the draft, the provider tests, the model lists and the embedding state.
+    Q_PROPERTY(QVariantList capabilities READ capabilities NOTIFY processingChanged)
+    // The expanded cards (section keys). A jump to a section (sidebar, deep link, design state) opens its card.
+    Q_PROPERTY(QStringList expandedCards READ expandedCards NOTIFY expandedCardsChanged)
+    // The summary card's "Haladó" block (prompts, output format, context); the legacy "summary" target opens it.
+    Q_PROPERTY(bool summaryAdvancedOpen READ summaryAdvancedOpen WRITE setSummaryAdvancedOpen NOTIFY summaryAdvancedOpenChanged)
+    // Cloud prompt lock: the draft's summary route is Tanara Cloud, so the prompt editors are read-only (the
+    // cloud runs its fixed template; own prompts apply on the local / own-key path). Nothing is deleted.
+    Q_PROPERTY(bool summaryPromptsLocked READ summaryPromptsLocked NOTIFY processingChanged)
+    // The route was just switched to Cloud (draft vs. saved) while an own prompt exists: the one-line notice.
+    Q_PROPERTY(bool summaryPromptNotice READ summaryPromptNotice NOTIFY processingChanged)
 
     // ---- Summary ----
     Q_PROPERTY(QString summaryLanguage READ summaryLanguage WRITE setSummaryLanguage NOTIFY summaryChanged)
@@ -271,14 +284,22 @@ public:
     QString liveCallApp() const { return m_liveApp; }
 
     bool cloudSelected() const;
-    QString serviceMode() const;
-    void setServiceMode(const QString& mode);
     SettingsProviderModel* stt() const { return m_stt; }
     SettingsProviderModel* llm() const { return m_llm; }
     SettingsEmbeddingModel* embedding() const { return m_embedding; }
     VoiceModelListModel* voiceModels() const { return m_voiceModels; }
     VoiceModelListModel* segmentationModels() const { return m_segModels; }
-    bool localDiarization() const;
+
+    QVariantList capabilities() const { return m_capabilities; }
+    QStringList expandedCards() const { return m_expandedCards; }
+    // Opens / closes a processing card (key: a processing section).
+    Q_INVOKABLE void setCardExpanded(const QString& key, bool expanded);
+    bool summaryAdvancedOpen() const { return m_summaryAdvancedOpen; }
+    void setSummaryAdvancedOpen(bool open);
+    bool summaryPromptsLocked() const { return m_promptsLocked; }
+    bool summaryPromptNotice() const { return m_promptNotice; }
+    // Any of the prompts differs from its default (an own prompt exists).
+    bool anyPromptModified() const;
 
     QString summaryLanguage() const { return m_draft.processing.summaryLanguage; }
     void setSummaryLanguage(const QString& language);
@@ -426,10 +447,11 @@ signals:
     void watchedAppsChanged();
     void watchingChanged();
     void liveCallChanged();
-    void serviceModeChanged();
     void routesChanged();
+    void processingChanged();
+    void expandedCardsChanged();
+    void summaryAdvancedOpenChanged();
     void summaryChanged();
-    void diarizationChanged();
     void promptsChanged();
     void promptIndexChanged();
     void promptTextChanged();
@@ -458,7 +480,11 @@ private:
     // stt / llm cloud adapters are registered only while the cloud is live).
     tanara::providers::RouteContext routeContext(tanara::providers::Capability cap) const;
     bool applyRoute(tanara::providers::Capability cap, tanara::providers::Route route);
-    void showServiceTab(const QString& mode);   // the shown tab only (deep links), no draft change
+    // The readiness of a step on the draft; ownPath: on the own (non-cloud) provider even if the route is Cloud.
+    tanara::providers::ReadinessResult readiness(tanara::providers::WorkflowStep step, bool ownPath) const;
+    // Recomputes `capabilities` and the prompt lock (emits processingChanged on a difference).
+    void refreshProcessing();
+    QVariantMap capabilityEntry(const QString& key, tanara::providers::Capability cap) const;
     void emitAllChanged();
     void onExternalSettingsChanged();
     void validate();
@@ -516,7 +542,11 @@ private:
     bool m_liveActive = false;
     QString m_liveApp, m_liveAppId;
 
-    QString m_serviceMode = QStringLiteral("own");   // the shown tab (the shim adds the Cloud routes)
+    QVariantList m_capabilities;
+    QStringList m_expandedCards;
+    bool m_summaryAdvancedOpen = false;
+    bool m_promptsLocked = false;
+    bool m_promptNotice = false;
 
     SettingsDeviceModel* m_devices = nullptr;
     SettingsProviderModel* m_stt = nullptr;

@@ -317,12 +317,10 @@ private slots:
 
         vm.setDemoState(QStringLiteral("cloudComingSoon"));
         QCOMPARE(vm.page(), QStringLiteral("cloud"));
-        QCOMPARE(vm.serviceMode(), QStringLiteral("cloud"));
         QVERIFY(!vm.cloudSelected());
         QVERIFY(!vm.dirty());                              // the "coming soon" notice changes nothing
 
         vm.setDemoState(QStringLiteral("cloudSelected"));  // the draft puts stt + llm on the Cloud route
-        QCOMPARE(vm.serviceMode(), QStringLiteral("cloud"));   // S3 shim: a Cloud route shows the cloud tab
         QVERIFY(vm.cloudSelected());
         QCOMPARE(vm.route(QStringLiteral("stt")), QStringLiteral("cloud"));
         QCOMPARE(vm.stt()->providerId(), QStringLiteral("soniox"));   // the own provider stays selected
@@ -425,14 +423,14 @@ private slots:
     }
 
     // D5 / S3: the local speaker separation is the diarization route (draft); the segmentation list sits next to
-    // the voice models. The read-only localDiarization shim follows the route.
-    void localDiarizationSwitchFollowsTheDraftAndSaves()
+    // the voice models.
+    void localDiarizationRouteFollowsTheDraftAndSaves()
     {
         using tanara::providers::Route;
         startApp();
         QCOMPARE(live().routes.diarization.route, Route::External);   // fresh install: the STT separates them
         SettingsViewModel vm(services());
-        QVERIFY(!vm.localDiarization());
+        QCOMPARE(vm.route(QStringLiteral("diarization")), QStringLiteral("external"));
         QCOMPARE(vm.route(QStringLiteral("diarization")), QStringLiteral("external"));
         QVERIFY(vm.segmentationModels());
         QCOMPARE(vm.segmentationModels()->kind(), QStringLiteral("segmentation"));
@@ -440,9 +438,9 @@ private slots:
         QCOMPARE(vm.voiceModels()->kind(), QStringLiteral("embedding"));
         QVERIFY(!vm.dirty());
 
-        QSignalSpy changed(&vm, &SettingsViewModel::diarizationChanged);
+        QSignalSpy changed(&vm, &SettingsViewModel::routesChanged);
         QVERIFY(vm.setRoute(QStringLiteral("diarization"), QStringLiteral("local")));
-        QVERIFY(vm.localDiarization());
+        QCOMPARE(vm.route(QStringLiteral("diarization")), QStringLiteral("local"));
         QCOMPARE(changed.size(), 1);
         QCOMPARE(vm.changeCount(), 1);
         QVERIFY(vm.setRoute(QStringLiteral("diarization"), QStringLiteral("local")));   // same value: nothing
@@ -459,16 +457,16 @@ private slots:
         QVERIFY(vm.setRoute(QStringLiteral("diarization"), QStringLiteral("external")));
         QVERIFY(vm.dirty());
         vm.discard();
-        QVERIFY(vm.localDiarization());
+        QCOMPARE(vm.route(QStringLiteral("diarization")), QStringLiteral("local"));
         QVERIFY(!vm.dirty());
 
         // Demo states: on by default, off in B08diaroff.
         SettingsViewModel d;
         d.setDemoState(QStringLiteral("B08"));
-        QVERIFY(d.localDiarization());
+        QCOMPARE(d.route(QStringLiteral("diarization")), QStringLiteral("local"));
         QCOMPARE(d.segmentationModels()->rowCount(), 2);
         d.setDemoState(QStringLiteral("B08diaroff"));
-        QVERIFY(!d.localDiarization());
+        QCOMPARE(d.route(QStringLiteral("diarization")), QStringLiteral("external"));
         QVERIFY(!d.dirty());
     }
 
@@ -1383,9 +1381,9 @@ private slots:
         vm.openPage(QString());                            // empty: stays where it was
         QCOMPARE(vm.page(), QStringLiteral("processing"));
         QCOMPARE(vm.section(), QStringLiteral("summary"));
-        vm.openPage(QStringLiteral("cloud"));              // the Cloud page; the services' "coming soon" tab
+        vm.openPage(QStringLiteral("cloud"));              // the Cloud page, no draft change
         QCOMPARE(vm.page(), QStringLiteral("cloud"));
-        QCOMPARE(vm.serviceMode(), QStringLiteral("cloud"));
+        QVERIFY(!vm.dirty());
         QVERIFY(vm.focusField().isEmpty());
 
         QSignalSpy back(&vm, &SettingsViewModel::returnRequested);
@@ -1414,8 +1412,8 @@ private slots:
 
     // ---- Tanara Cloud --------------------------------------------------------------------
 
-    // S3: the serviceMode tab is a shim over the stt + llm routes until S2.
-    void serviceModeShimMapsToRoutes()
+    // S2: with the live cloud the cards' routes go to Cloud and back (the serviceMode tab is gone).
+    void cloudRoutesFromTheCards()
     {
         startApp("live");
         if (!m_app->cloudLive())
@@ -1424,7 +1422,6 @@ private slots:
         // A fresh install with the live cloud: stt / llm ask per run (an own provider and the cloud are both there).
         QCOMPARE(vm.route(QStringLiteral("stt")), QStringLiteral("ask"));
         QCOMPARE(vm.route(QStringLiteral("llm")), QStringLiteral("ask"));
-        QCOMPARE(vm.serviceMode(), QStringLiteral("own"));
         QVERIFY(!vm.cloudSelected());
         // On the own-key card Cloud is not among the providers.
         for (const QVariant& p : vm.stt()->providers())
@@ -1433,34 +1430,28 @@ private slots:
         vm.stt()->setProviderId(QStringLiteral("whisper-compat"));
         QCOMPARE(vm.route(QStringLiteral("stt")), QStringLiteral("ask"));   // Ask stays, the own provider changed
         const int changes = vm.changeCount();
-        vm.setServiceMode(QStringLiteral("cloud"));
-        QCOMPARE(vm.serviceMode(), QStringLiteral("cloud"));
+        QVERIFY(vm.setRoute(QStringLiteral("stt"), QStringLiteral("cloud")));
+        QVERIFY(vm.setRoute(QStringLiteral("llm"), QStringLiteral("cloud")));
         QVERIFY(vm.cloudSelected());
-        QCOMPARE(vm.route(QStringLiteral("stt")), QStringLiteral("cloud"));
-        QCOMPARE(vm.route(QStringLiteral("llm")), QStringLiteral("cloud"));
         QCOMPARE(vm.changeCount(), changes + 2);
-        QCOMPARE(vm.stt()->providerId(), QStringLiteral("whisper-compat"));   // remembered for "own"
+        QCOMPARE(vm.stt()->providerId(), QStringLiteral("whisper-compat"));   // remembered for the own path
         QVERIFY(vm.save());
         QCOMPARE(live().routes.stt.route, tanara::providers::Route::Cloud);
         QCOMPARE(live().providers.stt.selectedId, QStringLiteral("whisper-compat"));
         QVERIFY(m_app->usesCloud(tanara::providers::WorkflowStep::Transcribe));
 
-        // "own": the Cloud routes go back to the own providers' kinds.
-        vm.setServiceMode(QStringLiteral("own"));
-        QCOMPARE(vm.serviceMode(), QStringLiteral("own"));
+        QVERIFY(vm.setRoute(QStringLiteral("stt"), QStringLiteral("local")));
+        QVERIFY(vm.setRoute(QStringLiteral("llm"), QStringLiteral("local")));
         QVERIFY(!vm.cloudSelected());
-        QCOMPARE(vm.route(QStringLiteral("stt")), QStringLiteral("local"));
-        QCOMPARE(vm.route(QStringLiteral("llm")), QStringLiteral("local"));
         QVERIFY(vm.save());
         QVERIFY(!m_app->usesCloud(tanara::providers::WorkflowStep::Transcribe));
 
-        // The deep link to the Cloud page only shows the tab, without a draft change.
+        // The Cloud page changes nothing in the draft.
         vm.openPage(QStringLiteral("cloud"), QString());
         QCOMPARE(vm.page(), QStringLiteral("cloud"));
-        QCOMPARE(vm.serviceMode(), QStringLiteral("cloud"));
         QVERIFY(!vm.dirty());
 
-        // Ask is allowed with the live cloud; it is not the cloud for the shim.
+        // Ask is allowed with the live cloud; it is not "Cloud selected".
         QVERIFY(vm.setRoute(QStringLiteral("llm"), QStringLiteral("ask")));
         QVERIFY(!vm.cloudSelected());
     }
@@ -1481,7 +1472,6 @@ private slots:
 
         SettingsViewModel vm(services());
         QVERIFY(vm.cloudSelected());
-        QCOMPARE(vm.serviceMode(), QStringLiteral("cloud"));
         vm.openPage(QStringLiteral("providers"), QStringLiteral("llm"));
         QVERIFY(!vm.dirty());
         QCOMPARE(vm.stt()->providerId(), QStringLiteral("soniox"));
@@ -1834,6 +1824,274 @@ private slots:
         QVERIFY2(warnings.isEmpty(), qPrintable(warnings.join(QLatin1Char('\n'))));
     }
 
+    // ---- S2: the Processing page's cards ----
+
+    static QVariantMap capOf(const SettingsViewModel& vm, const QString& key)
+    {
+        for (const QVariant& v : vm.capabilities())
+            if (v.toMap().value("key").toString() == key) return v.toMap();
+        return {};
+    }
+
+    void capabilitiesDescribeTheCards()
+    {
+        SettingsViewModel vm;
+        vm.setDemoState(QStringLiteral("processing"));
+        QCOMPARE(vm.page(), QStringLiteral("processing"));
+        QVERIFY(vm.section().isEmpty());
+        QVERIFY(vm.expandedCards().isEmpty());              // every card collapsed
+        const QVariantList caps = vm.capabilities();
+        QCOMPARE(caps.size(), 5);
+        QStringList keys, caps2;
+        for (const QVariant& v : caps) {
+            keys << v.toMap().value("key").toString();
+            caps2 << v.toMap().value("cap").toString();
+            QCOMPARE(v.toMap().value("status").toString(), QStringLiteral("ok"));
+            QVERIFY(!v.toMap().value("warn").toBool());
+            QCOMPARE(v.toMap().value("options").toList().size(), 4);
+        }
+        QCOMPARE(keys, (QStringList{"stt", "diar", "voice", "summary", "tags"}));
+        QCOMPARE(caps2, (QStringList{"stt", "diarization", "voice", "llm", "embedding"}));
+        QCOMPARE(capOf(vm, "stt").value("where").toString(), QStringLiteral("external"));
+        QCOMPARE(capOf(vm, "diar").value("where").toString(), QStringLiteral("local-tanara"));
+        QCOMPARE(capOf(vm, "voice").value("where").toString(), QStringLiteral("local-tanara"));
+        QCOMPARE(capOf(vm, "summary").value("where").toString(), QStringLiteral("local-server"));
+        QCOMPARE(capOf(vm, "tags").value("where").toString(), QStringLiteral("basic"));
+        QCOMPARE(capOf(vm, "tags").value("route").toString(), QStringLiteral("basic"));
+        // Voice: only local; the other segments say why.
+        for (const QVariant& o : capOf(vm, "voice").value("options").toList()) {
+            const QVariantMap m = o.toMap();
+            if (m.value("value") == QStringLiteral("local")) { QVERIFY(m.value("enabled").toBool()); continue; }
+            QVERIFY(!m.value("enabled").toBool());
+            QVERIFY(m.value("reason").toString().contains(QStringLiteral("hanglenyomat"), Qt::CaseInsensitive));
+        }
+
+        // A route change follows at once (the list is the cards' only source).
+        QSignalSpy changed(&vm, &SettingsViewModel::processingChanged);
+        QVERIFY(vm.setRoute(QStringLiteral("stt"), QStringLiteral("local")));
+        QVERIFY(changed.size() >= 1);
+        QCOMPARE(capOf(vm, "stt").value("route").toString(), QStringLiteral("local"));
+        QCOMPARE(capOf(vm, "stt").value("where").toString(), QStringLiteral("local-server"));
+        // Diarization External after a Whisper transcriber: nobody separates the speakers.
+        QVERIFY(vm.setRoute(QStringLiteral("diarization"), QStringLiteral("external")));
+        QCOMPARE(capOf(vm, "diar").value("status").toString(), QStringLiteral("none"));
+        QVERIFY(vm.setRoute(QStringLiteral("stt"), QStringLiteral("external")));
+        QCOMPARE(capOf(vm, "diar").value("status").toString(), QStringLiteral("ok"));   // Soniox separates
+
+        // Missing models: the pill and the attention dot.
+        vm.setDemoState(QStringLiteral("B08none"));
+        QCOMPARE(capOf(vm, "voice").value("status").toString(), QStringLiteral("missing"));
+        QVERIFY(capOf(vm, "voice").value("warn").toBool());
+        QVERIFY(!capOf(vm, "voice").value("warnText").toString().isEmpty());
+        QCOMPARE(vm.expandedCards(), QStringList{QStringLiteral("voice")});   // the state's card is open
+        vm.setDemoState(QStringLiteral("B08segmissing"));
+        QCOMPARE(capOf(vm, "diar").value("status").toString(), QStringLiteral("missing"));
+        QVERIFY(capOf(vm, "diar").value("warn").toBool());
+        QVERIFY(!capOf(vm, "voice").value("warn").toBool());
+        vm.setDemoState(QStringLiteral("B08segmismatch"));     // the float model parked: still missing
+        QCOMPARE(capOf(vm, "diar").value("status").toString(), QStringLiteral("missing"));
+        QVERIFY(vm.segmentationModels()->acceptMismatch(QStringLiteral("pyannote-segmentation-3.0")).isEmpty());
+        QCOMPARE(capOf(vm, "diar").value("status").toString(), QStringLiteral("unverified"));   // "Mégis használom"
+        QVERIFY(capOf(vm, "diar").value("warn").toBool());
+
+        // Providers: a missing key, a failed test.
+        vm.setDemoState(QStringLiteral("B04"));
+        QCOMPARE(capOf(vm, "stt").value("status").toString(), QStringLiteral("none"));
+        QVERIFY(capOf(vm, "stt").value("warn").toBool());
+        QVERIFY(!capOf(vm, "summary").value("warn").toBool());
+        vm.setDemoState(QStringLiteral("B05"));
+        QCOMPARE(capOf(vm, "summary").value("status").toString(), QStringLiteral("ok"));
+        QVERIFY(capOf(vm, "summary").value("warn").toBool());
+        QVERIFY(!capOf(vm, "stt").value("warn").toBool());
+
+        // Cloud that cannot run yet: "Hamarosan" (stt warns, the background embedding does not).
+        vm.setDemoState(QStringLiteral("cloudSelected"));
+        QCOMPARE(capOf(vm, "stt").value("status").toString(), QStringLiteral("soon"));
+        QVERIFY(capOf(vm, "stt").value("warn").toBool());
+        vm.setDemoState(QStringLiteral("B04embeddingCloud"));
+        QCOMPARE(capOf(vm, "tags").value("status").toString(), QStringLiteral("soon"));
+        QVERIFY(!capOf(vm, "tags").value("warn").toBool());
+
+        // Ask with the live cloud: the own path is External (Soniox).
+        vm.setDemoState(QStringLiteral("processingSttAsk"));
+        QCOMPARE(capOf(vm, "stt").value("route").toString(), QStringLiteral("ask"));
+        QCOMPARE(capOf(vm, "stt").value("where").toString(), QStringLiteral("ask"));
+        QCOMPARE(capOf(vm, "stt").value("ownRoute").toString(), QStringLiteral("external"));
+        QCOMPARE(capOf(vm, "stt").value("status").toString(), QStringLiteral("ok"));
+        for (const QVariant& o : capOf(vm, "stt").value("options").toList())
+            QVERIFY2(o.toMap().value("enabled").toBool(), qPrintable(o.toMap().value("value").toString()));
+    }
+
+    void serviceShimsAreGone()
+    {
+        const QMetaObject* mo = &SettingsViewModel::staticMetaObject;
+        for (const char* prop : {"serviceMode", "localDiarization"})
+            QCOMPARE(mo->indexOfProperty(prop), -1);
+        QCOMPARE(mo->indexOfSignal("serviceModeChanged()"), -1);
+        QCOMPARE(mo->indexOfSignal("diarizationChanged()"), -1);
+        for (const char* prop : {"capabilities", "expandedCards", "summaryAdvancedOpen", "summaryPromptsLocked",
+                                 "summaryPromptNotice"})
+            QVERIFY2(mo->indexOfProperty(prop) >= 0, prop);
+    }
+
+    // Ádám's security decision: on the Cloud summary route the prompts are read-only; switching there with an
+    // own prompt shows the notice; nothing is deleted.
+    void cloudPromptLockAndNotice()
+    {
+        SettingsViewModel vm;
+        vm.setDemoState(QStringLiteral("processingSttAsk"));   // the cloud is live, no own prompt
+        QVERIFY(!vm.summaryPromptsLocked());
+        QVERIFY(!vm.anyPromptModified());
+        QVERIFY(vm.setRoute(QStringLiteral("llm"), QStringLiteral("cloud")));
+        QVERIFY(vm.summaryPromptsLocked());
+        QVERIFY(!vm.summaryPromptNotice());                    // no own prompt: nothing to say
+
+        vm.setDemoState(QStringLiteral("processingSummaryCloud"));
+        QCOMPARE(vm.route(QStringLiteral("llm")), QStringLiteral("cloud"));
+        QVERIFY(vm.dirty());                                   // the switch is not saved yet
+        QVERIFY(vm.summaryPromptsLocked());
+        QVERIFY(vm.summaryPromptNotice());
+        QVERIFY(vm.summaryAdvancedOpen());
+        QVERIFY(vm.expandedCards().contains(QStringLiteral("summary")));
+        QVERIFY(vm.promptModified());
+        const QString own = vm.promptText();
+
+        // Back to the own path: unlocked, no notice; again Cloud: both again.
+        QSignalSpy changed(&vm, &SettingsViewModel::processingChanged);
+        QVERIFY(vm.setRoute(QStringLiteral("llm"), QStringLiteral("local")));
+        QVERIFY(!vm.summaryPromptsLocked());
+        QVERIFY(!vm.summaryPromptNotice());
+        QVERIFY(changed.size() >= 1);
+        QVERIFY(vm.setRoute(QStringLiteral("llm"), QStringLiteral("cloud")));
+        QVERIFY(vm.summaryPromptsLocked());
+        QVERIFY(vm.summaryPromptNotice());
+
+        // Saved: still locked, the notice was about the switch; the own prompt is kept.
+        QVERIFY(vm.save());
+        QVERIFY(vm.summaryPromptsLocked());
+        QVERIFY(!vm.summaryPromptNotice());
+        QCOMPARE(vm.promptText(), own);
+        QVERIFY(vm.promptModified());
+    }
+
+    void openPageExpandsTheCardAndTheSummaryAdvancedBlock()
+    {
+        SettingsViewModel vm;
+        vm.setDemoState(QStringLiteral("B01"));
+        QVERIFY(!vm.summaryAdvancedOpen());
+        QVERIFY(vm.expandedCards().isEmpty());
+        // The old Summary page = the prompts: processing#summary with "Haladó" open.
+        vm.openPage(QStringLiteral("summary"));
+        QCOMPARE(vm.page(), QStringLiteral("processing"));
+        QCOMPARE(vm.section(), QStringLiteral("summary"));
+        QVERIFY(vm.summaryAdvancedOpen());
+        QVERIFY(vm.llm()->advancedOpen());                     // the LLM's advanced fields live in that block
+        QVERIFY(vm.expandedCards().contains(QStringLiteral("summary")));
+        vm.setSummaryAdvancedOpen(false);
+        // The LLM's settings (key, unreachable server): the card, "Haladó" stays as it was.
+        vm.openPage(QStringLiteral("providers"), QStringLiteral("llm"));
+        QCOMPARE(vm.section(), QStringLiteral("summary"));
+        QVERIFY(!vm.summaryAdvancedOpen());
+        // A jump opens its card; closing and unknown keys.
+        vm.openPage(QStringLiteral("processing"), QStringLiteral("tags"));
+        QVERIFY(vm.expandedCards().contains(QStringLiteral("tags")));
+        QSignalSpy expanded(&vm, &SettingsViewModel::expandedCardsChanged);
+        vm.setCardExpanded(QStringLiteral("tags"), false);
+        QVERIFY(!vm.expandedCards().contains(QStringLiteral("tags")));
+        vm.setCardExpanded(QStringLiteral("nincs"), true);
+        vm.setCardExpanded(QStringLiteral("tags"), false);
+        QCOMPARE(expanded.size(), 1);
+        // The diarization fix target (OverviewSpeakers) lands on the separation card.
+        vm.openPage(QStringLiteral("diarization"));
+        QCOMPARE(vm.section(), QStringLiteral("diar"));
+        QVERIFY(vm.expandedCards().contains(QStringLiteral("diar")));
+    }
+
+    void processingPageRendersTheCardStates()
+    {
+        QQmlEngine engine;
+        setupEngine(engine);
+        QStringList warnings;
+        connect(&engine, &QQmlEngine::warnings, this, [&warnings](const QList<QQmlError>& list) {
+            for (const QQmlError& e : list) warnings << e.toString();
+        });
+        const auto open = [&engine](const QString& state) {
+            QQmlComponent comp(&engine);
+            comp.loadFromModule("Tanara", "SettingsWindow");
+            std::unique_ptr<QObject> obj(comp.createWithInitialProperties({{QStringLiteral("demoState"), state}}));
+            if (auto* win = qobject_cast<QQuickWindow*>(obj.get())) win->show();
+            QTest::qWait(150);
+            return obj;
+        };
+        const auto item = [](QObject* obj, const QString& name) {
+            return findItem(qobject_cast<QQuickWindow*>(obj)->contentItem(), name);
+        };
+        const auto shown = [&item](QObject* obj, const QString& name) {
+            QQuickItem* i = item(obj, name);
+            return i && i->isVisible();
+        };
+        const QStringList keys{"stt", "diar", "voice", "summary", "tags"};
+        {
+            // All collapsed: every header, no body; the pills say "Beállítva".
+            auto obj = open(QStringLiteral("processing"));
+            for (const QString& k : keys) {
+                QVERIFY2(shown(obj.get(), "card-" + k), qPrintable(k));
+                QVERIFY2(!shown(obj.get(), "cardBody-" + k), qPrintable(k));
+                QCOMPARE(item(obj.get(), "cardStatus-" + k)->property("text").toString(), QStringLiteral("Beállítva"));
+            }
+            // The header opens the card; a route change re-binds the card at once.
+            QMetaObject::invokeMethod(item(obj.get(), "cardHeader-stt"), "clicked");
+            QTRY_VERIFY(shown(obj.get(), "cardBody-stt"));
+            QCOMPARE(item(obj.get(), "card-stt")->property("route").toString(), QStringLiteral("external"));
+            auto* vm = qobject_cast<SettingsViewModel*>(obj->property("vm").value<QObject*>());
+            QVERIFY(vm->setRoute(QStringLiteral("stt"), QStringLiteral("local")));
+            QTRY_COMPARE(item(obj.get(), "card-stt")->property("route").toString(), QStringLiteral("local"));
+            QCOMPARE(item(obj.get(), "card-stt")->property("where").toString(), QStringLiteral("local-server"));
+            QCOMPARE(item(obj.get(), "cardRoute-stt")->property("value").toString(), QStringLiteral("local"));
+        }
+        {
+            // Transcription asks: the reason and the two paths.
+            auto obj = open(QStringLiteral("processingSttAsk"));
+            QVERIFY(shown(obj.get(), "cardBody-stt"));
+            QVERIFY(shown(obj.get(), "askNote-stt"));
+            QVERIFY(shown(obj.get(), "askOwn-stt"));
+            QVERIFY(shown(obj.get(), "askCloud-stt"));
+        }
+        {
+            // A missing voice model: the pill, the empty state, the dot.
+            auto obj = open(QStringLiteral("B08none"));
+            QVERIFY(shown(obj.get(), "cardBody-voice"));
+            QCOMPARE(item(obj.get(), "cardStatus-voice")->property("text").toString(), QStringLiteral("Modell hiányzik"));
+            QVERIFY(shown(obj.get(), "voiceModelsNone"));
+            QTRY_VERIFY(item(obj.get(), "nav-processing-voice")->property("warned").toBool());
+        }
+        {
+            // Summary on Cloud with an own prompt: read-only editor, the lock line, the notice.
+            auto obj = open(QStringLiteral("processingSummaryCloud"));
+            QVERIFY(shown(obj.get(), "cardBody-summary"));
+            QVERIFY(shown(obj.get(), "summaryAdvanced"));
+            QVERIFY(shown(obj.get(), "promptLock"));
+            QVERIFY(shown(obj.get(), "promptNotice"));
+            QVERIFY(item(obj.get(), "promptEditor")->property("readOnly").toBool());
+            auto* vm = qobject_cast<SettingsViewModel*>(obj->property("vm").value<QObject*>());
+            QVERIFY(vm->setRoute(QStringLiteral("llm"), QStringLiteral("local")));
+            QTRY_VERIFY(!item(obj.get(), "promptEditor")->property("readOnly").toBool());
+            QVERIFY(!shown(obj.get(), "promptLock"));
+        }
+        {
+            // Tag suggestions on the basic level: no endpoint; "Haladó" holds the rejected suggestions.
+            auto obj = open(QStringLiteral("B04embeddingNone"));
+            QVERIFY(shown(obj.get(), "cardBody-tags"));
+            QCOMPARE(item(obj.get(), "cardRoute-tags")->property("value").toString(), QStringLiteral("basic"));
+            QVERIFY(!shown(obj.get(), "embeddingCard"));
+            QVERIFY(shown(obj.get(), "tagSuggestionSettings"));
+            QVERIFY(!shown(obj.get(), "rejectedReset"));
+            QMetaObject::invokeMethod(item(obj.get(), "tagsAdvancedToggle"), "clicked");
+            QTRY_VERIFY(shown(obj.get(), "rejectedReset"));
+        }
+        QVERIFY2(warnings.isEmpty(), qPrintable(warnings.join(QLatin1Char('\n'))));
+    }
+
     // ---- the window and its host ----
 
     void windowLoadsEveryDemoStateWithoutWarnings_data()
@@ -1845,7 +2103,8 @@ private slots:
                                "B04embedding", "B04embeddingRunning", "B04embeddingError", "B04embeddingDone",
                                "B04embeddingCloud", "B04embeddingNone", "B04modelChange", "rejectedReset",
                                "B08", "B08download", "B08none", "B08error", "B08offline", "B08backfill",
-                               "B08partial", "B08bundled", "B08diaroff", "B08segmissing", "B08segmismatch"})
+                               "B08partial", "B08bundled", "B08diaroff", "B08segmissing", "B08segmismatch",
+                               "processing", "processingSttAsk", "processingSummaryCloud"})
             QTest::addRow("%s", st) << QString::fromLatin1(st);
     }
     void windowLoadsEveryDemoStateWithoutWarnings()

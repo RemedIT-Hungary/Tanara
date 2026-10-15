@@ -65,7 +65,6 @@ struct SettingsScenario {
     QString page;          // "" -> general; a page key or an old name (as SettingsViewModel::openPage)
     QString section;       // the page's jump point ("" -> the old name's / the focusField's)
     QString focusField;    // "" | "stt" | "llm"
-    QString serviceMode;   // "" -> own
     // The unsaved draft (differs from the saved settings), if the state shows one.
     std::optional<AppSettings> draft;
     bool liveCallActive = false;
@@ -80,6 +79,7 @@ struct SettingsScenario {
     bool llmAdvancedOpen = false;
     std::optional<providers::llmctx::LlmServerInfo> llmServer;
     int promptIndex = 0;
+    bool summaryAdvancedOpen = false;   // the summary card's "Haladó" block (prompts) is open
 
     // ---- "Getting started" window ----
     QString onboardingStep;                       // "" -> the first step

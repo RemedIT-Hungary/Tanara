@@ -22,8 +22,9 @@ import QtQuick.Templates as T
 // · B04embeddingNone · B04modelChange · rejectedReset (confirmation)
 // · B08 · B08download · B08none · B08fallback · B08error · B08offline · B08backfill · B08partial · B08bundled
 //   · B08diaroff · B08segmissing · B08segdownload · B08segmismatch · B08seginstalled
-//   (Speakers page: voice models, voiceprint backfill, the local speaker separation: the switch + the
-//    segmentation models)
+//   (Processing: voice models, the speaker separation's route + segmentation models; People: the backfill)
+// · processing (every card collapsed) · processingSttAsk (transcription asks: Soniox or Tanara Cloud)
+// · processingSummaryCloud (summary switched to Cloud with an own prompt: the prompt lock + notice)
 ApplicationWindow {
     id: window
 
@@ -125,22 +126,14 @@ ApplicationWindow {
         { key: "people", label: qsTr("Személyek és minták"), icon: "users", children: [] }
     ]
 
-    // The jump points that need attention (key -> the dot's tooltip). Only the cheap signals:
-    // a provider gap (on its card's jump point), no voice model, no segmentation model. Plain bool
-    // properties first: the compiled object-building binding alone did not track the deeper reads.
-    readonly property bool sttGap: !model.stt.configured || model.stt.testState === "failed"
-    readonly property bool llmGap: !model.llm.configured || model.llm.testState === "failed"
-    readonly property bool warnStt: model.servicesWarn && (sttGap || !llmGap)
-    readonly property bool warnSummary: model.servicesWarn && llmGap
-    readonly property bool warnDiar: model.localDiarization && !model.segmentationModels.anyAvailable
-    readonly property bool warnVoice: !model.voiceModels.anyAvailable
+    // The jump points that need attention (key -> the dot's tooltip): the Processing cards' status
+    // (vm.capabilities: a missing / failing provider, a missing or unverified model). The binding reads
+    // the list itself, so it follows every change.
     readonly property var warnings: {
         const w = {}
-        const providerText = qsTr("Egy szolgáltató beállítása hiányzik vagy nem érhető el")
-        if (window.warnStt) w.stt = providerText
-        if (window.warnSummary) w.summary = providerText
-        if (window.warnDiar) w.diar = qsTr("Nincs szegmentáló modell")
-        if (window.warnVoice) w.voice = qsTr("Nincs letöltött hangmodell")
+        const caps = model.capabilities
+        for (let i = 0; i < caps.length; ++i)
+            if (caps[i].warn) w[caps[i].key] = caps[i].warnText
         return w
     }
 
@@ -191,8 +184,9 @@ ApplicationWindow {
         }
         if (flash && item) item.flash()
     }
-    // The section in view: the last one whose top is above the upper third (at the bottom of the
-    // page the last visible one, which may be too short to get there).
+    // The section in view: the last one whose top is above the upper third (at the top of the page
+    // the first one -- collapsed cards are short, several fit above that line --, at the bottom the
+    // last visible one, which may be too short to get there).
     function followScroll() {
         if (window.jumping) return
         const keys = window.sectionKeys(model.page)
@@ -200,12 +194,13 @@ ApplicationWindow {
         let best = ""
         let last = ""
         const line = content.contentY + Math.max(90, content.height * 0.3)
+        const atTop = content.contentY <= 1
         for (const key of keys) {
             const item = window.sectionItem(key)
             if (!item || item.height <= 0) continue
             if (best === "") best = key
             last = key
-            if (window.sectionY(item) <= line) best = key
+            if (!atTop && window.sectionY(item) <= line) best = key
         }
         if (content.contentY > 0 && content.contentY >= content.contentHeight - content.height - 2) best = last
         if (best !== "") model.section = best
@@ -256,7 +251,10 @@ ApplicationWindow {
                     const switching = model.page !== page
                     model.page = page
                     model.section = key
-                    if (!switching) {
+                    // A processing card opens first; the jump waits for the layout.
+                    const opening = page === "processing" && model.expandedCards.indexOf(key) < 0
+                    if (page === "processing") model.setCardExpanded(key, true)
+                    if (!switching && !opening) {
                         window.scrollToSection(key, true, true)
                     } else {
                         // The new page lays out first.
@@ -339,61 +337,17 @@ ApplicationWindow {
                         }
                     }
 
-                    // ---- Processing: today's Services, Speakers and Summary blocks in the chain's
-                    // order (transcription, separation, recognition, summary, tags). Earlier
-                    // sections stack above later ones (z): a card's dropdown overlaps the next.
-                    Column {
+                    // ---- Processing: the capability cards in the chain's order (transcription,
+                    // separation, recognition, summary, tags) ----
+                    SettingsProcessingPage {
                         id: processingPage
                         visible: model.page === "processing"
                         width: parent.width
-                        spacing: 28
-                        SettingsSection {
-                            key: "stt"
-                            z: 5
-                            width: parent.width
-                            SettingsServicesPage {
-                                part: "stt"
-                                width: parent.width
-                                vm: model
-                                demoDropdown: window.demoState === "B04"
-                            }
-                        }
-                        SettingsSection {
-                            key: "diar"
-                            z: 4
-                            width: Math.min(parent.width, 600)
-                            SettingsSpeakersPage { part: "diar"; width: parent.width; vm: model }
-                        }
-                        SettingsSection {
-                            key: "voice"
-                            z: 3
-                            width: Math.min(parent.width, 600)
-                            SettingsSpeakersPage { part: "voice"; width: parent.width; vm: model }
-                        }
-                        SettingsSection {
-                            key: "summary"
-                            z: 2
-                            width: parent.width
-                            spacing: 20
-                            SettingsServicesPage { part: "summary"; width: parent.width; vm: model }
-                            SettingsSummaryPage {
-                                width: parent.width
-                                vm: model
-                                onResetRequested: resetDialog.open()
-                                onSchemaRequested: schemaDialog.open()
-                            }
-                        }
-                        SettingsSection {
-                            key: "tags"
-                            z: 1
-                            width: parent.width
-                            SettingsServicesPage {
-                                part: "tags"
-                                width: parent.width
-                                vm: model
-                                onRejectedResetRequested: rejectedDialog.open()
-                            }
-                        }
+                        vm: model
+                        demoDropdown: window.demoState === "B04"
+                        onResetRequested: resetDialog.open()
+                        onSchemaRequested: schemaDialog.open()
+                        onRejectedResetRequested: rejectedDialog.open()
                     }
 
                     // ---- Tanara Cloud: the account and the account-level tier ----
@@ -405,9 +359,8 @@ ApplicationWindow {
                     }
 
                     // ---- People and samples: your name and voiceprint, the voiceprint backfill ----
-                    SettingsSpeakersPage {
+                    SettingsPeoplePage {
                         id: peoplePage
-                        part: "people"
                         visible: model.page === "people"
                         width: Math.min(parent.width, 600)
                         vm: model
