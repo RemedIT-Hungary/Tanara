@@ -366,6 +366,66 @@ void OverviewDemoFacade::setContextNote(const QString& meetingId, const QString&
     emit changed(meetingId);
 }
 
+// ---- S5: the split button ----
+
+tanara::library::RouteChoices OverviewDemoFacade::routeChoices(tanara::providers::Capability cap,
+                                                               const QString&) const
+{
+    using tanara::providers::Route;
+    tanara::library::RouteChoices c;
+    if (cap != tanara::providers::Capability::Stt && cap != tanara::providers::Capability::Llm) return c;
+    const bool ask = m_scenario == QLatin1String("overviewRouteAsk");
+    c.available = true;
+    c.cloudLive = ask;
+    c.stored = m_storedRoutes.value(int(cap), ask ? Route::Ask : Route::Local);
+    const bool stt = cap == tanara::providers::Capability::Stt;
+    tanara::library::RouteChoiceRow local;
+    local.route = Route::Local;
+    local.provider = stt ? QStringLiteral("Whisper") : QStringLiteral("LM Studio");
+    local.etaSeconds = stt ? 120 : 90;
+    c.rows << local;
+    if (stt) {
+        tanara::library::RouteChoiceRow external;
+        external.route = Route::External;
+        external.provider = QStringLiteral("Soniox");
+        external.etaSeconds = 75;
+        c.rows << external;
+    }
+    tanara::library::RouteChoiceRow cloud;
+    cloud.route = Route::Cloud;
+    cloud.provider = demoText("Pontos", "Accurate");
+    if (!ask) cloud.blocker = QStringLiteral("cloud_unavailable");
+    c.rows << cloud;
+    return c;
+}
+
+void OverviewDemoFacade::estimateCloud(tanara::providers::WorkflowStep step, const QString&,
+                                       std::function<void(const tanara::library::CloudRunEstimate&)> done)
+{
+    if (!done) return;
+    tanara::library::CloudRunEstimate e;
+    e.ok = true;
+    const bool stt = step == tanara::providers::WorkflowStep::Transcribe;
+    e.cost = stt ? demoText("0,12 €", "€0.12") : demoText("0,04 €", "€0.04");
+    e.balance = demoText("8,40 €", "€8.40");
+    e.level = QStringLiteral("enough");
+    e.etaSeconds = stt ? 60 : 30;
+    done(e);
+}
+
+bool OverviewDemoFacade::setDefaultRoute(tanara::providers::Capability cap, tanara::providers::Route route)
+{
+    using tanara::providers::Route;
+    if (route == Route::Basic) return false;
+    if (route == Route::Cloud || route == Route::Ask) {
+        if (m_scenario != QLatin1String("overviewRouteAsk")) return false;   // the cloud is not live here
+    }
+    if (route == Route::External && cap != tanara::providers::Capability::Stt) return false;
+    m_storedRoutes.insert(int(cap), route);
+    emit changed(QString());
+    return true;
+}
+
 tanara::library::OverviewSnapshot OverviewDemoFacade::build() const
 {
     tanara::library::OverviewSnapshot s;
@@ -385,7 +445,8 @@ tanara::library::OverviewSnapshot OverviewDemoFacade::build() const
     const bool nobody = st == QLatin1String("overviewNobody");
     // After recording, before the transcript (like the empty state, "Start transcription" in the step); ...Error: with an error.
     const bool recordedError = st == QLatin1String("overviewRecordedError");
-    const bool recorded = recordedError || st == QLatin1String("overviewRecorded");
+    const bool recorded = recordedError || st == QLatin1String("overviewRecorded")
+                       || st == QLatin1String("overviewRouteAsk") || st == QLatin1String("overviewRouteSoon");
     // No voice model: recorded, not transcribed, the voice step blocked; one manual participant.
     const bool noModel = st == QLatin1String("overviewNoVoiceModel");
 

@@ -35,6 +35,8 @@ import QtQuick.Templates as T
 // overviewRecorded|overviewRecordedError|overviewTranscribing"'; the card's states: overviewNaming |
 // overviewSameVoice | overviewWhichVoice (the panels open) | overviewVoiceless | overviewThreeTracks |
 // overviewApproved | overviewSkipped | overviewSolo | overviewNoVoiceModel (OverviewDemoFacade).
+// S5, the split button's menu open: overviewRouteAsk (stored Ask, the Cloud estimate) | overviewRouteSoon
+// (stored Local, Tanara Cloud "coming soon").
 Item {
     id: root
 
@@ -55,7 +57,9 @@ Item {
     onMeetingIdChanged: { stepsOpen = false; tracksOpen = false; changeBar.dismiss() }
 
     // The V5-like (two-track, empty) demo states.
-    readonly property bool demoTwoTracks: ["overviewEmpty", "overviewNobody", "overviewRecorded",
+    // S5: the split button's menu open by itself (Ask with the Cloud estimate / Cloud "coming soon").
+    readonly property bool demoRoute: root.demoState === "overviewRouteAsk" || root.demoState === "overviewRouteSoon"
+    readonly property bool demoTwoTracks: root.demoRoute || ["overviewEmpty", "overviewNobody", "overviewRecorded",
                                            "overviewRecordedError", "overviewTranscribing",
                                            "overviewNoVoiceModel"].indexOf(root.demoState) >= 0
     // The "Who was there?" card's states with candidates (the transcription runs meanwhile).
@@ -107,7 +111,7 @@ Item {
         id: pre
         meetingId: vm.hasTranscript ? "" : root.meetingId
         demoState: root.demoState === "overviewRecordedError" ? "failed"
-                 : root.demoState === "overviewRecorded" ? "readyNote"
+                 : root.demoState === "overviewRecorded" || root.demoRoute ? "readyNote"
                  : root.demoState === "overviewTranscribing" ? "uploading"
                  : root.demoState === "overviewNoVoiceModel" ? "readyNote"
                  : root.demoState === "overviewProcessing" || root.demoState === "overviewEmpty"
@@ -186,9 +190,10 @@ Item {
     // Demo / screenshots: the card's panels open by themselves in their design states.
     Timer {
         id: demoPanelTimer
-        interval: 250
-        running: ["overviewNaming", "overviewSameVoice", "overviewWhichVoice", "overviewDiarizeAsk"].indexOf(root.demoState) >= 0
+        interval: root.demoRoute ? 600 : 250   // the route menu waits for the steps' layout
+        running: root.demoRoute || ["overviewNaming", "overviewSameVoice", "overviewWhichVoice", "overviewDiarizeAsk"].indexOf(root.demoState) >= 0
         onTriggered: {
+            if (root.demoRoute) { vm.prepareRoutes("transcript"); vm.menuRequested("transcript"); return }
             if (root.demoState === "overviewDiarizeAsk") { root.askDiarize(); return }
             if (root.demoState === "overviewNaming") participantsCard.openNaming("v1", false)
             else if (root.demoState === "overviewSameVoice") participantsCard.openNaming("v2", true)
@@ -216,10 +221,52 @@ Item {
     // "Start analysis" / "Reanalyze": after transcription the same as the menu's "Redo voiceprint
     // analysis" (shell); before it, voice analysis of the raw tracks (analyzeParticipants).
     // The same path as the Summary tab's "Create summary" (and the tab's hover panel).
+    // S5: the stored route (Ask: the step's ▾ menu opens instead; a menu row starts with its route).
     function startSummary() {
         root.commitSource()
-        if (root.shell) root.shell.startQuickSummary(root.meetingId)
+        vm.startDefault("summary")
     }
+    // S5: the split buttons' menus live here, outside the steps' repeater (it rebuilds the step panels on every
+    // model change, which would close an open menu); the panels register their split button as the anchor.
+    property Item transcriptMenuAnchor: null
+    property Item summaryMenuAnchor: null
+    // The menu hangs below its split button (its visual parent, so it follows the layout); a rebuilt panel's
+    // new button takes it over while it is open.
+    function placeRouteMenu(step) {
+        const menu = step === "summary" ? summaryMenu : transcriptMenu
+        const anchor = step === "summary" ? root.summaryMenuAnchor : root.transcriptMenuAnchor
+        if (!anchor) return
+        menu.parent = anchor
+        menu.x = 0
+        menu.y = anchor.height + 4
+    }
+    function openRouteMenu(step) {
+        root.placeRouteMenu(step)
+        const menu = step === "summary" ? summaryMenu : transcriptMenu
+        menu.openFor()
+    }
+    onTranscriptMenuAnchorChanged: if (transcriptMenu.visible) root.placeRouteMenu("transcript")
+    onSummaryMenuAnchorChanged: if (summaryMenu.visible) root.placeRouteMenu("summary")
+    Connections {
+        target: vm
+        // A run may start (the default path, or a menu row's route): the shell's starters.
+        function onStartRequested(step, route) {
+            if (!root.shell) return
+            root.commitSource()
+            if (step === "transcript") {
+                if (route === "") root.shell.startTranscription(root.meetingId)
+                else root.shell.startTranscription(root.meetingId, route)
+            } else if (step === "summary") {
+                if (route === "") root.shell.startQuickSummary(root.meetingId)
+                else root.shell.startQuickSummary(root.meetingId, route)
+            }
+        }
+        function onMenuRequested(step) { root.openRouteMenu(step) }
+        // A route the menu refused (cloud not live, no estimate yet ...): the reason as a toast.
+        function onRouteRejected(step, reason) { if (root.shell) root.shell.toast(reason) }
+    }
+    RouteMenu { id: transcriptMenu; objectName: "transcriptRouteMenu"; vm: root.vm; step: "transcript" }
+    RouteMenu { id: summaryMenu; objectName: "summaryRouteMenu"; vm: root.vm; step: "summary" }
     function reanalyze() {
         if (vm.hasTranscript) { if (root.shell) root.shell.identifyParticipants(root.meetingId) }
         else vm.reanalyze()
@@ -639,10 +686,14 @@ Item {
     Component {
         id: transcribeStep
         TranscribeStepPanel {
+            objectName: "transcribeStepPanel"
             vm: pre
+            overview: root.vm
             shell: root.shell
             meetingId: root.meetingId
             onStartRequested: root.commitSource()
+            onRouteMenuRequested: root.openRouteMenu("transcript")
+            Component.onCompleted: root.transcriptMenuAnchor = splitButton
         }
     }
     // The speakers' controls in the "Transcript" step of a finished transcript (D5).
@@ -689,17 +740,19 @@ Item {
         id: summaryStepPanel
         ColumnLayout {
             spacing: 6
-            TButton {
-                objectName: "summaryStartButton"
+            TSplitButton {
+                id: summarySplit
+                mainObjectName: "summaryStartButton"
+                menuObjectName: "summaryStartMenu"
                 visible: root.summaryPhase === "ready" || root.summaryPhase === "noTranscript"
                 text: qsTr("Összefoglaló készítése")
-                variant: "primary"
-                size: "small"
                 enabled: root.summaryStep.canStart === true
                 iconName: enabled ? "sparkles" : "lock"
-                iconSize: 14
+                showMenuButton: (root.summaryStep.routeOptions || []).length > 1
                 toolTipText: enabled ? "" : qsTr("Az összefoglaló az átiratból készül: előbb az átírásnak kell elkészülnie.")
                 onClicked: root.startSummary()
+                onMenuRequested: root.openRouteMenu("summary")
+                Component.onCompleted: root.summaryMenuAnchor = summarySplit
             }
             TButton {
                 objectName: "summaryFixButton"

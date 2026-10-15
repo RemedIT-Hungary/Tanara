@@ -11,12 +11,28 @@ import QtQuick.Layouts
 //     "Feel free to keep working meanwhile" row and "Cancel" (cancelJob(..., Transcribe)). The
 //     overall progress and the estimated time are in the step's subtext and strip.
 // vm: PreTranscriptViewModel · shell: ShellActions or null · meetingId: the meeting.
+// overview: the Overview's OverviewViewModel or null (S5): "Átírás indítása ▾" is a split button; the main
+// part runs the stored route (overview.startDefault; Ask: the menu opens instead), ▾ asks the owner for the
+// route menu (routeMenuRequested); the owner handles overview.startRequested (the shell's starter).
 ColumnLayout {
     id: root
 
     property var vm: null
     property var shell: null
     property string meetingId: ""
+    property var overview: null
+    readonly property string storedRoute: {
+        if (!root.overview) return ""
+        for (const s of root.overview.steps)
+            if (s.key === "transcript") return s.route || ""
+        return ""
+    }
+    readonly property var routeOptions: {
+        if (!root.overview) return []
+        for (const s of root.overview.steps)
+            if (s.key === "transcript") return s.routeOptions || []
+        return []
+    }
 
     readonly property bool failed: vm !== null && vm.state === "failed"
     readonly property bool running: vm !== null && vm.state === "running"
@@ -32,8 +48,13 @@ ColumnLayout {
     }
     function start() {
         root.startRequested()
-        if (root.shell) root.shell.startTranscription(root.meetingId)
+        if (root.overview) root.overview.startDefault("transcript")   // -> onStartRequested / the menu
+        else if (root.shell) root.shell.startTranscription(root.meetingId)
     }
+    // The ▾ part: the owner (OverviewTab) opens its route menu below this button (the menu lives outside the
+    // steps' repeater, which rebuilds this panel on every model change).
+    signal routeMenuRequested(Item anchor)
+    readonly property Item splitButton: startSplit
 
     spacing: 8
 
@@ -237,20 +258,22 @@ ColumnLayout {
         visible: !root.failed && !root.running
         Layout.fillWidth: true
         spacing: 5
-        TButton {
-            objectName: "startTranscriptionButton"
+        TSplitButton {
+            id: startSplit
+            mainObjectName: "startTranscriptionButton"
+            menuObjectName: "startTranscriptionMenu"
             text: qsTr("Átírás indítása")
-            variant: "primary"
-            size: "small"
             enabled: root.vm !== null && root.vm.canStart
             iconName: enabled ? "audio-lines" : "lock"
-            iconSize: 14
+            showMenuButton: root.routeOptions.length > 1
             onClicked: root.start()
+            onMenuRequested: root.routeMenuRequested(startSplit)
         }
         TLabel {
             Layout.fillWidth: true
             visible: text !== ""
             text: !root.vm ? ""
+                 : root.vm.canStart && root.storedRoute === "ask" ? qsTr("Indításkor kérdez: hol fusson az átírás")
                  : root.vm.canStart ? qsTr("Szolgáltató: %1").arg(root.vm.providerLabel)
                  : root.blocker.title === undefined ? (root.blocker.reason || "") : ""
             muted: true

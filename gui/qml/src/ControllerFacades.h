@@ -41,6 +41,11 @@ public:
     tanara::providers::ReadinessResult canRun(tanara::providers::WorkflowStep step,
                                               const QString& meetingId) const override;
     bool usesCloud(tanara::providers::WorkflowStep step) const override;
+    tanara::providers::Route storedRoute(tanara::providers::Capability cap) const override;
+    bool cloudLive() const override;
+    bool confirmCloudRuns() const override;
+    void chooseRoute(tanara::providers::Capability cap, const QString& meetingId,
+                     std::optional<tanara::providers::Route> route) override;
 
     void transcribe(const QString& meetingId) override;
     void retranscribe(const QString& meetingId, bool keepBackup) override;
@@ -109,6 +114,11 @@ public:
     bool mergeParticipantInto(const QString& meetingId, const QString& fromId, const QString& intoId) override;
     bool confirmParticipant(const QString& meetingId, const QString& id, bool confirmed) override;
     bool setSelfParticipant(const QString& meetingId, const QString& id, QString* whyNot = nullptr) override;
+    // S5: the split button's routes, the cloud estimate, "Ez legyen az alapértelmezett".
+    tanara::library::RouteChoices routeChoices(tanara::providers::Capability cap, const QString& meetingId) const override;
+    void estimateCloud(tanara::providers::WorkflowStep step, const QString& meetingId,
+                       std::function<void(const tanara::library::CloudRunEstimate&)> done) override;
+    bool setDefaultRoute(tanara::providers::Capability cap, tanara::providers::Route route) override;
 
 private:
     // The audio analysis progress of a meeting (participantAnalysisProgress): track k / N and percent.

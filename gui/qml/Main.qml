@@ -198,6 +198,7 @@ ApplicationWindow {
         onTagFilterRequested: (tagId) => window.filterLibraryByTag(tagId)
         onConfirmRequested: (title, text, confirmLabel, danger) => dialogs.openConfirm(title, text, confirmLabel, danger)
         onRetranscribeDialogRequested: (meetingId) => dialogs.openRetranscribe(meetingId)
+        onRouteChoiceRequested: (meetingId, action, step) => dialogs.openRoute(meetingId, action, step)
         onDeleteDialogRequested: (meetingId, title) => dialogs.openDelete(meetingId, title)
         onRenameRequested: Qt.callLater(header.startRename)
         onImportDialogRequested: (files) => importDialog.openWith(files)

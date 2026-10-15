@@ -14,13 +14,16 @@
 // overviewTranscribing.
 //
 #include <QObject>
+#include <QHash>
 #include <QPointer>
 #include <QTimer>
 #include <QVariantList>
 #include <QVariantMap>
 #include <QtQml/qqmlregistration.h>
 
-namespace tanara::library { class IOverviewFacade; }
+#include <optional>
+
+#include "tanara/library/IOverviewFacade.h"
 
 namespace tanara_qml {
 
@@ -79,6 +82,10 @@ class OverviewViewModel : public QObject {
     // ---- processing ----
     // [{ key, title, sub, state: done|attention|running|waiting, parallel, progress }]
     // progress: 0..100, -1 = no bar, -2 = indeterminate bar.
+    // S5: the "transcript" and "summary" rows also carry the split button's data:
+    //   route: the stored route ("local" | "external" | "cloud" | "ask"; "" = no route info)
+    //   routeOptions: [{ route, label, detail, enabled, reason, isDefault, isCloud }] (one row per route
+    //   the capability offers; the Cloud row's detail is "…" until its estimate arrives: prepareRoutes()).
     Q_PROPERTY(QVariantList steps READ steps NOTIFY changed)
     // The speakers' source and the manual "Beszélők felismerése" (D5): { source: provider | local | none, line,
     // fixTarget, canDiarize, hasNames, speakerCount, running, failed, problem }; empty without a transcript.
@@ -152,6 +159,20 @@ public:
     Q_INVOKABLE void setContextNote(const QString& note);
     Q_INVOKABLE void refresh();
 
+    // ---- S5: the split button (step: "transcript" | "summary") ----
+    // The main part: the stored route. Ask (or a Cloud run that needs the estimate's confirmation) opens the
+    // menu (menuRequested) and returns false; otherwise startRequested(step, "") and true.
+    Q_INVOKABLE bool startDefault(const QString& step);
+    // A menu row: startRequested(step, route) and true; a disabled / unknown route: routeRejected(step,
+    // reason) and false.
+    Q_INVOKABLE bool start(const QString& step, const QString& route);
+    // "Ez legyen az alapértelmezett": cap "stt" | "llm" (or the step key). false: not allowed / not saved.
+    Q_INVOKABLE bool setDefaultRoute(const QString& cap, const QString& route);
+    // The menu opens: the Cloud row's estimate is requested (live cloud only; once per meeting and step).
+    Q_INVOKABLE void prepareRoutes(const QString& step);
+    // The step's rows (the same as the step row's routeOptions).
+    Q_INVOKABLE QVariantList routeOptionsFor(const QString& step) const;
+
     // Monogram from a name ("Varga Árpád" -> "VÁ", "Remote 1" -> "R1"). Static: testable.
     static QString monogramOf(const QString& name);
 
@@ -159,6 +180,11 @@ signals:
     void meetingIdChanged();
     void demoStateChanged();
     void changed();
+    // S5: the split button's main part found an Ask route: the view opens the step's menu.
+    void menuRequested(const QString& step);
+    // A run on the route ("" = the default path) may start: the view calls the shell's starter.
+    void startRequested(const QString& step, const QString& route);
+    void routeRejected(const QString& step, const QString& reason);
 
 private:
     void init();
@@ -166,6 +192,17 @@ private:
     void attach(tanara::library::IOverviewFacade* facade);
     void scheduleReload();
     void reload();
+    QVariantList buildRouteOptions(const QString& step) const;
+    void decorateSteps();
+
+    // S5: the Cloud estimate per step key of the current meeting.
+    struct Estimate {
+        bool pending = false;
+        bool done = false;
+        tanara::library::CloudRunEstimate value;
+    };
+    QHash<QString, Estimate> m_estimates;
+    QHash<QString, tanara::library::RouteChoices> m_choices;   // step key -> the last read routes
 
     QPointer<tanara::library::IOverviewFacade> m_facade;
     bool m_injected = false;

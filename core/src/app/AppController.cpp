@@ -817,6 +817,7 @@ void AppController::finalizeComplexSummary(const QString& meetingId) { d->summar
 // =========================================================================================
 
 library::MeetingJobTracker* AppController::jobs() const      { return d->jobs; }
+library::JobStats*          AppController::jobStats() const  { return d->jobStats.get(); }
 library::MeetingLibrary*    AppController::library() const   { return d->library; }
 library::TrackCatalog*      AppController::tracks() const    { return d->tracks; }
 library::WaveformService*   AppController::waveforms() const { return d->waveforms; }

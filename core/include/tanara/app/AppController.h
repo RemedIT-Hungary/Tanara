@@ -38,6 +38,7 @@ namespace tanara::providers { struct ProviderContext; class ProviderRegistry; }
 namespace tanara::library { class MeetingJobTracker; }
 namespace tanara::app { class Services; }
 namespace tanara::library { class MeetingLibrary; }
+namespace tanara::library { class JobStats; }
 namespace tanara::library { class TrackCatalog; }
 namespace tanara::library { class WaveformService; }
 namespace tanara::library { class PeopleService; }
@@ -75,6 +76,8 @@ public:
     // Per-meeting processing state: running jobs (phases, real progress), persistent errors,
     // derived icon states. See library/jobs/MeetingJobTracker.h.
     library::MeetingJobTracker* jobs() const;
+    // The measured speed of earlier runs (the honest time estimates; S5: the split button's rows).
+    library::JobStats*          jobStats() const;
     // Library sidebar queries: date sections, search, filters, "Waiting for you".
     library::MeetingLibrary*    library() const;
     // "Tracks" tab: friendly names, rename, locate a missing file, delete dropped tracks.

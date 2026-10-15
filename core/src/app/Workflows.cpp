@@ -59,8 +59,10 @@ bool Workflows::analyzeParticipants(const QString& meetingId)
 
 void Workflows::transcribe(const QString& meetingId)
 {
-    if (m_deps.jobs->isRunning(meetingId, JobKind::Transcribe))
+    if (m_deps.jobs->isRunning(meetingId, JobKind::Transcribe)) {
+        clearChosenRoute(providers::Capability::Stt, meetingId);   // the choice was for a run that does not start
         return;   // already running on this meeting (a double click / two views)
+    }
     m_diarizeProblem.remove(meetingId);
 
     Meeting m = m_deps.store->load(meetingId);
@@ -198,6 +200,11 @@ void Workflows::chooseRoute(providers::Capability cap, const QString& meetingId,
     m_chosenRoutes.insert(routeKey(cap, meetingId), r);
 }
 
+void Workflows::clearChosenRoute(providers::Capability cap, const QString& meetingId)
+{
+    m_chosenRoutes.remove(routeKey(cap, meetingId));
+}
+
 providers::Route Workflows::baseRoute(providers::Capability cap) const
 {
     if (const auto it = m_routeOverride.constFind(int(cap)); it != m_routeOverride.constEnd()) return *it;
@@ -241,6 +248,10 @@ providers::Route Workflows::resolveRoute(providers::Capability cap, const QStrin
 
 providers::Route Workflows::route(providers::Capability cap, const QString& meetingId) const
 {
+    // A pending per-run choice (chooseRoute) is the route of the run about to start (the GUI's gate and
+    // cost check read it before the start consumes it).
+    if (const auto chosen = m_chosenRoutes.constFind(routeKey(cap, meetingId)); chosen != m_chosenRoutes.constEnd())
+        return usable(cap, *chosen);
     const providers::Route base = baseRoute(cap);
     const auto it = m_resolvedRoutes.constFind(routeKey(cap, meetingId));
     if (it != m_resolvedRoutes.constEnd() && it->base == base) return usable(cap, it->route);

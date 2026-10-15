@@ -141,11 +141,13 @@ public:
     // The next run of the capability on the meeting takes this route whatever the setting (an explicit
     // per-run choice, e.g. the split button's menu); consumed by that run's resolution.
     void chooseRoute(providers::Capability cap, const QString& meetingId, providers::Route route);
+    // Drops a pending choice of chooseRoute (the start it was made for did not happen).
+    void clearChosenRoute(providers::Capability cap, const QString& meetingId);
     // Resolves the capability's route for a run on the meeting (asks on Ask) and remembers it for the meeting.
     providers::Route resolveRoute(providers::Capability cap, const QString& meetingId);
-    // The route the capability runs on for the meeting, without asking: the remembered resolution while the
-    // stored route is unchanged, else the override / setting (Ask -> the non-cloud route). Never Ask; Cloud
-    // only while the cloud is live. meetingId may be empty (no run context).
+    // The route the capability runs on for the meeting, without asking: a pending chooseRoute choice, else
+    // the remembered resolution while the stored route is unchanged, else the override / setting (Ask ->
+    // the non-cloud route). Never Ask; Cloud only while the cloud is live. meetingId may be empty (no run context).
     providers::Route route(providers::Capability cap, const QString& meetingId = QString()) const;
     // Whether a transcription of this meeting that just finished would run the local diarization.
     bool wantsLocalDiarization(const QString& meetingId) const;

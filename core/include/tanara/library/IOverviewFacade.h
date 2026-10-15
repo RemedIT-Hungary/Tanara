@@ -9,12 +9,53 @@
 // --qml-shot and the tests.
 //
 // The rows are the QML contract's variant maps (see OverviewViewModel's property docs).
+#include "tanara/providers/core/ReadinessModel.h"
+#include "tanara/providers/core/Routes.h"
+
 #include <QObject>
 #include <QString>
 #include <QVariantList>
 #include <QVariantMap>
+#include <QVector>
+
+#include <functional>
 
 namespace tanara::library {
+
+// S5: one route of a capability that a run can take (the split button's menu rows).
+struct RouteChoiceRow {
+    providers::Route route = providers::Route::Local;
+    // The provider's display name on that route: "Whisper", "Soniox", the Tanara Cloud tier ("Pontos").
+    QString provider;
+    // Why the route cannot run now: a providers::routeBlocker code ("cloud_unavailable", ...), or
+    // "not_configured" (the route's provider misses a setting / key: `detail` says what); "" = allowed.
+    QString blocker;
+    QString detail;           // the translated detail of "not_configured" (the readiness text)
+    int etaSeconds = -1;      // the run's estimated length from earlier runs (library::JobStats); -1 = unknown
+};
+
+// S5: the routes of a capability for a run on a meeting.
+struct RouteChoices {
+    bool available = false;   // false: the facade knows no routes (a test double): no split button
+    providers::Route stored = providers::Route::Local;   // the setting (may be Ask)
+    bool cloudLive = false;
+    // A Cloud run needs the cost estimate's confirmation (cloud.estimateBeforeRun): the main part then
+    // opens the menu (the row shows the estimate) instead of starting.
+    bool confirmCloud = true;
+    QVector<RouteChoiceRow> rows;   // Local, External, Cloud (only the routes the capability offers)
+};
+
+// S5: the cost estimate of a Tanara Cloud run (display-ready money texts).
+struct CloudRunEstimate {
+    bool ok = false;          // false: no estimate (error says why)
+    QString cost;             // "0,12 €"
+    QString balance;          // "8,40 €"
+    // "enough" | "littleReserve" (can start, little margin) | "notEnough" (blocked: top-up)
+    QString level;
+    int etaSeconds = -1;
+    bool offline = false;     // the server was not reached (no internet): the local route still works
+    QString error;            // translated; "" when ok
+};
 
 struct OverviewSnapshot {
     bool hasTranscript = false;
@@ -116,6 +157,28 @@ public:
     virtual bool setSelfParticipant(const QString& meetingId, const QString& id, QString* whyNot = nullptr)
     {
         Q_UNUSED(meetingId); Q_UNUSED(id); Q_UNUSED(whyNot);
+        return false;
+    }
+
+    // ---- S5: the per-run route (the split button) ----
+    // The routes of the step's capability (stt / llm) for a run on the meeting. The default: none (no split).
+    virtual RouteChoices routeChoices(providers::Capability cap, const QString& meetingId) const
+    {
+        Q_UNUSED(cap); Q_UNUSED(meetingId);
+        return {};
+    }
+    // The cost estimate of the step on the Tanara Cloud (only asked in live cloud mode); `done` is called
+    // once, possibly later (on the main thread). The default answers "no estimate".
+    virtual void estimateCloud(providers::WorkflowStep step, const QString& meetingId,
+                               std::function<void(const CloudRunEstimate&)> done)
+    {
+        Q_UNUSED(step); Q_UNUSED(meetingId);
+        if (done) done(CloudRunEstimate{});
+    }
+    // "Ez legyen az alapértelmezett": writes the capability's route setting. false: not allowed / not saved.
+    virtual bool setDefaultRoute(providers::Capability cap, providers::Route route)
+    {
+        Q_UNUSED(cap); Q_UNUSED(route);
         return false;
     }
 

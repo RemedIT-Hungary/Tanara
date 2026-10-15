@@ -17,10 +17,13 @@
 #include "tanara/domain/Summary.h"
 #include "tanara/editing/session/SpeakerEditTypes.h"
 #include "tanara/providers/core/ReadinessModel.h"
+#include "tanara/providers/core/Routes.h"
 
 #include <QObject>
 #include <QString>
 #include <QVector>
+
+#include <optional>
 
 namespace tanara::editing { class MeetingUndoService; class RecheckService; class SpeakerEditSession; }
 
@@ -62,6 +65,19 @@ public:
     // ---- gating ----
     virtual providers::ReadinessResult canRun(providers::WorkflowStep step, const QString& meetingId) const = 0;
     virtual bool usesCloud(providers::WorkflowStep step) const = 0;
+    // ---- S5: the per-run route ----
+    // The capability's route setting (may be Ask / Cloud); the defaults: Local, cloud not live.
+    virtual providers::Route storedRoute(providers::Capability cap) const { Q_UNUSED(cap); return providers::Route::Local; }
+    virtual bool cloudLive() const { return false; }
+    // A Cloud run needs the estimate's confirmation first (cloud.estimateBeforeRun).
+    virtual bool confirmCloudRuns() const { return true; }
+    // The next run of the capability on the meeting takes this route (app::Workflows::chooseRoute);
+    // std::nullopt drops a pending choice (the start did not happen).
+    virtual void chooseRoute(providers::Capability cap, const QString& meetingId,
+                             std::optional<providers::Route> route)
+    {
+        Q_UNUSED(cap); Q_UNUSED(meetingId); Q_UNUSED(route);
+    }
 
     // ---- processing ----
     virtual void transcribe(const QString& meetingId) = 0;

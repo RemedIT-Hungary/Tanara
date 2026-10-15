@@ -90,12 +90,17 @@ public:
     // The "Getting started" window (File > "Getting started...").
     Q_INVOKABLE void openOnboarding();
     Q_INVOKABLE void openRecorder();
-    Q_INVOKABLE void startTranscription(const QString& meetingId);
+    // S5: route "" = the stored route (Ask, or a Cloud run that needs the estimate's confirmation, asks
+    // first: routeChoiceRequested); "local" | "external" | "cloud" = this run's explicit choice (the split
+    // button's menu, the route dialog): app::Workflows::chooseRoute before the start.
+    Q_INVOKABLE void startTranscription(const QString& meetingId, const QString& route = QString());
     Q_INVOKABLE void retranscribe(const QString& meetingId);
-    Q_INVOKABLE void startQuickSummary(const QString& meetingId);
-    Q_INVOKABLE void startTopicExtraction(const QString& meetingId);
-    Q_INVOKABLE void startTopicAnalysis(const QString& meetingId);
-    Q_INVOKABLE void analyzeTopic(const QString& meetingId, const QString& topicId);
+    Q_INVOKABLE void startQuickSummary(const QString& meetingId, const QString& route = QString());
+    Q_INVOKABLE void startTopicExtraction(const QString& meetingId, const QString& route = QString());
+    Q_INVOKABLE void startTopicAnalysis(const QString& meetingId, const QString& route = QString());
+    Q_INVOKABLE void analyzeTopic(const QString& meetingId, const QString& topicId, const QString& route = QString());
+    // The route dialog's answer (routeChoiceRequested): the same action again with the chosen route.
+    Q_INVOKABLE void startWithRoute(const QString& meetingId, const QString& action, const QString& route);
     Q_INVOKABLE void identifyParticipants(const QString& meetingId);
     // Re-check based on the confirmed / corrected lines' audio (header "..." menu, the
     // transcript's "Uncertain 0" button): confirm dialog -> RecheckService::recheckFromConfirmed ->
@@ -143,7 +148,7 @@ public:
     // Data for the re-transcribe confirm dialog: { title, text, corrections, any }.
     Q_INVOKABLE QVariantMap retranscribeImpact(const QString& meetingId) const;
     // The confirm dialog's "Re-transcribe" button: gating + estimate + start.
-    Q_INVOKABLE void confirmRetranscribe(const QString& meetingId, bool keepBackup);
+    Q_INVOKABLE void confirmRetranscribe(const QString& meetingId, bool keepBackup, const QString& route = QString());
     // Delete: asks for a confirm dialog (deleteDialogRequested); deleteMeeting after confirmation.
     Q_INVOKABLE void requestDelete(const QString& meetingId);
     Q_INVOKABLE void deleteMeeting(const QString& meetingId);
@@ -213,6 +218,11 @@ signals:
     void renameRequested(const QString& meetingId);
     void importDialogRequested(const QVariantList& files);
     void windowActivationRequested();
+    // S5: a start without an explicit route found an Ask route (or a Cloud run that needs the estimate's
+    // confirmation): Main shows the route dialog for the step ("transcript" | "summary"); its answer is
+    // startWithRoute(meetingId, action, route). action: transcribe | retranscribe | summary | topics |
+    // complex | topic.
+    void routeChoiceRequested(const QString& meetingId, const QString& action, const QString& step);
     // The pre-transcript participant hint is ready (PreTranscriptView can show it).
     void participantsGuessed(const QString& meetingId, const QString& summary);
     // The "Who was there?" card should come into view (Overview tab is current; Main -> OverviewTab).
@@ -227,7 +237,13 @@ private:
     tanara::Meeting meeting(const QString& meetingId) const;
     // Step runnability; if it cannot run, leads to the right remedy. True = can start.
     bool gate(tanara::providers::WorkflowStep step, const QString& meetingId);
-    bool estimateOk(const QString& meetingId, const QString& task, const QString& mode);
+    bool estimateOk(const QString& meetingId, const QString& task, const QString& mode,
+                    const QString& route = QString());
+    // S5: the run's route. route "": an Ask (or a confirmable Cloud) route asks (routeChoiceRequested) ->
+    // false; an explicit route is chosen in the core (chooseRoute) -> true. false + a toast: not allowed.
+    bool takeRoute(const QString& meetingId, const QString& action, const QString& route);
+    // Drops a pending choice (the start was stopped after takeRoute).
+    void dropRoute(const QString& meetingId, const QString& action, const QString& route);
     void bumpReadiness();
     void onRetry(const QString& meetingId, const QString& kind);
     void onJobFinished(const QString& meetingId, tanara::JobKind kind, tanara::JobOutcome outcome);
@@ -255,6 +271,9 @@ private:
     // (errorOccurred arriving in the same event turn does not make a second toast).
     QString m_errorInBanner;
     QString m_lastArchiveDir;   // target folder of the last export (within the session)
+    // The route dialog's pending context: meetingId -> keepBackup (retranscribe) / topicId (topic).
+    QHash<QString, bool> m_pendingKeepBackup;
+    QHash<QString, QString> m_pendingTopic;
 
     // Shared undo: the watched stack and its last seen state (to detect a new step: more
     // entries, or the same count with a different newest text).

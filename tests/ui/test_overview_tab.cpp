@@ -9,6 +9,7 @@
 // anonymous line, "Re-analyze" and the menu item's new name, the empty tool row.
 #include "AppContext.h"
 #include "QmlApp.h"
+#include "ShellActions.h"
 
 #include "tanara/domain/Job.h"
 
@@ -20,6 +21,7 @@
 #include <QSignalSpy>
 #include <QtTest>
 
+#include <functional>
 #include <memory>
 
 using namespace tanara_qml;
@@ -30,6 +32,8 @@ class StartSpy : public QObject {
 public:
     QStringList calls;
     Q_INVOKABLE void startTranscription(const QString& id) { calls << "startTranscription:" + id; }
+    // S5: a route chosen in the split button's menu.
+    Q_INVOKABLE void startTranscription(const QString& id, const QString& route) { calls << "startTranscription:" + id + "@" + route; }
     Q_INVOKABLE void openSettings(const QString& page, const QString& field = QString())
     {
         calls << "openSettings:" + page + (field.isEmpty() ? QString() : ":" + field);
@@ -39,6 +43,7 @@ public:
     Q_INVOKABLE void openSpeakerWhy(const QString& id, const QString& key) { calls << "openSpeakerWhy:" + id + ":" + key; }
     Q_INVOKABLE void identifyParticipants(const QString& id) { calls << "identifyParticipants:" + id; }
     Q_INVOKABLE void startQuickSummary(const QString& id) { calls << "startQuickSummary:" + id; }
+    Q_INVOKABLE void startQuickSummary(const QString& id, const QString& route) { calls << "startQuickSummary:" + id + "@" + route; }
     Q_INVOKABLE void showTab(int index) { calls << "showTab:" + QString::number(index); }
 };
 
@@ -89,6 +94,22 @@ class TestOverviewTab : public QObject {
     QObject* object(const char* name) const
     {
         return m_window ? m_window->findChild<QObject*>(QLatin1String(name)) : nullptr;
+    }
+    // A popup declared inside a loaded item (not reachable from the window's QObject tree): searched
+    // under every item of the visual tree.
+    QObject* nested(const char* name) const
+    {
+        if (QObject* o = object(name)) return o;
+        QList<QQuickItem*> all;
+        std::function<void(QQuickItem*)> walk = [&](QQuickItem* it) {
+            if (!it) return;
+            all << it;
+            for (QQuickItem* c : it->childItems()) walk(c);
+        };
+        if (m_window) walk(m_window->contentItem());
+        for (QQuickItem* it : all)
+            if (QObject* o = it->findChild<QObject*>(QLatin1String(name), Qt::FindDirectChildrenOnly)) return o;
+        return nullptr;
     }
     bool shown(const char* name) const
     {
@@ -664,6 +685,116 @@ private slots:
         withSpy(stale);
         press(item("summaryOpenButton"));
         QCOMPARE(stale.calls, QStringList({QStringLiteral("showTab:2")}));
+    }
+
+    // S5: "Átírás indítása ▾" — the main part runs the default (Local here), ▾ (or Down on the main part)
+    // opens "Hol fusson most?" with the routes; a row starts with its route; the non-live Cloud row is
+    // disabled with its reason; "Ez legyen az alapértelmezett" moves the default mark.
+    void splitButton_menuAndRoutes()
+    {
+        load(QStringLiteral("overviewRecorded"));
+        QTRY_VERIFY(shown("startTranscriptionButton"));
+        QVERIFY(shown("startTranscriptionMenu"));
+        QObject* overview = object("overviewTab");
+        QVERIFY(overview);
+        StartSpy spy;
+        overview->setProperty("shell", QVariant::fromValue<QObject*>(&spy));
+        QObject* menu = nested("transcriptRouteMenu");
+        QVERIFY(menu);
+        QVERIFY(!menu->property("opened").toBool());
+
+        click(item("startTranscriptionMenu"));
+        QTRY_VERIFY(menu->property("opened").toBool());
+        QTRY_VERIFY(shown("routeOption_local"));
+        QVERIFY(shown("routeOption_external"));
+        QVERIFY(shown("routeOption_cloud"));
+        QVERIFY(shown("routeMakeDefault"));
+        // The Cloud row ("coming soon") does nothing.
+        click(item("routeOption_cloud"));
+        QVERIFY(spy.calls.isEmpty());
+        QVERIFY(menu->property("opened").toBool());
+        click(item("routeOption_external"));
+        QCOMPARE(spy.calls, QStringList({QStringLiteral("startTranscription:@external")}));
+        QTRY_VERIFY(!menu->property("opened").toBool());
+
+        // Keyboard: Down on the main part opens the menu, Enter chooses the first row (Local).
+        spy.calls.clear();
+        item("startTranscriptionButton")->forceActiveFocus();
+        QTest::keyClick(m_window, Qt::Key_Down);
+        QTRY_VERIFY(menu->property("opened").toBool());
+        QTest::keyClick(m_window, Qt::Key_Return);
+        QCOMPARE(spy.calls, QStringList({QStringLiteral("startTranscription:@local")}));
+        QTRY_VERIFY(!menu->property("opened").toBool());
+
+        // "Ez legyen az alapértelmezett" + Soniox: the default moves; the main part then starts the default path.
+        // A model reload while the menu is open (it rebuilds the step panels) keeps the menu and starts once.
+        spy.calls.clear();
+        click(item("startTranscriptionMenu"));
+        QTRY_VERIFY(menu->property("opened").toBool());
+        QObject* model = overview->property("vm").value<QObject*>();
+        QVERIFY(model);
+        QMetaObject::invokeMethod(model, "refresh");
+        QTest::qWait(120);
+        QVERIFY(menu->property("opened").toBool());
+        click(item("routeMakeDefault"));
+        click(item("routeOption_external"));
+        QCOMPARE(spy.calls, QStringList({QStringLiteral("startTranscription:@external")}));
+        QObject* vm = overview->property("vm").value<QObject*>();
+        QVERIFY(vm);
+        QVariantMap transcript;
+        for (const QVariant& v : vm->property("steps").toList())
+            if (v.toMap().value("key").toString() == QLatin1String("transcript")) transcript = v.toMap();
+        QCOMPARE(transcript.value("route").toString(), QStringLiteral("external"));
+        click(item("startTranscriptionButton"));
+        QCOMPARE(spy.calls.last(), QStringLiteral("startTranscription:"));
+    }
+
+    // S5: stored Ask with the live cloud: the menu opens by itself in the design state, the Cloud row shows
+    // the estimate; the main part opens the menu instead of starting.
+    void splitButton_askOpensTheMenu()
+    {
+        load(QStringLiteral("overviewRouteAsk"));
+        QObject* menu = nested("transcriptRouteMenu");
+        QVERIFY(menu);
+        QTRY_VERIFY(menu->property("opened").toBool());
+        QTRY_VERIFY(shown("routeOption_cloud"));
+        QQuickItem* cloud = item("routeOption_cloud");
+        QVERIFY(cloud->property("on").toBool());
+        QObject* overview = object("overviewTab");
+        StartSpy spy;
+        overview->setProperty("shell", QVariant::fromValue<QObject*>(&spy));
+        QTest::keyClick(m_window, Qt::Key_Escape);
+        QTRY_VERIFY(!menu->property("opened").toBool());
+        click(item("startTranscriptionButton"));
+        QTRY_VERIFY(menu->property("opened").toBool());
+        QVERIFY(spy.calls.isEmpty());
+        click(item("routeOption_cloud"));
+        QCOMPARE(spy.calls, QStringList({QStringLiteral("startTranscription:@cloud")}));
+        m_engine.reset();
+
+        load(QStringLiteral("overviewRouteSoon"));
+        menu = nested("transcriptRouteMenu");
+        QTRY_VERIFY(menu->property("opened").toBool());
+        QTRY_VERIFY(shown("routeOption_cloud"));
+        QVERIFY(!item("routeOption_cloud")->property("on").toBool());
+    }
+
+    // S5: the shell's route dialog (a start without a route found Ask): one row per route, the answer goes
+    // to ShellActions.startWithRoute (the demo facade starts nothing); Cancel closes it.
+    void routeDialog_fromTheShell()
+    {
+        load(QStringLiteral("overviewRecorded"));
+        ShellActions* shell = m_window->findChild<ShellActions*>();
+        QVERIFY(shell);
+        QObject* dialog = object("routeDialog");
+        QVERIFY(dialog);
+        emit shell->routeChoiceRequested(QString(), QStringLiteral("summary"), QStringLiteral("summary"));
+        QTRY_VERIFY(dialog->property("opened").toBool());
+        QCOMPARE(dialog->property("title").toString(), QStringLiteral("Hol fusson az összefoglaló?"));
+        QTRY_VERIFY(shown("routeOption_local"));
+        QVERIFY(!anyShown("routeOption_external"));   // no external LLM route in the demo
+        click(item("routeOption_local"));
+        QTRY_VERIFY(!dialog->property("opened").toBool());
     }
 
     // The tool row with a hidden child has height 0 (no empty 46 px remains), with a visible child 46.

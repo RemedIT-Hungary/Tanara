@@ -33,6 +33,69 @@
 
 using namespace tanara_qml;
 
+namespace {
+
+// S5: a facade double with the split button's routes (the stored route, the cloud mode and the estimate are
+// set by the test; the estimate's answer waits until the test releases it).
+class RouteFakeFacade : public tanara::library::IOverviewFacade {
+public:
+    using Route = tanara::providers::Route;
+    Route stored = Route::Local;
+    bool cloudLive = false;
+    QStringList calls;
+    std::function<void(const tanara::library::CloudRunEstimate&)> pendingEstimate;
+
+    tanara::library::OverviewSnapshot snapshot(const QString&) override
+    {
+        tanara::library::OverviewSnapshot s;
+        s.steps = {QVariantMap{{"key", "transcript"}, {"title", "Átirat"}},
+                   QVariantMap{{"key", "summary"}, {"title", "Összefoglaló"}}};
+        return s;
+    }
+    QString addParticipant(const QString&, const QString&) override { return {}; }
+    void removeParticipant(const QString&, const QString&) override {}
+    bool setSolo(const QString&) override { return false; }
+    bool reanalyze(const QString&) override { return false; }
+    void setContextNote(const QString&, const QString&) override {}
+
+    tanara::library::RouteChoices routeChoices(tanara::providers::Capability cap, const QString&) const override
+    {
+        tanara::library::RouteChoices c;
+        c.available = true;
+        c.stored = stored;
+        c.cloudLive = cloudLive;
+        tanara::library::RouteChoiceRow local{Route::Local, QStringLiteral("Whisper"), {}, {}, 120};
+        c.rows << local;
+        if (cap == tanara::providers::Capability::Stt)
+            c.rows << tanara::library::RouteChoiceRow{Route::External, QStringLiteral("Soniox"), {}, {}, -1};
+        tanara::library::RouteChoiceRow cloud{Route::Cloud, QStringLiteral("Pontos"),
+                                              cloudLive ? QString() : QStringLiteral("cloud_unavailable"), {}, -1};
+        c.rows << cloud;
+        return c;
+    }
+    void estimateCloud(tanara::providers::WorkflowStep step, const QString& meetingId,
+                       std::function<void(const tanara::library::CloudRunEstimate&)> done) override
+    {
+        calls << QStringLiteral("estimate:%1:%2").arg(step == tanara::providers::WorkflowStep::Transcribe ? "stt" : "llm", meetingId);
+        pendingEstimate = std::move(done);
+    }
+    bool setDefaultRoute(tanara::providers::Capability cap, Route route) override
+    {
+        calls << QStringLiteral("default:%1:%2").arg(tanara::providers::capabilityKey(cap), tanara::providers::routeKey(route));
+        stored = route;
+        return true;
+    }
+};
+
+QVariantMap optionOf(const QVariantMap& step, const QString& route)
+{
+    for (const QVariant& v : step.value(QStringLiteral("routeOptions")).toList())
+        if (v.toMap().value(QStringLiteral("route")).toString() == route) return v.toMap();
+    return {};
+}
+
+} // namespace
+
 class TestOverviewViewModel : public QObject {
     Q_OBJECT
 
@@ -259,6 +322,159 @@ private slots:
         QCOMPARE(st.value("state").toString(), QStringLiteral("done"));
         QCOMPARE(st.value("sub").toString(), QStringLiteral("kész"));
         QVERIFY(st.value("canStart").toBool());
+    }
+
+    // S5: the split button's rows per stored route (Local / External / Cloud while not live / Ask), the main
+    // part on Ask opens the menu instead of starting, a disabled route is refused with its reason, the Cloud
+    // row waits for its estimate, "Ez legyen az alapértelmezett" writes the route.
+    void routeOptions_perStoredRoute()
+    {
+        RouteFakeFacade facade;
+        OverviewViewModel vm(&facade);
+        vm.setMeetingId(QStringLiteral("m1"));
+        QVariantMap st = stepOf(vm, QStringLiteral("transcript"));
+        QCOMPARE(st.value("route").toString(), QStringLiteral("local"));
+        QCOMPARE(st.value("routeOptions").toList().size(), 3);
+        QVariantMap local = optionOf(st, "local");
+        QCOMPARE(local.value("label").toString(), QStringLiteral("Helyben · Whisper"));
+        QCOMPARE(local.value("detail").toString(), QStringLiteral("ingyenes · kb. 2 perc · a gépeden"));
+        QVERIFY(local.value("enabled").toBool());
+        QVERIFY(local.value("isDefault").toBool());
+        const QVariantMap external = optionOf(st, "external");
+        QCOMPARE(external.value("label").toString(), QStringLiteral("Külső · Soniox · saját kulcs"));
+        QVERIFY(!external.value("isDefault").toBool());
+        QVariantMap cloud = optionOf(st, "cloud");
+        QCOMPARE(cloud.value("label").toString(), QStringLiteral("Tanara Cloud · hamarosan"));
+        QVERIFY(!cloud.value("enabled").toBool());
+        QVERIFY(cloud.value("isCloud").toBool());
+        QCOMPARE(cloud.value("reason").toString(), QStringLiteral("A Tanara Cloud még nem érhető el."));
+        // The summary has no external route here.
+        QCOMPARE(stepOf(vm, QStringLiteral("summary")).value("routeOptions").toList().size(), 2);
+
+        QSignalSpy menu(&vm, &OverviewViewModel::menuRequested);
+        QSignalSpy starts(&vm, &OverviewViewModel::startRequested);
+        QSignalSpy rejected(&vm, &OverviewViewModel::routeRejected);
+        // Local: the main part starts the default path.
+        QVERIFY(vm.startDefault(QStringLiteral("transcript")));
+        QCOMPARE(starts.count(), 1);
+        QCOMPARE(starts.at(0).at(1).toString(), QString());
+        // A non-live Cloud is refused with the reason.
+        QVERIFY(!vm.start(QStringLiteral("transcript"), QStringLiteral("cloud")));
+        QCOMPARE(rejected.count(), 1);
+        QCOMPARE(rejected.at(0).at(1).toString(), QStringLiteral("A Tanara Cloud még nem érhető el."));
+        QCOMPARE(starts.count(), 1);
+        // A menu row: the explicit route.
+        QVERIFY(vm.start(QStringLiteral("transcript"), QStringLiteral("external")));
+        QCOMPARE(starts.count(), 2);
+        QCOMPARE(starts.at(1).at(1).toString(), QStringLiteral("external"));
+        QVERIFY(facade.calls.isEmpty());   // no estimate while the cloud is not live
+
+        // Stored External: the default mark moves.
+        facade.stored = tanara::providers::Route::External;
+        vm.refresh();
+        st = stepOf(vm, QStringLiteral("transcript"));
+        QCOMPARE(st.value("route").toString(), QStringLiteral("external"));
+        QVERIFY(optionOf(st, "external").value("isDefault").toBool());
+        QVERIFY(!optionOf(st, "local").value("isDefault").toBool());
+
+        // Stored Cloud while the cloud is not live: the main part runs the default (the core falls back).
+        facade.stored = tanara::providers::Route::Cloud;
+        vm.refresh();
+        QCOMPARE(stepOf(vm, QStringLiteral("transcript")).value("route").toString(), QStringLiteral("cloud"));
+        QVERIFY(vm.startDefault(QStringLiteral("transcript")));
+        QCOMPARE(menu.count(), 0);
+
+        // Ask (the cloud is live): the main part opens the menu, nothing starts; the Cloud row waits for its
+        // estimate ("…", not choosable), then shows the price.
+        facade.stored = tanara::providers::Route::Ask;
+        facade.cloudLive = true;
+        vm.refresh();
+        st = stepOf(vm, QStringLiteral("transcript"));
+        QCOMPARE(st.value("route").toString(), QStringLiteral("ask"));
+        const int startsBefore = starts.count();
+        QVERIFY(!vm.startDefault(QStringLiteral("transcript")));
+        QCOMPARE(menu.count(), 1);
+        QCOMPARE(menu.at(0).at(0).toString(), QStringLiteral("transcript"));
+        QCOMPARE(starts.count(), startsBefore);
+        QCOMPARE(facade.calls, QStringList{QStringLiteral("estimate:stt:m1")});
+        cloud = optionOf(stepOf(vm, QStringLiteral("transcript")), "cloud");
+        QCOMPARE(cloud.value("label").toString(), QStringLiteral("Tanara Cloud · Pontos"));
+        QCOMPARE(cloud.value("detail").toString(), QStringLiteral("…"));
+        QVERIFY(!cloud.value("enabled").toBool());
+        QVERIFY(!vm.start(QStringLiteral("transcript"), QStringLiteral("cloud")));
+        vm.prepareRoutes(QStringLiteral("transcript"));   // asked once
+        QCOMPARE(facade.calls.size(), 1);
+        tanara::library::CloudRunEstimate est;
+        est.ok = true;
+        est.cost = QStringLiteral("0,12 €");
+        est.balance = QStringLiteral("8,40 €");
+        est.level = QStringLiteral("enough");
+        est.etaSeconds = 60;
+        QSignalSpy changed(&vm, &OverviewViewModel::changed);
+        facade.pendingEstimate(est);
+        QCOMPARE(changed.count(), 1);
+        cloud = optionOf(stepOf(vm, QStringLiteral("transcript")), "cloud");
+        QVERIFY(cloud.value("enabled").toBool());
+        QCOMPARE(cloud.value("detail").toString(), QStringLiteral("kb. 0,12 € · kb. 1 perc · a keretből"));
+        QVERIFY(vm.start(QStringLiteral("transcript"), QStringLiteral("cloud")));
+        QCOMPARE(starts.last().at(1).toString(), QStringLiteral("cloud"));
+
+        // Not enough balance: the row is refused with the level's text.
+        est.level = QStringLiteral("notEnough");
+        vm.setMeetingId(QStringLiteral("m2"));   // a new meeting asks again
+        vm.prepareRoutes(QStringLiteral("transcript"));
+        facade.pendingEstimate(est);
+        cloud = optionOf(stepOf(vm, QStringLiteral("transcript")), "cloud");
+        QVERIFY(!cloud.value("enabled").toBool());
+        QCOMPARE(cloud.value("reason").toString(), QStringLiteral("Nincs elég keret: kb. 0,12 € kell, a keret 8,40 €."));
+        // Offline: "no internet; the local route works".
+        tanara::library::CloudRunEstimate offline;
+        offline.offline = true;
+        vm.setMeetingId(QStringLiteral("m3"));
+        vm.prepareRoutes(QStringLiteral("transcript"));
+        facade.pendingEstimate(offline);
+        QCOMPARE(optionOf(stepOf(vm, QStringLiteral("transcript")), "cloud").value("reason").toString(),
+                 QStringLiteral("Nincs internet; a helyi út működik."));
+
+        // "Ez legyen az alapértelmezett".
+        QVERIFY(vm.setDefaultRoute(QStringLiteral("stt"), QStringLiteral("local")));
+        QCOMPARE(facade.calls.last(), QStringLiteral("default:stt:local"));
+        QCOMPARE(stepOf(vm, QStringLiteral("transcript")).value("route").toString(), QStringLiteral("local"));
+        QVERIFY(vm.setDefaultRoute(QStringLiteral("summary"), QStringLiteral("cloud")));
+        QCOMPARE(facade.calls.last(), QStringLiteral("default:llm:cloud"));
+        QVERIFY(!vm.setDefaultRoute(QStringLiteral("stt"), QStringLiteral("nincs-ilyen")));
+    }
+
+    // S5 with the real facade (cloud off): the transcription's rows come from the registry and the settings;
+    // Soniox without a key is not runnable (its reason), Tanara Cloud is "coming soon".
+    void routeOptions_realFacade()
+    {
+        const tanara::Meeting m = recording(QStringLiteral("Útvonalak"));
+        OverviewViewModel vm(facadetest::overviewOf(m_app.get()));
+        vm.setMeetingId(m.id);
+        const QVariantMap st = stepOf(vm, QStringLiteral("transcript"));
+        QVERIFY(!st.value("route").toString().isEmpty());
+        // No local transcriber was ever set up: the row names Whisper but cannot run.
+        const QVariantMap local = optionOf(st, "local");
+        QCOMPARE(local.value("label").toString(), QStringLiteral("Helyben · Whisper"));
+        QVERIFY(!local.value("enabled").toBool());
+        QCOMPARE(local.value("reason").toString(), QStringLiteral("Még nincs beállítva a Beállításokban."));
+        const QVariantMap external = optionOf(st, "external");
+        QCOMPARE(external.value("label").toString(), QStringLiteral("Külső · Soniox · saját kulcs"));
+        QVERIFY(!external.value("enabled").toBool());
+        QVERIFY(external.value("reason").toString().contains(QStringLiteral("Soniox")));
+        const QVariantMap cloud = optionOf(st, "cloud");
+        QCOMPARE(cloud.value("label").toString(), QStringLiteral("Tanara Cloud · hamarosan"));
+        QVERIFY(!cloud.value("enabled").toBool());
+        QSignalSpy rejected(&vm, &OverviewViewModel::routeRejected);
+        QVERIFY(!vm.start(QStringLiteral("transcript"), QStringLiteral("cloud")));
+        QCOMPARE(rejected.count(), 1);
+
+        // "Ez legyen az alapértelmezett" writes the routes setting (Local here).
+        QVERIFY(vm.setDefaultRoute(QStringLiteral("stt"), QStringLiteral("local")));
+        QCOMPARE(m_app->settings()->settings().routes.route(tanara::providers::Capability::Stt),
+                 tanara::providers::Route::Local);
+        QVERIFY(!vm.setDefaultRoute(QStringLiteral("stt"), QStringLiteral("cloud")));   // not live: refused
     }
 
     // "Only I spoke": does not work without an own name; with a configured name the decision is saved.

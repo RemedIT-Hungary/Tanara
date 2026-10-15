@@ -560,7 +560,8 @@ bool ShellActions::gate(WorkflowStep step, const QString& meetingId)
     return false;
 }
 
-bool ShellActions::estimateOk(const QString& meetingId, const QString& task, const QString& mode)
+bool ShellActions::estimateOk(const QString& meetingId, const QString& task, const QString& mode,
+                              const QString& route)
 {
     Q_UNUSED(meetingId);
     Q_UNUSED(mode);
@@ -568,24 +569,81 @@ bool ShellActions::estimateOk(const QString& meetingId, const QString& task, con
         return false;
     const WorkflowStep step = task == QLatin1String("transcribe") ? WorkflowStep::Transcribe
                                                                   : WorkflowStep::Summarize;
-    if (!m_facade->usesCloud(step))
-        return true;                      // own key: no estimate
-    // A cloud run (a developer setting, TANARA_CLOUD=live) never starts from the UI: Tanara Cloud
-    // is "coming soon" and the user is told so.
+    // S5: the chosen route decides, not a guess from the setting.
+    const bool cloud = route.isEmpty() ? m_facade->usesCloud(step) : route == QLatin1String("cloud");
+    if (!cloud)
+        return true;                      // own key / local: no estimate
+    if (m_facade->cloudLive()) {
+        // The route menu's Cloud row showed the estimate: choosing it is the confirmation. Without an
+        // explicit choice only when no confirmation is wanted (otherwise takeRoute asked first).
+        if (!route.isEmpty() || !m_facade->confirmCloudRuns())
+            return true;
+    }
+    // The cloud is not live ("coming soon"): the user is told so and sent to the own-key settings.
     toast(tr("A Tanara Cloud még nem érhető el: a Beállításokban saját kulcsot adj meg."));
     openSettings(QStringLiteral("providers"),
                  step == WorkflowStep::Transcribe ? QStringLiteral("stt") : QStringLiteral("llm"));
     return false;
 }
 
+namespace {
+
+tanara::providers::Capability capOfAction(const QString& action)
+{
+    return action == QLatin1String("transcribe") || action == QLatin1String("retranscribe")
+        ? tanara::providers::Capability::Stt : tanara::providers::Capability::Llm;
+}
+
+} // namespace
+
+bool ShellActions::takeRoute(const QString& meetingId, const QString& action, const QString& route)
+{
+    using tanara::providers::Route;
+    const tanara::providers::Capability cap = capOfAction(action);
+    const QString step = cap == tanara::providers::Capability::Stt ? QStringLiteral("transcript")
+                                                                   : QStringLiteral("summary");
+    if (route.isEmpty()) {
+        const Route stored = m_facade->storedRoute(cap);
+        if (stored == Route::Ask
+            || (stored == Route::Cloud && m_facade->cloudLive() && m_facade->confirmCloudRuns())) {
+            emit routeChoiceRequested(meetingId, action, step);
+            return false;
+        }
+        return true;
+    }
+    const std::optional<Route> r = tanara::providers::routeFromKey(route);
+    if (!r || *r == Route::Ask || *r == Route::Basic) {
+        emit routeChoiceRequested(meetingId, action, step);
+        return false;
+    }
+    if (*r == Route::Cloud && !m_facade->cloudLive()) {
+        toast(tr("A Tanara Cloud még nem érhető el."));
+        return false;
+    }
+    m_facade->chooseRoute(cap, meetingId, *r);
+    return true;
+}
+
+void ShellActions::dropRoute(const QString& meetingId, const QString& action, const QString& route)
+{
+    if (!route.isEmpty() && m_facade)
+        m_facade->chooseRoute(capOfAction(action), meetingId, std::nullopt);
+}
+
 // ---- processing -----------------------------------------------------------------------
 
-void ShellActions::startTranscription(const QString& meetingId)
+void ShellActions::startTranscription(const QString& meetingId, const QString& route)
 {
-    if (!gate(WorkflowStep::Transcribe, meetingId))
+    const QString action = QStringLiteral("transcribe");
+    if (route.isEmpty() && !gate(WorkflowStep::Transcribe, meetingId))
         return;
-    if (!estimateOk(meetingId, QStringLiteral("transcribe"), QString()))
+    if (!m_facade || !m_facade->live() || !takeRoute(meetingId, action, route))
         return;
+    if ((!route.isEmpty() && !gate(WorkflowStep::Transcribe, meetingId))
+        || !estimateOk(meetingId, QStringLiteral("transcribe"), QString(), route)) {
+        dropRoute(meetingId, action, route);
+        return;
+    }
     m_facade->transcribe(meetingId);
 }
 
@@ -620,38 +678,62 @@ QVariantMap ShellActions::retranscribeImpact(const QString& meetingId) const
             {QStringLiteral("namedSpeakers"), named}};
 }
 
-void ShellActions::confirmRetranscribe(const QString& meetingId, bool keepBackup)
+void ShellActions::confirmRetranscribe(const QString& meetingId, bool keepBackup, const QString& route)
 {
-    if (!gate(WorkflowStep::Transcribe, meetingId))
+    const QString action = QStringLiteral("retranscribe");
+    if (route.isEmpty() && !gate(WorkflowStep::Transcribe, meetingId))
         return;
-    if (!estimateOk(meetingId, QStringLiteral("transcribe"), QString()))
+    if (!m_facade || !m_facade->live())
         return;
+    m_pendingKeepBackup.insert(meetingId, keepBackup);
+    if (!takeRoute(meetingId, action, route))
+        return;
+    m_pendingKeepBackup.remove(meetingId);
+    if ((!route.isEmpty() && !gate(WorkflowStep::Transcribe, meetingId))
+        || !estimateOk(meetingId, QStringLiteral("transcribe"), QString(), route)) {
+        dropRoute(meetingId, action, route);
+        return;
+    }
     m_facade->retranscribe(meetingId, keepBackup);
 }
 
-void ShellActions::startQuickSummary(const QString& meetingId)
+void ShellActions::startQuickSummary(const QString& meetingId, const QString& route)
 {
-    if (!gate(WorkflowStep::Summarize, meetingId))
+    const QString action = QStringLiteral("summary");
+    if (route.isEmpty() && !gate(WorkflowStep::Summarize, meetingId))
         return;
-    if (!estimateOk(meetingId, QStringLiteral("summarize"), QStringLiteral("quick")))
+    if (!m_facade || !m_facade->live() || !takeRoute(meetingId, action, route))
         return;
+    if ((!route.isEmpty() && !gate(WorkflowStep::Summarize, meetingId))
+        || !estimateOk(meetingId, QStringLiteral("summarize"), QStringLiteral("quick"), route)) {
+        dropRoute(meetingId, action, route);
+        return;
+    }
     m_facade->summarize(meetingId);
 }
 
-void ShellActions::startTopicExtraction(const QString& meetingId)
+void ShellActions::startTopicExtraction(const QString& meetingId, const QString& route)
 {
+    const QString action = QStringLiteral("topics");
     if (!gate(WorkflowStep::Summarize, meetingId))
         return;
-    // If an (edited) topic list already exists, extraction calls no model -> no estimate.
+    // If an (edited) topic list already exists, extraction calls no model -> no route, no estimate.
     const bool haveTopics = !m_facade->topics(meetingId).isEmpty();
-    if (!haveTopics
-        && !estimateOk(meetingId, QStringLiteral("summarize"), QStringLiteral("complex")))
-        return;
+    if (!haveTopics) {
+        if (!takeRoute(meetingId, action, route))
+            return;
+        if ((!route.isEmpty() && !gate(WorkflowStep::Summarize, meetingId))
+            || !estimateOk(meetingId, QStringLiteral("summarize"), QStringLiteral("complex"), route)) {
+            dropRoute(meetingId, action, route);
+            return;
+        }
+    }
     m_facade->extractTopics(meetingId);
 }
 
-void ShellActions::startTopicAnalysis(const QString& meetingId)
+void ShellActions::startTopicAnalysis(const QString& meetingId, const QString& route)
 {
+    const QString action = QStringLiteral("complex");
     if (!gate(WorkflowStep::Summarize, meetingId))
         return;
     const QVector<tanara::SummaryTopic> topics = m_facade->topics(meetingId);
@@ -659,14 +741,20 @@ void ShellActions::startTopicAnalysis(const QString& meetingId)
         toast(tr("Adj meg legalább egy témát."));
         return;
     }
-    // Cloud: estimate for the remaining (not yet analyzed) topics + the closing summary.
-    if (!estimateOk(meetingId, QStringLiteral("summarize"), QStringLiteral("complex")))
+    if (!takeRoute(meetingId, action, route))
         return;
+    // Cloud: estimate for the remaining (not yet analyzed) topics + the closing summary.
+    if ((!route.isEmpty() && !gate(WorkflowStep::Summarize, meetingId))
+        || !estimateOk(meetingId, QStringLiteral("summarize"), QStringLiteral("complex"), route)) {
+        dropRoute(meetingId, action, route);
+        return;
+    }
     m_facade->generateComplexSummary(meetingId, topics);
 }
 
-void ShellActions::analyzeTopic(const QString& meetingId, const QString& topicId)
+void ShellActions::analyzeTopic(const QString& meetingId, const QString& topicId, const QString& route)
 {
+    const QString action = QStringLiteral("topic");
     if (!gate(WorkflowStep::Summarize, meetingId))
         return;
     const QVector<tanara::SummaryTopic> topics = m_facade->topics(meetingId);
@@ -676,10 +764,36 @@ void ShellActions::analyzeTopic(const QString& meetingId, const QString& topicId
             toast(tr("A témához cím kell az elemzéshez."));
             return;
         }
+        m_pendingTopic.insert(meetingId, topicId);
+        if (!takeRoute(meetingId, action, route))
+            return;
+        m_pendingTopic.remove(meetingId);
+        if (!route.isEmpty() && !gate(WorkflowStep::Summarize, meetingId)) {
+            dropRoute(meetingId, action, route);
+            return;
+        }
         m_facade->analyzeTopic(meetingId, t);
         return;
     }
     toast(tr("Ez a téma már nem létezik."));
+}
+
+void ShellActions::startWithRoute(const QString& meetingId, const QString& action, const QString& route)
+{
+    if (meetingId.isEmpty() || route.isEmpty())
+        return;
+    if (action == QLatin1String("transcribe"))
+        startTranscription(meetingId, route);
+    else if (action == QLatin1String("retranscribe"))
+        confirmRetranscribe(meetingId, m_pendingKeepBackup.take(meetingId), route);
+    else if (action == QLatin1String("summary"))
+        startQuickSummary(meetingId, route);
+    else if (action == QLatin1String("topics"))
+        startTopicExtraction(meetingId, route);
+    else if (action == QLatin1String("complex"))
+        startTopicAnalysis(meetingId, route);
+    else if (action == QLatin1String("topic"))
+        analyzeTopic(meetingId, m_pendingTopic.take(meetingId), route);
 }
 
 void ShellActions::identifyParticipants(const QString& meetingId)

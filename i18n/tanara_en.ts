@@ -4551,6 +4551,21 @@
     </message>
 </context>
 <context>
+    <name>RouteOptionList</name>
+    <message>
+        <source>Hol fusson most?</source>
+        <translation>Where should it run now?</translation>
+    </message>
+    <message>
+        <source>alapértelmezett</source>
+        <translation>default</translation>
+    </message>
+    <message>
+        <source>Ez legyen az alapértelmezett</source>
+        <translation>Make this the default</translation>
+    </message>
+</context>
+<context>
     <name>SampleButton</name>
     <message>
         <source>Minta leállítása</source>
@@ -5661,6 +5676,14 @@
     <message>
         <source>Újra-átírás</source>
         <translation>Re-transcribe</translation>
+    </message>
+    <message>
+        <source>Hol fusson az átírás?</source>
+        <translation>Where should the transcription run?</translation>
+    </message>
+    <message>
+        <source>Hol fusson az összefoglaló?</source>
+        <translation>Where should the summary run?</translation>
     </message>
     <message>
         <source>Törlöd a megbeszélést?</source>
@@ -6873,6 +6896,13 @@
     </message>
 </context>
 <context>
+    <name>TSplitButton</name>
+    <message>
+        <source>Hol fusson?</source>
+        <translation>Where should it run?</translation>
+    </message>
+</context>
+<context>
     <name>TagChip</name>
     <message>
         <source>Javasolt címke: %1</source>
@@ -7704,6 +7734,10 @@
     <message>
         <source>Átírás indítása</source>
         <translation>Start transcription</translation>
+    </message>
+    <message>
+        <source>Indításkor kérdez: hol fusson az átírás</source>
+        <translation>Asks at start: where the transcription runs</translation>
     </message>
     <message>
         <source>Szolgáltató: %1</source>
@@ -8598,6 +8632,21 @@
     <message>
         <source>Megszakítva.</source>
         <translation>Cancelled.</translation>
+    </message>
+</context>
+<context>
+    <name>tanara::app::RouteChoices</name>
+    <message>
+        <source>Gyors</source>
+        <translation>Fast</translation>
+    </message>
+    <message>
+        <source>Pontos</source>
+        <translation>Accurate</translation>
+    </message>
+    <message>
+        <source>Még nincs beállítva a Beállításokban.</source>
+        <translation>Not set up yet in Settings.</translation>
     </message>
 </context>
 <context>
@@ -11308,6 +11357,10 @@
         <translation>Their voice was not found in the transcript: no speaker carries their name</translation>
     </message>
     <message>
+        <source>Nem érkezett becslés.</source>
+        <translation>No estimate arrived.</translation>
+    </message>
+    <message>
         <source>%1 (te)</source>
         <translation>%1 (you)</translation>
     </message>
@@ -11538,6 +11591,96 @@
     <message>
         <source>nincs</source>
         <translation>none</translation>
+    </message>
+</context>
+<context>
+    <name>tanara_qml::OverviewViewModel</name>
+    <message numerus="yes">
+        <source>kb. %n perc</source>
+        <translation>
+            <numerusform>about %n minute</numerusform>
+            <numerusform>about %n minutes</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Helyben · %1</source>
+        <translation>Local · %1</translation>
+    </message>
+    <message>
+        <source>ingyenes</source>
+        <translation>free</translation>
+    </message>
+    <message>
+        <source>a gépeden</source>
+        <translation>on your machine</translation>
+    </message>
+    <message>
+        <source>Külső · %1 · saját kulcs</source>
+        <translation>External · %1 · own key</translation>
+    </message>
+    <message>
+        <source>a saját fiókod díjszabásával</source>
+        <translation>at your own account&apos;s rates</translation>
+    </message>
+    <message>
+        <source>Tanara Cloud · %1</source>
+        <translation>Tanara Cloud · %1</translation>
+    </message>
+    <message>
+        <source>Tanara Cloud · hamarosan</source>
+        <translation>Tanara Cloud · coming soon</translation>
+    </message>
+    <message>
+        <source>kb. %1</source>
+        <translation>about %1</translation>
+    </message>
+    <message>
+        <source>a keretből</source>
+        <translation>from your credit</translation>
+    </message>
+    <message>
+        <source>kevés tartalék</source>
+        <translation>little margin</translation>
+    </message>
+    <message>
+        <source>Nincs elég keret: kb. %1 kell, a keret %2.</source>
+        <translation>Not enough credit: about %1 is needed, your credit is %2.</translation>
+    </message>
+    <message>
+        <source>Nincs internet; a helyi út működik.</source>
+        <translation>No internet; the local route works.</translation>
+    </message>
+    <message>
+        <source>Nem érkezett becslés.</source>
+        <translation>No estimate arrived.</translation>
+    </message>
+    <message>
+        <source>A Tanara Cloud ehhez most nem érhető el.</source>
+        <translation>Tanara Cloud is not available for this right now.</translation>
+    </message>
+    <message>
+        <source>A Tanara Cloud még nem érhető el.</source>
+        <translation>Tanara Cloud is not available yet.</translation>
+    </message>
+    <message>
+        <source>Hiányzik egy beállítás.</source>
+        <translation>A setting is missing.</translation>
+    </message>
+    <message>
+        <source>Ehhez nincs helyi szolgáltató.</source>
+        <translation>There is no local provider for this.</translation>
+    </message>
+    <message>
+        <source>Ehhez nincs külső, saját kulcsos szolgáltató.</source>
+        <translation>There is no external provider with your own key for this.</translation>
+    </message>
+    <message>
+        <source>Ez az út most nem választható.</source>
+        <translation>This route cannot be chosen now.</translation>
+    </message>
+    <message>
+        <source>Várd meg a költségbecslést.</source>
+        <translation>Wait for the cost estimate.</translation>
     </message>
 </context>
 <context>
@@ -12706,6 +12849,10 @@
     <message>
         <source>A Tanara Cloud még nem érhető el: a Beállításokban saját kulcsot adj meg.</source>
         <translation>Tanara Cloud is not available yet: enter your own key in Settings.</translation>
+    </message>
+    <message>
+        <source>A Tanara Cloud még nem érhető el.</source>
+        <translation>Tanara Cloud is not available yet.</translation>
     </message>
     <message numerus="yes">
         <source>A mostani átirat és a benne lévő %n kézi javítás elvész, az összefoglaló elavulttá válik.</source>

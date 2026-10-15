@@ -15,7 +15,11 @@
 // overviewDiarizeFailed | overviewDiarizeAsk (the "Beszélők felismerése" dialog open, names + "2" remembered).
 // The summary step on a finished transcript: overviewSummaryReady | overviewSummaryBlocked (no provider) |
 // overviewSummaryRunning (40 %) | overviewSummaryFailed (the local server is down) | overviewSummaryStale.
+// S5, recorded (like overviewRecorded) with the split button's menu open: overviewRouteAsk (stored Ask, the
+// live cloud's estimate) | overviewRouteSoon (stored Local, Tanara Cloud "coming soon").
 #include "tanara/library/IOverviewFacade.h"
+
+#include <QHash>
 
 namespace tanara_demo {
 
@@ -41,6 +45,13 @@ public:
     bool mergeParticipantInto(const QString& meetingId, const QString& fromId, const QString& intoId) override;
     bool confirmParticipant(const QString& meetingId, const QString& id, bool confirmed) override;
     bool setSelfParticipant(const QString& meetingId, const QString& id, QString* whyNot = nullptr) override;
+    // S5: the split button. Stored Local (Whisper; Soniox external), Tanara Cloud "coming soon"; in
+    // overviewRouteAsk stored Ask with the live cloud and a fixed estimate (0,12 € · about 1 minute).
+    // setDefaultRoute changes the stored route in place.
+    tanara::library::RouteChoices routeChoices(tanara::providers::Capability cap, const QString& meetingId) const override;
+    void estimateCloud(tanara::providers::WorkflowStep step, const QString& meetingId,
+                       std::function<void(const tanara::library::CloudRunEstimate&)> done) override;
+    bool setDefaultRoute(tanara::providers::Capability cap, tanara::providers::Route route) override;
 
     // "Varga Árpád" -> "VÁ", "Remote 1" -> "R1" ("Kovács Lilla (you)" -> "KL").
     static QString monogramOf(const QString& name);
@@ -58,6 +69,7 @@ private:
 
     QString m_scenario;
     tanara::library::OverviewSnapshot m_snapshot;
+    QHash<int, tanara::providers::Route> m_storedRoutes;   // int(Capability) -> the edited default
 };
 
 } // namespace tanara_demo

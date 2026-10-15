@@ -36,7 +36,11 @@
 #include "demo/TranscriptEditorDemoFacade.h"
 
 #include "tanara/app/AppController.h"
+#include "tanara/app/RouteChoices.h"
 #include "tanara/app/Services.h"
+#include "tanara/cloud/CloudSession.h"
+#include "tanara/cloud/CloudTypes.h"
+#include "tanara/foundation/i18n/Localization.h"
 #include "tanara/app/Workflows.h"
 #include "tanara/editing/participants/ParticipantService.h"
 #include "tanara/processing/analysis/ParticipantAnalysis.h"
@@ -230,6 +234,30 @@ bool ShellControllerFacade::usesCloud(tanara::providers::WorkflowStep step) cons
     return m_c && m_c->usesCloud(step);
 }
 
+tanara::providers::Route ShellControllerFacade::storedRoute(tanara::providers::Capability cap) const
+{
+    if (!m_c || !m_c->settings()) return tanara::providers::Route::Local;
+    tanara::app::AppSettings st = m_c->settings()->settings();
+    st.routes.normalize(st.providers);
+    return st.routes.route(cap);
+}
+
+bool ShellControllerFacade::cloudLive() const { return m_c && m_c->cloudLive(); }
+
+bool ShellControllerFacade::confirmCloudRuns() const
+{
+    return !m_c || !m_c->settings() || m_c->settings()->settings().cloud.estimateBeforeRun;
+}
+
+void ShellControllerFacade::chooseRoute(tanara::providers::Capability cap, const QString& meetingId,
+                                        std::optional<tanara::providers::Route> route)
+{
+    if (!m_c || !m_c->services()) return;
+    tanara::app::Workflows& wf = m_c->services()->workflows();
+    if (route) wf.chooseRoute(cap, meetingId, *route);
+    else wf.clearChosenRoute(cap, meetingId);
+}
+
 void ShellControllerFacade::transcribe(const QString& meetingId) { if (m_c) m_c->transcribeMeeting(meetingId); }
 
 void ShellControllerFacade::retranscribe(const QString& meetingId, bool keepBackup)
@@ -249,20 +277,33 @@ QVector<tanara::SummaryTopic> ShellControllerFacade::topics(const QString& meeti
     return m_c ? m_c->meetingTopics(meetingId) : QVector<tanara::SummaryTopic>{};
 }
 
+// The topic runs do not pass through Workflows::summarize: the LLM route of the run is resolved here (a
+// pending choice of the route menu is consumed; Ask without a choice -> the non-cloud route).
+static void resolveLlmRoute(tanara::app::AppController* c, const QString& meetingId)
+{
+    if (c && c->services()) c->services()->workflows().resolveRoute(tanara::providers::Capability::Llm, meetingId);
+}
+
 void ShellControllerFacade::extractTopics(const QString& meetingId)
 {
-    if (m_c) m_c->extractMeetingTopics(meetingId);
+    if (!m_c) return;
+    resolveLlmRoute(m_c, meetingId);
+    m_c->extractMeetingTopics(meetingId);
 }
 
 void ShellControllerFacade::generateComplexSummary(const QString& meetingId,
                                                    const QVector<tanara::SummaryTopic>& topics)
 {
-    if (m_c) m_c->generateComplexSummary(meetingId, topics);
+    if (!m_c) return;
+    resolveLlmRoute(m_c, meetingId);
+    m_c->generateComplexSummary(meetingId, topics);
 }
 
 void ShellControllerFacade::analyzeTopic(const QString& meetingId, const tanara::SummaryTopic& topic)
 {
-    if (m_c) m_c->analyzeTopic(meetingId, topic);
+    if (!m_c) return;
+    resolveLlmRoute(m_c, meetingId);
+    m_c->analyzeTopic(meetingId, topic);
 }
 
 bool ShellControllerFacade::identifyAsync(const QString& meetingId)
@@ -675,6 +716,69 @@ bool OverviewControllerFacade::setSelfParticipant(const QString& meetingId, cons
     return m_c && m_c->services() && m_c->services()->participants().setSelfParticipant(meetingId, id, whyNot);
 }
 
+// ---- S5: the split button's routes ----
+
+tanara::library::RouteChoices OverviewControllerFacade::routeChoices(tanara::providers::Capability cap,
+                                                                     const QString& meetingId) const
+{
+    if (!m_c || !m_c->settings()) return {};
+    tanara::app::RouteChoiceInputs in;
+    in.settings = m_c->settings()->settings();
+    in.registry = &m_c->providerRegistry();
+    const QPointer<tanara::app::AppController> c = m_c;
+    in.hasSecret = [c](const QString& key) { return c && c->hasSecret(key); };
+    in.stats = m_c->jobStats();
+    if (!meetingId.isEmpty() && m_c->store()) in.meeting = m_c->store()->load(meetingId);
+    in.cloudLive = m_c->cloudLive();
+    return tanara::app::buildRouteChoices(cap, in);
+}
+
+void OverviewControllerFacade::estimateCloud(tanara::providers::WorkflowStep step, const QString& meetingId,
+                                             std::function<void(const tanara::library::CloudRunEstimate&)> done)
+{
+    if (!done) return;
+    if (!m_c || !m_c->cloudLive() || !m_c->cloud() || meetingId.isEmpty()) {
+        done(tanara::library::CloudRunEstimate{});
+        return;
+    }
+    const bool stt = step == tanara::providers::WorkflowStep::Transcribe;
+    const tanara::cloud::EstimateRequest req = m_c->makeEstimateRequest(
+        meetingId, stt ? QStringLiteral("transcribe") : QStringLiteral("summarize"),
+        stt ? QString() : QStringLiteral("quick"));
+    m_c->cloud()->estimate(req, [done](const tanara::cloud::EstimateResult& r, const tanara::cloud::CloudError& e) {
+        tanara::library::CloudRunEstimate out;
+        const QString lang = tanara::activeUiLanguage();
+        if (e.isError() || !r.valid) {
+            out.offline = e.kind == tanara::cloud::CloudErrorKind::Network;
+            out.error = e.isError() ? tanara::cloud::describeCloudError(e, tanara::cloud::Money{}, lang)
+                                    : OverviewControllerFacade::tr("Nem érkezett becslés.");
+            done(out);
+            return;
+        }
+        out.ok = true;
+        out.cost = tanara::cloud::formatMoney(r.estimate, tanara::cloud::MoneyStyle::Charge, lang);
+        out.balance = tanara::cloud::formatMoney(r.balance, tanara::cloud::MoneyStyle::Balance, lang);
+        switch (tanara::cloud::estimateLevel(r)) {
+        case tanara::cloud::EstimateLevel::Enough:        out.level = QStringLiteral("enough"); break;
+        case tanara::cloud::EstimateLevel::LittleReserve: out.level = QStringLiteral("littleReserve"); break;
+        case tanara::cloud::EstimateLevel::NotEnough:     out.level = QStringLiteral("notEnough"); break;
+        }
+        done(out);
+    });
+}
+
+bool OverviewControllerFacade::setDefaultRoute(tanara::providers::Capability cap, tanara::providers::Route route)
+{
+    if (!m_c || !m_c->settings()) return false;
+    tanara::app::AppSettings st = m_c->settings()->settings();
+    st.routes.normalize(st.providers);
+    const tanara::providers::RouteContext ctx =
+        tanara::app::routeContextOf(cap, m_c->providerRegistry(), m_c->cloudLive());
+    if (!st.routes.set(cap, route, ctx, st.providers)) return false;
+    m_c->settings()->setSettings(st);
+    return true;
+}
+
 tanara::library::OverviewSnapshot OverviewControllerFacade::snapshot(const QString& meetingId)
 {
     using namespace tanara;
@@ -683,7 +787,8 @@ tanara::library::OverviewSnapshot OverviewControllerFacade::snapshot(const QStri
     library::OverviewSnapshot s;
     if (!c)
         return s;
-    m_lastSnapshot = meetingId;
+    // (S5: the route dialog's model asks with "" when it closes: the shown meeting keeps its refresh.)
+    if (!meetingId.isEmpty()) m_lastSnapshot = meetingId;
     const Meeting m = (c->store() && !meetingId.isEmpty()) ? c->store()->load(meetingId) : Meeting();
     const MeetingProcessingState proc = c->processingState(meetingId);
     const PersonId selfId = c->selfPerson().id;

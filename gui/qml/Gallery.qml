@@ -264,6 +264,28 @@ Item {
                 }
             }
             Section {
+                title: DemoText.t("Osztott gomb", "Split button")
+                Shown { caption: "TSplitButton"; TSplitButton { text: DemoText.t("Átírás indítása", "Start transcription"); iconName: "audio-lines" } }
+                Shown { caption: "disabled"; TSplitButton { text: DemoText.t("Összefoglaló készítése", "Create summary"); iconName: "lock"; enabled: false } }
+                Shown { caption: "showMenuButton: false"; TSplitButton { text: DemoText.t("Átírás indítása", "Start transcription"); iconName: "audio-lines"; showMenuButton: false } }
+                Shown {
+                    caption: "RouteOptionList"
+                    TSurface {
+                        width: 320
+                        height: galleryRoutes.implicitHeight + 12
+                        radius: Theme.radiusPopup
+                        RouteOptionList {
+                            id: galleryRoutes
+                            x: 6; y: 6; width: parent.width - 12
+                            options: [
+                                { route: "local", label: DemoText.t("Helyben · Whisper", "Local · Whisper"), detail: DemoText.t("ingyenes · kb. 2 perc · a gépeden", "free · about 2 min · on your machine"), enabled: true, reason: "", isDefault: true, isCloud: false },
+                                { route: "cloud", label: DemoText.t("Tanara Cloud · Pontos", "Tanara Cloud · Accurate"), detail: "", enabled: false, reason: DemoText.t("Nincs internet; a helyi út működik.", "No internet; the local route works."), isDefault: false, isCloud: true }
+                            ]
+                        }
+                    }
+                }
+            }
+            Section {
                 title: DemoText.t("Ikongombok", "Icon buttons")
                 Shown { caption: "outline"; TIconButton { iconName: "ellipsis"; toolTipText: DemoText.t("További műveletek", "More actions") } }
                 Shown { caption: "hover"; TIconButton { iconName: "ellipsis"; stateHovered: true } }

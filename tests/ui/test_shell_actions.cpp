@@ -4,6 +4,7 @@
 // the right page, then the start. NO real provider call (the task is canceled right after
 // starting; the provider address is a closed local port).
 #include "AppContext.h"
+#include "ControllerFacades.h"
 #include "UiServices.h"
 #include "FacadeTestSupport.h"
 #include "PlayerController.h"
@@ -13,6 +14,8 @@
 #include "ShellUiState.h"
 
 #include "tanara/app/AppController.h"
+#include "tanara/app/Services.h"
+#include "tanara/app/Workflows.h"
 #include "tanara/library/store/PeopleStore.h"
 #include "tanara/app/SettingsManager.h"
 #include "tanara/cloud/CloudTypes.h"
@@ -83,6 +86,42 @@ public:
     void stopRecordingAndQuit() override {}
     void shutdown() override {}
     void windowShown() override {}
+};
+
+// S5: the real shell facade with a call log of the route choice and the starts (the order matters: the
+// choice reaches the core before the start). storedRoute / usesCloud can be forced (Ask needs a live cloud).
+class RouteLogFacade : public ShellControllerFacade {
+public:
+    using ShellControllerFacade::ShellControllerFacade;
+    QStringList log;
+    std::optional<tanara::providers::Route> forcedStored;
+    bool forceCloudSetting = false;
+
+    tanara::providers::Route storedRoute(tanara::providers::Capability cap) const override
+    {
+        return forcedStored ? *forcedStored : ShellControllerFacade::storedRoute(cap);
+    }
+    bool usesCloud(tanara::providers::WorkflowStep step) const override
+    {
+        return forceCloudSetting || ShellControllerFacade::usesCloud(step);
+    }
+    void chooseRoute(tanara::providers::Capability cap, const QString& meetingId,
+                     std::optional<tanara::providers::Route> route) override
+    {
+        log << QStringLiteral("choose:%1:%2").arg(tanara::providers::capabilityKey(cap),
+                                                  route ? tanara::providers::routeKey(*route) : QStringLiteral("-"));
+        ShellControllerFacade::chooseRoute(cap, meetingId, route);
+    }
+    void transcribe(const QString& meetingId) override
+    {
+        log << QStringLiteral("transcribe");
+        ShellControllerFacade::transcribe(meetingId);
+    }
+    void summarize(const QString& meetingId) override
+    {
+        log << QStringLiteral("summarize");
+        ShellControllerFacade::summarize(meetingId);
+    }
 };
 
 } // namespace
@@ -661,6 +700,115 @@ private slots:
         m_shell->confirmRetranscribe(m.id, true);
         QCOMPARE(started.count(), 0);
         QCOMPARE(m_bridge->calls, QStringList{QStringLiteral("settings:providers")});
+    }
+
+    // S5: an explicit route (the split button's menu, the route dialog) reaches app::Workflows::chooseRoute
+    // BEFORE the start, and the run takes it; a stopped start drops the choice.
+    void chosenRouteReachesTheCoreBeforeTheStart()
+    {
+        configureProviders(/*withSttKey*/ true);   // stt: Soniox (External), the key is there
+        auto* facade = new RouteLogFacade(m_app.get());
+        m_shell = std::make_unique<ShellActions>(facade);
+        m_shell->setBridge(m_bridge.get());
+        connect(m_shell.get(), &ShellActions::toastRequested, this, [this](const QString& text) { m_toasts << text; });
+        const tanara::Meeting m = recording(QStringLiteral("Útvonal"));
+        QSignalSpy started(m_app->jobs(), &tanara::library::MeetingJobTracker::jobStarted);
+        tanara::app::Workflows& wf = m_app->services()->workflows();
+
+        m_shell->startTranscription(m.id, QStringLiteral("external"));
+        QCOMPARE(facade->log, QStringList({QStringLiteral("choose:stt:external"), QStringLiteral("transcribe")}));
+        QCOMPARE(started.count(), 1);
+        QCOMPARE(wf.route(tanara::providers::Capability::Stt, m.id), tanara::providers::Route::External);
+        m_app->cancelAllJobs(m.id);
+        QTRY_VERIFY(!m_app->jobs()->isBusy(m.id));
+
+        // Tanara Cloud is not live: the explicit Cloud choice is refused with the reason, nothing is chosen.
+        facade->log.clear();
+        m_toasts.clear();
+        m_shell->startTranscription(m.id, QStringLiteral("cloud"));
+        QVERIFY(facade->log.isEmpty());
+        QCOMPARE(started.count(), 1);
+        QCOMPARE(m_toasts, QStringList{QStringLiteral("A Tanara Cloud még nem érhető el.")});
+
+        // The local route with a Whisper server whose address is missing: the gate stops it, the choice is dropped.
+        facade->log.clear();
+        m_bridge->calls.clear();
+        tanara::app::AppSettings st = m_app->settings()->settings();
+        st.providers.stt.configs[QStringLiteral("whisper-compat")].type = QStringLiteral("whisper-compat");
+        st.providers.stt.configs[QStringLiteral("whisper-compat")].baseUrl.clear();
+        st.routes.stt.lastLocalId = QStringLiteral("whisper-compat");
+        m_app->settings()->setSettings(st);
+        QCOMPARE(m_app->settings()->settings().routes.stt.lastLocalId, QStringLiteral("whisper-compat"));
+        QVERIFY(m_app->settings()->settings().providers.stt.configs.value(QStringLiteral("whisper-compat")).baseUrl.isEmpty());
+        m_shell->startTranscription(m.id, QStringLiteral("local"));
+        QCOMPARE(started.count(), 1);
+        QCOMPARE(facade->log, QStringList({QStringLiteral("choose:stt:local"), QStringLiteral("choose:stt:-")}));
+        QCOMPARE(m_bridge->calls, QStringList{QStringLiteral("settings:providers")});
+        QCOMPARE(wf.route(tanara::providers::Capability::Stt, m.id), tanara::providers::Route::External);
+    }
+
+    // S5: a start without an explicit route on an Ask route asks first (the route dialog), nothing starts;
+    // the dialog's answer (startWithRoute) chooses + starts. The re-transcription keeps its "keep a copy".
+    void askRouteAsksBeforeTheStart()
+    {
+        configureProviders(/*withSttKey*/ true);
+        auto* facade = new RouteLogFacade(m_app.get());
+        facade->forcedStored = tanara::providers::Route::Ask;
+        m_shell = std::make_unique<ShellActions>(facade);
+        m_shell->setBridge(m_bridge.get());
+        const tanara::Meeting m = recording(QStringLiteral("Kérdez"));
+        QSignalSpy started(m_app->jobs(), &tanara::library::MeetingJobTracker::jobStarted);
+        QSignalSpy asked(m_shell.get(), &ShellActions::routeChoiceRequested);
+
+        m_shell->startTranscription(m.id);
+        QCOMPARE(started.count(), 0);
+        QCOMPARE(asked.count(), 1);
+        QCOMPARE(asked.at(0).at(0).toString(), m.id);
+        QCOMPARE(asked.at(0).at(1).toString(), QStringLiteral("transcribe"));
+        QCOMPARE(asked.at(0).at(2).toString(), QStringLiteral("transcript"));
+        QVERIFY(facade->log.isEmpty());
+
+        m_shell->startWithRoute(m.id, QStringLiteral("transcribe"), QStringLiteral("external"));
+        QCOMPARE(facade->log, QStringList({QStringLiteral("choose:stt:external"), QStringLiteral("transcribe")}));
+        QCOMPARE(started.count(), 1);
+        m_app->cancelAllJobs(m.id);
+        QTRY_VERIFY(!m_app->jobs()->isBusy(m.id));
+
+        // The summary path asks the same way (its step is "summary").
+        const tanara::Meeting t = transcribed(QStringLiteral("Összefoglalandó"));
+        m_shell->startQuickSummary(t.id);
+        QCOMPARE(asked.count(), 2);
+        QCOMPARE(asked.at(1).at(1).toString(), QStringLiteral("summary"));
+        QCOMPARE(asked.at(1).at(2).toString(), QStringLiteral("summary"));
+        // "ask" itself is no answer: the dialog comes again.
+        m_shell->startWithRoute(t.id, QStringLiteral("summary"), QStringLiteral("ask"));
+        QCOMPARE(asked.count(), 3);
+    }
+
+    // S5: the cost step gets the chosen route instead of guessing from the setting: a setting that says
+    // Cloud (here forced) with an explicit own route starts without an estimate; without a route the cloud
+    // branch answers ("not available yet" + the own-key settings).
+    void estimateStepFollowsTheChosenRoute()
+    {
+        configureProviders(/*withSttKey*/ true);
+        auto* facade = new RouteLogFacade(m_app.get());
+        facade->forceCloudSetting = true;
+        m_shell = std::make_unique<ShellActions>(facade);
+        m_shell->setBridge(m_bridge.get());
+        connect(m_shell.get(), &ShellActions::toastRequested, this, [this](const QString& text) { m_toasts << text; });
+        const tanara::Meeting m = recording(QStringLiteral("Becslés"));
+        QSignalSpy started(m_app->jobs(), &tanara::library::MeetingJobTracker::jobStarted);
+
+        m_toasts.clear();
+        m_shell->startTranscription(m.id);
+        QCOMPARE(started.count(), 0);
+        QCOMPARE(m_bridge->calls, QStringList{QStringLiteral("settings:providers")});
+        QVERIFY(m_toasts.value(0).startsWith(QStringLiteral("A Tanara Cloud még nem érhető el")));
+
+        m_shell->startTranscription(m.id, QStringLiteral("external"));
+        QCOMPARE(started.count(), 1);
+        m_app->cancelAllJobs(m.id);
+        QTRY_VERIFY(!m_app->jobs()->isBusy(m.id));
     }
 
     void retranscribeAsksFirstAndReportsImpact()

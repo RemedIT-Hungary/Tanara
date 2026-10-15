@@ -4,11 +4,14 @@ import QtQuick.Layouts
 // The shell's confirmation dialogs following the M10 pattern (veil + 440 px window, concrete
 // consequence, confirm button on the right): re-transcribe, delete, close while recording,
 // "End of the meeting?", and the general window of ShellActions.confirm().
+// S5: the route dialog ("Hol fusson?"): a start without an explicit route found an Ask route (or a Cloud
+// run that needs the estimate's confirmation) -> one row per route of the step (the Overview's
+// routeOptions), the answer is ShellActions.startWithRoute.
 Item {
     id: root
 
     property var shell: null                 // ShellActions
-    readonly property bool anyOpen: retranscribeDialog.visible || deleteDialog.visible
+    readonly property bool anyOpen: retranscribeDialog.visible || deleteDialog.visible || routeDialog.visible
                                     || closeDialog.visible || stopDialog.visible || confirmDialog.visible
 
     // The user continues recording in the background / stops and quits (handled by Main.qml).
@@ -25,6 +28,16 @@ Item {
         deleteDialog.meetingId = meetingId
         deleteDialog.meetingTitle = title
         deleteDialog.open()
+    }
+    function openRoute(meetingId, action, step) {
+        routeDialog.meetingId = meetingId
+        routeDialog.action = action
+        routeDialog.step = step
+        routeVm.meetingId = meetingId
+        routeVm.prepareRoutes(step)
+        routeList.makeDefault = false
+        routeDialog.open()
+        routeList.focusFirst()
     }
     function openCloseWhileRecording() { closeDialog.open() }
     function openStopPrompt(reason) {
@@ -72,6 +85,38 @@ Item {
                         root.shell.confirmRetranscribe(retranscribeDialog.meetingId, keepBackup.checked)
                 }
             }
+        ]
+    }
+
+    // ---- S5: where should this run go? ----
+    OverviewViewModel { id: routeVm }
+    TDialog {
+        id: routeDialog
+        objectName: "routeDialog"
+        property string meetingId: ""
+        property string action: ""
+        property string step: "transcript"
+        title: routeDialog.step === "transcript" ? qsTr("Hol fusson az átírás?") : qsTr("Hol fusson az összefoglaló?")
+        onClosed: routeVm.meetingId = ""
+        RouteOptionList {
+            id: routeList
+            Layout.fillWidth: true
+            title: ""
+            options: {
+                for (const s of routeVm.steps)
+                    if (s.key === routeDialog.step) return s.routeOptions || []
+                return []
+            }
+            onChosen: (route, makeDefault) => {
+                const id = routeDialog.meetingId
+                const action = routeDialog.action
+                if (makeDefault) routeVm.setDefaultRoute(routeDialog.step, route)
+                routeDialog.accept()
+                if (root.shell) root.shell.startWithRoute(id, action, route)
+            }
+        }
+        actions: [
+            TButton { text: qsTr("Mégse"); font.weight: Theme.weightSemiBold; onClicked: routeDialog.reject() }
         ]
     }
 

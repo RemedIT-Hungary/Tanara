@@ -61,6 +61,7 @@ void OverviewViewModel::setMeetingId(const QString& id)
     if (id == m_meetingId)
         return;
     m_meetingId = id;
+    m_estimates.clear();
     emit meetingIdChanged();
     reload();
 }
@@ -220,7 +221,193 @@ void OverviewViewModel::reload()
     m_speakers = s.speakers;
     m_stats = s.stats;
     m_stepsSummary = s.stepsSummary;
+    decorateSteps();
     emit changed();
+}
+
+// ---- S5: the split button ----------------------------------------------------------------
+
+namespace {
+
+using tanara::providers::Capability;
+using tanara::providers::Route;
+using tanara::providers::WorkflowStep;
+
+std::optional<Capability> capOfStep(const QString& step)
+{
+    if (step == QLatin1String("transcript") || step == QLatin1String("stt")) return Capability::Stt;
+    if (step == QLatin1String("summary") || step == QLatin1String("llm")) return Capability::Llm;
+    return std::nullopt;
+}
+
+QString minutesText(int seconds)
+{
+    const int min = qMax(1, int((seconds + 30) / 60));
+    return OverviewViewModel::tr("kb. %n perc", nullptr, min);
+}
+
+} // namespace
+
+QVariantList OverviewViewModel::buildRouteOptions(const QString& step) const
+{
+    const auto it = m_choices.constFind(step);
+    if (it == m_choices.constEnd() || !it->available) return {};
+    const tanara::library::RouteChoices& c = *it;
+    const Estimate est = m_estimates.value(step);
+    QVariantList out;
+    for (const tanara::library::RouteChoiceRow& r : c.rows) {
+        QString label, reason;
+        QStringList detail;
+        bool enabled = r.blocker.isEmpty();
+        const bool cloud = r.route == Route::Cloud;
+        switch (r.route) {
+        case Route::Local:
+            label = tr("Helyben · %1").arg(r.provider);
+            detail << tr("ingyenes");
+            if (r.etaSeconds >= 0) detail << minutesText(r.etaSeconds);
+            detail << tr("a gépeden");
+            break;
+        case Route::External:
+            label = tr("Külső · %1 · saját kulcs").arg(r.provider);
+            if (r.etaSeconds >= 0) detail << minutesText(r.etaSeconds);
+            detail << tr("a saját fiókod díjszabásával");
+            break;
+        default:
+            label = c.cloudLive ? tr("Tanara Cloud · %1").arg(r.provider) : tr("Tanara Cloud · hamarosan");
+            break;
+        }
+        if (cloud && enabled) {
+            if (est.done && est.value.ok) {
+                detail << tr("kb. %1").arg(est.value.cost);
+                if (est.value.etaSeconds >= 0) detail << minutesText(est.value.etaSeconds);
+                detail << tr("a keretből");
+                if (est.value.level == QLatin1String("littleReserve")) detail << tr("kevés tartalék");
+                if (est.value.level == QLatin1String("notEnough")) {
+                    enabled = false;
+                    reason = tr("Nincs elég keret: kb. %1 kell, a keret %2.").arg(est.value.cost, est.value.balance);
+                }
+            } else if (est.done) {
+                enabled = false;
+                reason = est.value.offline ? tr("Nincs internet; a helyi út működik.")
+                                           : (est.value.error.isEmpty() ? tr("Nem érkezett becslés.") : est.value.error);
+            } else {
+                // The estimate is the Cloud run's confirmation: the row waits for it.
+                detail << QStringLiteral("…");
+                if (c.confirmCloud) enabled = false;
+            }
+        }
+        const QString& code = r.blocker;
+        if (code == QLatin1String("cloud_unavailable"))
+            reason = c.cloudLive ? tr("A Tanara Cloud ehhez most nem érhető el.") : tr("A Tanara Cloud még nem érhető el.");
+        else if (code == QLatin1String("not_configured"))
+            reason = r.detail.isEmpty() ? tr("Hiányzik egy beállítás.") : r.detail;
+        else if (code == QLatin1String("no_local"))
+            reason = tr("Ehhez nincs helyi szolgáltató.");
+        else if (code == QLatin1String("no_external"))
+            reason = tr("Ehhez nincs külső, saját kulcsos szolgáltató.");
+        else if (!code.isEmpty())
+            reason = tr("Ez az út most nem választható.");
+        out << QVariantMap{{QStringLiteral("route"), tanara::providers::routeKey(r.route)},
+                           {QStringLiteral("label"), label},
+                           {QStringLiteral("detail"), detail.join(QStringLiteral(" · "))},
+                           {QStringLiteral("enabled"), enabled},
+                           {QStringLiteral("reason"), reason},
+                           {QStringLiteral("isDefault"), r.route == c.stored},
+                           {QStringLiteral("isCloud"), cloud}};
+    }
+    return out;
+}
+
+void OverviewViewModel::decorateSteps()
+{
+    m_choices.clear();
+    for (QVariant& v : m_steps) {
+        QVariantMap row = v.toMap();
+        const QString key = row.value(QStringLiteral("key")).toString();
+        const std::optional<Capability> cap = capOfStep(key);
+        if (!cap || key == QLatin1String("stt") || key == QLatin1String("llm")) continue;
+        const tanara::library::RouteChoices c = m_facade ? m_facade->routeChoices(*cap, m_meetingId)
+                                                         : tanara::library::RouteChoices{};
+        m_choices.insert(key, c);
+        row.insert(QStringLiteral("route"), c.available ? tanara::providers::routeKey(c.stored) : QString());
+        row.insert(QStringLiteral("routeOptions"), buildRouteOptions(key));
+        v = row;
+    }
+}
+
+QVariantList OverviewViewModel::routeOptionsFor(const QString& step) const
+{
+    return buildRouteOptions(step);
+}
+
+void OverviewViewModel::prepareRoutes(const QString& step)
+{
+    const std::optional<Capability> cap = capOfStep(step);
+    const auto it = m_choices.constFind(step);
+    if (!cap || !m_facade || it == m_choices.constEnd() || !it->available || !it->cloudLive) return;
+    bool cloudAllowed = false;
+    for (const tanara::library::RouteChoiceRow& r : it->rows)
+        if (r.route == Route::Cloud && r.blocker.isEmpty()) cloudAllowed = true;
+    if (!cloudAllowed) return;
+    Estimate& e = m_estimates[step];
+    if (e.pending || (e.done && e.value.ok)) return;   // asked already (an error is asked again)
+    e = Estimate{};
+    e.pending = true;
+    const QPointer<OverviewViewModel> self(this);
+    const QString meetingId = m_meetingId;
+    m_facade->estimateCloud(*cap == Capability::Stt ? WorkflowStep::Transcribe : WorkflowStep::Summarize, meetingId,
+                            [self, step, meetingId](const tanara::library::CloudRunEstimate& value) {
+        if (!self || self->m_meetingId != meetingId) return;
+        Estimate& slot = self->m_estimates[step];
+        slot.pending = false;
+        slot.done = true;
+        slot.value = value;
+        self->decorateSteps();
+        emit self->changed();
+    });
+}
+
+bool OverviewViewModel::startDefault(const QString& step)
+{
+    const auto it = m_choices.constFind(step);
+    if (it != m_choices.constEnd() && it->available) {
+        const bool cloudConfirm = it->stored == Route::Cloud && it->cloudLive && it->confirmCloud;
+        if (it->stored == Route::Ask || cloudConfirm) {
+            prepareRoutes(step);
+            emit menuRequested(step);
+            return false;
+        }
+    }
+    emit startRequested(step, QString());
+    return true;
+}
+
+bool OverviewViewModel::start(const QString& step, const QString& route)
+{
+    for (const QVariant& v : buildRouteOptions(step)) {
+        const QVariantMap row = v.toMap();
+        if (row.value(QStringLiteral("route")).toString() != route) continue;
+        if (!row.value(QStringLiteral("enabled")).toBool()) {
+            QString reason = row.value(QStringLiteral("reason")).toString();
+            if (reason.isEmpty()) reason = tr("Várd meg a költségbecslést.");
+            emit routeRejected(step, reason);
+            return false;
+        }
+        emit startRequested(step, route);
+        return true;
+    }
+    emit routeRejected(step, tr("Ez az út most nem választható."));
+    return false;
+}
+
+bool OverviewViewModel::setDefaultRoute(const QString& cap, const QString& route)
+{
+    const std::optional<Capability> c = capOfStep(cap);
+    const std::optional<Route> r = tanara::providers::routeFromKey(route);
+    if (!c || !r || !m_facade) return false;
+    const bool ok = m_facade->setDefaultRoute(*c, *r);
+    if (ok) reload();
+    return ok;
 }
 
 } // namespace tanara_qml
