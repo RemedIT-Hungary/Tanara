@@ -416,6 +416,49 @@ private slots:
         QCOMPARE(changed.size(), 0);
     }
 
+    // D5: the processing.localDiarization switch is part of the draft; the segmentation list sits next to the voice models.
+    void localDiarizationSwitchFollowsTheDraftAndSaves()
+    {
+        startApp();
+        QVERIFY(live().processing.localDiarization);              // default: on
+        SettingsViewModel vm(services());
+        QVERIFY(vm.localDiarization());
+        QVERIFY(vm.segmentationModels());
+        QCOMPARE(vm.segmentationModels()->kind(), QStringLiteral("segmentation"));
+        QCOMPARE(vm.segmentationModels()->rowCount(), 2);
+        QCOMPARE(vm.voiceModels()->kind(), QStringLiteral("embedding"));
+        QVERIFY(!vm.dirty());
+
+        QSignalSpy changed(&vm, &SettingsViewModel::diarizationChanged);
+        vm.setLocalDiarization(false);
+        QVERIFY(!vm.localDiarization());
+        QCOMPARE(changed.size(), 1);
+        QCOMPARE(vm.changeCount(), 1);
+        vm.setLocalDiarization(false);                              // same value: nothing
+        QCOMPARE(changed.size(), 1);
+        QVERIFY(live().processing.localDiarization);                // not yet in the core
+        QVERIFY(vm.save());
+        QVERIFY(!live().processing.localDiarization);
+        QCOMPARE(settingsFile().value("processing").toObject().value("localDiarization").toBool(true), false);
+        QVERIFY(!vm.dirty());
+
+        // Discard brings the saved value back.
+        vm.setLocalDiarization(true);
+        QVERIFY(vm.dirty());
+        vm.discard();
+        QVERIFY(!vm.localDiarization());
+        QVERIFY(!vm.dirty());
+
+        // Demo states: on by default, off in B08diaroff.
+        SettingsViewModel d;
+        d.setDemoState(QStringLiteral("B08"));
+        QVERIFY(d.localDiarization());
+        QCOMPARE(d.segmentationModels()->rowCount(), 2);
+        d.setDemoState(QStringLiteral("B08diaroff"));
+        QVERIFY(!d.localDiarization());
+        QVERIFY(!d.dirty());
+    }
+
     void discardRestoresEverythingIncludingTheThemePreview()
     {
         startApp();

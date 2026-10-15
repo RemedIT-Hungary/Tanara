@@ -319,6 +319,10 @@ Workflows::Deps workflowDeps(const ServicesDeps& deps, const Services& s)
     wd.localDiarizationUsable = [voice, modelsDir = deps.modelsDir, appDir = deps.appDir]() {
         return voice->usable() && processing::LocalDiarizer::hasUsableModel(modelsDir, appDir);
     };
+    wd.sttSeparatesSpeakers = [st = deps.settings, reg = deps.registry]() {
+        return st && reg && reg->descriptor(providers::CapabilityKind::Transcription, st->settings().providers.stt.selectedId)
+                                .supportsDiarization;
+    };
     wd.voice.useDiarization = [voice](const QString& id, const providers::DiarizeResult& r) { voice->useDiarization(id, r); };
     // --- end D4 ---
     wd.readiness = deps.readiness;

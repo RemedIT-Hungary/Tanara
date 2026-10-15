@@ -64,6 +64,9 @@ struct Meeting {
     // context. Editable in the pre-transcript view and on the Summary tab; names, jargon and
     // known mishearings belong here ("X" is correctly: ...).
     QString contextNote;
+    // "How many speakers?" the user gave for the local diarization (0 = automatic). Applies per unbound
+    // track; "diarizeSpeakers" in meeting.json, written only when set.
+    int diarizeSpeakerCount = 0;
     // The call app detected by the watcher (e.g. "Microsoft Teams"); empty for a manual recording.
     // Informational only: not sent to the transcriber or the summarizer.
     QString detectedCallApp;

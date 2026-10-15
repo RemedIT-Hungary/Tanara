@@ -13,6 +13,8 @@
 //                   mixdown) in the "diarize" stage, its speakers merged into the transcript; then the
 //                   diarized speakers feed the participant analysis (VoiceSteps::useDiarization). A failed
 //                   diarization is not fatal: the chain goes on with the one-speaker transcript.
+//      (the manual "Beszélők felismerése" runs the same diarize -> identify tail on an existing transcript:
+//       diarizeSpeakers(), its own Transcribe job with the diarize + identify stages)
 //      -> identify  the "Who was there?" decision is applied, otherwise the automatic voice identification
 //                   as the job's last stage (skippable per meeting: setIdentifyAfterTranscription)
 //      -> the job finishes (the identification closes it when it runs).
@@ -86,6 +88,8 @@ public:
         processing::DiarizationService*   diarization = nullptr;
         std::function<bool()> localDiarizationEnabled;   // the processing.localDiarization setting
         std::function<bool()> localDiarizationUsable;    // a segmentation model and a voice model are usable
+        // Whether the selected STT provider separates the speakers itself (its descriptor; Soniox yes, Whisper no).
+        std::function<bool()> sttSeparatesSpeakers;
         VoiceSteps voice;
         // Whether a step can run on the meeting (provider, key, Tanara Cloud blockers).
         std::function<providers::ReadinessResult(providers::WorkflowStep step, const QString& meetingId)> readiness;
@@ -118,6 +122,29 @@ public:
     void setLocalDiarizationOverride(std::optional<bool> on) { m_localDiarizationOverride = on; }
     // Whether a transcription of this meeting that just finished would run the local diarization.
     bool wantsLocalDiarization(const QString& meetingId) const;
+
+    // ---- the manual "Beszélők felismerése" (existing transcript) ----
+    // Where the transcript's speakers come from and whether the manual action may start now.
+    struct SpeakerStatus {
+        QString source;        // "provider" | "local" | "none" (no separation: one speaker)
+        // source "none": why the automatic run did not separate them: "disabled" (the setting is off) | "model"
+        // (no usable segmentation / voice model) | "" (it could run, it has not yet)
+        QString blocker;
+        int     speakers = 0;  // distinct speaker labels in the transcript
+        bool    canDiarize = false;
+        // Not startable: "no_transcript" | "no_tracks" | "no_model" | "running" | "provider" (the provider
+        // separated them) | "" (startable).
+        QString cannotBecause;
+        bool    hasNames = false;   // speaker names exist; a run resets them
+        int     speakerCount = 0;   // the meeting's remembered "How many speakers?" (0 = automatic)
+        QString problem;       // the last local diarization's failure in this process (English detail), "" = none
+    };
+    SpeakerStatus speakerStatus(const QString& meetingId) const;
+    // Starts the local diarization on the meeting's tracks and merges it into the CURRENT transcript (names reset),
+    // then the identification, like the transcription chain's tail (its own Transcribe job; cancel(Transcribe)).
+    // speakerCount > 0: "How many speakers?" (per unbound track; remembered in meeting.json), 0 = automatic (the
+    // remembered value is cleared). false (+ *whyNot, a SpeakerStatus::cannotBecause code): not started.
+    bool diarizeSpeakers(const QString& meetingId, int speakerCount = 0, QString* whyNot = nullptr);
 
     // ---- cancel ----
     bool cancel(const QString& meetingId, JobKind kind);
@@ -176,6 +203,10 @@ private:
     QSet<QString> m_speechChecked;          // measured in this process (not repeated even on error)
     bool m_autoMixdown = true;
     std::optional<bool> m_localDiarizationOverride;
+    QSet<QString> m_manualDiarize;                // meetings whose diarize step is the manual action
+    QHash<QString, QString> m_diarizeProblem;     // meetingId -> the last failure's detail (this process)
+    struct TranscriptSpeakers { int labels = 0; QString source; };
+    mutable QHash<QString, TranscriptSpeakers> m_speakersCache;   // dropped on transcriptReady
 };
 
 } // namespace tanara::app

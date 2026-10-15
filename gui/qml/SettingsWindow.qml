@@ -17,7 +17,9 @@ import QtQuick.Templates as T
 // · B04embedding · B04embeddingRunning · B04embeddingError · B04embeddingDone · B04embeddingCloud
 // · B04embeddingNone · B04modelChange · rejectedReset (confirmation)
 // · B08 · B08download · B08none · B08fallback · B08error · B08offline · B08backfill · B08partial · B08bundled
-//   (Speakers page: voice models, voiceprint backfill)
+//   · B08diaroff · B08segmissing · B08segdownload · B08segmismatch · B08seginstalled
+//   (Speakers page: voice models, voiceprint backfill, the local speaker separation: the switch + the
+//    segmentation models)
 ApplicationWindow {
     id: window
 

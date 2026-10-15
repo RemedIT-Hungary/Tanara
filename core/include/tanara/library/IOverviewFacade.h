@@ -43,6 +43,12 @@ struct OverviewSnapshot {
     bool canReanalyze = false;
     QVariantMap sideWho;
     QVariantList steps;
+    // D5: where the transcript's speakers come from and the manual "Beszélők felismerése" (empty: nothing to say,
+    // e.g. no transcript): { source: "provider" | "local" | "none", line (the "Beszélők: ..." text),
+    // fixTarget ("speakers" | ""), canDiarize, hasNames (a run resets the names), speakerCount (the remembered
+    // "How many speakers?", 0 = automatic), running (the diarize stage runs now), failed, problem (the failure's
+    // human detail) }.
+    QVariantMap speakers;
     QVariantList stats;
     QString stepsSummary;
 };
@@ -64,6 +70,15 @@ public:
     virtual void removeParticipant(const QString& meetingId, const QString& id) = 0;
     // "Only I spoke". False: no own name is set.
     virtual bool setSolo(const QString& meetingId) = 0;
+    // "Beszélők felismerése": the local diarization on the meeting's existing transcript (speakerCount > 0: "How many
+    // speakers?", 0 = automatic), then the identification. false: not started (+ *whyNot, a code). The default
+    // does nothing (test doubles).
+    virtual bool diarizeSpeakers(const QString& meetingId, int speakerCount, QString* whyNot = nullptr)
+    {
+        Q_UNUSED(meetingId); Q_UNUSED(speakerCount);
+        if (whyNot) *whyNot = QStringLiteral("unsupported");
+        return false;
+    }
     // "Re-analyze" before a transcript: the audio analysis again.
     virtual bool reanalyze(const QString& meetingId) = 0;
     virtual void setContextNote(const QString& meetingId, const QString& note) = 0;

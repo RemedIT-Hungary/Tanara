@@ -103,6 +103,7 @@ public:
     void removeParticipant(const QString& meetingId, const QString& id) override;
     bool setSolo(const QString& meetingId) override;
     bool reanalyze(const QString& meetingId) override;
+    bool diarizeSpeakers(const QString& meetingId, int speakerCount, QString* whyNot = nullptr) override;
     void setContextNote(const QString& meetingId, const QString& note) override;
     bool nameParticipant(const QString& meetingId, const QString& id, const QString& personIdOrName) override;
     bool mergeParticipantInto(const QString& meetingId, const QString& fromId, const QString& intoId) override;
@@ -119,6 +120,7 @@ private:
 
     QPointer<tanara::app::AppController> m_c;
     QHash<QString, AnalysisProgress> m_progress;
+    QString m_lastSnapshot;   // the meeting the view asked for last (the models / settings changes refresh it)
 };
 
 } // namespace tanara_qml

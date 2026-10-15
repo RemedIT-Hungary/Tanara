@@ -12,6 +12,7 @@
 #include "tanara/library/tags/TagSuggestionService.h"
 #include "tanara/library/tracks/TrackCatalog.h"
 #include "tanara/processing/analysis/TrackActivity.h"
+#include "tanara/processing/diarization/DiarizationMerge.h"
 #include "tanara/processing/diarization/DiarizationService.h"
 #include "tanara/processing/stt/TranscriptionService.h"
 #include "tanara/processing/summary/SummarizationService.h"
@@ -30,8 +31,11 @@ Workflows::Workflows(Deps deps, QObject* parent)
     // A mix running as a transcription's stage moves that task's "mixdown" stage instead of its own task.
     if (m_deps.mixdown)
         m_deps.mixdown->setTranscriptionStageProbe([this](const QString& id) { return transcriptionInMixdown(id); });
-    if (processing::TranscriptionService* stt = m_deps.transcription)
+    if (processing::TranscriptionService* stt = m_deps.transcription) {
         connect(stt, &processing::TranscriptionService::transcribed, this, &Workflows::transcribed);
+        connect(stt, &processing::TranscriptionService::transcriptReady, this,
+                [this](const QString& id) { m_speakersCache.remove(id); });
+    }
 }
 
 Workflows::~Workflows()
@@ -57,6 +61,7 @@ void Workflows::transcribe(const QString& meetingId)
 {
     if (m_deps.jobs->isRunning(meetingId, JobKind::Transcribe))
         return;   // already running on this meeting (a double click / two views)
+    m_diarizeProblem.remove(meetingId);
 
     Meeting m = m_deps.store->load(meetingId);
     if (m.id.isEmpty()) {
@@ -188,16 +193,103 @@ void Workflows::transcribed(const QString& meetingId)
 
 void Workflows::diarized(const QString& meetingId, const processing::DiarizationOutcome& outcome)
 {
+    const bool manual = m_manualDiarize.remove(meetingId);
     if (outcome.cancelled) {
         // The transcript stays as the STT gave it; the job closes as cancelled (no identification).
         m_deps.jobs->cancelled(meetingId, JobKind::Transcribe);
         return;
     }
-    if (!outcome.ok)
-        qCWarning(lcVoice).noquote() << "Local diarization failed, the transcript keeps one speaker:" << outcome.message;
-    else if (outcome.applied && m_deps.voice.useDiarization)
-        m_deps.voice.useDiarization(meetingId, outcome.result);
+    if (!outcome.ok || !outcome.applied) {
+        m_diarizeProblem.insert(meetingId, outcome.message.isEmpty() ? QStringLiteral("unknown") : outcome.message);
+        if (!outcome.ok)
+            qCWarning(lcVoice).noquote() << "Local diarization failed, the transcript keeps its speakers:" << outcome.message;
+    } else {
+        m_diarizeProblem.remove(meetingId);
+    }
+    // The manual action on a transcript that did not change has nothing to identify: the job just ends.
+    if (manual && !(outcome.ok && outcome.applied)) {
+        m_deps.jobs->finish(meetingId, JobKind::Transcribe);
+        return;
+    }
+    if (outcome.ok && outcome.applied) {
+        if (manual) m_deps.jobs->markIdentified(meetingId, false);   // the new speakers are not identified yet
+        if (m_deps.voice.useDiarization) m_deps.voice.useDiarization(meetingId, outcome.result);
+    }
     continueAfterTranscript(meetingId);
+}
+
+// ==== the manual "Beszélők felismerése" ====================================================================
+
+Workflows::SpeakerStatus Workflows::speakerStatus(const QString& meetingId) const
+{
+    SpeakerStatus st;
+    const Meeting m = m_deps.store ? m_deps.store->load(meetingId) : Meeting();
+    if (m.id.isEmpty() || !m.hasTranscript || !m_deps.transcription) {
+        st.cannotBecause = QStringLiteral("no_transcript");
+        return st;
+    }
+    auto cached = m_speakersCache.constFind(meetingId);
+    if (cached == m_speakersCache.constEnd()) {
+        const MergedTranscript t = m_deps.transcription->currentTranscript(meetingId);
+        QSet<QString> labels;
+        for (const TranscriptToken& tok : t.tokens) labels.insert(tok.speaker);
+        cached = m_speakersCache.insert(meetingId, {int(labels.size()), t.speakerSource});
+    }
+    st.speakers = cached->labels;
+    st.hasNames = !m.speakerMap.isEmpty();
+    st.speakerCount = m.diarizeSpeakerCount;
+    st.problem = m_diarizeProblem.value(meetingId);
+
+    const bool local = cached->source == processing::diarizationmerge::kSourceLocalDiarization;
+    const bool separated = st.speakers > 1;
+    const bool usable = m_deps.localDiarizationUsable && m_deps.localDiarizationUsable();
+    const bool enabled = m_deps.localDiarizationEnabled && m_deps.localDiarizationEnabled();
+    const bool providerDiarizes = m_deps.transcription->providerDiarized(meetingId)
+        || (m_deps.sttSeparatesSpeakers && m_deps.sttSeparatesSpeakers());
+    if (local) st.source = QStringLiteral("local");
+    else if (separated || providerDiarizes) st.source = QStringLiteral("provider");
+    else st.source = QStringLiteral("none");
+    if (st.source == QLatin1String("none"))
+        st.blocker = !usable ? QStringLiteral("model") : !enabled ? QStringLiteral("disabled") : QString();
+
+    if (m_deps.jobs && m_deps.jobs->isRunning(meetingId, JobKind::Transcribe)) st.cannotBecause = QStringLiteral("running");
+    else if (!m_deps.diarization || !usable) st.cannotBecause = QStringLiteral("no_model");
+    else if (processing::DiarizationService::requestFor(m).isEmpty()) st.cannotBecause = QStringLiteral("no_tracks");
+    else if (separated && !local) st.cannotBecause = QStringLiteral("provider");
+    st.canDiarize = st.cannotBecause.isEmpty();
+    return st;
+}
+
+bool Workflows::diarizeSpeakers(const QString& meetingId, int speakerCount, QString* whyNot)
+{
+    const SpeakerStatus st = speakerStatus(meetingId);
+    if (!st.canDiarize) {
+        if (whyNot) *whyNot = st.cannotBecause;
+        return false;
+    }
+    Meeting m = m_deps.store->load(meetingId);
+    const int want = qMax(0, speakerCount);
+    if (m.diarizeSpeakerCount != want) {
+        m.diarizeSpeakerCount = want;
+        m_deps.store->saveMeeting(m);
+    }
+    m_diarizeProblem.remove(meetingId);
+    QVector<JobStage> stages;
+    stages.append({QStringLiteral("diarize"), tr("Beszélők szétválasztása"), StageState::Waiting, -1, QString()});
+    if (m_deps.voice.usable && m_deps.voice.usable())
+        stages.append({QStringLiteral("identify"), tr("Résztvevők azonosítása"),
+                       m_skipIdentify.contains(meetingId) ? StageState::Skipped : StageState::Waiting, -1, QString()});
+    m_deps.jobs->begin(meetingId, JobKind::Transcribe, tr("Beszélők felismerése"), stages);
+    m_manualDiarize.insert(meetingId);
+    if (!m_deps.diarization->start(meetingId, [this, meetingId](const processing::DiarizationOutcome& o) {
+            diarized(meetingId, o);
+        }, /*redo*/ true)) {
+        m_manualDiarize.remove(meetingId);
+        m_deps.jobs->cancelled(meetingId, JobKind::Transcribe);
+        if (whyNot) *whyNot = QStringLiteral("not_started");
+        return false;
+    }
+    return true;
 }
 
 void Workflows::continueAfterTranscript(const QString& meetingId)

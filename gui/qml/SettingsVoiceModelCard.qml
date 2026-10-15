@@ -33,6 +33,8 @@ Rectangle {
     property bool corrupt: false         // file size differs from the expected one
     property bool hasFile: false         // a downloaded file exists (<metaDir>/models): deletable
     property bool canDelete: false       // deletable now (not downloading / verifying)
+    // False for a segmentation model (the local diarization finds it by itself): no "Bekapcsolva" switch.
+    property bool selectable: true
     // For screenshots: menu open.
     property bool demoMenuOpen: false
 
@@ -126,6 +128,7 @@ Rectangle {
             }
             Item { Layout.fillWidth: true }
             TLabel {
+                visible: root.selectable
                 text: qsTr("Bekapcsolva")
                 font.pixelSize: Theme.fontSmall
                 font.weight: Theme.weightMedium
@@ -137,6 +140,7 @@ Rectangle {
             }
             RecorderSwitch {
                 id: sw
+                visible: root.selectable
                 objectName: "voiceModelSwitch-" + root.modelId
                 enabled: root.canEnable
                 checked: root.enabledModel && root.canEnable

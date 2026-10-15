@@ -79,6 +79,12 @@ Item {
         for (const s of vm.steps) if (s.key === "voice") return s.fixTarget || ""
         return ""
     }
+    // D5: the transcript step's extra controls: "Beszélők felismerése" (also for the local result: "újra"), "Mégse"
+    // while it runs, and the Settings link when the setting is off / the model is missing.
+    readonly property var speakers: vm.speakers
+    readonly property string speakersFixTarget: speakers.fixTarget || ""
+    readonly property bool diarizeShown: vm.hasTranscript && (speakers.canDiarize === true || speakers.running === true
+                                                              || speakersFixTarget !== "")
     readonly property bool identifyShown: root.beforeTranscription && pre.identifyAvailable
     readonly property bool reanalyzeShown: vm.canReanalyze && (root.voiceState === "done" || root.voiceState === "attention"
                                                                || root.voiceState === "waiting")
@@ -174,12 +180,25 @@ Item {
     Timer {
         id: demoPanelTimer
         interval: 250
-        running: ["overviewNaming", "overviewSameVoice", "overviewWhichVoice"].indexOf(root.demoState) >= 0
+        running: ["overviewNaming", "overviewSameVoice", "overviewWhichVoice", "overviewDiarizeAsk"].indexOf(root.demoState) >= 0
         onTriggered: {
+            if (root.demoState === "overviewDiarizeAsk") { root.askDiarize(); return }
             if (root.demoState === "overviewNaming") participantsCard.openNaming("v1", false)
             else if (root.demoState === "overviewSameVoice") participantsCard.openNaming("v2", true)
             else participantsCard.openWhichVoice(DemoText.t("Tóth Bence", "Ryan Mitchell"), "")
         }
+    }
+
+    // "Beszélők felismerése": the confirmation with the optional "Hány beszélő?" (the menu item and the step button).
+    function askDiarize() {
+        if (!vm.hasTranscript) return
+        diarizeCount.text = root.speakers.speakerCount > 0 ? String(root.speakers.speakerCount) : ""
+        diarizeDialog.open()
+    }
+    function startDiarize() {
+        const n = diarizeCount.text === "" ? 0 : parseInt(diarizeCount.text)
+        if (!vm.diarizeSpeakers(isNaN(n) ? 0 : n) && root.shell)
+            root.shell.toast(qsTr("A beszélők felismerése most nem indítható."))
     }
 
     // The change bar (Main calls it on the shared stack's signals; in the demo, for screenshots).
@@ -574,7 +593,7 @@ Item {
                         steps: vm.steps
                         // Before transcription the start control, during the first transcription the sections + "Cancel".
                         transcriptContent: !vm.hasTranscript && (root.beforeTranscription || vm.transcribing)
-                                           ? transcribeStep : null
+                                           ? transcribeStep : root.diarizeShown ? diarizeStep : null
                         mixdownContent: root.beforeTranscription && (pre.mixdownState === "missing" || pre.mixdownState === "stale")
                                         ? mixdownStep : null
                         voiceContent: root.identifyShown || root.reanalyzeShown || root.voiceFixTarget !== "" ? voiceStep : null
@@ -611,6 +630,44 @@ Item {
             shell: root.shell
             meetingId: root.meetingId
             onStartRequested: root.commitSource()
+        }
+    }
+    // The speakers' controls in the "Transcript" step of a finished transcript (D5).
+    Component {
+        id: diarizeStep
+        ColumnLayout {
+            spacing: 6
+            TButton {
+                objectName: "speakersFixButton"
+                visible: root.speakersFixTarget !== "" && !!root.shell
+                text: qsTr("Beállítások megnyitása")
+                size: "small"
+                iconName: "settings"
+                iconSize: 14
+                onClicked: root.shell.openSettings(root.speakersFixTarget)
+            }
+            RowLayout {
+                spacing: 8
+                TButton {
+                    objectName: "diarizeButton"
+                    visible: root.speakers.canDiarize === true && root.speakers.running !== true
+                    text: root.speakers.source === "local" || root.speakers.failed === true
+                          ? qsTr("Beszélők felismerése újra") : qsTr("Beszélők felismerése")
+                    size: "small"
+                    iconName: root.speakers.source === "local" || root.speakers.failed === true ? "refresh-cw" : "audio-lines"
+                    iconSize: 14
+                    toolTipText: qsTr("A beszélők szétválasztása a sávokon, a gépeden; utána a hangazonosítás")
+                    onClicked: root.askDiarize()
+                }
+                TButton {
+                    objectName: "diarizeCancelButton"
+                    visible: root.speakers.running === true
+                    text: qsTr("Mégse")
+                    size: "small"
+                    onClicked: if (root.shell) root.shell.cancelJob(root.meetingId, JobKinds.Transcribe)
+                }
+                Item { Layout.fillWidth: true }
+            }
         }
     }
     Component {
@@ -689,6 +746,59 @@ Item {
         id: learnPopup
         vm: decisionVm
         shell: root.shell
+    }
+
+    // ---- "Beszélők felismerése": the confirmation + "Hány beszélő?" ----
+    TDialog {
+        id: diarizeDialog
+        objectName: "diarizeDialog"
+        title: root.speakers.source === "local" || root.speakers.failed === true
+              ? qsTr("Újra felismered a beszélőket?") : qsTr("Felismered a beszélőket?")
+        TLabel {
+            Layout.fillWidth: true
+            wrapMode: Text.Wrap
+            cssLineHeight: 1.45
+            text: qsTr("A Tanara a gépeden szétválasztja a beszélőket a sávokon, és az átirat sorait hozzájuk rendeli. A felvétel nem megy sehova.")
+        }
+        TLabel {
+            objectName: "diarizeNamesWarning"
+            visible: root.speakers.hasNames === true
+            Layout.fillWidth: true
+            wrapMode: Text.Wrap
+            color: Theme.warnInk
+            cssLineHeight: 1.45
+            text: qsTr("A beszélő-nevek és javítások elvesznek. Folytatod?")
+        }
+        ColumnLayout {
+            Layout.fillWidth: true
+            spacing: 4
+            TLabel { text: qsTr("Hány beszélő?"); font.weight: Theme.weightSemiBold }
+            TTextField {
+                id: diarizeCount
+                objectName: "diarizeCountField"
+                Layout.preferredWidth: 140
+                placeholderText: qsTr("automatikus")
+                inputMethodHints: Qt.ImhDigitsOnly
+                validator: IntValidator { bottom: 1; top: 20 }
+                Accessible.name: qsTr("Hány beszélő?")
+            }
+            TLabel {
+                Layout.fillWidth: true
+                wrapMode: Text.Wrap
+                muted: true
+                font.pixelSize: Theme.fontSmall
+                text: qsTr("Üresen a Tanara dönti el. Sávonként értendő; ha biztos benne vagy, ez pontosabb.")
+            }
+        }
+        actions: [
+            TButton { text: qsTr("Mégse"); font.weight: Theme.weightSemiBold; onClicked: diarizeDialog.reject() },
+            TButton {
+                objectName: "diarizeConfirm"
+                text: qsTr("Felismerés")
+                variant: root.speakers.hasNames === true ? "danger" : "primary"
+                onClicked: { diarizeDialog.accept(); root.startDiarize() }
+            }
+        ]
     }
 
     // ---- the old Tracks tab's full view ----

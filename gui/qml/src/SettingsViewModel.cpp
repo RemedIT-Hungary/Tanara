@@ -202,6 +202,7 @@ SettingsViewModel::SettingsViewModel(const UiServices& services, QObject* parent
 {
     init();
     m_voiceModels->useServices(services, QStringLiteral("B08"));
+    m_segModels->useServices(services, QStringLiteral("B08"));
     useFacade(services.settings(QString(), this));
 }
 
@@ -220,6 +221,12 @@ void SettingsViewModel::init()
                                       touch();
                                   });
     connect(m_voiceModels, &VoiceModelListModel::openUrlRequested, this, [this](const QString& url) {
+        if (m_dialogs) m_dialogs->openUrl(url);
+    });
+    // The segmentation models of the local diarization: immediate download, nothing in the draft.
+    m_segModels = new VoiceModelListModel(this);
+    m_segModels->setKind(QStringLiteral("segmentation"));
+    connect(m_segModels, &VoiceModelListModel::openUrlRequested, this, [this](const QString& url) {
         if (m_dialogs) m_dialogs->openUrl(url);
     });
 
@@ -241,7 +248,9 @@ void SettingsViewModel::resolveServices()
 {
     if (m_explicitFacade) return;
     const UiServices& services = AppContext::instance()->services();
-    m_voiceModels->useServices(services, m_demoState.startsWith(QLatin1String("B08")) ? m_demoState : QStringLiteral("B08"));
+    const QString voiceScenario = m_demoState.startsWith(QLatin1String("B08")) ? m_demoState : QStringLiteral("B08");
+    m_voiceModels->useServices(services, voiceScenario);
+    m_segModels->useServices(services, voiceScenario);
     useFacade(services.settings(m_demoState, this));
 }
 
@@ -386,6 +395,7 @@ void SettingsViewModel::emitAllChanged()
     emit watchedAppsChanged();
     emit serviceModeChanged();
     emit summaryChanged();
+    emit diarizationChanged();
     emit promptsChanged();
     emit promptIndexChanged();
     emit promptTextChanged();
@@ -1120,6 +1130,16 @@ void SettingsViewModel::setServiceMode(const QString& mode)
     if (m == m_serviceMode) return;
     m_serviceMode = m;
     emit serviceModeChanged();
+}
+
+// ---- Speakers: local diarization ------------------------------------------------
+
+void SettingsViewModel::setLocalDiarization(bool on)
+{
+    if (m_draft.processing.localDiarization == on) return;
+    m_draft.processing.localDiarization = on;
+    emit diarizationChanged();
+    touch();
 }
 
 // ---- Summary ------------------------------------------------------------------

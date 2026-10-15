@@ -97,6 +97,15 @@ ColumnLayout {
                     font.pixelSize: Theme.fontCaption
                     elide: Text.ElideRight
                 }
+                // An optional second line (D5: "Beszélők: helyi elkülönítés" under the Transcript step).
+                TLabel {
+                    Layout.fillWidth: true
+                    visible: text !== ""
+                    text: stepRow.modelData.note || ""
+                    color: stepRow.state === "attention" ? Theme.warnInk : Theme.textMuted
+                    font.pixelSize: Theme.fontCaption
+                    wrapMode: Text.Wrap
+                }
                 TProgressBar {
                     visible: stepRow.modelData.progress >= 0 || stepRow.modelData.progress === -2
                     Layout.fillWidth: true

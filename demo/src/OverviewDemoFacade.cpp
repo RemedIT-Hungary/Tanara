@@ -1,5 +1,7 @@
 #include "demo/OverviewDemoFacade.h"
 
+#include "tanara/library/OverviewSpeakers.h"
+
 #include "demo/DemoText.h"
 
 #include <QPair>
@@ -332,6 +334,19 @@ bool OverviewDemoFacade::decideInPlace(const QString& meetingId, const QString& 
     return true;
 }
 
+bool OverviewDemoFacade::diarizeSpeakers(const QString& meetingId, int speakerCount, QString* whyNot)
+{
+    if (!m_snapshot.speakers.value(QStringLiteral("canDiarize")).toBool()) {
+        if (whyNot) *whyNot = QStringLiteral("not_startable");
+        return false;
+    }
+    Q_UNUSED(speakerCount);
+    m_scenario = QStringLiteral("overviewSpeakersLocal");
+    m_snapshot = build();
+    emit changed(meetingId);
+    return true;
+}
+
 void OverviewDemoFacade::setContextNote(const QString& meetingId, const QString& note)
 {
     if (note == m_snapshot.contextNote)
@@ -345,7 +360,12 @@ tanara::library::OverviewSnapshot OverviewDemoFacade::build() const
     tanara::library::OverviewSnapshot s;
     // Fictional data with the handoff's names.
     const QString st = m_scenario.isEmpty() ? QStringLiteral("overviewDone") : m_scenario;
-    const bool done = st == QLatin1String("overviewDone");
+    // D5: the finished meeting with the speakers' source / the manual "Beszélők felismerése" in the transcript step.
+    const bool spk = st == QLatin1String("overviewSpeakersLocal") || st == QLatin1String("overviewSpeakersProvider")
+                  || st == QLatin1String("overviewSpeakersOff") || st == QLatin1String("overviewSpeakersNoModel")
+                  || st == QLatin1String("overviewDiarizing") || st == QLatin1String("overviewDiarizeFailed")
+                  || st == QLatin1String("overviewDiarizeAsk");
+    const bool done = st == QLatin1String("overviewDone") || spk;
     const bool empty = st == QLatin1String("overviewEmpty");
     const bool nobody = st == QLatin1String("overviewNobody");
     // After recording, before the transcript (like the empty state, "Start transcription" in the step); ...Error: with an error.
@@ -364,7 +384,8 @@ tanara::library::OverviewSnapshot OverviewDemoFacade::build() const
     s.title = demoText("Negyedéves partnertalálkozó", "Quarterly partner review");
     s.transcribing = !s.hasTranscript && !recorded && !noModel;
     s.canReanalyze = done || nobody;
-    s.allDone = done;
+    s.allDone = done && !spk;
+    s.transcribing = s.transcribing || st == QLatin1String("overviewDiarizing");
     s.analysisRunning = empty;
     s.approvalPending = candidates;
     s.approved = done;
@@ -536,6 +557,7 @@ tanara::library::OverviewSnapshot OverviewDemoFacade::build() const
                   << step(QStringLiteral("transcript"), tr("Átirat"), QStringLiteral("Soniox · 62% · ") + tr("kb. %n perc", nullptr, 4), QStringLiteral("running"), true, 62)
                   << step(QStringLiteral("summary"), tr("Összefoglaló"), tr("az átirat után"), QStringLiteral("waiting"));
     }
+    if (spk) applySpeakers(st, steps, s);
     s.steps = steps;
     s.stepsSummary = tr("felvétel · lekeverés · átirat · összefoglaló");
     s.stats.clear();
@@ -547,6 +569,62 @@ tanara::library::OverviewSnapshot OverviewDemoFacade::build() const
                 << stat(tr("ÁTNÉZENDŐ"), QStringLiteral("84"), tr("az Átirat fülön"))
                 << stat(tr("ÖSSZEFOGLALÓ"), tr("kész"), demoText("okt. 1. 17:05", "Oct 1, 5:05 PM"));
     return s;
+}
+
+// D5: the transcript step of the finished-meeting demo (the summary is left to do, so the steps stay open).
+void OverviewDemoFacade::applySpeakers(const QString& st, QVariantList& steps, tanara::library::OverviewSnapshot& s) const
+{
+    tanara::library::SpeakerFacts status;
+    status.canDiarize = true;
+    status.hasNames = false;
+    bool running = false;
+    if (st == QLatin1String("overviewSpeakersLocal")) {
+        status.source = QStringLiteral("local");
+    } else if (st == QLatin1String("overviewSpeakersProvider")) {
+        status.source = QStringLiteral("provider");
+        status.canDiarize = false;
+    } else if (st == QLatin1String("overviewSpeakersOff")) {
+        status.source = QStringLiteral("none");
+        status.blocker = QStringLiteral("disabled");
+    } else if (st == QLatin1String("overviewSpeakersNoModel")) {
+        status.source = QStringLiteral("none");
+        status.blocker = QStringLiteral("model");
+        status.canDiarize = false;
+    } else if (st == QLatin1String("overviewDiarizing")) {
+        status.source = QStringLiteral("none");
+        running = true;
+        status.canDiarize = false;
+    } else if (st == QLatin1String("overviewDiarizeFailed")) {
+        status.source = QStringLiteral("none");
+        status.problem = QStringLiteral("decode_failed");
+    } else if (st == QLatin1String("overviewDiarizeAsk")) {
+        status.source = QStringLiteral("local");
+        status.hasNames = true;
+        status.speakerCount = 2;
+    }
+    s.speakers = tanara::library::overviewSpeakers(status, running);
+    for (QVariant& v : steps) {
+        QVariantMap step = v.toMap();
+        const QString key = step.value(QStringLiteral("key")).toString();
+        if (key == QLatin1String("summary")) {
+            step.insert(QStringLiteral("sub"), tr("még nem készült"));
+            step.insert(QStringLiteral("state"), QStringLiteral("waiting"));
+        } else if (key == QLatin1String("transcript")) {
+            if (running) {
+                step.insert(QStringLiteral("sub"), tr("Beszélők szétválasztása") + QStringLiteral(" · ") + tr("helyben, %n sáv", nullptr, 2)
+                                                       + QStringLiteral(" · 62%"));
+                step.insert(QStringLiteral("state"), QStringLiteral("running"));
+                step.insert(QStringLiteral("progress"), 62);
+            } else {
+                step.insert(QStringLiteral("note"), s.speakers.value(QStringLiteral("line")));
+                if (!s.speakers.value(QStringLiteral("fixTarget")).toString().isEmpty())
+                    step.insert(QStringLiteral("fixTarget"), s.speakers.value(QStringLiteral("fixTarget")));
+                if (s.speakers.value(QStringLiteral("attention")).toBool())
+                    step.insert(QStringLiteral("state"), QStringLiteral("attention"));
+            }
+        }
+        v = step;
+    }
 }
 
 // The card's decided / edited design states, applied over the pending candidates with the same

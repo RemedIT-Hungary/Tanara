@@ -128,6 +128,11 @@ ApplicationWindow {
     function openParticipants() {
         shellActions.openParticipants(shellActions.currentMeetingId)
     }
+    // "Beszélők felismerése…" (Meeting menu): the Overview asks (names warning, "Hány beszélő?") and runs it.
+    function openDiarize() {
+        shellActions.showTab(0)
+        Qt.callLater(() => overviewTab.askDiarize())
+    }
     // Tab switch. Moving to Transcript shows the card of an analysis awaiting approval, once per
     // session (ShellActions.maybeOfferParticipants: Overview tab + the card flashes).
     function showTab(index) {
@@ -504,6 +509,7 @@ ApplicationWindow {
                         canIdentify: header.canIdentify
                         onRenameRequested: Qt.callLater(header.startRename)
                         onParticipantsRequested: window.openParticipants()
+                        onDiarizeRequested: window.openDiarize()
                     }
                 }
                 TButton {
@@ -683,6 +689,7 @@ ApplicationWindow {
                         demoState: window.demoState === "tabTooltip" ? "tabTooltip" : ""
                         onTabRequested: (index) => window.showTab(index)
                         onParticipantsRequested: window.openParticipants()
+                        onDiarizeRequested: window.openDiarize()
                     }
                     // Running, cancelable tasks (export, identification, re-transcription ...).
                     ColumnLayout {

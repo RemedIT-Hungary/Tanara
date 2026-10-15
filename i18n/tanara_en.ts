@@ -1619,6 +1619,10 @@
         <translation>Re-run voiceprint analysis</translation>
     </message>
     <message>
+        <source>Beszélők felismerése…</source>
+        <translation>Recognize speakers…</translation>
+    </message>
+    <message>
         <source>Újraellenőrzés…</source>
         <translation>Re-check…</translation>
     </message>
@@ -1974,10 +1978,69 @@
     </message>
 </context>
 <context>
+    <name>OverviewSpeakers</name>
+    <message>
+        <source>nincs szegmentáló modell</source>
+        <translation>no segmentation model</translation>
+    </message>
+    <message>
+        <source>nincs hangmodell</source>
+        <translation>no voice model</translation>
+    </message>
+    <message>
+        <source>a hangsáv nem olvasható</source>
+        <translation>the audio track cannot be read</translation>
+    </message>
+    <message>
+        <source>a szegmentálás hibát adott</source>
+        <translation>the segmentation failed</translation>
+    </message>
+    <message>
+        <source>nincs használható sáv</source>
+        <translation>no usable track</translation>
+    </message>
+    <message>
+        <source>nem találtam beszélőt</source>
+        <translation>no speakers found</translation>
+    </message>
+    <message>
+        <source>részletek a naplóban</source>
+        <translation>details in the log</translation>
+    </message>
+    <message>
+        <source>Beszélők: a felismerés nem sikerült</source>
+        <translation>Speakers: recognition failed</translation>
+    </message>
+    <message>
+        <source>Beszélők: a szolgáltatótól</source>
+        <translation>Speakers: from the provider</translation>
+    </message>
+    <message>
+        <source>Beszélők: helyi elkülönítés</source>
+        <translation>Speakers: separated locally</translation>
+    </message>
+    <message>
+        <source>Beszélők: nincs — kapcsold be a Beállításokban</source>
+        <translation>Speakers: none — turn it on in Settings</translation>
+    </message>
+    <message>
+        <source>Beszélők: nincs — tölts le modellt a Beállításokban</source>
+        <translation>Speakers: none — download a model in Settings</translation>
+    </message>
+    <message>
+        <source>Beszélők: nincs szétválasztva</source>
+        <translation>Speakers: not separated</translation>
+    </message>
+</context>
+<context>
     <name>OverviewTab</name>
     <message>
         <source>Ehhez add meg a saját neved: Beállítások › Beszélők › Te.</source>
         <translation>To do this, enter your own name: Settings › Speakers › You.</translation>
+    </message>
+    <message>
+        <source>A beszélők felismerése most nem indítható.</source>
+        <translation>Speaker recognition cannot start now.</translation>
     </message>
     <message>
         <source>Visszavonva: %1</source>
@@ -2058,6 +2121,22 @@
         <translation>Details</translation>
     </message>
     <message>
+        <source>Beszélők felismerése újra</source>
+        <translation>Recognize speakers again</translation>
+    </message>
+    <message>
+        <source>Beszélők felismerése</source>
+        <translation>Recognize speakers</translation>
+    </message>
+    <message>
+        <source>A beszélők szétválasztása a sávokon, a gépeden; utána a hangazonosítás</source>
+        <translation>Separates the speakers on the tracks, on your machine; the voice identification follows</translation>
+    </message>
+    <message>
+        <source>Mégse</source>
+        <translation>Cancel</translation>
+    </message>
+    <message>
         <source>Lekeverés frissítése</source>
         <translation>Update mixdown</translation>
     </message>
@@ -2100,6 +2179,38 @@
     <message>
         <source>A hanglenyomat-elemzés újra a sávokon</source>
         <translation>Re-run the voiceprint analysis on the tracks</translation>
+    </message>
+    <message>
+        <source>Újra felismered a beszélőket?</source>
+        <translation>Recognize the speakers again?</translation>
+    </message>
+    <message>
+        <source>Felismered a beszélőket?</source>
+        <translation>Recognize the speakers?</translation>
+    </message>
+    <message>
+        <source>A Tanara a gépeden szétválasztja a beszélőket a sávokon, és az átirat sorait hozzájuk rendeli. A felvétel nem megy sehova.</source>
+        <translation>Tanara separates the speakers on the tracks on your machine and assigns the transcript lines to them. The recording goes nowhere.</translation>
+    </message>
+    <message>
+        <source>A beszélő-nevek és javítások elvesznek. Folytatod?</source>
+        <translation>The speaker names and corrections will be lost. Continue?</translation>
+    </message>
+    <message>
+        <source>Hány beszélő?</source>
+        <translation>How many speakers?</translation>
+    </message>
+    <message>
+        <source>automatikus</source>
+        <translation>automatic</translation>
+    </message>
+    <message>
+        <source>Üresen a Tanara dönti el. Sávonként értendő; ha biztos benne vagy, ez pontosabb.</source>
+        <translation>Left empty, Tanara decides. Counted per track; if you are sure, this is more accurate.</translation>
+    </message>
+    <message>
+        <source>Felismerés</source>
+        <translation>Recognize</translation>
     </message>
     <message>
         <source>Sávok részletei</source>
@@ -4656,8 +4767,16 @@
         <translation>The downloaded model file is deleted from this computer. Voiceprints made with it are kept, and they can be used again if you download it later.</translation>
     </message>
     <message>
+        <source>A letöltött modellfájl törlődik a gépről. Később újra letöltheted.</source>
+        <translation>The downloaded model file is deleted from this machine. You can download it again later.</translation>
+    </message>
+    <message>
         <source>Amíg nincs meg, a felismerés a többi bekapcsolt modellel megy (ha egy sincs, a CAM++ tartalékkal).</source>
         <translation>Until it is available, recognition runs with the other enabled models (with the CAM++ fallback if there are none).</translation>
+    </message>
+    <message>
+        <source>Amíg nincs szegmentáló modell, a Whisper-átirat beszélők nélkül marad.</source>
+        <translation>Without a segmentation model, a Whisper transcript stays without speakers.</translation>
     </message>
     <message>
         <source>Mégse</source>
@@ -4718,6 +4837,26 @@
     <message>
         <source>A modellek mappájának újraolvasása és a fájlok ellenőrzése</source>
         <translation>Rescan the models folder and verify the files</translation>
+    </message>
+    <message>
+        <source>Beszélők elkülönítése (helyi)</source>
+        <translation>Speaker separation (local)</translation>
+    </message>
+    <message>
+        <source>Beszélők felismerése helyben, ha a leíró szolgáltató nem adja</source>
+        <translation>Recognize speakers locally when the transcription provider does not give them</translation>
+    </message>
+    <message>
+        <source>A Whisper és a Cloud Fast csomag nem választja szét a beszélőket, ezért ezekhez kell; a Soniox maga megteszi, ahhoz nem. Az átirat után a gépeden fut, a felvétel nem megy sehova.</source>
+        <translation>Whisper and the Cloud Fast tier do not separate the speakers, so they need it; Soniox does it itself and does not. It runs on your machine after the transcript; the recording goes nowhere.</translation>
+    </message>
+    <message>
+        <source>Nincs szegmentáló modell — a Whisper-átirat beszélők nélkül marad. Töltsd le az alapmodellt.</source>
+        <translation>No segmentation model — a Whisper transcript stays without speakers. Download the base model.</translation>
+    </message>
+    <message>
+        <source>A szegmentáló modell azt mondja meg, ki mikor beszél; a beszélők szétválasztásához a fenti hangmodell is kell.</source>
+        <translation>The segmentation model tells who speaks when; separating the speakers also needs the voice model above.</translation>
     </message>
     <message>
         <source>letöltés… %1</source>
@@ -8162,6 +8301,10 @@
         <translation>Mixing down for transcription…</translation>
     </message>
     <message>
+        <source>Beszélők felismerése</source>
+        <translation>Recognize speakers</translation>
+    </message>
+    <message>
         <source>Sáv beemelve</source>
         <translation>Track added back</translation>
     </message>
@@ -9645,6 +9788,17 @@
     <message>
         <source>ÖSSZEFOGLALÓ</source>
         <translation>SUMMARY</translation>
+    </message>
+    <message>
+        <source>Beszélők szétválasztása</source>
+        <translation>Speaker separation</translation>
+    </message>
+    <message numerus="yes">
+        <source>helyben, %n sáv</source>
+        <translation>
+            <numerusform>locally, %n track</numerusform>
+            <numerusform>locally, %n tracks</numerusform>
+        </translation>
     </message>
 </context>
 <context>
@@ -13184,6 +13338,14 @@
 </context>
 <context>
     <name>tanara_qml::VoiceModelListModel</name>
+    <message>
+        <source>Alap: ez választja szét, ki mikor beszél (a Whisper-átirat beszélőihez).</source>
+        <translation>Base model: tells who speaks when (for the speakers of a Whisper transcript).</translation>
+    </message>
+    <message>
+        <source>Kisebb és gyorsabb; a pontossága még mérés alatt van.</source>
+        <translation>Smaller and faster; its accuracy is still being measured.</translation>
+    </message>
     <message>
         <source>A csomagban · tartalék.</source>
         <translation>Bundled · fallback.</translation>

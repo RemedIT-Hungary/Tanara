@@ -66,7 +66,10 @@ public:
     // Starts the run; `done` is called exactly once on the main thread (also on cancel, with cancelled),
     // never from inside start(). false: nothing started (unknown meeting, no track, the transcript already
     // has speakers, no diarizer) and `done` is not called.
-    bool start(const QString& meetingId, Done done);
+    // redo (the manual "Beszélők felismerése" on a transcript the local diarization already separated): the
+    // speakers of such a transcript (speakerSource == local-diarization) are first folded back into one, then
+    // the run goes on as usual; a transcript separated by the provider is never redone.
+    bool start(const QString& meetingId, Done done, bool redo = false);
     bool running(const QString& meetingId) const { return m_runs.contains(meetingId); }
     // Stops the diarizer; `done` follows with cancelled (the transcript untouched).
     bool cancel(const QString& meetingId);

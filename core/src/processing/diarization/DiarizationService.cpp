@@ -29,6 +29,7 @@ DiarizationService::~DiarizationService()
 providers::DiarizeRequest DiarizationService::requestFor(const Meeting& m)
 {
     providers::DiarizeRequest req;
+    if (m.diarizeSpeakerCount > 0) req.numClusters = m.diarizeSpeakerCount;
     for (const Track& t : m.tracks) {
         if (!t.included() || t.file.isEmpty()) continue;
         providers::DiarizeTrack dt;
@@ -49,7 +50,7 @@ providers::DiarizeRequest DiarizationService::requestFor(const Meeting& m)
     return req;
 }
 
-bool DiarizationService::start(const QString& meetingId, Done done)
+bool DiarizationService::start(const QString& meetingId, Done done, bool redo)
 {
     if (m_runs.contains(meetingId) || !m_deps.store || !m_deps.diarizer) return false;
     const Meeting m = m_deps.store->load(meetingId);
@@ -57,7 +58,8 @@ bool DiarizationService::start(const QString& meetingId, Done done)
     const providers::DiarizeRequest req = requestFor(m);
     if (req.isEmpty()) return false;
     const MergedTranscript current = m_deps.transcript ? m_deps.transcript(meetingId) : MergedTranscript();
-    if (!diarizationmerge::needsSpeakers(current)) return false;
+    const bool separatedLocally = current.speakerSource == diarizationmerge::kSourceLocalDiarization;
+    if (!diarizationmerge::needsSpeakers(current) && !(redo && separatedLocally)) return false;
 
     providers::IDiarizer* diarizer = m_deps.diarizer(this);
     if (!diarizer) return false;
@@ -79,11 +81,17 @@ bool DiarizationService::start(const QString& meetingId, Done done)
         if (jobs && total > 0)
             jobs->setStagePercent(meetingId, JobKind::Transcribe, kStage, int(qBound<qint64>(qint64(0), done * 100 / total, qint64(100))));
     });
-    connect(job, &providers::CapabilityJob::finished, this, [this, meetingId, job]() {
+    connect(job, &providers::CapabilityJob::finished, this, [this, meetingId, job, redo]() {
         DiarizationOutcome out;
         out.ok = true;
         out.result = job->result();
         MergedTranscript t = m_deps.transcript ? m_deps.transcript(meetingId) : MergedTranscript();
+        if (redo && t.speakerSource == diarizationmerge::kSourceLocalDiarization) {
+            // Fold the earlier local speakers back into one, so the merge applies to a fresh start.
+            for (TranscriptToken& tok : t.tokens) tok.speaker = diarizationmerge::rawLabel(1);
+            t.speakerSource.clear();
+            t.speakerModels.clear();
+        }
         const diarizationmerge::MergeResult mr = diarizationmerge::apply(t, out.result);
         out.applied = mr.applied;
         out.rawSpeakers = int(mr.labels.size());

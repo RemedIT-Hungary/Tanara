@@ -512,6 +512,89 @@ private slots:
         QTest::qWait(150);
     }
 
+    // D5: the transcript step's speakers: the line, the Settings link, "Beszélők felismerése" with the confirmation and
+    // "Hány beszélő?", cancel while it runs, and the Meeting menu's entry.
+    void speakers_stepControlsAndDialog()
+    {
+        auto press = [](QQuickItem* it) { QVERIFY(it); QMetaObject::invokeMethod(it, "clicked"); };
+        load(QStringLiteral("overviewSpeakersOff"));
+        QTRY_VERIFY(shown("pipelineSteps"));
+        QObject* overview = object("overviewTab");
+        QVERIFY(overview);
+        StartSpy spy;
+        overview->setProperty("shell", QVariant::fromValue<QObject*>(&spy));
+        QTRY_VERIFY(shown("diarizeButton"));
+        QVERIFY(shown("speakersFixButton"));
+        QVERIFY(!shown("diarizeCancelButton"));
+        QCOMPARE(item("diarizeButton")->property("text").toString(), QStringLiteral("Beszélők felismerése"));
+        press(item("speakersFixButton"));
+        QCOMPARE(spy.calls, QStringList({QStringLiteral("openSettings:speakers")}));
+        // The action asks first (no names here), with the optional speaker count.
+        QObject* dialog = object("diarizeDialog");
+        QVERIFY(dialog);
+        QVERIFY(!dialog->property("visible").toBool());
+        press(item("diarizeButton"));
+        QTRY_VERIFY(dialog->property("visible").toBool());
+        QVERIFY(!shown("diarizeNamesWarning"));
+        QVERIFY(item("diarizeCountField")->property("text").toString().isEmpty());
+        item("diarizeCountField")->setProperty("text", QStringLiteral("2"));
+        QCOMPARE(item("diarizeCountField")->property("text").toString(), QStringLiteral("2"));
+        press(item("diarizeConfirm"));
+        QTRY_VERIFY(!dialog->property("visible").toBool());
+        // The demo action made the speakers local: the button is now the redo.
+        QTRY_COMPARE(item("diarizeButton")->property("text").toString(), QStringLiteral("Beszélők felismerése újra"));
+        QVERIFY(!shown("speakersFixButton"));
+        m_engine.reset();
+
+        // The names warning and the remembered count (the dialog opens by itself in this design state).
+        load(QStringLiteral("overviewDiarizeAsk"));
+        QTRY_VERIFY(object("diarizeDialog") && object("diarizeDialog")->property("visible").toBool());
+        QVERIFY(shown("diarizeNamesWarning"));
+        QCOMPARE(item("diarizeCountField")->property("text").toString(), QStringLiteral("2"));
+        QCOMPARE(object("diarizeDialog")->property("title").toString(), QStringLiteral("Újra felismered a beszélőket?"));
+        m_engine.reset();
+
+        // Running: percent in the step, cancel instead of the action.
+        load(QStringLiteral("overviewDiarizing"));
+        QTRY_VERIFY(shown("diarizeCancelButton"));
+        QVERIFY(!shown("diarizeButton"));
+        overview = object("overviewTab");
+        StartSpy spy2;
+        overview->setProperty("shell", QVariant::fromValue<QObject*>(&spy2));
+        press(item("diarizeCancelButton"));
+        QCOMPARE(spy2.calls, QStringList({QStringLiteral("cancelJob::%1").arg(int(tanara::JobKind::Transcribe))}));
+        m_engine.reset();
+
+        // No model: the link only; the provider's own speakers: nothing to do.
+        load(QStringLiteral("overviewSpeakersNoModel"));
+        QTRY_VERIFY(shown("speakersFixButton"));
+        QVERIFY(!shown("diarizeButton"));
+        m_engine.reset();
+        load(QStringLiteral("overviewSpeakersProvider"));
+        QTRY_VERIFY(shown("pipelineSteps"));
+        QVERIFY(!shown("speakersFixButton"));
+        QVERIFY(!shown("diarizeButton"));
+        m_engine.reset();
+
+        // A failed run: the action comes back as "újra".
+        load(QStringLiteral("overviewDiarizeFailed"));
+        QTRY_VERIFY(shown("diarizeButton"));
+        QCOMPARE(item("diarizeButton")->property("text").toString(), QStringLiteral("Beszélők felismerése újra"));
+        m_engine.reset();
+
+        // The Meeting menu asks on the Overview (the same dialog).
+        load(QStringLiteral("overviewDone"));
+        click(item("meetingMenuButton"));
+        QTRY_VERIFY(anyShown("diarizeItem"));
+        QQuickItem* entry = nullptr;
+        for (QQuickItem* it : items("diarizeItem")) if (it->isVisible()) entry = it;
+        QVERIFY(entry);
+        QCOMPARE(entry->property("text").toString(), QStringLiteral("Beszélők felismerése…"));
+        click(entry);
+        QTRY_VERIFY(object("diarizeDialog") && object("diarizeDialog")->property("visible").toBool());
+        QCOMPARE(tab(), 0);
+    }
+
     // The tool row with a hidden child has height 0 (no empty 46 px remains), with a visible child 46.
     void toolsRow_hiddenChildMeansEmpty()
     {

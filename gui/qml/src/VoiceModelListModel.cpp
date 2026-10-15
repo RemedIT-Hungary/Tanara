@@ -29,6 +29,8 @@ namespace {
 const QString kWespeaker = processing::VoiceModelRegistry::recommendedModelId();
 const QString kCamplus = processing::VoiceModelRegistry::defaultModelId();
 const QString kEres = QStringLiteral("eres2netv2");
+const QString kSegDefault = processing::VoiceModelRegistry::defaultSegmentationModelId();
+const QString kSegInt8 = kSegDefault + QStringLiteral("-int8");
 
 // Display order: WeSpeaker, CAM++, then the rest.
 QVector<processing::VoiceModelSpec> ordered(QVector<processing::VoiceModelSpec> specs)
@@ -184,10 +186,16 @@ QVariant VoiceModelListModel::data(const QModelIndex& index, int role) const
     case IdRole: return s.id;
     case NameRole: {
         // "CAM++ (3D-Speaker)": the parenthesized part shows in the source line anyway.
+        // (A segmentation model keeps it: "(int8)" is what tells the two apart.)
         const int p = s.displayName.indexOf(QLatin1String(" ("));
-        return p > 0 ? s.displayName.left(p) : s.displayName;
+        return p > 0 && s.kind != processing::VoiceModelKind::Segmentation ? s.displayName.left(p) : s.displayName;
     }
     case BlurbRole:
+        if (s.kind == processing::VoiceModelKind::Segmentation) {
+            if (s.id == kSegDefault) return tr("Alap: ez választja szét, ki mikor beszél (a Whisper-átirat beszélőihez).");
+            if (s.id == kSegInt8) return tr("Kisebb és gyorsabb; a pontossága még mérés alatt van.");
+            return QString();
+        }
         if (def) return r.state == QLatin1String("bundled") ? tr("A csomagban · tartalék.")
                                                            : tr("Tartalék: ezt használja, amíg a WeSpeaker nincs letöltve.");
         if (s.id == kWespeaker) return tr("Ajánlott alap: négy valódi megbeszélésen ez választotta szét legjobban a beszélőket.");
@@ -218,7 +226,7 @@ QVariant VoiceModelListModel::data(const QModelIndex& index, int role) const
     case ErrorTextRole: return r.errorText;
     case EnabledRole: return enabledIds().contains(s.id);
     case CanEnableRole: return usableRow(r);
-    case RecommendedRole: return s.id == kWespeaker;
+    case RecommendedRole: return s.id == kWespeaker || s.id == kSegDefault;
     case NotRecommendedRole: return s.id == kEres;
     case CorruptRole: return r.corrupt;
     case HasFileRole: return r.hasFile;
@@ -226,6 +234,28 @@ QVariant VoiceModelListModel::data(const QModelIndex& index, int role) const
         return r.hasFile && r.state != QLatin1String("downloading") && r.state != QLatin1String("verifying");
     }
     return {};
+}
+
+QVector<processing::VoiceModelSpec> VoiceModelListModel::baseSpecs() const
+{
+    const auto wanted = m_segmentation ? processing::VoiceModelKind::Segmentation : processing::VoiceModelKind::SpeakerEmbedding;
+    if (m_specOverride.isEmpty())
+        return m_segmentation ? processing::VoiceModelRegistry::segmentation() : processing::VoiceModelRegistry::builtin();
+    QVector<processing::VoiceModelSpec> out;
+    for (const processing::VoiceModelSpec& s : m_specOverride)
+        if (s.kind == wanted) out << s;
+    return out;
+}
+
+void VoiceModelListModel::setKind(const QString& kind)
+{
+    const bool seg = kind == QLatin1String("segmentation");
+    if (seg == m_segmentation) return;
+    m_segmentation = seg;
+    if (m_facade && m_facade->scenario()) applyScenario();
+    else { rebuild(); refresh(); }
+    emit kindChanged();
+    emit summaryChanged();
 }
 
 // ---- facade / design state ----------------------------------------------------------------
@@ -309,11 +339,13 @@ void VoiceModelListModel::applyScenario()
     if (!sc) return;
     beginResetModel();
     m_rows.clear();
-    const QVector<processing::VoiceModelSpec> specs = ordered(m_specOverride.isEmpty() ? processing::VoiceModelRegistry::builtin() : m_specOverride);
+    const QVector<processing::VoiceModelSpec> specs = ordered(baseSpecs());
     for (const processing::VoiceModelSpec& s : specs) {
         Row r;
         r.spec = s;
-        const processing::VoiceModelScenario::Row given = sc->rows.value(s.id);
+        processing::VoiceModelScenario::Row given = sc->rows.value(s.id);
+        // A segmentation model the scenario does not name: the default one is installed, the others are not.
+        if (m_segmentation && !sc->rows.contains(s.id) && s.id != kSegDefault) given.state = QStringLiteral("missing");
         r.state = given.state;
         if (r.state == QLatin1String("downloading")) {
             r.total = s.sizeBytes;
@@ -459,7 +491,7 @@ void VoiceModelListModel::rebuild()
     QHash<QString, Row> old;
     for (const Row& r : std::as_const(m_rows)) old.insert(r.spec.id, r);
     m_rows.clear();
-    const QVector<processing::VoiceModelSpec> specs = ordered(m_specOverride.isEmpty() ? processing::VoiceModelRegistry::builtin() : m_specOverride);
+    const QVector<processing::VoiceModelSpec> specs = ordered(baseSpecs());
     for (const processing::VoiceModelSpec& s : specs) {
         Row r = old.value(s.id);
         r.spec = s;
@@ -542,7 +574,14 @@ QString VoiceModelListModel::deleteModel(const QString& id)
     r.corrupt = false;
     r.trust.clear();
     refreshFiles();
+    if (m_segmentation) tellCoreSegmentationChanged();
     return QString();
+}
+
+// A segmentation file arrived / changed / went: the views that depend on it (the Overview's speakers line) refresh.
+void VoiceModelListModel::tellCoreSegmentationChanged()
+{
+    if (m_facade && m_facade->live()) m_facade->rescan();
 }
 
 void VoiceModelListModel::rescan()
@@ -559,7 +598,7 @@ void VoiceModelListModel::refreshFiles()
         updateFileState(m_rows[i]);
         emitRow(i);
     }
-    if (m_rows.size() != (m_specOverride.isEmpty() ? processing::VoiceModelRegistry::builtin().size() : m_specOverride.size()))
+    if (m_rows.size() != baseSpecs().size())
         rebuild();
     emit summaryChanged();
 }
@@ -688,7 +727,7 @@ void VoiceModelListModel::cancel(const QString& id)
 void VoiceModelListModel::setEnabled(const QString& id, bool on)
 {
     const int i = indexOf(id);
-    if (i < 0) return;
+    if (i < 0 || m_segmentation) return;   // a segmentation model has no switch
     if (on && !usableRow(m_rows.at(i))) return;
     QStringList ids = enabledIds();
     if (on == ids.contains(id)) return;
@@ -726,7 +765,8 @@ QString VoiceModelListModel::acceptMismatch(const QString& id)
     r.trust = QStringLiteral("unverified");
     updateFileState(r);
     emitRow(i);
-    if (wasParked) {
+    if (m_segmentation) tellCoreSegmentationChanged();
+    if (wasParked && !m_segmentation) {
         // The same as after a successful download: enable it in the draft, let the core re-read the files.
         QStringList ids = enabledIds();
         if (!ids.contains(id)) {
@@ -765,9 +805,12 @@ void VoiceModelListModel::onFinished(const QString& id, bool ok, const QString& 
         updateFileState(r);
         // Verification after the download (size): the pill shows "verifying...", then "downloaded" / error.
         verify(id);
-        // It downloaded it to use it: we enable it in the draft (takes effect on Save).
+        // It downloaded it to use it: we enable it in the draft (takes effect on Save). (A segmentation model has
+        // no switch: the diarizer finds the installed file at run time.)
         QStringList ids = enabledIds();
-        if (!ids.contains(id)) {
+        if (m_segmentation) {
+            tellCoreSegmentationChanged();
+        } else if (!ids.contains(id)) {
             ids << id;
             writeEnabled(ids);
         } else if (m_facade && m_facade->live() && m_facade->enabledModels().contains(id)) {

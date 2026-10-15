@@ -34,6 +34,7 @@ Item {
 
     signal tabRequested(int index)
     signal participantsRequested()
+    signal diarizeRequested()
 
     function tabAvailable(index) {
         // The Transcript opens during transcription too (the tab shows the progress).
@@ -264,6 +265,7 @@ Item {
                 canIdentify: root.canIdentify
                 onRenameRequested: root.startRename()
                 onParticipantsRequested: root.participantsRequested()
+                onDiarizeRequested: root.diarizeRequested()
             }
         }
     }

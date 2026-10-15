@@ -151,6 +151,8 @@ void SettingsDemoFacade::loadSettings(const QString& st)
         sc.page = QStringLiteral("speakers");
         // The enabled list follows the voice-model list's state.
         s.processing.voiceModels = QStringList{QStringLiteral("wespeaker-resnet34-lm")};
+        // D5: the local speaker separation switched off.
+        if (st == QLatin1String("B08diaroff")) s.processing.localDiarization = false;
     } else if (st == QLatin1String("dirty") || st == QLatin1String("unsaved")) {
         draft = s;
         draft->recording.userSpeakerName = demoText("Kovács Lilla Anna", "Emma Anne Carter");

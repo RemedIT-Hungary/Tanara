@@ -14,6 +14,8 @@ namespace {
 const QString kWespeaker = processing::VoiceModelRegistry::recommendedModelId();
 const QString kCamplus = processing::VoiceModelRegistry::defaultModelId();
 const QString kEres = QStringLiteral("eres2netv2");
+const QString kSeg = processing::VoiceModelRegistry::defaultSegmentationModelId();
+const QString kSegInt8 = kSeg + QStringLiteral("-int8");
 
 VoiceModelScenario::Row row(const QString& state)
 {
@@ -48,7 +50,7 @@ VoiceModelsDemoFacade::VoiceModelsDemoFacade(const QString& designState, QObject
         w.receivedFraction = 0.46;
         sc.rows.insert(kWespeaker, w);
     } else if (state == QLatin1String("B08none")) {
-        for (const processing::VoiceModelSpec& s : processing::VoiceModelRegistry::builtin())
+        for (const processing::VoiceModelSpec& s : processing::VoiceModelRegistry::catalog())
             sc.rows.insert(s.id, row(QStringLiteral("missing")));
     } else if (state == QLatin1String("B08error")) {
         VoiceModelScenario::Row w = row(QStringLiteral("error"));
@@ -71,6 +73,20 @@ VoiceModelsDemoFacade::VoiceModelsDemoFacade(const QString& designState, QObject
         e.corrupt = true;
         if (const auto spec = processing::VoiceModelRegistry::spec(kEres)) e.fileSize = spec->sizeBytes / 3;
         sc.rows.insert(kEres, e);
+    }
+    // D5: the segmentation models of the local diarization (the second list on the Speakers page).
+    if (state == QLatin1String("B08segmissing")) {
+        sc.rows.insert(kSeg, row(QStringLiteral("missing")));
+    } else if (state == QLatin1String("B08segdownload")) {
+        VoiceModelScenario::Row g = row(QStringLiteral("downloading"));
+        g.receivedFraction = 0.38;
+        sc.rows.insert(kSeg, g);
+    } else if (state == QLatin1String("B08segmismatch")) {
+        // The float model arrived but its SHA-256 differs from the pinned one: parked, "Mégis használom".
+        sc.rows.insert(kSeg, row(QStringLiteral("mismatch")));
+    } else if (state == QLatin1String("B08seginstalled")) {
+        // Both segmentation models are there; the int8 one was accepted despite a SHA mismatch.
+        sc.rows.insert(kSegInt8, row(QStringLiteral("unverified")));
     }
     if (state == QLatin1String("B08mismatch")) {
         // ERes2NetV2 arrived but its SHA-256 differs from the pinned one: parked, waiting for "Mégis használom".

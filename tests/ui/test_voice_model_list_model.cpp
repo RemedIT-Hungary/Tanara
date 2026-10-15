@@ -41,6 +41,8 @@ namespace {
 const QString kCamp = QStringLiteral("campplus");
 const QString kWe = QStringLiteral("wespeaker-resnet34-lm");
 const QString kEres = QStringLiteral("eres2netv2");
+const QString kSeg = QStringLiteral("pyannote-segmentation-3.0");
+const QString kSegInt8 = QStringLiteral("pyannote-segmentation-3.0-int8");
 
 tanara::processing::PcmEmbedderLoader fakeLoader()
 {
@@ -121,6 +123,25 @@ class TestVoiceModelListModel : public QObject {
             s.downloadUrl = QUrl::fromLocalFile(src).toString();
             s.sizeBytes = QFileInfo(src).size();
             s.sha256 = QString::fromLatin1(QCryptographicHash::hash(data, QCryptographicHash::Sha256).toHex());
+            out << s;
+        }
+        return out;
+    }
+
+    // The segmentation descriptors, the download from a local file:// source (no companion LICENSE download).
+    QVector<VoiceModelSpec> localSegSpecs()
+    {
+        QVector<VoiceModelSpec> out;
+        for (VoiceModelSpec s : VoiceModelRegistry::segmentation()) {
+            const QString src = m_src->filePath(QFileInfo(s.fileName).fileName());
+            QFile f(src);
+            const QByteArray data(48 * 1024 + s.id.size(), 's');
+            if (f.open(QIODevice::WriteOnly)) f.write(data);
+            f.close();
+            s.downloadUrl = QUrl::fromLocalFile(src).toString();
+            s.sizeBytes = QFileInfo(src).size();
+            s.sha256 = QString::fromLatin1(QCryptographicHash::hash(data, QCryptographicHash::Sha256).toHex());
+            s.companions.clear();
             out << s;
         }
         return out;
@@ -230,6 +251,102 @@ private slots:
         QCOMPARE(m.activeCount(), 0);
         QVERIFY(m.fallbackActive());
         QCOMPARE(m.defaultState(), QStringLiteral("missing"));
+    }
+
+    // D5: the segmentation list (kind "segmentation"): the same rows and states, no enabled switch.
+    void segmentationDemoStates()
+    {
+        VoiceModelListModel m;
+        m.setKind(QStringLiteral("segmentation"));
+        m.setDemoState(QStringLiteral("B08"));
+        QCOMPARE(m.kind(), QStringLiteral("segmentation"));
+        QCOMPARE(m.rowCount(), 2);
+        QCOMPARE(role(m, 0, "modelId").toString(), kSeg);          // the float model is the default, first
+        QCOMPARE(role(m, 1, "modelId").toString(), kSegInt8);
+        QVERIFY(role(m, 0, "recommended").toBool());
+        QVERIFY(!role(m, 1, "recommended").toBool());
+        QCOMPARE(stateOf(m, kSeg), QStringLiteral("downloaded"));
+        QCOMPARE(stateOf(m, kSegInt8), QStringLiteral("missing"));
+        QVERIFY(role(m, 1, "blurb").toString().contains(QStringLiteral("mérés alatt")));
+        QCOMPARE(role(m, 0, "license").toString(), QStringLiteral("MIT"));
+        QVERIFY(m.anyAvailable());
+        // No switch: enabling a segmentation model changes nothing.
+        m.setEnabled(kSeg, true);
+        m.setEnabled(kSeg, false);
+        QVERIFY(m.anyAvailable());
+
+        m.setDemoState(QStringLiteral("B08segmissing"));
+        QVERIFY(!m.anyAvailable());
+        QCOMPARE(stateOf(m, kSeg), QStringLiteral("missing"));
+
+        m.setDemoState(QStringLiteral("B08segdownload"));
+        QCOMPARE(stateOf(m, kSeg), QStringLiteral("downloading"));
+        QVERIFY(role(m, 0, "progress").toDouble() > 0.3);
+
+        // The SHA override works on a segmentation row like on an embedding one.
+        m.setDemoState(QStringLiteral("B08segmismatch"));
+        QCOMPARE(stateOf(m, kSeg), QStringLiteral("mismatch"));
+        QVERIFY(!role(m, 0, "canEnable").toBool());
+        QCOMPARE(m.acceptMismatch(kSeg), QString());
+        QCOMPARE(stateOf(m, kSeg), QStringLiteral("unverified"));
+        QVERIFY(m.anyAvailable());
+
+        m.setDemoState(QStringLiteral("B08seginstalled"));
+        QCOMPARE(stateOf(m, kSegInt8), QStringLiteral("unverified"));
+
+        m.setDemoState(QStringLiteral("B08none"));
+        QVERIFY(!m.anyAvailable());
+
+        // The embedding list is unchanged next to it.
+        VoiceModelListModel e;
+        e.setDemoState(QStringLiteral("B08segmissing"));
+        QCOMPARE(e.rowCount(), 3);
+        QCOMPARE(e.kind(), QStringLiteral("embedding"));
+        QVERIFY(e.anyAvailable());
+    }
+
+    // D5, real files: a segmentation download, a SHA mismatch parked, the override, delete - and the enabled
+    // list of the voice models is not touched by any of it.
+    void segmentationDownloadMismatchAndDelete()
+    {
+        startApp();
+        const QStringList enabledBefore = m_app->settings()->enabledVoiceModels();
+        VoiceModelListModel m;
+        m.setKind(QStringLiteral("segmentation"));
+        QVector<VoiceModelSpec> specs = localSegSpecs();
+        for (VoiceModelSpec& s : specs)
+            if (s.id == kSegInt8) s.sha256 = QString(64, QLatin1Char('0'));
+        m.setSpecsForTest(specs);
+        m.setFacade(services().voiceModels(QString(), nullptr));
+        m.downloader()->setReachableOverride(true);
+        m.refresh();
+        QCOMPARE(m.rowCount(), 2);
+        QVERIFY(!m.anyAvailable());
+
+        QSignalSpy done(&m, &VoiceModelListModel::downloadFinished);
+        m.download(kSeg);
+        QVERIFY(done.wait(5000));
+        QVERIFY(done.first().at(1).toBool());
+        QVERIFY(QTest::qWaitFor([&] { return stateOf(m, kSeg) == QLatin1String("downloaded"); }, 3000));
+        QVERIFY(m.anyAvailable());
+        QVERIFY(QFileInfo::exists(modelPath(kSeg)));
+        QCOMPARE(m_app->settings()->enabledVoiceModels(), enabledBefore);   // no switch, nothing enabled
+
+        done.clear();
+        m.download(kSegInt8);
+        QVERIFY(done.wait(5000));
+        QVERIFY(!done.first().at(1).toBool());
+        QCOMPARE(stateOf(m, kSegInt8), QStringLiteral("mismatch"));
+        QVERIFY(role(m, rowOf(m, kSegInt8), "errorText").toString().contains(QStringLiteral("rögzített SHA-val")));
+        QCOMPARE(m.acceptMismatch(kSegInt8), QString());
+        QVERIFY(QTest::qWaitFor([&] { return stateOf(m, kSegInt8) == QLatin1String("unverified"); }, 3000));
+        QVERIFY(QFileInfo::exists(modelPath(kSegInt8)));
+        QCOMPARE(m_app->settings()->enabledVoiceModels(), enabledBefore);
+
+        QCOMPARE(m.deleteModel(kSegInt8), QString());
+        QCOMPARE(stateOf(m, kSegInt8), QStringLiteral("missing"));
+        QCOMPARE(m.deleteModel(kSeg), QString());
+        QVERIFY(!m.anyAvailable());
     }
 
     void settingsDemoOpensTheSpeakersPage()
@@ -632,6 +749,72 @@ private slots:
         // The CTA downloads the default model (in demo mode only the state changes).
         QMetaObject::invokeMethod(findItem(win->contentItem(), QStringLiteral("voiceModelsNoneDownload")), "clicked");
         QCOMPARE(vm->voiceModels()->defaultState(), QStringLiteral("downloading"));
+        QVERIFY2(warnings.isEmpty(), qPrintable(warnings.join('\n')));
+    }
+
+    // D5: the "Beszélők elkülönítése (helyi)" section: the switch, the banner without a model, the rows without a switch.
+    void speakersPageShowsTheDiarizationSection()
+    {
+        QQmlEngine engine;
+        setupEngine(engine);
+        QStringList warnings;
+        connect(&engine, &QQmlEngine::warnings, this, [&warnings](const QList<QQmlError>& list) {
+            for (const QQmlError& e : list) warnings << e.toString();
+        });
+        auto open = [&](const QString& state) {
+            QQmlComponent comp(&engine);
+            comp.loadFromModule("Tanara", "SettingsWindow");
+            std::unique_ptr<QObject> obj(comp.createWithInitialProperties({{QStringLiteral("demoState"), state}}));
+            auto* win = qobject_cast<QQuickWindow*>(obj.get());
+            if (win) win->show();
+            QTest::qWait(200);
+            return obj;
+        };
+        {
+            auto obj = open(QStringLiteral("B08segmissing"));
+            auto* win = qobject_cast<QQuickWindow*>(obj.get());
+            QVERIFY(win);
+            QVERIFY(findItem(win->contentItem(), QStringLiteral("diarizationSection")));
+            QVERIFY(findItem(win->contentItem(), QStringLiteral("localDiarizationSwitch")));
+            auto* none = findItem(win->contentItem(), QStringLiteral("segmentationNone"));
+            QVERIFY(none);
+            QVERIFY(none->isVisible());
+            QVERIFY(findItem(win->contentItem(), QStringLiteral("voiceModelCard-") + kSeg));
+            QVERIFY(findItem(win->contentItem(), QStringLiteral("voiceModelCard-") + kSegInt8));
+            QVERIFY(findItem(win->contentItem(), QStringLiteral("voiceModelDownload-") + kSeg)->isVisible());
+            // No enabled switch on a segmentation row; the embedding rows keep theirs.
+            QVERIFY(!findItem(win->contentItem(), QStringLiteral("voiceModelSwitch-") + kSeg)->isVisible());
+            QVERIFY(findItem(win->contentItem(), QStringLiteral("voiceModelSwitch-") + kWe)->isVisible());
+        }
+        {
+            auto obj = open(QStringLiteral("B08segmismatch"));
+            auto* win = qobject_cast<QQuickWindow*>(obj.get());
+            QVERIFY(win);
+            QVERIFY(findItem(win->contentItem(), QStringLiteral("segmentationNone"))->isVisible());   // parked: not in use
+            auto* accept = findItem(win->contentItem(), QStringLiteral("voiceModelAccept-") + kSeg);
+            QVERIFY(accept);
+            QVERIFY(accept->isVisible());
+            QMetaObject::invokeMethod(accept, "clicked");
+            auto* vm = qobject_cast<SettingsViewModel*>(win->property("vm").value<QObject*>());
+            QVERIFY(vm);
+            QCOMPARE(stateOf(*vm->segmentationModels(), kSeg), QStringLiteral("unverified"));
+            QVERIFY(QTest::qWaitFor([&] { return !findItem(win->contentItem(), QStringLiteral("segmentationNone"))->isVisible(); }, 2000));
+            QVERIFY(findItem(win->contentItem(), QStringLiteral("voiceModelUnverified-") + kSeg)->isVisible());
+        }
+        {
+            // The switch is on by default; B08diaroff has it off.
+            auto obj = open(QStringLiteral("B08diaroff"));
+            auto* win = qobject_cast<QQuickWindow*>(obj.get());
+            QVERIFY(win);
+            auto* vm = qobject_cast<SettingsViewModel*>(win->property("vm").value<QObject*>());
+            QVERIFY(vm);
+            QVERIFY(!vm->localDiarization());
+            auto* sw = findItem(win->contentItem(), QStringLiteral("localDiarizationSwitch"));
+            QVERIFY(sw);
+            QCOMPARE(sw->property("checked").toBool(), false);
+            QMetaObject::invokeMethod(sw, "toggled", Q_ARG(bool, true));
+            QVERIFY(vm->localDiarization());
+        }
         QVERIFY2(warnings.isEmpty(), qPrintable(warnings.join('\n')));
     }
 

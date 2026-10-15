@@ -4,6 +4,7 @@ import QtQuick
 // thing. Rename · Who was there? · Recheck · Re-transcribe · Export · Show in folder · Delete.
 // "Redo voiceprint analysis" (formerly "Identify participants (by voice)") is the manual rerun of
 // voice analysis after transcription; the Overview voiceprint step's "Reanalyze" button does the same.
+// "Beszélők felismerése…" (D5) asks the Overview to run the local speaker separation (diarizeRequested).
 TMenu {
     id: root
 
@@ -15,6 +16,7 @@ TMenu {
 
     signal renameRequested()
     signal participantsRequested()
+    signal diarizeRequested()
 
     TMenuItem {
         objectName: "meetingRenameItem"
@@ -37,6 +39,13 @@ TMenu {
         iconName: "fingerprint"
         enabled: root.hasMeeting && root.hasTranscript && root.canIdentify
         onTriggered: if (root.shell) root.shell.identifyParticipants(root.meetingId)
+    }
+    TMenuItem {
+        objectName: "diarizeItem"
+        text: qsTr("Beszélők felismerése…")
+        iconName: "audio-lines"
+        enabled: root.hasMeeting && root.hasTranscript
+        onTriggered: root.diarizeRequested()
     }
     TMenuItem {
         objectName: "recheckSpeakersItem"

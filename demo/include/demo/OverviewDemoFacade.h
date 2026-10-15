@@ -10,6 +10,9 @@
 // overviewVoiceless (+ a manual row without a voice), overviewThreeTracks (the track drop-down),
 // overviewApproved (named, confirmed, merged, every named row bound to a track by hand),
 // overviewSkipped, overviewSolo, overviewNoVoiceModel (no voice model, a manual row).
+// D5, the finished meeting's transcript step: overviewSpeakersLocal | overviewSpeakersProvider |
+// overviewSpeakersOff (the setting is off) | overviewSpeakersNoModel | overviewDiarizing (62 %) |
+// overviewDiarizeFailed | overviewDiarizeAsk (the "Beszélők felismerése" dialog open, names + "2" remembered).
 #include "tanara/library/IOverviewFacade.h"
 
 namespace tanara_demo {
@@ -28,6 +31,8 @@ public:
     bool setSolo(const QString& meetingId) override;
     bool decideInPlace(const QString& meetingId, const QString& decision) override;
     bool reanalyze(const QString&) override { return true; }
+    // The manual "Beszélők felismerése", in place: the transcript's speakers become "local" (no job runs).
+    bool diarizeSpeakers(const QString& meetingId, int speakerCount, QString* whyNot = nullptr) override;
     void setContextNote(const QString& meetingId, const QString& note) override;
     // The row operations in place (the rows of this instance's snapshot).
     bool nameParticipant(const QString& meetingId, const QString& id, const QString& personIdOrName) override;
@@ -41,6 +46,8 @@ public:
 private:
     tanara::library::OverviewSnapshot build() const;
     void applyScenarioEdits();
+    // D5: the finished meeting's transcript step with the speakers' source / the manual action.
+    void applySpeakers(const QString& scenario, QVariantList& steps, tanara::library::OverviewSnapshot& snapshot) const;
     // The index of the row with this id (or speaker key); -1 if none.
     int rowIndex(const QString& id) const;
     // After an edit: "Approve · N" recomputed, the change signal.

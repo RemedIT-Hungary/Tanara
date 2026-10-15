@@ -168,6 +168,15 @@ bool OverviewViewModel::reanalyze()
     return ok;
 }
 
+bool OverviewViewModel::diarizeSpeakers(int count)
+{
+    if (!m_facade)
+        return false;
+    const bool ok = m_facade->diarizeSpeakers(m_meetingId, qMax(0, count));
+    reload();
+    return ok;
+}
+
 bool OverviewViewModel::decideInDemo(const QString& decision)
 {
     if (!m_facade || !m_facade->decideInPlace(m_meetingId, decision))
@@ -208,6 +217,7 @@ void OverviewViewModel::reload()
     m_candidateCount = s.candidateCount;
     m_sideWho = s.sideWho;
     m_steps = s.steps;
+    m_speakers = s.speakers;
     m_stats = s.stats;
     m_stepsSummary = s.stepsSummary;
     emit changed();

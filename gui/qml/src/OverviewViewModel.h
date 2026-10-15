@@ -80,6 +80,9 @@ class OverviewViewModel : public QObject {
     // [{ key, title, sub, state: done|attention|running|waiting, parallel, progress }]
     // progress: 0..100, -1 = no bar, -2 = indeterminate bar.
     Q_PROPERTY(QVariantList steps READ steps NOTIFY changed)
+    // The speakers' source and the manual "Beszélők felismerése" (D5): { source: provider | local | none, line,
+    // fixTarget, canDiarize, hasNames, speakerCount, running, failed, problem }; empty without a transcript.
+    Q_PROPERTY(QVariantMap speakers READ speakers NOTIFY changed)
     // DATA tiles: [{ label, value, sub }]
     Q_PROPERTY(QVariantList stats READ stats NOTIFY changed)
     // Subtext of the "All steps done" row ("recording · mixdown · transcript · summary").
@@ -114,6 +117,7 @@ public:
     int candidateCount() const { return m_candidateCount; }
     QVariantMap sideWho() const { return m_sideWho; }
     QVariantList steps() const { return m_steps; }
+    QVariantMap speakers() const { return m_speakers; }
     QVariantList stats() const { return m_stats; }
     QString stepsSummary() const { return m_stepsSummary; }
 
@@ -128,6 +132,9 @@ public:
     // "Re-analyze" before a transcript: the audio analysis again (AppController::analyzeParticipants).
     // After a transcript the shell's identifyParticipants runs (same as the menu's "Voiceprint analysis again").
     Q_INVOKABLE bool reanalyze();
+    // "Beszélők felismerése": the local diarization on the existing transcript; count > 0: "How many speakers?"
+    // (0 = automatic). False: not started. The confirmation (names reset) is the view's.
+    Q_INVOKABLE bool diarizeSpeakers(int count);
     // In the demo, the card's decision ("approved" | "skipped") in place (true); on real data false:
     // ParticipantsViewModel approve / skip does the work (with the learning question).
     Q_INVOKABLE bool decideInDemo(const QString& decision);
@@ -186,6 +193,7 @@ private:
     int m_candidateCount = 0;
     QVariantMap m_sideWho;
     QVariantList m_steps;
+    QVariantMap m_speakers;
     QVariantList m_stats;
     QString m_stepsSummary;
 };

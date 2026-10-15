@@ -155,6 +155,34 @@ private slots:
         QVERIFY(empty.snapshot(QString()).analysisRunning);
     }
 
+    // D5: the overview facade's speakers states, the segmentation scenario rows of the voice-model facade.
+    void speakersDesignStates()
+    {
+        using tanara_demo::OverviewDemoFacade;
+        auto snap = [](const char* st) { return OverviewDemoFacade(QString::fromLatin1(st)).snapshot(QString()); };
+        // The untouched finished state says nothing (screenshots stay as they were).
+        QVERIFY(snap("overviewDone").speakers.isEmpty());
+        for (const char* st : {"overviewSpeakersLocal", "overviewSpeakersProvider", "overviewSpeakersOff",
+                               "overviewSpeakersNoModel", "overviewDiarizing", "overviewDiarizeFailed", "overviewDiarizeAsk"}) {
+            const tanara::library::OverviewSnapshot s = snap(st);
+            QVERIFY2(s.hasTranscript, st);
+            QVERIFY2(!s.speakers.value(QStringLiteral("line")).toString().isEmpty(), st);
+            QVERIFY2(!s.allDone, st);
+        }
+        QVERIFY(snap("overviewDiarizing").transcribing);
+        QVERIFY(!snap("overviewSpeakersLocal").transcribing);
+        QCOMPARE(snap("overviewSpeakersNoModel").speakers.value("fixTarget").toString(), QStringLiteral("speakers"));
+
+        QObject owner;
+        const UiServices& demo = AppContext::instance()->demoServices();
+        auto* none = demo.voiceModels(QStringLiteral("B08segmissing"), &owner);
+        QCOMPARE(none->scenario()->rows.value(QStringLiteral("pyannote-segmentation-3.0")).state, QStringLiteral("missing"));
+        auto* mism = demo.voiceModels(QStringLiteral("B08segmismatch"), &owner);
+        QCOMPARE(mism->scenario()->rows.value(QStringLiteral("pyannote-segmentation-3.0")).state, QStringLiteral("mismatch"));
+        auto* allMissing = demo.voiceModels(QStringLiteral("B08none"), &owner);
+        QCOMPARE(allMissing->scenario()->rows.value(QStringLiteral("pyannote-segmentation-3.0-int8")).state, QStringLiteral("missing"));
+    }
+
     // P15-6a: the settings facade serves a design state and keeps everything in memory.
     void settingsFacadeServesTheDesignStates()
     {

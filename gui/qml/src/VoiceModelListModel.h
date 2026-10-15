@@ -3,6 +3,10 @@
 // VoiceModelListModel: the list of speaker-recognition voice models (Settings > Speakers,
 // Getting started): download, enabling, the voiceprint backfill state.
 //
+//  - kind: "embedding" (default: the speaker-recognition models above) | "segmentation" (D5: the local
+//    diarization's "who speaks when" models, Settings > Speakers > "Beszélők elkülönítése (helyi)"). A
+//    segmentation list has the same rows, states, download / verify / delete / SHA-override, but no
+//    enabled switch: the diarizer picks the default model (or any installed one) by itself;
 //  - rows: the VoiceModelRegistry's built-in descriptors (name, one sentence, license, source,
 //    size, dimension) + state: missing | downloading | verifying | downloaded | bundled | error | offline
 //    | mismatch (the SHA-256 differs from the pinned one: warning + "Mégis használom") | unverified
@@ -53,6 +57,8 @@ class VoiceModelListModel : public QAbstractListModel {
     QML_ELEMENT
 
     Q_PROPERTY(QString demoState READ demoState WRITE setDemoState NOTIFY demoStateChanged)
+    // "embedding" (default) | "segmentation"; set it before the first use (it rebuilds the rows).
+    Q_PROPERTY(QString kind READ kind WRITE setKind NOTIFY kindChanged)
     Q_PROPERTY(int count READ count NOTIFY summaryChanged)
     // Whether there is at least one usable (downloaded or bundled) model.
     Q_PROPERTY(bool anyAvailable READ anyAvailable NOTIFY summaryChanged)
@@ -118,6 +124,8 @@ public:
     void useServices(const UiServices& services, const QString& scenario = QString());
     QString demoState() const { return m_demoState; }
     void setDemoState(const QString& state);
+    QString kind() const { return m_segmentation ? QStringLiteral("segmentation") : QStringLiteral("embedding"); }
+    void setKind(const QString& kind);
 
     int count() const { return m_rows.size(); }
     bool anyAvailable() const;
@@ -176,6 +184,7 @@ public:
 
 signals:
     void demoStateChanged();
+    void kindChanged();
     void summaryChanged();
     void backfillChanged();
     void openUrlRequested(const QString& url);
@@ -196,6 +205,9 @@ private:
         QString trust;              // the last SHA-256 verification: "" (ok / unknown) | "mismatch" | "unverified"
     };
 
+    // The descriptors of this list's kind (the test override filtered by kind).
+    QVector<tanara::processing::VoiceModelSpec> baseSpecs() const;
+    void tellCoreSegmentationChanged();
     void resolveServices();
     void attach();
     void applyScenario();
@@ -226,6 +238,7 @@ private:
     QPointer<tanara::processing::IVoiceModelsFacade> m_facade;
     bool m_explicitFacade = false;
     QString m_demoState;
+    bool m_segmentation = false;
     QList<QMetaObject::Connection> m_connections;
     tanara::processing::VoiceModelDownloader* m_downloader = nullptr;
 

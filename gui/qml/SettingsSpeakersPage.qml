@@ -3,7 +3,8 @@ import QtQuick.Layouts
 import QtQuick.Templates as T
 
 // Speakers: your own name and voiceprint, the speaker-recognition voice models (download,
-// verify, delete, enable, rescan) and the voiceprint backfill status (k / N; when done, the
+// verify, delete, enable, rescan), the local speaker separation (the switch + the segmentation
+// models: same rows, no enable switch) and the voiceprint backfill status (k / N; when done, the
 // list of skipped samples per person). Enabling the models is part of the draft (Save); download
 // and delete are immediate.
 // Demo states: verify (verification + size mismatch), delete (delete confirmation open),
@@ -14,6 +15,7 @@ Column {
 
     property var vm: null
     readonly property var models: vm ? vm.voiceModels : null
+    readonly property var segModels: vm ? vm.segmentationModels : null
     readonly property string demoState: models ? models.demoState : ""
     property bool skipsExpanded: false
 
@@ -22,7 +24,8 @@ Column {
     // On opening the page: rescan and verify the files (size).
     onVisibleChanged: if (visible && models) models.refresh()
 
-    function askDelete(id, name) {
+    function askDelete(id, name, list) {
+        deleteDialog.list = list || root.models
         deleteDialog.modelId = id
         deleteDialog.modelName = name
         deleteDialog.errorText = ""
@@ -33,6 +36,7 @@ Column {
     TDialog {
         id: deleteDialog
         objectName: "voiceModelDeleteDialog"
+        property var list: root.models
         property string modelId: ""
         property string modelName: ""
         property string errorText: ""
@@ -41,7 +45,9 @@ Column {
             Layout.fillWidth: true
             wrapMode: Text.Wrap
             cssLineHeight: 1.45
-            text: qsTr("A letöltött modellfájl törlődik a gépről. A vele készült hanglenyomatok megmaradnak, és ha később újra letöltöd, ismét használhatók.")
+            text: deleteDialog.list === root.models
+                ? qsTr("A letöltött modellfájl törlődik a gépről. A vele készült hanglenyomatok megmaradnak, és ha később újra letöltöd, ismét használhatók.")
+                : qsTr("A letöltött modellfájl törlődik a gépről. Később újra letöltheted.")
         }
         TLabel {
             Layout.fillWidth: true
@@ -49,7 +55,9 @@ Column {
             muted: true
             font.pixelSize: Theme.fontSmall
             cssLineHeight: 1.45
-            text: qsTr("Amíg nincs meg, a felismerés a többi bekapcsolt modellel megy (ha egy sincs, a CAM++ tartalékkal).")
+            text: deleteDialog.list === root.models
+                ? qsTr("Amíg nincs meg, a felismerés a többi bekapcsolt modellel megy (ha egy sincs, a CAM++ tartalékkal).")
+                : qsTr("Amíg nincs szegmentáló modell, a Whisper-átirat beszélők nélkül marad.")
         }
         TLabel {
             objectName: "voiceModelDeleteError"
@@ -67,7 +75,7 @@ Column {
                 text: qsTr("Törlés")
                 variant: "danger"
                 onClicked: {
-                    const error = root.models.deleteModel(deleteDialog.modelId)
+                    const error = deleteDialog.list.deleteModel(deleteDialog.modelId)
                     if (error !== "") deleteDialog.errorText = error
                     else deleteDialog.accept()
                 }
@@ -601,6 +609,68 @@ Column {
                     }
                 }
                 TToolTip { visible: rescanLink.hovered; text: qsTr("A modellek mappájának újraolvasása és a fájlok ellenőrzése") }
+            }
+        }
+    }
+    Rectangle { width: parent.width; height: 1; color: Theme.border }
+
+    // ---- LOCAL SPEAKER SEPARATION (diarization) ----
+    Column {
+        objectName: "diarizationSection"
+        width: parent.width
+        spacing: 12
+        TSectionLabel { text: qsTr("Beszélők elkülönítése (helyi)") }
+        SettingsSwitchRow {
+            objectName: "localDiarizationSwitch"
+            width: parent.width
+            text: qsTr("Beszélők felismerése helyben, ha a leíró szolgáltató nem adja")
+            helper: qsTr("A Whisper és a Cloud Fast csomag nem választja szét a beszélőket, ezért ezekhez kell; a Soniox maga megteszi, ahhoz nem. Az átirat után a gépeden fut, a felvétel nem megy sehova.")
+            checked: root.vm ? root.vm.localDiarization : true
+            onToggled: (on) => root.vm.localDiarization = on
+        }
+        // No segmentation model: the local separation cannot run.
+        TBanner {
+            objectName: "segmentationNone"
+            visible: root.segModels !== null && !root.segModels.anyAvailable
+            width: parent.width
+            tone: "warn"
+            text: qsTr("Nincs szegmentáló modell — a Whisper-átirat beszélők nélkül marad. Töltsd le az alapmodellt.")
+        }
+        TLabel {
+            width: parent.width
+            text: qsTr("A szegmentáló modell azt mondja meg, ki mikor beszél; a beszélők szétválasztásához a fenti hangmodell is kell.")
+            muted: true
+            font.pixelSize: Theme.fontSmall
+            cssLineHeight: 1.45
+            wrapMode: Text.Wrap
+        }
+        Repeater {
+            model: root.segModels
+            SettingsVoiceModelCard {
+                required property var model
+                width: parent.width
+                list: root.segModels
+                selectable: false
+                modelId: model.modelId
+                name: model.name
+                blurb: model.blurb
+                license: model.license
+                licenseNote: model.licenseNote
+                sourceText: model.sourceText
+                sourceUrl: model.sourceUrl
+                sizeText: model.sizeText
+                dimText: model.dimText
+                state_: model.state
+                progress: model.progress
+                progressText: model.progressText
+                errorText: model.errorText
+                enabledModel: model.enabled
+                canEnable: model.canEnable
+                recommended: model.recommended
+                corrupt: model.corrupt
+                hasFile: model.hasFile
+                canDelete: model.canDelete
+                onDeleteRequested: (id, name) => root.askDelete(id, name, root.segModels)
             }
         }
     }

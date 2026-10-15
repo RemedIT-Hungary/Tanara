@@ -140,6 +140,10 @@ class SettingsViewModel : public QObject {
 
     // ---- Speakers: voice models (download immediate, enabling goes into the draft), backfill ----
     Q_PROPERTY(tanara_qml::VoiceModelListModel* voiceModels READ voiceModels CONSTANT)
+    // D5: the local speaker separation: the processing.localDiarization switch (draft) and the segmentation
+    // models' list (same rows as voiceModels, kind "segmentation", no enabled switch).
+    Q_PROPERTY(bool localDiarization READ localDiarization WRITE setLocalDiarization NOTIFY diarizationChanged)
+    Q_PROPERTY(tanara_qml::VoiceModelListModel* segmentationModels READ segmentationModels CONSTANT)
 
     // ---- Summary ----
     Q_PROPERTY(QString summaryLanguage READ summaryLanguage WRITE setSummaryLanguage NOTIFY summaryChanged)
@@ -239,6 +243,9 @@ public:
     SettingsProviderModel* llm() const { return m_llm; }
     SettingsEmbeddingModel* embedding() const { return m_embedding; }
     VoiceModelListModel* voiceModels() const { return m_voiceModels; }
+    VoiceModelListModel* segmentationModels() const { return m_segModels; }
+    bool localDiarization() const { return m_draft.processing.localDiarization; }
+    void setLocalDiarization(bool on);
 
     QString summaryLanguage() const { return m_draft.processing.summaryLanguage; }
     void setSummaryLanguage(const QString& language);
@@ -339,6 +346,7 @@ signals:
     void liveCallChanged();
     void serviceModeChanged();
     void summaryChanged();
+    void diarizationChanged();
     void promptsChanged();
     void promptIndexChanged();
     void promptTextChanged();
@@ -420,6 +428,7 @@ private:
     SettingsProviderModel* m_llm = nullptr;
     SettingsEmbeddingModel* m_embedding = nullptr;
     VoiceModelListModel* m_voiceModels = nullptr;
+    VoiceModelListModel* m_segModels = nullptr;
 };
 
 } // namespace tanara_qml

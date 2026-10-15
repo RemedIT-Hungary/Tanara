@@ -107,6 +107,8 @@ QJsonObject toJson(const Meeting& m)
     o[QStringLiteral("speakerMap")] = sm;
     if (!m.contextNote.isEmpty())
         o[QStringLiteral("contextNote")] = m.contextNote;
+    if (m.diarizeSpeakerCount > 0)
+        o[QStringLiteral("diarizeSpeakers")] = m.diarizeSpeakerCount;
     if (!m.detectedCallApp.isEmpty())
         o[QStringLiteral("detectedCallApp")] = m.detectedCallApp;
     if (!m.tagIds.isEmpty())
@@ -145,6 +147,7 @@ Meeting meetingFromJson(const QJsonObject& o)
         if (!person.isNull()) m.speakerMap.insert(it.key(), person);
     }
     m.contextNote = o.value(QStringLiteral("contextNote")).toString();
+    m.diarizeSpeakerCount = qMax(0, o.value(QStringLiteral("diarizeSpeakers")).toInt());
     m.detectedCallApp = o.value(QStringLiteral("detectedCallApp")).toString();
     for (const QJsonValue& v : o.value(QStringLiteral("tags")).toArray()) {
         const QString id = v.toString();

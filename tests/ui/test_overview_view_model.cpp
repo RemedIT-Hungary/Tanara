@@ -16,6 +16,7 @@
 #include "tanara/editing/undo/MeetingUndo.h"
 #include "tanara/library/store/MeetingRepository.h"
 #include "tanara/library/store/PeopleStore.h"
+#include "tanara/library/store/TranscriptRepository.h"
 #include "tanara/library/tags/TagService.h"
 #include "tanara/processing/analysis/ParticipantAnalysis.h"
 
@@ -324,6 +325,86 @@ private slots:
         QCOMPARE(vm.stats().at(2).toMap().value("sub").toString(), QStringLiteral("2 névtelen"));
         QCOMPARE(vm.stats().at(3).toMap().value("value").toString(), QStringLiteral("3"));
         QCOMPARE(vm.stats().at(5).toMap().value("value").toString(), QStringLiteral("nincs"));
+    }
+
+    // D5: the transcript step says where the speakers come from; the real facade reads it from the transcript, the
+    // selected provider and the models.
+    void speakersLine_followsTheTranscriptAndTheProvider()
+    {
+        auto writeTokens = [](const tanara::Meeting& m, const QStringList& speakers, const QString& source) {
+            tanara::MergedTranscript t;
+            qint64 at = 0;
+            for (const QString& sp : speakers) {
+                tanara::TranscriptToken tok;
+                tok.text = QStringLiteral(" szó");
+                tok.startMs = at;
+                tok.endMs = at + 300;
+                tok.speaker = sp;
+                t.tokens << tok;
+                at += 400;
+            }
+            t.speakerSource = source;
+            QVERIFY(tanara::library::TranscriptRepository::writeTokens(m.folder, t));
+        };
+        auto useWhisper = [this]() {
+            tanara::app::AppSettings s = m_app->settings()->settings();
+            s.providers.stt.selectedId = QStringLiteral("whisper-compat");
+            m_app->settings()->setSettings(s);
+        };
+        const QString provider = QStringLiteral("Beszélők: a szolgáltatótól");
+
+        // Soniox (the default) separates the speakers itself.
+        const tanara::Meeting a = transcribed(QStringLiteral("Szolgáltatótól"));
+        {
+            OverviewViewModel vm(facadetest::overviewOf(m_app.get()));
+            vm.setMeetingId(a.id);
+            QCOMPARE(vm.speakers().value("source").toString(), QStringLiteral("provider"));
+            QCOMPARE(vm.speakers().value("line").toString(), provider);
+            const QVariantMap step = stepOf(vm, QStringLiteral("transcript"));
+            QCOMPARE(step.value("state").toString(), QStringLiteral("done"));
+            QCOMPARE(step.value("note").toString(), provider);
+            QVERIFY(step.value("fixTarget").toString().isEmpty());
+            QVERIFY(!vm.speakers().value("canDiarize").toBool());   // no usable model in the sandbox
+        }
+
+        // Whisper: no speakers from the provider, no models in the sandbox -> the model link + attention.
+        useWhisper();
+        const tanara::Meeting b = transcribed(QStringLiteral("Whisper, modell nélkül"));
+        writeTokens(b, {QStringLiteral("Beszélő 1"), QStringLiteral("Beszélő 1"), QStringLiteral("Beszélő 1")}, QString());
+        {
+            OverviewViewModel vm(facadetest::overviewOf(m_app.get()));
+            vm.setMeetingId(b.id);
+            QCOMPARE(vm.speakers().value("source").toString(), QStringLiteral("none"));
+            QVERIFY(vm.speakers().value("line").toString().contains(QStringLiteral("tölts le modellt")));
+            const QVariantMap step = stepOf(vm, QStringLiteral("transcript"));
+            QCOMPARE(step.value("state").toString(), QStringLiteral("attention"));
+            QCOMPARE(step.value("fixTarget").toString(), QStringLiteral("speakers"));
+            QVERIFY(!vm.allDone());
+            QVERIFY(!vm.speakers().value("canDiarize").toBool());
+            // The manual action is refused without a model (nothing starts).
+            QVERIFY(!vm.diarizeSpeakers(2));
+        }
+
+        // The local diarization's result (speakerSource) says so, even with the provider that cannot.
+        const tanara::Meeting c = transcribed(QStringLiteral("Helyi"));
+        writeTokens(c, {QStringLiteral("Beszélő 1"), QStringLiteral("Beszélő 2"), QStringLiteral("Beszélő 1")},
+                    QStringLiteral("local-diarization"));
+        {
+            OverviewViewModel vm(facadetest::overviewOf(m_app.get()));
+            vm.setMeetingId(c.id);
+            QCOMPARE(vm.speakers().value("source").toString(), QStringLiteral("local"));
+            QCOMPARE(stepOf(vm, QStringLiteral("transcript")).value("note").toString(), QStringLiteral("Beszélők: helyi elkülönítés"));
+            QCOMPARE(stepOf(vm, QStringLiteral("transcript")).value("state").toString(), QStringLiteral("done"));
+        }
+
+        // Several speakers without a source: the provider separated them (an earlier Soniox transcript).
+        const tanara::Meeting d = transcribed(QStringLiteral("Korábbi Soniox"));
+        writeTokens(d, {QStringLiteral("Beszélő 1"), QStringLiteral("Beszélő 2")}, QString());
+        {
+            OverviewViewModel vm(facadetest::overviewOf(m_app.get()));
+            vm.setMeetingId(d.id);
+            QCOMPARE(vm.speakers().value("source").toString(), QStringLiteral("provider"));
+        }
     }
 
     // After the transcript, a participant not bound to a speaker (added by hand, never spoke)
@@ -705,6 +786,68 @@ private slots:
         vm.setDemoState(QStringLiteral("overviewNobody"));
         QCOMPARE(vm.peopleState(), QStringLiteral("nobody"));
         QCOMPARE(vm.participants().size(), 3);
+        AppContext::instance()->setDemo(false);
+    }
+
+    // D5: the demo states of the transcript step (the speakers' source, the manual action).
+    void demoStates_speakers()
+    {
+        m_app.reset();
+        AppContext::instance()->setDemo(true);
+        OverviewViewModel vm;
+        // The untouched finished state says nothing about speakers.
+        vm.setDemoState(QStringLiteral("overviewDone"));
+        QVERIFY(vm.speakers().isEmpty());
+        QVERIFY(stepOf(vm, QStringLiteral("transcript")).value("note").toString().isEmpty());
+        QVERIFY(vm.allDone());
+
+        vm.setDemoState(QStringLiteral("overviewSpeakersLocal"));
+        QVERIFY(vm.hasTranscript());
+        QVERIFY(!vm.allDone());
+        QCOMPARE(vm.speakers().value("source").toString(), QStringLiteral("local"));
+        QCOMPARE(stepOf(vm, QStringLiteral("transcript")).value("note").toString(), QStringLiteral("Beszélők: helyi elkülönítés"));
+        QVERIFY(vm.speakers().value("canDiarize").toBool());
+
+        vm.setDemoState(QStringLiteral("overviewSpeakersProvider"));
+        QCOMPARE(stepOf(vm, QStringLiteral("transcript")).value("note").toString(), QStringLiteral("Beszélők: a szolgáltatótól"));
+        QVERIFY(!vm.speakers().value("canDiarize").toBool());
+
+        vm.setDemoState(QStringLiteral("overviewSpeakersOff"));
+        QCOMPARE(stepOf(vm, QStringLiteral("transcript")).value("fixTarget").toString(), QStringLiteral("speakers"));
+        QCOMPARE(stepOf(vm, QStringLiteral("transcript")).value("state").toString(), QStringLiteral("done"));
+        QVERIFY(vm.speakers().value("line").toString().contains(QStringLiteral("kapcsold be")));
+        QVERIFY(vm.speakers().value("canDiarize").toBool());
+
+        vm.setDemoState(QStringLiteral("overviewSpeakersNoModel"));
+        QCOMPARE(stepOf(vm, QStringLiteral("transcript")).value("fixTarget").toString(), QStringLiteral("speakers"));
+        QCOMPARE(stepOf(vm, QStringLiteral("transcript")).value("state").toString(), QStringLiteral("attention"));
+        QVERIFY(!vm.speakers().value("canDiarize").toBool());
+
+        // The diarize stage runs: percent + detail, a cancel instead of the action.
+        vm.setDemoState(QStringLiteral("overviewDiarizing"));
+        QVERIFY(vm.transcribing());
+        QVERIFY(vm.speakers().value("running").toBool());
+        const QVariantMap run = stepOf(vm, QStringLiteral("transcript"));
+        QCOMPARE(run.value("state").toString(), QStringLiteral("running"));
+        QCOMPARE(run.value("progress").toInt(), 62);
+        QVERIFY(run.value("sub").toString().contains(QStringLiteral("Beszélők szétválasztása")));
+        QVERIFY(run.value("sub").toString().contains(QStringLiteral("62%")));
+
+        // A failed run: attention with the reason, and the action again.
+        vm.setDemoState(QStringLiteral("overviewDiarizeFailed"));
+        QVERIFY(vm.speakers().value("failed").toBool());
+        QCOMPARE(stepOf(vm, QStringLiteral("transcript")).value("state").toString(), QStringLiteral("attention"));
+        QVERIFY(stepOf(vm, QStringLiteral("transcript")).value("note").toString().contains(QStringLiteral("nem sikerült")));
+        QVERIFY(vm.speakers().value("canDiarize").toBool());
+
+        // The in-place demo action turns the speakers "local".
+        QVERIFY(vm.diarizeSpeakers(2));
+        QCOMPARE(vm.speakers().value("source").toString(), QStringLiteral("local"));
+        QVERIFY(!vm.speakers().value("failed").toBool());
+
+        vm.setDemoState(QStringLiteral("overviewDiarizeAsk"));
+        QVERIFY(vm.speakers().value("hasNames").toBool());
+        QCOMPARE(vm.speakers().value("speakerCount").toInt(), 2);
         AppContext::instance()->setDemo(false);
     }
 };

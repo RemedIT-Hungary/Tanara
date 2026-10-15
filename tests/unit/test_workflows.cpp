@@ -54,6 +54,8 @@ private slots:
     void providerDiarizedSkipsLocal();
     void cancelDuringDiarize();
     void diarizationOffOrFailing();
+    void manualDiarizeSpeakers();
+    void manualDiarizeFailureAndGates();
 
 private:
     Meeting recorded(const QString& title, bool freshMix = false, bool unmeasured = false);
@@ -561,6 +563,12 @@ TrackTranscript sixWords()
                                {"1", " négy"}, {"1", " öt"}, {"1", " hat"}});
 }
 
+QString meetingJson(const Meeting& m)
+{
+    QFile f(QDir(m.folder).filePath(QStringLiteral("meeting.json")));
+    return f.open(QIODevice::ReadOnly) ? QString::fromUtf8(f.readAll()) : QString();
+}
+
 QStringList tokenSpeakers(const Meeting& m)
 {
     QStringList out;
@@ -709,6 +717,120 @@ void WorkflowsTest::diarizationOffOrFailing()
     QCOMPARE(m_jobs->job(e.id, JobKind::Transcribe).stage("diarize")->state, StageState::Failed);
     QCOMPARE(tokenSpeakers(m_store->load(e.id)), QStringList(6, QStringLiteral("Beszélő 1")));
     QVERIFY(m_errors.isEmpty());
+}
+
+void WorkflowsTest::manualDiarizeSpeakers()
+{
+    // The setting is off: the transcription gives one speaker; the manual action still works.
+    m_diarEnabled = false;
+    m_diarScript = twoOnSys;
+    Meeting m = recorded(QStringLiteral("Kézi"), /*freshMix*/ true);
+    runToStt(m.id);
+    emit m_log->jobs.first()->finished(sixWords());
+    m_jobs->finish(m.id, JobKind::Transcribe);
+    QCOMPARE(m_diarCreated, 0);
+
+    Workflows::SpeakerStatus st = m_wf->speakerStatus(m.id);
+    QCOMPARE(st.source, QStringLiteral("none"));
+    QCOMPARE(st.blocker, QStringLiteral("disabled"));
+    QCOMPARE(st.speakers, 1);
+    QVERIFY(st.canDiarize);
+    QVERIFY(!st.hasNames);
+    QVERIFY(st.problem.isEmpty());
+
+    // "How many speakers?" = 2: remembered, passed to the diarizer; its own job with the diarize + identify stages.
+    m_calls.clear();
+    QString why;
+    QVERIFY(m_wf->diarizeSpeakers(m.id, 2, &why));
+    QCOMPARE(m_store->load(m.id).diarizeSpeakerCount, 2);
+    QVERIFY(meetingJson(m).contains(QStringLiteral("\"diarizeSpeakers\": 2")));   // written only when set
+    QVERIFY(m_diar->running(m.id));
+    QCOMPARE(m_diarCreated, 1);
+    QCOMPARE(m_fakeDiar->requests.first().numClusters, 2);
+    QStringList ids;
+    for (const JobStage& g : m_jobs->job(m.id, JobKind::Transcribe).stages) ids << g.id;
+    QCOMPARE(ids, QStringList({"diarize", "identify"}));
+    QVERIFY(!m_wf->speakerStatus(m.id).canDiarize);   // running
+    QCOMPARE(m_wf->speakerStatus(m.id).cannotBecause, QStringLiteral("running"));
+    QTRY_VERIFY_WITH_TIMEOUT(m_calls.contains(QStringLiteral("identify:%1:1").arg(m.id)), 5000);
+    QVERIFY(m_calls.contains(QStringLiteral("useDiarization:2")));
+    QCOMPARE(tokenSpeakers(m_store->load(m.id)),
+             QStringList({"Beszélő 1", "Beszélő 1", "Beszélő 1", "Beszélő 2", "Beszélő 2", "Beszélő 2"}));
+    m_jobs->finish(m.id, JobKind::Transcribe);
+    st = m_wf->speakerStatus(m.id);
+    QCOMPARE(st.source, QStringLiteral("local"));
+    QCOMPARE(st.speakers, 2);
+    QCOMPARE(st.speakerCount, 2);
+    QVERIFY(st.canDiarize);   // a local result can be redone
+
+    // Redo with automatic count: the names go with the new speakers, the remembered count is cleared.
+    Meeting named = m_store->load(m.id);
+    named.speakerMap.insert(QStringLiteral("Beszélő 2"), PersonId::generate());
+    m_store->saveMeeting(named);
+    QVERIFY(m_wf->speakerStatus(m.id).hasNames);
+    m_calls.clear();
+    QVERIFY(m_wf->diarizeSpeakers(m.id, 0));
+    QCOMPARE(m_diarCreated, 2);
+    QCOMPARE(m_store->load(m.id).diarizeSpeakerCount, 0);
+    QVERIFY(!meetingJson(m).contains(QStringLiteral("diarizeSpeakers")));
+    QTRY_VERIFY_WITH_TIMEOUT(m_calls.contains(QStringLiteral("identify:%1:1").arg(m.id)), 5000);
+    QVERIFY(m_store->load(m.id).speakerMap.isEmpty());
+    QCOMPARE(tokenSpeakers(m_store->load(m.id)).last(), QStringLiteral("Beszélő 2"));
+    m_jobs->finish(m.id, JobKind::Transcribe);
+}
+
+void WorkflowsTest::manualDiarizeFailureAndGates()
+{
+    m_diarScript = twoOnSys;
+    const Meeting m = recorded(QStringLiteral("Hibás kézi"), true);
+    runToStt(m.id);
+    emit m_log->jobs.first()->finished(sixWords());
+    m_jobs->finish(m.id, JobKind::Transcribe);
+
+    // A failing diarizer: the job ends without identification, the problem is remembered, the transcript stays.
+    m_diarManual = true;
+    m_calls.clear();
+    QVERIFY(m_wf->diarizeSpeakers(m.id, 0));
+    m_fakeDiar->jobs.last()->failLater(providers::inputError(QStringLiteral("decode_failed"), QStringLiteral("x")));
+    QTRY_VERIFY_WITH_TIMEOUT(!m_jobs->isRunning(m.id, JobKind::Transcribe), 5000);
+    QCOMPARE(outcome(m.id), JobOutcome::Done);
+    QVERIFY(m_calls.filter(QStringLiteral("identify:")).isEmpty());
+    QVERIFY(!m_wf->speakerStatus(m.id).problem.isEmpty());
+    QCOMPARE(tokenSpeakers(m_store->load(m.id)), QStringList(6, QStringLiteral("Beszélő 1")));
+    QVERIFY(m_wf->speakerStatus(m.id).canDiarize);   // "Beszélők felismerése újra"
+
+    // Cancel through the job tracker's usual path.
+    QVERIFY(m_wf->diarizeSpeakers(m.id, 3));
+    QVERIFY(m_wf->speakerStatus(m.id).problem.isEmpty());   // a new run clears the problem
+    QVERIFY(m_wf->cancel(m.id, JobKind::Transcribe));
+    QTRY_COMPARE_WITH_TIMEOUT(outcome(m.id), JobOutcome::Cancelled, 5000);
+    QCOMPARE(tokenSpeakers(m_store->load(m.id)), QStringList(6, QStringLiteral("Beszélő 1")));
+
+    // Gates: no usable model, no transcript, a provider-separated transcript.
+    m_diarUsable = false;
+    QString why;
+    QVERIFY(!m_wf->diarizeSpeakers(m.id, 0, &why));
+    QCOMPARE(why, QStringLiteral("no_model"));
+    QCOMPARE(m_wf->speakerStatus(m.id).blocker, QStringLiteral("model"));
+    m_diarUsable = true;
+    const Meeting empty = recorded(QStringLiteral("Átirat nélkül"), true);
+    QVERIFY(!m_wf->diarizeSpeakers(empty.id, 0, &why));
+    QCOMPARE(why, QStringLiteral("no_transcript"));
+    QVERIFY(!m_wf->diarizeSpeakers(QStringLiteral("nincs-ilyen"), 0, &why));
+
+    // (A provider id of its own: the registry outlives the tests, a registered fake keeps the log it got.)
+    const QString soniox = QStringLiteral("fake-soniox-manual");
+    if (!m_registry.has(providers::CapabilityKind::Transcription, soniox))
+        testing::registerFakeStt(m_registry, m_log, soniox, /*diarizes*/ true);
+    m_port->providerId = soniox;
+    const Meeting p = recorded(QStringLiteral("Szolgáltatótól"), true);
+    runToStt(p.id);
+    emit m_log->jobs.last()->finished(testing::sttResult({{"1", " egy"}, {"2", " kettő"}, {"1", " három"}}));
+    m_jobs->finish(p.id, JobKind::Transcribe);
+    const Workflows::SpeakerStatus ps = m_wf->speakerStatus(p.id);
+    QCOMPARE(ps.source, QStringLiteral("provider"));
+    QVERIFY(!ps.canDiarize);
+    QCOMPARE(ps.cannotBecause, QStringLiteral("provider"));
 }
 
 QTEST_GUILESS_MAIN(WorkflowsTest)

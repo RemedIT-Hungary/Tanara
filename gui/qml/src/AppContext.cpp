@@ -37,9 +37,11 @@
 
 #include "tanara/app/AppController.h"
 #include "tanara/app/Services.h"
+#include "tanara/app/Workflows.h"
 #include "tanara/editing/participants/ParticipantService.h"
 #include "tanara/processing/analysis/ParticipantAnalysis.h"
 #include "tanara/editing/session/SpeakerEditSession.h"
+#include "tanara/library/OverviewSpeakers.h"
 #include "tanara/library/jobs/MeetingJobTracker.h"
 #include "tanara/library/store/MeetingRepository.h"
 #include "tanara/library/store/PeopleStore.h"
@@ -571,6 +573,11 @@ OverviewControllerFacade::OverviewControllerFacade(tanara::app::AppController* c
         emit changed(id);
     });
     connect(c, &AppController::tracksChanged, this, mine);
+    // D5: the speakers' line follows the models (downloaded / deleted) and the localDiarization setting.
+    connect(c, &AppController::voiceModelsChanged, this, [this] { if (!m_lastSnapshot.isEmpty()) emit changed(m_lastSnapshot); });
+    if (tanara::app::SettingsManager* st = c->settings())
+        connect(st, &tanara::app::SettingsManager::settingsChanged, this,
+                [this] { if (!m_lastSnapshot.isEmpty()) emit changed(m_lastSnapshot); });
     connect(c, &AppController::speakerMapChanged, this, mine);
     connect(c, &AppController::mixdownUpdated, this, [mine](const QString& id, bool) { mine(id); });
     connect(c, &AppController::transcriptReady, this, [mine](const QString& id, const QString&) { mine(id); });
@@ -615,6 +622,12 @@ void OverviewControllerFacade::removeParticipant(const QString& meetingId, const
 bool OverviewControllerFacade::setSolo(const QString& meetingId)
 {
     return m_c && m_c->setSoloMeeting(meetingId);
+}
+
+bool OverviewControllerFacade::diarizeSpeakers(const QString& meetingId, int speakerCount, QString* whyNot)
+{
+    if (!m_c || !m_c->services()) return false;
+    return m_c->services()->workflows().diarizeSpeakers(meetingId, speakerCount, whyNot);
 }
 
 bool OverviewControllerFacade::reanalyze(const QString& meetingId)
@@ -665,6 +678,7 @@ tanara::library::OverviewSnapshot OverviewControllerFacade::snapshot(const QStri
     library::OverviewSnapshot s;
     if (!c)
         return s;
+    m_lastSnapshot = meetingId;
     const Meeting m = (c->store() && !meetingId.isEmpty()) ? c->store()->load(meetingId) : Meeting();
     const MeetingProcessingState proc = c->processingState(meetingId);
     const PersonId selfId = c->selfPerson().id;
@@ -923,7 +937,38 @@ tanara::library::OverviewSnapshot OverviewControllerFacade::snapshot(const QStri
                                  true, voiceProgress);
     if (!voiceFixTarget.isEmpty()) voiceStep.insert(QStringLiteral("fixTarget"), voiceFixTarget);
     steps << voiceStep;
-    if (transcribeJob) {
+    // D5: where the speakers come from, and the manual "Beszélők felismerése".
+    const tanara::JobStage* diarizeStage = nullptr;
+    if (transcribeJob)
+        for (const JobStage& g : transcribeJob->stages)
+            if (g.id == QLatin1String("diarize") && g.state == StageState::Running) diarizeStage = &g;
+    if (m.hasTranscript && c->services()) {
+        const app::Workflows::SpeakerStatus st = c->services()->workflows().speakerStatus(m.id);
+        library::SpeakerFacts facts;
+        facts.source = st.source;
+        facts.blocker = st.blocker;
+        facts.problem = st.problem;
+        facts.canDiarize = st.canDiarize;
+        facts.hasNames = st.hasNames;
+        facts.speakerCount = st.speakerCount;
+        s.speakers = library::overviewSpeakers(facts, diarizeStage != nullptr);
+    }
+    const QVariantMap spk = s.speakers;
+    auto withSpeakerNote = [&spk](QVariantMap st) {
+        if (spk.isEmpty()) return st;
+        st.insert(QStringLiteral("note"), spk.value(QStringLiteral("line")));
+        if (!spk.value(QStringLiteral("fixTarget")).toString().isEmpty())
+            st.insert(QStringLiteral("fixTarget"), spk.value(QStringLiteral("fixTarget")));
+        return st;
+    };
+    if (diarizeStage) {
+        // The speakers are being separated (the automatic run after the STT, or the manual action).
+        QStringList sub{diarizeStage->label};
+        if (!diarizeStage->detail.isEmpty()) sub << diarizeStage->detail;
+        if (diarizeStage->percent >= 0) sub << QStringLiteral("%1%").arg(diarizeStage->percent);
+        steps << step(QStringLiteral("transcript"), tr("Átirat"), sub.join(QStringLiteral(" · ")),
+                      QStringLiteral("running"), true, diarizeStage->percent >= 0 ? diarizeStage->percent : -2);
+    } else if (transcribeJob) {
         const QVariantMap d = ShellMeetingModel::describeJob(*transcribeJob);
         const int pct = d.value(QStringLiteral("percent")).toInt();
         QStringList sub;
@@ -938,7 +983,9 @@ tanara::library::OverviewSnapshot OverviewControllerFacade::snapshot(const QStri
         const QString sub = ed ? tr("%n megszólalás", nullptr, ed->utteranceCount()) + QStringLiteral(" · ")
                                      + tr("%n beszélő", nullptr, int(speakers.size()))
                                : tr("kész");
-        steps << step(QStringLiteral("transcript"), tr("Átirat"), sub, QStringLiteral("done"), true);
+        steps << withSpeakerNote(step(QStringLiteral("transcript"), tr("Átirat"), sub,
+                                      spk.value(QStringLiteral("attention")).toBool() ? QStringLiteral("attention")
+                                                                                       : QStringLiteral("done"), true));
     } else {
         steps << step(QStringLiteral("transcript"), tr("Átirat"),
                       proc.transcriptState == StepState::Failed ? tr("nem sikerült") : tr("még nem indult"),
