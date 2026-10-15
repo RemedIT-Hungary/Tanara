@@ -1,6 +1,7 @@
 #include "tanara/foundation/net/NetworkErrorText.h"
 #include "tanara/providers/stt/SonioxProvider.h"
 #include "tanara/providers/core/ProviderConfig.h"
+#include "tanara/providers/stt/SonioxReference.h"
 
 #include <QNetworkReply>
 #include <QNetworkRequest>
@@ -77,6 +78,12 @@ QNetworkRequest SonioxJob::makeRequest(const QString& path) const {
     // Gateway mode (Tanara Cloud): additive X-Tanara-* / Accept-Language headers.
     m_ctx.applyHeaders(r);
     return r;
+}
+
+QString SonioxJob::clientReference() const {
+    // Own key: matched against the user's Soniox usage log. Tanara Cloud: the gateway stores it in the
+    // job record and sends its own reference upstream (SonioxReference.h).
+    return buildClientReference(m_ctx.meetingId, m_ctx.jobId, m_req.trackId);
 }
 
 void SonioxJob::report(QNetworkReply* reply, const QByteArray& body) {
@@ -171,6 +178,16 @@ void SonioxJob::uploadFile() {
     filePart.setBodyDevice(file);
     multi->append(filePart);
 
+    // Correlation for the usage log (after the file part: the file stays the first part).
+    const QString reference = clientReference();
+    if (!reference.isEmpty()) {
+        QHttpPart refPart;
+        refPart.setHeader(QNetworkRequest::ContentDispositionHeader,
+                          QStringLiteral("form-data; name=\"client_reference_id\""));
+        refPart.setBody(reference.toUtf8());
+        multi->append(refPart);
+    }
+
     QNetworkRequest req = makeRequest(QStringLiteral("/files"));
     QNetworkReply* reply = m_http->post(req, multi);
     multi->setParent(reply);    // the reply owns the multipart
@@ -222,6 +239,9 @@ void SonioxJob::createTranscription() {
         hints.append(h);
     payload.insert(QStringLiteral("language_hints"), hints);
     payload.insert(QStringLiteral("enable_speaker_diarization"), m_req.diarization);
+    const QString reference = clientReference();
+    if (!reference.isEmpty())
+        payload.insert(QStringLiteral("client_reference_id"), reference);
     // Context envelope -> Soniox stt-async-v5's structured "context" object (general/text/terms). With it
     // the STT decides better in doubtful parts (names, jargon, topic). We send only the filled sections;
     // never an empty object. Limit: ~8000 tokens (~10000 characters) for the whole object (Soniox errors beyond it).

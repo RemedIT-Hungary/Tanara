@@ -22,6 +22,7 @@
 #include "tanara/providers/embedding/ITextEmbedder.h"
 
 #include <QSet>
+#include <QUuid>
 
 namespace tanara::app {
 
@@ -333,6 +334,9 @@ providers::ProviderContext ProviderRuns::providerContext(const CloudRunPtr& run,
     if (run) return m_deps.ledger->contextFor(run, summaryMode, m_deps.http);
     providers::ProviderContext ctx;   // own key / address: the config's apiKey, no hooks
     ctx.http = m_deps.http;
+    // A fresh correlation id per call, so own-key requests of one run group together (e.g. Soniox's
+    // client_reference_id in the user's usage log). The meeting id is added by the caller that knows it.
+    ctx.jobId = QUuid::createUuid().toString(QUuid::WithoutBraces);
     return ctx;
 }
 

@@ -43,6 +43,7 @@ private:
 
     // --- helpers ---
     QNetworkRequest makeRequest(const QString& path) const;
+    QString clientReference() const;   // client_reference_id of /files and /transcriptions (empty: not sent)
     void report(QNetworkReply* reply, const QByteArray& body);   // ProviderContext::observe + last failure
     void fail(const QString& error);
     void setState(SttJobState state);

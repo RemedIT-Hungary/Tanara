@@ -538,24 +538,28 @@ async function createTranscription(req, res) {
   if (state.balance <= 0 || state.balance < c) return insufficient(req, res, c, 'charge');
   const jobId = req.headers['x-tanara-job-id'] || null;
   let upstream_id = null;
+  // The client's client_reference_id is untrusted: stored in the job record, never forwarded. Upstream
+  // gets the gateway's own reference (tc:<gateway job uuid>).
+  const clientRef = typeof b.client_reference_id === 'string' ? b.client_reference_id.slice(0, 256) : null;
+  const id = 'tr_' + randomUUID().slice(0, 8);
   if (SONIOX_KEY) {
-    const body = { ...b, model: 'stt-async-v5', file_id: f.upstream_id };
+    const body = { ...b, model: 'stt-async-v5', file_id: f.upstream_id, client_reference_id: `tc:${id}` };
     const buf = Buffer.from(JSON.stringify(body));
     const up = await upstream('POST', 'https://api.soniox.com/v1/transcriptions', { authorization: `Bearer ${SONIOX_KEY}`, 'content-type': 'application/json', 'content-length': buf.length }, buf);
     if (up.status >= 300) return err(req, res, 503, 'upstream_unavailable', { retry_after: 60 });
     upstream_id = JSON.parse(up.body.toString()).id;
   }
   state.balance -= c; bookBalanceChange();
-  const id = 'tr_' + randomUUID().slice(0, 8); const charge_id = 'ch_' + randomBytes(4).toString('hex');
+  const charge_id = 'ch_' + randomBytes(4).toString('hex');
   state.transcriptions.set(id, { status: 'queued', file_id: b.file_id, model: m.id, diarization: !!b.enable_speaker_diarization, created: Date.now(),
-    charge: c, charge_id, refunded: false, refund_fail: !!cfg.refund, content_deleted: false, job_id: jobId, upstream_id, error_code: null });
-  state.usage.push({ at: new Date().toISOString(), kind: 'stt', model: m.id, amount: disp(c), job_id: jobId, summary_mode: null, request_id: req.requestId, refunded: false, charge_id });
+    charge: c, charge_id, refunded: false, refund_fail: !!cfg.refund, content_deleted: false, job_id: jobId, client_reference_id: clientRef, upstream_id, error_code: null });
+  state.usage.push({ at: new Date().toISOString(), kind: 'stt', model: m.id, amount: disp(c), job_id: jobId, client_reference_id: clientRef, summary_mode: null, request_id: req.requestId, refunded: false, charge_id });
   log(`  ↳ terhelés ${fmt(c)} (stt ${m.id}, ${(f.duration_ms / 1000).toFixed(1)} s) → egyenleg ${fmt(state.balance)}`);
-  return json(req, res, 200, { id, status: 'queued', tanara: chargeInfo(charge_id, c, jobId) }, chargeHeaders(c));
+  return json(req, res, 200, { id, status: 'queued', tanara: { ...chargeInfo(charge_id, c, jobId), client_reference_id: clientRef } }, chargeHeaders(c));
 }
 function jobInfo(t) {
   const info = { charge_id: t.charge_id, charge: money(t.charge), refunded: t.refunded, balance: money(state.balance), error_code: t.error_code,
-    content_deleted: t.content_deleted, job_id: t.job_id, record_expires_at: new Date(t.created + 30 * 86400_000).toISOString() };
+    content_deleted: t.content_deleted, job_id: t.job_id, client_reference_id: t.client_reference_id ?? null, record_expires_at: new Date(t.created + 30 * 86400_000).toISOString() };
   if (t.refunded) info.refund = money(t.charge);
   return info;
 }

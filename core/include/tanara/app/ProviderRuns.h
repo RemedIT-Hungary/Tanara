@@ -93,7 +93,8 @@ public:
     // The step's gateway config (baseUrl, model, max tokens; the key comes from the context's auth).
     providers::ProviderConfig cloudConfig(providers::WorkflowStep step) const;
     // The provider context of a call: a cloud run -> the ledger's gateway context (auth, X-Tanara-*
-    // headers incl. summaryMode, response observer, cost sink); no run -> the shared HTTP client only.
+    // headers incl. summaryMode, response observer, cost sink); no run -> the shared HTTP client and a fresh
+    // correlation jobId (no meetingId: the caller that knows the meeting sets it).
     providers::ProviderContext providerContext(const CloudRunPtr& run, const QString& summaryMode) const;
     // Own key: the selected LLM config + key (run stays null). Cloud: gateway config; if the run is
     // still null, a new run starts (by kind).

@@ -37,7 +37,8 @@ public:
 
     // The provider setup of a new transcription (a cloud run starts here).
     virtual Setup setup(const QString& meetingId) = 0;
-    // The provider context of the call: a run -> the gateway context; no run -> the shared HTTP client only.
+    // The provider context of the call: a run -> the gateway context; no run -> the shared HTTP client and a
+    // fresh correlation jobId (the caller adds the meetingId).
     virtual providers::ProviderContext context(const Run& run) const = 0;
     // Successful end of a run: the charge goes to the cost feedback (nothing for a null run).
     virtual void finishRun(const Run& run) = 0;

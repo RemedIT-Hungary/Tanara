@@ -427,7 +427,9 @@ void TestCloudGateway::stt_throughGateway_chargeAndRefund()
     for (const bool refund : { false, true }) {
         mockConfig({ { "refund", refund } });
         QVector<net::HttpExchange> log;
-        providers::SonioxProvider p(gatewayContext(&log), gatewayConfig(QStringLiteral("tanara/stt-accurate")));
+        const providers::ProviderContext gctx = gatewayContext(&log);
+        QCOMPARE(gctx.meetingId, QStringLiteral("m1"));   // contextFor: the run's meeting (correlation)
+        providers::SonioxProvider p(gctx, gatewayConfig(QStringLiteral("tanara/stt-accurate")));
         providers::SttRequest req;
         req.audioFilePath = audio;
         req.trackId = "mixdown";
@@ -465,6 +467,10 @@ void TestCloudGateway::stt_throughGateway_chargeAndRefund()
         QVERIFY(ch.charge.micros > 0);
         QCOMPARE(cloud::chargeInfoFromHeaders(create->headers).charge.micros, ch.charge.micros);
         QCOMPARE(ch.jobId, QStringLiteral("job-test-1"));
+        // The gateway stores the client's reference in the job record and echoes it (never upstream).
+        QCOMPARE(QJsonDocument::fromJson(create->body).object().value("tanara").toObject()
+                     .value("client_reference_id").toString(),
+                 QStringLiteral("tanara:1:m1:job-test-1:mixdown"));
         QVERIFY(std::any_of(log.cbegin(), log.cend(), [](const net::HttpExchange& ex) {
             return ex.method == "DELETE" && ex.path.contains("/transcriptions/"); }));
 

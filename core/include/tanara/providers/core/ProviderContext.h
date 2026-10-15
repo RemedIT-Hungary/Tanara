@@ -12,7 +12,7 @@
 //                charge / balance / request id / structured error for the caller
 //  cost        - cost events (estimate / charge / refund) the caller books (cloud::CloudRunLedger)
 //  cancel      - a shared cancel token: cancelling it cancels the provider's running jobs
-//  jobId, language, logCategory - correlation, the user's language, the logging category
+//  jobId, meetingId, language, logCategory - correlation, the user's language, the logging category
 //
 // A value type: copies share the cancel token's state.
 #include "tanara/foundation/net/HttpClient.h"
@@ -84,6 +84,7 @@ struct ProviderContext {
     CostSink         cost;
     CancelToken      cancel;
     QString          jobId;
+    QString          meetingId;   // correlation only (e.g. Soniox client_reference_id); opaque, never interpreted
     QString          language;
     QString          logCategory;
 

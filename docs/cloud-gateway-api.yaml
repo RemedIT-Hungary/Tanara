@@ -539,6 +539,13 @@ paths:
                 file:
                   type: string
                   format: binary
+                client_reference_id:
+                  type: [string, 'null']
+                  maxLength: 256
+                  description: |
+                    Opaque client reference (Soniox field), the same value as on the
+                    `createTranscription` call. Stored in the file record, never forwarded upstream:
+                    the gateway sends its own `tc:<gateway_job_uuid>` instead.
       responses:
         '200':
           description: Uploaded.
@@ -612,6 +619,15 @@ paths:
         `tanara.refund`.
 
         `X-Tanara-Job-Id` groups the calls of one processing run in the usage log.
+
+        **Client reference**: `client_reference_id` (Soniox field) is the client's own opaque
+        correlation string (Tanara sends `tanara:1:<meetingId>:<jobId>:<trackId>`). The gateway
+        stores it in the job record and the usage record and echoes it in `tanara`, but never
+        forwards it upstream: it is untrusted input, its length and content are the client's, and
+        the upstream account is shared by all tenants. Toward the upstream provider the gateway
+        sends its own `client_reference_id` = `tc:<gateway_job_uuid>`. So the client's id lives in
+        the gateway's metadata, next to `X-Tanara-Job-Id` (`job_id`), and the gateway's id lives at
+        the upstream; the job record links the two.
       x-tanara-functions: [CLI-03, CLI-09, CLI-10, SYS-01, SYS-02, AUTH-16, CLI-20]
       parameters:
         - $ref: '#/components/parameters/ClientHeader'
@@ -1142,7 +1158,7 @@ components:
         processing run and sends it on each call of that run. It is not a meeting id: the same
         meeting processed again, or a continuation, gets a new value. Stored in the usage record
         (`job_id`); the usage log groups the calls of a run into one line. Without it every call
-        is a separate line.
+        is a separate line. An STT call's `client_reference_id` is stored in the same usage record.
       schema: { type: string, maxLength: 64, example: 7f3c2a9e-5d41-4b8e-9a61-0c2f1e8b7d34 }
     SummaryMode:
       name: X-Tanara-Summary-Mode
@@ -1699,6 +1715,13 @@ components:
         language_hints: { type: array, items: { type: string } }
         enable_speaker_diarization: { type: boolean }
         context: { description: 'Soniox context envelope, passed through unchanged.' }
+        client_reference_id:
+          type: [string, 'null']
+          maxLength: 256
+          description: |
+            Opaque client reference. Stored in the job record (echoed as
+            `tanara.client_reference_id`), never forwarded upstream; the gateway sends its own
+            `tc:<gateway_job_uuid>` as the upstream `client_reference_id`.
       additionalProperties: true
 
     TranscriptionStatus:
@@ -1717,6 +1740,7 @@ components:
         balance_empty: { type: boolean, description: 'Balance after this call is zero or less (same as `Account.balance_empty`).' }
         vat_mode: { $ref: '#/components/schemas/VatMode' }
         job_id: { type: [string, 'null'], description: 'The `X-Tanara-Job-Id` of the call, `null` without it.' }
+        client_reference_id: { type: [string, 'null'], description: 'The stored `client_reference_id` of the request (STT), `null` without it.' }
 
     TranscriptionJobInfo:
       type: object
@@ -1737,6 +1761,7 @@ components:
         error_code: { type: [string, 'null'], description: 'Machine-readable failure code, `null` without error.' }
         content_deleted: { type: boolean, description: '`true` when the upstream content is already deleted; only this record remains.' }
         job_id: { type: [string, 'null'] }
+        client_reference_id: { type: [string, 'null'], description: 'The stored client reference of the job, `null` without it.' }
         record_expires_at: { type: string, format: date-time, description: 'When this record is deleted (30 days); after that `404`.' }
 
     TranscriptToken:

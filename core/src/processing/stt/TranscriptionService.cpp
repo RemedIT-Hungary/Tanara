@@ -139,6 +139,9 @@ bool TranscriptionService::start(const QString& meetingId, bool clearSpeakers)
     // technical line ("HTTP 401 | invalid_api_key").
     const auto sink = std::make_shared<FailureSink>();
     providers::ProviderContext pctx = m_deps.port->context(run);
+    // Correlation (e.g. Soniox client_reference_id): a cloud run already carries its meeting id; an own-key
+    // context gets it here, the only place that knows which meeting this transcription belongs to.
+    if (pctx.meetingId.isEmpty()) pctx.meetingId = meetingId;
     captureFailures(pctx, sink);
 
     providers::ISttProvider* provider = m_deps.registry->create<providers::ISttProvider>(sttId, pctx, cfg, this);

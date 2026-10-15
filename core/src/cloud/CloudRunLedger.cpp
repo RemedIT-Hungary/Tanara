@@ -86,6 +86,7 @@ providers::ProviderContext CloudRunLedger::contextFor(const CloudRunPtr& run, co
     QPointer<CloudSession> acc = m_account;
     ctx.auth = providers::AuthSource::bearer([acc]() { return acc ? acc->apiKey() : QString(); });
     ctx.jobId = run ? run->jobId : QUuid::createUuid().toString(QUuid::WithoutBraces);
+    ctx.meetingId = run ? run->meetingId : QString();
     ctx.language = acc ? acc->language() : QString();
     ctx.logCategory = QStringLiteral("tanara.cloud");
     if (acc) ctx.headers = acc->requestHeaders(ctx.jobId, summaryMode);

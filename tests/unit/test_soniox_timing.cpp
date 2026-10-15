@@ -4,14 +4,19 @@
 // path is unchanged. Pure functions + SonioxProvider on a hand-written reply (fake HTTP, no real network).
 #include "fake_http.h"
 #include "tanara/providers/core/ProviderConfig.h"
+#include "tanara/providers/core/ProviderContext.h"
 
 #include "tanara/providers/stt/SonioxProvider.h"
 #include "tanara/processing/stt/SonioxTiming.h"
 #include "tanara/processing/summary/TranscriptMerger.h"
 
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QtTest>
+
+#include <algorithm>
 
 using namespace tanara;
 
@@ -184,6 +189,84 @@ private slots:
         QCOMPARE(segs[0].endMs, 127810);
         QCOMPARE(tt.tokens[2].text, QStringLiteral("i."));
         QCOMPARE(tt.tokens[2].speaker, QStringLiteral("Beszélő 1"));
+        delete job;
+    }
+
+    // client_reference_id (SonioxReference.h): with correlation ids it goes into the /files multipart
+    // (after the file part) and the /transcriptions JSON; without any id it is absent from both.
+    void providerSendsClientReference_data()
+    {
+        QTest::addColumn<QString>("meetingId");
+        QTest::addColumn<QString>("jobId");
+        QTest::addColumn<QString>("trackId");
+        QTest::addColumn<QString>("expected");
+        QTest::newRow("ids") << QStringLiteral("f4ebda08-2f8e-4216-8067-ccbc8b8192a4")
+                             << QStringLiteral("7f3c2a9e-5d41-4b8e-9a61-0c2f1e8b7d34") << QStringLiteral("mixdown")
+                             << QStringLiteral("tanara:1:f4ebda08-2f8e-4216-8067-ccbc8b8192a4:"
+                                               "7f3c2a9e-5d41-4b8e-9a61-0c2f1e8b7d34:mixdown");
+        QTest::newRow("none") << QString() << QString() << QString() << QString();
+    }
+
+    void providerSendsClientReference()
+    {
+        QFETCH(QString, meetingId);
+        QFETCH(QString, jobId);
+        QFETCH(QString, trackId);
+        QFETCH(QString, expected);
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString audio = dir.filePath(QStringLiteral("mixdown.ogg"));
+        {
+            QFile f(audio);
+            QVERIFY(f.open(QIODevice::WriteOnly));
+            f.write("OggS-fake");
+        }
+        fakehttp::Server srv;
+        srv.handler = [](const fakehttp::Request& r) -> fakehttp::Reply {
+            if (r.method == "POST" && r.path.endsWith(QLatin1String("/files"))) return {200, R"({"id":"f1"})"};
+            if (r.method == "POST" && r.path.endsWith(QLatin1String("/transcriptions"))) return {200, R"({"id":"t1"})"};
+            if (r.method == "GET" && r.path.endsWith(QLatin1String("/transcriptions/t1")))
+                return {200, R"({"id":"t1","status":"completed"})"};
+            if (r.method == "GET" && r.path.endsWith(QLatin1String("/transcriptions/t1/transcript")))
+                return {200, R"({"tokens":[{"text":"ok","start_ms":0,"end_ms":60,"confidence":0.9}]})"};
+            return {200, "{}"};
+        };
+        providers::ProviderConfig cfg;
+        cfg.baseUrl = srv.base();
+        cfg.apiKey = QStringLiteral("test");
+        providers::ProviderContext ctx;
+        ctx.meetingId = meetingId;
+        ctx.jobId = jobId;
+        providers::SonioxProvider provider(ctx, cfg);
+        providers::SttRequest req;
+        req.audioFilePath = audio;
+        req.trackId = trackId;
+        providers::SttJob* job = provider.transcribe(req);
+        QSignalSpy done(job, &providers::SttJob::finished);
+        QSignalSpy failed(job, &providers::SttJob::failed);
+        QTRY_VERIFY_WITH_TIMEOUT(done.count() == 1 || failed.count() == 1, 10000);
+        QCOMPARE(failed.count(), 0);
+
+        const auto upload = std::find_if(srv.log.cbegin(), srv.log.cend(), [](const fakehttp::Request& r) {
+            return r.method == "POST" && r.path.endsWith(QLatin1String("/files")); });
+        QVERIFY(upload != srv.log.cend());
+        const auto createReq = std::find_if(srv.log.cbegin(), srv.log.cend(), [](const fakehttp::Request& r) {
+            return r.method == "POST" && r.path.endsWith(QLatin1String("/transcriptions")); });
+        QVERIFY(createReq != srv.log.cend());
+        const QJsonObject create = QJsonDocument::fromJson(createReq->body).object();
+        QCOMPARE(create.value(QStringLiteral("file_id")).toString(), QStringLiteral("f1"));
+        if (expected.isEmpty()) {
+            QVERIFY(!upload->body.contains("client_reference_id"));
+            QVERIFY(!create.contains(QStringLiteral("client_reference_id")));
+        } else {
+            const QByteArray part = "content-disposition: form-data; name=\"client_reference_id\"\r\n\r\n"
+                                    + expected.toUtf8() + "\r\n";
+            // Qt writes the part header names in lower case (HTTP header names are case-insensitive).
+            QVERIFY2(upload->body.toLower().contains(part.toLower()), upload->body.constData());
+            // The file stays the first part (the gateway mock reads the first part as the audio).
+            QVERIFY(upload->body.indexOf("name=\"file\"") < upload->body.indexOf("name=\"client_reference_id\""));
+            QCOMPARE(create.value(QStringLiteral("client_reference_id")).toString(), expected);
+        }
         delete job;
     }
 };
