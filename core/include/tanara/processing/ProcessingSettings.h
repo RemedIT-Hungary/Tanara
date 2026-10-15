@@ -31,6 +31,11 @@ struct ProcessingSettings {
     // is skipped at run time, the setting stays. Missing key = ["wespeaker-resnet34-lm"].
     QStringList voiceModels{QStringLiteral("wespeaker-resnet34-lm")};
 
+    // Local speaker separation (diarization, D4) after a transcription whose provider gave no speakers
+    // (Whisper, a non-diarizing cloud tier). It runs only when a segmentation model and a voice model are
+    // installed, so "on" by default means "when a model is installed". Missing key = true.
+    bool localDiarization = true;
+
     // Tag suggestions on/off, and whether the language model suggests after the summary.
     bool tagSuggestions = true;
     bool llmTagSuggestions = true;

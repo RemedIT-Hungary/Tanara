@@ -4,6 +4,7 @@
 // The MergedTranscript methods are implemented by the TranscriptMerger module.
 #include <QMetaType>
 #include <QString>
+#include <QStringList>
 #include <QVector>
 
 namespace tanara {
@@ -43,6 +44,11 @@ struct MergedTranscript {
     // Emission-time timing (see TrackTranscript): after grouping, segments() pads the finished
     // lines (sonioxtiming::padUtterances). tokens.json: "timing": "emission".
     bool emissionTiming = false;
+    // Where the speaker labels came from: "" = the STT provider (its diarization, or none);
+    // "local-diarization" = the local diarizer's turns merged in (processing::diarizationmerge). tokens.json:
+    // "speakers": {"source": ..., "models": [...]}.
+    QString speakerSource;
+    QStringList speakerModels;           // that source's models (segmentation id, then the embedding ids)
     QVector<Utterance> segments() const; // per speaker, pause-based blocks in time order
     QString renderMarkdown() const;      // impl: the TranscriptMerger module
 };

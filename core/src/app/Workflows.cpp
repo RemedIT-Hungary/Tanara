@@ -12,6 +12,7 @@
 #include "tanara/library/tags/TagSuggestionService.h"
 #include "tanara/library/tracks/TrackCatalog.h"
 #include "tanara/processing/analysis/TrackActivity.h"
+#include "tanara/processing/diarization/DiarizationService.h"
 #include "tanara/processing/stt/TranscriptionService.h"
 #include "tanara/processing/summary/SummarizationService.h"
 #include "tanara/recording/MixdownService.h"
@@ -162,7 +163,44 @@ void Workflows::transcribeFromMixdown(const QString& meetingId)
     m_clearSpeakers.remove(meetingId);
 }
 
+bool Workflows::wantsLocalDiarization(const QString& meetingId) const
+{
+    if (!m_deps.diarization || !m_deps.transcription) return false;
+    if (m_deps.transcription->providerDiarized(meetingId)) return false;   // the provider separated the speakers
+    const bool on = m_localDiarizationOverride.has_value()
+        ? *m_localDiarizationOverride
+        : (m_deps.localDiarizationEnabled && m_deps.localDiarizationEnabled());
+    return on && m_deps.localDiarizationUsable && m_deps.localDiarizationUsable();
+}
+
 void Workflows::transcribed(const QString& meetingId)
+{
+    // The provider gave no speakers (Whisper, a non-diarizing tier): the local diarization runs on the tracks
+    // first (the "diarize" stage), then the chain goes on. Not started (no track, the transcript has speakers
+    // after all, no diarizer): straight on.
+    if (wantsLocalDiarization(meetingId)
+        && m_deps.diarization->start(meetingId, [this, meetingId](const processing::DiarizationOutcome& o) {
+               diarized(meetingId, o);
+           }))
+        return;
+    continueAfterTranscript(meetingId);
+}
+
+void Workflows::diarized(const QString& meetingId, const processing::DiarizationOutcome& outcome)
+{
+    if (outcome.cancelled) {
+        // The transcript stays as the STT gave it; the job closes as cancelled (no identification).
+        m_deps.jobs->cancelled(meetingId, JobKind::Transcribe);
+        return;
+    }
+    if (!outcome.ok)
+        qCWarning(lcVoice).noquote() << "Local diarization failed, the transcript keeps one speaker:" << outcome.message;
+    else if (outcome.applied && m_deps.voice.useDiarization)
+        m_deps.voice.useDiarization(meetingId, outcome.result);
+    continueAfterTranscript(meetingId);
+}
+
+void Workflows::continueAfterTranscript(const QString& meetingId)
 {
     // Voice ID: auto-matching the diarized speakers against the voiceprint DB, on a background thread, as
     // the last stage of the transcription task (the UI stays usable, cancellable). (If the user skipped it
@@ -208,6 +246,11 @@ bool Workflows::cancel(const QString& meetingId, JobKind kind)
     };
     switch (kind) {
     case JobKind::Transcribe: {
+        if (m_deps.diarization && m_deps.diarization->running(meetingId)) {
+            // Diarization step: the worker stops; its outcome (cancelled) closes the job.
+            m_deps.jobs->setCancelling(meetingId, kind);
+            return m_deps.diarization->cancel(meetingId);
+        }
         const auto wait = m_mixWaits.find(meetingId);
         const bool stt = m_deps.transcription && m_deps.transcription->running(meetingId);
         if (wait == m_mixWaits.end() && !stt) {

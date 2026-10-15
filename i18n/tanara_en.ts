@@ -8807,6 +8807,31 @@
     </message>
 </context>
 <context>
+    <name>tanara::processing::DiarizationService</name>
+    <message numerus="yes">
+        <source>helyben, %n sáv</source>
+        <translation>
+            <numerusform>locally, %n track</numerusform>
+            <numerusform>locally, %n tracks</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Beszélők szétválasztása…</source>
+        <translation>Separating the speakers…</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n beszélő</source>
+        <translation>
+            <numerusform>%n speaker</numerusform>
+            <numerusform>%n speakers</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>nem sikerült — az átirat beszélők nélkül marad</source>
+        <translation>failed — the transcript stays without speakers</translation>
+    </message>
+</context>
+<context>
     <name>tanara::processing::LlmTagSuggester</name>
     <message>
         <source>Nincs nyelvi modell beállítva.</source>

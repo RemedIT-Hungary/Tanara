@@ -51,11 +51,14 @@ private:
 
 inline const QString kFakeSttId = QStringLiteral("fake-stt");
 
-inline void registerFakeStt(providers::ProviderRegistry& reg, const std::shared_ptr<FakeSttLog>& log)
+// id / diarizes: a second registration that claims the provider separates the speakers (Soniox-like).
+inline void registerFakeStt(providers::ProviderRegistry& reg, const std::shared_ptr<FakeSttLog>& log,
+                            const QString& id = kFakeSttId, bool diarizes = false)
 {
     providers::ProviderDescriptor d;
-    d.id = kFakeSttId;
-    d.displayName = kFakeSttId;
+    d.id = id;
+    d.displayName = id;
+    d.supportsDiarization = diarizes;
     reg.add<providers::ISttProvider>(d, [log](const providers::ProviderContext&, const providers::ProviderConfig&,
                                               QObject* parent) -> providers::ISttProvider* {
         ++log->providersCreated;

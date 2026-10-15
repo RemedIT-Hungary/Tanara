@@ -56,7 +56,35 @@ MergedTranscript TranscriptionService::cachedTranscript(const QString& meetingId
     return m_cache.value(meetingId);
 }
 
-void TranscriptionService::forget(const QString& meetingId) { m_cache.remove(meetingId); }
+void TranscriptionService::forget(const QString& meetingId)
+{
+    m_cache.remove(meetingId);
+    m_providerDiarized.remove(meetingId);
+}
+
+MergedTranscript TranscriptionService::currentTranscript(const QString& meetingId) const
+{
+    const auto it = m_cache.constFind(meetingId);
+    if (it != m_cache.constEnd()) return it.value();
+    const QString folder = m_deps.store ? m_deps.store->folderOf(meetingId) : QString();
+    return folder.isEmpty() ? MergedTranscript() : TranscriptRepository::readTokens(folder);
+}
+
+bool TranscriptionService::replaceTranscript(const QString& meetingId, const MergedTranscript& merged)
+{
+    Meeting mm = m_deps.store ? m_deps.store->load(meetingId) : Meeting();
+    if (mm.id.isEmpty()) return false;
+    TranscriptRepository::writeMarkdown(mm.folder, merged.renderMarkdown());
+    TranscriptRepository::writeTokens(mm.folder, merged);
+    TranscriptRepository::writeSegments(mm.folder, merged.segments());
+    m_cache.insert(mm.id, merged);
+    ++m_generation[meetingId];   // a new transcript: the running identifications' results are stale
+    mm.speakerMap.clear();       // the raw labels mean other people now
+    mm.hasTranscript = true;
+    m_deps.store->saveMeeting(mm);
+    emit transcriptReady(mm.id, TranscriptRepository::markdownPath(mm.folder));
+    return true;
+}
 
 QString TranscriptionService::transcriptStamp(const QString& meetingId, const QString& folder) const
 {
@@ -141,6 +169,9 @@ bool TranscriptionService::start(const QString& meetingId, bool clearSpeakers)
         req.speakerLabel = QStringLiteral("1");
     }
     const bool diarizing = req.diarization;
+    // Whether the speakers will come from the provider (a Whisper server ignores req.diarization).
+    m_providerDiarized[meetingId] = diarizing
+        && m_deps.registry->descriptor(providers::CapabilityKind::Transcription, sttId).supportsDiarization;
 
     providers::SttJob* job = provider->transcribe(req);
 

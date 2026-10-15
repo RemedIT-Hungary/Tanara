@@ -63,6 +63,16 @@ public:
     // The transcript's identity (generation + the tokens file's state): an identification that started on an
     // older transcript drops its result.
     QString transcriptStamp(const QString& meetingId, const QString& folder) const;
+    // Whether the meeting's last transcription in this process got its speakers from the provider (the
+    // descriptor's supportsDiarization AND the run asked for it: a non-diarizing Tanara Cloud tier does not).
+    // false for Whisper and for a meeting not transcribed in this process.
+    bool providerDiarized(const QString& meetingId) const { return m_providerDiarized.value(meetingId, false); }
+    // The meeting's current transcript: the cache of a fresh transcription, else the tokens file.
+    MergedTranscript currentTranscript(const QString& meetingId) const;
+    // Replaces the meeting's transcript (the local diarization's speakers, D4): the normal transcript files
+    // (markdown, tokens with their metadata, segments), the cache, a new generation; the old speaker names are
+    // cleared (the labels mean other people now). transcriptReady follows. false: unknown meeting.
+    bool replaceTranscript(const QString& meetingId, const MergedTranscript& merged);
 
 signals:
     void jobProgress(QString meetingId, QString message);
@@ -84,6 +94,7 @@ private:
     QHash<QString, MergedTranscript> m_cache;
     // Per meeting the transcript's "generation": every new transcript write increments it.
     QHash<QString, int> m_generation;
+    QHash<QString, bool> m_providerDiarized;
 };
 
 } // namespace tanara::processing

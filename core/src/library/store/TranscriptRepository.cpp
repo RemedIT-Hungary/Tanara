@@ -65,6 +65,9 @@ MergedTranscript TranscriptRepository::readTokens(const QString& meetingFolder)
     const QJsonObject root = QJsonDocument::fromJson(f.readAll()).object();
     mt.language = root.value(QStringLiteral("language")).toString();
     mt.emissionTiming = root.value(QStringLiteral("timing")).toString() == QLatin1String("emission");
+    const QJsonObject speakers = root.value(QStringLiteral("speakers")).toObject();
+    mt.speakerSource = speakers.value(QStringLiteral("source")).toString();
+    for (const QJsonValue& m : speakers.value(QStringLiteral("models")).toArray()) mt.speakerModels << m.toString();
     const QJsonArray arr = root.value(QStringLiteral("tokens")).toArray();
     mt.tokens.reserve(arr.size());
     for (const QJsonValue& v : arr) {
@@ -98,6 +101,9 @@ bool TranscriptRepository::writeTokens(const QString& meetingFolder, const Merge
     QJsonObject root;
     root[QStringLiteral("language")] = mt.language;
     if (mt.emissionTiming) root[QStringLiteral("timing")] = QStringLiteral("emission");   // the lines need padding (Soniox)
+    if (!mt.speakerSource.isEmpty())   // the labels came from the local diarization (not the STT provider)
+        root[QStringLiteral("speakers")] = QJsonObject{{QStringLiteral("source"), mt.speakerSource},
+                                                       {QStringLiteral("models"), QJsonArray::fromStringList(mt.speakerModels)}};
     root[QStringLiteral("tokens")] = arr;
     return writeBytes(tokensPath(meetingFolder), QJsonDocument(root).toJson(QJsonDocument::Compact));
 }

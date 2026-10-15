@@ -1102,6 +1102,36 @@ bool VoiceAnalysisService::analyzeParticipants(const QString& meetingId)
     return true;
 }
 
+bool VoiceAnalysisService::useDiarization(const QString& meetingId, const providers::DiarizeResult& result)
+{
+    const Meeting m = d->deps.store->load(meetingId);
+    if (m.id.isEmpty() || m.approval.has_value()) return false;
+    ClusterSet cs;
+    cs.modelIds = result.embeddingModelIds;
+    for (const providers::DiarizedSpeaker& sp : result.speakers) {
+        if (sp.centroid.vectors.isEmpty()) continue;   // a hand-bound track: its participant is the manual one
+        const Track* track = nullptr;
+        for (const Track& t : m.tracks)
+            if (t.id == sp.trackId) { track = &t; break; }
+        VoiceCluster c;
+        c.trackId = sp.trackId;
+        c.side = track ? participants::sideOf(track->kind) : QString();
+        for (const providers::SpeakerTurn& t : result.turns)
+            if (t.trackId == sp.trackId && t.speakerIndex == sp.index) c.windows.append({t.startMs, t.endMs});
+        for (const providers::VoiceVector& v : sp.centroid.vectors) c.centroid.insert(v.modelId, v.vector);
+        const int hash = sp.centroid.sampleRef.lastIndexOf(QLatin1Char('#'));
+        c.sampleRef = (track && hash >= 0) ? track->file + sp.centroid.sampleRef.mid(hash) : sp.centroid.sampleRef;
+        cs.windows += sp.centroid.windows;
+        cs.clusters.append(c);
+    }
+    if (cs.clusters.isEmpty()) return false;
+    if (const auto it = d->analysisRuns.constFind(meetingId); it != d->analysisRuns.constEnd())
+        it.value()->store(true);   // the window analysis's result is dropped
+    qCInfo(lcVoice).noquote() << "Participant analysis from the local diarization:" << cs.clusters.size() << "speakers";
+    d->finishParticipantAnalysis(meetingId, cs, trackactivity::activityFingerprint(m, m.folder));
+    return true;
+}
+
 void VoiceAnalysisService::Impl::finishParticipantAnalysis(const QString& meetingId, ClusterSet clusters,
                                                            const QString& tracksKey)
 {

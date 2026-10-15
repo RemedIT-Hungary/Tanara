@@ -37,6 +37,10 @@
 #include "tanara/library/tags/TagService.h"
 #include "tanara/processing/stt/TranscriptionService.h"
 // --- end P12f ---
+// --- D4: local diarization ---
+#include "tanara/processing/diarization/DiarizationService.h"
+#include "tanara/processing/diarization/LocalDiarizer.h"
+// --- end D4 ---
 
 namespace tanara::app {
 
@@ -270,6 +274,26 @@ editing::EditorSessions::Deps editorSessionDeps(const ServicesDeps& deps, proces
     return ed;
 }
 
+// --- D4: local diarization ---
+// The diarizer: the local one over the catalog's segmentation model and the voice models in use.
+processing::DiarizationService::Deps diarizationDeps(const ServicesDeps& deps, processing::VoiceAnalysisService* voice,
+                                                     processing::TranscriptionService* stt)
+{
+    processing::DiarizationService::Deps dd;
+    dd.store = deps.store;
+    dd.jobs = deps.jobs;
+    dd.diarizer = [voice, media = deps.media, modelsDir = deps.modelsDir,
+                   appDir = deps.appDir](QObject* parent) -> providers::IDiarizer* {
+        auto* d = new processing::LocalDiarizer(processing::LocalDiarizer::catalogLoader(modelsDir, appDir), media, parent);
+        d->setEmbedderSet(voice->embedderSet());
+        return d;
+    };
+    dd.transcript = [stt](const QString& id) { return stt->currentTranscript(id); };
+    dd.saveTranscript = [stt](const QString& id, const MergedTranscript& t) { stt->replaceTranscript(id, t); };
+    return dd;
+}
+// --- end D4 ---
+
 Workflows::Deps workflowDeps(const ServicesDeps& deps, const Services& s)
 {
     Workflows::Deps wd;
@@ -289,6 +313,14 @@ Workflows::Deps workflowDeps(const ServicesDeps& deps, const Services& s)
     wd.voice.measureActivity = [voice](const Meeting& m, std::function<void(const MeetingActivity&)> done) {
         voice->measureActivity(m, std::move(done));
     };
+    // --- D4: local diarization ---
+    wd.diarization = &s.diarization();
+    wd.localDiarizationEnabled = [st = deps.settings]() { return !st || st->settings().processing.localDiarization; };
+    wd.localDiarizationUsable = [voice, modelsDir = deps.modelsDir, appDir = deps.appDir]() {
+        return voice->usable() && processing::LocalDiarizer::hasUsableModel(modelsDir, appDir);
+    };
+    wd.voice.useDiarization = [voice](const QString& id, const providers::DiarizeResult& r) { voice->useDiarization(id, r); };
+    // --- end D4 ---
     wd.readiness = deps.readiness;
     library::PeopleService* people = &s.people();
     wd.personNames = [people]() { return people->personNames(); };
@@ -330,6 +362,8 @@ Services::Services(const ServicesDeps& deps)
     // --- end P12e ---
     // --- P12f: transcription, workflows, editor sessions ---
     , m_transcription(std::make_unique<processing::TranscriptionService>(transcriptionDeps(deps)))
+    , m_diarization(std::make_unique<processing::DiarizationService>(
+          diarizationDeps(deps, m_voiceAnalysis.get(), m_transcription.get())))
     , m_workflows(std::make_unique<Workflows>(workflowDeps(deps, *this)))
     , m_editorSessions(std::make_unique<editing::EditorSessions>(
           editorSessionDeps(deps, m_voiceAnalysis.get(), m_people.get(), m_meetingUndo.get())))

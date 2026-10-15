@@ -20,7 +20,8 @@
 //
 // Implementations: processing::LocalDiarizer (Origin::Local; pyannote segmentation + speaker
 // embedding + agglomerative clustering), later a Cloud variant. The job is the provider's child;
-// progress(done, total) counts processed windows; cancel() stops the work (no signal follows).
+// progress(done, total) is monotone work units (the provider defines them; done == total at the end);
+// cancel() stops the work (no signal follows).
 #include "tanara/domain/Person.h"
 #include "tanara/providers/core/CapabilityJob.h"
 #include "tanara/providers/core/ProviderDescriptor.h"
@@ -95,6 +96,10 @@ struct DiarizedSpeaker {
 struct DiarizeResult {
     QVector<SpeakerTurn>     turns;      // sorted by startMs (then by trackId, speakerIndex)
     QVector<DiarizedSpeaker> speakers;   // sorted by trackId, then index
+    // What produced it (the transcript metadata records them): the segmentation model id and the
+    // speaker-embedding models of the clustering (empty: not clustered).
+    QString     segmentationModelId;
+    QStringList embeddingModelIds;
 
     // The turns of one track, in order.
     QVector<SpeakerTurn> turnsOf(const QString& trackId) const

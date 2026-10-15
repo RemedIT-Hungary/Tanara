@@ -30,6 +30,7 @@
 #include "tanara/processing/analysis/UtteranceEmbeddings.h"
 #include "tanara/processing/voiceid/BackfillReport.h"
 #include "tanara/processing/voiceid/VoiceEmbedderSet.h"
+#include "tanara/providers/voice/IDiarizer.h"
 
 #include <QObject>
 #include <QString>
@@ -159,6 +160,13 @@ public:
     bool analysisRunning(const QString& meetingId) const;
     // The running analysis's result is dropped (it still finishes).
     void cancelAnalysis(const QString& meetingId);
+    // The local diarization's speakers (D4) as the analysis's clusters: per diarized speaker one cluster (its
+    // turns as the windows, its centroid, its sample re-pointed to the track's file); a running window
+    // analysis is dropped. Then exactly what a finished analysis does: candidates (participants.analysis.json,
+    // meeting.participants), bound to the transcript's raw speakers, participantsChanged. Speakers without a
+    // centroid (a hand-bound track's) are skipped. false: unknown meeting, a decision was already made
+    // (approval), or no usable speaker.
+    bool useDiarization(const QString& meetingId, const providers::DiarizeResult& result);
 
 signals:
     void voiceprintsChanged();

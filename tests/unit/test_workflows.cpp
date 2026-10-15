@@ -3,11 +3,15 @@
 // fake voice steps. The chain with and without a mix, cancel at every step, a failure in the middle, a
 // restart, the "Who was there?" decision and the identification toggle, the readiness block, the
 // re-transcription, the standalone identification, the post-recording / import chains and the speech check.
+// The local diarization step (D4): after a provider without speakers (FakeDiarizer) the transcript gets the
+// speakers before the identification; a diarizing provider skips it; cancel in the diarize stage; the setting
+// (and the per-run override) off; a failing diarizer does not stop the chain.
 // Isolated TANARA_HOME; no network, no ffmpeg.
 #include <QtTest>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 
+#include "fake_diarizer.h"
 #include "fake_media_tool.h"
 #include "fake_stt.h"
 
@@ -15,6 +19,9 @@
 #include "tanara/library/jobs/JobStats.h"
 #include "tanara/library/jobs/MeetingJobTracker.h"
 #include "tanara/library/store/MeetingRepository.h"
+#include "tanara/library/store/TranscriptRepository.h"
+#include "tanara/processing/diarization/DiarizationMerge.h"
+#include "tanara/processing/diarization/DiarizationService.h"
 #include "tanara/processing/stt/TranscriptionService.h"
 #include "tanara/recording/MixdownService.h"
 
@@ -43,6 +50,10 @@ private slots:
     void cancelOtherKindsAndAll();
     void afterRecordingAndImport();
     void speechCheckOncePerProcess();
+    void localDiarizationAfterWhisper();
+    void providerDiarizedSkipsLocal();
+    void cancelDuringDiarize();
+    void diarizationOffOrFailing();
 
 private:
     Meeting recorded(const QString& title, bool freshMix = false, bool unmeasured = false);
@@ -60,7 +71,16 @@ private:
     std::shared_ptr<testing::FakeSttLog> m_log;
     std::unique_ptr<testing::FakeTranscriptionPort> m_port;
     std::unique_ptr<processing::TranscriptionService> m_stt;
+    std::unique_ptr<processing::DiarizationService> m_diar;
     std::unique_ptr<Workflows> m_wf;
+
+    // The fake local diarization.
+    bool m_diarEnabled = false;
+    bool m_diarUsable = true;
+    bool m_diarManual = false;
+    int m_diarCreated = 0;
+    QPointer<testing::FakeDiarizer> m_fakeDiar;
+    std::function<providers::DiarizeResult(const providers::DiarizeRequest&)> m_diarScript;
 
     // The fake voice side.
     bool m_usable = true;
@@ -91,6 +111,25 @@ void WorkflowsTest::init()
     m_port = std::make_unique<testing::FakeTranscriptionPort>();
     m_stt = std::make_unique<processing::TranscriptionService>(processing::TranscriptionService::Deps{
         m_store.get(), m_jobs.get(), m_stats.get(), &m_registry, m_port.get()});
+    m_diarEnabled = false;
+    m_diarUsable = true;
+    m_diarManual = false;
+    m_diarCreated = 0;
+    m_diarScript = {};
+    processing::DiarizationService::Deps dd;
+    dd.store = m_store.get();
+    dd.jobs = m_jobs.get();
+    dd.diarizer = [this](QObject* parent) -> providers::IDiarizer* {
+        auto* f = new testing::FakeDiarizer(parent);
+        f->manual = m_diarManual;
+        f->script = m_diarScript;
+        m_fakeDiar = f;
+        ++m_diarCreated;
+        return f;
+    };
+    dd.transcript = [this](const QString& id) { return m_stt->currentTranscript(id); };
+    dd.saveTranscript = [this](const QString& id, const MergedTranscript& t) { m_stt->replaceTranscript(id, t); };
+    m_diar = std::make_unique<processing::DiarizationService>(dd);
     m_usable = true;
     m_decided = false;
     m_identifyStarts = true;
@@ -132,6 +171,12 @@ void WorkflowsTest::makeWorkflows()
     };
     d.readiness = [this](providers::WorkflowStep, const QString&) { return m_ready; };
     d.mixdownMode = [this]() { return m_mixdownMode; };
+    d.diarization = m_diar.get();
+    d.localDiarizationEnabled = [this]() { return m_diarEnabled; };
+    d.localDiarizationUsable = [this]() { return m_diarUsable; };
+    d.voice.useDiarization = [this](const QString&, const providers::DiarizeResult& r) {
+        m_calls << QStringLiteral("useDiarization:%1").arg(r.speakers.size());
+    };
     m_wf = std::make_unique<Workflows>(d);
     // As the facade does: the mix's signals reach the chains.
     connect(m_mix.get(), &recording::MixdownService::progress, m_wf.get(), &Workflows::mixdownProgress);
@@ -143,6 +188,7 @@ void WorkflowsTest::makeWorkflows()
 void WorkflowsTest::cleanup()
 {
     m_wf.reset();
+    m_diar.reset();
     m_stt.reset();
     m_mix.reset();
     m_jobs.reset();
@@ -478,6 +524,191 @@ void WorkflowsTest::speechCheckOncePerProcess()
     m_measureDone(MeetingActivity());
     QVERIFY(!m_mix->running(u.id));                   // a plain check does not remix
     QVERIFY(!m_wf->checkTrackSpeech(u.id));          // measured in this process
+}
+
+namespace {
+
+// Two speakers on the "sys" track: 0-0.9 s speaker 0, 0.9-2 s speaker 1 (meeting time).
+providers::DiarizeResult twoOnSys(const providers::DiarizeRequest&)
+{
+    providers::DiarizeResult r;
+    for (int s = 0; s < 2; ++s) {
+        providers::SpeakerTurn t;
+        t.trackId = QStringLiteral("sys");
+        t.speakerIndex = s;
+        t.startMs = s == 0 ? 0 : 900;
+        t.endMs = s == 0 ? 900 : 2000;
+        r.turns << t;
+        providers::DiarizedSpeaker sp;
+        sp.trackId = QStringLiteral("sys");
+        sp.index = s;
+        sp.totalMs = t.durationMs();
+        providers::VoiceVector v;
+        v.vector = {s == 0 ? 1.0f : 0.0f, s == 0 ? 0.0f : 1.0f};
+        v.dim = 2;
+        v.modelId = QStringLiteral("fake");
+        sp.centroid.vectors << v;
+        r.speakers << sp;
+    }
+    r.segmentationModelId = QStringLiteral("fake-seg");
+    r.embeddingModelIds = {QStringLiteral("fake")};
+    return r;
+}
+
+TrackTranscript sixWords()
+{
+    return testing::sttResult({{"1", " egy"}, {"1", " kettő"}, {"1", " három"},
+                               {"1", " négy"}, {"1", " öt"}, {"1", " hat"}});
+}
+
+QStringList tokenSpeakers(const Meeting& m)
+{
+    QStringList out;
+    for (const TranscriptToken& t : library::TranscriptRepository::readTokens(m.folder).tokens) out << t.speaker;
+    return out;
+}
+
+} // namespace
+
+void WorkflowsTest::localDiarizationAfterWhisper()
+{
+    m_diarEnabled = true;
+    m_diarScript = twoOnSys;
+    Meeting m = recorded(QStringLiteral("Whisper"), /*freshMix*/ true);
+    // A hand-bound participant makes the mic track single-speaker; the sys track is clustered.
+    Participant p;
+    p.id = QStringLiteral("p1");
+    p.personId = PersonId::generate();
+    p.source = ParticipantSource::Manual;
+    p.tracks = {QStringLiteral("mic")};
+    m.participants << p;
+    m_store->saveMeeting(m);
+
+    runToStt(m.id);
+    emit m_log->jobs.first()->finished(sixWords());
+    QVERIFY(m_diar->running(m.id));
+    QCOMPARE(m_jobs->job(m.id, JobKind::Transcribe).stage("diarize")->state, StageState::Running);
+    QVERIFY(!m_calls.contains(QStringLiteral("apply")));   // the identification waits for the speakers
+    QCOMPARE(m_diarCreated, 1);
+    QCOMPARE(m_fakeDiar->requests.size(), 1);
+    const providers::DiarizeRequest req = m_fakeDiar->requests.first();
+    QCOMPARE(req.tracks.size(), 2);   // the tracks, not the mixdown
+    for (const providers::DiarizeTrack& t : req.tracks) {
+        QVERIFY(t.path.endsWith(QStringLiteral("track_%1.ogg").arg(t.trackId)));
+        QCOMPARE(t.knownPerson.isNull(), t.trackId != QStringLiteral("mic"));
+    }
+
+    QTRY_VERIFY_WITH_TIMEOUT(m_calls.contains(QStringLiteral("identify:%1:1").arg(m.id)), 5000);
+    QVERIFY(m_calls.indexOf(QStringLiteral("useDiarization:2")) >= 0);
+    QVERIFY(m_calls.indexOf(QStringLiteral("useDiarization:2")) < m_calls.indexOf(QStringLiteral("apply")));
+    QCOMPARE(tokenSpeakers(m_store->load(m.id)),
+             QStringList({"Beszélő 1", "Beszélő 1", "Beszélő 1", "Beszélő 2", "Beszélő 2", "Beszélő 2"}));
+    const MergedTranscript t = library::TranscriptRepository::readTokens(m.folder);
+    QCOMPARE(t.speakerSource, processing::diarizationmerge::kSourceLocalDiarization);
+    QCOMPARE(t.speakerModels, QStringList({"fake-seg", "fake"}));
+    QCOMPARE(library::TranscriptRepository::readSegments(m.folder).size(), 2);
+    QCOMPARE(m_stt->cachedTranscript(m.id).speakerSource, processing::diarizationmerge::kSourceLocalDiarization);
+    QCOMPARE(m_jobs->job(m.id, JobKind::Transcribe).stage("diarize")->state, StageState::Done);
+    m_jobs->finish(m.id, JobKind::Transcribe);
+    QCOMPARE(outcome(m.id), JobOutcome::Done);
+    QVERIFY(m_errors.isEmpty());
+}
+
+void WorkflowsTest::providerDiarizedSkipsLocal()
+{
+    const QString soniox = QStringLiteral("fake-soniox");
+    if (!m_registry.has(providers::CapabilityKind::Transcription, soniox))
+        testing::registerFakeStt(m_registry, m_log, soniox, /*diarizes*/ true);
+    m_diarEnabled = true;
+    m_diarScript = twoOnSys;
+    m_port->providerId = soniox;
+    const Meeting m = recorded(QStringLiteral("Soniox"), true);
+    runToStt(m.id);
+    emit m_log->jobs.last()->finished(sixWords());
+    QVERIFY(m_calls.contains(QStringLiteral("identify:%1:1").arg(m.id)));   // straight on
+    QCOMPARE(m_diarCreated, 0);
+    QVERIFY(!m_stt->providerDiarized(QStringLiteral("unknown")));
+    QVERIFY(m_stt->providerDiarized(m.id));
+
+    // The same provider on a tier that does not diarize: the local diarization runs.
+    m_port->diarization = false;
+    const Meeting k = recorded(QStringLiteral("Gyors csomag"), true);
+    runToStt(k.id);
+    emit m_log->jobs.last()->finished(sixWords());
+    QVERIFY(!m_stt->providerDiarized(k.id));
+    QCOMPARE(m_diarCreated, 1);
+    QTRY_VERIFY_WITH_TIMEOUT(m_calls.contains(QStringLiteral("identify:%1:1").arg(k.id)), 5000);
+    QCOMPARE(tokenSpeakers(m_store->load(k.id)).last(), QStringLiteral("Beszélő 2"));
+}
+
+void WorkflowsTest::cancelDuringDiarize()
+{
+    m_diarEnabled = true;
+    m_diarManual = true;
+    const Meeting m = recorded(QStringLiteral("Megszakítás a szétválasztásban"), true);
+    runToStt(m.id);
+    emit m_log->jobs.first()->finished(sixWords());
+    QVERIFY(m_diar->running(m.id));
+    QPointer<testing::FakeDiarizeJob> job = m_fakeDiar->jobs.first();
+    m_calls.clear();
+    QVERIFY(m_wf->cancel(m.id, JobKind::Transcribe));
+    QVERIFY(job && job->cancelRequested);
+    QTRY_COMPARE_WITH_TIMEOUT(outcome(m.id), JobOutcome::Cancelled, 5000);
+    QVERIFY(!m_diar->running(m.id));
+    QVERIFY(!m_calls.contains(QStringLiteral("apply")));
+    QVERIFY(m_calls.filter(QStringLiteral("identify:")).isEmpty());
+    QVERIFY(m_calls.filter(QStringLiteral("useDiarization")).isEmpty());
+    // The transcript stays as the STT gave it.
+    QVERIFY(m_store->load(m.id).hasTranscript);
+    QCOMPARE(tokenSpeakers(m_store->load(m.id)), QStringList(6, QStringLiteral("Beszélő 1")));
+    QVERIFY(!m_jobs->lastError(m.id, JobKind::Transcribe).isValid());
+    QVERIFY(m_errors.isEmpty());
+}
+
+void WorkflowsTest::diarizationOffOrFailing()
+{
+    m_diarScript = twoOnSys;
+    // The setting off: no diarizer.
+    const Meeting a = recorded(QStringLiteral("Kikapcsolva"), true);
+    runToStt(a.id);
+    emit m_log->jobs.last()->finished(sixWords());
+    QCOMPARE(m_diarCreated, 0);
+    QVERIFY(m_calls.contains(QStringLiteral("identify:%1:1").arg(a.id)));
+
+    // On, but no usable model: no diarizer either.
+    m_diarEnabled = true;
+    m_diarUsable = false;
+    const Meeting b = recorded(QStringLiteral("Modell nélkül"), true);
+    runToStt(b.id);
+    emit m_log->jobs.last()->finished(sixWords());
+    QCOMPARE(m_diarCreated, 0);
+    QVERIFY(!m_wf->wantsLocalDiarization(b.id));
+
+    // The per-run override wins over the setting (off -> on).
+    m_diarEnabled = false;
+    m_diarUsable = true;
+    m_wf->setLocalDiarizationOverride(true);
+    const Meeting c = recorded(QStringLiteral("Felülbírálva"), true);
+    runToStt(c.id);
+    emit m_log->jobs.last()->finished(sixWords());
+    QCOMPARE(m_diarCreated, 1);
+    QTRY_VERIFY_WITH_TIMEOUT(m_calls.contains(QStringLiteral("identify:%1:1").arg(c.id)), 5000);
+    m_wf->setLocalDiarizationOverride(false);
+    m_diarEnabled = true;
+    QVERIFY(!m_wf->wantsLocalDiarization(c.id));
+    m_wf->setLocalDiarizationOverride(std::nullopt);
+
+    // A failing diarizer: the stage fails, the chain goes on with the one-speaker transcript.
+    m_diarManual = true;
+    const Meeting e = recorded(QStringLiteral("Hibás szétválasztás"), true);
+    runToStt(e.id);
+    emit m_log->jobs.last()->finished(sixWords());
+    QVERIFY(m_diar->running(e.id));
+    m_fakeDiar->jobs.last()->failLater(providers::inputError(QStringLiteral("decode_failed"), QStringLiteral("x")));
+    QTRY_VERIFY_WITH_TIMEOUT(m_calls.contains(QStringLiteral("identify:%1:1").arg(e.id)), 5000);
+    QCOMPARE(m_jobs->job(e.id, JobKind::Transcribe).stage("diarize")->state, StageState::Failed);
+    QCOMPARE(tokenSpeakers(m_store->load(e.id)), QStringList(6, QStringLiteral("Beszélő 1")));
+    QVERIFY(m_errors.isEmpty());
 }
 
 QTEST_GUILESS_MAIN(WorkflowsTest)

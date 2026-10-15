@@ -77,8 +77,8 @@ void registerInto(ProviderRegistry& registry, ProcessingProviderDeps deps)
                                      parent);
     });
 
-    // Diarization (D3 stage: segmentation only, see LocalDiarizer.h): registered only when a
-    // segmentation model file is present (the SHA-256 is checked when a job opens it).
+    // Diarization (segmentation + clustering with the voice models in use, see LocalDiarizer.h): registered
+    // only when a segmentation model file is present (the SHA-256 is checked when a job opens it).
     if (LocalDiarizer::hasUsableModel(deps.modelsDir, deps.appDir)) {
         ProviderDescriptor diar = localDescriptor(LocalDiarizer::Id,
             QCoreApplication::translate("BuiltinProviders", "Helyi beszélő-elkülönítés"), InputKind::AudioClip);
@@ -86,10 +86,12 @@ void registerInto(ProviderRegistry& registry, ProcessingProviderDeps deps)
         diar.traits.needsModelFile = true;
         diar.catalogRef = LocalVoiceModelCatalog::Id;
         const QString mDir = deps.modelsDir, aDir = deps.appDir;
-        registry.add<IDiarizer>(diar, [mDir, aDir, media](const ProviderContext&, const ProviderConfig&,
-                                                          QObject* parent) -> IDiarizer* {
-            return new LocalDiarizer(LocalDiarizer::catalogLoader(mDir, aDir), media ? media() : media::MediaToolPtr(),
-                                     parent);
+        registry.add<IDiarizer>(diar, [mDir, aDir, media, voiceSet](const ProviderContext&, const ProviderConfig&,
+                                                                    QObject* parent) -> IDiarizer* {
+            auto* d = new LocalDiarizer(LocalDiarizer::catalogLoader(mDir, aDir),
+                                        media ? media() : media::MediaToolPtr(), parent);
+            if (voiceSet) d->setEmbedderSet(voiceSet());
+            return d;
         });
     }
 

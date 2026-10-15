@@ -6,6 +6,13 @@
 //    state the UI sees):
 //        [mixdown]  only if the mix is missing / stale (recording::MixdownService, the job's "mixdown" stage)
 //      -> stt       processing::TranscriptionService (upload / transcribe / diarize stages)
+//      -> diarize   only when the provider did not separate the speakers (TranscriptionService::providerDiarized:
+//                   Whisper, a non-diarizing cloud tier), the local diarization is on (the
+//                   processing.localDiarization setting, or the CLI's per-run override) and usable (a
+//                   segmentation + a voice model): processing::DiarizationService on the tracks (not the
+//                   mixdown) in the "diarize" stage, its speakers merged into the transcript; then the
+//                   diarized speakers feed the participant analysis (VoiceSteps::useDiarization). A failed
+//                   diarization is not fatal: the chain goes on with the one-speaker transcript.
 //      -> identify  the "Who was there?" decision is applied, otherwise the automatic voice identification
 //                   as the job's last stage (skippable per meeting: setIdentifyAfterTranscription)
 //      -> the job finishes (the identification closes it when it runs).
@@ -30,6 +37,7 @@
 
 #include <functional>
 #include <memory>
+#include <optional>
 
 namespace tanara::library {
 class ArchiveService;
@@ -40,9 +48,12 @@ class TagSuggestionService;
 }
 namespace tanara::recording { class MixdownService; }
 namespace tanara::processing {
+class DiarizationService;
 class SummarizationService;
 class TranscriptionService;
+struct DiarizationOutcome;
 }
+namespace tanara::providers { struct DiarizeResult; }
 namespace tanara::editing { class MeetingUndoRegistry; }
 
 namespace tanara::app {
@@ -61,6 +72,9 @@ public:
         std::function<bool(const QString& meetingId)> analyzeParticipants;   // if not run on these tracks yet
         // The tracks' activity (cache, else computed) on a background pool; `done` on the main thread.
         std::function<void(const Meeting& m, std::function<void(const MeetingActivity&)> done)> measureActivity;
+        // The local diarization's speakers were merged into the new transcript: they become the participant
+        // analysis's clusters (candidates with samples), before the binding / identification.
+        std::function<void(const QString& meetingId, const providers::DiarizeResult& result)> useDiarization;
     };
 
     struct Deps {
@@ -68,6 +82,10 @@ public:
         library::MeetingJobTracker*      jobs = nullptr;
         recording::MixdownService*       mixdown = nullptr;
         processing::TranscriptionService* transcription = nullptr;
+        // The local diarization (D4); null = never.
+        processing::DiarizationService*   diarization = nullptr;
+        std::function<bool()> localDiarizationEnabled;   // the processing.localDiarization setting
+        std::function<bool()> localDiarizationUsable;    // a segmentation model and a voice model are usable
         VoiceSteps voice;
         // Whether a step can run on the meeting (provider, key, Tanara Cloud blockers).
         std::function<providers::ReadinessResult(providers::WorkflowStep step, const QString& meetingId)> readiness;
@@ -95,6 +113,11 @@ public:
     bool identify(const QString& meetingId);
     void setIdentifyAfterTranscription(const QString& meetingId, bool enabled);
     bool identifyAfterTranscription(const QString& meetingId) const;
+    // A per-process override of the processing.localDiarization setting (the CLI's --local-diarization);
+    // std::nullopt = the setting.
+    void setLocalDiarizationOverride(std::optional<bool> on) { m_localDiarizationOverride = on; }
+    // Whether a transcription of this meeting that just finished would run the local diarization.
+    bool wantsLocalDiarization(const QString& meetingId) const;
 
     // ---- cancel ----
     bool cancel(const QString& meetingId, JobKind kind);
@@ -132,6 +155,8 @@ signals:
 private:
     void transcribeFromMixdown(const QString& meetingId);
     void transcribed(const QString& meetingId);
+    void diarized(const QString& meetingId, const processing::DiarizationOutcome& outcome);
+    void continueAfterTranscript(const QString& meetingId);
     void startSpeechCheck(const QString& meetingId, bool thenMixdown);
     void finishSpeechCheck(const QString& meetingId, const MeetingActivity& activity, bool thenMixdown);
     bool analyzeParticipants(const QString& meetingId);
@@ -150,6 +175,7 @@ private:
     QSet<QString> m_speechCheckRunning;     // meetingIds being measured now
     QSet<QString> m_speechChecked;          // measured in this process (not repeated even on error)
     bool m_autoMixdown = true;
+    std::optional<bool> m_localDiarizationOverride;
 };
 
 } // namespace tanara::app

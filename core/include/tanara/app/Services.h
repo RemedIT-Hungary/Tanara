@@ -56,6 +56,7 @@ class SummaryLlmPort;
 // --- P12f: transcription, workflows, editor sessions ---
 #include "tanara/providers/core/ReadinessModel.h"
 namespace tanara::processing {
+class DiarizationService;
 class TranscriptionPort;
 class TranscriptionService;
 }
@@ -139,6 +140,8 @@ public:
     // --- end P12e ---
     // --- P12f: transcription, workflows, editor sessions ---
     processing::TranscriptionService& transcription() const { return *m_transcription; }   // the STT step
+    // The local diarization step (D4) after a provider without speakers.
+    processing::DiarizationService&   diarization() const   { return *m_diarization; }
     // The transcribe -> mixdown -> STT -> identify chain, the post-recording / import chains, cancel per kind.
     app::Workflows&                   workflows() const     { return *m_workflows; }
     editing::EditorSessions&          editorSessions() const { return *m_editorSessions; }   // one editor per meeting
@@ -167,6 +170,7 @@ private:
     // --- end P12e ---
     // --- P12f: transcription, workflows, editor sessions --- (the editors are destroyed before the services)
     std::unique_ptr<processing::TranscriptionService> m_transcription;
+    std::unique_ptr<processing::DiarizationService>   m_diarization;   // D4
     std::unique_ptr<app::Workflows>                   m_workflows;
     std::unique_ptr<editing::EditorSessions>          m_editorSessions;
     // --- end P12f ---

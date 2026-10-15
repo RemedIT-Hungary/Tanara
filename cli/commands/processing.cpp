@@ -5,7 +5,11 @@
 #include "DiarizeCommands.h"
 
 #include "tanara/app/AppController.h"
+#include "tanara/app/Services.h"
 #include "tanara/app/SettingsManager.h"
+#include "tanara/app/Workflows.h"
+#include "tanara/library/jobs/MeetingJobTracker.h"
+#include "tanara/library/store/TranscriptRepository.h"
 #include "tanara/cloud/CloudSession.h"
 #include "tanara/library/store/MeetingRepository.h"
 #include "tanara/library/store/PeopleStore.h"
@@ -29,6 +33,15 @@ int cmd_transcribe(CliContext& ctx, const QStringList& args)
     const QString id = args.value(2);
     if (id.isEmpty()) { err() << QStringLiteral("Missing meetingId.") << "\n"; return 1; }
     const bool complex = cmd == "summarize" && args.contains(QStringLiteral("--complex"));
+    // transcribe --local-diarization on|off: this run only (the processing.localDiarization setting stays).
+    if (const int at = args.indexOf(QStringLiteral("--local-diarization")); cmd == "transcribe" && at >= 0) {
+        const QString v = args.value(at + 1);
+        if (v != QLatin1String("on") && v != QLatin1String("off")) {
+            err() << QStringLiteral("Usage: transcribe <meetingId> [--yes] [--local-diarization on|off]") << "\n";
+            return 1;
+        }
+        app.services()->workflows().setLocalDiarizationOverride(v == QLatin1String("on"));
+    }
     const providers::WorkflowStep step = cmd == "transcribe" ? providers::WorkflowStep::Transcribe : providers::WorkflowStep::Summarize;
     // Tanara Cloud: estimate + confirmation; without --yes it asks first.
     if (app.usesCloud(step)) {
@@ -68,8 +81,33 @@ int cmd_transcribe(CliContext& ctx, const QStringList& args)
         err().flush(); qapp.exit(3); });
     QObject::connect(&app, &app::AppController::cloudError, &qapp, [&](QString, QString, cloud::CloudError e, cloud::Money charged) {
         err() << describeCloudError(e, charged, lang) << "\n"; err().flush(); qapp.exit(2); });
+    // The transcription chain ends with the job (after the local diarization / identification, if they run);
+    // a transcript may be saved twice on the way (the STT result, then the diarized speakers).
     QObject::connect(&app, &app::AppController::transcriptReady, &qapp, [&](QString, QString p) {
-        out() << QStringLiteral("Transcript done: %1").arg(p) << "\n"; out().flush(); qapp.quit(); });
+        out() << QStringLiteral("Transcript saved: %1").arg(p) << "\n"; out().flush(); });
+    QObject::connect(app.jobs(), &library::MeetingJobTracker::jobFinished, &qapp,
+                     [&](QString mid, JobKind kind, JobOutcome outcome) {
+        if (cmd != "transcribe" || mid != id || kind != JobKind::Transcribe) return;
+        if (outcome != JobOutcome::Done) {
+            err() << (outcome == JobOutcome::Cancelled ? QStringLiteral("Transcription cancelled.")
+                                                       : QStringLiteral("Transcription failed.")) << "\n";
+            err().flush();
+            qapp.exit(1);
+            return;
+        }
+        const Meeting m = app.store()->load(id);
+        const MergedTranscript t = library::TranscriptRepository::readTokens(m.folder);
+        QStringList speakers;
+        for (const TranscriptToken& tok : t.tokens)
+            if (!speakers.contains(tok.speaker)) speakers << tok.speaker;
+        out() << QStringLiteral("Transcript done: %1 token(s), %2 raw speaker(s)%3")
+                     .arg(t.tokens.size()).arg(speakers.size())
+                     .arg(t.speakerSource.isEmpty() ? QString()
+                                                    : QStringLiteral(" (%1: %2)").arg(t.speakerSource, t.speakerModels.join(", ")))
+              << "\n";
+        out().flush();
+        qapp.quit();
+    });
     QObject::connect(&app, &app::AppController::summaryReady, &qapp, [&](QString, QString p) {
         out() << QStringLiteral("Summary done: %1").arg(p) << "\n"; out().flush(); qapp.quit(); });
     // Complex: pass 1 (topics) -> analysis of every topic + reduce, no editing.
@@ -244,8 +282,8 @@ void registerProcessingCommands(CommandRegistry& r)
 {
     const QString m = QStringLiteral("processing");
     // TODO(P12c): transcribe / summarize go through the processing services once those are on main.
-    r.add({"transcribe", m, "Transcribe a meeting (needs a Soniox key or Tanara Cloud)",
-           "transcribe <meetingId> [--yes]", true, cmd_transcribe});
+    r.add({"transcribe", m, "Transcribe a meeting (the selected STT provider; local speaker separation when it gives none)",
+           "transcribe <meetingId> [--yes] [--local-diarization on|off]", true, cmd_transcribe});
     r.add({"summarize", m, "Summarize a meeting (LM Studio or Tanara Cloud)",
            "summarize <meetingId> [--yes] [--complex]", true, cmd_transcribe});
     // TODO(P12d): identify runs on the voice-analysis service.
@@ -257,7 +295,7 @@ void registerProcessingCommands(CommandRegistry& r)
            "voice-eval <meeting-folder> [--models a,b] [--min-ms N] [--json]", false,
            [](CliContext&, const QStringList& a) { return runVoiceEvalCommand(a); }});
     r.add({"diarize-probe", m, "Run the speaker segmentation on one audio file and print the turns (read-only)",
-           "diarize-probe <audio> [--model <id>] [--shift <ratio>] [--min-on <s>] [--min-off <s>] [--threads <n>] [--batch <n>] [--json] [--windows]",
+           "diarize-probe <audio> [--model <id>] [--shift <ratio>] [--min-on <s>] [--min-off <s>] [--threads <n>] [--batch <n>] [--json] [--windows] [--cluster [--threshold <d>] [--num-speakers <n>] [--voice-models a,b]]",
            false, [](CliContext&, const QStringList& a) { return runDiarizeProbeCommand(a); }});
     r.add({"embed-probe", m, "Print the embedding of one audio segment (voiceprint debugging)",
            "embed-probe <modelPath> <audioPath> <startMs> <endMs> [scale] [cmn:0/1] [snip:0/1]", true, cmd_embedProbe});

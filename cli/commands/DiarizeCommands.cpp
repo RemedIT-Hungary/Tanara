@@ -3,7 +3,9 @@
 
 #include "tanara/app/SettingsManager.h"
 #include "tanara/media/FfmpegMediaTool.h"
+#include "tanara/processing/diarization/LocalDiarizer.h"
 #include "tanara/processing/diarization/PyannoteSegmenter.h"
+#include "tanara/processing/voiceid/VoiceEmbedderSet.h"
 #include "tanara/processing/voiceid/VoiceModelRegistry.h"
 
 #include <QCoreApplication>
@@ -25,7 +27,10 @@ QTextStream& serr() { static QTextStream s(stderr); return s; }
 
 const char* kUsage =
     "Usage: diarize-probe <audio> [--model <id>] [--shift <ratio>] [--min-on <s>] [--min-off <s>]\n"
-    "                     [--threads <n>] [--batch <n>] [--json] [--windows]\n";
+    "                     [--threads <n>] [--batch <n>] [--json] [--windows]\n"
+    "                     [--cluster [--threshold <d>] [--num-speakers <n>] [--voice-models a,b]]\n"
+    "  --cluster: embed + cluster the segments (the local diarization, D4) with the enabled voice models\n"
+    "             (or --voice-models) and print the clustered turns; the default shift is then 0.25.\n";
 
 QString hms(double sec)
 {
@@ -42,13 +47,19 @@ int runDiarizeProbeCommand(const QStringList& args)
     QString audio, modelId = VoiceModelRegistry::defaultSegmentationModelId();
     SegmenterOptions opts;
     OnnxSegmentationOptions ort;
-    bool json = false, windows = false;
+    bool json = false, windows = false, cluster = false, shiftGiven = false;
+    ClusteringOptions copts;
+    QStringList voiceModels;
     for (int i = 2; i < args.size(); ++i) {
         const QString a = args[i];
         auto next = [&](bool* ok) { *ok = i + 1 < args.size(); return *ok ? args[++i] : QString(); };
         bool ok = true;
         if (a == "--model") modelId = next(&ok);
-        else if (a == "--shift") opts.windowShiftRatio = next(&ok).toDouble(&ok);
+        else if (a == "--shift") { opts.windowShiftRatio = next(&ok).toDouble(&ok); shiftGiven = true; }
+        else if (a == "--cluster") cluster = true;
+        else if (a == "--threshold") copts.threshold = next(&ok).toDouble(&ok);
+        else if (a == "--num-speakers") copts.numClusters = next(&ok).toInt(&ok);
+        else if (a == "--voice-models") voiceModels = next(&ok).split(QLatin1Char(','), Qt::SkipEmptyParts);
         else if (a == "--min-on") opts.minDurationOn = next(&ok).toDouble(&ok);
         else if (a == "--min-off") opts.minDurationOff = next(&ok).toDouble(&ok);
         else if (a == "--threads") ort.intraOpThreads = next(&ok).toInt(&ok);
@@ -59,6 +70,7 @@ int runDiarizeProbeCommand(const QStringList& args)
         else audio = a;
         if (!ok) { serr() << kUsage; return 2; }
     }
+    if (cluster && !shiftGiven) opts.windowShiftRatio = LocalDiarizer::kDefaultWindowShift;
     if (audio.isEmpty() || opts.windowShiftRatio <= 0 || opts.windowShiftRatio > 1) { serr() << kUsage; return 2; }
     if (!QFileInfo::exists(audio)) { serr() << "No such file: " << audio << "\n"; return 1; }
     const std::optional<VoiceModelSpec> spec = VoiceModelRegistry::spec(modelId);
@@ -92,9 +104,31 @@ int runDiarizeProbeCommand(const QStringList& args)
 
     const std::optional<SegmentationResult> r = seg->segment(pcm, {}, nullptr, &error);
     if (!r) { serr() << "ERROR: " << error << "\n"; return 1; }
-    const qint64 segMs = clock.elapsed();
+    const qint64 segMs = clock.restart();
     const double dur = r->durationSec();
     const double rtf = dur > 0 ? segMs / 1000.0 / dur : 0.0;
+
+    // --cluster: the D4 clustering over the same segmentation (one unbound track, file time).
+    providers::DiarizeResult clustered;
+    TrackClusterStats cstats;
+    qint64 clusterMs = 0;
+    QStringList usedModels;
+    if (cluster) {
+        const VoiceEmbedderSet set = VoiceEmbedderSet::fromSettings(
+            voiceModels.isEmpty() ? sm.settings().processing.voiceModels : voiceModels, sm.paths().modelsDir(), appDir);
+        if (!set.ensureLoaded()) {
+            serr() << "ERROR: no usable voice model for the clustering (" << set.lastError() << ")\n";
+            return 1;
+        }
+        usedModels = set.loadedModelIds();
+        providers::DiarizeTrack track;
+        track.trackId = QStringLiteral("probe");
+        track.path = audio;
+        cstats = LocalDiarizer::clusterTrack(track, *r, pcm, opts, copts, usedModels,
+                                             [&set, &usedModels](const QVector<float>& p) { return set.embedPcmWith(p, usedModels); },
+                                             &clustered);
+        clusterMs = clock.elapsed();
+    }
 
     if (json) {
         QJsonObject o;
@@ -116,6 +150,23 @@ int runDiarizeProbeCommand(const QStringList& args)
         for (const segmentation::Turn& t : r->turns)
             turns.append(QJsonObject{{"start", t.start}, {"end", t.end}, {"speaker", t.speaker}, {"overlap", t.overlap}});
         o["turns"] = turns;
+        if (cluster) {
+            QJsonArray ct, cs;
+            for (const providers::SpeakerTurn& t : clustered.turns)
+                ct.append(QJsonObject{{"start", t.startMs / 1000.0}, {"end", t.endMs / 1000.0},
+                                      {"speaker", t.speakerIndex}, {"overlap", t.overlap}});
+            for (const providers::DiarizedSpeaker& sp : clustered.speakers)
+                cs.append(QJsonObject{{"index", sp.index}, {"totalMs", sp.totalMs}, {"embeddings", sp.centroid.windows},
+                                      {"sampleRef", sp.centroid.sampleRef}});
+            o["clusterMs"] = clusterMs;
+            o["voiceModels"] = QJsonArray::fromStringList(usedModels);
+            o["threshold"] = copts.threshold;
+            o["spans"] = cstats.spans;
+            o["embedded"] = cstats.embedded;
+            o["subsampled"] = cstats.subsampled;
+            o["clusteredTurns"] = ct;
+            o["speakers"] = cs;
+        }
         if (windows) {
             QJsonArray ws;
             for (const SegmentationWindow& w : r->windows) {
@@ -140,10 +191,26 @@ int runDiarizeProbeCommand(const QStringList& args)
     sout() << "Timing:    load " << loadMs << " ms, decode " << decodeMs << " ms, segmentation " << segMs
            << " ms (RTF " << QString::number(rtf, 'f', 4) << ", " << ort.intraOpThreads << " thread(s), batch "
            << opts.batchSize << ", " << onnxExecutionProviders().join(", ") << ")\n";
-    sout() << "Speakers:  " << r->numStitched << " stitched local speaker(s) (not clustered yet)\n";
-    sout() << "Turns:     " << r->turns.size() << "\n";
-    for (const segmentation::Turn& t : r->turns)
-        sout() << "  " << hms(t.start) << " - " << hms(t.end) << "  speaker " << t.speaker
+    if (!cluster) {
+        sout() << "Speakers:  " << r->numStitched << " stitched local speaker(s) (not clustered; see --cluster)\n";
+        sout() << "Turns:     " << r->turns.size() << "\n";
+        for (const segmentation::Turn& t : r->turns)
+            sout() << "  " << hms(t.start) << " - " << hms(t.end) << "  speaker " << t.speaker
+                   << (t.overlap ? "  (overlap)" : "") << "\n";
+        sout().flush();
+        return 0;
+    }
+    sout() << "Clustering: " << usedModels.join(", ") << ", threshold " << copts.threshold
+           << (copts.numClusters > 0 ? QStringLiteral(", %1 speakers forced").arg(copts.numClusters) : QString())
+           << "; " << cstats.spans << " spans, " << cstats.embedded << " embedded"
+           << (cstats.subsampled ? " (subsampled)" : "") << ", " << clusterMs << " ms\n";
+    sout() << "Speakers:  " << clustered.speakers.size() << " (from " << r->numStitched << " stitched ids)\n";
+    for (const providers::DiarizedSpeaker& sp : clustered.speakers)
+        sout() << "  speaker " << sp.index << ": " << QString::number(sp.totalMs / 1000.0, 'f', 1) << " s, "
+               << sp.centroid.windows << " embeddings, sample " << sp.centroid.sampleRef << "\n";
+    sout() << "Turns:     " << clustered.turns.size() << "\n";
+    for (const providers::SpeakerTurn& t : clustered.turns)
+        sout() << "  " << hms(t.startMs / 1000.0) << " - " << hms(t.endMs / 1000.0) << "  speaker " << t.speakerIndex
                << (t.overlap ? "  (overlap)" : "") << "\n";
     sout().flush();
     return 0;

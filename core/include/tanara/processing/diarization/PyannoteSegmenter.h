@@ -109,6 +109,7 @@ public:
 
     const segmentation::ModelInfo& info() const;
     const SegmenterOptions& options() const { return m_opts; }
+    const QString& modelId() const { return m_modelId; }
     // The number of windows segment() runs for `numSamples` samples.
     int windowCount(qint64 numSamples) const;
 
