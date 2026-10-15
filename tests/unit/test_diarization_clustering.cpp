@@ -263,6 +263,88 @@ private slots:
         QVERIFY(clustering::centroid(vs, {2}).isEmpty());
     }
 
+    void perModelDefaultThresholds()
+    {
+        QCOMPARE(LocalDiarizer::defaultThreshold({QStringLiteral("wespeaker-resnet34-lm")}), kWeSpeakerThreshold);
+        QCOMPARE(LocalDiarizer::defaultThreshold({QStringLiteral("campplus")}), kCamPlusThreshold);
+        // A fused set: its own entry, in any order.
+        QCOMPARE(LocalDiarizer::defaultThreshold({QStringLiteral("wespeaker-resnet34-lm"), QStringLiteral("campplus")}),
+                 kFusedThreshold);
+        // A set without an entry: the mean of its known models; nothing known: the fallback.
+        QCOMPARE(LocalDiarizer::defaultThreshold({QStringLiteral("campplus"), QStringLiteral("eres2netv2")}), kCamPlusThreshold);
+        QCOMPARE(LocalDiarizer::defaultThreshold({QStringLiteral("fake")}), kFallbackThreshold);
+        QCOMPARE(LocalDiarizer::defaultThreshold({}), kFallbackThreshold);
+        // ClusteringOptions defaults to "per model"; an explicit threshold overrides.
+        QVERIFY(ClusteringOptions().threshold < 0);
+        const QVector<float> pcm = scene();
+        const SegmentationResult seg = segmentScene(pcm);
+        providers::DiarizeTrack track;
+        track.trackId = QStringLiteral("t");
+        providers::DiarizeResult out;
+        const TrackClusterStats st = LocalDiarizer::clusterTrack(track, seg, pcm, {}, ClusteringOptions(),
+                                                                 {QStringLiteral("fake")}, fakeEmbed, &out);
+        QCOMPARE(st.threshold, kFallbackThreshold);
+        ClusteringOptions explicitThr;
+        explicitThr.threshold = 0.3;
+        providers::DiarizeResult out2;
+        QCOMPARE(LocalDiarizer::clusterTrack(track, seg, pcm, {}, explicitThr, {QStringLiteral("fake")}, fakeEmbed, &out2)
+                     .threshold, 0.3);
+    }
+
+    void spanMergingAndParallelEmbedding()
+    {
+        const QVector<float> pcm = scene();
+        const SegmentationResult seg = segmentScene(pcm);
+        providers::DiarizeTrack track;
+        track.trackId = QStringLiteral("t");
+        ClusteringOptions merged, single;
+        single.mergeSpanSec = 0;
+        const TrackSpans a = LocalDiarizer::embedTrack(seg, pcm, merged, {}, {fakeEmbed});
+        const TrackSpans b = LocalDiarizer::embedTrack(seg, pcm, single, {}, {fakeEmbed});
+        QCOMPARE(a.pairs, b.pairs);
+        QVERIFY(a.spans.size() < b.spans.size());
+        QVERIFY(a.embeddedSec < b.embeddedSec);   // the overlapping windows' speech is embedded once
+        // Every merged span is one stitched speaker, its clean speech within mergeSpanSec.
+        for (const TrackSpans::Span& sp : a.spans) {
+            QVERIFY(sp.cleanFrames * seg.info.frameStepSec() <= merged.mergeSpanSec + 1e-9);
+            for (const auto& m : sp.members) QCOMPARE(seg.windows[m.first].stitched[m.second], sp.stitched);
+        }
+        // Parallel workers (the fake embedder is thread-safe): the same spans, the same clustering.
+        const TrackSpans c = LocalDiarizer::embedTrack(seg, pcm, merged, {}, {fakeEmbed, fakeEmbed, fakeEmbed});
+        QCOMPARE(c.spans.size(), a.spans.size());
+        for (int i = 0; i < a.spans.size(); ++i) QCOMPARE(c.spans[i].set, a.spans[i].set);
+        providers::DiarizeResult outA, outC;
+        LocalDiarizer::clusterSpans(track, seg, a, {}, merged, {QStringLiteral("fake")}, &outA);
+        LocalDiarizer::clusterSpans(track, seg, c, {}, merged, {QStringLiteral("fake")}, &outC);
+        QCOMPARE(outC.turns.size(), outA.turns.size());
+        QCOMPARE(outC.speakers.size(), 3);
+        // A cancel from the progress callback stops the pool.
+        const TrackSpans d = LocalDiarizer::embedTrack(seg, pcm, merged, {}, {fakeEmbed, fakeEmbed},
+                                                       [](int, int) { return false; });
+        QVERIFY(d.cancelled);
+    }
+
+    void suppressedTurnsAreMaskedOut()
+    {
+        // The returning A (30-35 s) is declared leakage: it is neither embedded nor a turn.
+        const QVector<float> pcm = scene();
+        const SegmentationResult seg = segmentScene(pcm);
+        providers::DiarizeTrack track;
+        track.trackId = QStringLiteral("t");
+        providers::DiarizeResult out;
+        LocalDiarizer::clusterTrack(track, seg, pcm, {}, ClusteringOptions(), {QStringLiteral("fake")}, fakeEmbed, &out,
+                                    {}, {{29.0, 35.5}});
+        QCOMPARE(out.turns.size(), 3);
+        for (const providers::SpeakerTurn& t : out.turns) QVERIFY(t.endMs <= 29000 || t.startMs >= 35500);
+        QCOMPARE(out.speakers.size(), 3);
+        // The unclustered path drops the leaked segmentation turns.
+        QVector<leakage::Turn> drop;
+        for (const Turn& t : seg.turns)
+            if (t.start >= 29.0) drop.append({t.start, t.end});
+        const SegmentationResult kept = LocalDiarizer::withoutTurns(seg, drop);
+        QCOMPARE(kept.turns.size(), seg.turns.size() - drop.size());
+    }
+
     void clusterTrackJoinsAReturningVoice()
     {
         const QVector<float> pcm = scene();
@@ -281,7 +363,8 @@ private slots:
             [&](int d, int n) { progress.append({d, n}); return true; });
         QVERIFY(!st.cancelled);
         QVERIFY(!st.subsampled);
-        QVERIFY(st.embedded > 0 && st.embedded <= st.spans);
+        QVERIFY(st.embedded > 0 && st.embedded <= st.merged);
+        QVERIFY(st.merged < st.spans);   // D6 span merging: the overlapping windows' spans of one voice join
         QCOMPARE(st.speakers, 3);
         QCOMPARE(out.speakers.size(), 3);
         QCOMPARE(out.turns.size(), 4);
@@ -331,11 +414,12 @@ private slots:
         ClusteringOptions capped;
         capped.maxEmbeddings = 2;
         capped.minClusterSize = 1;
+        capped.mergeSpanSec = 0;     // one span per (window, local speaker): enough spans for the cap
         providers::DiarizeResult out3;
         const TrackClusterStats st3 = LocalDiarizer::clusterTrack(track, seg, pcm, opts, capped,
                                                                   {QStringLiteral("fake")}, fakeEmbed, &out3);
         QVERIFY(st3.subsampled);
-        QVERIFY(st3.embedded < st.embedded);
+        QVERIFY(st3.embedded < st3.merged);
         QCOMPARE(out3.speakers.size(), 3);
         QCOMPARE(out3.turns.size(), 4);
 

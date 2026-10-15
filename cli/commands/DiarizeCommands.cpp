@@ -114,8 +114,9 @@ int runDiarizeProbeCommand(const QStringList& args)
     qint64 clusterMs = 0;
     QStringList usedModels;
     if (cluster) {
-        const VoiceEmbedderSet set = VoiceEmbedderSet::fromSettings(
-            voiceModels.isEmpty() ? sm.settings().processing.voiceModels : voiceModels, sm.paths().modelsDir(), appDir);
+        const VoiceEmbedderSet set = LocalDiarizer::withThreads(VoiceEmbedderSet::fromSettings(
+            voiceModels.isEmpty() ? sm.settings().processing.voiceModels : voiceModels, sm.paths().modelsDir(), appDir),
+            copts.embedThreads);
         if (!set.ensureLoaded()) {
             serr() << "ERROR: no usable voice model for the clustering (" << set.lastError() << ")\n";
             return 1;
@@ -160,7 +161,7 @@ int runDiarizeProbeCommand(const QStringList& args)
                                       {"sampleRef", sp.centroid.sampleRef}});
             o["clusterMs"] = clusterMs;
             o["voiceModels"] = QJsonArray::fromStringList(usedModels);
-            o["threshold"] = copts.threshold;
+            o["threshold"] = cstats.threshold;
             o["spans"] = cstats.spans;
             o["embedded"] = cstats.embedded;
             o["subsampled"] = cstats.subsampled;
@@ -200,7 +201,7 @@ int runDiarizeProbeCommand(const QStringList& args)
         sout().flush();
         return 0;
     }
-    sout() << "Clustering: " << usedModels.join(", ") << ", threshold " << copts.threshold
+    sout() << "Clustering: " << usedModels.join(", ") << ", threshold " << cstats.threshold
            << (copts.numClusters > 0 ? QStringLiteral(", %1 speakers forced").arg(copts.numClusters) : QString())
            << "; " << cstats.spans << " spans, " << cstats.embedded << " embedded"
            << (cstats.subsampled ? " (subsampled)" : "") << ", " << clusterMs << " ms\n";

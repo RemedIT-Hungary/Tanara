@@ -1,4 +1,4 @@
-// tanara-cli, processing module: transcribe, summarize, identify, speaker models, diarize-probe, embed-probe, providers.
+// tanara-cli, processing module: transcribe, summarize, identify, speaker models, diarize-probe / -ref / -eval, embed-probe, providers.
 // All output is English, no tr().
 #include "Commands.h"
 #include "VoiceCommands.h"
@@ -297,6 +297,12 @@ void registerProcessingCommands(CommandRegistry& r)
     r.add({"diarize-probe", m, "Run the speaker segmentation on one audio file and print the turns (read-only)",
            "diarize-probe <audio> [--model <id>] [--shift <ratio>] [--min-on <s>] [--min-off <s>] [--threads <n>] [--batch <n>] [--json] [--windows] [--cluster [--threshold <d>] [--num-speakers <n>] [--voice-models a,b]]",
            false, [](CliContext&, const QStringList& a) { return runDiarizeProbeCommand(a); }});
+    r.add({"diarize-ref", m, "Build a diarization reference from a meeting's provider transcript (read-only)",
+           "diarize-ref <meeting-folder> [--out <file>] [--majority <share>]",
+           false, [](CliContext&, const QStringList& a) { return runDiarizeRefCommand(a); }});
+    r.add({"diarize-eval", m, "Score the local diarization against a reference: DER and speaker-count error (read-only)",
+           "diarize-eval <audio|meeting-folder> --ref <json|rttm> [--track <id>] [--threshold a,b] [--shift <r>] [--voice-models a,b] [--sets \"a;b;a+b\"] [--num-speakers <n>] [--collar <s>] [--no-leakage] [--no-merge] [--merge-sec <s>] [--workers <n>] [--embed-threads <n>] [--json]",
+           false, [](CliContext&, const QStringList& a) { return runDiarizeEvalCommand(a); }});
     r.add({"embed-probe", m, "Print the embedding of one audio segment (voiceprint debugging)",
            "embed-probe <modelPath> <audioPath> <startMs> <endMs> [scale] [cmn:0/1] [snip:0/1]", true, cmd_embedProbe});
     r.add({"providers", m, "List the providers; test a provider's connection (one GET, nothing paid)",

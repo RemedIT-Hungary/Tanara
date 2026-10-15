@@ -4,6 +4,7 @@
 
 #include <QFileInfo>
 
+#include <algorithm>
 #include <cstring>
 #include <vector>
 
@@ -62,7 +63,7 @@ VoiceEmbedder::VoiceEmbedder(const QString& modelPath, const EmbedderConfig& cfg
     }
     try {
         Ort::SessionOptions so;
-        so.SetIntraOpNumThreads(1);
+        so.SetIntraOpNumThreads(std::max(1, cfg.intraOpThreads));
         so.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
         // ORT expects the model path as ORTCHAR_T* (wide on Windows), see ortPath().
         const auto modelPathOrt = ortPath(modelPath);

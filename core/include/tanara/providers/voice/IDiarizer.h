@@ -56,7 +56,7 @@ struct DiarizeRequest {
 
     // ---- options (negative / empty = the provider's default) ----
     int     numClusters = -1;        // > 0: exactly this many speakers per (unbound) track
-    double  threshold = -1.0;        // cosine-distance cut of the clustering (default 0.5); used when numClusters <= 0
+    double  threshold = -1.0;        // cosine-distance cut of the clustering (default: the provider's per-model value); used when numClusters <= 0
     double  minDurationOn = -1.0;    // seconds: shorter speech segments are dropped (default 0.3)
     double  minDurationOff = -1.0;   // seconds: shorter gaps between segments of one speaker are bridged (default 0.5)
     QString segmentationModelId;     // VoiceModelRegistry id of the segmentation model; "" = default

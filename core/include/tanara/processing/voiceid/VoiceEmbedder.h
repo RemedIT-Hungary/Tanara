@@ -22,6 +22,8 @@ struct EmbedderConfig {
     float waveScale  = 1.0f;     // multiplier for [-1,1] samples (32768 for the kaldi int16 scale)
     // Window function by kaldi-native-fbank's name: "povey" (the kaldi default), "hamming", "hanning" ...
     QString windowType = QStringLiteral("povey");
+    // ONNX Runtime intra-op threads of the session (the diarization measured more; 1 = the default).
+    int   intraOpThreads = 1;
 };
 
 class VoiceEmbedder {
