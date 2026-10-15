@@ -31,7 +31,7 @@ public:
     RecordingSession(media::MediaToolPtr media,
                               QString audioDir,
                               QString title,
-                              QString userSpeakerName = QStringLiteral("Beszélő 1"),
+                              QString userSpeakerName = QString(),
                               int opusKbps = 64,
                               QObject* parent = nullptr);
     ~RecordingSession() override;

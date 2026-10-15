@@ -1,4 +1,5 @@
 #include "tanara/processing/diarization/DiarizationMerge.h"
+#include "tanara/domain/SpeakerKeys.h"
 
 #include <QSet>
 
@@ -10,7 +11,7 @@ namespace tanara::processing::diarizationmerge {
 using providers::DiarizeResult;
 using providers::SpeakerTurn;
 
-QString rawLabel(int n) { return QStringLiteral("Beszélő %1").arg(n); }
+QString rawLabel(int n) { return speakerkeys::rawSpeakerKey(n); }
 
 QString speakerKey(const QString& trackId, int index) { return QStringLiteral("%1#%2").arg(trackId).arg(index); }
 
@@ -150,7 +151,7 @@ MergeResult apply(MergedTranscript& t, const DiarizeResult& d, const Options& op
         blockStart = blockEnd;
     }
 
-    // Rule 5: "Beszélő N" in the order of the first token.
+    // Rule 5: "speaker:N" in the order of the first token.
     QHash<int, QString> names;
     for (int i = 0; i < N; ++i) {
         const int s = label[i];

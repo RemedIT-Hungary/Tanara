@@ -1,4 +1,5 @@
 #include "tanara/processing/analysis/ParticipantAnalysis.h"
+#include "tanara/domain/SpeakerText.h"
 #include "tanara/library/MeetingLayout.h"
 
 #include <QCoreApplication>
@@ -519,7 +520,8 @@ QString rawId(const QString& rawLabel, const QString& side)
 QString rawDisplay(const QString& id)
 {
     const QString side = rawSideOf(id);
-    return side.isEmpty() ? id : QStringLiteral("%1 · %2").arg(rawLabelOf(id), sideLabel(side));
+    const QString label = speakerLabelText(rawLabelOf(id));   // a raw key in the UI language
+    return side.isEmpty() ? label : QStringLiteral("%1 · %2").arg(label, sideLabel(side));
 }
 
 bool bindRawSpeakers(QVector<Participant>& ps, const QVector<VoiceCluster>& clusters,

@@ -144,8 +144,8 @@ void TranscriptionServiceTest::savesTranscriptAndReportsStages()
     QVERIFY(TranscriptRepository::hasTokens(m.folder));
     const MergedTranscript merged = TranscriptRepository::readTokens(m.folder);
     QCOMPARE(merged.tokens.size(), 3);
-    QCOMPARE(merged.tokens.first().speaker, QStringLiteral("Beszélő 1"));
-    QCOMPARE(merged.tokens.last().speaker, QStringLiteral("Beszélő 2"));
+    QCOMPARE(merged.tokens.first().speaker, QStringLiteral("speaker:1"));
+    QCOMPARE(merged.tokens.last().speaker, QStringLiteral("speaker:2"));
     QCOMPARE(m_svc->cachedTranscript(m.id).tokens.size(), 3);
     QVERIFY(m_svc->transcriptStamp(m.id, m.folder) != stampBefore);
     // The step does not close the job: the caller continues (identification).
@@ -163,7 +163,7 @@ void TranscriptionServiceTest::savesTranscriptAndReportsStages()
 void TranscriptionServiceTest::speakerMapClearedWithNewTranscript()
 {
     Meeting m = meeting(QStringLiteral("Nevek"));
-    m.speakerMap.insert(QStringLiteral("Beszélő 1"), PersonId::generate());
+    m.speakerMap.insert(QStringLiteral("speaker:1"), PersonId::generate());
     m_store->saveMeeting(m);
 
     // First transcript, no flag: the (pre-set) map stays.
@@ -182,7 +182,7 @@ void TranscriptionServiceTest::speakerMapClearedWithNewTranscript()
 
     // The flag clears on a first transcript too.
     Meeting n = meeting(QStringLiteral("Új"));
-    n.speakerMap.insert(QStringLiteral("Beszélő 1"), PersonId::generate());
+    n.speakerMap.insert(QStringLiteral("speaker:1"), PersonId::generate());
     m_store->saveMeeting(n);
     beginJob(n.id);
     QVERIFY(m_svc->start(n.id, true));

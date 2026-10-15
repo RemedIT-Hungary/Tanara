@@ -53,15 +53,20 @@ bool saveOverlay(const QString& meetingFolder, const SpeakerOverlay& overlay);
 bool isParticipantKey(const QString& key);
 // A line's resolved speaker key: override -> merge redirect -> raw label.
 QString resolveSpeakerKey(const SpeakerOverlay& ov, const TranscriptLine& line);
-// The speaker's person (null = anonymous) and displayed name (the person's current name; an unknown
-// person shows as anonymous: the participant's label / the raw label).
+// The speaker's person (null = anonymous) and resolved name (the person's current name; an unknown
+// person shows as anonymous: the participant's label / the raw key, e.g. "speaker:2", language-neutral).
+// speakerDisplayName is the same rendered for display (a raw key -> "Beszélő 2" / "Speaker 2",
+// domain/SpeakerText.h).
 PersonId speakerPerson(const SpeakerOverlay& ov, const QMap<QString, PersonId>& speakerMap,
                        const QString& key);
+QString speakerResolvedName(const SpeakerOverlay& ov, const QMap<QString, PersonId>& speakerMap,
+                            const PersonNames& names, const QString& key);
 QString speakerDisplayName(const SpeakerOverlay& ov, const QMap<QString, PersonId>& speakerMap,
                            const PersonNames& names, const QString& key);
 
-// Writes the RESOLVED name onto the tokens' speaker (overlay + speakerMap). AppController
-// calls this wherever names must go onto the transcript (transcript.md, summary input).
+// Writes the RESOLVED name onto the tokens' speaker (overlay + speakerMap); an unnamed speaker keeps its
+// raw key (rendered by the writer: transcript.md in the UI language, the LLM input in the summary
+// language). AppController calls this wherever names must go onto the transcript (transcript.md, summary input).
 // Without an overlay = the plain speakerMap application.
 void applyResolvedSpeakers(MergedTranscript& mt, const Meeting& m, const PersonNames& names);
 // Regenerates transcript.md with the resolved names (from transcript.tokens.json).

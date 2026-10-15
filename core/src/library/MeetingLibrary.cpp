@@ -1,4 +1,6 @@
 #include "tanara/library/MeetingLibrary.h"
+#include "tanara/domain/SpeakerKeys.h"
+#include "tanara/domain/SpeakerText.h"
 #include "tanara/library/MeetingLayout.h"
 #include "tanara/library/jobs/MeetingJobTracker.h"
 #include "tanara/library/store/MeetingRepository.h"
@@ -203,7 +205,7 @@ const MeetingLibrary::TextDoc* MeetingLibrary::textDoc(const Meeting& m) const
                 if (!doc.text.isEmpty()) doc.text += QLatin1Char('\n');
                 doc.segStart.append(int(doc.text.size()));
                 doc.segMs.append(qint64(o.value(QStringLiteral("startMs")).toDouble()));
-                doc.segSpeaker.append(o.value(QStringLiteral("speaker")).toString());
+                doc.segSpeaker.append(speakerkeys::normalizeSpeakerLabel(o.value(QStringLiteral("speaker")).toString()));
                 doc.text += t;
             }
             doc.folded = text::fold(doc.text);
@@ -374,7 +376,7 @@ LibraryResult MeetingLibrary::query(const LibraryQuery& q, const QDateTime& now)
             if (seg >= 0) {
                 e.snippetMs = doc->segMs.at(seg);
                 const QString raw = doc->segSpeaker.at(seg);
-                e.snippetSpeaker = personName(d->names(), m.speakerMap.value(raw), raw);
+                e.snippetSpeaker = speakerLabelText(personName(d->names(), m.speakerMap.value(raw), raw));
             }
         }
         res.entries.append(e);

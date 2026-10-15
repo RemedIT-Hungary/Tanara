@@ -1,4 +1,5 @@
 #include "tanara/library/summary/detail/SummaryJson.h"
+#include "tanara/domain/SpeakerKeys.h"
 #include "tanara/library/summary/SummaryFormat.h"
 
 #include <QJsonValue>
@@ -124,7 +125,7 @@ Summary summaryFromJson(const QJsonObject& o)
         m.startMs = static_cast<qint64>(mo.value(QStringLiteral("startMs")).toDouble(-1));
         m.endMs   = static_cast<qint64>(mo.value(QStringLiteral("endMs")).toDouble(-1));
         m.points  = arrayToStringList(mo.value(QStringLiteral("points")).toArray());
-        m.speakers = arrayToStringList(mo.value(QStringLiteral("speakers")).toArray());
+        m.speakers = speakerkeys::normalizeSpeakerLabels(arrayToStringList(mo.value(QStringLiteral("speakers")).toArray()));
         m.intro    = mo.value(QStringLiteral("intro")).toString();          // v4
         m.pointGroups = arrayToStringList(mo.value(QStringLiteral("pointGroups")).toArray());
         if (!m.title.isEmpty() || !m.points.isEmpty() || !m.intro.isEmpty())
@@ -152,8 +153,9 @@ Summary summaryFromJson(const QJsonObject& o)
     const QJsonObject ss = o.value(QStringLiteral("sourceSpeakers")).toObject();
     for (auto it = ss.constBegin(); it != ss.constEnd(); ++it) {
         const QJsonObject so = it.value().toObject();
-        s.sourceSpeakers.insert(it.key(), SourceSpeaker{so.value(QStringLiteral("key")).toString(),
-                                                        so.value(QStringLiteral("name")).toString()});
+        // Legacy "Beszélő N" (key and name) -> the raw key, as the current snapshots store it.
+        s.sourceSpeakers.insert(it.key(), SourceSpeaker{speakerkeys::normalizeSpeakerLabel(so.value(QStringLiteral("key")).toString()),
+                                                        speakerkeys::normalizeSpeakerLabel(so.value(QStringLiteral("name")).toString())});
     }
     return s;
 }

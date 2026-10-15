@@ -265,7 +265,7 @@ void DataSafetyTest::meetingJsonWrittenAtomically()
 {
     library::MeetingRepository store(m_audio, m_meta);
     Meeting m = store.createMeeting("Atomikus");
-    m.speakerMap.insert("Beszélő 1", pid("Ödön"));
+    m.speakerMap.insert("speaker:1", pid("Ödön"));
     m.hasTranscript = true;
     for (int i = 0; i < 20; ++i) {
         m.contextNote = QString("megjegyzés %1").arg(i);
@@ -279,7 +279,7 @@ void DataSafetyTest::meetingJsonWrittenAtomically()
     QCOMPARE(doc.object().value("id").toString(), m.id);
     const Meeting back = store.load(m.id);
     QCOMPARE(back.contextNote, QStringLiteral("megjegyzés 19"));
-    QCOMPARE(back.speakerMap.value("Beszélő 1"), pid("Ödön"));
+    QCOMPARE(back.speakerMap.value("speaker:1"), pid("Ödön"));
 }
 
 void DataSafetyTest::corruptSettingsAreNotOverwritten()

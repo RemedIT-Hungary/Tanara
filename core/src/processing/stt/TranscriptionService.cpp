@@ -1,5 +1,6 @@
 #include "tanara/processing/stt/TranscriptionService.h"
 
+#include "tanara/domain/SpeakerKeys.h"
 #include "tanara/foundation/SharedFile.h"
 #include "tanara/library/MeetingLayout.h"
 #include "tanara/library/MeetingNotes.h"
@@ -262,11 +263,10 @@ bool TranscriptionService::start(const QString& meetingId, bool clearSpeakers)
         const bool hadTranscript = mm.hasTranscript || TranscriptRepository::hasTokens(mm.folder);
 
         TrackTranscript res = result;
-        // We translate the provider's diarization ids (1,2,...) into a neutral "Speaker N" label.
+        // We translate the provider's diarization ids (1,2,...) into the language-neutral raw key "speaker:N"
+        // (domain/SpeakerKeys.h); the label is rendered at display time.
         for (TranscriptToken& tok : res.tokens)
-            tok.speaker = tok.speaker.isEmpty()
-                ? QStringLiteral("Beszélő")
-                : QStringLiteral("Beszélő %1").arg(tok.speaker);
+            tok.speaker = speakerkeys::rawSpeakerKeyForId(tok.speaker);
 
         QVector<TrackTranscript> single{res};
         MergedTranscript merged = mergeTranscripts(single);

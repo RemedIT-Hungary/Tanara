@@ -1,7 +1,7 @@
 // DiarizationMerge (D4): the local diarization's turns written into a transcript without speakers - the
 // majority (overlap) assignment, a clear split inside a line, an island that is smoothed away, a
 // backchannel between pauses that is kept, tokens outside every turn, several tracks (meeting time,
-// different raw speakers per track), the "Beszélő N" convention, the metadata (and its tokens.json round
+// different raw speakers per track), the "speaker:N" raw keys, the metadata (and its tokens.json round
 // trip), and the cases left untouched (a provider-labelled transcript, no turns).
 #include "tanara/library/store/TranscriptRepository.h"
 #include "tanara/processing/diarization/DiarizationMerge.h"
@@ -15,13 +15,13 @@ namespace dm = tanara::processing::diarizationmerge;
 
 namespace {
 
-// Words of 250 ms every 300 ms from `fromMs` (one line: no pause), all "Beszélő 1" (Whisper).
+// Words of 250 ms every 300 ms from `fromMs` (one line: no pause), all "speaker:1" (Whisper).
 void words(MergedTranscript& t, qint64 fromMs, int count, const QString& prefix = QStringLiteral("w"))
 {
     for (int i = 0; i < count; ++i) {
         TranscriptToken tok;
         tok.text = QStringLiteral(" %1%2").arg(prefix).arg(i);
-        tok.speaker = QStringLiteral("Beszélő 1");
+        tok.speaker = QStringLiteral("speaker:1");
         tok.startMs = fromMs + i * 300;
         tok.endMs = tok.startMs + 250;
         tok.trackId = QStringLiteral("mixdown");
@@ -68,17 +68,17 @@ private slots:
         d.embeddingModelIds = {QStringLiteral("campplus")};
         const dm::MergeResult r = dm::apply(t, d);
         QVERIFY(r.applied);
-        QCOMPARE(speakers(t), repeat("Beszélő 1", 10) + repeat("Beszélő 2", 10));
-        QCOMPARE(r.labels.value(dm::speakerKey("loop", 0)), QStringLiteral("Beszélő 1"));
-        QCOMPARE(r.labels.value(dm::speakerKey("loop", 1)), QStringLiteral("Beszélő 2"));
+        QCOMPARE(speakers(t), repeat("speaker:1", 10) + repeat("speaker:2", 10));
+        QCOMPARE(r.labels.value(dm::speakerKey("loop", 0)), QStringLiteral("speaker:1"));
+        QCOMPARE(r.labels.value(dm::speakerKey("loop", 1)), QStringLiteral("speaker:2"));
         QCOMPARE(r.changedTokens, 10);
         QCOMPARE(t.speakerSource, dm::kSourceLocalDiarization);
         QCOMPARE(t.speakerModels, QStringList({"seg", "campplus"}));
         // The speaker change starts a new line.
         const QVector<Utterance> lines = t.segments();
         QCOMPARE(lines.size(), 2);
-        QCOMPARE(lines[0].speaker, QStringLiteral("Beszélő 1"));
-        QCOMPARE(lines[1].speaker, QStringLiteral("Beszélő 2"));
+        QCOMPARE(lines[0].speaker, QStringLiteral("speaker:1"));
+        QCOMPARE(lines[1].speaker, QStringLiteral("speaker:2"));
 
         // A token straddling the change goes to the larger overlap.
         MergedTranscript s;
@@ -87,8 +87,8 @@ private slots:
         s.tokens[0].endMs = 3200;   // 100 ms in A, 200 ms in B
         const dm::MergeResult rs = dm::apply(s, d);
         QVERIFY(rs.applied);
-        QCOMPARE(rs.labels.value(dm::speakerKey("loop", 1)), QStringLiteral("Beszélő 1"));   // B, the first label
-        QCOMPARE(s.tokens[0].speaker, QStringLiteral("Beszélő 1"));
+        QCOMPARE(rs.labels.value(dm::speakerKey("loop", 1)), QStringLiteral("speaker:1"));   // B, the first label
+        QCOMPARE(s.tokens[0].speaker, QStringLiteral("speaker:1"));
     }
 
     void islandsAreSmoothedBackchannelsKept()
@@ -102,7 +102,7 @@ private slots:
         d.turns[0].endMs = 2990;
         d.turns.append(turn("loop", 0, 3260, 6000));
         QVERIFY(dm::apply(t, d).applied);
-        QCOMPARE(speakers(t), repeat("Beszélő 1", 20));
+        QCOMPARE(speakers(t), repeat("speaker:1", 20));
 
         // The same "igen" as its own line (pauses > 1.5 s around it) stays B's.
         MergedTranscript b;
@@ -112,7 +112,7 @@ private slots:
         providers::DiarizeResult d2;
         d2.turns = {turn("loop", 0, 0, 1200), turn("loop", 1, 2950, 3300), turn("loop", 0, 5900, 7200)};
         QVERIFY(dm::apply(b, d2).applied);
-        QCOMPARE(speakers(b), repeat("Beszélő 1", 4) + QStringList{"Beszélő 2"} + repeat("Beszélő 1", 4));
+        QCOMPARE(speakers(b), repeat("speaker:1", 4) + QStringList{"speaker:2"} + repeat("speaker:1", 4));
     }
 
     void tokensOutsideTheTurns()
@@ -123,15 +123,15 @@ private slots:
         providers::DiarizeResult d;
         d.turns = {turn("loop", 0, 0, 1000), turn("loop", 1, 7000, 8000)};
         QVERIFY(dm::apply(t, d).applied);
-        QCOMPARE(speakers(t), repeat("Beszélő 1", 6) + repeat("Beszélő 2", 2));
+        QCOMPARE(speakers(t), repeat("speaker:1", 6) + repeat("speaker:2", 2));
         // A token just after a turn snaps to it (within 1 s).
         MergedTranscript s;
         words(s, 1500, 1);
         providers::DiarizeResult d1;
         d1.turns = {turn("loop", 3, 0, 1000), turn("loop", 4, 5000, 6000)};
         QVERIFY(dm::apply(s, d1).applied);
-        QCOMPARE(s.tokens[0].speaker, QStringLiteral("Beszélő 1"));
-        QCOMPARE(dm::apply(s, d1).labels.value(dm::speakerKey("loop", 3)), QStringLiteral("Beszélő 1"));
+        QCOMPARE(s.tokens[0].speaker, QStringLiteral("speaker:1"));
+        QCOMPARE(dm::apply(s, d1).labels.value(dm::speakerKey("loop", 3)), QStringLiteral("speaker:1"));
     }
 
     void tracksAreSeparateSpeakers()
@@ -145,9 +145,9 @@ private slots:
         d.turns = {turn("loopback", 0, 0, 3000), turn("mic", 0, 5000, 8000)};
         const dm::MergeResult r = dm::apply(t, d);
         QVERIFY(r.applied);
-        QCOMPARE(speakers(t), repeat("Beszélő 1", 10) + repeat("Beszélő 2", 10));
-        QCOMPARE(r.labels.value(dm::speakerKey("loopback", 0)), QStringLiteral("Beszélő 1"));
-        QCOMPARE(r.labels.value(dm::speakerKey("mic", 0)), QStringLiteral("Beszélő 2"));
+        QCOMPARE(speakers(t), repeat("speaker:1", 10) + repeat("speaker:2", 10));
+        QCOMPARE(r.labels.value(dm::speakerKey("loopback", 0)), QStringLiteral("speaker:1"));
+        QCOMPARE(r.labels.value(dm::speakerKey("mic", 0)), QStringLiteral("speaker:2"));
         // A speaker without a token gets no label.
         d.turns.append(turn("mic", 1, 20000, 21000));
         MergedTranscript t2;
@@ -163,7 +163,7 @@ private slots:
         // A transcript the provider diarized (Soniox): two labels -> untouched.
         MergedTranscript soniox;
         words(soniox, 0, 10);
-        for (int i = 5; i < 10; ++i) soniox.tokens[i].speaker = QStringLiteral("Beszélő 2");
+        for (int i = 5; i < 10; ++i) soniox.tokens[i].speaker = QStringLiteral("speaker:2");
         const MergedTranscript before = soniox;
         QVERIFY(!dm::needsSpeakers(soniox));
         const dm::MergeResult r = dm::apply(soniox, d);
@@ -180,11 +180,11 @@ private slots:
         words(t, 0, 3);
         QVERIFY(dm::needsSpeakers(t));
         QVERIFY(!dm::apply(t, providers::DiarizeResult()).applied);
-        QCOMPARE(speakers(t), repeat("Beszélő 1", 3));
+        QCOMPARE(speakers(t), repeat("speaker:1", 3));
         // Unlabelled tokens count as "no speakers" too.
         for (TranscriptToken& tok : t.tokens) tok.speaker.clear();
         QVERIFY(dm::needsSpeakers(t));
-        QCOMPARE(dm::rawLabel(3), QStringLiteral("Beszélő 3"));
+        QCOMPARE(dm::rawLabel(3), QStringLiteral("speaker:3"));
     }
 
     void metadataRoundTrip()

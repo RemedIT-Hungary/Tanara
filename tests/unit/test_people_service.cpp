@@ -280,9 +280,9 @@ void PeopleServiceTest::sameNameTwoPeople()
     QVERIFY(a != b);
     QCOMPARE(m_app->people()->findByName(kEszter).size(), 2);
     m_app->voiceprints()->addPrint(a, print("pa", {1, 0, 0}));
-    const Meeting m = addMeeting("Kettő", QDateTime(QDate(2026, 9, 1), QTime(9, 0)), {{0, 4000, "Beszélő 1"}}, {}, false);
+    const Meeting m = addMeeting("Kettő", QDateTime(QDate(2026, 9, 1), QTime(9, 0)), {{0, 4000, "speaker:1"}}, {}, false);
     Meeting mm = m_app->store()->load(m.id);
-    mm.speakerMap.insert("Beszélő 1", b);
+    mm.speakerMap.insert("speaker:1", b);
     m_app->store()->saveMeeting(mm);
     m_app->peopleStats()->refreshNow();
     QCOMPARE(svc()->person(a).sampleCount, 1);
@@ -329,14 +329,14 @@ void PeopleServiceTest::aliasSearchInPersonPicker()
 void PeopleServiceTest::statsCountMeetingsTalkTimeAndLastSeen()
 {
     const QDateTime d1(QDate(2026, 9, 24), QTime(10, 0)), d2(QDate(2026, 10, 1), QTime(9, 0));
-    addMeeting("Partnerdemó", d1, {{0, 4000, "Beszélő 1"}, {5000, 6000, "Beszélő 2"}, {12000, 2000, "Beszélő 1"}},
-               {{"Beszélő 1", kGergely}}, false);
-    const Meeting m2 = addMeeting("Heti egyeztetés", d2, {{0, 10000, "Beszélő 1"}, {11000, 3000, "Beszélő 2"}},
-                                  {{"Beszélő 2", kGergely}, {"Beszélő 1", kEszter}}, true);
+    addMeeting("Partnerdemó", d1, {{0, 4000, "speaker:1"}, {5000, 6000, "speaker:2"}, {12000, 2000, "speaker:1"}},
+               {{"speaker:1", kGergely}}, false);
+    const Meeting m2 = addMeeting("Heti egyeztetés", d2, {{0, 10000, "speaker:1"}, {11000, 3000, "speaker:2"}},
+                                  {{"speaker:2", kGergely}, {"speaker:1", kEszter}}, true);
     // Manual fix: the second meeting's first line is really Gergely's (per-line override).
     {
         editing::SpeakerEditSession ed(m_app->store(), nullptr, nullptr, m2.id);
-        QVERIFY(ed.moveUtterances({"u0"}, "Beszélő 2"));
+        QVERIFY(ed.moveUtterances({"u0"}, "speaker:2"));
     }
     library::PeopleStats* stats = m_app->peopleStats();
     QVERIFY(!stats->ready());
@@ -350,7 +350,7 @@ void PeopleServiceTest::statsCountMeetingsTalkTimeAndLastSeen()
     QCOMPARE(g.meetings.size(), 2);
     QCOMPARE(g.meetings[0].title, QStringLiteral("Heti egyeztetés"));   // newest first
     QCOMPARE(g.meetings[0].talkMs, qint64(13000));
-    QCOMPARE(g.meetings[0].speakerKeys, QStringList{"Beszélő 2"});
+    QCOMPARE(g.meetings[0].speakerKeys, QStringList{"speaker:2"});
     QVERIFY(g.meetings[0].hasSummary);
     const library::PersonStats e = stats->stats(find(kEszter));
     QCOMPARE(e.meetingCount, 1);
@@ -363,7 +363,7 @@ void PeopleServiceTest::statsRefreshInBackgroundAndCache()
 {
     for (int i = 0; i < 12; ++i)
         addMeeting(QStringLiteral("Megbeszélés %1").arg(i), QDateTime(QDate(2026, 9, 1 + i), QTime(10, 0)),
-                   {{0, 5000, "Beszélő 1"}}, {{"Beszélő 1", kGergely}}, false);
+                   {{0, 5000, "speaker:1"}}, {{"speaker:1", kGergely}}, false);
     const PersonId g = find(kGergely), e = pid(kEszter);
     library::PeopleStats* stats = m_app->peopleStats();
     QSignalSpy changed(stats, &library::PeopleStats::changed);
@@ -380,7 +380,7 @@ void PeopleServiceTest::statsRefreshInBackgroundAndCache()
     QCOMPARE(stats->lastRescanned(), 0);
     Meeting m = m_app->store()->loadAll().first();
     m = m_app->store()->load(m.id);
-    m.speakerMap.insert("Beszélő 1", e);
+    m.speakerMap.insert("speaker:1", e);
     m_app->store()->saveMeeting(m);
     stats->refreshNow();
     QCOMPARE(stats->lastRescanned(), 1);
@@ -402,7 +402,7 @@ void PeopleServiceTest::statsRefreshInBackgroundAndCache()
 void PeopleServiceTest::renameIsOneFieldKeepsOldNameAsAlias()
 {
     const Meeting m = addMeeting("Partnerdemó", QDateTime(QDate(2026, 9, 24), QTime(10, 0)),
-                                 {{0, 4000, "Beszélő 1"}}, {{"Beszélő 1", kGergely}}, false);
+                                 {{0, 4000, "speaker:1"}}, {{"speaker:1", kGergely}}, false);
     const PersonId g = find(kGergely);
     m_app->voiceprints()->addPrint(g, print("p1", {1, 0, 0}, m.id));
     QVERIFY(svc()->addAlias(g, "Gergely").ok);
@@ -420,10 +420,10 @@ void PeopleServiceTest::renameIsOneFieldKeepsOldNameAsAlias()
     // ONE field: the meeting and the voiceprints still point to the same id, their files are untouched.
     QCOMPARE(readFile(QDir(m.folder).filePath("meeting.json")), meetingBefore);
     QCOMPARE(readFile(metaFile("voiceprints.json")), printsBefore);
-    QCOMPARE(m_app->store()->load(m.id).speakerMap.value("Beszélő 1"), g);
+    QCOMPARE(m_app->store()->load(m.id).speakerMap.value("speaker:1"), g);
     // The editor (and transcript.md) shows the new name.
     editing::SpeakerEditSession* ed = m_app->editSession(m.id);
-    QCOMPARE(ed->speaker("Beszélő 1").displayName, QStringLiteral("Bárány Gergő"));
+    QCOMPARE(ed->speaker("speaker:1").displayName, QStringLiteral("Bárány Gergő"));
     // Under the old name the person picker still finds it.
     QCOMPARE(filterPeople(m_app->peopleDirectory(), "gergely").size(), 1);
 
@@ -436,7 +436,7 @@ void PeopleServiceTest::renameIsOneFieldKeepsOldNameAsAlias()
     QVERIFY(!exists("Bárány Gergő"));
     QCOMPARE(svc()->person(g).aliases, QStringList{"Gergely"});
     QCOMPARE(m_app->voiceprints()->printCount(g), 1);
-    QCOMPARE(ed->speaker("Beszélő 1").displayName, kGergely);
+    QCOMPARE(ed->speaker("speaker:1").displayName, kGergely);
     QVERIFY(!svc()->canUndo());
 }
 
@@ -525,9 +525,9 @@ void PeopleServiceTest::learnedDefaultSide()
     // One analysis: Gergely gets Remote from his confirmed lines, Eszter Local from the default
     // only (that does not learn), an anonymous speaker is left out.
     editing::SideReport r;
-    editing::PersonSide pg; pg.speakerKey = "Beszélő 1"; pg.personId = g; pg.side = editing::Side::Remote; pg.basis = "lines";
-    editing::PersonSide pe; pe.speakerKey = "Beszélő 2"; pe.personId = e; pe.side = editing::Side::Local; pe.basis = "user-name";
-    editing::PersonSide a; a.speakerKey = "Beszélő 3"; a.side = editing::Side::Local; a.basis = "lines";
+    editing::PersonSide pg; pg.speakerKey = "speaker:1"; pg.personId = g; pg.side = editing::Side::Remote; pg.basis = "lines";
+    editing::PersonSide pe; pe.speakerKey = "speaker:2"; pe.personId = e; pe.side = editing::Side::Local; pe.basis = "user-name";
+    editing::PersonSide a; a.speakerKey = "speaker:3"; a.side = editing::Side::Local; a.basis = "lines";
     r.persons = {pg, pe, a};
     QSignalSpy changed(svc(), &library::PeopleService::changed);
     QCOMPARE(svc()->learnDefaultSides(r), 1);
@@ -549,7 +549,7 @@ void PeopleServiceTest::learnedDefaultSide()
 void PeopleServiceTest::sampleRemoveAndUndo()
 {
     const Meeting m = addMeeting("Partnerdemó – adatimport", QDateTime(QDate(2026, 9, 24), QTime(10, 0)),
-                                 {{0, 4000, "Beszélő 1"}}, {{"Beszélő 1", kGergely}}, true);
+                                 {{0, 4000, "speaker:1"}}, {{"speaker:1", kGergely}}, true);
     const PersonId g = find(kGergely);
     m_app->voiceprints()->addPrint(g, print("p1", {1, 0, 0}, m.id));
     QSignalSpy prints(m_app.get(), &app::AppController::voiceprintsChanged);
@@ -576,9 +576,9 @@ void PeopleServiceTest::sampleRemoveAndUndo()
 void PeopleServiceTest::sampleMoveMarksStaleAndUndoRestores()
 {
     const Meeting m = addMeeting("Partnerdemó", QDateTime(QDate(2026, 9, 24), QTime(10, 0)),
-                                 {{0, 4000, "Beszélő 1"}}, {{"Beszélő 1", kGergely}}, true);
+                                 {{0, 4000, "speaker:1"}}, {{"speaker:1", kGergely}}, true);
     const Meeting other = addMeeting("Másik", QDateTime(QDate(2026, 9, 25), QTime(10, 0)),
-                                     {{0, 4000, "Beszélő 1"}}, {{"Beszélő 1", kGergely}}, true);
+                                     {{0, 4000, "speaker:1"}}, {{"speaker:1", kGergely}}, true);
     QVERIFY(svc()->addPerson(kGergo).ok);
     const PersonId g = find(kGergely), o = find(kGergo);
     m_app->voiceprints()->addPrint(g, print("p1", {1, 0, 0}, m.id));
@@ -607,7 +607,7 @@ void PeopleServiceTest::sampleMoveMarksStaleAndUndoRestores()
 void PeopleServiceTest::newPersonFromSampleAndUndoRemovesPerson()
 {
     const Meeting m = addMeeting("Partnerdemó", QDateTime(QDate(2026, 9, 24), QTime(10, 0)),
-                                 {{0, 4000, "Beszélő 1"}}, {{"Beszélő 1", kGergely}}, false);
+                                 {{0, 4000, "speaker:1"}}, {{"speaker:1", kGergely}}, false);
     const PersonId g = find(kGergely);
     m_app->voiceprints()->addPrint(g, print("p1", {1, 0, 0}, m.id));
     m_app->voiceprints()->addPrint(g, print("p2", {0, 1, 0}, m.id));
@@ -645,14 +645,14 @@ void PeopleServiceTest::similarityFromStoredEmbeddings()
 void PeopleServiceTest::mergeNumbersAliasAndStale()
 {
     const QDateTime d(QDate(2026, 9, 20), QTime(10, 0));
-    const Meeting both = addMeeting("Közös", d, {{0, 4000, "Beszélő 1"}, {5000, 5000, "Beszélő 2"}},
-                                    {{"Beszélő 1", kGergely}, {"Beszélő 2", kGergo}}, true);
-    const Meeting onlyLoser = addMeeting("Csak Gergő", d.addDays(1), {{0, 4000, "Beszélő 1"}},
-                                         {{"Beszélő 1", kGergo}}, true);
-    const Meeting noSummary = addMeeting("Összefoglaló nélkül", d.addDays(2), {{0, 4000, "Beszélő 1"}},
-                                         {{"Beszélő 1", kGergo}}, false);
-    const Meeting onlySurvivor = addMeeting("Csak Gergely", d.addDays(3), {{0, 4000, "Beszélő 1"}},
-                                            {{"Beszélő 1", kGergely}}, true);
+    const Meeting both = addMeeting("Közös", d, {{0, 4000, "speaker:1"}, {5000, 5000, "speaker:2"}},
+                                    {{"speaker:1", kGergely}, {"speaker:2", kGergo}}, true);
+    const Meeting onlyLoser = addMeeting("Csak Gergő", d.addDays(1), {{0, 4000, "speaker:1"}},
+                                         {{"speaker:1", kGergo}}, true);
+    const Meeting noSummary = addMeeting("Összefoglaló nélkül", d.addDays(2), {{0, 4000, "speaker:1"}},
+                                         {{"speaker:1", kGergo}}, false);
+    const Meeting onlySurvivor = addMeeting("Csak Gergely", d.addDays(3), {{0, 4000, "speaker:1"}},
+                                            {{"speaker:1", kGergely}}, true);
     const PersonId g = find(kGergely), o = find(kGergo);
     // The loser also appears as an approved participant and in tag rejections.
     {
@@ -689,8 +689,8 @@ void PeopleServiceTest::mergeNumbersAliasAndStale()
     QCOMPARE(rec.aliases, QStringList({"Geri", kGergo}));     // the disappearing name became a nickname
     QCOMPARE(rec.note, QStringLiteral("Telefonról csatlakozik."));
     QCOMPARE(m_app->peopleStats()->stats(g).meetingCount, 4);
-    QCOMPARE(m_app->store()->load(both.id).speakerMap.value("Beszélő 2"), g);
-    QCOMPARE(m_app->store()->load(noSummary.id).speakerMap.value("Beszélő 1"), g);
+    QCOMPARE(m_app->store()->load(both.id).speakerMap.value("speaker:2"), g);
+    QCOMPARE(m_app->store()->load(noSummary.id).speakerMap.value("speaker:1"), g);
     QCOMPARE(m_app->store()->load(onlyLoser.id).participants.first().personId, g);
 
     QVERIFY(m_app->summaryStale(both.id).stale);
@@ -712,9 +712,9 @@ void PeopleServiceTest::mergeNumbersAliasAndStale()
     QVERIFY(svc()->person(g).aliases.isEmpty());
     QVERIFY(svc()->person(g).note.isEmpty());
     QCOMPARE(svc()->person(g).sampleCount, 1);
-    QCOMPARE(m_app->store()->load(both.id).speakerMap.value("Beszélő 2"), o);
-    QCOMPARE(m_app->store()->load(both.id).speakerMap.value("Beszélő 1"), g);
-    QCOMPARE(m_app->store()->load(noSummary.id).speakerMap.value("Beszélő 1"), o);
+    QCOMPARE(m_app->store()->load(both.id).speakerMap.value("speaker:2"), o);
+    QCOMPARE(m_app->store()->load(both.id).speakerMap.value("speaker:1"), g);
+    QCOMPARE(m_app->store()->load(noSummary.id).speakerMap.value("speaker:1"), o);
     QCOMPARE(m_app->store()->load(onlyLoser.id).participants.first().personId, o);
     QVERIFY(!m_app->summaryStale(both.id).stale);
     QVERIFY(!m_app->summaryStale(onlyLoser.id).stale);
@@ -726,8 +726,8 @@ void PeopleServiceTest::mergeNumbersAliasAndStale()
 void PeopleServiceTest::mergeWithOpenEditorShowsStale()
 {
     const Meeting m = addMeeting("Nyitott", QDateTime(QDate(2026, 9, 20), QTime(10, 0)),
-                                 {{0, 4000, "Beszélő 1"}, {5000, 4000, "Beszélő 2"}},
-                                 {{"Beszélő 1", kGergo}}, true);
+                                 {{0, 4000, "speaker:1"}, {5000, 4000, "speaker:2"}},
+                                 {{"speaker:1", kGergo}}, true);
     QVERIFY(svc()->addPerson(kGergely).ok);
     // In the main window the transcript editor is open: it must follow without a restart.
     editing::SpeakerEditSession* ed = m_app->editSession(m.id);
@@ -735,8 +735,8 @@ void PeopleServiceTest::mergeWithOpenEditorShowsStale()
     QVERIFY(!ed->summaryStale().stale);
     QVERIFY(svc()->merge(find(kGergo), find(kGergely)).ok);
     QVERIFY(ed->summaryStale().stale);
-    QCOMPARE(ed->speaker("Beszélő 1").personId, find(kGergely));
-    QCOMPARE(ed->speaker("Beszélő 1").displayName, kGergely);
+    QCOMPARE(ed->speaker("speaker:1").personId, find(kGergely));
+    QCOMPARE(ed->speaker("speaker:1").displayName, kGergely);
     QVERIFY(m_app->summaryStale(m.id).stale);
 }
 
@@ -746,7 +746,7 @@ void PeopleServiceTest::deleteNumbersAndStale()
 {
     const QDateTime d(QDate(2026, 9, 20), QTime(10, 0));
     const Meeting a = addMeeting("Egyik", d, {{0, 4000, "Távoli 2"}}, {{"Távoli 2", kGergely}}, true);
-    const Meeting b = addMeeting("Másik", d.addDays(1), {{0, 4000, "Beszélő 1"}}, {{"Beszélő 1", kGergely}}, false);
+    const Meeting b = addMeeting("Másik", d.addDays(1), {{0, 4000, "speaker:1"}}, {{"speaker:1", kGergely}}, false);
     const PersonId g = find(kGergely);
     m_app->voiceprints()->addPrint(g, print("a1", {1, 0, 0}, a.id));
     QVERIFY(svc()->addAlias(g, "Gergely").ok);
@@ -757,7 +757,7 @@ void PeopleServiceTest::deleteNumbersAndStale()
     QCOMPARE(preview.meetingCount, 2);
     QCOMPARE(preview.sampleCount, 1);
     QCOMPARE(preview.staleSummaries, 1);
-    QCOMPARE(preview.exampleLabel, QStringLiteral("Beszélő 1"));   // the newest meeting's label
+    QCOMPARE(preview.exampleLabel, QStringLiteral("speaker:1"));   // the newest meeting's label
 
     const library::PeopleOpResult r = svc()->removePerson(g, false);
     QVERIFY2(r.ok, qPrintable(r.error));
@@ -778,7 +778,7 @@ void PeopleServiceTest::deleteNumbersAndStale()
 void PeopleServiceTest::deleteKeepingSamplesAsAnonymous()
 {
     const Meeting a = addMeeting("Egyik", QDateTime(QDate(2026, 9, 20), QTime(10, 0)),
-                                 {{0, 4000, "Beszélő 1"}}, {{"Beszélő 1", kGergely}}, false);
+                                 {{0, 4000, "speaker:1"}}, {{"speaker:1", kGergely}}, false);
     const PersonId g = find(kGergely);
     m_app->voiceprints()->addPrint(g, print("a1", {1, 0, 0}, a.id));
     m_app->voiceprints()->addPrint(g, print("a2", {0, 1, 0}, a.id));
@@ -809,10 +809,10 @@ void PeopleServiceTest::voiceprintFromManuallyAssignedMeetings()
     const QDateTime d(QDate(2026, 9, 3), QTime(10, 0));
     // Enough material: 4 x 5 s of certain lines.
     const Meeting rich = addMeeting("Kickoff", d,
-        {{0, 5000, "Beszélő 1"}, {6000, 5000, "Beszélő 1"}, {12000, 5000, "Beszélő 1"}, {18000, 5000, "Beszélő 1"},
-         {24000, 5000, "Beszélő 2"}}, {{"Beszélő 1", kEszter}}, false);
+        {{0, 5000, "speaker:1"}, {6000, 5000, "speaker:1"}, {12000, 5000, "speaker:1"}, {18000, 5000, "speaker:1"},
+         {24000, 5000, "speaker:2"}}, {{"speaker:1", kEszter}}, false);
     // Little material: a single 4 s line.
-    const Meeting poor = addMeeting("Rövid", d.addDays(3), {{0, 4000, "Beszélő 1"}}, {{"Beszélő 1", kEszter}}, false);
+    const Meeting poor = addMeeting("Rövid", d.addDays(3), {{0, 4000, "speaker:1"}}, {{"speaker:1", kEszter}}, false);
     const PersonId e = find(kEszter);
     m_app->peopleStats()->refreshNow();
 
@@ -847,7 +847,7 @@ void PeopleServiceTest::voiceprintFromManuallyAssignedMeetings()
 void PeopleServiceTest::sampleSourceDescription()
 {
     Meeting m = addMeeting("Partnerdemó – adatimport", QDateTime(QDate(2026, 9, 24), QTime(10, 0)),
-                           {{0, 4000, "Beszélő 1"}}, {{"Beszélő 1", kGergely}}, false);
+                           {{0, 4000, "speaker:1"}}, {{"speaker:1", kGergely}}, false);
     const PersonId g = find(kGergely);
     Track mic;
     mic.id = "mic"; mic.kind = TrackKind::Mic; mic.file = "track_mic.ogg"; mic.deviceName = "Trust USB mikrofon";

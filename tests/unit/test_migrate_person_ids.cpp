@@ -168,10 +168,10 @@ private slots:
         const QJsonObject mj = readJson(QDir(folder).filePath("meeting.json"));
         QCOMPARE(mj.value("version").toInt(), 3);
         const QJsonObject sm = mj.value("speakerMap").toObject();
-        QCOMPARE(sm.value("Beszélő 1").toString(), lilla);
-        QCOMPARE(sm.value("Beszélő 2").toString(), gabor);                   // "Gabi" -> Gábor
-        QCOMPARE(sm.value("Beszélő 3").toString(), erno);
-        QVERIFY(!sm.contains("Beszélő 4"));                                  // raw -> itself: anonymous
+        QCOMPARE(sm.value("speaker:1").toString(), lilla);
+        QCOMPARE(sm.value("speaker:2").toString(), gabor);                   // "Gabi" -> Gábor
+        QCOMPARE(sm.value("speaker:3").toString(), erno);
+        QVERIFY(!sm.contains("speaker:4"));                                  // raw -> itself: anonymous
         QCOMPARE(mj.value("participants").toArray().at(0).toObject().value("personId").toString(), arpad);
         QVERIFY(!mj.value("participants").toArray().at(0).toObject().contains("personName"));
         QCOMPARE(mj.value("participantApproval").toObject().value("candidates").toArray().at(0).toObject()
@@ -179,11 +179,11 @@ private slots:
         const QJsonObject ov = readJson(QDir(folder).filePath("transcript.speakers.json"));
         QCOMPARE(ov.value("version").toInt(), 3);
         QCOMPARE(ov.value("participants").toArray().at(0).toObject().value("personId").toString(), bence);
-        QCOMPARE(ov.value("identified").toObject().value("Beszélő 2").toObject().value("personId").toString(), gabor);
+        QCOMPARE(ov.value("identified").toObject().value("speaker:2").toObject().value("personId").toString(), gabor);
         const QJsonObject an = readJson(QDir(folder).filePath("participants.analysis.json"));
         QCOMPARE(an.value("clusters").toArray().at(0).toObject().value("matchPersonId").toString(), gabor);
         const QJsonObject bk = readJson(QDir(folder).filePath("transcript-backup-20260901-1100/speakerMap.json"));
-        QCOMPARE(bk.value("speakerMap").toObject().value("Beszélő 2").toString(), arpad);
+        QCOMPARE(bk.value("speakerMap").toObject().value("speaker:2").toString(), arpad);
         // Audio and the transcript text are not touched.
         const QString segRel = QStringLiteral("recordings/") + kFolder + QStringLiteral("/transcript.segments.json");
         QCOMPARE(readAll(QDir(m_home->path()).filePath(segRel)), before.value(segRel));
@@ -196,7 +196,7 @@ private slots:
         library::VoiceprintStore prints(QDir(m_home->path()).filePath("voiceprints.json"));
         QCOMPARE(prints.printCount(PersonId::fromString(gabor)), 2);
         const Meeting m = library::MeetingRepository::readMeetingFolder(folder);
-        QCOMPARE(m.speakerMap.value("Beszélő 2"), PersonId::fromString(gabor));
+        QCOMPARE(m.speakerMap.value("speaker:2"), PersonId::fromString(gabor));
 
         // ---- idempotent: a second run has nothing to do ----
         const QMap<QString, QByteArray> after = snapshot(m_home->path());
@@ -258,8 +258,8 @@ private:
         const QString folder = home.filePath(QStringLiteral("recordings/") + kFolder);
         QVERIFY(writeJson(QDir(folder).filePath("meeting.json"), QJsonObject{
             {"id", "m-nordvik"}, {"title", "Nordvik"},
-            {"speakerMap", QJsonObject{{"Beszélő 1", "Kovács Lilla"}, {"Beszélő 2", "Gabi"},
-                                       {"Beszélő 3", "Ismeretlen Ernő"}, {"Beszélő 4", "Beszélő 4"}}},
+            {"speakerMap", QJsonObject{{"speaker:1", "Kovács Lilla"}, {"speaker:2", "Gabi"},
+                                       {"speaker:3", "Ismeretlen Ernő"}, {"speaker:4", "speaker:4"}}},
             {"participants", QJsonArray{QJsonObject{{"id", "c1"}, {"personName", "Varga Árpád"},
                                                     {"source", "calendar"}}}},
             {"participantApproval", QJsonObject{{"at", "2026-09-01T11:00:00"},
@@ -267,17 +267,17 @@ private:
                                                       {"checked", true}}}}}}}));
         QFile seg(QDir(folder).filePath("transcript.segments.json"));
         QVERIFY(seg.open(QIODevice::WriteOnly));
-        seg.write(R"([{"startMs":0,"endMs":4000,"speaker":"Beszélő 1","text":"Szia"}])");
+        seg.write(R"([{"startMs":0,"endMs":4000,"speaker":"speaker:1","text":"Szia"}])");
         seg.close();
         QVERIFY(writeJson(QDir(folder).filePath("transcript.speakers.json"), QJsonObject{
             {"version", 2},
             {"participants", QJsonArray{QJsonObject{{"key", "p:1"}, {"person", "Tóth Bence"}}}},
-            {"identified", QJsonObject{{"Beszélő 2", QJsonObject{{"person", "Fehér Gábor"}, {"score", 0.8}}},
-                                       {"Beszélő 3", QJsonObject{{"person", "Nincs Ilyen"}, {"score", 0.7}}}}}}));
+            {"identified", QJsonObject{{"speaker:2", QJsonObject{{"person", "Fehér Gábor"}, {"score", 0.8}}},
+                                       {"speaker:3", QJsonObject{{"person", "Nincs Ilyen"}, {"score", 0.7}}}}}}));
         QVERIFY(writeJson(QDir(folder).filePath("participants.analysis.json"), QJsonObject{
             {"clusters", QJsonArray{QJsonObject{{"id", "k1"}, {"matchName", "Fehér Gábor"}}}}}));
         QVERIFY(writeJson(QDir(folder).filePath("transcript-backup-20260901-1100/speakerMap.json"), QJsonObject{
-            {"speakerMap", QJsonObject{{"Beszélő 2", "Varga Árpád"}}}}));
+            {"speakerMap", QJsonObject{{"speaker:2", "Varga Árpád"}}}}));
     }
 
     Run cli(const QStringList& args)

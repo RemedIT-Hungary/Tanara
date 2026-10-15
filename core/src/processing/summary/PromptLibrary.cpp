@@ -1,4 +1,5 @@
 #include "tanara/processing/summary/PromptLibrary.h"
+#include "tanara/domain/SpeakerKeys.h"
 #include "tanara/foundation/paths/AppPaths.h"
 #include "tanara/foundation/text/Text.h"
 
@@ -41,7 +42,7 @@ const char* const kTopicsRules = R"PROMPT(- TOPICS is the memo someone reads to 
 - Things merely shown, explained or reported (for example during a demo or a status update) belong in TOPICS, not among the decisions or tasks.
 - The sub-headings "#### Arguments" and "#### Unresolved" stay in English exactly as shown; the text under them is in {{LANGUAGE}}.)PROMPT";
 
-const char* const kInput = R"PROMPT(- The transcript was produced by automatic speech recognition: expect misheard words, broken sentences and filler. Speaker labels are mostly right. A label such as "Beszélő 2" means the speaker was not identified.
+const char* const kInput = R"PROMPT(- The transcript was produced by automatic speech recognition: expect misheard words, broken sentences and filler. Speaker labels are mostly right. A label such as "{{SPEAKER_LABEL}}" means the speaker was not identified.
 %CONTEXT_RULE%)PROMPT";
 
 // The user's note is trustworthy: a correction given in it ("X is correctly Y") also applies in the output.
@@ -327,11 +328,24 @@ QString languageReminder(const QString& language)
         "Keep the headings and JSON keys exactly as specified.").arg(both);
 }
 
+QString promptSpeakerLabel(const QString& rawKey, const QString& language)
+{
+    return speakerkeys::fixedSpeakerLabel(rawKey, summaryLanguageName(language) == QLatin1String("Hungarian"));
+}
+
+void applyPromptSpeakerLabels(MergedTranscript& transcript, const QString& language)
+{
+    for (TranscriptToken& t : transcript.tokens)
+        t.speaker = promptSpeakerLabel(t.speaker, language);
+}
+
 QString applySummaryLanguage(QString prompt, const QString& language)
 {
     QString lang = language.trimmed();
     if (lang.isEmpty())
         lang = QStringLiteral("magyar");
+    // The example raw-speaker label in the same form the transcript shows it (applyPromptSpeakerLabels).
+    prompt.replace(QStringLiteral("{{SPEAKER_LABEL}}"), promptSpeakerLabel(speakerkeys::rawSpeakerKey(2), lang));
 
     const bool hasEnglishVar = prompt.contains(QStringLiteral("{{LANGUAGE}}"));
     const bool hasNativeVar  = prompt.contains(QStringLiteral("{{NYELV}}"));
@@ -358,6 +372,8 @@ QVector<PromptVariable> promptVariables()
           QCoreApplication::translate("PromptLibrary", "az összefoglaló nyelve angolul (pl. Hungarian)") },
         { QStringLiteral("{{NYELV}}"),
           QCoreApplication::translate("PromptLibrary", "az összefoglaló nyelve, ahogy a beállításban áll") },
+        { QStringLiteral("{{SPEAKER_LABEL}}"),
+          QCoreApplication::translate("PromptLibrary", "egy azonosítatlan beszélő címkéje az átiratban, az összefoglaló nyelvén (pl. Beszélő 2)") },
     };
 }
 

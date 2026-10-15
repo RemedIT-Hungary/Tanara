@@ -1,4 +1,5 @@
 #include "tanara/editing/session/TranscriptReslice.h"
+#include "tanara/domain/SpeakerKeys.h"
 #include "tanara/library/MeetingLayout.h"
 
 #include "tanara/library/store/UtteranceEmbeddingCache.h"
@@ -56,7 +57,7 @@ QVector<TranscriptToken> tokensFromJson(const QJsonArray& arr)
         const QJsonObject o = v.toObject();
         TranscriptToken t;
         t.text       = o.value(QStringLiteral("text")).toString();
-        t.speaker    = o.value(QStringLiteral("speaker")).toString();
+        t.speaker    = speakerkeys::normalizeSpeakerLabel(o.value(QStringLiteral("speaker")).toString());   // legacy "Beszélő N"
         t.startMs    = qint64(o.value(QStringLiteral("startMs")).toDouble());
         t.endMs      = qint64(o.value(QStringLiteral("endMs")).toDouble());
         t.confidence = o.value(QStringLiteral("confidence")).toDouble();

@@ -8,6 +8,7 @@
 #include "TagLearning.h"
 
 #include "tanara/domain/EvidenceText.h"
+#include "tanara/domain/SpeakerText.h"
 #include "tanara/foundation/log/Logging.h"
 #include "tanara/editing/session/PeopleDirectory.h"
 #include "tanara/editing/review/SideAnalysis.h"
@@ -69,7 +70,7 @@ QVariantMap speakerMap(const editing::EditorSpeaker& s, int lane)
         // either back: the view model resolves an id or a name).
         {QStringLiteral("personId"), s.personId.toString()},
         {QStringLiteral("personName"), s.anonymous ? QString() : s.displayName},
-        {QStringLiteral("rawLabel"), s.rawLabel},
+        {QStringLiteral("rawLabel"), tanara::speakerLabelText(s.rawLabel)},   // display only (disambiguation)
         {QStringLiteral("colorIndex"), s.colorIndex},
         {QStringLiteral("hasVoiceprint"), s.hasVoiceprint},
         {QStringLiteral("anonymous"), s.anonymous},

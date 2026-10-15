@@ -3490,6 +3490,10 @@
         <translation>the summary language as written in the setting</translation>
     </message>
     <message>
+        <source>egy azonosítatlan beszélő címkéje az átiratban, az összefoglaló nyelvén (pl. Beszélő 2)</source>
+        <translation>the label of an unidentified speaker in the transcript, in the summary language (e.g. Speaker 2)</translation>
+    </message>
+    <message>
         <source>## Cím + 1–2 mondat, témánként</source>
         <translation>## Title + 1–2 sentences, per topic</translation>
     </message>
@@ -5849,6 +5853,13 @@
     <message>
         <source>Résztvevő hozzáadása</source>
         <translation>Add participant</translation>
+    </message>
+</context>
+<context>
+    <name>SpeakerText</name>
+    <message>
+        <source>Beszélő %1</source>
+        <translation>Speaker %1</translation>
     </message>
 </context>
 <context>

@@ -74,7 +74,7 @@ private slots:
         QVERIFY(generate("aevalsrc=if(gte(t\\,4)\\,0.3*sin(2*PI*330*t)\\,0)", QDir(folder).filePath("track_loop.wav")));
         writeJson(QDir(folder).filePath("meeting.json"), QJsonObject{
             {"version", 3}, {"id", "sides-1"}, {"title", "Sides"},
-            {"speakerMap", QJsonObject{{"Beszélő 1", "p-tester"}}},
+            {"speakerMap", QJsonObject{{"speaker:1", "p-tester"}}},
             {"tracks", QJsonArray{
                 QJsonObject{{"id", "mic"}, {"file", "track_mic.wav"}, {"kind", "mic"}, {"deviceName", "Mic"},
                             {"fixedSpeaker", true}, {"speakerLabel", "Tester"}, {"active", true}},
@@ -83,7 +83,7 @@ private slots:
         QJsonArray segs;
         for (int i = 0; i < 4; ++i)
             segs.append(QJsonObject{{"startMs", i * 2000}, {"endMs", i * 2000 + 1900},
-                                    {"speaker", "Beszélő 1"}, {"text", "titkos szöveg"}});
+                                    {"speaker", "speaker:1"}, {"text", "titkos szöveg"}});
         writeJson(QDir(folder).filePath("transcript.segments.json"), segs);
 
         const QMap<QString, QString> before = snapshot(folder);
@@ -99,7 +99,7 @@ private slots:
         const QJsonObject totals = j.value("totals").toObject();
         QCOMPARE(totals.value("local").toInt(), 2);
         QCOMPARE(totals.value("remote").toInt(), 2);
-        const QJsonObject raw = j.value("rawLabels").toObject().value(u"Beszélő 1"_s).toObject();
+        const QJsonObject raw = j.value("rawLabels").toObject().value(u"speaker:1"_s).toObject();
         QCOMPARE(raw.value("local").toInt(), 2);
         QCOMPARE(raw.value("remote").toInt(), 2);
         const QJsonObject p = j.value("persons").toArray().at(0).toObject();

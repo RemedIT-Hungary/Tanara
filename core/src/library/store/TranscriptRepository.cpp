@@ -1,5 +1,6 @@
 #include "tanara/library/store/TranscriptRepository.h"
 #include "tanara/library/MeetingLayout.h"
+#include "tanara/domain/SpeakerKeys.h"
 
 #include <QCryptographicHash>
 #include <QDir>
@@ -74,7 +75,7 @@ MergedTranscript TranscriptRepository::readTokens(const QString& meetingFolder)
         const QJsonObject o = v.toObject();
         TranscriptToken t;
         t.text       = o.value(QStringLiteral("text")).toString();
-        t.speaker    = o.value(QStringLiteral("speaker")).toString();
+        t.speaker    = speakerkeys::normalizeSpeakerLabel(o.value(QStringLiteral("speaker")).toString());   // legacy "Beszélő N"
         t.startMs    = qint64(o.value(QStringLiteral("startMs")).toDouble());
         t.endMs      = qint64(o.value(QStringLiteral("endMs")).toDouble());
         t.confidence = o.value(QStringLiteral("confidence")).toDouble();
@@ -121,7 +122,7 @@ QVector<Utterance> TranscriptRepository::readSegments(const QString& meetingFold
         Utterance u;
         u.startMs = qint64(o.value(QStringLiteral("startMs")).toDouble());
         u.endMs   = qint64(o.value(QStringLiteral("endMs")).toDouble());
-        u.speaker = o.value(QStringLiteral("speaker")).toString();
+        u.speaker = speakerkeys::normalizeSpeakerLabel(o.value(QStringLiteral("speaker")).toString());
         u.text    = o.value(QStringLiteral("text")).toString();
         out.append(u);
     }
@@ -177,7 +178,7 @@ QVector<TranscriptLine> TranscriptRepository::readLines(const QString& meetingFo
         TranscriptLine l;
         l.startMs  = qint64(o.value(QStringLiteral("startMs")).toDouble());
         l.endMs    = qint64(o.value(QStringLiteral("endMs")).toDouble());
-        l.rawLabel = o.value(QStringLiteral("speaker")).toString();
+        l.rawLabel = speakerkeys::normalizeSpeakerLabel(o.value(QStringLiteral("speaker")).toString());
         l.text     = o.value(QStringLiteral("text")).toString();
         // The id is formed from the start time: stable until the transcript is regenerated, and insensitive to
         // the file being reordered. The same start time (overlapping speakers) -> a number suffix.
@@ -197,7 +198,9 @@ QString TranscriptRepository::linesFingerprint(const QVector<TranscriptLine>& li
         h.addData("|");
         h.addData(QByteArray::number(l.endMs));
         h.addData("|");
-        h.addData(l.rawLabel.toUtf8());
+        // Hashed in the legacy label form ("speaker:2" -> "Beszélő 2"): the fingerprint of a transcript stays the
+        // same across the neutral-key change, so the overlays / caches of old meetings keep matching.
+        h.addData(speakerkeys::legacySpeakerLabel(l.rawLabel).toUtf8());
         h.addData("\n");
     }
     return QStringLiteral("%1:%2").arg(lines.size())
@@ -226,22 +229,22 @@ SpeakerOverlay TranscriptRepository::readOverlay(const QString& meetingFolder)
 
     const QJsonObject merged = root.value(QStringLiteral("merged")).toObject();
     for (auto it = merged.constBegin(); it != merged.constEnd(); ++it)
-        ov.merged.insert(it.key(), it.value().toString());
+        ov.merged.insert(speakerkeys::normalizeSpeakerLabel(it.key()), speakerkeys::normalizeSpeakerLabel(it.value().toString()));
     for (const QJsonValue& v : root.value(QStringLiteral("removed")).toArray())
-        ov.removedRaw << v.toString();
+        ov.removedRaw << speakerkeys::normalizeSpeakerLabel(v.toString());
     const QJsonObject tracks = root.value(QStringLiteral("speakerTracks")).toObject();
     for (auto it = tracks.constBegin(); it != tracks.constEnd(); ++it) {
         QStringList ids;
         for (const QJsonValue& v : it.value().toArray())
             if (!v.toString().isEmpty()) ids << v.toString();
-        if (!ids.isEmpty()) ov.speakerTracks.insert(it.key(), ids);
+        if (!ids.isEmpty()) ov.speakerTracks.insert(speakerkeys::normalizeSpeakerLabel(it.key()), ids);
     }
 
     const QJsonObject utts = root.value(QStringLiteral("utterances")).toObject();
     for (auto it = utts.constBegin(); it != utts.constEnd(); ++it) {
         const QJsonObject o = it.value().toObject();
         OverlayUtterance u;
-        u.speaker   = o.value(QStringLiteral("speaker")).toString();
+        u.speaker   = speakerkeys::normalizeSpeakerLabel(o.value(QStringLiteral("speaker")).toString());
         u.corrected = o.value(QStringLiteral("corrected")).toBool();
         u.confirmed = o.value(QStringLiteral("confirmed")).toBool();
         if (o.contains(QStringLiteral("noisy"))) u.noisy = o.value(QStringLiteral("noisy")).toBool();
@@ -258,12 +261,12 @@ SpeakerOverlay TranscriptRepository::readOverlay(const QString& meetingFolder)
         id.personId = PersonId::fromString(o.value(QStringLiteral("personId")).toString());
         if (id.personId.isNull()) continue;
         id.score  = o.value(QStringLiteral("score")).toDouble(-1.0);
-        ov.identified.insert(it.key(), id);
+        ov.identified.insert(speakerkeys::normalizeSpeakerLabel(it.key()), id);
     }
 
     const QJsonObject sum = root.value(QStringLiteral("summary")).toObject();
     for (const QJsonValue& v : sum.value(QStringLiteral("changedSpeakers")).toArray())
-        ov.changedSinceSummary << v.toString();
+        ov.changedSinceSummary << speakerkeys::normalizeSpeakerLabel(v.toString());
     ov.summaryEpoch = sum.value(QStringLiteral("epoch")).toInt();
     return ov;
 }

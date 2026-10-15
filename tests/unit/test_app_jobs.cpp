@@ -270,7 +270,7 @@ Meeting AppJobsTest::transcribed(const QString& title)
     QJsonArray toks;
     const QStringList words{"Sziasztok,", " az", " árajánlatot", " Ödön", " küldi."};
     for (int i = 0; i < words.size(); ++i)
-        toks.append(QJsonObject{{"text", words[i]}, {"speaker", "Beszélő 1"}, {"startMs", i * 300},
+        toks.append(QJsonObject{{"text", words[i]}, {"speaker", "speaker:1"}, {"startMs", i * 300},
                                 {"endMs", i * 300 + 250}, {"confidence", 0.9}, {"trackId", "mixdown"}});
     QFile f(QDir(m.folder).filePath("transcript.tokens.json"));
     if (f.open(QIODevice::WriteOnly))
@@ -279,8 +279,8 @@ Meeting AppJobsTest::transcribed(const QString& title)
     QFile seg(QDir(m.folder).filePath("transcript.segments.json"));
     if (seg.open(QIODevice::WriteOnly))
         seg.write(QJsonDocument(QJsonArray{
-            QJsonObject{{"startMs", 0}, {"endMs", 550}, {"speaker", "Beszélő 1"}, {"text", "Sziasztok, az"}},
-            QJsonObject{{"startMs", 600}, {"endMs", 1450}, {"speaker", "Beszélő 1"}, {"text", "árajánlatot Ödön küldi."}}}).toJson());
+            QJsonObject{{"startMs", 0}, {"endMs", 550}, {"speaker", "speaker:1"}, {"text", "Sziasztok, az"}},
+            QJsonObject{{"startMs", 600}, {"endMs", 1450}, {"speaker", "speaker:1"}, {"text", "árajánlatot Ödön küldi."}}}).toJson());
     seg.close();
     m.hasTranscript = true;
     m_app->store()->saveMeeting(m);
@@ -446,7 +446,7 @@ void AppJobsTest::cancelTranscriptionAtProvider()
     m_http->handler = [](const FakeRequest& r) { return sonioxOk(r, "processing"); };
     // Re-transcription: an earlier transcript and a named speaker exist; after cancel all stay.
     Meeting m = transcribed("Megszakított újra-átírás");
-    m.speakerMap.insert("Beszélő 1", pid("Ödön"));
+    m.speakerMap.insert("speaker:1", pid("Ödön"));
     m_app->store()->saveMeeting(m);
     const QByteArray tokensBefore = [&] { QFile f(QDir(m.folder).filePath("transcript.tokens.json")); return f.open(QIODevice::ReadOnly) ? f.readAll() : QByteArray(); }();
 
@@ -472,7 +472,7 @@ void AppJobsTest::cancelTranscriptionAtProvider()
     // exists (otherwise the cancel aborts the still in-flight POST and there is nothing to delete;
     // on Windows, because of the slower local connect, this was routinely the case).
     QTRY_VERIFY_WITH_TIMEOUT(m_http->count("GET", "/transcriptions/t1") >= 1, 30000);
-    QCOMPARE(nameOf(m_app->store()->load(m.id).speakerMap.value("Beszélő 1")), QStringLiteral("Ödön"));   // not deleted in advance
+    QCOMPARE(nameOf(m_app->store()->load(m.id).speakerMap.value("speaker:1")), QStringLiteral("Ödön"));   // not deleted in advance
 
     QVERIFY(m_app->cancelJob(m.id, JobKind::Transcribe));
     QCOMPARE(finished.count(), 1);
@@ -487,7 +487,7 @@ void AppJobsTest::cancelTranscriptionAtProvider()
     QVERIFY(!st.busy());
     const Meeting after = m_app->store()->load(m.id);
     QVERIFY(after.hasTranscript);
-    QCOMPARE(nameOf(after.speakerMap.value("Beszélő 1")), QStringLiteral("Ödön"));
+    QCOMPARE(nameOf(after.speakerMap.value("speaker:1")), QStringLiteral("Ödön"));
     QFile f(QDir(m.folder).filePath("transcript.tokens.json"));
     QVERIFY(f.open(QIODevice::ReadOnly));
     QCOMPARE(f.readAll(), tokensBefore);
@@ -602,7 +602,7 @@ void AppJobsTest::summarizePersistsStructureAndMeta()
     QCOMPARE(doc.summary.actionItems.size(), 1);
     QCOMPARE(doc.summary.actionItems[0].owner, QStringLiteral("Ödön"));
     // The participants are the transcript's speakers (deterministically, not from the model's reply).
-    QCOMPARE(doc.summary.participants, QStringList({"Beszélő 1"}));
+    QCOMPARE(doc.summary.participants, QStringList({"Beszélő 1"}));   // the summary language (Hungarian default)
     QVERIFY(doc.summary.memo.isEmpty());                      // JSON-only reply: no memo note
     // Short meeting: one call, one stage.
     QCOMPARE(m_http->count("POST", "/chat/completions"), 1);
@@ -668,7 +668,7 @@ Meeting AppJobsTest::transcribedLong(const QString& title, int minutes)
         toks.append(QJsonObject{{"text", QStringLiteral(" A(z) %1. bekezdés szövege, elég hosszan ahhoz, hogy "
                                                         "számítson: egy valódi megbeszélésen fél perc alatt "
                                                         "ennél jóval több szó hangzik el.").arg(i)},
-                                {"speaker", i % 2 ? "Beszélő 2" : "Beszélő 1"}, {"startMs", i * 30000},
+                                {"speaker", i % 2 ? "speaker:2" : "speaker:1"}, {"startMs", i * 30000},
                                 {"endMs", i * 30000 + 20000}, {"confidence", 0.9}, {"trackId", "mixdown"}});
     QFile f(QDir(m.folder).filePath("transcript.tokens.json"));
     if (f.open(QIODevice::WriteOnly))
@@ -797,7 +797,7 @@ Meeting AppJobsTest::transcribedDense(const QString& title, int minutes)
                                           "valódi megbeszélésen is sok szó hangzik el fél perc alatt.");
     for (int i = 0; i < minutes * 2; ++i)
         toks.append(QJsonObject{{"text", QStringLiteral(" A(z) %1. bekezdés.").arg(i) + filler + filler + filler + filler},
-                                {"speaker", i % 2 ? "Beszélő 2" : "Beszélő 1"}, {"startMs", i * 30000},
+                                {"speaker", i % 2 ? "speaker:2" : "speaker:1"}, {"startMs", i * 30000},
                                 {"endMs", i * 30000 + 20000}, {"confidence", 0.9}, {"trackId", "mixdown"}});
     QFile f(QDir(m.folder).filePath("transcript.tokens.json"));
     if (f.open(QIODevice::WriteOnly))
@@ -1300,7 +1300,7 @@ void AppJobsTest::retranscribeSuccessClearsNamesAndCorrections()
     if (!m_ffmpeg) QSKIP("ffmpeg nem található");
     m_http->handler = [](const FakeRequest& r) { return sonioxOk(r); };
     Meeting m = transcribed("Sikeres újra-átírás");
-    m.speakerMap.insert("Beszélő 1", pid("Ödön"));
+    m.speakerMap.insert("speaker:1", pid("Ödön"));
     m_app->store()->saveMeeting(m);
     editing::SpeakerEditSession* ed = m_app->editSession(m.id);
     QVERIFY(ed);
@@ -1310,7 +1310,7 @@ void AppJobsTest::retranscribeSuccessClearsNamesAndCorrections()
     QSignalSpy ready(m_app.get(), &app::AppController::transcriptReady);
     m_app->retranscribeMeeting(m.id, /*keepBackup*/ true);
     // While it runs, the old names and fixes live (they were not deleted in advance).
-    QCOMPARE(nameOf(m_app->store()->load(m.id).speakerMap.value("Beszélő 1")), QStringLiteral("Ödön"));
+    QCOMPARE(nameOf(m_app->store()->load(m.id).speakerMap.value("speaker:1")), QStringLiteral("Ödön"));
     QCOMPARE(m_app->retranscribeImpact(m.id).correctedUtterances, 1);
     QVERIFY(ready.wait(30000));
     QTRY_VERIFY(!m_app->jobs()->isBusy(m.id));
@@ -1366,7 +1366,7 @@ void AppJobsTest::manualParticipantSurvivesTranscription()
     QCOMPARE(unheard.first().id, cili);
 
     // Once a speaker is assigned its name, it is no longer "not heard".
-    m_app->renameSpeaker(m.id, QStringLiteral("Beszélő 1"), choice(QStringLiteral("Cecília")), /*enroll*/ false);
+    m_app->renameSpeaker(m.id, QStringLiteral("speaker:1"), choice(QStringLiteral("Cecília")), /*enroll*/ false);
     QVERIFY(m_app->unheardParticipants(m.id).isEmpty());
 
     // It survives a re-transcription too (the names are deleted, the participant is not).
@@ -1397,7 +1397,7 @@ void AppJobsTest::staleSummaryShowsInStateAndPending()
     QSignalSpy stateChanged(m_app->jobs(), &library::MeetingJobTracker::stateChanged);
     QSignalSpy pendingChanged(m_app->library(), &library::MeetingLibrary::pendingItemsChanged);
     QSignalSpy entryChanged(m_app->library(), &library::MeetingLibrary::meetingChanged);
-    m_app->renameSpeaker(m.id, "Beszélő 1", choice("Ödön"), /*enroll*/ false);
+    m_app->renameSpeaker(m.id, "speaker:1", choice("Ödön"), /*enroll*/ false);
     QVERIFY(stateChanged.count() >= 1);
     QVERIFY(pendingChanged.count() >= 1);
     QVERIFY(entryChanged.count() >= 1);
@@ -1420,7 +1420,7 @@ void AppJobsTest::staleSummaryShowsInStateAndPending()
     QVERIFY(m_app->library()->pendingItems().isEmpty());
 
     // Stale again, then regenerating the summary clears it.
-    m_app->renameSpeaker(m.id, "Beszélő 1", choice("Lilla"), false);
+    m_app->renameSpeaker(m.id, "speaker:1", choice("Lilla"), false);
     QVERIFY(m_app->processingState(m.id).summaryStale);
     m_app->summarizeMeeting(m.id);
     QVERIFY(ready.wait(10000));
@@ -1442,7 +1442,7 @@ void AppJobsTest::retryAfterFailedRetranscribeClearsNames()
 {
     if (!m_ffmpeg) QSKIP("ffmpeg nem található");
     Meeting m = transcribed("Újrapróbált újra-átírás");
-    m.speakerMap.insert("Beszélő 1", pid("Ödön"));
+    m.speakerMap.insert("speaker:1", pid("Ödön"));
     m_app->store()->saveMeeting(m);
     library::MeetingJobTracker* jobs = m_app->jobs();
 
@@ -1455,7 +1455,7 @@ void AppJobsTest::retryAfterFailedRetranscribeClearsNames()
     m_app->retranscribeMeeting(m.id);
     QTRY_COMPARE_WITH_TIMEOUT(finished.count(), 1, 30000);
     QCOMPARE(finished.at(0).at(2).value<JobOutcome>(), JobOutcome::Failed);
-    QCOMPARE(nameOf(m_app->store()->load(m.id).speakerMap.value("Beszélő 1")), QStringLiteral("Ödön"));
+    QCOMPARE(nameOf(m_app->store()->load(m.id).speakerMap.value("speaker:1")), QStringLiteral("Ödön"));
 
     // 2) Retry with a PLAIN transcription (the error card's "Retry" button): the new diarization's
     //    "Speaker 1" may be a different person, so the old name must NOT stay on it.
@@ -1480,7 +1480,7 @@ void AppJobsTest::emptySttResultKeepsOldTranscript()
         return sonioxOk(r);
     };
     Meeting m = transcribed("Üres eredmény");
-    m.speakerMap.insert("Beszélő 1", pid("Ödön"));
+    m.speakerMap.insert("speaker:1", pid("Ödön"));
     m_app->store()->saveMeeting(m);
     {
         editing::SpeakerEditSession* ed = m_app->editSession(m.id);
@@ -1513,7 +1513,7 @@ void AppJobsTest::emptySttResultKeepsOldTranscript()
     QCOMPARE(fileBytes(editing::speakeredit::overlayPath(m.folder)), overlayBefore);
     const Meeting after = m_app->store()->load(m.id);
     QVERIFY(after.hasTranscript);
-    QCOMPARE(nameOf(after.speakerMap.value("Beszélő 1")), QStringLiteral("Ödön"));
+    QCOMPARE(nameOf(after.speakerMap.value("speaker:1")), QStringLiteral("Ödön"));
     QCOMPARE(m_app->retranscribeImpact(m.id).correctedUtterances, 1);
 
     // On a first transcription too it is an error (not "done, empty transcript"): no transcript file is created.
@@ -1613,7 +1613,7 @@ void AppJobsTest::identifyResultsDroppedWhenTranscriptChanges()
     {
         QFile f(QDir(m.folder).filePath("transcript.tokens.json"));
         QVERIFY(f.open(QIODevice::WriteOnly | QIODevice::Truncate));
-        f.write(R"({"language":"hu","tokens":[{"text":"Más","speaker":"Beszélő 1","startMs":0,"endMs":200,"confidence":0.9,"trackId":"mixdown"}]})");
+        f.write(R"({"language":"hu","tokens":[{"text":"Más","speaker":"speaker:1","startMs":0,"endMs":200,"confidence":0.9,"trackId":"mixdown"}]})");
     }
     QTRY_COMPARE_WITH_TIMEOUT(finished.count(), 2, 30000);
     QCOMPARE(finished.at(1).at(1).value<JobKind>(), JobKind::Identify);

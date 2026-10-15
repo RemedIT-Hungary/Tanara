@@ -1,4 +1,6 @@
 #include "tanara/domain/Summary.h"
+#include "tanara/domain/SpeakerKeys.h"
+#include "tanara/domain/SpeakerText.h"
 
 #include "tanara/foundation/text/Text.h"
 
@@ -55,7 +57,8 @@ void applyTargetedStaleness(QVector<SummaryStatement>& statements,
                 if (t == then.constEnd() || n == now.constEnd()) continue;   // regenerated transcript
                 if (t->name == n->name) continue;
                 if (!changed.contains(t->key) && !changed.contains(n->key)) continue;
-                const QString reason = QStringLiteral("%1 → %2?").arg(t->name, n->name);
+                // The names are language-neutral (a raw key for an unnamed speaker): rendered for display here.
+                const QString reason = QStringLiteral("%1 → %2?").arg(speakerLabelText(t->name), speakerLabelText(n->name));
                 if (!st.staleBecause.contains(reason)) st.staleBecause << reason;
                 moves.append({t->name, n->name});
                 if (!info.affectedUtteranceIds.contains(id)) info.affectedUtteranceIds << id;
@@ -68,8 +71,15 @@ void applyTargetedStaleness(QVector<SummaryStatement>& statements,
             const QString owner = text::foldQuery(st.owner).trimmed();
             if (!owner.isEmpty()) {
                 for (const auto& mv : std::as_const(moves)) {
-                    if (text::foldQuery(mv.first).trimmed() == owner) {
-                        st.ownerStaleBecause = QStringLiteral("%1 → %2?").arg(st.owner, mv.second);
+                    // The LLM wrote an unnamed speaker's owner in the summary language ("Beszélő 2" / "Speaker 2").
+                    const QStringList forms{mv.first, speakerLabelText(mv.first),
+                                            speakerkeys::fixedSpeakerLabel(mv.first, true),
+                                            speakerkeys::fixedSpeakerLabel(mv.first, false)};
+                    const bool same = std::any_of(forms.cbegin(), forms.cend(), [&owner](const QString& f) {
+                        return text::foldQuery(f).trimmed() == owner;
+                    });
+                    if (same) {
+                        st.ownerStaleBecause = QStringLiteral("%1 → %2?").arg(st.owner, speakerLabelText(mv.second));
                         ++info.ownerChanges;
                         break;
                     }

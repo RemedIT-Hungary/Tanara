@@ -447,7 +447,7 @@ private slots:
         // A speaker fix after the summary makes it stale, with a real count; "Fine as is" releases it.
         editing::SpeakerEditSession* editor = sb.app->editSession(m.id);
         QVERIFY(editor);
-        QVERIFY(editor->reassignSpeaker(QStringLiteral("Beszélő 2"), editor->personChoice(QStringLiteral("Minta Márta"))));
+        QVERIFY(editor->reassignSpeaker(QStringLiteral("speaker:2"), editor->personChoice(QStringLiteral("Minta Márta"))));
         QTRY_VERIFY_WITH_TIMEOUT(vm.stale(), 5000);
         QCOMPARE(vm.staleCount(), 1);
         // The participant list follows the edit.
@@ -905,7 +905,7 @@ private slots:
 
         // Speaker fix: the claims pointing to "Speaker 2"'s lines and the action item's owner are affected.
         editing::SpeakerEditSession* editor = sb.app->editSession(m.id);
-        QVERIFY(editor->reassignSpeaker(QStringLiteral("Beszélő 2"), editor->personChoice(QStringLiteral("Minta Márta"))));
+        QVERIFY(editor->reassignSpeaker(QStringLiteral("speaker:2"), editor->personChoice(QStringLiteral("Minta Márta"))));
         QTRY_VERIFY_WITH_TIMEOUT(vm.stale(), 5000);
         QVERIFY(vm.staleTargeted());
         QCOMPARE(vm.affectedStatements(), 2);   // sentence 2 + the decision

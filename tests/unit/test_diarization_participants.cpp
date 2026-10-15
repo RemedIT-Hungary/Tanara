@@ -109,12 +109,12 @@ private slots:
             f.write("x");
         }
         store.saveMeeting(m);
-        // The merged transcript: "Beszélő 1" 0-3 s (the loopback's speaker 0), "Beszélő 2" 3-6 s (speaker 1).
+        // The merged transcript: "speaker:1" 0-3 s (the loopback's speaker 0), "speaker:2" 3-6 s (speaker 1).
         MergedTranscript t;
         for (int i = 0; i < 20; ++i) {
             TranscriptToken tok;
             tok.text = QStringLiteral(" x");
-            tok.speaker = i < 10 ? QStringLiteral("Beszélő 1") : QStringLiteral("Beszélő 2");
+            tok.speaker = i < 10 ? QStringLiteral("speaker:1") : QStringLiteral("speaker:2");
             tok.startMs = i * 300;
             tok.endMs = tok.startMs + 250;
             t.tokens << tok;
@@ -150,10 +150,10 @@ private slots:
         QVERIFY(known && anon);
         QCOMPARE(known->sampleTrackId, QStringLiteral("loop"));
         QCOMPARE(known->sampleRef, QStringLiteral("track_loop.ogg#0-3000"));
-        QVERIFY(known->rawSpeakerIds.contains(QStringLiteral("Beszélő 1")));
+        QVERIFY(known->rawSpeakerIds.contains(QStringLiteral("speaker:1")));
         QVERIFY(anon->personId.isNull());
         QCOMPARE(anon->sampleRef, QStringLiteral("track_loop.ogg#3000-6000"));
-        QVERIFY(anon->rawSpeakerIds.contains(QStringLiteral("Beszélő 2")));
+        QVERIFY(anon->rawSpeakerIds.contains(QStringLiteral("speaker:2")));
         QVERIFY(known->sides.contains(processing::participants::kSideLoopback));
         const processing::ParticipantAnalysisFile file = processing::ParticipantAnalysisFile::load(m.folder);
         QCOMPARE(file.clusters.size(), 2);

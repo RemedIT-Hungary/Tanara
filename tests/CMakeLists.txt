@@ -60,7 +60,7 @@ foreach(t test_cli_voice_models test_cli_track_sides test_cli_person_tags test_c
 endforeach()
 
 # These tests check English renderings against the shipped i18n/tanara_en.ts.
-foreach(t test_evidence_text test_network_error_text test_settings_core test_participants_card)
+foreach(t test_evidence_text test_network_error_text test_settings_core test_participants_card test_speaker_keys)
     if(TARGET ${t})
         target_compile_definitions(${t} PRIVATE TANARA_EN_TS="${CMAKE_SOURCE_DIR}/i18n/tanara_en.ts")
     endif()

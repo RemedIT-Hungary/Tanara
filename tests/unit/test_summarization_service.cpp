@@ -202,7 +202,7 @@ class TestSummarizationService : public QObject {
         QJsonArray toks;
         const QStringList words{"Sziasztok,", " az", " árajánlatot", " Ödön", " küldi."};
         for (int i = 0; i < words.size(); ++i)
-            toks.append(QJsonObject{{"text", words[i]}, {"speaker", i < 3 ? "Beszélő 1" : "Beszélő 2"},
+            toks.append(QJsonObject{{"text", words[i]}, {"speaker", i < 3 ? "speaker:1" : "speaker:2"},
                                     {"startMs", i * 300}, {"endMs", i * 300 + 250}, {"confidence", 0.9},
                                     {"trackId", "mixdown"}});
         QFile f(QDir(m.folder).filePath(QStringLiteral("transcript.tokens.json")));
@@ -256,7 +256,7 @@ private slots:
         d.notesDir = m_tmp.filePath(QStringLiteral("notes%1").arg(m_n));
         d.resolveSpeakers = [](MergedTranscript& mt, const Meeting&) {
             for (TranscriptToken& t : mt.tokens)
-                if (t.speaker == QStringLiteral("Beszélő 1")) t.speaker = QStringLiteral("Zénó");
+                if (t.speaker == QStringLiteral("speaker:1")) t.speaker = QStringLiteral("Zénó");
         };
         m_svc = std::make_unique<SummarizationService>(d);
         connect(m_svc.get(), &SummarizationService::errorOccurred, this, [this](const QString& e) { m_errors << e; });

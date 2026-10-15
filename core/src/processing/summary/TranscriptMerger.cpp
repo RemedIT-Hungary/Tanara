@@ -1,4 +1,5 @@
 #include "tanara/processing/summary/TranscriptMerger.h"
+#include "tanara/domain/SpeakerText.h"
 #include "tanara/foundation/time/TimeFormat.h"
 #include "tanara/processing/stt/SonioxTiming.h"
 
@@ -43,11 +44,13 @@ QString formatTimestamp(qint64 ms) {
 } // namespace
 
 QString renderUtterancesMarkdown(const QVector<Utterance>& utterances) {
-    // Format: `[mm:ss]` **Speaker** text, timestamp FIRST (searchable by time).
+    // Format: `[mm:ss]` **Speaker** text, timestamp FIRST (searchable by time). A raw speaker key still on a
+    // line is rendered in the UI language (transcript.md); the LLM input arrives with its labels already in
+    // the summary language (applyPromptSpeakerLabels), which this leaves unchanged.
     QStringList paragraphs;
     for (const Utterance& u : utterances)
         paragraphs << QStringLiteral("`[%1]` **%2** %3")
-                          .arg(formatTimestamp(u.startMs), u.speaker, u.text);
+                          .arg(formatTimestamp(u.startMs), speakerLabelText(u.speaker), u.text);
     return paragraphs.join(QStringLiteral("\n\n"));
 }
 

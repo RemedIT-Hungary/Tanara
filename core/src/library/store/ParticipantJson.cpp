@@ -1,4 +1,5 @@
 #include "tanara/library/store/ParticipantJson.h"
+#include "tanara/domain/SpeakerKeys.h"
 
 #include "tanara/domain/EvidenceKeys.h"
 
@@ -230,7 +231,7 @@ Participant participantFromJson(const QJsonObject& o)
     Participant p;
     p.id            = o.value(QStringLiteral("id")).toString();
     p.personId      = PersonId::fromString(o.value(QStringLiteral("personId")).toString());
-    p.rawSpeakerIds = arrayToStringList(o.value(QStringLiteral("rawSpeakerIds")).toArray());
+    p.rawSpeakerIds = speakerkeys::normalizeSpeakerLabels(arrayToStringList(o.value(QStringLiteral("rawSpeakerIds")).toArray()));
     p.source        = participantSourceFromName(o.value(QStringLiteral("source")).toString());
     p.approved      = o.value(QStringLiteral("approved")).toBool();
     p.namedByHand   = o.value(QStringLiteral("namedByHand")).toBool();
@@ -276,7 +277,7 @@ ParticipantApproval participantApprovalFromJson(const QJsonObject& o)
         c.personId      = PersonId::fromString(co.value(QStringLiteral("personId")).toString());
         c.group         = participantGroupFromName(co.value(QStringLiteral("group")).toString());
         c.checked       = co.value(QStringLiteral("checked")).toBool();
-        c.rawSpeakerIds = arrayToStringList(co.value(QStringLiteral("rawSpeakerIds")).toArray());
+        c.rawSpeakerIds = speakerkeys::normalizeSpeakerLabels(arrayToStringList(co.value(QStringLiteral("rawSpeakerIds")).toArray()));
         a.candidates.append(c);
     }
     a.skipped = o.value(QStringLiteral("skipped")).toBool();

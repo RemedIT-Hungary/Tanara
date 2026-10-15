@@ -1,12 +1,12 @@
 #pragma once
 //
 // DiarizationMerge (D4): the local diarization's speaker turns written into a transcript whose STT gave no
-// speaker separation (Whisper: every token "Beszélő 1"; a non-diarizing Tanara Cloud tier). Pure functions,
+// speaker separation (Whisper: every token "speaker:1"; a non-diarizing Tanara Cloud tier). Pure functions,
 // no I/O; unit-tested in test_diarization_merge.
 //
 // Rules (kept deliberately simple):
 //   1. Applies only when the transcript has at most ONE distinct speaker label (needsSpeakers); a transcript
-//      the provider diarized (Soniox: "Beszélő 1", "Beszélő 2" ...) is left untouched.
+//      the provider diarized (Soniox: "speaker:1", "speaker:2" ...) is left untouched.
 //   2. Token -> speaker: the (track, speaker) whose turns overlap the token's [startMs, endMs] the longest
 //      (a zero-length token counts as 1 ms at its start). No overlap: the nearest turn within snapMs; else
 //      undecided.
@@ -18,7 +18,7 @@
 //      previous run, at the block's start the next one). A block that is a single short run keeps its own
 //      speaker (a backchannel "igen" between pauses is not swallowed). The line split itself follows from
 //      MergedTranscript::segments() (a speaker change starts a new line).
-//   5. Labels: the existing raw-speaker convention, "Beszélő N" (N from 1 in the order of the speakers'
+//   5. Labels: the raw speaker key, "speaker:N" (domain/SpeakerKeys.h) (N from 1 in the order of the speakers'
 //      first token), so identification, the editor, the review and the participant code work unchanged.
 //      Speakers of different tracks are different raw speakers (no cross-track matching).
 //
@@ -42,7 +42,7 @@ struct Options {
 // The transcript metadata value of MergedTranscript::speakerSource after a merge.
 inline const QString kSourceLocalDiarization = QStringLiteral("local-diarization");
 
-// The raw label of the n-th speaker (1-based): "Beszélő n" (the TranscriptionService convention).
+// The raw label of the n-th speaker (1-based): "speaker:n" (speakerkeys::rawSpeakerKey).
 QString rawLabel(int n);
 // The key of a diarized speaker: "<trackId>#<index>".
 QString speakerKey(const QString& trackId, int index);

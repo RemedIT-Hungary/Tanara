@@ -1,4 +1,5 @@
 #include "tanara/editing/session/SpeakerOverlay.h"
+#include "tanara/domain/SpeakerText.h"
 #include "tanara/library/store/TranscriptRepository.h"
 #include "tanara/library/MeetingLayout.h"
 
@@ -111,8 +112,8 @@ PersonId speakerPerson(const SpeakerOverlay& ov, const QMap<QString, PersonId>& 
     return speakerMap.value(key);
 }
 
-QString speakerDisplayName(const SpeakerOverlay& ov, const QMap<QString, PersonId>& speakerMap,
-                           const PersonNames& names, const QString& key)
+QString speakerResolvedName(const SpeakerOverlay& ov, const QMap<QString, PersonId>& speakerMap,
+                            const PersonNames& names, const QString& key)
 {
     if (isParticipantKey(key)) {
         const OverlayParticipant* p = ov.participant(key);
@@ -120,6 +121,12 @@ QString speakerDisplayName(const SpeakerOverlay& ov, const QMap<QString, PersonI
         return personName(names, p->personId, p->label);
     }
     return personName(names, speakerMap.value(key), key);
+}
+
+QString speakerDisplayName(const SpeakerOverlay& ov, const QMap<QString, PersonId>& speakerMap,
+                           const PersonNames& names, const QString& key)
+{
+    return speakerLabelText(speakerResolvedName(ov, speakerMap, names, key));
 }
 
 void applyResolvedSpeakers(MergedTranscript& mt, const Meeting& m, const PersonNames& names)
@@ -143,7 +150,7 @@ void applyResolvedSpeakers(MergedTranscript& mt, const Meeting& m, const PersonN
     QHash<QString, QVector<Span>> byRaw;
     for (const TranscriptLine& l : lines) {
         const QString key = resolveSpeakerKey(ov, l);
-        byRaw[l.rawLabel].append({l.startMs, l.endMs, speakerDisplayName(ov, m.speakerMap, names, key)});
+        byRaw[l.rawLabel].append({l.startMs, l.endMs, speakerResolvedName(ov, m.speakerMap, names, key)});
     }
     for (auto it = byRaw.begin(); it != byRaw.end(); ++it)
         std::sort(it->begin(), it->end(),
@@ -167,7 +174,7 @@ void applyResolvedSpeakers(MergedTranscript& mt, const Meeting& m, const PersonN
         } else {
             // A token not attachable to a line (e.g. an empty-text, skipped block): speaker level.
             const QString key = ov.merged.value(raw, raw);
-            t.speaker = speakerDisplayName(ov, m.speakerMap, names, key);
+            t.speaker = speakerResolvedName(ov, m.speakerMap, names, key);
         }
     }
 }
@@ -253,7 +260,7 @@ QVector<tanara::summarysrc::SourceLine> resolvedSourceLines(const Meeting& m, co
         sl.startMs = l.startMs;
         sl.endMs = l.endMs;
         sl.speakerKey = resolveSpeakerKey(ov, l);
-        sl.speakerName = speakerDisplayName(ov, m.speakerMap, names, sl.speakerKey);
+        sl.speakerName = speakerResolvedName(ov, m.speakerMap, names, sl.speakerKey);   // neutral: rendered at display
         out.append(sl);
     }
     return out;

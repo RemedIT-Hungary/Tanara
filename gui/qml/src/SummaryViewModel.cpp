@@ -5,6 +5,7 @@
 #include "JobSupport.h"
 #include "SummaryProgress.h"
 
+#include "tanara/domain/SpeakerText.h"
 #include "tanara/cloud/CloudTypes.h"
 #include "tanara/library/summary/SummaryRepository.h"
 #include "tanara/processing/summary/SummarySources.h"
@@ -672,7 +673,7 @@ QVariantMap SummaryViewModel::memoMapFor(const MemoSection& sec, int index) cons
                                        : StatementListModel::stamp(start));
     QStringList names;
     for (const QString& n : sec.speakers)
-        if (!n.trimmed().isEmpty()) names << n.trimmed();
+        if (!n.trimmed().isEmpty()) names << tanara::speakerLabelText(n.trimmed());   // a raw key in the UI language
     map.insert(QStringLiteral("speakers"), speakerChips(names));
     map.insert(QStringLiteral("speakersText"), names.join(QStringLiteral(" · ")));
     return map;

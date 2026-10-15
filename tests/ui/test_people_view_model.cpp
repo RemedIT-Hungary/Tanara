@@ -136,13 +136,13 @@ class TestPeopleViewModel : public QObject {
     void scenario(Meeting* first = nullptr, Meeting* second = nullptr)
     {
         const Meeting a = addMeeting("Partnerdemó – adatimport", QDate(2026, 9, 24),
-            {{0, 60000, "Beszélő 1"}, {61000, 120000, "Beszélő 2"}},
-            {{"Beszélő 1", kGergely}, {"Beszélő 2", kEszter}}, true);
+            {{0, 60000, "speaker:1"}, {61000, 120000, "speaker:2"}},
+            {{"speaker:1", kGergely}, {"speaker:2", kEszter}}, true);
         const Meeting b = addMeeting("Heti egyeztetés", QDate(2026, 10, 1),
-            {{0, 600000, "Beszélő 1"}, {601000, 5000, "Beszélő 2"}, {607000, 5000, "Beszélő 2"},
-             {613000, 5000, "Beszélő 2"}, {619000, 5000, "Beszélő 2"}},
-            {{"Beszélő 1", kGergely}, {"Beszélő 2", kEszter}}, true);
-        addMeeting("Régi hívás", QDate(2026, 8, 3), {{0, 30000, "Beszélő 1"}}, {{"Beszélő 1", kGergo}});
+            {{0, 600000, "speaker:1"}, {601000, 5000, "speaker:2"}, {607000, 5000, "speaker:2"},
+             {613000, 5000, "speaker:2"}, {619000, 5000, "speaker:2"}},
+            {{"speaker:1", kGergely}, {"speaker:2", kEszter}}, true);
+        addMeeting("Régi hívás", QDate(2026, 8, 3), {{0, 30000, "speaker:1"}}, {{"speaker:1", kGergo}});
         m_app->voiceprints()->addPrint(id(kGergely), print("g1", {1, 0, 0}, a.id));
         m_app->voiceprints()->addPrint(id(kGergely), print("g2", {0, 1, 0}, b.id));
         m_app->voiceprints()->addPrint(id(kGergo), print("o1", {0.6f, 0.8f, 0}, a.id));
@@ -483,14 +483,14 @@ private slots:
         QCOMPARE(vm.rename("Bárány Gergő"), QString());
         QCOMPARE(vm.selectedName(), QStringLiteral("Bárány Gergő"));
         QCOMPARE(vm.aliases(), QStringList{kGergely});
-        QCOMPARE(m_app->people()->displayName(m_app->store()->load(a.id).speakerMap.value("Beszélő 1")), QStringLiteral("Bárány Gergő"));
+        QCOMPARE(m_app->people()->displayName(m_app->store()->load(a.id).speakerMap.value("speaker:1")), QStringLiteral("Bárány Gergő"));
         QCOMPARE(toast.last().at(0).toString(), QStringLiteral("Átnevezve: Bárány Gergő"));
         QCOMPARE(toast.last().at(1).toBool(), true);
         QVERIFY(vm.canUndo());
         vm.undo();
         QCOMPARE(vm.selectedName(), kGergely);
         QVERIFY(vm.aliases().isEmpty());
-        QCOMPARE(m_app->people()->displayName(m_app->store()->load(a.id).speakerMap.value("Beszélő 1")), kGergely);
+        QCOMPARE(m_app->people()->displayName(m_app->store()->load(a.id).speakerMap.value("speaker:1")), kGergely);
         QCOMPARE(toast.last().at(1).toBool(), false);
         QVERIFY(!vm.canUndo());
 

@@ -16,6 +16,8 @@
 //   1. the user override stored in Settings (handled by AppController, not here),
 //   2. <dataDir>/prompts/<id>.md: tunable by hand, WITHOUT REBUILDING,
 //   3. the built-in default compiled into the code (promptBuiltin).
+#include "tanara/domain/Transcript.h"
+
 #include <QString>
 #include <QStringList>
 #include <QVector>
@@ -33,11 +35,20 @@ QString promptFilePath(const QString& id, const QString& dataDir = QString());
 QString promptDefault(const QString& id, const QString& dataDir = QString());
 
 // Applies the summary's TARGET LANGUAGE to a system prompt:
-//  - replaces {{LANGUAGE}} with the English language name (summaryLanguageName) and {{NYELV}}
-//    with the setting's text,
+//  - replaces {{LANGUAGE}} with the English language name (summaryLanguageName), {{NYELV}}
+//    with the setting's text and {{SPEAKER_LABEL}} with an example raw-speaker label (promptSpeakerLabel),
 //  - for a custom prompt without placeholders and a non-Hungarian target, appends a directive.
 // Empty language = "magyar". The Hungarian section headings (decisions / action items) stay Hungarian.
 QString applySummaryLanguage(QString prompt, const QString& language);
+
+// The label of a raw speaker key ("speaker:2", domain/SpeakerKeys.h) in the LLM input: in the summary
+// language ("Beszélő 2" for a Hungarian summary, "Speaker 2" otherwise), independent of the UI language.
+// Anything that is not a raw key (a person's name) is returned unchanged. The built-in prompts explain the
+// label through the {{SPEAKER_LABEL}} variable (applySummaryLanguage), rendered by this same function, so
+// the explanation and the transcript cannot diverge.
+QString promptSpeakerLabel(const QString& rawKey, const QString& language);
+// promptSpeakerLabel on every token's speaker (after the names were resolved): the transcript sent to the LLM.
+void applyPromptSpeakerLabels(MergedTranscript& transcript, const QString& language);
 
 // English name of the target language (the user's free text, e.g. the Hungarian or German word) for the
 // English prompts: maps common languages (e.g. the Hungarian word for Hungarian -> "Hungarian"), returns anything else unchanged.

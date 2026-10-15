@@ -315,21 +315,21 @@ void ParticipantsTest::bindRawSpeakersByOverlap()
     ps[1].id = QStringLiteral("v2"); ps[1].personId = P(QStringLiteral("Béla"));
     VoiceCluster a; a.participantId = "v1"; a.side = processing::participants::kSideMic; a.windows = {{0, 8000}, {20000, 28000}};
     VoiceCluster b; b.participantId = "v2"; b.side = processing::participants::kSideLoopback; b.windows = {{9000, 18000}};
-    const QVector<TranscriptLine> lines = {line("Beszélő 1", 1000, 7000), line("Beszélő 2", 9500, 15500),
-                                           line("Beszélő 1", 21000, 27000), line("Beszélő 3", 40000, 41000)};
+    const QVector<TranscriptLine> lines = {line("speaker:1", 1000, 7000), line("speaker:2", 9500, 15500),
+                                           line("speaker:1", 21000, 27000), line("speaker:3", 40000, 41000)};
     QVERIFY(processing::participants::bindRawSpeakers(ps, {a, b}, lines));
-    QCOMPARE(ps[0].rawSpeakerIds, QStringList({"Beszélő 1"}));
-    QCOMPARE(ps[1].rawSpeakerIds, QStringList({"Beszélő 2"}));   // nothing covers the 3rd speaker
+    QCOMPARE(ps[0].rawSpeakerIds, QStringList({"speaker:1"}));
+    QCOMPARE(ps[1].rawSpeakerIds, QStringList({"speaker:2"}));   // nothing covers the 3rd speaker
     QVERIFY(qAbs(ps[0].talkShare - 12.0 / 19.0) < 1e-9);
     QVERIFY(!processing::participants::bindRawSpeakers(ps, {a, b}, lines));   // unchanged
 
     // Approval: only Ádám checked, so Speaker 1 is Ádám; Béla's raw speaker stays anonymous.
     const QVector<SpeakerBinding> bind = processing::participants::approvalBindings(ps, {"v1"}, lines, {a, b}, nullptr);
     QCOMPARE(bind.size(), 2);
-    QCOMPARE(bind[0].rawLabel, QStringLiteral("Beszélő 1"));
+    QCOMPARE(bind[0].rawLabel, QStringLiteral("speaker:1"));
     QCOMPARE(bind[0].personId, P(QStringLiteral("Ádám")));
     QVERIFY(bind[0].utteranceIds.isEmpty());
-    QCOMPARE(bind[1].rawLabel, QStringLiteral("Beszélő 2"));
+    QCOMPARE(bind[1].rawLabel, QStringLiteral("speaker:2"));
     QVERIFY(bind[1].personId.isNull());
 }
 
@@ -342,16 +342,16 @@ void ParticipantsTest::approvalSideVetoSplitsBySide()
     m.tracks = {track("mic", TrackKind::Mic, "mic.wav"), track("loop", TrackKind::Loopback, "loop.wav")};
     QVector<Participant> ps(2);
     ps[0].id = QStringLiteral("v1"); ps[0].personId = P(QStringLiteral("Ádám"));
-    ps[0].rawSpeakerIds = {QStringLiteral("Beszélő 1")};
+    ps[0].rawSpeakerIds = {QStringLiteral("speaker:1")};
     ps[1].id = QStringLiteral("v2"); ps[1].personId = P(QStringLiteral("Béla"));
-    ps[1].rawSpeakerIds = {QStringLiteral("Beszélő 2")};
+    ps[1].rawSpeakerIds = {QStringLiteral("speaker:2")};
     VoiceCluster a; a.participantId = "v1"; a.side = processing::participants::kSideMic; a.windows = {{0, 8000}, {20000, 28000}};
     VoiceCluster b; b.participantId = "v2"; b.side = processing::participants::kSideLoopback; b.windows = {{9000, 18000}, {40000, 44000}};
     // The diarization left two call lines under Ádám's name: one is Béla's voice (its cluster
     // covers it), the other is covered by no known person.
-    const QVector<TranscriptLine> lines = {line("Beszélő 1", 1000, 7000), line("Beszélő 1", 9500, 15500),
-                                           line("Beszélő 1", 21000, 27000), line("Beszélő 1", 30000, 34000),
-                                           line("Beszélő 2", 40000, 44000)};
+    const QVector<TranscriptLine> lines = {line("speaker:1", 1000, 7000), line("speaker:1", 9500, 15500),
+                                           line("speaker:1", 21000, 27000), line("speaker:1", 30000, 34000),
+                                           line("speaker:2", 40000, 44000)};
     MeetingActivity act;
     act.tracks = {activity("mic", TrackKind::Mic, 50, {{1, 7}, {21, 27}}),
                   activity("loop", TrackKind::Loopback, 50, {{9, 16}, {30, 34}, {40, 44}})};
@@ -370,13 +370,13 @@ void ParticipantsTest::approvalSideVetoSplitsBySide()
     ps[1].tracks = {QStringLiteral("loop")};
     bind = processing::participants::approvalBindings(ps, {"v1", "v2"}, lines, {a, b}, &act, &m);
     QCOMPARE(bind.size(), 4);
-    QCOMPARE(bind[0].rawLabel, QStringLiteral("Beszélő 1"));
+    QCOMPARE(bind[0].rawLabel, QStringLiteral("speaker:1"));
     QVERIFY(bind[0].personId.isNull() && bind[0].utteranceIds.isEmpty());
     QCOMPARE(bind[1].personId, P(QStringLiteral("Ádám")));
     QCOMPARE(bind[1].utteranceIds, QStringList({"u1000", "u21000"}));
     QCOMPARE(bind[2].personId, P(QStringLiteral("Béla")));
     QCOMPARE(bind[2].utteranceIds, QStringList({"u9500"}));
-    QCOMPARE(bind[3].rawLabel, QStringLiteral("Beszélő 2"));
+    QCOMPARE(bind[3].rawLabel, QStringLiteral("speaker:2"));
     QCOMPARE(bind[3].personId, P(QStringLiteral("Béla")));
     QVERIFY(bind[3].utteranceIds.isEmpty());
 
@@ -400,14 +400,14 @@ void ParticipantsTest::twoSidedRawSpeakerIsSplit()
     VoiceCluster a; a.participantId = "v1"; a.side = processing::participants::kSideMic; a.windows = {{0, 8000}, {20000, 28000}};
     VoiceCluster b; b.participantId = "v2"; b.side = processing::participants::kSideLoopback; b.windows = {{9000, 18000}};
     // The diarization took Ádám and Béla as one speaker ("Speaker 1"), the 2nd speaker is Ádám.
-    const QVector<TranscriptLine> lines = {line("Beszélő 1", 1000, 7000), line("Beszélő 1", 9500, 15500),
-                                           line("Beszélő 2", 21000, 27000), line("Beszélő 1", 30000, 31000)};
+    const QVector<TranscriptLine> lines = {line("speaker:1", 1000, 7000), line("speaker:1", 9500, 15500),
+                                           line("speaker:2", 21000, 27000), line("speaker:1", 30000, 31000)};
     QVERIFY(processing::participants::bindRawSpeakers(ps, {a, b}, lines));
-    QCOMPARE(ps[0].rawSpeakerIds, QStringList({"Beszélő 1@mic", "Beszélő 2"}));
-    QCOMPARE(ps[1].rawSpeakerIds, QStringList({"Beszélő 1@loopback"}));
+    QCOMPARE(ps[0].rawSpeakerIds, QStringList({"speaker:1@mic", "speaker:2"}));
+    QCOMPARE(ps[1].rawSpeakerIds, QStringList({"speaker:1@loopback"}));
     QCOMPARE(processing::participants::rawDisplay(ps[1].rawSpeakerIds.first()), QStringLiteral("Beszélő 1 · hívás"));
     QCOMPARE(processing::participants::rawDisplay(ps[0].rawSpeakerIds.first()), QStringLiteral("Beszélő 1 · mikrofon"));
-    QCOMPARE(processing::participants::rawDisplay(QStringLiteral("Beszélő 2")), QStringLiteral("Beszélő 2"));
+    QCOMPARE(processing::participants::rawDisplay(QStringLiteral("speaker:2")), QStringLiteral("Beszélő 2"));
 
     // Approval for both: Speaker 1's lines by side; the undecidable line (30 s) goes to the
     // bigger side (here equal, so the microphone).
@@ -415,7 +415,7 @@ void ParticipantsTest::twoSidedRawSpeakerIsSplit()
     QCOMPARE(bind.size(), 3);
     QCOMPARE(bind[0].personId, P(QStringLiteral("Ádám")));
     QCOMPARE(bind[0].utteranceIds, QStringList({"u1000", "u30000"}));
-    QCOMPARE(bind[1].rawLabel, QStringLiteral("Beszélő 2"));
+    QCOMPARE(bind[1].rawLabel, QStringLiteral("speaker:2"));
     QVERIFY(bind[1].utteranceIds.isEmpty());
     QCOMPARE(bind[2].personId, P(QStringLiteral("Béla")));
     QCOMPARE(bind[2].utteranceIds, QStringList({"u9500"}));
@@ -440,7 +440,7 @@ void ParticipantsTest::meetingJsonRoundTrip()
     Participant p;
     p.id = QStringLiteral("v1");
     p.personId = P(QStringLiteral("Béla"));
-    p.rawSpeakerIds = {QStringLiteral("Beszélő 1@loopback")};
+    p.rawSpeakerIds = {QStringLiteral("speaker:1@loopback")};
     p.source = ParticipantSource::Voice;
     p.approved = true;
     p.sides = {processing::participants::kSideLoopback};

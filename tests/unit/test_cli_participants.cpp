@@ -61,7 +61,7 @@ private slots:
                                               {"active", false}, {"excludedReason", "noSpeech"}, {"speechRatio", 0.0}}}},
             {"participants", QJsonArray{
                 QJsonObject{{"id", "v1"}, {"personId", "p-tester"}, {"source", "voice"}, {"sides", QJsonArray{"mic"}},
-                            {"rawSpeakerIds", QJsonArray{"Beszélő 1@mic"}}, {"evidence", QJsonArray{voice, side}},
+                            {"rawSpeakerIds", QJsonArray{"speaker:1@mic"}}, {"evidence", QJsonArray{voice, side}},
                             {"talkShare", 0.6}},
                 QJsonObject{{"id", "v2"}, {"source", "voice"}, {"sides", QJsonArray{"loopback"}},
                             {"evidence", QJsonArray{QJsonObject{{"kind", "voice"}, {"polarity", "neutral"},
@@ -85,7 +85,7 @@ private slots:
         const Run t = cli({"participants", dir.path()});
         QCOMPARE(t.code, 0);
         QVERIFY(t.out.contains("SURE (1)"));
-        QVERIFY(t.out.contains("Beszélő 1 · microphone"));
+        QVERIFY(t.out.contains("Speaker 1 · microphone"));
         QVERIFY(t.out.contains("excluded (noSpeech)"));
         QCOMPARE(readAll(meetingJson), before);   // reads only
 
@@ -108,10 +108,10 @@ private slots:
         QVERIFY(f.open(QIODevice::WriteOnly));
         f.write(QJsonDocument(QJsonObject{
             {"version", 3}, {"id", "p-2"}, {"title", "P"},
-            {"speakerMap", QJsonObject{{"Beszélő 1", "p-tester"}, {"Beszélő 2", "p-other"}}},
+            {"speakerMap", QJsonObject{{"speaker:1", "p-tester"}, {"speaker:2", "p-other"}}},
             {"participants", QJsonArray{
                 QJsonObject{{"id", "v1"}, {"personId", "p-tester"}, {"source", "voice"},
-                            {"rawSpeakerIds", QJsonArray{"Beszélő 1@mic"}}, {"approved", true}},
+                            {"rawSpeakerIds", QJsonArray{"speaker:1@mic"}}, {"approved", true}},
                 QJsonObject{{"id", "m-1"}, {"personId", "p-other"}, {"source", "manual"}}}},
             {"participantApproval", QJsonObject{{"at", "2026-10-11T10:00:00"},
                 {"candidates", QJsonArray{QJsonObject{{"participantId", "v1"}, {"personId", "p-tester"}, {"checked", true}},
@@ -134,8 +134,8 @@ private slots:
         QCOMPARE(ps[0].toObject().value("id").toString(), QStringLiteral("m-1"));
         const QJsonArray cand = m.value("participantApproval").toObject().value("candidates").toArray();
         QCOMPARE(cand.size(), 1);
-        QVERIFY(!m.value("speakerMap").toObject().contains("Beszélő 1"));
-        QCOMPARE(m.value("speakerMap").toObject().value("Beszélő 2").toString(), QStringLiteral("p-other"));
+        QVERIFY(!m.value("speakerMap").toObject().contains("speaker:1"));
+        QCOMPARE(m.value("speakerMap").toObject().value("speaker:2").toString(), QStringLiteral("p-other"));
     }
 
 private:

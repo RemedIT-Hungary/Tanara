@@ -334,7 +334,7 @@ private slots:
         QCOMPARE(vm.promptGroup(), QStringLiteral("quick"));
         QCOMPARE(vm.schemaKind(), QStringLiteral("json"));
         QVERIFY(vm.schemaBody().contains(QStringLiteral("actionItems")));
-        QCOMPARE(vm.promptVariables().size(), 2);          // only what the code really replaces ({{LANGUAGE}}, {{NYELV}})
+        QCOMPARE(vm.promptVariables().size(), 3);          // only what the code really replaces ({{LANGUAGE}}, {{NYELV}}, {{SPEAKER_LABEL}})
 
         // In demo mode saving happens only in memory.
         vm.setDemoState(QStringLiteral("dirty"));

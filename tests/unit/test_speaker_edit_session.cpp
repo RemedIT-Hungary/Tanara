@@ -24,8 +24,8 @@ using namespace tanara;
 
 namespace {
 
-const QString kS1 = QStringLiteral("Beszélő 1");
-const QString kS2 = QStringLiteral("Beszélő 2");
+const QString kS1 = QStringLiteral("speaker:1");
+const QString kS2 = QStringLiteral("speaker:2");
 
 // 6 lines: Speaker 1 on the even ones, Speaker 2 on the odd ones.
 QString uid(int row) { return QStringLiteral("u%1").arg(qint64(row) * 5000); }

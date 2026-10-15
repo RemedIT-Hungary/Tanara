@@ -556,10 +556,10 @@ void SummarySourcesTest::serviceMergeWithMarkers()
     req.transcript = transcriptAt(mins);
     req.language = QStringLiteral("magyar");
     req.model = QStringLiteral("teszt");
-    req.sourceLines = {line(QStringLiteral("u0"), 0, 20000, QStringLiteral("Beszélő 1"), QStringLiteral("Fehér Gábor")),
-                       line(QStringLiteral("u180000"), 180000, 200000, QStringLiteral("Beszélő 2"), QStringLiteral("Varga Árpád")),
-                       line(QStringLiteral("u900000"), 900000, 920000, QStringLiteral("Beszélő 1"), QStringLiteral("Fehér Gábor")),
-                       line(QStringLiteral("u960000"), 960000, 980000, QStringLiteral("Beszélő 2"), QStringLiteral("Varga Árpád"))};
+    req.sourceLines = {line(QStringLiteral("u0"), 0, 20000, QStringLiteral("speaker:1"), QStringLiteral("Fehér Gábor")),
+                       line(QStringLiteral("u180000"), 180000, 200000, QStringLiteral("speaker:2"), QStringLiteral("Varga Árpád")),
+                       line(QStringLiteral("u900000"), 900000, 920000, QStringLiteral("speaker:1"), QStringLiteral("Fehér Gábor")),
+                       line(QStringLiteral("u960000"), 960000, 980000, QStringLiteral("speaker:2"), QStringLiteral("Varga Árpád"))};
     svc.summarize(req);
     QVERIFY(ready.wait(3000));
     QCOMPARE(llm.requests.size(), 3);
@@ -570,7 +570,7 @@ void SummarySourcesTest::serviceMergeWithMarkers()
     QCOMPARE(s.statements[0].sourceSpans.size(), 2);
     QCOMPARE(s.statements[1].sourceSpans.value(0).utteranceIds, QStringList{QStringLiteral("u960000")});
     QCOMPARE(s.statements[2].sourceSpans.value(0).utteranceIds, QStringList{QStringLiteral("u180000")});
-    QCOMPARE(s.sourceSpeakers.value(QStringLiteral("u180000")).key, QStringLiteral("Beszélő 2"));
+    QCOMPARE(s.sourceSpeakers.value(QStringLiteral("u180000")).key, QStringLiteral("speaker:2"));
     QCOMPARE(s.memo.value(0).speakers,
              QStringList({QStringLiteral("Fehér Gábor"), QStringLiteral("Varga Árpád")}));
 }
@@ -706,16 +706,16 @@ void SummarySourcesTest::targetedStalenessPure()
     ai.text = QStringLiteral("Ajánlat [t=01:10]");
     ai.owner = QStringLiteral("Fehér Gábor");
     s.actionItems = {ai};
-    processing::summarysrc::attachSources(s, {line(QStringLiteral("u60000"), 60000, 80000, QStringLiteral("Beszélő 1"), QStringLiteral("Fehér Gábor")),
-                      line(QStringLiteral("u120000"), 120000, 150000, QStringLiteral("Beszélő 2"), QStringLiteral("Varga Árpád"))});
+    processing::summarysrc::attachSources(s, {line(QStringLiteral("u60000"), 60000, 80000, QStringLiteral("speaker:1"), QStringLiteral("Fehér Gábor")),
+                      line(QStringLiteral("u120000"), 120000, 150000, QStringLiteral("speaker:2"), QStringLiteral("Varga Árpád"))});
 
     // Now: the u60000 line became Varga Árpád's (a manual reassignment to Speaker 2).
     QHash<QString, SourceSpeaker> now{
-        {QStringLiteral("u60000"), {QStringLiteral("Beszélő 2"), QStringLiteral("Varga Árpád")}},
-        {QStringLiteral("u120000"), {QStringLiteral("Beszélő 2"), QStringLiteral("Varga Árpád")}}};
+        {QStringLiteral("u60000"), {QStringLiteral("speaker:2"), QStringLiteral("Varga Árpád")}},
+        {QStringLiteral("u120000"), {QStringLiteral("speaker:2"), QStringLiteral("Varga Árpád")}}};
     QVector<SummaryStatement> sts = s.statements;
     SummaryStaleInfo info;
-    summarysrc::applyTargetedStaleness(sts, s.sourceSpeakers, now, {QStringLiteral("Beszélő 2")}, info);
+    summarysrc::applyTargetedStaleness(sts, s.sourceSpeakers, now, {QStringLiteral("speaker:2")}, info);
     QVERIFY(info.targeted);
     QCOMPARE(info.affectedStatements, 2);     // s1 + d1
     QCOMPARE(info.affectedTodos, 1);          // t1
@@ -734,12 +734,12 @@ void SummarySourcesTest::targetedStalenessPure()
     QCOMPARE(ok.affectedStatements + ok.affectedTodos, 0);
     // Fixing another speaker does not affect these lines.
     SummaryStaleInfo other;
-    applyTargetedStaleness(sts, s.sourceSpeakers, now, {QStringLiteral("Beszélő 7")}, other);
+    applyTargetedStaleness(sts, s.sourceSpeakers, now, {QStringLiteral("speaker:7")}, other);
     QCOMPARE(other.affectedStatements + other.affectedTodos, 0);
     // For claims without a source there is no targeted flag (the whole-document flag is the fallback).
     QVector<SummaryStatement> bare{SummaryStatement{}};
     SummaryStaleInfo fb;
-    applyTargetedStaleness(bare, {}, {}, {QStringLiteral("Beszélő 2")}, fb);
+    applyTargetedStaleness(bare, {}, {}, {QStringLiteral("speaker:2")}, fb);
     QVERIFY(!fb.targeted);
 }
 
@@ -752,9 +752,9 @@ void SummarySourcesTest::targetedStalenessFromOverlay()
     auto seg = [&](qint64 s, qint64 e, const char* sp) {
         segs.append(QJsonObject{{"startMs", double(s)}, {"endMs", double(e)}, {"speaker", sp}, {"text", "x"}});
     };
-    seg(60000, 80000, "Beszélő 1");
-    seg(120000, 150000, "Beszélő 2");
-    seg(300000, 310000, "Beszélő 1");
+    seg(60000, 80000, "speaker:1");
+    seg(120000, 150000, "speaker:2");
+    seg(300000, 310000, "speaker:1");
     QVERIFY(writeJson(editing::speakeredit::segmentsPath(dir.path()), QJsonDocument(segs)));
 
     Meeting m;
@@ -764,7 +764,7 @@ void SummarySourcesTest::targetedStalenessFromOverlay()
     const PersonId gabor = PersonId::fromString(QStringLiteral("p-gabor"));
     const PersonId arpad = PersonId::fromString(QStringLiteral("p-arpad"));
     const PersonNames names{{gabor, QStringLiteral("Fehér Gábor")}, {arpad, QStringLiteral("Varga Árpád")}};
-    m.speakerMap = {{QStringLiteral("Beszélő 1"), gabor}, {QStringLiteral("Beszélő 2"), arpad}};
+    m.speakerMap = {{QStringLiteral("speaker:1"), gabor}, {QStringLiteral("speaker:2"), arpad}};
 
     // A summary with the current state (the speaker snapshot from resolvedSourceLines).
     const QVector<summarysrc::SourceLine> lines = editing::speakeredit::resolvedSourceLines(m, names);
@@ -793,10 +793,10 @@ void SummarySourcesTest::targetedStalenessFromOverlay()
     SpeakerOverlay ov;
     ov.transcriptFingerprint = editing::speakeredit::transcriptFingerprint(editing::speakeredit::loadTranscriptLines(dir.path()));
     OverlayUtterance ou;
-    ou.speaker = QStringLiteral("Beszélő 2");
+    ou.speaker = QStringLiteral("speaker:2");
     ou.corrected = true;
     ov.utterances.insert(QStringLiteral("u300000"), ou);
-    ov.changedSinceSummary = {QStringLiteral("Beszélő 1"), QStringLiteral("Beszélő 2")};
+    ov.changedSinceSummary = {QStringLiteral("speaker:1"), QStringLiteral("speaker:2")};
     QVERIFY(editing::speakeredit::saveOverlay(dir.path(), ov));
 
     SummaryStaleInfo info = editing::speakeredit::summaryStale(m);

@@ -8,6 +8,7 @@
 #include "TagBackend.h"
 #include "TagsViewModel.h"
 
+#include "tanara/domain/SpeakerText.h"
 #include "tanara/foundation/text/Text.h"
 #include "tanara/library/people/IPeopleFacade.h"
 #include "tanara/processing/voiceid/VoiceModelRegistry.h"
@@ -1019,7 +1020,7 @@ QString PeopleViewModel::deleteText(bool keepSamples) const
         parts << tr("Egy megbeszélésen sem szerepel.");
     else if (!p.exampleLabel.isEmpty())
         parts << tr("%n megbeszélésen névtelen beszélőként marad meg (pl. „%1”), a szöveg nem változik.", "",
-                    p.meetingCount).arg(p.exampleLabel);
+                    p.meetingCount).arg(tanara::speakerLabelText(p.exampleLabel));   // a raw key in the UI language
     else
         parts << tr("%n megbeszélésen névtelen beszélőként marad meg, a szöveg nem változik.", "",
                     p.meetingCount);

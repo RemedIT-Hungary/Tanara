@@ -34,8 +34,8 @@ using namespace tanara;
 
 namespace {
 
-const QString kB1 = QStringLiteral("Beszélő 1");
-const QString kB2 = QStringLiteral("Beszélő 2");
+const QString kB1 = QStringLiteral("speaker:1");
+const QString kB2 = QStringLiteral("speaker:2");
 
 struct Row { qint64 startMs; qint64 durMs; QString raw; char voice; };
 
@@ -352,7 +352,7 @@ void SpeakerEditorTest::readModel_speakersAndUtterances()
     const QVector<editing::EditorSpeaker> sp = ed->speakers();
     QCOMPARE(sp.size(), 2);
     QCOMPARE(sp[0].key, kB1);
-    QCOMPARE(sp[0].displayName, kB1);       // anonymous: the raw label
+    QCOMPARE(sp[0].displayName, QStringLiteral("Beszélő 1"));   // anonymous: the raw key rendered
     QVERIFY(sp[0].anonymous);
     QCOMPARE(sp[0].colorIndex, 0);
     QCOMPARE(sp[0].utteranceCount, 11);
@@ -606,7 +606,7 @@ void SpeakerEditorTest::revertToAnonymous()
     QVERIFY(!ed->revertSpeakerToAnonymous(kB2));        // already anonymous
     QVERIFY(ed->revertSpeakerToAnonymous(kB1));
     QVERIFY(ed->speaker(kB1).anonymous);
-    QCOMPARE(ed->speaker(kB1).displayName, kB1);
+    QCOMPARE(ed->speaker(kB1).displayName, QStringLiteral("Beszélő 1"));
     QVERIFY(!fx.diskMap().contains(kB1));
     ed->undo();
     QCOMPARE(fx.nameOf(ed->speaker(kB1).personId), QStringLiteral("Anna"));

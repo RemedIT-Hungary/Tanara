@@ -444,7 +444,7 @@ void WorkflowsTest::readinessBlocksStart()
 void WorkflowsTest::retranscribeClearsNamesOnlyOnSuccess()
 {
     Meeting m = recorded(QStringLiteral("Újraátírás"), true);
-    m.speakerMap.insert(QStringLiteral("Beszélő 1"), PersonId::generate());
+    m.speakerMap.insert(QStringLiteral("speaker:1"), PersonId::generate());
     m_store->saveMeeting(m);
 
     // Cancelled: the names stay.
@@ -460,7 +460,7 @@ void WorkflowsTest::retranscribeClearsNamesOnlyOnSuccess()
 
     // A plain transcription of a meeting without a transcript keeps a pre-set map.
     Meeting k = recorded(QStringLiteral("Sima"), true);
-    k.speakerMap.insert(QStringLiteral("Beszélő 1"), PersonId::generate());
+    k.speakerMap.insert(QStringLiteral("speaker:1"), PersonId::generate());
     m_store->saveMeeting(k);
     runToStt(k.id);
     emit m_log->jobs.last()->finished(testing::sttResult({{"1", "Szia"}}));
@@ -634,7 +634,7 @@ void WorkflowsTest::localDiarizationAfterWhisper()
     QVERIFY(m_calls.indexOf(QStringLiteral("useDiarization:2")) >= 0);
     QVERIFY(m_calls.indexOf(QStringLiteral("useDiarization:2")) < m_calls.indexOf(QStringLiteral("apply")));
     QCOMPARE(tokenSpeakers(m_store->load(m.id)),
-             QStringList({"Beszélő 1", "Beszélő 1", "Beszélő 1", "Beszélő 2", "Beszélő 2", "Beszélő 2"}));
+             QStringList({"speaker:1", "speaker:1", "speaker:1", "speaker:2", "speaker:2", "speaker:2"}));
     const MergedTranscript t = library::TranscriptRepository::readTokens(m.folder);
     QCOMPARE(t.speakerSource, processing::diarizationmerge::kSourceLocalDiarization);
     QCOMPARE(t.speakerModels, QStringList({"fake-seg", "fake"}));
@@ -670,7 +670,7 @@ void WorkflowsTest::providerDiarizedSkipsLocal()
     QVERIFY(!m_stt->providerDiarized(k.id));
     QCOMPARE(m_diarCreated, 1);
     QTRY_VERIFY_WITH_TIMEOUT(m_calls.contains(QStringLiteral("identify:%1:1").arg(k.id)), 5000);
-    QCOMPARE(tokenSpeakers(m_store->load(k.id)).last(), QStringLiteral("Beszélő 2"));
+    QCOMPARE(tokenSpeakers(m_store->load(k.id)).last(), QStringLiteral("speaker:2"));
 }
 
 void WorkflowsTest::cancelDuringDiarize()
@@ -692,7 +692,7 @@ void WorkflowsTest::cancelDuringDiarize()
     QVERIFY(m_calls.filter(QStringLiteral("useDiarization")).isEmpty());
     // The transcript stays as the STT gave it.
     QVERIFY(m_store->load(m.id).hasTranscript);
-    QCOMPARE(tokenSpeakers(m_store->load(m.id)), QStringList(6, QStringLiteral("Beszélő 1")));
+    QCOMPARE(tokenSpeakers(m_store->load(m.id)), QStringList(6, QStringLiteral("speaker:1")));
     QVERIFY(!m_jobs->lastError(m.id, JobKind::Transcribe).isValid());
     QVERIFY(m_errors.isEmpty());
 }
@@ -739,7 +739,7 @@ void WorkflowsTest::diarizationOffOrFailing()
     m_fakeDiar->jobs.last()->failLater(providers::inputError(QStringLiteral("decode_failed"), QStringLiteral("x")));
     QTRY_VERIFY_WITH_TIMEOUT(m_calls.contains(QStringLiteral("identify:%1:1").arg(e.id)), 5000);
     QCOMPARE(m_jobs->job(e.id, JobKind::Transcribe).stage("diarize")->state, StageState::Failed);
-    QCOMPARE(tokenSpeakers(m_store->load(e.id)), QStringList(6, QStringLiteral("Beszélő 1")));
+    QCOMPARE(tokenSpeakers(m_store->load(e.id)), QStringList(6, QStringLiteral("speaker:1")));
     QVERIFY(m_errors.isEmpty());
 }
 
@@ -779,7 +779,7 @@ void WorkflowsTest::manualDiarizeSpeakers()
     QTRY_VERIFY_WITH_TIMEOUT(m_calls.contains(QStringLiteral("identify:%1:1").arg(m.id)), 5000);
     QVERIFY(m_calls.contains(QStringLiteral("useDiarization:2")));
     QCOMPARE(tokenSpeakers(m_store->load(m.id)),
-             QStringList({"Beszélő 1", "Beszélő 1", "Beszélő 1", "Beszélő 2", "Beszélő 2", "Beszélő 2"}));
+             QStringList({"speaker:1", "speaker:1", "speaker:1", "speaker:2", "speaker:2", "speaker:2"}));
     m_jobs->finish(m.id, JobKind::Transcribe);
     st = m_wf->speakerStatus(m.id);
     QCOMPARE(st.source, QStringLiteral("local"));
@@ -789,7 +789,7 @@ void WorkflowsTest::manualDiarizeSpeakers()
 
     // Redo with automatic count: the names go with the new speakers, the remembered count is cleared.
     Meeting named = m_store->load(m.id);
-    named.speakerMap.insert(QStringLiteral("Beszélő 2"), PersonId::generate());
+    named.speakerMap.insert(QStringLiteral("speaker:2"), PersonId::generate());
     m_store->saveMeeting(named);
     QVERIFY(m_wf->speakerStatus(m.id).hasNames);
     m_calls.clear();
@@ -799,7 +799,7 @@ void WorkflowsTest::manualDiarizeSpeakers()
     QVERIFY(!meetingJson(m).contains(QStringLiteral("diarizeSpeakers")));
     QTRY_VERIFY_WITH_TIMEOUT(m_calls.contains(QStringLiteral("identify:%1:1").arg(m.id)), 5000);
     QVERIFY(m_store->load(m.id).speakerMap.isEmpty());
-    QCOMPARE(tokenSpeakers(m_store->load(m.id)).last(), QStringLiteral("Beszélő 2"));
+    QCOMPARE(tokenSpeakers(m_store->load(m.id)).last(), QStringLiteral("speaker:2"));
     m_jobs->finish(m.id, JobKind::Transcribe);
 }
 
@@ -820,7 +820,7 @@ void WorkflowsTest::manualDiarizeFailureAndGates()
     QCOMPARE(outcome(m.id), JobOutcome::Done);
     QVERIFY(m_calls.filter(QStringLiteral("identify:")).isEmpty());
     QVERIFY(!m_wf->speakerStatus(m.id).problem.isEmpty());
-    QCOMPARE(tokenSpeakers(m_store->load(m.id)), QStringList(6, QStringLiteral("Beszélő 1")));
+    QCOMPARE(tokenSpeakers(m_store->load(m.id)), QStringList(6, QStringLiteral("speaker:1")));
     QVERIFY(m_wf->speakerStatus(m.id).canDiarize);   // "Beszélők felismerése újra"
 
     // Cancel through the job tracker's usual path.
@@ -828,7 +828,7 @@ void WorkflowsTest::manualDiarizeFailureAndGates()
     QVERIFY(m_wf->speakerStatus(m.id).problem.isEmpty());   // a new run clears the problem
     QVERIFY(m_wf->cancel(m.id, JobKind::Transcribe));
     QTRY_COMPARE_WITH_TIMEOUT(outcome(m.id), JobOutcome::Cancelled, 5000);
-    QCOMPARE(tokenSpeakers(m_store->load(m.id)), QStringList(6, QStringLiteral("Beszélő 1")));
+    QCOMPARE(tokenSpeakers(m_store->load(m.id)), QStringList(6, QStringLiteral("speaker:1")));
 
     // Gates: no usable model, no transcript, a provider-separated transcript.
     m_diarUsable = false;

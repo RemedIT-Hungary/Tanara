@@ -80,6 +80,8 @@ MergedTranscript SummarizationService::transcriptFor(const Meeting& m) const
         merged = library::TranscriptRepository::readTokens(m.folder);
     if (!merged.tokens.isEmpty() && m_deps.resolveSpeakers)
         m_deps.resolveSpeakers(merged, m);   // the LLM should see the real names
+    // The unnamed speakers' raw keys -> the label in the summary language (the prompt explains the same label).
+    applyPromptSpeakerLabels(merged, m_deps.llm ? m_deps.llm->processingSettings().summaryLanguage : QString());
     return merged;
 }
 

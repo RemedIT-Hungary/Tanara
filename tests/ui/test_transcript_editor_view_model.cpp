@@ -131,7 +131,7 @@ private slots:
         QVERIFY(!vm.railVisible());                         // hidden by default
 
         QCOMPARE(cell(vm, 0, Role::KindRole).toString(), QStringLiteral("utterance"));
-        QCOMPARE(cell(vm, 0, Role::SpeakerNameRole).toString(), kB1);
+        QCOMPARE(cell(vm, 0, Role::SpeakerNameRole).toString(), QStringLiteral("Beszélő 1"));   // the raw key rendered
         QCOMPARE(cell(vm, 1, Role::SpeakerNameRole).toString(), QStringLiteral("Béla"));
         QCOMPARE(cell(vm, 1, Role::TimeLabelRole).toString(), QStringLiteral("00:06"));
         QCOMPARE(cell(vm, 0, Role::LaneRole).toInt(), 0);
@@ -194,7 +194,7 @@ private slots:
         QVERIFY(vm.speakerInfo(kB2).value(QStringLiteral("nameDuplicate")).toBool());
         const QVariantList others = vm.speakersMatching(QString(), kB1);
         QCOMPARE(others.size(), 1);
-        QCOMPARE(others[0].toMap().value(QStringLiteral("rawLabel")).toString(), kB2);
+        QCOMPARE(others[0].toMap().value(QStringLiteral("rawLabel")).toString(), QStringLiteral("Beszélő 2"));
         QVERIFY(others[0].toMap().value(QStringLiteral("nameDuplicate")).toBool());
 
         // Different names: no marking.
@@ -355,7 +355,7 @@ private slots:
 
         // Back to anonymous.
         QVERIFY(vm.revertSpeakerToAnonymous(kB2, false));
-        QCOMPARE(cell(vm, 1, Role::SpeakerNameRole).toString(), kB2);
+        QCOMPARE(cell(vm, 1, Role::SpeakerNameRole).toString(), QStringLiteral("Beszélő 2"));
         vm.undo();
         QCOMPARE(cell(vm, 1, Role::SpeakerNameRole).toString(), QStringLiteral("Béla"));
 
@@ -531,7 +531,7 @@ private slots:
         const int row4 = vm.rows()->rowOfUtterance(4);
         QVERIFY(row17 >= 0 && row4 >= 0);
         QCOMPARE(cell(vm, row17, Role::LikelySpeakerKeyRole).toString(), kB1);
-        QCOMPARE(cell(vm, row17, Role::LikelySpeakerNameRole).toString(), kB1);
+        QCOMPARE(cell(vm, row17, Role::LikelySpeakerNameRole).toString(), QStringLiteral("Beszélő 1"));
         QCOMPARE(cell(vm, row4, Role::LikelySpeakerKeyRole).toString(), QString());
         QVERIFY(cell(vm, row4, Role::UncertainRole).toBool());
 

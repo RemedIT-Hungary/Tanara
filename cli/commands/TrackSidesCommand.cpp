@@ -1,5 +1,6 @@
 // tanara-cli track-sides. All output is English, no tr().
 #include "TrackSidesCommand.h"
+#include "tanara/domain/SpeakerText.h"
 #include "tanara/media/FfmpegMediaTool.h"
 #include "tanara/foundation/time/TimeFormat.h"
 
@@ -162,7 +163,7 @@ void printText(const editing::SideReport& r, const MeetingActivity& act, bool fr
 
     out() << "\nRaw diarization labels:\n";
     for (auto it = r.rawLabels.cbegin(); it != r.rawLabels.cend(); ++it)
-        out() << "  " << it.key().leftJustified(20) << " " << countsText(it.value()) << "\n";
+        out() << "  " << speakerLabelText(it.key()).leftJustified(20) << " " << countsText(it.value()) << "\n";
 
     QHash<QString, int> conflictsPer;
     for (const editing::SideConflict& c : r.conflicts) ++conflictsPer[c.speakerKey];

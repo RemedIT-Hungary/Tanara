@@ -22,8 +22,8 @@
 using namespace tanara;
 
 namespace {
-const QString kB1 = QStringLiteral("Beszélő 1");
-const QString kB2 = QStringLiteral("Beszélő 2");
+const QString kB1 = QStringLiteral("speaker:1");
+const QString kB2 = QStringLiteral("speaker:2");
 
 QString readText(const QString& path)
 {

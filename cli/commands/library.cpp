@@ -4,6 +4,7 @@
 #include "PathsCommands.h"
 #include "TagPeopleCommands.h"
 
+#include "tanara/domain/SpeakerKeys.h"
 #include "tanara/app/AppController.h"
 #include "tanara/app/Services.h"
 #include "tanara/app/SettingsManager.h"
@@ -21,6 +22,7 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QHash>
+#include <QRegularExpression>
 #include <QTimer>
 
 #include <atomic>
@@ -382,12 +384,23 @@ int cmd_import(CliContext& ctx, const QStringList& args)
     return qapp.exec();
 }
 
+// A raw speaker given on the command line: the key ("speaker:2"), the English label the CLI prints
+// ("Speaker 2") or the legacy Hungarian label -> the key; anything else (a track label) unchanged.
+QString rawLabelArg(const QString& arg)
+{
+    static const QRegularExpression english(QStringLiteral("^Speaker (\\S+)$"));
+    const QRegularExpressionMatch mt = english.match(arg.trimmed());
+    if (mt.hasMatch()) return speakerkeys::rawSpeakerKeyForId(mt.captured(1));
+    return speakerkeys::normalizeSpeakerLabel(arg.trimmed());
+}
+
 // TODO(P12d): rename runs on the speaker-edit service.
 int cmd_rename(CliContext& ctx, const QStringList& args)
 {
     app::AppController& app = ctx.app();
     QCoreApplication& qapp = ctx.qapp();
-    const QString id = args.value(2), raw = args.value(3), name = args.value(4);
+    const QString id = args.value(2), name = args.value(4);
+    const QString raw = rawLabelArg(args.value(3));
     if (id.isEmpty() || raw.isEmpty()) {
         err() << QStringLiteral("Usage: rename <meetingId> <rawLabel> <name|personId>") << "\n"; return 1;
     }

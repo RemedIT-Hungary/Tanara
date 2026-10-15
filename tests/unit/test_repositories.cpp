@@ -39,8 +39,8 @@ MergedTranscript sampleTranscript()
         t.startMs = s; t.endMs = e; t.confidence = 0.75; t.trackId = QString::fromUtf8(track);
         return t;
     };
-    mt.tokens << tok("Szia", "Beszélő 1", 0, 400, "mixdown") << tok(" mindenki.", "Beszélő 1", 400, 900, "mixdown")
-              << tok("Helló", "Beszélő 2", 1500, 1900, "mixdown");
+    mt.tokens << tok("Szia", "speaker:1", 0, 400, "mixdown") << tok(" mindenki.", "speaker:1", 400, 900, "mixdown")
+              << tok("Helló", "speaker:2", 1500, 1900, "mixdown");
     return mt;
 }
 } // namespace
@@ -97,7 +97,7 @@ private slots:
         QCOMPARE(repo.speakerCount(folder), 2);
         // A rewrite with a different size is noticed even without an invalidate.
         MergedTranscript three = sampleTranscript();
-        TranscriptToken t; t.text = QStringLiteral("Én is itt vagyok, hosszabb szöveggel."); t.speaker = QStringLiteral("Beszélő 3");
+        TranscriptToken t; t.text = QStringLiteral("Én is itt vagyok, hosszabb szöveggel."); t.speaker = QStringLiteral("speaker:3");
         t.startMs = 3000; t.endMs = 4000;
         three.tokens << t;
         QVERIFY(TranscriptRepository::writeSegments(folder, three.segments()));

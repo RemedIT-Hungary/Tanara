@@ -1,4 +1,5 @@
 #include "tanara/library/store/detail/MeetingJson.h"
+#include "tanara/domain/SpeakerKeys.h"
 #include "tanara/library/store/ParticipantJson.h"
 #include "tanara/library/MeetingNotes.h"
 #include "tanara/foundation/log/Logging.h"
@@ -144,7 +145,7 @@ Meeting meetingFromJson(const QJsonObject& o)
     const QJsonObject sm = o.value(QStringLiteral("speakerMap")).toObject();
     for (auto it = sm.constBegin(); it != sm.constEnd(); ++it) {
         const PersonId person = PersonId::fromString(it.value().toString());
-        if (!person.isNull()) m.speakerMap.insert(it.key(), person);
+        if (!person.isNull()) m.speakerMap.insert(speakerkeys::normalizeSpeakerLabel(it.key()), person);   // legacy "Beszélő N"
     }
     m.contextNote = o.value(QStringLiteral("contextNote")).toString();
     m.diarizeSpeakerCount = qMax(0, o.value(QStringLiteral("diarizeSpeakers")).toInt());

@@ -4,6 +4,7 @@
 
 #include "tanara/domain/Activity.h"
 #include "tanara/domain/Meeting.h"
+#include "tanara/domain/SpeakerKeys.h"
 #include "tanara/domain/Overlay.h"
 #include "tanara/editing/recheck/RecheckService.h"
 #include "tanara/editing/session/SpeakerEditSession.h"
@@ -609,7 +610,9 @@ TranscriptEditorDemoFacade::TranscriptEditorDemoFacade(const QString& variant, Q
     // For the English demo language: English counterparts of the names and raw labels (order,
     // weights and voice indices unchanged; the row texts are translated when segments are written).
     for (Cast& c : sc.cast) {
-        c.raw = demoRaw(c.raw);
+        // A raw speaker becomes its language-neutral key (the views render it in the UI language).
+        const QString key = tanara::speakerkeys::normalizeSpeakerLabel(c.raw);
+        c.raw = key != c.raw ? key : demoRaw(c.raw);
         c.person = demoName(c.person);
     }
 
@@ -801,7 +804,7 @@ bool TranscriptEditorDemoFacade::stage(const QString& state)
     m_session->confirmUtterances(confirm);
     m_session->setUtterancesNoisy({id(4)}, true);
     // "fixed": Eszter's voice under Árpád's name -> moved to Eszter by hand.
-    if (state == QLatin1String("markers")) m_session->moveUtterances({id(3)}, demoRaw(QStringLiteral("Beszélő 4")));
+    if (state == QLatin1String("markers")) m_session->moveUtterances({id(3)}, tanara::speakerkeys::rawSpeakerKey(4));
     if (state == QLatin1String("speakerWhy")) {
         // Gábor speaks on two tracks too (manual assignment, several tracks); Árpád has no #Nordvik
         // yet (the quick "+ #Nordvik" shows on the "NOT them?" candidate).

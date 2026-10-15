@@ -29,8 +29,8 @@ using namespace tanara;
 
 namespace {
 
-const QString kB1 = QStringLiteral("Beszélő 1");
-const QString kB2 = QStringLiteral("Beszélő 2");
+const QString kB1 = QStringLiteral("speaker:1");
+const QString kB2 = QStringLiteral("speaker:2");
 
 const QVector<float> kA{1.0f, 0.0f, 0.0f};
 const QVector<float> kB{0.0f, 1.0f, 0.0f};

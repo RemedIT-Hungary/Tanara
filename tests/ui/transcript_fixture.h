@@ -26,8 +26,8 @@
 
 namespace transcript_fixture {
 
-inline const QString kB1 = QStringLiteral("Beszélő 1");
-inline const QString kB2 = QStringLiteral("Beszélő 2");
+inline const QString kB1 = QStringLiteral("speaker:1");
+inline const QString kB2 = QStringLiteral("speaker:2");
 
 struct Row { qint64 startMs; qint64 durMs; QString raw; char voice; };
 

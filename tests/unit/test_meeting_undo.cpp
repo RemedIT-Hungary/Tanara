@@ -97,7 +97,7 @@ Meeting MeetingUndoTest::makeMeeting(const QString& title, bool transcript)
     if (transcript) {
         QJsonArray toks, segs;
         const struct { qint64 s, e; const char* spk; } rows[] = {
-            {0, 3000, "Beszélő 1"}, {3000, 5000, "Beszélő 2"}, {5000, 8000, "Beszélő 1"}};
+            {0, 3000, "speaker:1"}, {3000, 5000, "speaker:2"}, {5000, 8000, "speaker:1"}};
         for (const auto& r : rows) {
             toks.append(QJsonObject{{"text", "x"}, {"speaker", QString::fromUtf8(r.spk)}, {"startMs", double(r.s)},
                                     {"endMs", double(r.e)}, {"confidence", 1.0}, {"trackId", "mixdown"}});
@@ -120,7 +120,7 @@ QString MeetingUndoTest::tagged(const QString& title, const QString& tagId, cons
     Meeting m = m_app->store()->createMeeting(title);
     m.startedAt = QDateTime(QDate(2026, 9, 1), QTime(10, 0));
     for (int i = 0; i < people.size(); ++i)
-        m.speakerMap.insert(QStringLiteral("Beszélő %1").arg(i + 1), pid(people.at(i)));
+        m.speakerMap.insert(QStringLiteral("speaker:%1").arg(i + 1), pid(people.at(i)));
     m.tagIds = {tagId};
     m_app->store()->saveMeeting(m);
     return m.id;
@@ -264,8 +264,8 @@ void MeetingUndoTest::removeParticipantDurableWithUndo()
     const QString dora = m_app->addParticipant(m.id, choice(QStringLiteral("Szabó Bence")));
     QVERIFY(m_app->approveParticipants(m.id, m_app->participants(m.id)));
     // Bence also on a speaker's name (from the transcript editor).
-    m_app->renameSpeaker(m.id, QStringLiteral("Beszélő 2"), choice(QStringLiteral("Szabó Bence")), /*enroll*/ false);
-    QCOMPARE(m_app->store()->load(m.id).speakerMap.value("Beszélő 2"), pid(QStringLiteral("Szabó Bence")));
+    m_app->renameSpeaker(m.id, QStringLiteral("speaker:2"), choice(QStringLiteral("Szabó Bence")), /*enroll*/ false);
+    QCOMPARE(m_app->store()->load(m.id).speakerMap.value("speaker:2"), pid(QStringLiteral("Szabó Bence")));
     const int before = u->count();
 
     QVERIFY(m_app->removeParticipant(m.id, dora));
@@ -288,7 +288,7 @@ void MeetingUndoTest::removeParticipantDurableWithUndo()
     bool entry = false;
     for (const ParticipantApprovalEntry& e : mm.approval->candidates) entry = entry || e.participantId == dora;
     QVERIFY(entry);
-    QCOMPARE(mm.speakerMap.value("Beszélő 2"), pid(QStringLiteral("Szabó Bence")));
+    QCOMPARE(mm.speakerMap.value("speaker:2"), pid(QStringLiteral("Szabó Bence")));
 
     // Persistent: not there after a restart either.
     QVERIFY(m_app->removeParticipant(m.id, dora));

@@ -34,8 +34,8 @@ using namespace tanara::editing::speakeredit;
 
 namespace {
 
-const QString kB1 = QStringLiteral("Beszélő 1");
-const QString kB2 = QStringLiteral("Beszélő 2");
+const QString kB1 = QStringLiteral("speaker:1");
+const QString kB2 = QStringLiteral("speaker:2");
 
 // The "voices": A = Anna, B = Béla, P = Béla's noisy voice (cos(P,B) = 0.8, cos(P,A) = 0.6).
 const QVector<float> kA{1.0f, 0.0f, 0.0f};
@@ -186,7 +186,7 @@ const QVector<float> pm{0.9063f, 0.4226f, 0.0f, 0.0f};
 const QVector<float> pc{0.0f, 0.0f, 1.0f, 0.0f};
 const QVector<float> pd{0.0f, 0.0f, 0.0f, 1.0f};
 
-const QString kB3 = QStringLiteral("Beszélő 3");
+const QString kB3 = QStringLiteral("speaker:3");
 
 struct PairRow { QString raw; char voice; };
 const QVector<PairRow>& pairScenario()

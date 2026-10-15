@@ -249,19 +249,19 @@ void ParticipantsAppTest::analysisApproveUndoUnbindSolo()
     const QString adamId = adam->id, belaId = bela->id;
 
     // The transcript comes later: binding by time overlap.
-    writeTranscript(m, {{1000, 7000, "Beszélő 1"}, {9000, 15000, "Beszélő 2"}, {17000, 23000, "Beszélő 1"}});
+    writeTranscript(m, {{1000, 7000, "speaker:1"}, {9000, 15000, "speaker:2"}, {17000, 23000, "speaker:1"}});
     QSignalSpy changed(m_app.get(), &app::AppController::participantsChanged);
     QVERIFY(m_app->bindRawSpeakers(m.id));
     QCOMPARE(changed.count(), 1);
     ps = m_app->participants(m.id);
-    QCOMPARE(byName(ps, pid("Ádám"))->rawSpeakerIds, QStringList({"Beszélő 1"}));
-    QCOMPARE(byName(ps, pid("Béla"))->rawSpeakerIds, QStringList({"Beszélő 2"}));
+    QCOMPARE(byName(ps, pid("Ádám"))->rawSpeakerIds, QStringList({"speaker:1"}));
+    QCOMPARE(byName(ps, pid("Béla"))->rawSpeakerIds, QStringList({"speaker:2"}));
 
     // Approval: the raw speakers to the names, in one undo step.
     QVERIFY(m_app->approveParticipants(m.id, ps));
     m = m_app->store()->load(m.id);
-    QCOMPARE(nameOf(m.speakerMap.value("Beszélő 1")), QStringLiteral("Ádám"));
-    QCOMPARE(nameOf(m.speakerMap.value("Beszélő 2")), QStringLiteral("Béla"));
+    QCOMPARE(nameOf(m.speakerMap.value("speaker:1")), QStringLiteral("Ádám"));
+    QCOMPARE(nameOf(m.speakerMap.value("speaker:2")), QStringLiteral("Béla"));
     QVERIFY(m.approval.has_value());
     QCOMPARE(m.approval->candidates.size(), 2);
     QVERIFY(!m_app->participantApprovalPending(m.id));
@@ -277,8 +277,8 @@ void ParticipantsAppTest::analysisApproveUndoUnbindSolo()
     // "Was not there": Béla's lines become anonymous, its marking is deleted.
     QVERIFY(m_app->unbindParticipant(m.id, belaId));
     m = m_app->store()->load(m.id);
-    QVERIFY(!m.speakerMap.contains("Beszélő 2"));
-    QCOMPARE(nameOf(m.speakerMap.value("Beszélő 1")), QStringLiteral("Ádám"));
+    QVERIFY(!m.speakerMap.contains("speaker:2"));
+    QCOMPARE(nameOf(m.speakerMap.value("speaker:1")), QStringLiteral("Ádám"));
     QVERIFY(!byName(m.participants, pid("Béla"))->approved);
     QVERIFY(byName(m.participants, pid("Ádám"))->approved);
 
@@ -368,9 +368,9 @@ void ParticipantsAppTest::maybeAnalyzeGates()
 void ParticipantsAppTest::removeNamedSpeakerWithoutRecord()
 {
     Meeting m = makeMeeting(/*withSilent*/ false);
-    writeTranscript(m, {{0, 1000, QStringLiteral("Beszélő 1")}, {1000, 2000, QStringLiteral("Beszélő 2")}});
+    writeTranscript(m, {{0, 1000, QStringLiteral("speaker:1")}, {1000, 2000, QStringLiteral("speaker:2")}});
     m = m_app->store()->load(m.id);
-    m.speakerMap.insert(QStringLiteral("Beszélő 1"), pid(QStringLiteral("Béla")));
+    m.speakerMap.insert(QStringLiteral("speaker:1"), pid(QStringLiteral("Béla")));
     m_app->store()->saveMeeting(m);
     QVERIFY(m_app->participants(m.id).isEmpty());
 

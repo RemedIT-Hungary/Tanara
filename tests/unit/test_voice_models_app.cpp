@@ -134,8 +134,8 @@ Meeting VoiceModelsAppTest::makeMeeting(const QString& title)
     m.mixdownFile = QStringLiteral("mixdown.wav");
     m.durationMs = 8000;
     QJsonArray toks, segs;
-    const struct { qint64 s, e; const char* spk; } rows[] = {{0, 3000, "Beszélő 1"}, {3000, 5000, "Beszélő 2"},
-                                                             {5000, 8000, "Beszélő 1"}};
+    const struct { qint64 s, e; const char* spk; } rows[] = {{0, 3000, "speaker:1"}, {3000, 5000, "speaker:2"},
+                                                             {5000, 8000, "speaker:1"}};
     for (const auto& r : rows) {
         toks.append(QJsonObject{{"text", "x"}, {"speaker", QString::fromUtf8(r.spk)}, {"startMs", double(r.s)},
                                 {"endMs", double(r.e)}, {"confidence", 1.0}, {"trackId", "mixdown"}});
@@ -176,7 +176,7 @@ void VoiceModelsAppTest::enrolCreatesOnePrintPerModel()
     QCOMPARE(m_app->peopleService()->samples(idOf("Anna")).size(), 1);   // one sample in the list
 
     // Matching works with both models (the fake vectors are identical, so 1.0).
-    const VoiceMatch match = m_app->testSpeakerMatch(m.id, "Beszélő 1");
+    const VoiceMatch match = m_app->testSpeakerMatch(m.id, "speaker:1");
     QCOMPARE(match.personId, idOf("Anna"));
     QVERIFY(match.score > 0.99);
 
@@ -202,7 +202,7 @@ void VoiceModelsAppTest::enrolCreatesOnePrintPerModel()
 void VoiceModelsAppTest::enrolSpeakerFromTranscript_hasSourceRefs()
 {
     const Meeting m = makeMeeting("Átirat");
-    m_app->enrollSpeaker(m.id, "Beszélő 1", pid("Dóra"));
+    m_app->enrollSpeaker(m.id, "speaker:1", pid("Dóra"));
     const QVector<Voiceprint> prints = m_app->voiceprints()->printsFor(idOf("Dóra"));
     QCOMPARE(prints.size(), 2);
     for (const Voiceprint& p : prints) {

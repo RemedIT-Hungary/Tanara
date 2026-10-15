@@ -116,12 +116,12 @@ Meeting TrackListeningAppTest::makeMeeting()
     me.id = "v1";
     me.personId = pid("Ádám");
     me.sides = {"mic"};
-    me.rawSpeakerIds = {"Beszélő 1"};
+    me.rawSpeakerIds = {"speaker:1"};
     Participant far;
     far.id = "v2";
     far.personId = pid("Béla");
     far.sides = {"loopback"};
-    far.rawSpeakerIds = {"Beszélő 2@loopback"};
+    far.rawSpeakerIds = {"speaker:2@loopback"};
     m.participants = {me, far};
     m_app->store()->saveMeeting(m);
     return m;
@@ -130,7 +130,7 @@ Meeting TrackListeningAppTest::makeMeeting()
 void TrackListeningAppTest::writeTranscript(Meeting& m)
 {
     const QVector<std::tuple<qint64, qint64, QString>> rows = {
-        {500, 7500, "Beszélő 1"}, {8500, 15500, "Beszélő 2"}, {16500, 23500, "Beszélő 1"}};
+        {500, 7500, "speaker:1"}, {8500, 15500, "speaker:2"}, {16500, 23500, "speaker:1"}};
     QJsonArray toks, segs;
     for (const auto& [s, e, spk] : rows) {
         toks.append(QJsonObject{{"text", "x"}, {"speaker", spk}, {"startMs", double(s)}, {"endMs", double(e)},
@@ -245,14 +245,14 @@ void TrackListeningAppTest::bindingAfterTranscriptIsTheEditorAssignment()
 
     // Participant id: its raw speaker (without the "@loopback" suffix) in the editor.
     QVERIFY(m_app->setParticipantTracks(m.id, "v2", {"loop"}));
-    QCOMPARE(ed->trackAssignment(QStringLiteral("Beszélő 2")), QStringList{"loop"});
+    QCOMPARE(ed->trackAssignment(QStringLiteral("speaker:2")), QStringList{"loop"});
     QCOMPARE(m_app->participants(m.id).at(1).tracks, QStringList{"loop"});
     ParticipantTrackBinding b = m_app->participantTracks(m.id, "v2");
     QVERIFY(b.manual);
     QCOMPARE(b.trackIds, QStringList{"loop"});
 
     // Modified from the editor's ("Why them?") side we see the same: one piece of data.
-    QVERIFY(ed->setTrackAssignment(QStringLiteral("Beszélő 2"), {"mic"}));
+    QVERIFY(ed->setTrackAssignment(QStringLiteral("speaker:2"), {"mic"}));
     b = m_app->participantTracks(m.id, "v2");
     QCOMPARE(b.trackIds, QStringList{"mic"});
     // Undo gives the earlier binding.
@@ -261,8 +261,8 @@ void TrackListeningAppTest::bindingAfterTranscriptIsTheEditorAssignment()
 
     // It can be bound by speaker key too (a post-transcript line, even without a participant); the
     // participant belonging to it gets it too.
-    QVERIFY(m_app->setParticipantTracks(m.id, QStringLiteral("Beszélő 1"), {"mic", "loop"}));
-    QCOMPARE(ed->trackAssignment(QStringLiteral("Beszélő 1")), (QStringList{"mic", "loop"}));
+    QVERIFY(m_app->setParticipantTracks(m.id, QStringLiteral("speaker:1"), {"mic", "loop"}));
+    QCOMPARE(ed->trackAssignment(QStringLiteral("speaker:1")), (QStringList{"mic", "loop"}));
     QCOMPARE(m_app->participants(m.id).at(0).tracks, (QStringList{"mic", "loop"}));
 }
 
@@ -277,7 +277,7 @@ void TrackListeningAppTest::bindingCopiedToOverlayOnTranscript()
     QVERIFY(m_app->approveParticipants(m.id, m_app->participants(m.id)));
     editing::SpeakerEditSession* ed = m_app->editSession(m.id);
     QVERIFY(ed);
-    QCOMPARE(ed->trackAssignment(QStringLiteral("Beszélő 1")), (QStringList{"mic", "loop"}));
+    QCOMPARE(ed->trackAssignment(QStringLiteral("speaker:1")), (QStringList{"mic", "loop"}));
     QCOMPARE(m_app->participantTracks(m.id, "v1").trackIds, (QStringList{"mic", "loop"}));
     QVERIFY(m_app->participantTracks(m.id, "v1").manual);
 }
