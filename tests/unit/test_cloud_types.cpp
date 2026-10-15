@@ -39,6 +39,7 @@ private slots:
     void waitlist_validation();
     void error_422_input();
     void cloudMode_resolve();
+    void cloudSettings_roundTrip();
     void estimator_plan();
     void gateway_kinds();
 };
@@ -289,6 +290,46 @@ void TestCloudTypes::error_422_input()
     QCOMPARE(e.fieldErrors.value("lines"), QStringLiteral("required"));
     const cloud::CloudError t = cloud::parseCloudError(422, {}, R"({"error":{"code":"topup_limit_exceeded"}})");
     QCOMPARE(t.kind, cloud::CloudErrorKind::TopupLimit);
+}
+
+void TestCloudTypes::cloudSettings_roundTrip()
+{
+    // S4: the account-level level and the "Haladó" switches (defaults, JSON round trip).
+    const cloud::CloudSettings def;
+    QCOMPARE(def.level, QStringLiteral("simple"));
+    QVERIFY(def.estimateBeforeRun);
+    QVERIFY(!def.fastForLongRecordings);
+    QVERIFY(def.deleteUploadedAudio);
+    QCOMPARE(cloud::CloudSettings::kLongRecordingMinutes, 90);
+
+    // A section without the new keys keeps the defaults.
+    const cloud::CloudSettings old = cloud::CloudSettings::fromJson(obj(R"({"sttTier":"fast"})"));
+    QCOMPARE(old.level, QStringLiteral("simple"));
+    QVERIFY(old.estimateBeforeRun);
+    QVERIFY(!old.fastForLongRecordings);
+    QVERIFY(old.deleteUploadedAudio);
+
+    cloud::CloudSettings s;
+    s.level = QStringLiteral("advanced");
+    s.sttTier = s.llmTier = QStringLiteral("fast");
+    s.estimateBeforeRun = false;
+    s.fastForLongRecordings = true;
+    s.deleteUploadedAudio = false;
+    const QJsonObject o = s.toJson();
+    QCOMPARE(o.value("level").toString(), QStringLiteral("advanced"));
+    QCOMPARE(o.value("estimateBeforeRun").toBool(true), false);
+    QCOMPARE(o.value("fastForLongRecordings").toBool(false), true);
+    QCOMPARE(o.value("deleteUploadedAudio").toBool(true), false);
+    const cloud::CloudSettings back = cloud::CloudSettings::fromJson(o);
+    QCOMPARE(back.level, QStringLiteral("advanced"));
+    QCOMPARE(back.sttTier, QStringLiteral("fast"));
+    QCOMPARE(back.llmTier, QStringLiteral("fast"));
+    QVERIFY(!back.estimateBeforeRun);
+    QVERIFY(back.fastForLongRecordings);
+    QVERIFY(!back.deleteUploadedAudio);
+
+    // An unknown level (e.g. a future "pro", which the client does not offer) reads as "simple".
+    QCOMPARE(cloud::CloudSettings::fromJson(obj(R"({"level":"pro"})")).level, QStringLiteral("simple"));
 }
 
 void TestCloudTypes::cloudMode_resolve()

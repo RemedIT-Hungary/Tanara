@@ -26,6 +26,7 @@
 #include "tanara/app/SettingsManager.h"
 #include "tanara/recording/audio/DeviceManager.h"
 #include "tanara/library/tracks/TrackCatalog.h"
+#include "tanara/cloud/CloudSession.h"
 #include "tanara/cloud/CloudTypes.h"
 #include "tanara/providers/embedding/ITextEmbedder.h"
 #include "tanara/watcher/detect/Autostart.h"
@@ -1580,13 +1581,267 @@ private slots:
                      vm.providerKind(p.toMap().value("value").toString()));
     }
 
+    // ---- S4: the Tanara Cloud page ----
+
+    void cloudTierMapsToBothStoredTiersAndSaves()
+    {
+        startApp("live");
+        if (!m_app->cloudLive())
+            QSKIP("A build Tanara Cloud kliens nélkül készült.");
+        // The two stored tiers differ (e.g. set from the CLI), and an Expert model is pinned.
+        tanara::app::AppSettings s = live();
+        s.cloud.sttTier = QStringLiteral("fast");
+        s.cloud.llmTier = QStringLiteral("accurate");
+        s.cloud.llmModel = QStringLiteral("tanara/some-expert-model");
+        m_app->settings()->setSettings(s);
+
+        SettingsViewModel vm(services());
+        QCOMPARE(vm.cloudMode(), QStringLiteral("live"));
+        QVERIFY(vm.cloudEditable());
+        QCOMPARE(vm.cloudTier(), QStringLiteral("mixed"));
+        QCOMPARE(vm.cloudTierOptions().size(), 2);
+        QCOMPARE(vm.cloudTierOptions().at(0).toMap().value("value").toString(), QStringLiteral("fast"));
+        // No catalog yet (the gateway is a closed port): no price.
+        QVERIFY(vm.cloudTierOptions().at(1).toMap().value("price").toString().isEmpty());
+
+        // One control sets both tiers and drops the pinned model (the client has no Pro level).
+        vm.setCloudTier(QStringLiteral("accurate"));
+        QCOMPARE(vm.cloudTier(), QStringLiteral("accurate"));
+        QVERIFY(vm.dirty());
+        vm.setCloudTier(QStringLiteral("pro"));                   // unknown: ignored
+        QCOMPARE(vm.cloudTier(), QStringLiteral("accurate"));
+        QVERIFY(vm.save());
+        QCOMPARE(live().cloud.sttTier, QStringLiteral("accurate"));
+        QCOMPARE(live().cloud.llmTier, QStringLiteral("accurate"));
+        QVERIFY(live().cloud.llmModel.isEmpty());
+        QVERIFY(!vm.dirty());
+
+        vm.setCloudTier(QStringLiteral("fast"));
+        QVERIFY(vm.save());
+        QCOMPARE(live().cloud.sttTier, QStringLiteral("fast"));
+        QCOMPARE(live().cloud.llmTier, QStringLiteral("fast"));
+        const QJsonObject cloud = settingsFile().value(QStringLiteral("cloud")).toObject();
+        QCOMPARE(cloud.value(QStringLiteral("sttTier")).toString(), QStringLiteral("fast"));
+        QCOMPARE(cloud.value(QStringLiteral("llmTier")).toString(), QStringLiteral("fast"));
+    }
+
+    void cloudAdvancedFlagsGoThroughTheDraft()
+    {
+        startApp("live");
+        if (!m_app->cloudLive())
+            QSKIP("A build Tanara Cloud kliens nélkül készült.");
+        SettingsViewModel vm(services());
+        QCOMPARE(vm.cloudLevel(), QStringLiteral("simple"));
+        QVERIFY(vm.cloudEstimateBeforeRun());
+        QVERIFY(!vm.cloudFastForLongRecordings());
+        QVERIFY(vm.cloudDeleteUploadedAudio());
+        QCOMPARE(vm.cloudLongRecordingMinutes(), 90);
+
+        vm.setCloudLevel(QStringLiteral("advanced"));
+        vm.setCloudEstimateBeforeRun(false);
+        vm.setCloudFastForLongRecordings(true);
+        vm.setCloudDeleteUploadedAudio(false);
+        QCOMPARE(vm.changeCount(), 4);
+        // Not in the core until saved; discard brings the saved values back.
+        QVERIFY(live().cloud.estimateBeforeRun);
+        vm.discard();
+        QCOMPARE(vm.cloudLevel(), QStringLiteral("simple"));
+        QVERIFY(vm.cloudEstimateBeforeRun());
+        QVERIFY(!vm.dirty());
+
+        vm.setCloudLevel(QStringLiteral("advanced"));
+        vm.setCloudEstimateBeforeRun(false);
+        vm.setCloudFastForLongRecordings(true);
+        vm.setCloudDeleteUploadedAudio(false);
+        QVERIFY(vm.save());
+        QCOMPARE(live().cloud.level, QStringLiteral("advanced"));
+        QVERIFY(!live().cloud.estimateBeforeRun);
+        QVERIFY(live().cloud.fastForLongRecordings);
+        QVERIFY(!live().cloud.deleteUploadedAudio);
+        const QJsonObject cloud = settingsFile().value(QStringLiteral("cloud")).toObject();
+        QCOMPARE(cloud.value(QStringLiteral("level")).toString(), QStringLiteral("advanced"));
+        QCOMPARE(cloud.value(QStringLiteral("estimateBeforeRun")).toBool(true), false);
+        QCOMPARE(cloud.value(QStringLiteral("fastForLongRecordings")).toBool(false), true);
+        QCOMPARE(cloud.value(QStringLiteral("deleteUploadedAudio")).toBool(true), false);
+
+        // A fresh window reads them back.
+        SettingsViewModel again(services());
+        QCOMPARE(again.cloudLevel(), QStringLiteral("advanced"));
+        QVERIFY(!again.cloudEstimateBeforeRun());
+        QVERIFY(again.cloudFastForLongRecordings());
+        QVERIFY(!again.cloudDeleteUploadedAudio());
+    }
+
+    void cloudSettersAreGatedOutsideLiveMode_data()
+    {
+        QTest::addColumn<QString>("mode");
+        QTest::addRow("teaser") << QStringLiteral("teaser");
+        QTest::addRow("off") << QStringLiteral("off");
+    }
+    void cloudSettersAreGatedOutsideLiveMode()
+    {
+        QFETCH(QString, mode);
+        startApp(mode.toLatin1().constData());
+        SettingsViewModel vm(services());
+        const QString expected = m_app->cloudTeaser() ? QStringLiteral("teaser") : QStringLiteral("off");
+        QCOMPARE(vm.cloudMode(), expected);
+        QVERIFY(!vm.cloudEditable());
+        QVERIFY(!vm.cloudSignedIn());
+        vm.setCloudTier(QStringLiteral("fast"));
+        vm.setCloudLevel(QStringLiteral("advanced"));
+        vm.setCloudEstimateBeforeRun(false);
+        vm.setCloudFastForLongRecordings(true);
+        vm.setCloudDeleteUploadedAudio(false);
+        QCOMPARE(vm.cloudTier(), QStringLiteral("accurate"));
+        QCOMPARE(vm.cloudLevel(), QStringLiteral("simple"));
+        QVERIFY(vm.cloudEstimateBeforeRun());
+        QVERIFY(!vm.cloudFastForLongRecordings());
+        QVERIFY(vm.cloudDeleteUploadedAudio());
+        QVERIFY(!vm.dirty());
+        // The account calls do nothing either (no sign-in flow outside live mode).
+        vm.cloudSignIn();
+        QVERIFY(!vm.cloudSigningIn());
+        // The deep link still lands on the page.
+        vm.openPage(QStringLiteral("cloud"));
+        QCOMPARE(vm.page(), QStringLiteral("cloud"));
+    }
+
+    void cloudAccountFollowsTheSession()
+    {
+        startApp("live");
+        if (!m_app->cloudLive())
+            QSKIP("A build Tanara Cloud kliens nélkül készült.");
+        FakeDialogs dialogs;
+        SettingsViewModel vm(services());
+        vm.setDialogsObject(&dialogs);
+        QVERIFY(!vm.cloudSignedIn());
+        QVERIFY(!vm.cloudAccount().value("valid").toBool());
+
+        // A key from the dashboard (the sandbox's secret file; no network): signed in, the account
+        // refresh goes to the closed port and its failure becomes one sentence.
+        QSignalSpy changed(&vm, &SettingsViewModel::cloudChanged);
+        m_app->cloud()->setManualApiKey(QStringLiteral("tnr-test-key"), QStringLiteral("teszt@pelda.hu"));
+        QVERIFY(changed.size() >= 1);
+        QVERIFY(vm.cloudSignedIn());
+        QCOMPARE(vm.cloudAccount().value("email").toString(), QStringLiteral("teszt@pelda.hu"));
+        QTRY_VERIFY_WITH_TIMEOUT(!vm.cloudAccount().value("error").toString().isEmpty(), 5000);
+
+        // Top-up: the link request fails the same way; nothing is opened.
+        vm.cloudTopUp();
+        QTest::qWait(200);
+        QVERIFY(dialogs.calls.isEmpty());
+
+        // Sign-out: the local key goes even though the gateway is unreachable.
+        vm.cloudSignOut();
+        QTRY_VERIFY_WITH_TIMEOUT(!vm.cloudSignedIn(), 5000);
+        QVERIFY(!m_app->cloud()->isLoggedIn());
+    }
+
+    void cloudDemoStates()
+    {
+        FakeDialogs dialogs;
+        SettingsViewModel vm;
+        vm.setDialogsObject(&dialogs);
+        vm.setDemoState(QStringLiteral("cloudComingSoon"));
+        QCOMPARE(vm.page(), QStringLiteral("cloud"));
+        QCOMPARE(vm.cloudMode(), QStringLiteral("teaser"));
+        QVERIFY(!vm.cloudEditable());
+
+        vm.setDemoState(QStringLiteral("cloudSignedOut"));
+        QCOMPARE(vm.page(), QStringLiteral("cloud"));
+        QCOMPARE(vm.cloudMode(), QStringLiteral("live"));
+        QVERIFY(!vm.cloudSignedIn());
+        QVERIFY(!vm.cloudTierOptions().at(0).toMap().value("price").toString().isEmpty());
+        vm.cloudSignIn();
+        QVERIFY(vm.cloudSigningIn());
+        QCOMPARE(vm.cloudAccount().value("signInCode").toString(), QStringLiteral("WDJB-MJHT"));
+        vm.cloudOpenSignInPage();
+        QCOMPARE(dialogs.calls.size(), 1);
+        vm.cloudCancelSignIn();
+        QVERIFY(!vm.cloudSigningIn());
+
+        vm.setDemoState(QStringLiteral("cloudLowBalance"));
+        QVERIFY(vm.cloudSignedIn());
+        const QVariantMap a = vm.cloudAccount();
+        QVERIFY(a.value("valid").toBool());
+        QVERIFY(a.value("lowBalance").toBool());
+        QVERIFY(a.value("balance").toString().contains(QStringLiteral("1")));
+        QVERIFY(!a.value("vatLabel").toString().isEmpty());
+        QVERIFY(!a.value("hoursText").toString().isEmpty());
+        QVERIFY(!vm.cloudTopUpUrl().isEmpty());
+        vm.cloudTopUp();
+        QCOMPARE(dialogs.calls.size(), 2);
+        // The fictional facade saves in memory: the tier can be changed in live mode.
+        vm.setCloudTier(QStringLiteral("fast"));
+        QCOMPARE(vm.cloudTier(), QStringLiteral("fast"));
+        QVERIFY(vm.dirty());
+
+        vm.setDemoState(QStringLiteral("cloudAdvanced"));
+        QCOMPARE(vm.cloudLevel(), QStringLiteral("advanced"));
+        QCOMPARE(vm.cloudTier(), QStringLiteral("fast"));
+        QVERIFY(vm.cloudFastForLongRecordings());
+        QVERIFY(!vm.cloudAccount().value("lowBalance").toBool());
+    }
+
+    void cloudPageShowsTheRightBlocks_data()
+    {
+        QTest::addColumn<QString>("state");
+        QTest::addColumn<bool>("comingSoon");
+        QTest::addColumn<QString>("accountRow");
+        QTest::addColumn<bool>("lowBalance");
+        QTest::addColumn<bool>("switches");
+        QTest::addRow("teaser") << QStringLiteral("cloudComingSoon") << true << QString() << false << false;
+        QTest::addRow("signedOut") << QStringLiteral("cloudSignedOut") << false << QStringLiteral("cloudSignedOut") << false << false;
+        QTest::addRow("lowBalance") << QStringLiteral("cloudLowBalance") << false << QStringLiteral("cloudSignedIn") << true << false;
+        QTest::addRow("advanced") << QStringLiteral("cloudAdvanced") << false << QStringLiteral("cloudSignedIn") << false << true;
+    }
+    void cloudPageShowsTheRightBlocks()
+    {
+        QFETCH(QString, state);
+        QFETCH(bool, comingSoon);
+        QFETCH(QString, accountRow);
+        QFETCH(bool, lowBalance);
+        QFETCH(bool, switches);
+        QQmlEngine engine;
+        setupEngine(engine);
+        QStringList warnings;
+        connect(&engine, &QQmlEngine::warnings, this, [&warnings](const QList<QQmlError>& list) {
+            for (const QQmlError& e : list) warnings << e.toString();
+        });
+        QQmlComponent comp(&engine);
+        comp.loadFromModule("Tanara", "SettingsWindow");
+        QVERIFY2(!comp.isError(), qPrintable(comp.errorString()));
+        std::unique_ptr<QObject> obj(comp.createWithInitialProperties({{QStringLiteral("demoState"), state}}));
+        auto* win = qobject_cast<QQuickWindow*>(obj.get());
+        QVERIFY(win);
+        win->show();
+        QTest::qWait(150);
+        QQuickItem* page = findItem(win->contentItem(), QStringLiteral("settingsCloudPage"));
+        QVERIFY(page);
+        QVERIFY(page->isVisible());
+        QCOMPARE(findItem(page, QStringLiteral("cloudComingSoon"))->isVisible(), comingSoon);
+        QCOMPARE(findItem(page, QStringLiteral("cloudAccountBlock"))->isVisible(), !comingSoon);
+        if (!accountRow.isEmpty()) QVERIFY(findItem(page, accountRow)->isVisible());
+        QCOMPARE(findItem(page, QStringLiteral("cloudLowBalance"))->isVisible(), lowBalance);
+        QCOMPARE(findItem(page, QStringLiteral("cloudAdvancedSwitches"))->isVisible(), switches);
+        QVERIFY(findItem(page, QStringLiteral("cloudTier-fast")));
+        // "Feldolgozás" jumps to the Processing page.
+        QQuickItem* link = findItem(page, QStringLiteral("cloudToProcessing"));
+        QVERIFY(link);
+        QMetaObject::invokeMethod(link, "clicked");
+        auto* vm = qobject_cast<SettingsViewModel*>(win->property("vm").value<QObject*>());
+        QCOMPARE(vm->page(), QStringLiteral("processing"));
+        QVERIFY2(warnings.isEmpty(), qPrintable(warnings.join(QLatin1Char('\n'))));
+    }
+
     // ---- the window and its host ----
 
     void windowLoadsEveryDemoStateWithoutWarnings_data()
     {
         QTest::addColumn<QString>("state");
         for (const char* st : {"B01", "B02", "B03", "B04", "B05", "B07", "B07notes", "advanced", "dirty", "unsaved",
-                               "schema", "cloudComingSoon", "cloudSelected", "addApp", "reset",
+                               "schema", "cloudComingSoon", "cloudSignedOut", "cloudLowBalance", "cloudAdvanced",
+                               "cloudSelected", "addApp", "reset",
                                "B04embedding", "B04embeddingRunning", "B04embeddingError", "B04embeddingDone",
                                "B04embeddingCloud", "B04embeddingNone", "B04modelChange", "rejectedReset",
                                "B08", "B08download", "B08none", "B08error", "B08offline", "B08backfill",

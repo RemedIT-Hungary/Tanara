@@ -2,7 +2,8 @@
 //
 // SettingsServicesFacade: the real tanara::app::ISettingsFacade, composed from SettingsManager, the
 // provider registry, the recording service (level metering), the recorder facade (devices), the
-// voiceprint store, the tag service, the embedding preparer / index and the detector registry. What
+// voiceprint store, the tag service, the embedding preparer / index, the detector registry and the
+// Tanara Cloud session (the account on the Settings > Tanara Cloud page). What
 // still lives on the AppController (the secrets, the own name and person) comes in as small hooks
 // that AppContext wires; the people / voiceprint notifications are forwarded by AppContext too.
 // One per controller, built by AppContext::servicesFor().
@@ -16,6 +17,7 @@
 
 namespace tanara {
 namespace app { class SettingsManager; }
+namespace cloud { class CloudSession; }
 namespace library { class EmbeddingIndex; class EmbeddingPreparer; class TagService; class VoiceprintStore; }
 namespace providers { class LlmServerProbe; }
 namespace recording { class RecordingService; }
@@ -35,6 +37,8 @@ public:
         std::function<QString()> secretBackendWarning;
         std::function<void(const QString& name)> setUserSpeakerName;
         std::function<tanara::PersonId()> selfPersonId;
+        // The cloud mode: "off" | "teaser" | "live" (empty hook: "off").
+        std::function<QString()> cloudMode;
     };
     struct Deps {
         tanara::app::SettingsManager* settings = nullptr;
@@ -46,6 +50,7 @@ public:
         tanara::library::EmbeddingPreparer* preparer = nullptr;
         tanara::library::EmbeddingIndex* embeddings = nullptr;
         const tanara::watcher::MeetingDetectorRegistry* detectors = nullptr;
+        tanara::cloud::CloudSession* cloud = nullptr;   // the account (always exists with a controller)
         Hooks hooks;
     };
     explicit SettingsServicesFacade(const Deps& deps, QObject* parent = nullptr);
@@ -94,8 +99,22 @@ public:
     int rejectedSuggestionCount() const override;
     void clearRejectedSuggestions() override;
 
+    tanara::app::CloudAccountState cloudState() const override;
+    void cloudSignIn() override;
+    void cloudCancelSignIn() override;
+    void cloudSignOut() override;
+    void cloudRefresh() override;
+    void cloudRequestTopup() override;
+
 private:
+    bool cloudLive() const;
+    void setCloudError(const QString& error);
+    QString cloudErrorText(const tanara::cloud::CloudError& error) const;
+
     Deps m_deps;
+    bool m_signingIn = false;
+    tanara::cloud::DeviceCode m_deviceCode;
+    QString m_cloudError;
     tanara::providers::ConnectionTester* m_tester = nullptr;
     tanara::providers::LlmServerProbe* m_probe = nullptr;
 };

@@ -12,7 +12,10 @@ QJsonObject CloudSettings::toJson() const
         {QStringLiteral("sttModel"), sttModel},
         {QStringLiteral("llmModel"), llmModel},
         {QStringLiteral("waitlistEmail"), waitlistEmail},
+        {QStringLiteral("level"), level},
         {QStringLiteral("estimateBeforeRun"), estimateBeforeRun},
+        {QStringLiteral("fastForLongRecordings"), fastForLongRecordings},
+        {QStringLiteral("deleteUploadedAudio"), deleteUploadedAudio},
     };
 }
 
@@ -26,7 +29,11 @@ CloudSettings CloudSettings::fromJson(const QJsonObject& o)
     s.sttModel = o.value(QStringLiteral("sttModel")).toString(s.sttModel);
     s.llmModel = o.value(QStringLiteral("llmModel")).toString(s.llmModel);
     s.waitlistEmail = o.value(QStringLiteral("waitlistEmail")).toString(s.waitlistEmail);
+    const QString level = o.value(QStringLiteral("level")).toString(s.level);
+    s.level = level == QLatin1String("advanced") ? level : QStringLiteral("simple");
     s.estimateBeforeRun = o.value(QStringLiteral("estimateBeforeRun")).toBool(s.estimateBeforeRun);
+    s.fastForLongRecordings = o.value(QStringLiteral("fastForLongRecordings")).toBool(s.fastForLongRecordings);
+    s.deleteUploadedAudio = o.value(QStringLiteral("deleteUploadedAudio")).toBool(s.deleteUploadedAudio);
     return s;
 }
 

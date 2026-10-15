@@ -6,7 +6,8 @@
 // disk or the system.
 //
 // Fixture::Settings serves the Settings window's design states ("B01" ... "B08*", "advanced",
-// "dirty", "cloudSelected", ...): the made-up user's settings and keys, the five made-up devices,
+// "dirty", "cloudSelected", the Tanara Cloud page's "cloudComingSoon" (teaser) / "cloudSignedOut" /
+// "cloudLowBalance" / "cloudAdvanced" (live), ...): the made-up user's settings and keys, the five made-up devices,
 // the folder sizes, the library preparation's state, and what the window shows on top
 // (scenario()). Fixture::Onboarding serves the "Getting started" window's steps ("welcome" ...
 // "done"): a fresh install's settings with no transcription key yet.
@@ -70,10 +71,18 @@ public:
     int rejectedSuggestionCount() const override { return m_rejected; }
     void clearRejectedSuggestions() override;
 
+    // The made-up Tanara Cloud account (no network: sign-in shows a made-up code, sign-out forgets it).
+    tanara::app::CloudAccountState cloudState() const override { return m_cloud; }
+    void cloudSignIn() override;
+    void cloudCancelSignIn() override;
+    void cloudSignOut() override;
+    void cloudRequestTopup() override;
+
 private:
     void loadSettings(const QString& state);
     void loadOnboarding(const QString& state);
     void loadEmbedding(const QString& state);
+    void loadCloud(const QString& state);
 
     Fixture m_fixture;
     tanara::app::AppSettings m_settings;
@@ -83,6 +92,7 @@ private:
     tanara::recording::IRecorderFacade* m_devices = nullptr;
     tanara::library::EmbeddingState m_embedding;
     int m_rejected = 0;
+    tanara::app::CloudAccountState m_cloud;
     int m_nextTest = 1;
     QList<int> m_cancelled;
 };

@@ -1372,6 +1372,10 @@ const UiServices& AppContext::servicesFor(tanara::app::AppController* c)
     sv6.hooks.secretBackendWarning = [c] { return c->secretBackendWarning(); };
     sv6.hooks.setUserSpeakerName = [c](const QString& name) { c->setUserSpeakerName(name); };
     sv6.hooks.selfPersonId = [c] { return c->selfPerson().id; };
+    sv6.cloud = c->cloud();
+    sv6.hooks.cloudMode = [c] {
+        return c->cloudLive() ? QStringLiteral("live") : c->cloudTeaser() ? QStringLiteral("teaser") : QStringLiteral("off");
+    };
     auto* settingsFacade = new SettingsServicesFacade(sv6, c);
     connect(events, &ControllerEvents::peopleChanged, settingsFacade, &SettingsServicesFacade::reportVoiceprintsChanged);
     connect(events, &ControllerEvents::voiceprintsChanged, settingsFacade, &SettingsServicesFacade::reportVoiceprintsChanged);

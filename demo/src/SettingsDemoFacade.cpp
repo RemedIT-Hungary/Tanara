@@ -135,6 +135,15 @@ void SettingsDemoFacade::loadSettings(const QString& st)
     } else if (st == QLatin1String("cloudComingSoon")) {
         sc.page = QStringLiteral("cloud");
         sc.serviceMode = QStringLiteral("cloud");
+    } else if (st == QLatin1String("cloudSignedOut") || st == QLatin1String("cloudLowBalance")
+               || st == QLatin1String("cloudAdvanced")) {
+        // The Tanara Cloud page in live mode (the account: loadCloud).
+        sc.page = QStringLiteral("cloud");
+        if (st == QLatin1String("cloudAdvanced")) {
+            s.cloud.level = QStringLiteral("advanced");
+            s.cloud.sttTier = s.cloud.llmTier = QStringLiteral("fast");
+            s.cloud.fastForLongRecordings = true;
+        }
     } else if (st == QLatin1String("cloudSelected")) {
         // The saved setting puts transcription and summary on Tanara Cloud (developer setting).
         sc.page = QStringLiteral("providers");
@@ -207,6 +216,80 @@ void SettingsDemoFacade::loadSettings(const QString& st)
     m_settings = s;
     m_scenario = sc;
     loadEmbedding(emb);
+    loadCloud(st);
+}
+
+// ---- the Tanara Cloud account -------------------------------------------------------------------
+
+void SettingsDemoFacade::loadCloud(const QString& state)
+{
+    // Like the product today: the "coming soon" teaser, except the live-mode design states.
+    m_cloud = app::CloudAccountState{};
+    const bool signedOut = state == QLatin1String("cloudSignedOut");
+    const bool low = state == QLatin1String("cloudLowBalance");
+    const bool advanced = state == QLatin1String("cloudAdvanced");
+    m_cloud.mode = signedOut || low || advanced ? QStringLiteral("live") : QStringLiteral("teaser");
+    if (m_cloud.mode != QLatin1String("live")) return;
+
+    // The made-up catalog: the transcription's per-hour prices of the two tiers.
+    const auto usd = [](qint64 micros) { return cloud::Money{micros, QStringLiteral("USD")}; };
+    cloud::CloudModel fast;
+    fast.id = cloud::virtualModelId(QStringLiteral("stt"), QStringLiteral("fast"));
+    fast.kind = QStringLiteral("stt");
+    fast.tier = QStringLiteral("fast");
+    fast.isVirtual = true;
+    fast.perHour = usd(300000);
+    cloud::CloudModel accurate = fast;
+    accurate.id = cloud::virtualModelId(QStringLiteral("stt"), QStringLiteral("accurate"));
+    accurate.tier = QStringLiteral("accurate");
+    accurate.perHour = usd(750000);
+    m_cloud.models = {fast, accurate};
+    if (signedOut) return;
+
+    m_cloud.signedIn = true;
+    m_cloud.email = demoText("lilla@pelda.hu", "emma@example.com");
+    cloud::AccountInfo& a = m_cloud.account;
+    a.valid = true;
+    a.email = m_cloud.email;
+    a.vatMode = QStringLiteral("gross");
+    a.lowBalanceThreshold = usd(2000000);
+    a.balance = low ? usd(1200000) : usd(18400000);
+    a.lowBalance = low;
+    a.hoursFast = low ? 4.0 : 61.3;
+    a.hoursAccurate = low ? 1.6 : 24.5;
+    a.topupAvailable = true;
+    a.dashboardUrl = QStringLiteral("https://app.tanara.remedit.hu/account");
+}
+
+void SettingsDemoFacade::cloudSignIn()
+{
+    if (m_cloud.mode != QLatin1String("live") || m_cloud.signedIn) return;
+    m_cloud.signingIn = true;
+    m_cloud.deviceCode.userCode = QStringLiteral("WDJB-MJHT");
+    m_cloud.deviceCode.verificationUri = QStringLiteral("https://app.tanara.remedit.hu/device");
+    emit cloudStateChanged();
+}
+
+void SettingsDemoFacade::cloudCancelSignIn()
+{
+    if (!m_cloud.signingIn) return;
+    m_cloud.signingIn = false;
+    m_cloud.deviceCode = cloud::DeviceCode{};
+    emit cloudStateChanged();
+}
+
+void SettingsDemoFacade::cloudSignOut()
+{
+    if (!m_cloud.signedIn) return;
+    m_cloud.signedIn = false;
+    m_cloud.email.clear();
+    m_cloud.account = cloud::AccountInfo{};
+    emit cloudStateChanged();
+}
+
+void SettingsDemoFacade::cloudRequestTopup()
+{
+    if (m_cloud.signedIn) emit cloudTopupReady(m_cloud.account.dashboardUrl);
 }
 
 void SettingsDemoFacade::loadEmbedding(const QString& state)

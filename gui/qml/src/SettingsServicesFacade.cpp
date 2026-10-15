@@ -1,6 +1,7 @@
 #include "SettingsServicesFacade.h"
 
 #include "tanara/app/SettingsManager.h"
+#include "tanara/cloud/CloudSession.h"
 #include "tanara/foundation/i18n/Localization.h"
 #include "tanara/library/index/EmbeddingIndex.h"
 #include "tanara/library/index/EmbeddingPreparer.h"
@@ -35,6 +36,44 @@ SettingsServicesFacade::SettingsServicesFacade(const Deps& deps, QObject* parent
         connect(m_deps.tags, &library::TagService::rejectedChanged, this, &ISettingsFacade::rejectedSuggestionsChanged);
     m_tester = new providers::ConnectionTester(this);
     connect(m_tester, &providers::ConnectionTester::finished, this, &ISettingsFacade::connectionTested);
+
+    if (cloud::CloudSession* c = m_deps.cloud) {
+        // Every account change re-reads the whole state (cloudState()); errors become one sentence.
+        const auto changed = [this] { emit cloudStateChanged(); };
+        connect(c, &cloud::CloudSession::deviceCodeReady, this, [this](const cloud::DeviceCode& code) {
+            m_signingIn = true;
+            m_deviceCode = code;
+            m_cloudError.clear();
+            emit cloudStateChanged();
+        });
+        connect(c, &cloud::CloudSession::deviceFlowSucceeded, this, [this] {
+            m_signingIn = false;
+            m_deviceCode = cloud::DeviceCode{};
+            emit cloudStateChanged();
+        });
+        connect(c, &cloud::CloudSession::deviceFlowFailed, this, [this](const cloud::CloudError& e) {
+            m_signingIn = false;
+            m_deviceCode = cloud::DeviceCode{};
+            setCloudError(cloudErrorText(e));
+        });
+        connect(c, &cloud::CloudSession::loggedIn, this, [this] {
+            emit cloudStateChanged();
+            cloudRefresh();
+        });
+        connect(c, &cloud::CloudSession::loggedOut, this, changed);
+        connect(c, &cloud::CloudSession::accountUpdated, this, [this] { setCloudError(QString()); });
+        connect(c, &cloud::CloudSession::modelsUpdated, this, changed);
+        connect(c, &cloud::CloudSession::balanceChanged, this, changed);
+        connect(c, &cloud::CloudSession::accountFailed, this, [this](const cloud::CloudError& e) { setCloudError(cloudErrorText(e)); });
+        connect(c, &cloud::CloudSession::topupLinkReady, this, &ISettingsFacade::cloudTopupReady);
+        connect(c, &cloud::CloudSession::topupFailed, this, [this](const cloud::CloudError& e) {
+            // No online top-up for this account: the contact page instead.
+            if (e.kind == cloud::CloudErrorKind::TopupUnavailable && !e.contactUrl.isEmpty())
+                emit cloudTopupReady(e.contactUrl);
+            else
+                setCloudError(cloudErrorText(e));
+        });
+    }
 }
 
 SettingsServicesFacade::~SettingsServicesFacade() = default;
@@ -230,6 +269,85 @@ int SettingsServicesFacade::rejectedSuggestionCount() const
 void SettingsServicesFacade::clearRejectedSuggestions()
 {
     if (m_deps.tags) m_deps.tags->clearRejected();
+}
+
+// ---- Tanara Cloud: the account ------------------------------------------------------------
+
+bool SettingsServicesFacade::cloudLive() const
+{
+    return m_deps.cloud && m_deps.hooks.cloudMode && m_deps.hooks.cloudMode() == QLatin1String("live");
+}
+
+app::CloudAccountState SettingsServicesFacade::cloudState() const
+{
+    app::CloudAccountState st;
+    st.mode = m_deps.hooks.cloudMode ? m_deps.hooks.cloudMode() : QStringLiteral("off");
+    if (!m_deps.cloud || st.mode != QLatin1String("live")) return st;
+    const cloud::CloudSession* c = m_deps.cloud;
+    st.signedIn = c->isLoggedIn();
+    st.email = c->email();
+    if (st.signedIn) {
+        st.account = c->account();
+        if (st.email.isEmpty()) st.email = st.account.email;
+    }
+    st.models = c->models();
+    st.signingIn = m_signingIn && !st.signedIn;
+    st.deviceCode = m_deviceCode;
+    st.error = m_cloudError;
+    return st;
+}
+
+void SettingsServicesFacade::cloudSignIn()
+{
+    if (!cloudLive() || m_deps.cloud->isLoggedIn()) return;
+    setCloudError(QString());
+    m_deps.cloud->startDeviceFlow();
+}
+
+void SettingsServicesFacade::cloudCancelSignIn()
+{
+    if (!m_deps.cloud) return;
+    m_deps.cloud->cancelDeviceFlow();
+    m_signingIn = false;
+    m_deviceCode = cloud::DeviceCode{};
+    emit cloudStateChanged();
+}
+
+void SettingsServicesFacade::cloudSignOut()
+{
+    if (!cloudLive()) return;
+    m_deps.cloud->logout();   // the local key goes even if the call fails
+}
+
+void SettingsServicesFacade::cloudRefresh()
+{
+    if (!cloudLive() || !m_deps.cloud->isLoggedIn()) return;
+    m_deps.cloud->refreshAccount();
+    m_deps.cloud->fetchModels();
+}
+
+void SettingsServicesFacade::cloudRequestTopup()
+{
+    if (!cloudLive() || !m_deps.cloud->isLoggedIn()) return;
+    m_deps.cloud->createTopupLink();
+}
+
+void SettingsServicesFacade::setCloudError(const QString& error)
+{
+    m_cloudError = error;
+    emit cloudStateChanged();
+}
+
+QString SettingsServicesFacade::cloudErrorText(const cloud::CloudError& e) const
+{
+    if (!e.isError()) return QString();
+    if (e.kind == cloud::CloudErrorKind::Network)
+        return tr("A Tanara Cloud nem érhető el. Ellenőrizd az internetkapcsolatot.");
+    if (e.kind == cloud::CloudErrorKind::DeviceFlow)
+        return tr("A bejelentkezés nem sikerült vagy lejárt. Próbáld újra.");
+    // The gateway's message comes in the app's language (Accept-Language).
+    if (!e.message.isEmpty()) return e.message;
+    return tr("A Tanara Cloud hibát jelzett (%1).").arg(e.code.isEmpty() ? QString::number(e.httpStatus) : e.code);
 }
 
 } // namespace tanara_qml

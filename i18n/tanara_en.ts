@@ -4562,6 +4562,136 @@
     </message>
 </context>
 <context>
+    <name>SettingsCloudPage</name>
+    <message>
+        <source>Fiók</source>
+        <translation>Account</translation>
+    </message>
+    <message>
+        <source>Bejelentkezve</source>
+        <translation>Signed in</translation>
+    </message>
+    <message>
+        <source>Keret</source>
+        <translation>Balance</translation>
+    </message>
+    <message>
+        <source>Feltöltés</source>
+        <translation>Top up</translation>
+    </message>
+    <message>
+        <source>Kijelentkezés</source>
+        <translation>Sign out</translation>
+    </message>
+    <message>
+        <source>Nem vagy bejelentkezve. A bejelentkezés a böngészőben történik; a Tanara egy kódot mutat, amelyet ott megadsz.</source>
+        <translation>You are not signed in. You sign in in the browser; Tanara shows a code that you enter there.</translation>
+    </message>
+    <message>
+        <source>Bejelentkezés</source>
+        <translation>Sign in</translation>
+    </message>
+    <message>
+        <source>Nyisd meg a bejelentkező oldalt, és add meg ezt a kódot:</source>
+        <translation>Open the sign-in page and enter this code:</translation>
+    </message>
+    <message>
+        <source>Bejelentkező oldal</source>
+        <translation>Sign-in page</translation>
+    </message>
+    <message>
+        <source>Mégse</source>
+        <translation>Cancel</translation>
+    </message>
+    <message>
+        <source>Elfogyott a keret: a Tanara Cloud addig nem indít új feldolgozást, amíg fel nem töltöd.</source>
+        <translation>Your balance is used up: Tanara Cloud starts no new processing until you top up.</translation>
+    </message>
+    <message>
+        <source>Kevés a keret. Egy hosszabb felvétel feldolgozása elakadhat; érdemes feltölteni.</source>
+        <translation>Your balance is low. Processing a longer recording may stop; consider topping up.</translation>
+    </message>
+    <message>
+        <source>Szint</source>
+        <translation>Level</translation>
+    </message>
+    <message>
+        <source>Egyszerű</source>
+        <translation>Simple</translation>
+    </message>
+    <message>
+        <source>Haladó</source>
+        <translation>Advanced</translation>
+    </message>
+    <message>
+        <source>hamarosan</source>
+        <translation>coming soon</translation>
+    </message>
+    <message>
+        <source>Ugyanaz a két szint, plusz néhány kapcsoló arra, hogyan fussanak a lépések.</source>
+        <translation>The same two levels, plus a few switches for how the steps run.</translation>
+    </message>
+    <message>
+        <source>Két szint közül választasz; a szolgáltatót és a modellt mi választjuk, és frissítjük, ha jobb jön.</source>
+        <translation>You pick one of two levels; we choose the provider and the model, and update them when a better one comes.</translation>
+    </message>
+    <message>
+        <source>Gyors</source>
+        <translation>Fast</translation>
+    </message>
+    <message>
+        <source>Gyors átírás, rövidebb összefoglaló. Olcsóbb, hosszú felvételekhez is jó.</source>
+        <translation>Fast transcription, shorter summary. Cheaper, also good for long recordings.</translation>
+    </message>
+    <message>
+        <source>Pontos</source>
+        <translation>Accurate</translation>
+    </message>
+    <message>
+        <source>A legjobb átírás beszélőkkel, részletes összefoglaló. Ajánlott.</source>
+        <translation>The best transcription with speakers, detailed summary. Recommended.</translation>
+    </message>
+    <message>
+        <source>Az átírás és az összefoglaló most eltérő szinten fut; a választás mindkettőt beállítja.</source>
+        <translation>Transcription and summary run at different levels now; your choice sets both.</translation>
+    </message>
+    <message>
+        <source>Költségbecslés minden futás előtt</source>
+        <translation>Cost estimate before every run</translation>
+    </message>
+    <message>
+        <source>Indítás előtt megmutatjuk a várható költséget, és megerősítést kérünk.</source>
+        <translation>Before a run starts, we show the expected cost and ask you to confirm.</translation>
+    </message>
+    <message>
+        <source>Hosszú felvételnél Gyors szint</source>
+        <translation>Fast level for long recordings</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n percnél hosszabb felvétel a Gyors szinten fut, a választott szinttől függetlenül.</source>
+        <translation>
+            <numerusform>A recording longer than %n minute runs at Fast, whatever level you chose.</numerusform>
+            <numerusform>A recording longer than %n minutes runs at Fast, whatever level you chose.</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>A feltöltött hang törlése a feldolgozás után</source>
+        <translation>Delete the uploaded audio after processing</translation>
+    </message>
+    <message>
+        <source>A Tanara Cloud nem tartja meg a felvételt, amint az átírás elkészült.</source>
+        <translation>Tanara Cloud does not keep the recording once the transcription is done.</translation>
+    </message>
+    <message>
+        <source>Melyik lépés menjen a Cloudra, azt a Feldolgozás oldalon döntöd el; itt csak az dől el, hogyan fusson.</source>
+        <translation>Which step goes to the Cloud, you decide on the Processing page; here you only decide how it runs.</translation>
+    </message>
+    <message>
+        <source>Feldolgozás</source>
+        <translation>Processing</translation>
+    </message>
+</context>
+<context>
     <name>SettingsCombo</name>
     <message>
         <source>Lista megnyitása</source>
@@ -12173,6 +12303,21 @@
     </message>
 </context>
 <context>
+    <name>tanara_qml::SettingsServicesFacade</name>
+    <message>
+        <source>A Tanara Cloud nem érhető el. Ellenőrizd az internetkapcsolatot.</source>
+        <translation>Tanara Cloud is not reachable. Check your internet connection.</translation>
+    </message>
+    <message>
+        <source>A bejelentkezés nem sikerült vagy lejárt. Próbáld újra.</source>
+        <translation>The sign-in failed or expired. Try again.</translation>
+    </message>
+    <message>
+        <source>A Tanara Cloud hibát jelzett (%1).</source>
+        <translation>Tanara Cloud reported an error (%1).</translation>
+    </message>
+</context>
+<context>
     <name>tanara_qml::SettingsViewModel</name>
     <message>
         <source>Adj meg egy nevet — ezen a néven szerepelsz az átiratokban.</source>
@@ -12401,6 +12546,18 @@
     <message>
         <source>Témajavaslat</source>
         <translation>Topic suggestion</translation>
+    </message>
+    <message>
+        <source>kb. %1 átírás a Gyors szinten</source>
+        <translation>about %1 of transcription at Fast</translation>
+    </message>
+    <message>
+        <source>kb. %1 átírás a Pontos szinten</source>
+        <translation>about %1 of transcription at Accurate</translation>
+    </message>
+    <message>
+        <source>%1 / óra</source>
+        <translation>%1 / hour</translation>
     </message>
     <message>
         <source>Témánkénti elemzés</source>

@@ -17,6 +17,7 @@ import QtQuick.Templates as T
 // also be loaded standalone for screenshots:
 //   tanara --qml-shot out.png --qml-page SettingsWindow --size 900x680 --qml-prop 'demoState="B03"'
 // demoState: B01 ... B07 · dirty · unsaved · schema · cloudComingSoon · cloudSelected · addApp · reset
+// · cloudSignedOut · cloudLowBalance · cloudAdvanced (the Tanara Cloud page in live mode)
 // · B04embedding · B04embeddingRunning · B04embeddingError · B04embeddingDone · B04embeddingCloud
 // · B04embeddingNone · B04modelChange · rejectedReset (confirmation)
 // · B08 · B08download · B08none · B08fallback · B08error · B08offline · B08backfill · B08partial · B08bundled
@@ -395,12 +396,12 @@ ApplicationWindow {
                         }
                     }
 
-                    // ---- Tanara Cloud ----
-                    Column {
+                    // ---- Tanara Cloud: the account and the account-level tier ----
+                    SettingsCloudPage {
                         id: cloudPage
                         visible: model.page === "cloud"
                         width: Math.min(parent.width, 600)
-                        CloudComingSoon { width: parent.width }
+                        vm: model
                     }
 
                     // ---- People and samples: your name and voiceprint, the voiceprint backfill ----

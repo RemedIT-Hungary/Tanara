@@ -4,7 +4,7 @@
 // as ONE abstract surface: the effective settings and their saving, the secrets (API keys), the
 // own name, the default sources and the level meters, the own voiceprints, the folders, the
 // provider registry with the connection test, the call detector, the library preparation
-// (embeddings) and the rejected tag suggestions.
+// (embeddings), the rejected tag suggestions and the Tanara Cloud account.
 //
 // The real implementation composes SettingsManager, the provider registry, the recording service,
 // the voiceprint store, the tag service, the embedding preparer and the detector registry
@@ -13,6 +13,7 @@
 // the disk, and describes the design state it was made for (scenario()). It is a QObject only
 // because it carries signals.
 #include "tanara/app/AppSettings.h"
+#include "tanara/cloud/CloudTypes.h"
 #include "tanara/foundation/paths/AppPaths.h"
 #include "tanara/library/index/EmbeddingPreparer.h"
 #include "tanara/providers/chat/LlmServer.h"
@@ -42,6 +43,19 @@ struct FolderUsage {
 struct VoiceprintSummary {
     int samples = 0;
     int meetings = 0;
+};
+
+// The Tanara Cloud account as the Settings > Tanara Cloud page sees it (cloud::CloudSession's
+// last known state, plus the cloud mode).
+struct CloudAccountState {
+    QString mode{QStringLiteral("off")};   // "off" | "teaser" | "live" (cloud::CloudMode)
+    bool signedIn = false;
+    QString email;
+    cloud::AccountInfo account;            // last known (valid = false: not fetched yet)
+    QVector<cloud::CloudModel> models;     // last known catalog (empty: not fetched yet)
+    bool signingIn = false;                // the device flow runs: the code below is shown
+    cloud::DeviceCode deviceCode;
+    QString error;                         // the last call's error, one sentence ("" = none)
 };
 
 // The design state of a fictional facade (screenshots, the demo): what the window shows on top
@@ -146,6 +160,18 @@ public:
     virtual int rejectedSuggestionCount() const = 0;
     virtual void clearRejectedSuggestions() = 0;
 
+    // ---- Tanara Cloud: the account (Settings > Tanara Cloud) ----
+    // The defaults describe a build without a cloud client ("off"); the calls only act in live mode.
+    virtual CloudAccountState cloudState() const { return {}; }
+    // Starts the device-code sign-in (cloudStateChanged carries the code, then the signed-in state).
+    virtual void cloudSignIn() {}
+    virtual void cloudCancelSignIn() {}
+    virtual void cloudSignOut() {}
+    // Refreshes the account and the catalog (asynchronous; cloudStateChanged when they arrive).
+    virtual void cloudRefresh() {}
+    // Asks for a one-time top-up link; the result comes in cloudTopupReady (or an error in the state).
+    virtual void cloudRequestTopup() {}
+
 signals:
     void settingsChanged();
     // The people / their voiceprints changed (the own voiceprint line).
@@ -154,6 +180,8 @@ signals:
     void llmServerProbed(const tanara::providers::llmctx::LlmServerInfo& info);
     void embeddingStateChanged();
     void rejectedSuggestionsChanged();
+    void cloudStateChanged();
+    void cloudTopupReady(const QString& url);
 };
 
 } // namespace tanara::app

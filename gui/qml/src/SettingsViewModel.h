@@ -20,7 +20,8 @@
 // It works on a tanara::app::ISettingsFacade (and the voice-model list on an IVoiceModelsFacade):
 // the QML default constructor takes them from AppContext::services(); on the fictional facades
 // (tanara_demo: --qml-shot / --demo, tests) `demoState` ("B01" ... "B07", "B07notes", "advanced",
-// "dirty", "unsaved", "schema", "cloudComingSoon", "cloudSelected", "B04embedding" /
+// "dirty", "unsaved", "schema", "cloudComingSoon", "cloudSignedOut", "cloudLowBalance", "cloudAdvanced",
+// "cloudSelected", "B04embedding" /
 // "B04embeddingRunning" / "B04embeddingError" / "B04embeddingDone" / "B04embeddingCloud" /
 // "B04embeddingNone" / "B04modelChange", "B08" / "B08download" / "B08none" / "B08fallback" /
 // "B08error" / "B08offline" / "B08backfill" / "B08partial" / "B08bundled") picks the design state.
@@ -169,6 +170,30 @@ class SettingsViewModel : public QObject {
     Q_PROPERTY(QString schemaBody READ schemaBody NOTIFY promptIndexChanged)
     Q_PROPERTY(QString schemaKind READ schemaKind NOTIFY promptIndexChanged)
 
+    // ---- Tanara Cloud (S4: the account and the account-level tier) ----
+    // "off" | "teaser" | "live" (cloud::CloudMode). Off / teaser: the page shows "coming soon" and the
+    // tier controls are disabled; their setters do nothing.
+    Q_PROPERTY(QString cloudMode READ cloudMode NOTIFY cloudChanged)
+    Q_PROPERTY(bool cloudEditable READ cloudEditable NOTIFY cloudChanged)
+    Q_PROPERTY(bool cloudSignedIn READ cloudSignedIn NOTIFY cloudChanged)
+    Q_PROPERTY(bool cloudSigningIn READ cloudSigningIn NOTIFY cloudChanged)
+    // { valid, email, balance, vatLabel, lowBalance, balanceEmpty, hoursText, signInCode, signInUrl,
+    //   error }: display-ready texts (balance with formatMoney, the VAT label, "kb. 12 óra ...").
+    Q_PROPERTY(QVariantMap cloudAccount READ cloudAccount NOTIFY cloudChanged)
+    // The web account page (the top-up falls back to it); "" when unknown.
+    Q_PROPERTY(QString cloudTopUpUrl READ cloudTopUpUrl NOTIFY cloudChanged)
+    // The account tier: "fast" | "accurate", or "mixed" when the stored transcription and summary tiers
+    // differ (no option selected; picking one sets both).
+    Q_PROPERTY(QString cloudTier READ cloudTier WRITE setCloudTier NOTIFY dirtyChanged)
+    // [{ value: "fast" | "accurate", price }]: the per-hour transcription price from the catalog ("" when unknown).
+    Q_PROPERTY(QVariantList cloudTierOptions READ cloudTierOptions NOTIFY cloudChanged)
+    // "simple" | "advanced": the page's level (the switches show only at "advanced", they apply either way).
+    Q_PROPERTY(QString cloudLevel READ cloudLevel WRITE setCloudLevel NOTIFY dirtyChanged)
+    Q_PROPERTY(bool cloudEstimateBeforeRun READ cloudEstimateBeforeRun WRITE setCloudEstimateBeforeRun NOTIFY dirtyChanged)
+    Q_PROPERTY(bool cloudFastForLongRecordings READ cloudFastForLongRecordings WRITE setCloudFastForLongRecordings NOTIFY dirtyChanged)
+    Q_PROPERTY(int cloudLongRecordingMinutes READ cloudLongRecordingMinutes CONSTANT)
+    Q_PROPERTY(bool cloudDeleteUploadedAudio READ cloudDeleteUploadedAudio WRITE setCloudDeleteUploadedAudio NOTIFY dirtyChanged)
+
 public:
     // QML: the facades of AppContext::services() (the fictional ones follow demoState).
     explicit SettingsViewModel(QObject* parent = nullptr);
@@ -272,6 +297,25 @@ public:
     QString schemaBody() const;
     QString schemaKind() const;
 
+    QString cloudMode() const { return m_cloud.mode; }
+    bool cloudEditable() const { return m_cloud.mode == QLatin1String("live"); }
+    bool cloudSignedIn() const { return m_cloud.signedIn; }
+    bool cloudSigningIn() const { return m_cloud.signingIn; }
+    QVariantMap cloudAccount() const;
+    QString cloudTopUpUrl() const { return m_cloud.account.dashboardUrl; }
+    QString cloudTier() const;
+    void setCloudTier(const QString& tier);
+    QVariantList cloudTierOptions() const;
+    QString cloudLevel() const { return m_draft.cloud.level; }
+    void setCloudLevel(const QString& level);
+    bool cloudEstimateBeforeRun() const { return m_draft.cloud.estimateBeforeRun; }
+    void setCloudEstimateBeforeRun(bool on);
+    bool cloudFastForLongRecordings() const { return m_draft.cloud.fastForLongRecordings; }
+    void setCloudFastForLongRecordings(bool on);
+    int cloudLongRecordingMinutes() const;
+    bool cloudDeleteUploadedAudio() const { return m_draft.cloud.deleteUploadedAudio; }
+    void setCloudDeleteUploadedAudio(bool on);
+
     // ---- actions ----
     // Opens on a page and scrolls to a section. page: a page key ("general" | "recording" |
     // "processing" | "cloud" | "people") or a legacy target of ShellActions.openSettings
@@ -314,6 +358,16 @@ public:
     Q_INVOKABLE QVariantList runningApps() const;
 
     Q_INVOKABLE void resetPrompt();
+
+    // ---- Tanara Cloud: the account (immediate, not part of the draft; live mode only) ----
+    Q_INVOKABLE void cloudSignIn();
+    Q_INVOKABLE void cloudCancelSignIn();
+    Q_INVOKABLE void cloudSignOut();
+    // "Feltöltés": a one-time top-up link from the gateway, opened in the browser (the account page
+    // when the link cannot be made).
+    Q_INVOKABLE void cloudTopUp();
+    // Opens the sign-in page of the running device flow in the browser.
+    Q_INVOKABLE void cloudOpenSignInPage();
 
     // ---- S3: the processing route per capability (cap: stt | diarization | voice | llm | embedding) ----
     // The draft's route: "local" | "external" | "cloud" | "ask" | "basic" ("" = unknown capability).
@@ -379,6 +433,7 @@ signals:
     void promptsChanged();
     void promptIndexChanged();
     void promptTextChanged();
+    void cloudChanged();
 
     // After a successful save.
     void saved();
@@ -416,6 +471,11 @@ private:
     static QStringList folderKeys();
     QString promptId(int index) const;
     void storePromptsInDraft();
+    // S4: the cloud account's connections (into m_connections) and its first read.
+    void attachCloud(tanara::app::ISettingsFacade* facade);
+    void refreshCloud();
+    // A cloud draft setter's gate: only in live mode (teaser / off: nothing changes).
+    bool cloudWritable() const { return cloudEditable(); }
     QStringList selectedDevicesForSave() const;
 
     QPointer<tanara::app::ISettingsFacade> m_facade;
@@ -464,6 +524,8 @@ private:
     SettingsEmbeddingModel* m_embedding = nullptr;
     VoiceModelListModel* m_voiceModels = nullptr;
     VoiceModelListModel* m_segModels = nullptr;
+
+    tanara::app::CloudAccountState m_cloud;   // the facade's last read account state
 };
 
 } // namespace tanara_qml

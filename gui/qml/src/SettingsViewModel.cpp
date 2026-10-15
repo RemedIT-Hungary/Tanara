@@ -270,6 +270,13 @@ void SettingsViewModel::init()
         if (m_dialogs) m_dialogs->openUrl(url);
     });
 
+    // The cloud page asks for a fresh account / catalog whenever it is shown.
+    connect(this, &SettingsViewModel::pageChanged, this, [this] {
+        if (m_page == QLatin1String("cloud") && m_facade) m_facade->cloudRefresh();
+    });
+    // The account texts depend on the draft too (the hours line follows the tier).
+    connect(this, &SettingsViewModel::dirtyChanged, this, &SettingsViewModel::cloudChanged);
+
     m_detectTimer.setInterval(4000);
     connect(&m_detectTimer, &QTimer::timeout, this, &SettingsViewModel::pollDetector);
 
@@ -323,6 +330,7 @@ void SettingsViewModel::useFacade(app::ISettingsFacade* facade)
             if (m_monitoring) m_devices->onLevel(name, rms, qMax(rms, peak));
         });
     }
+    attachCloud(facade);
     loadFromCore();
     if (m_monitoring) facade->retainLevelMonitoring(this);
     emit facadeChanged();
@@ -1647,6 +1655,152 @@ void SettingsViewModel::discard()
     touch();
     emitAllChanged();
     refreshFolderUsage();
+}
+
+// ---- Tanara Cloud (S4) ---------------------------------------------------------------------
+
+void SettingsViewModel::attachCloud(app::ISettingsFacade* facade)
+{
+    m_connections << connect(facade, &app::ISettingsFacade::cloudStateChanged, this, &SettingsViewModel::refreshCloud);
+    m_connections << connect(facade, &app::ISettingsFacade::cloudTopupReady, this, [this](const QString& url) {
+        if (m_dialogs && !url.isEmpty()) m_dialogs->openUrl(url);
+    });
+    refreshCloud();
+    if (m_page == QLatin1String("cloud")) facade->cloudRefresh();
+}
+
+void SettingsViewModel::refreshCloud()
+{
+    m_cloud = m_facade ? m_facade->cloudState() : app::CloudAccountState{};
+    emit cloudChanged();
+}
+
+QVariantMap SettingsViewModel::cloudAccount() const
+{
+    const QString lang = activeUiLanguage();
+    const cloud::AccountInfo& a = m_cloud.account;
+    QVariantMap m;
+    m.insert(QStringLiteral("valid"), a.valid);
+    m.insert(QStringLiteral("email"), m_cloud.email);
+    m.insert(QStringLiteral("balance"), a.valid ? cloud::formatMoney(a.balance, cloud::MoneyStyle::Balance, lang) : QString());
+    m.insert(QStringLiteral("vatLabel"), a.valid && !a.vatMode.isEmpty() ? cloud::vatLabel(a.vatMode) : QString());
+    m.insert(QStringLiteral("lowBalance"), a.valid && a.lowBalance && !a.balanceEmpty);
+    m.insert(QStringLiteral("balanceEmpty"), a.valid && a.balanceEmpty);
+    QString hours;
+    if (a.valid) {
+        // What the balance is enough for at the chosen tier (the account gives both).
+        const bool fast = cloudTier() == QLatin1String("fast");
+        const double h = fast ? a.hoursFast : a.hoursAccurate;
+        if (h > 0)
+            hours = fast ? tr("kb. %1 átírás a Gyors szinten").arg(cloud::formatHours(h, lang))
+                         : tr("kb. %1 átírás a Pontos szinten").arg(cloud::formatHours(h, lang));
+    }
+    m.insert(QStringLiteral("hoursText"), hours);
+    m.insert(QStringLiteral("signInCode"), m_cloud.deviceCode.userCode);
+    m.insert(QStringLiteral("signInUrl"), m_cloud.deviceCode.verificationUriComplete.isEmpty()
+                                              ? m_cloud.deviceCode.verificationUri
+                                              : m_cloud.deviceCode.verificationUriComplete);
+    m.insert(QStringLiteral("error"), m_cloud.error);
+    return m;
+}
+
+QString SettingsViewModel::cloudTier() const
+{
+    // One account tier over the two stored ones (transcription, summary).
+    const QString& stt = m_draft.cloud.sttTier;
+    return stt == m_draft.cloud.llmTier ? stt : QStringLiteral("mixed");
+}
+
+void SettingsViewModel::setCloudTier(const QString& tier)
+{
+    if (!cloudWritable() || (tier != QLatin1String("fast") && tier != QLatin1String("accurate"))) return;
+    cloud::CloudSettings& c = m_draft.cloud;
+    if (c.sttTier == tier && c.llmTier == tier && c.sttModel.isEmpty() && c.llmModel.isEmpty()) return;
+    c.sttTier = c.llmTier = tier;
+    // The client has no Pro level: a concrete (Expert) model left from the CLI would override the tier.
+    c.sttModel.clear();
+    c.llmModel.clear();
+    touch();
+}
+
+QVariantList SettingsViewModel::cloudTierOptions() const
+{
+    const QString lang = activeUiLanguage();
+    QVariantList out;
+    for (const QString& tier : {QStringLiteral("fast"), QStringLiteral("accurate")}) {
+        QString price;
+        // The transcription's per-hour price is the comparable one (the summary is per token).
+        const std::optional<cloud::CloudModel> m = cloud::findTierModel(m_cloud.models, QStringLiteral("stt"), tier);
+        if (m && m->perHour.isValid())
+            price = tr("%1 / óra").arg(cloud::formatMoney(m->perHour, cloud::MoneyStyle::Charge, lang));
+        out << QVariantMap{{QStringLiteral("value"), tier}, {QStringLiteral("price"), price}};
+    }
+    return out;
+}
+
+void SettingsViewModel::setCloudLevel(const QString& level)
+{
+    if (!cloudWritable() || (level != QLatin1String("simple") && level != QLatin1String("advanced"))
+        || m_draft.cloud.level == level)
+        return;
+    m_draft.cloud.level = level;
+    touch();
+}
+
+void SettingsViewModel::setCloudEstimateBeforeRun(bool on)
+{
+    if (!cloudWritable() || m_draft.cloud.estimateBeforeRun == on) return;
+    m_draft.cloud.estimateBeforeRun = on;
+    touch();
+}
+
+void SettingsViewModel::setCloudFastForLongRecordings(bool on)
+{
+    if (!cloudWritable() || m_draft.cloud.fastForLongRecordings == on) return;
+    m_draft.cloud.fastForLongRecordings = on;
+    touch();
+}
+
+int SettingsViewModel::cloudLongRecordingMinutes() const
+{
+    return cloud::CloudSettings::kLongRecordingMinutes;
+}
+
+void SettingsViewModel::setCloudDeleteUploadedAudio(bool on)
+{
+    if (!cloudWritable() || m_draft.cloud.deleteUploadedAudio == on) return;
+    m_draft.cloud.deleteUploadedAudio = on;
+    touch();
+}
+
+void SettingsViewModel::cloudSignIn()
+{
+    if (cloudEditable() && m_facade) m_facade->cloudSignIn();
+}
+
+void SettingsViewModel::cloudCancelSignIn()
+{
+    if (m_facade) m_facade->cloudCancelSignIn();
+}
+
+void SettingsViewModel::cloudSignOut()
+{
+    if (cloudEditable() && m_facade) m_facade->cloudSignOut();
+}
+
+void SettingsViewModel::cloudTopUp()
+{
+    if (!cloudEditable() || !m_facade) return;
+    if (m_cloud.signedIn && (!m_cloud.account.valid || m_cloud.account.topupAvailable))
+        m_facade->cloudRequestTopup();
+    else if (m_dialogs && !cloudTopUpUrl().isEmpty())
+        m_dialogs->openUrl(cloudTopUpUrl());
+}
+
+void SettingsViewModel::cloudOpenSignInPage()
+{
+    const QString url = cloudAccount().value(QStringLiteral("signInUrl")).toString();
+    if (m_dialogs && !url.isEmpty()) m_dialogs->openUrl(url);
 }
 
 // ---- design state (fictional facade) -------------------------------------------------------
