@@ -132,6 +132,12 @@ if (-not $MingwBin -or -not (Test-Path "$MingwBin\g++.exe")) { throw "MinGW bin 
 Need "$ort\include" 'ONNX Runtime (run tools\ci\windows-deps.ps1 first)'
 Need "$ff\bin\ffmpeg.exe" 'FFmpeg (run tools\ci\windows-deps.ps1 first)'
 $env:PATH = "$QtDir\bin;$MingwBin;$env:PATH"
+# CMake 3.23 fails at generate time ("Target Qt6::QmlIntegration not found" in tests/): the Qt targets
+# found in gui/ are not visible to the sibling folders. 3.24 or newer works; Qt's own CMake
+# (C:\Qt\Tools\CMake_64\bin) is fine, put it first on PATH when a standalone, older CMake is installed.
+$cmakeVer = (& cmake --version 2>$null | Select-Object -First 1) -replace '[^0-9.]', ''
+if (-not $cmakeVer) { throw 'cmake not found on PATH' }
+if ([version]$cmakeVer -lt [version]'3.24') { throw "CMake $cmakeVer is too old for this build (3.24 or newer; e.g. C:\Qt\Tools\CMake_64\bin)" }
 $build = Join-Path $root $BuildDir
 
 # --- 2. build
@@ -232,7 +238,10 @@ if (-not $NoSmokeTest) {
         if ($LASTEXITCODE -ne 0) { throw 'tanara-cli paths show failed' }
         $env:QT_QPA_PLATFORM = 'offscreen'
         $shot = Join-Path $OutDir 'smoke.png'
-        & "$dist\tanara.exe" --qml-shot $shot --qml-page Main --size 1280x820
+        # tanara.exe is a GUI-subsystem program (WIN32_EXECUTABLE): PowerShell does not wait for it
+        # unless its output goes through a pipeline, and the check below would run before the
+        # screenshot exists. The pipe makes it wait and sets $LASTEXITCODE.
+        & "$dist\tanara.exe" --qml-shot $shot --qml-page Main --size 1280x820 | Out-Host
         if ($LASTEXITCODE -ne 0 -or -not (Test-Path $shot)) { throw 'tanara --qml-shot failed' }
         Remove-Item $shot
     } finally {

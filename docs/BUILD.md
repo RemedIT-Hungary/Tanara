@@ -7,7 +7,9 @@ AppImage, RPM, Flatpak experiment) see [Packaging](#packaging) below.
 
 ## Requirements
 
-- **C++20** compiler, **CMake >= 3.21**, **Ninja**
+- **C++20** compiler, **CMake >= 3.24** (`cmake_minimum_required` says 3.21, but with 3.23 the
+  Windows configure fails at generate time: "Target Qt6::QmlIntegration not found" in `tests/`;
+  the CMake that ships with Qt, `C:\Qt\Tools\CMake_64`, is fine), **Ninja**
 - **Qt 6** (Core, Network, Sql, Widgets, Multimedia, MultimediaWidgets, Qml, Quick,
   QuickControls2, Svg, LinguistTools, Test; DBus on Linux). The Windows packages use
   Qt 6.11.1 under the LGPL-3.0.
@@ -58,7 +60,9 @@ Qt installer or aqtinstall). You do not need an MSVC kit.
 Prerequisites:
 
 - Qt 6.11.1 `mingw_64`, with the Multimedia and Shader Tools add-on modules.
-- Qt MinGW 13.1 (`C:\Qt\Tools\mingw1310_64`), Ninja and CMake on `PATH`.
+- Qt MinGW 13.1 (`C:\Qt\Tools\mingw1310_64`), Ninja and CMake on `PATH`. Put Qt's own
+  `C:\Qt\Tools\CMake_64\bin` and `C:\Qt\Tools\Ninja` first: a standalone CMake older than 3.24
+  (for example 3.23 from the Kitware installer) does not configure this project.
 - ONNX Runtime win-x64 1.20.1, unpacked (voice-ID builds only).
 - `ffmpeg.exe` and `ffprobe.exe` on `PATH`. For a build that you give to other people, use the
   pinned LGPL-only static build that is described in `packaging/windows/README.md`.
@@ -69,7 +73,7 @@ Fast bring-up without speaker recognition:
 
 ```powershell
 $qt = 'C:\Qt\6.11.1\mingw_64'     # adjust to your install
-$env:PATH = "$qt\bin;C:\Qt\Tools\mingw1310_64\bin;C:\Qt\Tools\Ninja;$env:PATH"
+$env:PATH = "$qt\bin;C:\Qt\Tools\mingw1310_64\bin;C:\Qt\Tools\Ninja;C:\Qt\Tools\CMake_64\bin;$env:PATH"
 
 cmake -S . -B build -G Ninja "-DCMAKE_PREFIX_PATH=$qt" -DCMAKE_BUILD_TYPE=Release `
       -DTANARA_BUILD_VOICEID=OFF
