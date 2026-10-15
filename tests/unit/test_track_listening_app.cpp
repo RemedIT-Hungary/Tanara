@@ -322,7 +322,10 @@ void TrackListeningAppTest::manualTracksSteerClusterMatchAndEvidence()
     // When the binding changes AppController refreshes the evidence too.
     QVERIFY(m_app->setParticipantTracks(m.id, "v1", {"mic", "loop"}));
     bool both = false;
-    for (const Evidence& e : m_app->participants(m.id).at(0).evidence)
+    // Hold the vector: a range-for over `participants(...).at(0).evidence` would iterate a member of a
+    // temporary destroyed before the loop (dangling; crashed intermittently).
+    const QVector<Participant> refreshed = m_app->participants(m.id);
+    for (const Evidence& e : refreshed.at(0).evidence)
         both = both || (e.kind == EvidenceKind::Side && evidenceText(e) == QStringLiteral("kézzel: mikrofon és hívás"));
     QVERIFY(both);
 }
