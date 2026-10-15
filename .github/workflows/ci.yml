@@ -87,9 +87,15 @@ jobs:
           host: windows
           target: desktop
           arch: win64_mingw
-          modules: qtmultimedia qtshadertools
+          # qttasktree: Qt 6.11's QmlAssetDownloader (qtdeclarative) depends on it.
+          modules: qtmultimedia qtshadertools qttasktree
           tools: tools_mingw1310,qt.tools.win64_mingw1310
           cache: true
+          # Qt 6.11 moved the Windows packages into per-arch folders (qt6_6111/qt6_6111_mingw/...);
+          # aqtinstall 3.3.0 (the last PyPI release, 2025-06) still asks for qt6_6111/qt6_6111/Updates.xml
+          # and fails. The fix (miurahr/aqtinstall#1000, merged 2026-03-24) is unreleased: install that
+          # commit. Drop this once a release with it exists (aqtinstall#1007).
+          aqtsource: git+https://github.com/miurahr/aqtinstall.git@8c3695d4a4e1ceabf6a74dc6c79681656dc6b74b
       - uses: actions/setup-node@v4
         with:
           node-version: 24

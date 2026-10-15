@@ -226,7 +226,11 @@ folder, the LGPL FFmpeg, the CAM++ model downloaded with a SHA256 check, the lic
 a smoke test on a clean `PATH` (`tanara-cli --version`, `paths show`, `tanara --qml-shot`), writes
 the zip and runs Inno Setup (`ISCC`; on CI it is installed with Chocolatey when it is missing, on a
 developer machine the script stops with a message). The result is in `build-release\`. These are the scripted steps of `packaging/windows/README.md` (that file explains
-why each step is there). Qt 6.11 needs the `qttasktree` add-on module with aqtinstall.
+why each step is there). Qt 6.11 needs the `qttasktree` add-on module with aqtinstall, and on
+Windows an aqtinstall newer than the 3.3.0 PyPI release: Qt 6.11 moved the Windows packages into
+per-arch folders on download.qt.io, which 3.3.0 cannot resolve ("Failed to download checksum for
+the file 'Updates.xml'"). The workflows pass `aqtsource` with the fixed commit to
+`install-qt-action` (miurahr/aqtinstall#1000); locally, `pip install git+https://github.com/miurahr/aqtinstall.git@<that commit>`.
 
 Switches for a machine without Visual Studio and Inno Setup:
 

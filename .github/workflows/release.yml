@@ -47,6 +47,8 @@ jobs:
           modules: qtmultimedia qtshadertools qttasktree
           tools: tools_mingw1310,qt.tools.win64_mingw1310
           cache: true
+          # Unreleased aqtinstall with the Qt 6.11 Windows folder-layout fix; see ci.yml.
+          aqtsource: git+https://github.com/miurahr/aqtinstall.git@8c3695d4a4e1ceabf6a74dc6c79681656dc6b74b
       - name: Install Ninja
         shell: pwsh
         run: choco install ninja --no-progress -y
@@ -88,6 +90,8 @@ jobs:
           arch: linux_gcc_64
           modules: qtmultimedia qtshadertools qttasktree
           cache: true
+          # The same aqtinstall commit as the Windows jobs (3.3.0 would work for Linux; one toolchain).
+          aqtsource: git+https://github.com/miurahr/aqtinstall.git@8c3695d4a4e1ceabf6a74dc6c79681656dc6b74b
       - name: Build the AppImage
         run: bash tools/ci/package-appimage.sh "$GITHUB_REF_NAME"
       - uses: actions/upload-artifact@v4
