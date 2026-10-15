@@ -129,20 +129,22 @@ class SettingsViewModel : public QObject {
     Q_PROPERTY(QString liveCallApp READ liveCallApp NOTIFY liveCallChanged)
 
     // ---- Services ----
-    // "own" | "cloud": which tab is shown. Tanara Cloud is "coming soon": the "cloud" tab only
-    // shows the notice, it never changes the draft.
+    // "own" | "cloud" (S3: a shim over the routes until S2): "cloud" iff the stt or llm route is Cloud, or the
+    // "coming soon" tab is shown (cloud not live). Setting "cloud" puts stt + llm on the Cloud route when
+    // allowed (else only the tab changes); "own" moves a Cloud route back to the own provider.
     Q_PROPERTY(QString serviceMode READ serviceMode WRITE setServiceMode NOTIFY serviceModeChanged)
     Q_PROPERTY(tanara_qml::SettingsProviderModel* stt READ stt CONSTANT)
     Q_PROPERTY(tanara_qml::SettingsProviderModel* llm READ llm CONSTANT)
-    // The draft names Tanara Cloud as a provider (e.g. a developer setting): not available in the UI.
+    // The draft's stt or llm route is Cloud.
     Q_PROPERTY(bool cloudSelected READ cloudSelected NOTIFY dirtyChanged)
     Q_PROPERTY(tanara_qml::SettingsEmbeddingModel* embedding READ embedding CONSTANT)
 
     // ---- Speakers: voice models (download immediate, enabling goes into the draft), backfill ----
     Q_PROPERTY(tanara_qml::VoiceModelListModel* voiceModels READ voiceModels CONSTANT)
-    // D5: the local speaker separation: the processing.localDiarization switch (draft) and the segmentation
-    // models' list (same rows as voiceModels, kind "segmentation", no enabled switch).
-    Q_PROPERTY(bool localDiarization READ localDiarization WRITE setLocalDiarization NOTIFY diarizationChanged)
+    // D5: the local speaker separation (S3: read-only shim = the draft's diarization route is Local; set it
+    // with setRoute("diarization", ...)) and the segmentation models' list (same rows as voiceModels, kind
+    // "segmentation", no enabled switch).
+    Q_PROPERTY(bool localDiarization READ localDiarization NOTIFY diarizationChanged)
     Q_PROPERTY(tanara_qml::VoiceModelListModel* segmentationModels READ segmentationModels CONSTANT)
 
     // ---- Summary ----
@@ -237,15 +239,14 @@ public:
     QString liveCallApp() const { return m_liveApp; }
 
     bool cloudSelected() const;
-    QString serviceMode() const { return m_serviceMode; }
+    QString serviceMode() const;
     void setServiceMode(const QString& mode);
     SettingsProviderModel* stt() const { return m_stt; }
     SettingsProviderModel* llm() const { return m_llm; }
     SettingsEmbeddingModel* embedding() const { return m_embedding; }
     VoiceModelListModel* voiceModels() const { return m_voiceModels; }
     VoiceModelListModel* segmentationModels() const { return m_segModels; }
-    bool localDiarization() const { return m_draft.processing.localDiarization; }
-    void setLocalDiarization(bool on);
+    bool localDiarization() const;
 
     QString summaryLanguage() const { return m_draft.processing.summaryLanguage; }
     void setSummaryLanguage(const QString& language);
@@ -303,6 +304,18 @@ public:
 
     Q_INVOKABLE void resetPrompt();
 
+    // ---- S3: the processing route per capability (cap: stt | diarization | voice | llm | embedding) ----
+    // The draft's route: "local" | "external" | "cloud" | "ask" | "basic" ("" = unknown capability).
+    Q_INVOKABLE QString route(const QString& cap) const;
+    // false (nothing changes): unknown value or not allowed (routeOptions tells why).
+    Q_INVOKABLE bool setRoute(const QString& cap, const QString& route);
+    // The segmented control's options: [{ value, enabled, code, reason }] (code: the blocker's machine
+    // name, reason: its sentence; both empty when enabled). Embedding: basic, local, external, cloud;
+    // the others: local, external, cloud, ask.
+    Q_INVOKABLE QVariantList routeOptions(const QString& cap) const;
+    // The route segment of a provider id: "local" | "external" | "cloud".
+    Q_INVOKABLE QString providerKind(const QString& providerId) const;
+
     // ---- the draft for the sub-models ----
     tanara::app::AppSettings& draft() { return m_draft; }
     const tanara::app::AppSettings& base() const { return m_base; }
@@ -321,6 +334,7 @@ public:
     static QJsonObject mergedSettings(const QJsonObject& base, const QJsonObject& draft,
                                       const QJsonObject& onto);
     static int countChanges(const QJsonObject& base, const QJsonObject& draft);
+    static int routeChanges(const tanara::app::AppSettings& base, const tanara::app::AppSettings& draft);
     // Bytes -> "12.4 GB" / "38 MB" in the UI language.
     static QString formatBytes(qint64 bytes);
 
@@ -345,6 +359,7 @@ signals:
     void watchingChanged();
     void liveCallChanged();
     void serviceModeChanged();
+    void routesChanged();
     void summaryChanged();
     void diarizationChanged();
     void promptsChanged();
@@ -370,6 +385,11 @@ private:
     void applyScenario();
     void applyDefaultSelection();
     void normalize(tanara::app::AppSettings& s) const;
+    // S3: what a capability's route can be set to (the registry: kinds of the registered providers; the
+    // stt / llm cloud adapters are registered only while the cloud is live).
+    tanara::providers::RouteContext routeContext(tanara::providers::Capability cap) const;
+    bool applyRoute(tanara::providers::Capability cap, tanara::providers::Route route);
+    void showServiceTab(const QString& mode);   // the shown tab only (deep links), no draft change
     void emitAllChanged();
     void onExternalSettingsChanged();
     void validate();
@@ -421,7 +441,7 @@ private:
     bool m_liveActive = false;
     QString m_liveApp, m_liveAppId;
 
-    QString m_serviceMode = QStringLiteral("own");
+    QString m_serviceMode = QStringLiteral("own");   // the shown tab (the shim adds the Cloud routes)
 
     SettingsDeviceModel* m_devices = nullptr;
     SettingsProviderModel* m_stt = nullptr;

@@ -10,6 +10,7 @@
 //     "watcher":    WatcherSettings     (watcher)
 //     "processing": ProcessingSettings  (processing)
 //     "providers":  ProviderSettings    (providers)
+//     "routes":     RouteSettings       (providers/core/Routes.h: where each capability runs)
 //     "cloud":      CloudSettings       (cloud)
 //     "ui":         UiSettings          (app, below)
 //     "secrets":    SecretSettings      (foundation/secrets) }
@@ -21,6 +22,7 @@
 #include "tanara/media/MediaSettings.h"
 #include "tanara/processing/ProcessingSettings.h"
 #include "tanara/providers/core/ProviderSettings.h"
+#include "tanara/providers/core/Routes.h"
 #include "tanara/recording/RecordingSettings.h"
 #include "tanara/watcher/WatcherSettings.h"
 
@@ -51,6 +53,7 @@ struct AppSettings {
     watcher::WatcherSettings watcher;
     processing::ProcessingSettings processing;
     providers::ProviderSettings providers;
+    providers::RouteSettings routes;
     cloud::CloudSettings cloud;
     UiSettings ui;
     SecretSettings secrets;
@@ -62,6 +65,12 @@ struct AppSettings {
     // Every section, keyed by its name (the settings.json document without "version").
     QJsonObject toJson() const;
     static AppSettings fromJson(const QJsonObject& o);
+
+    // After loading the sections: a missing "routes" section (settings written before S3) is converted from
+    // the older fields (rawProcessing: the stored "processing" object, its removed "localDiarization" switch;
+    // cloudLive: stt / llm default to Ask), then the routes are aligned with the provider selection
+    // (RouteSettings::normalize: a selected cloud id becomes route Cloud).
+    void finishRoutes(const QJsonObject& rawProcessing, bool cloudLive);
 };
 
 } // namespace tanara::app

@@ -68,6 +68,11 @@ void logStartupDiagnostics(const AppController& app)
                                     .arg(llm.temperature).arg(llm.maxTokens)
                                     .arg(app.hasSecret(keys::LlmApiKey) ? QStringLiteral("megadva")
                                                                         : QStringLiteral("nincs (LM Studio: opcionális)"));
+    // S3: where each capability runs (the stored route; Ask is answered per run).
+    QStringList routes;
+    for (providers::Capability cap : providers::allCapabilities())
+        routes << QStringLiteral("%1=%2").arg(providers::capabilityKey(cap), providers::routeKey(s.routes.route(cap)));
+    qCDebug(lcApp).noquote() << QStringLiteral("Routes: %1").arg(routes.join(QLatin1Char(' ')));
 
     // Audio devices seen (worth calling after refreshDevices()).
     if (auto* dm = app.devices()) {

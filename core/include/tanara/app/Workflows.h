@@ -7,8 +7,8 @@
 //        [mixdown]  only if the mix is missing / stale (recording::MixdownService, the job's "mixdown" stage)
 //      -> stt       processing::TranscriptionService (upload / transcribe / diarize stages)
 //      -> diarize   only when the provider did not separate the speakers (TranscriptionService::providerDiarized:
-//                   Whisper, a non-diarizing cloud tier), the local diarization is on (the
-//                   processing.localDiarization setting, or the CLI's per-run override) and usable (a
+//                   Whisper, a non-diarizing cloud tier), the diarization route is Local (the
+//                   routes setting, or the CLI's per-run override) and the local diarizer is usable (a
 //                   segmentation + a voice model): processing::DiarizationService on the tracks (not the
 //                   mixdown) in the "diarize" stage, its speakers merged into the transcript; then the
 //                   diarized speakers feed the participant analysis (VoiceSteps::useDiarization). A failed
@@ -25,12 +25,18 @@
 //  - after a recording / an import: the tracks' speech check (a speechless track is left out of the
 //    mix) -> mixdown (automatic mode) -> the pre-transcript participant analysis.
 //  - the per-kind cancel of every job (cancelJob's remaining switch).
+//  - the processing route of a run (S3, providers/core/Routes.h): transcribe() / summarize() resolve the
+//    capability's route once per run (a per-process override, else the setting; Ask -> the askRoute hook,
+//    unanswered -> the non-cloud route; Cloud while the cloud is not live -> the non-cloud route). The
+//    resolution stays valid for the meeting while the stored route is unchanged; route() reads it
+//    (ProviderRuns: own provider vs. a Tanara Cloud run).
 // The identification / participant side is injected (VoiceSteps), so the chain is testable on its own.
 #include "tanara/domain/Activity.h"
 #include "tanara/domain/Job.h"
 #include "tanara/domain/Meeting.h"
 #include "tanara/domain/Person.h"
 #include "tanara/providers/core/ReadinessModel.h"
+#include "tanara/providers/core/Routes.h"
 
 #include <QHash>
 #include <QObject>
@@ -79,6 +85,9 @@ public:
         std::function<void(const QString& meetingId, const providers::DiarizeResult& result)> useDiarization;
     };
 
+    // The answerer of an Ask route: which route this run of the capability on the meeting takes.
+    using AskRoute = std::function<std::optional<providers::Route>(providers::Capability cap, const QString& meetingId)>;
+
     struct Deps {
         library::MeetingRepository*      store = nullptr;
         library::MeetingJobTracker*      jobs = nullptr;
@@ -86,8 +95,14 @@ public:
         processing::TranscriptionService* transcription = nullptr;
         // The local diarization (D4); null = never.
         processing::DiarizationService*   diarization = nullptr;
-        std::function<bool()> localDiarizationEnabled;   // the processing.localDiarization setting
         std::function<bool()> localDiarizationUsable;    // a segmentation model and a voice model are usable
+        // ---- S3: processing routes ----
+        std::function<providers::Route(providers::Capability)> storedRoute;     // the routes setting
+        std::function<providers::Route(providers::Capability)> fallbackRoute;   // its non-cloud route
+        std::function<bool()> cloudLive;                                        // the Tanara Cloud client is live
+        // The per-run answer of an Ask route (the GUI's / CLI's question); nullopt or no hook = the non-cloud
+        // route (logged). An answer of Ask counts as no answer.
+        AskRoute askRoute;
         // Whether the selected STT provider separates the speakers itself (its descriptor; Soniox yes, Whisper no).
         std::function<bool()> sttSeparatesSpeakers;
         VoiceSteps voice;
@@ -117,9 +132,21 @@ public:
     bool identify(const QString& meetingId);
     void setIdentifyAfterTranscription(const QString& meetingId, bool enabled);
     bool identifyAfterTranscription(const QString& meetingId) const;
-    // A per-process override of the processing.localDiarization setting (the CLI's --local-diarization);
+    // ---- processing routes (S3) ----
+    // A per-process override of a capability's route setting (the CLI's --run / --local-diarization);
     // std::nullopt = the setting.
-    void setLocalDiarizationOverride(std::optional<bool> on) { m_localDiarizationOverride = on; }
+    void setRouteOverride(providers::Capability cap, std::optional<providers::Route> route);
+    // The answerer of Ask routes (S5: the split button / a dialog; the CLI has none).
+    void setAskRoute(AskRoute ask) { m_deps.askRoute = std::move(ask); }
+    // The next run of the capability on the meeting takes this route whatever the setting (an explicit
+    // per-run choice, e.g. the split button's menu); consumed by that run's resolution.
+    void chooseRoute(providers::Capability cap, const QString& meetingId, providers::Route route);
+    // Resolves the capability's route for a run on the meeting (asks on Ask) and remembers it for the meeting.
+    providers::Route resolveRoute(providers::Capability cap, const QString& meetingId);
+    // The route the capability runs on for the meeting, without asking: the remembered resolution while the
+    // stored route is unchanged, else the override / setting (Ask -> the non-cloud route). Never Ask; Cloud
+    // only while the cloud is live. meetingId may be empty (no run context).
+    providers::Route route(providers::Capability cap, const QString& meetingId = QString()) const;
     // Whether a transcription of this meeting that just finished would run the local diarization.
     bool wantsLocalDiarization(const QString& meetingId) const;
 
@@ -202,7 +229,13 @@ private:
     QSet<QString> m_speechCheckRunning;     // meetingIds being measured now
     QSet<QString> m_speechChecked;          // measured in this process (not repeated even on error)
     bool m_autoMixdown = true;
-    std::optional<bool> m_localDiarizationOverride;
+    providers::Route baseRoute(providers::Capability cap) const;   // the override, else the setting (may be Ask)
+    providers::Route usable(providers::Capability cap, providers::Route r) const;   // Ask / dead Cloud -> fallback
+    static QString routeKey(providers::Capability cap, const QString& meetingId);
+    QHash<int, providers::Route> m_routeOverride;          // int(Capability) -> route
+    struct Resolved { providers::Route route; providers::Route base; };
+    QHash<QString, Resolved> m_resolvedRoutes;             // "<cap>/<meetingId>" -> this run's route
+    QHash<QString, providers::Route> m_chosenRoutes;       // "<cap>/<meetingId>" -> the next run's choice
     QSet<QString> m_manualDiarize;                // meetings whose diarize step is the manual action
     QHash<QString, QString> m_diarizeProblem;     // meetingId -> the last failure's detail (this process)
     struct TranscriptSpeakers { int labels = 0; QString source; };

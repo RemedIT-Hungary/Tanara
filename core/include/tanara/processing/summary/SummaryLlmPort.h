@@ -32,12 +32,13 @@ public:
     virtual providers::ReadinessResult readiness(const QString& meetingId) const = 0;
     // The summary settings (prompts, target language).
     virtual ProcessingSettings processingSettings() const = 0;
-    // The selected chat provider id (it also names the local model server handler, e.g. LM Studio).
-    virtual QString chatProviderId() const = 0;
+    // The chat provider id of a run on the meeting (its LLM route: the own provider, or the Tanara Cloud
+    // adapter); it also names the local model server handler, e.g. LM Studio. meetingId may be empty.
+    virtual QString chatProviderId(const QString& meetingId) const = 0;
     // The selected chat provider's own config (the server key of a requested context).
     virtual providers::ProviderConfig localConfig() const = 0;
-    // Tanara Cloud handles the summary step.
-    virtual bool cloudSelected() const = 0;
+    // Tanara Cloud handles the summary step of the meeting (its resolved LLM route; meetingId may be empty).
+    virtual bool cloudSelected(const QString& meetingId) const = 0;
 
     // A new cloud run (kind: summary | topics | complex).
     virtual Run newRun(const QString& meetingId, const QString& kind) = 0;

@@ -15,6 +15,7 @@
 #include "SettingsDeviceModel.h"
 #include "SettingsDialogs.h"
 #include "SettingsPromptHighlighter.h"
+#include "SettingsEmbeddingModel.h"
 #include "SettingsProviderModel.h"
 #include "SettingsViewModel.h"
 #include "SettingsWindowHost.h"
@@ -26,6 +27,7 @@
 #include "tanara/recording/audio/DeviceManager.h"
 #include "tanara/library/tracks/TrackCatalog.h"
 #include "tanara/cloud/CloudTypes.h"
+#include "tanara/providers/embedding/ITextEmbedder.h"
 #include "tanara/watcher/detect/Autostart.h"
 #include "tanara/watcher/detect/IMeetingDetector.h"
 #include "tanara/library/store/detail/MeetingJson.h"
@@ -316,9 +318,11 @@ private slots:
         QVERIFY(!vm.cloudSelected());
         QVERIFY(!vm.dirty());                              // the "coming soon" notice changes nothing
 
-        vm.setDemoState(QStringLiteral("cloudSelected"));  // the saved setting names Tanara Cloud
-        QCOMPARE(vm.serviceMode(), QStringLiteral("own"));
+        vm.setDemoState(QStringLiteral("cloudSelected"));  // the draft puts stt + llm on the Cloud route
+        QCOMPARE(vm.serviceMode(), QStringLiteral("cloud"));   // S3 shim: a Cloud route shows the cloud tab
         QVERIFY(vm.cloudSelected());
+        QCOMPARE(vm.route(QStringLiteral("stt")), QStringLiteral("cloud"));
+        QCOMPARE(vm.stt()->providerId(), QStringLiteral("soniox"));   // the own provider stays selected
         QVERIFY(vm.servicesWarn());
 
         vm.setDemoState(QStringLiteral("B07"));
@@ -416,13 +420,16 @@ private slots:
         QCOMPARE(changed.size(), 0);
     }
 
-    // D5: the processing.localDiarization switch is part of the draft; the segmentation list sits next to the voice models.
+    // D5 / S3: the local speaker separation is the diarization route (draft); the segmentation list sits next to
+    // the voice models. The read-only localDiarization shim follows the route.
     void localDiarizationSwitchFollowsTheDraftAndSaves()
     {
+        using tanara::providers::Route;
         startApp();
-        QVERIFY(live().processing.localDiarization);              // default: on
+        QCOMPARE(live().routes.diarization.route, Route::External);   // fresh install: the STT separates them
         SettingsViewModel vm(services());
-        QVERIFY(vm.localDiarization());
+        QVERIFY(!vm.localDiarization());
+        QCOMPARE(vm.route(QStringLiteral("diarization")), QStringLiteral("external"));
         QVERIFY(vm.segmentationModels());
         QCOMPARE(vm.segmentationModels()->kind(), QStringLiteral("segmentation"));
         QCOMPARE(vm.segmentationModels()->rowCount(), 2);
@@ -430,23 +437,25 @@ private slots:
         QVERIFY(!vm.dirty());
 
         QSignalSpy changed(&vm, &SettingsViewModel::diarizationChanged);
-        vm.setLocalDiarization(false);
-        QVERIFY(!vm.localDiarization());
+        QVERIFY(vm.setRoute(QStringLiteral("diarization"), QStringLiteral("local")));
+        QVERIFY(vm.localDiarization());
         QCOMPARE(changed.size(), 1);
         QCOMPARE(vm.changeCount(), 1);
-        vm.setLocalDiarization(false);                              // same value: nothing
+        QVERIFY(vm.setRoute(QStringLiteral("diarization"), QStringLiteral("local")));   // same value: nothing
         QCOMPARE(changed.size(), 1);
-        QVERIFY(live().processing.localDiarization);                // not yet in the core
+        QCOMPARE(live().routes.diarization.route, Route::External);   // not yet in the core
         QVERIFY(vm.save());
-        QVERIFY(!live().processing.localDiarization);
-        QCOMPARE(settingsFile().value("processing").toObject().value("localDiarization").toBool(true), false);
+        QCOMPARE(live().routes.diarization.route, Route::Local);
+        QCOMPARE(settingsFile().value("routes").toObject().value("diarization").toObject().value("route").toString(),
+                 QStringLiteral("local"));
+        QVERIFY(!settingsFile().value("processing").toObject().contains("localDiarization"));   // the old switch is gone
         QVERIFY(!vm.dirty());
 
         // Discard brings the saved value back.
-        vm.setLocalDiarization(true);
+        QVERIFY(vm.setRoute(QStringLiteral("diarization"), QStringLiteral("external")));
         QVERIFY(vm.dirty());
         vm.discard();
-        QVERIFY(!vm.localDiarization());
+        QVERIFY(vm.localDiarization());
         QVERIFY(!vm.dirty());
 
         // Demo states: on by default, off in B08diaroff.
@@ -1257,13 +1266,16 @@ private slots:
 
     // ---- Tanara Cloud --------------------------------------------------------------------
 
-    void cloudTabOnlyShowsTheNotice()
+    // S3: the serviceMode tab is a shim over the stt + llm routes until S2.
+    void serviceModeShimMapsToRoutes()
     {
-        // Tanara Cloud is "coming soon": even in live cloud mode the tab is a view, not a choice.
         startApp("live");
         if (!m_app->cloudLive())
             QSKIP("A build Tanara Cloud kliens nélkül készült.");
         SettingsViewModel vm(services());
+        // A fresh install with the live cloud: stt / llm ask per run (an own provider and the cloud are both there).
+        QCOMPARE(vm.route(QStringLiteral("stt")), QStringLiteral("ask"));
+        QCOMPARE(vm.route(QStringLiteral("llm")), QStringLiteral("ask"));
         QCOMPARE(vm.serviceMode(), QStringLiteral("own"));
         QVERIFY(!vm.cloudSelected());
         // On the own-key card Cloud is not among the providers.
@@ -1271,27 +1283,44 @@ private slots:
             QVERIFY(p.toMap().value("value").toString() != tanara::cloud::ProviderId);
 
         vm.stt()->setProviderId(QStringLiteral("whisper-compat"));
+        QCOMPARE(vm.route(QStringLiteral("stt")), QStringLiteral("ask"));   // Ask stays, the own provider changed
         const int changes = vm.changeCount();
         vm.setServiceMode(QStringLiteral("cloud"));
         QCOMPARE(vm.serviceMode(), QStringLiteral("cloud"));
-        QCOMPARE(vm.changeCount(), changes);               // the tab changes nothing in the draft
-        QCOMPARE(vm.stt()->providerId(), QStringLiteral("whisper-compat"));
-        QVERIFY(!vm.cloudSelected());
-        QCOMPARE(live().providers.stt.selectedId, QStringLiteral("soniox"));
+        QVERIFY(vm.cloudSelected());
+        QCOMPARE(vm.route(QStringLiteral("stt")), QStringLiteral("cloud"));
+        QCOMPARE(vm.route(QStringLiteral("llm")), QStringLiteral("cloud"));
+        QCOMPARE(vm.changeCount(), changes + 2);
+        QCOMPARE(vm.stt()->providerId(), QStringLiteral("whisper-compat"));   // remembered for "own"
+        QVERIFY(vm.save());
+        QCOMPARE(live().routes.stt.route, tanara::providers::Route::Cloud);
+        QCOMPARE(live().providers.stt.selectedId, QStringLiteral("whisper-compat"));
+        QVERIFY(m_app->usesCloud(tanara::providers::WorkflowStep::Transcribe));
 
-        // The deep link to the Cloud page opens the notice, again without a draft change.
+        // "own": the Cloud routes go back to the own providers' kinds.
         vm.setServiceMode(QStringLiteral("own"));
+        QCOMPARE(vm.serviceMode(), QStringLiteral("own"));
+        QVERIFY(!vm.cloudSelected());
+        QCOMPARE(vm.route(QStringLiteral("stt")), QStringLiteral("local"));
+        QCOMPARE(vm.route(QStringLiteral("llm")), QStringLiteral("local"));
+        QVERIFY(vm.save());
+        QVERIFY(!m_app->usesCloud(tanara::providers::WorkflowStep::Transcribe));
+
+        // The deep link to the Cloud page only shows the tab, without a draft change.
         vm.openPage(QStringLiteral("cloud"), QString());
         QCOMPARE(vm.page(), QStringLiteral("services"));
         QCOMPARE(vm.serviceMode(), QStringLiteral("cloud"));
-        QCOMPARE(vm.changeCount(), changes);
+        QVERIFY(!vm.dirty());
+
+        // Ask is allowed with the live cloud; it is not the cloud for the shim.
+        QVERIFY(vm.setRoute(QStringLiteral("llm"), QStringLiteral("ask")));
+        QVERIFY(!vm.cloudSelected());
     }
 
     void storedCloudProviderIsFlaggedUnavailable()
     {
-        // Transcription saved on Cloud (a developer setting), summary with an own key: the UI flags it
-        // as unavailable, a deep link to the missing LLM changes nothing, and picking an own provider
-        // clears the flag.
+        // Transcription saved on Cloud the pre-S3 way (the cloud id selected): the core turns it into the Cloud
+        // route with the own provider kept; a deep link to the LLM changes nothing; picking a route clears it.
         startApp("live");
         if (!m_app->cloudLive())
             QSKIP("A build Tanara Cloud kliens nélkül készült.");
@@ -1299,23 +1328,109 @@ private slots:
         s.providers.stt.selectedId = tanara::cloud::ProviderId;
         s.providers.stt.configs[tanara::cloud::ProviderId].type = tanara::cloud::ProviderId;
         m_app->settings()->setSettings(s);
+        QCOMPARE(live().routes.stt.route, tanara::providers::Route::Cloud);
+        QCOMPARE(live().providers.stt.selectedId, QStringLiteral("soniox"));
 
         SettingsViewModel vm(services());
-        QCOMPARE(vm.serviceMode(), QStringLiteral("own"));
         QVERIFY(vm.cloudSelected());
+        QCOMPARE(vm.serviceMode(), QStringLiteral("cloud"));
         vm.openPage(QStringLiteral("providers"), QStringLiteral("llm"));
         QVERIFY(!vm.dirty());
-        QCOMPARE(vm.stt()->providerId(), tanara::cloud::ProviderId);
-        QVERIFY(vm.stt()->loginProvider());
+        QCOMPARE(vm.stt()->providerId(), QStringLiteral("soniox"));
+        QVERIFY(!vm.stt()->loginProvider());
         vm.llm()->setValue(QStringLiteral("model"), QStringLiteral("masik-modell"));
         QVERIFY(vm.save());
-        QCOMPARE(live().providers.stt.selectedId, tanara::cloud::ProviderId);
+        QCOMPARE(live().routes.stt.route, tanara::providers::Route::Cloud);
         QCOMPARE(live().providers.llm.selected().model, QStringLiteral("masik-modell"));
 
-        vm.stt()->setProviderId(QStringLiteral("soniox"));
+        QVERIFY(vm.setRoute(QStringLiteral("stt"), QStringLiteral("external")));
         QVERIFY(!vm.cloudSelected());
         QVERIFY(vm.save());
+        QCOMPARE(live().routes.stt.route, tanara::providers::Route::External);
         QCOMPARE(live().providers.stt.selectedId, QStringLiteral("soniox"));
+    }
+
+    // S3: route / setRoute / routeOptions / providerKind and the rejection rules (cloud off).
+    void routesAndOptionsFollowTheRules()
+    {
+        startApp();
+        SettingsViewModel vm(services());
+        QCOMPARE(vm.route(QStringLiteral("stt")), QStringLiteral("external"));       // Soniox
+        QCOMPARE(vm.route(QStringLiteral("llm")), QStringLiteral("local"));          // LM Studio
+        QCOMPARE(vm.route(QStringLiteral("diarization")), QStringLiteral("external"));
+        QCOMPARE(vm.route(QStringLiteral("voice")), QStringLiteral("local"));
+        QCOMPARE(vm.route(QStringLiteral("embedding")), QStringLiteral("basic"));
+        QVERIFY(vm.route(QStringLiteral("nincs")).isEmpty());
+
+        auto options = [&vm](const char* cap) {
+            QHash<QString, QVariantMap> out;
+            for (const QVariant& v : vm.routeOptions(QString::fromLatin1(cap)))
+                out.insert(v.toMap().value("value").toString(), v.toMap());
+            return out;
+        };
+        auto voice = options("voice");
+        QCOMPARE(voice.size(), 4);
+        QVERIFY(voice["local"]["enabled"].toBool());
+        for (const char* r : {"external", "cloud", "ask"}) {
+            QVERIFY(!voice[r]["enabled"].toBool());
+            QCOMPARE(voice[r]["code"].toString(), QStringLiteral("voice_local_only"));
+            QVERIFY(!voice[r]["reason"].toString().isEmpty());
+        }
+        auto emb = options("embedding");
+        QCOMPARE(emb.size(), 4);
+        QVERIFY(!emb.contains("ask"));
+        QVERIFY(emb["basic"]["enabled"].toBool() && emb["local"]["enabled"].toBool());
+        QCOMPARE(emb["external"]["code"].toString(), QStringLiteral("no_external"));
+        QCOMPARE(emb["cloud"]["code"].toString(), QStringLiteral("cloud_unavailable"));
+        auto stt = options("stt");
+        QVERIFY(stt["local"]["enabled"].toBool() && stt["external"]["enabled"].toBool());
+        QCOMPARE(stt["cloud"]["code"].toString(), QStringLiteral("cloud_unavailable"));
+        QCOMPARE(stt["ask"]["code"].toString(), QStringLiteral("ask_unavailable"));
+        QCOMPARE(options("llm")["external"]["code"].toString(), QStringLiteral("no_external"));
+        QCOMPARE(options("diarization")["cloud"]["code"].toString(), QStringLiteral("diarization_later"));
+        QVERIFY(vm.routeOptions(QStringLiteral("nincs")).isEmpty());
+
+        // Rejected: nothing changes.
+        QVERIFY(!vm.setRoute(QStringLiteral("embedding"), QStringLiteral("ask")));
+        QVERIFY(!vm.setRoute(QStringLiteral("voice"), QStringLiteral("external")));
+        QVERIFY(!vm.setRoute(QStringLiteral("stt"), QStringLiteral("ask")));      // no live cloud
+        QVERIFY(!vm.setRoute(QStringLiteral("stt"), QStringLiteral("cloud")));
+        QVERIFY(!vm.setRoute(QStringLiteral("stt"), QStringLiteral("basic")));
+        QVERIFY(!vm.setRoute(QStringLiteral("diarization"), QStringLiteral("cloud")));
+        QVERIFY(!vm.setRoute(QStringLiteral("stt"), QStringLiteral("valami")));
+        QVERIFY(!vm.dirty());
+
+        // Local / External select the provider of that kind; switching back restores it.
+        QSignalSpy routes(&vm, &SettingsViewModel::routesChanged);
+        QVERIFY(vm.setRoute(QStringLiteral("stt"), QStringLiteral("local")));
+        QCOMPARE(vm.stt()->providerId(), QStringLiteral("whisper-compat"));
+        QCOMPARE(vm.route(QStringLiteral("stt")), QStringLiteral("local"));
+        QCOMPARE(routes.size(), 1);
+        QVERIFY(vm.dirty());
+        QVERIFY(vm.setRoute(QStringLiteral("stt"), QStringLiteral("external")));
+        QCOMPARE(vm.stt()->providerId(), QStringLiteral("soniox"));
+        QVERIFY(!vm.dirty());
+        // A provider picked on the card moves the route.
+        vm.stt()->setProviderId(QStringLiteral("whisper-compat"));
+        QCOMPARE(vm.route(QStringLiteral("stt")), QStringLiteral("local"));
+        QCOMPARE(vm.changeCount(), 1);   // the provider change; its route follows it
+        vm.discard();
+
+        // Embedding: the route is the mode.
+        QVERIFY(vm.setRoute(QStringLiteral("embedding"), QStringLiteral("local")));
+        QCOMPARE(vm.embedding()->mode(), QStringLiteral("local"));
+        QVERIFY(vm.save());
+        QCOMPARE(live().routes.embedding.route, tanara::providers::Route::Local);
+        QCOMPARE(live().providers.embedding.selectedId, tanara::providers::embeddingproviders::LocalId);
+
+        QCOMPARE(vm.providerKind(QStringLiteral("soniox")), QStringLiteral("external"));
+        QCOMPARE(vm.providerKind(QStringLiteral("whisper-compat")), QStringLiteral("local"));
+        QCOMPARE(vm.providerKind(QStringLiteral("openai-compat")), QStringLiteral("local"));
+        QCOMPARE(vm.providerKind(tanara::cloud::ProviderId), QStringLiteral("cloud"));
+        QCOMPARE(vm.providerKind(tanara::providers::embeddingproviders::LocalId), QStringLiteral("local"));
+        for (const QVariant& p : vm.stt()->providers())
+            QCOMPARE(p.toMap().value("kind").toString(),
+                     vm.providerKind(p.toMap().value("value").toString()));
     }
 
     // ---- the window and its host ----

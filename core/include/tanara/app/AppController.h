@@ -116,8 +116,9 @@ public:
     bool cloudTeaser() const;
     // This controller's provider registry (every capability; providers/core/ProviderRegistry.h).
     providers::ProviderRegistry& providerRegistry() const;
-    // The selected provider of the given step is Tanara Cloud.
-    bool usesCloud(providers::WorkflowStep step) const;
+    // The given step runs on Tanara Cloud: its capability's resolved route (S3; empty meetingId = no run
+    // context: the routes setting, Ask -> the non-cloud route).
+    bool usesCloud(providers::WorkflowStep step, const QString& meetingId = QString()) const;
     // The model id actually sent (the Expert model, otherwise the tier's virtual name).
     QString cloudModelFor(providers::WorkflowStep step) const;
     // Builds an estimate request for a meeting (task: transcribe | summarize; summaryMode:

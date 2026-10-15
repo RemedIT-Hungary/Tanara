@@ -575,7 +575,7 @@ OverviewControllerFacade::OverviewControllerFacade(tanara::app::AppController* c
         emit changed(id);
     });
     connect(c, &AppController::tracksChanged, this, mine);
-    // D5: the speakers' line follows the models (downloaded / deleted) and the localDiarization setting.
+    // D5: the speakers' line follows the models (downloaded / deleted) and the diarization route setting.
     connect(c, &AppController::voiceModelsChanged, this, [this] { if (!m_lastSnapshot.isEmpty()) emit changed(m_lastSnapshot); });
     if (tanara::app::SettingsManager* st = c->settings())
         connect(st, &tanara::app::SettingsManager::settingsChanged, this,

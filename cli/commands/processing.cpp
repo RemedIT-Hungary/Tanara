@@ -33,18 +33,47 @@ int cmd_transcribe(CliContext& ctx, const QStringList& args)
     const QString id = args.value(2);
     if (id.isEmpty()) { err() << QStringLiteral("Missing meetingId.") << "\n"; return 1; }
     const bool complex = cmd == "summarize" && args.contains(QStringLiteral("--complex"));
-    // transcribe --local-diarization on|off: this run only (the processing.localDiarization setting stays).
+    const QString usage = cmd == "transcribe"
+        ? QStringLiteral("Usage: transcribe <meetingId> [--yes] [--run local|external|cloud] [--local-diarization on|off]")
+        : QStringLiteral("Usage: summarize <meetingId> [--yes] [--complex] [--run local|external|cloud]");
+    app::Workflows& wf = app.services()->workflows();
+    // transcribe --local-diarization on|off: this run only (the diarization route setting stays): an alias of
+    // the diarization route's per-run override, local / external (the STT separates the speakers).
     if (const int at = args.indexOf(QStringLiteral("--local-diarization")); cmd == "transcribe" && at >= 0) {
         const QString v = args.value(at + 1);
         if (v != QLatin1String("on") && v != QLatin1String("off")) {
-            err() << QStringLiteral("Usage: transcribe <meetingId> [--yes] [--local-diarization on|off]") << "\n";
+            err() << usage << "\n";
             return 1;
         }
-        app.services()->workflows().setLocalDiarizationOverride(v == QLatin1String("on"));
+        wf.setRouteOverride(providers::Capability::Diarization,
+                            v == QLatin1String("on") ? providers::Route::Local : providers::Route::External);
+    }
+    // --run local|external|cloud: where this run's STT (transcribe) / LLM (summarize) runs; the route
+    // setting stays. Without it the setting decides (Ask has no answerer here: the non-cloud route).
+    const providers::Capability cap = cmd == "transcribe" ? providers::Capability::Stt : providers::Capability::Llm;
+    if (const int at = args.indexOf(QStringLiteral("--run")); at >= 0) {
+        const std::optional<providers::Route> r = providers::routeFromKey(args.value(at + 1));
+        if (!r || (*r != providers::Route::Local && *r != providers::Route::External && *r != providers::Route::Cloud)) {
+            err() << usage << "\n";
+            return 1;
+        }
+        const app::AppSettings s = app.settings()->settings();
+        if (*r == providers::Route::Cloud && !app.cloudLive()) {
+            err() << QStringLiteral("Tanara Cloud is not available (the cloud client is not live).") << "\n";
+            return 1;
+        }
+        if (*r != providers::Route::Cloud && s.routes.providerFor(cap, *r, s.providers).isEmpty()) {
+            err() << QStringLiteral("No %1 %2 provider is configured.")
+                         .arg(providers::routeKey(*r), cmd == "transcribe" ? QStringLiteral("transcription")
+                                                                           : QStringLiteral("language model"))
+                  << "\n";
+            return 1;
+        }
+        wf.setRouteOverride(cap, *r);
     }
     const providers::WorkflowStep step = cmd == "transcribe" ? providers::WorkflowStep::Transcribe : providers::WorkflowStep::Summarize;
     // Tanara Cloud: estimate + confirmation; without --yes it asks first.
-    if (app.usesCloud(step)) {
+    if (app.usesCloud(step, id)) {
         const providers::ReadinessResult r = app.canRun(step, id);
         if (!r.runnable) { err() << QStringLiteral("Cannot start: %1").arg(r.detail) << "\n"; return 1; }
         bool enough = false;
@@ -283,9 +312,9 @@ void registerProcessingCommands(CommandRegistry& r)
     const QString m = QStringLiteral("processing");
     // TODO(P12c): transcribe / summarize go through the processing services once those are on main.
     r.add({"transcribe", m, "Transcribe a meeting (the selected STT provider; local speaker separation when it gives none)",
-           "transcribe <meetingId> [--yes] [--local-diarization on|off]", true, cmd_transcribe});
+           "transcribe <meetingId> [--yes] [--run local|external|cloud] [--local-diarization on|off]", true, cmd_transcribe});
     r.add({"summarize", m, "Summarize a meeting (LM Studio or Tanara Cloud)",
-           "summarize <meetingId> [--yes] [--complex]", true, cmd_transcribe});
+           "summarize <meetingId> [--yes] [--complex] [--run local|external|cloud]", true, cmd_transcribe});
     // TODO(P12d): identify runs on the voice-analysis service.
     r.add({"identify", m, "Identify the speakers of a meeting from the voiceprints", "identify <meetingId>", true, cmd_identify});
     r.add({"voice-models", m, "List / enable / disable / fetch / verify / accept / delete the voice models (speaker + segmentation)",

@@ -36,6 +36,13 @@ template <class Port> struct ProviderTraits;
 //                   OpenAI, LM Studio, Ollama, a Whisper server - local or remote alike.
 enum class Origin { Local, Cloud, CustomEndpoint };
 
+// The processing-route segment a provider belongs to (providers/core/Routes.h):
+//  Local    - your machine or network, no key (a Whisper server, LM Studio, an OpenAI-compatible endpoint
+//             at your own address, the local embedding endpoint);
+//  External - a third-party service with your own key (Soniox);
+//  Cloud    - the Tanara Cloud.
+enum class ProviderKind { Local, External, Cloud };
+
 // What a provider consumes (Traits::inputs).
 enum class InputKind { AudioFile, AudioClip, Pcm, Text };
 
@@ -100,6 +107,7 @@ struct ProviderDescriptor {
     QString displayName;                // human-readable name
     CapabilityKind capability = CapabilityKind::Transcription;   // set by ProviderRegistry::add<Port>()
     Origin origin = Origin::CustomEndpoint;
+    ProviderKind kind = ProviderKind::External;   // the route segment (Routes.h); providerKindOf(id) agrees
     Traits traits;
     QString catalogRef;                 // which IModelCatalog (its id) lists the models (empty = none)
     AuthMode authMode = AuthMode::ApiKey;

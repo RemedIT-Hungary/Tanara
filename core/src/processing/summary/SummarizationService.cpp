@@ -9,6 +9,7 @@
 #include "tanara/processing/summary/PromptLibrary.h"
 #include "tanara/processing/summary/TopicQueue.h"
 #include "tanara/providers/chat/IChatProvider.h"
+#include "tanara/providers/core/Routes.h"
 #include "tanara/providers/chat/ILocalModelServer.h"
 #include "tanara/providers/chat/LlmContext.h"
 #include "tanara/providers/core/ProviderRegistry.h"
@@ -82,13 +83,14 @@ MergedTranscript SummarizationService::transcriptFor(const Meeting& m) const
     return merged;
 }
 
-providers::IChatProvider* SummarizationService::createChat(const Run& run, const QString& summaryMode,
+providers::IChatProvider* SummarizationService::createChat(const QString& meetingId, const Run& run,
+                                                           const QString& summaryMode,
                                                            const providers::ProviderConfig& cfg,
                                                            const FailureSinkPtr& sink)
 {
     providers::ProviderContext pctx = m_deps.llm->context(run, summaryMode);
     captureFailures(pctx, sink);
-    return m_deps.registry->create<providers::IChatProvider>(m_deps.llm->chatProviderId(), pctx, cfg, this);
+    return m_deps.registry->create<providers::IChatProvider>(m_deps.llm->chatProviderId(meetingId), pctx, cfg, this);
 }
 
 void SummarizationService::abortCall(const ActiveCall& call)
@@ -113,7 +115,7 @@ JobError SummarizationService::describeFailure(JobKind kind, const QString& raw,
     const JobError je = describeFailureImpl(kind, raw, run, sink, ctx);
     // The failure always reaches the log (the UI shows the message, the log says where it went wrong).
     qWarning().noquote().nospace() << "[LLM] a feladat nem sikerült: feladat=" << int(kind)
-        << " provider=" << m_deps.llm->chatProviderId()
+        << " provider=" << (run ? providers::CloudProviderId : m_deps.llm->chatProviderId(QString()))
         << " url=" << (run ? QStringLiteral("cloud") : m_deps.llm->localConfig().baseUrl)
         << " hiba=" << raw.simplified().left(300)
         << " | " << je.message << (je.detail.isEmpty() ? QString() : QStringLiteral(" | ") + je.detail);
@@ -151,7 +153,7 @@ providers::ILocalModelServer* SummarizationService::prepareLlm(const QString& me
     // The selected chat provider's local-server handler (LM Studio for "openai-compat"); none = nothing
     // to prepare.
     const providers::ProviderContext pctx = m_deps.llm->context(Run(), QString());
-    auto* prep = m_deps.registry->create<providers::ILocalModelServer>(m_deps.llm->chatProviderId(), pctx, cfg, this);
+    auto* prep = m_deps.registry->create<providers::ILocalModelServer>(m_deps.llm->chatProviderId(meetingId), pctx, cfg, this);
     if (!prep) { go(); return nullptr; }
     prep->setBusyCheck([this] { return otherLlmBusy(); });
     const int floor = m_contextFloor.take(serverKey(cfg));
@@ -225,11 +227,11 @@ void SummarizationService::summarize(const QString& meetingId)
     }
 
     const ProcessingSettings s = m_deps.llm->processingSettings();
-    const QString llmId = m_deps.llm->chatProviderId();
+    const QString llmId = m_deps.llm->chatProviderId(meetingId);
     Run run;   // cloud: ONE run (one job id) for all the note and merge calls
     providers::ProviderConfig cfg = m_deps.llm->config(run, meetingId, QStringLiteral("summary"));
     const auto sink = std::make_shared<FailureSink>();
-    providers::IChatProvider* provider = createChat(run, QStringLiteral("quick"), cfg, sink);
+    providers::IChatProvider* provider = createChat(meetingId, run, QStringLiteral("quick"), cfg, sink);
     if (!provider) {
         emit errorOccurred(tr("Ismeretlen LLM-provider: %1.").arg(llmId));
         return;
@@ -392,7 +394,7 @@ bool SummarizationService::flagStatement(const QString& meetingId, const QString
 
 void SummarizationService::requestLlmContext(int tokens)
 {
-    if (tokens <= 0 || m_deps.llm->cloudSelected()) return;
+    if (tokens <= 0 || m_deps.llm->cloudSelected(QString())) return;
     m_contextFloor.insert(serverKey(m_deps.llm->localConfig()), tokens);
 }
 

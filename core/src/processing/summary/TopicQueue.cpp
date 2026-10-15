@@ -71,11 +71,11 @@ void TopicQueue::extractTopics(const QString& meetingId)
     const QString transcriptMd = merged.renderMarkdown();
 
     const ProcessingSettings s = o->m_deps.llm->processingSettings();
-    const QString llmId = o->m_deps.llm->chatProviderId();
+    const QString llmId = o->m_deps.llm->chatProviderId(meetingId);
     Run run;
     providers::ProviderConfig cfg = o->m_deps.llm->config(run, meetingId, QStringLiteral("topics"));
     const auto sink = std::make_shared<FailureSink>();
-    providers::IChatProvider* provider = o->createChat(run, QStringLiteral("complex"), cfg, sink);
+    providers::IChatProvider* provider = o->createChat(m.id, run, QStringLiteral("complex"), cfg, sink);
     if (!provider) { emit errorOccurred(tr("Ismeretlen LLM-provider: %1.").arg(llmId)); return; }
     QObject* providerObj = dynamic_cast<QObject*>(provider);
     auto* svc = new ComplexSummaryService(provider, o);
@@ -250,7 +250,7 @@ void TopicQueue::generate(const QString& meetingId, const QVector<SummaryTopic>&
     // otherwise (e.g. continuing after a cancel / error, where the run has already closed) a new run starts
     // with a new id.
     SummaryLlmPort* llm = m_owner->m_deps.llm;
-    if (llm->cloudSelected()) {
+    if (llm->cloudSelected(meetingId)) {
         Run run = m_complexRuns.value(meetingId);
         if (!run) {
             run = llm->newRun(meetingId, QStringLiteral("complex"));
@@ -382,16 +382,16 @@ void TopicQueue::startNext()
     if (merged.tokens.isEmpty()) { failEarly(tr("Nincs átirat — előbb futtass átírást.")); return; }
 
     const ProcessingSettings s = llm->processingSettings();
-    const QString llmId = llm->chatProviderId();
+    const QString llmId = llm->chatProviderId(m.id);
     Run run = m_complexRuns.value(m.id);
-    if (llm->cloudSelected() && !run) {   // rerunning one topic without a batch
+    if (llm->cloudSelected(m.id) && !run) {   // rerunning one topic without a batch
         run = llm->newRun(m.id, QStringLiteral("complex"));
         m_complexRuns.insert(m.id, run);
     }
     if (run) llm->setRunKind(run, QStringLiteral("complex"));   // after topic gathering, the analysis stage
     providers::ProviderConfig cfg = llm->config(run, m.id, QStringLiteral("complex"));
     const auto sink = std::make_shared<FailureSink>();
-    providers::IChatProvider* provider = o->createChat(run, QStringLiteral("complex"), cfg, sink);
+    providers::IChatProvider* provider = o->createChat(m.id, run, QStringLiteral("complex"), cfg, sink);
     if (!provider) { failEarly(tr("Ismeretlen LLM-provider: %1.").arg(llmId)); return; }
     QObject* providerObj = dynamic_cast<QObject*>(provider);
     auto* svc = new ComplexSummaryService(provider, o);
@@ -507,11 +507,11 @@ void TopicQueue::finalize(const QString& meetingId)
     }
 
     const ProcessingSettings s = llm->processingSettings();
-    const QString llmId = llm->chatProviderId();
+    const QString llmId = llm->chatProviderId(meetingId);
     Run run = m_complexRuns.take(meetingId);   // the batch's run (if any) continues
     providers::ProviderConfig cfg = llm->config(run, meetingId, QStringLiteral("complex"));
     const auto sink = std::make_shared<FailureSink>();
-    providers::IChatProvider* provider = o->createChat(run, QStringLiteral("complex"), cfg, sink);
+    providers::IChatProvider* provider = o->createChat(m.id, run, QStringLiteral("complex"), cfg, sink);
     if (!provider) { emit errorOccurred(tr("Ismeretlen LLM-provider: %1.").arg(llmId)); return; }
     QObject* providerObj = dynamic_cast<QObject*>(provider);
     auto* svc = new ComplexSummaryService(provider, o);

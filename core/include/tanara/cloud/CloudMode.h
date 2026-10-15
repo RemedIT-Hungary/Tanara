@@ -13,7 +13,7 @@
 // (cloud::registerInto, cloud/CloudCapabilities.h).
 #include "tanara/cloud/CloudSettings.h"
 #include "tanara/providers/core/ReadinessModel.h"
-#include "tanara/providers/core/ProviderSettings.h"
+#include "tanara/providers/core/Routes.h"
 
 #include <QString>
 
@@ -31,8 +31,11 @@ struct CloudMode {
     static CloudMode resolve(const CloudSettings& settings, const QString& envMode, const QString& envUrl,
                              bool clientCompiled, bool teaserCompiled);
 
-    // The selected provider of a workflow step is the Tanara Cloud (only in live mode).
-    bool selects(providers::WorkflowStep step, const providers::ProviderSettings& providers) const;
+    // A (resolved) route runs on the Tanara Cloud (only in live mode).
+    bool selects(providers::Route resolved) const { return live && resolved == providers::Route::Cloud; }
+    // The stored route of a workflow step's capability is Cloud (only in live mode; Ask is not resolved
+    // here: app::Workflows asks).
+    bool selects(providers::WorkflowStep step, const providers::RouteSettings& routes) const;
 };
 
 } // namespace tanara::cloud

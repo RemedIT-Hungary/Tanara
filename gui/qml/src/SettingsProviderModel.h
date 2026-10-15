@@ -38,7 +38,8 @@ class SettingsProviderModel : public QObject {
     QML_ANONYMOUS
 
     Q_PROPERTY(QString kind READ kindName CONSTANT)   // "stt" | "llm" | "embedding"
-    // [{ value (the provider's id), label, tag }]: the own-key providers (+ Tanara Cloud, if that is the selected one).
+    // [{ value (the provider's id), label, tag, kind (S3: "local" | "external" | "cloud", the route segment) }]:
+    // the own-key providers (+ Tanara Cloud, if that is the selected one).
     Q_PROPERTY(QVariantList providers READ providers NOTIFY providersChanged)
     Q_PROPERTY(QString providerId READ providerId WRITE setProviderId NOTIFY providerChanged)
     Q_PROPERTY(QString providerLabel READ providerLabel NOTIFY providerChanged)

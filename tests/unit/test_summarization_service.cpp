@@ -99,9 +99,9 @@ public:
         return r;
     }
     processing::ProcessingSettings processingSettings() const override { return {}; }
-    QString chatProviderId() const override { return kChatId; }
+    QString chatProviderId(const QString&) const override { return kChatId; }
     providers::ProviderConfig localConfig() const override { return config0(); }
-    bool cloudSelected() const override { return cloud; }
+    bool cloudSelected(const QString&) const override { return cloud; }
     Run newRun(const QString&, const QString& kind) override
     {
         auto r = std::make_shared<FakeRun>();

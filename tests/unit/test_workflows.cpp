@@ -56,6 +56,7 @@ private slots:
     void diarizationOffOrFailing();
     void manualDiarizeSpeakers();
     void manualDiarizeFailureAndGates();
+    void askRouteResolution();
 
 private:
     Meeting recorded(const QString& title, bool freshMix = false, bool unmeasured = false);
@@ -76,7 +77,13 @@ private:
     std::unique_ptr<processing::DiarizationService> m_diar;
     std::unique_ptr<Workflows> m_wf;
 
-    // The fake local diarization.
+    // The fake routes (S3): the stored stt / llm route, the cloud, the Ask answerer.
+    providers::Route m_sttRoute = providers::Route::External;
+    bool m_cloudLive = false;
+    int m_asked = 0;
+    std::optional<providers::Route> m_answer;
+
+    // The fake local diarization (the diarization route Local = on).
     bool m_diarEnabled = false;
     bool m_diarUsable = true;
     bool m_diarManual = false;
@@ -114,6 +121,10 @@ void WorkflowsTest::init()
     m_stt = std::make_unique<processing::TranscriptionService>(processing::TranscriptionService::Deps{
         m_store.get(), m_jobs.get(), m_stats.get(), &m_registry, m_port.get()});
     m_diarEnabled = false;
+    m_sttRoute = providers::Route::External;
+    m_cloudLive = false;
+    m_asked = 0;
+    m_answer.reset();
     m_diarUsable = true;
     m_diarManual = false;
     m_diarCreated = 0;
@@ -174,7 +185,20 @@ void WorkflowsTest::makeWorkflows()
     d.readiness = [this](providers::WorkflowStep, const QString&) { return m_ready; };
     d.mixdownMode = [this]() { return m_mixdownMode; };
     d.diarization = m_diar.get();
-    d.localDiarizationEnabled = [this]() { return m_diarEnabled; };
+    d.storedRoute = [this](providers::Capability cap) {
+        if (cap == providers::Capability::Diarization)
+            return m_diarEnabled ? providers::Route::Local : providers::Route::External;
+        return cap == providers::Capability::Stt ? m_sttRoute : providers::Route::Local;
+    };
+    d.fallbackRoute = [](providers::Capability cap) {
+        return cap == providers::Capability::Stt ? providers::Route::External : providers::Route::Local;
+    };
+    d.cloudLive = [this]() { return m_cloudLive; };
+    d.askRoute = [this](providers::Capability cap, const QString&) -> std::optional<providers::Route> {
+        if (cap != providers::Capability::Stt) return std::nullopt;
+        ++m_asked;
+        return m_answer;
+    };
     d.localDiarizationUsable = [this]() { return m_diarUsable; };
     d.voice.useDiarization = [this](const QString&, const providers::DiarizeResult& r) {
         m_calls << QStringLiteral("useDiarization:%1").arg(r.speakers.size());
@@ -695,16 +719,16 @@ void WorkflowsTest::diarizationOffOrFailing()
     // The per-run override wins over the setting (off -> on).
     m_diarEnabled = false;
     m_diarUsable = true;
-    m_wf->setLocalDiarizationOverride(true);
+    m_wf->setRouteOverride(providers::Capability::Diarization, providers::Route::Local);
     const Meeting c = recorded(QStringLiteral("Felülbírálva"), true);
     runToStt(c.id);
     emit m_log->jobs.last()->finished(sixWords());
     QCOMPARE(m_diarCreated, 1);
     QTRY_VERIFY_WITH_TIMEOUT(m_calls.contains(QStringLiteral("identify:%1:1").arg(c.id)), 5000);
-    m_wf->setLocalDiarizationOverride(false);
+    m_wf->setRouteOverride(providers::Capability::Diarization, providers::Route::External);
     m_diarEnabled = true;
     QVERIFY(!m_wf->wantsLocalDiarization(c.id));
-    m_wf->setLocalDiarizationOverride(std::nullopt);
+    m_wf->setRouteOverride(providers::Capability::Diarization, std::nullopt);
 
     // A failing diarizer: the stage fails, the chain goes on with the one-speaker transcript.
     m_diarManual = true;
@@ -831,6 +855,67 @@ void WorkflowsTest::manualDiarizeFailureAndGates()
     QCOMPARE(ps.source, QStringLiteral("provider"));
     QVERIFY(!ps.canDiarize);
     QCOMPARE(ps.cannotBecause, QStringLiteral("provider"));
+}
+
+// S3: the route of a run. Ask is answered once per run (transcribe), the answer stays for the meeting while the
+// stored route is unchanged; no answer / a dead cloud -> the non-cloud route; an override and a per-run choice.
+void WorkflowsTest::askRouteResolution()
+{
+    using providers::Capability;
+    using providers::Route;
+    m_sttRoute = Route::Ask;
+    m_cloudLive = true;
+
+    // No answer: the non-cloud route (External: the fallback of this fixture).
+    QCOMPARE(m_wf->resolveRoute(Capability::Stt, QStringLiteral("m1")), Route::External);
+    QCOMPARE(m_asked, 1);
+    QCOMPARE(m_wf->route(Capability::Stt, QStringLiteral("m1")), Route::External);
+
+    // The answer Cloud: remembered for that meeting only; route() never asks.
+    m_answer = Route::Cloud;
+    QCOMPARE(m_wf->resolveRoute(Capability::Stt, QStringLiteral("m1")), Route::Cloud);
+    QCOMPARE(m_wf->route(Capability::Stt, QStringLiteral("m1")), Route::Cloud);
+    QCOMPARE(m_wf->route(Capability::Stt, QStringLiteral("m2")), Route::External);
+    QCOMPARE(m_wf->route(Capability::Stt), Route::External);
+    QCOMPARE(m_asked, 2);
+
+    // An answer of Ask counts as none.
+    m_answer = Route::Ask;
+    QCOMPARE(m_wf->resolveRoute(Capability::Stt, QStringLiteral("m4")), Route::External);
+
+    // The cloud is not live: a Cloud answer runs on the non-cloud route.
+    m_answer = Route::Cloud;
+    m_cloudLive = false;
+    QCOMPARE(m_wf->resolveRoute(Capability::Stt, QStringLiteral("m2")), Route::External);
+    QCOMPARE(m_wf->route(Capability::Stt, QStringLiteral("m1")), Route::External);   // the remembered Cloud is dead too
+    m_cloudLive = true;
+
+    // The stored route changed: the remembered answer no longer applies.
+    m_sttRoute = Route::Local;
+    QCOMPARE(m_wf->route(Capability::Stt, QStringLiteral("m1")), Route::Local);
+
+    // A per-run choice wins over the setting once.
+    m_wf->chooseRoute(Capability::Stt, QStringLiteral("m3"), Route::Cloud);
+    QCOMPARE(m_wf->resolveRoute(Capability::Stt, QStringLiteral("m3")), Route::Cloud);
+    QCOMPARE(m_wf->resolveRoute(Capability::Stt, QStringLiteral("m3")), Route::Local);
+
+    // The per-process override (the CLI's --run) wins over the setting; Cloud only while live.
+    m_wf->setRouteOverride(Capability::Stt, Route::Cloud);
+    QCOMPARE(m_wf->route(Capability::Stt), Route::Cloud);
+    m_cloudLive = false;
+    QCOMPARE(m_wf->route(Capability::Stt), Route::External);
+    m_wf->setRouteOverride(Capability::Stt, std::nullopt);
+    QCOMPARE(m_wf->route(Capability::Stt), Route::Local);
+
+    // transcribe() asks once, before the provider starts.
+    m_sttRoute = Route::Ask;
+    m_cloudLive = true;
+    m_answer.reset();
+    const int asked = m_asked;
+    const Meeting m = recorded(QStringLiteral("Kérdezzen"), true);
+    runToStt(m.id);
+    QCOMPARE(m_asked, asked + 1);
+    QCOMPARE(m_wf->route(Capability::Stt, m.id), Route::External);
 }
 
 QTEST_GUILESS_MAIN(WorkflowsTest)

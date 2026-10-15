@@ -3,7 +3,6 @@
 #include "demo/DemoText.h"
 #include "demo/RecorderDemoFacade.h"
 
-#include "tanara/cloud/CloudTypes.h"
 #include "tanara/processing/summary/PromptLibrary.h"
 #include "tanara/providers/embedding/ITextEmbedder.h"
 
@@ -63,6 +62,7 @@ void SettingsDemoFacade::loadSettings(const QString& st)
     s.providers.llm.selectedId = QStringLiteral("openai-compat");
     s.providers.stt.configs.clear();
     s.providers.llm.configs.clear();
+    s.routes.diarization.route = providers::Route::Local;   // the made-up user separates speakers locally
     {
         providers::ProviderConfig llm;
         llm.type = s.providers.llm.selectedId;
@@ -135,11 +135,11 @@ void SettingsDemoFacade::loadSettings(const QString& st)
         sc.page = QStringLiteral("services");
         sc.serviceMode = QStringLiteral("cloud");
     } else if (st == QLatin1String("cloudSelected")) {
-        // The saved setting names Tanara Cloud (developer setting): not available, own key needed.
+        // The saved setting puts transcription and summary on Tanara Cloud (developer setting).
         sc.page = QStringLiteral("services");
         draft = s;
-        draft->providers.stt.selectedId = cloud::ProviderId;
-        draft->providers.llm.selectedId = cloud::ProviderId;
+        draft->routes.stt.route = providers::Route::Cloud;
+        draft->routes.llm.route = providers::Route::Cloud;
     } else if (st == QLatin1String("B07") || st == QLatin1String("B07notes") || st == QLatin1String("schema")) {
         sc.page = QStringLiteral("summary");
         // A prompt extended with an own rule -> "modified".
@@ -152,7 +152,7 @@ void SettingsDemoFacade::loadSettings(const QString& st)
         // The enabled list follows the voice-model list's state.
         s.processing.voiceModels = QStringList{QStringLiteral("wespeaker-resnet34-lm")};
         // D5: the local speaker separation switched off.
-        if (st == QLatin1String("B08diaroff")) s.processing.localDiarization = false;
+        if (st == QLatin1String("B08diaroff")) s.routes.diarization.route = providers::Route::External;
     } else if (st == QLatin1String("dirty") || st == QLatin1String("unsaved")) {
         draft = s;
         draft->recording.userSpeakerName = demoText("Kovács Lilla Anna", "Emma Anne Carter");
@@ -196,6 +196,8 @@ void SettingsDemoFacade::loadSettings(const QString& st)
         draft = s;
         draft->providers.embedding.configs[providers::embeddingproviders::LocalId].model = QStringLiteral("nomic-embed-text-v2-moe");
     }
+    s.routes.normalize(s.providers);
+    if (draft) draft->routes.normalize(draft->providers);
     sc.draft = draft;
     m_settings = s;
     m_scenario = sc;

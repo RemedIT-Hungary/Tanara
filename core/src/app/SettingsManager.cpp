@@ -1,4 +1,5 @@
 #include "tanara/app/SettingsManager.h"
+#include "tanara/cloud/CloudMode.h"
 #include "tanara/providers/core/ProviderConfig.h"
 #include "tanara/foundation/settings/SettingsStore.h"
 #include "tanara/foundation/log/Logging.h"
@@ -74,6 +75,9 @@ AppSettings SettingsManager::defaults()
         emb.model   = QStringLiteral("text-embedding-bge-m3");
         s.providers.embedding.configs.insert(emb.type, emb);
     }
+    // Routes from what is configured: stt External (Soniox), llm Local (LM Studio), diarization External
+    // (the STT separates the speakers), voice Local, embedding Basic. Ask needs the live cloud: load().
+    s.routes = providers::RouteSettings::derive(s.providers, /*localDiarization*/ false, /*cloudLive*/ false);
     return s;
 }
 
@@ -101,8 +105,10 @@ void SettingsManager::load()
     m_legacy = r == SettingsStore::LoadResult::OldFormat;
 
     if (r == SettingsStore::LoadResult::Missing) {
-        // No config yet: defaults + write to disk.
+        // No config yet: defaults + write to disk. With the live Tanara Cloud, stt / llm default to Ask.
         m_settings = defaults();
+        if (cloud::CloudMode::fromEnvironment(m_settings.cloud).live)
+            m_settings.routes = providers::RouteSettings::derive(m_settings.providers, false, /*cloudLive*/ true);
         publishPaths();
         save();
         return;
@@ -118,6 +124,8 @@ void SettingsManager::load()
     for (const QString& name : AppSettings::sectionNames())
         loaded.setSectionJson(name, m_store->section(name));
     applyDefaults(loaded);
+    loaded.finishRoutes(m_store->section(QStringLiteral("processing")),
+                        cloud::CloudMode::fromEnvironment(loaded.cloud).live);
     m_settings = loaded;
     publishPaths();
     m_paths.ensureDirs();
@@ -172,6 +180,7 @@ void SettingsManager::setEnabledVoiceModels(const QStringList& ids)
 void SettingsManager::setSettings(const AppSettings& s)
 {
     m_settings = s;
+    m_settings.routes.normalize(m_settings.providers);   // a provider picked directly / a cloud id selected
     m_settings.processing.voiceModels = processing::VoiceModelRegistry::normalizeIds(s.processing.voiceModels);
     publishPaths();
     save();

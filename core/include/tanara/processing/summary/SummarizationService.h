@@ -123,7 +123,7 @@ private:
     // The transcript to summarize with the resolved speakers (empty: there is none).
     MergedTranscript transcriptFor(const Meeting& m) const;
     // A chat provider for one call (the context captures the failed exchanges into the sink).
-    providers::IChatProvider* createChat(const Run& run, const QString& summaryMode,
+    providers::IChatProvider* createChat(const QString& meetingId, const Run& run, const QString& summaryMode,
                                          const providers::ProviderConfig& cfg, const FailureSinkPtr& sink);
     // Tanara is currently running ANOTHER LLM request too (then the model is not unloaded).
     bool otherLlmBusy() const;

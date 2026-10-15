@@ -17,6 +17,7 @@
 #include "tanara/foundation/paths/AppPaths.h"
 #include "tanara/processing/summary/PromptLibrary.h"
 #include "tanara/providers/core/ProviderRegistry.h"
+#include "tanara/providers/core/Routes.h"
 #include "tanara/providers/embedding/ITextEmbedder.h"
 #include "tanara/recording/IRecorderFacade.h"
 #include "tanara/watcher/PipeWireGraph.h"
@@ -326,6 +327,7 @@ void SettingsViewModel::normalize(tanara::app::AppSettings& s) const
 {
     // The selected providers' empty fields get the descriptor's defaults (as the old window
     // filled them), so this does not count as a "change".
+    s.routes.normalize(s.providers);   // S3: the routes follow the provider selection
     if (!m_facade) return;
     const providers::ProviderRegistry& reg = m_facade->registry();
     const providers::ProviderDescriptor sd = reg.descriptor(providers::CapabilityKind::Transcription, s.providers.stt.selectedId);
@@ -450,13 +452,37 @@ void SettingsViewModel::storePromptsInDraft()
         setStoredPrompt(m_draft, id, stored(id));
 }
 
+int SettingsViewModel::routeChanges(const tanara::app::AppSettings& base, const tanara::app::AppSettings& draft)
+{
+    // S3: a route counts as a change of its own unless it only follows a provider picked on a card (that
+    // change is counted already: the embedding's route always follows its provider, stt / llm while both
+    // routes are Local / External); the remembered provider ids are bookkeeping.
+    using providers::Capability;
+    using providers::Route;
+    auto own = [](Route r) { return r == Route::Local || r == Route::External; };
+    int n = 0;
+    for (Capability cap : providers::allCapabilities()) {
+        const Route a = base.routes.route(cap), b = draft.routes.route(cap);
+        if (a == b || cap == Capability::Embedding) continue;
+        const QString selA = cap == Capability::Stt ? base.providers.stt.selectedId : base.providers.llm.selectedId;
+        const QString selB = cap == Capability::Stt ? draft.providers.stt.selectedId : draft.providers.llm.selectedId;
+        if ((cap == Capability::Stt || cap == Capability::Llm) && selA != selB && own(a) && own(b)) continue;
+        ++n;
+    }
+    return n;
+}
+
 void SettingsViewModel::touch()
 {
     if (m_loading) return;
     storePromptsInDraft();
     tanara::app::AppSettings d = m_draft;
     d.recording.userSpeakerName = d.recording.userSpeakerName.trimmed();
-    int n = countChanges(m_base.toJson(), d.toJson());
+    d.routes.normalize(d.providers);   // a provider picked on a card moves its route (as the save does)
+    QJsonObject baseJson = m_base.toJson(), draftJson = d.toJson();
+    baseJson.remove(QStringLiteral("routes"));
+    draftJson.remove(QStringLiteral("routes"));
+    int n = countChanges(baseJson, draftJson) + routeChanges(m_base, d);
     for (auto it = m_draftSecrets.constBegin(); it != m_draftSecrets.constEnd(); ++it)
         if (m_baseSecrets.value(it.key()) != it.value()) ++n;
     QStringList a = m_baseSelected, b = m_draftSelected;
@@ -502,7 +528,16 @@ providers::ReadinessResult SettingsViewModel::draftReadiness(providers::Workflow
     t.active = true;
     m.tracks << t;
     m.hasTranscript = true;
-    const providers::ReadinessModel model(m_draft.providers, [this](const QString& key) {
+    // S3: the draft routes' providers (Cloud -> the Tanara Cloud adapter; Ask -> the own provider).
+    tanara::app::AppSettings d = m_draft;
+    d.routes.normalize(d.providers);
+    auto stored = [&d](providers::Capability cap) {
+        const providers::Route r = d.routes.route(cap);
+        return r == providers::Route::Ask ? d.routes.fallbackRoute(cap, d.providers) : r;
+    };
+    const providers::ProviderSettings eff =
+        d.routes.effective(d.providers, stored(providers::Capability::Stt), stored(providers::Capability::Llm));
+    const providers::ReadinessModel model(eff, [this](const QString& key) {
         if (m_draftSecrets.contains(key)) return !m_draftSecrets.value(key).trimmed().isEmpty();
         return m_facade && m_facade->hasSecret(key);
     }, m_facade ? &m_facade->registry() : nullptr);
@@ -581,9 +616,9 @@ void SettingsViewModel::openPage(const QString& page, const QString& focusField)
     if (kPages.contains(target)) setPage(target);
 
     if (page == QLatin1String("cloud"))
-        setServiceMode(QStringLiteral("cloud"));
+        showServiceTab(QStringLiteral("cloud"));
     else if (page == QLatin1String("providers") && !focusField.isEmpty())
-        setServiceMode(QStringLiteral("own"));
+        showServiceTab(QStringLiteral("own"));
 
     const QString f = focusField == QLatin1String("stt") || focusField == QLatin1String("llm")
                           ? focusField : QString();
@@ -1120,26 +1155,167 @@ void SettingsViewModel::pollDetector()
 
 bool SettingsViewModel::cloudSelected() const
 {
-    return m_draft.providers.stt.selectedId == cloud::ProviderId || m_draft.providers.llm.selectedId == cloud::ProviderId;
+    return m_draft.routes.stt.route == providers::Route::Cloud || m_draft.routes.llm.route == providers::Route::Cloud;
+}
+
+QString SettingsViewModel::serviceMode() const
+{
+    return cloudSelected() || m_serviceMode == QLatin1String("cloud") ? QStringLiteral("cloud") : QStringLiteral("own");
+}
+
+void SettingsViewModel::showServiceTab(const QString& mode)
+{
+    const QString before = serviceMode();
+    m_serviceMode = mode == QLatin1String("cloud") ? QStringLiteral("cloud") : QStringLiteral("own");
+    if (serviceMode() != before) emit serviceModeChanged();
 }
 
 void SettingsViewModel::setServiceMode(const QString& mode)
 {
-    // Only the shown tab changes: Tanara Cloud is "coming soon", so there is nothing to save.
-    const QString m = mode == QLatin1String("cloud") ? QStringLiteral("cloud") : QStringLiteral("own");
-    if (m == m_serviceMode) return;
-    m_serviceMode = m;
-    emit serviceModeChanged();
+    // S3 shim (until S2): the tab maps to the stt + llm routes. Where the Cloud route is not allowed (the cloud
+    // is not live: "coming soon") only the tab changes.
+    const QString before = serviceMode();
+    const bool cloud = mode == QLatin1String("cloud");
+    m_serviceMode = cloud ? QStringLiteral("cloud") : QStringLiteral("own");
+    for (providers::Capability cap : {providers::Capability::Stt, providers::Capability::Llm}) {
+        if (cloud)
+            applyRoute(cap, providers::Route::Cloud);
+        else if (m_draft.routes.route(cap) == providers::Route::Cloud)
+            applyRoute(cap, m_draft.routes.fallbackRoute(cap, m_draft.providers));
+    }
+    if (serviceMode() != before) emit serviceModeChanged();
+}
+
+// ---- S3: processing routes ------------------------------------------------------
+
+providers::RouteContext SettingsViewModel::routeContext(providers::Capability cap) const
+{
+    providers::RouteContext ctx;
+    if (!m_facade) return ctx;
+    const providers::ProviderRegistry& reg = m_facade->registry();
+    // The stt / llm cloud adapters exist only in live mode: that is the "cloud is live" signal here too.
+    ctx.cloudLive = reg.has(providers::CapabilityKind::Transcription, providers::CloudProviderId);
+    const providers::CapabilityKind kind = cap == providers::Capability::Stt ? providers::CapabilityKind::Transcription
+        : cap == providers::Capability::Llm ? providers::CapabilityKind::Chat
+        : cap == providers::Capability::Embedding ? providers::CapabilityKind::TextEmbedding
+        : cap == providers::Capability::Voice ? providers::CapabilityKind::VoiceEmbedding
+        : providers::CapabilityKind::Diarization;
+    for (const providers::ProviderDescriptor& d : reg.descriptors(kind)) {
+        if (d.kind == providers::ProviderKind::Local) ctx.localIds << d.id;
+        else if (d.kind == providers::ProviderKind::External) ctx.externalIds << d.id;
+        else ctx.cloudId = d.id;
+    }
+    ctx.localIds.sort();
+    ctx.externalIds.sort();
+    return ctx;
+}
+
+bool SettingsViewModel::applyRoute(providers::Capability cap, providers::Route r)
+{
+    if (m_draft.routes.route(cap) == r) return true;
+    const QString sttBefore = m_draft.providers.stt.selectedId, llmBefore = m_draft.providers.llm.selectedId;
+    const QString embBefore = m_draft.providers.embedding.selectedId;
+    if (!m_draft.routes.set(cap, r, routeContext(cap), m_draft.providers)) return false;
+    // A newly selected provider gets its defaults and the card follows (the provider models do it).
+    if (m_draft.providers.stt.selectedId != sttBefore) {
+        const QString id = m_draft.providers.stt.selectedId;
+        m_draft.providers.stt.selectedId = sttBefore;
+        m_stt->setProviderId(id);
+    }
+    if (m_draft.providers.llm.selectedId != llmBefore) {
+        const QString id = m_draft.providers.llm.selectedId;
+        m_draft.providers.llm.selectedId = llmBefore;
+        m_llm->setProviderId(id);
+    }
+    if (m_draft.providers.embedding.selectedId != embBefore) {
+        const QString id = m_draft.providers.embedding.selectedId;
+        if (!id.isEmpty() && m_facade) {
+            providers::ProviderConfig cfg = m_draft.providers.embedding.configs.value(id);
+            m_embedding->card()->fillDefaults(
+                cfg, m_facade->registry().descriptor(providers::CapabilityKind::TextEmbedding, id));
+            m_draft.providers.embedding.configs.insert(id, cfg);
+        }
+        m_embedding->card()->reset();
+    }
+    emit routesChanged();
+    if (cap == providers::Capability::Diarization) emit diarizationChanged();
+    touch();
+    return true;
+}
+
+QString SettingsViewModel::route(const QString& cap) const
+{
+    const std::optional<providers::Capability> c = providers::capabilityFromKey(cap);
+    if (!c) return QString();
+    // A provider picked on a card moves a Local / External route (normalize: the provider's kind decides).
+    tanara::app::AppSettings d = m_draft;
+    d.routes.normalize(d.providers);
+    return providers::routeKey(d.routes.route(*c));
+}
+
+bool SettingsViewModel::setRoute(const QString& cap, const QString& route)
+{
+    const std::optional<providers::Capability> c = providers::capabilityFromKey(cap);
+    const std::optional<providers::Route> r = providers::routeFromKey(route);
+    if (!c || !r) return false;
+    m_draft.routes.normalize(m_draft.providers);
+    const QString before = serviceMode();
+    const bool ok = applyRoute(*c, *r);
+    if (serviceMode() != before) emit serviceModeChanged();
+    return ok;
+}
+
+QVariantList SettingsViewModel::routeOptions(const QString& cap) const
+{
+    const std::optional<providers::Capability> c = providers::capabilityFromKey(cap);
+    if (!c) return {};
+    const providers::RouteContext ctx = routeContext(*c);
+    const QList<providers::Route> values = *c == providers::Capability::Embedding
+        ? QList<providers::Route>{providers::Route::Basic, providers::Route::Local, providers::Route::External, providers::Route::Cloud}
+        : QList<providers::Route>{providers::Route::Local, providers::Route::External, providers::Route::Cloud, providers::Route::Ask};
+    QVariantList out;
+    for (providers::Route r : values) {
+        const QString code = providers::routeBlocker(*c, r, ctx);
+        QString reason;
+        if (code == QLatin1String("voice_local_only"))
+            reason = tr("A hangminta nem hagyja el a gépet: a beszélők felismerése mindig helyben fut.");
+        else if (code == QLatin1String("embedding_no_ask"))
+            reason = tr("A címkejavaslat a háttérben fut, ezért nem tud kérdezni.");
+        else if (code == QLatin1String("not_embedding"))
+            reason = tr("Ennél a képességnél nincs alap mód.");
+        else if (code == QLatin1String("no_local"))
+            reason = tr("Ehhez nincs helyi szolgáltató.");
+        else if (code == QLatin1String("no_external"))
+            reason = tr("Ehhez nincs külső, saját kulcsos szolgáltató.");
+        else if (code == QLatin1String("cloud_unavailable"))
+            reason = tr("A Tanara Cloud még nem érhető el.");
+        else if (code == QLatin1String("ask_unavailable"))
+            reason = tr("A „Kérdezzen” módhoz a Tanara Cloud és egy saját szolgáltató is kell.");
+        else if (code == QLatin1String("diarization_later"))
+            reason = tr("A beszélők elkülönítésénél ez a lehetőség később érkezik.");
+        out << QVariantMap{{QStringLiteral("value"), providers::routeKey(r)},
+                           {QStringLiteral("enabled"), code.isEmpty()},
+                           {QStringLiteral("code"), code},
+                           {QStringLiteral("reason"), reason}};
+    }
+    return out;
+}
+
+QString SettingsViewModel::providerKind(const QString& providerId) const
+{
+    if (m_facade)
+        for (providers::CapabilityKind k : {providers::CapabilityKind::Transcription, providers::CapabilityKind::Chat,
+                                            providers::CapabilityKind::TextEmbedding})
+            if (m_facade->registry().has(k, providerId))
+                return providers::providerKindKey(m_facade->registry().descriptor(k, providerId).kind);
+    return providers::providerKindKey(providers::providerKindOf(providerId));
 }
 
 // ---- Speakers: local diarization ------------------------------------------------
 
-void SettingsViewModel::setLocalDiarization(bool on)
+bool SettingsViewModel::localDiarization() const
 {
-    if (m_draft.processing.localDiarization == on) return;
-    m_draft.processing.localDiarization = on;
-    emit diarizationChanged();
-    touch();
+    return m_draft.routes.diarization.route == providers::Route::Local;
 }
 
 // ---- Summary ------------------------------------------------------------------

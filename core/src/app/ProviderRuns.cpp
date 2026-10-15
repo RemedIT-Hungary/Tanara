@@ -58,9 +58,15 @@ struct ProviderRuns::SummaryAdapter final : processing::SummaryLlmPort {
         return q->canRun(providers::WorkflowStep::Summarize, meetingId);
     }
     processing::ProcessingSettings processingSettings() const override { return q->m_deps.settings->settings().processing; }
-    QString chatProviderId() const override { return q->m_deps.settings->settings().providers.llm.selectedId; }
-    providers::ProviderConfig localConfig() const override { return q->m_deps.settings->settings().providers.llm.selected(); }
-    bool cloudSelected() const override { return q->usesCloud(providers::WorkflowStep::Summarize); }
+    QString chatProviderId(const QString& meetingId) const override
+    {
+        return q->effectiveProviders(meetingId).llm.selectedId;
+    }
+    providers::ProviderConfig localConfig() const override { return q->effectiveProviders(QString()).llm.selected(); }
+    bool cloudSelected(const QString& meetingId) const override
+    {
+        return q->usesCloud(providers::WorkflowStep::Summarize, meetingId);
+    }
 
     Run newRun(const QString& meetingId, const QString& kind) override { return wrap(q->newCloudRun(meetingId, kind)); }
     void setRunKind(const Run& run, const QString& kind) override
@@ -118,11 +124,12 @@ struct ProviderRuns::SttAdapter final : processing::TranscriptionPort {
     Setup setup(const QString& meetingId) override
     {
         const AppSettings s = q->m_deps.settings->settings();
+        const providers::ProviderSettings eff = q->effectiveProviders(meetingId);
         Setup out;
-        out.providerId = s.providers.stt.selectedId;
-        out.config = s.providers.stt.selected();
+        out.providerId = eff.stt.selectedId;
+        out.config = eff.stt.selected();
         out.languageHints = s.processing.languageHints;
-        if (q->usesCloud(providers::WorkflowStep::Transcribe)) {
+        if (q->usesCloud(providers::WorkflowStep::Transcribe, meetingId)) {
             // The same provider with the gateway config; the run (job id, charge, write-back, error) is filled
             // from the response hook.
             const CloudRunPtr run = q->newCloudRun(meetingId, QStringLiteral("transcribe"));
@@ -186,11 +193,11 @@ providers::ReadinessResult ProviderRuns::canRun(providers::WorkflowStep step, co
 {
     const Meeting meeting = m_deps.store->load(meetingId);
     SecretStore* secrets = m_deps.secrets;
-    providers::ReadinessModel model(m_deps.settings->settings().providers,
+    providers::ReadinessModel model(effectiveProviders(meetingId),
                                     [secrets](const QString& k) { return !secrets->get(k).isEmpty(); },
                                     m_deps.registry);
     providers::ReadinessResult r = model.check(step, meeting);
-    if (!r.runnable || !usesCloud(step))
+    if (!r.runnable || !usesCloud(step, meetingId))
         return r;
 
     // Tanara Cloud-specific obstacles (exactly one CTA in the task strip).
@@ -214,9 +221,30 @@ providers::ReadinessResult ProviderRuns::canRun(providers::WorkflowStep step, co
     return r;
 }
 
-bool ProviderRuns::usesCloud(providers::WorkflowStep step) const
+providers::Route ProviderRuns::route(providers::Capability cap, const QString& meetingId) const
 {
-    return m_deps.mode->selects(step, m_deps.settings->settings().providers);
+    if (m_deps.route) return m_deps.route(cap, meetingId);
+    const AppSettings s = m_deps.settings->settings();
+    const providers::Route r = s.routes.route(cap);
+    if (r == providers::Route::Ask || (r == providers::Route::Cloud && !m_deps.mode->live))
+        return s.routes.fallbackRoute(cap, s.providers);
+    return r;
+}
+
+bool ProviderRuns::usesCloud(providers::WorkflowStep step, const QString& meetingId) const
+{
+    if (step == providers::WorkflowStep::Transcribe)
+        return m_deps.mode->selects(route(providers::Capability::Stt, meetingId));
+    if (step == providers::WorkflowStep::Summarize)
+        return m_deps.mode->selects(route(providers::Capability::Llm, meetingId));
+    return false;
+}
+
+providers::ProviderSettings ProviderRuns::effectiveProviders(const QString& meetingId) const
+{
+    const AppSettings s = m_deps.settings->settings();
+    return s.routes.effective(s.providers, route(providers::Capability::Stt, meetingId),
+                              route(providers::Capability::Llm, meetingId));
 }
 
 QString ProviderRuns::cloudModelFor(providers::WorkflowStep step) const
@@ -284,10 +312,9 @@ cloud::EstimateRequest ProviderRuns::estimateRequest(const QString& meetingId, c
 
 library::TagSuggestionService::LlmSession ProviderRuns::tagLlmSession(const QString& meetingId, QObject* parent)
 {
-    const AppSettings s = m_deps.settings->settings();
     CloudRunPtr run;
     providers::ProviderConfig cfg = llmConfigFor(run, meetingId, QStringLiteral("tags"));
-    cfg.type = s.providers.llm.selectedId;
+    cfg.type = effectiveProviders(meetingId).llm.selectedId;
     library::TagSuggestionService::LlmSession session;
     session.suggester = m_deps.registry->create<providers::ITagSuggester>(
         processing::LlmTagSuggestionProvider::Id, providerContext(run, QStringLiteral("quick")), cfg, parent);
@@ -343,8 +370,8 @@ providers::ProviderContext ProviderRuns::providerContext(const CloudRunPtr& run,
 providers::ProviderConfig ProviderRuns::llmConfigFor(CloudRunPtr& run, const QString& meetingId,
                                                      const QString& kind) const
 {
-    if (!usesCloud(providers::WorkflowStep::Summarize)) {
-        providers::ProviderConfig cfg = m_deps.settings->settings().providers.llm.selected();
+    if (!usesCloud(providers::WorkflowStep::Summarize, meetingId)) {
+        providers::ProviderConfig cfg = effectiveProviders(meetingId).llm.selected();
         cfg.apiKey = m_deps.secrets->get(keys::LlmApiKey);   // LM Studio: may be empty
         return cfg;
     }

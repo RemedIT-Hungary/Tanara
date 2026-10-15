@@ -25,7 +25,6 @@ QJsonObject ProcessingSettings::toJson() const
         {QStringLiteral("topicExtractionPrompt"), topicExtractionPrompt},
         {QStringLiteral("topicAnalysisPrompt"), topicAnalysisPrompt},
         {QStringLiteral("voiceModels"), QJsonArray::fromStringList(voicemodels::normalizeIds(voiceModels))},
-        {QStringLiteral("localDiarization"), localDiarization},
         {QStringLiteral("tagSuggestions"), tagSuggestions},
         {QStringLiteral("llmTagSuggestions"), llmTagSuggestions},
     };
@@ -46,7 +45,6 @@ ProcessingSettings ProcessingSettings::fromJson(const QJsonObject& o)
     // Speaker models: a missing key -> the default; an empty list is valid (every model off).
     if (o.contains(QStringLiteral("voiceModels")))
         s.voiceModels = voicemodels::normalizeIds(toList(o.value(QStringLiteral("voiceModels"))));
-    s.localDiarization  = o.value(QStringLiteral("localDiarization")).toBool(s.localDiarization);
     s.tagSuggestions    = o.value(QStringLiteral("tagSuggestions")).toBool(s.tagSuggestions);
     s.llmTagSuggestions = o.value(QStringLiteral("llmTagSuggestions")).toBool(s.llmTagSuggestions);
     return s;

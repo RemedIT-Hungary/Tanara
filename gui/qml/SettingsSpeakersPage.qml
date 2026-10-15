@@ -626,7 +626,7 @@ Column {
             text: qsTr("Beszélők felismerése helyben, ha a leíró szolgáltató nem adja")
             helper: qsTr("A Whisper és a Cloud Fast csomag nem választja szét a beszélőket, ezért ezekhez kell; a Soniox maga megteszi, ahhoz nem. Az átirat után a gépeden fut, a felvétel nem megy sehova.")
             checked: root.vm ? root.vm.localDiarization : true
-            onToggled: (on) => root.vm.localDiarization = on
+            onToggled: (on) => root.vm.setRoute("diarization", on ? "local" : "external")
         }
         // No segmentation model: the local separation cannot run.
         TBanner {

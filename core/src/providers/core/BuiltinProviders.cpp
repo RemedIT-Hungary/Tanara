@@ -1,5 +1,6 @@
 #include "tanara/providers/core/ProviderRegistry.h"
 #include "tanara/providers/core/ProviderConfig.h"
+#include "tanara/providers/core/Routes.h"
 
 // The concrete headers of the built-in providers appear ONLY here, so the registry itself stays
 // provider-agnostic and the dependency is concentrated in one place.
@@ -47,6 +48,7 @@ ProviderDescriptor sonioxDescriptor()
     d.displayName         = QStringLiteral("Soniox");
     d.capability          = CapabilityKind::Transcription;
     d.origin              = Origin::CustomEndpoint;   // BYO key
+    d.kind                = ProviderKind::External;
     d.traits              = remoteTraits(InputKind::AudioFile, /*metered*/ true);
     d.authMode            = AuthMode::ApiKey;
     d.supportsDiarization = true;
@@ -87,6 +89,7 @@ ProviderDescriptor openAiCompatDescriptor()
     d.displayName       = QCoreApplication::translate("BuiltinProviders", "OpenAI-kompatibilis végpont");
     d.capability        = CapabilityKind::Chat;
     d.origin            = Origin::CustomEndpoint;     // LM Studio / Ollama / OpenAI
+    d.kind              = ProviderKind::Local;
     d.traits            = localServerTraits(InputKind::Text);
     d.authMode          = AuthMode::ApiKey;
     d.supportsStreaming = false;
@@ -144,6 +147,7 @@ ProviderDescriptor whisperCompatDescriptor()
                                                 "Whisper (OpenAI-kompatibilis)");
     d.capability = CapabilityKind::Transcription;
     d.origin     = Origin::CustomEndpoint;            // a local whisper server or the OpenAI API
+    d.kind       = ProviderKind::Local;
     d.traits     = localServerTraits(InputKind::AudioFile);
     d.authMode   = AuthMode::ApiKey;
     d.supportsDiarization = false;   // every token is "Speaker 1"; the name comes from voice ID
@@ -196,10 +200,11 @@ ProviderDescriptor whisperCompatDescriptor()
 ProviderDescriptor tanaraCloudDescriptor(CapabilityKind kind)
 {
     ProviderDescriptor d;
-    d.id                  = QStringLiteral("tanara-cloud");
+    d.id                  = CloudProviderId;
     d.displayName         = QCoreApplication::translate("BuiltinProviders", "Tanara Cloud — bejelentkezés");
     d.capability          = kind;
     d.origin              = Origin::Cloud;
+    d.kind                = ProviderKind::Cloud;
     d.traits              = remoteTraits(kind == CapabilityKind::Transcription ? InputKind::AudioFile
                                                                                : InputKind::Text,
                                          /*metered*/ true);
@@ -220,6 +225,7 @@ ProviderDescriptor openAiCompatEmbeddingDescriptor()
     d.displayName = QCoreApplication::translate("BuiltinProviders", "Helyi végpont");
     d.capability  = CapabilityKind::TextEmbedding;
     d.origin      = Origin::CustomEndpoint;
+    d.kind        = ProviderKind::Local;
     d.traits      = localServerTraits(InputKind::Text);
     d.authMode    = AuthMode::ApiKey;
     d.networkRequired = false;
@@ -264,6 +270,7 @@ ProviderDescriptor tanaraHostedEmbeddingDescriptor()
     d.displayName     = QCoreApplication::translate("BuiltinProviders", "Tanara Cloud");
     d.capability      = CapabilityKind::TextEmbedding;
     d.origin          = Origin::Cloud;
+    d.kind            = ProviderKind::Cloud;
     d.traits          = remoteTraits(InputKind::Text, /*metered*/ true);
     d.authMode        = AuthMode::Login;
     d.loginSecretKey  = QStringLiteral("tanara.cloud.apiKey");
@@ -279,6 +286,7 @@ ProviderDescriptor lmStudioServerDescriptor()
     d.displayName     = QStringLiteral("LM Studio");
     d.capability      = CapabilityKind::LocalModelServer;
     d.origin          = Origin::CustomEndpoint;
+    d.kind            = ProviderKind::Local;
     d.traits          = localServerTraits(InputKind::Text);
     d.authMode        = AuthMode::ApiKey;
     d.networkRequired = false;

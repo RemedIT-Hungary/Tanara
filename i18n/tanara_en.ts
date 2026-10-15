@@ -12284,6 +12284,38 @@
         <translation>This is already on the list.</translation>
     </message>
     <message>
+        <source>A hangminta nem hagyja el a gépet: a beszélők felismerése mindig helyben fut.</source>
+        <translation>The voiceprint never leaves your computer: speaker recognition always runs locally.</translation>
+    </message>
+    <message>
+        <source>A címkejavaslat a háttérben fut, ezért nem tud kérdezni.</source>
+        <translation>Tag suggestions run in the background, so they cannot ask.</translation>
+    </message>
+    <message>
+        <source>Ennél a képességnél nincs alap mód.</source>
+        <translation>This capability has no basic mode.</translation>
+    </message>
+    <message>
+        <source>Ehhez nincs helyi szolgáltató.</source>
+        <translation>There is no local provider for this.</translation>
+    </message>
+    <message>
+        <source>Ehhez nincs külső, saját kulcsos szolgáltató.</source>
+        <translation>There is no external provider with your own key for this.</translation>
+    </message>
+    <message>
+        <source>A Tanara Cloud még nem érhető el.</source>
+        <translation>Tanara Cloud is not available yet.</translation>
+    </message>
+    <message>
+        <source>A „Kérdezzen” módhoz a Tanara Cloud és egy saját szolgáltató is kell.</source>
+        <translation>“Ask” needs both Tanara Cloud and a provider of your own.</translation>
+    </message>
+    <message>
+        <source>A beszélők elkülönítésénél ez a lehetőség később érkezik.</source>
+        <translation>This option comes later for speaker separation.</translation>
+    </message>
+    <message>
         <source>Gyors összefoglaló</source>
         <translation>Quick summary</translation>
     </message>

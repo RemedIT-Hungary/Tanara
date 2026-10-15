@@ -214,7 +214,15 @@ AppController::AppController(QObject* parent)
         d->settings, d->secrets.get(), d->http, d->cloud, d->cloudLedger, &d->providerRegistry, &d->cloudMode,
         d->store, d->metaDir,
         [this](const QString& id) { return d->transcription->cachedTranscript(id); },
-        [this]() { return d->personNames(); }});
+        [this]() { return d->personNames(); },
+        // S3: the run's resolved route (Workflows answers Ask once per run); before the services exist: the setting.
+        [this](providers::Capability cap, const QString& meetingId) {
+            if (d->services) return d->services->workflows().route(cap, meetingId);
+            const AppSettings s = d->settings->settings();
+            const providers::Route r = s.routes.route(cap);
+            return r == providers::Route::Ask || (r == providers::Route::Cloud && !d->cloudMode.live)
+                ? s.routes.fallbackRoute(cap, s.providers) : r;
+        }});
     d->transcripts = std::make_unique<library::TranscriptRepository>();
     d->uiState = std::make_unique<library::UiStateRepository>(ap.stateFile(paths::files::UiTranscript));
 
@@ -306,6 +314,7 @@ AppController::AppController(QObject* parent)
         // P12f: the transcription's app side (settings, STT key, Tanara Cloud runs) and the readiness check.
         sd.transcriptionPort = &d->runs->transcriptionPort();
         sd.readiness = [this](providers::WorkflowStep step, const QString& id) { return canRun(step, id); };
+        sd.cloudLive = [this]() { return d->cloudMode.live; };
         d->services = std::make_unique<app::Services>(sd);
         d->voice = &d->services->voiceAnalysis();
         d->peopleSvc = &d->services->people();
@@ -757,7 +766,10 @@ bool AppController::cloudLive() const { return d->cloudMode.live; }
 providers::ProviderRegistry& AppController::providerRegistry() const { return d->providerRegistry; }
 bool AppController::cloudTeaser() const { return d->cloudMode.teaser; }
 
-bool AppController::usesCloud(providers::WorkflowStep step) const { return d->runs->usesCloud(step); }
+bool AppController::usesCloud(providers::WorkflowStep step, const QString& meetingId) const
+{
+    return d->runs->usesCloud(step, meetingId);
+}
 
 QString AppController::cloudModelFor(providers::WorkflowStep step) const { return d->runs->cloudModelFor(step); }
 

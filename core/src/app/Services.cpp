@@ -315,13 +315,25 @@ Workflows::Deps workflowDeps(const ServicesDeps& deps, const Services& s)
     };
     // --- D4: local diarization ---
     wd.diarization = &s.diarization();
-    wd.localDiarizationEnabled = [st = deps.settings]() { return !st || st->settings().processing.localDiarization; };
+    wd.storedRoute = [st = deps.settings](providers::Capability cap) {
+        return st ? st->settings().routes.route(cap) : providers::Route::Local;
+    };
+    wd.fallbackRoute = [st = deps.settings](providers::Capability cap) {
+        if (!st) return providers::Route::Local;
+        const AppSettings s = st->settings();
+        return s.routes.fallbackRoute(cap, s.providers);
+    };
+    wd.cloudLive = deps.cloudLive;
     wd.localDiarizationUsable = [voice, modelsDir = deps.modelsDir, appDir = deps.appDir]() {
         return voice->usable() && processing::LocalDiarizer::hasUsableModel(modelsDir, appDir);
     };
-    wd.sttSeparatesSpeakers = [st = deps.settings, reg = deps.registry]() {
-        return st && reg && reg->descriptor(providers::CapabilityKind::Transcription, st->settings().providers.stt.selectedId)
-                                .supportsDiarization;
+    wd.sttSeparatesSpeakers = [st = deps.settings, reg = deps.registry, sv = &s]() {
+        if (!st || !reg) return false;
+        const AppSettings set = st->settings();
+        // The provider of the STT route (the Tanara Cloud adapter when the route is Cloud).
+        const QString id = set.routes.providerFor(providers::Capability::Stt,
+                                                  sv->workflows().route(providers::Capability::Stt), set.providers);
+        return reg->descriptor(providers::CapabilityKind::Transcription, id).supportsDiarization;
     };
     wd.voice.useDiarization = [voice](const QString& id, const providers::DiarizeResult& r) { voice->useDiarization(id, r); };
     // --- end D4 ---

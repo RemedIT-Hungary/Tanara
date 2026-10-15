@@ -72,6 +72,10 @@ void Workflows::transcribe(const QString& meetingId)
     // The voice analysis runs in parallel with transcription (if it has not run on these tracks yet).
     analyzeParticipants(meetingId);
 
+    // This run's routes (Ask is answered here, once): the readiness and the provider follow them.
+    resolveRoute(providers::Capability::Stt, meetingId);
+    resolveRoute(providers::Capability::Diarization, meetingId);
+
     if (m_deps.readiness) {
         const providers::ReadinessResult res = m_deps.readiness(providers::WorkflowStep::Transcribe, meetingId);
         if (!res.runnable) {
@@ -172,10 +176,75 @@ bool Workflows::wantsLocalDiarization(const QString& meetingId) const
 {
     if (!m_deps.diarization || !m_deps.transcription) return false;
     if (m_deps.transcription->providerDiarized(meetingId)) return false;   // the provider separated the speakers
-    const bool on = m_localDiarizationOverride.has_value()
-        ? *m_localDiarizationOverride
-        : (m_deps.localDiarizationEnabled && m_deps.localDiarizationEnabled());
+    const bool on = route(providers::Capability::Diarization, meetingId) == providers::Route::Local;
     return on && m_deps.localDiarizationUsable && m_deps.localDiarizationUsable();
+}
+
+// ==== processing routes (S3) ===============================================================================
+
+QString Workflows::routeKey(providers::Capability cap, const QString& meetingId)
+{
+    return providers::capabilityKey(cap) + QLatin1Char('/') + meetingId;
+}
+
+void Workflows::setRouteOverride(providers::Capability cap, std::optional<providers::Route> r)
+{
+    if (r) m_routeOverride.insert(int(cap), *r);
+    else m_routeOverride.remove(int(cap));
+}
+
+void Workflows::chooseRoute(providers::Capability cap, const QString& meetingId, providers::Route r)
+{
+    m_chosenRoutes.insert(routeKey(cap, meetingId), r);
+}
+
+providers::Route Workflows::baseRoute(providers::Capability cap) const
+{
+    if (const auto it = m_routeOverride.constFind(int(cap)); it != m_routeOverride.constEnd()) return *it;
+    return m_deps.storedRoute ? m_deps.storedRoute(cap) : providers::Route::Local;
+}
+
+providers::Route Workflows::usable(providers::Capability cap, providers::Route r) const
+{
+    const bool dead = r == providers::Route::Ask
+        || (r == providers::Route::Cloud && !(m_deps.cloudLive && m_deps.cloudLive()));
+    if (!dead) return r;
+    return m_deps.fallbackRoute ? m_deps.fallbackRoute(cap) : providers::Route::Local;
+}
+
+providers::Route Workflows::resolveRoute(providers::Capability cap, const QString& meetingId)
+{
+    const QString key = routeKey(cap, meetingId);
+    const providers::Route base = baseRoute(cap);
+    providers::Route r = base;
+    if (const auto chosen = m_chosenRoutes.constFind(key); chosen != m_chosenRoutes.constEnd()) {
+        r = *chosen;
+        m_chosenRoutes.erase(chosen);
+    } else if (base == providers::Route::Ask) {
+        const std::optional<providers::Route> answer = m_deps.askRoute ? m_deps.askRoute(cap, meetingId) : std::nullopt;
+        if (answer && *answer != providers::Route::Ask) {
+            r = *answer;
+        } else {
+            r = usable(cap, providers::Route::Ask);
+            qCInfo(lcApp).noquote() << QStringLiteral("Route %1 is \"ask\" but nobody answered: running %2 (%3)")
+                                           .arg(providers::capabilityKey(cap), providers::routeKey(r), meetingId);
+        }
+    }
+    const providers::Route out = usable(cap, r);
+    if (out != r)
+        qCInfo(lcApp).noquote() << QStringLiteral("Route %1: %2 is not available, running %3 (%4)")
+                                       .arg(providers::capabilityKey(cap), providers::routeKey(r),
+                                            providers::routeKey(out), meetingId);
+    m_resolvedRoutes.insert(key, Resolved{out, base});
+    return out;
+}
+
+providers::Route Workflows::route(providers::Capability cap, const QString& meetingId) const
+{
+    const providers::Route base = baseRoute(cap);
+    const auto it = m_resolvedRoutes.constFind(routeKey(cap, meetingId));
+    if (it != m_resolvedRoutes.constEnd() && it->base == base) return usable(cap, it->route);
+    return usable(cap, base);
 }
 
 void Workflows::transcribed(const QString& meetingId)
@@ -243,7 +312,7 @@ Workflows::SpeakerStatus Workflows::speakerStatus(const QString& meetingId) cons
     const bool local = cached->source == processing::diarizationmerge::kSourceLocalDiarization;
     const bool separated = st.speakers > 1;
     const bool usable = m_deps.localDiarizationUsable && m_deps.localDiarizationUsable();
-    const bool enabled = m_deps.localDiarizationEnabled && m_deps.localDiarizationEnabled();
+    const bool enabled = route(providers::Capability::Diarization, meetingId) == providers::Route::Local;
     const bool providerDiarizes = m_deps.transcription->providerDiarized(meetingId)
         || (m_deps.sttSeparatesSpeakers && m_deps.sttSeparatesSpeakers());
     if (local) st.source = QStringLiteral("local");
@@ -391,6 +460,7 @@ void Workflows::cancelAll(const QString& meetingId)
 
 void Workflows::summarize(const QString& meetingId)
 {
+    resolveRoute(providers::Capability::Llm, meetingId);   // Ask is answered here, once per run
     if (m_deps.summarization) m_deps.summarization->summarize(meetingId);
 }
 

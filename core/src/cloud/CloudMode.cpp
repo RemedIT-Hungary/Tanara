@@ -23,11 +23,10 @@ CloudMode CloudMode::fromEnvironment(const CloudSettings& s)
                    clientCompiled(), teaserCompiled());
 }
 
-bool CloudMode::selects(providers::WorkflowStep step, const providers::ProviderSettings& p) const
+bool CloudMode::selects(providers::WorkflowStep step, const providers::RouteSettings& routes) const
 {
-    if (!live) return false;
-    if (step == providers::WorkflowStep::Transcribe) return p.stt.selectedId == ProviderId;
-    if (step == providers::WorkflowStep::Summarize)  return p.llm.selectedId == ProviderId;
+    if (step == providers::WorkflowStep::Transcribe) return selects(routes.route(providers::Capability::Stt));
+    if (step == providers::WorkflowStep::Summarize)  return selects(routes.route(providers::Capability::Llm));
     return false;
 }
 

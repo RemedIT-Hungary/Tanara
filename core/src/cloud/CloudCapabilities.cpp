@@ -661,6 +661,7 @@ ProviderDescriptor cloudDescriptor(InputKind input)
     d.id              = ProviderId;
     d.displayName     = QCoreApplication::translate("BuiltinProviders", "Tanara Cloud");
     d.origin          = Origin::Cloud;
+    d.kind            = ProviderKind::Cloud;
     d.traits.dataLeavesDevice = true;
     d.traits.metered  = true;
     d.traits.worksOffline = false;

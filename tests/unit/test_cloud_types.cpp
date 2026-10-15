@@ -314,14 +314,19 @@ void TestCloudTypes::cloudMode_resolve()
     QVERIFY(m.live);
     QCOMPARE(m.baseUrl, QStringLiteral("http://127.0.0.1:8300"));
 
-    providers::ProviderSettings ps;
-    ps.stt.selectedId = cloud::ProviderId;
-    ps.llm.selectedId = QStringLiteral("openai-compat");
-    QVERIFY(m.selects(providers::WorkflowStep::Transcribe, ps));
-    QVERIFY(!m.selects(providers::WorkflowStep::Summarize, ps));
-    QVERIFY(!m.selects(providers::WorkflowStep::Record, ps));
+    // S3: the route decides, not the selected id.
+    providers::RouteSettings rs;
+    rs.stt.route = providers::Route::Cloud;
+    rs.llm.route = providers::Route::Ask;   // unresolved Ask: not the cloud
+    QVERIFY(m.selects(providers::WorkflowStep::Transcribe, rs));
+    QVERIFY(!m.selects(providers::WorkflowStep::Summarize, rs));
+    QVERIFY(!m.selects(providers::WorkflowStep::Record, rs));
+    QVERIFY(m.selects(providers::Route::Cloud));
+    QVERIFY(!m.selects(providers::Route::External));
+    QCOMPARE(providers::CloudProviderId, cloud::ProviderId);
     m.live = false;
-    QVERIFY(!m.selects(providers::WorkflowStep::Transcribe, ps));
+    QVERIFY(!m.selects(providers::WorkflowStep::Transcribe, rs));
+    QVERIFY(!m.selects(providers::Route::Cloud));
 }
 
 void TestCloudTypes::estimator_plan()

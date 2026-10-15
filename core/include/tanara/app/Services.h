@@ -109,6 +109,8 @@ struct ServicesDeps {
     processing::TranscriptionPort* transcriptionPort = nullptr;   // settings, STT key, Tanara Cloud runs (the app)
     // Whether a step can run on a meeting (provider, key, Tanara Cloud blockers; the app's canRun).
     std::function<providers::ReadinessResult(providers::WorkflowStep, const QString&)> readiness;
+    // S3: the Tanara Cloud client is live (the Cloud / Ask routes can run).
+    std::function<bool()> cloudLive;
 };
 
 class Services {

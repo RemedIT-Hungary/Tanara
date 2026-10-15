@@ -16,6 +16,7 @@
 #include "tanara/providers/core/ProviderConfig.h"
 #include "tanara/providers/core/ProviderContext.h"
 #include "tanara/providers/core/ReadinessModel.h"
+#include "tanara/providers/core/Routes.h"
 
 #include <QCoreApplication>
 #include <QString>
@@ -65,6 +66,9 @@ public:
         // The in-memory transcript of a fresh transcription (empty: read from disk) and the display names.
         std::function<MergedTranscript(const QString& meetingId)> cachedTranscript;
         std::function<PersonNames()> personNames;
+        // S3: the resolved route of a capability for a run on the meeting (app::Workflows::route; never Ask).
+        // Empty: the routes setting (Ask / a dead Cloud -> the non-cloud route).
+        std::function<providers::Route(providers::Capability cap, const QString& meetingId)> route;
     };
 
     explicit ProviderRuns(Deps deps);
@@ -74,7 +78,13 @@ public:
 
     // ---- readiness and the cloud selection ----
     providers::ReadinessResult canRun(providers::WorkflowStep step, const QString& meetingId) const;
-    bool usesCloud(providers::WorkflowStep step) const;
+    // The step's capability runs on the Tanara Cloud for the meeting (its resolved route; empty meetingId =
+    // no run context: the setting, Ask -> the non-cloud route).
+    bool usesCloud(providers::WorkflowStep step, const QString& meetingId = QString()) const;
+    providers::Route route(providers::Capability cap, const QString& meetingId) const;
+    // The provider settings with the stt / llm selection of the meeting's resolved routes (the Tanara Cloud
+    // adapter on Cloud, the remembered provider of the other kind on an overridden Local / External).
+    providers::ProviderSettings effectiveProviders(const QString& meetingId) const;
     QString cloudModelFor(providers::WorkflowStep step) const;
     // The meeting's facts for the cost estimate (the planning rule is cloud::CloudEstimator::plan).
     cloud::EstimateRequest estimateRequest(const QString& meetingId, const QString& task,

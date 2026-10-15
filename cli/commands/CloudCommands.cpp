@@ -77,16 +77,10 @@ void printAccount(const cloud::AccountInfo& a, cloud::CloudSession* acc)
 
 void setProviders(app::AppController& app, bool cloud)
 {
+    // S3: the stt / llm routes, the own providers stay selected (so "byo" restores them).
     tanara::app::AppSettings s = app.settings()->settings();
-    if (cloud) {
-        s.providers.stt.selectedId = cloud::ProviderId;
-        s.providers.llm.selectedId = cloud::ProviderId;
-        s.providers.stt.configs[cloud::ProviderId].type = cloud::ProviderId;
-        s.providers.llm.configs[cloud::ProviderId].type = cloud::ProviderId;
-    } else {
-        s.providers.stt.selectedId = QStringLiteral("soniox");
-        s.providers.llm.selectedId = QStringLiteral("openai-compat");
-    }
+    for (providers::Capability cap : {providers::Capability::Stt, providers::Capability::Llm})
+        s.routes.at(cap).route = cloud ? providers::Route::Cloud : s.routes.fallbackRoute(cap, s.providers);
     app.settings()->setSettings(s);
 }
 } // namespace

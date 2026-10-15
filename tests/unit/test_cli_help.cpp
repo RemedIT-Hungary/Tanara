@@ -87,6 +87,31 @@ private slots:
         QVERIFY(h.code != 0);
     }
 
+    // S3: transcribe / summarize --run local|external|cloud (a per-run route override) and the
+    // --local-diarization alias; rejected values fail before anything starts (cloud off in the fixture).
+    void runOptionIsParsed()
+    {
+        const auto help = runCli(m_home.path(), {"help", "transcribe"});
+        QVERIFY(help.out.contains("--run local|external|cloud"));
+        QVERIFY(help.out.contains("--local-diarization on|off"));
+        QVERIFY(runCli(m_home.path(), {"help", "summarize"}).out.contains("--run local|external|cloud"));
+
+        const auto bogus = runCli(m_home.path(), {"transcribe", "nincs-ilyen", "--run", "valahol"});
+        QCOMPARE(bogus.code, 1);
+        QVERIFY2(bogus.err.contains("--run local|external|cloud"), qPrintable(bogus.err));
+        const auto ask = runCli(m_home.path(), {"transcribe", "nincs-ilyen", "--run", "ask"});
+        QCOMPARE(ask.code, 1);
+        const auto cloud = runCli(m_home.path(), {"transcribe", "nincs-ilyen", "--run", "cloud"});
+        QCOMPARE(cloud.code, 1);
+        QVERIFY2(cloud.err.contains("Tanara Cloud is not available"), qPrintable(cloud.err));
+        const auto external = runCli(m_home.path(), {"summarize", "nincs-ilyen", "--run", "external"});
+        QCOMPARE(external.code, 1);
+        QVERIFY2(external.err.contains("No external language model provider"), qPrintable(external.err));
+        const auto diar = runCli(m_home.path(), {"transcribe", "nincs-ilyen", "--local-diarization", "talan"});
+        QCOMPARE(diar.code, 1);
+        QVERIFY(diar.err.contains("--local-diarization on|off"));
+    }
+
     void versionSwitchPrintsTheVersion()
     {
         for (const char* sw : {"--version", "-V", "version"}) {

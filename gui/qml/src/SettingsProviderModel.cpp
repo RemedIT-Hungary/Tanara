@@ -6,6 +6,7 @@
 #include "tanara/app/ISettingsFacade.h"
 #include "tanara/providers/embedding/ITextEmbedder.h"
 #include "tanara/providers/core/ProviderRegistry.h"
+#include "tanara/providers/core/Routes.h"
 
 #include <QLocale>
 #include <QUrl>
@@ -160,7 +161,8 @@ QVariantList SettingsProviderModel::providers() const
             tag = tr("beszélőket elkülönít");
         out << QVariantMap{{QStringLiteral("value"), d.id},
                            {QStringLiteral("label"), d.displayName},
-                           {QStringLiteral("tag"), tag}};
+                           {QStringLiteral("tag"), tag},
+                           {QStringLiteral("kind"), providers::providerKindKey(d.kind)}};   // S3: the route segment
     }
     return out;
 }
