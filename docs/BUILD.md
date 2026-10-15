@@ -210,6 +210,13 @@ and `appimage` in parallel, then `release`, which attaches the files and their `
 release, push a throw-away tag whose CMake version matches (or a tag in a fork) and delete the draft
 and the tag afterwards.
 
+Experimental builds for testers: a version with a letter suffix (`TANARA_VERSION_SUFFIX "a"`,
+tag `v0.5.305a`) is published as a **pre-release** with a note for testers; GitHub never shows it as
+"Latest". The installer and the AppImage are release assets, not files in the repository, so when
+the feedback round is over the whole thing goes away with
+`gh release delete v0.5.305a --cleanup-tag --yes` (the release and the tag) and nothing stays in the
+history. Remove the suffix (`""`) for a real release.
+
 The release jobs do not run the tests again: CI (`ci.yml`) already ran them on the same commit.
 
 ### Windows installer

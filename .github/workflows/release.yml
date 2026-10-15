@@ -24,11 +24,20 @@ jobs:
     timeout-minutes: 5
     outputs:
       version: ${{ steps.v.outputs.version }}
+      # A version with a letter suffix (TANARA_VERSION_SUFFIX, e.g. 0.5.305a = alpha) is an
+      # experimental build: the release is marked pre-release and says so to testers.
+      prerelease: ${{ steps.v.outputs.prerelease }}
     steps:
       - uses: actions/checkout@v4
       - name: Compare tag and CMake version
         id: v
-        run: echo "version=$(bash tools/ci/package-version.sh "$GITHUB_REF_NAME")" >> "$GITHUB_OUTPUT"
+        run: |
+          version="$(bash tools/ci/package-version.sh "$GITHUB_REF_NAME")"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          case "$version" in
+            *[a-z]) echo "prerelease=true" >> "$GITHUB_OUTPUT" ;;
+            *)      echo "prerelease=false" >> "$GITHUB_OUTPUT" ;;
+          esac
 
   windows-installer:
     name: Windows installer and zip (MinGW 13.1, Inno Setup)
@@ -104,7 +113,7 @@ jobs:
 
   release:
     name: Draft GitHub release
-    needs: [windows-installer, appimage]
+    needs: [check-version, windows-installer, appimage]
     runs-on: ubuntu-22.04
     timeout-minutes: 15
     permissions:
@@ -118,7 +127,17 @@ jobs:
         run: ls -l release-files
       - uses: softprops/action-gh-release@v2
         with:
+          name: Tanara ${{ needs.check-version.outputs.version }}${{ needs.check-version.outputs.prerelease == 'true' && ' (kísérleti build)' || '' }}
           draft: true
+          # Suffixed version = pre-release: GitHub shows the badge, it never becomes "Latest", and
+          # it can be deleted with its tag once the feedback round is over
+          # (gh release delete v0.5.305a --cleanup-tag --yes). The assets live on the release,
+          # not in the repository history.
+          prerelease: ${{ needs.check-version.outputs.prerelease == 'true' }}
+          body: >-
+            ${{ needs.check-version.outputs.prerelease == 'true'
+                && 'Kísérleti (alfa) build visszajelzéshez, nem végleges kiadás. Windows: a `-win64-setup.exe` felhasználói telepítő (nincs aláírva, a SmartScreen figyelmeztet); Linux: az AppImage. Ismert korlátok és teendők a csomagban lévő OLVASSEL.md-ben. / Experimental (alpha) build for feedback, not a release.'
+                || '' }}
           generate_release_notes: true
           fail_on_unmatched_files: true
           files: release-files/*
