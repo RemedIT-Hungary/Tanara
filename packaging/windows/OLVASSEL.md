@@ -60,10 +60,12 @@ Ha a gépről mindent törölni akarsz: zárd be a Tanarát, és töröld a fent
 ## 4. Tálca-figyelő (`tanara-watcher.exe`)
 
 A `tanara-watcher.exe` a rendszertálcán fut, és onnan egy kattintással indítható a
-felvétel. Először kézzel indítsd el a mappából. Ha bejelentkezéskor is el kell
-indulnia, kapcsold be: Beállítások → Hívásfigyelő → „Induljon el a
-bejelentkezéskor”. Ez a `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`
-kulcsba ír egy „Tanara Watcher” bejegyzést; a kapcsoló kikapcsolása törli.
+felvétel. Kapcsold be: Beállítások → Hívásfigyelő → „Induljon el a
+bejelentkezéskor”: ettől azonnal el is indul, és bejelentkezéskor is indulni fog. Ez a
+`HKCU\Software\Microsoft\Windows\CurrentVersion\Run` kulcsba ír egy „Tanara Watcher”
+bejegyzést; a kapcsoló kikapcsolása törli (a már futó figyelő a tálcáról zárható be). A
+telepítő ugyanezt a bejegyzést írja, ha a telepítéskor bepipálod. Windows 11 az új
+tálca-ikonokat elrejti a „^” menübe, onnan húzd ki a tálcára, ha mindig látni akarod.
 
 A figyelő akkor jelez, ha egy ismert hívás-app (Teams, Zoom, Webex, Slack,
 Discord, Skype; „meet” = böngésző: Chrome, Edge, Firefox, Brave…) éppen használja

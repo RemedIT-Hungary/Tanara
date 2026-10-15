@@ -14,7 +14,8 @@
 ;              project(VERSION) in CMakeLists.txt). /DAppVersion=x.y.z overrides it.
 ;
 ; The uninstaller does NOT delete user data (%USERPROFILE%\.tanara, %USERPROFILE%\Tanara);
-; the recordings and transcripts belong to the user.
+; the recordings and transcripts belong to the user. It does remove the watcher's Run value
+; (HKCU\...\Run\Tanara Watcher), which would otherwise point at a deleted exe.
 
 #ifndef DistDir
   #error "Add meg a DistDir-t: iscc /DDistDir=<dist mappa> ..."
@@ -77,6 +78,12 @@ hu.ReadmeName=Tanara — olvass el
 en.ReadmeName=Tanara — read me
 hu.NoticesName=Harmadik féltől származó komponensek (licencek)
 en.NoticesName=Third-party notices (licenses)
+; Own wording instead of the stock "{cm:LaunchProgram,...}" / "{cm:UninstallProgram,...}":
+; the Hungarian .isl gives "Indítás Tanara" and "Eltávolítás - Tanara" (the name after the verb).
+hu.LaunchApp=Tanara indítása
+en.LaunchApp=Launch Tanara
+hu.UninstallApp=Tanara eltávolítása
+en.UninstallApp=Uninstall Tanara
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
@@ -92,11 +99,22 @@ Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExe}"
 Name: "{group}\{cm:WatcherName}"; Filename: "{app}\{#WatcherExe}"
 Name: "{group}\{cm:ReadmeName}"; Filename: "{app}\OLVASSEL.md"
 Name: "{group}\{cm:NoticesName}"; Filename: "{app}\THIRD_PARTY_NOTICES.md"
-Name: "{group}\{cm:UninstallProgram,{#AppName}}"; Filename: "{uninstallexe}"
+Name: "{group}\{cm:UninstallApp}"; Filename: "{uninstallexe}"
 Name: "{userdesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; Tasks: desktopicon
-; Start at login: a shortcut in the user's Startup folder (the app's own autostart switch
-; does not handle an entry on Windows yet).
-Name: "{userstartup}\{cm:WatcherName}"; Filename: "{app}\{#WatcherExe}"; Tasks: watcherautostart
+
+[Registry]
+; Start at sign-in: the SAME Run value the app's own switch writes (Settings > Call watcher,
+; core/include/tanara/watcher/platform/windows/RunKey.h: value "Tanara Watcher" under HKCU\...\Run,
+; the quoted exe path), so the installer and the app never disagree. The second entry only removes
+; the value on uninstall, whether the installer or the app created it.
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "Tanara Watcher"; ValueData: """{app}\{#WatcherExe}"""; Tasks: watcherautostart
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: none; ValueName: "Tanara Watcher"; Flags: uninsdeletevalue
+
+[InstallDelete]
+; Versions before 0.5.302 put a shortcut into the Startup folder instead: it would start a second
+; copy next to the Run value (the watcher's single-instance lock ends it, but it is noise).
+Type: files; Name: "{userstartup}\Tanara tálca-figyelő.lnk"
+Type: files; Name: "{userstartup}\Tanara tray watcher.lnk"
 
 [Run]
-Filename: "{app}\{#AppExe}"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\{#AppExe}"; Description: "{cm:LaunchApp}"; Flags: nowait postinstall skipifsilent
