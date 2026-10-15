@@ -9,8 +9,11 @@ foreach(testfile ${TANARA_TEST_FILES})
     # Safety net: every test starts in its own sandbox (TANARA_HOME), so a test that forgets to set
     # one can never write into the user's real folders or keychain. Tests that check the
     # non-sandbox resolution unset it themselves (with HOME / XDG_* pointed at temp folders).
+    # QT_FORCE_STDERR_LOGGING: on Windows, Qt sends the QTest log to OutputDebugString when stderr is
+    # not a console (it never is under ctest), so LastTest.log and the CI log would hold no PASS/FAIL
+    # lines and the QSKIP summary would see nothing. Harmless elsewhere (stderr is the default).
     set_tests_properties(${tname} PROPERTIES
-        ENVIRONMENT "TANARA_HOME=${CMAKE_CURRENT_BINARY_DIR}/sandbox/${tname}")
+        ENVIRONMENT "QT_FORCE_STDERR_LOGGING=1;TANARA_HOME=${CMAKE_CURRENT_BINARY_DIR}/sandbox/${tname}")
 endforeach()
 
 # The store/settings test gets a main() only with the standalone define.
@@ -45,7 +48,7 @@ if(TARGET tanara_qml)
         tanara_copy_onnxruntime_dll(${tname})
         add_test(NAME ${tname} COMMAND ${tname})
         set_tests_properties(${tname} PROPERTIES
-            ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;TANARA_HOME=${CMAKE_CURRENT_BINARY_DIR}/sandbox/${tname}")
+            ENVIRONMENT "QT_FORCE_STDERR_LOGGING=1;QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;TANARA_HOME=${CMAKE_CURRENT_BINARY_DIR}/sandbox/${tname}")
     endforeach()
 endif()
 

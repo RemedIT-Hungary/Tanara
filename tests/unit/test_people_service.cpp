@@ -370,10 +370,12 @@ void PeopleServiceTest::statsRefreshInBackgroundAndCache()
     stats->refresh();
     QVERIFY(stats->busy());
     QCOMPARE(stats->stats(g).meetingCount, 0);    // the list can show meanwhile: the call does not wait
-    QVERIFY(changed.wait(5000));
+    // The point is that the call returned before the scan; how long the scan takes is not under test
+    // (a loaded CI runner with 4 cores and 8 parallel tests needs well over 5 s).
+    QVERIFY(changed.wait(60000));
     QCOMPARE(stats->stats(g).meetingCount, 12);
     QCOMPARE(stats->lastRescanned(), 12);
-    QTRY_VERIFY_WITH_TIMEOUT(!stats->busy(), 5000);
+    QTRY_VERIFY_WITH_TIMEOUT(!stats->busy(), 60000);
 
     // Cache: it does not re-read unchanged meetings; it does a changed one.
     stats->refreshNow();
