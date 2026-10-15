@@ -30,10 +30,10 @@ QVariantMap overviewSpeakers(const SpeakerFacts& st, bool diarizeRunning)
         line = QCoreApplication::translate("OverviewSpeakers", "Beszélők: helyi elkülönítés");
     } else if (st.blocker == QLatin1String("disabled")) {
         line = QCoreApplication::translate("OverviewSpeakers", "Beszélők: nincs — kapcsold be a Beállításokban");
-        fix = QStringLiteral("speakers");
+        fix = QStringLiteral("diarization");   // Settings > Processing > Speaker separation
     } else if (st.blocker == QLatin1String("model")) {
         line = QCoreApplication::translate("OverviewSpeakers", "Beszélők: nincs — tölts le modellt a Beállításokban");
-        fix = QStringLiteral("speakers");
+        fix = QStringLiteral("diarization");   // Settings > Processing > Speaker separation
         attention = true;
     } else {
         line = QCoreApplication::translate("OverviewSpeakers", "Beszélők: nincs szétválasztva");

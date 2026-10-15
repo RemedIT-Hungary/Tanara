@@ -67,8 +67,11 @@ class SettingsViewModel : public QObject {
     Q_PROPERTY(bool demo READ demo NOTIFY facadeChanged)
 
     // ---- window ----
-    // "general" | "recording" | "watcher" | "services" | "speakers" | "summary"
+    // The page = a sidebar group: "general" | "recording" | "processing" | "cloud" | "people"
     Q_PROPERTY(QString page READ page WRITE setPage NOTIFY pageChanged)
+    // The jump point (section) of the page in view, e.g. "stt" on "processing"; "" = none / the
+    // page has no jump points. QML writes it while scrolling; openPage() also emits sectionRequested.
+    Q_PROPERTY(QString section READ section WRITE setSection NOTIFY sectionChanged)
     // Deep link: "" | "stt" | "llm": the card whose missing setting we came for.
     Q_PROPERTY(QString focusField READ focusField NOTIFY focusChanged)
     Q_PROPERTY(QString focusBannerText READ focusBannerText NOTIFY focusChanged)
@@ -183,6 +186,10 @@ public:
 
     QString page() const { return m_page; }
     void setPage(const QString& page);
+    QString section() const { return m_section; }
+    void setSection(const QString& section);
+    // The jump points of a page in order (empty for a page without any).
+    static QStringList sectionsOf(const QString& page);
     QString focusField() const { return m_focusField; }
     QString focusBannerText() const;
     bool dirty() const { return m_changeCount > 0; }
@@ -266,10 +273,14 @@ public:
     QString schemaKind() const;
 
     // ---- actions ----
-    // Opens on a page. page: ShellActions.openSettings's name ("" | "providers" |
-    // "watcher" | "cloud" | "summary" | "recording" | "general") or an internal page name.
-    // focusField: "" | "stt" | "llm".
-    Q_INVOKABLE void openPage(const QString& page, const QString& focusField = QString());
+    // Opens on a page and scrolls to a section. page: a page key ("general" | "recording" |
+    // "processing" | "cloud" | "people") or a legacy target of ShellActions.openSettings
+    // ("" | "providers" | "services" | "watcher" | "summary" | "speakers" | "voiceModels" | ...),
+    // mapped to page + section. section: a section of the page, or the legacy focusField
+    // ("stt" | "llm" with "providers" / "services", which also highlights that card's key).
+    Q_INVOKABLE void openPage(const QString& page, const QString& section = QString());
+    // Sidebar / internal jump: page + section, then sectionRequested (no legacy mapping, no focus).
+    Q_INVOKABLE void showSection(const QString& page, const QString& section);
     // Save. False if a field is invalid (then it switches to the faulty page); nothing is written.
     Q_INVOKABLE bool save();
     // Discards the draft (the theme preview reverts too).
@@ -343,6 +354,9 @@ signals:
     void dialogsChanged();
     void demoStateChanged();
     void pageChanged();
+    void sectionChanged();
+    // QML scrolls to the section (to the top for ""); flash: highlight its frame once.
+    void sectionRequested(const QString& section, bool flash);
     void focusChanged();
     void dirtyChanged();
     void servicesWarnChanged();
@@ -419,7 +433,8 @@ private:
     QHash<QString, QString> m_promptDefault;                 // id -> default (file / built-in)
     int m_promptIndex = 0;
 
-    QString m_page = QStringLiteral("general");
+    QString m_page = QStringLiteral("processing");
+    QString m_section;
     QString m_focusField;
     int m_changeCount = 0;
     bool m_servicesWarn = false;

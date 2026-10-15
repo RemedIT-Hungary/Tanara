@@ -4681,6 +4681,10 @@
         <translation>Add recordings folder…</translation>
     </message>
     <message>
+        <source>Fiók</source>
+        <translation>Account</translation>
+    </message>
+    <message>
         <source>Az első indításkor látott bevezető:</source>
         <translation>The introduction shown at first start:</translation>
     </message>
@@ -5012,8 +5016,8 @@
         <translation>No segmentation model — a Whisper transcript stays without speakers. Download the base model.</translation>
     </message>
     <message>
-        <source>A szegmentáló modell azt mondja meg, ki mikor beszél; a beszélők szétválasztásához a fenti hangmodell is kell.</source>
-        <translation>The segmentation model tells who speaks when; separating the speakers also needs the voice model above.</translation>
+        <source>A szegmentáló modell azt mondja meg, ki mikor beszél; a beszélők szétválasztásához a lenti hangmodell is kell.</source>
+        <translation>The segmentation model tells who speaks when; separating the speakers also needs the voice model below.</translation>
     </message>
     <message>
         <source>letöltés… %1</source>
@@ -5368,28 +5372,72 @@
         <translation>General</translation>
     </message>
     <message>
+        <source>Megjelenés</source>
+        <translation>Appearance</translation>
+    </message>
+    <message>
+        <source>Mappák</source>
+        <translation>Folders</translation>
+    </message>
+    <message>
+        <source>Fiók</source>
+        <translation>Account</translation>
+    </message>
+    <message>
         <source>Rögzítés</source>
         <translation>Recording</translation>
+    </message>
+    <message>
+        <source>Eszközök</source>
+        <translation>Devices</translation>
     </message>
     <message>
         <source>Hívásfigyelő</source>
         <translation>Call watcher</translation>
     </message>
     <message>
-        <source>Szolgáltatások</source>
-        <translation>Services</translation>
+        <source>Feldolgozás</source>
+        <translation>Processing</translation>
     </message>
     <message>
-        <source>Beszélők</source>
-        <translation>Speakers</translation>
+        <source>Átírás</source>
+        <translation>Transcription</translation>
+    </message>
+    <message>
+        <source>Beszélők elkülönítése</source>
+        <translation>Speaker separation</translation>
+    </message>
+    <message>
+        <source>Beszélők felismerése</source>
+        <translation>Speaker recognition</translation>
     </message>
     <message>
         <source>Összefoglaló</source>
         <translation>Summary</translation>
     </message>
     <message>
+        <source>Címkejavaslat</source>
+        <translation>Tag suggestions</translation>
+    </message>
+    <message>
+        <source>Tanara Cloud</source>
+        <translation>Tanara Cloud</translation>
+    </message>
+    <message>
+        <source>Személyek és minták</source>
+        <translation>People and samples</translation>
+    </message>
+    <message>
         <source>Egy szolgáltató beállítása hiányzik vagy nem érhető el</source>
         <translation>A provider is not set up or cannot be reached</translation>
+    </message>
+    <message>
+        <source>Nincs szegmentáló modell</source>
+        <translation>No segmentation model</translation>
+    </message>
+    <message>
+        <source>Nincs letöltött hangmodell</source>
+        <translation>No voice model downloaded</translation>
     </message>
     <message>
         <source>Elmentve</source>

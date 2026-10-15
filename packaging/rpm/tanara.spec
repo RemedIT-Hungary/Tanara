@@ -4,7 +4,7 @@
 %global app_id eu.remedit.Tanara
 
 Name:           tanara
-Version:        0.5.289
+Version:        0.5.292
 Release:        1%{?dist}
 Summary:        Record, transcribe and summarize meetings
 

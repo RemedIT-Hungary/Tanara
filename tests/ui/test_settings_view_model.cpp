@@ -38,6 +38,7 @@
 #include <QJsonObject>
 #include <QQmlComponent>
 #include <QQmlEngine>
+#include <QQuickItem>
 #include <QQuickWindow>
 #include <QSignalSpy>
 #include <QTcpServer>
@@ -296,7 +297,8 @@ private slots:
         QCOMPARE(apps.at(5).toMap().value("label").toString(), QStringLiteral("Google Meet"));
 
         vm.setDemoState(QStringLiteral("B04"));
-        QCOMPARE(vm.page(), QStringLiteral("services"));
+        QCOMPARE(vm.page(), QStringLiteral("processing"));
+        QCOMPARE(vm.section(), QStringLiteral("stt"));
         QCOMPARE(vm.focusField(), QStringLiteral("stt"));
         QVERIFY(vm.stt()->highlighted());
         QVERIFY(!vm.llm()->highlighted());
@@ -313,7 +315,7 @@ private slots:
         QVERIFY(vm.stt()->statusText().contains(QStringLiteral("210")));
 
         vm.setDemoState(QStringLiteral("cloudComingSoon"));
-        QCOMPARE(vm.page(), QStringLiteral("services"));
+        QCOMPARE(vm.page(), QStringLiteral("cloud"));
         QCOMPARE(vm.serviceMode(), QStringLiteral("cloud"));
         QVERIFY(!vm.cloudSelected());
         QVERIFY(!vm.dirty());                              // the "coming soon" notice changes nothing
@@ -326,7 +328,8 @@ private slots:
         QVERIFY(vm.servicesWarn());
 
         vm.setDemoState(QStringLiteral("B07"));
-        QCOMPARE(vm.page(), QStringLiteral("summary"));
+        QCOMPARE(vm.page(), QStringLiteral("processing"));
+        QCOMPARE(vm.section(), QStringLiteral("summary"));
         QVERIFY(vm.promptModified());
         QVERIFY(!vm.dirty());
         QCOMPARE(vm.promptTabs().size(), 5);               // single / notes / merge + topic / analysis
@@ -512,14 +515,14 @@ private slots:
         vm.setUserName(QStringLiteral("   "));
         QVERIFY(vm.errors().contains(QStringLiteral("userName")));
         // The pages can be visited freely.
-        vm.setPage(QStringLiteral("summary"));
-        QCOMPARE(vm.page(), QStringLiteral("summary"));
+        vm.setPage(QStringLiteral("processing"));
+        QCOMPARE(vm.page(), QStringLiteral("processing"));
         vm.setAudioQuality(QStringLiteral("low"));
 
         QSignalSpy saved(&vm, &SettingsViewModel::saved);
         QVERIFY(!vm.save());
         QCOMPARE(saved.size(), 0);
-        QCOMPARE(vm.page(), QStringLiteral("speakers"));   // leads to the invalid field's page (the name is on the Speakers page)
+        QCOMPARE(vm.page(), QStringLiteral("people"));     // leads to the invalid field's page (the name is on the People page)
         QCOMPARE(live().recording.userSpeakerName, before);          // nothing was written
         QCOMPARE(live().recording.audioQuality, QStringLiteral("best"));
 
@@ -700,8 +703,12 @@ private slots:
         vm.llm()->setValue(QStringLiteral("baseUrl"), QStringLiteral("localhost:1234"));
         QVERIFY(!vm.llm()->fieldError(QStringLiteral("baseUrl")).isEmpty());
         vm.setPage(QStringLiteral("general"));
+        QSignalSpy jumps(&vm, &SettingsViewModel::sectionRequested);
         QVERIFY(!vm.save());
-        QCOMPARE(vm.page(), QStringLiteral("services"));
+        QCOMPARE(vm.page(), QStringLiteral("processing"));
+        QCOMPARE(vm.section(), QStringLiteral("summary"));  // the LLM card's section
+        QCOMPARE(jumps.size(), 1);
+        QCOMPARE(jumps.at(0).at(0).toString(), QStringLiteral("summary"));
         vm.llm()->setValue(QStringLiteral("baseUrl"), QString());
         QVERIFY(!vm.llm()->fieldError(QStringLiteral("baseUrl")).isEmpty());   // required
         vm.llm()->setValue(QStringLiteral("baseUrl"), QStringLiteral("http://localhost:1234/v1"));
@@ -971,7 +978,8 @@ private slots:
         while (!vm.watchedApps().isEmpty()) vm.removeWatchedApp(0);
         QVERIFY(vm.errors().contains(QStringLiteral("watchedApps")));
         QVERIFY(!vm.save());
-        QCOMPARE(vm.page(), QStringLiteral("watcher"));
+        QCOMPARE(vm.page(), QStringLiteral("recording"));
+        QCOMPARE(vm.section(), QStringLiteral("watcher"));
         QCOMPARE(vm.addWatchedApp(QStringLiteral("teams")), QString());
         QVERIFY(vm.save());
         QCOMPARE(live().watcher.knownCallApps, QStringList{QStringLiteral("teams")});
@@ -1221,29 +1229,168 @@ private slots:
         QCOMPARE(again.llm()->serverLoadedContext(), -1);
     }
 
+    // ---- pages and jump points ----
+
+    void pagesAndSections()
+    {
+        startApp();
+        SettingsViewModel vm(services());
+        QCOMPARE(vm.page(), QStringLiteral("processing"));          // the first opening
+        QVERIFY(vm.section().isEmpty());
+        QCOMPARE(SettingsViewModel::sectionsOf(QStringLiteral("general")),
+                 (QStringList{"appearance", "folders", "account"}));
+        QCOMPARE(SettingsViewModel::sectionsOf(QStringLiteral("recording")), (QStringList{"devices", "watcher"}));
+        QCOMPARE(SettingsViewModel::sectionsOf(QStringLiteral("processing")),
+                 (QStringList{"stt", "diar", "voice", "summary", "tags"}));
+        QVERIFY(SettingsViewModel::sectionsOf(QStringLiteral("cloud")).isEmpty());
+        QVERIFY(SettingsViewModel::sectionsOf(QStringLiteral("people")).isEmpty());
+
+        // The five page keys; the old ones are not pages any more (openPage maps them).
+        for (const char* p : {"general", "recording", "processing", "cloud", "people"}) {
+            vm.setPage(QString::fromLatin1(p));
+            QCOMPARE(vm.page(), QString::fromLatin1(p));
+        }
+        for (const char* old : {"watcher", "services", "speakers", "summary"}) {
+            vm.setPage(QString::fromLatin1(old));
+            QCOMPARE(vm.page(), QStringLiteral("people"));
+        }
+
+        // The section belongs to the page; a page change clears it.
+        QSignalSpy sectionSpy(&vm, &SettingsViewModel::sectionChanged);
+        vm.setPage(QStringLiteral("general"));
+        vm.setSection(QStringLiteral("tags"));                     // not General's
+        QVERIFY(vm.section().isEmpty());
+        vm.setSection(QStringLiteral("folders"));
+        QCOMPARE(vm.section(), QStringLiteral("folders"));
+        QCOMPARE(sectionSpy.size(), 1);
+        vm.setPage(QStringLiteral("processing"));
+        QVERIFY(vm.section().isEmpty());
+        QCOMPARE(sectionSpy.size(), 2);
+
+        // A sidebar jump: page + section + a request to scroll (and flash).
+        QSignalSpy jumps(&vm, &SettingsViewModel::sectionRequested);
+        vm.showSection(QStringLiteral("recording"), QStringLiteral("watcher"));
+        QCOMPARE(vm.page(), QStringLiteral("recording"));
+        QCOMPARE(vm.section(), QStringLiteral("watcher"));
+        QCOMPARE(jumps.size(), 1);
+        QCOMPARE(jumps.at(0).at(0).toString(), QStringLiteral("watcher"));
+        QCOMPARE(jumps.at(0).at(1).toBool(), true);
+        QVERIFY(vm.focusField().isEmpty());
+
+        // "" reopens the last page without scrolling.
+        vm.openPage(QString());
+        QCOMPARE(vm.page(), QStringLiteral("recording"));
+        QCOMPARE(vm.section(), QStringLiteral("watcher"));
+        QCOMPARE(jumps.size(), 1);
+    }
+
+    void legacyTargetsMapToPageAndSection_data()
+    {
+        QTest::addColumn<QString>("page");
+        QTest::addColumn<QString>("arg");
+        QTest::addColumn<QString>("expPage");
+        QTest::addColumn<QString>("expSection");
+        QTest::addColumn<QString>("expFocus");
+        const auto row = [](const char* p, const char* a, const char* ep, const char* es, const char* ef) {
+            QTest::addRow("%s+%s", p, a) << QString::fromLatin1(p) << QString::fromLatin1(a) << QString::fromLatin1(ep)
+                                         << QString::fromLatin1(es) << QString::fromLatin1(ef);
+        };
+        // The old six-page names and ShellActions.openSettings' fixTargets.
+        row("general", "", "general", "appearance", "");
+        row("recording", "", "recording", "devices", "");
+        row("watcher", "", "recording", "watcher", "");
+        row("providers", "stt", "processing", "stt", "stt");
+        row("services", "stt", "processing", "stt", "stt");
+        row("providers", "llm", "processing", "summary", "llm");
+        row("services", "llm", "processing", "summary", "llm");
+        row("providers", "", "processing", "stt", "");
+        row("services", "", "processing", "summary", "");
+        row("summary", "", "processing", "summary", "");
+        row("speakers", "", "processing", "diar", "");
+        row("speakers", "voiceModels", "processing", "voice", "");
+        row("voiceModels", "", "processing", "voice", "");
+        row("diarization", "", "processing", "diar", "");
+        row("cloud", "", "cloud", "", "");
+        row("people", "", "people", "", "");
+        // The new keys: page + its own section; a foreign section is dropped.
+        row("processing", "tags", "processing", "tags", "");
+        row("general", "folders", "general", "folders", "");
+        row("recording", "watcher", "recording", "watcher", "");
+        row("processing", "folders", "processing", "", "");
+        row("processing", "stt", "processing", "stt", "");       // a section, not the legacy key focus
+        // Unknown: stays where it was (General here).
+        row("nincs-ilyen", "", "general", "", "");
+    }
+    void legacyTargetsMapToPageAndSection()
+    {
+        QFETCH(QString, page);
+        QFETCH(QString, arg);
+        QFETCH(QString, expPage);
+        QFETCH(QString, expSection);
+        QFETCH(QString, expFocus);
+        SettingsViewModel vm;
+        vm.setDemoState(QStringLiteral("B01"));
+        vm.setPage(QStringLiteral("general"));
+        QSignalSpy jumps(&vm, &SettingsViewModel::sectionRequested);
+        vm.openPage(page, arg);
+        QCOMPARE(vm.page(), expPage);
+        QCOMPARE(vm.section(), expSection);
+        QCOMPARE(vm.focusField(), expFocus);
+        QCOMPARE(jumps.size(), 1);
+        QCOMPARE(jumps.at(0).at(0).toString(), expSection);
+    }
+
+    void demoStatesNameTheirSection_data()
+    {
+        QTest::addColumn<QString>("state");
+        QTest::addColumn<QString>("expPage");
+        QTest::addColumn<QString>("expSection");
+        QTest::addRow("B01") << "B01" << "general" << "appearance";
+        QTest::addRow("B03") << "B03" << "recording" << "watcher";
+        QTest::addRow("B05") << "B05" << "processing" << "summary";
+        QTest::addRow("B04embedding") << "B04embedding" << "processing" << "tags";
+        QTest::addRow("cloudSelected") << "cloudSelected" << "processing" << "stt";
+        QTest::addRow("B08") << "B08" << "processing" << "voice";
+        QTest::addRow("B08segmissing") << "B08segmissing" << "processing" << "diar";
+        QTest::addRow("B08backfill") << "B08backfill" << "people" << "";
+    }
+    void demoStatesNameTheirSection()
+    {
+        QFETCH(QString, state);
+        QFETCH(QString, expPage);
+        QFETCH(QString, expSection);
+        SettingsViewModel vm;
+        vm.setDemoState(state);
+        QCOMPARE(vm.page(), expPage);
+        QCOMPARE(vm.section(), expSection);
+    }
+
     // ---- deep link ----
 
     void deepLinkHighlightsAndReturnsAfterSave()
     {
         startApp();
         SettingsViewModel vm(services());
-        // The ShellActions page names.
+        // The ShellActions page names (the whole table: legacyTargetsMapToPageAndSection).
         vm.openPage(QStringLiteral("watcher"));
-        QCOMPARE(vm.page(), QStringLiteral("watcher"));
+        QCOMPARE(vm.page(), QStringLiteral("recording"));
         vm.openPage(QStringLiteral("recording"));
         QCOMPARE(vm.page(), QStringLiteral("recording"));
         vm.openPage(QStringLiteral("summary"));
-        QCOMPARE(vm.page(), QStringLiteral("summary"));
+        QCOMPARE(vm.page(), QStringLiteral("processing"));
+        QCOMPARE(vm.section(), QStringLiteral("summary"));
         vm.openPage(QString());                            // empty: stays where it was
-        QCOMPARE(vm.page(), QStringLiteral("summary"));
-        vm.openPage(QStringLiteral("cloud"));              // the Services page, on the "coming soon" tab
-        QCOMPARE(vm.page(), QStringLiteral("services"));
+        QCOMPARE(vm.page(), QStringLiteral("processing"));
+        QCOMPARE(vm.section(), QStringLiteral("summary"));
+        vm.openPage(QStringLiteral("cloud"));              // the Cloud page; the services' "coming soon" tab
+        QCOMPARE(vm.page(), QStringLiteral("cloud"));
         QCOMPARE(vm.serviceMode(), QStringLiteral("cloud"));
         QVERIFY(vm.focusField().isEmpty());
 
         QSignalSpy back(&vm, &SettingsViewModel::returnRequested);
         vm.openPage(QStringLiteral("providers"), QStringLiteral("stt"));
-        QCOMPARE(vm.page(), QStringLiteral("services"));
+        QCOMPARE(vm.page(), QStringLiteral("processing"));
+        QCOMPARE(vm.section(), QStringLiteral("stt"));
         QCOMPARE(vm.focusField(), QStringLiteral("stt"));
         QVERIFY(vm.stt()->highlighted());
         QVERIFY(vm.focusBannerText().contains(QStringLiteral("átírás"), Qt::CaseInsensitive));
@@ -1308,7 +1455,7 @@ private slots:
 
         // The deep link to the Cloud page only shows the tab, without a draft change.
         vm.openPage(QStringLiteral("cloud"), QString());
-        QCOMPARE(vm.page(), QStringLiteral("services"));
+        QCOMPARE(vm.page(), QStringLiteral("cloud"));
         QCOMPARE(vm.serviceMode(), QStringLiteral("cloud"));
         QVERIFY(!vm.dirty());
 
@@ -1443,7 +1590,7 @@ private slots:
                                "B04embedding", "B04embeddingRunning", "B04embeddingError", "B04embeddingDone",
                                "B04embeddingCloud", "B04embeddingNone", "B04modelChange", "rejectedReset",
                                "B08", "B08download", "B08none", "B08error", "B08offline", "B08backfill",
-                               "B08partial", "B08bundled"})
+                               "B08partial", "B08bundled", "B08diaroff", "B08segmissing", "B08segmismatch"})
             QTest::addRow("%s", st) << QString::fromLatin1(st);
     }
     void windowLoadsEveryDemoStateWithoutWarnings()
@@ -1474,6 +1621,120 @@ private slots:
         AppContext::instance()->setThemeMode(QStringLiteral("light"));
     }
 
+    // A visual item by objectName (Repeater delegates are not QObject children of the window).
+    static QQuickItem* findItem(QQuickItem* root, const QString& name)
+    {
+        if (!root) return nullptr;
+        if (root->objectName() == name) return root;
+        for (QQuickItem* child : root->childItems())
+            if (QQuickItem* hit = findItem(child, name)) return hit;
+        return nullptr;
+    }
+
+    void windowShowsEveryPageAndJumpPointWithoutWarnings()
+    {
+        QQmlEngine engine;
+        setupEngine(engine);
+        QStringList warnings;
+        connect(&engine, &QQmlEngine::warnings, this, [&warnings](const QList<QQmlError>& list) {
+            for (const QQmlError& e : list) warnings << e.toString();
+        });
+        QQmlComponent comp(&engine);
+        comp.loadFromModule("Tanara", "SettingsWindow");
+        QVERIFY2(!comp.isError(), qPrintable(comp.errorString()));
+        std::unique_ptr<QObject> obj(comp.createWithInitialProperties({{QStringLiteral("demoState"), QStringLiteral("B01")}}));
+        auto* win = qobject_cast<QQuickWindow*>(obj.get());
+        QVERIFY(win);
+        win->show();
+        QTest::qWait(100);
+        auto* vm = qobject_cast<SettingsViewModel*>(win->property("vm").value<QObject*>());
+        QVERIFY(vm);
+        QQuickItem* content = findItem(win->contentItem(), QStringLiteral("settingsContent"));
+        QVERIFY(content);
+
+        for (const char* p : {"general", "recording", "processing", "cloud", "people"}) {
+            const QString page = QString::fromLatin1(p);
+            // The group row switches the page.
+            QQuickItem* group = findItem(win->contentItem(), QStringLiteral("nav-") + page);
+            QVERIFY2(group, p);
+            QMetaObject::invokeMethod(group, "clicked");
+            QCOMPARE(vm->page(), page);
+            QTest::qWait(50);
+            QVERIFY(!win->grabWindow().isNull());
+            // Each jump point: the section is set, its block is scrolled into view.
+            for (const QString& key : SettingsViewModel::sectionsOf(page)) {
+                QQuickItem* item = findItem(win->contentItem(), QStringLiteral("nav-%1-%2").arg(page, key));
+                QVERIFY2(item, qPrintable(key));
+                QMetaObject::invokeMethod(item, "clicked");
+                QCOMPARE(vm->section(), key);
+                QTest::qWait(350);                                // the scroll animation
+                QCOMPARE(vm->section(), key);                     // the scroll did not move it away
+                QQuickItem* block = findItem(win->contentItem(), QStringLiteral("section-") + key);
+                QVERIFY2(block, qPrintable(key));
+                QVERIFY(block->isVisible());
+                const qreal y = block->mapToItem(content, QPointF(0, 0)).y();
+                QVERIFY2(y >= -1 && y < content->height(), qPrintable(key));
+            }
+        }
+
+        // The sidebar follows the scroll: at the bottom of Processing, the last jump point.
+        vm->openPage(QStringLiteral("processing"), QStringLiteral("stt"));
+        QTest::qWait(400);                                        // the scroll animation
+        QCOMPARE(vm->section(), QStringLiteral("stt"));
+        const qreal maxY = content->property("contentHeight").toReal() - content->property("height").toReal();
+        QVERIFY(maxY > 0);
+        content->setProperty("contentY", maxY);
+        QTRY_COMPARE(vm->section(), QStringLiteral("tags"));
+        content->setProperty("contentY", 0);
+        QTRY_COMPARE(vm->section(), QStringLiteral("stt"));
+
+        // A deep link from outside scrolls too.
+        vm->openPage(QStringLiteral("speakers"), QStringLiteral("voiceModels"));
+        QTRY_VERIFY(content->property("contentY").toReal() > 0);
+        QCOMPARE(vm->section(), QStringLiteral("voice"));
+        QVERIFY2(warnings.isEmpty(), qPrintable(warnings.join(QLatin1Char('\n'))));
+    }
+
+    void sidebarWarnDotsFollowTheCheapSignals()
+    {
+        QQmlEngine engine;
+        setupEngine(engine);
+        const auto open = [&engine](const QString& state) {
+            QQmlComponent comp(&engine);
+            comp.loadFromModule("Tanara", "SettingsWindow");
+            std::unique_ptr<QObject> obj(comp.createWithInitialProperties({{QStringLiteral("demoState"), state}}));
+            if (auto* win = qobject_cast<QQuickWindow*>(obj.get())) win->show();
+            return obj;
+        };
+        const auto warned = [](QObject* obj, const char* name) {
+            QQuickItem* item = findItem(qobject_cast<QQuickWindow*>(obj)->contentItem(), QString::fromLatin1(name));
+            return item && item->property("warned").toBool();
+        };
+        {
+            // The LLM's test failed: the dot on Summary, not on Transcription.
+            auto obj = open(QStringLiteral("B05"));
+            QTRY_VERIFY(warned(obj.get(), "nav-processing-summary"));
+            QVERIFY(!warned(obj.get(), "nav-processing-stt"));
+        }
+        {
+            // No segmentation model: Speaker separation; on the group row only away from the group.
+            auto obj = open(QStringLiteral("B08segmissing"));
+            QTRY_VERIFY(warned(obj.get(), "nav-processing-diar"));
+            QVERIFY(!warned(obj.get(), "nav-processing-voice"));
+            auto* win = qobject_cast<QQuickWindow*>(obj.get());
+            QQuickItem* group = findItem(win->contentItem(), QStringLiteral("nav-processing"));
+            QVERIFY(group);
+            QVERIFY(!group->property("warn").toBool());
+            win->property("vm").value<QObject*>()->setProperty("page", QStringLiteral("general"));
+            QTRY_VERIFY(group->property("warn").toBool());
+        }
+        {
+            // No voice model at all: Speaker recognition.
+            auto obj = open(QStringLiteral("B08none"));
+            QTRY_VERIFY(warned(obj.get(), "nav-processing-voice"));
+        }
+    }
+
     void hostOpensOnTheRequestedPageAndAsksBeforeLosingChanges()
     {
         startApp();
@@ -1488,19 +1749,22 @@ private slots:
         QVERIFY(!vm->demo());
         QCOMPARE(vm->facade(), services().settings(QString(), nullptr));
         QCOMPARE(vm->dialogs(), &dialogs);
-        QCOMPARE(vm->page(), QStringLiteral("watcher"));
+        QCOMPARE(vm->page(), QStringLiteral("recording"));
+        QCOMPARE(vm->section(), QStringLiteral("watcher"));
         QTest::qWait(100);
         QVERIFY(vm->watching());                           // its page is visible: live detection
-        QVERIFY(!vm->monitoring());
+        QVERIFY(vm->monitoring());                         // the devices share the page
 
         // A new request with the window open: only the page switches, the draft stays.
         vm->setSilenceAskMinutes(11);
         QVERIFY(host.open(QStringLiteral("providers"), QStringLiteral("llm")));
-        QCOMPARE(vm->page(), QStringLiteral("services"));
+        QCOMPARE(vm->page(), QStringLiteral("processing"));
+        QCOMPARE(vm->section(), QStringLiteral("summary"));
         QCOMPARE(vm->focusField(), QStringLiteral("llm"));
         QVERIFY(vm->dirty());
         QTest::qWait(50);
         QVERIFY(!vm->watching());
+        QVERIFY(!vm->monitoring());
 
         // Closing with an unsaved change: the window stays open (the question lives in QML).
         host.window()->close();
@@ -1521,7 +1785,8 @@ private slots:
         s.watcher.silenceAskMinutes = 4;
         m_app->settings()->setSettings(s);
         QVERIFY(host.open(QStringLiteral("summary")));
-        QCOMPARE(vm->page(), QStringLiteral("summary"));
+        QCOMPARE(vm->page(), QStringLiteral("processing"));
+        QCOMPARE(vm->section(), QStringLiteral("summary"));
         QCOMPARE(vm->silenceAskMinutes(), 4);
         host.closeNow();
         QVERIFY(!host.isVisible());

@@ -353,10 +353,12 @@ private slots:
     {
         SettingsViewModel vm;
         vm.setDemoState(QStringLiteral("B08none"));
-        QCOMPARE(vm.page(), QStringLiteral("speakers"));
+        QCOMPARE(vm.page(), QStringLiteral("processing"));        // Processing > Speaker recognition
+        QCOMPARE(vm.section(), QStringLiteral("voice"));
         QVERIFY(!vm.voiceModels()->anyAvailable());
         vm.openPage(QStringLiteral("voiceModels"));
-        QCOMPARE(vm.page(), QStringLiteral("speakers"));
+        QCOMPARE(vm.page(), QStringLiteral("processing"));
+        QCOMPARE(vm.section(), QStringLiteral("voice"));
     }
 
     // ---- real controller, download from a file:// source ----
@@ -737,7 +739,8 @@ private slots:
         QTest::qWait(200);
         auto* vm0 = qobject_cast<SettingsViewModel*>(win->property("vm").value<QObject*>());
         QVERIFY(vm0);
-        QCOMPARE(vm0->page(), QStringLiteral("speakers"));
+        QCOMPARE(vm0->page(), QStringLiteral("processing"));
+        QCOMPARE(vm0->section(), QStringLiteral("voice"));
         QVERIFY(!vm0->voiceModels()->anyAvailable());
         auto* none = findItem(win->contentItem(), QStringLiteral("voiceModelsNone"));
         QVERIFY(none);

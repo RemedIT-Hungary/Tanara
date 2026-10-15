@@ -67,7 +67,8 @@ private slots:
         QVERIFY(emb && emb->card());
 
         vm.setDemoState(QStringLiteral("B04embeddingRunning"));          // T14
-        QCOMPARE(vm.page(), QStringLiteral("services"));
+        QCOMPARE(vm.page(), QStringLiteral("processing"));
+        QCOMPARE(vm.section(), QStringLiteral("tags"));
         QCOMPARE(emb->mode(), QStringLiteral("local"));
         QCOMPARE(emb->prepStatus(), QStringLiteral("running"));
         QCOMPARE(emb->countText(), QStringLiteral("23 / 40 megbeszélés"));
@@ -258,7 +259,8 @@ private slots:
         emb->card()->setValue(QStringLiteral("baseUrl"), QStringLiteral("nem-cim"));
         QVERIFY(!emb->card()->fieldErrors().isEmpty());
         QVERIFY(!vm.save());
-        QCOMPARE(vm.page(), QStringLiteral("services"));
+        QCOMPARE(vm.page(), QStringLiteral("processing"));
+        QCOMPARE(vm.section(), QStringLiteral("tags"));
         QVERIFY(m_app->settings()->settings().providers.embedding.selectedId.isEmpty());
     }
 

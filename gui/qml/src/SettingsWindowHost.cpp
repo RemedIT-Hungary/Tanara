@@ -85,7 +85,8 @@ bool SettingsWindowHost::open(const QString& page, const QString& focusField)
     // Reopening a closed window: fresh state from disk (someone else may have saved meanwhile).
     // With an open window the draft stays; only the page switches.
     if (m_vm && !wasVisible && !m_vm->dirty()) m_vm->reload();
-    if (m_vm) m_vm->openPage(page.isEmpty() && !wasVisible ? QStringLiteral("general") : page, focusField);
+    // An empty page reopens the last one (the first time: Processing).
+    if (m_vm) m_vm->openPage(page, focusField);
     m_window->show();
     m_window->raise();
     m_window->requestActivate();

@@ -43,8 +43,47 @@ namespace tanara_qml {
 namespace {
 
 const QStringList kPages{QStringLiteral("general"), QStringLiteral("recording"),
-                         QStringLiteral("watcher"), QStringLiteral("services"),
-                         QStringLiteral("speakers"), QStringLiteral("summary")};
+                         QStringLiteral("processing"), QStringLiteral("cloud"),
+                         QStringLiteral("people")};
+
+// Where an openPage() call lands: page + section, and the card whose key the deep link
+// highlights ("" | "stt" | "llm").
+struct PageTarget {
+    QString page;
+    QString section;
+    QString focus;
+};
+
+// Maps a page key or a legacy target (the old six-page names, ShellActions.openSettings's
+// fixTargets) to page + section. `current` is the page shown now (the target of "").
+PageTarget resolvePageTarget(const QString& page, const QString& arg, const QString& current)
+{
+    const auto sectionOr = [&arg](const QString& p, const QString& fallback) {
+        return SettingsViewModel::sectionsOf(p).contains(arg) ? arg : fallback;
+    };
+    const QString processing = QStringLiteral("processing");
+    if (page.isEmpty()) return {current, sectionOr(current, QString()), QString()};
+    if (page == QLatin1String("general") || page == QLatin1String("recording")) {
+        const QString first = SettingsViewModel::sectionsOf(page).value(0);
+        return {page, sectionOr(page, first), QString()};
+    }
+    if (page == QLatin1String("watcher")) return {QStringLiteral("recording"), QStringLiteral("watcher"), QString()};
+    if (page == QLatin1String("providers") || page == QLatin1String("services")) {
+        // providers + nothing: the transcriber comes first; services + nothing: the summary
+        // (OverviewSummaryStep's fixTarget).
+        const bool stt = arg == QLatin1String("stt")
+                         || (arg.isEmpty() && page == QLatin1String("providers"));
+        const QString focus = arg == QLatin1String("stt") || arg == QLatin1String("llm") ? arg : QString();
+        return {processing, stt ? QStringLiteral("stt") : QStringLiteral("summary"), focus};
+    }
+    if (page == QLatin1String("summary")) return {processing, QStringLiteral("summary"), QString()};
+    if (page == QLatin1String("speakers") || page == QLatin1String("diarization"))
+        return {processing, arg == QLatin1String("voiceModels") ? QStringLiteral("voice") : QStringLiteral("diar"), QString()};
+    if (page == QLatin1String("voiceModels")) return {processing, QStringLiteral("voice"), QString()};
+    if (kPages.contains(page)) return {page, sectionOr(page, QString()), QString()};
+    return {current, QString(), QString()};   // unknown: stay
+}
+
 // The editable prompts in order: the quick summary's three prompts (single-step, per-part
 // note, merge), then the two for per-topic analysis. "reduce" (the per-topic analysis'
 // closing summary) can only be tuned via a file override and is not listed here.
@@ -593,6 +632,33 @@ void SettingsViewModel::setPage(const QString& page)
     if (!kPages.contains(page) || page == m_page) return;
     m_page = page;
     emit pageChanged();
+    setSection(QString());
+}
+
+QStringList SettingsViewModel::sectionsOf(const QString& page)
+{
+    if (page == QLatin1String("general"))
+        return {QStringLiteral("appearance"), QStringLiteral("folders"), QStringLiteral("account")};
+    if (page == QLatin1String("recording"))
+        return {QStringLiteral("devices"), QStringLiteral("watcher")};
+    if (page == QLatin1String("processing"))
+        return {QStringLiteral("stt"), QStringLiteral("diar"), QStringLiteral("voice"),
+                QStringLiteral("summary"), QStringLiteral("tags")};
+    return {};
+}
+
+void SettingsViewModel::setSection(const QString& section)
+{
+    if (section == m_section || (!section.isEmpty() && !sectionsOf(m_page).contains(section))) return;
+    m_section = section;
+    emit sectionChanged();
+}
+
+void SettingsViewModel::showSection(const QString& page, const QString& section)
+{
+    setPage(page);
+    setSection(section);
+    emit sectionRequested(m_section, !m_section.isEmpty());
 }
 
 QString SettingsViewModel::focusBannerText() const
@@ -606,22 +672,19 @@ QString SettingsViewModel::focusBannerText() const
     return QString();
 }
 
-void SettingsViewModel::openPage(const QString& page, const QString& focusField)
+void SettingsViewModel::openPage(const QString& page, const QString& section)
 {
-    QString target = page;
-    if (page == QLatin1String("providers")) target = QStringLiteral("services");
-    else if (page == QLatin1String("cloud")) target = QStringLiteral("services");
-    else if (page == QLatin1String("voiceModels")) target = QStringLiteral("speakers");
-    else if (page.isEmpty()) target = m_page;
-    if (kPages.contains(target)) setPage(target);
+    const PageTarget target = resolvePageTarget(page, section, m_page);
+    const QString& focusField = section;
+    // "" (Ctrl+, / reopening): the last page stays as it was, without scrolling.
+    if (!page.isEmpty()) showSection(target.page, target.section);
 
     if (page == QLatin1String("cloud"))
         showServiceTab(QStringLiteral("cloud"));
     else if (page == QLatin1String("providers") && !focusField.isEmpty())
         showServiceTab(QStringLiteral("own"));
 
-    const QString f = focusField == QLatin1String("stt") || focusField == QLatin1String("llm")
-                          ? focusField : QString();
+    const QString& f = target.focus;
     if (f != m_focusField) {
         m_focusField = f;
         emit focusChanged();
@@ -1464,19 +1527,22 @@ bool SettingsViewModel::save()
     if (!dirty()) return true;
 
     // We do not save with an invalid field: we switch to the faulty page, where the field shows below it.
-    QString badPage;
+    QString badPage, badSection;
     if (m_errors.contains(QStringLiteral("userName")))
-        badPage = QStringLiteral("speakers");
+        badPage = QStringLiteral("people");
     else if (m_errors.contains(QStringLiteral("folder.audio"))
         || m_errors.contains(QStringLiteral("folder.notes")) || m_errors.contains(QStringLiteral("folder.meta")))
-        badPage = QStringLiteral("general");
+        badPage = QStringLiteral("general"), badSection = QStringLiteral("folders");
     else if (m_errors.contains(QStringLiteral("watchedApps")))
-        badPage = QStringLiteral("watcher");
-    else if (!m_stt->fieldErrors().isEmpty() || !m_llm->fieldErrors().isEmpty()
-             || !m_embedding->card()->fieldErrors().isEmpty())
-        badPage = QStringLiteral("services");
+        badPage = QStringLiteral("recording"), badSection = QStringLiteral("watcher");
+    else if (!m_stt->fieldErrors().isEmpty())
+        badPage = QStringLiteral("processing"), badSection = QStringLiteral("stt");
+    else if (!m_llm->fieldErrors().isEmpty())
+        badPage = QStringLiteral("processing"), badSection = QStringLiteral("summary");
+    else if (!m_embedding->card()->fieldErrors().isEmpty())
+        badPage = QStringLiteral("processing"), badSection = QStringLiteral("tags");
     if (!badPage.isEmpty()) {
-        setPage(badPage);
+        showSection(badPage, badSection);
         return false;
     }
 
@@ -1599,7 +1665,12 @@ void SettingsViewModel::applyScenario()
             if (!stored.isEmpty()) m_promptText.insert(id, stored);
         }
     }
-    m_page = kPages.contains(sc->page) ? sc->page : QStringLiteral("general");
+    // The design states may still name the old pages: mapped like openPage() (no page: General).
+    const PageTarget target = resolvePageTarget(sc->page.isEmpty() ? QStringLiteral("general") : sc->page,
+                                                sc->section.isEmpty() ? sc->focusField : sc->section,
+                                                m_page);
+    m_page = target.page;
+    m_section = target.section;
     m_focusField = sc->focusField;
     m_serviceMode = sc->serviceMode == QLatin1String("cloud") ? QStringLiteral("cloud") : QStringLiteral("own");
     m_promptIndex = std::clamp(sc->promptIndex, 0, int(kPromptIds.size()) - 1);
@@ -1620,6 +1691,8 @@ void SettingsViewModel::applyScenario()
     if (sc->llmServer) m_llm->setDemoServerInfo(*sc->llmServer);
     m_devices->refreshFromDraft();
     emit pageChanged();
+    emit sectionChanged();
+    emit sectionRequested(m_section, false);
     emit voiceprintChanged();
     emit liveCallChanged();
     emit deviceCountChanged();

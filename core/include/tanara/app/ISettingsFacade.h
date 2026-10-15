@@ -48,7 +48,8 @@ struct VoiceprintSummary {
 // of the facade's data. The real facade has none.
 struct SettingsScenario {
     // ---- Settings window ----
-    QString page;          // "" -> general
+    QString page;          // "" -> general; a page key or an old name (as SettingsViewModel::openPage)
+    QString section;       // the page's jump point ("" -> the old name's / the focusField's)
     QString focusField;    // "" | "stt" | "llm"
     QString serviceMode;   // "" -> own
     // The unsaved draft (differs from the saved settings), if the state shows one.

@@ -38,7 +38,7 @@ private slots:
         f.canDiarize = true;
         m = overviewSpeakers(f, false);
         QCOMPARE(m.value("line").toString(), QStringLiteral("Beszélők: nincs — kapcsold be a Beállításokban"));
-        QCOMPARE(m.value("fixTarget").toString(), QStringLiteral("speakers"));
+        QCOMPARE(m.value("fixTarget").toString(), QStringLiteral("diarization"));
         QVERIFY(!m.value("attention").toBool());
         QVERIFY(m.value("canDiarize").toBool());
 
@@ -47,7 +47,7 @@ private slots:
         f.canDiarize = false;
         m = overviewSpeakers(f, false);
         QCOMPARE(m.value("line").toString(), QStringLiteral("Beszélők: nincs — tölts le modellt a Beállításokban"));
-        QCOMPARE(m.value("fixTarget").toString(), QStringLiteral("speakers"));
+        QCOMPARE(m.value("fixTarget").toString(), QStringLiteral("diarization"));
         QVERIFY(m.value("attention").toBool());
 
         // It could run, it has not.

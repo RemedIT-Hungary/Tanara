@@ -107,8 +107,9 @@ void SettingsDemoFacade::loadSettings(const QString& st)
         sc.focusField = QStringLiteral("stt");
         sc.llmTest = app::SettingsScenario::TestResult{QStringLiteral("ok"), 48, {}, {}};
     } else if (st.startsWith(QLatin1String("B04"))) {
-        // Transcription and summary are already set up -> collapsed cards.
-        sc.page = QStringLiteral("services");
+        // Transcription and summary are already set up -> collapsed cards; the embedding card.
+        sc.page = QStringLiteral("processing");
+        sc.section = QStringLiteral("tags");
         sc.sttTest = app::SettingsScenario::TestResult{QStringLiteral("ok"), 210, {}, {}};
         sc.llmTest = app::SettingsScenario::TestResult{QStringLiteral("ok"), 48, {}, {}};
     } else if (st == QLatin1String("advanced")) {
@@ -132,11 +133,11 @@ void SettingsDemoFacade::loadSettings(const QString& st)
             QStringLiteral("ECONNREFUSED")};
         sc.llmAdvancedOpen = true;
     } else if (st == QLatin1String("cloudComingSoon")) {
-        sc.page = QStringLiteral("services");
+        sc.page = QStringLiteral("cloud");
         sc.serviceMode = QStringLiteral("cloud");
     } else if (st == QLatin1String("cloudSelected")) {
         // The saved setting puts transcription and summary on Tanara Cloud (developer setting).
-        sc.page = QStringLiteral("services");
+        sc.page = QStringLiteral("providers");
         draft = s;
         draft->routes.stt.route = providers::Route::Cloud;
         draft->routes.llm.route = providers::Route::Cloud;
@@ -148,7 +149,11 @@ void SettingsDemoFacade::loadSettings(const QString& st)
         if (st == QLatin1String("B07notes"))
             sc.promptIndex = 1;      // the per-part note prompt
     } else if (st.startsWith(QLatin1String("B08"))) {
-        sc.page = QStringLiteral("speakers");
+        // The voice models (Processing > Speaker recognition); the separation states on its
+        // own section, the backfill on the People page.
+        sc.page = st == QLatin1String("B08diaroff") || st.startsWith(QLatin1String("B08seg")) ? QStringLiteral("speakers")
+                : st == QLatin1String("B08backfill") || st == QLatin1String("B08partial") ? QStringLiteral("people")
+                : QStringLiteral("voiceModels");
         // The enabled list follows the voice-model list's state.
         s.processing.voiceModels = QStringList{QStringLiteral("wespeaker-resnet34-lm")};
         // D5: the local speaker separation switched off.

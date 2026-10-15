@@ -3,8 +3,11 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Templates as T
 
-// The Settings window: a separate, resizable window (900 x 680), left navigation with six pages,
-// scrollable content, a footer with the unsaved-changes indicator and "Cancel" / "Save" buttons.
+// The Settings window: a separate, resizable window (900 x 680), a left sidebar with five groups
+// and their jump points (SettingsSidebar), one scrollable page per group whose blocks are the jump
+// points (SettingsSection), a footer with the unsaved-changes indicator and "Cancel" / "Save".
+// A jump point scrolls to its block and outlines it once; while scrolling, the sidebar marks the
+// section in view. The view model's page / section say where we are (openPage maps the old names).
 //
 // Changes apply on "Save" (except the theme, which shows immediately). Closing with unsaved
 // changes asks (Save / Discard / Cancel). The native window frame stays (as in the main window),
@@ -92,22 +95,141 @@ ApplicationWindow {
             rejectedDialog.close()
         }
     }
+    // Both run while the Recording page (devices + call watcher) is visible.
     Binding { target: model; property: "monitoring"; value: window.visible && model.page === "recording" }
-    Binding { target: model; property: "watching"; value: window.visible && model.page === "watcher" }
+    Binding { target: model; property: "watching"; value: window.visible && model.page === "recording" }
 
     Shortcut { sequences: [StandardKey.Save]; enabled: model.dirty; onActivated: model.save() }
     // Esc deliberately does not close: dropdowns and popups use it (the shortcut would preempt
     // them). Close with Ctrl+W or the window's x button.
     Shortcut { sequences: [StandardKey.Close]; onActivated: window.requestClose() }
 
-    readonly property var pages: [
-        { key: "general", label: qsTr("Általános"), icon: "settings" },
-        { key: "recording", label: qsTr("Rögzítés"), icon: "mic" },
-        { key: "watcher", label: qsTr("Hívásfigyelő"), icon: "radar" },
-        { key: "services", label: qsTr("Szolgáltatások"), icon: "plug" },
-        { key: "speakers", label: qsTr("Beszélők"), icon: "audio-lines" },
-        { key: "summary", label: qsTr("Összefoglaló"), icon: "sparkles" }
+    // The sidebar: five groups, the jump points (sections) of a group's page below it. The keys
+    // match SettingsViewModel::sectionsOf().
+    readonly property var groups: [
+        { key: "general", label: qsTr("Általános"), icon: "settings",
+          children: [ { key: "appearance", label: qsTr("Megjelenés") },
+                      { key: "folders", label: qsTr("Mappák") },
+                      { key: "account", label: qsTr("Fiók") } ] },
+        { key: "recording", label: qsTr("Rögzítés"), icon: "mic",
+          children: [ { key: "devices", label: qsTr("Eszközök") },
+                      { key: "watcher", label: qsTr("Hívásfigyelő") } ] },
+        { key: "processing", label: qsTr("Feldolgozás"), icon: "wand-sparkles",
+          children: [ { key: "stt", label: qsTr("Átírás") },
+                      { key: "diar", label: qsTr("Beszélők elkülönítése") },
+                      { key: "voice", label: qsTr("Beszélők felismerése") },
+                      { key: "summary", label: qsTr("Összefoglaló") },
+                      { key: "tags", label: qsTr("Címkejavaslat") } ] },
+        { key: "cloud", label: qsTr("Tanara Cloud"), icon: "cloud", children: [] },
+        { key: "people", label: qsTr("Személyek és minták"), icon: "users", children: [] }
     ]
+
+    // The jump points that need attention (key -> the dot's tooltip). Only the cheap signals:
+    // a provider gap (on its card's jump point), no voice model, no segmentation model. Plain bool
+    // properties first: the compiled object-building binding alone did not track the deeper reads.
+    readonly property bool sttGap: !model.stt.configured || model.stt.testState === "failed"
+    readonly property bool llmGap: !model.llm.configured || model.llm.testState === "failed"
+    readonly property bool warnStt: model.servicesWarn && (sttGap || !llmGap)
+    readonly property bool warnSummary: model.servicesWarn && llmGap
+    readonly property bool warnDiar: model.localDiarization && !model.segmentationModels.anyAvailable
+    readonly property bool warnVoice: !model.voiceModels.anyAvailable
+    readonly property var warnings: {
+        const w = {}
+        const providerText = qsTr("Egy szolgáltató beállítása hiányzik vagy nem érhető el")
+        if (window.warnStt) w.stt = providerText
+        if (window.warnSummary) w.summary = providerText
+        if (window.warnDiar) w.diar = qsTr("Nincs szegmentáló modell")
+        if (window.warnVoice) w.voice = qsTr("Nincs letöltött hangmodell")
+        return w
+    }
+
+    // ---- jump points: scrolling to a section, and the sidebar following the scroll ----
+    function pageItem(page) {
+        switch (page) {
+        case "general": return generalPage
+        case "recording": return recordingPage
+        case "processing": return processingPage
+        case "cloud": return cloudPage
+        default: return peoplePage
+        }
+    }
+    function sectionItem(key) {
+        const find = (item) => {
+            if (!item || !item.visible) return null
+            if (item.objectName === "section-" + key) return item
+            for (let i = 0; i < item.children.length; ++i) {
+                const hit = find(item.children[i])
+                if (hit) return hit
+            }
+            return null
+        }
+        return key === "" ? null : find(pageItem(model.page))
+    }
+    function sectionKeys(page) {
+        for (const g of window.groups) if (g.key === page) return g.children.map(c => c.key)
+        return []
+    }
+    function sectionY(item) { return item.mapToItem(content.contentItem, 0, 0).y }
+
+    property bool jumping: false        // a jump's scroll animation runs: the sidebar does not follow
+    function scrollToSection(key, animate, flash) {
+        const item = window.sectionItem(key)
+        const maxY = Math.max(0, content.contentHeight - content.height)
+        const y = item ? Math.max(0, Math.min(maxY, window.sectionY(item) - 16)) : 0
+        if (item) model.section = key
+        scrollAnim.stop()
+        if (animate && Math.abs(y - content.contentY) > 1) {
+            window.jumping = true
+            scrollAnim.from = content.contentY
+            scrollAnim.to = y
+            scrollAnim.start()
+        } else {
+            window.jumping = true
+            content.contentY = y
+            window.jumping = false
+        }
+        if (flash && item) item.flash()
+    }
+    // The section in view: the last one whose top is above the upper third (at the bottom of the
+    // page the last visible one, which may be too short to get there).
+    function followScroll() {
+        if (window.jumping) return
+        const keys = window.sectionKeys(model.page)
+        if (keys.length === 0) return
+        let best = ""
+        let last = ""
+        const line = content.contentY + Math.max(90, content.height * 0.3)
+        for (const key of keys) {
+            const item = window.sectionItem(key)
+            if (!item || item.height <= 0) continue
+            if (best === "") best = key
+            last = key
+            if (window.sectionY(item) <= line) best = key
+        }
+        if (content.contentY > 0 && content.contentY >= content.contentHeight - content.height - 2) best = last
+        if (best !== "") model.section = best
+    }
+
+    // A jump from the view model (deep link, failed save, design state): after the layout settles.
+    Connections {
+        target: model
+        function onSectionRequested(section, flash) {
+            pendingJump.key = section
+            pendingJump.flash = flash
+            pendingJump.restart()
+        }
+        function onPageChanged() {
+            content.contentY = 0
+            Qt.callLater(window.followScroll)
+        }
+    }
+    Timer {
+        id: pendingJump
+        interval: 30
+        property string key: ""
+        property bool flash: false
+        onTriggered: window.scrollToSection(key, flash && window.visible, flash)
+    }
 
     ColumnLayout {
         anchors.fill: parent
@@ -119,46 +241,35 @@ ApplicationWindow {
             spacing: 0
 
             // ---- navigation ----
-            Rectangle {
-                Layout.preferredWidth: 208
+            SettingsSidebar {
+                objectName: "settingsSidebar"
+                // Narrow window: a narrower sidebar.
+                Layout.preferredWidth: window.width < 1000 ? 224 : 244
                 Layout.fillHeight: true
-                color: Theme.surface
-                Rectangle { anchors.right: parent.right; width: 1; height: parent.height; color: Theme.border }
-                Column {
-                    x: 10; y: 12
-                    width: parent.width - 21
-                    spacing: 2
-                    Repeater {
-                        model: window.pages
-                        SettingsNavItem {
-                            required property var modelData
-                            objectName: "nav-" + modelData.key
-                            width: parent.width
-                            text: modelData.label
-                            iconName: modelData.icon
-                            current: model.page === modelData.key
-                            warn: modelData.key === "services" && model.servicesWarn
-                            warnText: qsTr("Egy szolgáltató beállítása hiányzik vagy nem érhető el")
-                            onClicked: model.page = modelData.key
-                        }
+                groups: window.groups
+                page: model.page
+                section: model.section
+                warnings: window.warnings
+                onPagePicked: (key) => model.page = key
+                onSectionPicked: (page, key) => {
+                    const switching = model.page !== page
+                    model.page = page
+                    model.section = key
+                    if (!switching) {
+                        window.scrollToSection(key, true, true)
+                    } else {
+                        // The new page lays out first.
+                        pendingJump.key = key
+                        pendingJump.flash = true
+                        pendingJump.restart()
                     }
-                }
-                // Version at the bottom of the navigation (a bug report shows which build runs).
-                TLabel {
-                    objectName: "versionLabel"
-                    x: 20
-                    anchors.bottom: parent.bottom
-                    anchors.bottomMargin: 14
-                    text: "Tanara " + App.version
-                    mono: true
-                    muted: true
-                    font.pixelSize: Theme.fontMicro
                 }
             }
 
             // ---- content ----
             Flickable {
                 id: content
+                objectName: "settingsContent"
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 contentWidth: width
@@ -166,65 +277,139 @@ ApplicationWindow {
                 boundsBehavior: Flickable.StopAtBounds
                 clip: true
                 T.ScrollBar.vertical: TScrollBar {}
+                onContentYChanged: window.followScroll()
+                // The user's own scroll wins over a running jump.
+                onMovementStarted: scrollAnim.stop()
 
-                // Back to the top on page change.
-                Connections {
-                    target: model
-                    function onPageChanged() { content.contentY = 0 }
+                NumberAnimation {
+                    id: scrollAnim
+                    target: content
+                    property: "contentY"
+                    duration: 260
+                    easing.type: Easing.OutCubic
+                    onFinished: window.jumping = false
+                    onStopped: window.jumping = false
                 }
 
                 Item {
                     id: pageHolder
                     x: 32; y: 24
-                    width: Math.min(content.width - 64, model.page === "summary" ? 640 : 620)
-                    height: (general.visible ? general.implicitHeight : 0)
-                          + (recording.visible ? recording.implicitHeight : 0)
-                          + (watcher.visible ? watcher.implicitHeight : 0)
-                          + (services.visible ? services.implicitHeight : 0)
-                          + (speakers.visible ? speakers.implicitHeight : 0)
-                          + (summary.visible ? summary.implicitHeight : 0)
+                    width: Math.min(content.width - 64, model.page === "processing" ? 640 : 620)
+                    height: model.page === "general" ? generalPage.implicitHeight
+                          : model.page === "recording" ? recordingPage.implicitHeight
+                          : model.page === "processing" ? processingPage.implicitHeight
+                          : model.page === "cloud" ? cloudPage.implicitHeight
+                          : peoplePage.implicitHeight
 
+                    // ---- General ----
                     SettingsGeneralPage {
-                        id: general
+                        id: generalPage
                         visible: model.page === "general"
                         width: Math.min(parent.width, 600)
                         vm: model
                     }
-                    SettingsRecordingPage {
-                        id: recording
+
+                    // ---- Recording: devices + call watcher ----
+                    Column {
+                        id: recordingPage
                         visible: model.page === "recording"
                         width: parent.width
-                        vm: model
-                        editingRow: window.demoState === "B02" || window.demoState === "rename" ? 3 : -1
+                        spacing: 28
+                        SettingsSection {
+                            key: "devices"
+                            width: parent.width
+                            SettingsRecordingPage {
+                                width: parent.width
+                                vm: model
+                                editingRow: window.demoState === "B02" || window.demoState === "rename" ? 3 : -1
+                            }
+                        }
+                        Rectangle { width: parent.width; height: 1; color: Theme.border }
+                        SettingsSection {
+                            key: "watcher"
+                            width: Math.min(parent.width, 600)
+                            spacing: 14
+                            TSectionLabel { text: qsTr("Hívásfigyelő") }
+                            SettingsWatcherPage {
+                                width: parent.width
+                                vm: model
+                                demoAddOpen: window.demoState === "addApp"
+                            }
+                        }
                     }
-                    SettingsWatcherPage {
-                        id: watcher
-                        visible: model.page === "watcher"
-                        width: Math.min(parent.width, 600)
-                        vm: model
-                        demoAddOpen: window.demoState === "addApp"
-                    }
-                    SettingsServicesPage {
-                        id: services
-                        visible: model.page === "services"
+
+                    // ---- Processing: today's Services, Speakers and Summary blocks in the chain's
+                    // order (transcription, separation, recognition, summary, tags). Earlier
+                    // sections stack above later ones (z): a card's dropdown overlaps the next.
+                    Column {
+                        id: processingPage
+                        visible: model.page === "processing"
                         width: parent.width
-                        vm: model
-                        demoDropdown: window.demoState === "B04"
-                        onRejectedResetRequested: rejectedDialog.open()
+                        spacing: 28
+                        SettingsSection {
+                            key: "stt"
+                            z: 5
+                            width: parent.width
+                            SettingsServicesPage {
+                                part: "stt"
+                                width: parent.width
+                                vm: model
+                                demoDropdown: window.demoState === "B04"
+                            }
+                        }
+                        SettingsSection {
+                            key: "diar"
+                            z: 4
+                            width: Math.min(parent.width, 600)
+                            SettingsSpeakersPage { part: "diar"; width: parent.width; vm: model }
+                        }
+                        SettingsSection {
+                            key: "voice"
+                            z: 3
+                            width: Math.min(parent.width, 600)
+                            SettingsSpeakersPage { part: "voice"; width: parent.width; vm: model }
+                        }
+                        SettingsSection {
+                            key: "summary"
+                            z: 2
+                            width: parent.width
+                            spacing: 20
+                            SettingsServicesPage { part: "summary"; width: parent.width; vm: model }
+                            SettingsSummaryPage {
+                                width: parent.width
+                                vm: model
+                                onResetRequested: resetDialog.open()
+                                onSchemaRequested: schemaDialog.open()
+                            }
+                        }
+                        SettingsSection {
+                            key: "tags"
+                            z: 1
+                            width: parent.width
+                            SettingsServicesPage {
+                                part: "tags"
+                                width: parent.width
+                                vm: model
+                                onRejectedResetRequested: rejectedDialog.open()
+                            }
+                        }
                     }
+
+                    // ---- Tanara Cloud ----
+                    Column {
+                        id: cloudPage
+                        visible: model.page === "cloud"
+                        width: Math.min(parent.width, 600)
+                        CloudComingSoon { width: parent.width }
+                    }
+
+                    // ---- People and samples: your name and voiceprint, the voiceprint backfill ----
                     SettingsSpeakersPage {
-                        id: speakers
-                        visible: model.page === "speakers"
+                        id: peoplePage
+                        part: "people"
+                        visible: model.page === "people"
                         width: Math.min(parent.width, 600)
                         vm: model
-                    }
-                    SettingsSummaryPage {
-                        id: summary
-                        visible: model.page === "summary"
-                        width: parent.width
-                        vm: model
-                        onResetRequested: resetDialog.open()
-                        onSchemaRequested: schemaDialog.open()
                     }
                 }
             }

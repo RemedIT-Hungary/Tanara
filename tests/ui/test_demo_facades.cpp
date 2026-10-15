@@ -171,7 +171,7 @@ private slots:
         }
         QVERIFY(snap("overviewDiarizing").transcribing);
         QVERIFY(!snap("overviewSpeakersLocal").transcribing);
-        QCOMPARE(snap("overviewSpeakersNoModel").speakers.value("fixTarget").toString(), QStringLiteral("speakers"));
+        QCOMPARE(snap("overviewSpeakersNoModel").speakers.value("fixTarget").toString(), QStringLiteral("diarization"));
 
         QObject owner;
         const UiServices& demo = AppContext::instance()->demoServices();

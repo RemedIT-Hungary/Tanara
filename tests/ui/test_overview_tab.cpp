@@ -530,7 +530,7 @@ private slots:
         QVERIFY(!shown("diarizeCancelButton"));
         QCOMPARE(item("diarizeButton")->property("text").toString(), QStringLiteral("Beszélők felismerése"));
         press(item("speakersFixButton"));
-        QCOMPARE(spy.calls, QStringList({QStringLiteral("openSettings:speakers")}));
+        QCOMPARE(spy.calls, QStringList({QStringLiteral("openSettings:diarization")}));
         // The action asks first (no names here), with the optional speaker count.
         QObject* dialog = object("diarizeDialog");
         QVERIFY(dialog);

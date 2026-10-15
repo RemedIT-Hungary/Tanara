@@ -542,7 +542,7 @@ tanara::library::OverviewSnapshot OverviewDemoFacade::build() const
         else if (noModel) {
             QVariantMap voice = step(QStringLiteral("voice"), tr("Hanglenyomat-elemzés"),
                                      tr("Nincs hangmodell. Töltsd le a Beállításokban (Beszélők)."), QStringLiteral("attention"), true);
-            voice.insert(QStringLiteral("fixTarget"), QStringLiteral("speakers"));
+            voice.insert(QStringLiteral("fixTarget"), QStringLiteral("voiceModels"));
             steps << voice
                   << step(QStringLiteral("transcript"), tr("Átirat"), tr("még nem indult"), QStringLiteral("waiting"), true)
                   << step(QStringLiteral("summary"), tr("Összefoglaló"), tr("az átirat után"), QStringLiteral("waiting"));

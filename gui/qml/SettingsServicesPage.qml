@@ -5,19 +5,24 @@ import QtQuick.Templates as T
 // Services: "Own key" or "Tanara Cloud" (coming soon), below it the two provider cards (the
 // configured role collapsed) or the "coming soon" notice; in both modes the "Embedding" card
 // (tag suggestions) and the TAG SUGGESTIONS switches.
+// `part` shows one slice of it on the Processing page: "stt" (mode, banners, transcription card /
+// the Cloud notice), "summary" (the LLM card), "tags" (embedding + switches); "" = everything.
 Column {
     id: root
 
     property var vm: null
+    property string part: ""
     property bool demoDropdown: false      // screenshot: the STT list is open
     signal rejectedResetRequested()        // "Reset": the window asks for confirmation
 
     readonly property bool cloudView: vm !== null && vm.serviceMode === "cloud"
+    function shows(p) { return part === "" || part === p }
 
     spacing: 16
 
     // ---- mode selector ----
     RowLayout {
+        visible: root.shows("stt")
         width: parent.width
         spacing: 10
 
@@ -117,14 +122,16 @@ Column {
         // The saved setting names Tanara Cloud (a developer setting): it cannot run yet.
         TBanner {
             objectName: "cloudUnavailableBanner"
-            visible: root.vm !== null && root.vm.cloudSelected
+            visible: root.shows("stt") && root.vm !== null && root.vm.cloudSelected
             width: parent.width
             tone: "warn"
             text: qsTr("A beállítás a Tanara Cloudot választja, ami még nem érhető el. Válassz saját kulcsos szolgáltatót.")
         }
 
         Rectangle {
-            visible: root.vm && root.vm.focusField !== ""
+            // Above the card the deep link came for.
+            visible: root.vm !== null && root.vm.focusField !== ""
+                     && root.shows(root.vm.focusField === "llm" ? "summary" : "stt")
             width: parent.width
             height: bannerText.implicitHeight + 20
             radius: Theme.radiusControl
@@ -145,6 +152,7 @@ Column {
 
         SettingsProviderCard {
             objectName: "sttCard"
+            visible: root.shows("stt")
             width: parent.width
             z: 2                            // the dropdown list goes over the next card
             card: root.vm ? root.vm.stt : null
@@ -154,6 +162,7 @@ Column {
         }
         SettingsProviderCard {
             objectName: "llmCard"
+            visible: root.shows("summary")
             width: parent.width
             z: 1
             card: root.vm ? root.vm.llm : null
@@ -164,13 +173,14 @@ Column {
 
     // ---- Tanara Cloud ----
     CloudComingSoon {
-        visible: root.cloudView
+        visible: root.cloudView && root.shows("stt")
         width: parent.width
     }
 
     // ---- embedding (for tag suggestions) ----
     SettingsEmbeddingCard {
         objectName: "embeddingCard"
+        visible: root.shows("tags")
         width: parent.width
         emb: root.vm ? root.vm.embedding : null
     }
@@ -178,6 +188,7 @@ Column {
     // ---- TAG SUGGESTIONS ----
     Column {
         objectName: "tagSuggestionSettings"
+        visible: root.shows("tags")
         width: parent.width
         topPadding: 8
         spacing: 12
@@ -233,24 +244,5 @@ Column {
                 TToolTip { visible: resetLink.hovered; text: qsTr("Az elutasított javaslatokat újra felajánlhatjuk") }
             }
         }
-    }
-
-    // Where the keys are (keychain / file), + a warning if the keychain was wanted but unavailable.
-    TBanner {
-        objectName: "secretsWarning"
-        visible: !root.cloudView && root.vm !== null && root.vm.secretsWarning !== ""
-        width: parent.width
-        tone: "warn"
-        text: root.vm ? root.vm.secretsWarning : ""
-    }
-    TLabel {
-        objectName: "secretsLocation"
-        visible: !root.cloudView
-        width: parent.width
-        text: root.vm ? root.vm.secretsLocationText : ""
-        muted: true
-        font.pixelSize: Theme.fontCaption
-        cssLineHeight: 1.45
-        wrapMode: Text.Wrap
     }
 }

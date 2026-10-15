@@ -134,7 +134,7 @@ private slots:
         QVERIFY(stepOf(vm, QStringLiteral("transcript")).value("parallel").toBool());
         // Without a voice model the voice step is blocked like the transcript step: warning + the Settings page to fix it.
         QCOMPARE(stepOf(vm, QStringLiteral("voice")).value("state").toString(), QStringLiteral("attention"));
-        QCOMPARE(stepOf(vm, QStringLiteral("voice")).value("fixTarget").toString(), QStringLiteral("speakers"));
+        QCOMPARE(stepOf(vm, QStringLiteral("voice")).value("fixTarget").toString(), QStringLiteral("voiceModels"));
         QCOMPARE(stepOf(vm, QStringLiteral("voice")).value("sub").toString(),
                  QStringLiteral("Nincs hangmodell. Töltsd le a Beállításokban (Beszélők)."));
         QCOMPARE(stepOf(vm, QStringLiteral("summary")).value("sub").toString(), QStringLiteral("az átirat után"));
@@ -458,7 +458,7 @@ private slots:
             QVERIFY(vm.speakers().value("line").toString().contains(QStringLiteral("tölts le modellt")));
             const QVariantMap step = stepOf(vm, QStringLiteral("transcript"));
             QCOMPARE(step.value("state").toString(), QStringLiteral("attention"));
-            QCOMPARE(step.value("fixTarget").toString(), QStringLiteral("speakers"));
+            QCOMPARE(step.value("fixTarget").toString(), QStringLiteral("diarization"));
             QVERIFY(!vm.allDone());
             QVERIFY(!vm.speakers().value("canDiarize").toBool());
             // The manual action is refused without a model (nothing starts).
@@ -781,7 +781,7 @@ private slots:
         vm.setDemoState(QStringLiteral("overviewSolo"));
         QCOMPARE(vm.decision(), QStringLiteral("solo"));
         vm.setDemoState(QStringLiteral("overviewNoVoiceModel"));
-        QCOMPARE(stepOf(vm, QStringLiteral("voice")).value("fixTarget").toString(), QStringLiteral("speakers"));
+        QCOMPARE(stepOf(vm, QStringLiteral("voice")).value("fixTarget").toString(), QStringLiteral("voiceModels"));
         QVERIFY(rowOf(vm, "m1").value("voiceless").toBool());
         vm.setDemoState(QStringLiteral("overviewDone"));
         QCOMPARE(vm.hiddenSpeakers(), 1);
@@ -893,13 +893,13 @@ private slots:
         QVERIFY(!vm.speakers().value("canDiarize").toBool());
 
         vm.setDemoState(QStringLiteral("overviewSpeakersOff"));
-        QCOMPARE(stepOf(vm, QStringLiteral("transcript")).value("fixTarget").toString(), QStringLiteral("speakers"));
+        QCOMPARE(stepOf(vm, QStringLiteral("transcript")).value("fixTarget").toString(), QStringLiteral("diarization"));
         QCOMPARE(stepOf(vm, QStringLiteral("transcript")).value("state").toString(), QStringLiteral("done"));
         QVERIFY(vm.speakers().value("line").toString().contains(QStringLiteral("kapcsold be")));
         QVERIFY(vm.speakers().value("canDiarize").toBool());
 
         vm.setDemoState(QStringLiteral("overviewSpeakersNoModel"));
-        QCOMPARE(stepOf(vm, QStringLiteral("transcript")).value("fixTarget").toString(), QStringLiteral("speakers"));
+        QCOMPARE(stepOf(vm, QStringLiteral("transcript")).value("fixTarget").toString(), QStringLiteral("diarization"));
         QCOMPARE(stepOf(vm, QStringLiteral("transcript")).value("state").toString(), QStringLiteral("attention"));
         QVERIFY(!vm.speakers().value("canDiarize").toBool());
 

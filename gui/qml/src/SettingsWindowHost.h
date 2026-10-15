@@ -40,8 +40,9 @@ public:
                        QObject* parent = nullptr);
     ~SettingsWindowHost() override;
 
-    // Opens / raises the window on the given page. page: "" | "general" | "recording" |
-    // "watcher" | "providers" | "cloud" | "speakers" | "summary"; focusField: "" | "stt" | "llm".
+    // Opens / raises the window on the given page. page: "" (the last page) or any target of
+    // SettingsViewModel::openPage (page keys and the legacy names); focusField: its section /
+    // the legacy "" | "stt" | "llm".
     // If the window was closed, it reloads the settings. False: QML error.
     bool open(const QString& page = QString(), const QString& focusField = QString());
     // Closes without asking (when the process shuts down); the unsaved draft is lost.

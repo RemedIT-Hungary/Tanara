@@ -935,7 +935,7 @@ tanara::library::OverviewSnapshot OverviewControllerFacade::snapshot(const QStri
         if (!m.hasTranscript && !c->voiceIdentificationAvailable()) {
             voiceSub = tr("Nincs hangmodell. Töltsd le a Beállításokban (Beszélők).");
             voiceState = QStringLiteral("attention");
-            voiceFixTarget = QStringLiteral("speakers");
+            voiceFixTarget = QStringLiteral("voiceModels");   // Processing > Speaker recognition
         }
     }
     QVariantMap voiceStep = step(QStringLiteral("voice"), tr("Hanglenyomat-elemzés"), voiceSub, voiceState,
