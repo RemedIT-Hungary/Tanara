@@ -1,10 +1,12 @@
 // PreTranscriptViewModel: the states of the pre-transcript view (steps, running, error) on an
-// isolated TANARA_HOME with a fake HTTP server (no real provider call).
+// isolated TANARA_HOME with a fake HTTP server (no real provider call); Whisper's context budget.
 #include "AppContext.h"
 #include "JobTestSupport.h"
 #include "PreTranscriptViewModel.h"
 
 #include "tanara/app/Services.h"
+#include "tanara/app/SettingsManager.h"
+#include "tanara/providers/stt/WhisperPrompt.h"
 #include "tanara/library/tags/TagSuggestionService.h"
 #include "tanara/library/tags/TagService.h"
 
@@ -101,6 +103,43 @@ private slots:
 
         // Mixdown: not yet.
         QCOMPARE(vm.mixdownState(), QStringLiteral("missing"));
+    }
+
+    // Whisper's context budget: nothing with Soniox; with whisper-compat the estimate of note + terms
+    // (the active track's speaker "Én"), a hint above 70 %, a warning + preview over the budget.
+    void whisperContextBudget()
+    {
+        jobtest::Sandbox sb;
+        const Meeting m = sb.recording("Keret", 1);
+        PreTranscriptViewModel vm(AppContext::instance()->servicesFor(sb.app.get()));
+        vm.setMeetingId(m.id);
+        QCOMPARE(vm.contextTokenBudget(), 224);
+
+        const QString longNote = QStringLiteral("Bevezető mondat a megbeszélésről. ") + QString(600, QLatin1Char('x'))
+                                 + QStringLiteral(" A Nordwig helyesen Nordvik.");
+        vm.setContextNote(longNote);
+        QVERIFY(vm.contextBudgetState().isEmpty());          // Soniox: nothing
+        QVERIFY(vm.contextPreview().isEmpty());
+
+        QSignalSpy budgetSpy(&vm, &PreTranscriptViewModel::contextBudgetChanged);
+        tanara::app::AppSettings st = sb.app->settings()->settings();
+        st.providers.stt.selectedId = QStringLiteral("whisper-compat");
+        sb.app->settings()->setSettings(st);                  // settingsChanged -> reload
+        QVERIFY(budgetSpy.count() >= 1);
+        QCOMPARE(vm.contextBudgetState(), QStringLiteral("over"));
+        QCOMPARE(vm.contextTokenEstimate(), providers::fitToBudget(longNote, {QStringLiteral("Én")}).fullTokens);
+        QVERIFY(vm.contextTokenEstimate() > 224);
+        // The preview: the dropped start struck through, the kept end, the terms last.
+        QVERIFY2(vm.contextPreview().startsWith(QStringLiteral("<s>Bevezető mondat")), qPrintable(vm.contextPreview()));
+        QVERIFY2(vm.contextPreview().endsWith(QStringLiteral("</s> A Nordwig helyesen Nordvik. Én")), qPrintable(vm.contextPreview()));
+
+        // Above 70 % of the budget (but within): the neutral hint, no cut.
+        vm.setContextNote(QString(440, QLatin1Char('y')));     // 444 characters -> 178 tokens > 0.7 * 224
+        QCOMPARE(vm.contextBudgetState(), QStringLiteral("hint"));
+        QVERIFY(!vm.contextPreview().contains(QStringLiteral("<s>")));
+        vm.setContextNote(QStringLiteral("Rövid megjegyzés"));
+        QVERIFY(vm.contextBudgetState().isEmpty());
+        QVERIFY(vm.contextTokenEstimate() > 0);
     }
 
     void identifySkipFlagRoundTrip()

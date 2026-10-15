@@ -5,6 +5,7 @@
 #include "TagMatching.h"
 
 #include "tanara/processing/ITranscribeStepFacade.h"
+#include "tanara/providers/stt/WhisperPrompt.h"
 
 namespace tanara_qml {
 
@@ -51,6 +52,7 @@ void PreTranscriptViewModel::init()
     connect(m_tags, &MeetingTagsModel::undoChanged, this, &PreTranscriptViewModel::reloadTagSuggestions);
     connect(m_tags, &MeetingTagsModel::toast, this, &PreTranscriptViewModel::toast);
     connect(m_note, &MeetingNoteModel::noteChanged, this, [this]() {
+        recomputeContextBudget();
         emit contextNoteChanged();
         emit changed();   // the run view's footer quotes from this too
     });
@@ -156,6 +158,8 @@ void PreTranscriptViewModel::applySnapshot(const processing::TranscribeStepSnaps
     m_title = s.title;
     m_state = s.state;
     m_providerLabel = s.providerLabel;
+    m_sttProviderId = s.sttProviderId;
+    m_sttTerms = s.sttTerms;
     m_identifyAvailable = s.identifyAvailable;
     m_identifyEnabled = s.identifyEnabled;
     m_mixdownState = s.mixdownState;
@@ -185,6 +189,37 @@ void PreTranscriptViewModel::applySnapshot(const processing::TranscribeStepSnaps
                                s.noteSuggestions ? MeetingNoteModel::demoSuggestions() : QVariantList());
     else
         m_note->reload();
+    recomputeContextBudget();
+}
+
+int PreTranscriptViewModel::contextTokenBudget() const
+{
+    return providers::kWhisperPromptTokenBudget;
+}
+
+void PreTranscriptViewModel::recomputeContextBudget()
+{
+    QString state;
+    int estimate = 0;
+    QString preview;
+    if (m_sttProviderId == QLatin1String("whisper-compat")) {
+        const providers::WhisperPromptFit fit = providers::fitToBudget(m_note->note(), m_sttTerms);
+        estimate = fit.fullTokens;
+        const int budget = providers::kWhisperPromptTokenBudget;
+        state = estimate > budget ? QStringLiteral("over")
+              : estimate * 10 > budget * 7 ? QStringLiteral("hint") : QString();
+        if (!fit.prompt.isEmpty() || !fit.droppedNote.isEmpty()) {
+            if (!fit.droppedNote.isEmpty())
+                preview = QStringLiteral("<s>%1</s> ").arg(fit.droppedNote.toHtmlEscaped());
+            preview += fit.prompt.toHtmlEscaped();
+        }
+    }
+    if (state == m_contextBudgetState && estimate == m_contextTokenEstimate && preview == m_contextPreview)
+        return;
+    m_contextBudgetState = state;
+    m_contextTokenEstimate = estimate;
+    m_contextPreview = preview;
+    emit contextBudgetChanged();
 }
 
 void PreTranscriptViewModel::reloadTagSuggestions()

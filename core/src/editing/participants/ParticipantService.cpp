@@ -580,6 +580,7 @@ void ParticipantService::mergeRecords(Meeting& m, int fromIdx, int intoIdx)
     if (into.tracks.isEmpty()) into.tracks = from.tracks;
     into.talkShare = std::min(1.0, into.talkShare + from.talkShare);
     into.approved = (into.approved || from.approved) && !into.personId.isNull();
+    into.namedByHand = into.namedByHand || from.namedByHand;
     appendUniqueTo(into.mergedFrom, QStringList{from.id} + from.mergedFrom);
     // The evidence anew; the voice score: the better of the two.
     const double score = std::max(voiceScoreOf(into), voiceScoreOf(from));
@@ -636,6 +637,7 @@ bool ParticipantService::nameParticipantImpl(const QString& meetingId, const QSt
         const int k = indexOfId(m, keptId);
         if (k >= 0) {
             Participant& p = m.participants[k];
+            if (!p.namedByHand) { p.namedByHand = true; changed = true; }
             if (decided(m)) p.approved = true;
             refreshEvidence(p, m);
             if (ParticipantApprovalEntry* e = approvalEntry(m, p.id)) {

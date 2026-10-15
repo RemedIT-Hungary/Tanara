@@ -1,7 +1,8 @@
 // The decision side of the Overview's "Who was there?" card: ParticipantsViewModel with a real
 // AppController in an ISOLATED TANARA_HOME (candidates written into meeting.json, no audio analysis):
 // the default checks (a contradicted candidate is unchecked), approve / skip / "They were not there"
-// reaching the meeting, and the tag-learning question after an approval (real data; and the bar
+// reaching the meeting, a name given by hand after Skip marked as such (the card's "Skipped · N names
+// by hand" header counts these rows), and the tag-learning question after an approval (real data; and the bar
 // itself, TagLearnPopup, on the made-up demo data).
 #include "AppContext.h"
 #include "ParticipantsViewModel.h"
@@ -9,6 +10,9 @@
 #include "FacadeTestSupport.h"
 
 #include "tanara/app/AppController.h"
+#include "tanara/app/Services.h"
+#include "tanara/editing/participants/ParticipantService.h"
+#include "tanara/library/IOverviewFacade.h"
 #include "tanara/library/store/PeopleStore.h"
 #include "tanara/library/store/MeetingRepository.h"
 #include "tanara/library/tags/TagService.h"
@@ -235,6 +239,38 @@ private slots:
         for (const Participant& p : m.participants)
             if (p.id == QLatin1String("v1")) QVERIFY(!p.approved);
         QCOMPARE(vm.checkedCount(), 1);
+    }
+
+    // After Skip a name given by hand is marked (stored, and the Overview row's "manual"); the voice
+    // recognition's names are not; a manually added participant counts as named by hand.
+    void skipThenNameByHand()
+    {
+        seedMeeting(false);
+        ParticipantsViewModel vm(services());
+        vm.setMeetingId(m_meetingId);
+        QVERIFY(vm.skip());
+        editing::ParticipantService& ps = m_app->services()->participants();
+        QVERIFY(ps.nameParticipant(m_meetingId, QStringLiteral("v4"), PersonChoice::create(QStringLiteral("Szabó Bence"))));
+        const Meeting m = m_app->store()->load(m_meetingId);
+        for (const Participant& p : m.participants) {
+            if (p.id == QLatin1String("v4")) QVERIFY(p.namedByHand && p.byHand());
+            if (p.id == QLatin1String("v2")) QVERIFY(!p.namedByHand && !p.byHand());
+        }
+        library::IOverviewFacade* ov = services().overview(QString(), this);
+        QVERIFY(ov);
+        QHash<QString, bool> manual;
+        for (const QVariant& v : ov->snapshot(m_meetingId).participants)
+            manual.insert(v.toMap().value("id").toString(), v.toMap().value("manual").toBool());
+        QVERIFY(manual.value(QStringLiteral("v4")));
+        QVERIFY(!manual.value(QStringLiteral("v2")));
+        QVERIFY(!manual.value(QStringLiteral("v1")));
+        // A manually added participant is named by hand too.
+        Participant added;
+        added.personId = pid(QStringLiteral("Lantos Réka"));
+        added.source = ParticipantSource::Manual;
+        QVERIFY(added.byHand());
+        added.personId = PersonId();
+        QVERIFY(!added.byHand());                              // anonymous: no name at all
     }
 
     // After "Approve" it asks once: Gábor is at a #Nordvik meeting for the second time, Szabó Bence

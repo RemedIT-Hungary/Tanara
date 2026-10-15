@@ -52,8 +52,8 @@
         <translation>Whisper (OpenAI-compatible)</translation>
     </message>
     <message>
-        <source>Lokális whisper-szerver (faster-whisper-server, speaches, whisper.cpp) vagy az OpenAI API (https://api.openai.com/v1 — ott 25 MB a fájllimit).</source>
-        <translation>A local whisper server (faster-whisper-server, speaches, whisper.cpp) or the OpenAI API (https://api.openai.com/v1 — with a 25 MB file limit).</translation>
+        <source>Lokális whisper-szerver (faster-whisper-server, speaches, whisper.cpp) vagy az OpenAI API (https://api.openai.com/v1 — ott 25 MB a fájllimit). A megbeszélés kontextusából (megjegyzés + nevek) legfeljebb ~224 tokent fogad: a hosszabb megjegyzés eleje kimarad, a nevek megmaradnak.</source>
+        <translation>A local whisper server (faster-whisper-server, speaches, whisper.cpp) or the OpenAI API (https://api.openai.com/v1 — with a 25 MB file limit). It takes at most ~224 tokens of the meeting context (note + names): the start of a longer note is dropped, the names are kept.</translation>
     </message>
     <message>
         <source>Lokális szervernél a betöltött modell neve (pl. Systran/faster-whisper-large-v3), az OpenAI API-nál whisper-1.</source>
@@ -2689,8 +2689,8 @@
         </translation>
     </message>
     <message>
-        <source>Kihagyva</source>
-        <translation>Skipped</translation>
+        <source>Jóváhagyás kihagyva</source>
+        <translation>Approval skipped</translation>
     </message>
     <message>
         <source>Csak én beszéltem</source>
@@ -2725,8 +2725,8 @@
         <translation>When the transcript arrives, I bind its speakers to these names. Changes apply at once; Ctrl+Z undoes them.</translation>
     </message>
     <message>
-        <source>Nem kötöttünk senkit; az átirat után a hangfelismerés dönt. Később is jóváhagyhatod.</source>
-        <translation>Nobody was bound; after the transcript, voice recognition decides. You can still approve later.</translation>
+        <source>A jelölteket nem hagytad jóvá; az átirat után a hangfelismerés dönt, a kézzel adott nevek azonnal érvényesek.</source>
+        <translation>You did not approve the candidates; after the transcript, voice recognition decides; names given by hand apply immediately.</translation>
     </message>
     <message>
         <source>Az átirat minden beszélője a te nevedre kerül; a többi jelölt rejtve. Ctrl+Z visszavonja.</source>
@@ -2814,6 +2814,13 @@
         <translation>
             <numerusform>and %n more</numerusform>
             <numerusform>and %n more</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>Kihagyva · %n név kézzel</source>
+        <translation>
+            <numerusform>Skipped · %n name by hand</numerusform>
+            <numerusform>Skipped · %n names by hand</numerusform>
         </translation>
     </message>
 </context>
@@ -3455,6 +3462,22 @@
         <source>Kontextus és előkészítés módosítása</source>
         <translation>Edit context and preparation</translation>
     </message>
+    <message>
+        <source>A kiválasztott átíró (Whisper) legfeljebb ~%1 tokent fogad a kontextusból (becslés: %2 token).</source>
+        <translation>The selected transcriber (Whisper) takes at most ~%1 tokens of context (estimate: %2 tokens).</translation>
+    </message>
+    <message>
+        <source>A kiválasztott átíró (Whisper) legfeljebb ~224 tokent fogad; a kontextus eleje csonkolva lesz (becslés: %1 token).</source>
+        <translation>The selected transcriber (Whisper) takes at most ~224 tokens; the start of the context will be cut (estimate: %1 tokens).</translation>
+    </message>
+    <message>
+        <source>Mit kap a modell?</source>
+        <translation>What does the model get?</translation>
+    </message>
+    <message>
+        <source>A modellnek küldött kontextus; az áthúzott rész kimarad</source>
+        <translation>The context sent to the model; the struck-through part is dropped</translation>
+    </message>
 </context>
 <context>
     <name>PromptLibrary</name>
@@ -3519,6 +3542,10 @@
     <message>
         <source>&lt;2–4 mondatos vezetői összefoglaló&gt;</source>
         <translation>&lt;executive summary of 2–4 sentences&gt;</translation>
+    </message>
+    <message>
+        <source>Forrás-jelölő minden mondat / döntés / nyitott kérdés / teendő / memó-pont végén: [t=mm:ss] (több: [t=mm:ss, t=mm:ss])</source>
+        <translation>Source marker at the end of every sentence / decision / open question / action item / memo point: [t=mm:ss] (several: [t=mm:ss, t=mm:ss])</translation>
     </message>
 </context>
 <context>

@@ -70,6 +70,13 @@ QVariantMap withCard(QVariantMap row, bool counted, bool doubtful = false, bool 
     return row;
 }
 
+// A row named by hand ("manual": the card's "Skipped · N names by hand" header counts these).
+QVariantMap byHand(QVariantMap row)
+{
+    row.insert(QStringLiteral("manual"), true);
+    return row;
+}
+
 // An unknown voice of the analysis ("Unknown voice N"): nameable, not counted.
 QVariantMap voiceRow(const QString& id, int n, int colorIndex, const QVariantList& sources, double talkShare)
 {
@@ -163,10 +170,10 @@ QString OverviewDemoFacade::addParticipant(const QString& meetingId, const QStri
         return {};
     QVariantList rows = m_snapshot.participants;
     const QString id = QStringLiteral("demo-") + QString::number(rows.size() + 1);
-    rows << withCard(personRow(id, n, int(rows.size()), QString(),
+    rows << byHand(withCard(personRow(id, n, int(rows.size()), QString(),
                                {source(QStringLiteral("user"), tr("kézi"), false, false, tr("Kézzel adtad hozzá"))},
                                -1.0, false, false, false, true),
-                     true, false, true);
+                     true, false, true));
     // A suggestion with this name is now a participant.
     for (int i = int(rows.size()) - 2; i >= 0; --i)
         if (rows.at(i).toMap().value(QStringLiteral("suggested")).toBool()
@@ -213,6 +220,7 @@ bool OverviewDemoFacade::nameParticipant(const QString& meetingId, const QString
     row.insert(QStringLiteral("anonymous"), false);
     row.insert(QStringLiteral("counted"), true);
     row.insert(QStringLiteral("doubtful"), false);
+    row.insert(QStringLiteral("manual"), true);
     // The "unknown voice" badge gives way to the manual naming.
     QVariantList sources;
     for (const QVariant& src : row.value(QStringLiteral("sources")).toList())
@@ -437,10 +445,10 @@ tanara::library::OverviewSnapshot OverviewDemoFacade::build() const
         s.peopleState = QStringLiteral("empty");
         s.peopleHint.clear();
     } else if (noModel) {
-        rows << withCard(personRow(QStringLiteral("m1"), demoName("Fehér Gábor"), 1, {},
+        rows << byHand(withCard(personRow(QStringLiteral("m1"), demoName("Fehér Gábor"), 1, {},
                                    {source(QStringLiteral("user"), tr("kézi"), false, false, tr("Kézzel adtad hozzá"))},
                                    -1.0, false, false, false, true),
-                         true, false, true);
+                         true, false, true));
         s.peopleState = QStringLiteral("list");
         s.peopleHint = tr("kézi");
     } else if (nobody) {
@@ -494,10 +502,10 @@ tanara::library::OverviewSnapshot OverviewDemoFacade::build() const
             v = row;
         }
         if (st == QLatin1String("overviewVoiceless"))
-            rows.insert(rows.size() - 1, withCard(personRow(QStringLiteral("t1"), demoName("Tóth Bence"), 5, {},
+            rows.insert(rows.size() - 1, byHand(withCard(personRow(QStringLiteral("t1"), demoName("Tóth Bence"), 5, {},
                                                             {source(QStringLiteral("user"), tr("kézi"), false, false, tr("Kézzel adtad hozzá"))},
                                                             -1.0, false, false, false, true),
-                                                  true, false, true));
+                                                  true, false, true)));
         s.peopleState = QStringLiteral("list");
         s.peopleHint = tr("hang · sáv · címke · kézi");
     }

@@ -49,7 +49,7 @@ class OverviewViewModel : public QObject {
     //          anonymous (anonymous, can be named), approved (the record is approved / confirmed: "Was there"),
     //          doubtful (named and heard, but the approval leaves it out unless confirmed: "Was there"),
     //          counted (the approval takes it: "Approve · N"), voiceless (no voice of theirs: added by
-    //          hand / not heard), lineCount (after the transcript: the speaker's lines, else 0),
+    //          hand / not heard), manual (the name was given by hand), lineCount (after the transcript: the speaker's lines, else 0),
     //          sampleTrackId / sampleStartMs / sampleEndMs (the sample to listen to, -1 = none),
     //          sources: [{ icon, text, negative, accent, detail }] }
     // The badge's detail is the tooltip (the evidence's explanation). After the transcript, after

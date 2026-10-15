@@ -361,6 +361,19 @@ QVector<PromptVariable> promptVariables()
     };
 }
 
+namespace {
+
+// The source-marker line under the short-form schemas. Settings shows it (it is not sent to the LLM:
+// the prompt has its own English SOURCE MARKERS block), so it is UI text in the app's language.
+QString sourceMarkerNote()
+{
+    return QCoreApplication::translate("PromptLibrary",
+        "Forrás-jelölő minden mondat / döntés / nyitott kérdés / teendő / memó-pont végén: [t=mm:ss] "
+        "(több: [t=mm:ss, t=mm:ss])");
+}
+
+} // namespace
+
 PromptOutputFormat promptOutputFormat(const QString& id)
 {
     PromptOutputFormat f;
@@ -386,8 +399,8 @@ PromptOutputFormat promptOutputFormat(const QString& id)
             "    { \"text\": string, \"owner\": string, \"due\": string }, …\n"
             "  ]\n"
             "}\n"
-            "\n"
-            "Forrás-jelölő minden mondat / döntés / nyitott kérdés / teendő / memó-pont végén: [t=mm:ss] (több: [t=mm:ss, t=mm:ss])");
+            "\n")
+            + sourceMarkerNote();
     } else if (id == QLatin1String("notes")) {
         f.kind = QStringLiteral("text");
         f.summary = QStringLiteral("TOPICS, DECISIONS, OPEN, ACTIONS");
@@ -422,8 +435,8 @@ PromptOutputFormat promptOutputFormat(const QString& id)
             "  ],\n"
             "  \"execSummary\": string\n"
             "}\n"
-            "\n"
-            "Forrás-jelölő minden mondat / döntés / nyitott kérdés / teendő / memó-pont végén: [t=mm:ss] (több: [t=mm:ss, t=mm:ss])");
+            "\n")
+            + sourceMarkerNote();
     } else if (id == QLatin1String("topic")) {
         f.kind = QStringLiteral("markdown");
         f.summary = QCoreApplication::translate("PromptLibrary", "## Cím + 1–2 mondat, témánként");

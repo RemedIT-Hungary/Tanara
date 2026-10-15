@@ -143,7 +143,7 @@ private slots:
         QVERIFY(shown("skipButton"));
         QMetaObject::invokeMethod(object("participantList"), "skip");   // below the fold at 820 px
         QTRY_VERIFY(!shown("skipButton"));
-        QCOMPARE(item("participantsHeaderTitle")->property("text").toString(), QStringLiteral("Kihagyva"));
+        QCOMPARE(item("participantsHeaderTitle")->property("text").toString(), QStringLiteral("Jóváhagyás kihagyva"));
 
         QObject* tip = object("tabTooltip");
         QVERIFY(tip);

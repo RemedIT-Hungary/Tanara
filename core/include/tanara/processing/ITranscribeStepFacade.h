@@ -24,6 +24,10 @@ struct TranscribeStepSnapshot {
     QString state = QStringLiteral("none");
     QString title;                  // the meeting's title (the title-based tag suggestion)
     QString providerLabel;          // "Soniox · own key"
+    // The transcriber's provider id ("soniox", "whisper-compat", "tanara-cloud", ...) and the terms
+    // the meeting gives it besides the note (library::fillSttContext: the active tracks' speakers).
+    QString sttProviderId;
+    QStringList sttTerms;
     bool identifyAvailable = true;
     bool identifyEnabled = true;
     // "ready" | "missing" | "stale" | "running"

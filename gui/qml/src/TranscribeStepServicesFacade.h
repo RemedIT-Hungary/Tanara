@@ -27,6 +27,8 @@ public:
         tanara::app::SettingsManager*       settings = nullptr;
         std::function<tanara::providers::ReadinessResult(tanara::providers::WorkflowStep, const QString&)> canRun;
         std::function<QString(tanara::providers::WorkflowStep)> providerLabel;
+        // The transcriber's provider id (the Cloud's when the step runs there).
+        std::function<QString()> sttProviderId;
         std::function<bool()> identifyAvailable;
         std::function<bool(const QString&)> identifyAfterTranscription;
         std::function<void(const QString&, bool)> setIdentifyAfterTranscription;

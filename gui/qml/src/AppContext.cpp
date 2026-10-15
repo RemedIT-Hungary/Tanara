@@ -502,9 +502,10 @@ bool includedByDefault(const Participant& p)
 
 // The card's decision keys of a row with a participant record: counted ("Approve · N"; after a
 // decision: approved), doubtful (named and heard, but left out unless confirmed: "Was there"),
-// voiceless (no voice of theirs).
+// voiceless (no voice of theirs), manual (the name was given by hand: Participant::byHand).
 QVariantMap withDecision(QVariantMap row, const Participant& p, bool decided)
 {
+    row.insert(QStringLiteral("manual"), p.byHand());
     const bool named = !p.personId.isNull();
     const bool voiceless = p.sides.isEmpty() && p.rawSpeakerIds.isEmpty();
     const bool byDefault = includedByDefault(p);
@@ -1334,6 +1335,10 @@ const UiServices& AppContext::servicesFor(tanara::app::AppController* c)
     ts.settings = c->settings();
     ts.canRun = [c](tanara::providers::WorkflowStep step, const QString& id) { return c->canRun(step, id); };
     ts.providerLabel = [c](tanara::providers::WorkflowStep step) { return controllerProviderLabel(c, step); };
+    ts.sttProviderId = [c]() -> QString {
+        if (c->usesCloud(tanara::providers::WorkflowStep::Transcribe)) return QStringLiteral("tanara-cloud");   // cloud::ProviderId
+        return c->settings() ? c->settings()->settings().providers.stt.selectedId : QString();
+    };
     ts.identifyAvailable = [c] { return c->voiceIdentificationAvailable(); };
     ts.identifyAfterTranscription = [c](const QString& id) { return c->identifyAfterTranscription(id); };
     ts.setIdentifyAfterTranscription = [c](const QString& id, bool on) { c->setIdentifyAfterTranscription(id, on); };

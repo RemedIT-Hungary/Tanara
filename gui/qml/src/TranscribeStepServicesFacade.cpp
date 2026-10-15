@@ -4,8 +4,10 @@
 
 #include "tanara/app/SettingsManager.h"
 #include "tanara/library/MeetingLayout.h"
+#include "tanara/library/MeetingNotes.h"
 #include "tanara/library/jobs/MeetingJobTracker.h"
 #include "tanara/library/store/MeetingRepository.h"
+#include "tanara/providers/stt/ISttProvider.h"
 
 #include <QDir>
 #include <QFileInfo>
@@ -47,6 +49,12 @@ processing::TranscribeStepSnapshot TranscribeStepServicesFacade::snapshot(const 
     const JobProgress job = m_jobs->job(meetingId, JobKind::Transcribe);
 
     if (m_deps.providerLabel) s.providerLabel = m_deps.providerLabel(providers::WorkflowStep::Transcribe);
+    if (m_deps.sttProviderId) s.sttProviderId = m_deps.sttProviderId();
+    {
+        providers::SttRequest req;
+        library::meetingnotes::fillSttContext(req, m);
+        s.sttTerms = req.contextTerms;
+    }
     s.identifyAvailable = m_deps.identifyAvailable && m_deps.identifyAvailable();
     s.identifyEnabled = s.identifyAvailable && m_deps.identifyAfterTranscription
                         && m_deps.identifyAfterTranscription(meetingId);

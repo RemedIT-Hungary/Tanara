@@ -156,7 +156,8 @@ ProviderDescriptor whisperCompatDescriptor()
     baseUrl.defaultValue = QStringLiteral("http://localhost:8000/v1");
     baseUrl.help         = QCoreApplication::translate("BuiltinProviders",
         "Lokális whisper-szerver (faster-whisper-server, speaches, whisper.cpp) vagy az OpenAI API "
-        "(https://api.openai.com/v1 — ott 25 MB a fájllimit).");
+        "(https://api.openai.com/v1 — ott 25 MB a fájllimit). A megbeszélés kontextusából (megjegyzés + "
+        "nevek) legfeljebb ~224 tokent fogad: a hosszabb megjegyzés eleje kimarad, a nevek megmaradnak.");
 
     ConfigField model;
     model.key          = QStringLiteral("model");

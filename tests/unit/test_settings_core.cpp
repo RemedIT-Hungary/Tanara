@@ -12,6 +12,7 @@
 #include <QTemporaryDir>
 
 #include "tanara/processing/summary/PromptLibrary.h"
+#include "ts_translator.h"
 #include "tanara/app/SettingsManager.h"
 #include "tanara/library/tracks/TrackCatalog.h"
 #include "tanara/foundation/platform/Platform.h"
@@ -452,6 +453,28 @@ private slots:
         QVERIFY(analysis.body.contains(QStringLiteral("## Teendők")));
         QCOMPARE(processing::promptOutputFormat(QStringLiteral("topic")).kind, QStringLiteral("markdown"));
         QVERIFY(processing::promptOutputFormat(QStringLiteral("nincs-ilyen")).kind.isEmpty());
+    }
+
+    // The source-marker line under the short-form schemas is UI text (Settings shows it, the LLM never
+    // gets it): Hungarian source, English from the shipped .ts in the English UI.
+    void outputFormatSourceNoteFollowsUiLanguage()
+    {
+        const QString hu = QStringLiteral("Forrás-jelölő minden mondat");
+        for (const QString& id : {QStringLiteral("single"), QStringLiteral("merge")}) {
+            QVERIFY2(processing::promptOutputFormat(id).body.contains(hu), qPrintable(id));
+            QVERIFY2(!processing::promptBuiltin(id).contains(hu), qPrintable(id));   // not part of the prompt
+        }
+        tstest::TsTranslator tr;
+        QVERIFY(tr.loadTs(QStringLiteral(TANARA_EN_TS)));
+        QCoreApplication::installTranslator(&tr);
+        for (const QString& id : {QStringLiteral("single"), QStringLiteral("merge")}) {
+            const QString body = processing::promptOutputFormat(id).body;
+            QVERIFY2(!body.contains(hu), qPrintable(body));
+            QVERIFY2(body.endsWith(QStringLiteral("Source marker at the end of every sentence / decision / open question / "
+                                                  "action item / memo point: [t=mm:ss] (several: [t=mm:ss, t=mm:ss])")),
+                     qPrintable(body));
+        }
+        QCoreApplication::removeTranslator(&tr);
     }
 };
 

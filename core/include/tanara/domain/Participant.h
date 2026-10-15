@@ -69,6 +69,9 @@ struct Participant {
     QStringList rawSpeakerIds;      // bound raw STT speakers ("Speaker 1")
     ParticipantSource source = ParticipantSource::Voice;
     bool approved = false;          // approved by the user ("Who was there?")
+    // The user gave the name (the naming panel, "This is me"); a manually added participant
+    // (source Manual) counts as named by hand too (Participant::byHand()).
+    bool namedByHand = false;
     QStringList sides;              // "mic" | "loopback": which side it was heard on
     // Manual speaker -> track binding (track ids, "Which track do they speak on?"); empty = the
     // inferred side (sides) applies. After transcription SpeakerOverlay::speakerTracks is its
@@ -86,6 +89,9 @@ struct Participant {
     // participants merged into this one; the voice analysis's clusters of those ids belong to this one
     // (editing::participantsample::withMerges). A re-analysis starts afresh (cleared).
     QStringList mergedFrom;
+
+    // Named, and the name comes from the user (not from voice recognition).
+    bool byHand() const { return !personId.isNull() && (namedByHand || source == ParticipantSource::Manual); }
 };
 
 // A participant's / speaker's track binding for the UI: the manual tracks (manual), otherwise

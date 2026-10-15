@@ -7,7 +7,8 @@ import QtQuick.Layouts
 //            no voice model (points to the PROCESSING step's "Open settings"; no second button) |
 //            the decision is pending (blue: "Who was there? The voiceprint analysis found N voices",
 //            what to do, the model / age meta) | the decision ("approved · N", "skipped", "only me";
-//            the rows stay, changes stay immediate) | everyone anonymous after the transcript
+//            the rows stay, changes stay immediate; "approval skipped" says hand-given names apply at
+//            once, and reads "skipped · N names by hand" when every row is) | everyone anonymous after the transcript
 //   rows     ParticipantCardRow; "Only I spoke" shows the own row only; after the transcript the
 //            speakers (anonymous speakers without a line are hidden, counted in one sentence)
 //   footer   while the decision is pending / the analysis runs: what is left out, "Only I spoke",
@@ -51,6 +52,10 @@ ColumnLayout {
     readonly property bool showFooter: pending || running
     readonly property bool empty: shownRows.length === 0
     readonly property int approveCount: vm ? vm.approveCount : 0
+    // After "Skip": the rows named by hand (row.manual); when every row is, the header counts them.
+    readonly property var ownRows: rows.filter(r => r.suggested !== true)
+    readonly property int namedByHand: ownRows.filter(r => r.manual === true).length
+    readonly property bool allNamedByHand: ownRows.length > 0 && namedByHand === ownRows.length
     // "Left out: 1 doubtful, 2 unknown voices — their speech stays anonymous".
     readonly property string leftOutText: {
         const doubt = rows.filter(r => r.doubtful === true && r.approved !== true && r.suggested !== true).length
@@ -180,11 +185,13 @@ ColumnLayout {
                                 : root.pending ? qsTr("Kik voltak ott? A hanglenyomat-elemzés %n hangot talált", "",
                                                       root.vm ? root.vm.candidateCount : 0)
                                 : root.decisionState === "approved" ? qsTr("Jóváhagyva · %n résztvevő", "", root.approveCount)
-                                : root.decisionState === "skipped" ? qsTr("Kihagyva")
+                                : root.decisionState === "skipped" ? (root.allNamedByHand ? qsTr("Kihagyva · %n név kézzel", "", root.namedByHand)
+                                                                                          : qsTr("Jóváhagyás kihagyva"))
                                 : root.solo ? qsTr("Csak én beszéltem")
                                 : qsTr("Egyik hang sem ismerős")
                         }
                         TLabel {
+                            objectName: "participantsHeaderText"
                             Layout.fillWidth: true
                             wrapMode: Text.Wrap
                             muted: true
@@ -198,7 +205,7 @@ ColumnLayout {
                                 : root.decisionState === "approved" ? (root.vm && root.vm.hasTranscript
                                                   ? qsTr("Az átirat beszélői ezekhez a nevekhez kötve. A módosítás azonnal érvényes; Ctrl+Z visszavonja.")
                                                   : qsTr("Az átirat érkezésekor ezekre a nevekre kötöm a beszélőket. A módosítás azonnal érvényes; Ctrl+Z visszavonja."))
-                                : root.decisionState === "skipped" ? qsTr("Nem kötöttünk senkit; az átirat után a hangfelismerés dönt. Később is jóváhagyhatod.")
+                                : root.decisionState === "skipped" ? qsTr("A jelölteket nem hagytad jóvá; az átirat után a hangfelismerés dönt, a kézzel adott nevek azonnal érvényesek.")
                                 : root.solo ? qsTr("Az átirat minden beszélője a te nevedre kerül; a többi jelölt rejtve. Ctrl+Z visszavonja.")
                                 : qsTr("Egyikük hangja sem hasonlít egy ismert emberére sem. Nevezd el őket: legközelebb felismerjük a hangjukat.")
                         }

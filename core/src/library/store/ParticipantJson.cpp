@@ -214,6 +214,7 @@ QJsonObject toJson(const Participant& p)
     o[QStringLiteral("rawSpeakerIds")] = stringListToArray(p.rawSpeakerIds);
     o[QStringLiteral("source")]        = participantSourceName(p.source);
     o[QStringLiteral("approved")]      = p.approved;
+    if (p.namedByHand) o[QStringLiteral("namedByHand")] = true;
     o[QStringLiteral("sides")]         = stringListToArray(p.sides);
     if (!p.tracks.isEmpty()) o[QStringLiteral("tracks")] = stringListToArray(p.tracks);
     QJsonArray ev;
@@ -232,6 +233,7 @@ Participant participantFromJson(const QJsonObject& o)
     p.rawSpeakerIds = arrayToStringList(o.value(QStringLiteral("rawSpeakerIds")).toArray());
     p.source        = participantSourceFromName(o.value(QStringLiteral("source")).toString());
     p.approved      = o.value(QStringLiteral("approved")).toBool();
+    p.namedByHand   = o.value(QStringLiteral("namedByHand")).toBool();
     p.sides         = arrayToStringList(o.value(QStringLiteral("sides")).toArray());
     p.tracks        = arrayToStringList(o.value(QStringLiteral("tracks")).toArray());
     for (const QJsonValue& v : o.value(QStringLiteral("evidence")).toArray())

@@ -56,6 +56,15 @@ class PreTranscriptViewModel : public QObject {
     // MeetingNoteEditor gets this. contextNote is its saved value (shorthand).
     Q_PROPERTY(tanara_qml::MeetingNoteModel* note READ note CONSTANT)
     Q_PROPERTY(QString contextNote READ contextNote WRITE setContextNote NOTIFY contextNoteChanged)
+    // Whisper's context budget (providers/stt/WhisperPrompt.h), only when the transcriber is
+    // whisper-compat: contextBudgetState "" (another transcriber, or well within) | "hint" (above 70 %
+    // of the budget) | "over" (the start of the note will be cut); the estimate of the full prompt
+    // (note + terms), the budget, and the preview of what the model gets (rich text: the dropped start
+    // of the note struck through, then the kept part and the terms).
+    Q_PROPERTY(QString contextBudgetState READ contextBudgetState NOTIFY contextBudgetChanged)
+    Q_PROPERTY(int contextTokenEstimate READ contextTokenEstimate NOTIFY contextBudgetChanged)
+    Q_PROPERTY(int contextTokenBudget READ contextTokenBudget CONSTANT)
+    Q_PROPERTY(QString contextPreview READ contextPreview NOTIFY contextBudgetChanged)
     // Step 1's tag field (the meeting's tags).
     Q_PROPERTY(tanara_qml::MeetingTagsModel* tags READ tags CONSTANT)
     // The suggestion row: [{ index, id, name, isNew, source }] (at most 3).
@@ -115,6 +124,10 @@ public:
     // (MeetingNoteModel's draft / commitDraft operations.)
     Q_INVOKABLE void draftContextNote(const QString& note) { m_note->draft(note); }
     Q_INVOKABLE void commitContextDraft() { m_note->commitDraft(); }
+    QString contextBudgetState() const { return m_contextBudgetState; }
+    int contextTokenEstimate() const { return m_contextTokenEstimate; }
+    int contextTokenBudget() const;
+    QString contextPreview() const { return m_contextPreview; }
     MeetingTagsModel* tags() const { return m_tags; }
     QVariantList tagSuggestions() const;
     QString tagSuggestionReason() const;
@@ -156,6 +169,7 @@ signals:
     void meetingIdChanged();
     void demoStateChanged();
     void contextNoteChanged();
+    void contextBudgetChanged();
     void tagSuggestionsChanged();
     // Notice after a tag step (the view shows it with the shell's toast, with "Undo").
     void toast(const QString& text, bool undoable);
@@ -173,6 +187,7 @@ private:
     void applySnapshot(const tanara::processing::TranscribeStepSnapshot& s);
     void applyJob(const tanara::JobProgress& job);
     void reloadTagSuggestions();
+    void recomputeContextBudget();
 
     const UiServices* m_services = nullptr;        // given services (null: the App singleton's)
     const UiServices* m_facadeSet = nullptr;       // the set the facade came from
@@ -195,6 +210,11 @@ private:
     bool m_canStart = false;
     QVariantMap m_blocker;
     QString m_providerLabel;
+    QString m_sttProviderId;
+    QStringList m_sttTerms;
+    QString m_contextBudgetState;
+    int m_contextTokenEstimate = 0;
+    QString m_contextPreview;
 
     bool m_cloudSoon = false;
 

@@ -3,11 +3,13 @@
 // memory): the pending decision's header / footer and "Approve · N", "Was there" on a doubtful row,
 // the naming panel ("This is me" first or last, with the failure reason; naming; "Same voice as..."),
 // "+ Participant" -> "Which voice is it?" ("That's them" / "None of them" -> a voiceless row), the
-// hidden zero-line speakers, "Only I spoke" hiding the other rows, "Approve" / "Skip" in place, the
+// hidden zero-line speakers, "Only I spoke" hiding the other rows, "Approve" / "Skip" in place (the
+// skipped header; "Skipped · N names by hand" once every row is named by hand, also in English), the
 // track rule sentence (G10) and the track control (buttons; a drop-down with 3+ tracks), the no
 // voice model header.
 #include "AppContext.h"
 #include "QmlApp.h"
+#include "../unit/ts_translator.h"
 
 #include <QQmlApplicationEngine>
 #include <QQmlComponent>
@@ -277,6 +279,49 @@ private slots:
         QVERIFY(!shown("approveButton"));
         QVERIFY(!shown("participantsFooter"));
         QCOMPARE(visibleItems("participantRow").size(), 6);
+    }
+
+    // "Skip" decides in place: the header says the approval was skipped and that hand-given names apply
+    // at once; once every row is named by hand it counts them (English from the shipped .ts too).
+    void skip_inPlaceThenNamedByHand()
+    {
+        load(QStringLiteral("overviewProcessing"));
+        click(item("skipButton"));
+        QTRY_COMPARE(text("participantsHeaderTitle"), QStringLiteral("Jóváhagyás kihagyva"));
+        QCOMPARE(text("participantsHeaderText"),
+                 QStringLiteral("A jelölteket nem hagytad jóvá; az átirat után a hangfelismerés dönt, "
+                                "a kézzel adott nevek azonnal érvényesek."));
+        QVERIFY(!shown("participantsFooter"));
+        // Naming one row by hand is not enough; naming every row is.
+        QStringList ids;
+        for (const QVariant& v : vm()->property("participants").toList())
+            if (!v.toMap().value("suggested").toBool()) ids << v.toMap().value("id").toString();
+        QVERIFY(ids.size() >= 2);
+        for (int i = 0; i < ids.size(); ++i) {
+            bool ok = false;
+            QMetaObject::invokeMethod(vm(), "nameParticipant", Q_RETURN_ARG(bool, ok),
+                                      Q_ARG(QString, ids.at(i)), Q_ARG(QString, QStringLiteral("Kézi Név %1").arg(i + 1)));
+            QVERIFY(ok);
+            if (i + 1 < ids.size())
+                QTRY_COMPARE(text("participantsHeaderTitle"), QStringLiteral("Jóváhagyás kihagyva"));
+        }
+        const int named = int(card()->property("ownRows").toList().size());
+        QTRY_COMPARE(text("participantsHeaderTitle"), QStringLiteral("Kihagyva · %1 név kézzel").arg(named));
+
+        // English: the plural form and the new texts from the shipped .ts.
+        tstest::TsTranslator tr;
+        QVERIFY(tr.loadTs(QStringLiteral(TANARA_EN_TS)));
+        QCoreApplication::installTranslator(&tr);
+        m_engine->retranslate();
+        QTRY_COMPARE(text("participantsHeaderTitle"), QStringLiteral("Skipped · %1 names by hand").arg(named));
+        QCOMPARE(text("participantsHeaderText"),
+                 QStringLiteral("You did not approve the candidates; after the transcript, voice recognition decides; "
+                                "names given by hand apply immediately."));
+        QCOMPARE(QCoreApplication::translate("ParticipantsCard", "Kihagyva · %n név kézzel", "", 1),
+                 QStringLiteral("Skipped · 1 name by hand"));
+        QCOMPARE(QCoreApplication::translate("ParticipantsCard", "Jóváhagyás kihagyva"), QStringLiteral("Approval skipped"));
+        QCoreApplication::removeTranslator(&tr);
+        m_engine->retranslate();
     }
 
     // The track rule (G10): holds when every named speaker is bound by hand; one click on a bound

@@ -151,6 +151,46 @@ Item {
                         accessibleName: qsTr("Miről szólt a megbeszélés?")
                         helperText: qsTr("Témák, nevek, szakszavak és az ismert félrehallások: az átíró ebből pontosabb átiratot készít, és az összefoglaló is megkapja. Később, az Összefoglaló fülön is módosítható. Elhagyható.")
                     }
+                    // Whisper's context budget (only with the whisper-compat transcriber): above 70 % a
+                    // neutral hint, over the budget a warning + "What does the model get?" preview.
+                    TLabel {
+                        objectName: "contextBudgetHint"
+                        visible: vm.contextBudgetState === "hint"
+                        Layout.fillWidth: true
+                        text: qsTr("A kiválasztott átíró (Whisper) legfeljebb ~%1 tokent fogad a kontextusból (becslés: %2 token).")
+                              .arg(vm.contextTokenBudget).arg(vm.contextTokenEstimate)
+                        muted: true
+                        font.pixelSize: Theme.fontSmall
+                        wrapMode: Text.Wrap
+                    }
+                    TBanner {
+                        id: budgetBanner
+                        objectName: "contextBudgetWarning"
+                        property bool previewOpen: false
+                        visible: vm.contextBudgetState === "over"
+                        Layout.fillWidth: true
+                        tone: "warn"
+                        text: qsTr("A kiválasztott átíró (Whisper) legfeljebb ~224 tokent fogad; a kontextus eleje csonkolva lesz (becslés: %1 token).")
+                              .arg(vm.contextTokenEstimate)
+                        TButton {
+                            objectName: "contextPreviewButton"
+                            text: qsTr("Mit kap a modell?")
+                            size: "small"
+                            variant: "ghost"
+                            onClicked: budgetBanner.previewOpen = !budgetBanner.previewOpen
+                        }
+                    }
+                    TLabel {
+                        objectName: "contextPreview"
+                        visible: budgetBanner.visible && budgetBanner.previewOpen
+                        Layout.fillWidth: true
+                        textFormat: Text.StyledText
+                        text: vm.contextPreview
+                        muted: true
+                        font.pixelSize: Theme.fontSmall
+                        wrapMode: Text.Wrap
+                        Accessible.name: qsTr("A modellnek küldött kontextus; az áthúzott rész kimarad")
+                    }
                 }
 
                 PreTranscriptStep {

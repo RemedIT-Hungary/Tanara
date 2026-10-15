@@ -1,5 +1,6 @@
 #include "tanara/foundation/net/NetworkErrorText.h"
 #include "tanara/providers/stt/WhisperCompatProvider.h"
+#include "tanara/providers/stt/WhisperPrompt.h"
 #include "tanara/providers/core/ProviderConfig.h"
 #include "tanara/foundation/log/Logging.h"
 
@@ -39,18 +40,11 @@ QString defaultModel(const ProviderConfig& cfg)
 }
 
 // Whisper's "prompt" field biases decoding toward the given words: from the context envelope the
-// terms + the free description go in (cut short; whisper looks at only the last ~224 tokens anyway).
+// free description + the terms go in, within whisper's ~224-token budget (WhisperPrompt.h: the note
+// first, the terms last, so a cut drops the start of the note and never a name).
 QString promptFromContext(const SttRequest& req)
 {
-    QStringList parts;
-    if (!req.contextTerms.isEmpty())
-        parts << req.contextTerms.join(QStringLiteral(", "));
-    if (!req.context.trimmed().isEmpty())
-        parts << req.context.trimmed();
-    QString p = parts.join(QStringLiteral(". "));
-    if (p.size() > 800)
-        p.truncate(800);
-    return p;
+    return fitToBudget(req.context, req.contextTerms).prompt;
 }
 
 QHttpPart textPart(const QString& name, const QString& value)
