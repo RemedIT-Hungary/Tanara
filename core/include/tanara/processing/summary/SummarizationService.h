@@ -134,8 +134,11 @@ private:
                                              const providers::ProviderConfig& cfg, bool cloud,
                                              const ContextPtr& ctx, std::function<void()> go,
                                              std::function<void(const JobError&)> onFail);
+    // The displayable error of a failed call; also logs it (WARN: provider, address, the raw reason).
     JobError describeFailure(JobKind kind, const QString& raw, const Run& run, const FailureSinkPtr& sink,
                              const ContextPtr& ctx = nullptr) const;
+    JobError describeFailureImpl(JobKind kind, const QString& raw, const Run& run, const FailureSinkPtr& sink,
+                                 const ContextPtr& ctx) const;
     // Cancelling a running call: the service's signals are detached, it and the provider (with the job and
     // the network request) are deleted; no result arrives.
     void abortCall(const ActiveCall& call);

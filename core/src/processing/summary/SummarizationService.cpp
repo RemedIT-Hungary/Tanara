@@ -15,6 +15,7 @@
 
 #include <QDateTime>
 #include <QDir>
+#include <QDebug>
 #include <QElapsedTimer>
 
 namespace tanara::processing {
@@ -108,6 +109,19 @@ void SummarizationService::abortCall(const ActiveCall& call)
 
 JobError SummarizationService::describeFailure(JobKind kind, const QString& raw, const Run& run,
                                                const FailureSinkPtr& sink, const ContextPtr& ctx) const
+{
+    const JobError je = describeFailureImpl(kind, raw, run, sink, ctx);
+    // The failure always reaches the log (the UI shows the message, the log says where it went wrong).
+    qWarning().noquote().nospace() << "[LLM] a feladat nem sikerült: feladat=" << int(kind)
+        << " provider=" << m_deps.llm->chatProviderId()
+        << " url=" << (run ? QStringLiteral("cloud") : m_deps.llm->localConfig().baseUrl)
+        << " hiba=" << raw.simplified().left(300)
+        << " | " << je.message << (je.detail.isEmpty() ? QString() : QStringLiteral(" | ") + je.detail);
+    return je;
+}
+
+JobError SummarizationService::describeFailureImpl(JobKind kind, const QString& raw, const Run& run,
+                                                   const FailureSinkPtr& sink, const ContextPtr& ctx) const
 {
     Error cloudError;
     if (run && m_deps.llm->runError(run, &cloudError))

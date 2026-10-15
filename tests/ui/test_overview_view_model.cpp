@@ -14,6 +14,7 @@
 #include "tanara/app/AppController.h"
 #include "tanara/app/SettingsManager.h"
 #include "tanara/editing/undo/MeetingUndo.h"
+#include "tanara/library/jobs/MeetingJobTracker.h"
 #include "tanara/library/store/MeetingRepository.h"
 #include "tanara/library/store/PeopleStore.h"
 #include "tanara/library/store/TranscriptRepository.h"
@@ -179,6 +180,85 @@ private slots:
         vm.setContextNote(QStringLiteral("  Q4 partner review  "));
         QTRY_COMPARE(vm.contextNote(), QStringLiteral("Q4 partner review"));
         QCOMPARE(m_app->store()->load(m.id).contextNote, QStringLiteral("Q4 partner review"));
+    }
+
+    // The processing panel's summary step: no transcript -> waiting (disabled start); no language model set up ->
+    // blocked (attention, fixTarget "services"); ready -> the start button; running; failed (the message + the
+    // technical line, fixable in the Settings); done. The button itself calls the Summary tab's own path.
+    void summaryStepStates()
+    {
+        const tanara::Meeting rec = recording(QStringLiteral("Csak felvétel"));
+        {
+            OverviewViewModel vm(facadetest::overviewOf(m_app.get()));
+            vm.setMeetingId(rec.id);
+            const QVariantMap st = stepOf(vm, QStringLiteral("summary"));
+            QCOMPARE(st.value("phase").toString(), QStringLiteral("noTranscript"));
+            QCOMPARE(st.value("state").toString(), QStringLiteral("waiting"));
+            QCOMPARE(st.value("sub").toString(), QStringLiteral("az átirat után"));
+            QVERIFY(!st.value("canStart").toBool());
+        }
+
+        const tanara::Meeting m = transcribed(QStringLiteral("Átírt"));
+        // No language model address: blocked, the Settings services page fixes it.
+        tanara::app::AppSettings s = m_app->settings()->settings();
+        s.providers.llm.selectedId = QStringLiteral("openai-compat");
+        s.providers.llm.configs[s.providers.llm.selectedId].baseUrl = QString();
+        s.providers.llm.configs[s.providers.llm.selectedId].model = QString();
+        m_app->settings()->setSettings(s);
+        OverviewViewModel vm(facadetest::overviewOf(m_app.get()));
+        vm.setMeetingId(m.id);
+        QVariantMap st = stepOf(vm, QStringLiteral("summary"));
+        QCOMPARE(st.value("phase").toString(), QStringLiteral("blocked"));
+        QCOMPARE(st.value("state").toString(), QStringLiteral("attention"));
+        QCOMPARE(st.value("fixTarget").toString(), QStringLiteral("services"));
+        QVERIFY(!st.value("canStart").toBool());
+        QVERIFY(!st.value("note").toString().isEmpty());
+
+        // Set up: the start button.
+        s.providers.llm.configs[s.providers.llm.selectedId].baseUrl = QStringLiteral("http://127.0.0.1:9/v1");
+        s.providers.llm.configs[s.providers.llm.selectedId].model = QStringLiteral("teszt-modell");
+        m_app->settings()->setSettings(s);
+        QTRY_COMPARE(stepOf(vm, QStringLiteral("summary")).value("phase").toString(), QStringLiteral("ready"));
+        st = stepOf(vm, QStringLiteral("summary"));
+        QCOMPARE(st.value("state").toString(), QStringLiteral("waiting"));
+        QCOMPARE(st.value("sub").toString(), QStringLiteral("még nem készült"));
+        QVERIFY(st.value("canStart").toBool());
+        QCOMPARE(st.value("fixTarget").toString(), QString());
+
+        // Running: progress + the cancel button.
+        m_app->jobs()->begin(m.id, tanara::JobKind::Summarize, QStringLiteral("Összefoglaló"));
+        QTRY_COMPARE(stepOf(vm, QStringLiteral("summary")).value("phase").toString(), QStringLiteral("running"));
+        QCOMPARE(stepOf(vm, QStringLiteral("summary")).value("state").toString(), QStringLiteral("running"));
+        QVERIFY(stepOf(vm, QStringLiteral("summary")).value("progress").toInt() != -1);
+
+        // Failed (the local server is down): attention, the message, the technical line, retry + Settings.
+        tanara::JobError je;
+        je.message = QStringLiteral("A helyi LLM nem érhető el: http://localhost:1234 — fut az LM Studio?");
+        je.detail = QStringLiteral("kapcsolat · openai-compat · http://localhost:1234/v1 · Connection refused");
+        je.fixActionHint = QStringLiteral("settings:llm-unreachable");
+        m_app->jobs()->fail(m.id, tanara::JobKind::Summarize, je);
+        QTRY_COMPARE(stepOf(vm, QStringLiteral("summary")).value("phase").toString(), QStringLiteral("failed"));
+        st = stepOf(vm, QStringLiteral("summary"));
+        QCOMPARE(st.value("state").toString(), QStringLiteral("attention"));
+        QCOMPARE(st.value("sub").toString(), QStringLiteral("nem sikerült"));
+        QCOMPARE(st.value("note").toString(), je.message);
+        QCOMPARE(st.value("detail").toString(), je.detail);
+        QCOMPARE(st.value("fixTarget").toString(), QStringLiteral("services"));
+        QVERIFY(st.value("canStart").toBool());
+
+        // Cleared ("Rendben" on the Summary tab): back to ready.
+        m_app->jobs()->clearError(m.id, tanara::JobKind::Summarize);
+        QTRY_COMPARE(stepOf(vm, QStringLiteral("summary")).value("phase").toString(), QStringLiteral("ready"));
+
+        // Done: "Újra" + the Summary tab link.
+        tanara::Meeting done = m_app->store()->load(m.id);
+        done.hasSummary = true;
+        m_app->store()->saveMeeting(done);
+        QTRY_COMPARE(stepOf(vm, QStringLiteral("summary")).value("phase").toString(), QStringLiteral("done"));
+        st = stepOf(vm, QStringLiteral("summary"));
+        QCOMPARE(st.value("state").toString(), QStringLiteral("done"));
+        QCOMPARE(st.value("sub").toString(), QStringLiteral("kész"));
+        QVERIFY(st.value("canStart").toBool());
     }
 
     // "Only I spoke": does not work without an own name; with a configured name the decision is saved.

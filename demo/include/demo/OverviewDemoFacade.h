@@ -13,6 +13,8 @@
 // D5, the finished meeting's transcript step: overviewSpeakersLocal | overviewSpeakersProvider |
 // overviewSpeakersOff (the setting is off) | overviewSpeakersNoModel | overviewDiarizing (62 %) |
 // overviewDiarizeFailed | overviewDiarizeAsk (the "Beszélők felismerése" dialog open, names + "2" remembered).
+// The summary step on a finished transcript: overviewSummaryReady | overviewSummaryBlocked (no provider) |
+// overviewSummaryRunning (40 %) | overviewSummaryFailed (the local server is down) | overviewSummaryStale.
 #include "tanara/library/IOverviewFacade.h"
 
 namespace tanara_demo {
@@ -48,6 +50,7 @@ private:
     void applyScenarioEdits();
     // D5: the finished meeting's transcript step with the speakers' source / the manual action.
     void applySpeakers(const QString& scenario, QVariantList& steps, tanara::library::OverviewSnapshot& snapshot) const;
+    void applySummaryStep(const QString& scenario, QVariantList& steps, tanara::library::OverviewSnapshot& snapshot) const;
     // The index of the row with this id (or speaker key); -1 if none.
     int rowIndex(const QString& id) const;
     // After an edit: "Approve · N" recomputed, the change signal.

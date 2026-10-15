@@ -1,6 +1,8 @@
+// (Also the summary step's pure function, OverviewSummaryStep.)
 // OverviewSpeakers (D5): the processing panel's "Beszélők: ..." line, fixTarget and attention flag from the
 // facts of the transcript's speakers; the failure reasons in Hungarian.
 #include "tanara/library/OverviewSpeakers.h"
+#include "tanara/library/OverviewSummaryStep.h"
 
 #include <QtTest>
 
@@ -83,6 +85,59 @@ private slots:
         f.source = QStringLiteral("none");
         QVERIFY(overviewSpeakers(f, true).value("running").toBool());
         QVERIFY(!overviewSpeakers(f, false).value("running").toBool());
+    }
+
+    // The summary step: which phase wins when several facts hold.
+    void summaryStepPhasePrecedence()
+    {
+        SummaryStepFacts f;
+        QCOMPARE(overviewSummaryStep(f).value("phase").toString(), QStringLiteral("noTranscript"));
+        QVERIFY(!overviewSummaryStep(f).value("canStart").toBool());
+
+        f.hasTranscript = true;
+        QCOMPARE(overviewSummaryStep(f).value("phase").toString(), QStringLiteral("ready"));
+        QVERIFY(overviewSummaryStep(f).value("canStart").toBool());
+
+        // A missing provider beats an old error; the fix is the Settings services page.
+        f.errorMessage = QStringLiteral("hiba");
+        f.blocked = true;
+        f.blockerDetail = QStringLiteral("Hiányzik: végpont");
+        QVariantMap m = overviewSummaryStep(f);
+        QCOMPARE(m.value("phase").toString(), QStringLiteral("blocked"));
+        QCOMPARE(m.value("fixTarget").toString(), QStringLiteral("services"));
+        QCOMPARE(m.value("note").toString(), f.blockerDetail);
+        QVERIFY(!m.value("canStart").toBool());
+
+        // The error: attention + message + detail; the Settings link only when the error is fixable there.
+        f.blocked = false;
+        f.errorDetail = QStringLiteral("részlet");
+        m = overviewSummaryStep(f);
+        QCOMPARE(m.value("phase").toString(), QStringLiteral("failed"));
+        QCOMPARE(m.value("state").toString(), QStringLiteral("attention"));
+        QCOMPARE(m.value("note").toString(), QStringLiteral("hiba"));
+        QCOMPARE(m.value("detail").toString(), QStringLiteral("részlet"));
+        QCOMPARE(m.value("fixTarget").toString(), QString());
+        f.errorFixInSettings = true;
+        QCOMPARE(overviewSummaryStep(f).value("fixTarget").toString(), QStringLiteral("services"));
+
+        // A failed re-run still shows the failure over an existing summary; a finished one shows done / stale.
+        f.hasSummary = true;
+        QCOMPARE(overviewSummaryStep(f).value("phase").toString(), QStringLiteral("failed"));
+        f.errorMessage.clear();
+        QCOMPARE(overviewSummaryStep(f).value("phase").toString(), QStringLiteral("done"));
+        QCOMPARE(overviewSummaryStep(f).value("state").toString(), QStringLiteral("done"));
+        f.stale = true;
+        QCOMPARE(overviewSummaryStep(f).value("phase").toString(), QStringLiteral("stale"));
+        QCOMPARE(overviewSummaryStep(f).value("state").toString(), QStringLiteral("attention"));
+
+        // Running wins over everything; without a percentage it is indeterminate.
+        f.running = true;
+        m = overviewSummaryStep(f);
+        QCOMPARE(m.value("phase").toString(), QStringLiteral("running"));
+        QCOMPARE(m.value("progress").toInt(), -2);
+        f.percent = 40;
+        QCOMPARE(overviewSummaryStep(f).value("progress").toInt(), 40);
+        QCOMPARE(overviewSummaryStep(f).value("sub").toString(), QStringLiteral("40%"));
     }
 };
 

@@ -5,8 +5,9 @@ import QtQuick.Layouts
 // raised + warnLine border; running = 2 px accent ring + 4 px progress bar; waiting = dashed
 // borderStrong circle. The model's `parallel` flag is not shown (developer hint).
 // steps: [{ key, title, sub, state, parallel, progress, fixTarget? }] (OverviewViewModel.steps).
-// mixdownContent / voiceContent / transcriptContent: content embedded below the step (before the
-// transcript, "Start transcription" in the "transcript" step; "Start mixdown" for manual mixdown).
+// mixdownContent / voiceContent / transcriptContent / summaryContent: content embedded below the step (before
+// the transcript, "Start transcription" in the "transcript" step; "Start mixdown" for manual mixdown; "Create
+// summary" / "Cancel" / "Again" in the "summary" step).
 ColumnLayout {
     id: root
 
@@ -14,6 +15,7 @@ ColumnLayout {
     property Component mixdownContent: null
     property Component voiceContent: null
     property Component transcriptContent: null
+    property Component summaryContent: null
 
     spacing: 2
 
@@ -25,7 +27,8 @@ ColumnLayout {
             readonly property string state: modelData.state
             readonly property Component extra: modelData.key === "transcript" ? root.transcriptContent
                                               : modelData.key === "mixdown" ? root.mixdownContent
-                                              : modelData.key === "voice" ? root.voiceContent : null
+                                              : modelData.key === "voice" ? root.voiceContent
+                                              : modelData.key === "summary" ? root.summaryContent : null
             objectName: "step_" + modelData.key
             Layout.fillWidth: true
             Layout.leftMargin: -8
@@ -104,6 +107,16 @@ ColumnLayout {
                     text: stepRow.modelData.note || ""
                     color: stepRow.state === "attention" ? Theme.warnInk : Theme.textMuted
                     font.pixelSize: Theme.fontCaption
+                    wrapMode: Text.Wrap
+                }
+                // The technical line of a failed step (the summary step: "kapcsolat · openai-compat · <url> · ...").
+                TLabel {
+                    Layout.fillWidth: true
+                    visible: text !== ""
+                    text: stepRow.modelData.detail || ""
+                    mono: true
+                    muted: true
+                    font.pixelSize: Theme.fontMicro
                     wrapMode: Text.Wrap
                 }
                 TProgressBar {

@@ -83,6 +83,9 @@ FixAction fixActionForError(const tanara::JobError& error)
             a.reloadContext = tanara::library::contextFixTokens(hint);
         return a;
     }
+    // A dead local LLM address: the Settings LLM card is where the address lives.
+    if (hint == QLatin1String("settings:llm-unreachable"))
+        return {QCoreApplication::translate("JobSupport", "Beállítások megnyitása"), QStringLiteral("providers")};
     if (hint.startsWith(QLatin1String("settings"))) {
         // For a key error (401 / 403) the button names the key; otherwise the provider.
         const bool keyProblem = error.detail.contains(QLatin1String("HTTP 401"))

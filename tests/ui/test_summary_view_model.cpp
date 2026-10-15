@@ -222,6 +222,21 @@ private slots:
         vm.clearError();
         QVERIFY(!vm.errorKeptParts());
 
+        // The local server is down (LM Studio not running): the error card names the address, the technical
+        // line gives provider / address / reason, and the fix button opens the Settings (no context reload).
+        vm.setDemoState(QStringLiteral("emptyErrorUnreachable"));
+        QCOMPARE(vm.view(), QStringLiteral("empty"));
+        QVERIFY(!vm.jobRunning());
+        QVERIFY2(vm.errorMessage().contains(QStringLiteral("A helyi LLM nem érhető el: http://localhost:1234")),
+                 qPrintable(vm.errorMessage()));
+        QVERIFY2(vm.errorMessage().contains(QStringLiteral("fut az LM Studio?")), qPrintable(vm.errorMessage()));
+        QVERIFY2(vm.errorDetail().contains(QStringLiteral("Connection refused")), qPrintable(vm.errorDetail()));
+        QCOMPARE(vm.fixActionLabel(), QStringLiteral("Beállítások megnyitása"));
+        QCOMPARE(vm.fixActionPage(), QStringLiteral("providers"));
+        QCOMPARE(vm.fixReloadContext(), 0);
+        vm.clearError();
+        QVERIFY(vm.errorMessage().isEmpty());
+
         // Topic cards: the finished topic's open questions.
         vm.setDemoState(QStringLiteral("topics"));
         QCOMPARE(vm.topics()->data(vm.topics()->index(0), TopicListModel::ResultOpenQuestionsRole)

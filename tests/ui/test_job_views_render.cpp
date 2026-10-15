@@ -126,7 +126,7 @@ private slots:
             {"PreTranscriptView", {"steps", "ready", "mixing", "running", "uploading", "failed", "note"}},
             {"SummaryTab", {"stale", "done", "memo", "memoShort", "oldSummary", "oldMemo", "running", "topicsDoc", "empty",
                             "emptyBlocked", "emptyRunning", "emptyRunningParts", "emptyRunningMerge", "emptyError",
-                            "emptyErrorKept", "emptyErrorContext", "emptyNote", "noteOpen", "noteChanged", "topics"}},
+                            "emptyErrorKept", "emptyErrorContext", "emptyErrorUnreachable", "emptyNote", "noteOpen", "noteChanged", "topics"}},
             {"TracksTab", {"default", "loading", "idle"}},
         };
         for (const char* theme : {"light", "dark"})

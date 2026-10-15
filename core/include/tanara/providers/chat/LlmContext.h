@@ -79,6 +79,10 @@ struct LlmServerInfo {
     int maxContext = -1;        // the model's max_context_length
     QVector<LlmInstanceInfo> instances;   // loaded instances of the configured model
     QStringList otherLoaded;    // keys of OTHER loaded models (LLMs)
+    // The probe never reached the server (connection refused / host not found / no route): the address
+    // is dead, which is different from a live server without the native API (that answers, e.g. 404).
+    bool unreachable = false;
+    QString transportError;     // unreachable: the transport's own text ("Connection refused")
     bool isLmStudio() const { return kind == Kind::LmStudio; }
     bool loaded() const { return !instances.isEmpty(); }
 };

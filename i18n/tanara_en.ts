@@ -786,6 +786,10 @@
         <source>Beállítások</source>
         <translation>Settings</translation>
     </message>
+    <message>
+        <source>Beállítások megnyitása</source>
+        <translation>Open Settings</translation>
+    </message>
 </context>
 <context>
     <name>LibraryFilterPopover</name>
@@ -1170,6 +1174,14 @@
 </context>
 <context>
     <name>LlmServer</name>
+    <message>
+        <source>A helyi LLM nem érhető el: %1 — fut az LM Studio?</source>
+        <translation>The local LLM is not reachable: %1 — is LM Studio running?</translation>
+    </message>
+    <message>
+        <source>kapcsolat · %1 · %2 · %3</source>
+        <translation>connection · %1 · %2 · %3</translation>
+    </message>
     <message>
         <source>A(z) „%1” modellt újra kellene tölteni (%2 tokenes kontextussal, egy szálon), de a Tanara épp egy másik kérést futtat rajta. Próbáld újra, ha az végzett.</source>
         <translation>The model &quot;%1&quot; would have to be reloaded (with a %2-token context, single-threaded), but Tanara is running another request on it. Try again when that has finished.</translation>
@@ -2033,6 +2045,41 @@
     </message>
 </context>
 <context>
+    <name>OverviewSummaryStep</name>
+    <message>
+        <source>fut</source>
+        <translation>running</translation>
+    </message>
+    <message>
+        <source>az átirat után</source>
+        <translation>after the transcript</translation>
+    </message>
+    <message>
+        <source>nincs beállítva nyelvi modell</source>
+        <translation>no language model set up</translation>
+    </message>
+    <message>
+        <source>nem sikerült</source>
+        <translation>failed</translation>
+    </message>
+    <message>
+        <source>elavult</source>
+        <translation>outdated</translation>
+    </message>
+    <message>
+        <source>kész</source>
+        <translation>done</translation>
+    </message>
+    <message>
+        <source>még nem készült</source>
+        <translation>not created yet</translation>
+    </message>
+    <message>
+        <source>Összefoglaló</source>
+        <translation>Summary</translation>
+    </message>
+</context>
+<context>
     <name>OverviewTab</name>
     <message>
         <source>Ehhez add meg a saját neved: Beállítások › Beszélők › Te.</source>
@@ -2135,6 +2182,22 @@
     <message>
         <source>Mégse</source>
         <translation>Cancel</translation>
+    </message>
+    <message>
+        <source>Összefoglaló készítése</source>
+        <translation>Create summary</translation>
+    </message>
+    <message>
+        <source>Az összefoglaló az átiratból készül: előbb az átírásnak kell elkészülnie.</source>
+        <translation>The summary is built from the transcript, so transcription has to finish first.</translation>
+    </message>
+    <message>
+        <source>Újra</source>
+        <translation>Retry</translation>
+    </message>
+    <message>
+        <source>Megnyitás</source>
+        <translation>Open</translation>
     </message>
     <message>
         <source>Lekeverés frissítése</source>
@@ -9800,6 +9863,10 @@
             <numerusform>locally, %n tracks</numerusform>
         </translation>
     </message>
+    <message>
+        <source>Hiányzik: végpont (Helyi modell / LM Studio)</source>
+        <translation>Missing: endpoint (Local model / LM Studio)</translation>
+    </message>
 </context>
 <context>
     <name>tanara_demo::RecorderDemoFacade</name>
@@ -11127,22 +11194,6 @@
     <message>
         <source>még nem indult</source>
         <translation>not started yet</translation>
-    </message>
-    <message>
-        <source>Összefoglaló</source>
-        <translation>Summary</translation>
-    </message>
-    <message>
-        <source>elavult</source>
-        <translation>outdated</translation>
-    </message>
-    <message>
-        <source>még nem készült</source>
-        <translation>not created yet</translation>
-    </message>
-    <message>
-        <source>az átirat után</source>
-        <translation>after the transcript</translation>
     </message>
     <message>
         <source>felvétel · lekeverés · átirat · összefoglaló</source>

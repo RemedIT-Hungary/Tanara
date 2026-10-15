@@ -183,6 +183,34 @@ private slots:
         QCOMPARE(allMissing->scenario()->rows.value(QStringLiteral("pyannote-segmentation-3.0-int8")).state, QStringLiteral("missing"));
     }
 
+    // The summary step's design states (the same pure function as the real facade).
+    void summaryStepDesignStates()
+    {
+        using tanara_demo::OverviewDemoFacade;
+        auto stepOf = [](const char* st) {
+            for (const QVariant& v : OverviewDemoFacade(QString::fromLatin1(st)).snapshot(QString()).steps)
+                if (v.toMap().value(QStringLiteral("key")).toString() == QLatin1String("summary")) return v.toMap();
+            return QVariantMap();
+        };
+        QCOMPARE(stepOf("overviewDone").value("phase").toString(), QStringLiteral("done"));
+        QCOMPARE(stepOf("overviewProcessing").value("phase").toString(), QStringLiteral("noTranscript"));
+        QCOMPARE(stepOf("overviewSpeakersLocal").value("phase").toString(), QStringLiteral("ready"));
+        QCOMPARE(stepOf("overviewSummaryReady").value("phase").toString(), QStringLiteral("ready"));
+        QCOMPARE(stepOf("overviewSummaryBlocked").value("phase").toString(), QStringLiteral("blocked"));
+        QCOMPARE(stepOf("overviewSummaryBlocked").value("fixTarget").toString(), QStringLiteral("services"));
+        QCOMPARE(stepOf("overviewSummaryRunning").value("phase").toString(), QStringLiteral("running"));
+        QCOMPARE(stepOf("overviewSummaryRunning").value("progress").toInt(), 40);
+        const QVariantMap failed = stepOf("overviewSummaryFailed");
+        QCOMPARE(failed.value("phase").toString(), QStringLiteral("failed"));
+        QVERIFY(failed.value("note").toString().contains(QStringLiteral("http://localhost:1234")));
+        QVERIFY(!failed.value("detail").toString().isEmpty());
+        QCOMPARE(stepOf("overviewSummaryStale").value("phase").toString(), QStringLiteral("stale"));
+        // Open items keep the steps expanded.
+        for (const char* st : {"overviewSummaryReady", "overviewSummaryBlocked", "overviewSummaryRunning",
+                               "overviewSummaryFailed", "overviewSummaryStale"})
+            QVERIFY2(!OverviewDemoFacade(QString::fromLatin1(st)).snapshot(QString()).allDone, st);
+    }
+
     // P15-6a: the settings facade serves a design state and keeps everything in memory.
     void settingsFacadeServesTheDesignStates()
     {

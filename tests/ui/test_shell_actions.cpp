@@ -869,21 +869,31 @@ private slots:
         QCOMPARE(toasts.at(0).at(1).toString(), QStringLiteral("danger"));
         QVERIFY(!m_shell->recording());
 
-        // The open meeting's job error shows in the error bar: the same text does not come again in a
-        // toast (another meeting's does).
+        // The open meeting's summary error shows in the Summary tab's error card: there the same text does not come
+        // again in a toast. From any other tab (e.g. the Overview, where "Create summary" was started from the
+        // tab's hover panel) the card is not visible, so the toast MUST come (it used to be swallowed).
         m_shell->setCurrentMeetingId(b.id);
         tanara::JobError je;
         je.message = QStringLiteral("A modell 4096 tokenes kontextussal van betöltve, a kérés 6042 token volt — nem fér bele.");
+        m_shell->setCurrentTab(0);
         m_app->jobs()->begin(b.id, tanara::JobKind::Summarize, QStringLiteral("Összefoglaló"));
         m_app->jobs()->fail(b.id, tanara::JobKind::Summarize, je);
         emit m_app->errorOccurred(QStringLiteral("Összefoglaló hiba: ") + je.message);
-        QCOMPARE(toasts.count(), 1);
+        QCOMPARE(toasts.count(), 2);
+        QCOMPARE(toasts.last().at(1).toString(), QStringLiteral("danger"));
         QTest::qWait(10);
+        m_shell->setCurrentTab(2);
+        m_app->jobs()->begin(b.id, tanara::JobKind::Summarize, QStringLiteral("Összefoglaló"));
+        m_app->jobs()->fail(b.id, tanara::JobKind::Summarize, je);
+        emit m_app->errorOccurred(QStringLiteral("Összefoglaló hiba: ") + je.message);
+        QCOMPARE(toasts.count(), 2);
+        QTest::qWait(10);
+        // Another meeting's error is never in the open meeting's card.
         const tanara::Meeting c = recording(QStringLiteral("Harmadik"));
         m_app->jobs()->begin(c.id, tanara::JobKind::Summarize, QStringLiteral("Összefoglaló"));
         m_app->jobs()->fail(c.id, tanara::JobKind::Summarize, je);
         emit m_app->errorOccurred(QStringLiteral("Összefoglaló hiba: ") + je.message);
-        QCOMPARE(toasts.count(), 2);
+        QCOMPARE(toasts.count(), 3);
     }
 
     void meetingModelDescribesHeaderAndTasks()

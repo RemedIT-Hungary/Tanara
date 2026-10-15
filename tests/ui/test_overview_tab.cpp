@@ -38,6 +38,8 @@ public:
     Q_INVOKABLE void cancelJob(const QString& id, int kind) { calls << "cancelJob:" + id + ":" + QString::number(kind); }
     Q_INVOKABLE void openSpeakerWhy(const QString& id, const QString& key) { calls << "openSpeakerWhy:" + id + ":" + key; }
     Q_INVOKABLE void identifyParticipants(const QString& id) { calls << "identifyParticipants:" + id; }
+    Q_INVOKABLE void startQuickSummary(const QString& id) { calls << "startQuickSummary:" + id; }
+    Q_INVOKABLE void showTab(int index) { calls << "showTab:" + QString::number(index); }
 };
 
 class TestOverviewTab : public QObject {
@@ -593,6 +595,75 @@ private slots:
         click(entry);
         QTRY_VERIFY(object("diarizeDialog") && object("diarizeDialog")->property("visible").toBool());
         QCOMPARE(tab(), 0);
+    }
+
+    // The processing panel's summary step buttons per state: "Összefoglaló készítése" (the Summary tab's own path),
+    // disabled before the transcript, the Settings link when no model is set up (with the failure too), "Mégse"
+    // while it runs, "Újra" + the Summary tab link when done.
+    void summaryStep_controls()
+    {
+        auto press = [](QQuickItem* it) { QVERIFY(it); QMetaObject::invokeMethod(it, "clicked"); };
+        auto withSpy = [this](StartSpy& spy) {
+            QObject* overview = object("overviewTab");
+            QVERIFY(overview);
+            overview->setProperty("shell", QVariant::fromValue<QObject*>(&spy));
+        };
+
+        // Before the transcript: the button is there but locked.
+        load(QStringLiteral("overviewRecorded"));
+        QTRY_VERIFY(shown("summaryStartButton"));
+        QVERIFY(!item("summaryStartButton")->isEnabled());
+        QCOMPARE(item("summaryStartButton")->property("text").toString(), QStringLiteral("Összefoglaló készítése"));
+        m_engine.reset();
+
+        load(QStringLiteral("overviewSummaryReady"));
+        QTRY_VERIFY(shown("summaryStartButton"));
+        QVERIFY(item("summaryStartButton")->isEnabled());
+        StartSpy ready;
+        withSpy(ready);
+        press(item("summaryStartButton"));
+        QCOMPARE(ready.calls.size(), 1);
+        QVERIFY(ready.calls.first().startsWith(QStringLiteral("startQuickSummary:")));
+        QVERIFY(!shown("summaryFixButton"));
+        QVERIFY(!shown("summaryCancelButton"));
+        m_engine.reset();
+
+        load(QStringLiteral("overviewSummaryBlocked"));
+        QTRY_VERIFY(shown("summaryFixButton"));
+        QVERIFY(!shown("summaryStartButton"));
+        QCOMPARE(item("summaryFixButton")->property("text").toString(), QStringLiteral("Beállítások megnyitása"));
+        StartSpy blocked;
+        withSpy(blocked);
+        press(item("summaryFixButton"));
+        QCOMPARE(blocked.calls, QStringList({QStringLiteral("openSettings:providers:llm")}));
+        m_engine.reset();
+
+        load(QStringLiteral("overviewSummaryRunning"));
+        QTRY_VERIFY(shown("summaryCancelButton"));
+        QVERIFY(!shown("summaryStartButton"));
+        StartSpy running;
+        withSpy(running);
+        press(item("summaryCancelButton"));
+        QCOMPARE(running.calls, QStringList({QStringLiteral("cancelJob::%1").arg(int(tanara::JobKind::Summarize))}));
+        m_engine.reset();
+
+        load(QStringLiteral("overviewSummaryFailed"));
+        QTRY_VERIFY(shown("summaryRetryButton"));
+        QVERIFY(shown("summaryFixButton"));
+        QVERIFY(!shown("summaryOpenButton"));
+        StartSpy failed;
+        withSpy(failed);
+        press(item("summaryRetryButton"));
+        QVERIFY(failed.calls.first().startsWith(QStringLiteral("startQuickSummary:")));
+        m_engine.reset();
+
+        load(QStringLiteral("overviewSummaryStale"));
+        QTRY_VERIFY(shown("summaryRetryButton"));
+        QVERIFY(shown("summaryOpenButton"));
+        StartSpy stale;
+        withSpy(stale);
+        press(item("summaryOpenButton"));
+        QCOMPARE(stale.calls, QStringList({QStringLiteral("showTab:2")}));
     }
 
     // The tool row with a hidden child has height 0 (no empty 46 px remains), with a visible child 46.

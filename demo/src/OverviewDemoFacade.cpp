@@ -1,9 +1,11 @@
 #include "demo/OverviewDemoFacade.h"
 
 #include "tanara/library/OverviewSpeakers.h"
+#include "tanara/library/OverviewSummaryStep.h"
 
 #include "demo/DemoText.h"
 
+#include <QCoreApplication>
 #include <QPair>
 #include <QSignalBlocker>
 
@@ -365,7 +367,11 @@ tanara::library::OverviewSnapshot OverviewDemoFacade::build() const
                   || st == QLatin1String("overviewSpeakersOff") || st == QLatin1String("overviewSpeakersNoModel")
                   || st == QLatin1String("overviewDiarizing") || st == QLatin1String("overviewDiarizeFailed")
                   || st == QLatin1String("overviewDiarizeAsk");
-    const bool done = st == QLatin1String("overviewDone") || spk;
+    // The summary step's states on a finished transcript (the steps stay open; the summary is the open item).
+    const bool sum = st == QLatin1String("overviewSummaryReady") || st == QLatin1String("overviewSummaryBlocked")
+                  || st == QLatin1String("overviewSummaryRunning") || st == QLatin1String("overviewSummaryFailed")
+                  || st == QLatin1String("overviewSummaryStale");
+    const bool done = st == QLatin1String("overviewDone") || spk || sum;
     const bool empty = st == QLatin1String("overviewEmpty");
     const bool nobody = st == QLatin1String("overviewNobody");
     // After recording, before the transcript (like the empty state, "Start transcription" in the step); ...Error: with an error.
@@ -384,7 +390,7 @@ tanara::library::OverviewSnapshot OverviewDemoFacade::build() const
     s.title = demoText("Negyedéves partnertalálkozó", "Quarterly partner review");
     s.transcribing = !s.hasTranscript && !recorded && !noModel;
     s.canReanalyze = done || nobody;
-    s.allDone = done && !spk;
+    s.allDone = done && !spk && !sum;
     s.transcribing = s.transcribing || st == QLatin1String("overviewDiarizing");
     s.analysisRunning = empty;
     s.approvalPending = candidates;
@@ -558,6 +564,7 @@ tanara::library::OverviewSnapshot OverviewDemoFacade::build() const
                   << step(QStringLiteral("summary"), tr("Összefoglaló"), tr("az átirat után"), QStringLiteral("waiting"));
     }
     if (spk) applySpeakers(st, steps, s);
+    applySummaryStep(st, steps, s);
     s.steps = steps;
     s.stepsSummary = tr("felvétel · lekeverés · átirat · összefoglaló");
     s.stats.clear();
@@ -606,10 +613,7 @@ void OverviewDemoFacade::applySpeakers(const QString& st, QVariantList& steps, t
     for (QVariant& v : steps) {
         QVariantMap step = v.toMap();
         const QString key = step.value(QStringLiteral("key")).toString();
-        if (key == QLatin1String("summary")) {
-            step.insert(QStringLiteral("sub"), tr("még nem készült"));
-            step.insert(QStringLiteral("state"), QStringLiteral("waiting"));
-        } else if (key == QLatin1String("transcript")) {
+        if (key == QLatin1String("transcript")) {
             if (running) {
                 step.insert(QStringLiteral("sub"), tr("Beszélők szétválasztása") + QStringLiteral(" · ") + tr("helyben, %n sáv", nullptr, 2)
                                                        + QStringLiteral(" · 62%"));
@@ -625,6 +629,38 @@ void OverviewDemoFacade::applySpeakers(const QString& st, QVariantList& steps, t
         }
         v = step;
     }
+}
+
+// The processing panel's summary step for every design state (the same pure function the real facade uses):
+// before the transcript "az átirat után"; a finished meeting: done, or - the open item - ready / blocked /
+// running / failed / stale.
+void OverviewDemoFacade::applySummaryStep(const QString& st, QVariantList& steps,
+                                          tanara::library::OverviewSnapshot& s) const
+{
+    tanara::library::SummaryStepFacts f;
+    f.hasTranscript = s.hasTranscript;
+    if (st == QLatin1String("overviewDone")) {
+        f.hasSummary = true;
+    } else if (st == QLatin1String("overviewSummaryBlocked")) {
+        f.blocked = true;
+        f.blockerDetail = tr("Hiányzik: végpont (Helyi modell / LM Studio)");
+    } else if (st == QLatin1String("overviewSummaryRunning")) {
+        f.running = true;
+        f.percent = 40;
+    } else if (st == QLatin1String("overviewSummaryFailed")) {
+        const QString root = QStringLiteral("http://localhost:1234");
+        f.errorMessage = QCoreApplication::translate("LlmServer", "A helyi LLM nem érhető el: %1 — fut az LM Studio?").arg(root);
+        f.errorDetail = QCoreApplication::translate("LlmServer", "kapcsolat · %1 · %2 · %3")
+                            .arg(QStringLiteral("openai-compat"), root + QStringLiteral("/v1"),
+                                 QStringLiteral("Connection refused"));
+        f.errorFixInSettings = true;
+    } else if (st == QLatin1String("overviewSummaryStale")) {
+        f.hasSummary = true;
+        f.stale = true;
+    }
+    for (QVariant& v : steps)
+        if (v.toMap().value(QStringLiteral("key")).toString() == QLatin1String("summary"))
+            v = tanara::library::overviewSummaryStep(f);
 }
 
 // The card's decided / edited design states, applied over the pending candidates with the same

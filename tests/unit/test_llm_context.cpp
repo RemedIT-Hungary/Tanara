@@ -149,6 +149,7 @@ private slots:
     void preparerBusyDoesNotUnload();
     void preparerCancelDuringLoad();
     void preparerSkipsWithoutNativeApi();
+    void preparerFailsFastOnDeadServer();
     void connectionTestReportsServer();
 };
 
@@ -537,6 +538,44 @@ void LlmContextTest::preparerSkipsWithoutNativeApi()
     p2.start(60000);
     QTRY_COMPARE(ready2.count(), 1);
     QCOMPARE(srv.log.size(), 1);
+}
+
+// Nothing listens on the address (LM Studio is not running): the probe says "unreachable" (not "no native
+// API"), and the preparer fails at once - with the address and the transport's reason - instead of letting the
+// task send its prompt into the void.
+void LlmContextTest::preparerFailsFastOnDeadServer()
+{
+    quint16 port = 0;
+    {
+        QTcpServer closed;
+        QVERIFY(closed.listen(QHostAddress::LocalHost, 0));
+        port = closed.serverPort();
+    }
+    providers::ProviderConfig cfg;
+    cfg.type = QStringLiteral("openai-compat");
+    cfg.baseUrl = QStringLiteral("http://127.0.0.1:%1/v1").arg(port);
+    cfg.model = QStringLiteral("qwen3.8-27b");
+
+    providers::LlmServerProbe probe;
+    QSignalSpy probed(&probe, &providers::LlmServerProbe::finished);
+    probe.probe(cfg);
+    QTRY_COMPARE(probed.count(), 1);
+    const auto info = probed.at(0).at(0).value<providers::llmctx::LlmServerInfo>();
+    QVERIFY(info.unreachable);
+    QVERIFY(!info.transportError.isEmpty());
+    QVERIFY(!info.isLmStudio());
+
+    providers::LlmModelPreparer p(cfg);
+    QSignalSpy ready(&p, &providers::LlmModelPreparer::ready);
+    QSignalSpy failed(&p, &providers::LlmModelPreparer::failed);
+    p.start(60000);
+    QTRY_COMPARE(failed.count(), 1);
+    QCOMPARE(ready.count(), 0);
+    const auto e = failed.at(0).at(0).value<JobError>();
+    const QString root = QStringLiteral("http://127.0.0.1:%1").arg(port);
+    QVERIFY2(e.message.contains(root), qPrintable(e.message));
+    QVERIFY2(e.detail.contains(cfg.baseUrl) && e.detail.contains(cfg.type), qPrintable(e.detail));
+    QCOMPARE(e.fixActionHint, QStringLiteral("settings:llm-unreachable"));
 }
 
 void LlmContextTest::connectionTestReportsServer()

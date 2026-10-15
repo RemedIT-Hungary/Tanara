@@ -1,5 +1,7 @@
 #include "demo/SummaryDemoFacade.h"
 
+#include <QCoreApplication>
+
 #include "demo/DemoText.h"
 
 #include <QUuid>
@@ -326,6 +328,14 @@ void SummaryDemoFacade::buildEmpty(SummaryData& d) const
         d.summaryError.message = tr("A szolgáltatónál hiba történt. Próbáld újra később.");
         d.summaryError.detail = QStringLiteral("HTTP 500 · server_error · model crashed");
         d.errorKeptParts = true;
+    } else if (st == QLatin1String("emptyErrorUnreachable")) {
+        // LM Studio is not running: the preparer's probe found the address dead (nothing was sent).
+        const QString root = QStringLiteral("http://localhost:1234");
+        d.summaryError.message = QCoreApplication::translate("LlmServer", "A helyi LLM nem érhető el: %1 — fut az LM Studio?").arg(root);
+        d.summaryError.detail = QCoreApplication::translate("LlmServer", "kapcsolat · %1 · %2 · %3")
+                                    .arg(QStringLiteral("openai-compat"), root + QStringLiteral("/v1"),
+                                         QStringLiteral("Connection refused"));
+        d.summaryError.fixActionHint = QStringLiteral("settings:llm-unreachable");
     } else if (st == QLatin1String("emptyErrorContext")) {
         // The classified context error (LM Studio): fix buttons per the hint.
         d.summaryError.message = tr("A modell 4096 tokenes kontextussal van betöltve, a kérés 6042 token volt — nem fér bele. "

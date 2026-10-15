@@ -37,6 +37,22 @@ void authorize(QNetworkRequest& req, const QString& key)
 
 QString groupedTokens(int n) { return QStringLiteral("%L1").arg(n); }
 
+// The transport could not reach the host at all (as opposed to a timeout or an HTTP answer).
+bool isConnectionError(QNetworkReply::NetworkError e)
+{
+    switch (e) {
+    case QNetworkReply::ConnectionRefusedError:
+    case QNetworkReply::HostNotFoundError:
+    case QNetworkReply::TemporaryNetworkFailureError:
+    case QNetworkReply::NetworkSessionFailedError:
+    case QNetworkReply::ProxyConnectionRefusedError:
+    case QNetworkReply::ProxyNotFoundError:
+        return true;
+    default:
+        return false;
+    }
+}
+
 } // namespace
 
 // ---- LlmServerProbe -----------------------------------------------------------------------
@@ -120,9 +136,17 @@ void LlmServerProbe::probe(const ProviderConfig& cfg, bool useCache)
             body = reply->readAll();
         // A failed (non-native) response is remembered too: we do not ask again for a short while.
         if (status > 0) probeCache().insert(root, {QDateTime::currentMSecsSinceEpoch(), body});
-        const LlmServerInfo info = parseLmStudioModels(body, model);
+        LlmServerInfo info = parseLmStudioModels(body, model);
+        // A dead address is not a "server without the native API": nothing answered at all. Only the
+        // connection-level errors count (a timeout may be a slow live server, so that is left to the chat call).
+        if (status <= 0 && isConnectionError(reply->error())) {
+            info.unreachable = true;
+            info.transportError = reply->errorString();
+        }
         qInfo().noquote().nospace() << "[LLM] szerver-próba " << root << ": "
-            << (info.isLmStudio() ? QStringLiteral("LM Studio") : QStringLiteral("nincs natív API"))
+            << (info.isLmStudio() ? QStringLiteral("LM Studio")
+                : info.unreachable ? QStringLiteral("nem érhető el (%1)").arg(info.transportError)
+                                   : QStringLiteral("nincs natív API"))
             << (info.loaded() ? QStringLiteral(" · betöltve ctx=%1 parallel=%2")
                                     .arg(info.instances.first().contextLength)
                                     .arg(info.instances.first().parallel)
@@ -182,6 +206,14 @@ void LlmModelPreparer::onProbed(const LlmServerInfo& info)
 {
     if (m_cancelled) return;
     m_info = info;
+    if (info.unreachable) {
+        // No point in sending the whole prompt to a dead address: say so now, with the address.
+        const QString root = nativeApiRoot(m_cfg.baseUrl);
+        fail(QCoreApplication::translate("LlmServer", "A helyi LLM nem érhető el: %1 — fut az LM Studio?").arg(root),
+             QCoreApplication::translate("LlmServer", "kapcsolat · %1 · %2 · %3").arg(m_cfg.type, m_cfg.baseUrl, info.transportError),
+             QStringLiteral("settings:llm-unreachable"));
+        return;
+    }
     m_decision = decidePreload(info, m_need, m_cfg.contextLength, m_floor);
     using A = PreloadDecision::Action;
     qInfo().noquote().nospace() << "[LLM] előkészítés: igény=" << m_need << " padló=" << m_floor
@@ -320,6 +352,10 @@ void LlmModelPreparer::load()
 
 void LlmModelPreparer::fail(const QString& message, const QString& detail, const QString& hint)
 {
+    // Every preparation failure is logged with the provider and the address (the user sees the message in the UI,
+    // the log must say where it went wrong too).
+    qWarning().noquote().nospace() << "[LLM] az előkészítés nem sikerült: provider=" << m_cfg.type
+        << " url=" << m_cfg.baseUrl << " hiba=" << message << (detail.isEmpty() ? QString() : QStringLiteral(" | ") + detail);
     JobError e;
     e.message = message;
     e.detail = detail;

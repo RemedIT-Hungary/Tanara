@@ -42,6 +42,7 @@
 #include "tanara/processing/analysis/ParticipantAnalysis.h"
 #include "tanara/editing/session/SpeakerEditSession.h"
 #include "tanara/library/OverviewSpeakers.h"
+#include "tanara/library/OverviewSummaryStep.h"
 #include "tanara/library/jobs/MeetingJobTracker.h"
 #include "tanara/library/store/MeetingRepository.h"
 #include "tanara/library/store/PeopleStore.h"
@@ -589,6 +590,9 @@ OverviewControllerFacade::OverviewControllerFacade(tanara::app::AppController* c
         connect(jobs, &tanara::library::MeetingJobTracker::stateChanged, this, mine);
         connect(jobs, &tanara::library::MeetingJobTracker::jobProgressChanged, this,
                 [mine](const QString& id, const tanara::JobProgress&) { mine(id); });
+        // The summary step shows the last failed attempt (and drops it when it is cleared / succeeds).
+        connect(jobs, &tanara::library::MeetingJobTracker::errorChanged, this,
+                [mine](const QString& id, tanara::JobKind) { mine(id); });
     }
 }
 
@@ -995,17 +999,33 @@ tanara::library::OverviewSnapshot OverviewControllerFacade::snapshot(const QStri
     QDateTime summaryAt;
     if (m.hasSummary)
         summaryAt = QFileInfo(library::SummaryRepository::markdownPath(m.folder)).lastModified();
-    if (summaryJob) {
-        const int pct = ShellMeetingModel::describeJob(*summaryJob).value(QStringLiteral("percent")).toInt();
-        steps << step(QStringLiteral("summary"), tr("Összefoglaló"), pct >= 0 ? QStringLiteral("%1%").arg(pct) : tr("fut"),
-                      QStringLiteral("running"), false, pct >= 0 ? pct : -2);
-    } else if (m.hasSummary) {
-        steps << step(QStringLiteral("summary"), tr("Összefoglaló"),
-                      proc.summaryStale ? tr("elavult") : tr("kész"),
-                      proc.summaryStale ? QStringLiteral("attention") : QStringLiteral("done"));
-    } else {
-        steps << step(QStringLiteral("summary"), tr("Összefoglaló"),
-                      m.hasTranscript ? tr("még nem készült") : tr("az átirat után"), QStringLiteral("waiting"));
+    {
+        library::SummaryStepFacts sf;
+        sf.hasTranscript = m.hasTranscript;
+        sf.hasSummary = m.hasSummary;
+        sf.stale = proc.summaryStale;
+        sf.running = summaryJob != nullptr;
+        if (summaryJob) {
+            const int pct = ShellMeetingModel::describeJob(*summaryJob).value(QStringLiteral("percent")).toInt();
+            sf.percent = pct;
+        }
+        if (m.hasTranscript && !sf.running) {
+            // Gating: only a missing provider / key is "blocked" here (the meeting state is covered above).
+            const providers::ReadinessResult rr = c->canRun(providers::WorkflowStep::Summarize, m.id);
+            if (!rr.runnable && rr.blockerKind != providers::BlockerKind::MeetingState) {
+                sf.blocked = true;
+                sf.blockerDetail = rr.detail;
+            }
+            if (c->jobs()) {
+                const JobError err = c->jobs()->lastError(m.id, JobKind::Summarize);
+                if (err.isValid()) {
+                    sf.errorMessage = err.message;
+                    sf.errorDetail = err.detail;
+                    sf.errorFixInSettings = err.fixActionHint.startsWith(QLatin1String("settings"));
+                }
+            }
+        }
+        steps << library::overviewSummaryStep(sf);
     }
     s.steps = steps;
     s.allDone = std::all_of(steps.cbegin(), steps.cend(), [](const QVariant& v) {

@@ -29,7 +29,7 @@
 // "done" | "memo" (many sections) | "memoShort" | "oldSummary" (no memo) | "oldMemo" (same,
 // the memo's place is visible) | "running" (regeneration running) | "topicsDoc" | "empty" |
 // "emptyBlocked" | "emptyRunning" | "emptyRunningParts" | "emptyRunningMerge" | "emptyError" |
-// "emptyErrorKept" | "emptyErrorContext" (context error, with the LM Studio fix) |
+// "emptyErrorKept" | "emptyErrorContext" (context error, with the LM Studio fix) | "emptyErrorUnreachable" (the local server is down) |
 // "emptyNote" (empty, with template suggestions for the note) | "noteOpen" (done, note block
 // open, with suggestions) | "noteChanged" (done, the note changed since the summary) |
 // "topics" | with source links: "sourcesOn" (source chips, first statement selected) |

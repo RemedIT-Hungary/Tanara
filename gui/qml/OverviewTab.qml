@@ -85,6 +85,13 @@ Item {
     readonly property string speakersFixTarget: speakers.fixTarget || ""
     readonly property bool diarizeShown: vm.hasTranscript && (speakers.canDiarize === true || speakers.running === true
                                                               || speakersFixTarget !== "")
+    // The summary step (phase: running | noTranscript | blocked | failed | done | stale | ready; see
+    // library/OverviewSummaryStep.h).
+    readonly property var summaryStep: {
+        for (const s of vm.steps) if (s.key === "summary") return s
+        return ({})
+    }
+    readonly property string summaryPhase: summaryStep.phase || ""
     readonly property bool identifyShown: root.beforeTranscription && pre.identifyAvailable
     readonly property bool reanalyzeShown: vm.canReanalyze && (root.voiceState === "done" || root.voiceState === "attention"
                                                                || root.voiceState === "waiting")
@@ -208,6 +215,11 @@ Item {
 
     // "Start analysis" / "Reanalyze": after transcription the same as the menu's "Redo voiceprint
     // analysis" (shell); before it, voice analysis of the raw tracks (analyzeParticipants).
+    // The same path as the Summary tab's "Create summary" (and the tab's hover panel).
+    function startSummary() {
+        root.commitSource()
+        if (root.shell) root.shell.startQuickSummary(root.meetingId)
+    }
     function reanalyze() {
         if (vm.hasTranscript) { if (root.shell) root.shell.identifyParticipants(root.meetingId) }
         else vm.reanalyze()
@@ -597,6 +609,7 @@ Item {
                         mixdownContent: root.beforeTranscription && (pre.mixdownState === "missing" || pre.mixdownState === "stale")
                                         ? mixdownStep : null
                         voiceContent: root.identifyShown || root.reanalyzeShown || root.voiceFixTarget !== "" ? voiceStep : null
+                        summaryContent: summaryStepPanel
                     }
 
                     // ---- tracks ----
@@ -665,6 +678,69 @@ Item {
                     text: qsTr("Mégse")
                     size: "small"
                     onClicked: if (root.shell) root.shell.cancelJob(root.meetingId, JobKinds.Transcribe)
+                }
+                Item { Layout.fillWidth: true }
+            }
+        }
+    }
+    // The "Summary" step's controls: the start button (disabled with the reason before the transcript), the
+    // missing-setting link, "Cancel" while it runs, "Again" + the Summary tab link when it is done / failed.
+    Component {
+        id: summaryStepPanel
+        ColumnLayout {
+            spacing: 6
+            TButton {
+                objectName: "summaryStartButton"
+                visible: root.summaryPhase === "ready" || root.summaryPhase === "noTranscript"
+                text: qsTr("Összefoglaló készítése")
+                variant: "primary"
+                size: "small"
+                enabled: root.summaryStep.canStart === true
+                iconName: enabled ? "sparkles" : "lock"
+                iconSize: 14
+                toolTipText: enabled ? "" : qsTr("Az összefoglaló az átiratból készül: előbb az átírásnak kell elkészülnie.")
+                onClicked: root.startSummary()
+            }
+            TButton {
+                objectName: "summaryFixButton"
+                visible: (root.summaryPhase === "blocked" || root.summaryPhase === "failed")
+                         && (root.summaryStep.fixTarget || "") !== "" && !!root.shell
+                text: qsTr("Beállítások megnyitása")
+                size: "small"
+                iconName: "settings"
+                iconSize: 14
+                onClicked: root.shell.openSettings("providers", "llm")
+            }
+            TButton {
+                objectName: "summaryCancelButton"
+                visible: root.summaryPhase === "running"
+                text: qsTr("Mégse")
+                size: "small"
+                iconName: "x"
+                iconSize: 14
+                onClicked: if (root.shell) root.shell.cancelJob(root.meetingId, JobKinds.Summarize)
+            }
+            RowLayout {
+                visible: root.summaryPhase === "failed" || root.summaryPhase === "done" || root.summaryPhase === "stale"
+                spacing: 8
+                TButton {
+                    objectName: "summaryRetryButton"
+                    text: qsTr("Újra")
+                    variant: root.summaryPhase === "failed" ? "primary" : "secondary"
+                    size: "small"
+                    iconName: "rotate-ccw"
+                    iconSize: 14
+                    onClicked: root.startSummary()
+                }
+                TButton {
+                    objectName: "summaryOpenButton"
+                    visible: root.summaryPhase !== "failed"
+                    text: qsTr("Megnyitás")
+                    variant: "ghost"
+                    size: "small"
+                    trailingIconName: "arrow-right"
+                    iconSize: 14
+                    onClicked: if (root.shell) root.shell.showTab(2)
                 }
                 Item { Layout.fillWidth: true }
             }

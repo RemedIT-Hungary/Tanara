@@ -157,7 +157,7 @@ void ShellActions::attachFacade()
     });
     // Errors not tied to a task (recording, device ...). Task errors are kept by the tracker
     // (shown by the views' error card), but the text notice is visible here too, non-modally.
-    // If the error already shows in the open meeting's error bar, it is not repeated in a toast.
+    // If the error already shows in the open meeting's error card, it is not repeated in a toast.
     connect(f, &IShellFacade::errorOccurred, this, [this](const QString& message) {
         if (!m_errorInBanner.isEmpty() && message.contains(m_errorInBanner))
             return;
@@ -168,6 +168,12 @@ void ShellActions::attachFacade()
         if (meetingId != m_currentMeetingId) return;
         const tanara::JobError e = f->lastJobError(meetingId, kind);
         if (!e.isValid()) return;
+        // A summary error card lives on the Summary / Memo tabs only: from any other tab (e.g. the Overview,
+        // where "Create summary" was started from the tab's hover panel) it is NOT visible, so the toast must
+        // still tell the user. (Before this check the toast was swallowed whenever the meeting was open.)
+        const bool summaryKind = kind == JobKind::Summarize || kind == JobKind::ExtractTopics
+                              || kind == JobKind::AnalyzeTopics;
+        if (summaryKind && m_currentTab < 2) return;
         m_errorInBanner = e.message;
         QTimer::singleShot(0, this, [this] { m_errorInBanner.clear(); });
     });
