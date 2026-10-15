@@ -106,7 +106,7 @@ void CloudRunLedger::observe(CloudSession* acc, const CloudRunPtr& run, const Ht
     const bool ok = ex.status >= 200 && ex.status < 300;
     if (!ok) {
         if (ex.method != "DELETE")   // the failure of cleanup DELETEs must not overwrite the real error
-            run->lastError = parseCloudError(ex.status, ex.headers, ex.body, ex.networkError);
+            run->lastError = parseCloudError(ex.status, ex.headers, ex.body, ex.networkError, ex.networkErrorCode);
         return;
     }
     auto book = [&cost, &run](const ChargeInfo& c) {

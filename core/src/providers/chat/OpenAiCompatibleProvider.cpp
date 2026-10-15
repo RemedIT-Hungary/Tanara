@@ -1,3 +1,4 @@
+#include "tanara/foundation/net/NetworkErrorText.h"
 #include "tanara/providers/chat/OpenAiCompatibleProvider.h"
 #include "tanara/providers/core/ProviderConfig.h"
 #include "tanara/providers/chat/LlmContext.h"
@@ -200,7 +201,7 @@ void OpenAiCompatibleJob::onFinished()
         m_errorStatus = status;
         m_errorBody = data;
         failWith(apiMsg.isEmpty()
-            ? tr("Hálózati hiba: %1").arg(reply->errorString())
+            ? tr("Hálózati hiba: %1").arg(net::networkErrorText(int(reply->error()), reply->errorString()))
             : tr("LLM hiba (HTTP %1): %2").arg(status).arg(apiMsg));
         return;
     }

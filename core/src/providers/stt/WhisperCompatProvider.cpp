@@ -1,3 +1,4 @@
+#include "tanara/foundation/net/NetworkErrorText.h"
 #include "tanara/providers/stt/WhisperCompatProvider.h"
 #include "tanara/providers/core/ProviderConfig.h"
 #include "tanara/foundation/log/Logging.h"
@@ -212,10 +213,10 @@ void WhisperCompatJob::start()
             const int http =
                 reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
             qCWarning(lcStt).noquote()
-                << "[whisper] HTTP" << http << reply->errorString()
+                << "[whisper] HTTP" << http << reply->errorString() << "code" << int(reply->error())
                 << "body:" << QString::fromUtf8(body.left(500));
             fail(http > 0 ? tr("A szerver hibát adott (HTTP %1).").arg(http)
-                          : tr("Hálózati hiba: %1").arg(reply->errorString()),
+                          : tr("Hálózati hiba: %1").arg(net::networkErrorText(int(reply->error()), reply->errorString())),
                  classified);
             return;
         }

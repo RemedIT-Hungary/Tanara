@@ -1,3 +1,4 @@
+#include "tanara/foundation/net/NetworkErrorText.h"
 #include "tanara/providers/embedding/OpenAiCompatibleEmbeddingProvider.h"
 #include "tanara/providers/core/ProviderConfig.h"
 
@@ -122,7 +123,7 @@ void OpenAiCompatibleEmbeddingJob::onReply()
             else if (ev.isString()) apiMsg = ev.toString();
         }
         if (status == 0)
-            emit failed(tr("Hálózati hiba: %1").arg(reply->errorString()));
+            emit failed(tr("Hálózati hiba: %1").arg(net::networkErrorText(int(reply->error()), reply->errorString())));
         else if (!apiMsg.isEmpty())
             emit failed(tr("Beágyazási hiba (HTTP %1): %2").arg(status).arg(apiMsg));
         else

@@ -163,7 +163,7 @@ void CloudSession::startDeviceFlow()
     body.insert(QStringLiteral("platform"), clientPlatform());
     body.insert(QStringLiteral("client_version"), libraryVersion());
     send("POST", QStringLiteral("/auth/device/code"), &body, false, [this](const HttpExchange& ex) {
-        const CloudError e = parseCloudError(ex.status, ex.headers, ex.body, ex.networkError);
+        const CloudError e = parseCloudError(ex.status, ex.headers, ex.body, ex.networkError, ex.networkErrorCode);
         if (e.isError()) { emit deviceFlowFailed(e); return; }
         m_device = deviceCodeFromJson(QJsonDocument::fromJson(ex.body).object());
         if (m_device.deviceCode.isEmpty()) {
@@ -192,7 +192,7 @@ void CloudSession::pollDeviceToken()
     const QString code = m_device.deviceCode;
     send("POST", QStringLiteral("/auth/device/token"), &body, false, [this, code](const HttpExchange& ex) {
         if (!m_deviceActive || code != m_device.deviceCode) return;   // Cancel / a new code came meanwhile
-        const CloudError e = parseCloudError(ex.status, ex.headers, ex.body, ex.networkError);
+        const CloudError e = parseCloudError(ex.status, ex.headers, ex.body, ex.networkError, ex.networkErrorCode);
         if (!e.isError()) {
             const QJsonObject o = QJsonDocument::fromJson(ex.body).object();
             const QString key = o.value(QStringLiteral("api_key")).toString();
@@ -260,7 +260,7 @@ void CloudSession::refreshAccount()
 {
     if (!isLoggedIn()) return;
     send("GET", QStringLiteral("/account"), nullptr, true, [this](const HttpExchange& ex) {
-        const CloudError e = parseCloudError(ex.status, ex.headers, ex.body, ex.networkError);
+        const CloudError e = parseCloudError(ex.status, ex.headers, ex.body, ex.networkError, ex.networkErrorCode);
         if (e.isError()) { emit accountFailed(e); return; }
         m_accountRaw = QJsonDocument::fromJson(ex.body).object();
         m_account = accountFromJson(m_accountRaw);
@@ -276,7 +276,7 @@ void CloudSession::fetchModels()
 {
     if (!isLoggedIn()) return;
     send("GET", QStringLiteral("/models"), nullptr, true, [this](const HttpExchange& ex) {
-        const CloudError e = parseCloudError(ex.status, ex.headers, ex.body, ex.networkError);
+        const CloudError e = parseCloudError(ex.status, ex.headers, ex.body, ex.networkError, ex.networkErrorCode);
         if (e.isError()) { emit modelsFailed(e); return; }
         m_modelsRaw = QJsonDocument::fromJson(ex.body).object();
         m_models = modelsFromJson(m_modelsRaw);
@@ -290,7 +290,7 @@ void CloudSession::estimate(const EstimateRequest& req,
 {
     const QJsonObject body = estimateRequestToJson(req);
     send("POST", QStringLiteral("/estimate"), &body, true, [done = std::move(done)](const HttpExchange& ex) {
-        const CloudError e = parseCloudError(ex.status, ex.headers, ex.body, ex.networkError);
+        const CloudError e = parseCloudError(ex.status, ex.headers, ex.body, ex.networkError, ex.networkErrorCode);
         EstimateResult r;
         if (!e.isError()) r = estimateFromJson(QJsonDocument::fromJson(ex.body).object());
         if (done) done(r, e);
@@ -302,7 +302,7 @@ void CloudSession::acceptTerms(const QString& version)
     QJsonObject body;
     body.insert(QStringLiteral("version"), version);
     send("POST", QStringLiteral("/account/terms-acceptance"), &body, true, [this](const HttpExchange& ex) {
-        const CloudError e = parseCloudError(ex.status, ex.headers, ex.body, ex.networkError);
+        const CloudError e = parseCloudError(ex.status, ex.headers, ex.body, ex.networkError, ex.networkErrorCode);
         if (e.isError()) { emit termsFailed(e); return; }
         const TermsStatus t = termsFromJson(QJsonDocument::fromJson(ex.body).object().value(QStringLiteral("terms")).toObject());
         m_account.terms = t;
@@ -316,7 +316,7 @@ void CloudSession::acceptTerms(const QString& version)
 void CloudSession::createTopupLink()
 {
     send("POST", QStringLiteral("/account/topup-link"), nullptr, true, [this](const HttpExchange& ex) {
-        CloudError e = parseCloudError(ex.status, ex.headers, ex.body, ex.networkError);
+        CloudError e = parseCloudError(ex.status, ex.headers, ex.body, ex.networkError, ex.networkErrorCode);
         if (e.isError()) {
             if (e.contactUrl.isEmpty()) e.contactUrl = m_account.contactUrl;
             emit topupFailed(e);
@@ -331,7 +331,7 @@ void CloudSession::joinWaitlist(const WaitlistSignup& signup)
     const QJsonObject body = waitlistToJson(signup);
     const QString email = signup.email.trimmed();
     send("POST", QStringLiteral("/waitlist"), &body, false, [this, email](const HttpExchange& ex) {
-        const CloudError e = parseCloudError(ex.status, ex.headers, ex.body, ex.networkError);
+        const CloudError e = parseCloudError(ex.status, ex.headers, ex.body, ex.networkError, ex.networkErrorCode);
         if (e.isError()) { emit waitlistFailed(e); return; }
         emit waitlistJoined(email);
     });

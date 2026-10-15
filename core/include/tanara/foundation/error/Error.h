@@ -29,7 +29,8 @@ struct Error {
     QString message;            // human message (the service's, if it gave one in the user's language)
     int     retryAfterSec = 0;  // Retry-After (0 = not given)
     QString requestId;          // the service's request id (support reference), if any
-    QString detail;             // technical extra, e.g. the Qt network error text
+    QString detail;             // technical extra, e.g. the raw Qt network error text (system locale: logs, not UI)
+    int     networkErrorCode = 0; // QNetworkReply::NetworkError when httpStatus == 0 (UI text: net::networkErrorText)
 
     bool isError() const { return kind != Kind::None; }
 

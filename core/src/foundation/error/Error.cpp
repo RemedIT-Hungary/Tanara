@@ -1,5 +1,6 @@
 #include "tanara/foundation/error/Error.h"
 #include "tanara/foundation/net/HttpClient.h"
+#include "tanara/foundation/net/NetworkErrorText.h"
 
 #include <QCoreApplication>
 #include <QJsonDocument>
@@ -99,6 +100,7 @@ Error errorFromExchange(const HttpExchange& ex)
     if (ex.status <= 0) {
         e.code = QStringLiteral("network");
         e.detail = ex.networkError;
+        e.networkErrorCode = ex.networkErrorCode;
         return e;
     }
     parseErrorBody(ex.body, &e.code, &e.message, &e.requestId);
@@ -112,7 +114,7 @@ QString failureDetail(const HttpExchange& ex)
 {
     // The translation context stays "JobErrors" (the texts were born there).
     if (ex.status <= 0) {
-        const QString net = oneLine(ex.networkError);
+        const QString net = oneLine(networkErrorText(ex.networkErrorCode, ex.networkError));
         return net.isEmpty() ? QCoreApplication::translate("JobErrors", "hálózat · nincs válasz")
                              : QCoreApplication::translate("JobErrors", "hálózat · %1").arg(net);
     }

@@ -2,6 +2,7 @@
 #include "tanara/providers/core/ProviderConfig.h"
 #include "tanara/foundation/error/Error.h"
 #include "tanara/foundation/net/HttpClient.h"
+#include "tanara/foundation/net/NetworkErrorText.h"
 
 #include <QCoreApplication>
 #include <QDateTime>
@@ -142,10 +143,11 @@ void LlmServerProbe::probe(const ProviderConfig& cfg, bool useCache)
         if (status <= 0 && isConnectionError(reply->error())) {
             info.unreachable = true;
             info.transportError = reply->errorString();
+            info.transportCode = int(reply->error());
         }
         qInfo().noquote().nospace() << "[LLM] szerver-próba " << root << ": "
             << (info.isLmStudio() ? QStringLiteral("LM Studio")
-                : info.unreachable ? QStringLiteral("nem érhető el (%1)").arg(info.transportError)
+                : info.unreachable ? QStringLiteral("nem érhető el (%1, kód %2)").arg(info.transportError).arg(info.transportCode)
                                    : QStringLiteral("nincs natív API"))
             << (info.loaded() ? QStringLiteral(" · betöltve ctx=%1 parallel=%2")
                                     .arg(info.instances.first().contextLength)
@@ -210,7 +212,7 @@ void LlmModelPreparer::onProbed(const LlmServerInfo& info)
         // No point in sending the whole prompt to a dead address: say so now, with the address.
         const QString root = nativeApiRoot(m_cfg.baseUrl);
         fail(QCoreApplication::translate("LlmServer", "A helyi LLM nem érhető el: %1 — fut az LM Studio?").arg(root),
-             QCoreApplication::translate("LlmServer", "kapcsolat · %1 · %2 · %3").arg(m_cfg.type, m_cfg.baseUrl, info.transportError),
+             QCoreApplication::translate("LlmServer", "kapcsolat · %1 · %2 · %3").arg(m_cfg.type, m_cfg.baseUrl, net::networkErrorText(info.transportCode, info.transportError)),
              QStringLiteral("settings:llm-unreachable"));
         return;
     }

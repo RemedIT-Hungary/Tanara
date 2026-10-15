@@ -1784,6 +1784,69 @@
     </message>
 </context>
 <context>
+    <name>NetworkError</name>
+    <message>
+        <source>a kapcsolatot visszautasította</source>
+        <translation>connection refused</translation>
+    </message>
+    <message>
+        <source>a távoli gép lezárta a kapcsolatot</source>
+        <translation>the remote host closed the connection</translation>
+    </message>
+    <message>
+        <source>a gép nem található</source>
+        <translation>host not found</translation>
+    </message>
+    <message>
+        <source>időtúllépés</source>
+        <translation>timed out</translation>
+    </message>
+    <message>
+        <source>a művelet megszakadt</source>
+        <translation>the operation was cancelled</translation>
+    </message>
+    <message>
+        <source>a biztonságos kapcsolat nem jött létre</source>
+        <translation>the secure connection could not be established</translation>
+    </message>
+    <message>
+        <source>átmeneti hálózati hiba</source>
+        <translation>temporary network failure</translation>
+    </message>
+    <message>
+        <source>a proxy visszautasította a kapcsolatot</source>
+        <translation>the proxy refused the connection</translation>
+    </message>
+    <message>
+        <source>a proxy nem található</source>
+        <translation>the proxy was not found</translation>
+    </message>
+    <message>
+        <source>a proxy nem válaszolt időben</source>
+        <translation>the proxy did not answer in time</translation>
+    </message>
+    <message>
+        <source>a proxy hitelesítést kér</source>
+        <translation>the proxy requires authentication</translation>
+    </message>
+    <message>
+        <source>hitelesítés szükséges</source>
+        <translation>authentication required</translation>
+    </message>
+    <message>
+        <source>a tartalom nem található</source>
+        <translation>content not found</translation>
+    </message>
+    <message>
+        <source>ismeretlen vagy érvénytelen protokoll</source>
+        <translation>unknown or invalid protocol</translation>
+    </message>
+    <message>
+        <source>ismeretlen hálózati hiba</source>
+        <translation>unknown network error</translation>
+    </message>
+</context>
+<context>
     <name>NoSelectionView</name>
     <message>
         <source>Válassz egy megbeszélést</source>

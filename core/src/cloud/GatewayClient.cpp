@@ -94,7 +94,7 @@ QNetworkReply* GatewayClient::postMultipart(const QString& path, QHttpMultiPart*
 
 Error GatewayClient::errorOf(const HttpExchange& ex)
 {
-    Error e = toError(parseCloudError(ex.status, ex.headers, ex.body, ex.networkError));
+    Error e = toError(parseCloudError(ex.status, ex.headers, ex.body, ex.networkError, ex.networkErrorCode));
     if (!e.isError()) {   // a 2xx without the expected content
         e.kind = Error::Kind::Service;
         e.httpStatus = ex.status;

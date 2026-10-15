@@ -1,5 +1,6 @@
 #include "tanara/library/jobs/JobErrors.h"
 #include "tanara/providers/chat/LlmContext.h"
+#include "tanara/foundation/net/NetworkErrorText.h"
 
 #include <QCoreApplication>
 #include <QJsonDocument>
@@ -175,8 +176,9 @@ JobError describeCloudFailure(JobKind kind, const Error& ce)
     e.when = QDateTime::currentDateTime();
     if (ce.httpStatus <= 0) {
         e.message = QCoreApplication::translate("JobErrors", "Nem sikerült elérni a Tanara Cloudot. Ellenőrizd a hálózati kapcsolatot.");
-        e.detail = ce.detail.isEmpty() ? QCoreApplication::translate("JobErrors", "hálózat · nincs válasz")
-                                       : QCoreApplication::translate("JobErrors", "hálózat · %1").arg(oneLine(ce.detail));
+        const QString net = oneLine(net::networkErrorText(ce.networkErrorCode, ce.detail));
+        e.detail = net.isEmpty() ? QCoreApplication::translate("JobErrors", "hálózat · nincs válasz")
+                                 : QCoreApplication::translate("JobErrors", "hálózat · %1").arg(net);
         return e;
     }
     const providers::llmctx::ContextOverflow ov =

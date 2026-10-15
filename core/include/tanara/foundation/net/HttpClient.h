@@ -43,7 +43,8 @@ struct HttpExchange {
     int        status = 0;                 // 0 = no HTTP response (network error)
     QHash<QByteArray, QByteArray> headers; // lowercase keys
     QByteArray body;
-    QString    networkError;               // empty if there was an HTTP response
+    QString    networkError;               // empty if there was an HTTP response; the RAW Qt text (system locale: logs only)
+    int        networkErrorCode = 0;       // QNetworkReply::NetworkError of a network failure; the UI text comes from networkErrorText()
 };
 
 // From a finished QNetworkReply (the caller already read the body).

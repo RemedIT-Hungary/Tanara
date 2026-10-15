@@ -89,7 +89,8 @@ struct CloudError {
     QString message;            // error.message (per Accept-Language)
     QString requestId;          // error.request_id or X-Tanara-Request-Id
     QString supportUrl;
-    QString networkError;       // for Network: the Qt error text
+    QString networkError;       // for Network: the raw Qt error text (system locale: logs only)
+    int     networkErrorCode = 0; // for Network: QNetworkReply::NetworkError (UI text: net::networkErrorText)
     // code-specific fields
     QString suspensionReason;   // admin | payment_dispute
     QString termsVersion, termsUrl;
@@ -111,7 +112,8 @@ struct CloudError {
 // CloudError from an HTTP response (status + headers + body). For a successful (2xx) response kind=None.
 // Header keys are lowercase. A non-empty networkError -> Network (no HTTP response).
 CloudError parseCloudError(int httpStatus, const QHash<QByteArray, QByteArray>& headers,
-                           const QByteArray& body, const QString& networkError = QString());
+                           const QByteArray& body, const QString& networkError = QString(),
+                           int networkErrorCode = 0);
 
 // The common, classified error (foundation/error/Error.h) of a gateway error: the job layer describes
 // it (library::describeCloudFailure). Network -> Transient with httpStatus 0 and code "network";

@@ -1,3 +1,4 @@
+#include "tanara/foundation/net/NetworkErrorText.h"
 #include "tanara/providers/stt/SonioxProvider.h"
 #include "tanara/providers/core/ProviderConfig.h"
 
@@ -192,7 +193,7 @@ void SonioxJob::uploadFile() {
         if (m_finished)
             return;
         if (err != QNetworkReply::NoError) {
-            fail(tr("Feltöltés hiba: %1").arg(reply->errorString()));
+            fail(tr("Feltöltés hiba: %1").arg(net::networkErrorText(int(reply->error()), reply->errorString())));
             return;
         }
         const QJsonObject obj = QJsonDocument::fromJson(body).object();
@@ -272,7 +273,7 @@ void SonioxJob::createTranscription() {
         if (m_finished)
             return;
         if (err != QNetworkReply::NoError) {
-            fail(tr("Átírás létrehozási hiba: %1").arg(reply->errorString()));
+            fail(tr("Átírás létrehozási hiba: %1").arg(net::networkErrorText(int(reply->error()), reply->errorString())));
             return;
         }
         const QJsonObject obj = QJsonDocument::fromJson(body).object();
@@ -317,7 +318,7 @@ void SonioxJob::pollStatus() {
         if (m_finished)
             return;
         if (err != QNetworkReply::NoError) {
-            fail(tr("Státusz lekérdezési hiba: %1").arg(reply->errorString()));
+            fail(tr("Státusz lekérdezési hiba: %1").arg(net::networkErrorText(int(reply->error()), reply->errorString())));
             return;
         }
         const QJsonObject obj = QJsonDocument::fromJson(body).object();
@@ -369,7 +370,7 @@ void SonioxJob::fetchTranscript() {
         if (m_finished)
             return;
         if (err != QNetworkReply::NoError) {
-            fail(tr("Átirat letöltési hiba: %1").arg(reply->errorString()));
+            fail(tr("Átirat letöltési hiba: %1").arg(net::networkErrorText(int(reply->error()), reply->errorString())));
             return;
         }
 

@@ -563,6 +563,7 @@ void LlmContextTest::preparerFailsFastOnDeadServer()
     const auto info = probed.at(0).at(0).value<providers::llmctx::LlmServerInfo>();
     QVERIFY(info.unreachable);
     QVERIFY(!info.transportError.isEmpty());
+    QCOMPARE(info.transportCode, int(QNetworkReply::ConnectionRefusedError));
     QVERIFY(!info.isLmStudio());
 
     providers::LlmModelPreparer p(cfg);

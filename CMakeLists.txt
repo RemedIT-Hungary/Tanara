@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(tanara VERSION 0.5.280 LANGUAGES CXX)
+project(tanara VERSION 0.5.281 LANGUAGES CXX)
 
 # The displayed version comes from ONE place: the numeric part from project(VERSION), the
 # suffix (e.g. "a" = alpha; empty = release) from here. core/src/foundation/Version.cpp receives it as

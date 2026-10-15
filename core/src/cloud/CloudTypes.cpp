@@ -154,13 +154,14 @@ QString clientHeaderValue()
 // ---- errors ---------------------------------------------------------------------------
 
 CloudError parseCloudError(int httpStatus, const QHash<QByteArray, QByteArray>& headers,
-                           const QByteArray& body, const QString& networkError)
+                           const QByteArray& body, const QString& networkError, int networkErrorCode)
 {
     CloudError e;
     e.httpStatus = httpStatus;
     if (httpStatus == 0) {
         e.kind = CloudErrorKind::Network;
         e.networkError = networkError;
+        e.networkErrorCode = networkErrorCode;
         return e;
     }
     if (httpStatus >= 200 && httpStatus < 300)
@@ -257,6 +258,7 @@ Error toError(const CloudError& ce)
         e.httpStatus = 0;
         e.code = ce.code.isEmpty() ? QStringLiteral("network") : ce.code;
         e.detail = ce.networkError;
+        e.networkErrorCode = ce.networkErrorCode;
     } else {
         e.httpStatus = ce.httpStatus;
         e.code = ce.code;

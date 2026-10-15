@@ -82,7 +82,8 @@ struct LlmServerInfo {
     // The probe never reached the server (connection refused / host not found / no route): the address
     // is dead, which is different from a live server without the native API (that answers, e.g. 404).
     bool unreachable = false;
-    QString transportError;     // unreachable: the transport's own text ("Connection refused")
+    QString transportError;     // unreachable: the raw Qt text ("Connection refused"; system locale: logs only)
+    int transportCode = 0;      // unreachable: the QNetworkReply::NetworkError (UI text: net::networkErrorText)
     bool isLmStudio() const { return kind == Kind::LmStudio; }
     bool loaded() const { return !instances.isEmpty(); }
 };

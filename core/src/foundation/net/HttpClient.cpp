@@ -44,8 +44,10 @@ HttpExchange makeHttpExchange(QNetworkReply* reply, const QByteArray& body)
     for (const auto& pair : reply->rawHeaderPairs())
         ex.headers.insert(pair.first.toLower(), pair.second);
     ex.body = body;
-    if (ex.status == 0)
+    if (ex.status == 0) {
+        ex.networkErrorCode = int(reply->error());
         ex.networkError = reply->errorString().isEmpty() ? QStringLiteral("network error") : reply->errorString();
+    }
     return ex;
 }
 
