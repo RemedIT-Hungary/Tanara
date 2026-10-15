@@ -120,6 +120,14 @@ ReadinessResult ReadinessModel::check(WorkflowStep step, const Meeting& meeting)
 
         // (b)+(c) config and auth check of the selected STT provider.
         const QString sttId = m_settings.stt.selectedId;
+        if (sttId.isEmpty()) {   // the route's kind has no provider (RouteSettings::effective)
+            ReadinessResult r;
+            r.runnable      = false;
+            r.blockerKind   = BlockerKind::ProviderConfig;
+            r.detail        = QCoreApplication::translate("ReadinessModel", "Ehhez az útvonalhoz még nincs beállítva átíró szolgáltató.");
+            r.fixActionHint = QStringLiteral("settings::");
+            return r;
+        }
         // An unknown / unregistered provider: descriptor() would return an empty descriptor (the required
         // loop is skipped, authMode defaults to ApiKey), so it would wrongly be runnable.
         if (!m_registry->has(CapabilityKind::Transcription, sttId)) {
@@ -148,6 +156,14 @@ ReadinessResult ReadinessModel::check(WorkflowStep step, const Meeting& meeting)
 
         // (b)+(c) config and auth check of the selected LLM provider.
         const QString llmId = m_settings.llm.selectedId;
+        if (llmId.isEmpty()) {   // the route's kind has no provider (RouteSettings::effective)
+            ReadinessResult r;
+            r.runnable      = false;
+            r.blockerKind   = BlockerKind::ProviderConfig;
+            r.detail        = QCoreApplication::translate("ReadinessModel", "Ehhez az útvonalhoz még nincs beállítva összefoglaló szolgáltató.");
+            r.fixActionHint = QStringLiteral("settings::");
+            return r;
+        }
         // An unknown / unregistered provider: see the reasoning of the Transcribe branch.
         if (!m_registry->has(CapabilityKind::Chat, llmId)) {
             ReadinessResult r;

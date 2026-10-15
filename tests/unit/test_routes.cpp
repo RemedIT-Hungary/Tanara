@@ -218,6 +218,21 @@ private slots:
                 .check(providers::WorkflowStep::Transcribe, m);
         QCOMPARE(cloudRun.blockerKind, providers::BlockerKind::Auth);
         QCOMPARE(cloudRun.fixActionHint, QStringLiteral("login:tanara-cloud"));
+
+        // A route whose kind was never set up: the effective selection is EMPTY (not the other kind's
+        // provider) and the readiness check refuses the run.
+        providers::ProviderSettings onlyExternal;
+        onlyExternal.stt.selectedId = QStringLiteral("soniox");
+        onlyExternal.stt.configs[QStringLiteral("soniox")].type = QStringLiteral("soniox");
+        providers::RouteSettings r2;
+        r2.normalize(onlyExternal);
+        QCOMPARE(r2.providerFor(Capability::Stt, Route::Local, onlyExternal), QString());
+        const providers::ProviderSettings localRun = r2.effective(onlyExternal, Route::Local, Route::Local);
+        QVERIFY(localRun.stt.selectedId.isEmpty());
+        const providers::ReadinessResult refused =
+            providers::ReadinessModel(localRun, noSecrets, &reg).check(providers::WorkflowStep::Transcribe, m);
+        QVERIFY(!refused.runnable);
+        QCOMPARE(refused.blockerKind, providers::BlockerKind::ProviderConfig);
     }
 
     // settings.json written before S3: no "routes" section -> converted on load, written back on save.

@@ -3599,12 +3599,20 @@
         <translation>No audio track to transcribe.</translation>
     </message>
     <message>
+        <source>Ehhez az útvonalhoz még nincs beállítva átíró szolgáltató.</source>
+        <translation>No transcription provider is set up for this route yet.</translation>
+    </message>
+    <message>
         <source>Ismeretlen vagy nem regisztrált STT-provider: %1</source>
         <translation>Unknown or unregistered STT provider: %1</translation>
     </message>
     <message>
         <source>Nincs átirat — előbb futtass átírást.</source>
         <translation>No transcript — run transcription first.</translation>
+    </message>
+    <message>
+        <source>Ehhez az útvonalhoz még nincs beállítva összefoglaló szolgáltató.</source>
+        <translation>No summary provider is set up for this route yet.</translation>
     </message>
     <message>
         <source>Ismeretlen vagy nem regisztrált LLM-provider: %1</source>

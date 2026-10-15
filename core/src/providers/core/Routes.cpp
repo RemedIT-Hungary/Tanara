@@ -212,8 +212,11 @@ QString RouteSettings::providerFor(Capability cap, Route resolved, const Provide
 ProviderSettings RouteSettings::effective(const ProviderSettings& providers, Route sttRoute, Route llmRoute) const
 {
     ProviderSettings out = providers;
-    if (const QString id = providerFor(Capability::Stt, sttRoute, providers); !id.isEmpty()) out.stt.selectedId = id;
-    if (const QString id = providerFor(Capability::Llm, llmRoute, providers); !id.isEmpty()) out.llm.selectedId = id;
+    // The provider of the resolved route, or EMPTY when that kind has no provider at all (never set up):
+    // an empty selection is refused by the readiness check. Keeping the other kind's provider here would
+    // silently run a Local choice on the External provider (found by S5).
+    out.stt.selectedId = providerFor(Capability::Stt, sttRoute, providers);
+    out.llm.selectedId = providerFor(Capability::Llm, llmRoute, providers);
     return out;
 }
 
