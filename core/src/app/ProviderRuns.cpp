@@ -278,10 +278,11 @@ cloud::EstimateRequest ProviderRuns::estimateRequest(const QString& meetingId, c
             in.transcriptChars = int(merged.renderMarkdown().size() + m.contextNote.size());
             in.contextNoteChars = int(m.contextNote.size());
             if (summaryMode == QLatin1String("complex")) {
+                // A Tanara Cloud estimate: the cloud run sends the built-in templates (prompts locked).
                 in.topicPromptChars = int(processing::SummarizationService::resolvedPrompt(
-                    s.processing, s.processing.topicExtractionPrompt, "topic").size());
+                    s.processing, s.processing.topicExtractionPrompt, "topic", true).size());
                 in.analysisPromptChars = int(processing::SummarizationService::resolvedPrompt(
-                    s.processing, s.processing.topicAnalysisPrompt, "analysis").size());
+                    s.processing, s.processing.topicAnalysisPrompt, "analysis", true).size());
                 const QVector<SummaryTopic> topics = SummaryRepository::readTopics(m.folder);
                 in.topicsKnown = !topics.isEmpty();
                 if (in.topicsKnown) {
@@ -292,7 +293,8 @@ cloud::EstimateRequest ProviderRuns::estimateRequest(const QString& meetingId, c
                 }
             } else {
                 const processing::SummaryRequest req =
-                    processing::SummarizationService::requestFor(s.processing, merged, m, in.llmModel, kCloudMaxTokens);
+                    processing::SummarizationService::requestFor(s.processing, merged, m, in.llmModel, kCloudMaxTokens,
+                                                                 true);
                 const processing::SummaryPlan plan = processing::SummaryService::plan(req);
                 in.singleCall = plan.singleCall;
                 in.parts = plan.parts;

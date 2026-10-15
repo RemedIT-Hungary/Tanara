@@ -16,6 +16,7 @@
 #include "tanara/library/jobs/MeetingJobTracker.h"
 #include "tanara/library/store/MeetingRepository.h"
 #include "tanara/library/summary/SummaryRepository.h"
+#include "tanara/processing/summary/PromptLibrary.h"
 #include "tanara/processing/summary/SummarizationService.h"
 #include "tanara/processing/summary/TopicQueue.h"
 #include "tanara/providers/chat/IChatProvider.h"
@@ -98,7 +99,8 @@ public:
         r.runnable = true;
         return r;
     }
-    processing::ProcessingSettings processingSettings() const override { return {}; }
+    processing::ProcessingSettings settings;   // the summary settings (own prompts)
+    processing::ProcessingSettings processingSettings() const override { return settings; }
     QString chatProviderId(const QString&) const override { return kChatId; }
     providers::ProviderConfig localConfig() const override { return config0(); }
     bool cloudSelected(const QString&) const override { return cloud; }
@@ -212,6 +214,92 @@ class TestSummarizationService : public QObject {
         m.hasTranscript = true;
         m_store->saveMeeting(m);
         return m_store->load(m.id);
+    }
+
+    // A meeting long enough for two parts (per-part notes + merge instead of the single call).
+    Meeting transcribedLong(const QString& title)
+    {
+        Meeting m = m_store->createMeeting(title);
+        QJsonArray toks;
+        // The last part must be long enough not to merge back (>= half a part and >= 1500 characters).
+        const qint64 later = processing::summarypipe::kDefaultPartMs + 60 * 1000;
+        const QString filler = QStringLiteral(" Ödön küldi az árajánlatot.").repeated(70);
+        const QList<QPair<QString, qint64>> words{{"Sziasztok,", 0}, {" az", 300}, {" árajánlat", 600},
+                                                  {filler, later}, {" Rendben.", later + 9 * 60 * 1000}};
+        for (const auto& w : words)
+            toks.append(QJsonObject{{"text", w.first}, {"speaker", w.second < later ? "speaker:1" : "speaker:2"},
+                                    {"startMs", w.second},
+                                    {"endMs", w.second + 250}, {"confidence", 0.9}, {"trackId", "mixdown"}});
+        QFile f(QDir(m.folder).filePath(QStringLiteral("transcript.tokens.json")));
+        if (f.open(QIODevice::WriteOnly))
+            f.write(QJsonDocument(QJsonObject{{"language", "hu"}, {"tokens", toks}}).toJson());
+        f.close();
+        m.hasTranscript = true;
+        m_store->saveMeeting(m);
+        return m_store->load(m.id);
+    }
+
+    // Own prompts everywhere: the settings texts + prompt files in the (sandboxed) data folder.
+    void setOwnPrompts()
+    {
+        processing::ProcessingSettings& s = m_port.settings;
+        s.summaryPrompt = QStringLiteral("OWN single prompt.");
+        s.notesPrompt = QStringLiteral("OWN notes prompt.");
+        s.mergePrompt = QStringLiteral("OWN merge prompt.");
+        s.topicExtractionPrompt = QStringLiteral("OWN topic prompt.");
+        s.topicAnalysisPrompt = QStringLiteral("OWN analysis prompt.");
+        for (const QString& id : {QStringLiteral("single"), QStringLiteral("notes"), QStringLiteral("reduce")}) {
+            const QString path = processing::promptFilePath(id);
+            QDir().mkpath(QFileInfo(path).absolutePath());
+            QFile f(path);
+            if (f.open(QIODevice::WriteOnly | QIODevice::Text))
+                f.write(QStringLiteral("FILE %1 prompt.").arg(id).toUtf8());
+        }
+    }
+    static void removePromptFiles()
+    {
+        for (const QString& id : {QStringLiteral("single"), QStringLiteral("notes"), QStringLiteral("reduce")})
+            QFile::remove(processing::promptFilePath(id));
+    }
+    static QString builtin(const char* id)
+    {
+        return processing::applySummaryLanguage(processing::promptBuiltin(QLatin1String(id)), QStringLiteral("magyar"));
+    }
+
+    // Runs a quick summary and returns the system prompts of its calls, in order.
+    QStringList quickSystems(const Meeting& m)
+    {
+        QStringList systems;
+        m_script.answer = [&systems](const QString& system, const QString&) {
+            systems << system;
+            // A per-part note call answers with a note, the single / merge call with the summary JSON.
+            if (system == builtin("notes") || system.startsWith(QStringLiteral("OWN notes")))
+                return Answer{Answer::Reply, QStringLiteral("DECISIONS\n- [00:01] Ödön küldi az ajánlatot.\n")};
+            return Answer{Answer::Reply, kQuickJson};
+        };
+        QSignalSpy ready(m_svc.get(), &SummarizationService::summaryReady);
+        m_svc->summarize(m.id);
+        if (!ready.wait(5000)) return {QStringLiteral("<no summary>")};
+        return systems;
+    }
+
+    // Runs topic extraction + the analyses + the reduce; returns the system prompts of the calls, in order.
+    QStringList complexSystems(const Meeting& m)
+    {
+        QStringList systems;
+        m_script.answer = [&systems](const QString& system, const QString& user) {
+            systems << system;
+            if (systems.size() == 1) return Answer{Answer::Reply, kTopics};
+            if (!user.contains(QStringLiteral("Sziasztok"))) return Answer{Answer::Reply, QStringLiteral("Röviden.")};
+            return Answer{Answer::Reply, kAnalysis};
+        };
+        QSignalSpy topicsReady(&m_svc->topics(), &TopicQueue::topicsReady);
+        m_svc->topics().extractTopics(m.id);
+        if (!topicsReady.wait(5000)) return {QStringLiteral("<no topics>")};
+        QSignalSpy summaryReady(m_svc.get(), &SummarizationService::summaryReady);
+        m_svc->topics().generate(m.id, m_svc->topics().topics(m.id));
+        if (!summaryReady.wait(8000)) return {QStringLiteral("<no summary>")};
+        return systems;
     }
 
     QVector<SummaryTopic> threeTopics()
@@ -566,6 +654,78 @@ private slots:
         QCOMPARE(m_port.finished.size(), 1);
     }
 
+    // Cloud prompt lock, quick path: on the Tanara Cloud route neither the settings prompts nor the prompt
+    // files are sent (single / notes / merge use the built-in templates) and one info line says so; on the
+    // local route the own prompts go out. The context note still travels (data, not an instruction).
+    void cloudLocksQuickPrompts()
+    {
+        setOwnPrompts();
+        m_port.cloud = true;
+        Meeting m = transcribed(QStringLiteral("Felhő, rövid"));
+        m.contextNote = QStringLiteral("Kontextus: ajánlat");
+        m_store->saveMeeting(m);
+        QString seenUser;
+        {
+            LogCatcher log;
+            QStringList systems;
+            m_script.answer = [&systems, &seenUser](const QString& system, const QString& user) {
+                systems << system;
+                seenUser = user;
+                return Answer{Answer::Reply, kQuickJson};
+            };
+            QSignalSpy ready(m_svc.get(), &SummarizationService::summaryReady);
+            m_svc->summarize(m.id);
+            QVERIFY(ready.wait(5000));
+            QCOMPARE(systems, QStringList{builtin("single")});
+            QVERIFY2(seenUser.contains(QStringLiteral("Kontextus: ajánlat")), qPrintable(seenUser.left(400)));
+            const QString logged = log.joined();
+            QVERIFY2(logged.contains(QStringLiteral("own prompts ignored")), qPrintable(logged));
+            QVERIFY2(logged.contains(QStringLiteral("single, notes")), qPrintable(logged));
+        }
+        const Meeting longCloud = transcribedLong(QStringLiteral("Felhő, hosszú"));
+        QCOMPARE(quickSystems(longCloud), (QStringList{builtin("notes"), builtin("notes"), builtin("merge")}));
+
+        m_port.cloud = false;
+        const Meeting local = transcribed(QStringLiteral("Helyi, rövid"));
+        QCOMPARE(quickSystems(local), QStringList{QStringLiteral("OWN single prompt.")});
+        const Meeting longLocal = transcribedLong(QStringLiteral("Helyi, hosszú"));
+        QCOMPARE(quickSystems(longLocal), (QStringList{QStringLiteral("OWN notes prompt."),
+                                                       QStringLiteral("OWN notes prompt."),
+                                                       QStringLiteral("OWN merge prompt.")}));
+        // Without settings texts the local route uses the prompt file; the cloud route still the built-in.
+        m_port.settings = processing::ProcessingSettings{};
+        QCOMPARE(quickSystems(transcribed(QStringLiteral("Helyi, fájl"))), QStringList{QStringLiteral("FILE single prompt.")});
+        m_port.cloud = true;
+        QCOMPARE(quickSystems(transcribed(QStringLiteral("Felhő, fájl"))), QStringList{builtin("single")});
+        removePromptFiles();
+        QVERIFY2(m_errors.isEmpty(), qPrintable(m_errors.join("; ")));
+    }
+
+    // Cloud prompt lock, complex path: topic extraction, the per-topic analyses and the reduce use the
+    // built-in templates on the cloud route, the own prompts / the reduce prompt file on the local route.
+    void cloudLocksComplexPrompts()
+    {
+        setOwnPrompts();
+        m_port.cloud = true;
+        QStringList cloud;
+        {
+            LogCatcher log;
+            cloud = complexSystems(transcribed(QStringLiteral("Felhő, komplex")));
+            QVERIFY2(log.joined().contains(QStringLiteral("own prompts ignored")), qPrintable(log.joined()));
+        }
+        QCOMPARE(cloud, (QStringList{builtin("topic"), builtin("analysis"), builtin("analysis"),
+                                     builtin("analysis"), builtin("reduce")}));
+        QCOMPARE(m_port.finished, QStringList{QStringLiteral("complex")});
+
+        m_port.cloud = false;
+        const QStringList local = complexSystems(transcribed(QStringLiteral("Helyi, komplex")));
+        QCOMPARE(local, (QStringList{QStringLiteral("OWN topic prompt."), QStringLiteral("OWN analysis prompt."),
+                                     QStringLiteral("OWN analysis prompt."), QStringLiteral("OWN analysis prompt."),
+                                     QStringLiteral("FILE reduce prompt.")}));
+        removePromptFiles();
+        QVERIFY2(m_errors.isEmpty(), qPrintable(m_errors.join("; ")));
+    }
+
     // The shared prompt / request builder (the facade's cost estimate uses the same instance).
     void requestBuilder()
     {
@@ -579,6 +739,14 @@ private slots:
         QCOMPARE(req.notesMaxTokens, 3000);
         QVERIFY(req.cachePath.startsWith(m.folder));
         QVERIFY(!SummarizationService::resolvedPrompt(s, QString(), "reduce").isEmpty());
+        // Locked (Tanara Cloud): the built-in templates, whatever the settings say.
+        const processing::SummaryRequest locked =
+            SummarizationService::requestFor(s, mt, m, QStringLiteral("x"), 0, true);
+        QCOMPARE(locked.singlePrompt, builtin("single"));
+        QCOMPARE(locked.notesPrompt, builtin("notes"));
+        QCOMPARE(locked.mergePrompt, builtin("merge"));
+        QCOMPARE(SummarizationService::ownPrompts(s, {QStringLiteral("single"), QStringLiteral("notes")}),
+                 QStringList{QStringLiteral("single")});
     }
 };
 

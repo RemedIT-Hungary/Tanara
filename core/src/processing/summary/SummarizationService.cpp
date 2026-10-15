@@ -1,5 +1,6 @@
 #include "tanara/processing/summary/SummarizationService.h"
 
+#include "tanara/foundation/log/Logging.h"
 #include "tanara/foundation/text/Text.h"
 #include "tanara/library/jobs/JobErrors.h"
 #include "tanara/library/jobs/JobStats.h"
@@ -46,24 +47,61 @@ bool SummarizationService::otherLlmBusy() const
     return m_calls.size() + (m_topics->busy() ? 1 : 0) > 1;
 }
 
-QString SummarizationService::resolvedPrompt(const ProcessingSettings& s, const QString& userOverride, const char* id)
+QString SummarizationService::resolvedPrompt(const ProcessingSettings& s, const QString& userOverride, const char* id,
+                                             bool promptsLocked)
 {
-    const QString base = userOverride.trimmed().isEmpty()
-        ? promptDefault(QLatin1String(id))   // the current data folder
-        : userOverride;
+    QString base;
+    if (promptsLocked)
+        base = promptBuiltin(QLatin1String(id));   // the fixed template: no settings text, no prompt file
+    else if (userOverride.trimmed().isEmpty())
+        base = promptDefault(QLatin1String(id));   // the current data folder
+    else
+        base = userOverride;
     return applySummaryLanguage(base, s.summaryLanguage);
 }
 
+QStringList SummarizationService::ownPrompts(const ProcessingSettings& s, const QStringList& ids)
+{
+    QStringList out;
+    for (const QString& id : ids) {
+        QString stored;
+        if (id == QLatin1String("single"))        stored = s.summaryPrompt;
+        else if (id == QLatin1String("notes"))    stored = s.notesPrompt;
+        else if (id == QLatin1String("merge"))    stored = s.mergePrompt;
+        else if (id == QLatin1String("topic"))    stored = s.topicExtractionPrompt;
+        else if (id == QLatin1String("analysis")) stored = s.topicAnalysisPrompt;
+        // A prompt file differs from the built-in text (promptDefault falls back to the built-in one).
+        if (!stored.trimmed().isEmpty()
+            || promptDefault(id).trimmed() != promptBuiltin(id).trimmed())
+            out << id;
+    }
+    return out;
+}
+
+bool SummarizationService::promptsLocked(const QString& meetingId, const Run& run, const ProcessingSettings& s,
+                                         const QStringList& ids) const
+{
+    const bool locked = bool(run) || (m_deps.llm && m_deps.llm->cloudSelected(meetingId));
+    if (locked) {
+        const QStringList own = ownPrompts(s, ids);
+        if (!own.isEmpty())
+            qCInfo(lcLlm).noquote() << "Tanara Cloud route: own prompts ignored, built-in templates used:"
+                                    << own.join(QStringLiteral(", ")) << QStringLiteral("(meeting=%1)").arg(meetingId);
+    }
+    return locked;
+}
+
 SummaryRequest SummarizationService::requestFor(const ProcessingSettings& s, const MergedTranscript& merged,
-                                                const Meeting& m, const QString& model, int maxTokens)
+                                                const Meeting& m, const QString& model, int maxTokens,
+                                                bool promptsLocked)
 {
     constexpr int kNotesMaxTokens = 3000;   // one part note fits well within it
     SummaryRequest req;
     req.transcript = merged;
     req.contextNotes = m.contextNote.trimmed();
-    req.singlePrompt = resolvedPrompt(s, s.summaryPrompt, "single");
-    req.notesPrompt = resolvedPrompt(s, s.notesPrompt, "notes");
-    req.mergePrompt = resolvedPrompt(s, s.mergePrompt, "merge");
+    req.singlePrompt = resolvedPrompt(s, s.summaryPrompt, "single", promptsLocked);
+    req.notesPrompt = resolvedPrompt(s, s.notesPrompt, "notes", promptsLocked);
+    req.mergePrompt = resolvedPrompt(s, s.mergePrompt, "merge", promptsLocked);
     req.language = s.summaryLanguage;
     req.model = model;
     req.maxTokens = maxTokens > 0 ? maxTokens : 8000;
@@ -243,7 +281,9 @@ void SummarizationService::summarize(const QString& meetingId)
     emit jobProgress(meetingId, run ? tr("Összefoglalás a Tanara Cloudban…")
                                     : tr("Összefoglalás a helyi modellel…"));
 
-    SummaryRequest req = requestFor(s, merged, m, cfg.model, cfg.maxTokens);
+    const bool locked = promptsLocked(meetingId, run, s,
+                                      {QStringLiteral("single"), QStringLiteral("notes"), QStringLiteral("merge")});
+    SummaryRequest req = requestFor(s, merged, m, cfg.model, cfg.maxTokens, locked);
     req.temperature = cfg.temperature;
     // For the source references: the utterances with their current (resolved) speaker; this becomes the
     // summary's speaker snapshot (the targeted staleness compares against it).

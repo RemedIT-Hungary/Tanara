@@ -112,7 +112,8 @@ void TopicQueue::extractTopics(const QString& meetingId)
         emit topicsChanged(id);
         emit topicsReady(id, topics);
     });
-    const QString topicPrompt = SummarizationService::resolvedPrompt(s, s.topicExtractionPrompt, "topic");
+    const bool locked = o->promptsLocked(m.id, run, s, {QStringLiteral("topic")});
+    const QString topicPrompt = SummarizationService::resolvedPrompt(s, s.topicExtractionPrompt, "topic", locked);
     const auto ctx = std::make_shared<SummarizationService::ContextState>();
     ctx->need = providers::llmctx::callContextNeed(topicPrompt.size() + transcriptMd.size()
                                         + m.contextNote.size() + 300, cfg.maxTokens);
@@ -425,7 +426,8 @@ void TopicQueue::startNext()
         startNext();
     });
     const QString transcriptMd = merged.renderMarkdown();
-    const QString analysisPrompt = SummarizationService::resolvedPrompt(s, s.topicAnalysisPrompt, "analysis");
+    const bool locked = o->promptsLocked(m.id, run, s, {QStringLiteral("analysis")});
+    const QString analysisPrompt = SummarizationService::resolvedPrompt(s, s.topicAnalysisPrompt, "analysis", locked);
     const auto ctx = std::make_shared<SummarizationService::ContextState>();
     const auto prepError = std::make_shared<JobError>();   // the preparation's error (if that failed)
     ctx->need = providers::llmctx::callContextNeed(analysisPrompt.size() + transcriptMd.size() + m.contextNote.size()
@@ -516,7 +518,9 @@ void TopicQueue::finalize(const QString& meetingId)
     QObject* providerObj = dynamic_cast<QObject*>(provider);
     auto* svc = new ComplexSummaryService(provider, o);
     svc->setLanguage(s.summaryLanguage);
-    svc->setReducePrompt(SummarizationService::resolvedPrompt(s, QString(), "reduce"));
+    const bool locked = o->promptsLocked(meetingId, run, s, {QStringLiteral("reduce")});
+    const QString reducePrompt = SummarizationService::resolvedPrompt(s, QString(), "reduce", locked);
+    svc->setReducePrompt(reducePrompt);
     emit jobProgress(meetingId, tr("Összegzés (vezetői összefoglaló + teendők)…"));
 
     const QString key = SummarizationService::callKey(meetingId, JobKind::Summarize);
@@ -530,7 +534,7 @@ void TopicQueue::finalize(const QString& meetingId)
 
     const auto ctx = std::make_shared<SummarizationService::ContextState>();
     {
-        qint64 chars = SummarizationService::resolvedPrompt(s, QString(), "reduce").size() + m.contextNote.size() + 400;
+        qint64 chars = reducePrompt.size() + m.contextNote.size() + 400;
         for (const TopicAnalysis& a : ordered) chars += a.renderMarkdown().size() + a.title.size() + 40;
         ctx->need = providers::llmctx::callContextNeed(chars, cfg.maxTokens);
     }

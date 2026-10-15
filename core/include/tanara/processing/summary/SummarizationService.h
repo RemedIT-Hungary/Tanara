@@ -91,11 +91,19 @@ public:
 
     // The system prompt actually sent: settings override -> file override (<data>/prompts/<id>.md) ->
     // built-in default (PromptLibrary), with the target language applied.
-    static QString resolvedPrompt(const ProcessingSettings& s, const QString& userOverride, const char* id);
+    // promptsLocked (the LLM route is Tanara Cloud): the client never sends user-written instructions, so
+    // both overrides are ignored and the built-in prompt is the fixed template (language still applied).
+    static QString resolvedPrompt(const ProcessingSettings& s, const QString& userOverride, const char* id,
+                                  bool promptsLocked = false);
     // The quick summary request from the settings: the three prompts, the context, the part-note cache
     // path. model / maxTokens come from the provider config actually used (cloud: a moderate max_tokens).
+    // promptsLocked: see resolvedPrompt (the context note stays: it is data, not an instruction).
     static SummaryRequest requestFor(const ProcessingSettings& s, const MergedTranscript& merged,
-                                     const Meeting& m, const QString& model, int maxTokens);
+                                     const Meeting& m, const QString& model, int maxTokens,
+                                     bool promptsLocked = false);
+    // The user-authored prompts among the given prompt ids (single | notes | merge | topic | analysis |
+    // reduce): a non-empty settings text or a prompt file in the data folder. A locked route ignores these.
+    static QStringList ownPrompts(const ProcessingSettings& s, const QStringList& ids);
 
 signals:
     void summaryReady(QString meetingId, QString markdownPath);
@@ -120,6 +128,10 @@ private:
     static QString callKey(const QString& meetingId, JobKind kind);
     static QString serverKey(const providers::ProviderConfig& cfg);
 
+    // Whether the call's prompts are locked: the meeting's LLM route is Tanara Cloud (or the call already
+    // belongs to a cloud run). Logs one info line when own prompts among ids are ignored because of it.
+    bool promptsLocked(const QString& meetingId, const Run& run, const ProcessingSettings& s,
+                       const QStringList& ids) const;
     // The transcript to summarize with the resolved speakers (empty: there is none).
     MergedTranscript transcriptFor(const Meeting& m) const;
     // A chat provider for one call (the context captures the failed exchanges into the sink).
