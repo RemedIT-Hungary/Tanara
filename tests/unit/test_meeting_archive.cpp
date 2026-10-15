@@ -50,13 +50,16 @@ QJsonObject readJson(const QString& path)
     return QJsonDocument::fromJson(readFile(path)).object();
 }
 
-// The archive's entry names (with the miniz reader).
+// The archive's entry names (with the miniz reader). The file goes through QFile and the in-memory
+// reader: miniz's own fopen() takes an 8-bit path, which on Windows is the ANSI code page, so a
+// name such as "Ügyfél-egyeztetés" would not open there (the app itself reads through QFile too).
 QStringList zipEntries(const QString& zipPath)
 {
     QStringList out;
+    const QByteArray bytes = readFile(zipPath);
     mz_zip_archive zip;
     std::memset(&zip, 0, sizeof(zip));
-    if (!mz_zip_reader_init_file(&zip, QFile::encodeName(zipPath).constData(), 0)) return out;
+    if (!mz_zip_reader_init_mem(&zip, bytes.constData(), size_t(bytes.size()), 0)) return out;
     for (mz_uint i = 0; i < mz_zip_reader_get_num_files(&zip); ++i) {
         mz_zip_archive_file_stat st;
         if (mz_zip_reader_file_stat(&zip, i, &st)) out << QString::fromUtf8(st.m_filename);
@@ -67,9 +70,10 @@ QStringList zipEntries(const QString& zipPath)
 
 QByteArray zipEntryData(const QString& zipPath, const QString& name)
 {
+    const QByteArray bytes = readFile(zipPath);
     mz_zip_archive zip;
     std::memset(&zip, 0, sizeof(zip));
-    if (!mz_zip_reader_init_file(&zip, QFile::encodeName(zipPath).constData(), 0)) return {};
+    if (!mz_zip_reader_init_mem(&zip, bytes.constData(), size_t(bytes.size()), 0)) return {};
     size_t size = 0;
     void* p = mz_zip_reader_extract_file_to_heap(&zip, name.toUtf8().constData(), &size, 0);
     QByteArray out = p ? QByteArray(static_cast<const char*>(p), qsizetype(size)) : QByteArray();
@@ -78,16 +82,20 @@ QByteArray zipEntryData(const QString& zipPath, const QString& name)
     return out;
 }
 
-// A hand-assembled archive (for the broken / malicious cases).
+// A hand-assembled archive (for the broken / malicious cases); built in memory, written with QFile.
 void writeZip(const QString& zipPath, const QList<QPair<QByteArray, QByteArray>>& entries)
 {
     mz_zip_archive zip;
     std::memset(&zip, 0, sizeof(zip));
-    QVERIFY(mz_zip_writer_init_file(&zip, QFile::encodeName(zipPath).constData(), 0));
+    QVERIFY(mz_zip_writer_init_heap(&zip, 0, 0));
     for (const auto& [name, data] : entries)
         QVERIFY(mz_zip_writer_add_mem(&zip, name.constData(), data.constData(), size_t(data.size()),
                                       MZ_DEFAULT_LEVEL));
-    QVERIFY(mz_zip_writer_finalize_archive(&zip));
+    void* buf = nullptr;
+    size_t size = 0;
+    QVERIFY(mz_zip_writer_finalize_heap_archive(&zip, &buf, &size));
+    writeFile(zipPath, QByteArray(static_cast<const char*>(buf), qsizetype(size)));
+    mz_free(buf);
     QVERIFY(mz_zip_writer_end(&zip));
 }
 

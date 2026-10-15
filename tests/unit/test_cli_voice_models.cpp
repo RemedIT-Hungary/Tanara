@@ -196,7 +196,12 @@ private slots:
         if (!QFileInfo::exists(real)) QSKIP("a CAM++ modell nincs meg (~/.tanara/models)");
         if (QStandardPaths::findExecutable("ffmpeg").isEmpty()) QSKIP("nincs ffmpeg");
         QDir().mkpath(QFileInfo(modelFile("campplus")).absolutePath());
+#ifdef Q_OS_WIN
+        // QFile::link makes a .lnk shell shortcut on Windows, which ONNX Runtime cannot load: copy instead.
+        QVERIFY(QFile::copy(real, modelFile("campplus")));
+#else
         QVERIFY(QFile::link(real, modelFile("campplus")));   // used read-only
+#endif
         QVERIFY(cli({"voice-models", "enable", "campplus"}).code == 0);
         QVERIFY(cli({"voice-models", "disable", "wespeaker-resnet34-lm"}).code == 0);
 
