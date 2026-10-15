@@ -1047,9 +1047,9 @@ tanara::library::OverviewSnapshot OverviewControllerFacade::snapshot(const QStri
         const int active = int(std::count_if(speakers.cbegin(), speakers.cend(),
                                              [](const editing::EditorSpeaker& s) { return s.utteranceCount > 0; }));
         stats << stat(tr("HOSSZ"), durationText, tr("felvétel"))
-              << stat(tr("BESZÉD"), QStringLiteral("%1:%2").arg(speech / 3600000)
-                                        .arg(int((speech / 60000) % 60), 2, 10, QLatin1Char('0')),
-                      tr("%n sávon", nullptr, included))
+              // Same mm:ss / h:mm:ss formatting as the LENGTH tile (it used to print hours:minutes,
+              // so 74 s of speech read "0:01").
+              << stat(tr("BESZÉD"), jobsupport::formatDuration(speech), tr("%n sávon", nullptr, included))
               << stat(tr("BESZÉLŐK"), QString::number(active), anon > 0 ? tr("%n névtelen", nullptr, anon) : tr("mind elnevezve"))
               << stat(tr("MEGSZÓLALÁS"), QString::number(ed->utteranceCount()), tr("%n javítva", nullptr, corrected))
               << stat(tr("ÁTNÉZENDŐ"), QString::number(ed->uncertainCount()), tr("az Átirat fülön"))

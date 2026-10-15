@@ -1,3 +1,4 @@
+#include "tanara/foundation/time/TimeFormat.h"
 #include "demo/OverviewDemoFacade.h"
 
 #include "tanara/library/OverviewSpeakers.h"
@@ -570,7 +571,7 @@ tanara::library::OverviewSnapshot OverviewDemoFacade::build() const
     s.stats.clear();
     if (done)
         s.stats << stat(tr("HOSSZ"), QStringLiteral("2:11:04"), tr("felvétel"))
-                << stat(tr("BESZÉD"), QStringLiteral("1:52"), tr("%n sávon", nullptr, 2))
+                << stat(tr("BESZÉD"), tanara::timefmt::duration(6720000), tr("%n sávon", nullptr, 2))   // 1 h 52 min, same format as LENGTH
                 << stat(tr("BESZÉLŐK"), QStringLiteral("5"), tr("%n névtelen", nullptr, 1))
                 << stat(tr("MEGSZÓLALÁS"), QStringLiteral("1298"), tr("%n javítva", nullptr, 23))
                 << stat(tr("ÁTNÉZENDŐ"), QStringLiteral("84"), tr("az Átirat fülön"))
