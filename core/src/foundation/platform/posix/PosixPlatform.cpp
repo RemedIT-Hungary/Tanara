@@ -46,4 +46,9 @@ void debugOutput(const QString& line)
     Q_UNUSED(line);   // stderr / the log file already carry the line
 }
 
+int localConnectRefusalMs()
+{
+    return 0;   // the RST fails the connect at once
+}
+
 } // namespace tanara::platform

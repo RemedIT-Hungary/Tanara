@@ -3,6 +3,9 @@
 #include "tanara/foundation/error/Error.h"
 #include "tanara/foundation/net/HttpClient.h"
 #include "tanara/foundation/net/NetworkErrorText.h"
+#include "tanara/foundation/platform/Platform.h"
+
+#include <algorithm>
 
 #include <QCoreApplication>
 #include <QDateTime>
@@ -57,6 +60,13 @@ bool isConnectionError(QNetworkReply::NetworkError e)
 } // namespace
 
 // ---- LlmServerProbe -----------------------------------------------------------------------
+
+int LlmServerProbe::defaultTimeoutMs()
+{
+    // 3 s is plenty for a live server; where the OS delays "connection refused" (Windows, ~4 s), leave
+    // the same margin after that delay, so a dead address still ends as "unreachable" (8 s there).
+    return std::max(3000, platform::localConnectRefusalMs() + 4000);
+}
 
 LlmServerProbe::LlmServerProbe(QObject* parent) : QObject(parent)
 {

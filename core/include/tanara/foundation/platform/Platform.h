@@ -35,6 +35,12 @@ bool processAlive(qint64 pid);
 // OutputDebugString, with a newline appended). No-op elsewhere.
 void debugOutput(const QString& line);
 
+// How long a TCP connect to a closed port on the local machine may take before the OS reports
+// "connection refused": about 4000 ms on Windows (Winsock retries the SYN even after an RST),
+// 0 on POSIX (the RST fails the connect at once). A probe that must tell "nothing listens" from
+// "slow server" needs a timeout above this.
+int localConnectRefusalMs();
+
 } // namespace tanara::platform
 
 namespace tanara::paths {

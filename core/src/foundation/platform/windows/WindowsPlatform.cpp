@@ -56,6 +56,13 @@ void debugOutput(const QString& line)
     OutputDebugStringW(reinterpret_cast<const wchar_t*>((line + QLatin1Char('\n')).utf16()));
 }
 
+int localConnectRefusalMs()
+{
+    // Measured on Windows 11 with Qt 6.11: a GET to a closed 127.0.0.1 port reports
+    // ConnectionRefusedError after ~4.0 s (TcpMaxConnectRetransmissions retries the SYN).
+    return 4000;
+}
+
 } // namespace tanara::platform
 
 namespace tanara::paths {

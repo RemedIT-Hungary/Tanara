@@ -34,6 +34,11 @@ class LlmServerProbe : public QObject {
     Q_OBJECT
 public:
     static constexpr int kCacheMs = 10000;
+    // Default probe timeout: 3000 ms, or more where the OS reports "connection refused" on a closed
+    // local port only after a delay (Windows: ~4 s, see platform::localConnectRefusalMs()). A live
+    // server answers /api/v0/models well within this; a timeout is left to the chat call. Below the
+    // OS's refusal delay a dead LM Studio would show up as a timeout instead of "unreachable".
+    static int defaultTimeoutMs();
 
     explicit LlmServerProbe(QObject* parent = nullptr);
     ~LlmServerProbe() override;
@@ -57,7 +62,7 @@ private:
 
     QPointer<net::HttpClient> m_http;
     QPointer<QNetworkReply> m_reply;
-    int m_timeoutMs = 3000;
+    int m_timeoutMs = defaultTimeoutMs();
     quint64 m_generation = 0;
 };
 
@@ -101,7 +106,7 @@ private:
     std::function<bool()> m_busy;
     int m_need = 0;
     int m_floor = 0;
-    int m_probeTimeoutMs = 3000;
+    int m_probeTimeoutMs = LlmServerProbe::defaultTimeoutMs();
     int m_loadTimeoutMs = 10 * 60 * 1000;
     llmctx::LlmServerInfo m_info;
     llmctx::PreloadDecision m_decision;

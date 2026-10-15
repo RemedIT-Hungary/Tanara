@@ -559,7 +559,8 @@ void LlmContextTest::preparerFailsFastOnDeadServer()
     providers::LlmServerProbe probe;
     QSignalSpy probed(&probe, &providers::LlmServerProbe::finished);
     probe.probe(cfg);
-    QTRY_COMPARE(probed.count(), 1);
+    // Windows reports "connection refused" on a closed port only after ~4 s (the SYN is retried).
+    QTRY_COMPARE_WITH_TIMEOUT(probed.count(), 1, 10000);
     const auto info = probed.at(0).at(0).value<providers::llmctx::LlmServerInfo>();
     QVERIFY(info.unreachable);
     QVERIFY(!info.transportError.isEmpty());
@@ -570,7 +571,7 @@ void LlmContextTest::preparerFailsFastOnDeadServer()
     QSignalSpy ready(&p, &providers::LlmModelPreparer::ready);
     QSignalSpy failed(&p, &providers::LlmModelPreparer::failed);
     p.start(60000);
-    QTRY_COMPARE(failed.count(), 1);
+    QTRY_COMPARE_WITH_TIMEOUT(failed.count(), 1, 10000);   // Windows: ~4 s until "connection refused"
     QCOMPARE(ready.count(), 0);
     const auto e = failed.at(0).at(0).value<JobError>();
     const QString root = QStringLiteral("http://127.0.0.1:%1").arg(port);
