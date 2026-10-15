@@ -114,7 +114,8 @@ public:
     virtual FolderUsage folderUsage(const QString& path, bool countMeetings) const = 0;
     // The meeting folders directly under a recording root.
     virtual int meetingFolderCount(const QString& path) const = 0;
-    // Starting the watcher at sign-in (immediately; never in a sandbox / test).
+    // Starting the watcher at sign-in (immediately; never in a sandbox / test). Turned on, it also
+    // starts the watcher now if none is running, so the switch does not wait for the next sign-in.
     virtual void applyWatcherAutostart(bool on) = 0;
 
     // ---- secrets (API keys; the SecretStore, not settings.json) ----

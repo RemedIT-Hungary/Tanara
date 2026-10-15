@@ -11,6 +11,7 @@
 #include <QFile>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QLockFile>
 #include <QSaveFile>
 
 
@@ -44,6 +45,21 @@ QString recordingLockPath()
 QString watcherLockPath()
 {
     return paths::current().stateFile(paths::files::WatcherLock);
+}
+
+bool watcherRunning()
+{
+    const QString path = watcherLockPath();
+    // No state folder yet (first run): nothing can hold a lock there. Without this the failed
+    // tryLock below would read as "running".
+    if (!QFileInfo::exists(QFileInfo(path).absolutePath())) return false;
+    QLockFile probe(path);
+    probe.setStaleLockTime(0);   // PID-based stale detection only, like the watcher's own lock
+    if (probe.tryLock(0)) {
+        probe.unlock();
+        return false;
+    }
+    return true;
 }
 
 ProcessLock::ProcessLock(const QString& lockPath)

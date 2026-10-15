@@ -47,7 +47,6 @@
 #include <QFile>
 #include <QJsonDocument>
 #include <QJsonObject>
-#include <QLockFile>
 #include <QMenu>
 #include <QMessageBox>
 #include <QProcess>
@@ -70,17 +69,9 @@ using namespace tanara_gui;
 // process exits when the user closes the window (closing during a recording does not stop it:
 // it opens the "keep running in the background" / "stop and close" page), or when the
 // recording ended with a hidden window.
-// Is the watcher (tanara-watcher) running? It holds watcher.lock; if we can take it, it is not running.
-static bool watcherRunning()
-{
-    QLockFile probe(tanara::watcherLockPath());
-    probe.setStaleLockTime(0);
-    if (probe.tryLock(0)) {
-        probe.unlock();
-        return false;
-    }
-    return true;
-}
+// Is the watcher (tanara-watcher) running? The lock probe lives in core (ProcessLock.h); the
+// Settings facade uses the same one when it starts the watcher after the switch is turned on.
+using tanara::watcherRunning;
 
 // The value of `--settings [PAGE]`: the page name ("" if absent / the next item is a switch).
 static QString settingsPageArg(const QStringList& args)

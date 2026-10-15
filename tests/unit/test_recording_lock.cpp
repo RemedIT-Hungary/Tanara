@@ -7,7 +7,10 @@
 #include <QObject>
 #include <QCoreApplication>
 #include <QTemporaryDir>
+#include <QDir>
 #include <QFile>
+#include <QFileInfo>
+#include <QLockFile>
 
 #include "tanara/foundation/ProcessLock.h"
 
@@ -64,6 +67,24 @@ private slots:
     {
         QTemporaryDir dir;
         QVERIFY(!RecordingLock::read(dir.filePath(QStringLiteral("nope.lock"))).active);
+    }
+
+    // watcherRunning(): the watcher's lock (in the sandbox's state folder, TANARA_HOME) decides.
+    // Without the state folder, or with a free lock, no watcher runs; a held lock means one does.
+    void watcherRunningFollowsTheLock()
+    {
+        const QString path = watcherLockPath();
+        const QString dir = QFileInfo(path).absolutePath();
+        QVERIFY(!QFileInfo::exists(dir) || QDir(dir).entryList(QDir::Files).isEmpty());
+        QVERIFY(!watcherRunning());             // no state folder yet
+        QVERIFY(QDir().mkpath(dir));
+        QVERIFY(!watcherRunning());             // folder, no lock
+        {
+            QLockFile held(path);
+            QVERIFY(held.tryLock(0));
+            QVERIFY(watcherRunning());          // a live PID holds it (ours)
+        }
+        QVERIFY(!watcherRunning());             // released
     }
 };
 

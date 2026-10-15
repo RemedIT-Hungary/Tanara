@@ -24,6 +24,10 @@ QString instanceScopeSuffix();
 // and with TANARA_HOME they are in the sandbox.
 QString recordingLockPath();
 QString watcherLockPath();
+// Is the watcher (tanara-watcher) running? It holds watcher.lock (QLockFile, PID-checked) for its
+// whole life; if the probe can take the lock, nobody holds it. Scoped like the lock files: with
+// TANARA_HOME it asks about the sandbox's watcher, not the user's.
+bool watcherRunning();
 
 class ProcessLock {
 public:

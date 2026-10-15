@@ -2,6 +2,7 @@
 
 #include "tanara/app/SettingsManager.h"
 #include "tanara/cloud/CloudSession.h"
+#include "tanara/foundation/ProcessLock.h"   // watcherRunning()
 #include "tanara/foundation/i18n/Localization.h"
 #include "tanara/library/index/EmbeddingIndex.h"
 #include "tanara/library/index/EmbeddingPreparer.h"
@@ -19,6 +20,8 @@
 #include <QDir>
 #include <QDirIterator>
 #include <QFile>
+#include <QFileInfo>
+#include <QProcess>
 #include <QSet>
 
 using namespace tanara;
@@ -141,7 +144,13 @@ int SettingsServicesFacade::meetingFolderCount(const QString& path) const
 
 void SettingsServicesFacade::applyWatcherAutostart(bool on)
 {
-    watcher::autostart::applyWatcher(on, watcher::autostart::findWatcherExecutable(QCoreApplication::applicationDirPath()));
+    const QString exe = watcher::autostart::findWatcherExecutable(QCoreApplication::applicationDirPath());
+    const bool applied = watcher::autostart::applyWatcher(on, exe);
+    // Switched on: the user expects the watcher in the tray now, not only after the next sign-in
+    // (after an install the switch is the only thing they touch). Only the real entry starts it
+    // (applied: not a sandbox / test), and only when no watcher holds the lock already.
+    if (on && applied && !exe.isEmpty() && !watcherRunning())
+        QProcess::startDetached(exe, {}, QFileInfo(exe).absolutePath());
 }
 
 // ---- secrets ----------------------------------------------------------------------------
