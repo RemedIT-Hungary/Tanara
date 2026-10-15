@@ -7,7 +7,7 @@ import QtQuick
 //             "contradict" contradicting: dashed borderStrong border, faint label, x / warning icon
 //   EvidenceChip { kind: "voice"; polarity: "support"; text: "voice 84%" }
 //   EvidenceChip { kind: "side"; side: "loopback"; polarity: "neutral"; text: "call-audio track" }
-// Shared element of the "Who was there?" dialog and the editor (line popover, groups).
+// Shared element of the "Who was there?" card and the editor (line popover, groups).
 Item {
     id: root
 

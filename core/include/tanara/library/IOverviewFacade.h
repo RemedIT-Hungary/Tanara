@@ -25,7 +25,6 @@ struct OverviewSnapshot {
     // "list" | "empty" | "nobody"
     QString peopleState = QStringLiteral("empty");
     QVariantList participants;
-    QVariantList anonymousSpeakers;
     QString peopleHint;
     bool approved = false;
     bool approvalPending = false;
@@ -67,9 +66,6 @@ public:
     virtual bool setSolo(const QString& meetingId) = 0;
     // "Re-analyze" before a transcript: the audio analysis again.
     virtual bool reanalyze(const QString& meetingId) = 0;
-    // Names an anonymous row in place (only the fictional facade can: true); false: the editor's
-    // reassignSpeaker does it on real data.
-    virtual bool nameSpeakerInPlace(const QString& meetingId, const QString& speakerKey, const QString& name) = 0;
     virtual void setContextNote(const QString& meetingId, const QString& note) = 0;
     // Applies a "Who was there?" decision ("approved" | "skipped") in place: only the fictional facade
     // can (true). On real data the participants view model decides (approve / skip, with the learning

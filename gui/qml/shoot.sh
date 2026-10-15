@@ -11,7 +11,7 @@
 # More recipes: see "Screenshot recipes (v3)" in gui/qml/README.md.
 # Examples with demo states:
 #   gui/qml/shoot.sh 'Main:1280x820:demoState="overviewTranscribing"' 'TracksTab:1004x640:demoState="default"' \
-#     'ParticipantsDialog:1000x760:demoState="learnQuestion"' 'MapDock:1100x200:demoState="similarMarks"' \
+#     'TranscriptTab:1100x760:participantsStripDemo="pending"' 'MapDock:1100x200:demoState="similarMarks"' \
 #     'SettingsWindow:900x880:demoState="B08verify"' 'SettingsWindow:900x880:demoState="B08partial"' \
 #     'PeopleWindow:960x1100:demoState="tagsFocus"' 'TranscriptTab:1100x760:demoState="newPersonTag"'
 # The Gallery "Tracks and learning" section is at the bottom of the page: full page height is 6900.

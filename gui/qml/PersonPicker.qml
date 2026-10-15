@@ -12,7 +12,6 @@ TPopover {
     id: control
 
     property var editor: null               // TranscriptEditorViewModel
-    property var participants: null         // ParticipantsViewModel (in the "Who was there?" dialog)
     property string tagId: ""               // Tags window: we pick for this tag
     property alias peopleModel: people
     property string initialQuery: ""
@@ -64,7 +63,6 @@ TPopover {
     PersonListModel {
         id: people
         editor: control.editor
-        participants: control.participants
         tagId: control.tagId
         query: search.text
         onCountChanged: control.currentIndex = search.text.trim() === "" ? -1 : count > 0 ? 0 : count

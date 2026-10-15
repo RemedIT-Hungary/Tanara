@@ -106,24 +106,6 @@ QVector<PersonInfo> ParticipantsServicesFacade::peopleDirectory() const
     return editing::listPeople(m_d.people, m_d.voiceprints, m_d.store);
 }
 
-TagPeopleHint ParticipantsServicesFacade::suggestPeople(const QStringList& tagIds, const QVector<PersonId>& presentIds,
-                                                        const QStringList& presentNames, int limit) const
-{
-    if (!m_d.tags) return {};
-    // The people already in the dialog (a typed name: the person with that name) and the own person.
-    PersonIds present = presentIds;
-    if (m_d.people)
-        for (const QString& name : presentNames) present << m_d.people->idForName(name);
-    if (m_d.peopleService) present << m_d.peopleService->selfPerson().id;
-    // The first tag that has a suggestion.
-    for (const QString& tagId : tagIds) {
-        const QVector<library::PersonTagStat> stats = m_d.tags->suggestPeopleForTag(tagId, present, limit);
-        if (stats.isEmpty()) continue;
-        return {m_d.tags->tag(tagId).name, stats};
-    }
-    return {};
-}
-
 ApprovalOutcome ParticipantsServicesFacade::approve(const QString& meetingId, const QVector<ApprovedRow>& accepted)
 {
     ApprovalOutcome out;
@@ -132,7 +114,7 @@ ApprovalOutcome ParticipantsServicesFacade::approve(const QString& meetingId, co
     for (const ApprovedRow& a : accepted) {
         Participant p;
         p.id = a.id;
-        // The row's person; a name typed in the dialog: a known person with that name, else a new person.
+        // The row's person; a name without a person id: a known person with that name, else a new person.
         p.personId = !a.personId.isNull() ? a.personId
                    : m_d.people ? m_d.people->resolve(m_d.people->choiceFor(a.name)) : PersonId();
         if (p.personId.isNull()) continue;

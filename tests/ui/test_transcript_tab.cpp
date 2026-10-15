@@ -741,6 +741,33 @@ private slots:
         QVERIFY(!m_vm->canUndo());
     }
 
+    // The "Who was there?" strip under the toolbar: hidden without a pending decision / unnamed voices;
+    // with candidates awaiting a decision, or unnamed speakers, it says so and its one button asks the
+    // shell for the Overview's card (participantsRequested); it goes away with the state.
+    void participantsStrip_followsTheDecision()
+    {
+        load();
+        QVERIFY(!visual("participantsStrip"));
+        QSignalSpy requested(m_tab, SIGNAL(participantsRequested()));
+
+        m_tab->setProperty("participantsStripDemo", QStringLiteral("pending"));
+        QTRY_VERIFY(visual("participantsStrip"));
+        QCOMPARE(visual("participantsStripText")->property("text").toString(), QStringLiteral("5 jelölt vár döntésre"));
+        QCOMPARE(visual("participantsStripAction")->property("text").toString(), QStringLiteral("Áttekintés"));
+        click(center(visual("participantsStripAction")));
+        QCOMPARE(requested.count(), 1);
+
+        m_tab->setProperty("participantsStripDemo", QStringLiteral("names"));
+        QTRY_COMPARE(visual("participantsStripText")->property("text").toString(), QStringLiteral("2 névtelen beszélő"));
+        QCOMPARE(visual("participantsStripAction")->property("text").toString(),
+                 QStringLiteral("Elnevezés az Áttekintésen"));
+        click(center(visual("participantsStripAction")));
+        QCOMPARE(requested.count(), 2);
+
+        m_tab->setProperty("participantsStripDemo", QString());
+        QTRY_VERIFY(!visual("participantsStrip"));
+    }
+
     // "Which track does it speak on?": manual track assignment from the panel; one step, undoable.
     void speakerWhy_trackAssignment()
     {

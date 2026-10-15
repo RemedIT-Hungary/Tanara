@@ -41,9 +41,6 @@ public:
 
     tanara::editing::ParticipantsState state(const QString& meetingId) const override;
     QVector<tanara::editing::PersonInfo> peopleDirectory() const override;
-    tanara::editing::TagPeopleHint suggestPeople(const QStringList& tagIds,
-                                                 const QVector<tanara::PersonId>& presentIds,
-                                                 const QStringList& presentNames, int limit) const override;
     tanara::editing::ApprovalOutcome approve(const QString& meetingId,
                                              const QVector<tanara::editing::ApprovedRow>& accepted) override;
     bool skip(const QString& meetingId) override;

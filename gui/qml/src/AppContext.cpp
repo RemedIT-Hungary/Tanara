@@ -721,7 +721,6 @@ tanara::library::OverviewSnapshot OverviewControllerFacade::snapshot(const QStri
     int hiddenSpeakers = 0;
     QVariantList rows;
     PersonIds names;            // the people already listed
-    QVariantList anonymous;
     if (!speakers.isEmpty()) {
         // After the transcript: the speakers (with color, share), with the participant's evidence.
         QVector<editing::EditorSpeaker> sorted = speakers;
@@ -764,9 +763,6 @@ tanara::library::OverviewSnapshot OverviewControllerFacade::snapshot(const QStri
             row.insert(QStringLiteral("lineCount"), s.utteranceCount);
             rows << row;
             if (!s.personId.isNull()) names << s.personId;
-            anonymous << QVariantMap{{QStringLiteral("name"), s.displayName},
-                                     {QStringLiteral("share"), s.talkShare},
-                                     {QStringLiteral("colorIndex"), s.colorIndex}};
         }
         // Participants not tied to a speaker but with a name (manual / never spoke) after the
         // speakers, dim; removable.
@@ -801,7 +797,6 @@ tanara::library::OverviewSnapshot OverviewControllerFacade::snapshot(const QStri
         }
         s.peopleState = rows.isEmpty() ? QStringLiteral("empty") : QStringLiteral("list");
     }
-    s.anonymousSpeakers = s.peopleState == QLatin1String("nobody") ? anonymous : QVariantList();
 
     // Tag-based suggestion: people learned from the meeting's tags who are not here yet. The
     // core filters out those already here, the own person and those rejected for this meeting

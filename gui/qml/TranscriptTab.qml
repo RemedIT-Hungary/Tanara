@@ -87,8 +87,22 @@ Item {
     }
     // Ctrl+E: Read <-> Fix; from To review (a Fix-like view) back to Read.
     function toggleFixMode() { setViewMode(viewMode === "read" ? "fix" : "read") }
-    // "Who was there?" (toolbar): the shell opens the participants dialog.
+    // "Who was there?" (toolbar, strip): the shell takes the user to the Overview's card.
     signal participantsRequested()
+    // Screenshots / demo: the strip's state ("pending" | "names" | ""); on real data it follows the
+    // meeting (participantsVm, the editor's speakers).
+    property string participantsStripDemo: ""
+    // Candidates awaiting the decision, else unnamed speakers that have lines: what the strip says.
+    readonly property int stripCandidates: editorVm.demo ? (participantsStripDemo === "pending" ? 5 : 0)
+                                           : participantsVm.approvalPending ? participantsVm.candidateCount : 0
+    readonly property int stripUnnamed: {
+        if (editorVm.demo) return participantsStripDemo === "names" ? 2 : 0
+        let n = 0
+        for (const sp of editorVm.speakers)
+            if (sp.anonymous === true && sp.utteranceCount > 0) ++n
+        return n
+    }
+    readonly property bool stripShown: editorVm.hasTranscript && (stripCandidates > 0 || stripUnnamed > 0)
 
     // ---- Fix mode (the map dock and the toolbar read these) ----
     readonly property var v3DemoStates: ["markers", "fixLinePopover", "reviewGroups", "reviewExpanded",
@@ -536,20 +550,10 @@ Item {
     function markNotPresent(speakerKey, fixVoiceprints) {
         const person = editorVm.personOf(speakerKey)
         let participantId = ""
-        let participantsVm = null
-        if (person !== "" && !editorVm.demo) {
-            participantsVm = participantsComponent.createObject(root, { meetingId: root.meetingId })
-            const groups = participantsVm ? participantsVm.groups : []
-            for (let g = 0; g < groups.length && participantId === ""; ++g)
-                for (let r = 0; r < groups[g].rows.length; ++r)
-                    if ((groups[g].rows[r].name || "").toLowerCase() === person.toLowerCase()) {
-                        participantId = groups[g].rows[r].id
-                        break
-                    }
-        }
+        if (person !== "" && !editorVm.demo)
+            participantId = participantsVm.participantIdOf(person)
         if (fixVoiceprints || participantId === "") editorVm.revertSpeakerToAnonymous(speakerKey, fixVoiceprints)
         if (participantId !== "") participantsVm.unbind(participantId)
-        if (participantsVm) participantsVm.destroy()
     }
     // Confirmation before merging two speakers, with numbers. request: { kind: "merge" |
     // "reassign" | "rest", fromKey, intoKey, personName, fix }. Nothing to ask for an empty source.
@@ -882,6 +886,45 @@ Item {
             onVoiceprintClicked: (speakerKey, anchor) => root.openVoiceprintPopover(speakerKey, anchor)
             // After the search closes, the keys belong to the editor again (not the hidden field).
             onSearchOpenChanged: if (!searchOpen) Qt.callLater(root.releaseHiddenFocus)
+        }
+
+        // "Who was there?" strip: a decision awaits (candidates) or voices are unnamed; one action
+        // takes the user to the card on the Overview. Gone once the decision is made / all are named.
+        Rectangle {
+            id: participantsStrip
+            objectName: "participantsStrip"
+            visible: root.stripShown
+            Layout.fillWidth: true
+            implicitHeight: 34
+            readonly property bool pending: root.stripCandidates > 0
+            color: pending ? Theme.accentSoft : Theme.sunken
+            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1
+                        color: participantsStrip.pending ? Theme.accentLine : Theme.border }
+            RowLayout {
+                anchors { fill: parent; leftMargin: 16; rightMargin: 12 }
+                spacing: 10
+                TIcon {
+                    name: participantsStrip.pending ? "fingerprint" : "users"
+                    size: 14
+                    color: participantsStrip.pending ? Theme.accent : Theme.textMuted
+                }
+                TLabel {
+                    objectName: "participantsStripText"
+                    Layout.fillWidth: true
+                    elide: Text.ElideRight
+                    font.pixelSize: Theme.fontSmall
+                    font.weight: participantsStrip.pending ? Theme.weightSemiBold : Theme.weightRegular
+                    muted: !participantsStrip.pending
+                    text: participantsStrip.pending ? qsTr("%n jelölt vár döntésre", "", root.stripCandidates)
+                                                    : qsTr("%n névtelen beszélő", "", root.stripUnnamed)
+                }
+                TButton {
+                    objectName: "participantsStripAction"
+                    text: participantsStrip.pending ? qsTr("Áttekintés") : qsTr("Elnevezés az Áttekintésen")
+                    variant: "ghost"; size: "small"
+                    onClicked: root.participantsRequested()
+                }
+            }
         }
 
         // Pinned header: the rail's column heads + the utterance counter + the voice analysis state.
@@ -1534,11 +1577,11 @@ Item {
         }
     }
 
-    // "They were not there": the "Who was there?" mark updates too (the participant binding ends).
-    // Created only for the action (so it does not load participants on every meeting switch).
-    Component {
-        id: participantsComponent
-        ParticipantsViewModel {}
+    // The meeting's "Who was there?" decision: the strip below the toolbar reads it, and "They were
+    // not there" ends the participant binding through it (unbind).
+    ParticipantsViewModel {
+        id: participantsVm
+        meetingId: root.meetingId
     }
 
     // The voiceprint panel: state, usable material, creation (and undoing the one just made). A

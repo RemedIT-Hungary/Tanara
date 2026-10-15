@@ -157,7 +157,6 @@ private slots:
         // Without a voice model there is no "Re-analyze", and core does not start one either.
         QVERIFY(!vm.canReanalyze());
         QVERIFY(!vm.reanalyze());
-        QVERIFY(!vm.nameSpeakerInDemo(QStringLiteral("x"), QStringLiteral("Y")));   // not a demo on real data
 
         // The x is persistent (meeting.json) and can be undone from the shared stack.
         vm.removeParticipant(id);
@@ -307,16 +306,15 @@ private slots:
         vm.setMeetingId(m.id);
         QVERIFY(vm.hasTranscript());
         QCOMPARE(vm.peopleState(), QStringLiteral("nobody"));
-        QCOMPARE(vm.anonymousSpeakers().size(), 2);
         // The rows by speaker key, as anonymous (nameable).
         QCOMPARE(vm.participants().size(), 2);
         for (const QVariant& v : vm.participants()) {
             QVERIFY(!v.toMap().value("speakerKey").toString().isEmpty());
             QVERIFY(v.toMap().value("anonymous").toBool());
         }
-        const QVariantMap first = vm.anonymousSpeakers().first().toMap();
+        const QVariantMap first = vm.participants().first().toMap();
         QCOMPARE(first.value("name").toString(), QStringLiteral("Beszélő 1"));
-        QVERIFY(first.value("share").toDouble() > 0.6);
+        QVERIFY(first.value("talkShare").toDouble() > 0.6);
         QCOMPARE(stepOf(vm, QStringLiteral("transcript")).value("state").toString(), QStringLiteral("done"));
         QCOMPARE(stepOf(vm, QStringLiteral("transcript")).value("sub").toString(),
                  QStringLiteral("3 megszólalás · 2 beszélő"));
@@ -677,7 +675,7 @@ private slots:
             QVERIFY(!row.value("speakerKey").toString().isEmpty());
             if (!row.value("anonymous").toBool()) continue;
             found = true;
-            QVERIFY(vm.nameSpeakerInDemo(row.value("speakerKey").toString(), QStringLiteral("Szabó Bence")));
+            QVERIFY(vm.nameParticipant(row.value("id").toString(), QStringLiteral("Szabó Bence")));
         }
         QVERIFY(found);
         QCOMPARE(unheard, 1);
@@ -706,7 +704,7 @@ private slots:
 
         vm.setDemoState(QStringLiteral("overviewNobody"));
         QCOMPARE(vm.peopleState(), QStringLiteral("nobody"));
-        QCOMPARE(vm.anonymousSpeakers().size(), 3);
+        QCOMPARE(vm.participants().size(), 3);
         AppContext::instance()->setDemo(false);
     }
 };

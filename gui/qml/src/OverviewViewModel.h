@@ -56,8 +56,6 @@ class OverviewViewModel : public QObject {
     // the speakers' rows come, dimmed, the participants not heard / added manually (unheard, "not
     // heard" badge, AppController::unheardParticipants), then at most 3 tag-based suggestions.
     Q_PROPERTY(QVariantList participants READ participants NOTIFY changed)
-    // The raw speakers of the "nobody" state: [{ name, share (0..1), colorIndex }]
-    Q_PROPERTY(QVariantList anonymousSpeakers READ anonymousSpeakers NOTIFY changed)
     // The dim line next to "WHO WAS THERE": sources, or "approved Oct 1, 4:40 PM".
     Q_PROPERTY(QString peopleHint READ peopleHint NOTIFY changed)
     Q_PROPERTY(bool approved READ approved NOTIFY changed)
@@ -105,7 +103,6 @@ public:
     bool canReanalyze() const { return m_canReanalyze; }
     QString peopleState() const { return m_peopleState; }
     QVariantList participants() const { return m_participants; }
-    QVariantList anonymousSpeakers() const { return m_anonymous; }
     QString peopleHint() const { return m_peopleHint; }
     bool approved() const { return m_approved; }
     bool approvalPending() const { return m_approvalPending; }
@@ -131,9 +128,6 @@ public:
     // "Re-analyze" before a transcript: the audio analysis again (AppController::analyzeParticipants).
     // After a transcript the shell's identifyParticipants runs (same as the menu's "Voiceprint analysis again").
     Q_INVOKABLE bool reanalyze();
-    // In the demo, naming an anonymous row in place (true); on real data false: the editor's
-    // reassignSpeaker does the work there (one undo step, change bar).
-    Q_INVOKABLE bool nameSpeakerInDemo(const QString& speakerKey, const QString& name);
     // In the demo, the card's decision ("approved" | "skipped") in place (true); on real data false:
     // ParticipantsViewModel approve / skip does the work (with the learning question).
     Q_INVOKABLE bool decideInDemo(const QString& decision);
@@ -181,7 +175,6 @@ private:
     QString m_contextNote;
     QString m_peopleState = QStringLiteral("empty");
     QVariantList m_participants;
-    QVariantList m_anonymous;
     QString m_peopleHint;
     bool m_approved = false;
     bool m_approvalPending = false;

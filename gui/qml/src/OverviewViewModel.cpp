@@ -168,14 +168,6 @@ bool OverviewViewModel::reanalyze()
     return ok;
 }
 
-bool OverviewViewModel::nameSpeakerInDemo(const QString& speakerKey, const QString& name)
-{
-    if (!m_facade || !m_facade->nameSpeakerInPlace(m_meetingId, speakerKey, name))
-        return false;
-    reload();
-    return true;
-}
-
 bool OverviewViewModel::decideInDemo(const QString& decision)
 {
     if (!m_facade || !m_facade->decideInPlace(m_meetingId, decision))
@@ -205,7 +197,6 @@ void OverviewViewModel::reload()
     m_contextNote = s.contextNote;
     m_peopleState = s.peopleState;
     m_participants = s.participants;
-    m_anonymous = s.anonymousSpeakers;
     m_peopleHint = s.peopleHint;
     m_approved = s.approved;
     m_approvalPending = s.approvalPending;

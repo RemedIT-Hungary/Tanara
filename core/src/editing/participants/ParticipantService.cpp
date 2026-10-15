@@ -281,7 +281,7 @@ bool ParticipantService::approveParticipants(const QString& meetingId, const QVe
             m.participants.append(p);
             idx = m.participants.size() - 1;
         } else if (!a.personId.isNull()) {
-            m.participants[idx].personId = a.personId;   // person changed in the dialog
+            m.participants[idx].personId = a.personId;   // person changed in the approval
         }
         acceptedIds << m.participants.at(idx).id;
     }

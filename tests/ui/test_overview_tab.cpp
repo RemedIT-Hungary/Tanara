@@ -135,7 +135,7 @@ private slots:
         QVERIFY(!shown("statTiles"));
         QVERIFY(!shown("mapDock"));                       // the plain player on the Overview
         QVERIFY(shown("seekSlider"));
-        // The decision is the card's header + footer ("Who was there?" A variant; no banner, no dialog).
+        // The decision is the card's header + footer ("Who was there?" A variant; no banner, no modal).
         QVERIFY(shown("participantsHeader"));
         QVERIFY(shown("approveButton"));
         QVERIFY(shown("skipButton"));
@@ -378,6 +378,25 @@ private slots:
         QTRY_VERIFY(anyShown("meetingRenameItem"));
         QTest::keyClick(m_window, Qt::Key_Escape);
         QTest::qWait(150);
+    }
+
+    // "Who was there?" from the Transcript tab (menu entry): no dialog; the Overview tab comes up and the
+    // card's frame flashes (ShellActions.openParticipants -> participantsFocusRequested -> focusParticipants).
+    void participantsEntryFlashesTheCard()
+    {
+        load(QStringLiteral("overviewDone"));
+        QTest::keyClick(m_window, Qt::Key_2, Qt::ControlModifier);
+        QTRY_COMPARE(tab(), 1);
+        click(item("meetingMenuButton"));
+        QTRY_VERIFY(anyShown("meetingParticipantsItem"));
+        click(item("meetingParticipantsItem"));
+        QTRY_COMPARE(tab(), 0);
+        QObject* card = object("participantList");
+        QVERIFY(card);
+        QTRY_VERIFY(card->property("flashing").toBool());
+        QTRY_VERIFY(item("participantsFlash") && item("participantsFlash")->opacity() > 0.1);
+        QVERIFY(!object("participantsDialog"));
+        QTRY_VERIFY(!card->property("flashing").toBool());   // two blinks, then it settles
     }
 
     // First transcription running: in the "Transcript" step the stages, the "Feel free to keep

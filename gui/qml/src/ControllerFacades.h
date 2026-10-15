@@ -103,7 +103,6 @@ public:
     void removeParticipant(const QString& meetingId, const QString& id) override;
     bool setSolo(const QString& meetingId) override;
     bool reanalyze(const QString& meetingId) override;
-    bool nameSpeakerInPlace(const QString&, const QString&, const QString&) override { return false; }
     void setContextNote(const QString& meetingId, const QString& note) override;
     bool nameParticipant(const QString& meetingId, const QString& id, const QString& personIdOrName) override;
     bool mergeParticipantInto(const QString& meetingId, const QString& fromId, const QString& intoId) override;

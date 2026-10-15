@@ -23,8 +23,9 @@ import QtQuick.Templates as T
 // Participant row badges: tooltip with the evidence; after transcription a click opens the
 // editor's "Why them?" panel (shell.openSpeakerWhy). Naming (before and after the transcript) is
 // the card's naming panel (OverviewViewModel.nameParticipant ...). The voiceprint step has "Reanalyze".
-// participantsRequested: no longer emitted here (the "Who was there?" dialog goes in UA3; Main still
-// connects it).
+// focusParticipants(): scrolls the "Who was there?" card into view and flashes it (Main calls it on
+// ShellActions.participantsFocusRequested: the menu, the transcript tool row and strip, the
+// automatic offer after a recording).
 // Change bar: every Overview action (approval, "Only I spoke", track on / off, description,
 // adding / removing a participant, rejecting a suggestion, tag, naming) goes onto the meeting's
 // SHARED undo stack (MeetingUndoService); Main calls showChange(text) on the shell's
@@ -47,8 +48,6 @@ Item {
     readonly property alias vm: vm
     readonly property alias tracks: tracks
     readonly property alias changeBar: changeBar
-
-    signal participantsRequested()
 
     // Opening the collapsed rows in the done state.
     property bool stepsOpen: false
@@ -151,6 +150,14 @@ Item {
     }
     // The "Track details" panel (old Tracks tab; Main's demo state opens it too).
     function openTracks() { tracksDialog.open() }
+    // An entry point (menu, transcript strip, automatic offer) lands on the "Who was there?" card:
+    // scroll it into view (a little above, with its section header) and flash its frame.
+    function focusParticipants() {
+        const top = participantsCard.mapToItem(leftFlick.contentItem, 0, 0).y
+        const maxY = Math.max(0, leftFlick.contentHeight - leftFlick.height)
+        leftFlick.contentY = Math.max(0, Math.min(maxY, top - 64))
+        participantsCard.flash()
+    }
     // Before transcription starts (step button, error "Retry") the unfinished description is saved.
     function commitSource() { if (sourceCard.editing) sourceCard.finish(true) }
     function solo() {

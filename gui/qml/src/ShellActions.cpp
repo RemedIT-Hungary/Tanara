@@ -784,7 +784,9 @@ void ShellActions::openParticipants(const QString& meetingId)
 {
     if (meetingId.isEmpty()) return;
     m_participantsOffered.insert(meetingId);
-    emit participantsDialogRequested(meetingId);
+    if (meetingId != m_currentMeetingId) showMeeting(meetingId);
+    showTab(0);   // the Overview tab: the "Who was there?" card lives there
+    emit participantsFocusRequested(meetingId);
 }
 
 bool ShellActions::maybeOfferParticipants(const QString& meetingId)

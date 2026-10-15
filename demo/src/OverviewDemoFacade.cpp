@@ -183,28 +183,6 @@ void OverviewDemoFacade::removeParticipant(const QString& meetingId, const QStri
     touch(meetingId);
 }
 
-bool OverviewDemoFacade::nameSpeakerInPlace(const QString& meetingId, const QString& speakerKey,
-                                            const QString& name)
-{
-    const QString n = name.trimmed();
-    if (n.isEmpty())
-        return true;
-    QVariantList rows;
-    for (const QVariant& v : std::as_const(m_snapshot.participants)) {
-        QVariantMap row = v.toMap();
-        if (row.value(QStringLiteral("speakerKey")).toString() == speakerKey) {
-            row.insert(QStringLiteral("name"), n);
-            row.insert(QStringLiteral("monogram"), monogramOf(n));
-            row.insert(QStringLiteral("sub"), QString());
-            row.insert(QStringLiteral("anonymous"), false);
-        }
-        rows << row;
-    }
-    m_snapshot.participants = rows;
-    touch(meetingId);
-    return true;
-}
-
 int OverviewDemoFacade::rowIndex(const QString& id) const
 {
     for (int i = 0; i < m_snapshot.participants.size(); ++i) {
@@ -512,15 +490,6 @@ tanara::library::OverviewSnapshot OverviewDemoFacade::build() const
         }
     }
     s.participants = rows;
-    s.anonymousSpeakers.clear();
-    if (nobody) {
-        for (const QVariant& v : std::as_const(rows)) {
-            const QVariantMap row = v.toMap();
-            s.anonymousSpeakers << QVariantMap{{QStringLiteral("name"), row.value(QStringLiteral("name"))},
-                                               {QStringLiteral("share"), row.value(QStringLiteral("talkShare"))},
-                                               {QStringLiteral("colorIndex"), row.value(QStringLiteral("colorIndex"))}};
-        }
-    }
     s.sideWho = twoTrack ? QVariantMap()
               : QVariantMap{{QStringLiteral("mic"), demoName("Kovács Lilla")},
                             {QStringLiteral("loopback"), tr("%n résztvevő", nullptr, 4)}};

@@ -1,9 +1,9 @@
 #pragma once
 //
-// IParticipantsFacade: what the "Who was there?" dialog's view model (ParticipantsViewModel), the
+// IParticipantsFacade: what the "Who was there?" card's decision view model (ParticipantsViewModel), the
 // speaker -> track chips (ParticipantTrackBinder) and the person pickers need from the
 // participants side, as ONE abstract surface: a meeting's candidate snapshot, the decision
-// (approve / skip / unbind), the tag-based people suggestion and the learning question, the track
+// (approve / skip / unbind), the learning question, the track
 // binding, and the person directory.
 //
 // The real implementation composes editing::ParticipantService, the meeting store, the people store,
@@ -24,17 +24,17 @@
 
 namespace tanara::editing {
 
-// One candidate of the meeting as the dialog starts from it.
+// One candidate of the meeting as the card starts from it.
 struct ParticipantCandidate {
     QString id;                         // the participant's id within the meeting
     PersonId personId;                  // null: anonymous (unknown voice)
     QString name;                       // display name; empty = anonymous
     ParticipantGroup group = ParticipantGroup::Doubt;
-    // The check the dialog starts with: the earlier decision, else the default rule (an invited but
+    // The check the card starts with: the earlier decision, else the default rule (an invited but
     // not heard candidate is unchecked).
     bool checked = false;
     bool approved = false;              // the record's approved / confirmed flag (ParticipantService)
-    bool manual = false;                // added manually (in the dialog or earlier)
+    bool manual = false;                // added manually
     QVector<Evidence> evidence;
     QStringList rawIds;                 // the bound raw speakers
     QStringList sides;                  // "mic" | "loopback": heard on
@@ -54,10 +54,10 @@ struct ParticipantsState {
     QVector<ParticipantCandidate> candidates;
 };
 
-// A row the user approved ("Continue"). A name typed in the dialog has a null personId: the facade
+// A row the user approved. A named row without a person id has a null personId: the facade
 // resolves it by name (a known person, else a new one).
 struct ApprovedRow {
-    QString id;                         // empty: added in the dialog
+    QString id;                         // empty: a row without a stored participant
     PersonId personId;
     QString name;
     QStringList rawIds;
@@ -68,12 +68,6 @@ struct ApprovalOutcome {
     bool ok = false;
     // The learning question (asked once per meeting): the largest group first.
     QVector<library::PersonTagQuestion> questions;
-};
-
-// "Based on #Nordvik:" people.
-struct TagPeopleHint {
-    QString tagName;
-    QVector<library::PersonTagStat> people;
 };
 
 // A track the speaker -> track chips can bind to.
@@ -92,20 +86,13 @@ public:
     // True: fictional data, the decision does not reach anything.
     virtual bool fictional() const { return false; }
     // Design-state hook of the fictional facade (screenshots): allSure | doubts | invitedNotHeard |
-    // addPerson | running | noTranscriptYet | learnQuestion | learnNewPerson.
+    // running | noTranscriptYet | learnQuestion | learnNewPerson.
     virtual void applyDemoState(const QString& state) { Q_UNUSED(state); }
 
-    // ---- the dialog ----
+    // ---- the decision ----
     virtual ParticipantsState state(const QString& meetingId) const = 0;
     // The known people, for the pickers (name-sorted).
     virtual QVector<PersonInfo> peopleDirectory() const = 0;
-    // The people the dialog's own person picker offers: the directory, except in the fictional facade,
-    // whose dialog has made-up people of its own.
-    virtual QVector<PersonInfo> dialogPeople() const { return peopleDirectory(); }
-    // The first of the tags that has a suggestion: at most `limit` people who are not already present
-    // (ids; names for the rows typed in the dialog, resolved here) and not the own person.
-    virtual TagPeopleHint suggestPeople(const QStringList& tagIds, const QVector<PersonId>& presentIds,
-                                        const QStringList& presentNames, int limit) const = 0;
     virtual ApprovalOutcome approve(const QString& meetingId, const QVector<ApprovedRow>& accepted) = 0;
     virtual bool skip(const QString& meetingId) = 0;
     virtual bool unbind(const QString& meetingId, const QString& participantId) = 0;

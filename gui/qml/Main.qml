@@ -86,7 +86,7 @@ ApplicationWindow {
     // Space belongs to the player, except in a text field, on a keyboard-focused control (there Space
     // activates it), or while a dialog is open.
     readonly property bool spaceTogglesPlayer: {
-        if (!hasMeeting || dialogs.anyOpen || participantsDialog.opened || importDialog.visible)
+        if (!hasMeeting || dialogs.anyOpen || importDialog.visible)
             return false
         const it = window.activeFocusItem
         if (!it)
@@ -102,7 +102,7 @@ ApplicationWindow {
     // People / Tags windows undo their own stack. Without a controller (demo) the tag model's
     // and the editor's own undo remain.
     readonly property bool undoKeyFree: {
-        if (!hasMeeting || dialogs.anyOpen || participantsDialog.opened || importDialog.visible)
+        if (!hasMeeting || dialogs.anyOpen || importDialog.visible)
             return false
         const it = window.activeFocusItem
         return !(it instanceof TextInput || it instanceof TextEdit)
@@ -123,20 +123,16 @@ ApplicationWindow {
             sidebar.filterByTag(tagId)
     }
 
-    // "Who was there?": the dialog is opened by ShellActions.openParticipants; until it is
-    // wired in, a short notice.
+    // "Who was there?": the card on the Overview (ShellActions.openParticipants selects the meeting's
+    // Overview tab and emits participantsFocusRequested).
     function openParticipants() {
-        const id = shellActions.currentMeetingId
-        if (typeof shellActions.openParticipants === "function")
-            shellActions.openParticipants(id)
-        else
-            toast.show(qsTr("A „Ki volt ott?” párbeszéd még nincs beépítve ebbe a változatba."), "", "", false)
+        shellActions.openParticipants(shellActions.currentMeetingId)
     }
-    // Tab switch. Moving to Transcript offers the analysis awaiting approval
-    // (ShellActions.maybeOfferParticipants).
+    // Tab switch. Moving to Transcript shows the card of an analysis awaiting approval, once per
+    // session (ShellActions.maybeOfferParticipants: Overview tab + the card flashes).
     function showTab(index) {
         shellActions.showTab(index)
-        if (index === 1 && typeof shellActions.maybeOfferParticipants === "function")
+        if (index === 1)
             shellActions.maybeOfferParticipants(shellActions.currentMeetingId)
     }
     // Executive summary and Memo are the same SummaryTab with a different section (SummaryTab's
@@ -292,7 +288,7 @@ ApplicationWindow {
                 shellActions.currentMeetingId = "demo-bemutato"
             else if (shellState === "" || shellState === "meeting")
                 shellActions.currentMeetingId = "demo-partner"
-            if (demoState === "readingMap" || demoState === "tabTooltip")
+            if (demoState === "readingMap" || demoState === "tabTooltip" || demoState.startsWith("transcriptStrip"))
                 Qt.callLater(() => shellActions.showTab(1))
             if (demoState === "summarySources")
                 Qt.callLater(() => shellActions.showTab(2))
@@ -385,13 +381,13 @@ ApplicationWindow {
         onActivated: { window.showTab(1); transcriptTab.openSearch() }
     }
     Shortcut { sequence: "Ctrl+N"; onActivated: shellActions.openRecorder() }
-    Shortcut { sequence: "Ctrl+I"; enabled: !dialogs.anyOpen && !participantsDialog.opened && !importDialog.visible; onActivated: shellActions.openImport() }
+    Shortcut { sequence: "Ctrl+I"; enabled: !dialogs.anyOpen && !importDialog.visible; onActivated: shellActions.openImport() }
     Shortcut { sequence: "Ctrl+,"; onActivated: shellActions.openSettings("") }
     Shortcut { sequence: "Ctrl+1"; enabled: window.hasMeeting; onActivated: window.showTab(0) }
     Shortcut { sequence: "Ctrl+2"; enabled: window.viewState === "meeting"; onActivated: window.showTab(1) }
     Shortcut { sequence: "Ctrl+3"; enabled: window.viewState === "meeting"; onActivated: window.showTab(2) }
     Shortcut { sequence: "Ctrl+4"; enabled: window.viewState === "meeting"; onActivated: window.showTab(3) }
-    Shortcut { sequence: "F2"; enabled: window.hasMeeting && !dialogs.anyOpen && !participantsDialog.opened; onActivated: header.startRename() }
+    Shortcut { sequence: "F2"; enabled: window.hasMeeting && !dialogs.anyOpen; onActivated: header.startRename() }
     Shortcut {
         sequence: "Ctrl+Z"
         enabled: window.meetingUndoActive || window.demoTagUndoActive
@@ -730,7 +726,6 @@ ApplicationWindow {
                             tagsModel: window.demoOverview ? null : currentMeeting.tags
                             editor: transcriptTab.editor
                             demoState: window.demoOverview ? window.demoState : ""
-                            onParticipantsRequested: window.openParticipants()
                         }
                         // 1 - Transcript (the tool row is at the top of the editor: TranscriptToolbar)
                         TranscriptTab {
@@ -741,6 +736,8 @@ ApplicationWindow {
                             shell: shellActions
                             // Under the shared stack the editor's Ctrl+Z belongs to Main (one key).
                             undoAllowed: !shellActions.hasMeetingUndo && !window.demoTagUndoActive
+                            participantsStripDemo: window.demoState === "transcriptStripPending" ? "pending"
+                                                 : window.demoState === "transcriptStripNames" ? "names" : ""
                             onParticipantsRequested: window.openParticipants()
                         }
                         // 2-3 - Executive summary / Memo (the same view with a different section)
@@ -878,7 +875,7 @@ ApplicationWindow {
     DropArea {
         id: windowDrop
         anchors.fill: parent
-        enabled: !dialogs.anyOpen && !participantsDialog.opened && !importDialog.visible
+        enabled: !dialogs.anyOpen && !importDialog.visible
         onEntered: (drag) => { drag.accepted = drag.hasUrls }
         onDropped: (drop) => {
             if (!drop.hasUrls)
@@ -945,10 +942,13 @@ ApplicationWindow {
         shell: shellActions
     }
 
-    // "Who was there?": opens on the ShellActions.participantsDialogRequested signal.
-    ParticipantsDialog {
-        id: participantsDialog
-        shell: shellActions
+    // "Who was there?": the card comes into view on the Overview (scroll + flash).
+    Connections {
+        target: shellActions
+        function onParticipantsFocusRequested(meetingId) {
+            // The tab switch is applied first; the Overview lays out, then the card scrolls.
+            Qt.callLater(() => overviewTab.focusParticipants())
+        }
     }
 
     ShellDialogs {

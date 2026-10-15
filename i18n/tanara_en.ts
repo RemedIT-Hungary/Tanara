@@ -1318,10 +1318,6 @@
         <translation>Transcript</translation>
     </message>
     <message>
-        <source>A „Ki volt ott?” párbeszéd még nincs beépítve ebbe a változatba.</source>
-        <translation>The &quot;Who was there?&quot; dialog is not available in this version yet.</translation>
-    </message>
-    <message>
         <source>Lejátszási hiba: %1</source>
         <translation>Playback error: %1</translation>
     </message>
@@ -2314,17 +2310,6 @@
     </message>
 </context>
 <context>
-    <name>ParticipantRow</name>
-    <message>
-        <source>Elnevezés…</source>
-        <translation>Name…</translation>
-    </message>
-    <message>
-        <source>Elvetés</source>
-        <translation>Discard</translation>
-    </message>
-</context>
-<context>
     <name>ParticipantTrackChips</name>
     <message>
         <source>Kézzel ehhez a sávhoz kötve · kattintva leveszed</source>
@@ -2592,79 +2577,6 @@
         <translation>
             <numerusform>and %n more</numerusform>
             <numerusform>and %n more</numerusform>
-        </translation>
-    </message>
-</context>
-<context>
-    <name>ParticipantsDialog</name>
-    <message numerus="yes">
-        <source>Résztvevők jóváhagyva: %n.</source>
-        <translation>
-            <numerusform>Participants approved: %n.</numerusform>
-            <numerusform>Participants approved: %n.</numerusform>
-        </translation>
-    </message>
-    <message>
-        <source>A bejelölt hang ennek a személynek a nevére kerül.</source>
-        <translation>The selected voice will be assigned to this person.</translation>
-    </message>
-    <message>
-        <source>Ki volt ott?</source>
-        <translation>Who was there?</translation>
-    </message>
-    <message>
-        <source>hanglenyomat-elemzés · fut</source>
-        <translation>voiceprint analysis · running</translation>
-    </message>
-    <message>
-        <source>Vedd ki, akit tévesen talált, és add hozzá, akit nem ismert fel. A bejelöltek nevére kerülnek a beszélőik; később is módosíthatod.</source>
-        <translation>Remove anyone it found by mistake and add anyone it missed. The speakers will be assigned to the checked names; you can change this later.</translation>
-    </message>
-    <message>
-        <source>Vedd ki, akit tévesen talált, és add hozzá, akit nem ismert fel. Az átirat ebből köti a beszélőket, amikor megérkezik; később is módosíthatod.</source>
-        <translation>Remove anyone it found by mistake and add anyone it missed. The transcript uses this to match speakers when it arrives; you can change this later.</translation>
-    </message>
-    <message>
-        <source>Hanglenyomat-elemzés fut…</source>
-        <translation>Voiceprint analysis running…</translation>
-    </message>
-    <message>
-        <source>A jelöltek pár másodperc múlva itt lesznek. Addig is felvehetsz résztvevőt kézzel.</source>
-        <translation>Candidates will be here in a few seconds. Meanwhile you can add a participant manually.</translation>
-    </message>
-    <message>
-        <source>Még nincs jelölt: a hangelemzés senkit sem talált. Vedd fel kézzel, akik ott voltak.</source>
-        <translation>No candidates yet: the voice analysis found no one. Add the people who were there manually.</translation>
-    </message>
-    <message>
-        <source>Résztvevő hozzáadása…</source>
-        <translation>Add participant…</translation>
-    </message>
-    <message>
-        <source>A felvett résztvevő a „Tovább”-bal kerül a megbeszélésre.</source>
-        <translation>The participant you add is attached to the meeting with &quot;Continue&quot;.</translation>
-    </message>
-    <message>
-        <source>Javasolt résztvevő: %1</source>
-        <translation>Suggested participant: %1</translation>
-    </message>
-    <message>
-        <source>Később</source>
-        <translation>Later</translation>
-    </message>
-    <message>
-        <source>Kihagyás</source>
-        <translation>Skip</translation>
-    </message>
-    <message>
-        <source>Nem kötünk senkit; a jelöltek megmaradnak, később is jóváhagyhatod.</source>
-        <translation>Nobody will be matched; the candidates stay and you can approve them later.</translation>
-    </message>
-    <message numerus="yes">
-        <source>Tovább · %n résztvevő</source>
-        <translation>
-            <numerusform>Continue · %n participant</numerusform>
-            <numerusform>Continue · %n participants</numerusform>
         </translation>
     </message>
 </context>
@@ -7680,6 +7592,28 @@
         <source>Nincs átnézendő sor.</source>
         <translation>No lines to review.</translation>
     </message>
+    <message numerus="yes">
+        <source>%n jelölt vár döntésre</source>
+        <translation>
+            <numerusform>%n candidate awaits a decision</numerusform>
+            <numerusform>%n candidates await a decision</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>%n névtelen beszélő</source>
+        <translation>
+            <numerusform>%n unnamed speaker</numerusform>
+            <numerusform>%n unnamed speakers</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Áttekintés</source>
+        <translation>Overview</translation>
+    </message>
+    <message>
+        <source>Elnevezés az Áttekintésen</source>
+        <translation>Name them on the Overview</translation>
+    </message>
     <message>
         <source>Söprés</source>
         <translation>Sweep</translation>
@@ -11135,93 +11069,6 @@
     <message>
         <source>hanglenyomat-elemzés</source>
         <translation>voiceprint analysis</translation>
-    </message>
-    <message>
-        <source>kézzel felvéve</source>
-        <translation>added manually</translation>
-    </message>
-    <message>
-        <source>A #%1 alapján:</source>
-        <translation>Based on #%1:</translation>
-    </message>
-    <message>
-        <source>%1 / %2 megbeszélésen</source>
-        <translation>in %1 / %2 meetings</translation>
-    </message>
-    <message>
-        <source>-sáv</source>
-        <translation> track</translation>
-    </message>
-    <message>
-        <source>átirat után</source>
-        <translation>after transcript</translation>
-    </message>
-    <message>
-        <source>Ismeretlen hang</source>
-        <translation>Unknown voice</translation>
-    </message>
-    <message>
-        <source>%1 (te)</source>
-        <translation>%1 (you)</translation>
-    </message>
-    <message>
-        <source>BIZTOS</source>
-        <translation>CERTAIN</translation>
-    </message>
-    <message>
-        <source>KÉTSÉGES</source>
-        <translation>DOUBTFUL</translation>
-    </message>
-    <message>
-        <source>MEGHÍVOTT, DE NEM HALLOTTUK</source>
-        <translation>INVITED, BUT NOT HEARD</translation>
-    </message>
-    <message>
-        <source>KÉZZEL FELVÉVE</source>
-        <translation>ADDED MANUALLY</translation>
-    </message>
-    <message>
-        <source>a hang mellett még egy forrás egyezik</source>
-        <translation>another source matches besides the voice</translation>
-    </message>
-    <message>
-        <source>amit valami cáfol, alapból nincs bejelölve</source>
-        <translation>anything contradicted is unchecked by default</translation>
-    </message>
-    <message>
-        <source>a hangját még nem hallottuk</source>
-        <translation>their voice has not been heard yet</translation>
-    </message>
-    <message>
-        <source>A hanglenyomat-elemzés fut; a jelöltek pár másodperc múlva itt lesznek.</source>
-        <translation>Voiceprint analysis is running; the candidates will be here in a few seconds.</translation>
-    </message>
-    <message>
-        <source>Az átirat ebből köti a beszélőket, amikor megérkezik; a kimaradók névtelenek maradnak.</source>
-        <translation>The transcript uses this to match speakers when it arrives; anyone left out stays unnamed.</translation>
-    </message>
-    <message>
-        <source>Minden nyers beszélő résztvevőhöz kötődik.</source>
-        <translation>Every raw speaker is linked to a participant.</translation>
-    </message>
-    <message>
-        <source>A %1. nyers beszélő senkihez sincs kötve, ezért névtelen marad.</source>
-        <translation>Raw speaker %1 is not linked to anyone, so it stays unnamed.</translation>
-    </message>
-    <message>
-        <source>„%1” senkihez sincs kötve, ezért névtelen marad.</source>
-        <translation>&quot;%1&quot; is not linked to anyone, so it stays unnamed.</translation>
-    </message>
-    <message numerus="yes">
-        <source>%n nyers beszélő senkihez sincs kötve (%1), ezért névtelenek maradnak.</source>
-        <translation>
-            <numerusform>%n raw speaker is not linked to anyone (%1), so it stays unnamed.</numerusform>
-            <numerusform>%n raw speakers are not linked to anyone (%1), so they stay unnamed.</numerusform>
-        </translation>
-    </message>
-    <message>
-        <source>A címkék csak sorrendet adnak; a hang dönt.</source>
-        <translation>Tags only set the order; the voice decides.</translation>
     </message>
 </context>
 <context>

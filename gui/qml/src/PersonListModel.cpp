@@ -122,16 +122,6 @@ void PersonListModel::setExcludeMeetingPeople(bool exclude)
     refilter();
 }
 
-void PersonListModel::setParticipants(ParticipantsViewModel* participants)
-{
-    if (m_participants == participants) return;
-    if (m_participants) m_participants->disconnect(this);
-    m_participants = participants;
-    if (m_participants)
-        connect(m_participants, &ParticipantsViewModel::changed, this, &PersonListModel::refilter);
-    emit participantsChanged();
-}
-
 namespace {
 
 // A person's best relation among the reference tags.
@@ -184,15 +174,13 @@ TagBackend* PersonListModel::tagBackend()
 QStringList PersonListModel::contextTagIds() const
 {
     if (!m_tagId.isEmpty()) return {m_tagId};
-    const QString meetingId = m_participants ? m_participants->meetingId()
-                            : m_editor ? m_editor->meetingId() : QString();
+    const QString meetingId = m_editor ? m_editor->meetingId() : QString();
     return meetingId.isEmpty() || !m_tags ? QStringList() : m_tags->tagsOf(meetingId);
 }
 
 void PersonListModel::refresh()
 {
-    if (m_participants) m_all = m_participants->people();
-    else if (m_editor) m_all = m_editor->people();
+    if (m_editor) m_all = m_editor->people();
     else if (!m_tagId.isEmpty()) {
         // Standalone (Tags window): the full name list.
         if (!m_directory) m_directory = AppContext::instance()->services().participants(this);
@@ -246,8 +234,7 @@ void PersonListModel::refilter()
         const QString key = text::foldForSearch(p.name);
         // Tag mode: those who have it manually, and the own person, are left out.
         if (!m_tagId.isEmpty() && ((links.contains(key) && links.value(key).manual) || key == selfKey)) continue;
-        const bool here = m_participants ? m_participants->isMeetingPerson(p.name)
-                        : m_editor && m_editor->isMeetingPerson(p.name);
+        const bool here = m_editor && m_editor->isMeetingPerson(p.name);
         if (here && (m_excludeMeeting || (m_hideMeeting && needle.isEmpty()))) continue;
         Row r{p, here, QStringLiteral("other"), QString(), {}};
         if (here) {

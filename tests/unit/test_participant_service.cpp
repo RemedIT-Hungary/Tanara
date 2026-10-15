@@ -280,7 +280,7 @@ void ParticipantServiceTest::approveSkipSoloAndPending()
     QCOMPARE(m.participants.size(), 2);
     QCOMPARE(m.approval->candidates.size(), 2);
     for (const Participant& p : m.participants) QVERIFY(p.approved);
-    QCOMPARE(m.approval->candidates.at(1).group, ParticipantGroup::Sure);   // the dialog's person is manual
+    QCOMPARE(m.approval->candidates.at(1).group, ParticipantGroup::Sure);   // the approval's person is manual
     QVERIFY(!m_svc->participantApprovalPending(m0.id));
 
     // Skip: a decision without a binding.

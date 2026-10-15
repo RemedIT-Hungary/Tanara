@@ -158,8 +158,7 @@ ParticipantsState ParticipantsDemoFacade::baseState() const
              ev(EvidenceKind::Tag, X, demoText("más címkéken szokott lenni", "usually on other tags"))},
             {demoRaw(QStringLiteral("Beszélő 2"))}, {loop});
     }
-    if (s == QLatin1String("invitedNotHeard") || s == QLatin1String("addPerson")
-        || s == QLatin1String("noTranscriptYet")) {
+    if (s == QLatin1String("invitedNotHeard") || s == QLatin1String("noTranscriptYet")) {
         row(QStringLiteral("c-reka"), demoName("Lantos Réka"), ParticipantGroup::InvitedNotHeard, false,
             {ev(EvidenceKind::Calendar, N, demoText("naptár · elfogadta", "calendar · accepted")),
              ev(EvidenceKind::Voice, X, demoText("nincs hanglenyomata", "has no voiceprint"))},
@@ -191,29 +190,6 @@ QVector<PersonInfo> ParticipantsDemoFacade::peopleDirectory() const
         out.append(p);
     }
     return out;
-}
-
-QVector<PersonInfo> ParticipantsDemoFacade::dialogPeople() const
-{
-    return {
-        {{}, demoName("Szabó Bence"), true, 2, 11, {}, {}, {}},
-        {{}, demoName("Szabó Dóra"), false, 0, 2, {}, {}, {}},
-        {{}, demoName("Nagy Péter"), true, 1, 6, {}, {}, {}},
-        {{}, demoName("Kiss Anna"), true, 3, 9, {}, {}, {}},
-    };
-}
-
-TagPeopleHint ParticipantsDemoFacade::suggestPeople(const QStringList&, const QVector<PersonId>&,
-                                                    const QStringList& presentNames, int) const
-{
-    const QString name = demoName("Szabó Bence");
-    const bool running = m_state == QLatin1String("running");
-    if (running || presentNames.contains(name, Qt::CaseInsensitive)) return {};
-    library::PersonTagStat st;
-    st.name = name;
-    st.shared = 11;
-    st.tagTotal = 14;
-    return {QStringLiteral("Nordvik"), {st}};
 }
 
 ApprovalOutcome ParticipantsDemoFacade::approve(const QString&, const QVector<ApprovedRow>&)

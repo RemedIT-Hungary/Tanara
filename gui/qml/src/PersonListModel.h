@@ -12,14 +12,14 @@
 // list has at least 6 rows, the group's section title is `tagSectionTitle` ("Based on
 // #Nordvik"), the rows' `group` role: "meeting" | "tag" | "other".
 // `tagId` mode (Tags window "+ Person"): the tag is the reference, those who have it manually
-// are left out; then without editor / participants the full name list
+// are left out; then without editor the full name list
 // (IParticipantsFacade::peopleDirectory, in the demo fictional names) is the source.
 //
-#include "ParticipantsViewModel.h"
 #include "TranscriptEditorViewModel.h"
 #include "TagBackend.h"
 #include "UiServices.h"
 
+#include "tanara/editing/participants/IParticipantsFacade.h"
 #include "tanara/editing/session/SpeakerEditTypes.h"
 
 #include <QAbstractListModel>
@@ -29,13 +29,10 @@
 
 namespace tanara_qml {
 
-
 class PersonListModel : public QAbstractListModel {
     Q_OBJECT
     QML_ELEMENT
     Q_PROPERTY(tanara_qml::TranscriptEditorViewModel* editor READ editor WRITE setEditor NOTIFY editorChanged)
-    // The source of the "Who was there?" dialog (instead of the editor): the people and "already a participant".
-    Q_PROPERTY(tanara_qml::ParticipantsViewModel* participants READ participants WRITE setParticipants NOTIFY participantsChanged)
     Q_PROPERTY(QString query READ query WRITE setQuery NOTIFY queryChanged)
     // This name is left out (in the popover the speaker's current person).
     Q_PROPERTY(QString excludeName READ excludeName WRITE setExcludeName NOTIFY excludeNameChanged)
@@ -66,8 +63,6 @@ public:
 
     TranscriptEditorViewModel* editor() const { return m_editor; }
     void setEditor(TranscriptEditorViewModel* editor);
-    ParticipantsViewModel* participants() const { return m_participants; }
-    void setParticipants(ParticipantsViewModel* participants);
     QString query() const { return m_query; }
     void setQuery(const QString& query);
     QString excludeName() const { return m_exclude; }
@@ -90,7 +85,6 @@ public:
 
 signals:
     void editorChanged();
-    void participantsChanged();
     void queryChanged();
     void excludeNameChanged();
     void hideMeetingPeopleChanged();
@@ -105,7 +99,6 @@ private:
     QStringList contextTagIds() const;
 
     QPointer<TranscriptEditorViewModel> m_editor;
-    QPointer<ParticipantsViewModel> m_participants;
     QString m_query;
     QString m_exclude;
     bool m_hideMeeting = true;

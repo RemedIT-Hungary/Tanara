@@ -245,7 +245,7 @@ The old **Sávok** tab is gone: its full view is the "Sávok részletei" dialog 
 
 `MeetingMenu` (`Megbeszélés`): Átnevezés (F2) · Ki volt ott? · Hanglenyomat-elemzés újra ·
 Újraellenőrzés… · Újra-átírás… · Exportálás archívumba… · Megnyitás mappában · — · Törlés….
-The "identify" entry is the old voice-identification entry point; the Ki volt ott? dialog is the
+The "identify" entry is the old voice-identification entry point; the "Ki volt ott?" card (Áttekintés) is the
 new one (see below). `Nézet` lists the four tabs, then **Javítás / Olvasás** (Ctrl+E) and
 **Beszélő-oszlopok** (Ctrl+L).
 
@@ -333,20 +333,26 @@ accent). Items are `{ startMs, endMs, active }`; `Main` takes them from `Summary
 through them for every line that sounds like the new person (`objectName: "mapSimilarMarks"` / `"mapSimilarMark"`).
 Stand-alone demo: `MapDock:1100x200:demoState="similarMarks"`.
 
-#### "Ki volt ott?" (`ParticipantsDialog`, `src/ParticipantsViewModel`)
+#### "Ki volt ott?" entry points (`ShellActions`, `src/ParticipantsViewModel`)
 
-An 820 px dialog that approves the voice analysis' participant candidates. Groups (an empty one is
-hidden): Biztos · Kétséges · Meghívott, de nem hallottuk · added in the dialog; a name field
-(`PersonPicker`) with tag-based suggestions; footer: the info about unbound raw speakers and the standing rule sentence "A címkék csak sorrendet adnak; a hang dönt." (`vm.footerText`), `Kihagyás`
-(`skip()`), `Tovább · N résztvevő` (`approve()`). While the analysis runs it shows a spinner; Esc
-closes it without a decision ("later"). After `Tovább` a **learning question** may follow
-(`TagLearnPopup`, below). `Main.qml` hosts it (`participantsDialog`); it opens itself
-on `ShellActions.participantsDialogRequested`.
+The card (`ParticipantsCard` on the Áttekintés) is the only place for the participants; there is no
+dialog. `src/ParticipantsViewModel` is its decision side on real data: `approve()` / `skip()` (with the
+tag-learning question for `TagLearnPopup`), the row operations (`nameParticipant`, `mergeParticipantInto`,
+`confirmParticipant`, `setSelfParticipant`, `unbind`), `metaText`, `checkedCount`, `candidateCount`.
 
-`ShellActions` entry points: `openParticipants(meetingId)` (banner, tool row, Megbeszélés menu, editor),
-`maybeOfferParticipants(meetingId)` (called by `Main.showTab(1)`: opens the dialog once per session when
-an approval is pending; returns `true` if it opened), `participantsGuess(meetingId)` (the pre-transcript
-voice guess), `identifyParticipants(meetingId)` and `recheckSpeakers(meetingId)` (the menu entries).
+`ShellActions.openParticipants(meetingId)` (Megbeszélés menu, the transcript tool row, the editor, the
+transcript strip) selects the meeting's Áttekintés tab and emits `participantsFocusRequested`; `Main`
+calls `OverviewTab.focusParticipants()` (scroll + the card's accent frame blinks, `ParticipantsCard.flash()`).
+`maybeOfferParticipants(meetingId)` (called by `Main.showTab(1)`: once per session per meeting when an
+approval is pending) does the same; it returns `true` if it did. Other entry points:
+`participantsGuess(meetingId)` (the pre-transcript voice guess), `identifyParticipants(meetingId)` and
+`recheckSpeakers(meetingId)` (the menu entries).
+
+The Átirat tab shows a thin strip under the toolbar (`participantsStrip`) while the decision is pending
+("N jelölt vár döntésre · Áttekintés") or voices with lines are unnamed ("N névtelen beszélő · Elnevezés
+az Áttekintésen"); its one button emits `participantsRequested` (-> `openParticipants`). It disappears with
+the decision / once everyone is named. Demo: `TranscriptTab.participantsStripDemo` (`pending` | `names`) or
+`Main` `demoState` `transcriptStripPending` | `transcriptStripNames`.
 
 #### Átirat: Olvasás, Javítás and Átnézendő (`TranscriptTab`)
 
@@ -423,7 +429,7 @@ Kovács Lilla, Fehér Gábor, Varga Árpád, #Nordvik.
 | Map dock alone | `MapDock:1100x200` | (invented lanes) · `similarMarks` (E4: accent ticks of the lines similar to the new person) |
 | Tracks (details) | `TracksTab:1004x640:demoState="default"` | `default` · `loading` (strips pulse: activity still computing) · `idle` (the "Hívás hangja" row starts at 2:30); `overview…` states of `TrackListModel` feed the Áttekintés |
 | Header alone | `MeetingHeader:1100x420:demoState="tabTooltip"` | `tabTooltip` |
-| Ki volt ott? | `ParticipantsDialog:1000x760:demoState="doubts"` | `allSure` · `doubts` · `invitedNotHeard` · `addPerson` · `running` · `noTranscriptYet` · `learnQuestion` (the question after `Tovább`: two people / two tags, "Egyenként…") · `learnNewPerson` (new person: "X új személy. Ráteszem…?") |
+| Átirat strip | `Main:1280x820:demoState="transcriptStripPending"` | `transcriptStripPending` (N candidates await) · `transcriptStripNames` (unnamed voices); standalone: `TranscriptTab:1100x760:participantsStripDemo="pending"` |
 | Átirat (Javítás) | `TranscriptTab:1100x760:demoState="fixLinePopover"` | `markers` · `fixLinePopover` (E1) · `reviewGroups` · `reviewExpanded` (E2) · `contaminatedCore` · `speakerWhy` (E3) · `newPersonSimilar` (E4) · `newPersonTag` (E4 + the bar's tag question "X új személy. Ráteszem a #Nordvik címkét?") — plus the older ones listed in the header of `TranscriptTab.qml` |
 | Összefoglaló | `SummaryTab:1100x720:demoState="sourcesOn"` | `sourcesOn` · `sourcesOff` · `sourcePopover` · `memoSections` · `staleTargeted` · `noSources` — plus the older `stale`, `done`, `memo`, `running`, `empty*`, `topics` … |
 
@@ -437,7 +443,7 @@ Spec: `design/handoff-tags/README.md` (C03/C04, C07), contract `CONTRACT-TAGS.md
 reach the core through the `TagBackend` facade (`tanara/library/tags/TagBackend.h`): the real
 `TagControllerBackend` (over `TagService` + `TagSuggestionService` + `PeopleStore`) or the fictional
 `tanara_demo::TagDemoBackend`; `UiServices::tagBackend` hands one out per view model (`AppContext::services()`).
-The People window and the "Who was there?" dialog work the same way (`library::IPeopleFacade`,
+The People window and the "Who was there?" card work the same way (`library::IPeopleFacade`,
 `editing::IParticipantsFacade`: the real `PeopleServicesFacade` / `ParticipantsServicesFacade`, or
 `tanara_demo::PeopleDemoFacade` / `ParticipantsDemoFacade`); the view models take them in their
 constructor (`PeopleViewModel(const UiServices&)` …), the QML default constructors take `services()`.

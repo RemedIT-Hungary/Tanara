@@ -28,7 +28,6 @@ public:
     bool setSolo(const QString& meetingId) override;
     bool decideInPlace(const QString& meetingId, const QString& decision) override;
     bool reanalyze(const QString&) override { return true; }
-    bool nameSpeakerInPlace(const QString& meetingId, const QString& speakerKey, const QString& name) override;
     void setContextNote(const QString& meetingId, const QString& note) override;
     // The row operations in place (the rows of this instance's snapshot).
     bool nameParticipant(const QString& meetingId, const QString& id, const QString& personIdOrName) override;

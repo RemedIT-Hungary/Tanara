@@ -237,6 +237,57 @@ private slots:
         m_shell->setPlayer(nullptr);
     }
 
+    // "Who was there?": every entry point lands on the Overview tab's card (no dialog): openParticipants
+    // selects the meeting and tab 0 and signals the focus; the automatic offer does the same once per
+    // session, and only while an approval is pending.
+    void participantsEntryPointsGoToTheCard()
+    {
+        tanara::Meeting a = transcribed(QStringLiteral("A"));
+        tanara::Participant p;
+        p.id = QStringLiteral("v1");
+        p.personId = m_app->people()->ensure(QStringLiteral("Fehér Gábor"));
+        p.source = tanara::ParticipantSource::Voice;
+        a.participants = {p};
+        m_app->store()->saveMeeting(a);
+        const tanara::Meeting b = transcribed(QStringLiteral("B"));
+        QSignalSpy focus(m_shell.get(), &ShellActions::participantsFocusRequested);
+
+        m_shell->showMeeting(b.id);
+        m_shell->showTab(1);
+        m_shell->openParticipants(a.id);
+        QCOMPARE(m_shell->currentMeetingId(), a.id);
+        QCOMPARE(m_shell->currentTab(), 0);
+        QCOMPARE(focus.count(), 1);
+        QCOMPARE(focus.first().first().toString(), a.id);
+
+        // The automatic offer: once, pending only.
+        m_shell->showTab(1);
+        QVERIFY(!m_shell->maybeOfferParticipants(a.id));      // already shown above
+        QCOMPARE(m_shell->currentTab(), 1);
+        QCOMPARE(focus.count(), 1);
+        QVERIFY(!m_shell->maybeOfferParticipants(b.id));      // nothing to decide
+        QVERIFY(!m_shell->maybeOfferParticipants(QString()));
+        QVERIFY(m_app->participantApprovalPending(a.id));
+        a = m_app->store()->load(a.id);
+        QVERIFY(m_app->skipApproval(a.id));
+        QVERIFY(!m_shell->maybeOfferParticipants(a.id));
+        QCOMPARE(focus.count(), 1);
+
+        // A fresh session: the offer navigates to the Overview and signals the focus once.
+        ShellActions fresh(facadetest::shellOf(m_app.get()));
+        QSignalSpy freshFocus(&fresh, &ShellActions::participantsFocusRequested);
+        tanara::Meeting c = transcribed(QStringLiteral("C"));
+        c.participants = {p};
+        m_app->store()->saveMeeting(c);
+        fresh.showMeeting(c.id);
+        fresh.showTab(1);
+        QVERIFY(fresh.maybeOfferParticipants(c.id));
+        QCOMPARE(fresh.currentTab(), 0);
+        QCOMPARE(freshFocus.count(), 1);
+        QVERIFY(!fresh.maybeOfferParticipants(c.id));
+        QCOMPARE(freshFocus.count(), 1);
+    }
+
     // The selected meeting's shared undo stack: a new step posts meetingChangePosted (once per
     // event loop pass), undo (Ctrl+Z / bar / toast "meeting" key) posts meetingChangeUndone, and
     // an undo is not a "new step".

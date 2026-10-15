@@ -92,6 +92,9 @@ ColumnLayout {
         if (unnamedVoices.length > 0) whichPanel.openFor(name.trim(), unnamedVoices, anchor || card, "")
         else vm.addParticipant(name)
     }
+    // Draws attention to the card (an entry point landed here): the accent frame blinks twice.
+    function flash() { flashAnim.restart() }
+    readonly property bool flashing: flashAnim.running
     function rowItem(id) {
         for (let i = 0; i < rowRepeater.count; ++i) {
             const it = rowRepeater.itemAt(i)
@@ -365,6 +368,23 @@ ColumnLayout {
                         onClicked: root.approve()
                     }
                 }
+            }
+        }
+        // Attention flash (flash()).
+        Rectangle {
+            id: flashFrame
+            objectName: "participantsFlash"
+            anchors.fill: parent
+            radius: card.radius
+            color: "transparent"
+            border.width: 2
+            border.color: Theme.accent
+            opacity: 0
+            SequentialAnimation {
+                id: flashAnim
+                loops: 2
+                NumberAnimation { target: flashFrame; property: "opacity"; to: 1; duration: Theme.durationNormal }
+                NumberAnimation { target: flashFrame; property: "opacity"; to: 0; duration: 700 }
             }
         }
     }

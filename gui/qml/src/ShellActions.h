@@ -158,11 +158,12 @@ public:
     Q_INVOKABLE void resolveConfirm(bool accepted);
     // Last result of the pre-transcript (audio-based) participant hint for this meeting.
     Q_INVOKABLE QString participantsGuess(const QString& meetingId) const;
-    // "Who was there?": opens the approval dialog (participantsDialogRequested; the
-    // ParticipantsDialog opens by itself). Called by the banner, toolbar, menu and editor.
+    // "Who was there?": selects the meeting's Overview tab and asks the card to scroll into view
+    // and flash (participantsFocusRequested). Called by the toolbar, the menu, the editor and the
+    // Transcript tab's strip.
     Q_INVOKABLE void openParticipants(const QString& meetingId);
-    // On switching to the Transcript tab: if the meeting awaits approval and was not yet offered
-    // in this session (nor opened), opens the dialog. True if it opened.
+    // On switching to the Transcript tab: if the meeting awaits approval and was not yet shown in
+    // this session (nor opened), does the same as openParticipants. True if it did.
     Q_INVOKABLE bool maybeOfferParticipants(const QString& meetingId);
     // From the Overview participant badge, the editor's "Why this one?" panel for a speaker:
     // selects the meeting, the Transcript tab, then speakerWhyRequested (Main -> TranscriptTab).
@@ -214,8 +215,8 @@ signals:
     void windowActivationRequested();
     // The pre-transcript participant hint is ready (PreTranscriptView can show it).
     void participantsGuessed(const QString& meetingId, const QString& summary);
-    // Request for the "Who was there?" dialog (ParticipantsDialog.openFor).
-    void participantsDialogRequested(const QString& meetingId);
+    // The "Who was there?" card should come into view (Overview tab is current; Main -> OverviewTab).
+    void participantsFocusRequested(const QString& meetingId);
     // Request for the "Why this one?" panel for a speaker (openSpeakerWhy; Transcript tab is visible).
     void speakerWhyRequested(const QString& meetingId, const QString& speakerKey);
 
@@ -249,7 +250,7 @@ private:
     int m_readinessRevision = 0;
     QSet<QString> m_identifyRequested;              // the user requested identification
     QHash<QString, QString> m_participantGuesses;   // meetingId -> summary sentence (session)
-    QSet<QString> m_participantsOffered;            // "Who was there?" already opened (session)
+    QSet<QString> m_participantsOffered;            // "Who was there?" card already shown by openParticipants (session)
     // Message of the task error just recorded and VISIBLE in the open meeting's error bar
     // (errorOccurred arriving in the same event turn does not make a second toast).
     QString m_errorInBanner;

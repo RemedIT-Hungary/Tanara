@@ -146,7 +146,6 @@ private slots:
         done.setContextNote(QString(), QStringLiteral("jegyzet"));
         QCOMPARE(done.snapshot(QString()).contextNote, QStringLiteral("jegyzet"));
         QCOMPARE(changed.count(), 3);
-        QVERIFY(done.nameSpeakerInPlace(QString(), QStringLiteral("S5"), QStringLiteral("Szabó Bence")));
         QVERIFY(done.setSolo(QString()));
         // Another instance is another state.
         tanara_demo::OverviewDemoFacade fresh(QStringLiteral("overviewDone"));
