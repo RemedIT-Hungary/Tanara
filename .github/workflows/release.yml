@@ -1,6 +1,8 @@
 name: Release
 
 # A tag v<version> (for example v0.5.11) builds the Windows installer + zip and the AppImage and
+# attaches them to a DRAFT GitHub release. Note: deleting a tag on GitHub also drops the draft release
+# and the workflow run made for it; delete the draft, keep the tag, if the run should stay.
 # attaches them to a DRAFT GitHub release; the maintainer publishes it after a check.
 # The tag must equal the CMake version (project(VERSION) + TANARA_VERSION_SUFFIX in CMakeLists.txt),
 # otherwise the first job fails. The packaging steps are scripts that also run on a developer
