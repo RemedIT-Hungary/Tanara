@@ -50,10 +50,23 @@ int VoiceprintStore::totalPrintCount() const
     return n;
 }
 
-void VoiceprintStore::addPrint(const PersonId& person, Voiceprint print)
+bool VoiceprintStore::acquired(const SharedFileLock& lock, const char* operation)
+{
+    m_lockFailed = !lock.locked();
+    if (m_lockFailed)
+        qCWarning(lcStore).noquote()
+            << QStringLiteral("voiceprints.json %1: another process holds the lock, the change was not written: %2")
+                   .arg(QLatin1String(operation), m_filePath);
+    return !m_lockFailed;
+}
+
+// Every modification: lock -> the fresh state from disk -> modify -> write out. Without the lock nothing
+// changes, neither in memory nor on disk (see PeopleStore).
+
+bool VoiceprintStore::addPrint(const PersonId& person, Voiceprint print)
 {
     if (person.isNull() || print.embedding.isEmpty())
-        return;
+        return false;
     if (print.id.isEmpty())
         print.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
     print.dim = print.embedding.size();
@@ -64,10 +77,12 @@ void VoiceprintStore::addPrint(const PersonId& person, Voiceprint print)
 
     // Lock + the fresh state from disk: voiceprints another process added meanwhile are kept.
     const SharedFileLock lock(m_filePath);
+    if (!acquired(lock, "addPrint")) return false;
     reloadIfChanged();
-    if (m_legacy) return;
+    if (m_legacy) return false;
     m_people[person].append(print);
     persist();
+    return true;
 }
 
 bool VoiceprintStore::removePrint(const QString& printId)
@@ -75,6 +90,7 @@ bool VoiceprintStore::removePrint(const QString& printId)
     if (printId.isEmpty())
         return false;
     const SharedFileLock lock(m_filePath);
+    if (!acquired(lock, "removePrint")) return false;
     reloadIfChanged();
     bool removed = false;
     for (auto it = m_people.begin(); it != m_people.end(); ++it) {
@@ -112,9 +128,34 @@ bool VoiceprintStore::findPrint(const QString& printId, PersonId* owner, Voicepr
 void VoiceprintStore::removePerson(const PersonId& person)
 {
     const SharedFileLock lock(m_filePath);
+    if (!acquired(lock, "removePerson")) return;
     reloadIfChanged();
     if (m_people.remove(person) > 0)
         persist();
+}
+
+bool VoiceprintStore::movePrint(const QString& printId, const PersonId& to)
+{
+    if (printId.isEmpty() || to.isNull())
+        return false;
+    const SharedFileLock lock(m_filePath);
+    if (!acquired(lock, "movePrint")) return false;
+    reloadIfChanged();
+    if (m_legacy) return false;
+    for (auto it = m_people.begin(); it != m_people.end(); ++it) {
+        QVector<Voiceprint>& prints = it.value();
+        const auto found = std::find_if(prints.begin(), prints.end(),
+                                        [&](const Voiceprint& p) { return p.id == printId; });
+        if (found == prints.end()) continue;
+        if (it.key() == to) return true;   // already there
+        const Voiceprint moved = *found;
+        prints.erase(found);
+        if (prints.isEmpty()) m_people.erase(it);   // a person left empty goes to the bin
+        m_people[to].append(moved);
+        persist();
+        return true;
+    }
+    return false;
 }
 
 QStringList VoiceprintStore::merge(const PersonId& from, const PersonId& into)
@@ -123,6 +164,7 @@ QStringList VoiceprintStore::merge(const PersonId& from, const PersonId& into)
     if (from.isNull() || into.isNull() || from == into)
         return moved;
     const SharedFileLock lock(m_filePath);
+    if (!acquired(lock, "merge")) return moved;
     reloadIfChanged();
     if (!m_people.contains(from))
         return moved;

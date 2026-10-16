@@ -117,6 +117,9 @@ public:
     int fileVersion() const { return m_version; }
 
     QString filePath() const { return m_filePath; }
+    // The last modification was refused because another process held the file's lock for too long
+    // (SharedFileLock); nothing was changed. Reset by the next modification that gets the lock.
+    bool lockFailed() const { return m_lockFailed; }
 
 private:
     struct Entry {
@@ -129,6 +132,7 @@ private:
     void load();
     void reloadIfChanged();
     bool persist();
+    bool acquired(const SharedFileLock& lock, const char* operation);
 
     QString        m_filePath;
     QVector<Entry> m_entries;
@@ -138,6 +142,7 @@ private:
     FileStamp      m_stamp;                     // state of the file at the last load / save
     bool           m_corrupt = false;           // the file on disk is unparseable (set aside on save)
     bool           m_legacy = false;            // old format on disk: read-only
+    bool           m_lockFailed = false;        // the last modification could not get the lock
 };
 
 } // namespace tanara::library

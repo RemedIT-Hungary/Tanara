@@ -237,7 +237,8 @@ public:
     //    meeting's speakerMap / participants / approval / overlay), `drop`'s record folds into `keep`'s
     //    (its name becomes a nickname). Returns what changed for undoMergeEverywhere (invalid: nothing).
     void renameEverywhere(const PersonId& person, const QString& newName);
-    void removeEverywhere(const PersonId& person);
+    // removeEverywhere: false if people.json could not be locked (another process holds it): nothing changed.
+    bool removeEverywhere(const PersonId& person);
     PersonMergeUndo mergeEverywhere(const PersonId& keep, const PersonId& drop);
     bool undoMergeEverywhere(const PersonMergeUndo& merge);
     // Whether the meeting refers to the person anywhere (speakerMap, participants, approval, overlay).
@@ -257,6 +258,9 @@ signals:
     void participantsChanged(QString meetingId);
 
 private:
+    // The user message when a store refused a change because another process held its file's lock.
+    static QString lockedOutMessage();
+
     struct Private;
     std::unique_ptr<Private> d;
 };

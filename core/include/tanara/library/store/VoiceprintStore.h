@@ -34,12 +34,16 @@ public:
     int totalPrintCount() const;
 
     // Adds a voiceprint to a person. With an empty print.id it generates one; an empty print.model =
-    // the base model. It sets print.dim to the embedding's size. Persists.
-    void addPrint(const PersonId& person, Voiceprint print);
+    // the base model. It sets print.dim to the embedding's size. Persists. false if nothing was added
+    // (invalid input, old-format file, or the lock could not be obtained: lockFailed()).
+    bool addPrint(const PersonId& person, Voiceprint print);
     // Deletes a voiceprint by id (from any person). true if it deleted.
     bool removePrint(const QString& printId);
     // Deletes all of a person's voiceprints.
     void removePerson(const PersonId& person);
+    // Moves one voiceprint (its id stays) to another person in ONE locked step (remove + add separately
+    // could lose it if the add fails). true if it is at `to` afterwards; a person left empty is dropped.
+    bool movePrint(const QString& printId, const PersonId& to);
     // Moves every voiceprint of 'from' to 'into' (into may have none yet); 'from' is left without prints.
     // Returns the ids of the moved voiceprints.
     QStringList merge(const PersonId& from, const PersonId& into);
@@ -81,6 +85,9 @@ public:
     void refresh() { reloadIfChanged(); }
 
     QString filePath() const { return m_filePath; }
+    // The last modification was refused because another process held the file's lock for too long
+    // (SharedFileLock); nothing was changed. Reset by the next modification that gets the lock.
+    bool lockFailed() const { return m_lockFailed; }
     // The file on disk is in an older (name-keyed) format: empty and read-only until converted.
     bool legacy() const { return m_legacy; }
 
@@ -92,12 +99,14 @@ private:
     void load();
     void reloadIfChanged();   // if the file changed on disk (another process wrote it)
     void persist();
+    bool acquired(const SharedFileLock& lock, const char* operation);
 
     QString m_filePath;
     QMap<PersonId, QVector<Voiceprint>> m_people;   // person -> voiceprints
     FileStamp m_stamp;            // state of the file at the last load / save
     bool      m_corrupt = false;  // the file on disk is unparseable (set aside on save)
     bool      m_legacy = false;   // old format on disk: read-only
+    bool      m_lockFailed = false;   // the last modification could not get the lock
 };
 
 // The JSON form of one voiceprint (the items of a person's array in voiceprints.json; the same shape

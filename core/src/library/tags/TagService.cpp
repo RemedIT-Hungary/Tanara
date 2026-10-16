@@ -6,6 +6,7 @@
 #include "tanara/library/store/MeetingRepository.h"
 #include "tanara/library/store/PeopleStore.h"
 #include "tanara/foundation/SharedFile.h"
+#include "tanara/foundation/log/Logging.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -20,6 +21,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <optional>
 
 namespace tanara::library {
 
@@ -175,6 +177,16 @@ struct TagService::Impl {
         const bool ok = f.open(QIODevice::WriteOnly) && f.write(bytes) == bytes.size() && f.commit();
         stamp = FileStamp::of(path);
         return ok;
+    }
+    // Every modification of tags.json runs under SharedFileLock; without the lock (another process held it
+    // for too long) the modification is dropped, neither memory nor disk changes: an unlocked write could
+    // silently overwrite the other process's change.
+    bool lockOk(const SharedFileLock& lock, const char* operation) const {
+        if (lock.locked()) return true;
+        qCWarning(lcStore).noquote()
+            << QStringLiteral("tags.json %1: another process holds the lock, the change was not written: %2")
+                   .arg(QLatin1String(operation), path);
+        return false;
     }
     // Before a modification: if another process wrote the file meanwhile, we build on its state.
     void syncFromDisk() {
@@ -463,14 +475,16 @@ TagService::TagService(MeetingRepository* store, const QString& tagsFile, QObjec
         connect(store, &MeetingRepository::meetingRemoved, this, [this](const QString& id) {
             const bool had = d->rowsLoaded && d->rows.remove(id) > 0;
             d->invalidateStats();
-            const auto before = d->rejected.size();
-            d->rejected.erase(std::remove_if(d->rejected.begin(), d->rejected.end(),
-                                             [&](const Rejected& r) { return r.meetingId == id; }),
-                              d->rejected.end());
-            if (d->rejected.size() != before) {
+            auto ofMeeting = [&](const Rejected& r) { return r.meetingId == id; };
+            if (std::any_of(d->rejected.cbegin(), d->rejected.cend(), ofMeeting)) {
                 SharedFileLock lock(d->path);
-                d->save();
-                emit rejectedChanged();
+                if (d->lockOk(lock, "meetingRemoved")) {
+                    d->syncFromDisk();
+                    d->rejected.erase(std::remove_if(d->rejected.begin(), d->rejected.end(), ofMeeting),
+                                      d->rejected.end());
+                    d->save();
+                    emit rejectedChanged();
+                }
             }
             if (had) emit tagsChanged();   // the counts changed
         });
@@ -646,6 +660,7 @@ Tag TagService::create(const QString& name)
     if (tagKey(norm).isEmpty()) return {};
     StepScope step(this, tr("Címke létrehozása"));
     SharedFileLock lock(d->path);
+    if (!d->lockOk(lock, "create")) return {};
     d->syncFromDisk();
     const int existing = d->indexOfKey(tagKey(norm), true);
     if (existing >= 0) return d->tags.at(existing).tag;
@@ -666,6 +681,7 @@ bool TagService::rename(const QString& id, const QString& name)
     if (tagKey(norm).isEmpty()) return false;
     StepScope step(this, tr("Címke átnevezése"));
     SharedFileLock lock(d->path);
+    if (!d->lockOk(lock, "rename")) return false;
     d->syncFromDisk();
     const int i = d->indexOf(id);
     if (i < 0) return false;
@@ -689,6 +705,7 @@ void TagService::merge(const QString& fromId, const QString& keepId)
     if (fromId == keepId) return;
     StepScope step(this, tr("Címkék összevonása"));
     SharedFileLock lock(d->path);
+    if (!d->lockOk(lock, "merge")) return;
     d->syncFromDisk();
     const int fi = d->indexOf(fromId), ki = d->indexOf(keepId);
     if (fi < 0 || ki < 0) return;
@@ -731,6 +748,7 @@ void TagService::remove(const QString& id)
 {
     StepScope step(this, tr("Címke törlése"));
     SharedFileLock lock(d->path);
+    if (!d->lockOk(lock, "remove")) return;
     d->syncFromDisk();
     const int i = d->indexOf(id);
     if (i < 0) return;
@@ -778,6 +796,7 @@ Tag TagService::addTag(const QString& meetingId, const QString& nameOrId, TagSou
     if (!ids.contains(t.id)) {
         ids << t.id;
         SharedFileLock lock(d->path);
+        if (!d->lockOk(lock, "addTag")) return {};
         d->syncFromDisk();
         d->snapshotSet();
         d->touch(t.id);
@@ -805,8 +824,9 @@ void TagService::setTags(const QString& meetingId, const QStringList& ids, TagSo
     for (const QString& id : ids)
         if (d->indexOf(id) >= 0 && !clean.contains(id)) clean << id;
     const QStringList before = tagsOf(meetingId);
+    SharedFileLock lock(d->path);   // before the meeting is touched: all or nothing
+    if (!d->lockOk(lock, "setTags")) return;
     if (!d->writeMeetingTags(meetingId, clean)) return;
-    SharedFileLock lock(d->path);
     d->syncFromDisk();
     d->snapshotSet();
     for (const QString& id : clean)
@@ -951,6 +971,7 @@ void TagService::reject(const QString& meetingId, const TagSuggestion& suggestio
     StepScope step(this, tr("Javaslat elutasítása"));
     d->markMeeting(meetingId);
     SharedFileLock lock(d->path);
+    if (!d->lockOk(lock, "reject")) return;
     d->syncFromDisk();
     d->snapshotSet();
     Rejected r;
@@ -983,6 +1004,7 @@ void TagService::clearRejected()
     if (d->rejected.isEmpty()) return;
     StepScope step(this, tr("Elutasított javaslatok visszaállítása"));
     SharedFileLock lock(d->path);
+    if (!d->lockOk(lock, "clearRejected")) return;
     d->syncFromDisk();
     d->snapshotSet();
     d->rejected.clear();
@@ -1029,10 +1051,15 @@ QString TagService::undoLabel() const { return d->undo.isEmpty() ? QString() : d
 void TagService::undo()
 {
     if (d->undo.isEmpty() || d->groupDepth > 0) return;
+    // The set's lock first: without it the step stays on the stack and nothing changes.
+    std::optional<SharedFileLock> lock;
+    if (d->undo.last().hasSet) {
+        lock.emplace(d->path);
+        if (!d->lockOk(*lock, "undo")) return;
+    }
     const UndoStep step = d->undo.takeLast();
     d->undoing = true;
     if (step.hasSet) {
-        SharedFileLock lock(d->path);
         d->tags = step.tags;
         d->rejected = step.rejected;
         d->save();
@@ -1087,8 +1114,9 @@ bool TagService::setPersonTags(const PersonId& person, const QStringList& ids)
         if (d->indexOf(id) >= 0 && !clean.contains(id)) clean << id;
     // Ids that have since vanished from the set also come off the record.
     const QStringList before = tagsOfPerson(person);
+    SharedFileLock lock(d->path);   // before the person is touched: all or nothing
+    if (!d->lockOk(lock, "setPersonTags")) return false;
     if (!d->writePersonTags(person, clean)) return true;
-    SharedFileLock lock(d->path);
     d->syncFromDisk();
     d->snapshotSet();
     for (const QString& id : clean)
@@ -1372,6 +1400,7 @@ void TagService::rejectPersonTag(const PersonId& person, const QString& tagId, c
     StepScope step(this, tr("Javaslat elutasítása"));
     d->markMeeting(meetingId);
     SharedFileLock lock(d->path);
+    if (!d->lockOk(lock, "rejectPersonTag")) return;
     d->syncFromDisk();
     d->snapshotSet();
     Rejected r;
@@ -1417,6 +1446,7 @@ void TagService::rejectPersonForMeeting(const PersonId& person, const QString& m
     StepScope step(this, tr("Javaslat elutasítása: %1").arg(d->nameOf(person)));
     d->markMeeting(meetingId);
     SharedFileLock lock(d->path);
+    if (!d->lockOk(lock, "rejectPersonForMeeting")) return;
     d->syncFromDisk();
     d->snapshotSet();
     Rejected r;
@@ -1447,6 +1477,7 @@ QVector<PersonRejectionMove> TagService::movePersonRefs(const PersonId& drop, co
             if (r.person == drop) r.person = keep;
     }
     SharedFileLock lock(d->path);
+    if (!d->lockOk(lock, "movePersonRefs")) return moves;
     d->syncFromDisk();
     auto has = [&](const PersonId& who, const QString& tagId, const QString& meetingId) {
         return std::any_of(d->rejected.cbegin(), d->rejected.cend(), [&](const Rejected& x) {
@@ -1478,6 +1509,7 @@ void TagService::undoMovePersonRefs(const PersonId& keep, const PersonId& drop,
 {
     if (keep.isNull() || drop.isNull()) return;
     SharedFileLock lock(d->path);
+    if (!d->lockOk(lock, "undoMovePersonRefs")) return;
     d->syncFromDisk();
     for (const PersonRejectionMove& m : moves) {
         if (!m.keepHadIt) {
@@ -1513,6 +1545,7 @@ void TagService::forgetPerson(const PersonId& person)
         }), s.rejected.end());
     }
     SharedFileLock lock(d->path);
+    if (!d->lockOk(lock, "forgetPerson")) return;
     d->syncFromDisk();
     const auto before = d->rejected.size();
     d->rejected.erase(std::remove_if(d->rejected.begin(), d->rejected.end(), [&](const Rejected& r) {

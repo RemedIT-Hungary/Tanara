@@ -24,10 +24,10 @@ jobs:
       # The bare container has no git/tar/zstd yet, which checkout and cache need.
       - name: Bootstrap container
         run: dnf install -y --setopt=install_weak_deps=False git tar zstd
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install dependencies
         run: bash tools/ci/linux-deps.sh
-      - uses: actions/cache@v4
+      - uses: actions/cache@v5
         with:
           path: ${{ env.CCACHE_DIR }}
           key: ccache-linux-${{ github.sha }}
@@ -39,7 +39,7 @@ jobs:
         run: ccache -s
       - name: Upload test log
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: linux-LastTest.log
           path: build/Testing/Temporary/LastTest.log
@@ -56,10 +56,10 @@ jobs:
     steps:
       - name: Bootstrap container
         run: dnf install -y --setopt=install_weak_deps=False git tar zstd
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install dependencies
         run: bash tools/ci/linux-deps.sh
-      - uses: actions/cache@v4
+      - uses: actions/cache@v5
         with:
           path: ${{ env.CCACHE_DIR }}
           key: ccache-linux-headless-${{ github.sha }}
@@ -68,7 +68,7 @@ jobs:
         run: bash tools/ci/build-test.sh build -DTANARA_BUILD_GUI=OFF -DTANARA_BUILD_WATCHER=OFF
       - name: Upload test log
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: linux-headless-LastTest.log
           path: build/Testing/Temporary/LastTest.log
@@ -79,7 +79,7 @@ jobs:
     runs-on: windows-2022
     timeout-minutes: 90
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install Qt and MinGW
         uses: jurplel/install-qt-action@v4
         with:
@@ -96,16 +96,16 @@ jobs:
           # and fails. The fix (miurahr/aqtinstall#1000, merged 2026-03-24) is unreleased: install that
           # commit. Drop this once a release with it exists (aqtinstall#1007).
           aqtsource: git+https://github.com/miurahr/aqtinstall.git@8c3695d4a4e1ceabf6a74dc6c79681656dc6b74b
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 24
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
       - name: Install Ninja
         shell: pwsh
         run: choco install ninja --no-progress -y
-      - uses: actions/cache@v4
+      - uses: actions/cache@v5
         with:
           path: ${{ runner.temp }}/deps
           key: windows-deps-${{ hashFiles('tools/ci/windows-deps.ps1') }}
@@ -117,7 +117,7 @@ jobs:
         run: ./tools/ci/build-test.ps1
       - name: Upload test log
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: windows-LastTest.log
           path: build/Testing/Temporary/LastTest.log

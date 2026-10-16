@@ -164,10 +164,23 @@ PersonChoice PeopleStore::choiceFor(const QString& idOrName) const
 
 // Every modification: inter-process lock -> reread the fresh state from disk (if another process
 // wrote meanwhile) -> the modification -> write out. A legacy (old-format) file is never written.
+// Without the lock nothing changes, neither in memory nor on disk (an unlocked write could silently
+// overwrite another process's change); the method returns its failure value and lockFailed() is true.
+
+bool PeopleStore::acquired(const SharedFileLock& lock, const char* operation)
+{
+    m_lockFailed = !lock.locked();
+    if (m_lockFailed)
+        qCWarning(lcStore).noquote()
+            << QStringLiteral("people.json %1: another process holds the lock, the change was not written: %2")
+                   .arg(QLatin1String(operation), m_filePath);
+    return !m_lockFailed;
+}
 
 void PeopleStore::setSelfId(const PersonId& id)
 {
     const SharedFileLock lock(m_filePath);
+    if (!acquired(lock, "setSelfId")) return;
     reloadIfChanged();
     if (m_legacy || m_self == id) return;
     m_self = id;
@@ -179,6 +192,7 @@ PersonId PeopleStore::create(const QString& name)
     const QString n = name.trimmed();
     if (n.isEmpty()) return {};
     const SharedFileLock lock(m_filePath);
+    if (!acquired(lock, "create")) return {};
     reloadIfChanged();
     if (m_legacy) return {};
     Entry e;
@@ -209,6 +223,7 @@ bool PeopleStore::restore(const Person& person)
 {
     if (person.id.isNull()) return false;
     const SharedFileLock lock(m_filePath);
+    if (!acquired(lock, "restore")) return false;
     reloadIfChanged();
     if (m_legacy) return false;
     const int i = indexOf(person.id);
@@ -223,6 +238,7 @@ bool PeopleStore::rename(const PersonId& id, const QString& newName)
     const QString n = newName.trimmed();
     if (n.isEmpty()) return false;
     const SharedFileLock lock(m_filePath);
+    if (!acquired(lock, "rename")) return false;
     reloadIfChanged();
     const int i = indexOf(id);
     if (i < 0 || m_entries[i].p.displayName == n) return false;
@@ -237,6 +253,7 @@ bool PeopleStore::rename(const PersonId& id, const QString& newName)
 bool PeopleStore::remove(const PersonId& id)
 {
     const SharedFileLock lock(m_filePath);
+    if (!acquired(lock, "remove")) return false;
     reloadIfChanged();
     const int i = indexOf(id);
     if (i < 0) return false;
@@ -249,6 +266,7 @@ bool PeopleStore::merge(const PersonId& keep, const PersonId& drop, bool dropNam
 {
     if (keep == drop) return false;
     const SharedFileLock lock(m_filePath);
+    if (!acquired(lock, "merge")) return false;
     reloadIfChanged();
     const int k = indexOf(keep), dr = indexOf(drop);
     if (k < 0 || dr < 0) return false;
@@ -282,6 +300,7 @@ bool PeopleStore::addAlias(const PersonId& id, const QString& alias)
     const QString a = alias.trimmed();
     if (a.isEmpty()) return false;
     const SharedFileLock lock(m_filePath);
+    if (!acquired(lock, "addAlias")) return false;
     reloadIfChanged();
     const int i = indexOf(id);
     if (i < 0) return false;
@@ -294,6 +313,7 @@ bool PeopleStore::addAlias(const PersonId& id, const QString& alias)
 int PeopleStore::removeAlias(const PersonId& id, const QString& alias)
 {
     const SharedFileLock lock(m_filePath);
+    if (!acquired(lock, "removeAlias")) return -1;
     reloadIfChanged();
     const int i = indexOf(id);
     if (i < 0) return -1;
@@ -312,6 +332,7 @@ bool PeopleStore::insertAlias(const PersonId& id, const QString& alias, int inde
     const QString a = alias.trimmed();
     if (a.isEmpty()) return false;
     const SharedFileLock lock(m_filePath);
+    if (!acquired(lock, "insertAlias")) return false;
     reloadIfChanged();
     const int i = indexOf(id);
     if (i < 0) return false;
@@ -324,6 +345,7 @@ bool PeopleStore::insertAlias(const PersonId& id, const QString& alias, int inde
 bool PeopleStore::setNote(const PersonId& id, const QString& note)
 {
     const SharedFileLock lock(m_filePath);
+    if (!acquired(lock, "setNote")) return false;
     reloadIfChanged();
     const int i = indexOf(id);
     if (i < 0 || m_entries[i].p.note == note) return false;
@@ -335,6 +357,7 @@ bool PeopleStore::setTags(const PersonId& id, const QStringList& tagIds)
 {
     const QStringList clean = cleanTags(tagIds);
     const SharedFileLock lock(m_filePath);
+    if (!acquired(lock, "setTags")) return false;
     reloadIfChanged();
     const int i = indexOf(id);
     if (i < 0 || m_entries[i].p.tags == clean) return false;
@@ -353,6 +376,7 @@ QHash<PersonId, QStringList> PeopleStore::allTags() const
 bool PeopleStore::setDefaultSide(const PersonId& id, const QString& side, bool manual)
 {
     const SharedFileLock lock(m_filePath);
+    if (!acquired(lock, "setDefaultSide")) return false;
     reloadIfChanged();
     const int i = indexOf(id);
     if (i < 0) return false;

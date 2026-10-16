@@ -10,6 +10,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QLockFile>
 #include <QProcess>
 #include <QSignalSpy>
 #include <QTemporaryDir>
@@ -110,6 +111,7 @@ private slots:
     void voiceprintFromManuallyAssignedMeetings();
     void sampleSourceDescription();
     void twoProcessesWriteConcurrently();
+    void lockedFileIsNotWritten();
 
 private:
     QString metaFile(const QString& name) const { return QDir(m_app->store()->metadataDir()).filePath(name); }
@@ -944,6 +946,66 @@ void PeopleServiceTest::twoProcessesWriteConcurrently()
     QCOMPARE(svc()->person(kShared).aliases.size(), 2 * n);
     // No lock file remains.
     QVERIFY(QDir(meta).entryList({"*.lock"}, QDir::Files | QDir::Hidden).isEmpty());
+}
+
+void PeopleServiceTest::lockedFileIsNotWritten()
+{
+    // Another process holds the lock (here the test itself, through QLockFile, which names this live
+    // PID): the stores wait, then refuse the change instead of writing without the lock; neither the
+    // file nor the in-memory state changes, and the service reports it to the user.
+    qputenv("TANARA_LOCK_WAIT_MS", "200");
+    const auto restoreWait = qScopeGuard([] { qunsetenv("TANARA_LOCK_WAIT_MS"); });
+    const QString peoplePath = metaFile("people.json");
+    const QString printsPath = metaFile("voiceprints.json");
+    library::PeopleStore people(peoplePath);
+    library::VoiceprintStore prints(printsPath);
+    const PersonId a = people.create(kGergely);
+    QVERIFY(!a.isNull());
+    QVERIFY(prints.addPrint(a, print("pa", {1, 0, 0})));
+    const QByteArray peopleBefore = readFile(peoplePath);
+    const QByteArray printsBefore = readFile(printsPath);
+    const int countBefore = people.people().size();
+
+    QLockFile peopleLock(peoplePath + ".lock"), printsLock(printsPath + ".lock");
+    QVERIFY(peopleLock.tryLock(0));
+    QVERIFY(printsLock.tryLock(0));
+
+    QTest::ignoreMessage(QtWarningMsg, QRegularExpression("SharedFileLock: could not lock .*people\\.json"));
+    QTest::ignoreMessage(QtWarningMsg, QRegularExpression("people\\.json create: another process holds the lock"));
+    QVERIFY(people.create(kEszter).isNull());
+    QVERIFY(people.lockFailed());
+    QCOMPARE(people.people().size(), countBefore);
+
+    QTest::ignoreMessage(QtWarningMsg, QRegularExpression("SharedFileLock: could not lock .*people\\.json"));
+    QTest::ignoreMessage(QtWarningMsg, QRegularExpression("people\\.json addAlias: another process holds the lock"));
+    QVERIFY(!people.addAlias(a, kGergo));
+    QVERIFY(people.aliases(a).isEmpty());
+
+    QTest::ignoreMessage(QtWarningMsg, QRegularExpression("SharedFileLock: could not lock .*voiceprints\\.json"));
+    QTest::ignoreMessage(QtWarningMsg, QRegularExpression("voiceprints\\.json addPrint: another process holds the lock"));
+    QVERIFY(!prints.addPrint(a, print("pb", {0, 1, 0})));
+    QVERIFY(prints.lockFailed());
+    QCOMPARE(prints.printCount(a), 1);
+
+    // The service turns it into a user message (not "could not save" / "already exists").
+    QTest::ignoreMessage(QtWarningMsg, QRegularExpression("SharedFileLock: could not lock .*people\\.json"));
+    QTest::ignoreMessage(QtWarningMsg, QRegularExpression("people\\.json create: another process holds the lock"));
+    const library::PeopleOpResult r = svc()->addPerson(kEszter);
+    QVERIFY(!r.ok);
+    QVERIFY2(r.error.contains(QStringLiteral("másik Tanara-folyamat")), qPrintable(r.error));
+
+    QCOMPARE(readFile(peoplePath), peopleBefore);
+    QCOMPARE(readFile(printsPath), printsBefore);
+
+    // Once the other process lets go, everything works again.
+    peopleLock.unlock();
+    printsLock.unlock();
+    QVERIFY(!people.create(kEszter).isNull());
+    QVERIFY(!people.lockFailed());
+    QVERIFY(people.addAlias(a, kGergo));
+    QVERIFY(prints.addPrint(a, print("pb", {0, 1, 0})));
+    QCOMPARE(prints.printCount(a), 2);
+    QVERIFY(svc()->addPerson(QStringLiteral("Szabó Anna")).ok);
 }
 
 // The child process: writes into the two files of the given metadata folder (through the

@@ -9272,6 +9272,10 @@
         <translation>Anonymous %1</translation>
     </message>
     <message>
+        <source>A módosítás nem menthető: egy másik Tanara-folyamat éppen ugyanezt az adatfájlt írja. Próbáld újra egy kicsit később.</source>
+        <translation>The change could not be saved: another Tanara process is writing the same data file right now. Try again a little later.</translation>
+    </message>
+    <message>
         <source>Adj meg egy nevet.</source>
         <translation>Enter a name.</translation>
     </message>

@@ -57,6 +57,10 @@ def render(skips):
 
 
 def main():
+    # The QSKIP reasons are Hungarian; a cp1252 console (Windows runner) would raise UnicodeEncodeError.
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="replace")
     path = sys.argv[1] if len(sys.argv) > 1 else os.path.join("build", "Testing", "Temporary", "LastTest.log")
     if not os.path.exists(path):
         print(f"qskip-summary: {path} not found", file=sys.stderr)

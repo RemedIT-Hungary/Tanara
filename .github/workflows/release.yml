@@ -28,7 +28,7 @@ jobs:
       # experimental build: the release is marked pre-release and says so to testers.
       prerelease: ${{ steps.v.outputs.prerelease }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Compare tag and CMake version
         id: v
         run: |
@@ -45,7 +45,7 @@ jobs:
     runs-on: windows-2022
     timeout-minutes: 120
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install Qt and MinGW
         uses: jurplel/install-qt-action@v4
         with:
@@ -61,7 +61,7 @@ jobs:
       - name: Install Ninja
         shell: pwsh
         run: choco install ninja --no-progress -y
-      - uses: actions/cache@v4
+      - uses: actions/cache@v5
         with:
           path: ${{ runner.temp }}/deps
           key: windows-deps-${{ hashFiles('tools/ci/windows-deps.ps1', 'tools/ci/package-windows.ps1') }}
@@ -72,7 +72,7 @@ jobs:
         shell: pwsh
         # Inno Setup 6 is preinstalled on windows-2022; the script installs it with Chocolatey if it is missing.
         run: ./tools/ci/package-windows.ps1 -Tag "${{ github.ref_name }}"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: windows-packages
           path: |
@@ -87,7 +87,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 120
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install system packages
         run: bash tools/ci/package-appimage.sh --install-deps
       - name: Install Qt
@@ -103,7 +103,7 @@ jobs:
           aqtsource: git+https://github.com/miurahr/aqtinstall.git@8c3695d4a4e1ceabf6a74dc6c79681656dc6b74b
       - name: Build the AppImage
         run: bash tools/ci/package-appimage.sh "$GITHUB_REF_NAME"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: appimage
           path: |
@@ -119,7 +119,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v5
         with:
           path: release-files
           merge-multiple: true

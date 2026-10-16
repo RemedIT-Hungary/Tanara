@@ -386,6 +386,14 @@ double PeopleService::similarity(const PersonId& a, const PersonId& b) const
 
 // ---- operations ---------------------------------------------------------------
 
+// A store refused a change because another process held its file's lock for too long (SharedFileLock):
+// nothing was written, the user may simply retry.
+QString PeopleService::lockedOutMessage()
+{
+    return tr("A módosítás nem menthető: egy másik Tanara-folyamat éppen ugyanezt az adatfájlt írja. "
+              "Próbáld újra egy kicsit később.");
+}
+
 PeopleOpResult PeopleService::addPerson(const QString& name)
 {
     PeopleOpResult r;
@@ -406,7 +414,7 @@ PeopleOpResult PeopleService::addPerson(const QString& name)
     }
     r.person = d->people ? d->people->create(n) : PersonId();
     if (r.person.isNull()) {
-        r.error = tr("A személy nem menthető.");
+        r.error = d->people && d->people->lockFailed() ? lockedOutMessage() : tr("A személy nem menthető.");
         return r;
     }
     r.ok = true;
@@ -450,6 +458,12 @@ PeopleOpResult PeopleService::renamePerson(const PersonId& person, const QString
 
     // ONE field (the own person: the settings' "Your name" too).
     d->renameGlobally(person, n);
+    if (d->people->lockFailed() && d->people->displayName(person) != n) {
+        // people.json was not written: the settings' name (own person) goes back too, no undo step.
+        if (person == d->self() && d->setSelfName) d->writeSettingsName(o);
+        r.error = lockedOutMessage();
+        return r;
+    }
     // The old name stays as a nickname (also findable by the name in old transcripts).
     if (!sameName(o, n)) step.aliasAdded = d->people->addAlias(person, o);
 
@@ -475,7 +489,7 @@ PeopleOpResult PeopleService::addAlias(const PersonId& person, const QString& al
         return r;
     }
     if (!d->people || !d->people->addAlias(person, a)) {
-        r.error = tr("Ez a becenév már szerepel.");
+        r.error = d->people && d->people->lockFailed() ? lockedOutMessage() : tr("Ez a becenév már szerepel.");
         return r;
     }
     r.ok = true;
@@ -535,12 +549,15 @@ PeopleOpResult PeopleService::removeSample(const QString& printId)
         r.error = tr("Ez a minta már nincs meg.");
         return r;
     }
-    step.prints = d->voiceprints->siblingsOf(printId);
-    bool removed = false;
-    for (const Voiceprint& p : std::as_const(step.prints))
-        removed = d->voiceprints->removePrint(p.id) || removed;
-    if (!removed) {
-        r.error = tr("Ez a minta már nincs meg.");
+    const QVector<Voiceprint> siblings = d->voiceprints->siblingsOf(printId);
+    bool lockedOut = false;
+    step.prints.clear();   // only what was really removed goes into the undo step
+    for (const Voiceprint& p : siblings) {
+        if (d->voiceprints->removePrint(p.id)) step.prints.append(p);
+        else lockedOut = lockedOut || d->voiceprints->lockFailed();
+    }
+    if (step.prints.isEmpty()) {
+        r.error = lockedOut ? lockedOutMessage() : tr("Ez a minta már nincs meg.");
         return r;
     }
     if (d->store) step.detail = d->store->load(step.print.sourceMeetingId).title;
@@ -575,7 +592,7 @@ PeopleOpResult PeopleService::moveSample(const QString& printId, const PersonCho
     step.createdPerson = to.id.isNull();
     step.other = d->people->resolve(to);
     if (step.other.isNull()) {
-        r.error = tr("Adj meg egy nevet.");
+        r.error = d->people->lockFailed() ? lockedOutMessage() : tr("Adj meg egy nevet.");
         return r;
     }
     if (step.createdPerson) step.createdRecord = d->people->person(step.other);
@@ -584,10 +601,16 @@ PeopleOpResult PeopleService::moveSample(const QString& printId, const PersonCho
     if (d->stats) d->stats->refreshNow();
     step.marks = d->markStale(step.person, step.print.sourceMeetingId);
 
-    step.prints = d->voiceprints->siblingsOf(printId);   // the siblings go together
-    for (const Voiceprint& p : std::as_const(step.prints)) {
-        d->voiceprints->removePrint(p.id);
-        d->voiceprints->addPrint(step.other, p);   // the id stays
+    const QVector<Voiceprint> siblings = d->voiceprints->siblingsOf(printId);   // the siblings go together
+    step.prints.clear();   // only what really moved goes into the undo step
+    for (const Voiceprint& p : siblings)
+        if (d->voiceprints->movePrint(p.id, step.other)) step.prints.append(p);   // the id stays
+    if (step.prints.isEmpty()) {
+        // Nothing moved (voiceprints.json is locked by another process): everything back as it was.
+        for (const StaleMark& mark : std::as_const(step.marks)) d->unmarkStale(mark);
+        if (step.createdPerson) d->people->remove(step.other);
+        r.error = d->voiceprints->lockFailed() ? lockedOutMessage() : tr("Ez a minta már nincs meg.");
+        return r;
     }
     if (d->store) step.detail = d->store->load(step.print.sourceMeetingId).title;
     d->push(step);
@@ -682,7 +705,9 @@ PeopleOpResult PeopleService::merge(const PersonId& loser, const PersonId& survi
     step.marks = marks;
     step.merge = mergeEverywhere(survivor, loser);
     if (!step.merge.isValid()) {
-        r.error = tr("Az összevonáshoz két különböző, létező személy kell.");
+        for (const StaleMark& mark : marks) d->unmarkStale(mark);
+        r.error = d->people && d->people->lockFailed()
+            ? lockedOutMessage() : tr("Az összevonáshoz két különböző, létező személy kell.");
         return r;
     }
     d->push(step);
@@ -736,14 +761,29 @@ PeopleOpResult PeopleService::removePerson(const PersonId& person, bool keepSamp
     r.samples = d->voiceprints ? d->voiceprints->sampleCount(person) : 0;
     const QVector<StaleMark> marks = d->markStale(person);
 
+    // Without a lock (another process holds the file) nothing is deleted, and what already happened goes back.
+    auto lockedOut = [&]() {
+        for (const StaleMark& mark : marks) d->unmarkStale(mark);
+        if (!r.person.isNull()) {
+            d->voiceprints->merge(r.person, person);
+            d->people->remove(r.person);
+        }
+        PeopleOpResult fail;
+        fail.person = person;
+        fail.error = lockedOutMessage();
+        d->finish(true, true);
+        return fail;
+    };
     // "Keep voice samples as an anonymous person": the samples go BEFORE the deletion to a new person
     // named "Anonymous N" (so they do not vanish from the store for even a moment).
     if (keepSamples && r.samples > 0 && d->voiceprints && d->people) {
         r.name = d->freeAnonymousName();
         r.person = d->people->create(r.name);
-        d->voiceprints->merge(person, r.person);
+        if (r.person.isNull()) return lockedOut();
+        if (d->voiceprints->merge(person, r.person).isEmpty() && d->voiceprints->lockFailed())
+            return lockedOut();
     }
-    removeEverywhere(person);
+    if (!removeEverywhere(person)) return lockedOut();
 
     d->clearUndo();
     if (d->stats) d->stats->refreshNow();
@@ -788,10 +828,8 @@ PeopleUndoInfo PeopleService::undo()
         break;
     case PeopleUndoKind::SampleMoved: {
         if (d->voiceprints) {
-            for (const Voiceprint& p : s.prints.isEmpty() ? QVector<Voiceprint>{s.print} : s.prints) {
-                d->voiceprints->removePrint(p.id);
-                d->voiceprints->addPrint(s.person, p);
-            }
+            for (const Voiceprint& p : s.prints.isEmpty() ? QVector<Voiceprint>{s.print} : s.prints)
+                d->voiceprints->movePrint(p.id, s.person);
         }
         // If the operation created the target person and nothing is bound to it since, it disappears.
         if (s.createdPerson && d->people && d->voiceprints && d->voiceprints->printCount(s.other) == 0) {
@@ -877,10 +915,11 @@ void PeopleService::renameEverywhere(const PersonId& person, const QString& newN
     emit peopleChanged();
 }
 
-void PeopleService::removeEverywhere(const PersonId& person)
+bool PeopleService::removeEverywhere(const PersonId& person)
 {
-    if (person.isNull()) return;
-    if (d->people) d->people->remove(person);
+    if (person.isNull()) return false;
+    // people.json locked by another process: nothing is deleted (no half-removed person).
+    if (d->people && !d->people->remove(person) && d->people->lockFailed()) return false;
     if (d->tags) d->tags->forgetPerson(person);
     if (d->voiceprints) { d->voiceprints->removePerson(person); emit voiceprintsChanged(); }
 
@@ -902,6 +941,7 @@ void PeopleService::removeEverywhere(const PersonId& person)
         refreshMeetingNames(m);
     }
     emit peopleChanged();
+    return true;
 }
 
 PersonMergeUndo PeopleService::mergeEverywhere(const PersonId& keep, const PersonId& drop)
@@ -917,8 +957,10 @@ PersonMergeUndo PeopleService::mergeEverywhere(const PersonId& keep, const Perso
     u.selfWasDrop = d->people->selfId() == drop;
     u.selfNameBefore = d->selfName ? d->settingsName() : QString();
 
-    // 1) The records: drop folds into keep (its name becomes a nickname; "self" moves to keep).
-    d->people->merge(keep, drop, /*dropNameAsAlias*/ true);
+    // 1) The records: drop folds into keep (its name becomes a nickname; "self" moves to keep). If
+    //    people.json cannot be written (locked by another process), nothing else changes either.
+    if (!d->people->merge(keep, drop, /*dropNameAsAlias*/ true) && d->people->lockFailed())
+        return PersonMergeUndo{};
     if (u.selfWasDrop && d->setSelfName) d->writeSettingsName(u.keepBefore.displayName);
     // 2) Voiceprints and tag rejections.
     if (d->voiceprints) u.movedPrintIds = d->voiceprints->merge(drop, keep);
@@ -966,8 +1008,7 @@ bool PeopleService::undoMergeEverywhere(const PersonMergeUndo& u)
             PersonId owner;
             Voiceprint vp;
             if (!d->voiceprints->findPrint(printId, &owner, &vp) || owner != u.keep) continue;
-            d->voiceprints->removePrint(printId);
-            d->voiceprints->addPrint(u.drop, vp);
+            d->voiceprints->movePrint(printId, u.drop);
         }
     }
     if (d->tags) d->tags->undoMovePersonRefs(u.keep, u.drop, u.rejections);
