@@ -11,13 +11,14 @@
 #include <QApplication>
 #include <QLockFile>
 #include <QDir>
+#include <QFile>
 
 int main(int argc, char** argv)
 {
     QStringList rawArgs;
     rawArgs.reserve(argc);
     for (int i = 0; i < argc; ++i)
-        rawArgs << QString::fromLocal8Bit(argv[i]);
+        rawArgs << QFile::decodeName(argv[i]);   // NFC on macOS (QProcess sends NFD)
     tanara::initLogging(tanara::parseLogOptions(rawArgs));
 
     QApplication app(argc, argv);

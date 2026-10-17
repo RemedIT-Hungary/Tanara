@@ -1,0 +1,18 @@
+# Build and test dependencies of Tanara on macOS (Homebrew).
+# Usage: brew bundle --file=tools/ci/Brewfile
+# Then:  tools/ci/build-test.sh build -DCMAKE_PREFIX_PATH="$(brew --prefix qt)"
+
+# toolchain (the compiler comes from the Xcode Command Line Tools)
+brew "cmake"
+brew "ninja"
+brew "ccache"
+# Qt 6 (all modules, LinguistTools included)
+brew "qt"
+# voice-ID
+brew "onnxruntime"
+# OS keychain for the API keys (optional; without it: 0600 file only)
+brew "qtkeychain"
+# run-time tools used by tests (ffmpeg/ffprobe; GPL build: developer machines only, never ship it)
+brew "ffmpeg"
+brew "node"
+brew "python"

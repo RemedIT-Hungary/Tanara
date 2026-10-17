@@ -1,7 +1,7 @@
 # Building Tanara
 
 Tanara is a C++20 / Qt 6 (Quick) project built with CMake and Ninja. This page covers a
-developer build on Fedora and on Windows (MinGW), the CMake options, how to run the tests,
+developer build on Fedora, on Windows (MinGW) and on macOS (Homebrew), the CMake options, how to run the tests,
 and how to run the CI steps on your own machine. For the release packages (Windows installer,
 AppImage, RPM, Flatpak experiment) see [Packaging](#packaging) below.
 
@@ -100,6 +100,34 @@ The tests find `onnxruntime.dll` through a post-build copy step. At run time the
 
 Run from a build tree: `build\gui\tanara.exe`, `build\cli\tanara-cli.exe`,
 `build\watcher\tanara-watcher.exe`, with `%QT%\bin` and the MinGW `bin` folder on `PATH`.
+
+## macOS (Homebrew)
+
+A developer build: the GUI, the CLI and the watcher build, pass the tests and run from the build
+tree. There is no app bundle, no signing and no system-audio capture or meeting detection yet
+(the platform stubs are used); the port status and plan are in [macos.md](macos.md). Tested on
+Apple silicon (macOS 27) with the Xcode Command Line Tools, Homebrew's Qt 6.12, ONNX Runtime 1.31
+and QtKeychain 0.17.
+
+```bash
+xcode-select --install                     # once: AppleClang and the SDK
+brew bundle --file=tools/ci/Brewfile       # cmake, ninja, ccache, qt, qtkeychain, onnxruntime, ffmpeg, node, python
+tools/ci/build-test.sh build-mac -DCMAKE_PREFIX_PATH="$(brew --prefix qt)"
+
+./build-mac/gui/tanara
+./build-mac/cli/tanara-cli
+./build-mac/watcher/tanara-watcher
+```
+
+Homebrew's ONNX Runtime is found through `find_package`, so voice-ID needs no extra option.
+Homebrew's `ffmpeg` is a GPL build: fine for development, never put it in a package. Unsigned
+builds started from a terminal get the microphone permission under the terminal's name.
+
+Run the tests on their own (the script already does this, with a throw-away `TANARA_HOME`):
+
+```bash
+QT_QPA_PLATFORM=offscreen TANARA_HOME="$(mktemp -d)" ctest --test-dir build-mac -j8 --output-on-failure
+```
 
 ### Standalone folder
 

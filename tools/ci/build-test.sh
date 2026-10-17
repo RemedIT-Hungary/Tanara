@@ -25,7 +25,7 @@ if command -v ccache >/dev/null 2>&1; then
 fi
 
 cmake -S "$ROOT" -B "$BUILD" -G Ninja \
-    -DCMAKE_BUILD_TYPE="${CMAKE_BUILD_TYPE:-Release}" "${LAUNCHER[@]}" "$@"
+    -DCMAKE_BUILD_TYPE="${CMAKE_BUILD_TYPE:-Release}" ${LAUNCHER[@]+"${LAUNCHER[@]}"} "$@"
 cmake --build "$BUILD" -j"$JOBS"
 
 # Run all tests, then summarize skips even when a test failed.

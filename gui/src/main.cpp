@@ -246,7 +246,7 @@ int main(int argc, char** argv) {
     QStringList rawArgs;
     rawArgs.reserve(argc);
     for (int i = 0; i < argc; ++i)
-        rawArgs << QString::fromLocal8Bit(argv[i]);
+        rawArgs << QFile::decodeName(argv[i]);   // NFC on macOS (QProcess sends NFD)
     const QStringList cleanArgs = tanara::stripLogArgs(rawArgs);
 
     // Which UI starts? --record: the floating recorder; otherwise the QML main window and its

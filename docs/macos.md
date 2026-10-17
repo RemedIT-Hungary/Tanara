@@ -1,7 +1,8 @@
 # macOS port plan
 
-Status: **plan only.** Tanara does not build or run on macOS yet, and there is no Mac to test on
-(decision D4 of the cleanup). This document records what a macOS port needs, where each piece plugs
+Status: **developer build works** (section 11): Tanara builds and its tests pass on an Apple silicon
+Mac with Homebrew, with the `unsupported` platform stubs (no system audio, no
+meeting detection, no bundle). This document records what a macOS port needs, where each piece plugs
 in, and the order of work for a first Mac build. Nothing here is implemented unless it says "done".
 
 ## 1. Where the platform code lives
@@ -181,14 +182,78 @@ Recommendation: **macOS 14.2 (Sonoma)**.
   That is two extra implementations for a shrinking user base (13 is out of security support).
 - Qt does not force 14.2; it is a product-driven limit set by the audio APIs.
 
-## 11. Steps for a first Mac build
+## 11. Native developer build (milestone M0)
+
+Goal: `cmake` + `ninja` + `ctest` on an Apple silicon Mac, from a plain checkout, with the
+same commands as on Linux. No bundle, no signing, no new platform features: the
+`posix` + `unsupported` adapters compile on "anything else", so M0 is about the toolchain,
+the dependencies and the tests, not about ports. The commands are in `docs/BUILD.md` ("macOS").
+
+**Done** (2026-10-17, macOS 27 arm64, AppleClang 21, Homebrew Qt 6.12.0, ONNX Runtime 1.31.0,
+QtKeychain 0.17.0): build with voice-ID OFF and ON, 157/157 tests pass, 17 skipped cases, none
+of them a failure in disguise.
+
+### 11.1 Toolchain and dependencies (Homebrew)
+
+`tools/ci/Brewfile` (`brew bundle --file=tools/ci/Brewfile`) is the list; the compiler comes from
+the Xcode Command Line Tools. Homebrew's Qt is newer than the 6.11.1 of the packages and arm64
+only; the official Qt installer (6.11.1, universal) is the one for a release bundle later.
+Homebrew's `ffmpeg` is a GPL build: developer machines only (section 7).
+
+### 11.2 What the build needed
+
+- No CMake change. The platform rule picks `posix unsupported`; miniaudio loads Core Audio at run
+  time (no framework linking); `find_package` finds Homebrew's `onnxruntime` and `qtkeychain`.
+- `tools/ci/build-test.sh`: macOS `/bin/bash` is 3.2, where `set -u` treats the empty
+  `"${LAUNCHER[@]}"` (no ccache) as unbound. Fixed with `${LAUNCHER[@]+"${LAUNCHER[@]}"}`.
+- Unicode normalization of the command line: on macOS `QProcess` encodes the arguments with
+  `QFile::encodeName`, which is NFD, while `QString::fromLocal8Bit(argv[i])` keeps them NFD, so
+  "Fehér Gábor" did not match the stored (NFC) name (`test_cli_person_tags`,
+  `test_cli_new_commands`). The three `main.cpp` now read `argv` with `QFile::decodeName` (NFC on
+  macOS, `fromLocal8Bit` elsewhere).
+
+Still open for later: the QtKeychain FetchContent fallback (`NOT Qt6Keychain_FOUND AND WIN32`)
+does not cover `APPLE`, and a release build will need the pinned universal2 ONNX Runtime through a
+generalized `cmake/OnnxRuntimeWin.cmake` (section 8). Neither is needed with Homebrew.
+
+### 11.3 Tests
+
+The platform-specific tests skip with a reason on macOS (`linuxRoleTable`,
+`procfsReaderOnFakeTree`, the XDG / HKCU autostart cases, `detectorRegisteredAndPolls`); the rest
+of the skips are the same as on Linux (no speaker model, sandbox-only measurements, live audio).
+`test_app_jobs::identifyRunsAsLastStage`'s sibling `identifyResultsDroppedWhenTranscriptChanges`
+skips with "a build nem tartalmaz voice-ID-t" even in a voice-ID build: the reason text is wrong
+(the identify stage is missing because no model is installed), not a macOS issue.
+
+### 11.4 CI
+
+Next: a `macos` job on `macos-15` (arm64) in `.github/workflows/ci.yml`:
+`brew bundle --file=tools/ci/Brewfile`, then
+`tools/ci/build-test.sh build -DCMAKE_PREFIX_PATH=$(brew --prefix qt)`. Start it with
+`continue-on-error: true` until it has been green for a while (decision 7 said "later"; this is
+the cheap version of it).
+
+### 11.5 Done when
+
+- [x] `cmake --build` succeeds with `TANARA_BUILD_VOICEID=OFF` and with `ON`.
+- [x] `ctest` is green with a reviewed QSKIP list (11.3).
+- [x] The developer build works from the build tree (`build-mac/gui/tanara`, `tanara-cli`,
+  `tanara-watcher`); `tanara-cli paths show` runs.
+- [ ] Microphone recording checked by hand (Core Audio through miniaudio; the permission prompt
+  names the terminal for an unsigned build).
+- [ ] The macOS CI job runs (11.4).
+
+After M0, section 12 continues from step 4 (step 1 becomes "add `macos/` platform folders").
+
+## 12. Steps for a first Mac build
 
 1. CMake: `APPLE -> macos posix` platform folders; copy every `unsupported/` file into `macos/`
    so the build links (stubs first). `osId()` returns "macos", `caseSensitiveFileSystem()` false.
 2. Dependencies: Qt 6.11 (official installer, universal), QtKeychain, ONNX Runtime universal2
-   (section 8), or `-DTANARA_BUILD_VOICEID=OFF` for the very first build.
+   (section 8), or `-DTANARA_BUILD_VOICEID=OFF` for the very first build. Developer build with
+   Homebrew: **done** (section 11); the release-grade dependencies are still open.
 3. Build and run `ctest` headless (`QT_QPA_PLATFORM=offscreen`). Expected failures: tests that
-   assert Linux or Windows behavior without an `#if`; fix them as they show up.
+   assert Linux or Windows behavior without an `#if`; fix them as they show up. **Done** (section 11).
 4. Run the app with microphone-only recording (miniaudio Core Audio backend); check the
    microphone permission prompt (unsigned builds attribute it to the terminal).
 5. `RunningApps` with `libproc` (section 6): small and testable, the Settings list fills.
@@ -199,7 +264,7 @@ Recommendation: **macOS 14.2 (Sonoma)**.
 10. Bundle: `macdeployqt`, Info.plist, ffmpeg in `Contents/Resources/bin`, codesign, notarize, DMG
     (section 7). Then an optional compile-only macOS CI job (decision 7: later).
 
-## 12. Open questions
+## 13. Open questions
 
 - Is a private aggregate device visible to miniaudio's enumeration in the same process
   (section 2, step 3)? Decides between "miniaudio opens it" and a separate Core Audio capture class.
