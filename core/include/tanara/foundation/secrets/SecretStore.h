@@ -7,8 +7,8 @@
 //  - KeychainSecretStore: the OS keychain via QtKeychain (Linux Secret Service / KWallet, Windows
 //    Credential Manager, macOS Keychain), service name "Tanara". QtKeychain is asynchronous; the
 //    known keys are read once into a memory cache at startup (each job waits at most 5 s in a local
-//    event loop), writes go to the keychain and the cache at once. Built only with
-//    TANARA_HAVE_KEYCHAIN.
+//    event loop), "not found" is cached too, writes go to the keychain and the cache at once (the
+//    cache rules: detail/CachedSecretStore.h). Built only with TANARA_HAVE_KEYCHAIN.
 //  - openSecretStore(): picks the backend from the "secrets" settings section.
 //    TANARA_HOME or the Qt test mode -> ALWAYS the file backend: sandboxes and tests never reach
 //    the real keychain.
