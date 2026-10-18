@@ -104,8 +104,8 @@ Run from a build tree: `build\gui\tanara.exe`, `build\cli\tanara-cli.exe`,
 ## macOS (Homebrew)
 
 A developer build: the GUI, the CLI and the watcher build, pass the tests and run from the build
-tree. There is no app bundle, no signing and no system-audio capture or meeting detection yet
-(the platform stubs are used); the port status and plan are in [macos.md](macos.md). Tested on
+tree, or as an ad-hoc signed app bundle (below). There is no Developer ID signing and no
+system-audio capture or meeting detection yet (the platform stubs are used); the port status and plan are in [macos.md](macos.md). Tested on
 Apple silicon (macOS 27) with the Xcode Command Line Tools, Homebrew's Qt 6.12, ONNX Runtime 1.31
 and QtKeychain 0.17.
 
@@ -128,6 +128,38 @@ Run the tests on their own (the script already does this, with a throw-away `TAN
 ```bash
 QT_QPA_PLATFORM=offscreen TANARA_HOME="$(mktemp -d)" ctest --test-dir build-mac -j8 --output-on-failure
 ```
+
+### macOS app bundle
+
+`TANARA_MACOS_BUNDLE=ON` builds the GUI as `tanara.app` with `tanara-cli` and `tanara-watcher` next
+to it in `Contents/MacOS`. The `tanara_bundle` target runs `macdeployqt` (Qt frameworks, QML imports,
+Homebrew dylibs) and signs the bundle ad hoc. The `macos-xcode` preset generates an Xcode project
+for this in `build-xcode/`.
+
+From the command line (`cmake --build` runs `xcodebuild`):
+
+```bash
+cmake --preset macos-xcode
+cmake --build --preset macos-xcode-bundle      # -> build-xcode/gui/Release/tanara.app
+open build-xcode/gui/Release/tanara.app
+```
+
+Or open `build-xcode/tanara.xcodeproj` in Xcode, pick the `tanara_bundle` scheme, set
+Product > Scheme > Edit Scheme > Run > Build Configuration to Release, and build. Use the `tanara` scheme
+for day-to-day debugging; it builds the bundle without the Qt deployment step.
+
+You can also call `xcodebuild` directly:
+
+```bash
+xcodebuild -project build-xcode/tanara.xcodeproj -scheme tanara_bundle -configuration Release build
+```
+
+The bundle contains no FFmpeg (Homebrew's is GPL, see above). Started from Finder, the app does not
+see Homebrew's `PATH`, so set the FFmpeg and FFprobe paths in Settings (`/opt/homebrew/bin/ffmpeg`,
+`/opt/homebrew/bin/ffprobe`), or put an LGPL build into `Contents/Resources/bin`, where Tanara
+looks first. Ad-hoc signed apps run only on the machine that built them, unless the user
+removes the quarantine attribute; distribution needs Developer ID signing and notarization
+([macos.md](macos.md) section 7).
 
 ### Standalone folder
 
