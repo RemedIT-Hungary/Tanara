@@ -4,7 +4,7 @@
 //
 // The declarations here are platform-neutral; the definitions live in
 // core/src/foundation/platform/<os>/ and core/CMakeLists.txt compiles only the current platform's
-// folders (Linux: linux + posix, Windows: windows, otherwise: posix + unsupported). Common code
+// folders (Linux: linux + posix, Windows: windows, macOS: macos + posix, otherwise: posix + unsupported). Common code
 // calls these instead of writing `#if Q_OS_*` (the platform rule of tools/check_modules.py).
 #include <QString>
 #include <QtGlobal>
@@ -27,6 +27,11 @@ QString userDisplayName();
 // "-<uid>" on POSIX (local sockets share one namespace), empty on Windows (named pipes are
 // already per session).
 QString perUserSuffix();
+
+// macOS: makes this process the one macOS asks for the microphone and system-audio permissions,
+// not the IDE or terminal that started it (re-executes itself once, same pid). Call first in main()
+// of the processes that record. No-op elsewhere.
+void becomeResponsibleProcess(char** argv);
 
 // Whether a process with this PID is alive (stale-lock detection). false for pid <= 0.
 bool processAlive(qint64 pid);

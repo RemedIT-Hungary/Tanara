@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Linked into tanara and tanara-cli as the __TEXT,__info_plist section, so a build outside a bundle
+     (build-mac/, run from an IDE or a terminal) has the usage strings macOS needs before it asks for
+     the microphone / system audio (platform::becomeResponsibleProcess). Same texts as Info.plist.in. -->
+<plist version="1.0">
+<dict>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Tanara records your microphone during the meetings you choose to record.</string>
+	<key>NSAudioCaptureUsageDescription</key>
+	<string>Tanara records the sound of the call app so the other participants' voices are in the recording.</string>
+</dict>
+</plist>

@@ -1,5 +1,8 @@
 cmake_minimum_required(VERSION 3.21)
 project(tanara VERSION 0.5.313 LANGUAGES CXX)
+if(APPLE)
+    enable_language(OBJCXX)   # core/src/**/platform/macos/*.mm
+endif()
 
 # The displayed version comes from ONE place: the numeric part from project(VERSION), the
 # suffix (e.g. "a" = alpha; empty = release) from here. core/src/foundation/Version.cpp receives it as

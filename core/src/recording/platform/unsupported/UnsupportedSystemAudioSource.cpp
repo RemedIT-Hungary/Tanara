@@ -1,5 +1,4 @@
-// ISystemAudioSource where there is no system-audio mechanism yet (macOS: Core Audio process tap or
-// ScreenCaptureKit, see docs/macos.md). Capture devices are classified by name only (e.g. a
+// ISystemAudioSource where there is no system-audio mechanism (not Linux, Windows or macOS). Capture devices are classified by name only (e.g. a
 // user-installed virtual "loopback" device still counts as system audio).
 #include "tanara/recording/audio/SystemAudioSource.h"
 

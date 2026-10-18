@@ -104,8 +104,9 @@ Run from a build tree: `build\gui\tanara.exe`, `build\cli\tanara-cli.exe`,
 ## macOS (Homebrew)
 
 A developer build: the GUI, the CLI and the watcher build, pass the tests and run from the build
-tree, or as an ad-hoc signed app bundle (below). There is no Developer ID signing and no
-system-audio capture or meeting detection yet (the platform stubs are used); the port status and plan are in [macos.md](macos.md). Tested on
+tree, or as an ad-hoc signed app bundle (below). System audio is recorded through a Core
+Audio process tap (macOS 14.2+, the "System audio recording" permission). There is no Developer ID signing and no
+meeting detection yet; the port status and plan are in [macos.md](macos.md). Tested on
 Apple silicon (macOS 27) with the Xcode Command Line Tools, Homebrew's Qt 6.12, ONNX Runtime 1.31
 and QtKeychain 0.17.
 
@@ -153,6 +154,14 @@ You can also call `xcodebuild` directly:
 ```bash
 xcodebuild -project build-xcode/tanara.xcodeproj -scheme tanara_bundle -configuration Release build
 ```
+
+Permissions: `tanara` and `tanara-cli` ask for the microphone and "System audio recording"
+permissions themselves, also when started from CLion, Xcode or a terminal. By default macOS would ask
+the launching app, which has no usage strings, and the recording would be silent. To avoid that they
+re-execute themselves once with the launcher's responsibility disclaimed
+(`platform::becomeResponsibleProcess`), and the usage strings are linked into the binaries
+(`packaging/macos/embedded-Info.plist`). The grants are listed per binary path in System Settings >
+Privacy & Security.
 
 The bundle contains no FFmpeg (Homebrew's is GPL, see above). Started from Finder, the app does not
 see Homebrew's `PATH`, so set the FFmpeg and FFprobe paths in Settings (`/opt/homebrew/bin/ffmpeg`,

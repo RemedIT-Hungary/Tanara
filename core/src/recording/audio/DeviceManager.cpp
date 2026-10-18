@@ -48,6 +48,8 @@ void DeviceManager::refresh() {
         return;
     }
     QVector<AudioDeviceInfo> result;
+    // Before the enumeration: on macOS the first use creates the process-tap input device.
+    const ISystemAudioSource& sysAudio = systemAudioSource();
 
     ma_context context;
     // Default backend list (the platform's best). If the context init fails (no audio system), we
@@ -65,7 +67,6 @@ void DeviceManager::refresh() {
 
     if (ma_context_get_devices(&context, &playbackInfos, &playbackCount,
                                &captureInfos, &captureCount) == MA_SUCCESS) {
-        const ISystemAudioSource& sysAudio = systemAudioSource();
         for (ma_uint32 i = 0; i < captureCount; ++i) {
             const ma_device_info& info = captureInfos[i];
 

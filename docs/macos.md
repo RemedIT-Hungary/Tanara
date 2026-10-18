@@ -1,8 +1,8 @@
 # macOS port plan
 
 Status: **developer build works** (section 11): Tanara builds and its tests pass on an Apple silicon
-Mac with Homebrew, with the `unsupported` platform stubs (no system audio, no
-meeting detection, no bundle). This document records what a macOS port needs, where each piece plugs
+Mac with Homebrew, with the `unsupported` platform stubs for the ports not done yet (no
+meeting detection, no autostart); system audio through a Core Audio process tap (section 2). This document records what a macOS port needs, where each piece plugs
 in, and the order of work for a first Mac build. Nothing here is implemented unless it says "done".
 
 ## 1. Where the platform code lives
@@ -14,18 +14,19 @@ platform's folders:
 |---|---|
 | Linux | `linux`, `posix` |
 | Windows | `windows` |
-| Anything else (today: macOS) | `posix`, `unsupported` |
+| macOS | `macos`, `posix`, and `unsupported` for the modules without a `macos` folder yet |
+| Anything else | `posix`, `unsupported` |
 
-The common code has no `#if Q_OS_*` (the platform rule of `tools/check_modules.py`). A macOS port
-adds a `macos` folder next to the existing ones and changes the CMake rule to
-`APPLE -> macos posix`. Every `unsupported/` file then gets a `macos/` sibling, one by one; a port
-that is not ready on macOS can keep a copy of the `unsupported` stub inside `macos/`.
+The common code has no `#if Q_OS_*` (the platform rule of `tools/check_modules.py`). **Done**: on
+macOS a module's `macos/` folder replaces that module's `unsupported/` stubs (`core/CMakeLists.txt`),
+so the ports move to `macos/` one module at a time with no stub copies. `*.mm` (Objective-C++, ARC)
+files are compiled on macOS only.
 
 The ports and their state:
 
 | Port | Declared in | Linux | Windows | macOS today (`unsupported`) | macOS plan |
 |---|---|---|---|---|---|
-| `recording::ISystemAudioSource` | `recording/audio/SystemAudioSource.h` | monitor sources | WASAPI loopback | names only, no system audio | Core Audio process tap (section 2) |
+| `recording::ISystemAudioSource` | `recording/audio/SystemAudioSource.h` | monitor sources | WASAPI loopback | **done**: Core Audio process tap (`macos/`, section 2) | — |
 | `watcher::IMeetingDetector` (built-ins) | `watcher/detect/DetectorRegistry.h` | `linux-capture` (pw-dump) | `windows-wasapi` | none registered | `macos-coreaudio` (section 3) |
 | `watcher::IAutostart` | `watcher/detect/Autostart.h` | XDG `.desktop` | HKCU Run | `entryPath()` empty | `SMAppService` (section 4) |
 | `watcher::IPlaybackRouting` | `watcher/PlaybackRouting.h` | pw-dump | not supported | not supported | Core Audio process objects (section 5) |
@@ -51,7 +52,25 @@ device and no WASAPI-style loopback. There are three ways to get the remote part
 | **ScreenCaptureKit** audio (`SCStream`, `capturesAudio`) | 13+ | Screen recording ("Screen & System Audio Recording" in 15) | per app via the content filter | Needs the screen-recording permission even for audio only; users read that as "it records my screen". |
 | **Virtual device** (BlackHole and similar) | any | microphone only | no | The user installs a driver and builds a multi-output device by hand. Works today without code: the device shows up as an input and the name rules (`domain/AudioDeviceNames.h`) classify a name with "loopback" as system audio. Support only as a documented fallback. |
 
-Plan with the process tap:
+**Done** (process tap, `core/src/recording/platform/macos/ProcessTapSystemAudioSource.mm`, id
+`coreaudio-tap`): the process-wide `systemAudioSource()` creates, on first use, a global stereo tap of
+every process except Tanara's own process object, in a private aggregate device named
+"Loopback: System audio". miniaudio lists that device among the captures in the same process
+(checked: `test_system_audio_source::macosTapDeviceIsEnumerated`), so the common name rules classify
+it as `Loopback` and `AudioEngine` opens it like a microphone; no separate capture class. The tap
+and the device live as long as the process (a private aggregate device dies with it), so the
+`prepare()` / `release()` lifecycle below was not needed: an idle tap costs nothing, and the
+permission prompt and the recording indicator come only when the device starts. `DeviceManager` and
+`AudioEngine` touch `systemAudioSource()` before they enumerate. macOS asks the app that *launched*
+Tanara for the permission (CLion, a terminal) and silently refuses it when that app has no
+`NSAudioCaptureUsageDescription`; `platform::becomeResponsibleProcess()` (first line of the GUI's
+and the CLI's `main()`) re-executes Tanara once with the launcher's responsibility disclaimed (the
+private `responsibility_spawnattrs_setdisclaim`, weak-linked), so Tanara itself is asked, with the
+usage strings linked into the binaries (`packaging/macos/embedded-Info.plist`). Checked with a probe: the
+tap delivers audio once the process itself is asked. Per-app taps (`processes` = the detected call app)
+wait for the meeting detector (section 3).
+
+The original plan with the process tap:
 
 1. Create a `CATapDescription` (stereo mixdown; `excludedProcesses` = Tanara's own process
    objects, or `processes` = the detected call app), then `AudioHardwareCreateProcessTap`.
@@ -258,7 +277,8 @@ After M0, section 12 continues from step 4 (step 1 becomes "add `macos/` platfor
    microphone permission prompt (unsigned builds attribute it to the terminal).
 5. `RunningApps` with `libproc` (section 6): small and testable, the Settings list fills.
 6. `MacCaptureDetector` + `IPlaybackRouting` on the process objects (sections 3 and 5).
-7. Process-tap `ISystemAudioSource` with the `prepare()` / `release()` lifecycle (section 2).
+7. Process-tap `ISystemAudioSource` (section 2). **Done**, without a `prepare()` / `release()`
+   lifecycle (the tap lives with the process).
 8. `SMAppService` autostart (section 4) once the app is signed.
 9. `TranscriptKeys` virtual-key table (section 9).
 10. Bundle: `macdeployqt`, Info.plist, ffmpeg in `Contents/Resources/bin`, codesign, notarize, DMG
@@ -266,8 +286,8 @@ After M0, section 12 continues from step 4 (step 1 becomes "add `macos/` platfor
 
 ## 13. Open questions
 
-- Is a private aggregate device visible to miniaudio's enumeration in the same process
-  (section 2, step 3)? Decides between "miniaudio opens it" and a separate Core Audio capture class.
+- ~~Is a private aggregate device visible to miniaudio's enumeration in the same process?~~ Yes
+  (macOS 27, checked by a test): miniaudio opens it.
 - Tap everything except Tanara, or only the detected call app? Per-app is cleaner (no
   notification sounds) but needs the call app known before the recording starts.
 - Developer signing identity and notarization account (Apple Developer Program membership).

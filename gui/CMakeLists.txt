@@ -28,6 +28,10 @@ target_link_libraries(tanara PRIVATE
 )
 
 tanara_copy_onnxruntime_dll(tanara)
+if(APPLE)   # usage strings for a build outside the bundle (platform::becomeResponsibleProcess)
+    target_link_options(tanara PRIVATE
+        "LINKER:-sectcreate,__TEXT,__info_plist,${CMAKE_SOURCE_DIR}/packaging/macos/embedded-Info.plist")
+endif()
 
 # macOS app bundle (TANARA_MACOS_BUNDLE, docs/BUILD.md "macOS app bundle"): tanara.app with the
 # CLI and the watcher next to the GUI in Contents/MacOS (findWatcherExecutable looks there first).

@@ -31,6 +31,7 @@
 #include "tanara/foundation/i18n/Localization.h"
 #include "tanara/foundation/log/Logging.h"
 #include "tanara/foundation/paths/AppPaths.h"
+#include "tanara/foundation/platform/Platform.h"
 #include "tanara/app/SettingsManager.h"
 #include "tanara/library/store/MeetingRepository.h"
 #include "tanara/foundation/ProcessLock.h"   // watcherLockPath()
@@ -241,6 +242,7 @@ static int runRecorderMode(QApplication& app, app::AppController& controller, co
 }
 
 int main(int argc, char** argv) {
+    tanara::platform::becomeResponsibleProcess(argv);   // macOS: the audio permissions, not the IDE's
     // Set up logging BEFORE anything else (so early messages are captured too). Level from the
     // command line / env: --debug | --log-level <...> | TANARA_LOG_LEVEL.
     QStringList rawArgs;

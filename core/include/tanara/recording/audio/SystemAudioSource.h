@@ -7,7 +7,9 @@
 //            the role comes from the name (domain/AudioDeviceNames.h).
 //   Windows: system audio is NOT a capture device; every playback (output) device becomes a Loopback
 //            device ("loopback:<i>:<name>"), and AudioEngine opens it in WASAPI loopback mode.
-//   Otherwise (macOS until docs/macos.md is implemented): the capture devices' names only.
+//   macOS:   a Core Audio process tap in a private aggregate device ("Loopback: System audio"), which
+//            miniaudio lists among the capture devices (docs/macos.md section 2).
+//   Otherwise: the capture devices' names only.
 //
 // It only classifies and selects. The enumeration and the capture itself stay in DeviceManager /
 // AudioEngine (miniaudio), so this header has no miniaudio dependency.
@@ -31,7 +33,7 @@ class ISystemAudioSource {
 public:
     virtual ~ISystemAudioSource() = default;
 
-    // Stable id of the mechanism: "pulse-monitor", "wasapi-loopback", "none".
+    // Stable id of the mechanism: "pulse-monitor", "wasapi-loopback", "coreaudio-tap", "none".
     virtual QString id() const = 0;
     // The role of an enumerated CAPTURE device: Loopback (system audio), Other (line-in / AUX), Mic.
     virtual TrackKind classifyCapture(const QString& deviceName) const = 0;
@@ -45,7 +47,8 @@ public:
 
 // This platform's implementation (core/src/recording/platform/<os>/).
 std::unique_ptr<ISystemAudioSource> createSystemAudioSource();
-// The process-wide instance of it (stateless; created on first use).
+// The process-wide instance of it (created on first use; on macOS that creates the tap device, so call
+// it before enumerating the devices).
 const ISystemAudioSource& systemAudioSource();
 
 } // namespace tanara::recording

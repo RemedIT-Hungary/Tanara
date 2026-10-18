@@ -4,15 +4,22 @@
 
 file(GLOB_RECURSE TANARA_CORE_SOURCES CONFIGURE_DEPENDS src/*.cpp)
 file(GLOB_RECURSE TANARA_CORE_HEADERS CONFIGURE_DEPENDS include/*.h)
+if(APPLE)
+    file(GLOB_RECURSE _mm CONFIGURE_DEPENDS src/*.mm)   # Objective-C++ adapters (platform/macos)
+    list(APPEND TANARA_CORE_SOURCES ${_mm})
+endif()
 
 # Platform adapters: every */platform/<os>/ folder holds one platform's implementation of a port
 # (no `#if Q_OS_*` in the common code, see tools/check_modules.py). Only the current platform's
 # folders are compiled:
-#   Linux: linux + posix | Windows: windows | otherwise (macOS until docs/macos.md): posix + unsupported
+#   Linux: linux + posix | Windows: windows | macOS: macos + posix, and unsupported for the modules
+#   without a macos folder yet | otherwise: posix + unsupported
 if(WIN32)
     set(TANARA_PLATFORM_DIRS windows)
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     set(TANARA_PLATFORM_DIRS linux posix)
+elseif(APPLE)
+    set(TANARA_PLATFORM_DIRS macos posix unsupported)
 else()
     set(TANARA_PLATFORM_DIRS posix unsupported)
 endif()
@@ -24,6 +31,15 @@ foreach(_list TANARA_CORE_SOURCES TANARA_CORE_HEADERS)
         list(FILTER _mine INCLUDE REGEX "/platform/${_dir}/")
         list(APPEND ${_list} ${_mine})
     endforeach()
+    # macOS: a module's macos/ folder replaces that module's unsupported/ stubs.
+    if(APPLE)
+        set(_mac ${${_list}})
+        list(FILTER _mac INCLUDE REGEX "/platform/macos/")
+        foreach(_f IN LISTS _mac)
+            string(REGEX MATCH "([^/]+)/platform/macos/" _m "${_f}")
+            list(FILTER ${_list} EXCLUDE REGEX "/${CMAKE_MATCH_1}/platform/unsupported/")
+        endforeach()
+    endif()
 endforeach()
 message(STATUS "Tanara: platform adapter folders: ${TANARA_PLATFORM_DIRS}")
 
@@ -54,6 +70,11 @@ endif()
 # comment; on MinGW they must be explicit.
 if(WIN32)
     target_link_libraries(tanara_core PRIVATE ole32 oleaut32 uuid winmm avrt ksuser secur32)
+endif()
+# macOS: the process tap (recording/platform/macos) is Objective-C++ with ARC.
+if(APPLE)
+    target_compile_options(tanara_core PRIVATE $<$<COMPILE_LANGUAGE:OBJCXX>:-fobjc-arc>)
+    target_link_libraries(tanara_core PRIVATE "-framework CoreAudio" "-framework Foundation")
 endif()
 
 # miniz (vendored, MIT, third_party/miniz): ZIP writing/reading for the meeting archive
