@@ -282,6 +282,22 @@ class TestTranscriptTab : public QObject {
         return popup && popup->property("opened").toBool();
     }
 
+    // Opens the "why this speaker?" popover from a lane head of the rail. On a slow machine (the macOS
+    // CI runner) the first click can land before the rail's layout settles and miss the head, so the
+    // click is repeated until the popover reports itself open (at most ~5 s).
+    bool openLaneWhy(int lane)
+    {
+        QElapsedTimer t;
+        t.start();
+        while (true) {
+            const QList<QQuickItem*> heads = visuals("laneHead");
+            if (lane < heads.size()) click(center(heads.at(lane)));
+            for (int i = 0; i < 20 && !popupOpen("speakerWhyPopover"); ++i) pump(25);
+            if (popupOpen("speakerWhyPopover")) return true;
+            if (t.elapsed() > 5000) return false;
+        }
+    }
+
     void load(const QString& variant = QString())
     {
         m_window.reset();
@@ -672,8 +688,7 @@ private slots:
         pump();
         const QList<QQuickItem*> heads = visuals("laneHead");
         QCOMPARE(int(heads.size()), int(m_vm->lanes().size()));
-        click(center(heads.at(1)));
-        QTRY_VERIFY(popupOpen("speakerWhyPopover"));
+        QVERIFY(openLaneWhy(1));
         QCOMPARE(why()->property("speakerKey").toString(), laneKey(1));
         QCOMPARE(m_tab->property("speakerPopoverRow").toInt(), -1);
         QVERIFY(!visual("scopeLine"));                      // nothing to choose: the whole speaker
@@ -726,8 +741,7 @@ private slots:
         pump();
         const QString key = laneKey(1);
         const int lines = linesOf(key);
-        click(center(visuals("laneHead").at(1)));
-        QTRY_VERIFY(popupOpen("speakerWhyPopover"));
+        QVERIFY(openLaneWhy(1));
         QVERIFY(visual("fixVoiceprints"));                  // it has a voiceprint: the wrong-recognition marker
         click(center(visual("fixVoiceprints")));            // do not touch the voiceprint now
         click(center(visual("notPresentLink")));
@@ -776,8 +790,7 @@ private slots:
         pump();
         const QString key = laneKey(1);
         QCOMPARE(m_vm->speakerInfo(key).value(QStringLiteral("name")).toString(), QStringLiteral("Fehér Gábor"));
-        click(center(visuals("laneHead").at(1)));
-        QTRY_VERIFY(popupOpen("speakerWhyPopover"));
+        QVERIFY(openLaneWhy(1));
         QTRY_VERIFY(visual("tracksBlock"));
         const QList<QQuickItem*> chips = visuals("trackChip");
         QCOMPARE(int(chips.size()), 2);
@@ -802,8 +815,7 @@ private slots:
         m_vm->setRailVisible(true);
         pump();
         const QString key = laneKey(1);
-        click(center(visuals("laneHead").at(1)));
-        QTRY_VERIFY(popupOpen("speakerWhyPopover"));
+        QVERIFY(openLaneWhy(1));
         QTRY_VERIFY(visual("tracksBlock"));
         click(center(visuals("trackChip").at(1)));          // call
         QCOMPARE(m_vm->session()->trackAssignment(key), QStringList{QStringLiteral("loopback")});
@@ -1180,8 +1192,7 @@ private slots:
         // The whole speaker's panel (opened from the rail header): Enter does nothing there either.
         m_vm->setRailVisible(true);
         pump();
-        click(center(visuals("laneHead").at(0)));
-        QTRY_VERIFY(popupOpen("speakerWhyPopover"));
+        QVERIFY(openLaneWhy(0));
         QTest::keyClick(m_window.get(), Qt::Key_Return);
         QTest::keyClick(m_window.get(), Qt::Key_Enter);
         pump();
@@ -1268,8 +1279,7 @@ private slots:
 
         m_vm->setRailVisible(true);
         pump();
-        click(center(visuals("laneHead").at(0)));
-        QTRY_VERIFY(popupOpen("speakerWhyPopover"));
+        QVERIFY(openLaneWhy(0));
         listen = visual("listenButton");
         QVERIFY(listen);
         const QVariantMap sample = m_vm->speakerSample(laneKey(0));
@@ -1913,8 +1923,7 @@ private slots:
         // The panel: "Review with another speaker..." then choosing the pair, then it runs.
         m_vm->setRailVisible(true);
         pump();
-        click(center(visuals("laneHead").at(1)));
-        QTRY_VERIFY(popupOpen("speakerWhyPopover"));
+        QVERIFY(openLaneWhy(1));
         QVERIFY(visual("pairRecheckButton"));
         QVERIFY(!visual("pairRecheckList"));
         click(center(visual("pairRecheckButton")));
