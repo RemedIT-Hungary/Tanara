@@ -1039,11 +1039,14 @@ private slots:
             auto* bar = static_cast<QQuickItem*>(changeBar());
             return bar->mapToScene(QPointF(0, bar->height())).y();
         };
-        const qreal barY = barBottom();
         click(railPoint(3, 1));
         QTRY_VERIFY(barShown());
         QVERIFY(!m_vm->suggestionActive());
         QCOMPARE(textOf("changeText"), barText());
+        pump(100);
+        // The reference bottom is taken from the shown bar: in the empty state before the first edit
+        // the bar is not laid out yet on a slow machine (the macOS runner read 1 px there).
+        const qreal barY = barBottom();
         const int serial = m_vm->changeSerial();
         click(railPoint(1, 1));                             // the next edit: new text
         QVERIFY(barShown());
