@@ -1,4 +1,5 @@
 #include "tanara/foundation/secrets/SecretStore.h"
+#include "tanara/foundation/secrets/detail/CachedSecretStore.h"
 #include "tanara/foundation/paths/AppPaths.h"
 #include "tanara/foundation/log/Logging.h"
 
@@ -42,31 +43,26 @@ namespace {
 
 constexpr int kJobTimeoutMs = 5000;
 
-enum class JobOutcome { Ok, NotFound, Failed };
-
-struct JobResult {
-    JobOutcome outcome = JobOutcome::Failed;
-    QString text;
-    QString error;
-};
+using secrets::detail::OpOutcome;
+using secrets::detail::OpResult;
 
 // Runs one QtKeychain job synchronously (local event loop, at most kJobTimeoutMs). On a timeout the
 // job keeps running and deletes itself when it finishes (autoDelete); we stop waiting.
-JobResult runJob(QKeychain::Job* job)
+OpResult runJob(QKeychain::Job* job)
 {
-    auto result = std::make_shared<JobResult>();
+    auto result = std::make_shared<OpResult>();
     auto done = std::make_shared<bool>(false);
     QEventLoop loop;
     QPointer<QEventLoop> guard(&loop);
     job->setAutoDelete(true);
     QObject::connect(job, &QKeychain::Job::finished, job, [result, done, guard](QKeychain::Job* j) {
         if (j->error() == QKeychain::NoError) {
-            result->outcome = JobOutcome::Ok;
+            result->outcome = OpOutcome::Ok;
             if (auto* r = qobject_cast<QKeychain::ReadPasswordJob*>(j)) result->text = r->textData();
         } else if (j->error() == QKeychain::EntryNotFound) {
-            result->outcome = JobOutcome::NotFound;
+            result->outcome = OpOutcome::NotFound;
         } else {
-            result->outcome = JobOutcome::Failed;
+            result->outcome = OpOutcome::Failed;
             result->error = j->errorString();
         }
         *done = true;
@@ -76,21 +72,21 @@ JobResult runJob(QKeychain::Job* job)
     job->start();
     if (!*done) loop.exec();
     if (!*done) {
-        JobResult timeout;
+        OpResult timeout;
         timeout.error = QStringLiteral("timeout");
         return timeout;
     }
     return *result;
 }
 
-JobResult readKey(const QString& key)
+OpResult readKey(const QString& key)
 {
     auto* job = new QKeychain::ReadPasswordJob(secrets::KeychainService);
     job->setKey(key);
     return runJob(job);
 }
 
-JobResult writeKey(const QString& key, const QString& value)
+OpResult writeKey(const QString& key, const QString& value)
 {
     auto* job = new QKeychain::WritePasswordJob(secrets::KeychainService);
     job->setKey(key);
@@ -98,55 +94,12 @@ JobResult writeKey(const QString& key, const QString& value)
     return runJob(job);
 }
 
-JobResult deleteKey(const QString& key)
+OpResult deleteKey(const QString& key)
 {
     auto* job = new QKeychain::DeletePasswordJob(secrets::KeychainService);
     job->setKey(key);
     return runJob(job);
 }
-
-class KeychainSecretStore final : public SecretStore {
-public:
-    // Preloads the known keys into the cache.
-    explicit KeychainSecretStore(const QStringList& knownKeys)
-    {
-        for (const QString& k : knownKeys) {
-            const JobResult r = readKey(k);
-            if (r.outcome == JobOutcome::Ok && !r.text.isEmpty()) m_cache.insert(k, r.text);
-            else if (r.outcome == JobOutcome::Failed)
-                qCWarning(lcApp).noquote() << "Keychain: read error" << k << r.error;
-        }
-    }
-    QString get(const QString& key) const override
-    {
-        if (m_cache.contains(key)) return m_cache.value(key);
-        // An unknown key (not in the preload list): read on demand, then cached.
-        const JobResult r = readKey(key);
-        if (r.outcome == JobOutcome::Ok) m_cache.insert(key, r.text);
-        return r.text;
-    }
-    bool set(const QString& key, const QString& value) override
-    {
-        const JobResult r = writeKey(key, value);
-        if (r.outcome != JobOutcome::Ok) {
-            qCWarning(lcApp).noquote() << "Keychain: write error" << key << r.error;
-            return false;
-        }
-        m_cache.insert(key, value);
-        return true;
-    }
-    bool remove(const QString& key) override
-    {
-        const JobResult r = deleteKey(key);
-        m_cache.remove(key);
-        return r.outcome != JobOutcome::Failed;
-    }
-    bool contains(const QString& key) const override { return !get(key).isEmpty(); }
-    QString backendName() const override { return QStringLiteral("keychain"); }
-
-private:
-    mutable QHash<QString, QString> m_cache;
-};
 
 // The keychain works: reading a key that does not exist answers "not found" (or a value).
 bool probeKeychain(QString* error)
@@ -155,9 +108,9 @@ bool probeKeychain(QString* error)
         if (error) *error = QStringLiteral("no keychain backend");
         return false;
     }
-    const JobResult r = readKey(QStringLiteral("tanara.probe"));
-    if (r.outcome == JobOutcome::Failed && error) *error = r.error;
-    return r.outcome != JobOutcome::Failed;
+    const OpResult r = readKey(QStringLiteral("tanara.probe"));
+    if (r.outcome == OpOutcome::Failed && error) *error = r.error;
+    return r.outcome != OpOutcome::Failed;
 }
 
 } // namespace
@@ -190,7 +143,8 @@ OpenResult open(const SecretSettings& settings, const QString& secretsFile, cons
             for (const QString& k : legacy->all().keys())
                 if (!keys.contains(k)) keys << k;
         }
-        auto store = std::make_unique<KeychainSecretStore>(keys);
+        auto store = std::make_unique<secrets::detail::CachedSecretStore>(
+            readKey, writeKey, deleteKey, keys, QStringLiteral("keychain"));
         if (legacy) {
             // One-time import: secrets.json -> keychain; the file stays as secrets.json.imported.
             bool allOk = true;

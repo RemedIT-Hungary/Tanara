@@ -4,7 +4,10 @@
 #include <QObject>
 
 #include "tanara/domain/AudioDeviceNames.h"
+#include "tanara/recording/audio/DeviceManager.h"
 #include "tanara/recording/audio/SystemAudioSource.h"
+
+#include <QOperatingSystemVersion>
 
 using namespace tanara;
 
@@ -81,10 +84,33 @@ private slots:
         QVERIFY(src->opensFromPlayback(TrackKind::Loopback));
         QVERIFY(!src->opensFromPlayback(TrackKind::Mic));
         QCOMPARE(src->classifyCapture(QStringLiteral("Mikrofon (USB)")), TrackKind::Mic);
+#elif defined(Q_OS_MACOS)
+        // Process tap: its aggregate device is a capture device named "Loopback: ...".
+        QCOMPARE(src->id(), QStringLiteral("coreaudio-tap"));
+        QCOMPARE(src->classifyCapture(QStringLiteral("Loopback: System audio")), TrackKind::Loopback);
+        QCOMPARE(src->classifyCapture(QStringLiteral("MacBook Pro Microphone")), TrackKind::Mic);
+        QVERIFY(src->loopbackDevices(outputs).isEmpty());
+        QVERIFY(!src->opensFromPlayback(TrackKind::Loopback));
 #else
         QCOMPARE(src->id(), QStringLiteral("none"));
         QVERIFY(src->loopbackDevices(outputs).isEmpty());
         QVERIFY(!src->opensFromPlayback(TrackKind::Loopback));
+#endif
+    }
+
+    void macosTapDeviceIsEnumerated()
+    {
+#if defined(Q_OS_MACOS)
+        // The private aggregate device must be visible to miniaudio in the creating process.
+        recording::DeviceManager dm;
+        bool found = false;
+        for (const AudioDeviceInfo& d : dm.captureDevices())
+            found = found || (d.name == QStringLiteral("Loopback: System audio") && d.kind == TrackKind::Loopback);
+        if (!found && QOperatingSystemVersion::current() < QOperatingSystemVersion(QOperatingSystemVersion::MacOS, 14, 2))
+            QSKIP("process tap needs macOS 14.2");
+        QVERIFY(found);
+#else
+        QSKIP("macOS only");
 #endif
     }
 };

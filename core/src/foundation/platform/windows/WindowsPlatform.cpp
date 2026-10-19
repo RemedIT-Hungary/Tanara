@@ -63,6 +63,8 @@ int localConnectRefusalMs()
     return 4000;
 }
 
+void becomeResponsibleProcess(char**) {}
+
 } // namespace tanara::platform
 
 namespace tanara::paths {

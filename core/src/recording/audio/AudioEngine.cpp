@@ -153,6 +153,7 @@ struct AudioEngine::Impl {
 
         // Devices must be opened with the ma_device_id from enumeration; so we fetch the context's list and
         // match by name. If there is no exact match, we open the default device (pDeviceID = nullptr).
+        const ISystemAudioSource& sysAudio = systemAudioSource();   // before the enumeration (macOS tap)
         ma_device_info* captureInfos = nullptr;
         ma_uint32 captureCount = 0;
         ma_device_info* playbackInfos = nullptr;
@@ -166,7 +167,7 @@ struct AudioEngine::Impl {
         ma_device_type devType = ma_device_type_capture;
         const ma_device_info* matchInfos = captureInfos;
         ma_uint32 matchCount = captureCount;
-        if (systemAudioSource().opensFromPlayback(want.kind)) {
+        if (sysAudio.opensFromPlayback(want.kind)) {
             devType = ma_device_type_loopback;
             matchInfos = playbackInfos;
             matchCount = playbackCount;

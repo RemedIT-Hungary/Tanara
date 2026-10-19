@@ -5,20 +5,23 @@
 #include "commands/Commands.h"
 
 #include "tanara/foundation/log/Logging.h"
+#include "tanara/foundation/platform/Platform.h"
 
 #include <QCoreApplication>
+#include <QFile>
 #include <QTranslator>
 
 using namespace tanara;
 
 int main(int argc, char** argv)
 {
+    platform::becomeResponsibleProcess(argv);   // macOS: `record` gets the audio permissions itself
     // Set up logging BEFORE QCoreApplication. The log switches (--debug, --log-level ...) are
     // removed from argv so the command parser gets a clean list.
     QStringList rawArgs;
     rawArgs.reserve(argc);
     for (int i = 0; i < argc; ++i)
-        rawArgs << QString::fromLocal8Bit(argv[i]);
+        rawArgs << QFile::decodeName(argv[i]);   // NFC on macOS (QProcess sends NFD)
     initLogging(parseLogOptions(rawArgs));
 
     QCoreApplication qapp(argc, argv);

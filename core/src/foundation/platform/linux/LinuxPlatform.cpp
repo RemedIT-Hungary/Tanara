@@ -8,6 +8,8 @@ QString osId()
     return QStringLiteral("linux");
 }
 
+void becomeResponsibleProcess(char**) {}
+
 } // namespace tanara::platform
 
 namespace tanara::paths {

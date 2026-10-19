@@ -1,0 +1,38 @@
+# Local services for Tanara's fully offline path. See ONBOARDING.md.
+#
+#   docker compose up -d                  # Whisper only (transcription)
+#   docker compose --profile llm up -d    # + Ollama (summary, tag suggestions, embeddings)
+#
+# Ports match Tanara's defaults, so Settings needs only the model names:
+#   Whisper  http://localhost:8000/v1   (whisper-compat provider)
+#   LLM      http://localhost:1234/v1   (openai-compat provider, LM Studio's port)
+
+services:
+  whisper:
+    # OpenAI-compatible /v1/audio/transcriptions with word timestamps (faster-whisper).
+    # NVIDIA GPU on Linux: use ghcr.io/speaches-ai/speaches:latest-cuda and uncomment `deploy`.
+    image: ghcr.io/speaches-ai/speaches:latest-cpu
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - whisper-models:/home/ubuntu/.cache/huggingface/hub
+    restart: unless-stopped
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices: [{ driver: nvidia, count: all, capabilities: [gpu] }]
+
+  ollama:
+    # Stand-in for LM Studio when you want everything in containers. On macOS, prefer native
+    # LM Studio or Ollama: Docker on macOS has no Metal GPU access, so LLMs run on CPU only.
+    profiles: [llm]
+    image: ollama/ollama:latest
+    ports:
+      - "127.0.0.1:1234:11434"
+    volumes:
+      - ollama-models:/root/.ollama
+    restart: unless-stopped
+
+volumes:
+  whisper-models:
+  ollama-models:

@@ -1,5 +1,8 @@
 cmake_minimum_required(VERSION 3.21)
-project(tanara VERSION 0.5.319 LANGUAGES CXX)
+project(tanara VERSION 0.5.325 LANGUAGES CXX)
+if(APPLE)
+    enable_language(OBJCXX)   # core/src/**/platform/macos/*.mm
+endif()
 
 # The displayed version comes from ONE place: the numeric part from project(VERSION), the
 # suffix (e.g. "a" = alpha; empty = release) from here. core/src/foundation/Version.cpp receives it as
@@ -28,6 +31,9 @@ enable_testing()
 
 option(TANARA_BUILD_GUI "Build the Qt Widgets GUI" ON)
 option(TANARA_BUILD_WATCHER "Build the tray meeting-watcher" ON)
+# macOS: build the GUI as Tanara.app with tanara-cli and tanara-watcher in Contents/MacOS; the
+# tanara_bundle target then makes it self-contained (macdeployqt). Preset: macos-xcode.
+option(TANARA_MACOS_BUNDLE "Build the GUI as a macOS app bundle" OFF)
 # Voice-ID needs ONNX Runtime + KISS FFT. When OFF, core/cli/gui build without them (fast
 # Windows bring-up); VoiceEmbedder is then a stub (isValid() == false, so the app skips
 # speaker labeling automatically).
@@ -141,6 +147,17 @@ qt_add_translations(TARGETS ${TANARA_I18N_TARGETS}
     TS_FILES ${CMAKE_SOURCE_DIR}/i18n/tanara_en.ts
     RESOURCE_PREFIX "/i18n"
     LUPDATE_OPTIONS -no-obsolete -locations none)
+# Xcode's new build system needs one common ancestor for the shared .qm's custom command; Qt's own
+# workaround (QTBUG-103470) misses the helper targets it makes when the executables live in subdirs.
+if(CMAKE_GENERATOR STREQUAL "Xcode")
+    foreach(_t ${TANARA_I18N_TARGETS})
+        foreach(_helper ${_t}_${_t}_translations ${_t}_other_files)
+            if(TARGET ${_helper})
+                add_dependencies(${_helper} tanara_lrelease)
+            endif()
+        endforeach()
+    endforeach()
+endif()
 
 # Windows installer (Inno Setup, packaging/windows/tanara.iss): the version comes from here.
 if(WIN32)

@@ -1,0 +1,27 @@
+{
+  "version": 3,
+  "configurePresets": [
+    {
+      "name": "macos-xcode",
+      "displayName": "macOS app bundle (Xcode)",
+      "description": "Tanara.app with tanara, tanara-cli and tanara-watcher in Contents/MacOS; build the tanara_bundle target for a self-contained app (Homebrew Qt, Apple silicon).",
+      "generator": "Xcode",
+      "binaryDir": "${sourceDir}/build-xcode",
+      "cacheVariables": {
+        "TANARA_MACOS_BUNDLE": "ON",
+        "CMAKE_XCODE_GENERATE_SCHEME": "ON",
+        "CMAKE_PREFIX_PATH": "/opt/homebrew/opt/qt"
+      },
+      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Darwin" }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "macos-xcode-bundle",
+      "displayName": "Self-contained Tanara.app (Release)",
+      "configurePreset": "macos-xcode",
+      "configuration": "Release",
+      "targets": ["tanara_bundle"]
+    }
+  ]
+}

@@ -1,13 +1,15 @@
 // SecretStore (foundation/secrets): the file backend, the settings section, and the guarantee that
 // a sandbox (TANARA_HOME) or the Qt test mode NEVER reaches the real OS keychain.
 // The keychain backend itself is not exercised here (it would touch the user's real keychain):
-// it is a manual test (see docs/BUILD.md).
+// it is a manual test (see docs/BUILD.md). Its cache rules are, with a fake backend
+// (CachedSecretStore).
 #include <QtTest>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QTemporaryDir>
 
 #include "tanara/foundation/secrets/SecretStore.h"
+#include "tanara/foundation/secrets/detail/CachedSecretStore.h"
 
 using namespace tanara;
 
@@ -93,6 +95,58 @@ private slots:
         const secrets::OpenResult r = secrets::open(SecretSettings{QStringLiteral("keychain")},
                                                     dir.filePath(QStringLiteral("secrets.json")), {});
         QCOMPARE(r.store->backendName(), QStringLiteral("file"));
+    }
+
+    // Regression (crash on macOS 2026-10-17): a keychain read spins a nested event loop, which ran a
+    // queued deleteLater() inside a QML click handler. After the preload, get() / contains() must
+    // not reach the backend for a key already seen, also when the key does not exist.
+    void cacheKeepsMissingKeysAwayFromTheBackend()
+    {
+        using namespace secrets::detail;
+        QHash<QString, QString> backend{{"soniox", "s-key"}};
+        int reads = 0;
+        bool failReads = false;
+        CachedSecretStore store(
+            [&](const QString& k) {
+                ++reads;
+                if (failReads) return OpResult{OpOutcome::Failed, {}, "locked"};
+                if (!backend.contains(k)) return OpResult{OpOutcome::NotFound, {}, {}};
+                return OpResult{OpOutcome::Ok, backend.value(k), {}};
+            },
+            [&](const QString& k, const QString& v) { backend.insert(k, v); return OpResult{OpOutcome::Ok, {}, {}}; },
+            [&](const QString& k) { backend.remove(k); return OpResult{OpOutcome::Ok, {}, {}}; },
+            {"soniox", "openai"}, QStringLiteral("keychain"));
+        QCOMPARE(reads, 2);
+
+        // Preloaded keys, present or missing: no backend call.
+        for (int i = 0; i < 3; ++i) {
+            QCOMPARE(store.get("soniox"), QStringLiteral("s-key"));
+            QCOMPARE(store.get("openai"), QString());
+            QVERIFY(!store.contains("openai"));
+        }
+        QCOMPARE(reads, 2);
+
+        // A key outside the preload list: read once, then cached even as "not found".
+        QCOMPARE(store.get("other"), QString());
+        QVERIFY(!store.contains("other"));
+        QCOMPARE(reads, 3);
+
+        // set / remove keep the cache right without reading.
+        QVERIFY(store.set("openai", "o-key"));
+        QCOMPARE(store.get("openai"), QStringLiteral("o-key"));
+        QVERIFY(store.remove("soniox"));
+        QVERIFY(!store.contains("soniox"));
+        QCOMPARE(reads, 3);
+
+        // A failed read is not cached: the next get() tries again.
+        failReads = true;
+        QCOMPARE(store.get("late"), QString());
+        QCOMPARE(store.get("late"), QString());
+        QCOMPARE(reads, 5);
+        failReads = false;
+        QCOMPARE(store.get("late"), QString());
+        QCOMPARE(store.get("late"), QString());
+        QCOMPARE(reads, 6);
     }
 };
 
