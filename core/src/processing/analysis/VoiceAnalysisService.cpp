@@ -395,9 +395,9 @@ VoiceAnalysisService::ModelChange VoiceAnalysisService::applyModels()
     d->voiceModelIds = ids;
     for (const QString& id : enabled)
         if (!ids.contains(id))
-            qCInfo(lcVoice).noquote() << "Hangmodell bekapcsolva, de nem használható (ismeretlen id vagy"
-                                         " hiányzó fájl):" << id;
-    qCInfo(lcVoice).noquote() << "Használt hangmodellek:" << (ids.isEmpty() ? QStringLiteral("-") : ids.join(QStringLiteral(", ")));
+            qCInfo(lcVoice).noquote() << "Voice model enabled but not usable (unknown id or"
+                                         " missing file):" << id;
+    qCInfo(lcVoice).noquote() << "Voice models in use:" << (ids.isEmpty() ? QStringLiteral("-") : ids.join(QStringLiteral(", ")));
     return change;
 }
 
@@ -495,7 +495,7 @@ void VoiceAnalysisService::backfill()
                     const QString key = vp.id + QLatin1Char('|') + model;
                     if (!d->backfillLogged.contains(key)) {
                         d->backfillLogged.insert(key);
-                        qCInfo(lcVoice).noquote() << "Lenyomat-pótlás: a forrás-megbeszélés nincs meg, kihagyva:"
+                        qCInfo(lcVoice).noquote() << "Voiceprint backfill: source meeting not found, skipped:"
                                                   << person.toString() << vp.sampleRef << model;
                     }
                     continue;
@@ -511,7 +511,7 @@ void VoiceAnalysisService::backfill()
     d->backfillDone = 0;                       // k / N progress
     d->backfillTotal = int(jobs.size());
     emit backfillStarted(d->backfillTotal);
-    qCInfo(lcVoice).noquote() << "Lenyomat-pótlás indul:" << jobs.size() << "lenyomat";
+    qCInfo(lcVoice).noquote() << "Voiceprint backfill starting:" << jobs.size() << "voiceprints";
     const VoiceEmbedderSet proto = d->voiceSet.freshCopy();
     const auto cancel = d->backfillCancel;
     QPointer<VoiceAnalysisService> self(this);
@@ -546,8 +546,8 @@ void VoiceAnalysisService::Impl::finishBackfillJob(const BackfillJob& job, const
                                       : VoiceprintBackfillSkip::Reason::Failed);
         if (!backfillLogged.contains(key)) {
             backfillLogged.insert(key);
-            qCInfo(lcVoice).noquote() << (missingAudio ? "Lenyomat-pótlás: hiányzó hang, kihagyva:"
-                                                       : "Lenyomat-pótlás: nem számolható, kihagyva:")
+            qCInfo(lcVoice).noquote() << (missingAudio ? "Voiceprint backfill: audio missing, skipped:"
+                                                       : "Voiceprint backfill: cannot be computed, skipped:")
                                       << job.person.toString() << job.print.sampleRef << job.model;
         }
         return;
@@ -574,7 +574,7 @@ void VoiceAnalysisService::Impl::finishBackfill()
     const int added = backfillAdded;
     backfillAdded = 0;
     if (added > 0) {
-        qCInfo(lcVoice).noquote() << "Lenyomat-pótlás kész:" << added << "új lenyomat";
+        qCInfo(lcVoice).noquote() << "Voiceprint backfill done:" << added << "new voiceprints";
         emit q->voiceprintsChanged();
     }
     emit q->backfillFinished(added, int(backfillSkipped.size()));
@@ -1140,7 +1140,7 @@ void VoiceAnalysisService::Impl::finishParticipantAnalysis(const QString& meetin
     if (m.id.isEmpty()) return;
     if (clusters.cancelled || !clusters.error.isEmpty()) {
         if (!clusters.error.isEmpty())
-            qCInfo(lcVoice).noquote() << "Résztvevő-elemzés nem futott:" << clusters.error;
+            qCInfo(lcVoice).noquote() << "Participant analysis did not run:" << clusters.error;
         emit q->participantAnalysisFinished(meetingId);
         return;
     }
@@ -1156,14 +1156,14 @@ void VoiceAnalysisService::Impl::finishParticipantAnalysis(const QString& meetin
     file.tracksKey = tracksKey;
     file.clusters = clusters.clusters;
     if (!file.save(m.folder))
-        qCWarning(lcVoice).noquote() << "Résztvevő-elemzés: nem írható:" << ParticipantAnalysisFile::filePath(m.folder);
+        qCWarning(lcVoice).noquote() << "Participant analysis: cannot be written:" << ParticipantAnalysisFile::filePath(m.folder);
 
     // If the transcript already exists: the binding runs now (otherwise when the transcript arrives).
     const QVector<TranscriptLine> lines = deps.transcriptLines ? deps.transcriptLines(m.folder) : QVector<TranscriptLine>();
     if (!lines.isEmpty()) participants::bindRawSpeakers(m.participants, file.clusters, lines);
     deps.store->saveMeeting(m);
-    qCInfo(lcVoice).noquote() << "Résztvevő-elemzés kész:" << m.participants.size() << "jelölt,"
-                              << clusters.clusters.size() << "klaszter," << clusters.windows << "ablak";
+    qCInfo(lcVoice).noquote() << "Participant analysis done:" << m.participants.size() << "candidates,"
+                              << clusters.clusters.size() << "clusters," << clusters.windows << "windows";
     emit q->participantsChanged(meetingId);
     emit q->participantAnalysisFinished(meetingId);
 }

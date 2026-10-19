@@ -102,7 +102,7 @@ void CloudSession::observeExchange(const HttpExchange& ex)
     if (tooOld && !m_tooOld) {
         m_tooOld = true;
         if (m_minClient.isEmpty()) m_minClient = minC;
-        qCWarning(lcCloud).noquote() << "A kliens túl régi a gatewayhez; minimum:" << m_minClient;
+        qCWarning(lcCloud).noquote() << "Client too old for the gateway; minimum:" << m_minClient;
         emit clientTooOldDetected(m_minClient);
     } else if (!tooOld && m_tooOld && !minC.isEmpty()) {
         m_tooOld = false;   // the gateway lowered the minimum

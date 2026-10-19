@@ -24,8 +24,8 @@ SettingsStore::LoadResult SettingsStore::load()
         return m_last = LoadResult::Missing;
     if (!f.open(QIODevice::ReadOnly)) {
         // A file EXISTS but cannot be opened: empty sections, we do NOT touch the file.
-        qCWarning(lcApp).noquote() << "settings.json nem olvasható — alapértelmezések a memóriában,"
-                                      " a fájl érintetlen:" << m_path << f.errorString();
+        qCWarning(lcApp).noquote() << "settings.json cannot be read — defaults in memory,"
+                                      " file untouched:" << m_path << f.errorString();
         m_setAsideOnSave = true;
         return m_last = LoadResult::Unreadable;
     }
@@ -37,8 +37,8 @@ SettingsStore::LoadResult SettingsStore::load()
     if (err.error != QJsonParseError::NoError || !doc.isObject()) {
         // A corrupt / half-written file: defaults in memory, but it is NOT silently overwritten (the
         // user's settings are in it); only a later explicit save sets it aside.
-        qCWarning(lcApp).noquote() << "settings.json nem értelmezhető (" << err.errorString()
-                                   << ") — alapértelmezések a memóriában, a fájl érintetlen:" << m_path;
+        qCWarning(lcApp).noquote() << "settings.json cannot be parsed (" << err.errorString()
+                                   << ") — defaults in memory, file untouched:" << m_path;
         m_setAsideOnSave = true;
         return m_last = LoadResult::Unreadable;
     }
@@ -46,8 +46,8 @@ SettingsStore::LoadResult SettingsStore::load()
     if (o.value(QStringLiteral("version")).toInt(0) != kVersion) {
         // No backward compatibility (D8): an old (flat) file means defaults. It stays readable for
         // `tanara-cli settings import-legacy` (set aside, not overwritten, on the next save).
-        qCWarning(lcApp).noquote() << "settings.json régi formátumú (nem 2-es verzió) — alapértelmezések;"
-                                      " átvétel: tanara-cli settings import-legacy." << m_path;
+        qCWarning(lcApp).noquote() << "settings.json is in the old format (not version 2) — defaults;"
+                                      " to import it: tanara-cli settings import-legacy." << m_path;
         m_setAsideOnSave = true;
         return m_last = LoadResult::OldFormat;
     }
@@ -81,11 +81,11 @@ bool SettingsStore::save()
         const QString aside = m_path + tag
             + QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd-HHmmss"));
         if (!QFile::rename(m_path, aside)) {
-            qCWarning(lcApp).noquote() << "settings.json: a régi fájl nem tehető félre — a mentés"
-                                          " kimarad, a fájl érintetlen:" << m_path;
+            qCWarning(lcApp).noquote() << "settings.json: the old file cannot be set aside — save"
+                                          " skipped, file untouched:" << m_path;
             return false;
         }
-        qCWarning(lcApp).noquote() << "settings.json: a régi fájl félretéve:" << aside;
+        qCWarning(lcApp).noquote() << "settings.json: old file set aside:" << aside;
     }
     m_setAsideOnSave = false;
 
@@ -94,7 +94,7 @@ bool SettingsStore::save()
     const QByteArray data = QJsonDocument(document()).toJson(QJsonDocument::Indented);
     QSaveFile f(m_path);
     if (!f.open(QIODevice::WriteOnly) || f.write(data) != data.size() || !f.commit()) {
-        qCWarning(lcApp).noquote() << "settings.json: a mentés nem sikerült:" << m_path << f.errorString();
+        qCWarning(lcApp).noquote() << "settings.json: save failed:" << m_path << f.errorString();
         return false;
     }
     return true;

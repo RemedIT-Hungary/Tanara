@@ -39,7 +39,7 @@ bool TagsWindowHost::ensureWindow()
     auto* win = qobject_cast<QQuickWindow*>(obj);
     if (!win) {
         for (const QQmlError& e : comp.errors())
-            qCCritical(lcApp).noquote() << "Címkék-ablak:" << e.toString();
+            qCCritical(lcApp).noquote() << "Tags window:" << e.toString();
         delete obj;
         return false;
     }

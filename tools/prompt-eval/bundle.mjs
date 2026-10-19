@@ -31,6 +31,6 @@ for (const m of meetings) {
   });
   fs.writeFileSync(path.join(out, m + '.outputs.json'), JSON.stringify(outputs, null, 2));
   fs.writeFileSync(path.join(out, m + '.map.json'), JSON.stringify(map, null, 2));
-  console.log(m, outputs.length, 'kimenet →', path.join(out, m + '.outputs.json'));
+  console.log(m, outputs.length, 'outputs →', path.join(out, m + '.outputs.json'));
 }
 function hash(s) { let h = 2166136261; for (const c of s) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619); } return h >>> 0; }

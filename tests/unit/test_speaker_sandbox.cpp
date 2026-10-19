@@ -90,8 +90,8 @@ void SpeakerSandboxTest::measure()
             if (l.endMs - l.startMs >= editing::speakeredit::kMinEmbedMs) ++embeddable;
         const int unc = ed->uncertainCount();
         qInfo().noquote() << QStringLiteral(
-            "MEETING #%1: %2 perc, %3 sor (%4 embeddelhető), %5 beszélő | embedding %6 mp | "
-            "bizonytalan %7 sor = %8% (az embeddelhetők %9%-a)")
+            "MEETING #%1: %2 min, %3 lines (%4 embeddable), %5 speakers | embedding %6 s | "
+            "uncertain %7 lines = %8% (%9% of the embeddable)")
             .arg(n).arg(m.durationMs / 60000.0, 0, 'f', 1).arg(lines.size()).arg(embeddable)
             .arg(ed->speakers().size()).arg(secs, 0, 'f', 1).arg(unc)
             .arg(100.0 * unc / lines.size(), 0, 'f', 1)
@@ -114,7 +114,7 @@ void SpeakerSandboxTest::measure()
                 QVERIFY(!ed->canUndo());
                 QVERIFY(!editing::speakeredit::loadOverlay(m.folder).hasEdits());    // the sandbox is back
                 qInfo().noquote() << QStringLiteral(
-                    "   művelet: 1 sor áthelyezése %1 ms (javaslat: %2 sor), visszavonás %3 ms")
+                    "   action: move 1 line %1 ms (suggestion: %2 lines), undo %3 ms")
                     .arg(moveMs).arg(suggested).arg(undoMs);
             }
         }
@@ -142,8 +142,8 @@ void SpeakerSandboxTest::measure()
             if (!std::isnan(fits[i].other))
                 (rel ? gapLong : gapShort).append(fits[i].own - fits[i].other);
         }
-        qInfo().noquote() << "   saját-illeszkedés  >=3s:" << dist(ownLong) << "| 1.5-3s:" << dist(ownShort);
-        qInfo().noquote() << "   saját−másik       >=3s:" << dist(gapLong) << "| 1.5-3s:" << dist(gapShort);
+        qInfo().noquote() << "   own fit          >=3s:" << dist(ownLong) << "| 1.5-3s:" << dist(ownShort);
+        qInfo().noquote() << "   own−other        >=3s:" << dist(gapLong) << "| 1.5-3s:" << dist(gapShort);
 
         // ---- diagnostics (TANARA_SANDBOX_DIAG): k-means clusters of the reliable lines against the
         //      raw labels: shows if one label is really several voices. ----
@@ -196,7 +196,7 @@ void SpeakerSandboxTest::measure()
                 QString cc;
                 for (int a = 0; a < k; ++a) for (int b = a + 1; b < k; ++b)
                     cc += QStringLiteral(" %1").arg(cosv(cent[a], cent[b]), 0, 'f', 2);
-                qInfo().noquote() << QStringLiteral("   k=%1 átlag-illeszkedés %2 |%3 | centroid-cos:%4")
+                qInfo().noquote() << QStringLiteral("   k=%1 mean fit %2 |%3 | centroid-cos:%4")
                     .arg(k).arg(within / rel.size(), 0, 'f', 2).arg(table, cc);
             }
         }
@@ -229,8 +229,8 @@ void SpeakerSandboxTest::measure()
                 for (int i : yLines) if (sim[i].speaker == x) ++truth;
                 for (int i : hits) if (al[i].speaker == y) ++tp;
                 qInfo().noquote() << QStringLiteral(
-                    "   javaslat: beszélő %1 → %2 közé mosva, %3 mag-sor: ajánlott %4, ebből helyes %5 "
-                    "(precision %6%, recall %7% a %8 sorból)")
+                    "   suggestion: speaker %1 merged into %2, %3 seed lines: suggested %4, correct %5 "
+                    "(precision %6%, recall %7% of %8 lines)")
                     .arg(y + 1).arg(x + 1).arg(k).arg(hits.size()).arg(tp)
                     .arg(hits.isEmpty() ? 0.0 : 100.0 * tp / hits.size(), 0, 'f', 0)
                     .arg(truth ? 100.0 * tp / truth : 0.0, 0, 'f', 0).arg(truth);

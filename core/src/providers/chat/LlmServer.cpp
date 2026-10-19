@@ -155,11 +155,11 @@ void LlmServerProbe::probe(const ProviderConfig& cfg, bool useCache)
             info.transportError = reply->errorString();
             info.transportCode = int(reply->error());
         }
-        qInfo().noquote().nospace() << "[LLM] szerver-próba " << root << ": "
+        qInfo().noquote().nospace() << "[LLM] server probe " << root << ": "
             << (info.isLmStudio() ? QStringLiteral("LM Studio")
-                : info.unreachable ? QStringLiteral("nem érhető el (%1, kód %2)").arg(info.transportError).arg(info.transportCode)
-                                   : QStringLiteral("nincs natív API"))
-            << (info.loaded() ? QStringLiteral(" · betöltve ctx=%1 parallel=%2")
+                : info.unreachable ? QStringLiteral("unreachable (%1, code %2)").arg(info.transportError).arg(info.transportCode)
+                                   : QStringLiteral("no native API"))
+            << (info.loaded() ? QStringLiteral(" · loaded ctx=%1 parallel=%2")
                                     .arg(info.instances.first().contextLength)
                                     .arg(info.instances.first().parallel)
                               : QString());
@@ -228,8 +228,8 @@ void LlmModelPreparer::onProbed(const LlmServerInfo& info)
     }
     m_decision = decidePreload(info, m_need, m_cfg.contextLength, m_floor);
     using A = PreloadDecision::Action;
-    qInfo().noquote().nospace() << "[LLM] előkészítés: igény=" << m_need << " padló=" << m_floor
-        << " beállítás=" << m_cfg.contextLength << " → " << m_decision.reason
+    qInfo().noquote().nospace() << "[LLM] preparation: need=" << m_need << " floor=" << m_floor
+        << " setting=" << m_cfg.contextLength << " → " << m_decision.reason
         << " (ctx " << m_decision.contextLength << ")";
     switch (m_decision.action) {
     case A::Skip:
@@ -288,7 +288,7 @@ void LlmModelPreparer::unloadNext()
         const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
         // 404: the instance is no longer loaded, so the goal is met.
         if ((status >= 200 && status < 300) || status == 404) {
-            qInfo().noquote() << "[LLM] modell-példány kivéve:" << id;
+            qInfo().noquote() << "[LLM] model instance unloaded:" << id;
             unloadNext();
             return;
         }
@@ -309,7 +309,7 @@ void LlmModelPreparer::load()
         {QStringLiteral("echo_load_config"), true},
     };
     if (ctx > 0) o.insert(QStringLiteral("context_length"), ctx);
-    qInfo().noquote() << "[LLM] modell betöltése:" << m_info.modelKey << "ctx=" << ctx << "parallel=1";
+    qInfo().noquote() << "[LLM] loading model:" << m_info.modelKey << "ctx=" << ctx << "parallel=1";
     QNetworkReply* reply = post(QStringLiteral("/api/v1/models/load"),
                                 QJsonDocument(o).toJson(QJsonDocument::Compact), m_loadTimeoutMs);
     connect(reply, &QNetworkReply::finished, this, [this, reply, ctx] {
@@ -331,7 +331,7 @@ void LlmModelPreparer::load()
             li.contextLength = got;
             li.parallel = 1;
             m_info.instances = {li};
-            qInfo().noquote() << "[LLM] betöltve:" << li.id << "ctx=" << got;
+            qInfo().noquote() << "[LLM] loaded:" << li.id << "ctx=" << got;
             emit ready();
             return;
         }
@@ -366,8 +366,8 @@ void LlmModelPreparer::fail(const QString& message, const QString& detail, const
 {
     // Every preparation failure is logged with the provider and the address (the user sees the message in the UI,
     // the log must say where it went wrong too).
-    qWarning().noquote().nospace() << "[LLM] az előkészítés nem sikerült: provider=" << m_cfg.type
-        << " url=" << m_cfg.baseUrl << " hiba=" << message << (detail.isEmpty() ? QString() : QStringLiteral(" | ") + detail);
+    qWarning().noquote().nospace() << "[LLM] preparation failed: provider=" << m_cfg.type
+        << " url=" << m_cfg.baseUrl << " error=" << message << (detail.isEmpty() ? QString() : QStringLiteral(" | ") + detail);
     JobError e;
     e.message = message;
     e.detail = detail;

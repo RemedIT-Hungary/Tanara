@@ -283,9 +283,9 @@ std::shared_ptr<FfmpegMediaTool> FfmpegMediaTool::fromSettings(const MediaSettin
     };
     // The startup diagnostics (app::logStartupDiagnostics) logs the result with the version at INFO level.
     if (tool->available())
-        qCDebug(lcAudio).noquote() << "Médiaeszközök:" << describe("ffmpeg", tool->m_ffmpeg) << describe("ffprobe", tool->m_ffprobe);
+        qCDebug(lcAudio).noquote() << "Media tools:" << describe("ffmpeg", tool->m_ffmpeg) << describe("ffprobe", tool->m_ffprobe);
     else
-        qCWarning(lcAudio).noquote() << "Médiaeszközök:" << describe("ffmpeg", tool->m_ffmpeg) << describe("ffprobe", tool->m_ffprobe);
+        qCWarning(lcAudio).noquote() << "Media tools:" << describe("ffmpeg", tool->m_ffmpeg) << describe("ffprobe", tool->m_ffprobe);
     return tool;
 }
 

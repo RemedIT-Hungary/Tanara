@@ -280,9 +280,9 @@ int main(int argc, char** argv) {
     // "spaVisitChoice" message of the optical/iec958 device); relevant on Linux only.
     if (!qEnvironmentVariableIsSet("PIPEWIRE_DEBUG")) qputenv("PIPEWIRE_DEBUG", "0");
     qCInfo(tanara::lcApp).noquote()
-        << "Megjegyzés: a konzolon esetenként ártalmatlan külső-library üzenetek "
-           "jelenhetnek meg (libvdpau – hiányzó NVIDIA VDPAU AMD gépen; libspa/PipeWire – "
-           "optikai eszköz formátum-egyeztetés). Ezek NEM hibák.";
+        << "Note: harmless third-party library messages may appear on the console "
+           "(libvdpau – missing NVIDIA VDPAU on an AMD machine; libspa/PipeWire – "
+           "optical device format negotiation). These are NOT errors.";
 #endif
 
     // Qt Quick settings (style; offscreen platform in screenshot mode), BEFORE QApplication.
@@ -304,7 +304,7 @@ int main(int argc, char** argv) {
             const qint64 gap = last->restart();
             if (gap > 80)
                 qCDebug(tanara::lcPerf).noquote()
-                    << QStringLiteral("fő szál megakadás: %1 ms (nem jutott az eseményhurokhoz)").arg(gap);
+                    << QStringLiteral("main thread stall: %1 ms (did not reach the event loop)").arg(gap);
         });
         stall->start(16);
     }

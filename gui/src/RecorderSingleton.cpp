@@ -36,7 +36,7 @@ bool RecorderSingleton::forwardToExisting(const QStringList& args, int timeoutMs
     if (!sock.waitForReadyRead(timeoutMs))
         return false;
     const bool ok = sock.readAll().startsWith("OK");
-    qCInfo(tanara::lcApp).noquote() << "Felvevő-kérés átadva a futó példánynak:" << ok;
+    qCInfo(tanara::lcApp).noquote() << "Recorder request handed to the running instance:" << ok;
     return ok;
 }
 
@@ -62,7 +62,7 @@ bool RecorderSingleton::listen()
     m_server = new QLocalServer(this);
     if (!m_server->listen(serverName())) {
         qCWarning(tanara::lcApp).noquote()
-            << "RecorderSingleton: nem tud figyelni:" << m_server->errorString();
+            << "RecorderSingleton: cannot listen:" << m_server->errorString();
         delete m_server; m_server = nullptr;
         return false;
     }

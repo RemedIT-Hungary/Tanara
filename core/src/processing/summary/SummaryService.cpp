@@ -289,23 +289,23 @@ bool SummaryService::recoverFromOverflow(const providers::llmctx::ContextOverflo
         if (budget < int(providers::llmctx::kMinPartTokens * ratio)) budget = -1;
     }
     if (budget <= 0) {
-        qWarning().noquote() << "[Summary] a kontextus (" << ov.contextTokens
-                             << " token) a legkisebb részhez is kevés — nem bontunk tovább";
+        qWarning().noquote() << "[Summary] the context (" << ov.contextTokens
+                             << " tokens) is too small even for the smallest part — no further split";
         return false;
     }
     const int before = int(m_parts.size());
     const bool wasSingle = m_parts.size() == 1 && !m_forceNotes;
     if (wasSingle) m_forceNotes = true;
     if (!fitParts(budget)) {
-        qWarning().noquote() << "[Summary] egy bekezdés önmagában sem fér a kontextusba";
+        qWarning().noquote() << "[Summary] a single paragraph alone does not fit the context";
         return false;
     }
     if (m_parts.size() == before && !wasSingle) return false;   // it did not get smaller: it does not help
     int cached = 0;
     for (bool d : std::as_const(m_done)) cached += d ? 1 : 0;
-    qInfo().noquote().nospace() << "[Summary] kontextus " << ov.contextTokens
-        << " token → újrabontás: " << before << " → " << m_parts.size() << " rész (keret "
-        << budget << " karakter)";
+    qInfo().noquote().nospace() << "[Summary] context " << ov.contextTokens
+        << " tokens → re-split: " << before << " → " << m_parts.size() << " parts (budget "
+        << budget << " chars)";
     emit partsChanged(int(m_parts.size()), cached);
     return true;
 }
@@ -398,8 +398,8 @@ void SummaryService::startNextNotes()
     call(prompt(m_req.notesPrompt, "notes"), user, m_req.notesMaxTokens, [this, k, n](const QString& text) {
         const PartNotes notes = parseNotes(text, m_parts.at(k));
         if (notes.isEmpty()) {
-            qWarning().noquote() << "[Summary] üres részjegyzet (" << k + 1 << "/" << n
-                                 << ") — nyers válasz:\n" << text.left(2000);
+            qWarning().noquote() << "[Summary] empty part notes (" << k + 1 << "/" << n
+                                 << ") — raw response:\n" << text.left(2000);
             fail(tr("A(z) %1/%2. rész jegyzete üres vagy nem értelmezhető.").arg(k + 1).arg(n));
             return;
         }
@@ -419,7 +419,7 @@ void SummaryService::startMerge()
     call(prompt(m_req.mergePrompt, "merge"), user, m_req.maxTokens, [this](const QString& text) {
         const MergeResult r = parseMergeJson(text);
         if (!r.ok) {
-            qWarning().noquote() << "[Summary] az összegzés nem értelmezhető — nyers válasz:\n" << text.left(3000);
+            qWarning().noquote() << "[Summary] merge response cannot be parsed — raw response:\n" << text.left(3000);
             fail(tr("Az összegzés válasza nem értelmezhető: %1. A részjegyzetek megmaradtak — "
                     "újrapróbáláskor csak az összegzés fut le újra.").arg(r.error));
             return;
@@ -440,7 +440,7 @@ void SummaryService::startSingle()
     call(prompt(m_req.singlePrompt, "single"), user, m_req.maxTokens, [this](const QString& text) {
         const SingleResult r = parseSingle(text, m_parts.at(0));
         if (!r.merge.ok) {
-            qWarning().noquote() << "[Summary] az egylépéses válasz nem értelmezhető — nyers válasz:\n"
+            qWarning().noquote() << "[Summary] single-pass response cannot be parsed — raw response:\n"
                                  << text.left(3000);
             if (!r.notes.isEmpty()) {
                 // The note is usable: we keep it, the retry runs only the merge.

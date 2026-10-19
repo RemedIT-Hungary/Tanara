@@ -125,15 +125,15 @@ void TestTranscriptSandbox::measure()
         const double firstFrameMs = frame();
         QCOMPARE(vm->meetingId(), entry.id);
         if (!vm->hasTranscript()) {
-            qInfo().noquote() << tag << QStringLiteral("— nincs szerkeszthető átirat (régi formátum: %1); megnyitás %2 ms")
-                                            .arg(vm->legacyTranscript() ? "igen" : "nem").arg(openMs, 0, 'f', 1);
+            qInfo().noquote() << tag << QStringLiteral("— no editable transcript (old format: %1); open %2 ms")
+                                            .arg(vm->legacyTranscript() ? "yes" : "no").arg(openMs, 0, 'f', 1);
             continue;
         }
         const int rows = vm->rows()->rowCount();
-        qInfo().noquote() << tag << QStringLiteral("— %1 megszólalás, %2 beszélő (%3 oszlop + %4 összecsukva), %5 perc")
+        qInfo().noquote() << tag << QStringLiteral("— %1 utterances, %2 speakers (%3 lanes + %4 collapsed), %5 min")
                                         .arg(rows).arg(vm->speakerCount()).arg(vm->lanes().size())
                                         .arg(vm->collapsedCount()).arg(vm->durationMs() / 60000);
-        qInfo().noquote() << tag << QStringLiteral("  megnyitás (modell) %1 ms · első képkocka %2 ms")
+        qInfo().noquote() << tag << QStringLiteral("  open (model) %1 ms · first frame %2 ms")
                                         .arg(openMs, 0, 'f', 1).arg(firstFrameMs, 0, 'f', 1);
 
         // Editing works DURING the audio analysis too: one move + undo now.
@@ -157,11 +157,11 @@ void TestTranscriptSandbox::measure()
             const double undoFrameMs = frame();
             QCOMPARE(vm->rows()->data(vm->rows()->index(mid), Role::LaneRole).toInt(), ownLane);
             QCOMPARE(resets.count(), 0);
-            qInfo().noquote() << tag << QStringLiteral("  egy sor áthelyezése %1 ms + képkocka %2 ms · visszavonás %3 ms + képkocka %4 ms "
-                                                       "· sín bekapcsolása %5 ms%6")
+            qInfo().noquote() << tag << QStringLiteral("  move one line %1 ms + frame %2 ms · undo %3 ms + frame %4 ms "
+                                                       "· rail on %5 ms%6")
                                             .arg(moveMs, 0, 'f', 1).arg(moveFrameMs, 0, 'f', 1).arg(undoMs, 0, 'f', 1)
                                             .arg(undoFrameMs, 0, 'f', 1).arg(railMs, 0, 'f', 1)
-                                            .arg(embeddingAtOpen ? QStringLiteral(" (hang-elemzés közben)") : QString());
+                                            .arg(embeddingAtOpen ? QStringLiteral(" (during audio analysis)") : QString());
         }
 
         // Scrolling: 120 steps of 240 px, a full frame after each.
@@ -174,13 +174,13 @@ void TestTranscriptSandbox::measure()
             list->setProperty("contentY", qMin(maxY, list->property("contentY").toReal() + 240));
             scroll.append(frame());
         }
-        qInfo().noquote() << tag << QStringLiteral("  görgetés (120 × 240 px): %1").arg(stats(scroll));
+        qInfo().noquote() << tag << QStringLiteral("  scroll (120 × 240 px): %1").arg(stats(scroll));
         t.restart();
         QMetaObject::invokeMethod(list, "positionViewAtEnd");
         const double endMs = frame();
         QMetaObject::invokeMethod(list, "positionViewAtBeginning");
         const double beginMs = frame();
-        qInfo().noquote() << tag << QStringLiteral("  ugrás a végére %1 ms · vissza az elejére %2 ms")
+        qInfo().noquote() << tag << QStringLiteral("  jump to end %1 ms · back to start %2 ms")
                                         .arg(endMs, 0, 'f', 1).arg(beginMs, 0, 'f', 1);
 
         // Search (for a common letter): the number of hits + time.
@@ -191,7 +191,7 @@ void TestTranscriptSandbox::measure()
         const int matches = vm->searchMatchCount();
         vm->setSearchQuery(QString());
         frame();
-        qInfo().noquote() << tag << QStringLiteral("  keresés: %1 találat, %2 ms + képkocka %3 ms")
+        qInfo().noquote() << tag << QStringLiteral("  search: %1 hits, %2 ms + frame %3 ms")
                                         .arg(matches).arg(searchMs, 0, 'f', 1).arg(searchFrameMs, 0, 'f', 1);
 
         // Audio analysis: we wait for it (immediately done from the cache), the UI stays alive meanwhile.
@@ -199,10 +199,10 @@ void TestTranscriptSandbox::measure()
             QElapsedTimer voice;
             voice.start();
             QVERIFY2(QTest::qWaitFor([vm] { return !vm->embeddingRunning(); }, 300000), "a hang-elemzés nem ért véget");
-            qInfo().noquote() << tag << QStringLiteral("  hang-elemzés: %1 mp (a megnyitás után), bizonytalan sorok: %2 (%3 %)%4")
+            qInfo().noquote() << tag << QStringLiteral("  audio analysis: %1 s (after open), uncertain lines: %2 (%3 %)%4")
                                             .arg(voice.elapsed() / 1000.0, 0, 'f', 1).arg(vm->uncertainCount())
                                             .arg(100.0 * vm->uncertainCount() / rows, 0, 'f', 1)
-                                            .arg(vm->voiceNote().isEmpty() ? QString() : QStringLiteral(" — NEM érhető el"));
+                                            .arg(vm->voiceNote().isEmpty() ? QString() : QStringLiteral(" — NOT available"));
             // "Uncertain" filter on / off.
             t.restart();
             vm->setUncertainOnly(true);
@@ -211,11 +211,11 @@ void TestTranscriptSandbox::measure()
             const int filterRows = vm->rows()->rowCount();
             vm->setUncertainOnly(false);
             const double backFrameMs = frame();
-            qInfo().noquote() << tag << QStringLiteral("  szűrő: %1 sor (elválasztókkal), be %2 ms + képkocka %3 ms · ki képkocka %4 ms")
+            qInfo().noquote() << tag << QStringLiteral("  filter: %1 rows (with separators), on %2 ms + frame %3 ms · off frame %4 ms")
                                             .arg(filterRows).arg(filterMs, 0, 'f', 1).arg(filterFrameMs, 0, 'f', 1)
                                             .arg(backFrameMs, 0, 'f', 1);
         } else {
-            qInfo().noquote() << tag << "  hang-elemzés nem érhető el (nincs modell)";
+            qInfo().noquote() << tag << "  audio analysis not available (no model)";
         }
         vm->setRailVisible(false);
         QCOMPARE(resets.count(), 2 * (vm->voiceAvailable() ? 1 : 0));   // only the filter on/off resets

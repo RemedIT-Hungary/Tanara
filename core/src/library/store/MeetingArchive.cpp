@@ -282,8 +282,8 @@ bool MeetingArchive::exportMeeting(const Meeting& m, const QString& zipPath, QSt
         return fail(QCoreApplication::translate("MeetingArchive", "Az archívum nem nevezhető át: %1").arg(zipPath));
     }
     pt.report(100);
-    qCInfo(lcStore).noquote() << "Megbeszélés exportálva:" << m.id << "→" << zipPath
-                              << QStringLiteral("(%1 fájl)").arg(files.size());
+    qCInfo(lcStore).noquote() << "Meeting exported:" << m.id << "→" << zipPath
+                              << QStringLiteral("(%1 files)").arg(files.size());
     return true;
 }
 
@@ -393,7 +393,7 @@ QString MeetingArchive::importArchive(const QString& zipPath, const QString& tem
     }
     pt.report(100);
     if (manifestOut) *manifestOut = manifest;
-    qCInfo(lcStore).noquote() << "Archívum kicsomagolva:" << zipPath << "→" << target;
+    qCInfo(lcStore).noquote() << "Archive unpacked:" << zipPath << "→" << target;
     return target;
 }
 

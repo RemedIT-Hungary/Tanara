@@ -39,7 +39,7 @@ bool PeopleWindowHost::ensureWindow()
     auto* win = qobject_cast<QQuickWindow*>(obj);
     if (!win) {
         for (const QQmlError& e : comp.errors())
-            qCCritical(lcApp).noquote() << "Személyek-ablak:" << e.toString();
+            qCCritical(lcApp).noquote() << "People window:" << e.toString();
         delete obj;
         return false;
     }

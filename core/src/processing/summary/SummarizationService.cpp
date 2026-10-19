@@ -154,10 +154,10 @@ JobError SummarizationService::describeFailure(JobKind kind, const QString& raw,
 {
     const JobError je = describeFailureImpl(kind, raw, run, sink, ctx);
     // The failure always reaches the log (the UI shows the message, the log says where it went wrong).
-    qWarning().noquote().nospace() << "[LLM] a feladat nem sikerült: feladat=" << int(kind)
+    qWarning().noquote().nospace() << "[LLM] job failed: job=" << int(kind)
         << " provider=" << (run ? providers::CloudProviderId : m_deps.llm->chatProviderId(QString()))
         << " url=" << (run ? QStringLiteral("cloud") : m_deps.llm->localConfig().baseUrl)
-        << " hiba=" << raw.simplified().left(300)
+        << " error=" << raw.simplified().left(300)
         << " | " << je.message << (je.detail.isEmpty() ? QString() : QStringLiteral(" | ") + je.detail);
     return je;
 }

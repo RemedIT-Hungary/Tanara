@@ -316,7 +316,7 @@ private slots:
         }
         ctx->setController(nullptr);
         ctx->setDemo(true);
-        qInfo("%d meeting nézetei mentve", n);
+        qInfo("views of %d meetings saved", n);
     }
 };
 

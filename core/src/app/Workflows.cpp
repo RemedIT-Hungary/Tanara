@@ -548,7 +548,7 @@ void Workflows::finishSpeechCheck(const QString& meetingId, const MeetingActivit
     if (r.changed()) {
         if (!r.excluded.isEmpty()) {
             m.mixdownDirty = true;
-            qCInfo(lcAudio).noquote() << "Beszéd nélküli sáv kimarad a lekeverésből:"
+            qCInfo(lcAudio).noquote() << "Track without speech left out of the mixdown:"
                                       << r.excluded.join(QStringLiteral(", "));
             // The full measurement becomes the speech strip's cache (so the excluded track shows too and need not be
             // decoded again); the analysis's cache is that of the included tracks.

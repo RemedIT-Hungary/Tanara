@@ -543,8 +543,8 @@ void AudioImporter::Impl::finalize()
     r.stagingDir.clear();
     store->saveMeeting(m);   // index + meetingUpdated (the library picks it up from this)
     close(End::Done, {}, {}, m);
-    qCInfo(lcStore).noquote() << "Importálva:" << name << "sávok:" << m.tracks.size()
-                              << "hossz(ms):" << m.durationMs;
+    qCInfo(lcStore).noquote() << "Imported:" << name << "tracks:" << m.tracks.size()
+                              << "duration(ms):" << m.durationMs;
 }
 
 void AudioImporter::Impl::close(End end, const QString& message, const QString& detail,
@@ -561,7 +561,7 @@ void AudioImporter::Impl::close(End end, const QString& message, const QString& 
         emit q->finished(r->id, meeting);
         break;
     case End::Failed:
-        qCWarning(lcStore).noquote() << "Importálás sikertelen:" << message << detail;
+        qCWarning(lcStore).noquote() << "Import failed:" << message << detail;
         emit q->failed(r->id, message, detail);
         break;
     case End::Cancelled:

@@ -52,7 +52,7 @@ public:
             }
             m_timer->start();
         }
-        qCDebug(lcPerf).noquote() << QStringLiteral("szintmérő indítása (háttérszál): %1 → %2 eszköz, %3 ms")
+        qCDebug(lcPerf).noquote() << QStringLiteral("level meter start (worker thread): %1 → %2 devices, %3 ms")
                                      .arg(devices.size()).arg(names.size()).arg(ms);
         QMetaObject::invokeMethod(monitor, [monitor, gen, ok, names]() {
             monitor->d_started(gen, ok, names);

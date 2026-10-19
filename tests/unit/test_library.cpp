@@ -453,7 +453,7 @@ void LibraryTest::manyMeetingsStayResponsive()
     q.text = "heti teendoket";                            // a hit everywhere
     QCOMPARE(lib.query(q, m_now).count(), 300);
     const qint64 allHitsMs = clock.elapsed();
-    qInfo("lista: %lld ms, hideg keresés: %lld ms, meleg keresés: %lld ms, 300 találat: %lld ms",
+    qInfo("list: %lld ms, cold search: %lld ms, warm search: %lld ms, 300 hits: %lld ms",
           listMs, coldMs, warmMs, allHitsMs);
     QVERIFY2(warmMs < 150, "a meleg keresés nem maradt reszponzív");
     QVERIFY2(allHitsMs < 300, "a sok találatos keresés nem maradt reszponzív");

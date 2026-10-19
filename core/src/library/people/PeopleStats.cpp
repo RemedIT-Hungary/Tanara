@@ -214,8 +214,8 @@ void PeopleStats::apply(const Result& result)
     m_ready = true;
     if (!any) return;
     rebuild();
-    qCInfo(lcStore).noquote() << "személy-statisztika:" << result.ids.size() << "megbeszélés,"
-                              << result.changed.size() << "újraolvasva," << result.elapsedMs << "ms";
+    qCInfo(lcStore).noquote() << "person stats:" << result.ids.size() << "meetings,"
+                              << result.changed.size() << "re-read," << result.elapsedMs << "ms";
     emit changed();
 }
 

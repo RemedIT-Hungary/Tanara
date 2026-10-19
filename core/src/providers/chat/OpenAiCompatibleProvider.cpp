@@ -250,7 +250,7 @@ void OpenAiCompatibleJob::onFinished()
     }
     // With --debug the RAW response (first ~4000 characters) also goes into the log.
     qDebug().noquote().nospace()
-        << "[LLM] nyers válasz (első 4000ch):\n" << content.left(4000);
+        << "[LLM] raw response (first 4000ch):\n" << content.left(4000);
     emit finished(content);
 }
 

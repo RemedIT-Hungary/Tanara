@@ -219,8 +219,8 @@ struct SpeakerEditSession::Private {
         recomputeUncertain();
         scheduleReview();
         qCDebug(lcPerf).noquote()
-            << QStringLiteral("SpeakerEditSession::load %1 sor: meeting %2 ms, átirat %3 ms, overlay %4 ms, "
-                              "embedding-cache %5 ms, feloldás %6 ms, bizonytalanság %7 ms, össz %8 ms")
+            << QStringLiteral("SpeakerEditSession::load %1 lines: meeting %2 ms, transcript %3 ms, overlay %4 ms, "
+                              "embedding-cache %5 ms, resolve %6 ms, uncertainty %7 ms, total %8 ms")
                    .arg(lines.size()).arg(tMeeting).arg(tLines - tMeeting).arg(tOverlay - tLines)
                    .arg(tCache - tOverlay).arg(tAssigned - tCache).arg(perf.elapsed() - tAssigned)
                    .arg(perf.elapsed());
@@ -806,7 +806,7 @@ struct SpeakerEditSession::Private {
 
     void flushMarkdown()
     {
-        tanara::PerfScope perfScope("SpeakerEditSession::flushMarkdown (indítás)", 10);
+        tanara::PerfScope perfScope("SpeakerEditSession::flushMarkdown (start)", 10);
         if (!markdownPending || markdownRunning) return;
         markdownPending = false;
         if (markdownTimer) markdownTimer->stop();
@@ -821,7 +821,7 @@ struct SpeakerEditSession::Private {
         const PersonNames snapshot = names;
         QThreadPool::globalInstance()->start([this, self, m, snapshot] {
             {
-                tanara::PerfScope bg("SpeakerEditSession: transcript.md (háttérszál)", 10);
+                tanara::PerfScope bg("SpeakerEditSession: transcript.md (worker thread)", 10);
                 regenerateTranscriptMarkdown(m, snapshot);
             }
             --markdownInFlight;

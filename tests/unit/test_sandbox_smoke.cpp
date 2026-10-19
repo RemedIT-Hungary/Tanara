@@ -101,10 +101,10 @@ void SandboxSmoke::libraryListSearchAndPending()
     noS.noSummary = true;
     const QVector<library::PendingItem> pending = lib->pendingItems();
     QCOMPARE(pending.size(), lib->query(noT).count());
-    qInfo("meetingek: %d (átirat: %d, összefoglaló: %d, azonosítva: %d) | szekciók: ma %d, tegnap %d, e héten %d, korábban %d",
+    qInfo("meetings: %d (transcript: %d, summary: %d, identified: %d) | sections: today %d, yesterday %d, this week %d, earlier %d",
           all.count(), withTranscript, withSummary, identified, sections.value("today"),
           sections.value("yesterday"), sections.value("thisWeek"), sections.value("earlier"));
-    qInfo("lista %lld ms | keresés: %d találat, hideg %lld ms, meleg %lld ms | nincs átirat: %d, nincs összefoglaló: %d | személyek: %d | várnak: %d",
+    qInfo("list %lld ms | search: %d hits, cold %lld ms, warm %lld ms | no transcript: %d, no summary: %d | people: %d | pending: %d",
           listMs, cold.count(), coldMs, warmMs, lib->query(noT).count(), lib->query(noS).count(),
           int(lib->people().size()), int(pending.size()));
 }
@@ -121,8 +121,8 @@ void SandboxSmoke::tracksAndWaveforms()
             if (!v.track.active) ++dropped;
             names.insert(QStringLiteral("%1 <- %2").arg(v.displayName, v.rawDeviceName));
         }
-    for (const QString& n : std::as_const(names)) qInfo().noquote() << "sáv:" << n;
-    qInfo("sávok: %d, eldobott: %d, hiányzó fájl: %d", total, dropped, missing);
+    for (const QString& n : std::as_const(names)) qInfo().noquote() << "track:" << n;
+    qInfo("tracks: %d, dropped: %d, missing file: %d", total, dropped, missing);
     QCOMPARE(missing, 0);
 
     // Waveform for all tracks of the first meeting (+ the mix): asynchronous, then from the cache.
@@ -148,7 +148,7 @@ void SandboxSmoke::tracksAndWaveforms()
     ready.clear();
     m_app->requestWaveforms(id);
     QTRY_COMPARE_WITH_TIMEOUT(ready.count(), expected, 5000);
-    qInfo("hullámforma: %d fájl, kérés %lld ms (nem blokkol), számítás %lld ms, gyorsítótárból %lld ms",
+    qInfo("waveform: %d files, request %lld ms (non-blocking), compute %lld ms, from cache %lld ms",
           expected, callMs, computeMs, clock.elapsed());
 }
 
@@ -163,7 +163,7 @@ void SandboxSmoke::summariesAndTopics()
             if (doc.fromMarkdown) ++fromMd;
             QVERIFY(!doc.summary.execSummary.isEmpty());
             QVERIFY(doc.meta.createdAt.isValid());
-            qInfo("összefoglaló: mód=%s, döntés=%d, teendő=%d, résztvevő=%d, téma=%d",
+            qInfo("summary: mode=%s, decisions=%d, action items=%d, participants=%d, topics=%d",
                   qPrintable(library::SummaryRepository::modeToString(doc.meta.mode)), int(doc.summary.decisions.size()),
                   int(doc.summary.actionItems.size()), int(doc.summary.participants.size()),
                   int(doc.topics.size()));
@@ -184,9 +184,9 @@ void SandboxSmoke::summariesAndTopics()
         QCOMPARE(m_app->topicStatuses(e.id).first().topicId, topics.last().id);
         m_app->setMeetingTopics(e.id, topics);
         QCOMPARE(m_app->meetingTopics(e.id).first().id, topics.first().id);
-        qInfo("témák: %d (kész elemzés: %d)", int(topics.size()), done);
+        qInfo("topics: %d (analyses done: %d)", int(topics.size()), done);
     }
-    qInfo("összefoglalók: %d (markdownból visszanyerve: %d), téma-listák: %d", docs, fromMd, topicLists);
+    qInfo("summaries: %d (recovered from markdown: %d), topic lists: %d", docs, fromMd, topicLists);
 }
 
 void SandboxSmoke::identifyAsync()
@@ -217,7 +217,7 @@ void SandboxSmoke::identifyAsync()
     QCOMPARE(finished.at(0).at(2).value<JobOutcome>(), JobOutcome::Done);
     const int namedAfter = m_app->store()->load(id).speakerMap.size();
     QCOMPARE(m_app->processingState(id).identifyState, StepState::Done);
-    qInfo("azonosítás: %d beszélő, indítás %lld ms (nem blokkol), teljes %lld ms, haladás-jel: %d, nevesítve előtte %d → utána %d",
+    qInfo("identify: %d speakers, start %lld ms (non-blocking), total %lld ms, progress signals: %d, named before %d → after %d",
           total, callMs, clock.elapsed(), int(progress.count()), namedBefore, namedAfter);
     QVERIFY(progress.count() >= total);
 }

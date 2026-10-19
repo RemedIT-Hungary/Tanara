@@ -42,7 +42,7 @@ bool CallMonitor::start(const WatcherSettings& s)
             : d->registry->create(s.detectorId));
     }
     if (!d->detector) {
-        qCDebug(lcApp) << "Hívás-vég figyelés: nincs elérhető detektor ezen a platformon.";
+        qCDebug(lcApp) << "Call-end watch: no detector available on this platform.";
         return false;
     }
     // Our own capture (the recording) must never count as a call.
@@ -83,7 +83,7 @@ void CallMonitor::poll()
         const QString app = d->appName;
         d->seenActive = false;   // it re-arms if the call becomes active again later
         d->inactivePolls = 0;
-        qCInfo(lcApp).noquote() << "Hívás véget ért felvétel közben:" << app;
+        qCInfo(lcApp).noquote() << "Call ended while recording:" << app;
         emit callEnded(app);
     }
 }

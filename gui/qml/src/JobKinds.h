@@ -13,7 +13,7 @@ namespace tanara_qml {
 class JobKinds : public QObject {
     Q_OBJECT
     QML_ELEMENT
-    QML_UNCREATABLE("JobKinds csak az enum-értékeket hordozza.")
+    QML_UNCREATABLE("JobKinds only carries the enum values.")
 public:
     enum Kind {
         Transcribe    = int(tanara::JobKind::Transcribe),

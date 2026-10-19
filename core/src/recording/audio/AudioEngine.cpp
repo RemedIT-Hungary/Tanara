@@ -106,8 +106,8 @@ struct AudioEngine::Impl {
         contextLeaked = true;
         const DeviceSlot* s = deviceSlots[static_cast<size_t>(i)].get();
         qCWarning(lcAudio).noquote()
-            << "Hangeszköz lebontása nem fejeződött be" << kDeviceTeardownTimeout.count()
-            << "ms alatt (eltűnt eszköz?), a szála elengedve:" << (s ? s->info.name : QString());
+            << "Audio device teardown did not finish within" << kDeviceTeardownTimeout.count()
+            << "ms (device gone?), its thread released:" << (s ? s->info.name : QString());
     }
 
     // Stops and frees every device. Never blocks longer than kDeviceTeardownTimeout: the devices are
@@ -130,7 +130,7 @@ struct AudioEngine::Impl {
         }
         if (contextReady) {
             if (contextLeaked) {
-                qCWarning(lcAudio) << "A miniaudio context elengedve (beragadt eszköz hivatkozik rá).";
+                qCWarning(lcAudio) << "miniaudio context released (a stuck device still references it).";
                 (void)context.release();
             } else {
                 ma_context_uninit(context.get());

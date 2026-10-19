@@ -31,11 +31,11 @@ void installAppTranslator(const QString& uiLanguage)
     auto* translator = new QTranslator(QCoreApplication::instance());
     if (translator->load(QStringLiteral(":/i18n/tanara_") + lang)) {
         QCoreApplication::installTranslator(translator);
-        qCInfo(lcApp).noquote() << "UI-nyelv:" << lang;
+        qCInfo(lcApp).noquote() << "UI language:" << lang;
     } else {
         // No embedded .qm (e.g. a developer build without translations): the source language stays.
         qCWarning(lcApp).noquote()
-            << "Nem található beágyazott fordítás ehhez:" << lang << "— marad a magyar.";
+            << "No embedded translation found for:" << lang << "— keeping Hungarian.";
         delete translator;
         s_activeLang = QStringLiteral("hu");
     }

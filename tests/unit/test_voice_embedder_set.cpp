@@ -268,7 +268,7 @@ private slots:
         QCOMPARE(ok.embeddingDim(), 192);
 
         // A wrong expected dimension: a warning (at load or at the first inference).
-        QTest::ignoreMessage(QtWarningMsg, QRegularExpression(QStringLiteral("dimenzi")));
+        QTest::ignoreMessage(QtWarningMsg, QRegularExpression(QStringLiteral("output dimension")));
         processing::VoiceEmbedder wrong(realModelPath(), camp.features, 256);
         QVERIFY(wrong.isValid());
         QCOMPARE(wrong.embedPcm(pcm).size(), 192);

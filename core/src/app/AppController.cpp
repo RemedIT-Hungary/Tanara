@@ -1167,7 +1167,7 @@ bool AppController::deleteVoiceModelFile(const QString& id, QString* error)
         return false;
     }
     if (!processing::VoiceModelDownloader::deleteModelFile(*spec, d->modelsDir, error)) return false;
-    qCInfo(lcVoice).noquote() << "Hangmodell-fájl törölve:" << id;
+    qCInfo(lcVoice).noquote() << "Voice model file deleted:" << id;
     rescanVoiceModels();
     return true;
 }

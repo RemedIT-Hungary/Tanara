@@ -289,7 +289,7 @@ private slots:
         QVERIFY(!before.isEmpty());
 
         m_chat.mode = ScriptedChat::Mode::Fail;
-        QTest::ignoreMessage(QtWarningMsg, QRegularExpression("LLM-javaslat sikertelen"));
+        QTest::ignoreMessage(QtWarningMsg, QRegularExpression("LLM suggestion failed"));
         m_svc->requestLlm(m_lib.museum2);
         QVERIFY(waitFor([&]() { return m_llmDone == 1; }));
         QVERIFY(!m_llmOk);

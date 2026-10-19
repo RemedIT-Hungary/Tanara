@@ -77,26 +77,26 @@ QmlOptions parseQmlOptions(const QStringList& args)
             const QStringList wh = v.toLower().split(QLatin1Char('x'));
             const int w = wh.value(0).toInt(), h = wh.value(1).toInt();
             if (wh.size() != 2 || w <= 0 || h <= 0)
-                o.error = QStringLiteral("--size: SZÉLESSÉGxMAGASSÁG kell (pl. 1280x820), ez jött: %1").arg(v);
+                o.error = QStringLiteral("--size: expects WIDTHxHEIGHT (e.g. 1280x820), got: %1").arg(v);
             else
                 o.size = QSize(w, h);
         } else if (takeValue(args, i, QStringLiteral("--scale"), &v)) {
             o.scale = v.toDouble();
             if (o.scale < 0.5 || o.scale > 4.0)
-                o.error = QStringLiteral("--scale: 0.5 és 4 közötti szám kell, ez jött: %1").arg(v);
+                o.error = QStringLiteral("--scale: expects a number between 0.5 and 4, got: %1").arg(v);
         } else if (takeValue(args, i, QStringLiteral("--delay"), &v)) {
             o.delayMs = qMax(0, v.toInt());
         } else if (takeValue(args, i, QStringLiteral("--qml-prop"), &v)) {
             const int eq = v.indexOf(QLatin1Char('='));
             if (eq <= 0)
-                o.error = QStringLiteral("--qml-prop: név=érték kell, ez jött: %1").arg(v);
+                o.error = QStringLiteral("--qml-prop: expects name=value, got: %1").arg(v);
             else
                 o.props.insert(v.left(eq), parsePropValue(v.mid(eq + 1)));
         } else if (a == QLatin1String("--theme") || a == QLatin1String("--qml-shot")
                    || a == QLatin1String("--qml-page") || a == QLatin1String("--size")
                    || a == QLatin1String("--scale") || a == QLatin1String("--delay")
                    || a == QLatin1String("--qml-prop")) {
-            o.error = QStringLiteral("%1: hiányzik az érték").arg(a);
+            o.error = QStringLiteral("%1: missing value").arg(a);
         }
     }
     if (o.page.isEmpty())
@@ -145,7 +145,7 @@ void applyTextRendering()
     const bool native = mode == QLatin1String("native") || (mode != QLatin1String("qt") && safeNative);
     QQuickWindow::setTextRenderType(native ? QQuickWindow::NativeTextRendering
                                            : QQuickWindow::QtTextRendering);
-    qCInfo(lcQmlApp).noquote() << QStringLiteral("Szövegrenderelés: %1 (DPR %2, platform: %3, mód: %4)")
+    qCInfo(lcQmlApp).noquote() << QStringLiteral("Text rendering: %1 (DPR %2, platform: %3, mode: %4)")
                                       .arg(native ? QStringLiteral("native") : QStringLiteral("qt"))
                                       .arg(dpr).arg(QGuiApplication::platformName(), mode);
 }
@@ -171,9 +171,9 @@ void setupEngine(QQmlEngine& engine)
         const QStringList files = dir.entryList({QStringLiteral("*.ttf")}, QDir::Files);
         for (const QString& f : files)
             if (QFontDatabase::addApplicationFont(dir.filePath(f)) < 0)
-                qCWarning(lcQmlApp) << "Nem tölthető be a betű:" << f;
+                qCWarning(lcQmlApp) << "Cannot load font:" << f;
         if (files.isEmpty())
-            qCWarning(lcQmlApp) << "Nincsenek beágyazott betűk (:/qt/qml/Tanara/fonts).";
+            qCWarning(lcQmlApp) << "No embedded fonts (:/qt/qml/Tanara/fonts).";
     }
     if (!engine.imageProvider(QStringLiteral("tanara")))
         engine.addImageProvider(QStringLiteral("tanara"), new TanaraImageProvider);
@@ -204,7 +204,7 @@ static QQuickWindow* createPage(QQmlEngine& engine, const QString& page,
     }
     auto* item = qobject_cast<QQuickItem*>(obj);
     if (!item) {
-        qCCritical(lcQmlApp) << page << "se nem ablak, se nem Item — nem jeleníthető meg.";
+        qCCritical(lcQmlApp) << page << "is neither a window nor an Item — cannot be shown.";
         return nullptr;
     }
     // Non-window root (Gallery, a tab, a control...): wrapped in an ApplicationWindow so that
@@ -260,11 +260,11 @@ int runShot(const QmlOptions& opts)
     QTimer::singleShot(opts.delayMs, window, [&] {
         const QImage img = window->grabWindow();
         if (img.isNull() || !img.save(opts.shotPath)) {
-            qCCritical(lcQmlApp) << "Nem menthető a képernyőkép:" << opts.shotPath;
+            qCCritical(lcQmlApp) << "Cannot save the screenshot:" << opts.shotPath;
             rc = 3;
         } else {
             qCInfo(lcQmlApp).noquote()
-                << QStringLiteral("%1 → %2 (%3×%4 px, téma: %5, QML-figyelmeztetés: %6)")
+                << QStringLiteral("%1 → %2 (%3×%4 px, theme: %5, QML warnings: %6)")
                        .arg(opts.page, opts.shotPath)
                        .arg(img.width()).arg(img.height())
                        .arg(AppContext::instance()->dark() ? QStringLiteral("dark")

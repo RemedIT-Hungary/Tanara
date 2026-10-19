@@ -246,7 +246,7 @@ void MeetingRepository::openDb()
     QSqlDatabase db = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), m_connName);
     db.setDatabaseName(dbPath);
     if (!db.open()) {
-        qCWarning(lcStore, "MeetingRepository: nem sikerult megnyitni az index.db-t: %s",
+        qCWarning(lcStore, "MeetingRepository: could not open index.db: %s",
                  qPrintable(db.lastError().text()));
         return;
     }
@@ -279,8 +279,8 @@ bool MeetingRepository::reindexIfRootsUnindexed()
     reindex();
     ++m_autoReindexCount;
     const QVector<Meeting> all = loadAll();
-    qCInfo(lcStore).noquote() << "MeetingRepository: a felvétel-mappákban van meeting.json, de az index üres volt — újraépítve:"
-                              << all.size() << "megbeszélés";
+    qCInfo(lcStore).noquote() << "MeetingRepository: the recording folders hold meeting.json files but the index was empty — rebuilt:"
+                              << all.size() << "meetings";
     for (const Meeting& m : all)
         emit meetingAdded(m.id);
     return true;
@@ -317,9 +317,9 @@ void MeetingRepository::ensureSchema()
         " hasSummary INTEGER"
         ")"));
     if (!ok)
-        qCWarning(lcStore, "MeetingRepository: schema hiba: %s", qPrintable(q.lastError().text()));
+        qCWarning(lcStore, "MeetingRepository: schema error: %s", qPrintable(q.lastError().text()));
     if (rebuild) {
-        qCInfo(lcStore) << "MeetingRepository: régi index.db séma — újraépítés a mappákból";
+        qCInfo(lcStore) << "MeetingRepository: old index.db schema — rebuilding from the folders";
         reindex();
     }
 }
@@ -359,7 +359,7 @@ void MeetingRepository::upsertIndex(const Meeting& m)
             del.bindValue(QStringLiteral(":id"), sid);
             del.exec();
             qCWarning(lcStore).noquote()
-                << "MeetingRepository: elavult index-sor törölve (ugyanaz a mappa, más id):"
+                << "MeetingRepository: stale index row deleted (same folder, different id):"
                 << sid << "->" << m.id << m.folder;
         }
     }
@@ -380,7 +380,7 @@ void MeetingRepository::upsertIndex(const Meeting& m)
     q.bindValue(QStringLiteral(":hasTranscript"), m.hasTranscript ? 1 : 0);
     q.bindValue(QStringLiteral(":hasSummary"), m.hasSummary ? 1 : 0);
     if (!q.exec())
-        qCWarning(lcStore, "MeetingRepository: index upsert hiba: %s", qPrintable(q.lastError().text()));
+        qCWarning(lcStore, "MeetingRepository: index upsert error: %s", qPrintable(q.lastError().text()));
 }
 
 // ---- meetings -----------------------------------------------------------------------------------
@@ -420,7 +420,7 @@ bool MeetingRepository::writeMeetingFile(const Meeting& m)
     const QByteArray data = QJsonDocument(toJson(m)).toJson(QJsonDocument::Indented);
     QSaveFile f(path);
     if (!f.open(QIODevice::WriteOnly) || f.write(data) != data.size() || !f.commit()) {
-        qCWarning(lcStore, "MeetingRepository: nem sikerult irni a meeting.json-t: %s", qPrintable(path));
+        qCWarning(lcStore, "MeetingRepository: could not write meeting.json: %s", qPrintable(path));
         return false;
     }
     return true;
@@ -512,7 +512,7 @@ bool MeetingRepository::folderOwnedOnlyBy(const QString& id, const QString& fold
         while (q.next()) {
             if (normFolder(joinFolder(q.value(1).toString(), q.value(2).toString())) != mine) continue;
             qCWarning(lcStore).noquote()
-                << "MeetingRepository: a mappa NEM törlődik — másik meeting is erre mutat:"
+                << "MeetingRepository: folder NOT deleted — another meeting points to it too:"
                 << q.value(0).toString() << folder;
             return false;
         }
@@ -520,13 +520,13 @@ bool MeetingRepository::folderOwnedOnlyBy(const QString& id, const QString& fold
     const QString diskId = idInMeetingJson(meetingJsonPath(folder));
     if (!diskId.isEmpty() && diskId != id) {
         qCWarning(lcStore).noquote()
-            << "MeetingRepository: a mappa NEM törlődik — a meeting.json más id-t tartalmaz:"
+            << "MeetingRepository: folder NOT deleted — its meeting.json holds another id:"
             << diskId << "!=" << id << folder;
         return false;
     }
     if (isLiveRecordingFolder(folder)) {
         qCWarning(lcStore).noquote()
-            << "MeetingRepository: a mappa NEM törlődik — élő felvétel megy bele:" << folder;
+            << "MeetingRepository: folder NOT deleted — a live recording writes into it:" << folder;
         return false;
     }
     return true;
@@ -541,7 +541,7 @@ QVector<Meeting> MeetingRepository::loadAll()
     if (!q.exec(QStringLiteral(
             "SELECT id, title, root, dir, startedAt, durationMs, hasTranscript, hasSummary"
             " FROM meetings ORDER BY startedAt DESC"))) {
-        qCWarning(lcStore, "MeetingRepository: loadAll hiba: %s", qPrintable(q.lastError().text()));
+        qCWarning(lcStore, "MeetingRepository: loadAll error: %s", qPrintable(q.lastError().text()));
         return out;
     }
 
@@ -636,7 +636,7 @@ int MeetingRepository::recoverOrphansIn(const QString& rootPath)
         // crashed one. Skipped if recording.lock (with a live PID) points to this folder, or if the freshest
         // track file was written to within a few minutes. (It is considered again at the next start / index rebuild.)
         if (isLiveRecordingFolder(folder)) {
-            qCInfo(lcStore).noquote() << "Felvétel folyamatban (recording.lock) — nem árva:" << fi.fileName();
+            qCInfo(lcStore).noquote() << "Recording in progress (recording.lock) — not orphaned:" << fi.fileName();
             continue;
         }
         QDateTime newest;
@@ -646,15 +646,15 @@ int MeetingRepository::recoverOrphansIn(const QString& rootPath)
         }
         if (newest.isValid() && newest.secsTo(QDateTime::currentDateTime()) < kLiveTrackGraceSecs) {
             qCInfo(lcStore).noquote()
-                << "Friss sáv-fájl (talán még íródik) — egyelőre nem állítjuk helyre:" << fi.fileName();
+                << "Fresh track file (maybe still being written) — not recovered yet:" << fi.fileName();
             continue;
         }
 
         const Meeting m = meetingFromTrackFolder(folder);
         saveMeeting(m);   // meeting.json + index
         ++recovered;
-        qCInfo(lcStore).noquote() << "Árva felvétel helyreállítva:" << fi.fileName()
-                                  << "sávok:" << m.tracks.size() << "hossz(ms):" << m.durationMs;
+        qCInfo(lcStore).noquote() << "Orphaned recording recovered:" << fi.fileName()
+                                  << "tracks:" << m.tracks.size() << "duration(ms):" << m.durationMs;
     }
     return recovered;
 }
@@ -767,7 +767,7 @@ Meeting MeetingRepository::adoptMeetingFolder(const QString& sourceDir, QString*
     m.folder = folder;
     saveMeeting(m);   // meeting.json + index
     emit meetingAdded(m.id);
-    qCInfo(lcStore).noquote() << "Felvétel-mappa behúzva:" << folder << "id:" << m.id;
+    qCInfo(lcStore).noquote() << "Recording folder adopted:" << folder << "id:" << m.id;
     return m;
 }
 
@@ -779,7 +779,7 @@ void MeetingRepository::reindex()
     {
         QSqlQuery clear(db);
         if (!clear.exec(QStringLiteral("DELETE FROM meetings")))
-            qCWarning(lcStore, "MeetingRepository: index urites hiba: %s", qPrintable(clear.lastError().text()));
+            qCWarning(lcStore, "MeetingRepository: index clear error: %s", qPrintable(clear.lastError().text()));
     }
 
     for (const QString& rootPath : std::as_const(m_roots)) {
@@ -916,7 +916,7 @@ MeetingRepository::MoveResult MeetingRepository::moveMeetings(const QString& fro
         }
         res.moved << name;
         ++done;
-        qCInfo(lcStore).noquote() << "Megbeszélés-mappa áthelyezve:" << source << "->" << target;
+        qCInfo(lcStore).noquote() << "Meeting folder moved:" << source << "->" << target;
     }
     if (progress) progress(done, total, QString());
     return res;

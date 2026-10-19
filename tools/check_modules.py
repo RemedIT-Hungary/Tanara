@@ -290,7 +290,7 @@ def write_allow(tree, vios):
     lines = sorted({(v["file"], v["key"]) for v in vios})
     out = [HEADER_NOTE]
     for f, k in lines:
-        tag = old.get((f, k)) or "egyéb -> P?"
+        tag = old.get((f, k)) or "other -> P?"
         out.append(f"{f} -> {k}   # {tag}\n")
     tree.allow_path.write_text("".join(out), encoding="utf-8")
     print(f"wrote {tree.allow_path} ({len(lines)} lines)")

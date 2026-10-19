@@ -30,7 +30,7 @@ MediaPlayerBackend::MediaPlayerBackend(QObject* parent) : tanara_qml::PlayerBack
                 emit errorOccurred(s);
             });
     qCDebug(tanara::lcAudio).noquote()
-        << "audio-out eszköz:" << m_output->device().description()
+        << "audio-out device:" << m_output->device().description()
         << "| volume:" << m_output->volume();
 }
 

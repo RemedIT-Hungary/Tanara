@@ -488,7 +488,7 @@ private slots:
         const QString logged = log.joined();
         QVERIFY2(logged.contains(QStringLiteral("provider=") + kChatId), qPrintable(logged));
         QVERIFY2(logged.contains(QStringLiteral("url=http://localhost:1234/v1")), qPrintable(logged));
-        QVERIFY2(logged.contains(QStringLiteral("hiba=Hálózati hiba: Connection refused")), qPrintable(logged));
+        QVERIFY2(logged.contains(QStringLiteral("error=Hálózati hiba: Connection refused")), qPrintable(logged));
     }
 
     // Complex: topic extraction (persisted) -> analyses of every topic -> reduce, the merged document.

@@ -24,7 +24,7 @@ const IDS = { single: 'kSingle', notes: 'kNotes', merge: 'kMerge' };
 export function builtinPrompt(id, language = 'Hungarian', cpp) {
   const { parts, sourceOf } = builtinParts(cpp);
   const key = IDS[id];
-  if (!key || !parts[key]) throw new Error('ismeretlen beépített prompt: ' + id);
+  if (!key || !parts[key]) throw new Error('unknown built-in prompt: ' + id);
   let s = parts[key];
   s = s.replaceAll('%SOURCE_MARKERS%', (parts.kSourceMarkers || '').replaceAll('%SOURCE_OF%', sourceOf[key] || ''));
   s = s.replaceAll('%INPUT%', parts.kInput || '');

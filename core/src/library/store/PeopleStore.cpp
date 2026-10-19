@@ -421,7 +421,7 @@ void PeopleStore::load()
     QJsonParseError err{};
     const QJsonDocument doc = QJsonDocument::fromJson(f.readAll(), &err);
     if (err.error != QJsonParseError::NoError || !doc.isObject()) {
-        qCWarning(lcStore).noquote() << "people.json nem értelmezhető:" << m_filePath << err.errorString();
+        qCWarning(lcStore).noquote() << "people.json cannot be parsed:" << m_filePath << err.errorString();
         m_corrupt = true;
         return;
     }
@@ -440,7 +440,7 @@ void PeopleStore::load()
         return;
     }
     if (m_version > kFormatVersion)
-        qCWarning(lcStore).noquote() << "people.json újabb verziójú, mint amit ez a build ismer:"
+        qCWarning(lcStore).noquote() << "people.json has a newer version than this build knows:"
                                      << m_version << m_filePath;
     m_self = PersonId::fromString(root.take(kSelfKey).toString());
     m_rootExtra = root;
@@ -463,7 +463,7 @@ bool PeopleStore::persist()
     }
     QDir().mkpath(QFileInfo(m_filePath).absolutePath());
     if (m_corrupt && !setAsideCorrupt(m_filePath)) {
-        qCWarning(lcStore).noquote() << "people.json: a sérült fájl nem tehető félre — a mentés kimarad:"
+        qCWarning(lcStore).noquote() << "people.json: the corrupt file cannot be set aside — save skipped:"
                                      << m_filePath;
         return false;
     }
@@ -480,7 +480,7 @@ bool PeopleStore::persist()
     QSaveFile f(m_filePath);
     const bool ok = f.open(QIODevice::WriteOnly) && f.write(bytes) == bytes.size() && f.commit();
     if (!ok) {
-        qCWarning(lcStore).noquote() << "people.json nem írható:" << m_filePath << f.errorString();
+        qCWarning(lcStore).noquote() << "people.json cannot be written:" << m_filePath << f.errorString();
         return false;
     }
     m_stamp = FileStamp::of(m_filePath);   // no need to reread our own write

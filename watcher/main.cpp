@@ -51,7 +51,7 @@ int main(int argc, char** argv)
     QLockFile instanceLock(tanara::watcherLockPath());
     instanceLock.setStaleLockTime(0);   // PID-based stale detection only
     if (!instanceLock.tryLock(100)) {
-        qCInfo(tanara::lcApp).noquote() << "A tanara-watcher már fut — kilépés.";
+        qCInfo(tanara::lcApp).noquote() << "tanara-watcher is already running — exiting.";
         return 0;
     }
 
@@ -61,7 +61,7 @@ int main(int argc, char** argv)
     tanara_watcher::TrayWatcher watcher;
     if (!watcher.start()) {
         qCWarning(tanara::lcApp).noquote()
-            << "Nem indítható a figyelő: nincs elérhető detektor vagy rendszertálca.";
+            << "Cannot start the watcher: no detector or system tray available.";
         return 1;
     }
 

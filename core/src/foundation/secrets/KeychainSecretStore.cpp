@@ -114,7 +114,7 @@ public:
             const JobResult r = readKey(k);
             if (r.outcome == JobOutcome::Ok && !r.text.isEmpty()) m_cache.insert(k, r.text);
             else if (r.outcome == JobOutcome::Failed)
-                qCWarning(lcApp).noquote() << "Kulcstartó: olvasási hiba" << k << r.error;
+                qCWarning(lcApp).noquote() << "Keychain: read error" << k << r.error;
         }
     }
     QString get(const QString& key) const override
@@ -129,7 +129,7 @@ public:
     {
         const JobResult r = writeKey(key, value);
         if (r.outcome != JobOutcome::Ok) {
-            qCWarning(lcApp).noquote() << "Kulcstartó: írási hiba" << key << r.error;
+            qCWarning(lcApp).noquote() << "Keychain: write error" << key << r.error;
             return false;
         }
         m_cache.insert(key, value);
@@ -204,20 +204,20 @@ OpenResult open(const SecretSettings& settings, const QString& secretsFile, cons
                 const QString target = secretsFile + QStringLiteral(".imported");
                 QFile::remove(target);
                 if (!QFile::rename(secretsFile, target))
-                    qCWarning(lcApp).noquote() << "secrets.json nem nevezhető át:" << secretsFile;
+                    qCWarning(lcApp).noquote() << "secrets.json cannot be renamed:" << secretsFile;
                 else
-                    qCInfo(lcApp).noquote() << "Kulcsok átemelve a kulcstartóba:" << out.imported
-                                            << "— a régi fájl:" << target;
+                    qCInfo(lcApp).noquote() << "Keys moved into the keychain:" << out.imported
+                                            << "— old file:" << target;
             } else {
                 out.warning = QStringLiteral("import");
-                qCWarning(lcApp).noquote() << "Nem minden kulcs került a kulcstartóba; a secrets.json marad.";
+                qCWarning(lcApp).noquote() << "Not every key reached the keychain; secrets.json stays.";
             }
         }
         out.store = std::move(store);
         return out;
     }
     out.warning = error.isEmpty() ? QStringLiteral("unavailable") : error;
-    qCWarning(lcApp).noquote() << "Kulcstartó nem elérhető (" << out.warning << ") — a kulcsok fájlban:" << secretsFile;
+    qCWarning(lcApp).noquote() << "Keychain not available (" << out.warning << ") — keys in file:" << secretsFile;
 #else
     out.warning = QStringLiteral("not compiled");
 #endif

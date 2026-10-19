@@ -18,12 +18,12 @@
 ; (HKCU\...\Run\Tanara Watcher), which would otherwise point at a deleted exe.
 
 #ifndef DistDir
-  #error "Add meg a DistDir-t: iscc /DDistDir=<dist mappa> ..."
+  #error "Set DistDir: iscc /DDistDir=<dist folder> ..."
 #endif
 
 #ifndef AppVersion
   #ifndef BuildDir
-    #error "Add meg a BuildDir-t (a tanara-version.iss miatt) vagy az AppVersion-t."
+    #error "Set BuildDir (for tanara-version.iss) or AppVersion."
   #endif
   #include AddBackslash(BuildDir) + "tanara-version.iss"
 #endif

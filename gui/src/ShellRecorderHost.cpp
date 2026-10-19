@@ -99,7 +99,7 @@ void ShellRecorderHost::open()
         && m_host->viewModel()->state() == QLatin1String("done"))
         m_host->viewModel()->newRecording();
     if (!m_host->show()) {
-        qCCritical(tanara::lcApp) << "A felvevő felülete nem tölthető be.";
+        qCCritical(tanara::lcApp) << "Cannot load the recorder UI.";
         return;
     }
     // When the recorder is hidden we stop level monitoring (do not hold the microphone while we

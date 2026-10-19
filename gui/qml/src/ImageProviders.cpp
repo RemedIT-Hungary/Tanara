@@ -60,8 +60,8 @@ QImage TanaraImageProvider::renderIcon(const QString& name, const QColor& color,
 
     QFile f(QStringLiteral(":/qt/qml/Tanara/icons/%1.svg").arg(name));
     if (!f.open(QIODevice::ReadOnly)) {
-        qCWarning(lcQmlImg) << "Ismeretlen ikon:" << name
-                            << "(gui/qml/icons/ — új ikon: gui/qml/fetch-assets.sh <név>)";
+        qCWarning(lcQmlImg) << "Unknown icon:" << name
+                            << "(gui/qml/icons/ — new icon: gui/qml/fetch-assets.sh <name>)";
         return img;
     }
     // The Lucide SVGs come with currentColor and stroke width 2: we replace the color and the
@@ -136,7 +136,7 @@ QImage TanaraImageProvider::requestImage(const QString& id, QSize* size,
     } else if (parts.size() >= 4 && parts.at(0) == QLatin1String("shadow")) {
         img = renderShadow(parts.at(1).toInt(), parts.at(2).toInt(), parseColor(parts.at(3)));
     } else {
-        qCWarning(lcQmlImg) << "Ismeretlen image://tanara azonosító:" << id;
+        qCWarning(lcQmlImg) << "Unknown image://tanara id:" << id;
         img = QImage(1, 1, QImage::Format_ARGB32_Premultiplied);
         img.fill(Qt::transparent);
     }

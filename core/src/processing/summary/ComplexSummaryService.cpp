@@ -272,7 +272,7 @@ void ComplexSummaryService::requestTopics(const QString& transcriptMd, const QSt
         QVector<SummaryTopic> topics = parseTopicsMarkdown(text);
         if (topics.isEmpty()) topics = parseTopicsJson(text);
         if (topics.isEmpty()) {
-            qWarning().noquote() << "[ComplexSummary] téma-parse ÜRES — nyers válasz:\n"
+            qWarning().noquote() << "[ComplexSummary] topic parse EMPTY — raw response:\n"
                                  << text.left(2000);
             emit self->failed(tr(
                 "Nem sikerült témát kinyerni a válaszból (sem `## cím` szakasz, sem JSON)."));
@@ -322,8 +322,8 @@ void ComplexSummaryService::requestTopicAnalysis(const QString& transcriptMd, co
             if (ok) a = j;
         }
         if (a.detail.isEmpty() && a.decisions.isEmpty() && a.actionItems.isEmpty()) {
-            qWarning().noquote() << "[ComplexSummary] elemzés ÜRES (" << cap.title
-                                 << ") — nyers válasz:\n" << text.left(2000);
+            qWarning().noquote() << "[ComplexSummary] analysis EMPTY (" << cap.title
+                                 << ") — raw response:\n" << text.left(2000);
             emit self->failed(tr("Nem sikerült a téma-elemzést értelmezni („%1”).")
                                   .arg(cap.title));
             return;
@@ -389,7 +389,7 @@ void ComplexSummaryService::requestReduce(const QVector<TopicAnalysis>& analyses
             }
         }
         if (execSummary.isEmpty() && items.isEmpty()) {
-            qWarning().noquote() << "[ComplexSummary] reduce ÜRES — nyers válasz:\n" << text.left(2000);
+            qWarning().noquote() << "[ComplexSummary] reduce EMPTY — raw response:\n" << text.left(2000);
             emit self->failed(tr("Nem sikerült az összegzést értelmezni."));
             return;
         }

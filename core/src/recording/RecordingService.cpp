@@ -231,7 +231,7 @@ void RecordingService::restartLevelMonitor(bool force)
     const QStringList before = d->monitorNames;
     d->monitorNames = names;
     d->monitor->start(list);   // for an empty list it stops; the open runs on the monitor's background thread
-    qCDebug(lcPerf).noquote() << QStringLiteral("szintmérő újraindítás kérve (%1 → %2 eszköz, force=%3): %4 ms a fő szálon")
+    qCDebug(lcPerf).noquote() << QStringLiteral("level meter restart requested (%1 → %2 devices, force=%3): %4 ms on the main thread")
                                  .arg(before.size()).arg(names.size()).arg(force).arg(perfTimer.elapsed());
 }
 
@@ -253,7 +253,7 @@ void RecordingService::handleDeviceSetChange()
                 if (dev.name == name) { found = true; break; }
             if (found) { d->recMissing.remove(name); continue; }
             if (++d->recMissing[name] >= 2) {
-                qCWarning(lcApp).noquote() << "Rögzített eszköz leválasztva, a sávja lezárul:" << name;
+                qCWarning(lcApp).noquote() << "Recorded device disconnected, its track is closed:" << name;
                 d->recMissing.remove(name);
                 d->session->closeTrack(name);
             } else {
@@ -484,7 +484,7 @@ void RecordingService::start(const QString& title, const QVector<AudioDeviceInfo
                 const qint64 quiet = d->now() - d->lastLoudMs;
                 if (quiet >= qint64(minutes) * 60000) {
                     d->silenceAsked = true;
-                    qCInfo(lcApp) << "Csend felvétel közben:" << minutes << "perc → rákérdezés";
+                    qCInfo(lcApp) << "Silence while recording:" << minutes << "min → asking the user";
                     emit silenceDetected(minutes);
                 }
             });

@@ -248,7 +248,7 @@ void QmlShellBridge::maybeOpenOnboarding()
         return;
     m_onboarding->setTransientParent(m_window);
     if (m_onboarding->openIfNeeded())
-        qCInfo(tanara::lcApp) << "Első lépések: első indítás — az ablak megnyílt";
+        qCInfo(tanara::lcApp) << "Onboarding: first start — window opened";
 }
 
 QString QmlShellBridge::pickAudioFile()

@@ -409,7 +409,7 @@ private slots:
             loadDemo(state);
             QTRY_VERIFY(card() && card()->isVisible());
             const qreal y = cardY();
-            qInfo("%s: kártya y = %.0f px (ablak 1100×760), magasság %.0f px", state, y, card()->height());
+            qInfo("%s: card y = %.0f px (window 1100×760), height %.0f px", state, y, card()->height());
             if (first < 0) first = y;
             QCOMPARE(y, first);
         }

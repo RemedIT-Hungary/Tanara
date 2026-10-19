@@ -63,7 +63,7 @@ VoiceEmbedderSet::Slot& VoiceEmbedderSet::slot(int i) const
         s.fn = m_loader(m_models[i].spec, m_models[i].path, &error);
         if (!s.fn) {
             m_error = error;
-            qCWarning(lcVoice).noquote() << "Hangmodell nem tölthető be:" << m_models[i].spec.id << error;
+            qCWarning(lcVoice).noquote() << "Voice model cannot be loaded:" << m_models[i].spec.id << error;
         }
     }
     return s;

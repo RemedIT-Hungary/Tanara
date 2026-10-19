@@ -29,13 +29,13 @@ function table(keyFn, title) {
     garbled: avg(g.map((r) => r.garbled)), bad: g.filter((r) => !r.formatOk || r.language !== 'hu').length,
     secs: avg(g.map((r) => r.secs)),
   })).sort((a, b) => b.overall - a.overall);
-  console.log(`\n## ${title}  (megbeszélések: ${meetings.join(', ')})`);
-  console.log('csoport'.padEnd(34), 'n  össz  lefed  dönt  teendő  hamis  rosszfel  téves  zagyva  hibás  mp');
+  console.log(`\n## ${title}  (meetings: ${meetings.join(', ')})`);
+  console.log('group'.padEnd(34), ' n  total  cover  dec  action  false  wrongown  hallu  garbld  bad  secs');
   for (const o of out)
     console.log(o.k.padEnd(34), String(o.n).padStart(2), f(o.overall).padStart(5), f(o.cov, 2).padStart(6), f(o.dec, 2).padStart(5),
       f(o.act, 2).padStart(6), f(o.falseItems).padStart(6), f(o.owner).padStart(8), f(o.hall).padStart(6), f(o.garbled).padStart(6),
       String(o.bad).padStart(6), f(o.secs, 0).padStart(4));
 }
-table((r) => short(r.model), 'Modell szerint');
-table((r) => r.prompt, 'Prompt szerint');
-table((r) => short(r.model) + ' · ' + r.prompt, 'Modell × prompt');
+table((r) => short(r.model), 'By model');
+table((r) => r.prompt, 'By prompt');
+table((r) => short(r.model) + ' · ' + r.prompt, 'Model × prompt');

@@ -80,7 +80,7 @@ ToolResolution MediaToolLocator::locate(const QString& tool, const QString& conf
         const QString& c = cands.at(i);
         if (!usable(c)) {
             if (i == 0 && hasConfigured)
-                qCWarning(lcAudio).noquote() << "A beállított médiaeszköz nem futtatható, automatikus keresés:" << c;
+                qCWarning(lcAudio).noquote() << "Configured media tool cannot be run, searching automatically:" << c;
             continue;
         }
         ToolSource src = ToolSource::Bundle;

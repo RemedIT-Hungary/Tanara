@@ -340,7 +340,7 @@ struct MeetingProfiles::Impl {
             QMutexLocker lock(&mutex);
             if (rowsState != RowsState::NotLoaded) return;
         }
-        PerfScope perf("MeetingProfiles: sorok szinkron betöltése (fő szál)", 0);
+        PerfScope perf("MeetingProfiles: synchronous row load (main thread)", 0);
         QHash<QString, Row> fresh;
         for (const Meeting& idx : store->loadAll()) fresh.insert(idx.id, rowFromIndex(idx));
         auto* self = const_cast<Impl*>(this);
@@ -395,7 +395,7 @@ struct MeetingProfiles::Impl {
         syncQueued = false;
         if (worker->stop) return;
         if (loadRows) {
-            PerfScope perf("MeetingProfiles: sorok betöltése (háttérszál)", 0);
+            PerfScope perf("MeetingProfiles: row load (worker thread)", 0);
             QHash<QString, Row> fresh;
             for (const Meeting& idx : index) {
                 if (worker->stop) return;
@@ -480,8 +480,8 @@ struct MeetingProfiles::Impl {
             builtCopy = built;
         }
         {
-            PerfScope perf(onOwnerThread() ? "MeetingProfiles: statisztika (fő szál)"
-                                           : "MeetingProfiles: statisztika (háttérszál)", 0);
+            PerfScope perf(onOwnerThread() ? "MeetingProfiles: stats (main thread)"
+                                           : "MeetingProfiles: stats (worker thread)", 0);
             computeStats(*s, builtCopy);
         }
         {
@@ -717,7 +717,7 @@ void MeetingProfiles::ensureBuilt()
         }
     }
     if (loadRows) {
-        PerfScope perf("MeetingProfiles::ensureBuilt: index (fő szál)", 5);
+        PerfScope perf("MeetingProfiles::ensureBuilt: index (main thread)", 5);
         index = d->store->loadAll();   // only the index (SQLite), without reading files
     }
     ++d->pendingSyncs;

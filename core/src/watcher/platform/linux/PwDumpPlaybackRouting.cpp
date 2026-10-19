@@ -46,7 +46,7 @@ public:
             QElapsedTimer perfTimer;
             perfTimer.start();
             const AudioGraphSnapshot next = detail::parsePwDumpGraph(out);
-            qCDebug(lcPerf).noquote() << QStringLiteral("pw-dump feldolgozás: %1 KB, %2 ms")
+            qCDebug(lcPerf).noquote() << QStringLiteral("pw-dump parse: %1 KB, %2 ms")
                                          .arg(out.size() / 1024).arg(perfTimer.elapsed());
             if (done) done(next);
         });

@@ -861,7 +861,7 @@ void RecordingSession::onFinalized(const QStringList& failedFiles) {
     impl_->teardownWorker();
     const qint64 durationMs = impl_->durationMs;
     if (!failedFiles.isEmpty())
-        qWarning().noquote() << "RecordingSession: hibásan lezárt sávfájl(ok):"
+        qWarning().noquote() << "RecordingSession: track file(s) closed with errors:"
                              << failedFiles.join(QStringLiteral(", "));
 
     // Every track stays active: a silent track is removed from the mixdown by the speech check AFTER

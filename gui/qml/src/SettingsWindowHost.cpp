@@ -45,7 +45,7 @@ bool SettingsWindowHost::ensureWindow()
     auto* win = qobject_cast<QQuickWindow*>(obj);
     if (!win) {
         for (const QQmlError& e : comp.errors())
-            qCCritical(lcApp).noquote() << "Beállítások-ablak:" << e.toString();
+            qCCritical(lcApp).noquote() << "Settings window:" << e.toString();
         delete obj;
         return false;
     }

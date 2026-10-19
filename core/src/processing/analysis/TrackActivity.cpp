@@ -256,7 +256,7 @@ MeetingActivity computeMeetingActivity(const Meeting& m, const QString& folder,
             const Track& t = m.tracks.at(idx);
             const QString path = dir.filePath(t.file);
             if (t.file.isEmpty() || !QFileInfo::exists(path)) {
-                qCWarning(lcAudio) << "Sáv-aktivitás: hiányzó sávfájl, kimarad:" << path;
+                qCWarning(lcAudio) << "Track activity: track file missing, skipped:" << path;
                 continue;
             }
             FrameAccumulator acc(frameMs);
@@ -264,7 +264,7 @@ MeetingActivity computeMeetingActivity(const Meeting& m, const QString& folder,
             const bool ok = decode(path, [&acc](const qint16* s, qsizetype n) { acc.add(s, n); }, &error);
             QVector<float> db = acc.finish();
             if (!ok || db.isEmpty()) {
-                qCWarning(lcAudio) << "Sáv-aktivitás: a sáv nem dekódolható, kimarad:" << path << error;
+                qCWarning(lcAudio) << "Track activity: track cannot be decoded, skipped:" << path << error;
                 continue;
             }
             parts.append({std::max<qint64>(0, t.startOffsetMs), std::move(db)});

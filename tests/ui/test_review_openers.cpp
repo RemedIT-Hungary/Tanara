@@ -494,7 +494,7 @@ private slots:
         for (const char* state : {"reviewFocusOffer", "reviewFocusOfferList"}) {
             loadDemo(state);
             QTRY_VERIFY(visual("reviewFocusOffer"));
-            qInfo("%s: kártya y = %.0f px (reviewFocus: %.0f px; ablak 1100×760)", state, cardY(), y);
+            qInfo("%s: card y = %.0f px (reviewFocus: %.0f px; window 1100×760)", state, cardY(), y);
             QCOMPARE(cardY(), y);
         }
         QVERIFY(visual("reviewOfferList"));

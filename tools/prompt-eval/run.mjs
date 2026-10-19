@@ -233,14 +233,14 @@ const serverUp = async () => { try { return (await fetch(BASE + '/models', { sig
 async function ensureLoaded(model) {
   for (let attempt = 1; attempt <= 3; ++attempt) {
     if (!(await serverUp())) {
-      console.log('  LM Studio szerver nem válaszol — indítás…');
+      console.log('  LM Studio server not responding — starting it…');
       sh('lms', ['server', 'start']);
       await sleep(8000);
     }
     const ps = loaded();
     if (ps && ps.length === 1 && ps[0].modelKey === model && ps[0].parallel === 1 && ps[0].contextLength === CTX)
       return true;
-    if (ps && ps.length) console.log('  nem a mi betöltésünk van bent → ürítés:', ps.map((m) => `${m.modelKey} ctx ${m.contextLength} par ${m.parallel}`).join(', '));
+    if (ps && ps.length) console.log('  a load that is not ours is in memory → unloading:', ps.map((m) => `${m.modelKey} ctx ${m.contextLength} par ${m.parallel}`).join(', '));
     sh('lms', ['unload', '--all']);
     await sleep(5000);
     const before = mem();
@@ -254,7 +254,7 @@ async function ensureLoaded(model) {
     // not run it (slow, and it crashes). lms underestimates this, so we look at the actual allocation.
     const after = mem();
     if (after.vramTotal && (after.vram > after.vramTotal - 1.2 * GB || after.gtt - before.gtt > 0.4 * GB)) {
-      console.log(`  NEM FÉR BE: VRAM ${(after.vram / GB).toFixed(1)} / ${(after.vramTotal / GB).toFixed(1)} GiB, GTT +${((after.gtt - before.gtt) / GB).toFixed(2)} GiB — modell kihagyva (kisebb --ctx kell)`);
+      console.log(`  DOES NOT FIT: VRAM ${(after.vram / GB).toFixed(1)} / ${(after.vramTotal / GB).toFixed(1)} GiB, GTT +${((after.gtt - before.gtt) / GB).toFixed(2)} GiB — model skipped (needs a smaller --ctx)`);
       sh('lms', ['unload', '--all']);
       await sleep(6000);
       noFit.add(model);
@@ -279,7 +279,7 @@ async function coolDown() {
   if (t < MEM_HOT) return;
   const t0 = Date.now();
   while (t > MEM_COOL && Date.now() - t0 < 6 * 60 * 1000) { await sleep(10000); t = memTemp(); }
-  console.log(`  (hűtési szünet: ${((Date.now() - t0) / 1000).toFixed(0)} s, memória most ${t} °C)`);
+  console.log(`  (cool-down pause: ${((Date.now() - t0) / 1000).toFixed(0)} s, memory now ${t} °C)`);
 }
 
 const rows = [];
@@ -321,14 +321,14 @@ for (const model of MODELS) {
       await sleep(8000);
     }
     if (gpuWasReset() || !r) {
-      console.log('\nGPU-RESET a futás alatt — leállás, a GPU ürítése. Nem folytatom.');
+      console.log('\nGPU RESET during the run — stopping, unloading the GPU. Not continuing.');
       process.exitCode = 2;
       sh('lms', ['unload', '--all']);
       break outer;
     }
     const failed = !(r.httpStatus === 200 && !r.error && r.finish);
     if (failed && /crash/i.test(r.error || '')) {
-      console.log('\nA modell összeomlott — leállás (nincs újrapróbálás), a GPU ürítése.');
+      console.log('\nThe model crashed — stopping (no retry), unloading the GPU.');
       process.exitCode = 2;
       sh('lms', ['unload', '--all']);
       break outer;
@@ -353,7 +353,7 @@ for (const model of MODELS) {
     if (!failed) fs.writeFileSync(file, JSON.stringify(row, null, 2));   // a failed run stays re-runnable
     rows.push(row);
     console.log(`${p.padEnd(6)} ${m}  ${String(row.secs).padStart(6)} s  in ${row.promptTokens} out ${row.completionTokens} think ${row.reasoningChars}  ${row.finish.padEnd(7)} valid=${row.valid} dec=${row.decisions} act=${row.actionItems} exec=${row.execChars}${row.sources && row.sources.marked ? ` src=${row.sources.resolved}/${row.sources.items}` : ''}${row.error ? ' ERR ' + row.error : ''}${row.parseError ? ' parse: ' + row.parseError : ''}`);
-    if (failStreak >= 3) { console.log('\n3 egymást követő hiba — leállás.'); break outer; }
+    if (failStreak >= 3) { console.log('\n3 failures in a row — stopping.'); break outer; }
     await sleep(PAUSE_MS);
   }
   sh('lms', ['unload', '--all']);
@@ -365,4 +365,4 @@ sh('lms', ['unload', '--all']);
 // Summary (without the text); the review is a separate step.
 const summary = rows.map(({ text, parsed, ...rest }) => rest);
 fs.writeFileSync(path.join(OUT, '_summary.json'), JSON.stringify(summary, null, 2));
-console.log(`\n${rows.length} futás → ${OUT}`);
+console.log(`\n${rows.length} runs → ${OUT}`);

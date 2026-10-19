@@ -344,8 +344,8 @@ void TranscriptEditorViewModel::reloadAll()
     m_queue->stop();        // new session -> no worklist
     rebuildReview();
     qCDebug(lcPerf).noquote()
-        << QStringLiteral("TranscriptEditorViewModel::reloadAll %1 sor: beszélők %2 ms, sorok %3 ms, "
-                          "keresés %4 ms, áttekintés %5 ms, egyéb %6 ms, össz %7 ms")
+        << QStringLiteral("TranscriptEditorViewModel::reloadAll %1 lines: speakers %2 ms, rows %3 ms, "
+                          "search %4 ms, overview %5 ms, other %6 ms, total %7 ms")
                .arg(m_utts.size()).arg(tSpeakers).arg(tRows - tSpeakers).arg(tSearch - tRows)
                .arg(tOverview - tSearch).arg(perf.elapsed() - tOverview).arg(perf.elapsed());
 

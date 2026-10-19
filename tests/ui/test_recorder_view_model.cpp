@@ -528,7 +528,7 @@ private slots:
             RecorderViewModel vm(AppContext::instance()->servicesFor(&c).recorder);
             if (vm.deviceCount() < 2)
                 QSKIP("legalább két capture-eszköz kell");
-            qInfo() << "eszközök:" << vm.deviceCount();
+            qInfo() << "devices:" << vm.deviceCount();
 
             // 1) Levels for EVERY device before recording, >= 20 Hz.
             QHash<QString, int> seen;
@@ -591,7 +591,7 @@ private slots:
                 QVERIFY(p.waitForFinished(10000));
                 durations << p.readAllStandardOutput().trimmed().toDouble();
             }
-            qInfo() << "sávok:" << m.tracks.size() << "hosszak (mp):" << durations << "meeting:" << m.durationMs;
+            qInfo() << "tracks:" << m.tracks.size() << "durations (s):" << durations << "meeting:" << m.durationMs;
             if (durations.size() == 2) {
                 // The start of the later-starting track is filled with silence, so the two files are equally long.
                 QVERIFY(durations[0] > 2.5);

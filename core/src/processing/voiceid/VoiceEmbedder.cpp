@@ -40,8 +40,8 @@ struct VoiceEmbedder::Impl {
     void checkDim(int got) const {
         if (expectedDim <= 0 || got <= 0 || got == expectedDim || dimWarned) return;
         dimWarned = true;
-        qCWarning(lcVoice).noquote() << "Hangmodell: a kimenet dimenziója" << got
-                                     << "eltér a várt" << expectedDim << "értéktől:" << path;
+        qCWarning(lcVoice).noquote() << "Voice model: output dimension" << got
+                                     << "differs from the expected" << expectedDim << ":" << path;
     }
 
     Ort::Env env{ORT_LOGGING_LEVEL_ERROR, "tanara-voiceid"};

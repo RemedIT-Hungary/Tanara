@@ -185,7 +185,7 @@ void TagSuggestionService::startJob(const QString& meetingId)
     run->running = true;
     TagSnapshot snap;
     {
-        tanara::PerfScope perfScope("TagSuggestionService::startJob (pillanatkép, fő szál)", 5);
+        tanara::PerfScope perfScope("TagSuggestionService::startJob (snapshot, main thread)", 5);
         snap = TagSuggester::snapshot(*m_d.tags, meetingId);
     }
     const quint64 gen = m_gen;
@@ -196,7 +196,7 @@ void TagSuggestionService::startJob(const QString& meetingId)
         if (hook) hook();
         QVector<TagSuggestion> list;
         {
-            tanara::PerfScope perfScope("TagSuggester::suggestFrom (háttérszál)", 0);
+            tanara::PerfScope perfScope("TagSuggester::suggestFrom (worker thread)", 0);
             list = TagSuggester::suggestFrom(snap, profiles, index);
         }
         const QString meetingId = snap.meetingId;
@@ -320,7 +320,7 @@ void TagSuggestionService::startLlm(const QString& meetingId, const QVector<TagS
         m_llmMeetingId.clear();
         if (done) done(false);
         // A suggestion is not an obstacle: on error there is no popup, only a log entry; the earlier list stays.
-        qWarning().noquote() << "[tags] LLM-javaslat sikertelen:" << meetingId << error.message;
+        qWarning().noquote() << "[tags] LLM suggestion failed:" << meetingId << error.message;
         publish(meetingId, m_pending.value(meetingId));
     });
 }

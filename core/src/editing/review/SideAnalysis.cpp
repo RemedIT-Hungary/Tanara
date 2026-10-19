@@ -420,7 +420,7 @@ SideReport analyzeSides(const Meeting& m, const QVector<TranscriptLine>& lines,
                 p.confidence = maj;
                 p.basis = QStringLiteral("override");
                 qCInfo(lcApp).noquote()
-                    << QStringLiteral("Sáv-oldal: %1 alapból %2 (%3), de a megerősített sorai szerint %4 (%5/%6) — felülírva.")
+                    << QStringLiteral("Track side: %1 is %2 by default (%3), but %4 by its confirmed lines (%5/%6) — overridden.")
                            .arg(p.displayName, sideName(p.defaultSide), defBasis, sideName(dataSide))
                            .arg(std::max(p.localLines, p.remoteLines)).arg(lr);
             } else {

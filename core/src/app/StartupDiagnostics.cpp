@@ -23,7 +23,7 @@ QString kindStr(TrackKind k)
     switch (k) {
         case TrackKind::Mic:      return QStringLiteral("mic");
         case TrackKind::Loopback: return QStringLiteral("loopback");
-        default:                  return QStringLiteral("egyéb");
+        default:                  return QStringLiteral("other");
     }
 }
 
@@ -32,13 +32,13 @@ QString kindStr(TrackKind k)
 void logStartupDiagnostics(const AppController& app)
 {
     // Header: always at INFO level.
-    qCInfo(lcApp).noquote() << QStringLiteral("Tanara %1 indul (loglevel=%2)")
+    qCInfo(lcApp).noquote() << QStringLiteral("Tanara %1 starting (loglevel=%2)")
                                    .arg(libraryVersion(), logLevelName(currentLogLevel()));
     qCInfo(lcApp).noquote() << QStringLiteral("Platform: %1 | Qt %2")
                                    .arg(QSysInfo::prettyProductName(), QString::fromLatin1(qVersion()));
     const QString lf = currentLogFilePath();
     if (!lf.isEmpty())
-        qCInfo(lcApp).noquote() << QStringLiteral("Logfájl: %1 (hibák: tanara-error.log)").arg(lf);
+        qCInfo(lcApp).noquote() << QStringLiteral("Log file: %1 (errors: tanara-error.log)").arg(lf);
 
     // Detailed dump: at DEBUG level.
     const SettingsManager* sm = app.settings();
@@ -49,11 +49,11 @@ void logStartupDiagnostics(const AppController& app)
                           paths::Role::Models, paths::Role::Recordings, paths::Role::Notes})
         qCDebug(lcApp).noquote() << QStringLiteral("%1: %2 (%3)").arg(paths::roleName(r), -11)
                                         .arg(ap.dir(r), paths::sourceName(ap.source(r)));
-    qCDebug(lcApp).noquote() << QStringLiteral("saját név:   %1").arg(s.recording.userSpeakerName);
+    qCDebug(lcApp).noquote() << QStringLiteral("own name:    %1").arg(s.recording.userSpeakerName);
     qCDebug(lcApp).noquote() << QStringLiteral("autoRecordAllDevices: %1, languageHints: %2")
-                                    .arg(s.recording.autoRecordAllDevices ? QStringLiteral("igen") : QStringLiteral("nem"),
+                                    .arg(s.recording.autoRecordAllDevices ? QStringLiteral("yes") : QStringLiteral("no"),
                                          s.processing.languageHints.join(QLatin1Char(',')));
-    qCDebug(lcApp).noquote() << QStringLiteral("hangminőség: %1 (%2 kbps), lekeverés: %3")
+    qCDebug(lcApp).noquote() << QStringLiteral("audio quality: %1 (%2 kbps), mixdown: %3")
                                     .arg(s.recording.audioQuality)
                                     .arg(opusBitrateKbps(s.recording.audioQuality))
                                     .arg(s.recording.mixdownMode);
@@ -67,14 +67,14 @@ void logStartupDiagnostics(const AppController& app)
     const providers::ProviderConfig stt = s.providers.stt.selected();
     qCDebug(lcStt).noquote() << QStringLiteral("STT: provider=%1 baseUrl=%2 model=%3 apiKey=%4")
                                     .arg(s.providers.stt.selectedId, stt.baseUrl, stt.model,
-                                         app.hasSecret(keys::SonioxApiKey) ? QStringLiteral("megadva")
-                                                                           : QStringLiteral("NINCS"));
+                                         app.hasSecret(keys::SonioxApiKey) ? QStringLiteral("set")
+                                                                           : QStringLiteral("MISSING"));
     const providers::ProviderConfig llm = s.providers.llm.selected();
     qCDebug(lcLlm).noquote() << QStringLiteral("LLM: provider=%1 baseUrl=%2 model=%3 temp=%4 maxTokens=%5 apiKey=%6")
                                     .arg(s.providers.llm.selectedId, llm.baseUrl, llm.model)
                                     .arg(llm.temperature).arg(llm.maxTokens)
-                                    .arg(app.hasSecret(keys::LlmApiKey) ? QStringLiteral("megadva")
-                                                                        : QStringLiteral("nincs (LM Studio: opcionális)"));
+                                    .arg(app.hasSecret(keys::LlmApiKey) ? QStringLiteral("set")
+                                                                        : QStringLiteral("none (LM Studio: optional)"));
     // S3: where each capability runs (the stored route; Ask is answered per run).
     QStringList routes;
     for (providers::Capability cap : providers::allCapabilities())
@@ -84,7 +84,7 @@ void logStartupDiagnostics(const AppController& app)
     // Audio devices seen (worth calling after refreshDevices()).
     if (auto* dm = app.devices()) {
         const auto devs = dm->captureDevices();
-        qCDebug(lcAudio).noquote() << QStringLiteral("Audio capture eszközök (%1):").arg(devs.size());
+        qCDebug(lcAudio).noquote() << QStringLiteral("Audio capture devices (%1):").arg(devs.size());
         for (const auto& d : devs)
             qCDebug(lcAudio).noquote() << QStringLiteral("  • %1 [%2%3]")
                                               .arg(d.name, kindStr(d.kind),
@@ -93,12 +93,12 @@ void logStartupDiagnostics(const AppController& app)
 
     // The media tools (resolved once at startup; the version runs `ffmpeg -version` once).
     if (const media::MediaToolPtr mt = app.mediaTool())
-        qCInfo(lcAudio).noquote() << QStringLiteral("Médiaeszközök: ffmpeg=%1 ffprobe=%2 (%3)")
+        qCInfo(lcAudio).noquote() << QStringLiteral("Media tools: ffmpeg=%1 ffprobe=%2 (%3)")
                                          .arg(mt->ffmpegPath(), mt->ffprobePath(),
-                                              mt->available() ? mt->version() : QStringLiteral("NEM ELÉRHETŐ"));
+                                              mt->available() ? mt->version() : QStringLiteral("NOT AVAILABLE"));
 
     if (auto* st = app.store())
-        qCDebug(lcStore).noquote() << QStringLiteral("Meetingek a tárban: %1").arg(st->loadAll().size());
+        qCDebug(lcStore).noquote() << QStringLiteral("Meetings in the store: %1").arg(st->loadAll().size());
 }
 
 } // namespace tanara::app

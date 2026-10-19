@@ -363,7 +363,7 @@ void VoiceprintStore::load()
     if (err.error != QJsonParseError::NoError || !doc.isObject()) {
         // Unparseable file: the in-memory voiceprints stay, the next save sets the file aside (we do not
         // overwrite the voiceprints without a trace).
-        qCWarning(lcVoice).noquote() << "voiceprints.json nem értelmezhető:" << m_filePath << err.errorString();
+        qCWarning(lcVoice).noquote() << "voiceprints.json cannot be parsed:" << m_filePath << err.errorString();
         m_corrupt = true;
         return;
     }
@@ -403,7 +403,7 @@ void VoiceprintStore::persist()
     }
     QDir().mkpath(QFileInfo(m_filePath).absolutePath());
     if (m_corrupt && !setAsideCorrupt(m_filePath)) {
-        qCWarning(lcVoice).noquote() << "voiceprints.json: a sérült fájl nem tehető félre — a mentés kimarad:"
+        qCWarning(lcVoice).noquote() << "voiceprints.json: the corrupt file cannot be set aside — save skipped:"
                                      << m_filePath;
         return;
     }

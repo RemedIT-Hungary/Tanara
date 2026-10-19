@@ -109,7 +109,7 @@ void DeviceManager::refresh() {
     ma_context_uninit(&context);
 
     d_->capture = result;
-    qCDebug(lcPerf).noquote() << QStringLiteral("DeviceManager::refresh: %1 eszköz, %2 ms (ma_context, szinkron)")
+    qCDebug(lcPerf).noquote() << QStringLiteral("DeviceManager::refresh: %1 devices, %2 ms (ma_context, synchronous)")
                                  .arg(captureDevices().size()).arg(perfTimer.elapsed());
     emit devicesChanged();
 }

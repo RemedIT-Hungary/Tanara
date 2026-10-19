@@ -83,7 +83,7 @@ bool RecorderWindowHost::ensureWindow()
     auto* win = qobject_cast<QQuickWindow*>(obj);
     if (!win) {
         for (const QQmlError& e : comp.errors())
-            qCCritical(lcApp).noquote() << "Felvevő-ablak:" << e.toString();
+            qCCritical(lcApp).noquote() << "Recorder window:" << e.toString();
         delete obj;
         delete vm;
         return false;
