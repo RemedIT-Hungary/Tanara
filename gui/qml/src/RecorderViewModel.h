@@ -86,6 +86,9 @@ class RecorderViewModel : public QObject {
     Q_PROPERTY(QString doneMeetingId READ doneMeetingId NOTIFY doneChanged)
     Q_PROPERTY(QString doneProblem READ doneProblem NOTIFY doneChanged)   // non-empty -> NOT "Saved"
     Q_PROPERTY(QString errorText READ errorText NOTIFY errorChanged)
+    // Keep-awake while recording: "held" | "off" | "unavailable" ("" = unknown). The view warns
+    // only when it is not in effect ("off" / "unavailable") during a recording.
+    Q_PROPERTY(QString keepAwakeState READ keepAwakeState NOTIFY keepAwakeChanged)
     // Threshold of the per-track silence warning (minutes).
     Q_PROPERTY(int silenceWarnMinutes READ silenceWarnMinutes CONSTANT)
     // The recording's tags: [{ id, name }]. Editable before starting and during recording; the
@@ -126,6 +129,7 @@ public:
     QString doneMeetingId() const { return m_doneMeetingId; }
     QString doneProblem() const { return m_doneProblem; }
     QString errorText() const { return m_errorText; }
+    QString keepAwakeState() const { return m_facade ? m_facade->keepAwakeState() : QString(); }
     int silenceWarnMinutes() const { return 3; }
     QObject* tagBackendObject() const;
 
@@ -168,6 +172,7 @@ signals:
     void askChanged();
     void doneChanged();
     void errorChanged();
+    void keepAwakeChanged();
     void tagsChanged();
     void tagInputRequested();
     // For the recorder window / the enclosing process:

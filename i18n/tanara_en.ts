@@ -3747,6 +3747,14 @@
         <translation>Stop</translation>
     </message>
     <message>
+        <source>Ha a gép elalszik, a felvétel megszakad.</source>
+        <translation>If the computer goes to sleep, the recording stops.</translation>
+    </message>
+    <message>
+        <source>Bekapcsolás: Beállítások › Rögzítés.</source>
+        <translation>Turn it on: Settings › Recording.</translation>
+    </message>
+    <message>
         <source>Elmentve, de hiányosan</source>
         <translation>Saved, but incomplete</translation>
     </message>
@@ -5396,6 +5404,14 @@
     <message>
         <source>Ha nem tudod előre, honnan jön a hang. A csendes sávokat utólag eldobottnak jelöli, de megtartja.</source>
         <translation>For when you cannot tell in advance where the sound will come from. Silent tracks are marked as discarded afterwards, but kept.</translation>
+    </message>
+    <message>
+        <source>Felvétel alatt tartsa ébren a gépet</source>
+        <translation>Keep the computer awake while recording</translation>
+    </message>
+    <message>
+        <source>Felvétel közben a gép nem alszik el magától; a kijelző ettől még kikapcsolhat.</source>
+        <translation>The computer does not go to sleep on its own during a recording; the display may still turn off.</translation>
     </message>
     <message>
         <source>Hangminőség</source>

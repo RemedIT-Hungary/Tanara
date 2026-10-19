@@ -54,6 +54,14 @@ public:
     bool addDevice(const tanara::AudioDeviceInfo& device) override;
     bool stopDevice(const QString& deviceName) override;
     void setRecordingTags(const QStringList&) override {}
+    // The protection is in effect in every design state; tests switch it to "off" / "unavailable".
+    QString keepAwakeState() const override { return m_keepAwake; }
+    void setKeepAwakeState(const QString& state)
+    {
+        if (m_keepAwake == state) return;
+        m_keepAwake = state;
+        emit keepAwakeStateChanged();
+    }
     void beginNewSession() override;
 
     void renameMeeting(const QString&, const QString&) override {}
@@ -86,6 +94,7 @@ private:
     QStringList m_lastUsed;
     QStringList m_recorded;
     bool m_recording = false;
+    QString m_keepAwake{QStringLiteral("held")};
     tanara::recording::RecorderSession m_session;
     QHash<QString, tanara::recording::RecorderTag> m_createdTags;
     mutable tanara::library::TagBackend* m_tagBackend = nullptr;

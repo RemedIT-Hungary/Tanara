@@ -114,6 +114,7 @@ class SettingsViewModel : public QObject {
     // Level monitoring runs only while the page is visible (QML sets it).
     Q_PROPERTY(bool monitoring READ monitoring WRITE setMonitoring NOTIFY monitoringChanged)
     Q_PROPERTY(bool autoRecordAll READ autoRecordAll WRITE setAutoRecordAll NOTIFY recordingChanged)
+    Q_PROPERTY(bool keepAwake READ keepAwake WRITE setKeepAwake NOTIFY recordingChanged)
     Q_PROPERTY(QString audioQuality READ audioQuality WRITE setAudioQuality NOTIFY recordingChanged)
     Q_PROPERTY(QVariantList audioQualityOptions READ audioQualityOptions CONSTANT)
     Q_PROPERTY(QString audioQualityHint READ audioQualityHint NOTIFY recordingChanged)
@@ -259,6 +260,8 @@ public:
     void setMonitoring(bool on);
     bool autoRecordAll() const { return m_draft.recording.autoRecordAllDevices; }
     void setAutoRecordAll(bool on);
+    bool keepAwake() const { return m_draft.recording.keepAwake; }
+    void setKeepAwake(bool on);
     QString audioQuality() const { return m_draft.recording.audioQuality; }
     void setAudioQuality(const QString& quality);
     QVariantList audioQualityOptions() const;

@@ -2,8 +2,10 @@
 #include "tanara/providers/core/ProviderConfig.h"
 
 #include "tanara/app/AppController.h"
+#include "tanara/app/Services.h"
 #include "tanara/app/SettingsManager.h"
 #include "tanara/domain/Audio.h"
+#include "tanara/recording/RecordingService.h"
 #include "tanara/recording/audio/DeviceManager.h"
 #include "tanara/foundation/Version.h"
 #include "tanara/foundation/log/Logging.h"
@@ -55,6 +57,11 @@ void logStartupDiagnostics(const AppController& app)
                                     .arg(s.recording.audioQuality)
                                     .arg(opusBitrateKbps(s.recording.audioQuality))
                                     .arg(s.recording.mixdownMode);
+    // The sleep inhibitor used while recording (platform::IPowerInhibitor).
+    if (const Services* svc = app.services())
+        qCInfo(lcApp).noquote() << QStringLiteral("Keep-awake while recording: %1, backend: %2")
+                                       .arg(s.recording.keepAwake ? QStringLiteral("on") : QStringLiteral("off"),
+                                            svc->recording().powerInhibitorBackend());
 
     // Provider selection: we NEVER log the API key, only its presence.
     const providers::ProviderConfig stt = s.providers.stt.selected();

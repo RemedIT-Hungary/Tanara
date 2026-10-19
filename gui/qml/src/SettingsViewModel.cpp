@@ -1052,6 +1052,14 @@ void SettingsViewModel::setAutoRecordAll(bool on)
     touch();
 }
 
+void SettingsViewModel::setKeepAwake(bool on)
+{
+    if (m_draft.recording.keepAwake == on) return;
+    m_draft.recording.keepAwake = on;
+    emit recordingChanged();
+    touch();
+}
+
 void SettingsViewModel::setAudioQuality(const QString& quality)
 {
     if (m_draft.recording.audioQuality == quality) return;

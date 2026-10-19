@@ -8,7 +8,9 @@
 //  - switching a device off / on during the recording;
 //  - the silence question with the injected clock (re-arms when sound returns), also while the call
 //    monitor runs;
-//  - the call-end question relayed while recording, silent otherwise.
+//  - the call-end question relayed while recording, silent otherwise;
+//  - keep-awake with a fake inhibitor: held while recording, released on stop and on a failed
+//    start, never acquired with the setting off.
 #include <QtTest>
 #include <QFile>
 #include <QJsonArray>
@@ -21,6 +23,7 @@
 #include <atomic>
 #include <memory>
 
+#include "tanara/foundation/platform/PowerInhibitor.h"
 #include "tanara/library/store/MeetingRepository.h"
 #include "tanara/library/tags/TagService.h"
 #include "tanara/recording/RecordingService.h"
@@ -65,6 +68,39 @@ private:
     std::shared_ptr<CallScript> m_s;
 };
 
+// A sleep inhibitor that only counts (the real one must not be held by a test).
+class FakeInhibitor final : public platform::IPowerInhibitor {
+public:
+    bool acquire(const QString& reason) override
+    {
+        ++acquires;
+        lastReason = reason;
+        held_ = canHold;
+        return held_;
+    }
+    void release() override
+    {
+        if (held_) ++releases;
+        held_ = false;
+    }
+    bool held() const override { return held_; }
+    QString backendName() const override { return QStringLiteral("fake"); }
+
+    bool canHold = true;
+    int acquires = 0;
+    int releases = 0;
+    QString lastReason;
+
+private:
+    bool held_ = false;
+};
+
+// A capture engine that cannot start (no backend).
+class FailingEngine final : public FakeEngine {
+public:
+    bool start(const QVector<AudioDeviceInfo>&) override { return false; }
+};
+
 // One recording service with its fakes, in a temp folder.
 struct Rig {
     QTemporaryDir dir;
@@ -73,6 +109,7 @@ struct Rig {
     std::unique_ptr<library::TagService> tags;
     std::unique_ptr<watcher::CallMonitor> calls;
     std::shared_ptr<CallScript> call = std::make_shared<CallScript>();
+    std::shared_ptr<FakeInhibitor> inhibitor = std::make_shared<FakeInhibitor>();
     std::unique_ptr<recording::RecordingService> svc;
     recording::RecordingService::Config config;
     std::atomic<qint64> nowMs{1000000};
@@ -100,6 +137,7 @@ struct Rig {
         deps.audioDir = dir.filePath(QStringLiteral("rec"));
         deps.statePath = dir.filePath(QStringLiteral("state.json"));
         deps.config = [this] { return config; };
+        deps.powerInhibitor = inhibitor;
         svc = std::make_unique<recording::RecordingService>(deps);
         svc->setClock([this] { return nowMs.load(); });
         svc->setSilenceCheckIntervalMs(20);
@@ -149,6 +187,9 @@ private slots:
     void switchDeviceOffAndOn();
     void silenceQuestionWithInjectedClock();
     void callEndRelayedOnlyWhileRecording();
+    void keepAwakeHeldWhileRecording();
+    void keepAwakeReleasedOnFailedStart();
+    void keepAwakeOffNeverAcquires();
 };
 
 void RecordingServiceTest::startStopSavesMeeting()
@@ -376,6 +417,90 @@ void RecordingServiceTest::callEndRelayedOnlyWhileRecording()
     QVERIFY(!rig.calls->active());
     rig.svc->stop();
     QVERIFY(finished2.wait(10000));
+}
+
+void RecordingServiceTest::keepAwakeHeldWhileRecording()
+{
+    Rig rig;
+    rig.setDevices({kMic});
+    QSignalSpy changed(rig.svc.get(), &recording::RecordingService::keepAwakeStateChanged);
+    QSignalSpy finished(rig.svc.get(), &recording::RecordingService::finished);
+    QCOMPARE(rig.svc->powerInhibitorBackend(), QStringLiteral("fake"));
+    QCOMPARE(rig.svc->keepAwakeState(), QStringLiteral("unavailable"));   // idle: nothing held
+
+    // Already held when the Recording state is announced.
+    QString stateAtRecording;
+    connect(rig.svc.get(), &recording::RecordingService::stateChanged, this,
+            [&](RecordingState st) { if (st == RecordingState::Recording) stateAtRecording = rig.svc->keepAwakeState(); });
+    rig.svc->start(QStringLiteral("Ébren"), {kMic});
+    QCOMPARE(rig.svc->state(), RecordingState::Recording);
+    QCOMPARE(stateAtRecording, QStringLiteral("held"));
+    QCOMPARE(rig.inhibitor->acquires, 1);
+    QVERIFY(rig.inhibitor->held());
+    QVERIFY(!rig.inhibitor->lastReason.isEmpty());
+
+    rig.svc->start(QStringLiteral("Még egy"), {kMic});   // refused: no second acquire
+    QCOMPARE(rig.inhibitor->acquires, 1);
+
+    rig.feeder.start();
+    QTest::qWait(100);
+    rig.svc->stop();
+    QVERIFY(finished.wait(10000));
+    QVERIFY(!rig.inhibitor->held());
+    QCOMPARE(rig.inhibitor->releases, 1);
+    QVERIFY(changed.count() >= 2);
+
+    // A backend that cannot hold reports "unavailable" during the recording.
+    rig.inhibitor->canHold = false;
+    rig.svc->start(QStringLiteral("Nincs"), {kMic});
+    QCOMPARE(rig.svc->keepAwakeState(), QStringLiteral("unavailable"));
+    QSignalSpy finished2(rig.svc.get(), &recording::RecordingService::finished);
+    rig.svc->stop();
+    QVERIFY(finished2.wait(10000));
+
+    // Destroying the service mid-recording releases the hold.
+    rig.inhibitor->canHold = true;
+    rig.svc->start(QStringLiteral("Félbe"), {kMic});
+    QVERIFY(rig.inhibitor->held());
+    rig.feeder.stop();
+    rig.svc.reset();
+    QVERIFY(!rig.inhibitor->held());
+}
+
+void RecordingServiceTest::keepAwakeReleasedOnFailedStart()
+{
+    Rig rig;
+    rig.setDevices({kMic});
+    rig.svc->setEngineFactory([] { return std::make_unique<FailingEngine>(); });
+    QSignalSpy errors(rig.svc.get(), &recording::RecordingService::error);
+    rig.svc->start(QStringLiteral("Hibás"), {kMic});
+    QVERIFY(errors.count() >= 1 || errors.wait(5000));
+    QCOMPARE(rig.svc->state(), RecordingState::Idle);
+    QCOMPARE(rig.inhibitor->acquires, 1);
+    QCOMPARE(rig.inhibitor->releases, 1);
+    QVERIFY(!rig.inhibitor->held());
+
+    // A refused start (no device) never acquires.
+    rig.setDevices({});
+    rig.svc->start(QStringLiteral("Semmi"), {});
+    QCOMPARE(rig.inhibitor->acquires, 1);
+}
+
+void RecordingServiceTest::keepAwakeOffNeverAcquires()
+{
+    Rig rig;
+    rig.config.recording.keepAwake = false;
+    rig.setDevices({kMic});
+    QSignalSpy finished(rig.svc.get(), &recording::RecordingService::finished);
+    QCOMPARE(rig.svc->keepAwakeState(), QStringLiteral("off"));
+    rig.svc->start(QStringLiteral("Alvó"), {kMic});
+    QCOMPARE(rig.svc->state(), RecordingState::Recording);
+    QCOMPARE(rig.svc->keepAwakeState(), QStringLiteral("off"));
+    QCOMPARE(rig.inhibitor->acquires, 0);
+    rig.feeder.start();
+    rig.svc->stop();
+    QVERIFY(finished.wait(10000));
+    QCOMPARE(rig.inhibitor->acquires, 0);
 }
 
 QTEST_GUILESS_MAIN(RecordingServiceTest)

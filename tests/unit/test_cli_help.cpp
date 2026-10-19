@@ -50,7 +50,7 @@ private slots:
         for (const QJsonValue& v : QJsonDocument::fromJson(json.out.toUtf8()).array())
             names.insert(v.toObject()["name"].toString());
         const QStringList expected{
-            "devices", "record", "mixdown", "detect", "autostart", "running-apps", "list", "import", "export",
+            "devices", "record", "power-probe", "mixdown", "detect", "autostart", "running-apps", "list", "import", "export",
             "import-archive", "reindex", "rename", "tags", "adopt", "align", "paths", "library", "transcribe",
             "summarize", "identify", "voice-models", "voice-eval", "embed-probe", "providers", "review", "lines",
             "reslice", "participants", "track-sides", "voiceprints", "people", "cloud", "migrate", "settings"};

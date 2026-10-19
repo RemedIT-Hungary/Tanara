@@ -506,6 +506,23 @@ private slots:
         QCOMPARE(AppContext::instance()->themeMode(), QStringLiteral("dark"));
     }
 
+    // Settings > Recording: "keep the machine awake while recording" (default on) is saved.
+    void keepAwakeIsSaved()
+    {
+        startApp();
+        SettingsViewModel vm(services());
+        QVERIFY(vm.keepAwake());
+        QSignalSpy changed(&vm, &SettingsViewModel::recordingChanged);
+        vm.setKeepAwake(false);
+        QCOMPARE(changed.size(), 1);
+        QVERIFY(vm.dirty());
+        QVERIFY(vm.save());
+        QVERIFY(!live().recording.keepAwake);
+        vm.setKeepAwake(true);
+        QVERIFY(vm.save());
+        QVERIFY(live().recording.keepAwake);
+    }
+
     void validationBlocksSaveButNotNavigation()
     {
         startApp();

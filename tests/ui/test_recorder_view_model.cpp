@@ -313,6 +313,48 @@ private slots:
         QVERIFY2(warnings.isEmpty(), qPrintable(warnings.join(QLatin1Char('\n'))));
     }
 
+    // Keep-awake: the view model follows the facade's state; the recorder shows NOTHING while the
+    // protection holds, a warning while it is off / unavailable, and the "turn it on" jump only
+    // when the setting is what is off.
+    void keepAwakeWarningOnlyWhenNotInEffect()
+    {
+        tanara_demo::RecorderDemoFacade facade(QStringLiteral("R03"));
+        RecorderWindowHost host(&facade);
+        QVERIFY(host.show());
+        RecorderViewModel* vm = host.viewModel();
+        QVERIFY(vm);
+        QCOMPARE(vm->state(), QStringLiteral("recording"));
+        auto* warning = host.window()->findChild<QObject*>(QStringLiteral("recorderKeepAwakeWarning"));
+        auto* hint = host.window()->findChild<QObject*>(QStringLiteral("recorderKeepAwakeHint"));
+        QVERIFY(warning && hint);
+        QSignalSpy changed(vm, &RecorderViewModel::keepAwakeChanged);
+
+        QCOMPARE(vm->keepAwakeState(), QStringLiteral("held"));
+        QVERIFY(!warning->property("visible").toBool());
+
+        facade.setKeepAwakeState(QStringLiteral("off"));
+        QCOMPARE(vm->keepAwakeState(), QStringLiteral("off"));
+        QCOMPARE(changed.count(), 1);
+        QVERIFY(warning->property("visible").toBool());
+        QVERIFY(hint->property("visible").toBool());
+        QSignalSpy settings(vm, &RecorderViewModel::settingsRequested);
+        vm->openSettings();
+        QCOMPARE(settings.count(), 1);
+
+        facade.setKeepAwakeState(QStringLiteral("unavailable"));
+        QCOMPARE(vm->keepAwakeState(), QStringLiteral("unavailable"));
+        QCOMPARE(changed.count(), 2);
+        QVERIFY(warning->property("visible").toBool());
+        QVERIFY(!hint->property("visible").toBool());
+
+        // Not recording: no warning even when the protection is off.
+        facade.setKeepAwakeState(QStringLiteral("off"));
+        facade.setDesignState(QStringLiteral("R01"));
+        QCOMPARE(vm->state(), QStringLiteral("idle"));
+        QVERIFY(!warning->property("visible").toBool());
+        host.hide();
+    }
+
     // The host creates the window even without a controller; closing (no recording running) emits closed().
     void hostCreatesWindow()
     {

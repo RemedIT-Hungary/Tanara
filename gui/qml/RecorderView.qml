@@ -542,6 +542,44 @@ Item {
             }
         }
 
+        // Keep-awake: a warning ONLY when the protection is not in effect (nothing when it holds).
+        Column {
+            objectName: "recorderKeepAwakeWarning"
+            readonly property string ka: root.vm ? root.vm.keepAwakeState : ""
+            visible: root.recording && (ka === "off" || ka === "unavailable")
+            width: parent.width
+            spacing: 2
+            Row {
+                width: parent.width
+                spacing: 6
+                TIcon { name: "triangle-alert"; size: 13; color: Theme.warnInk; y: 1 }
+                TLabel {
+                    width: parent.width - 13 - 6
+                    text: qsTr("Ha a gép elalszik, a felvétel megszakad.")
+                    color: Theme.warnInk
+                    font.pixelSize: 12
+                    wrapMode: Text.Wrap
+                }
+            }
+            TLabel {
+                // Turning it on only helps when the setting is what is off.
+                objectName: "recorderKeepAwakeHint"
+                visible: parent.ka === "off"
+                x: 19
+                text: qsTr("Bekapcsolás: Beállítások › Rögzítés.")
+                color: Theme.warnInk
+                font.pixelSize: 12
+                font.underline: keepAwakeLink.containsMouse
+                MouseArea {
+                    id: keepAwakeLink
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: root.vm.openSettings()
+                }
+            }
+        }
+
         // Done
         Rectangle {
             visible: root.st === "done"

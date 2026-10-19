@@ -2,6 +2,9 @@
 #include "Commands.h"
 
 #include "tanara/app/AppController.h"
+#include "tanara/app/Services.h"
+#include "tanara/foundation/platform/PowerInhibitor.h"
+#include "tanara/recording/RecordingService.h"
 #include "tanara/library/store/MeetingRepository.h"
 #include "tanara/recording/audio/DeviceManager.h"
 
@@ -79,6 +82,19 @@ int cmdRecord(CliContext& ctx, const QStringList& args)
     });
 
     app.startRecording(title, sel);
+    {
+        const recording::RecordingService& rec = app.services()->recording();
+        const QString state = rec.keepAwakeState();
+        out() << (state == QLatin1String("held")
+                      ? QStringLiteral("Keep-awake: held (%1), the machine will not idle-sleep while recording.")
+                            .arg(rec.powerInhibitorBackend())
+                  : state == QLatin1String("off")
+                      ? QStringLiteral("Keep-awake: off (setting recording.keepAwake); the machine may sleep.")
+                      : QStringLiteral("Keep-awake: unavailable (backend %1); the machine may sleep.")
+                            .arg(rec.powerInhibitorBackend()))
+              << "\n";
+        out().flush();
+    }
 
     if (seconds > 0) {
         QTimer::singleShot(seconds * 1000, &app, [&] { out() << "\n"; app.stopRecording(); });
@@ -92,6 +108,26 @@ int cmdRecord(CliContext& ctx, const QStringList& args)
         });
     }
     return qapp.exec();
+}
+
+// Probes the sleep inhibitor: prints the backend, holds it for N seconds (default 1), releases it.
+int cmdPowerProbe(CliContext& ctx, const QStringList& args)
+{
+    int seconds = 1;
+    for (int i = 2; i < args.size(); ++i)
+        if (args[i] == "--seconds" && i + 1 < args.size()) seconds = qBound(0, args[++i].toInt(), 600);
+    auto inhibitor = platform::makePowerInhibitor();
+    out() << "Backend (first choice): " << inhibitor->backendName() << "\n";
+    const bool ok = inhibitor->acquire(QStringLiteral("tanara-cli power-probe"));
+    out() << "Acquire: " << (ok ? "held" : "FAILED") << " via " << inhibitor->backendName() << "\n";
+    out().flush();
+    if (!ok) return 1;
+    QTimer::singleShot(seconds * 1000, &ctx.qapp(), [&] { ctx.qapp().quit(); });
+    ctx.qapp().exec();
+    inhibitor->release();
+    out() << "Released: " << (inhibitor->held() ? "NO (still held)" : "yes") << "\n";
+    out().flush();
+    return inhibitor->held() ? 1 : 0;
 }
 
 int cmdMixdown(CliContext& ctx, const QStringList& args)
@@ -131,6 +167,8 @@ void registerRecordingCommands(CommandRegistry& r)
     r.add({"devices", "recording", "List the recordable audio devices", "devices", true, cmdDevices});
     r.add({"record", "recording", "Record from the devices until ENTER (or --seconds)",
            "record [--title T] [--seconds N] [--device IDX]...", true, cmdRecord});
+    r.add({"power-probe", "recording", "Show the sleep-inhibitor backend and hold it briefly (default 1 s)",
+           "power-probe [--seconds N]", false, cmdPowerProbe});
     r.add({"mixdown", "recording", "Regenerate the mixdown of a meeting from its active tracks",
            "mixdown <id>", true, cmdMixdown});
 }

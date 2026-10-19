@@ -54,6 +54,7 @@ public:
     bool addDevice(const tanara::AudioDeviceInfo& device) override;
     bool stopDevice(const QString& deviceName) override;
     void setRecordingTags(const QStringList& tagIds) override;
+    QString keepAwakeState() const override;
 
     void renameMeeting(const QString& meetingId, const QString& title) override;
     void setMeetingContextNote(const QString& meetingId, const QString& note) override;

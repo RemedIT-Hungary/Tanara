@@ -202,6 +202,15 @@ Column {
             checked: root.vm ? root.vm.autoRecordAll : false
             onToggled: (on) => root.vm.autoRecordAll = on
         }
+
+        SettingsSwitchRow {
+            objectName: "settingsKeepAwake"
+            width: parent.width
+            text: qsTr("Felvétel alatt tartsa ébren a gépet")
+            helper: qsTr("Felvétel közben a gép nem alszik el magától; a kijelző ettől még kikapcsolhat.")
+            checked: root.vm ? root.vm.keepAwake : true
+            onToggled: (on) => root.vm.keepAwake = on
+        }
     }
 
     Rectangle { width: parent.width; height: 1; color: Theme.border }

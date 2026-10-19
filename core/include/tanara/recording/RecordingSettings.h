@@ -20,6 +20,9 @@ struct RecordingSettings {
     // "manual" = only on manual start. The mixdown is needed ONLY for listening (the STT works from
     // the per-track .ogg files), so stop() never waits for it.
     QString mixdownMode{QStringLiteral("auto")};
+    // Keep the machine out of idle sleep while recording (platform::IPowerInhibitor; the display
+    // may still turn off). Off: the recording service never acquires the inhibitor.
+    bool keepAwake = true;
     // User-facing names of audio devices: raw OS device name -> friendly name. Resolution happens in
     // ONE place: tanara::library::devicenames (library/tracks/TrackCatalog.h); the SettingsManager
     // loads it on every load / save.

@@ -34,6 +34,7 @@ RecorderServicesFacade::RecorderServicesFacade(const Deps& deps, QObject* parent
     connect(rec, &recording::RecordingService::error, this, &IRecorderFacade::error);
     connect(rec, &recording::RecordingService::callEnded, this, &IRecorderFacade::callEnded);
     connect(rec, &recording::RecordingService::silenceDetected, this, &IRecorderFacade::silenceDetected);
+    connect(rec, &recording::RecordingService::keepAwakeStateChanged, this, &IRecorderFacade::keepAwakeStateChanged);
     // Before "Saved" we check that the track files are really there.
     connect(rec, &recording::RecordingService::finished, this, [this](const Meeting& m) {
         recording::RecordingOutcome out;
@@ -163,6 +164,7 @@ void RecorderServicesFacade::stop() { m_deps.recording->stop(); }
 bool RecorderServicesFacade::addDevice(const AudioDeviceInfo& device) { return m_deps.recording->addDevice(device); }
 bool RecorderServicesFacade::stopDevice(const QString& deviceName) { return m_deps.recording->stopDevice(deviceName); }
 void RecorderServicesFacade::setRecordingTags(const QStringList& tagIds) { m_deps.recording->setTags(tagIds); }
+QString RecorderServicesFacade::keepAwakeState() const { return m_deps.recording->keepAwakeState(); }
 
 // ---- the finished meeting ----
 

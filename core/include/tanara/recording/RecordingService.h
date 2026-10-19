@@ -9,7 +9,10 @@
 //    during a recording only on the devices NOT on a track;
 //  - the call-end watch (watcher::CallMonitor, subscribed while recording) and the silence watch:
 //    both only SIGNAL (callEnded / silenceDetected), stopping is the user's decision;
-//  - the last used device names (state.json) and the tags given during the recording.
+//  - the last used device names (state.json) and the tags given during the recording;
+//  - keeping the machine awake while recording (platform::IPowerInhibitor, setting
+//    recording.keepAwake): acquired right before the session starts, released when it finishes,
+//    fails or the service is destroyed.
 // What happens after the recording (speech check, mixdown, voice analysis) is the owner's job:
 // readyForProcessing(meeting) tells when. UI-independent (QtCore).
 #include "tanara/domain/Audio.h"
@@ -31,6 +34,7 @@ class MeetingRepository;
 class TagService;
 }
 namespace tanara::watcher { class CallMonitor; }
+namespace tanara::platform { class IPowerInhibitor; }
 
 namespace tanara::recording {
 
@@ -53,6 +57,9 @@ public:
         QString audioDir;                              // new meeting folders go here
         QString statePath;                             // state.json (last used devices); empty = not persisted
         std::function<Config()> config;
+        // Optional: keeps the machine out of idle sleep while recording. nullptr = no protection
+        // (keepAwakeState() reports "unavailable" when the setting is on).
+        std::shared_ptr<platform::IPowerInhibitor> powerInhibitor;
     };
 
     explicit RecordingService(Deps deps, QObject* parent = nullptr);
@@ -89,6 +96,13 @@ public:
     void retainLevelMonitoring(QObject* owner);
     void releaseLevelMonitoring(QObject* owner);
 
+    // Keep-awake while recording: "held" (the inhibitor holds), "off" (setting recording.keepAwake
+    // is false) or "unavailable" (no inhibitor, its backend is "none", or the acquire failed).
+    // Meaningful during a recording; outside one nothing is held, so it reads "off" or "unavailable".
+    QString keepAwakeState() const;
+    // The inhibitor's mechanism ("logind", "portal", "windows", "macos-iopm", "none").
+    QString powerInhibitorBackend() const;
+
     // Test seams.
     void setEngineFactory(std::function<std::unique_ptr<AudioEngine>()> factory);
     // The silence watch's monotonic clock (ms) and check interval. Defaults: wall clock, 10 s.
@@ -110,6 +124,8 @@ signals:
     void error(QString message);
     void callEnded(QString appName);
     void silenceDetected(int minutes);
+    // keepAwakeState() changed (acquired at start, released at the end).
+    void keepAwakeStateChanged();
 
 private:
     void restartLevelMonitor(bool force);
@@ -118,6 +134,8 @@ private:
     void handleDeviceSetChange();
     void startWatches();
     void stopWatches();
+    void acquireKeepAwake();
+    void releaseKeepAwake();
 
     struct Impl;
     std::unique_ptr<Impl> d;

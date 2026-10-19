@@ -29,6 +29,7 @@ The ports and their state:
 | `watcher::IAutostart` | `watcher/detect/Autostart.h` | XDG `.desktop` | HKCU Run | `entryPath()` empty | `SMAppService` (section 4) |
 | `watcher::IPlaybackRouting` | `watcher/PlaybackRouting.h` | pw-dump | not supported | not supported | Core Audio process objects (section 5) |
 | `watcher::RunningApps` | `watcher/RunningApps.h` | `/proc` | Toolhelp32 | not supported | `libproc` (section 6) |
+| `platform::IPowerInhibitor` | `foundation/platform/PowerInhibitor.h` | logind / desktop portal | `SetThreadExecutionState` | **written, untested**: `IOPMAssertionCreateWithName(PreventUserIdleSystemSleep)` under `__APPLE__` in `unsupported/UnsupportedPowerInhibitor.cpp` (IOKit linked in `core/CMakeLists.txt`) | move it to `macos/` and verify with `pmset -g assertions` while recording |
 | `foundation::platform` | `foundation/platform/Platform.h` | `linux` + `posix` | `windows` | `posix` + `unsupported` (works) | move `osId()` and `caseSensitiveFileSystem()` to `macos/` |
 | `media::MediaToolLocator` | `media/MediaToolLocator.h` | PATH | next to the exe | **done**: `Contents/Resources/bin`, `Contents/MacOS` | — |
 | `paths::AppPaths` | `foundation/paths/AppPaths.h` | XDG | `%APPDATA%` | **done**: `~/Library/Application Support/Tanara`, `~/Library/Logs/Tanara` | — |

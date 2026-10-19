@@ -55,6 +55,19 @@ endif()
 if(WIN32)
     target_link_libraries(tanara_core PRIVATE ole32 oleaut32 uuid winmm avrt ksuser secur32)
 endif()
+# The sleep inhibitor (foundation/platform/PowerInhibitor.h): Linux talks to logind / the desktop
+# portal over Qt DBus (optional: without it the Linux inhibitor is a no-op); macOS uses IOKit.
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    find_package(Qt6 OPTIONAL_COMPONENTS DBus)
+    if(TARGET Qt6::DBus)
+        target_compile_definitions(tanara_core PRIVATE TANARA_HAVE_QTDBUS)
+        target_link_libraries(tanara_core PRIVATE Qt6::DBus)
+    else()
+        message(STATUS "Tanara: Qt DBus not found - no sleep inhibitor while recording")
+    endif()
+elseif(APPLE)
+    target_link_libraries(tanara_core PRIVATE "-framework IOKit" "-framework CoreFoundation")
+endif()
 
 # miniz (vendored, MIT, third_party/miniz): ZIP writing/reading for the meeting archive
 # (store/MeetingArchive). Pure C, so the C language must be enabled; the zlib-compatible

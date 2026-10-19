@@ -228,6 +228,8 @@ void RecorderViewModel::attach()
     });
     connect(c, &IRecorderFacade::deviceLevel, this, &RecorderViewModel::onLevel);
     connect(c, &IRecorderFacade::stateChanged, this, &RecorderViewModel::onRecordingState);
+    connect(c, &IRecorderFacade::stateChanged, this, &RecorderViewModel::keepAwakeChanged);
+    connect(c, &IRecorderFacade::keepAwakeStateChanged, this, &RecorderViewModel::keepAwakeChanged);
     connect(c, &IRecorderFacade::elapsedChanged, this, [this](qint64 ms) {
         // Signaling once per second is enough (the display is HH:MM:SS).
         if (ms / 1000 == m_elapsedMs / 1000 && m_elapsedMs != 0) { m_elapsedMs = ms; return; }

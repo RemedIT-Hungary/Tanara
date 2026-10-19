@@ -12,6 +12,7 @@ QJsonObject RecordingSettings::toJson() const
         {QStringLiteral("autoRecordAllDevices"), autoRecordAllDevices},
         {QStringLiteral("audioQuality"), audioQuality},
         {QStringLiteral("mixdownMode"), mixdownMode},
+        {QStringLiteral("keepAwake"), keepAwake},
         {QStringLiteral("deviceNames"), names},
     };
 }
@@ -23,6 +24,7 @@ RecordingSettings RecordingSettings::fromJson(const QJsonObject& o)
     s.autoRecordAllDevices = o.value(QStringLiteral("autoRecordAllDevices")).toBool(s.autoRecordAllDevices);
     s.audioQuality = o.value(QStringLiteral("audioQuality")).toString(s.audioQuality);
     s.mixdownMode = o.value(QStringLiteral("mixdownMode")).toString(s.mixdownMode);
+    s.keepAwake = o.value(QStringLiteral("keepAwake")).toBool(s.keepAwake);
     // An empty name is not an override (dropped).
     const QJsonObject names = o.value(QStringLiteral("deviceNames")).toObject();
     for (auto it = names.constBegin(); it != names.constEnd(); ++it) {

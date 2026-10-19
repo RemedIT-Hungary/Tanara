@@ -2,6 +2,7 @@
 
 #include "tanara/domain/Meeting.h"
 #include "tanara/foundation/log/Logging.h"
+#include "tanara/foundation/platform/PowerInhibitor.h"
 #include "tanara/library/store/MeetingRepository.h"
 #include "tanara/library/tags/TagService.h"
 #include "tanara/recording/audio/DeviceManager.h"
@@ -78,6 +79,9 @@ struct RecordingService::Impl {
     std::function<qint64()> clock;
     int     silenceCheckMs = kDefaultSilenceCheckMs;
 
+    // Keep-awake: whether the setting was off at the last start (for keepAwakeState()).
+    bool keepAwakeOff = false;
+
     Config config() const { return deps.config ? deps.config() : Config{}; }
     qint64 now() const { return clock ? clock() : QDateTime::currentMSecsSinceEpoch(); }
     void stopSilenceWatch()
@@ -109,6 +113,9 @@ RecordingService::RecordingService(Deps deps, QObject* parent)
 
 RecordingService::~RecordingService()
 {
+    // Never leave the machine unable to sleep, whatever state the recording is in (no signal from
+    // a dying object).
+    if (d->deps.powerInhibitor) d->deps.powerInhibitor->release();
     // The session (a child) finalizes an unfinished recording when it is destroyed; the call monitor
     // is not ours, its watch ends here.
     if (d->deps.callMonitor) {
@@ -302,6 +309,46 @@ bool RecordingService::stopDevice(const QString& deviceName)
     return true;
 }
 
+// ---- keep-awake ----------------------------------------------------------------------------
+
+QString RecordingService::keepAwakeState() const
+{
+    if (d->deps.powerInhibitor && d->deps.powerInhibitor->held()) return QStringLiteral("held");
+    const bool off = d->state == RecordingState::Idle ? !d->config().recording.keepAwake : d->keepAwakeOff;
+    return off ? QStringLiteral("off") : QStringLiteral("unavailable");
+}
+
+QString RecordingService::powerInhibitorBackend() const
+{
+    return d->deps.powerInhibitor ? d->deps.powerInhibitor->backendName() : QStringLiteral("none");
+}
+
+void RecordingService::acquireKeepAwake()
+{
+    d->keepAwakeOff = !d->config().recording.keepAwake;
+    platform::IPowerInhibitor* inhibitor = d->deps.powerInhibitor.get();
+    if (d->keepAwakeOff) {
+        qCInfo(lcApp) << "Keep-awake while recording: off (setting)";
+    } else if (!inhibitor) {
+        qCInfo(lcApp) << "Keep-awake while recording: unavailable (no inhibitor)";
+    } else if (inhibitor->acquire(QStringLiteral("Recording a meeting"))) {
+        qCInfo(lcApp).noquote() << "Keep-awake while recording: held via" << inhibitor->backendName();
+    } else {
+        qCWarning(lcApp).noquote() << "Keep-awake while recording: unavailable (backend"
+                                   << inhibitor->backendName() << "did not hold)";
+    }
+    emit keepAwakeStateChanged();
+}
+
+void RecordingService::releaseKeepAwake()
+{
+    platform::IPowerInhibitor* inhibitor = d->deps.powerInhibitor.get();
+    if (!inhibitor || !inhibitor->held()) return;
+    inhibitor->release();
+    qCInfo(lcApp) << "Keep-awake while recording: released";
+    emit keepAwakeStateChanged();
+}
+
 // ---- call-end and silence watch -------------------------------------------------------------
 
 void RecordingService::startWatches()
@@ -374,6 +421,7 @@ void RecordingService::start(const QString& title, const QVector<AudioDeviceInfo
             if (d->monitor) d->monitor->stop();
         } else if (st == RecordingState::Idle) {
             stopWatches();
+            releaseKeepAwake();
         }
         emit stateChanged(st);
     });
@@ -429,6 +477,7 @@ void RecordingService::start(const QString& title, const QVector<AudioDeviceInfo
     connect(sess, &RecordingSession::elapsedChanged, this, &RecordingService::elapsedChanged);
     connect(sess, &RecordingSession::failed, this, [this](QString e) {
         stopWatches();
+        releaseKeepAwake();
         emit error(e);
         if (d->session) { d->session->deleteLater(); d->session = nullptr; }
         d->state = RecordingState::Idle;
@@ -438,6 +487,7 @@ void RecordingService::start(const QString& title, const QVector<AudioDeviceInfo
     });
     connect(sess, &RecordingSession::finished, this, [this](Meeting m) {
         stopWatches();
+        releaseKeepAwake();
         d->currentFolder = m.folder;
         // The tags given during recording (the meeting enters the store only now).
         for (const QString& id : std::as_const(d->tagIds))
@@ -453,6 +503,9 @@ void RecordingService::start(const QString& title, const QVector<AudioDeviceInfo
         emit readyForProcessing(m);
     });
 
+    // Held before the capture opens, so the recording is protected from its first second; a start
+    // that fails releases it again (the failed handler above).
+    acquireKeepAwake();
     sess->start(use);
 }
 

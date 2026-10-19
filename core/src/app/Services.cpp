@@ -3,6 +3,7 @@
 #include "tanara/app/EditorDefaults.h"
 #include "tanara/app/SettingsManager.h"
 #include "tanara/foundation/paths/AppPaths.h"
+#include "tanara/foundation/platform/PowerInhibitor.h"
 #include "tanara/library/import/ImportService.h"
 #include "tanara/library/store/ArchiveService.h"
 #include "tanara/library/tags/SimilarityTagSuggestionProvider.h"
@@ -42,6 +43,8 @@
 #include "tanara/processing/diarization/LocalDiarizer.h"
 // --- end D4 ---
 
+#include <QStandardPaths>
+
 namespace tanara::app {
 
 namespace {
@@ -53,6 +56,10 @@ recording::RecordingService::Deps recordingDeps(const ServicesDeps& deps, watche
     rd.tags = deps.tags;
     rd.media = deps.media;
     rd.callMonitor = calls;
+    // Keep the machine awake while recording. Not in Qt test mode: the tests drive fake recordings
+    // and must not hold the test machine's real sleep inhibitor (the service tests inject a fake).
+    if (!QStandardPaths::isTestModeEnabled())
+        rd.powerInhibitor = std::shared_ptr<platform::IPowerInhibitor>(platform::makePowerInhibitor());
     if (SettingsManager* st = deps.settings) {
         const paths::AppPaths& ap = st->paths();
         rd.audioDir = ap.primaryRecordingRoot();

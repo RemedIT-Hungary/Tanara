@@ -107,6 +107,9 @@ public:
     virtual bool addDevice(const AudioDeviceInfo& device) = 0;     // false: not possible
     virtual bool stopDevice(const QString& deviceName) = 0;        // false: the last open track stays
     virtual void setRecordingTags(const QStringList& tagIds) = 0;
+    // Keep-awake while recording (RecordingService::keepAwakeState): "held" | "off" | "unavailable";
+    // empty = not known (no line in the recorder).
+    virtual QString keepAwakeState() const { return {}; }
     // The user starts the next recording after a finished one (a fixture returns to its start state).
     virtual void beginNewSession() {}
 
@@ -145,6 +148,7 @@ signals:
     void recordingFinished(tanara::recording::RecordingOutcome outcome);
     void callEnded(QString appName);
     void silenceDetected(int minutes);
+    void keepAwakeStateChanged();
     void error(QString message);
     void tagsChanged();
     // The fixture loaded another session: the view model re-reads everything.
