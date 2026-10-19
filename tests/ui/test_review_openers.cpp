@@ -430,7 +430,7 @@ private slots:
         // Show me (L): the list under the strip; the card does not move; a click = playback.
         key(Qt::Key_L);
         QTRY_VERIFY(visual("reviewOfferList"));
-        QVERIFY(!visuals("reviewOfferLine").isEmpty());
+        QTRY_VERIFY(!visuals("reviewOfferLine").isEmpty());   // the delegates come a frame later on a slow machine
         QCOMPARE(cardY(), y);
         clearLog();
         click(visuals("reviewOfferLine").first());
