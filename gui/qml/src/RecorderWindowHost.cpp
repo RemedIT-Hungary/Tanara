@@ -112,6 +112,13 @@ bool RecorderWindowHost::ensureWindow()
             }
             if (wasAway) emit notificationRequested(title, text);
         });
+        connect(m_vm, &RecorderViewModel::stallRaised, this, [this](const QString& title, const QString& text) {
+            // A track stopped delivering audio: once per stall a system notification for a hidden /
+            // pill / background window (the open window shows the warning line itself).
+            const bool away = !m_window || !m_window->isVisible() || !m_window->isActive()
+                              || m_window->property("pill").toBool();
+            if (away) emit notificationRequested(title, text);
+        });
         connect(m_vm, &RecorderViewModel::openAnalyzerRequested, this, &RecorderWindowHost::openMeetingRequested);
         connect(m_vm, &RecorderViewModel::settingsRequested, this, &RecorderWindowHost::settingsRequested);
         connect(m_vm, &RecorderViewModel::stateChanged, this, [this] { emit stateChanged(m_vm->state()); });

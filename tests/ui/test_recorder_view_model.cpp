@@ -124,6 +124,56 @@ private slots:
         QVERIFY(!vm.canStart());
     }
 
+    // The live "no audio" warning from the facade's stall signals (fake signals on the fictional
+    // recorder, which is recording at 00:12:47).
+    void stallWarningFollowsTheTracks()
+    {
+        DemoRecorder demo(QStringLiteral("R03"));
+        RecorderViewModel& vm = demo.vm;
+        QCOMPARE(vm.state(), QStringLiteral("recording"));
+        QVERIFY(!vm.stalled());
+        QVERIFY(vm.stallWarning().isEmpty());
+        QSignalSpy raised(&vm, &RecorderViewModel::stallRaised);
+
+        const qint64 now = (12 * 60 + 47) * 1000;
+        const QString mic = role(vm, 0, "key").toString();
+        const QString kanto = role(vm, 3, "key").toString();
+        emit demo.facade.trackStalled(mic, now - 7000);
+        QVERIFY(vm.stalled());
+        QCOMPARE(vm.stallWarning(), QStringLiteral("A mikrofon (Trust USB mikrofon) 7 másodperce nem ad hangot"));
+        QVERIFY(role(vm, 0, "stalled").toBool());
+        QVERIFY(!role(vm, 3, "stalled").toBool());
+        QCOMPARE(raised.size(), 1);
+        QCOMPARE(raised.at(0).at(0).toString(), QStringLiteral("A mikrofon nem ad hangot"));
+
+        // The seconds run with the recording clock; the notification is not repeated.
+        emit demo.facade.elapsedChanged(now + 3000);
+        QCOMPARE(vm.stallWarning(), QStringLiteral("A mikrofon (Trust USB mikrofon) 10 másodperce nem ad hangot"));
+        emit demo.facade.trackStalled(mic, now - 7000);   // repeated signal: no second notice
+        QCOMPARE(raised.size(), 1);
+
+        // A loopback track has its own text; the line names the longest stalled track.
+        emit demo.facade.trackStalled(kanto, now + 1000);
+        QCOMPARE(raised.size(), 2);
+        QCOMPARE(raised.at(1).at(0).toString(), QStringLiteral("A hívás hangja nem jön"));
+        QVERIFY(vm.stallWarning().startsWith(QStringLiteral("A mikrofon")));
+        emit demo.facade.trackResumed(mic);
+        QVERIFY(!role(vm, 0, "stalled").toBool());
+        QCOMPARE(vm.stallWarning(), QStringLiteral("A hívás hangja (Kanto YU4 hangfal) 2 másodperce nem jön"));
+
+        emit demo.facade.trackResumed(kanto);
+        QVERIFY(!vm.stalled());
+        QVERIFY(vm.stallWarning().isEmpty());
+        QVERIFY(!role(vm, 3, "stalled").toBool());
+
+        // Leaving the recording clears a remaining warning.
+        emit demo.facade.trackStalled(mic, now);
+        QVERIFY(vm.stalled());
+        emit demo.facade.stateChanged(tanara::RecordingState::Encoding);
+        QVERIFY(!vm.stalled());
+        QVERIFY(vm.stallWarning().isEmpty());
+    }
+
     void togglingAndRenaming()
     {
         DemoRecorder demo(QStringLiteral("R01"));

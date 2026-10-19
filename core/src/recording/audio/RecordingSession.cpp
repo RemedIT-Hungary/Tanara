@@ -2,6 +2,7 @@
 
 #include "tanara/recording/audio/AudioEngine.h"
 #include "tanara/recording/audio/RingBuffer.h"
+#include "tanara/recording/audio/SystemAudioSource.h"
 #include "tanara/recording/audio/TrackTiming.h"
 
 #include <QByteArray>
@@ -10,6 +11,7 @@
 #include <QDebug>
 #include <QElapsedTimer>
 #include <QFileInfo>
+#include <QMap>
 #include <QRegularExpression>
 #include <QString>
 #include <QStringList>
@@ -73,9 +75,9 @@ class DrainWorker : public QObject {
     Q_OBJECT
 public:
     DrainWorker(media::MediaToolPtr media, AudioEngine* engine, QString folder, int opusKbps,
-                QElapsedTimer clock, std::optional<bool> fillGaps)
+                QElapsedTimer clock, std::optional<bool> fillGaps, qint64 stallWarnMs)
         : media_(std::move(media)), engine_(engine), folder_(std::move(folder)), opusKbps_(opusKbps),
-          clock_(clock), fillGaps_(fillGaps) {}
+          clock_(clock), fillGaps_(fillGaps), stallWarnMs_(stallWarnMs) {}
 
     ~DrainWorker() override = default;   // the encoder handles kill + reap still running encoders
 
@@ -102,10 +104,20 @@ public:
     bool addEncoder(const TrackMeta& meta) { return openEncoder(meta); }
 
     // Closing a track mid-run: write out the remainder, close the encoder (waiting for it).
-    void closeEncoder(int index) {
+    // detached: the device is gone, so the track is reported stalled once (it will not resume); a track
+    // the user switched off is not a stall, and a warning it had is withdrawn (resumed).
+    void closeEncoder(int index, bool detached) {
         if (index < 0 || index >= static_cast<int>(tracks_.size())) return;
-        drainTrack(tracks_[static_cast<size_t>(index)]);
-        finishTrack(tracks_[static_cast<size_t>(index)]);
+        EncTrack& t = tracks_[static_cast<size_t>(index)];
+        drainTrack(t);
+        finishTrack(t);
+        if (detached && !t.stalled) {
+            t.stalled = true;
+            emit stalled(index, t.lastDataMs);
+        } else if (!detached && t.stalled) {
+            t.stalled = false;
+            emit resumed(index);
+        }
     }
 
 public slots:
@@ -128,10 +140,13 @@ signals:
     void meter(int trackIndex, float rms, float peak);
     void elapsed(qint64 ms);
     void finalized(QStringList failedFiles);
+    void stalled(int trackIndex, qint64 sinceMs);   // no data since sinceMs (recording clock)
+    void resumed(int trackIndex);
 
 private slots:
     void tick() {
         for (EncTrack& t : tracks_) drainTrack(t);
+        checkStalls();
         if (meter_.elapsed() >= 33) {   // ~30 Hz
             meter_.restart();
             for (size_t i = 0; i < tracks_.size(); ++i) {
@@ -153,6 +168,8 @@ private:
         qint64 lastDataMs = 0;     // when data last came from the device (recording clock)
         qint64 framesWritten = 0;  // frames written to the file (real audio + filled silence)
         bool fillGaps = false;     // silent gaps must be filled with silence (loopback track, on every platform)
+        bool watchStall = false;   // a data-less stretch is reported (not for ISystemAudioSource::deliversNothingWhenIdle)
+        bool stalled = false;      // reported stalled, not yet resumed
         bool closed = false;
         bool ok = false;           // the encoder closed the file without error
         std::vector<int16_t> scratch;
@@ -174,6 +191,7 @@ private:
         e.openedAtMs = t.startOffsetMs;
         e.lastDataMs = t.startOffsetMs;
         e.fillGaps = fillGaps_.value_or(tracktiming::fillsCaptureGaps(t.kind));
+        e.watchStall = !systemAudioSource().deliversNothingWhenIdle(t.kind);
         tracks_.push_back(std::move(e));
         return true;
     }
@@ -213,8 +231,28 @@ private:
                      static_cast<qint64>(got * sizeof(int16_t)));
             avail = ring.available();
         }
-        if (gotData) t.lastDataMs = clock_.elapsed();
-        else fillGap(t);
+        if (gotData) {
+            t.lastDataMs = clock_.elapsed();
+            if (t.stalled) {
+                t.stalled = false;
+                emit resumed(static_cast<int>(&t - tracks_.data()));
+            }
+        } else {
+            fillGap(t);
+        }
+    }
+
+    // An open, watched track with no data for stallWarnMs_ is reported once (see tracktiming::isStalled).
+    // Filled silence does not count as data: lastDataMs moves only on real samples.
+    void checkStalls() {
+        const qint64 now = clock_.elapsed();
+        for (size_t i = 0; i < tracks_.size(); ++i) {
+            EncTrack& t = tracks_[i];
+            if (t.closed || t.stalled || !t.watchStall) continue;
+            if (!tracktiming::isStalled(now - t.lastDataMs, stallWarnMs_)) continue;
+            t.stalled = true;
+            emit stalled(static_cast<int>(i), t.lastDataMs);
+        }
     }
 
     // Closes the track's encoder and waits; t.ok = the file was made without error.
@@ -233,6 +271,7 @@ private:
     int opusKbps_ = 64;          // per-track Opus bitrate (from the audio quality setting)
     QElapsedTimer clock_;        // the recording's zero point (a copy of the session's clock)
     std::optional<bool> fillGaps_;   // test override; empty = per platform
+    qint64 stallWarnMs_ = tracktiming::kStallWarnMs;
     std::vector<EncTrack> tracks_;
     QTimer* timer_ = nullptr;
     QElapsedTimer meter_;
@@ -255,6 +294,8 @@ struct RecordingSession::Impl {
     qint64 durationMs = 0;
     RecordingSession::EngineFactory engineFactory;   // empty = the real AudioEngine
     std::optional<bool> fillGaps;                    // empty = per platform
+    qint64 stallWarnMs = tracktiming::kStallWarnMs;
+    QMap<QString, qint64> stalled;                   // device name -> last data (recording clock)
 
     RecordingState state = RecordingState::Idle;
 
@@ -294,6 +335,16 @@ struct RecordingSession::Impl {
         t.fileName = QStringLiteral("track_") + slug + QStringLiteral(".ogg");
         return t;
     }
+
+    // Whether index is the newest track of its device (a re-added device has a newer track with the
+    // same name; late signals of the older, closed one must not touch the device's state).
+    bool isCurrentTrack(int index) const {
+        if (index < 0 || index >= static_cast<int>(tracks.size())) return false;
+        const QString& name = tracks[static_cast<size_t>(index)].deviceName;
+        for (size_t j = static_cast<size_t>(index) + 1; j < tracks.size(); ++j)
+            if (tracks[j].deviceName == name) return false;
+        return true;
+    }
 };
 
 RecordingSession::RecordingSession(media::MediaToolPtr media, QString audioDir, QString title,
@@ -319,6 +370,8 @@ RecordingState RecordingSession::state() const { return impl_->state; }
 
 void RecordingSession::setEngineFactory(EngineFactory factory) { impl_->engineFactory = std::move(factory); }
 void RecordingSession::setFillCaptureGaps(bool on) { impl_->fillGaps = on; }
+void RecordingSession::setStallWarnMs(qint64 ms) { impl_->stallWarnMs = ms; }
+QMap<QString, qint64> RecordingSession::stalledTracks() const { return impl_->stalled; }
 QString RecordingSession::folder() const { return impl_->folder; }
 
 QVector<AudioDeviceInfo> RecordingSession::trackDevices() const {
@@ -373,7 +426,7 @@ void RecordingSession::start(const QVector<AudioDeviceInfo>& devices) {
     impl_->trackPeak = QVector<float>(static_cast<int>(impl_->tracks.size()), 0.0f);
     impl_->workerThread = new QThread(this);
     impl_->worker = new DrainWorker(impl_->media, impl_->engine.get(), impl_->folder, impl_->opusKbps,
-                                    impl_->wall, impl_->fillGaps);
+                                    impl_->wall, impl_->fillGaps, impl_->stallWarnMs);
     impl_->worker->moveToThread(impl_->workerThread);
     connect(impl_->worker, &DrainWorker::meter, this,
             [this](int idx, float rms, float peak) {
@@ -384,6 +437,18 @@ void RecordingSession::start(const QVector<AudioDeviceInfo>& devices) {
             }, Qt::QueuedConnection);
     connect(impl_->worker, &DrainWorker::elapsed, this,
             [this](qint64 ms) { emit elapsedChanged(ms); }, Qt::QueuedConnection);
+    connect(impl_->worker, &DrainWorker::stalled, this, [this](int idx, qint64 sinceMs) {
+        if (!impl_->isCurrentTrack(idx)) return;
+        const QString id = impl_->tracks[static_cast<size_t>(idx)].deviceName;
+        if (impl_->stalled.contains(id)) return;
+        impl_->stalled.insert(id, sinceMs);
+        emit trackStalled(id, sinceMs);
+    }, Qt::QueuedConnection);
+    connect(impl_->worker, &DrainWorker::resumed, this, [this](int idx) {
+        if (!impl_->isCurrentTrack(idx)) return;
+        const QString id = impl_->tracks[static_cast<size_t>(idx)].deviceName;
+        if (impl_->stalled.remove(id) > 0) emit trackResumed(id);
+    }, Qt::QueuedConnection);
     connect(impl_->worker, &DrainWorker::finalized, this,
             [this](const QStringList& failedFiles) { onFinalized(failedFiles); },
             Qt::QueuedConnection);
@@ -432,10 +497,12 @@ bool RecordingSession::addDevice(const AudioDeviceInfo& device) {
     impl_->tracks.push_back(meta);
     impl_->trackPeak.push_back(0.0f);
     emit trackAdded(static_cast<int>(impl_->tracks.size()) - 1, meta.deviceName);
+    // A re-added (re-plugged) device: its new track delivers again, the old one's stall is over.
+    if (impl_->stalled.remove(meta.deviceName) > 0) emit trackResumed(meta.deviceName);
     return true;
 }
 
-void RecordingSession::closeTrack(const QString& deviceName) {
+void RecordingSession::closeTrack(const QString& deviceName, bool detached) {
     if (impl_->state != RecordingState::Recording || !impl_->engine || !impl_->worker)
         return;
     for (size_t i = 0; i < impl_->tracks.size(); ++i) {
@@ -447,7 +514,8 @@ void RecordingSession::closeTrack(const QString& deviceName) {
         impl_->engine->closeDevice(t.engineIndex);
         DrainWorker* w = impl_->worker;
         const int idx = static_cast<int>(i);
-        QMetaObject::invokeMethod(w, [w, idx] { w->closeEncoder(idx); }, Qt::QueuedConnection);
+        QMetaObject::invokeMethod(w, [w, idx, detached] { w->closeEncoder(idx, detached); },
+                                  Qt::QueuedConnection);
         emit trackClosed(idx, deviceName);
     }
 }
@@ -532,6 +600,7 @@ void RecordingSession::onFinalized(const QStringList& failedFiles) {
     }), m.tracks.end());
 
     impl_->tracks.clear();
+    impl_->stalled.clear();
     impl_->engine.reset();
     impl_->state = RecordingState::Idle;
     emit stateChanged(impl_->state);

@@ -21,6 +21,7 @@
 #include "tanara/recording/RecordingSettings.h"
 #include "tanara/watcher/WatcherSettings.h"
 
+#include <QMap>
 #include <QObject>
 #include <QString>
 #include <QStringList>
@@ -80,6 +81,8 @@ public:
     bool stopDevice(const QString& deviceName);
     QStringList liveDeviceNames() const;           // the open tracks' devices (track order)
     QStringList disconnectedDeviceNames() const;   // detached mid-run (not switched off by the user)
+    // Tracks delivering no data (RecordingSession::stalledTracks): device name -> last data (recording ms).
+    QMap<QString, qint64> stalledTracks() const;
 
     // The last used devices (persistent).
     QStringList lastUsedDeviceNames() const;
@@ -117,6 +120,9 @@ signals:
     void trackAdded(QString deviceName);
     void trackClosed(QString deviceName);
     void deviceReturned(QString deviceName);
+    // A recorded track delivers no data (RecordingSession::trackStalled) / delivers again.
+    void trackStalled(QString deviceName, qint64 sinceMs);
+    void trackResumed(QString deviceName);
     // The recording ended and the meeting is saved (before stateChanged(Idle)).
     void finished(tanara::Meeting meeting);
     // After finished() and stateChanged(Idle): post-processing may start.

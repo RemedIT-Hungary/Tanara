@@ -41,6 +41,10 @@ public:
     // Whether a device of this kind is opened from the PLAYBACK list in loopback mode (Windows
     // Loopback) instead of as a capture device (microphones, Linux monitors).
     virtual bool opensFromPlayback(TrackKind kind) const = 0;
+    // Whether a device of this kind legitimately delivers NO samples while nothing sounds (Windows
+    // WASAPI loopback), instead of delivering silence. Such a track is not watched for stalls
+    // (tracktiming::kStallWarnMs): "no data" is normal there.
+    virtual bool deliversNothingWhenIdle(TrackKind /*kind*/) const { return false; }
 };
 
 // This platform's implementation (core/src/recording/platform/<os>/).

@@ -44,6 +44,8 @@ public:
         return result;
     }
     bool opensFromPlayback(TrackKind kind) const override { return kind == TrackKind::Loopback; }
+    // WASAPI loopback delivers no packet while nothing plays (see tracktiming::fillsCaptureGaps).
+    bool deliversNothingWhenIdle(TrackKind kind) const override { return kind == TrackKind::Loopback; }
 };
 
 } // namespace

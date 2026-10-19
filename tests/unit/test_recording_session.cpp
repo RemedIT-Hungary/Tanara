@@ -18,6 +18,7 @@
 #include "tanara/media/FfmpegMediaTool.h"
 #include "tanara/recording/audio/AudioEngine.h"
 #include "tanara/recording/audio/RecordingSession.h"
+#include "tanara/recording/audio/SystemAudioSource.h"
 #include "tanara/recording/audio/TrackTiming.h"
 
 #include "fake_audio_engine.h"
@@ -61,6 +62,9 @@ private slots:
     void lateAndToggledTracksGetOffsets();
     void silentLoopbackGapsAreFilled();
     void unpluggedDeviceClosesOnlyItsTrack();
+    void stallRule();
+    void stalledTrackWarnsAndResumes();
+    void detachedTrackStallsOnce();
 };
 
 void RecordingSessionTest::fileRangeMapping()
@@ -262,6 +266,115 @@ void RecordingSessionTest::unpluggedDeviceClosesOnlyItsTrack()
     QVERIFY2(qAbs(dMon - m.durationMs) < 250, qPrintable(QStringLiteral("%1 vs %2").arg(dMon).arg(m.durationMs)));
     // The unplugged device's track carries the audio up to the unplug, as a closed, readable file.
     QVERIFY2(dHs > 600 && dHs < 1100, qPrintable(QString::number(dHs)));
+}
+
+// "No data" vs "silence with data": the 5 s threshold and the per-kind watch.
+void RecordingSessionTest::stallRule()
+{
+    using namespace recording::tracktiming;
+    QCOMPARE(kStallWarnMs, qint64(5000));
+    QVERIFY(!isStalled(kStallWarnMs - 1));
+    QVERIFY(isStalled(kStallWarnMs));
+    QVERIFY(isStalled(250, 200));
+    // Microphones and line-ins always deliver samples (silence included), so they are watched everywhere.
+    QVERIFY(!recording::systemAudioSource().deliversNothingWhenIdle(TrackKind::Mic));
+    QVERIFY(!recording::systemAudioSource().deliversNothingWhenIdle(TrackKind::Other));
+}
+
+// A microphone stops delivering data (the stream died, e.g. after sleep): trackStalled after the
+// threshold, with the time of its last data; data again -> trackResumed. The threshold is lowered
+// for the test (the same rule, 5 s in production).
+void RecordingSessionTest::stalledTrackWarnsAndResumes()
+{
+    if (!haveFfmpeg()) QSKIP("ffmpeg/ffprobe nincs a PATH-on");
+    QTemporaryDir dir;
+    FakeEngine* engine = nullptr;
+    std::shared_ptr<std::atomic<bool>> alive;
+    recording::RecordingSession rec(media::FfmpegMediaTool::fromSettings({}), dir.path(), QStringLiteral("Akadás"));
+    rec.setStallWarnMs(400);
+    rec.setEngineFactory([&engine, &alive] { auto e = std::make_unique<FakeEngine>(); engine = e.get();
+        alive = engine->alive; return e; });
+    QSignalSpy stalled(&rec, &recording::RecordingSession::trackStalled);
+    QSignalSpy resumed(&rec, &recording::RecordingSession::trackResumed);
+    QSignalSpy finished(&rec, &recording::RecordingSession::finished);
+    QTimer feeder;
+    feeder.setInterval(5);
+    QObject::connect(&feeder, &QTimer::timeout, [&engine, &alive] { if (engine && alive && *alive) engine->feed(); });
+
+    const QString mic = QStringLiteral("Mic A");
+    QElapsedTimer clock;
+    clock.start();
+    rec.start({dev(mic, TrackKind::Mic), dev(QStringLiteral("Monitor of Speakers"), TrackKind::Loopback)});
+    QCOMPARE(rec.state(), RecordingState::Recording);
+    feeder.start();
+    QTest::qWait(500);
+    QCOMPARE(stalled.size(), 0);                 // both deliver: no warning
+
+    const qint64 stopAt = clock.elapsed();
+    engine->vanish(mic);                         // no more samples from the microphone
+    QTest::qWait(250);
+    QCOMPARE(stalled.size(), 0);                 // below the threshold
+    QVERIFY(stalled.wait(2000));
+    const qint64 warnedAt = clock.elapsed();
+    QCOMPARE(stalled.size(), 1);
+    QCOMPARE(stalled.at(0).at(0).toString(), mic);
+    const qint64 since = stalled.at(0).at(1).toLongLong();
+    QVERIFY2(qAbs(since - stopAt) < 150, qPrintable(QStringLiteral("%1 vs %2").arg(since).arg(stopAt)));
+    QVERIFY2(warnedAt - stopAt >= 400 - 50, qPrintable(QString::number(warnedAt - stopAt)));
+    QCOMPARE(rec.stalledTracks().value(mic, -1), since);
+    QTest::qWait(300);
+    QCOMPARE(stalled.size(), 1);                 // once per stall, not every tick
+
+    engine->revive(mic);
+    QVERIFY(resumed.wait(2000));
+    QCOMPARE(resumed.at(0).at(0).toString(), mic);
+    QVERIFY(rec.stalledTracks().isEmpty());
+    QCOMPARE(stalled.size(), 1);
+
+    rec.stop();
+    QVERIFY(finished.wait(20000));
+    feeder.stop();
+}
+
+// A detached device's closed track is reported stalled exactly once (it will not resume); a track the
+// user switched off is not a stall.
+void RecordingSessionTest::detachedTrackStallsOnce()
+{
+    if (!haveFfmpeg()) QSKIP("ffmpeg/ffprobe nincs a PATH-on");
+    QTemporaryDir dir;
+    FakeEngine* engine = nullptr;
+    std::shared_ptr<std::atomic<bool>> alive;
+    recording::RecordingSession rec(media::FfmpegMediaTool::fromSettings({}), dir.path(), QStringLiteral("Leválasztás"));
+    rec.setStallWarnMs(60000);                   // the tick alone never warns here
+    rec.setEngineFactory([&engine, &alive] { auto e = std::make_unique<FakeEngine>(); engine = e.get();
+        alive = engine->alive; return e; });
+    QSignalSpy stalled(&rec, &recording::RecordingSession::trackStalled);
+    QSignalSpy resumed(&rec, &recording::RecordingSession::trackResumed);
+    QSignalSpy finished(&rec, &recording::RecordingSession::finished);
+    QTimer feeder;
+    feeder.setInterval(5);
+    QObject::connect(&feeder, &QTimer::timeout, [&engine, &alive] { if (engine && alive && *alive) engine->feed(); });
+
+    const QString headset = QStringLiteral("Sennheiser headset");
+    const QString usb = QStringLiteral("USB mic");
+    rec.start({dev(QStringLiteral("Mic A"), TrackKind::Mic), dev(headset, TrackKind::Mic), dev(usb, TrackKind::Mic)});
+    feeder.start();
+    QTest::qWait(300);
+    engine->vanish(headset);
+    rec.closeTrack(headset);                     // detached (the default)
+    QVERIFY(stalled.wait(2000));
+    QCOMPARE(stalled.at(0).at(0).toString(), headset);
+    rec.closeTrack(usb, /*detached*/ false);     // switched off by the user
+    QTest::qWait(400);
+    QCOMPARE(stalled.size(), 1);
+    QCOMPARE(resumed.size(), 0);
+    QCOMPARE(rec.stalledTracks().keys(), QStringList{headset});
+
+    rec.stop();
+    QVERIFY(finished.wait(20000));
+    feeder.stop();
+    QCOMPARE(stalled.size(), 1);
+    QVERIFY(rec.stalledTracks().isEmpty());
 }
 
 QTEST_GUILESS_MAIN(RecordingSessionTest)

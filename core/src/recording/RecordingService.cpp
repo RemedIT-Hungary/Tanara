@@ -293,6 +293,11 @@ QStringList RecordingService::liveDeviceNames() const
 
 QStringList RecordingService::disconnectedDeviceNames() const { return d->recClosed; }
 
+QMap<QString, qint64> RecordingService::stalledTracks() const
+{
+    return d->session ? d->session->stalledTracks() : QMap<QString, qint64>();
+}
+
 bool RecordingService::addDevice(const AudioDeviceInfo& device)
 {
     if (d->state != RecordingState::Recording || !d->session) return false;
@@ -305,7 +310,7 @@ bool RecordingService::stopDevice(const QString& deviceName)
     const QStringList open = liveDeviceNames();
     if (!open.contains(deviceName) || open.size() < 2) return false;   // the last open track stays
     if (!d->recOff.contains(deviceName)) d->recOff << deviceName;
-    d->session->closeTrack(deviceName);   // → trackClosed
+    d->session->closeTrack(deviceName, /*detached*/ false);   // → trackClosed
     return true;
 }
 
@@ -475,6 +480,8 @@ void RecordingService::start(const QString& title, const QVector<AudioDeviceInfo
         }
     }
     connect(sess, &RecordingSession::elapsedChanged, this, &RecordingService::elapsedChanged);
+    connect(sess, &RecordingSession::trackStalled, this, &RecordingService::trackStalled);
+    connect(sess, &RecordingSession::trackResumed, this, &RecordingService::trackResumed);
     connect(sess, &RecordingSession::failed, this, [this](QString e) {
         stopWatches();
         releaseKeepAwake();

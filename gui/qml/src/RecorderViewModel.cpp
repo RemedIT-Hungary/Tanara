@@ -40,7 +40,7 @@ QHash<int, QByteArray> RecorderDeviceModel::roleNames() const
         {GroupFirstRole, "groupFirst"}, {IconRole, "iconName"}, {SelectedRole, "selected"},
         {LockedRole, "locked"}, {DefaultRole, "isDefault"}, {AppRole, "appName"},
         {LevelRole, "level"}, {PeakRole, "peak"}, {StatusRole, "status"},
-        {StatusTextRole, "statusText"}, {ToggleableRole, "toggleable"},
+        {StatusTextRole, "statusText"}, {ToggleableRole, "toggleable"}, {StalledRole, "stalled"},
     };
 }
 
@@ -64,6 +64,7 @@ QVariant RecorderDeviceModel::data(const QModelIndex& index, int role) const
     case PeakRole:       return r.peakSeg;
     case StatusRole:     return r.status;
     case StatusTextRole: return r.statusText;
+    case StalledRole:    return m_vm->m_stalled.contains(r.info.name);
     case ToggleableRole: {
         // During recording the recorded track can be switched off too (its file is closed; switching
         // it on again starts a new segment). A disconnected device's row is locked until it returns.
@@ -231,6 +232,7 @@ void RecorderViewModel::attach()
     connect(c, &IRecorderFacade::stateChanged, this, &RecorderViewModel::keepAwakeChanged);
     connect(c, &IRecorderFacade::keepAwakeStateChanged, this, &RecorderViewModel::keepAwakeChanged);
     connect(c, &IRecorderFacade::elapsedChanged, this, [this](qint64 ms) {
+        if (!m_stalled.isEmpty()) updateStallWarning(ms);   // the warning's seconds run with the recording clock
         // Signaling once per second is enough (the display is HH:MM:SS).
         if (ms / 1000 == m_elapsedMs / 1000 && m_elapsedMs != 0) { m_elapsedMs = ms; return; }
         m_elapsedMs = ms;
@@ -293,6 +295,8 @@ void RecorderViewModel::attach()
         m_errorText = e;
         emit errorChanged();
     });
+    connect(c, &IRecorderFacade::trackStalled, this, &RecorderViewModel::onTrackStalled);
+    connect(c, &IRecorderFacade::trackResumed, this, &RecorderViewModel::onTrackResumed);
     connect(c, &IRecorderFacade::routesChanged, this, &RecorderViewModel::updateRoutes);
     connect(c, &IRecorderFacade::sessionChanged, this, &RecorderViewModel::reloadFromFacade);
 
@@ -303,6 +307,11 @@ void RecorderViewModel::attach()
     if (m_rows.isEmpty()) rebuildDevices();
     onRecordingState(c->state());
     applySession(c->session());
+    // A recorder window created while a track was already stalled.
+    if (c->state() == RecordingState::Recording) {
+        const QMap<QString, qint64> stalledNow = c->stalledTracks();
+        for (auto it = stalledNow.cbegin(); it != stalledNow.cend(); ++it) onTrackStalled(it.key(), it.value());
+    }
     m_tick.start();
 }
 
@@ -802,11 +811,13 @@ void RecorderViewModel::onRecordingState(RecordingState st)
         emit recordingStarted(m_facade->currentFolder());
     } else if (st == RecordingState::Stopping || st == RecordingState::Encoding) {
         if (m_askVisible) { m_askVisible = false; emit askChanged(); }
+        clearStalls();
         setState(QStringLiteral("stopping"));
     } else if (m_state == QLatin1String("recording") || m_state == QLatin1String("stopping")) {
         // Idle without the "done" signal: the recording was not created / was interrupted (the error
         // came via errorOccurred). Only recordingFinished leads to the done state.
         for (Row& r : m_rows) { r.recorded = false; r.rms = r.peak = 0.f; }
+        clearStalls();
         setState(m_rows.isEmpty() ? QStringLiteral("noDevice") : QStringLiteral("idle"));
         rebuildDevices();
     }
@@ -843,6 +854,63 @@ void RecorderViewModel::onFinished(const tanara::recording::RecordingOutcome& ou
     setState(QStringLiteral("done"));
     if (hadDisconnected) { m_selectionLoaded = true; rebuildDevices(); }
     emit recordingFinished(outcome.meetingId);
+}
+
+// ---- stalled tracks (no data) -----------------------------------------------------------------
+
+void RecorderViewModel::onTrackStalled(const QString& device, qint64 sinceMs)
+{
+    if (m_stalled.contains(device)) return;
+    m_stalled.insert(device, sinceMs);
+    const int row = rowOf(device);
+    if (row >= 0)
+        emit m_model.dataChanged(m_model.index(row), m_model.index(row), {RecorderDeviceModel::StalledRole});
+    updateStallWarning(m_elapsedMs);
+    const bool loopback = row >= 0 && m_rows.at(row).info.kind == TrackKind::Loopback;
+    emit stallRaised(loopback ? tr("A hívás hangja nem jön") : tr("A mikrofon nem ad hangot"), m_stallWarning);
+}
+
+void RecorderViewModel::onTrackResumed(const QString& device)
+{
+    if (m_stalled.remove(device) == 0) return;
+    const int row = rowOf(device);
+    if (row >= 0)
+        emit m_model.dataChanged(m_model.index(row), m_model.index(row), {RecorderDeviceModel::StalledRole});
+    updateStallWarning(m_elapsedMs);
+}
+
+// One line for the longest stalled track (the others have their warn dot in the device list).
+void RecorderViewModel::updateStallWarning(qint64 elapsedMs)
+{
+    QString text;
+    if (!m_stalled.isEmpty()) {
+        auto oldest = m_stalled.cbegin();
+        for (auto it = m_stalled.cbegin(); it != m_stalled.cend(); ++it)
+            if (it.value() < oldest.value()) oldest = it;
+        const int row = rowOf(oldest.key());
+        const QString shown = (row >= 0 && !m_rows.at(row).friendly.isEmpty()) ? m_rows.at(row).friendly
+                                                                                : oldest.key();
+        const qint64 secs = qMax<qint64>(0, elapsedMs - oldest.value()) / 1000;
+        const bool loopback = row >= 0 && m_rows.at(row).info.kind == TrackKind::Loopback;
+        text = loopback ? tr("A hívás hangja (%1) %2 másodperce nem jön").arg(shown).arg(secs)
+                        : tr("A mikrofon (%1) %2 másodperce nem ad hangot").arg(shown).arg(secs);
+    }
+    if (text == m_stallWarning) return;
+    m_stallWarning = text;
+    emit stallChanged();
+}
+
+void RecorderViewModel::clearStalls()
+{
+    if (m_stalled.isEmpty()) return;
+    const QStringList names = m_stalled.keys();
+    m_stalled.clear();
+    for (const QString& n : names) {
+        const int row = rowOf(n);
+        if (row >= 0)
+            emit m_model.dataChanged(m_model.index(row), m_model.index(row), {RecorderDeviceModel::StalledRole});
+    }
+    updateStallWarning(m_elapsedMs);
 }
 
 } // namespace tanara_qml

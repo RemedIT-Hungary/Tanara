@@ -712,12 +712,23 @@ Item {
                     required property int peak
                     required property string status
                     required property string statusText
+                    required property bool stalled
                     visible: selected
                     width: parent.width
                     height: visible ? 26 : 0
                     TIcon {
+                        id: lineIcon
                         anchors.verticalCenter: parent.verticalCenter
                         name: line.iconName; size: 14; color: Theme.textMuted
+                    }
+                    Rectangle {                // warn dot: the track delivers no audio
+                        visible: line.stalled
+                        x: lineIcon.x + lineIcon.width - 4
+                        y: lineIcon.y - 2
+                        width: 7; height: 7; radius: 3.5
+                        color: Theme.warnInk
+                        border.width: 1
+                        border.color: Theme.surface
                     }
                     TLabel {
                         x: 22
@@ -752,6 +763,32 @@ Item {
                         anchors.verticalCenter: parent.verticalCenter
                         level: line.level; peak: line.peak
                     }
+                }
+            }
+        }
+
+        // A recorded track delivers no audio at all (e.g. the microphone was lost after sleep)
+        Rectangle {
+            visible: root.recording && root.vm !== null && root.vm.stalled
+            width: parent.width
+            height: stallRow.implicitHeight + 12
+            radius: 6
+            color: Theme.warnSoft
+            border.width: 1
+            border.color: Theme.warnLine
+            Row {
+                id: stallRow
+                x: 10; y: 6
+                width: parent.width - 20
+                spacing: 8
+                TIcon { name: "triangle-alert"; size: 15; color: Theme.warnInk; y: 1 }
+                TLabel {
+                    width: parent.width - 15 - 8
+                    text: root.vm ? root.vm.stallWarning : ""
+                    color: Theme.warnInk
+                    font.pixelSize: 12
+                    font.weight: Theme.weightSemiBold
+                    wrapMode: Text.Wrap
                 }
             }
         }
@@ -874,6 +911,7 @@ Item {
                             required property string status
                             required property string statusText
                             required property bool toggleable
+                            required property bool stalled
                             width: devCol.width
 
                             RecorderGroupHeader {      // group header (shared with Settings)
@@ -906,7 +944,7 @@ Item {
                                 }
                                 Column {
                                     x: 4 + 30 + 10
-                                    width: parent.width - x - 10 - meterCol.width - 6
+                                    width: parent.width - x - 10 - meterCol.width - 6 - (dev.stalled ? 12 : 0)
                                     anchors.verticalCenter: parent.verticalCenter
                                     spacing: 2
                                     TLabel {
@@ -947,6 +985,14 @@ Item {
                                             TToolTip { visible: rawHover.hovered && rawLabel.truncated; text: dev.rawName }
                                         }
                                     }
+                                }
+                                Rectangle {            // warn dot: the track delivers no audio
+                                    visible: dev.stalled
+                                    anchors.right: meterCol.left
+                                    anchors.rightMargin: 6
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    width: 7; height: 7; radius: 3.5
+                                    color: Theme.warnInk
                                 }
                                 Column {
                                     id: meterCol

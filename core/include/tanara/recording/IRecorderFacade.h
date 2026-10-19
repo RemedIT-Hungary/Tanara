@@ -12,6 +12,7 @@
 #include "tanara/library/tags/TagBackend.h"
 
 #include <QDateTime>
+#include <QMap>
 #include <QMetaType>
 #include <QObject>
 #include <QString>
@@ -102,6 +103,8 @@ public:
     virtual QString currentFolder() const = 0;
     virtual QStringList recordingDeviceNames() const = 0;          // the open tracks' devices
     virtual QStringList disconnectedDeviceNames() const = 0;       // detached mid-run
+    // Recorded tracks delivering no data: device name -> recording-clock ms of the last data.
+    virtual QMap<QString, qint64> stalledTracks() const { return {}; }
     virtual void start(const QString& title, const QVector<AudioDeviceInfo>& devices) = 0;
     virtual void stop() = 0;
     virtual bool addDevice(const AudioDeviceInfo& device) = 0;     // false: not possible
@@ -145,6 +148,9 @@ signals:
     void trackAdded(QString deviceName);
     void trackClosed(QString deviceName);
     void deviceReturned(QString deviceName);
+    // A recorded track delivers no data since sinceMs (recording clock, as elapsedChanged) / again.
+    void trackStalled(QString deviceName, qint64 sinceMs);
+    void trackResumed(QString deviceName);
     void recordingFinished(tanara::recording::RecordingOutcome outcome);
     void callEnded(QString appName);
     void silenceDetected(int minutes);

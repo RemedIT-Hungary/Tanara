@@ -9,6 +9,7 @@
 #include "tanara/domain/Meeting.h"
 #include "tanara/media/MediaTool.h"
 
+#include <QMap>
 #include <QObject>
 #include <QString>
 #include <QVector>
@@ -43,6 +44,8 @@ public:
     // Turns the filling of silent capture gaps with silence (see tracktiming::silenceToInsert) on/off for
     // every track. By default per platform: only on Windows, only for a loopback track. For tests.
     void setFillCaptureGaps(bool on);
+    // The stall threshold (default tracktiming::kStallWarnMs). For tests, which cannot wait 5 s per case.
+    void setStallWarnMs(qint64 ms);
 
     RecordingState state() const;
     QString folder() const;          // absolute path of the meeting folder created
@@ -51,6 +54,9 @@ public:
     QVector<AudioDeviceInfo> trackDevices() const;
     // Whether the track is still alive (false if the device was detached and the track closed).
     bool trackOpen(int trackIndex) const;
+    // The currently stalled tracks: device name (the track id) -> recording-clock ms of the last data.
+    // For a UI that connects after trackStalled() was emitted.
+    QMap<QString, qint64> stalledTracks() const;
 
 public slots:
     // Creates the meeting folder, starts capture and, per device, the ffmpeg encoder + the drain
@@ -75,7 +81,9 @@ public slots:
     // Safely closes a track during recording (the device was detached): capture stops, the remaining
     // audio is written out, the encoder closes the file. The recording continues with the other tracks; the
     // closed track stays part of the meeting (its file runs until the close). trackClosed().
-    void closeTrack(const QString& deviceName);
+    // detached: the device is gone (hot-plug), so the track is reported stalled once (trackStalled; it
+    // never resumes). false: the user switched it off, which is not a stall (a warning it had is withdrawn).
+    void closeTrack(const QString& deviceName, bool detached = true);
 
 signals:
     void stateChanged(tanara::RecordingState state);
@@ -84,6 +92,12 @@ signals:
     void trackAdded(int trackIndex, QString deviceName);
     void trackClosed(int trackIndex, QString deviceName);
     void elapsedChanged(qint64 ms);
+    // Live capture watch: a track (id = its device name) delivered NO data (not silence: no samples at
+    // all) for tracktiming::kStallWarnMs; sinceMs = the recording-clock time of its last data (the
+    // stretch is elapsed - sinceMs). Emitted once per stall, evaluated on the drain worker's tick.
+    void trackStalled(QString trackId, qint64 sinceMs);
+    // The stalled track delivers again (or a re-added device's new track opened, or the user switched it off).
+    void trackResumed(QString trackId);
     void finished(tanara::Meeting meeting);
     void failed(QString error);
 

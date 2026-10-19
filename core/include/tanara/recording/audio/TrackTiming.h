@@ -57,4 +57,21 @@ constexpr bool fillsCaptureGaps(TrackKind kind)
     return kind == TrackKind::Loopback;
 }
 
+// ---- stalled capture (live warning) ----------------------------------------------------------
+//
+// "No data" is not "silence with data": a working microphone always delivers samples, even when the
+// room is quiet (that is the level-based silence warning of the recorder UI). A capture track that has
+// delivered NO samples at all for kStallWarnMs is stalled: the device or its stream is gone (e.g. the
+// machine slept and the audio server dropped the stream), and the recording is losing that track
+// while it seems to run. The recorder warns live about it.
+constexpr qint64 kStallWarnMs = 5000;
+// Which tracks are watched is per platform: not those whose device delivers nothing while idle
+// (ISystemAudioSource::deliversNothingWhenIdle: Windows WASAPI loopback, see above).
+
+// Whether the track is stalled: no data for at least thresholdMs (idleMs = now - last data).
+constexpr bool isStalled(qint64 idleMs, qint64 thresholdMs = kStallWarnMs)
+{
+    return idleMs >= thresholdMs;
+}
+
 } // namespace tanara::recording::tracktiming

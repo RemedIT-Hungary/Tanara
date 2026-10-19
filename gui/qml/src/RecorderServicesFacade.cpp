@@ -31,6 +31,8 @@ RecorderServicesFacade::RecorderServicesFacade(const Deps& deps, QObject* parent
     connect(rec, &recording::RecordingService::trackAdded, this, &IRecorderFacade::trackAdded);
     connect(rec, &recording::RecordingService::trackClosed, this, &IRecorderFacade::trackClosed);
     connect(rec, &recording::RecordingService::deviceReturned, this, &IRecorderFacade::deviceReturned);
+    connect(rec, &recording::RecordingService::trackStalled, this, &IRecorderFacade::trackStalled);
+    connect(rec, &recording::RecordingService::trackResumed, this, &IRecorderFacade::trackResumed);
     connect(rec, &recording::RecordingService::error, this, &IRecorderFacade::error);
     connect(rec, &recording::RecordingService::callEnded, this, &IRecorderFacade::callEnded);
     connect(rec, &recording::RecordingService::silenceDetected, this, &IRecorderFacade::silenceDetected);
@@ -154,6 +156,7 @@ RecordingState RecorderServicesFacade::state() const { return m_deps.recording->
 QString RecorderServicesFacade::currentFolder() const { return m_deps.recording->currentFolder(); }
 QStringList RecorderServicesFacade::recordingDeviceNames() const { return m_deps.recording->liveDeviceNames(); }
 QStringList RecorderServicesFacade::disconnectedDeviceNames() const { return m_deps.recording->disconnectedDeviceNames(); }
+QMap<QString, qint64> RecorderServicesFacade::stalledTracks() const { return m_deps.recording->stalledTracks(); }
 
 void RecorderServicesFacade::start(const QString& title, const QVector<AudioDeviceInfo>& devices)
 {

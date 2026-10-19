@@ -16,6 +16,7 @@
 #include <QAbstractListModel>
 #include <QElapsedTimer>
 #include <QHash>
+#include <QMap>
 #include <QObject>
 #include <QPointer>
 #include <QString>
@@ -50,6 +51,7 @@ public:
         StatusRole,                   // "" | "noSignal" | "signalUnrecorded" | "silentWarn" | "disconnected"
         StatusTextRole,               // the status label
         ToggleableRole,               // can be toggled now
+        StalledRole,                  // the recorded track delivers no data (warn dot)
     };
     explicit RecorderDeviceModel(RecorderViewModel* vm);
     int rowCount(const QModelIndex& parent = {}) const override;
@@ -89,6 +91,10 @@ class RecorderViewModel : public QObject {
     // Keep-awake while recording: "held" | "off" | "unavailable" ("" = unknown). The view warns
     // only when it is not in effect ("off" / "unavailable") during a recording.
     Q_PROPERTY(QString keepAwakeState READ keepAwakeState NOTIFY keepAwakeChanged)
+    // Live capture warning: a recorded track delivers NO data (IRecorderFacade::trackStalled), e.g. the
+    // microphone was lost when the machine slept. Empty when every track delivers; the seconds update.
+    Q_PROPERTY(QString stallWarning READ stallWarning NOTIFY stallChanged)
+    Q_PROPERTY(bool stalled READ stalled NOTIFY stallChanged)
     // Threshold of the per-track silence warning (minutes).
     Q_PROPERTY(int silenceWarnMinutes READ silenceWarnMinutes CONSTANT)
     // The recording's tags: [{ id, name }]. Editable before starting and during recording; the
@@ -130,6 +136,8 @@ public:
     QString doneProblem() const { return m_doneProblem; }
     QString errorText() const { return m_errorText; }
     QString keepAwakeState() const { return m_facade ? m_facade->keepAwakeState() : QString(); }
+    QString stallWarning() const { return m_stallWarning; }
+    bool stalled() const { return !m_stalled.isEmpty(); }
     int silenceWarnMinutes() const { return 3; }
     QObject* tagBackendObject() const;
 
@@ -173,6 +181,9 @@ signals:
     void doneChanged();
     void errorChanged();
     void keepAwakeChanged();
+    void stallChanged();
+    // A track has just stalled (once per stall, not per tick): the host notifies a hidden window's user.
+    void stallRaised(QString title, QString text);
     void tagsChanged();
     void tagInputRequested();
     // For the recorder window / the enclosing process:
@@ -218,6 +229,10 @@ private:
     void onFinished(const tanara::recording::RecordingOutcome& outcome);
     void persistSelection();
     void raiseAsk(const QString& text);
+    void onTrackStalled(const QString& device, qint64 sinceMs);
+    void onTrackResumed(const QString& device);
+    void updateStallWarning(qint64 elapsedMs);   // the text from m_stalled at the recording clock
+    void clearStalls();
     QString iconFor(const Row& r) const;
     void syncRecordingTags();            // handing the tags to the core (live during recording)
     void refreshTagNames();              // renamed / deleted tag in the pool
@@ -242,6 +257,8 @@ private:
     QString m_askText;
     QString m_doneSummary, m_doneMeetingId, m_doneProblem;
     QString m_errorText;
+    QMap<QString, qint64> m_stalled;     // stalled track's device -> last data (recording clock ms)
+    QString m_stallWarning;
     struct TagRef { QString id, name; };
     QVector<TagRef> m_tags;
     QStringList m_knownDevices;          // what we have already seen (to recognize a "new device")

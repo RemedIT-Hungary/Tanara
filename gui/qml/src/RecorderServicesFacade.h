@@ -49,6 +49,7 @@ public:
     QString currentFolder() const override;
     QStringList recordingDeviceNames() const override;
     QStringList disconnectedDeviceNames() const override;
+    QMap<QString, qint64> stalledTracks() const override;
     void start(const QString& title, const QVector<tanara::AudioDeviceInfo>& devices) override;
     void stop() override;
     bool addDevice(const tanara::AudioDeviceInfo& device) override;

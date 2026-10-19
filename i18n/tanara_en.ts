@@ -12408,6 +12408,22 @@
             <numerusform>The audio files of %n tracks are missing.</numerusform>
         </translation>
     </message>
+    <message>
+        <source>A hívás hangja nem jön</source>
+        <translation>No call audio is coming in</translation>
+    </message>
+    <message>
+        <source>A mikrofon nem ad hangot</source>
+        <translation>The microphone gives no audio</translation>
+    </message>
+    <message>
+        <source>A hívás hangja (%1) %2 másodperce nem jön</source>
+        <translation>No call audio (%1) for %2 seconds</translation>
+    </message>
+    <message>
+        <source>A mikrofon (%1) %2 másodperce nem ad hangot</source>
+        <translation>The microphone (%1) has given no audio for %2 seconds</translation>
+    </message>
 </context>
 <context>
     <name>tanara_qml::SettingsEmbeddingModel</name>
