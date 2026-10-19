@@ -261,7 +261,7 @@ Column {
         }
     }
 
-    // ---- Beszélők elkülönítése ----
+    // ---- Speaker separation (diarization) ----
     SettingsSection {
         key: "diar"
         z: 4
@@ -304,7 +304,7 @@ Column {
         }
     }
 
-    // ---- Beszélők felismerése ----
+    // ---- Speaker recognition (voiceprints) ----
     SettingsSection {
         key: "voice"
         z: 3

@@ -72,7 +72,7 @@ ApplicationWindow {
         shell: fakeShell
         demoVariant: parent ? variant : ""
     }
-    // A beszélőnkénti idővonal a lejátszó fölötti térkép-dokkban él (a Main.qml-hez hasonlóan bekötve).
+    // The per-speaker timeline lives in the map dock above the player (wired like in Main.qml).
     MapDock {
         id: dock
         objectName: "mapDock"

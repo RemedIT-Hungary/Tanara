@@ -1,13 +1,13 @@
-# Tanara — Qt Quick / QML felület (URI: Tanara). Egy statikus lib-ben él a QML és a
-# hozzá tartozó C++ (nézetmodellek, App-singleton, kép-providerek); a `tanara` exe a
-# plugint (tanara_qmlplugin) linkeli, a tests/ui tesztek magát a libet.
+# Tanara: the Qt Quick / QML user interface (URI: Tanara). The QML and its C++ (view models, the
+# App singleton, image providers) live in one static library; the `tanara` executable links the
+# plugin (tanara_qmlplugin), the tests/ui tests link the library itself.
 #
-# MINDEN glob-bal kerül be (CONFIGURE_DEPENDS) — új fájlhoz NEM kell ezt szerkeszteni:
-#   gui/qml/*.qml          QML-típusok (laposan; a fájlnév = a típusnév)
-#   gui/qml/src/*.h|cpp    C++ típusok (QML_ELEMENT / QML_SINGLETON — deklaratív regisztráció)
-#   gui/qml/icons/*.svg    Lucide ikonok        → :/qt/qml/Tanara/icons/
-#   gui/qml/fonts/*.ttf    IBM Plex betűk       → :/qt/qml/Tanara/fonts/
-qt_policy(SET QTP0001 NEW)   # a modul a :/qt/qml/Tanara/ erőforrás-prefix alá kerül
+# EVERYTHING is picked up by globs (CONFIGURE_DEPENDS): a new file needs NO edit here:
+#   gui/qml/*.qml          QML types (flat; the file name is the type name)
+#   gui/qml/src/*.h|cpp    C++ types (QML_ELEMENT / QML_SINGLETON: declarative registration)
+#   gui/qml/icons/*.svg    Lucide icons         -> :/qt/qml/Tanara/icons/
+#   gui/qml/fonts/*.ttf    IBM Plex fonts       -> :/qt/qml/Tanara/fonts/
+qt_policy(SET QTP0001 NEW)   # the module goes under the :/qt/qml/Tanara/ resource prefix
 if(QT_KNOWN_POLICY_QTP0004)
     qt_policy(SET QTP0004 NEW)
 endif()
@@ -17,8 +17,8 @@ file(GLOB TANARA_QML_SOURCES CONFIGURE_DEPENDS RELATIVE ${CMAKE_CURRENT_SOURCE_D
 file(GLOB TANARA_QML_RESOURCES CONFIGURE_DEPENDS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}
      icons/*.svg fonts/*.ttf)
 
-# QML-singleton: a fájl első sorai között `pragma Singleton` → automatikusan megjelöljük
-# (különben a qmldir-be sima típusként kerülne). Új singleton után újra kell konfigurálni.
+# QML singletons: a `pragma Singleton` among the first lines of a file marks it automatically
+# (otherwise it would land in the qmldir as a plain type). Reconfigure after adding a singleton.
 foreach(qmlfile ${TANARA_QML_FILES})
     file(STRINGS ${qmlfile} _singleton REGEX "^pragma Singleton" LIMIT_COUNT 1)
     if(_singleton)
@@ -29,7 +29,7 @@ endforeach()
 qt_add_library(tanara_qml STATIC)
 qt_add_qml_module(tanara_qml
     URI Tanara
-    OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/Tanara   # a qmllint/qmlls így találja meg
+    OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/Tanara   # so that qmllint / qmlls find the module
     VERSION 1.0
     QML_FILES ${TANARA_QML_FILES}
     SOURCES ${TANARA_QML_SOURCES}
@@ -37,8 +37,8 @@ qt_add_qml_module(tanara_qml
     DEPENDENCIES QtQuick
 )
 
-# A qmltyperegistrar a headereket puszta fájlnévvel includolja → a src/ legyen include-úton
-# (PUBLIC: a tesztek és a gui/src is így érik el a nézetmodelleket).
+# qmltyperegistrar includes the headers by bare file name, so src/ must be on the include path
+# (PUBLIC: the tests and gui/src reach the view models the same way).
 target_include_directories(tanara_qml PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(tanara_qml PUBLIC
     tanara_core

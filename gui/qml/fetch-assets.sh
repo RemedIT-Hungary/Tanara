@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# A bundle-ölt külső asset-ek (Lucide ikonok, IBM Plex betűk) újra-letöltése a hivatalos
-# forrásokból. A letöltött fájlok verziókövetettek — ezt csak új ikon felvételekor vagy
-# verzióváltáskor kell futtatni:   gui/qml/fetch-assets.sh [további-ikon-nevek…]
+# Re-downloads the bundled external assets (Lucide icons, IBM Plex fonts) from their official
+# sources. The downloaded files are under version control: run this only when adding an icon or
+# changing a version:   gui/qml/fetch-assets.sh [more-icon-names...]
 set -euo pipefail
 cd "$(dirname "$0")"
 
-LUCIDE_VERSION=0.460.0     # ugyanaz, mint a design-referenciákban (lucide-static, ISC)
+LUCIDE_VERSION=0.460.0     # the same as in the design references (lucide-static, ISC)
 PLEX_REF=master            # IBM/plex (SIL OFL 1.1)
 
 ICONS=(file-text sparkles user-check search users settings fingerprint ellipsis undo-2 redo-2
