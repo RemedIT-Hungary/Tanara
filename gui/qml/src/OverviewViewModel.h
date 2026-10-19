@@ -23,6 +23,8 @@
 
 #include <optional>
 
+#include "PipelineStepModel.h"
+
 #include "tanara/library/IOverviewFacade.h"
 
 namespace tanara_qml {
@@ -86,7 +88,11 @@ class OverviewViewModel : public QObject {
     //   route: the stored route ("local" | "external" | "cloud" | "ask"; "" = no route info)
     //   routeOptions: [{ route, label, detail, enabled, reason, isDefault, isCloud }] (one row per route
     //   the capability offers; the Cloud row's detail is "…" until its estimate arrives: prepareRoutes()).
+    // The same rows as a stable list model (PipelineStepModel: keyed, updated in place, never reset); the
+    // steps' Repeater uses it so its delegates survive progress ticks and state changes. `steps` stays for
+    // the views that look one step up by key (derived from the model).
     Q_PROPERTY(QVariantList steps READ steps NOTIFY changed)
+    Q_PROPERTY(tanara_qml::PipelineStepModel* stepModel READ stepModel CONSTANT)
     // The speakers' source and the manual "Beszélők felismerése" (D5): { source: provider | local | none, line,
     // fixTarget, canDiarize, hasNames, speakerCount, running, failed, problem }; empty without a transcript.
     Q_PROPERTY(QVariantMap speakers READ speakers NOTIFY changed)
@@ -123,7 +129,8 @@ public:
     bool analysisRunning() const { return m_analysisRunning; }
     int candidateCount() const { return m_candidateCount; }
     QVariantMap sideWho() const { return m_sideWho; }
-    QVariantList steps() const { return m_steps; }
+    QVariantList steps() const { return m_stepModel.rows(); }
+    PipelineStepModel* stepModel() { return &m_stepModel; }
     QVariantMap speakers() const { return m_speakers; }
     QVariantList stats() const { return m_stats; }
     QString stepsSummary() const { return m_stepsSummary; }
@@ -162,9 +169,12 @@ public:
     // ---- S5: the split button (step: "transcript" | "summary") ----
     // The main part: the stored route. Ask (or a Cloud run that needs the estimate's confirmation) opens the
     // menu (menuRequested) and returns false; otherwise startRequested(step, "") and true.
+    // startRequested and menuRequested are emitted on the next event-loop turn (queued), never inside the
+    // caller: a start may change the steps at once, and the clicked button must not be torn down under its
+    // own click handler.
     Q_INVOKABLE bool startDefault(const QString& step);
-    // A menu row: startRequested(step, route) and true; a disabled / unknown route: routeRejected(step,
-    // reason) and false.
+    // A menu row: startRequested(step, route) (queued, as above) and true; a disabled / unknown route:
+    // routeRejected(step, reason) and false.
     Q_INVOKABLE bool start(const QString& step, const QString& route);
     // "Ez legyen az alapértelmezett": cap "stt" | "llm" (or the step key). false: not allowed / not saved.
     Q_INVOKABLE bool setDefaultRoute(const QString& cap, const QString& route);
@@ -194,6 +204,11 @@ private:
     void reload();
     QVariantList buildRouteOptions(const QString& step) const;
     void decorateSteps();
+    // m_steps -> the step model (in place).
+    void publishSteps();
+    // The deferred startRequested / menuRequested (see startDefault).
+    void requestStart(const QString& step, const QString& route);
+    void requestMenu(const QString& step);
 
     // S5: the Cloud estimate per step key of the current meeting.
     struct Estimate {
@@ -229,7 +244,8 @@ private:
     bool m_analysisRunning = false;
     int m_candidateCount = 0;
     QVariantMap m_sideWho;
-    QVariantList m_steps;
+    QVariantList m_steps;               // the snapshot's rows, decorated; published to m_stepModel
+    PipelineStepModel m_stepModel;
     QVariantMap m_speakers;
     QVariantList m_stats;
     QString m_stepsSummary;

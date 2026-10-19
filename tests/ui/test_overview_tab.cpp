@@ -11,12 +11,15 @@
 #include "QmlApp.h"
 #include "ShellActions.h"
 
+#include "demo/OverviewDemoFacade.h"
+
 #include "tanara/domain/Job.h"
 
 #include <QQmlApplicationEngine>
 #include <QQmlComponent>
 #include <QQmlError>
 #include <QQuickItem>
+#include <QPointer>
 #include <QQuickWindow>
 #include <QSignalSpy>
 #include <QtTest>
@@ -31,7 +34,13 @@ class StartSpy : public QObject {
     Q_OBJECT
 public:
     QStringList calls;
-    Q_INVOKABLE void startTranscription(const QString& id) { calls << "startTranscription:" + id; }
+    // C2: runs inside startTranscription (a start that changes the steps synchronously, like the local route).
+    std::function<void()> duringStart;
+    Q_INVOKABLE void startTranscription(const QString& id)
+    {
+        calls << "startTranscription:" + id;
+        if (duringStart) duringStart();
+    }
     // S5: a route chosen in the split button's menu.
     Q_INVOKABLE void startTranscription(const QString& id, const QString& route) { calls << "startTranscription:" + id + "@" + route; }
     Q_INVOKABLE void openSettings(const QString& page, const QString& field = QString())
@@ -643,7 +652,7 @@ private slots:
         StartSpy ready;
         withSpy(ready);
         press(item("summaryStartButton"));
-        QCOMPARE(ready.calls.size(), 1);
+        QTRY_COMPARE(ready.calls.size(), 1);   // the start runs on the next event-loop turn
         QVERIFY(ready.calls.first().startsWith(QStringLiteral("startQuickSummary:")));
         QVERIFY(!shown("summaryFixButton"));
         QVERIFY(!shown("summaryCancelButton"));
@@ -675,6 +684,7 @@ private slots:
         StartSpy failed;
         withSpy(failed);
         press(item("summaryRetryButton"));
+        QTRY_VERIFY(!failed.calls.isEmpty());
         QVERIFY(failed.calls.first().startsWith(QStringLiteral("startQuickSummary:")));
         m_engine.reset();
 
@@ -777,6 +787,77 @@ private slots:
         QTRY_VERIFY(menu->property("opened").toBool());
         QTRY_VERIFY(shown("routeOption_cloud"));
         QVERIFY(!item("routeOption_cloud")->property("on").toBool());
+    }
+
+    // C2: the steps' rows are a stable model. (a) "Átírás indítása" with a start that changes the step state
+    // synchronously inside the shell call (the local route): no abort, one start, the same panel afterwards.
+    // (b) the route menu stays open and anchored through five progress ticks; (c) the step rows and the
+    // transcript panel keep their identity across the refreshes.
+    void stepsModel_startAndProgressKeepThePanels()
+    {
+        load(QStringLiteral("overviewRecorded"));
+        QObject* overview = object("overviewTab");
+        QVERIFY(overview);
+        QObject* vm = overview->property("vm").value<QObject*>();
+        QVERIFY(vm);
+        auto* facade = vm->findChild<tanara_demo::OverviewDemoFacade*>();
+        QVERIFY(facade);
+        QTRY_VERIFY(shown("startTranscriptionButton"));
+        QPointer<QQuickItem> panel = item("transcribeStepPanel");
+        QVERIFY(panel);
+        const QStringList stepKeys{"recording", "tracks", "mixdown", "voice", "transcript", "summary"};
+        QList<QQuickItem*> rows;
+        for (const QString& k : stepKeys) {
+            QQuickItem* row = item(qPrintable("step_" + k));
+            QVERIFY2(row, qPrintable(k));
+            rows << row;
+        }
+
+        // (a) The start reloads the steps at once, while the click is still being handled.
+        StartSpy spy;
+        int refreshes = 0;
+        spy.duringStart = [&] {
+            facade->updateStep(QString(), QStringLiteral("transcript"),
+                               {{"state", "running"}, {"progress", -2}, {"sub", "Whisper"}});
+            QMetaObject::invokeMethod(vm, "refresh");
+            ++refreshes;
+        };
+        overview->setProperty("shell", QVariant::fromValue<QObject*>(&spy));
+        click(item("startTranscriptionButton"));
+        QTRY_COMPARE(spy.calls, QStringList({QStringLiteral("startTranscription:")}));
+        QCOMPARE(refreshes, 1);
+        QTest::qWait(100);
+        QCOMPARE(spy.calls.size(), 1);
+        QVERIFY(panel);                                       // not rebuilt
+        QCOMPARE(item("transcribeStepPanel"), panel.data());
+        spy.duringStart = nullptr;
+        facade->updateStep(QString(), QStringLiteral("transcript"), {{"state", "waiting"}, {"progress", -1}});
+        QMetaObject::invokeMethod(vm, "refresh");
+
+        // (b) The route menu, then five mixdown progress ticks through the facade.
+        QObject* menu = nested("transcriptRouteMenu");
+        QVERIFY(menu);
+        QQuickItem* split = panel->property("splitButton").value<QQuickItem*>();
+        QVERIFY(split);
+        click(item("startTranscriptionMenu"));
+        QTRY_VERIFY(menu->property("opened").toBool());
+        for (int p = 10; p <= 50; p += 10) {
+            QVERIFY(facade->updateStep(QString(), QStringLiteral("mixdown"),
+                                       {{"state", "running"}, {"progress", p}, {"sub", QString::number(p) + "%"}}));
+            QTest::qWait(40);                                 // the view model reloads on the next turn
+            QVERIFY2(menu->property("opened").toBool(), qPrintable(QString::number(p)));
+        }
+        QCOMPARE(vm->property("stepModel").value<QObject*>()->property("count").toInt(), stepKeys.size());
+        QCOMPARE(menu->property("parent").value<QQuickItem*>(), split);   // still anchored to the same button
+        QVERIFY(panel);
+        QCOMPARE(panel->property("splitButton").value<QQuickItem*>(), split);
+        // (c) The rows are the same objects as before the refreshes.
+        for (int i = 0; i < stepKeys.size(); ++i)
+            QCOMPARE(item(qPrintable("step_" + stepKeys.at(i))), rows.at(i));
+        QTest::keyClick(m_window, Qt::Key_Escape);
+        QTRY_VERIFY(!menu->property("opened").toBool());
+        QVERIFY(spy.calls.size() == 1);
+        QVERIFY2(m_warnings.isEmpty(), qPrintable(m_warnings.join('\n')));
     }
 
     // S5: the shell's route dialog (a start without a route found Ask): one row per route, the answer goes

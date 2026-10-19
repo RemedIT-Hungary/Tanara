@@ -87,6 +87,29 @@ public:
     }
 };
 
+// C2: a facade double whose step rows the test edits between reloads.
+class StepsFakeFacade : public tanara::library::IOverviewFacade {
+public:
+    QVariantList steps;
+    tanara::library::OverviewSnapshot snapshot(const QString&) override
+    {
+        tanara::library::OverviewSnapshot s;
+        s.steps = steps;
+        return s;
+    }
+    QString addParticipant(const QString&, const QString&) override { return {}; }
+    void removeParticipant(const QString&, const QString&) override {}
+    bool setSolo(const QString&) override { return false; }
+    bool reanalyze(const QString&) override { return false; }
+    void setContextNote(const QString&, const QString&) override {}
+};
+
+QVariantMap plainStep(const QString& key, const QString& state, int progress = -1)
+{
+    return {{QStringLiteral("key"), key}, {QStringLiteral("title"), key}, {QStringLiteral("sub"), QString()},
+            {QStringLiteral("state"), state}, {QStringLiteral("parallel"), false}, {QStringLiteral("progress"), progress}};
+}
+
 QVariantMap optionOf(const QVariantMap& step, const QString& route)
 {
     for (const QVariant& v : step.value(QStringLiteral("routeOptions")).toList())
@@ -354,9 +377,10 @@ private slots:
         QSignalSpy menu(&vm, &OverviewViewModel::menuRequested);
         QSignalSpy starts(&vm, &OverviewViewModel::startRequested);
         QSignalSpy rejected(&vm, &OverviewViewModel::routeRejected);
-        // Local: the main part starts the default path.
+        // Local: the main part starts the default path, on the next event-loop turn (never inside the caller).
         QVERIFY(vm.startDefault(QStringLiteral("transcript")));
-        QCOMPARE(starts.count(), 1);
+        QCOMPARE(starts.count(), 0);
+        QTRY_COMPARE(starts.count(), 1);
         QCOMPARE(starts.at(0).at(1).toString(), QString());
         // A non-live Cloud is refused with the reason.
         QVERIFY(!vm.start(QStringLiteral("transcript"), QStringLiteral("cloud")));
@@ -365,7 +389,7 @@ private slots:
         QCOMPARE(starts.count(), 1);
         // A menu row: the explicit route.
         QVERIFY(vm.start(QStringLiteral("transcript"), QStringLiteral("external")));
-        QCOMPARE(starts.count(), 2);
+        QTRY_COMPARE(starts.count(), 2);
         QCOMPARE(starts.at(1).at(1).toString(), QStringLiteral("external"));
         QVERIFY(facade.calls.isEmpty());   // no estimate while the cloud is not live
 
@@ -382,6 +406,7 @@ private slots:
         vm.refresh();
         QCOMPARE(stepOf(vm, QStringLiteral("transcript")).value("route").toString(), QStringLiteral("cloud"));
         QVERIFY(vm.startDefault(QStringLiteral("transcript")));
+        QTRY_COMPARE(starts.count(), 3);
         QCOMPARE(menu.count(), 0);
 
         // Ask (the cloud is live): the main part opens the menu, nothing starts; the Cloud row waits for its
@@ -393,7 +418,8 @@ private slots:
         QCOMPARE(st.value("route").toString(), QStringLiteral("ask"));
         const int startsBefore = starts.count();
         QVERIFY(!vm.startDefault(QStringLiteral("transcript")));
-        QCOMPARE(menu.count(), 1);
+        QCOMPARE(menu.count(), 0);   // queued as well
+        QTRY_COMPARE(menu.count(), 1);
         QCOMPARE(menu.at(0).at(0).toString(), QStringLiteral("transcript"));
         QCOMPARE(starts.count(), startsBefore);
         QCOMPARE(facade.calls, QStringList{QStringLiteral("estimate:stt:m1")});
@@ -417,7 +443,7 @@ private slots:
         QVERIFY(cloud.value("enabled").toBool());
         QCOMPARE(cloud.value("detail").toString(), QStringLiteral("kb. 0,12 € · kb. 1 perc · a keretből"));
         QVERIFY(vm.start(QStringLiteral("transcript"), QStringLiteral("cloud")));
-        QCOMPARE(starts.last().at(1).toString(), QStringLiteral("cloud"));
+        QTRY_COMPARE(starts.last().at(1).toString(), QStringLiteral("cloud"));
 
         // Not enough balance: the row is refused with the level's text.
         est.level = QStringLiteral("notEnough");
@@ -443,6 +469,98 @@ private slots:
         QVERIFY(vm.setDefaultRoute(QStringLiteral("summary"), QStringLiteral("cloud")));
         QCOMPARE(facade.calls.last(), QStringLiteral("default:llm:cloud"));
         QVERIFY(!vm.setDefaultRoute(QStringLiteral("stt"), QStringLiteral("nincs-ilyen")));
+    }
+
+    // C2: the steps' list model is keyed and updated in place: a progress tick or a state change is a
+    // dataChanged of the changed roles (no reset, no row removed / inserted); rows come and go only when the
+    // step set changes, and a reorder is a move.
+    void stepModel_inPlaceUpdate()
+    {
+        StepsFakeFacade facade;
+        facade.steps = {plainStep("recording", "done"), plainStep("mixdown", "running", 10),
+                        plainStep("transcript", "waiting")};
+        OverviewViewModel vm(&facade);
+        vm.setMeetingId(QStringLiteral("m1"));
+        PipelineStepModel* model = vm.stepModel();
+        QVERIFY(model);
+        QCOMPARE(model->rowCount(), 3);
+        QCOMPARE(model->count(), 3);
+        const QHash<int, QByteArray> roles = model->roleNames();
+        QCOMPARE(roles.value(PipelineStepModel::StateRole), QByteArray("state"));
+        QCOMPARE(roles.value(PipelineStepModel::ProgressRole), QByteArray("progress"));
+        QCOMPARE(model->data(model->index(1), PipelineStepModel::KeyRole).toString(), QStringLiteral("mixdown"));
+        // A missing field reads as its default.
+        QCOMPARE(model->data(model->index(0), PipelineStepModel::NoteRole).toString(), QString());
+        QCOMPARE(model->data(model->index(0), PipelineStepModel::CanStartRole).toBool(), false);
+
+        QSignalSpy reset(model, &QAbstractItemModel::modelReset);
+        QSignalSpy inserted(model, &QAbstractItemModel::rowsInserted);
+        QSignalSpy removed(model, &QAbstractItemModel::rowsRemoved);
+        QSignalSpy moved(model, &QAbstractItemModel::rowsMoved);
+        QSignalSpy data(model, &QAbstractItemModel::dataChanged);
+
+        // Five progress ticks: one dataChanged each, on the mixdown row, with the progress role.
+        for (int p = 20; p <= 60; p += 10) {
+            facade.steps[1] = plainStep("mixdown", "running", p);
+            vm.refresh();
+        }
+        QCOMPARE(data.count(), 5);
+        for (const QList<QVariant>& args : std::as_const(data)) {
+            QCOMPARE(args.at(0).toModelIndex().row(), 1);
+            QCOMPARE(args.at(1).toModelIndex().row(), 1);
+            const QList<int> changed = args.at(2).value<QList<int>>();
+            QVERIFY(changed.contains(PipelineStepModel::ProgressRole));
+            QVERIFY(!changed.contains(PipelineStepModel::StateRole));
+            QVERIFY(!changed.contains(PipelineStepModel::KeyRole));
+        }
+        QCOMPARE(model->data(model->index(1), PipelineStepModel::ProgressRole).toInt(), 60);
+        // An unchanged reload: no signal at all.
+        vm.refresh();
+        QCOMPARE(data.count(), 5);
+        // A state change.
+        facade.steps[1] = plainStep("mixdown", "done");
+        facade.steps[2] = plainStep("transcript", "running", -2);
+        vm.refresh();
+        QCOMPARE(data.count(), 7);
+        QVERIFY(data.at(5).at(2).value<QList<int>>().contains(PipelineStepModel::StateRole));
+        QCOMPARE(model->data(model->index(2), PipelineStepModel::StateRole).toString(), QStringLiteral("running"));
+        QCOMPARE(reset.count(), 0);
+        QCOMPARE(inserted.count(), 0);
+        QCOMPARE(removed.count(), 0);
+        QCOMPARE(moved.count(), 0);
+        // vm.steps (the views' lookups) follows the model.
+        QCOMPARE(stepOf(vm, QStringLiteral("transcript")).value("state").toString(), QStringLiteral("running"));
+
+        // The step set changes: a new row is inserted, a gone one removed; the others keep their rows.
+        facade.steps = {plainStep("recording", "done"), plainStep("transcript", "running", -2),
+                        plainStep("voice", "waiting"), plainStep("summary", "waiting")};
+        vm.refresh();
+        QCOMPARE(reset.count(), 0);
+        QCOMPARE(removed.count(), 1);
+        QCOMPARE(inserted.count(), 2);
+        QCOMPARE(model->rowCount(), 4);
+        QStringList keys;
+        for (int i = 0; i < model->rowCount(); ++i)
+            keys << model->data(model->index(i), PipelineStepModel::KeyRole).toString();
+        QCOMPARE(keys, QStringList({"recording", "transcript", "voice", "summary"}));
+        QCOMPARE(model->indexOf(QStringLiteral("voice")), 2);
+        QCOMPARE(model->get(QStringLiteral("summary")).value("state").toString(), QStringLiteral("waiting"));
+
+        // A reorder is a move, not a remove + insert.
+        facade.steps = {plainStep("recording", "done"), plainStep("voice", "waiting"),
+                        plainStep("transcript", "running", -2), plainStep("summary", "waiting")};
+        vm.refresh();
+        QCOMPARE(moved.count(), 1);
+        QCOMPARE(removed.count(), 1);
+        QCOMPARE(inserted.count(), 2);
+        QCOMPARE(model->data(model->index(1), PipelineStepModel::KeyRole).toString(), QStringLiteral("voice"));
+        QCOMPARE(model->data(model->index(2), PipelineStepModel::KeyRole).toString(), QStringLiteral("transcript"));
+
+        // Every step gone: the rows are removed (still no reset).
+        facade.steps.clear();
+        vm.refresh();
+        QCOMPARE(model->rowCount(), 0);
+        QCOMPARE(reset.count(), 0);
     }
 
     // S5 with the real facade (cloud off): the transcription's rows come from the registry and the settings;

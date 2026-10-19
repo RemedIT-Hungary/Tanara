@@ -226,8 +226,9 @@ Item {
         root.commitSource()
         vm.startDefault("summary")
     }
-    // S5: the split buttons' menus live here, outside the steps' repeater (it rebuilds the step panels on every
-    // model change, which would close an open menu); the panels register their split button as the anchor.
+    // S5: the split buttons' menus live here, outside the steps' repeater; the panels register their split
+    // button as the anchor. The step model is updated in place, so a progress tick keeps the panel (and the
+    // open menu); only a changed step content (the Loader's component) creates a new panel.
     property Item transcriptMenuAnchor: null
     property Item summaryMenuAnchor: null
     // The menu hangs below its split button (its visual parent, so it follows the layout); a rebuilt panel's
@@ -649,7 +650,7 @@ Item {
                         objectName: "pipelineSteps"
                         visible: !vm.allDone || root.stepsOpen
                         Layout.fillWidth: true
-                        steps: vm.steps
+                        stepModel: vm.stepModel
                         // Before transcription the start control, during the first transcription the sections + "Cancel".
                         transcriptContent: !vm.hasTranscript && (root.beforeTranscription || vm.transcribing)
                                            ? transcribeStep : root.diarizeShown ? diarizeStep : null

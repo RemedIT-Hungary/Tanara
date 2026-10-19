@@ -35,6 +35,8 @@ TPopover {
         open()
     }
 
+    function nameVoice(id, name) { if (vm) vm.nameParticipant(id, name) }
+
     contentItem: ColumnLayout {
         spacing: 6
 
@@ -108,8 +110,9 @@ TPopover {
                         objectName: "whichVoiceThisOne"
                         text: qsTr("Ő az")
                         size: "small"
+                        // Deferred: naming reloads the rows (and so the voices this repeater shows).
                         onClicked: {
-                            if (control.vm) control.vm.nameParticipant(voice.modelData.id, control.personName)
+                            Qt.callLater(control.nameVoice, voice.modelData.id, control.personName)
                             control.close()
                         }
                     }

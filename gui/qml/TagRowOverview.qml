@@ -18,6 +18,11 @@ Rectangle {
 
     signal tagClicked(string id)
 
+    // The chips' actions, called on the next event-loop turn (they replace the lists the chips come from).
+    function removeTag(id) { if (root.model) root.model.remove(id) }
+    function acceptSuggestion(index) { if (root.model) root.model.accept(index) }
+    function rejectSuggestion(index) { if (root.model) root.model.reject(index) }
+
     implicitHeight: Math.max(38, flow.implicitHeight + 12)
     radius: 7
     color: Theme.raised
@@ -46,7 +51,8 @@ Rectangle {
                 removable: true
                 removeAlwaysVisible: true
                 onClicked: root.tagClicked(modelData.id)
-                onRemoveRequested: if (root.model) root.model.remove(modelData.id)
+                // Deferred: the change replaces the tag list this repeater shows.
+                onRemoveRequested: Qt.callLater(root.removeTag, modelData.id)
             }
         }
         TagInput {
@@ -87,8 +93,8 @@ Rectangle {
                 kind: modelData.isNew ? "llmNew" : "suggested"
                 text: modelData.name
                 toolTipText: qsTr("Kattintás: hozzáadás · ×: nem illik ide")
-                onClicked: if (root.model) root.model.accept(index)
-                onRemoveRequested: if (root.model) root.model.reject(index)
+                onClicked: Qt.callLater(root.acceptSuggestion, index)
+                onRemoveRequested: Qt.callLater(root.rejectSuggestion, index)
             }
         }
         T.AbstractButton {

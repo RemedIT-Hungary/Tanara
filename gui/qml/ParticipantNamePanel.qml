@@ -55,6 +55,10 @@ TPopover {
         if (vm.nameParticipant(row.id, name)) close()
         else errorText = qsTr("Nem sikerült elnevezni ezt a sort.")
     }
+    function mergeInto(fromId, intoId) {
+        if (vm && vm.mergeParticipantInto(fromId, intoId)) close()
+        else errorText = qsTr("Ezt a két sort nem lehet összevonni.")
+    }
     function chooseSelf() {
         if (!vm) return
         const res = vm.setSelfParticipant(row.id)
@@ -294,10 +298,8 @@ TPopover {
                     icon: "audio-lines"
                     title: modelData.name || ""
                     detail: modelData.talkShare >= 0 ? Math.round(modelData.talkShare * 100) + "%" : ""
-                    onPicked: {
-                        if (control.vm && control.vm.mergeParticipantInto(control.row.id, modelData.id)) control.close()
-                        else control.errorText = qsTr("Ezt a két sort nem lehet összevonni.")
-                    }
+                    // Deferred: the merge reloads the rows (and so this repeater's targets).
+                    onPicked: Qt.callLater(control.mergeInto, control.row.id, modelData.id)
                 }
             }
             PickRow {

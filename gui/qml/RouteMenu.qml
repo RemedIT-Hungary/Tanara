@@ -33,7 +33,8 @@ TPopover {
         onChosen: (route, makeDefault) => {
             root.close()
             if (!root.vm) return
-            // The run first (the default's write reloads the model), then the default.
+            // The run is requested first (it starts on the next event-loop turn with the explicit route),
+            // then the default is written.
             if (root.vm.start(root.step, route) && makeDefault) root.vm.setDefaultRoute(root.step, route)
         }
     }

@@ -97,6 +97,10 @@ ColumnLayout {
         if (unnamedVoices.length > 0) whichPanel.openFor(name.trim(), unnamedVoices, anchor || card, "")
         else vm.addParticipant(name)
     }
+    // A row's own buttons (called on the next event-loop turn: the change rebuilds the rows).
+    function confirmRow(id, confirmed) { if (vm) vm.confirmParticipant(id, confirmed) }
+    function addRow(name) { if (vm) vm.addParticipant(name) }
+    function removeRow(id) { if (vm) vm.removeParticipant(id) }
     // Draws attention to the card (an entry point landed here): the accent frame blinks twice.
     function flash() { flashAnim.restart() }
     readonly property bool flashing: flashAnim.running
@@ -292,9 +296,10 @@ ColumnLayout {
                     onNameRequested: (r, anchor) => namePanel.openFor(r, root.rows, anchor, false)
                     onWhichVoiceRequested: (r, anchor) => whichPanel.openFor((r.name || "").replace(/ \(.*\)$/, ""),
                                                                              root.unnamedVoices, anchor, r.id)
-                    onConfirmRequested: (id, confirmed) => { if (root.vm) root.vm.confirmParticipant(id, confirmed) }
-                    onAddRequested: (name) => { if (root.vm) root.vm.addParticipant(name) }
-                    onRemoveRequested: (id) => { if (root.vm) root.vm.removeParticipant(id) }
+                    // Deferred: the change reloads the rows, so it must not run inside this delegate's handler.
+                    onConfirmRequested: (id, confirmed) => Qt.callLater(root.confirmRow, id, confirmed)
+                    onAddRequested: (name) => Qt.callLater(root.addRow, name)
+                    onRemoveRequested: (id) => Qt.callLater(root.removeRow, id)
                     onWhyRequested: (key, anchor) => root.whyRequested(key, anchor)
                 }
             }

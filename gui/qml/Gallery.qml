@@ -874,7 +874,10 @@ Item {
                     caption: DemoText.t("PipelineSteps · done · running (haladás) · attention · waiting", "PipelineSteps · done · running (progress) · attention · waiting")
                     PipelineSteps {
                         width: 340
-                        steps: [{ key: "recording", title: DemoText.t("Felvétel", "Recording"), sub: DemoText.t("2:11:04 · 3 sáv", "2:11:04 · 3 tracks"), state: "done", parallel: false, progress: -1 },
+                        // The view model's PipelineStepModel has the same roles; a ListModel stands in for it.
+                        stepModel: ListModel { id: galleryStepModel }
+                        Component.onCompleted: { for (const s of galleryStepRows) galleryStepModel.append(s) }
+                        readonly property var galleryStepRows: [{ key: "recording", title: DemoText.t("Felvétel", "Recording"), sub: DemoText.t("2:11:04 · 3 sáv", "2:11:04 · 3 tracks"), state: "done", parallel: false, progress: -1 },
                                 { key: "mixdown", title: DemoText.t("Lekeverés", "Mixdown"), sub: DemoText.t("elavult — újra kell készíteni", "outdated — needs to be redone"), state: "attention", parallel: false, progress: -1 },
                                 { key: "voice", title: DemoText.t("Hanglenyomat-elemzés", "Voiceprint analysis"), sub: "42%", state: "running", parallel: true, progress: 42 },
                                 { key: "transcript", title: DemoText.t("Átirat", "Transcript"), sub: DemoText.t("fut", "running"), state: "running", parallel: true, progress: -2 },

@@ -53,6 +53,10 @@ public:
                        std::function<void(const tanara::library::CloudRunEstimate&)> done) override;
     bool setDefaultRoute(tanara::providers::Capability cap, tanara::providers::Route route) override;
 
+    // A step's change in place (a progress tick, a state change: tests and demos of a running job): `fields`
+    // are merged into the step `key`, then changed(). False: there is no such step.
+    bool updateStep(const QString& meetingId, const QString& key, const QVariantMap& fields);
+
     // "Varga Árpád" -> "VÁ", "Remote 1" -> "R1" ("Kovács Lilla (you)" -> "KL").
     static QString monogramOf(const QString& name);
 

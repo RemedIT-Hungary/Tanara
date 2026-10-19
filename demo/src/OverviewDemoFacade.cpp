@@ -138,6 +138,20 @@ void OverviewDemoFacade::touch(const QString& meetingId)
     emit changed(meetingId);
 }
 
+bool OverviewDemoFacade::updateStep(const QString& meetingId, const QString& key, const QVariantMap& fields)
+{
+    for (QVariant& v : m_snapshot.steps) {
+        QVariantMap step = v.toMap();
+        if (step.value(QStringLiteral("key")).toString() != key) continue;
+        for (auto it = fields.cbegin(); it != fields.cend(); ++it)
+            step.insert(it.key(), it.value());
+        v = step;
+        touch(meetingId);
+        return true;
+    }
+    return false;
+}
+
 OverviewDemoFacade::OverviewDemoFacade(const QString& scenario, QObject* parent)
     : tanara::library::IOverviewFacade(parent), m_scenario(scenario), m_snapshot(build())
 {

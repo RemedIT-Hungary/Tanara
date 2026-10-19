@@ -48,11 +48,12 @@ ColumnLayout {
     }
     function start() {
         root.startRequested()
-        if (root.overview) root.overview.startDefault("transcript")   // -> onStartRequested / the menu
+        // -> onStartRequested / the menu, on the next event-loop turn (never inside this click handler)
+        if (root.overview) root.overview.startDefault("transcript")
         else if (root.shell) root.shell.startTranscription(root.meetingId)
     }
     // The ▾ part: the owner (OverviewTab) opens its route menu below this button (the menu lives outside the
-    // steps' repeater, which rebuilds this panel on every model change).
+    // steps' repeater, so it survives a reloaded panel).
     signal routeMenuRequested(Item anchor)
     readonly property Item splitButton: startSplit
 

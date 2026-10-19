@@ -4,14 +4,16 @@ import QtQuick.Layouts
 // PROCESSING steps: 22 px circle - done = successSoft + check; needs attention = warnSoft "!", row
 // raised + warnLine border; running = 2 px accent ring + 4 px progress bar; waiting = dashed
 // borderStrong circle. The model's `parallel` flag is not shown (developer hint).
-// steps: [{ key, title, sub, state, parallel, progress, fixTarget? }] (OverviewViewModel.steps).
+// stepModel: OverviewViewModel.stepModel (PipelineStepModel; roles key, title, sub, state, parallel, progress,
+// note, detail, ...). It is keyed and updated in place, so a delegate (and the panel loaded into it) lives as
+// long as its step: progress ticks and state changes never rebuild the rows.
 // mixdownContent / voiceContent / transcriptContent / summaryContent: content embedded below the step (before
 // the transcript, "Start transcription" in the "transcript" step; "Start mixdown" for manual mixdown; "Create
 // summary" / "Cancel" / "Again" in the "summary" step).
 ColumnLayout {
     id: root
 
-    property var steps: []
+    property var stepModel: null
     property Component mixdownContent: null
     property Component voiceContent: null
     property Component transcriptContent: null
@@ -20,23 +22,23 @@ ColumnLayout {
     spacing: 2
 
     Repeater {
-        model: root.steps
+        model: root.stepModel
         Rectangle {
             id: stepRow
-            required property var modelData
-            readonly property string state: modelData.state
-            readonly property Component extra: modelData.key === "transcript" ? root.transcriptContent
-                                              : modelData.key === "mixdown" ? root.mixdownContent
-                                              : modelData.key === "voice" ? root.voiceContent
-                                              : modelData.key === "summary" ? root.summaryContent : null
-            objectName: "step_" + modelData.key
+            required property var model
+            readonly property string stepState: model.state
+            readonly property Component extra: model.key === "transcript" ? root.transcriptContent
+                                              : model.key === "mixdown" ? root.mixdownContent
+                                              : model.key === "voice" ? root.voiceContent
+                                              : model.key === "summary" ? root.summaryContent : null
+            objectName: "step_" + model.key
             Layout.fillWidth: true
             Layout.leftMargin: -8
             Layout.rightMargin: -8
             implicitHeight: stepContent.implicitHeight + 14
             radius: 7
-            color: state === "attention" ? Theme.raised : "transparent"
-            border.width: state === "attention" ? 1 : 0
+            color: stepState === "attention" ? Theme.raised : "transparent"
+            border.width: stepState === "attention" ? 1 : 0
             border.color: Theme.warnLine
 
             Item {
@@ -46,21 +48,21 @@ ColumnLayout {
                 Rectangle {
                     anchors.fill: parent
                     radius: 11
-                    visible: stepRow.state !== "waiting"
-                    color: stepRow.state === "done" ? Theme.successSoft
-                         : stepRow.state === "attention" ? Theme.warnSoft : "transparent"
-                    border.width: stepRow.state === "running" ? 2 : 0
+                    visible: stepRow.stepState !== "waiting"
+                    color: stepRow.stepState === "done" ? Theme.successSoft
+                         : stepRow.stepState === "attention" ? Theme.warnSoft : "transparent"
+                    border.width: stepRow.stepState === "running" ? 2 : 0
                     border.color: Theme.accent
                 }
                 TDashedRect {
                     anchors.fill: parent
-                    visible: stepRow.state === "waiting"
+                    visible: stepRow.stepState === "waiting"
                     radius: 11
                     color: Theme.borderStrong
                 }
                 TIcon {
                     anchors.centerIn: parent
-                    visible: stepRow.state === "done"
+                    visible: stepRow.stepState === "done"
                     name: "check"
                     size: 12
                     strokeWidth: 2.5
@@ -68,7 +70,7 @@ ColumnLayout {
                 }
                 TLabel {
                     anchors.centerIn: parent
-                    visible: stepRow.state === "attention"
+                    visible: stepRow.stepState === "attention"
                     text: "!"
                     mono: true
                     color: Theme.warnInk
@@ -85,8 +87,8 @@ ColumnLayout {
                     Layout.fillWidth: true
                     spacing: 6
                     TLabel {
-                        text: stepRow.modelData.title
-                        color: stepRow.state === "waiting" && !stepRow.extra ? Theme.textMuted : Theme.text
+                        text: stepRow.model.title
+                        color: stepRow.stepState === "waiting" && !stepRow.extra ? Theme.textMuted : Theme.text
                         font.pixelSize: 13
                         font.weight: Theme.weightSemiBold
                     }
@@ -95,7 +97,7 @@ ColumnLayout {
                 TLabel {
                     Layout.fillWidth: true
                     visible: text !== ""
-                    text: stepRow.modelData.sub
+                    text: stepRow.model.sub
                     muted: true
                     font.pixelSize: Theme.fontCaption
                     elide: Text.ElideRight
@@ -104,8 +106,8 @@ ColumnLayout {
                 TLabel {
                     Layout.fillWidth: true
                     visible: text !== ""
-                    text: stepRow.modelData.note || ""
-                    color: stepRow.state === "attention" ? Theme.warnInk : Theme.textMuted
+                    text: stepRow.model.note || ""
+                    color: stepRow.stepState === "attention" ? Theme.warnInk : Theme.textMuted
                     font.pixelSize: Theme.fontCaption
                     wrapMode: Text.Wrap
                 }
@@ -113,19 +115,19 @@ ColumnLayout {
                 TLabel {
                     Layout.fillWidth: true
                     visible: text !== ""
-                    text: stepRow.modelData.detail || ""
+                    text: stepRow.model.detail || ""
                     mono: true
                     muted: true
                     font.pixelSize: Theme.fontMicro
                     wrapMode: Text.Wrap
                 }
                 TProgressBar {
-                    visible: stepRow.modelData.progress >= 0 || stepRow.modelData.progress === -2
+                    visible: stepRow.model.progress >= 0 || stepRow.model.progress === -2
                     Layout.fillWidth: true
                     Layout.topMargin: 2
                     thickness: 4
-                    indeterminate: stepRow.modelData.progress === -2
-                    value: Math.max(0, stepRow.modelData.progress) / 100
+                    indeterminate: stepRow.model.progress === -2
+                    value: Math.max(0, stepRow.model.progress) / 100
                 }
                 Loader {
                     active: stepRow.extra !== null

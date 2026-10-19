@@ -2,6 +2,8 @@
 
 #include "AppContext.h"
 
+#include <QQmlEngine>
+
 #include "tanara/library/IOverviewFacade.h"
 
 namespace tanara_qml {
@@ -27,6 +29,9 @@ OverviewViewModel::OverviewViewModel(tanara::library::IOverviewFacade* facade, Q
 
 void OverviewViewModel::init()
 {
+    // A member, owned by this view model (QML must never collect it).
+    m_stepModel.setParent(this);
+    QQmlEngine::setObjectOwnership(&m_stepModel, QQmlEngine::CppOwnership);
     m_reloadTimer.setSingleShot(true);
     m_reloadTimer.setInterval(0);
     connect(&m_reloadTimer, &QTimer::timeout, this, &OverviewViewModel::reload);
@@ -222,7 +227,23 @@ void OverviewViewModel::reload()
     m_stats = s.stats;
     m_stepsSummary = s.stepsSummary;
     decorateSteps();
+    publishSteps();
     emit changed();
+}
+
+void OverviewViewModel::publishSteps()
+{
+    m_stepModel.setSteps(m_steps);
+}
+
+void OverviewViewModel::requestStart(const QString& step, const QString& route)
+{
+    QTimer::singleShot(0, this, [this, step, route] { emit startRequested(step, route); });
+}
+
+void OverviewViewModel::requestMenu(const QString& step)
+{
+    QTimer::singleShot(0, this, [this, step] { emit menuRequested(step); });
 }
 
 // ---- S5: the split button ----------------------------------------------------------------
@@ -363,6 +384,7 @@ void OverviewViewModel::prepareRoutes(const QString& step)
         slot.done = true;
         slot.value = value;
         self->decorateSteps();
+        self->publishSteps();
         emit self->changed();
     });
 }
@@ -374,11 +396,11 @@ bool OverviewViewModel::startDefault(const QString& step)
         const bool cloudConfirm = it->stored == Route::Cloud && it->cloudLive && it->confirmCloud;
         if (it->stored == Route::Ask || cloudConfirm) {
             prepareRoutes(step);
-            emit menuRequested(step);
+            requestMenu(step);
             return false;
         }
     }
-    emit startRequested(step, QString());
+    requestStart(step, QString());
     return true;
 }
 
@@ -393,7 +415,7 @@ bool OverviewViewModel::start(const QString& step, const QString& route)
             emit routeRejected(step, reason);
             return false;
         }
-        emit startRequested(step, route);
+        requestStart(step, route);
         return true;
     }
     emit routeRejected(step, tr("Ez az út most nem választható."));
