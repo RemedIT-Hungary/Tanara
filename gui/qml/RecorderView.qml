@@ -793,6 +793,39 @@ Item {
             }
         }
 
+        // The recording was interrupted (the machine slept / a device was lost) and resumes in a new
+        // segment: "resuming… N s" while the core re-opens the tracks, then "Resumed" for a few seconds
+        Rectangle {
+            objectName: "resumeBanner"
+            visible: root.recording && root.vm !== null && root.vm.resumeText !== ""
+            width: parent.width
+            height: resumeRow.implicitHeight + 12
+            radius: 6
+            color: root.vm && root.vm.resuming ? Theme.warnSoft : Theme.successSoft
+            border.width: 1
+            border.color: root.vm && root.vm.resuming ? Theme.warnLine : Theme.successLine
+            Row {
+                id: resumeRow
+                x: 10; y: 6
+                width: parent.width - 20
+                spacing: 8
+                TIcon {
+                    name: root.vm && root.vm.resuming ? "refresh-cw" : "check"
+                    size: 15
+                    color: root.vm && root.vm.resuming ? Theme.warnInk : Theme.successInk
+                    y: 1
+                }
+                TLabel {
+                    width: parent.width - 15 - 8
+                    text: root.vm ? root.vm.resumeText : ""
+                    color: root.vm && root.vm.resuming ? Theme.warnInk : Theme.successInk
+                    font.pixelSize: 12
+                    font.weight: Theme.weightSemiBold
+                    wrapMode: Text.Wrap
+                }
+            }
+        }
+
         // Footer (collapsed): "3 / 6 sources recording" · "Sources v"
         Item {
             visible: !root.expanded && (root.st === "idle" || root.recording)

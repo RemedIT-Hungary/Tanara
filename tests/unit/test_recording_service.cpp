@@ -185,6 +185,7 @@ private slots:
     void refusals();
     void deviceLossAndReturn();
     void switchDeviceOffAndOn();
+    void sleepResumesInNewSegments();
     void silenceQuestionWithInjectedClock();
     void callEndRelayedOnlyWhileRecording();
     void keepAwakeHeldWhileRecording();
@@ -278,6 +279,7 @@ void RecordingServiceTest::deviceLossAndReturn()
     QSignalSpy closed(rig.svc.get(), &recording::RecordingService::trackClosed);
     QSignalSpy added(rig.svc.get(), &recording::RecordingService::trackAdded);
     QSignalSpy returned(rig.svc.get(), &recording::RecordingService::deviceReturned);
+    QSignalSpy reopening(rig.svc.get(), &recording::RecordingService::trackReopening);
     QSignalSpy finished(rig.svc.get(), &recording::RecordingService::finished);
 
     rig.svc->start(QStringLiteral("Kihúzás"), {kMic, kHeadset, kMonitor});
@@ -300,7 +302,12 @@ void RecordingServiceTest::deviceLossAndReturn()
     rig.setDevices({});
     QCOMPARE(closed.size(), 1);
 
-    // Plugged back: recorded again after two sightings, as a new span.
+    // The session re-opens it: it is looked for every poll (through the service's device list).
+    QCOMPARE(reopening.size(), 1);
+    QCOMPARE(reopening.at(0).at(1).toString(), QStringLiteral("device-lost"));
+    QCOMPARE(rig.svc->reopeningDeviceNames(), QStringList{kHeadset.name});
+
+    // Plugged back: recorded again at the next poll, as a new segment continuing the lost one.
     rig.engine->revive(kHeadset.name);
     rig.setDevices({kMic, kHeadset, kMonitor});
     QCOMPARE(added.size(), 0);
@@ -317,6 +324,52 @@ void RecordingServiceTest::deviceLossAndReturn()
     QCOMPARE(m.tracks.size(), 4);
     QCOMPARE(m.tracks.at(3).deviceName, kHeadset.name);
     QVERIFY(m.tracks.at(3).startOffsetMs > 0);
+    QCOMPARE(m.tracks.at(3).continuesTrackId, m.tracks.at(1).id);
+    QCOMPARE(m.gaps.size(), 1);
+    QCOMPARE(m.gaps.at(0).reason, QStringLiteral("device-lost"));
+    QCOMPARE(m.gaps.at(0).trackId, m.tracks.at(3).id);
+    QCOMPARE(rig.store->load(m.id).gaps.size(), 1);   // saved in meeting.json
+}
+
+// The machine slept (the injected wall clock jumps): every track is re-opened through the service's
+// device list and continues in a new segment; the meeting keeps the sleep as a gap.
+void RecordingServiceTest::sleepResumesInNewSegments()
+{
+    Rig rig;
+    auto skew = std::make_shared<std::atomic<qint64>>(0);
+    rig.svc->setSessionClockSources({}, [skew] { return QDateTime::currentMSecsSinceEpoch() + skew->load(); });
+    rig.svc->setReopenTiming(100, 5000);
+    rig.setDevices({kMic, kMonitor});
+    QSignalSpy slept(rig.svc.get(), &recording::RecordingService::systemSlept);
+    QSignalSpy reopening(rig.svc.get(), &recording::RecordingService::trackReopening);
+    QSignalSpy returned(rig.svc.get(), &recording::RecordingService::deviceReturned);
+    QSignalSpy errors(rig.svc.get(), &recording::RecordingService::error);
+    QSignalSpy finished(rig.svc.get(), &recording::RecordingService::finished);
+    rig.svc->start(QStringLiteral("Alvás"), {kMic, kMonitor});
+    rig.feeder.start();
+    QTest::qWait(300);
+
+    skew->store(120000);
+    QVERIFY(slept.wait(2000));
+    QCOMPARE(reopening.size(), 2);
+    QCOMPARE(reopening.at(0).at(1).toString(), QStringLiteral("sleep"));
+    QTRY_COMPARE_WITH_TIMEOUT(returned.size(), 2, 3000);
+    QVERIFY(rig.svc->reopeningDeviceNames().isEmpty());
+    QVERIFY(rig.svc->disconnectedDeviceNames().isEmpty());
+    QCOMPARE(rig.svc->liveDeviceNames(), (QStringList{kMic.name, kMonitor.name}));
+    QVERIFY(errors.isEmpty());
+    QTest::qWait(200);
+
+    rig.svc->stop();
+    QVERIFY(finished.wait(10000));
+    const Meeting m = finished.at(0).at(0).value<Meeting>();
+    QCOMPARE(m.tracks.size(), 4);
+    QCOMPARE(m.tracks.at(2).continuesTrackId, m.tracks.at(0).id);
+    QCOMPARE(m.tracks.at(3).continuesTrackId, m.tracks.at(1).id);
+    QVERIFY(m.tracks.at(2).startOffsetMs >= 120000);
+    QCOMPARE(m.gaps.size(), 1);
+    QCOMPARE(m.gaps.at(0).reason, QStringLiteral("sleep"));
+    QVERIFY(m.durationMs > 120000);
 }
 
 void RecordingServiceTest::switchDeviceOffAndOn()

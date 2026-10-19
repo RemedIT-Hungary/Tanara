@@ -29,6 +29,10 @@ struct DeviceSlot {
     std::atomic<float> peak{0.0f};
     std::atomic<float> peakMax{0.0f};   // peak hold for takePeak()
     std::atomic<bool> open{false};      // capture is running (false after closeDevice)
+    // The backend stopped / suspended the stream on its own (miniaudio "stopped" notification while
+    // open; a later "started" clears it): e.g. WASAPI AUDCLNT_E_DEVICE_INVALIDATED, a suspended
+    // PulseAudio stream. See AudioEngine::deviceLost.
+    std::atomic<bool> stoppedByBackend{false};
     ma_uint32 channels = 1;
     AudioDeviceInfo info;
     // Its own ma_device next to the slot (kept in a separate vector for stable addresses).
@@ -38,6 +42,7 @@ struct DeviceSlot {
 
 static void dataCallback(ma_device* pDevice, void* pOutput, const void* pInput,
                          ma_uint32 frameCount);
+static void notificationCallback(const ma_device_notification* pNotification);
 
 namespace {
 
@@ -192,6 +197,7 @@ struct AudioEngine::Impl {
         cfg.capture.channels  = slot->channels;
         cfg.sampleRate        = kSampleRate;
         cfg.dataCallback      = dataCallback;
+        cfg.notificationCallback = notificationCallback;
         cfg.pUserData         = slot.get();        // stable address (heap)
 
         if (ma_device_init(context.get(), &cfg, dev.get()) != MA_SUCCESS)
@@ -244,6 +250,19 @@ static void dataCallback(ma_device* pDevice, void* /*pOutput*/, const void* pInp
         slot->peakMax.store(peak, std::memory_order_relaxed);
 }
 
+// Backend notifications (on a miniaudio thread): only an atomic flag, nothing else.
+static void notificationCallback(const ma_device_notification* pNotification) {
+    if (!pNotification || !pNotification->pDevice) return;
+    auto* slot = static_cast<DeviceSlot*>(pNotification->pDevice->pUserData);
+    if (!slot) return;
+    if (pNotification->type == ma_device_notification_type_stopped) {
+        // Our own closeDevice() clears `open` before it stops the device: that is not a loss.
+        if (slot->open.load()) slot->stoppedByBackend.store(true);
+    } else if (pNotification->type == ma_device_notification_type_started) {
+        slot->stoppedByBackend.store(false);
+    }
+}
+
 AudioEngine::AudioEngine() : impl_(std::make_unique<Impl>()) {}
 AudioEngine::~AudioEngine() = default;
 
@@ -292,6 +311,16 @@ void AudioEngine::closeDevice(int trackIndex) {
     s->rms.store(0.0f);
     s->peak.store(0.0f);
     s->peakMax.store(0.0f);
+}
+
+bool AudioEngine::deviceLost(int trackIndex) const {
+    const DeviceSlot* s = impl_->slot(trackIndex);
+    if (!s || !s->open.load()) return false;
+    if (s->stoppedByBackend.load()) return true;
+    // A data loop that ended with an error (e.g. the device was invalidated) may skip the "stopped"
+    // notification (miniaudio posts none when the backend's stop fails), but the state says it.
+    const ma_device* dev = impl_->devices[static_cast<size_t>(trackIndex)].get();
+    return dev && ma_device_get_state(dev) == ma_device_state_stopped;
 }
 
 bool AudioEngine::isOpen(int trackIndex) const {

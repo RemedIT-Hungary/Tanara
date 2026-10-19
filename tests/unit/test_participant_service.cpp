@@ -80,6 +80,7 @@ private slots:
     void addRemoveAsUndoSteps();
     void approveSkipSoloAndPending();
     void trackBindingBeforeTranscript();
+    void trackBindingGroupsASegmentChain();
     void identificationCommitAndUnheard();
     void errorPaths();
 
@@ -342,6 +343,34 @@ void ParticipantServiceTest::trackBindingBeforeTranscript()
     b = m_svc->participantTracks(m0.id, p.id);
     QVERIFY(!b.manual);
     QCOMPARE(b.trackIds, QStringList{QStringLiteral("loop")});
+}
+
+// A track re-opened after a sleep under another device name (a segment chain) is ONE logical track
+// in the binding list: binding the later segment binds the chain's head.
+void ParticipantServiceTest::trackBindingGroupsASegmentChain()
+{
+    const Meeting m0 = makeMeeting();
+    Meeting m = m_store->load(m0.id);
+    Track seg;
+    seg.id = QStringLiteral("loop-2");
+    seg.deviceName = QStringLiteral("loop (2)");
+    seg.kind = TrackKind::Loopback;
+    seg.file = QStringLiteral("loop-2.wav");
+    seg.startOffsetMs = 12000;
+    seg.continuesTrackId = QStringLiteral("loop");
+    m.tracks.append(seg);
+    Participant p;
+    p.id = QStringLiteral("v-1");
+    p.personId = m_people->ensure(QStringLiteral("Béla"));
+    p.source = ParticipantSource::Voice;
+    p.sides = {QStringLiteral("loopback")};
+    m.participants.append(p);
+    m_store->saveMeeting(m);
+
+    ParticipantTrackBinding b = m_svc->participantTracks(m0.id, p.id);
+    QCOMPARE(b.trackIds, QStringList{QStringLiteral("loop")});
+    QVERIFY(m_svc->setParticipantTracks(m0.id, p.id, {QStringLiteral("loop-2")}));
+    QCOMPARE(m_store->load(m0.id).participants.first().tracks, QStringList{QStringLiteral("loop")});
 }
 
 // Committing a voice identification (speakerMap, the overlay's record, transcript.md) and the unheard

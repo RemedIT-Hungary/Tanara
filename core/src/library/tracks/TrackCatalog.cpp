@@ -9,6 +9,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QHash>
 #include <QReadWriteLock>
 #include <QRegularExpression>
 
@@ -100,8 +101,20 @@ QString shortDeviceName(const QString& deviceName)
 QVector<SegmentInfo> segments(const QVector<Track>& all)
 {
     const int n = int(all.size());
-    QVector<SegmentInfo> out(n);
-    for (int i = 0; i < n; ++i) out[i].leader = i;
+    // Union-find over the tracks: the spans of one device (by name, see the header) and the
+    // segment chains (continuesTrackId) end up in one logical track.
+    QVector<int> parent(n);
+    for (int i = 0; i < n; ++i) parent[i] = i;
+    const auto find = [&parent](int x) {
+        while (parent[x] != x) x = parent[x] = parent[parent[x]];
+        return x;
+    };
+    const auto unite = [&](int a, int b) {
+        a = find(a);
+        b = find(b);
+        if (a != b) parent[qMax(a, b)] = qMin(a, b);
+    };
+
     QVector<bool> done(n, false);
     for (int i = 0; i < n; ++i) {
         if (done[i] || all.at(i).deviceName.isEmpty()) continue;
@@ -115,6 +128,24 @@ QVector<SegmentInfo> segments(const QVector<Track>& all)
         for (int j : group) offs.append(all.at(j).startOffsetMs);
         std::sort(offs.begin(), offs.end());
         if (std::adjacent_find(offs.cbegin(), offs.cend()) != offs.cend()) continue;
+        for (int j : group) unite(group.first(), j);
+    }
+    // A re-opened segment (after a sleep / a lost device) names the one it continues: one logical
+    // track even if the device came back under another name.
+    for (int i = 0; i < n; ++i) {
+        const QString& prev = all.at(i).continuesTrackId;
+        if (prev.isEmpty()) continue;
+        for (int j = 0; j < n; ++j)
+            if (j != i && all.at(j).id == prev) { unite(i, j); break; }
+    }
+
+    QVector<SegmentInfo> out(n);
+    for (int i = 0; i < n; ++i) out[i].leader = i;
+    QHash<int, QVector<int>> groups;
+    for (int i = 0; i < n; ++i) groups[find(i)].append(i);
+    for (auto it = groups.begin(); it != groups.end(); ++it) {
+        QVector<int>& group = it.value();
+        if (group.size() < 2) continue;
         std::stable_sort(group.begin(), group.end(), [&all](int x, int y) {
             return all.at(x).startOffsetMs < all.at(y).startOffsetMs;
         });
@@ -122,6 +153,30 @@ QVector<SegmentInfo> segments(const QVector<Track>& all)
             out[group[k]] = SegmentInfo{group.first(), k + 1, int(group.size())};
     }
     return out;
+}
+
+std::optional<RecordingGap> gapBefore(const Meeting& meeting, int trackIndex)
+{
+    if (trackIndex < 0 || trackIndex >= meeting.tracks.size() || meeting.gaps.isEmpty()) return std::nullopt;
+    const QVector<SegmentInfo> seg = segments(meeting.tracks);
+    const SegmentInfo& me = seg.at(trackIndex);
+    if (me.segment < 2) return std::nullopt;
+    const Track& t = meeting.tracks.at(trackIndex);
+    // The previous segment of the same logical track: the gap lies between its start and ours.
+    qint64 prevStart = -1;
+    for (int j = 0; j < seg.size(); ++j)
+        if (seg.at(j).leader == me.leader && seg.at(j).segment == me.segment - 1)
+            prevStart = meeting.tracks.at(j).startOffsetMs;
+    // A lost device names the segment it resumed; a sleep is meeting-wide.
+    for (const RecordingGap& g : meeting.gaps)
+        if (!g.trackId.isEmpty() && g.trackId == t.id) return g;
+    std::optional<RecordingGap> best;
+    for (const RecordingGap& g : meeting.gaps) {
+        if (!g.trackId.isEmpty()) continue;
+        if (g.toMs > t.startOffsetMs || g.fromMs < prevStart) continue;
+        if (!best || g.toMs > best->toMs) best = g;
+    }
+    return best;
 }
 
 namespace {
@@ -279,6 +334,7 @@ QVector<TrackView> TrackCatalog::tracks(const Meeting& m)
         v.rawDeviceName = t.deviceName;
         v.segment = seg.at(i).segment;
         v.segmentCount = seg.at(i).count;
+        v.gapBefore = tracknames::gapBefore(m, i);
         v.absolutePath = QDir(m.folder).filePath(t.file);
         const QFileInfo fi(v.absolutePath);
         v.fileMissing = t.file.isEmpty() || !fi.isFile();

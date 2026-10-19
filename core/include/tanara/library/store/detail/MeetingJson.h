@@ -18,6 +18,9 @@ inline constexpr int kMeetingFormatVersion = 3;
 QJsonObject toJson(const Track& t);
 Track       trackFromJson(const QJsonObject& o);
 
+QJsonObject  toJson(const RecordingGap& g);
+RecordingGap recordingGapFromJson(const QJsonObject& o);
+
 QJsonObject toJson(const Meeting& m);
 Meeting     meetingFromJson(const QJsonObject& o);   // folder stays empty
 

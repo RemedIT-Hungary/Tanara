@@ -85,7 +85,13 @@ public:
         // The id of the leading segment of the logical track (the device's segments): the key of the
         // speech strip, track playback (PlayerController::previewTrackId) and the speaker -> track binding.
         GroupIdRole,
+        // A later segment of a chain: the interruption before it, "megszakadt 14:02–14:19 (alvás),
+        // folytatva" (Meeting::gaps); empty otherwise.
+        InterruptionRole,
     };
+
+    // The interruption text of a gap (InterruptionRole).
+    static QString interruptionText(const tanara::RecordingGap& gap);
 
     // The waveform's place on the meeting timeline: {start, length} as 0..1 fractions. Unknown
     // file length (fileDurationMs < 0) -> the track runs from its start to the meeting's end;

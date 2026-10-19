@@ -53,6 +53,8 @@ QJsonObject toJson(const Track& t)
         o[QStringLiteral("speechRatio")] = t.speechRatio;
     if (!t.excludedReason.isEmpty())
         o[QStringLiteral("excludedReason")] = t.excludedReason;
+    if (!t.continuesTrackId.isEmpty())
+        o[QStringLiteral("continuesTrackId")] = t.continuesTrackId;
     return o;
 }
 
@@ -73,10 +75,36 @@ Track trackFromJson(const QJsonObject& o)
     t.startOffsetMs = qint64(o.value(QStringLiteral("startOffsetMs")).toDouble(0.0));
     t.speechRatio  = o.value(QStringLiteral("speechRatio")).toDouble(-1.0);
     t.excludedReason = o.value(QStringLiteral("excludedReason")).toString();
+    t.continuesTrackId = o.value(QStringLiteral("continuesTrackId")).toString();
     // Old meeting: a post-recording silence drop (active=false) without a reason -> "no speech".
     if (!t.active && t.excludedReason.isEmpty())
         t.excludedReason = QStringLiteral("noSpeech");
     return t;
+}
+
+// ---- RecordingGap ---------------------------------------------------------
+QJsonObject toJson(const RecordingGap& g)
+{
+    QJsonObject o;
+    o[QStringLiteral("fromMs")] = double(g.fromMs);
+    o[QStringLiteral("toMs")]   = double(g.toMs);
+    o[QStringLiteral("reason")] = g.reason;
+    if (g.fromWall.isValid()) o[QStringLiteral("fromWall")] = g.fromWall.toString(Qt::ISODateWithMs);
+    if (g.toWall.isValid())   o[QStringLiteral("toWall")]   = g.toWall.toString(Qt::ISODateWithMs);
+    if (!g.trackId.isEmpty()) o[QStringLiteral("trackId")]  = g.trackId;
+    return o;
+}
+
+RecordingGap recordingGapFromJson(const QJsonObject& o)
+{
+    RecordingGap g;
+    g.fromMs   = qint64(o.value(QStringLiteral("fromMs")).toDouble());
+    g.toMs     = qint64(o.value(QStringLiteral("toMs")).toDouble());
+    g.reason   = o.value(QStringLiteral("reason")).toString();
+    g.fromWall = QDateTime::fromString(o.value(QStringLiteral("fromWall")).toString(), Qt::ISODateWithMs);
+    g.toWall   = QDateTime::fromString(o.value(QStringLiteral("toWall")).toString(), Qt::ISODateWithMs);
+    g.trackId  = o.value(QStringLiteral("trackId")).toString();
+    return g;
 }
 
 // ---- Meeting --------------------------------------------------------------
@@ -121,6 +149,11 @@ QJsonObject toJson(const Meeting& m)
     }
     if (m.approval)
         o[QStringLiteral("participantApproval")] = toJson(*m.approval);
+    if (!m.gaps.isEmpty()) {
+        QJsonArray gs;
+        for (const RecordingGap& g : m.gaps) gs.append(toJson(g));
+        o[QStringLiteral("gaps")] = gs;
+    }
     return o;
 }
 
@@ -158,6 +191,8 @@ Meeting meetingFromJson(const QJsonObject& o)
         m.participants.append(participantFromJson(v.toObject()));
     if (o.value(QStringLiteral("participantApproval")).isObject())
         m.approval = participantApprovalFromJson(o.value(QStringLiteral("participantApproval")).toObject());
+    for (const QJsonValue& v : o.value(QStringLiteral("gaps")).toArray())
+        m.gaps.append(recordingGapFromJson(v.toObject()));
     // An older meeting.json (before version 3) refers to people by NAME; the app does not read that.
     const int version = o.value(QStringLiteral("version")).toInt(0);
     if (version < kMeetingFormatVersion && (!sm.isEmpty() || !m.participants.isEmpty()))

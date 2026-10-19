@@ -41,6 +41,10 @@ public:
     // stay (the index is stable, the remaining data can still be read out).
     virtual void closeDevice(int trackIndex);
     virtual bool isOpen(int trackIndex) const;
+    // The capture of an open device was stopped by the backend, not by us (WASAPI device
+    // invalidated, PulseAudio/PipeWire stream suspended or killed). The session treats a lost device
+    // that also delivers no data as detached and re-opens it. Call from the engine's owning thread.
+    virtual bool deviceLost(int trackIndex) const;
 
     // At most this many devices can be opened (the slot array has a fixed size so the reader thread can
     // access it safely without a lock while a new device opens).

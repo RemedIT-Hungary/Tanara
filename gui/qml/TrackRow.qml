@@ -57,7 +57,10 @@ Item {
         const ratio = model.speechRatio
         if (ratio === undefined || ratio < 0) return qsTr("beszéd-ellenőrzés…")
         const who = root.sideWho ? (root.sideWho[model.kind] || "") : ""
+        // A later segment after a sleep / a lost device: "megszakadt 14:02–14:19 (alvás), folytatva".
+        const gap = model.interruption || ""
         return qsTr("beszéd %1%").arg(Math.round(ratio * 100)) + (who !== "" ? " · " + who : "")
+               + (gap !== "" ? " · " + gap : "")
     }
 
     function togglePlay() {

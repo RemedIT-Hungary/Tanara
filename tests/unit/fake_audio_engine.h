@@ -29,8 +29,11 @@ public:
         QElapsedTimer since;
         qint64 framesFed = 0;
         std::atomic<bool> vanished{false};   // the drain thread reads it too (rms)
+        bool lost = false;                   // the backend stopped it (deviceLost)
     };
     QStringList silentNames;
+    // Devices that cannot be opened now (addDevice fails), like a device not yet back after a wake-up.
+    QStringList unavailableNames;
     std::array<std::unique_ptr<Slot>, kMaxDevices> devs;
     int n = 0;
     // The engine is owned by RecordingSession and deleted on close; the test's feeder timer sees
@@ -45,6 +48,7 @@ public:
     }
     void stop() override { for (int i = 0; i < n; ++i) devs[i]->open = false; }
     int addDevice(const AudioDeviceInfo& d) override {
+        if (unavailableNames.contains(d.name)) return -1;
         auto s = std::make_unique<Slot>();
         s->ring = std::make_unique<recording::RingBuffer>(48000 * 2);
         s->info = d;
@@ -63,6 +67,13 @@ public:
         for (int i = 0; i < n; ++i)
             if (devs[i]->info.name == name) devs[i]->vanished = true;
     }
+    // The backend stops the device's current slot(s) (WASAPI invalidated, a killed stream): no more
+    // data, and deviceLost() reports it. A later addDevice gets a fresh, working slot.
+    void loseByBackend(const QString& name) {
+        for (int i = 0; i < n; ++i)
+            if (devs[i]->info.name == name) { devs[i]->vanished = true; devs[i]->lost = true; }
+    }
+    bool deviceLost(int i) const override { return i >= 0 && i < n && devs[i]->open && devs[i]->lost; }
     bool isOpen(int i) const override { return i >= 0 && i < n && devs[i]->open; }
     int count() const override { return n; }
     recording::RingBuffer& buffer(int i) override { return *devs[i]->ring; }

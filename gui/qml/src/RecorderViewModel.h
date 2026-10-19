@@ -95,6 +95,11 @@ class RecorderViewModel : public QObject {
     // microphone was lost when the machine slept. Empty when every track delivers; the seconds update.
     Q_PROPERTY(QString stallWarning READ stallWarning NOTIFY stallChanged)
     Q_PROPERTY(bool stalled READ stalled NOTIFY stallChanged)
+    // Resume after a sleep / a lost device: "The recording was interrupted (...), resuming… N s" while
+    // the core re-opens the lost tracks, then "Resumed in a new segment" for a few seconds; empty
+    // otherwise. resuming: re-opening is in progress.
+    Q_PROPERTY(QString resumeText READ resumeText NOTIFY resumeChanged)
+    Q_PROPERTY(bool resuming READ resuming NOTIFY resumeChanged)
     // Threshold of the per-track silence warning (minutes).
     Q_PROPERTY(int silenceWarnMinutes READ silenceWarnMinutes CONSTANT)
     // The recording's tags: [{ id, name }]. Editable before starting and during recording; the
@@ -138,6 +143,8 @@ public:
     QString keepAwakeState() const { return m_facade ? m_facade->keepAwakeState() : QString(); }
     QString stallWarning() const { return m_stallWarning; }
     bool stalled() const { return !m_stalled.isEmpty(); }
+    QString resumeText() const { return m_resumeText; }
+    bool resuming() const { return !m_reopening.isEmpty(); }
     int silenceWarnMinutes() const { return 3; }
     QObject* tagBackendObject() const;
 
@@ -184,6 +191,10 @@ signals:
     void stallChanged();
     // A track has just stalled (once per stall, not per tick): the host notifies a hidden window's user.
     void stallRaised(QString title, QString text);
+    void resumeChanged();
+    // An interruption began / the recording resumed / re-opening gave up (once per event): the host
+    // notifies a hidden window's user.
+    void interruptionRaised(QString title, QString text);
     void tagsChanged();
     void tagInputRequested();
     // For the recorder window / the enclosing process:
@@ -233,6 +244,11 @@ private:
     void onTrackResumed(const QString& device);
     void updateStallWarning(qint64 elapsedMs);   // the text from m_stalled at the recording clock
     void clearStalls();
+    void onTrackReopening(const QString& device, const QString& reason);
+    void onReopenEnded(const QString& device, bool resumed);
+    void updateResumeText();             // the text from m_reopening / the resumed note at m_clock
+    void clearResume();
+    QString shownName(const QString& device) const;   // the row's friendly name, otherwise the raw one
     QString iconFor(const Row& r) const;
     void syncRecordingTags();            // handing the tags to the core (live during recording)
     void refreshTagNames();              // renamed / deleted tag in the pool
@@ -259,6 +275,10 @@ private:
     QString m_errorText;
     QMap<QString, qint64> m_stalled;     // stalled track's device -> last data (recording clock ms)
     QString m_stallWarning;
+    QMap<QString, QString> m_reopening;  // lost track's device -> reason ("sleep" | "device-lost")
+    qint64 m_reopenSince = 0;            // m_clock when the current interruption began
+    qint64 m_resumedAt = -1;             // m_clock when it resumed ("Resumed" note shown); -1 = none
+    QString m_resumeText;
     struct TagRef { QString id, name; };
     QVector<TagRef> m_tags;
     QStringList m_knownDevices;          // what we have already seen (to recognize a "new device")

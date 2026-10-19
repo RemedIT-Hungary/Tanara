@@ -4,6 +4,7 @@
 #include "tanara/recording/audio/RingBuffer.h"
 #include "tanara/recording/audio/SystemAudioSource.h"
 #include "tanara/recording/audio/TrackTiming.h"
+#include "tanara/foundation/log/Logging.h"
 
 #include <QByteArray>
 #include <QDateTime>
@@ -11,6 +12,7 @@
 #include <QDebug>
 #include <QElapsedTimer>
 #include <QFileInfo>
+#include <QHash>
 #include <QMap>
 #include <QRegularExpression>
 #include <QString>
@@ -21,6 +23,8 @@
 #include <QVector>
 
 #include <algorithm>
+#include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -56,11 +60,43 @@ struct TrackMeta {
     // The time the track was opened, from the recording's zero point (ms) -> Track::startOffsetMs. The
     // file holds audio from the open on, WITHOUT silence padding.
     qint64 startOffsetMs = 0;
+    // The segment this one continues (a re-opened lost track) -> Track::continuesTrackId.
+    QString continuesTrackId;
 };
 
 constexpr int kSampleRate = 48000;
 
+qint64 steadyNowMs()
+{
+    return std::chrono::duration_cast<std::chrono::milliseconds>(
+               std::chrono::steady_clock::now().time_since_epoch()).count();
+}
+
 } // namespace
+
+// The recording clock, shared by the session (main thread) and the drain worker. It is the monotonic
+// clock since the start PLUS the sleeps the drain worker detected (the monotonic clock does not
+// advance during a suspend on Linux): so it follows the wall clock across a sleep, and a segment
+// opened after the wake-up gets its wall-clock place as its offset (wall start -> now), while drift
+// and clock setting between ticks do not disturb it.
+struct RecordingClock {
+    std::function<qint64()> monotonic;   // empty = steady_clock
+    std::function<qint64()> wall;        // empty = the system clock
+    qint64 monotonicStart = 0;
+    qint64 wallStart = 0;
+    std::atomic<qint64> slept{0};
+
+    qint64 monotonicNow() const { return monotonic ? monotonic() : steadyNowMs(); }
+    qint64 wallNow() const { return wall ? wall() : QDateTime::currentMSecsSinceEpoch(); }
+    void start()
+    {
+        monotonicStart = monotonicNow();
+        wallStart = wallNow();
+        slept.store(0);
+    }
+    // The recording-clock position (ms since the recording's zero point).
+    qint64 elapsed() const { return monotonicNow() - monotonicStart + slept.load(); }
+};
 
 // The drain worker lives on a separate QThread. It creates EVERY encoder (media::EncoderHandle), writes to it and
 // closes it, all on the same thread, so there is no "QSocketNotifier from another thread" problem
@@ -75,9 +111,11 @@ class DrainWorker : public QObject {
     Q_OBJECT
 public:
     DrainWorker(media::MediaToolPtr media, AudioEngine* engine, QString folder, int opusKbps,
-                QElapsedTimer clock, std::optional<bool> fillGaps, qint64 stallWarnMs)
+                std::shared_ptr<RecordingClock> clock, std::optional<bool> fillGaps, qint64 stallWarnMs,
+                bool splitOnSleep)
         : media_(std::move(media)), engine_(engine), folder_(std::move(folder)), opusKbps_(opusKbps),
-          clock_(clock), fillGaps_(fillGaps), stallWarnMs_(stallWarnMs) {}
+          clock_(std::move(clock)), fillGaps_(fillGaps), stallWarnMs_(stallWarnMs),
+          splitOnSleep_(splitOnSleep) {}
 
     ~DrainWorker() override = default;   // the encoder handles kill + reap still running encoders
 
@@ -142,9 +180,12 @@ signals:
     void finalized(QStringList failedFiles);
     void stalled(int trackIndex, qint64 sinceMs);   // no data since sinceMs (recording clock)
     void resumed(int trackIndex);
+    // The machine slept: wall-clock bounds (epoch ms) and the recording clock before / after the jump.
+    void slept(qint64 fromWallMs, qint64 toWallMs, qint64 fromMs, qint64 toMs);
 
 private slots:
     void tick() {
+        checkSleep();
         for (EncTrack& t : tracks_) drainTrack(t);
         checkStalls();
         if (meter_.elapsed() >= 33) {   // ~30 Hz
@@ -154,7 +195,7 @@ private slots:
                 emit meter(static_cast<int>(i), engine_->rms(tracks_[i].engineIndex),
                            engine_->takePeak(tracks_[i].engineIndex));
             }
-            emit elapsed(clock_.elapsed());
+            emit elapsed(clock_->elapsed());
         }
     }
 
@@ -170,6 +211,11 @@ private:
         bool fillGaps = false;     // silent gaps must be filled with silence (loopback track, on every platform)
         bool watchStall = false;   // a data-less stretch is reported (not for ISystemAudioSource::deliversNothingWhenIdle)
         bool stalled = false;      // reported stalled, not yet resumed
+        // Cut by a sleep: the session closes it and re-opens the device in a new segment. Until the
+        // close arrives its data (from the stale device) is dropped and its gap fill stops at capMs,
+        // so the sleep is never filled with silence: the gap is metadata.
+        bool suspended = false;
+        qint64 capMs = -1;
         bool closed = false;
         bool ok = false;           // the encoder closed the file without error
         std::vector<int16_t> scratch;
@@ -205,7 +251,8 @@ private:
     // Only for a fillGaps track.
     void fillGap(EncTrack& t) {
         if (!t.fillGaps) return;
-        const qint64 now = clock_.elapsed();
+        qint64 now = clock_->elapsed();
+        if (t.capMs >= 0) now = qMin(now, t.capMs);
         qint64 frames = tracktiming::silenceToInsert(now - t.openedAtMs, now - t.lastDataMs,
                                                      t.framesWritten, kSampleRate);
         static const QByteArray zeros(1 << 16, '\0');
@@ -220,6 +267,11 @@ private:
     void drainTrack(EncTrack& t) {
         if (t.closed || !t.proc) return;
         RingBuffer& ring = engine_->buffer(t.engineIndex);
+        if (t.suspended) {   // stale data after the wake-up: not this segment's (see EncTrack::suspended)
+            if (t.scratch.size() < 4096) t.scratch.resize(4096);
+            while (ring.read(t.scratch.data(), t.scratch.size()) > 0) {}
+            return;
+        }
         size_t avail = ring.available();
         bool gotData = false;
         while (avail > 0) {
@@ -232,7 +284,7 @@ private:
             avail = ring.available();
         }
         if (gotData) {
-            t.lastDataMs = clock_.elapsed();
+            t.lastDataMs = clock_->elapsed();
             if (t.stalled) {
                 t.stalled = false;
                 emit resumed(static_cast<int>(&t - tracks_.data()));
@@ -245,14 +297,46 @@ private:
     // An open, watched track with no data for stallWarnMs_ is reported once (see tracktiming::isStalled).
     // Filled silence does not count as data: lastDataMs moves only on real samples.
     void checkStalls() {
-        const qint64 now = clock_.elapsed();
+        const qint64 now = clock_->elapsed();
         for (size_t i = 0; i < tracks_.size(); ++i) {
             EncTrack& t = tracks_[i];
-            if (t.closed || t.stalled || !t.watchStall) continue;
+            if (t.closed || t.stalled || t.suspended || !t.watchStall) continue;
             if (!tracktiming::isStalled(now - t.lastDataMs, stallWarnMs_)) continue;
             t.stalled = true;
             emit stalled(static_cast<int>(i), t.lastDataMs);
         }
+    }
+
+    // Sleep detection (tracktiming::sleepJumpMs): the wall clock ran ahead of the monotonic one since
+    // the previous tick. The recording clock takes the jump over; with splitOnSleep the open tracks
+    // are suspended at the sleep's start (the session closes and re-opens them).
+    void checkSleep() {
+        const qint64 mono = clock_->monotonicNow();
+        const qint64 wall = clock_->wallNow();
+        if (ticked_) {
+            const qint64 dMono = mono - lastTickMono_;
+            const qint64 dWall = wall - lastTickWall_;
+            if (const qint64 jump = tracktiming::sleepJumpMs(dWall, dMono); jump > 0) {
+                const qint64 fromMs = clock_->elapsed();   // the monotonic clock stood still: the sleep's start
+                clock_->slept.fetch_add(jump);
+                const qint64 toMs = clock_->elapsed();
+                if (splitOnSleep_) {
+                    for (EncTrack& t : tracks_) {
+                        if (t.closed) continue;
+                        t.suspended = true;
+                        t.capMs = fromMs;
+                    }
+                }
+                emit slept(lastTickWall_, wall, fromMs, toMs);
+            } else if (dMono - dWall > tracktiming::kSleepJumpMs) {
+                qCWarning(lcAudio).noquote()
+                    << QStringLiteral("Recording: the wall clock went back by %1 ms (clock set?); the recording clock is unaffected")
+                           .arg(dMono - dWall);
+            }
+        }
+        ticked_ = true;
+        lastTickMono_ = mono;
+        lastTickWall_ = wall;
     }
 
     // Closes the track's encoder and waits; t.ok = the file was made without error.
@@ -269,9 +353,13 @@ private:
     AudioEngine* engine_ = nullptr;
     QString folder_;
     int opusKbps_ = 64;          // per-track Opus bitrate (from the audio quality setting)
-    QElapsedTimer clock_;        // the recording's zero point (a copy of the session's clock)
+    std::shared_ptr<RecordingClock> clock_;   // the recording clock (shared with the session)
     std::optional<bool> fillGaps_;   // test override; empty = per platform
     qint64 stallWarnMs_ = tracktiming::kStallWarnMs;
+    bool splitOnSleep_ = false;      // a sleep suspends the open tracks (the session re-opens them)
+    bool ticked_ = false;            // the previous tick's clocks (sleep detection)
+    qint64 lastTickMono_ = 0;
+    qint64 lastTickWall_ = 0;
     std::vector<EncTrack> tracks_;
     QTimer* timer_ = nullptr;
     QElapsedTimer meter_;
@@ -289,13 +377,30 @@ struct RecordingSession::Impl {
     QString id;
     QDateTime startedAt;
     // The recording clock: it starts BEFORE capture starts and is the meeting's zero point. Every track
-    // offset (startOffsetMs) and the meeting's length are measured against it.
-    QElapsedTimer wall;
+    // offset (startOffsetMs) and the meeting's length are measured against it. Shared with the worker.
+    std::shared_ptr<RecordingClock> clock = std::make_shared<RecordingClock>();
     qint64 durationMs = 0;
     RecordingSession::EngineFactory engineFactory;   // empty = the real AudioEngine
     std::optional<bool> fillGaps;                    // empty = per platform
     qint64 stallWarnMs = tracktiming::kStallWarnMs;
     QMap<QString, qint64> stalled;                   // device name -> last data (recording clock)
+
+    // Re-open after loss.
+    RecordingSession::DeviceLister lister;           // empty = no re-open
+    qint64 reopenPollMs = tracktiming::kReopenPollMs;
+    qint64 reopenWindowMs = tracktiming::kReopenWindowMs;
+    struct PendingReopen {
+        AudioDeviceInfo device;    // the lost track's device (matched by id, then by name)
+        QString reason;            // tracktiming::kGapSleep | kGapDeviceLost
+        QString prevTrackId;       // the lost segment (-> the new one's continuesTrackId)
+        qint64 sinceMs = 0;        // recording clock when re-opening began (the window runs from here)
+        qint64 gapFromMs = 0;      // where the lost segment ended (recording clock)
+        qint64 gapFromWallMs = 0;
+    };
+    QVector<PendingReopen> pending;
+    QTimer* reopenTimer = nullptr;
+    QTimer* lossTimer = nullptr;   // watches the engine for devices the backend stopped
+    QVector<RecordingGap> gaps;
 
     RecordingState state = RecordingState::Idle;
 
@@ -314,6 +419,12 @@ struct RecordingSession::Impl {
         }
         delete worker; worker = nullptr;          // the destructor releases the encoders
         delete workerThread; workerThread = nullptr;
+    }
+
+    void stopReopenWatch() {
+        if (reopenTimer) reopenTimer->stop();
+        if (lossTimer) lossTimer->stop();
+        pending.clear();
     }
 
     // Track metadata from a (started) engine device; the slug is unique within the meeting.
@@ -345,6 +456,15 @@ struct RecordingSession::Impl {
             if (tracks[j].deviceName == name) return false;
         return true;
     }
+
+    // The pending re-open the device answers (same id, otherwise same name); -1 if none.
+    int pendingFor(const AudioDeviceInfo& device) const {
+        for (int k = 0; k < pending.size(); ++k)
+            if (!device.id.isEmpty() && pending.at(k).device.id == device.id) return k;
+        for (int k = 0; k < pending.size(); ++k)
+            if (pending.at(k).device.name == device.name) return k;
+        return -1;
+    }
 };
 
 RecordingSession::RecordingSession(media::MediaToolPtr media, QString audioDir, QString title,
@@ -358,6 +478,7 @@ RecordingSession::RecordingSession(media::MediaToolPtr media, QString audioDir, 
 }
 
 RecordingSession::~RecordingSession() {
+    impl_->stopReopenWatch();
     if (impl_->state != RecordingState::Idle && impl_->worker) {
         // An aborted / not yet finalized recording: the track files are closed cleanly here too.
         QMetaObject::invokeMethod(impl_->worker, "finalize", Qt::BlockingQueuedConnection);
@@ -371,7 +492,26 @@ RecordingState RecordingSession::state() const { return impl_->state; }
 void RecordingSession::setEngineFactory(EngineFactory factory) { impl_->engineFactory = std::move(factory); }
 void RecordingSession::setFillCaptureGaps(bool on) { impl_->fillGaps = on; }
 void RecordingSession::setStallWarnMs(qint64 ms) { impl_->stallWarnMs = ms; }
+void RecordingSession::setClockSources(std::function<qint64()> monotonicMs, std::function<qint64()> wallMs)
+{
+    impl_->clock->monotonic = std::move(monotonicMs);
+    impl_->clock->wall = std::move(wallMs);
+}
+void RecordingSession::setDeviceLister(DeviceLister lister) { impl_->lister = std::move(lister); }
+void RecordingSession::setReopenTiming(qint64 pollMs, qint64 windowMs)
+{
+    impl_->reopenPollMs = qMax<qint64>(1, pollMs);
+    impl_->reopenWindowMs = qMax<qint64>(0, windowMs);
+    if (impl_->reopenTimer) impl_->reopenTimer->setInterval(int(impl_->reopenPollMs));
+}
 QMap<QString, qint64> RecordingSession::stalledTracks() const { return impl_->stalled; }
+QVector<RecordingGap> RecordingSession::gaps() const { return impl_->gaps; }
+QStringList RecordingSession::reopeningDevices() const
+{
+    QStringList out;
+    for (const Impl::PendingReopen& p : impl_->pending) out << p.device.name;
+    return out;
+}
 QString RecordingSession::folder() const { return impl_->folder; }
 
 QVector<AudioDeviceInfo> RecordingSession::trackDevices() const {
@@ -406,10 +546,12 @@ void RecordingSession::start(const QVector<AudioDeviceInfo>& devices) {
     }
     impl_->folder = base.absoluteFilePath(dirName);
     impl_->id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    impl_->gaps.clear();
+    impl_->pending.clear();
 
     // 2) AudioEngine. The clock starts before capture: the initial tracks' files run from this.
     impl_->engine = impl_->engineFactory ? impl_->engineFactory() : std::make_unique<AudioEngine>();
-    impl_->wall.start();
+    impl_->clock->start();
     if (!impl_->engine || !impl_->engine->start(devices)) {
         emit failed(tr("Az audio motor nem indult el (nincs elérhető eszköz/backend)."));
         impl_->engine.reset();
@@ -426,7 +568,8 @@ void RecordingSession::start(const QVector<AudioDeviceInfo>& devices) {
     impl_->trackPeak = QVector<float>(static_cast<int>(impl_->tracks.size()), 0.0f);
     impl_->workerThread = new QThread(this);
     impl_->worker = new DrainWorker(impl_->media, impl_->engine.get(), impl_->folder, impl_->opusKbps,
-                                    impl_->wall, impl_->fillGaps, impl_->stallWarnMs);
+                                    impl_->clock, impl_->fillGaps, impl_->stallWarnMs,
+                                    /*splitOnSleep*/ bool(impl_->lister));
     impl_->worker->moveToThread(impl_->workerThread);
     connect(impl_->worker, &DrainWorker::meter, this,
             [this](int idx, float rms, float peak) {
@@ -449,6 +592,7 @@ void RecordingSession::start(const QVector<AudioDeviceInfo>& devices) {
         const QString id = impl_->tracks[static_cast<size_t>(idx)].deviceName;
         if (impl_->stalled.remove(id) > 0) emit trackResumed(id);
     }, Qt::QueuedConnection);
+    connect(impl_->worker, &DrainWorker::slept, this, &RecordingSession::onSlept, Qt::QueuedConnection);
     connect(impl_->worker, &DrainWorker::finalized, this,
             [this](const QStringList& failedFiles) { onFinalized(failedFiles); },
             Qt::QueuedConnection);
@@ -468,23 +612,36 @@ void RecordingSession::start(const QVector<AudioDeviceInfo>& devices) {
         return;
     }
 
+    // Re-open after loss: the poll (started on the first loss) and the watch for devices the
+    // backend stopped (WASAPI device invalidated, a killed PulseAudio/PipeWire stream).
+    if (impl_->lister) {
+        if (!impl_->reopenTimer) {
+            impl_->reopenTimer = new QTimer(this);
+            connect(impl_->reopenTimer, &QTimer::timeout, this, &RecordingSession::pollReopen);
+        }
+        impl_->reopenTimer->setInterval(int(impl_->reopenPollMs));
+        if (!impl_->lossTimer) {
+            impl_->lossTimer = new QTimer(this);
+            impl_->lossTimer->setInterval(500);
+            connect(impl_->lossTimer, &QTimer::timeout, this, &RecordingSession::checkLostDevices);
+        }
+        impl_->lossTimer->start();
+    }
+
     impl_->state = RecordingState::Recording;
     emit stateChanged(impl_->state);
 }
 
-bool RecordingSession::addDevice(const AudioDeviceInfo& device) {
-    if (impl_->state != RecordingState::Recording || !impl_->engine || !impl_->worker)
-        return false;
-    for (const TrackMeta& t : impl_->tracks)
-        if (!t.closed && t.deviceName == device.name) return false;   // already on a track
-
-    // The track sounds from the moment it opens: this is its offset relative to the recording's zero point.
-    const qint64 offsetMs = impl_->wall.elapsed();
+int RecordingSession::openTrack(const AudioDeviceInfo& device, const QString& continuesTrackId) {
+    // The track sounds from the moment it opens: this is its offset relative to the recording's zero
+    // point. The recording clock includes the sleeps, so after a wake-up this is the wall-clock place.
+    const qint64 offsetMs = impl_->clock->elapsed();
     const int engineIndex = impl_->engine->addDevice(device);
-    if (engineIndex < 0) return false;
+    if (engineIndex < 0) return -1;
 
     TrackMeta meta = impl_->makeTrack(engineIndex);
     meta.startOffsetMs = offsetMs;
+    meta.continuesTrackId = continuesTrackId;
     bool ok = false;
     DrainWorker* w = impl_->worker;
     QMetaObject::invokeMethod(w, [w, meta] { return w->addEncoder(meta); },
@@ -492,31 +649,186 @@ bool RecordingSession::addDevice(const AudioDeviceInfo& device) {
     if (!ok) {
         impl_->engine->closeDevice(engineIndex);
         impl_->usedSlugs.removeAll(meta.slug);
-        return false;
+        return -1;
     }
     impl_->tracks.push_back(meta);
     impl_->trackPeak.push_back(0.0f);
-    emit trackAdded(static_cast<int>(impl_->tracks.size()) - 1, meta.deviceName);
+    const int index = static_cast<int>(impl_->tracks.size()) - 1;
+    emit trackAdded(index, meta.deviceName);
     // A re-added (re-plugged) device: its new track delivers again, the old one's stall is over.
     if (impl_->stalled.remove(meta.deviceName) > 0) emit trackResumed(meta.deviceName);
-    return true;
+    return index;
+}
+
+bool RecordingSession::addDevice(const AudioDeviceInfo& device) {
+    if (impl_->state != RecordingState::Recording || !impl_->engine || !impl_->worker)
+        return false;
+    for (const TrackMeta& t : impl_->tracks)
+        if (!t.closed && t.deviceName == device.name) return false;   // already on a track
+    // A device waiting to be re-opened that the user (or the hot-plug) switches on: the same as the
+    // re-open succeeding (the segment chain and the gap are kept).
+    const int k = impl_->pendingFor(device);
+    if (k >= 0) return resolveReopen(k, device);
+    return openTrack(device, QString()) >= 0;
 }
 
 void RecordingSession::closeTrack(const QString& deviceName, bool detached) {
     if (impl_->state != RecordingState::Recording || !impl_->engine || !impl_->worker)
         return;
     for (size_t i = 0; i < impl_->tracks.size(); ++i) {
-        TrackMeta& t = impl_->tracks[i];
+        const TrackMeta& t = impl_->tracks[i];
         if (t.closed || t.deviceName != deviceName) continue;
-        t.closed = true;
-        // Capture stops first (no more data comes), then the worker writes out the remainder and closes
-        // the file, on its own thread; the main thread does not wait for it.
-        impl_->engine->closeDevice(t.engineIndex);
-        DrainWorker* w = impl_->worker;
-        const int idx = static_cast<int>(i);
-        QMetaObject::invokeMethod(w, [w, idx, detached] { w->closeEncoder(idx, detached); },
-                                  Qt::QueuedConnection);
-        emit trackClosed(idx, deviceName);
+        if (detached)
+            beginReopen(static_cast<int>(i), QString::fromLatin1(tracktiming::kGapDeviceLost),
+                        impl_->clock->elapsed(), impl_->clock->wallNow());
+        closeAt(static_cast<int>(i), detached);
+    }
+}
+
+void RecordingSession::closeAt(int index, bool detached) {
+    TrackMeta& t = impl_->tracks[static_cast<size_t>(index)];
+    if (t.closed) return;
+    t.closed = true;
+    // Capture stops first (no more data comes), then the worker writes out the remainder and closes
+    // the file, on its own thread; the main thread does not wait for it.
+    impl_->engine->closeDevice(t.engineIndex);
+    DrainWorker* w = impl_->worker;
+    QMetaObject::invokeMethod(w, [w, index, detached] { w->closeEncoder(index, detached); },
+                              Qt::QueuedConnection);
+    emit trackClosed(index, t.deviceName);
+}
+
+// A capture track is lost: from now on its device is looked for every reopenPollMs (pollReopen).
+void RecordingSession::beginReopen(int index, const QString& reason, qint64 gapFromMs, qint64 gapFromWallMs) {
+    if (!impl_->lister) return;
+    const TrackMeta& t = impl_->tracks[static_cast<size_t>(index)];
+    if (impl_->pendingFor(t.device) >= 0) return;
+    Impl::PendingReopen p;
+    p.device = t.device;
+    p.reason = reason;
+    p.prevTrackId = t.slug;
+    p.sinceMs = impl_->clock->elapsed();
+    p.gapFromMs = gapFromMs;
+    p.gapFromWallMs = gapFromWallMs;
+    impl_->pending.push_back(p);
+    qCInfo(lcAudio).noquote() << QStringLiteral("Recording: track \"%1\" lost (%2), re-opening the device every %3 ms for up to %4 s")
+                                     .arg(t.deviceName, reason).arg(impl_->reopenPollMs).arg(impl_->reopenWindowMs / 1000.0);
+    if (impl_->reopenTimer && !impl_->reopenTimer->isActive()) impl_->reopenTimer->start();
+    emit reopenStarted(t.deviceName, reason);
+}
+
+// The device of pending[k] is open again (as `device`): its new segment continues the lost one.
+bool RecordingSession::resolveReopen(int k, const AudioDeviceInfo& device) {
+    const Impl::PendingReopen p = impl_->pending.at(k);
+    const int index = openTrack(device, p.prevTrackId);
+    if (index < 0) return false;
+    impl_->pending.removeAt(k);
+    const TrackMeta& seg = impl_->tracks[static_cast<size_t>(index)];
+    if (p.reason == QLatin1String(tracktiming::kGapDeviceLost)) {
+        // A sleep's gap is recorded once for the whole meeting (onSlept); a lost device's here.
+        RecordingGap g;
+        g.fromMs = p.gapFromMs;
+        g.toMs = seg.startOffsetMs;
+        g.reason = p.reason;
+        g.fromWall = QDateTime::fromMSecsSinceEpoch(p.gapFromWallMs);
+        g.toWall = QDateTime::fromMSecsSinceEpoch(impl_->clock->wallNow());
+        g.trackId = seg.slug;
+        impl_->gaps.push_back(g);
+    }
+    // Came back under another name (matched by id): the old name's stall is over too.
+    if (p.device.name != device.name && impl_->stalled.remove(p.device.name) > 0)
+        emit trackResumed(p.device.name);
+    qCInfo(lcAudio).noquote() << QStringLiteral("Recording: \"%1\" re-opened, continuing in a new segment %2 at %3 ms")
+                                     .arg(device.name, seg.fileName).arg(seg.startOffsetMs);
+    if (impl_->pending.isEmpty() && impl_->reopenTimer) impl_->reopenTimer->stop();
+    emit trackReopened(p.device.name, device.name, index);
+    return true;
+}
+
+void RecordingSession::pollReopen() {
+    if (impl_->state != RecordingState::Recording || !impl_->lister) {
+        impl_->stopReopenWatch();
+        return;
+    }
+    if (impl_->pending.isEmpty()) { impl_->reopenTimer->stop(); return; }
+    // The lister re-enumerates (the owner may close another lost track meanwhile: that only appends).
+    const QVector<AudioDeviceInfo> present = impl_->lister();
+    const qint64 now = impl_->clock->elapsed();
+    int k = 0;
+    while (k < impl_->pending.size()) {
+        const Impl::PendingReopen& p = impl_->pending.at(k);
+        const AudioDeviceInfo* match = nullptr;
+        for (const AudioDeviceInfo& d : present)
+            if (!p.device.id.isEmpty() && d.id == p.device.id) { match = &d; break; }
+        if (!match)
+            for (const AudioDeviceInfo& d : present)
+                if (d.name == p.device.name) { match = &d; break; }
+        int openIndex = -1;   // already back on a track (opened by some other path)
+        for (size_t j = 0; j < impl_->tracks.size(); ++j)
+            if (!impl_->tracks[j].closed && match && impl_->tracks[j].deviceName == match->name)
+                openIndex = static_cast<int>(j);
+        if (openIndex >= 0) {
+            const QString name = p.device.name, newName = match->name;
+            impl_->pending.removeAt(k);
+            emit trackReopened(name, newName, openIndex);
+            continue;
+        }
+        if (match) {
+            const AudioDeviceInfo dev = *match;
+            if (resolveReopen(k, dev)) continue;   // removed from pending: k stays
+        }
+        if (now - p.sinceMs >= impl_->reopenWindowMs) {
+            const QString name = p.device.name, reason = p.reason;
+            impl_->pending.removeAt(k);
+            qCWarning(lcAudio).noquote() << QStringLiteral("Recording: \"%1\" did not come back within %2 s, its track stays closed")
+                                                .arg(name).arg(impl_->reopenWindowMs / 1000.0);
+            emit reopenAbandoned(name, reason);
+            continue;
+        }
+        ++k;
+    }
+    if (impl_->pending.isEmpty()) impl_->reopenTimer->stop();
+}
+
+// A device whose capture the backend stopped and that delivers no data is lost: closed as detached
+// and re-opened. (A WASAPI loopback delivers nothing while idle: there the stop alone decides.)
+void RecordingSession::checkLostDevices() {
+    if (impl_->state != RecordingState::Recording || !impl_->engine) return;
+    for (size_t i = 0; i < impl_->tracks.size(); ++i) {
+        const TrackMeta& t = impl_->tracks[i];
+        if (t.closed || !impl_->isCurrentTrack(static_cast<int>(i))) continue;
+        if (!impl_->engine->deviceLost(t.engineIndex)) continue;
+        const bool idleSilent = systemAudioSource().deliversNothingWhenIdle(t.kind);
+        if (!idleSilent && !impl_->stalled.contains(t.deviceName)) continue;
+        qCWarning(lcAudio).noquote() << QStringLiteral("Recording: the backend stopped the capture of \"%1\"").arg(t.deviceName);
+        closeTrack(t.deviceName, /*detached*/ true);
+        return;   // closeTrack may have changed the list; the next check comes soon
+    }
+}
+
+// The drain worker saw the wall clock jump ahead: the machine slept.
+void RecordingSession::onSlept(qint64 fromWallMs, qint64 toWallMs, qint64 fromMs, qint64 toMs) {
+    if (impl_->state != RecordingState::Recording) return;
+    RecordingGap g;
+    g.fromMs = fromMs;
+    g.toMs = toMs;
+    g.reason = QString::fromLatin1(tracktiming::kGapSleep);
+    g.fromWall = QDateTime::fromMSecsSinceEpoch(fromWallMs);
+    g.toWall = QDateTime::fromMSecsSinceEpoch(toWallMs);
+    impl_->gaps.push_back(g);
+    qCWarning(lcAudio).noquote()
+        << QStringLiteral("Recording: sleep detected, the wall clock jumped %1 s ahead (%2 -> %3); recording clock %4 -> %5 ms")
+               .arg((toMs - fromMs) / 1000)
+               .arg(g.fromWall.toString(Qt::ISODate), g.toWall.toString(Qt::ISODate))
+               .arg(fromMs).arg(toMs);
+    emit systemSlept(fromWallMs, toWallMs);
+    if (!impl_->lister) return;
+    // Every open track is cut at the sleep's start and continues in a new segment once its device
+    // opens again (the stream from before the sleep is stale on most backends).
+    for (size_t i = 0; i < impl_->tracks.size(); ++i) {
+        if (impl_->tracks[i].closed) continue;
+        beginReopen(static_cast<int>(i), QString::fromLatin1(tracktiming::kGapSleep), fromMs, fromWallMs);
+        closeAt(static_cast<int>(i), /*detached*/ false);
     }
 }
 
@@ -525,10 +837,14 @@ void RecordingSession::stop() {
         emit failed(tr("Nincs futó felvétel a leállításhoz."));
         return;
     }
+    if (!impl_->pending.isEmpty())
+        qCInfo(lcAudio).noquote() << QStringLiteral("Recording: stopped while re-opening %1; giving up the re-open")
+                                         .arg(reopeningDevices().join(QStringLiteral(", ")));
+    impl_->stopReopenWatch();
 
     impl_->state = RecordingState::Stopping;
     emit stateChanged(impl_->state);
-    impl_->durationMs = impl_->wall.elapsed();
+    impl_->durationMs = impl_->clock->elapsed();
 
     // Encoding: the worker's last drain + closing/waiting for the ffmpegs, on the worker thread; the main
     // thread does NOT wait (the UI lives). We stop capture only AFTER the shutdown (onFinalized), because
@@ -568,11 +884,14 @@ void RecordingSession::onFinalized(const QStringList& failedFiles) {
     m.startedAt = impl_->startedAt;
     m.durationMs = durationMs;
     m.mixdownFile = QString();   // no mixdown yet: AppController makes it
+    m.gaps = impl_->gaps;
 
     // IMPORTANT: we do NOT name the user by loudness/position: speaker identification is the job of
     // VOICE ID (fingerprint) (autoIdentifyMeeting). Here the mic tracks get a neutral "Microphone N" label;
     // the real names come from the voiceprint DB (or the user's one-time manual rename, which trains it).
+    // A re-opened segment keeps the label of the segment it continues (one logical track).
     int micNo = 1;
+    QHash<QString, QString> labelOf;   // slug -> speaker label
     for (int i = 0; i < nTr; ++i) {
         const auto& t = impl_->tracks[i];
         Track tr;
@@ -580,16 +899,20 @@ void RecordingSession::onFinalized(const QStringList& failedFiles) {
         tr.deviceName = t.deviceName;
         tr.file = t.fileName;
         tr.kind = t.kind;
-        if (t.kind == TrackKind::Mic)
+        if (!t.continuesTrackId.isEmpty() && labelOf.contains(t.continuesTrackId))
+            tr.speakerLabel = labelOf.value(t.continuesTrackId);
+        else if (t.kind == TrackKind::Mic)
             tr.speakerLabel = QStringLiteral("Mikrofon ") + QString::number(micNo++);
         else
             tr.speakerLabel = QStringLiteral("Rendszer");
+        labelOf.insert(t.slug, tr.speakerLabel);
         tr.fixedSpeaker = true;
         tr.sampleRate = 48000;
         tr.channels = t.channels;
         tr.peakLevel = peakOf(i);
         tr.active = true;
         tr.startOffsetMs = t.startOffsetMs;
+        tr.continuesTrackId = t.continuesTrackId;
         m.tracks.push_back(tr);
     }
 

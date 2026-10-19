@@ -8,6 +8,7 @@
 
 #include <QDir>
 #include <QFileInfo>
+#include <QLocale>
 #include <QHash>
 
 #include <algorithm>
@@ -150,6 +151,16 @@ int TrackListModel::rowCount(const QModelIndex& parent) const
     return parent.isValid() ? 0 : int(m_rows.size());
 }
 
+QString TrackListModel::interruptionText(const tanara::RecordingGap& gap)
+{
+    const QString reason = gap.reason == QLatin1String("sleep") ? tr("alvás") : tr("az eszköz eltűnt");
+    const QString from = gap.fromWall.isValid() ? QLocale().toString(gap.fromWall.time(), QStringLiteral("HH:mm"))
+                                                : jobsupport::formatDuration(gap.fromMs);
+    const QString to = gap.toWall.isValid() ? QLocale().toString(gap.toWall.time(), QStringLiteral("HH:mm"))
+                                            : jobsupport::formatDuration(gap.toMs);
+    return tr("megszakadt %1–%2 (%3), folytatva").arg(from, to, reason);
+}
+
 QVariant TrackListModel::data(const QModelIndex& index, int role) const
 {
     if (!index.isValid() || index.row() < 0 || index.row() >= m_rows.size())
@@ -196,6 +207,7 @@ QVariant TrackListModel::data(const QModelIndex& index, int role) const
     case ExcludedReasonRole: return r.view.track.excludedReason;
     case IncludedRole:     return r.view.track.included() && !r.view.fileMissing;
     case GroupIdRole:      return r.groupId.isEmpty() ? r.view.track.id : r.groupId;
+    case InterruptionRole: return r.view.gapBefore ? interruptionText(*r.view.gapBefore) : QString();
     case KindRole:
         return r.view.track.kind == tanara::TrackKind::Mic ? QStringLiteral("mic")
              : r.view.track.kind == tanara::TrackKind::Loopback ? QStringLiteral("loopback")
@@ -213,7 +225,7 @@ QHash<int, QByteArray> TrackListModel::roleNames() const
         {ActiveRole, "active"}, {MissingRole, "missing"}, {PathRole, "path"},
         {DurationTextRole, "durationText"}, {PeaksRole, "peaks"}, {PeaksStateRole, "peaksState"},
         {ColorIndexRole, "colorIndex"}, {WaveStartRole, "waveStart"}, {WaveSpanRole, "waveSpan"},
-        {SegmentRole, "segment"}, {StartOffsetRole, "startOffsetMs"},
+        {SegmentRole, "segment"}, {StartOffsetRole, "startOffsetMs"}, {InterruptionRole, "interruption"},
         {SpeechRatioRole, "speechRatio"}, {ExcludedReasonRole, "excludedReason"},
         {IncludedRole, "included"}, {KindRole, "kind"}, {GroupIdRole, "groupId"},
     };

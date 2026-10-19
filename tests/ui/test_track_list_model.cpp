@@ -131,6 +131,43 @@ private slots:
         QVERIFY(qAbs(cell(model, 1, TrackListModel::WaveSpanRole).toReal() - 0.25) < 0.02);
     }
 
+    // A track cut by a sleep: the later segment's state tells the interruption (Meeting::gaps).
+    void interruptionAfterASleep()
+    {
+        jobtest::Sandbox sb;
+        Meeting m = sb.recording("Alvás", 1, /*secondTrack*/ true);
+        tanara::Track seg2 = m.tracks[1];
+        seg2.id = "loop-2";
+        seg2.file = "track_loop-2.wav";
+        seg2.startOffsetMs = 1000 + 17 * 60000;
+        seg2.continuesTrackId = "loop";
+        QVERIFY(QFile::copy(QDir(m.folder).filePath("track_loop.wav"), QDir(m.folder).filePath(seg2.file)));
+        m.tracks.append(seg2);
+        m.durationMs = seg2.startOffsetMs + 1000;
+        tanara::RecordingGap gap;
+        gap.fromMs = 900;
+        gap.toMs = seg2.startOffsetMs - 50;
+        gap.reason = "sleep";
+        gap.fromWall = QDateTime(QDate(2026, 10, 19), QTime(14, 2, 10));
+        gap.toWall = QDateTime(QDate(2026, 10, 19), QTime(14, 19, 4));
+        m.gaps = {gap};
+        sb.app->store()->saveMeeting(m);
+
+        TrackListModel model;
+        model.setFacade(tanara_qml::AppContext::instance()->servicesFor(sb.app.get()).tracks(QString(), nullptr));
+        model.setMeetingId(m.id);
+        QCOMPARE(model.count(), 3);
+        QCOMPARE(cell(model, 2, TrackListModel::TrackIdRole).toString(), QStringLiteral("loop-2"));
+        QCOMPARE(cell(model, 2, TrackListModel::GroupIdRole).toString(), QStringLiteral("loop"));
+        QCOMPARE(cell(model, 2, TrackListModel::InterruptionRole).toString(),
+                 QStringLiteral("megszakadt 14:02–14:19 (alvás), folytatva"));
+        QVERIFY(cell(model, 1, TrackListModel::InterruptionRole).toString().isEmpty());
+        QVERIFY(cell(model, 0, TrackListModel::InterruptionRole).toString().isEmpty());
+        tanara::RecordingGap lost = gap;
+        lost.reason = "device-lost";
+        QCOMPARE(TrackListModel::interruptionText(lost), QStringLiteral("megszakadt 14:02–14:19 (az eszköz eltűnt), folytatva"));
+    }
+
     void namesRenameRestoreAndDelete()
     {
         jobtest::Sandbox sb;

@@ -119,6 +119,13 @@ bool RecorderWindowHost::ensureWindow()
                               || m_window->property("pill").toBool();
             if (away) emit notificationRequested(title, text);
         });
+        connect(m_vm, &RecorderViewModel::interruptionRaised, this, [this](const QString& title, const QString& text) {
+            // The recording was interrupted (sleep / lost device), resumed, or could not resume: once
+            // per event a system notification for a hidden / pill / background window.
+            const bool away = !m_window || !m_window->isVisible() || !m_window->isActive()
+                              || m_window->property("pill").toBool();
+            if (away) emit notificationRequested(title, text);
+        });
         connect(m_vm, &RecorderViewModel::openAnalyzerRequested, this, &RecorderWindowHost::openMeetingRequested);
         connect(m_vm, &RecorderViewModel::settingsRequested, this, &RecorderWindowHost::settingsRequested);
         connect(m_vm, &RecorderViewModel::stateChanged, this, [this] { emit stateChanged(m_vm->state()); });

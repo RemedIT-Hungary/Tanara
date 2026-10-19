@@ -174,6 +174,54 @@ private slots:
         QVERIFY(vm.stallWarning().isEmpty());
     }
 
+    // Resume after a sleep / a lost device: the three texts of the floating recorder and one
+    // notification per event (fake signals on the fictional recorder).
+    void resumeLineFollowsTheReopen()
+    {
+        DemoRecorder demo(QStringLiteral("R03"));
+        RecorderViewModel& vm = demo.vm;
+        QCOMPARE(vm.state(), QStringLiteral("recording"));
+        QVERIFY(vm.resumeText().isEmpty());
+        QVERIFY(!vm.resuming());
+        QSignalSpy raised(&vm, &RecorderViewModel::interruptionRaised);
+        const QString mic = role(vm, 0, "key").toString();
+        const QString kanto = role(vm, 3, "key").toString();
+
+        // The machine slept: every track is being re-opened; one notification for the event.
+        emit demo.facade.trackReopening(mic, QStringLiteral("sleep"));
+        emit demo.facade.trackReopening(kanto, QStringLiteral("sleep"));
+        QVERIFY(vm.resuming());
+        QCOMPARE(vm.resumeText(), QStringLiteral("A felvétel megszakadt (a gép aludt), folytatás… 0 mp"));
+        QCOMPARE(raised.size(), 1);
+        QCOMPARE(raised.at(0).at(0).toString(), QStringLiteral("A felvétel megszakadt"));
+        emit demo.facade.deviceReturned(mic);
+        QVERIFY(vm.resuming());                       // the other one is still being re-opened
+        QCOMPARE(raised.size(), 1);
+        emit demo.facade.deviceReturned(kanto);
+        QVERIFY(!vm.resuming());
+        QCOMPARE(vm.resumeText(), QStringLiteral("Folytatva új szakaszban"));
+        QCOMPARE(raised.size(), 2);
+        QCOMPARE(raised.at(1).at(0).toString(), QStringLiteral("A felvétel folytatódik"));
+        QVERIFY(vm.errorText().isEmpty());            // not the old "is back" notice
+
+        // A lost device that does not come back: the error path tells it.
+        emit demo.facade.trackReopening(mic, QStringLiteral("device-lost"));
+        QCOMPARE(vm.resumeText(), QStringLiteral("A felvétel megszakadt (az eszköz eltűnt), folytatás… 0 mp"));
+        QCOMPARE(raised.size(), 3);
+        emit demo.facade.trackReopenFailed(mic, QStringLiteral("device-lost"));
+        emit demo.facade.error(QStringLiteral("A(z) Trust USB mikrofon eszköz 10 percen belül nem tért vissza, a sávja lezárva marad."));
+        QVERIFY(!vm.resuming());
+        QVERIFY(vm.resumeText().isEmpty());
+        QCOMPARE(raised.size(), 4);
+        QVERIFY(vm.errorText().contains(QStringLiteral("nem tért vissza")));
+
+        // Leaving the recording clears the line.
+        emit demo.facade.trackReopening(mic, QStringLiteral("sleep"));
+        emit demo.facade.stateChanged(tanara::RecordingState::Encoding);
+        QVERIFY(!vm.resuming());
+        QVERIFY(vm.resumeText().isEmpty());
+    }
+
     void togglingAndRenaming()
     {
         DemoRecorder demo(QStringLiteral("R01"));

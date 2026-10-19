@@ -46,6 +46,19 @@ public:
     void setFillCaptureGaps(bool on);
     // The stall threshold (default tracktiming::kStallWarnMs). For tests, which cannot wait 5 s per case.
     void setStallWarnMs(qint64 ms);
+    // The clocks (ms): the monotonic one the recording clock runs on and the wall clock (epoch ms) the
+    // sleep detector compares it with. Empty = std::chrono::steady_clock / the system clock. Tests
+    // inject a wall clock that jumps ahead, as after a suspend. Both are called from the drain
+    // worker's thread too, so they must be thread-safe. Call before start().
+    void setClockSources(std::function<qint64()> monotonicMs, std::function<qint64()> wallMs);
+    // Re-open after loss: returns the current capture devices (the caller re-enumerates, e.g.
+    // DeviceManager::refresh() + captureDevices()). Empty (the default) = a lost track is not re-opened
+    // and a sleep does not cut the tracks into segments (the behaviour before the re-open existed).
+    // Call before start().
+    using DeviceLister = std::function<QVector<AudioDeviceInfo>()>;
+    void setDeviceLister(DeviceLister lister);
+    // The re-open poll interval and window (tracktiming::kReopenPollMs / kReopenWindowMs). For tests.
+    void setReopenTiming(qint64 pollMs, qint64 windowMs);
 
     RecordingState state() const;
     QString folder() const;          // absolute path of the meeting folder created
@@ -57,6 +70,10 @@ public:
     // The currently stalled tracks: device name (the track id) -> recording-clock ms of the last data.
     // For a UI that connects after trackStalled() was emitted.
     QMap<QString, qint64> stalledTracks() const;
+    // The recording's interruptions so far (sleeps, lost devices that came back), in time order.
+    QVector<RecordingGap> gaps() const;
+    // The devices whose track was lost and is being re-opened (device names).
+    QStringList reopeningDevices() const;
 
 public slots:
     // Creates the meeting folder, starts capture and, per device, the ffmpeg encoder + the drain
@@ -81,8 +98,10 @@ public slots:
     // Safely closes a track during recording (the device was detached): capture stops, the remaining
     // audio is written out, the encoder closes the file. The recording continues with the other tracks; the
     // closed track stays part of the meeting (its file runs until the close). trackClosed().
-    // detached: the device is gone (hot-plug), so the track is reported stalled once (trackStalled; it
-    // never resumes). false: the user switched it off, which is not a stall (a warning it had is withdrawn).
+    // detached: the device is gone (hot-plug), so the track is reported stalled once (trackStalled)
+    // and, with a device lister, re-opened in a new segment when it is back (reopenStarted ->
+    // trackReopened / reopenAbandoned). false: the user switched it off, which is not a stall (a warning
+    // it had is withdrawn) and is never re-opened by itself.
     void closeTrack(const QString& deviceName, bool detached = true);
 
 signals:
@@ -98,11 +117,33 @@ signals:
     void trackStalled(QString trackId, qint64 sinceMs);
     // The stalled track delivers again (or a re-added device's new track opened, or the user switched it off).
     void trackResumed(QString trackId);
+    // The wall clock jumped ahead of the monotonic one by more than tracktiming::kSleepJumpMs: the
+    // machine slept from fromWallMs to toWallMs (epoch ms). The gap is recorded (gaps()); with a device
+    // lister every open track is closed and re-opened in a new segment.
+    void systemSlept(qint64 fromWallMs, qint64 toWallMs);
+    // A capture track is lost (reason "sleep" | "device-lost"); re-opening it started. Emitted before
+    // its trackClosed().
+    void reopenStarted(QString deviceName, QString reason);
+    // The lost device is open again: its new segment is trackIndex (trackAdded() came too). The device
+    // may have come back under another name (matched by id): newDeviceName.
+    void trackReopened(QString deviceName, QString newDeviceName, int trackIndex);
+    // The device did not come back within the re-open window: its track stays closed.
+    void reopenAbandoned(QString deviceName, QString reason);
     void finished(tanara::Meeting meeting);
     void failed(QString error);
 
 private:
     void onFinalized(const QStringList& failedFiles);   // the worker closed the track files
+    // Opens a track on the device during recording (continuesTrackId: the segment it continues);
+    // the new track index, -1 on failure.
+    int openTrack(const tanara::AudioDeviceInfo& device, const QString& continuesTrackId);
+    void closeAt(int trackIndex, bool detached);
+    // Re-open after loss (see setDeviceLister).
+    void beginReopen(int trackIndex, const QString& reason, qint64 gapFromMs, qint64 gapFromWallMs);
+    bool resolveReopen(int pendingIndex, const tanara::AudioDeviceInfo& device);
+    void pollReopen();
+    void checkLostDevices();
+    void onSlept(qint64 fromWallMs, qint64 toWallMs, qint64 fromMs, qint64 toMs);
     struct Impl;
     std::unique_ptr<Impl> impl_;
 };

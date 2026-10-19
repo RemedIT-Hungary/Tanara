@@ -7,6 +7,8 @@
 #include <QStandardPaths>
 #include <QTemporaryDir>
 
+#include <cmath>
+
 #include "tanara/recording/audio/MixdownPlan.h"
 
 using namespace tanara;
@@ -69,6 +71,7 @@ private slots:
     void planSkipsDroppedAndReportsMissing();
     void planSegmentsOfOneDevice();
     void ffmpegMixPlacesLateTrack();
+    void ffmpegMixPlacesSegmentChain();
 };
 
 void MixdownPlanTest::filterNoOffsets()
@@ -171,6 +174,54 @@ void MixdownPlanTest::ffmpegMixPlacesLateTrack()
     // A 1 s track starting 2.5 s later pushes the mix's end to 3.5 s.
     const qint64 d = probeMs(out);
     QVERIFY2(qAbs(d - 3500) < 150, qPrintable(QString::number(d)));
+}
+
+// A track cut by a sleep: two segments of one chain, 1 s each, the second at 3 s (the 2 s gap is in
+// its offset, not in a file). The mix is 4 s long, silent in the gap, and the second segment's marker
+// tone sits at 3-4 s.
+void MixdownPlanTest::ffmpegMixPlacesSegmentChain()
+{
+    if (!haveFfmpeg()) QSKIP("ffmpeg/ffprobe nincs a PATH-on");
+    QTemporaryDir dir;
+    Meeting m;
+    m.id = QStringLiteral("m4");
+    m.folder = dir.path();
+    Track first = mk("mic", "USB Mic", TrackKind::Mic);
+    Track second = mk("mic-2", "USB Mic", TrackKind::Mic, 3000);
+    second.continuesTrackId = QStringLiteral("mic");
+    m.tracks = {first, second};
+    QVERIFY(sine(QDir(m.folder).filePath(first.file), 1.0, 440));
+    QVERIFY(sine(QDir(m.folder).filePath(second.file), 1.0, 1000));
+    const recording::MixdownPlan plan = recording::MixdownPlan::fromMeeting(m);
+    QCOMPARE(plan.inputs.size(), 2);
+    QCOMPARE(plan.inputs.at(1).offsetMs, qint64(3000));
+    const QString out = QDir(m.folder).filePath(QStringLiteral("mixdown.mp3"));
+    QProcess p;
+    p.start(QStringLiteral("ffmpeg"), plan.ffmpegArgs(out));
+    QVERIFY(p.waitForFinished(60000));
+    QCOMPARE(p.exitCode(), 0);
+    const qint64 d = probeMs(out);
+    QVERIFY2(qAbs(d - 4000) < 150, qPrintable(QString::number(d)));
+
+    // Decode to 8 kHz mono s16 and measure the level per 100 ms window.
+    QProcess dec;
+    dec.start(QStringLiteral("ffmpeg"), {QStringLiteral("-hide_banner"), QStringLiteral("-loglevel"), QStringLiteral("error"),
+        QStringLiteral("-i"), out, QStringLiteral("-ac"), QStringLiteral("1"), QStringLiteral("-ar"), QStringLiteral("8000"),
+        QStringLiteral("-f"), QStringLiteral("s16le"), QStringLiteral("-")});
+    QVERIFY(dec.waitForFinished(30000));
+    const QByteArray pcm = dec.readAllStandardOutput();
+    const auto* s16 = reinterpret_cast<const qint16*>(pcm.constData());
+    const qint64 n = pcm.size() / 2;
+    auto rms = [&](qint64 fromMs, qint64 toMs) {
+        double sum = 0;
+        qint64 cnt = 0;
+        for (qint64 i = fromMs * 8; i < qMin(n, toMs * 8); ++i, ++cnt) sum += double(s16[i]) * s16[i];
+        return cnt ? std::sqrt(sum / double(cnt)) : 0.0;
+    };
+    const double first1 = rms(200, 800), gap = rms(1300, 2700), marker = rms(3200, 3800);
+    QVERIFY2(first1 > 500, qPrintable(QString::number(first1)));
+    QVERIFY2(gap < 50, qPrintable(QString::number(gap)));
+    QVERIFY2(marker > 500, qPrintable(QString::number(marker)));
 }
 
 QTEST_GUILESS_MAIN(MixdownPlanTest)

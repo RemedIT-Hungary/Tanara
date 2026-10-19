@@ -266,7 +266,8 @@ void RecorderViewModel::attach()
             rebuildDevices();   // the row is no longer in the enumeration -> comes back as a "disconnected" row
         }
         emit countsChanged();
-        if (unplugged && m_state == QLatin1String("recording")) {
+        // A track being re-opened has the "interrupted, resuming" line instead of this notice.
+        if (unplugged && m_state == QLatin1String("recording") && !m_reopening.contains(name)) {
             // Notice: the recording did NOT stop, only this device's track closed.
             const int row = rowOf(name);
             const QString shown = (row >= 0 && !m_rows[row].friendly.isEmpty()) ? m_rows[row].friendly : name;
@@ -276,6 +277,10 @@ void RecorderViewModel::attach()
     });
     connect(c, &IRecorderFacade::deviceReturned, this, [this](const QString& name) {
         // A device unplugged and plugged back in is recorded again by the system on its own (new segment).
+        if (m_reopening.contains(name)) {   // the resume line tells it
+            onReopenEnded(name, true);
+            return;
+        }
         const int row = rowOf(name);
         const QString shown = (row >= 0 && !m_rows[row].friendly.isEmpty()) ? m_rows[row].friendly : name;
         m_errorText = tr("A(z) %1 eszköz visszatért, a rögzítése folytatódik (új szakasz).").arg(shown);
@@ -296,6 +301,9 @@ void RecorderViewModel::attach()
         emit errorChanged();
     });
     connect(c, &IRecorderFacade::trackStalled, this, &RecorderViewModel::onTrackStalled);
+    connect(c, &IRecorderFacade::trackReopening, this, &RecorderViewModel::onTrackReopening);
+    connect(c, &IRecorderFacade::trackReopenFailed, this,
+            [this](const QString& name) { onReopenEnded(name, false); });
     connect(c, &IRecorderFacade::trackResumed, this, &RecorderViewModel::onTrackResumed);
     connect(c, &IRecorderFacade::routesChanged, this, &RecorderViewModel::updateRoutes);
     connect(c, &IRecorderFacade::sessionChanged, this, &RecorderViewModel::reloadFromFacade);
@@ -311,6 +319,8 @@ void RecorderViewModel::attach()
     if (c->state() == RecordingState::Recording) {
         const QMap<QString, qint64> stalledNow = c->stalledTracks();
         for (auto it = stalledNow.cbegin(); it != stalledNow.cend(); ++it) onTrackStalled(it.key(), it.value());
+        for (const QString& name : c->reopeningDeviceNames())
+            onTrackReopening(name, QStringLiteral("device-lost"));
     }
     m_tick.start();
 }
@@ -526,6 +536,7 @@ void RecorderViewModel::computeStatus(Row& r, qint64 now) const
 void RecorderViewModel::tick()
 {
     const qint64 now = m_clock.elapsed();
+    if (!m_reopening.isEmpty() || m_resumedAt >= 0) updateResumeText();
     for (int i = 0; i < m_rows.size(); ++i) {
         Row& r = m_rows[i];
         if (r.pinned) continue;
@@ -812,12 +823,14 @@ void RecorderViewModel::onRecordingState(RecordingState st)
     } else if (st == RecordingState::Stopping || st == RecordingState::Encoding) {
         if (m_askVisible) { m_askVisible = false; emit askChanged(); }
         clearStalls();
+        clearResume();
         setState(QStringLiteral("stopping"));
     } else if (m_state == QLatin1String("recording") || m_state == QLatin1String("stopping")) {
         // Idle without the "done" signal: the recording was not created / was interrupted (the error
         // came via errorOccurred). Only recordingFinished leads to the done state.
         for (Row& r : m_rows) { r.recorded = false; r.rms = r.peak = 0.f; }
         clearStalls();
+        clearResume();
         setState(m_rows.isEmpty() ? QStringLiteral("noDevice") : QStringLiteral("idle"));
         rebuildDevices();
     }
@@ -911,6 +924,73 @@ void RecorderViewModel::clearStalls()
             emit m_model.dataChanged(m_model.index(row), m_model.index(row), {RecorderDeviceModel::StalledRole});
     }
     updateStallWarning(m_elapsedMs);
+}
+
+// ---- resume after a sleep / a lost device -----------------------------------------------------
+
+QString RecorderViewModel::shownName(const QString& device) const
+{
+    const int row = rowOf(device);
+    return (row >= 0 && !m_rows.at(row).friendly.isEmpty()) ? m_rows.at(row).friendly : device;
+}
+
+void RecorderViewModel::onTrackReopening(const QString& device, const QString& reason)
+{
+    const bool first = m_reopening.isEmpty();
+    if (first) {
+        m_reopenSince = m_clock.elapsed();
+        m_resumedAt = -1;
+    }
+    m_reopening.insert(device, reason);
+    updateResumeText();
+    if (first) emit interruptionRaised(tr("A felvétel megszakadt"), m_resumeText);
+}
+
+void RecorderViewModel::onReopenEnded(const QString& device, bool resumed)
+{
+    if (m_reopening.remove(device) == 0) return;
+    if (!m_reopening.isEmpty()) {
+        updateResumeText();
+        return;
+    }
+    if (resumed) {
+        m_resumedAt = m_clock.elapsed();
+        updateResumeText();
+        emit interruptionRaised(tr("A felvétel folytatódik"), m_resumeText);
+    } else {
+        m_resumedAt = -1;
+        updateResumeText();   // the give-up message comes on the error path
+        emit interruptionRaised(tr("A felvétel megszakadt"),
+                                tr("A(z) %1 eszköz nem tért vissza, a sávja lezárva marad.").arg(shownName(device)));
+    }
+}
+
+void RecorderViewModel::updateResumeText()
+{
+    const qint64 now = m_clock.elapsed();
+    QString text;
+    if (!m_reopening.isEmpty()) {
+        const bool slept = std::any_of(m_reopening.cbegin(), m_reopening.cend(),
+                                       [](const QString& r) { return r == QLatin1String("sleep"); });
+        const qint64 secs = qMax<qint64>(0, now - m_reopenSince) / 1000;
+        text = (slept ? tr("A felvétel megszakadt (a gép aludt), folytatás… %1 mp")
+                      : tr("A felvétel megszakadt (az eszköz eltűnt), folytatás… %1 mp")).arg(secs);
+    } else if (m_resumedAt >= 0) {
+        if (now - m_resumedAt < 10000) text = tr("Folytatva új szakaszban");
+        else m_resumedAt = -1;
+    }
+    if (text == m_resumeText) return;
+    m_resumeText = text;
+    emit resumeChanged();
+}
+
+void RecorderViewModel::clearResume()
+{
+    if (m_reopening.isEmpty() && m_resumedAt < 0 && m_resumeText.isEmpty()) return;
+    m_reopening.clear();
+    m_resumedAt = -1;
+    m_resumeText.clear();
+    emit resumeChanged();
 }
 
 } // namespace tanara_qml

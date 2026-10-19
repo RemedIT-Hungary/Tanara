@@ -42,8 +42,26 @@ struct Track {
     // Why it was left out of the mixdown: "" = included, "noSpeech" = no speech on it
     // (automatic), "manual" = the user removed it. A left-out track also has active == false.
     QString excludedReason;
+    // The segment chain: the id of the track this one continues (the same capture source re-opened
+    // after the machine slept or the device was lost), empty for a chain head / a single track. A
+    // chain is ONE logical track (tracknames::segments); the time between the segments is not in any
+    // file, the segments' startOffsetMs place them.
+    QString continuesTrackId;
     // Whether it goes into the mixdown (and the analyses).
     bool included() const { return active && excludedReason.isEmpty(); }
+};
+
+// ---- recording gap --------------------------------------------------------
+// A stretch of the recording in which a capture source recorded nothing: the machine slept (every
+// track, trackId empty) or a device was lost until it was re-opened (trackId = the segment that
+// continued after the gap). The audio of the gap is in no file; it is metadata, not silence.
+struct RecordingGap {
+    qint64 fromMs = 0;        // recording clock (meeting time)
+    qint64 toMs = 0;
+    QString reason;           // "sleep" | "device-lost"
+    QDateTime fromWall;       // wall-clock bounds (what the user saw on the clock)
+    QDateTime toWall;
+    QString trackId;          // the resumed segment for a device-lost gap; empty = the whole meeting
 };
 
 // ---- meeting --------------------------------------------------------------
@@ -77,6 +95,8 @@ struct Meeting {
     // "participantApproval" in meeting.json.
     QVector<Participant> participants;
     std::optional<ParticipantApproval> approval;
+    // Interruptions of the recording (sleep / lost device), in time order. "gaps" in meeting.json.
+    QVector<RecordingGap> gaps;
 };
 
 // ---- track timing: meeting time -> track-file time -----------------------------

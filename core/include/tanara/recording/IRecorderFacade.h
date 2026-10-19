@@ -105,6 +105,8 @@ public:
     virtual QStringList disconnectedDeviceNames() const = 0;       // detached mid-run
     // Recorded tracks delivering no data: device name -> recording-clock ms of the last data.
     virtual QMap<QString, qint64> stalledTracks() const { return {}; }
+    // Lost tracks being re-opened (after a sleep / a lost device): their device names.
+    virtual QStringList reopeningDeviceNames() const { return {}; }
     virtual void start(const QString& title, const QVector<AudioDeviceInfo>& devices) = 0;
     virtual void stop() = 0;
     virtual bool addDevice(const AudioDeviceInfo& device) = 0;     // false: not possible
@@ -151,6 +153,10 @@ signals:
     // A recorded track delivers no data since sinceMs (recording clock, as elapsedChanged) / again.
     void trackStalled(QString deviceName, qint64 sinceMs);
     void trackResumed(QString deviceName);
+    // A recorded track was lost (reason "sleep" | "device-lost") and is being re-opened; success comes
+    // as deviceReturned (a new segment), giving up as trackReopenFailed + error.
+    void trackReopening(QString deviceName, QString reason);
+    void trackReopenFailed(QString deviceName, QString reason);
     void recordingFinished(tanara::recording::RecordingOutcome outcome);
     void callEnded(QString appName);
     void silenceDetected(int minutes);

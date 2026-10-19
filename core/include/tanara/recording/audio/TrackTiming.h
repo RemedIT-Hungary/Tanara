@@ -74,4 +74,30 @@ constexpr bool isStalled(qint64 idleMs, qint64 thresholdMs = kStallWarnMs)
     return idleMs >= thresholdMs;
 }
 
+// ---- sleep and lost devices (resume in a new segment) ---------------------------------------
+//
+// The recording clock is monotonic; on Linux CLOCK_MONOTONIC does not advance while the machine is
+// suspended, so a sleep is invisible to it. The drain worker compares, tick by tick, how far the wall
+// clock moved with how far the monotonic clock moved: a wall-clock lead of more than kSleepJumpMs
+// means the machine slept (or the clock was set forward; both are logged). The recording clock then
+// takes the jump over (monotonic + the slept time), so later segments sit at their wall-clock place.
+constexpr qint64 kSleepJumpMs = 2000;
+
+// How much the wall clock ran ahead of the monotonic clock between two ticks, if it counts as a
+// sleep; 0 otherwise.
+constexpr qint64 sleepJumpMs(qint64 wallDeltaMs, qint64 monotonicDeltaMs, qint64 thresholdMs = kSleepJumpMs)
+{
+    return wallDeltaMs - monotonicDeltaMs > thresholdMs ? wallDeltaMs - monotonicDeltaMs : 0;
+}
+
+// A capture track lost (device invalidated / stream gone) or cut by a sleep is re-opened: every
+// kReopenPollMs the session re-enumerates the devices and opens the same one (by id, then by name),
+// for at most kReopenWindowMs; then it gives up with an error.
+constexpr qint64 kReopenPollMs = 1000;
+constexpr qint64 kReopenWindowMs = 10 * 60 * 1000;
+
+// Gap reasons (RecordingGap::reason).
+inline constexpr char kGapSleep[] = "sleep";
+inline constexpr char kGapDeviceLost[] = "device-lost";
+
 } // namespace tanara::recording::tracktiming

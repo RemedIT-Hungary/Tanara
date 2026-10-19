@@ -7,6 +7,7 @@
 #include "tanara/recording/RecordingService.h"
 #include "tanara/library/store/MeetingRepository.h"
 #include "tanara/recording/audio/DeviceManager.h"
+#include "tanara/recording/audio/TrackTiming.h"
 
 #include <QCoreApplication>
 #include <QDateTime>
@@ -75,12 +76,46 @@ int cmdRecord(CliContext& ctx, const QStringList& args)
         qapp.quit();
     });
     QObject::connect(&app, &app::AppController::errorOccurred, &qapp, [&](QString e) {
-        err() << QStringLiteral("ERROR: %1").arg(e) << "\n"; err().flush(); qapp.exit(1);
+        err() << QStringLiteral("ERROR: %1").arg(e) << "\n"; err().flush();
+        // An error while the recording still runs (a lost device that did not come back) is not
+        // fatal: the other tracks go on, and stopping saves what was recorded.
+        if (app.services()->recording().state() == RecordingState::Recording) return;
+        qapp.exit(1);
     });
     QObject::connect(&app, &app::AppController::elapsedChanged, &qapp, [&](qint64 ms) {
         out() << "\r  " << (ms / 1000) << " s..."; out().flush();
     });
 
+    {
+        // Resume after a sleep / a lost device: one line per event.
+        const recording::RecordingService* rec = &app.services()->recording();
+        QObject::connect(rec, &recording::RecordingService::systemSlept, &qapp, [](qint64 fromMs, qint64 toMs) {
+            out() << "\n" << QStringLiteral("Sleep detected: the machine slept %1 s (%2 -> %3); the recording continues in new segments.")
+                         .arg((toMs - fromMs) / 1000)
+                         .arg(QDateTime::fromMSecsSinceEpoch(fromMs).toString(QStringLiteral("HH:mm:ss")),
+                              QDateTime::fromMSecsSinceEpoch(toMs).toString(QStringLiteral("HH:mm:ss")))
+                  << "\n";
+            out().flush();
+        });
+        QObject::connect(rec, &recording::RecordingService::trackReopening, &qapp,
+                         [](const QString& name, const QString& reason) {
+            out() << "\n" << QStringLiteral("Track lost (%1): %2 — re-opening the device every %3 s for up to %4 min...")
+                         .arg(reason, name)
+                         .arg(recording::tracktiming::kReopenPollMs / 1000)
+                         .arg(recording::tracktiming::kReopenWindowMs / 60000)
+                  << "\n";
+            out().flush();
+        });
+        QObject::connect(rec, &recording::RecordingService::deviceReturned, &qapp, [](const QString& name) {
+            out() << "\n" << QStringLiteral("Re-opened: %1 — recording continues in a new segment.").arg(name) << "\n";
+            out().flush();
+        });
+        QObject::connect(rec, &recording::RecordingService::trackReopenFailed, &qapp,
+                         [](const QString& name, const QString& reason) {
+            out() << "\n" << QStringLiteral("Gave up re-opening %1 (%2); its track stays closed.").arg(name, reason) << "\n";
+            out().flush();
+        });
+    }
     app.startRecording(title, sel);
     {
         const recording::RecordingService& rec = app.services()->recording();

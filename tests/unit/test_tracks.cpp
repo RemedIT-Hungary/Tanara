@@ -72,6 +72,7 @@ private slots:
     void shortDeviceNames();
     void segmentsOfOneDevice();
     void segmentsRenameTogether();
+    void segmentChainIsOneLogicalTrack();
 
     void viewsAndMissingFile();
     void renamePersists();
@@ -271,6 +272,77 @@ void TracksTest::segmentsRenameTogether()
     // Back to the friendly name: on both segments.
     QVERIFY(cat.renameTrack(m.id, "sys", QString()));
     for (const library::TrackView& v : cat.tracks(m.id)) QVERIFY(!v.renamed);
+}
+
+// A re-opened segment (after a sleep / a lost device) continues its chain even if the device came
+// back under another name; the meeting's gaps survive meeting.json and the Overview finds the
+// interruption before the later segment.
+void TracksTest::segmentChainIsOneLogicalTrack()
+{
+    Track a = mk("mic", "Trust USB mikrofon", TrackKind::Mic);
+    Track b = mk("mic-2", "Trust USB mikrofon (2)", TrackKind::Mic);
+    b.startOffsetMs = 61000;
+    b.continuesTrackId = QStringLiteral("mic");
+    Track c = mk("sys", "Monitor of Speakers", TrackKind::Loopback);
+    Track d = mk("sys-2", "Monitor of Speakers", TrackKind::Loopback);
+    d.startOffsetMs = 61000;
+    d.continuesTrackId = QStringLiteral("sys");
+    Meeting m = makeMeeting({a, c, b, d});
+    const QDateTime from(QDate(2026, 10, 19), QTime(14, 2, 5));
+    RecordingGap sleep;
+    sleep.fromMs = 600;
+    sleep.toMs = 60600;
+    sleep.reason = QStringLiteral("sleep");
+    sleep.fromWall = from;
+    sleep.toWall = from.addSecs(60);
+    m.gaps = {sleep};
+    m_store->saveMeeting(m);
+
+    // meeting.json round trip.
+    const Meeting back = m_store->load(m.id);
+    QCOMPARE(back.tracks.at(2).continuesTrackId, QStringLiteral("mic"));
+    QVERIFY(back.tracks.at(0).continuesTrackId.isEmpty());
+    QCOMPARE(back.gaps.size(), 1);
+    QCOMPARE(back.gaps.at(0).fromMs, qint64(600));
+    QCOMPARE(back.gaps.at(0).toMs, qint64(60600));
+    QCOMPARE(back.gaps.at(0).reason, QStringLiteral("sleep"));
+    QCOMPARE(back.gaps.at(0).fromWall, sleep.fromWall);
+    QCOMPARE(back.gaps.at(0).toWall, sleep.toWall);
+    QVERIFY(back.gaps.at(0).trackId.isEmpty());
+
+    const QVector<library::tracknames::SegmentInfo> seg = library::tracknames::segments(back.tracks);
+    QCOMPARE(seg.at(2).leader, 0);   // another name, but the chain holds
+    QCOMPARE(seg.at(2).segment, 2);
+    QCOMPARE(seg.at(0).segment, 1);
+    QCOMPARE(seg.at(3).leader, 1);
+    QCOMPARE(seg.at(3).count, 2);
+    const QStringList names = library::tracknames::friendlyNames(back.tracks);
+    QCOMPARE(names.at(2), names.at(0));
+
+    // The Tracks / Overview view: one logical track per chain, the gap before the later segment.
+    const QVector<library::TrackView> views = library::TrackCatalog::tracks(back);
+    QCOMPARE(views.size(), 4);
+    QCOMPARE(views.at(0).track.id, QStringLiteral("mic"));
+    QCOMPARE(views.at(1).track.id, QStringLiteral("mic-2"));
+    QVERIFY(!views.at(0).gapBefore.has_value());
+    QVERIFY(views.at(1).gapBefore.has_value());
+    QCOMPARE(views.at(1).gapBefore->reason, QStringLiteral("sleep"));
+    QVERIFY(views.at(3).gapBefore.has_value());
+
+    // A device-lost gap names the segment it resumed; it wins over a meeting-wide gap.
+    RecordingGap lost;
+    lost.fromMs = 30000;
+    lost.toMs = 61000;
+    lost.reason = QStringLiteral("device-lost");
+    lost.trackId = QStringLiteral("mic-2");
+    Meeting both = back;
+    both.gaps.append(lost);
+    QCOMPARE(library::tracknames::gapBefore(both, 2)->reason, QStringLiteral("device-lost"));
+    QCOMPARE(library::tracknames::gapBefore(both, 3)->reason, QStringLiteral("sleep"));
+    // Without gaps (an older meeting, a toggled device) there is nothing to tell.
+    Meeting none = back;
+    none.gaps.clear();
+    QVERIFY(!library::tracknames::gapBefore(none, 2).has_value());
 }
 
 void TracksTest::viewsAndMissingFile()

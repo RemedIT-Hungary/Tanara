@@ -8,6 +8,7 @@
 #include "tanara/recording/audio/DeviceManager.h"
 #include "tanara/recording/audio/DeviceMonitor.h"
 #include "tanara/recording/audio/RecordingSession.h"
+#include "tanara/recording/audio/TrackTiming.h"
 #include "tanara/watcher/CallMonitor.h"
 
 #include <QDateTime>
@@ -70,7 +71,6 @@ struct RecordingService::Impl {
     QStringList recClosed;                      // devices detached mid-run
     QStringList recOff;                         // switched off by the user mid-run
     QHash<QString, int> recMissing;             // in how many consecutive enumerations it was missing
-    QHash<QString, int> recReturning;           // detached device: in how many consecutive enumerations it is present again
 
     // Silence watch during recording (silenceAskMinutes).
     QTimer* silenceTimer = nullptr;
@@ -81,6 +81,11 @@ struct RecordingService::Impl {
 
     // Keep-awake: whether the setting was off at the last start (for keepAwakeState()).
     bool keepAwakeOff = false;
+
+    // Test seams handed to every session: its clocks and the re-open timing (0 = the defaults).
+    std::pair<std::function<qint64()>, std::function<qint64()>> clockSources;
+    qint64 reopenPollMs = 0;
+    qint64 reopenWindowMs = 0;
 
     Config config() const { return deps.config ? deps.config() : Config{}; }
     qint64 now() const { return clock ? clock() : QDateTime::currentMSecsSinceEpoch(); }
@@ -231,7 +236,7 @@ void RecordingService::restartLevelMonitor(bool force)
 }
 
 // After a device re-enumeration: during recording, closes the track of a recorded device that
-// disappeared and records a returned one again.
+// disappeared. Recording it again when it is back is the session's re-open (setDeviceLister).
 void RecordingService::handleDeviceSetChange()
 {
     const QVector<AudioDeviceInfo> present = d->devices->captureDevices();
@@ -254,23 +259,6 @@ void RecordingService::handleDeviceSetChange()
             } else {
                 recheck = true;
             }
-        }
-        // A re-plugged device: one that the detach closed (not switched off by the user) and that is present again
-        // in the enumeration TWICE in a row (looks stable), is recorded again by itself: a new span starts, the
-        // recording so far stays untouched. The user rightly expects not to have to switch it back on by hand
-        // after a short USB dropout.
-        const QStringList closedNow = d->recClosed;
-        for (const QString& name : closedNow) {
-            const AudioDeviceInfo* dev = nullptr;
-            for (const AudioDeviceInfo& cand : present)
-                if (cand.name == name) { dev = &cand; break; }
-            if (!dev) { d->recReturning.remove(name); continue; }
-            if (++d->recReturning[name] < 2) { recheck = true; continue; }
-            d->recReturning.remove(name);
-            qCInfo(lcApp).noquote() << "Leválasztott eszköz visszatért, a rögzítése folytatódik (új szakasz):" << name;
-            emit deviceReturned(name);
-            if (!d->session->addDevice(*dev))
-                qCWarning(lcApp).noquote() << "A visszatért eszköz sávja nem indult el:" << name;
         }
         if (recheck)
             QTimer::singleShot(1200, this, [this] {
@@ -296,6 +284,22 @@ QStringList RecordingService::disconnectedDeviceNames() const { return d->recClo
 QMap<QString, qint64> RecordingService::stalledTracks() const
 {
     return d->session ? d->session->stalledTracks() : QMap<QString, qint64>();
+}
+
+QStringList RecordingService::reopeningDeviceNames() const
+{
+    return d->session ? d->session->reopeningDevices() : QStringList();
+}
+
+void RecordingService::setSessionClockSources(std::function<qint64()> monotonicMs, std::function<qint64()> wallMs)
+{
+    d->clockSources = {std::move(monotonicMs), std::move(wallMs)};
+}
+
+void RecordingService::setReopenTiming(qint64 pollMs, qint64 windowMs)
+{
+    d->reopenPollMs = pollMs;
+    d->reopenWindowMs = windowMs;
 }
 
 bool RecordingService::addDevice(const AudioDeviceInfo& device)
@@ -387,7 +391,6 @@ void RecordingService::start(const QString& title, const QVector<AudioDeviceInfo
     if (d->monitor) d->monitor->stop();
     d->clearTracks();
     d->recMissing.clear();
-    d->recReturning.clear();
     QVector<AudioDeviceInfo> use = devices;
     if (use.isEmpty()) {
         d->devices->refresh();
@@ -408,6 +411,15 @@ void RecordingService::start(const QString& title, const QVector<AudioDeviceInfo
     auto* sess = new RecordingSession(d->deps.media, d->deps.audioDir, title, cfg.recording.userSpeakerName,
                                       opusBitrateKbps(cfg.recording.audioQuality), this);
     if (d->engineFactory) sess->setEngineFactory(d->engineFactory);
+    // Re-open after loss (a sleep, a lost device): the session re-enumerates through our device
+    // manager (the refresh also feeds the hot-plug watch above) and opens the same device again.
+    sess->setDeviceLister([this] {
+        d->devices->refresh();
+        return d->devices->captureDevices();
+    });
+    if (d->reopenPollMs > 0) sess->setReopenTiming(d->reopenPollMs, d->reopenWindowMs);
+    if (d->clockSources.first || d->clockSources.second)
+        sess->setClockSources(d->clockSources.first, d->clockSources.second);
     d->session = sess;
 
     connect(sess, &RecordingSession::stateChanged, this, [this, sess](RecordingState st) {
@@ -482,6 +494,25 @@ void RecordingService::start(const QString& title, const QVector<AudioDeviceInfo
     connect(sess, &RecordingSession::elapsedChanged, this, &RecordingService::elapsedChanged);
     connect(sess, &RecordingSession::trackStalled, this, &RecordingService::trackStalled);
     connect(sess, &RecordingSession::trackResumed, this, &RecordingService::trackResumed);
+    connect(sess, &RecordingSession::systemSlept, this, &RecordingService::systemSlept);
+    connect(sess, &RecordingSession::reopenStarted, this, [this](const QString& name, const QString& reason) {
+        qCInfo(lcApp).noquote() << QStringLiteral("Recording interrupted (%1): re-opening \"%2\"").arg(reason, name);
+        emit trackReopening(name, reason);
+    });
+    connect(sess, &RecordingSession::trackReopened, this,
+            [this](const QString& name, const QString& newName, int) {
+        // Back under another name (matched by id): the old name stays "disconnected", the new one is live.
+        if (newName == name) d->recClosed.removeAll(name);
+        d->recMissing.remove(name);
+        qCInfo(lcApp).noquote() << QStringLiteral("Recording resumed: \"%1\" continues in a new segment").arg(newName);
+        emit deviceReturned(name);
+    });
+    connect(sess, &RecordingSession::reopenAbandoned, this, [this](const QString& name, const QString& reason) {
+        qCWarning(lcApp).noquote() << QStringLiteral("Recording: gave up re-opening \"%1\" (%2)").arg(name, reason);
+        emit trackReopenFailed(name, reason);
+        emit error(tr("A(z) %1 eszköz %2 percen belül nem tért vissza, a sávja lezárva marad.")
+                       .arg(name).arg(d->reopenWindowMs > 0 ? d->reopenWindowMs / 60000 : tracktiming::kReopenWindowMs / 60000));
+    });
     connect(sess, &RecordingSession::failed, this, [this](QString e) {
         stopWatches();
         releaseKeepAwake();

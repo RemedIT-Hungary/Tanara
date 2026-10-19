@@ -12,6 +12,8 @@
 #include <QObject>
 #include <QVector>
 
+#include <optional>
+
 namespace tanara::library {
 
 class MeetingRepository;
@@ -39,6 +41,9 @@ struct TrackView {
     // logical track: shared name and role, one after another.
     int       segment = 0;
     int       segmentCount = 1;
+    // For a later segment: the interruption before it (a sleep / the device was lost), when the
+    // recording knows it (Meeting::gaps; tracknames::gapBefore).
+    std::optional<RecordingGap> gapBefore;
     // The track's length in ms: from the waveform cache (the exact, decoded length) if it is already
     // done and valid; otherwise -1 (WaveformService::peaksReady gives it).
     qint64    durationMs = -1;
@@ -79,12 +84,19 @@ QString shortDeviceName(const QString& deviceName);
 // track if ALL started with different offsets (startOffsetMs); the recorder keeps a device open only
 // once at a time, so the spans of switching on and off always begin at different times. The same
 // offset (e.g. two identically named microphones at once) -> separate logical tracks.
+// A segment chain (Track::continuesTrackId: re-opened after a sleep / a lost device) is one logical
+// track as well, whatever the devices' names; the chain and the name rule combine.
 struct SegmentInfo {
     int leader = -1;   // index in `all` of the logical track's first (earliest) span
     int segment = 0;   // 1..count in offset order; 0 if the track is a single file
     int count = 1;
 };
 QVector<SegmentInfo> segments(const QVector<Track>& all);
+
+// The interruption before a later segment of a logical track (segment >= 2): the device-lost gap
+// that names this segment, otherwise the latest meeting-wide (sleep) gap between the previous
+// segment's start and this one's. nullopt for a first / single segment or when the meeting has no gaps.
+std::optional<RecordingGap> gapBefore(const Meeting& meeting, int trackIndex);
 
 // A track's role knowing ALL of the meeting's tracks:
 //  - Mic -> OwnMic; Other -> Other;

@@ -9994,6 +9994,10 @@
         <source>Nincs felvehető hangeszköz.</source>
         <translation>No recordable audio device.</translation>
     </message>
+    <message>
+        <source>A(z) %1 eszköz %2 percen belül nem tért vissza, a sávja lezárva marad.</source>
+        <translation>The device %1 did not come back within %2 minutes. Its track stays closed.</translation>
+    </message>
 </context>
 <context>
     <name>tanara::recording::RecordingSession</name>
@@ -12424,6 +12428,30 @@
         <source>A mikrofon (%1) %2 másodperce nem ad hangot</source>
         <translation>The microphone (%1) has given no audio for %2 seconds</translation>
     </message>
+    <message>
+        <source>A felvétel megszakadt</source>
+        <translation>The recording was interrupted</translation>
+    </message>
+    <message>
+        <source>A felvétel folytatódik</source>
+        <translation>The recording continues</translation>
+    </message>
+    <message>
+        <source>A(z) %1 eszköz nem tért vissza, a sávja lezárva marad.</source>
+        <translation>The device %1 did not come back. Its track stays closed.</translation>
+    </message>
+    <message>
+        <source>A felvétel megszakadt (a gép aludt), folytatás… %1 mp</source>
+        <translation>The recording was interrupted (the computer slept). Resuming… %1 s</translation>
+    </message>
+    <message>
+        <source>A felvétel megszakadt (az eszköz eltűnt), folytatás… %1 mp</source>
+        <translation>The recording was interrupted (the device disappeared). Resuming… %1 s</translation>
+    </message>
+    <message>
+        <source>Folytatva új szakaszban</source>
+        <translation>Resumed in a new segment</translation>
+    </message>
 </context>
 <context>
     <name>tanara_qml::SettingsEmbeddingModel</name>
@@ -13590,6 +13618,18 @@
 </context>
 <context>
     <name>tanara_qml::TrackListModel</name>
+    <message>
+        <source>alvás</source>
+        <translation>sleep</translation>
+    </message>
+    <message>
+        <source>az eszköz eltűnt</source>
+        <translation>device lost</translation>
+    </message>
+    <message>
+        <source>megszakadt %1–%2 (%3), folytatva</source>
+        <translation>interrupted %1–%2 (%3), resumed</translation>
+    </message>
     <message>
         <source>%1. szakasz</source>
         <translation>segment %1</translation>

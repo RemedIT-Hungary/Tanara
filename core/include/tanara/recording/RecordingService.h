@@ -3,8 +3,10 @@
 // RecordingService: the recording orchestration around RecordingSession.
 //
 //  - start / stop, adding and switching off a device's track during the recording;
-//  - hot-plug: a recorded device missing from TWO consecutive enumerations is closed safely, a
-//    detached device present again in TWO consecutive enumerations is recorded again (new span);
+//  - hot-plug: a recorded device missing from TWO consecutive enumerations is closed safely;
+//  - resume after loss: a lost track (detached device, a device the backend stopped, every track
+//    after the machine slept) is re-opened by the session through this service's DeviceManager,
+//    in a new segment (RecordingSession::setDeviceLister), or given up after the re-open window;
 //  - live level monitoring (DeviceMonitor) for the recorder and other consumers (retain/release),
 //    during a recording only on the devices NOT on a track;
 //  - the call-end watch (watcher::CallMonitor, subscribed while recording) and the silence watch:
@@ -83,6 +85,8 @@ public:
     QStringList disconnectedDeviceNames() const;   // detached mid-run (not switched off by the user)
     // Tracks delivering no data (RecordingSession::stalledTracks): device name -> last data (recording ms).
     QMap<QString, qint64> stalledTracks() const;
+    // The lost tracks' devices being re-opened (RecordingSession::reopeningDevices).
+    QStringList reopeningDeviceNames() const;
 
     // The last used devices (persistent).
     QStringList lastUsedDeviceNames() const;
@@ -111,6 +115,10 @@ public:
     // The silence watch's monotonic clock (ms) and check interval. Defaults: wall clock, 10 s.
     void setClock(std::function<qint64()> nowMs);
     void setSilenceCheckIntervalMs(int ms);
+    // The sessions' clocks (RecordingSession::setClockSources) and re-open timing
+    // (RecordingSession::setReopenTiming; 0 = the defaults). Apply to the next start().
+    void setSessionClockSources(std::function<qint64()> monotonicMs, std::function<qint64()> wallMs);
+    void setReopenTiming(qint64 pollMs, qint64 windowMs);
 
 signals:
     void stateChanged(tanara::RecordingState state);
@@ -119,7 +127,15 @@ signals:
     void levelPeak(QString deviceName, float rms, float peak);
     void trackAdded(QString deviceName);
     void trackClosed(QString deviceName);
+    // A lost device is open again and its track continues in a new segment (after a sleep or a
+    // detach; the session's re-open).
     void deviceReturned(QString deviceName);
+    // The machine slept during the recording (RecordingSession::systemSlept).
+    void systemSlept(qint64 fromWallMs, qint64 toWallMs);
+    // A recorded track was lost (reason "sleep" | "device-lost") and is being re-opened.
+    void trackReopening(QString deviceName, QString reason);
+    // Re-opening gave up (the window ran out); error() carries the message.
+    void trackReopenFailed(QString deviceName, QString reason);
     // A recorded track delivers no data (RecordingSession::trackStalled) / delivers again.
     void trackStalled(QString deviceName, qint64 sinceMs);
     void trackResumed(QString deviceName);
