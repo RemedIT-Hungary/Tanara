@@ -28,8 +28,9 @@ cmake -S "$ROOT" -B "$BUILD" -G Ninja \
     -DCMAKE_BUILD_TYPE="${CMAKE_BUILD_TYPE:-Release}" ${LAUNCHER[@]+"${LAUNCHER[@]}"} "$@"
 cmake --build "$BUILD" -j"$JOBS"
 
-# Run all tests, then summarize skips even when a test failed.
+# Run all tests, then summarize failures and skips even when a test failed.
 status=0
 ctest --test-dir "$BUILD" -j"$JOBS" --output-on-failure || status=$?
+python3 "$ROOT/tools/ci/test-summary.py" "$BUILD/Testing/Temporary/LastTest.log" || true
 python3 "$ROOT/tools/ci/qskip-summary.py" "$BUILD/Testing/Temporary/LastTest.log" || true
 exit "$status"

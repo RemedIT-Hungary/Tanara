@@ -50,6 +50,8 @@ try {
 }
 $py = Get-Command python -ErrorAction SilentlyContinue
 if ($py) {
-    & python (Join-Path $PSScriptRoot 'qskip-summary.py') (Join-Path $build 'Testing\Temporary\LastTest.log')
+    $log = Join-Path $build 'Testing\Temporary\LastTest.log'
+    & python (Join-Path $PSScriptRoot 'test-summary.py') $log
+    & python (Join-Path $PSScriptRoot 'qskip-summary.py') $log
 }
 exit $status

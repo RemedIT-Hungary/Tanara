@@ -108,6 +108,10 @@ private slots:
             found = found || (d.name == QStringLiteral("Loopback: System audio") && d.kind == TrackKind::Loopback);
         if (!found && QOperatingSystemVersion::current() < QOperatingSystemVersion(QOperatingSystemVersion::MacOS, 14, 2))
             QSKIP("process tap needs macOS 14.2");
+        // GitHub's macOS runners are VMs without audio hardware and without the "System audio
+        // recording" grant, so the tap may not be created there.
+        if (!found && qEnvironmentVariableIsSet("GITHUB_ACTIONS"))
+            QSKIP("process tap not available on the CI runner");
         QVERIFY(found);
 #else
         QSKIP("macOS only");

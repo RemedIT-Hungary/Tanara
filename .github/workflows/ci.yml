@@ -122,3 +122,46 @@ jobs:
           name: windows-LastTest.log
           path: build/Testing/Temporary/LastTest.log
           if-no-files-found: ignore
+
+  macos:
+    name: macOS (Apple silicon, Homebrew Qt, full build and tests)
+    runs-on: macos-15
+    timeout-minutes: 90
+    env:
+      # No Core Audio process tap on the headless runner (no audio hardware, no TCC prompt possible).
+      TANARA_NO_SYSTEM_AUDIO_TAP: '1'
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_MAXSIZE: 500M
+      HOMEBREW_NO_AUTO_UPDATE: 1
+      HOMEBREW_NO_INSTALL_CLEANUP: 1
+      HOMEBREW_NO_ENV_HINTS: 1
+      # The arm64 runner has 3 cores.
+      JOBS: 3
+    steps:
+      - uses: actions/checkout@v5
+      # Only the downloaded bottles are cached; brew bundle still links and installs them.
+      - uses: actions/cache@v5
+        with:
+          path: ~/Library/Caches/Homebrew
+          key: brew-macos-15-${{ hashFiles('tools/ci/Brewfile') }}
+          restore-keys: brew-macos-15-
+      - name: Install dependencies (Homebrew)
+        run: brew bundle --file=tools/ci/Brewfile
+      - uses: actions/cache@v5
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ccache-macos-${{ github.sha }}
+          restore-keys: ccache-macos-
+      - name: Build and test
+        # ONNX Runtime and FFmpeg come from Homebrew (docs/BUILD.md, "macOS (Homebrew)").
+        run: bash tools/ci/build-test.sh build -DCMAKE_PREFIX_PATH="$(brew --prefix qt)" -DTANARA_BUILD_VOICEID=ON
+      - name: ccache statistics
+        if: always()
+        run: ccache -s
+      - name: Upload test log
+        if: failure()
+        uses: actions/upload-artifact@v5
+        with:
+          name: macos-LastTest.log
+          path: build/Testing/Temporary/LastTest.log
+          if-no-files-found: ignore

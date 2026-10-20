@@ -227,9 +227,9 @@ ctest --test-dir build -j4 --output-on-failure
 
 ## Running the CI steps locally
 
-CI (`.github/workflows/ci.yml`) runs three jobs on every push: `linux` (Fedora 44 container,
-full build and tests), `linux-headless` (no GUI, no watcher) and `windows` (MinGW 13.1 from
-aqtinstall). The steps are plain scripts in `tools/ci/`, so you can run them yourself.
+CI (`.github/workflows/ci.yml`) runs four jobs on every push: `linux` (Fedora 44 container,
+full build and tests), `linux-headless` (no GUI, no watcher), `windows` (MinGW 13.1 from
+aqtinstall) and `macos` (see [macOS in CI](#macos-in-ci)). The steps are plain scripts in `tools/ci/`, so you can run them yourself.
 
 Linux, in the same container image that CI uses:
 
@@ -257,6 +257,26 @@ powershell -File tools\ci\build-test.ps1 -QtDir C:\Qt\6.11.1\mingw_64 -MingwBin 
 `windows-deps.ps1 -WhatIf` only prints what it would download. Versions and checksums of the
 downloads live in that script and must match `packaging/windows/README.md`.
 
+### macOS in CI
+
+The `macos` job runs on GitHub's `macos-15` runner (Apple silicon). It installs
+`tools/ci/Brewfile` with `brew bundle` (Qt, ONNX Runtime and FFmpeg come from Homebrew; the
+downloaded bottles are cached), then runs `tools/ci/build-test.sh build
+-DCMAKE_PREFIX_PATH="$(brew --prefix qt)" -DTANARA_BUILD_VOICEID=ON`, the same command as on a Mac
+(see [macOS (Homebrew)](#macos-homebrew)). On a failure the test log is uploaded as the
+`macos-LastTest.log` artifact. The runner has no audio hardware and no "System audio recording"
+grant, so the process-tap test skips there.
+
+The release workflow has a `macos-bundle` job: it builds `tanara.app` with
+`-DTANARA_MACOS_BUNDLE=ON` and the `tanara_bundle` target (Ninja, ad hoc signature), zips it with
+`ditto` to `Tanara-<version>-macos-arm64.zip` and attaches it to the draft release. To get a test
+build without a release, download the `macos-bundle` artifact from the workflow run's summary page
+(Actions > Release > the run > Artifacts) or with `gh run download <run-id> -n macos-bundle`. The
+app is not notarized: open it with right-click > Open (macOS 15 and later: System Settings >
+Privacy & Security > Open Anyway), or run `xattr -dr com.apple.quarantine tanara.app`. It is built
+against the runner's Homebrew bottles, so it needs Apple silicon and macOS 15 or later, and it
+contains no FFmpeg (see [macOS app bundle](#macos-app-bundle)).
+
 ## Packaging
 
 Release packages are built from a tag `v<version>` (for example `v0.5.11`). The tag must equal
@@ -269,12 +289,13 @@ There is no `.deb` package, and nothing is code-signed yet (decision D13; signin
 | Windows installer (`Tanara-<v>-win64-setup.exe`, per-user, no admin rights) and zip | `tools/ci/package-windows.ps1` | GitHub Actions `windows-2022`, or any Windows machine with the build prerequisites |
 | AppImage (`Tanara-<v>-x86_64.AppImage`) | `tools/ci/package-appimage.sh` | GitHub Actions `ubuntu-22.04`, or an `ubuntu:22.04` container |
 | RPM (`tanara`) | Fedora COPR, `.copr/Makefile` + `packaging/rpm/tanara.spec` | COPR (the project and the webhook are set up by the maintainer) |
+| macOS app bundle (`Tanara-<v>-macos-arm64.zip`, ad hoc signed, not notarized) | `tanara_bundle` target, `-DTANARA_MACOS_BUNDLE=ON` | GitHub Actions `macos-15`, or a Mac with Homebrew ([macOS in CI](#macos-in-ci)) |
 | Flatpak (experiment only) | `flatpak-builder`, `packaging/flatpak/eu.remedit.Tanara.yml` | local; not in the release workflow, see `packaging/flatpak/TESTING.md` |
 
 ### Release workflow
 
-`.github/workflows/release.yml` runs on a pushed `v*` tag: `check-version`, then `windows-installer`
-and `appimage` in parallel, then `release`, which attaches the files and their `.sha256` files to a
+`.github/workflows/release.yml` runs on a pushed `v*` tag: `check-version`, then `windows-installer`,
+`appimage` and `macos-bundle` in parallel, then `release`, which attaches the files and their `.sha256` files to a
 **draft** GitHub release. The maintainer reads the draft and publishes it. To try it without a real
 release, push a throw-away tag whose CMake version matches (or a tag in a fork) and delete the draft
 and the tag afterwards.

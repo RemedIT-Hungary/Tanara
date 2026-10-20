@@ -39,10 +39,16 @@ class ProcessTapSystemAudioSource final : public ISystemAudioSource {
 public:
     ProcessTapSystemAudioSource()
     {
+        // TANARA_NO_SYSTEM_AUDIO_TAP=1: no tap and no aggregate device (CI runners without audio
+        // hardware or the "System audio recording" permission; the capture list then has no system audio).
+        if (qEnvironmentVariableIsSet("TANARA_NO_SYSTEM_AUDIO_TAP")) {
+            qCInfo(lcAudio) << "System audio: process tap disabled by TANARA_NO_SYSTEM_AUDIO_TAP";
+            return;
+        }
         if (@available(macOS 14.2, *))
             create();
         else
-            qCWarning(lcAudio) << "Rendszerhang: a process tap macOS 14.2-t igényel.";
+            qCWarning(lcAudio) << "System audio: the process tap needs macOS 14.2 or newer";
     }
     ~ProcessTapSystemAudioSource() override
     {
@@ -66,6 +72,7 @@ private:
     void create() API_AVAILABLE(macos(14.2))
     {
         @autoreleasepool {
+            qCInfo(lcAudio) << "System audio: creating the process tap";
             const AudioObjectID self = ownProcessObject();
             NSArray<NSNumber*>* excluded = self != kAudioObjectUnknown ? @[ @(self) ] : @[];
             CATapDescription* tap = [[CATapDescription alloc] initStereoGlobalTapButExcludeProcesses:excluded];
@@ -74,7 +81,7 @@ private:
             OSStatus st = AudioHardwareCreateProcessTap(tap, &tap_);
             if (st != noErr) {
                 tap_ = kAudioObjectUnknown;
-                qCWarning(lcAudio) << "Rendszerhang: AudioHardwareCreateProcessTap hiba:" << st;
+                qCWarning(lcAudio) << "System audio: AudioHardwareCreateProcessTap failed:" << st;
                 return;
             }
             NSDictionary* desc = @{
@@ -87,7 +94,9 @@ private:
             st = AudioHardwareCreateAggregateDevice((__bridge CFDictionaryRef)desc, &aggregate_);
             if (st != noErr) {
                 aggregate_ = kAudioObjectUnknown;
-                qCWarning(lcAudio) << "Rendszerhang: AudioHardwareCreateAggregateDevice hiba:" << st;
+                qCWarning(lcAudio) << "System audio: AudioHardwareCreateAggregateDevice failed:" << st;
+            } else {
+                qCInfo(lcAudio) << "System audio: process tap and aggregate device ready";
             }
         }
     }

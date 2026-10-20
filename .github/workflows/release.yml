@@ -1,7 +1,8 @@
 name: Release
 
-# A tag v<version> (for example v0.5.11) builds the Windows installer + zip and the AppImage and
-# attaches them to a DRAFT GitHub release; the maintainer publishes it after a check.
+# A tag v<version> (for example v0.5.11) builds the Windows installer + zip, the AppImage and an
+# ad hoc signed macOS app bundle (zip, Apple silicon) and attaches them to a DRAFT GitHub release;
+# the maintainer publishes it after a check.
 # Note: deleting a tag on GitHub also drops its draft release and the workflow run made for it, and
 # GitHub then listed this workflow as "deleted" until a push to main touched this file again. To drop
 # a half-made snapshot, delete the draft release and keep the tag.
@@ -114,9 +115,53 @@ jobs:
             build-appimage/out/*.sha256
           if-no-files-found: error
 
+  macos-bundle:
+    name: macOS app bundle (Apple silicon, Homebrew Qt, ad hoc signature)
+    needs: check-version
+    runs-on: macos-15
+    timeout-minutes: 90
+    env:
+      HOMEBREW_NO_AUTO_UPDATE: 1
+      HOMEBREW_NO_INSTALL_CLEANUP: 1
+      HOMEBREW_NO_ENV_HINTS: 1
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/cache@v5
+        with:
+          path: ~/Library/Caches/Homebrew
+          key: brew-macos-15-${{ hashFiles('tools/ci/Brewfile') }}
+          restore-keys: brew-macos-15-
+      - name: Install dependencies (Homebrew)
+        run: brew bundle --file=tools/ci/Brewfile
+      - name: Build tanara.app
+        # Ninja is enough: the bundle logic (gui/CMakeLists.txt) does not need the Xcode generator.
+        # tanara_bundle runs macdeployqt with -codesign=- (ad hoc signature, no notarization).
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="$(brew --prefix qt)" -DTANARA_MACOS_BUNDLE=ON -DTANARA_BUILD_VOICEID=ON
+          cmake --build build -j3 --target tanara_bundle
+      - name: Smoke test
+        run: |
+          codesign --verify --deep --verbose=2 build/gui/tanara.app
+          build/gui/tanara.app/Contents/MacOS/tanara-cli --version
+      - name: Zip the bundle
+        run: |
+          zip="Tanara-${{ needs.check-version.outputs.version }}-macos-arm64.zip"
+          mkdir -p out
+          ditto -c -k --keepParent build/gui/tanara.app "out/$zip"
+          ( cd out && shasum -a 256 "$zip" > "$zip.sha256" )
+          ls -l out
+      - uses: actions/upload-artifact@v5
+        with:
+          name: macos-bundle
+          path: |
+            out/Tanara-*-macos-arm64.zip
+            out/*.sha256
+          if-no-files-found: error
+
   release:
     name: Draft GitHub release
-    needs: [check-version, windows-installer, appimage]
+    needs: [check-version, windows-installer, appimage, macos-bundle]
     runs-on: ubuntu-22.04
     timeout-minutes: 15
     permissions:
@@ -139,7 +184,7 @@ jobs:
           prerelease: ${{ needs.check-version.outputs.prerelease == 'true' }}
           body: >-
             ${{ needs.check-version.outputs.prerelease == 'true'
-                && 'Kísérleti (alfa) build visszajelzéshez, nem végleges kiadás. Windows: a `-win64-setup.exe` felhasználói telepítő (nincs aláírva, a SmartScreen figyelmeztet); Linux: az AppImage. Ismert korlátok és teendők a csomagban lévő OLVASSEL.md-ben. / Experimental (alpha) build for feedback, not a release.'
+                && 'Kísérleti (alfa) build visszajelzéshez, nem végleges kiadás. Windows: a `-win64-setup.exe` felhasználói telepítő (nincs aláírva, a SmartScreen figyelmeztet); Linux: az AppImage; macOS (Apple silicon): a `-macos-arm64.zip`, ad hoc aláírással, Apple-hitelesítés (notarization) nélkül, ezért az első indításkor jobb klikk → Megnyitás kell (macOS 15-től: Rendszerbeállítások → Adatvédelem és biztonság → Megnyitás mindenképp), vagy `xattr -dr com.apple.quarantine tanara.app`. Ismert korlátok és teendők a csomagban lévő OLVASSEL.md-ben. / Experimental (alpha) build for feedback, not a release. The macOS app is not notarized: open it with right-click → Open (macOS 15 and later: System Settings → Privacy & Security → Open Anyway), or run `xattr -dr com.apple.quarantine tanara.app`.'
                 || '' }}
           generate_release_notes: true
           fail_on_unmatched_files: true
