@@ -140,6 +140,11 @@ jobs:
           cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_PREFIX_PATH="$(brew --prefix qt)" -DTANARA_MACOS_BUNDLE=ON -DTANARA_BUILD_VOICEID=ON
           cmake --build build -j3 --target tanara_bundle
+      - name: Re-sign the bundle (ad hoc)
+        # macdeployqt leaves some copied Homebrew dylibs with an invalid signature (libbrotlicommon
+        # was reported as "code or signature have been modified"), so the whole bundle is signed
+        # again ad hoc after deployment; this is what --verify then checks.
+        run: codesign --force --deep --sign - build/gui/tanara.app
       - name: Smoke test
         run: |
           codesign --verify --deep --verbose=2 build/gui/tanara.app
