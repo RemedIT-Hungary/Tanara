@@ -529,6 +529,20 @@ Item {
                         helperText: qsTr("Nevek, szakszavak, ismert félrehallások (A „…” helyesen: …). Az újragenerált összefoglaló és egy újra-átírás is ezt kapja.")
                     }
                     RowLayout {
+                        objectName: "summaryTruncatedNote"
+                        visible: root.vm.summaryTruncated
+                        Layout.fillWidth: true
+                        spacing: 6
+                        TIcon { Layout.alignment: Qt.AlignTop; Layout.topMargin: 2; name: "triangle-alert"; size: 13; color: Theme.warnInk }
+                        TLabel {
+                            Layout.fillWidth: true
+                            text: qsTr("A modell válasza a válaszkeretnél megszakadt, az összefoglaló hiányos lehet. Emeld a „Max. tokenek” értékét a szolgáltató Haladó beállításaiban, és készítsd újra.")
+                            color: Theme.warnInk
+                            font.pixelSize: Theme.fontCaption
+                            wrapMode: Text.Wrap
+                        }
+                    }
+                    RowLayout {
                         visible: root.vm.noteChangedSinceSummary
                         Layout.fillWidth: true
                         spacing: 6

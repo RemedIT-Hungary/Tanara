@@ -338,6 +338,8 @@ QJsonObject SummaryRepository::toJson(const SummaryDocument& doc)
     o[QStringLiteral("model")]     = doc.meta.model;
     if (doc.meta.contextNoteKnown)
         o[QStringLiteral("contextNote")] = doc.meta.contextNote;
+    if (doc.meta.truncated)
+        o[QStringLiteral("truncated")] = true;
     o[QStringLiteral("summary")]   = tanara::library::toJson(doc.summary);
     if (!doc.topics.isEmpty()) {
         QJsonArray arr;
@@ -361,6 +363,7 @@ SummaryDocument SummaryRepository::fromJson(const QJsonObject& o)
     doc.meta.contextNote = o.value(QStringLiteral("contextNote")).toString();
     if (meetingnotes::parseAutoCallNote(doc.meta.contextNote))
         doc.meta.contextNote.clear();
+    doc.meta.truncated = o.value(QStringLiteral("truncated")).toBool(false);
     doc.summary = summaryFromJson(o.value(QStringLiteral("summary")).toObject());
     for (const QJsonValue& v : o.value(QStringLiteral("topics")).toArray())
         doc.topics.append(topicFromJson(v.toObject()));

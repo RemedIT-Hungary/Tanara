@@ -253,6 +253,7 @@ void OpenAiCompatibleJob::onFinished()
     // With --debug the RAW response (first ~4000 characters) also goes into the log.
     qDebug().noquote().nospace()
         << "[LLM] raw response (first 4000ch):\n" << content.left(4000);
+    m_truncated = finish == QLatin1String("length");
     emit finished(content);
 }
 

@@ -436,6 +436,7 @@ void SummaryViewModel::reload()
     m_sourceUtterances = 0;
     m_summaryNote.clear();
     m_summaryNoteKnown = false;
+    m_summaryTruncated = false;
     m_jobKind = -1;
     m_jobTitle.clear();
     m_jobMessage.clear();
@@ -535,6 +536,7 @@ void SummaryViewModel::reload()
         m_modelLine = doc.meta.model;
         m_summaryNote = doc.meta.contextNote;
         m_summaryNoteKnown = doc.meta.contextNoteKnown;
+        m_summaryTruncated = doc.meta.truncated;
 
         m_stale = d.stale.stale;
         m_staleCount = d.stale.correctedSpeakers;

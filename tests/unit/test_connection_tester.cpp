@@ -457,7 +457,18 @@ private slots:
         int advanced = 0;
         for (const providers::ConfigField& f : llm.fields)
             if (f.advanced) ++advanced;
-        QCOMPARE(advanced, 2);   // temperature + max tokens
+        QCOMPARE(advanced, 3);   // temperature + max tokens + the long-meeting choice
+        // The long-meeting default: parts for the local endpoint, whole for the hosted presets; an explicit
+        // config value wins.
+        const providers::ProviderDescriptor claude =
+            reg.descriptor(providers::CapabilityKind::Chat, providers::chatproviders::AnthropicId);
+        providers::ProviderConfig cfg;
+        QCOMPARE(providers::chatproviders::summarySplit(cfg, llm), providers::chatproviders::SplitParts);
+        QCOMPARE(providers::chatproviders::summarySplit(cfg, claude), providers::chatproviders::SplitWhole);
+        QCOMPARE(providers::chatproviders::summarySplit(cfg, providers::ProviderDescriptor{}), providers::chatproviders::SplitParts);
+        cfg.extra.insert(providers::chatproviders::SummarySplitKey, providers::chatproviders::SplitParts);
+        QCOMPARE(providers::chatproviders::summarySplit(cfg, claude), providers::chatproviders::SplitParts);
+        QVERIFY(claude.chat.contextTokens > 0);
     }
 
     void describeHttpClassification()

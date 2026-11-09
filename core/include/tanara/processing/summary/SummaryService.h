@@ -20,6 +20,7 @@
 
 #include <QObject>
 #include <QPointer>
+#include <QSet>
 #include <QString>
 #include <QStringList>
 
@@ -80,6 +81,10 @@ public:
     void summarize(const SummaryRequest& req);
     // Cancels the running call; no signal follows. The cache is kept.
     void cancel();
+    // A reply of the finished run was cut at the reply-size limit and went into the result as it was
+    // (a part note still cut after one retry with the full size, or the final call): the summary may be
+    // incomplete. Valid from summaryReady.
+    bool truncated() const { return m_truncated; }
 
     // The built-in single-step prompt for a short meeting ("single").
     static QString defaultSystemPrompt();
@@ -100,6 +105,7 @@ signals:
     void summaryFailed(const QString& error);
 
 private:
+    QString cutHint() const;
     void startNextNotes();
     void startMerge();
     void startSingle();
@@ -132,6 +138,9 @@ private:
     bool m_cancelled = false;
     bool m_running = false;
     bool m_forceNotes = false;     // 1 part, but the single-step call does not fit the context
+    bool m_lastTruncated = false;  // the last call's reply was cut at the reply-size limit
+    bool m_truncated = false;      // a cut reply went into the result (truncated())
+    QSet<int> m_notesRetried;      // parts whose cut note was asked again with the full reply size
     bool m_resplitDone = false;    // the error-driven re-split happens once per run
 };
 

@@ -4,6 +4,7 @@
 // LM Studio / Ollama / OpenAI / Claude endpoints and the Tanara Cloud LLM proxy. Stream-ready for the
 // future. (Was ILlmProvider; the old name stays as an alias in ILlmProvider.h until P15.)
 #include "tanara/foundation/error/Error.h"
+#include "tanara/providers/core/ProviderConfig.h"
 #include "tanara/providers/core/ProviderDescriptor.h"
 
 #include <QObject>
@@ -17,6 +18,25 @@ namespace tanara::providers {
 namespace chatproviders {
 inline const QString AnthropicId = QStringLiteral("anthropic");
 inline const QString OpenAiId = QStringLiteral("openai");
+
+// How a long meeting is summarized with a chat provider: a per-provider setting (ProviderConfig.extra),
+// its default comes from the provider's descriptor field.
+//  "parts" - time slices, a note per part, then a merge: for a small local model;
+//  "whole" - the entire transcript in one call when it fits the model's context: fewer calls and tokens
+//            with a large-context model. A transcript that does not fit is still split.
+inline const QString SummarySplitKey = QStringLiteral("summarySplit");
+inline const QString SplitParts = QStringLiteral("parts");
+inline const QString SplitWhole = QStringLiteral("whole");
+
+// The effective value: the config's, else the descriptor field's default, else "parts".
+inline QString summarySplit(const ProviderConfig& cfg, const ProviderDescriptor& descriptor)
+{
+    QString v = cfg.extra.value(SummarySplitKey).toString();
+    if (v.isEmpty())
+        for (const ConfigField& f : descriptor.fields)
+            if (f.key == SummarySplitKey) v = f.defaultValue;
+    return v == SplitWhole ? SplitWhole : SplitParts;
+}
 }
 
 struct ChatMessage {
@@ -47,6 +67,9 @@ public:
     // The classified error (filled before the failed signal): Auth / Quota / Transient / Input ...;
     // a "does not fit the model's context" answer is Input with code "context_overflow".
     const Error& error() const { return m_error; }
+    // The reply was cut at the reply-size limit (finish_reason "length"); set before finished. The text is
+    // still delivered: the caller decides whether a cut reply is usable.
+    bool truncated() const { return m_truncated; }
 
 signals:
     void delta(const QString& chunk);          // if stream==true
@@ -57,6 +80,7 @@ protected:
     int m_errorStatus = 0;
     QByteArray m_errorBody;
     Error m_error;
+    bool m_truncated = false;
 };
 
 class IChatProvider {

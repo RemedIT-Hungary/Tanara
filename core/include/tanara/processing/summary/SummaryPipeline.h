@@ -27,6 +27,8 @@ namespace summarypipe {
 
 // Target length of a part and the minimum of the last part (a shorter last part merges into the previous one).
 constexpr qint64 kDefaultPartMs = 15 * 60 * 1000;
+// A part length no meeting reaches: splitTranscript gives ONE part (the "whole" summary mode).
+constexpr qint64 kWholePartMs = Q_INT64_C(1) << 50;
 // Upper limit of open questions after the summary (part of the stored format: SummaryFormat.h).
 using library::summaryformat::kMaxOpenQuestions;
 // Consecutive memo sections on the same subject merge up to at most this length.

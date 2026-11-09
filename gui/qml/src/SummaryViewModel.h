@@ -192,6 +192,9 @@ class SummaryViewModel : public QObject {
     // The note differs from the one the current summary was made with (for an old summary,
     // where this is unknown, always false).
     Q_PROPERTY(bool noteChangedSinceSummary READ noteChangedSinceSummary NOTIFY noteHintChanged)
+    // A reply the current summary was built from was cut at the model's reply-size limit: it may be
+    // incomplete (a gentle warning with the setting to raise).
+    Q_PROPERTY(bool summaryTruncated READ summaryTruncated NOTIFY noteHintChanged)
 
 public:
     // From QML: the facade of the moment (AppContext::services(), follows the App.demo switch).
@@ -280,6 +283,7 @@ public:
     bool noteOpen() const { return m_noteOpen; }
     void setNoteOpen(bool open);
     bool noteChangedSinceSummary() const;
+    bool summaryTruncated() const { return m_hasSummary && m_summaryTruncated; }
 
     Q_INVOKABLE void refresh();
     // The summary's markdown: part "exec" (executive summary + lists + participants),
@@ -348,6 +352,7 @@ private:
     bool m_noteOpen = false;
     QString m_summaryNote;              // the note the summary was made with
     bool m_summaryNoteKnown = false;
+    bool m_summaryTruncated = false;
     QString m_meetingId;
     QString m_demoState;
     bool m_topicsOpen = false;

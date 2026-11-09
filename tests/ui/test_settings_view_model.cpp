@@ -655,8 +655,9 @@ private slots:
         QCOMPARE(fieldProp(fields, "apiKey", "required").toBool(), true);
         QVERIFY(vm.stt()->advancedFields().isEmpty());
         QVERIFY(vm.stt()->testable());
-        // LLM: temperature and max tokens under "Advanced"; the model is a fetchable list.
-        QCOMPARE(vm.llm()->advancedFields().size(), 2);
+        // LLM: temperature, max tokens and the long-meeting choice under "Advanced"; the model is a fetchable list.
+        QCOMPARE(vm.llm()->advancedFields().size(), 3);
+        QCOMPARE(fieldProp(vm.llm()->advancedFields(), "summarySplit", "type").toString(), QStringLiteral("choice"));
         QCOMPARE(fieldProp(vm.llm()->fields(), "model", "dynamic").toBool(), true);
         QCOMPARE(fieldProp(vm.llm()->advancedFields(), "temperature", "decimals").toInt(), 2);
         // For a local endpoint the key placeholder: not needed.
@@ -1615,6 +1616,15 @@ private slots:
         for (const QVariant& f : vm.llm()->advancedFields()) keys << f.toMap().value("key").toString();
         QVERIFY(!keys.contains(QStringLiteral("temperature")));
         QVERIFY(keys.contains(QStringLiteral("apiKey")) && keys.contains(QStringLiteral("maxTokens")));
+        // The long-meeting choice: an advanced field with its two labelled options, "whole" by default here.
+        QVariantMap split;
+        for (const QVariant& f : vm.llm()->advancedFields())
+            if (f.toMap().value("key").toString() == QLatin1String("summarySplit")) split = f.toMap();
+        QCOMPARE(split.value("type").toString(), QStringLiteral("choice"));
+        QCOMPARE(split.value("choices").toList().size(), 2);
+        QCOMPARE(split.value("choices").toList().at(1).toMap().value("value").toString(), QStringLiteral("whole"));
+        QVERIFY(!split.value("choices").toList().at(1).toMap().value("label").toString().isEmpty());
+        QCOMPARE(vm.llm()->value(QStringLiteral("summarySplit")).toString(), QStringLiteral("whole"));
         QCOMPARE(vm.llm()->placeholder(QStringLiteral("apiKey")), QStringLiteral("illeszd be a kulcsot"));
         // Anthropic ignores the thinking switch; a hosted service has no context to load.
         QVERIFY(!vm.llm()->reasoningAvailable());
@@ -1645,6 +1655,10 @@ private slots:
         // Back to Local: the local provider with its own (edited) settings.
         QVERIFY(vm.setRoute(QStringLiteral("llm"), QStringLiteral("local")));
         QCOMPARE(vm.llm()->providerId(), QStringLiteral("openai-compat"));
+        // The local endpoint goes in parts by default; the choice is per provider and is saved.
+        QCOMPARE(vm.llm()->value(QStringLiteral("summarySplit")).toString(), QStringLiteral("parts"));
+        vm.llm()->setValue(QStringLiteral("summarySplit"), QStringLiteral("whole"));
+        QCOMPARE(vm.llm()->value(QStringLiteral("summarySplit")).toString(), QStringLiteral("whole"));
         QCOMPARE(vm.llm()->value(QStringLiteral("baseUrl")).toString(), localUrl);
         QCOMPARE(vm.llm()->value(QStringLiteral("model")).toString(), QStringLiteral("helyi-modell"));
         QVERIFY(vm.llm()->reasoningAvailable());
@@ -1670,6 +1684,8 @@ private slots:
         QCOMPARE(live().providers.llm.selected().baseUrl, QStringLiteral("https://api.openai.com/v1"));
         QCOMPARE(live().providers.llm.selected().maxTokens, 16000);
         QCOMPARE(live().providers.llm.configs.value(QStringLiteral("openai-compat")).model, QStringLiteral("helyi-modell"));
+        QCOMPARE(live().providers.llm.configs.value(QStringLiteral("openai-compat")).extra.value(QStringLiteral("summarySplit")).toString(),
+                 QStringLiteral("whole"));
     }
 
     // ---- S4: the Tanara Cloud page ----

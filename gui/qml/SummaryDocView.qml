@@ -732,6 +732,27 @@ Flickable {
                         toolTipText: root.vm.canRun ? "" : (root.vm.blocker.reason || "")
                         onClicked: root.regenerate()
                     }
+                    // A cut reply went into the summary: it may be incomplete.
+                    RowLayout {
+                        objectName: "summaryTruncatedNote"
+                        visible: root.vm.summaryTruncated
+                        Layout.fillWidth: true
+                        Layout.leftMargin: 12
+                        Layout.bottomMargin: 2
+                        spacing: 6
+                        TIcon {
+                            Layout.alignment: Qt.AlignTop
+                            Layout.topMargin: 2
+                            name: "triangle-alert"; size: 13; color: Theme.warnInk
+                        }
+                        TLabel {
+                            Layout.fillWidth: true
+                            text: qsTr("A modell válasza a válaszkeretnél megszakadt, az összefoglaló hiányos lehet. Emeld a „Max. tokenek” értékét a szolgáltató Haladó beállításaiban, és készítsd újra.")
+                            color: Theme.warnInk
+                            font.pixelSize: Theme.fontCaption
+                            wrapMode: Text.Wrap
+                        }
+                    }
                     // The note changed since the summary: a gentle hint, not a stale mark.
                     RowLayout {
                         visible: root.vm.noteChangedSinceSummary

@@ -28,6 +28,7 @@
 #include "tanara/editing/session/SpeakerEditSession.h"
 #include "tanara/editing/session/SpeakerOverlay.h"
 #include "tanara/library/jobs/JobErrors.h"
+#include "tanara/library/summary/SummaryRepository.h"
 #include "tanara/providers/chat/IChatProvider.h"
 #include "tanara/providers/chat/LlmServer.h"
 #include "tanara/providers/core/Routes.h"
@@ -124,10 +125,10 @@ void writeWav(const QString& path, int seconds, int rate = 8000)
     f.write(pcm);
 }
 
-QByteArray chat(const QString& content)
+QByteArray chat(const QString& content, const char* finish = "stop")
 {
     QJsonObject msg{{"role", "assistant"}, {"content", content}};
-    QJsonObject root{{"choices", QJsonArray{QJsonObject{{"message", msg}, {"finish_reason", "stop"}}}}};
+    QJsonObject root{{"choices", QJsonArray{QJsonObject{{"message", msg}, {"finish_reason", finish}}}}};
     return QJsonDocument(root).toJson(QJsonDocument::Compact);
 }
 
@@ -166,6 +167,8 @@ private slots:
     void standaloneMixdownCancel();
     void summarizePersistsStructureAndMeta();
     void summarizeThroughExternalPreset();
+    void summarizeWholeOrInPartsByProviderSetting();
+    void summarizeRetriesACutPartNote();
     void summarizeCancelAndFailure();
     void summarizeLongMeetingInParts();
     void summarizePartFailureResumes();
@@ -795,6 +798,128 @@ void AppJobsTest::summarizeLongMeetingInParts()
     QFile nf(QDir(m_home->filePath("notes")).filePath(notes.first()));
     QVERIFY(nf.open(QIODevice::ReadOnly));
     QVERIFY(QString::fromUtf8(nf.readAll()).contains("### Tárgy 2"));
+}
+
+// The provider's "long meeting" setting: the hosted presets take the whole transcript in one call by
+// default, the local endpoint goes in parts; both can be switched per provider.
+void AppJobsTest::summarizeWholeOrInPartsByProviderSetting()
+{
+    m_http->handler = [](const FakeRequest& r) -> FakeReply {
+        if (!r.path.endsWith("/chat/completions")) return {404, "{}"};
+        const int k = notesPart(r);
+        return {200, chat(k > 0 ? partNotes(k) : QString::fromUtf8(kMergeOk))};
+    };
+    // Selects a chat provider at the fake server, with an optional explicit split setting.
+    auto select = [this](const QString& id, const QString& split) {
+        tanara::app::AppSettings s = m_app->settings()->settings();
+        s.providers.llm.selectedId = id;
+        providers::ProviderConfig& cfg = s.providers.llm.configs[id];
+        cfg.type = id;
+        cfg.baseUrl = m_http->base();
+        cfg.model = QStringLiteral("teszt-modell");
+        cfg.extra.remove(providers::chatproviders::SummarySplitKey);
+        if (!split.isEmpty()) cfg.extra.insert(providers::chatproviders::SummarySplitKey, split);
+        s.routes.normalize(s.providers);
+        m_app->settings()->setSettings(s);
+    };
+    m_app->setSecret(QStringLiteral("llm.anthropic.apiKey"), QStringLiteral("anthropic-kulcs"));
+    const Meeting m = transcribedLong("Hosszú megbeszélés", 40);   // 3 quarter-hour parts
+    // One run; returns the number of chat calls it made and the stage ids it started with.
+    auto run = [this, &m](QStringList* stageIds) {
+        const int before = m_http->count("POST", "/chat/completions");
+        QSignalSpy ready(m_app.get(), &app::AppController::summaryReady);
+        m_app->summarizeMeeting(m.id);
+        stageIds->clear();
+        for (const JobStage& st : m_app->jobs()->job(m.id, JobKind::Summarize).stages) *stageIds << st.id;
+        if (!ready.wait(10000)) return -1;
+        return m_http->count("POST", "/chat/completions") - before;
+    };
+    QStringList stages;
+
+    // Anthropic preset, its default: one call, one stage; the whole transcript is in that request.
+    select(providers::chatproviders::AnthropicId, QString());
+    QCOMPARE(run(&stages), 1);
+    QCOMPARE(stages, QStringList({"single"}));
+    QVERIFY2(m_errors.isEmpty(), qPrintable(m_errors.join("; ")));
+    {
+        const QJsonArray msgs = QJsonDocument::fromJson(m_http->log.last().body).object().value("messages").toArray();
+        const QString user = msgs.at(1).toObject().value("content").toString();
+        QVERIFY(user.contains(QStringLiteral("A(z) 0. bekezdés")));
+        QVERIFY(user.contains(QStringLiteral("A(z) 79. bekezdés")));
+        QVERIFY(!msgs.at(0).toObject().value("content").toString().contains("ONE PART"));
+    }
+    QCOMPARE(m_app->summaryDocument(m.id).summary.execSummary, QStringLiteral("Hosszú megbeszélés összegzése."));
+
+    // The same preset switched to parts: three notes and the merge.
+    select(providers::chatproviders::AnthropicId, providers::chatproviders::SplitParts);
+    QCOMPARE(run(&stages), 4);
+    QCOMPARE(stages, QStringList({"notes", "merge"}));
+
+    // The local endpoint: parts by default, one call when switched to whole.
+    select(QStringLiteral("openai-compat"), QString());
+    QCOMPARE(run(&stages), 4);
+    select(QStringLiteral("openai-compat"), providers::chatproviders::SplitWhole);
+    QCOMPARE(run(&stages), 1);
+    QCOMPARE(stages, QStringList({"single"}));
+    QVERIFY2(m_errors.isEmpty(), qPrintable(m_errors.join("; ")));
+}
+
+// A part note cut at the reply-size limit (finish_reason "length") is asked again once with the run's
+// full reply size; a note still cut is kept, and the summary carries the "may be incomplete" mark.
+void AppJobsTest::summarizeRetriesACutPartNote()
+{
+    bool alwaysCut = false;
+    QVector<int> part2Caps;   // max_tokens of the calls for part 2
+    m_http->handler = [&](const FakeRequest& r) -> FakeReply {
+        if (!r.path.endsWith("/chat/completions")) return {404, "{}"};
+        const int k = notesPart(r);
+        if (k == 2) {
+            part2Caps << QJsonDocument::fromJson(r.body).object().value("max_tokens").toInt();
+            if (alwaysCut || part2Caps.size() == 1) return {200, chat(partNotes(2), "length")};
+        }
+        return {200, chat(k > 0 ? partNotes(k) : QString::fromUtf8(kMergeOk))};
+    };
+    const Meeting m = transcribedLong("Megszakadó jegyzet", 40);
+    QSignalSpy ready(m_app.get(), &app::AppController::summaryReady);
+    m_app->summarizeMeeting(m.id);
+    QVERIFY(ready.wait(10000));
+    QVERIFY2(m_errors.isEmpty(), qPrintable(m_errors.join("; ")));
+    QCOMPARE(m_http->count("POST", "/chat/completions"), 5);    // 3 notes + 1 retry + the merge
+    QCOMPARE(part2Caps.size(), 2);
+    QCOMPARE(part2Caps.at(0), 3000);                            // the note size
+    QCOMPARE(part2Caps.at(1), 8000);                            // the retry: the provider's max tokens
+    QVERIFY(!m_app->summaryDocument(m.id).meta.truncated);      // the second reply was whole
+
+    // Still cut on the retry: kept, and the saved summary says so (it survives a reload from disk).
+    alwaysCut = true;
+    part2Caps.clear();
+    const int before = m_http->count("POST", "/chat/completions");
+    m_app->summarizeMeeting(m.id);
+    QVERIFY(ready.wait(10000));
+    QCOMPARE(m_http->count("POST", "/chat/completions") - before, 5);
+    QCOMPARE(part2Caps.size(), 2);
+    QVERIFY(m_app->summaryDocument(m.id).meta.truncated);
+    QVERIFY(library::SummaryRepository::load(m.folder).meta.truncated);
+
+    // A cut final call that still parses: the same mark.
+    alwaysCut = false;
+    m_http->handler = [](const FakeRequest& r) -> FakeReply {
+        if (!r.path.endsWith("/chat/completions")) return {404, "{}"};
+        const int k = notesPart(r);
+        return {200, k > 0 ? chat(partNotes(k)) : chat(QString::fromUtf8(kMergeOk), "length")};
+    };
+    m_app->summarizeMeeting(m.id);
+    QVERIFY(ready.wait(10000));
+    QVERIFY(m_app->summaryDocument(m.id).meta.truncated);
+    // A whole run afterwards clears it.
+    m_http->handler = [](const FakeRequest& r) -> FakeReply {
+        if (!r.path.endsWith("/chat/completions")) return {404, "{}"};
+        const int k = notesPart(r);
+        return {200, chat(k > 0 ? partNotes(k) : QString::fromUtf8(kMergeOk))};
+    };
+    m_app->summarizeMeeting(m.id);
+    QVERIFY(ready.wait(10000));
+    QVERIFY(!m_app->summaryDocument(m.id).meta.truncated);
 }
 
 void AppJobsTest::summarizePartFailureResumes()

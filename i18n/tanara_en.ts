@@ -24,6 +24,22 @@
         <translation>Language model</translation>
     </message>
     <message>
+        <source>Hosszú megbeszélés</source>
+        <translation>Long meeting</translation>
+    </message>
+    <message>
+        <source>Részenként</source>
+        <translation>In parts</translation>
+    </message>
+    <message>
+        <source>Egyben, ha belefér</source>
+        <translation>Whole, if it fits</translation>
+    </message>
+    <message>
+        <source>Részenként: negyedórás szeletek jegyzetei, majd összefésülés — kis helyi modellhez. Egyben: az egész átirat egy hívásban, ha belefér a modell kontextusába — nagy kontextusú modellnél kevesebb hívás és token.</source>
+        <translation>In parts: notes of quarter-hour slices, then a merge — for a small local model. Whole: the entire transcript in one call if it fits the model&apos;s context — fewer calls and tokens with a large-context model.</translation>
+    </message>
+    <message>
         <source>Cím (URL)</source>
         <translation>Address (URL)</translation>
     </message>
@@ -6504,6 +6520,10 @@
         <translation>Summary copied to the clipboard.</translation>
     </message>
     <message>
+        <source>A modell válasza a válaszkeretnél megszakadt, az összefoglaló hiányos lehet. Emeld a „Max. tokenek” értékét a szolgáltató Haladó beállításaiban, és készítsd újra.</source>
+        <translation>The model&apos;s reply was cut at the reply-size limit, so the summary may be incomplete. Raise “Max tokens” in the provider&apos;s Advanced settings and run it again.</translation>
+    </message>
+    <message>
         <source>A megjegyzés azóta változott; újrageneráláskor már az új számít.</source>
         <translation>The note has changed since; regenerating uses the new one.</translation>
     </message>
@@ -6703,6 +6723,10 @@
     <message>
         <source>Nevek, szakszavak, ismert félrehallások (A „…” helyesen: …). Az újragenerált összefoglaló és egy újra-átírás is ezt kapja.</source>
         <translation>Names, jargon, known mishearings (“…” is really …). A regenerated summary and a re-transcription both get this note.</translation>
+    </message>
+    <message>
+        <source>A modell válasza a válaszkeretnél megszakadt, az összefoglaló hiányos lehet. Emeld a „Max. tokenek” értékét a szolgáltató Haladó beállításaiban, és készítsd újra.</source>
+        <translation>The model&apos;s reply was cut at the reply-size limit, so the summary may be incomplete. Raise “Max tokens” in the provider&apos;s Advanced settings and run it again.</translation>
     </message>
     <message>
         <source>A megjegyzés azóta változott; újrageneráláskor már az új számít.</source>
@@ -9674,6 +9698,10 @@
     <message>
         <source>A provider nem adott vissza jobot.</source>
         <translation>The provider did not return a job.</translation>
+    </message>
+    <message>
+        <source>A modell válasza a válaszkeretnél megszakadt (%1 token): emeld a „Max. tokenek” értékét a szolgáltató Haladó beállításaiban.</source>
+        <translation>The model&apos;s reply was cut at the reply-size limit (%1 tokens): raise “Max tokens” in the provider&apos;s Advanced settings.</translation>
     </message>
     <message>
         <source>A(z) %1/%2. rész jegyzete üres vagy nem értelmezhető.</source>

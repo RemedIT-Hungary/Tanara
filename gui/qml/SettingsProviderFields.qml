@@ -4,7 +4,7 @@ import QtQuick.Templates as T
 
 // The field grid of a provider card (SettingsProviderCard, the Embedding card): label + editor +
 // (error / help) per row. The editor depends on the field type: text / URL / secret (with an
-// eye button) / number (slider or field) / list (with "Fetch").
+// eye button) / number (slider or field) / list (with "Fetch") / choice (segmented).
 //   SettingsProviderFields { card: vm.llm; fields: vm.llm.fields }
 GridLayout {
     id: root
@@ -105,6 +105,15 @@ GridLayout {
             toolTipText: qsTr("A modellek lekérése a megadott címről")
             onClicked: root.card.fetchModels()
         }
+        // choice: a few fixed options
+        SettingsSegmented {
+            objectName: "choice-" + editor.field.key
+            visible: editor.field.type === "choice"
+            options: editor.field.choices || []
+            value: visible ? String(editor.fieldValue) : ""
+            onPicked: (v) => root.card.setValue(editor.field.key, v)
+        }
+        Item { visible: editor.field.type === "choice"; Layout.fillWidth: true }
         // number: a slider with range and decimals (temperature), otherwise a field
         ShellSlider {
             id: slider

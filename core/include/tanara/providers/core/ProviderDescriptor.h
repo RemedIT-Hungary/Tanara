@@ -60,7 +60,9 @@ struct Traits {
 };
 
 enum class AuthMode { None, ApiKey, Login };          // Login = a future hosted "sign-in"
-enum class ConfigFieldType { Text, Secret, Number, Combo, Url };
+// Choice: one of a few fixed `options` (value + label), shown as a segmented selector; the value is a
+// string in ProviderConfig.extra, an empty one means the field's defaultValue.
+enum class ConfigFieldType { Text, Secret, Number, Combo, Url, Choice };
 
 struct ConfigOption {
     QString value;
@@ -77,7 +79,7 @@ struct ConfigField {
     bool required = false;
     QString help;                       // the "why": source of the tooltip/help
     QString defaultValue;               // in string form; numbers are interpreted by the renderer
-    QVector<ConfigOption> options;      // for Combo
+    QVector<ConfigOption> options;      // for Combo and Choice
     bool isSecret = false;              // true = SecretStore (not persisted into settings.json)
     QString secretKey;                  // SecretStore key if isSecret (e.g. "soniox.apiKey")
     bool dynamicOptions = false;        // a Combo whose options are fetched at run time (e.g. a model list)
@@ -128,6 +130,9 @@ struct ChatDialect {
     // Floor of the reply-size field (0 = none). Where thinking cannot be reliably turned off, its tokens
     // count against the reply size: a small cap (the tag suggester's 400) would leave no room for the answer.
     int minMaxTokens = 0;
+    // The service's context window in tokens when nothing reports it at run time (0 = unknown). A
+    // conservative figure: the summary uses it to decide whether a whole transcript fits one call.
+    int contextTokens = 0;
 };
 
 struct ProviderDescriptor {

@@ -291,6 +291,13 @@ void SummarizationService::summarize(const QString& meetingId)
     // summary's speaker snapshot (the targeted staleness compares against it).
     if (m_deps.sourceLines) req.sourceLines = m_deps.sourceLines(m);
     req.adaptToContext = !run;   // with Tanara Cloud the context is the gateway's business
+    // The provider's "long meeting" setting (the hosted presets' default): the whole transcript in one
+    // call. The context check at the start still splits a meeting that does not fit the model.
+    const providers::ProviderDescriptor llmDesc =
+        m_deps.registry ? m_deps.registry->descriptor(providers::CapabilityKind::Chat, llmId) : providers::ProviderDescriptor();
+    if (!run && providers::chatproviders::summarySplit(cfg, llmDesc) == providers::chatproviders::SplitWhole)
+        req.partMs = summarypipe::kWholePartMs;
+    const int presetContext = run ? 0 : llmDesc.chat.contextTokens;
     const SummaryPlan plan = SummaryService::plan(req);
     const auto ctx = std::make_shared<ContextState>();
     ctx->need = SummaryService::contextNeed(req);
@@ -382,6 +389,10 @@ void SummarizationService::summarize(const QString& meetingId)
         doc.meta.mode = library::SummaryMode::Quick;
         doc.meta.contextNote = note;            // the note it was made with
         doc.meta.contextNoteKnown = true;
+        doc.meta.truncated = svc->truncated();  // a cut reply went into it: the view says so
+        if (doc.meta.truncated)
+            qCWarning(lcLlm).noquote() << "Summary made from a reply cut at the reply-size limit (meeting="
+                                       << meetingId << ", model=" << model << ")";
         storeSummary(mm, md, doc);
         m_deps.jobStats->addSample(statsKey, double(clock->elapsed()) / 1000.0, units);
         jobs->finish(meetingId, JobKind::Summarize);
@@ -400,11 +411,13 @@ void SummarizationService::summarize(const QString& meetingId)
 
     // Preparing the model (LM Studio: loading with the needed context), then it starts.
     providers::ILocalModelServer* prep = prepareLlm(meetingId, JobKind::Summarize, cfg, bool(run), ctx,
-        [this, svc = QPointer<SummaryService>(svc), req, ctx, cfg, clock]() mutable {
+        [this, svc = QPointer<SummaryService>(svc), req, ctx, cfg, clock, presetContext]() mutable {
             if (!svc) return;
             clock->restart();   // the model load does not count in the run's speed (estimate)
             req.contextLimit = ctx->loadedContext > 0 ? ctx->loadedContext
                                                       : m_learnedContext.value(serverKey(cfg));
+            // Nothing reported the context: the descriptor's figure (a hosted service's known window).
+            if (req.contextLimit <= 0) req.contextLimit = presetContext;
             svc->summarize(req);
         },
         [this, jobs, meetingId, providerObj = QPointer<QObject>(providerObj),

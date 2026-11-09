@@ -40,6 +40,26 @@ Traits localServerTraits(InputKind input)
     return t;
 }
 
+// The "long meeting" choice of a chat provider (chatproviders::SummarySplitKey), with the provider's default.
+ConfigField summarySplitField(const QString& defaultValue)
+{
+    ConfigField f;
+    f.key          = chatproviders::SummarySplitKey;
+    f.label        = QCoreApplication::translate("BuiltinProviders", "Hosszú megbeszélés");
+    f.type         = ConfigFieldType::Choice;
+    f.defaultValue = defaultValue;
+    f.advanced     = true;
+    f.options      = {
+        { chatproviders::SplitParts, QCoreApplication::translate("BuiltinProviders", "Részenként") },
+        { chatproviders::SplitWhole, QCoreApplication::translate("BuiltinProviders", "Egyben, ha belefér") },
+    };
+    f.help = QCoreApplication::translate("BuiltinProviders",
+        "Részenként: negyedórás szeletek jegyzetei, majd összefésülés — kis helyi modellhez. "
+        "Egyben: az egész átirat egy hívásban, ha belefér a modell kontextusába — nagy kontextusú "
+        "modellnél kevesebb hívás és token.");
+    return f;
+}
+
 // --- Soniox STT descriptor ---
 ProviderDescriptor sonioxDescriptor()
 {
@@ -134,7 +154,8 @@ ProviderDescriptor openAiCompatDescriptor()
     apiKey.isSecret  = true;
     apiKey.secretKey = QStringLiteral("llm.apiKey");
 
-    d.fields = { baseUrl, model, temperature, maxTokens, apiKey };
+    // A local model is usually small: a long meeting goes in parts unless the user says otherwise.
+    d.fields = { baseUrl, model, temperature, maxTokens, summarySplitField(chatproviders::SplitParts), apiKey };
     d.probe = { QStringLiteral("/models"), true };   // the same as the model fetch uses
     return d;
 }
@@ -202,7 +223,8 @@ ProviderDescriptor chatPresetDescriptor(const ChatPreset& preset)
     apiKey.secretKey = preset.secretKey;
     apiKey.help      = preset.keyHelp;
 
-    d.fields = { baseUrl, model, maxTokens, apiKey };
+    // A hosted large-context model: the whole transcript in one call (cheaper, and it sees everything).
+    d.fields = { baseUrl, model, maxTokens, summarySplitField(chatproviders::SplitWhole), apiKey };
     d.probe = preset.probe;
     d.chat = preset.dialect;
     return d;
@@ -229,6 +251,7 @@ ProviderDescriptor anthropicDescriptor()
     p.dialect.sendTemperature = false;
     p.dialect.reasoningSwitch = false;
     p.dialect.minMaxTokens    = 4096;
+    p.dialect.contextTokens   = 200000;   // the smallest window of the models still offered (the current ones: 1M)
     return chatPresetDescriptor(p);
 }
 
@@ -254,6 +277,7 @@ ProviderDescriptor openAiDescriptor()
     p.dialect.sendTemperature = false;
     p.dialect.maxTokensField  = QStringLiteral("max_completion_tokens");
     p.dialect.minMaxTokens    = 4096;
+    p.dialect.contextTokens   = 200000;   // conservative; the current models take about 1M
     return chatPresetDescriptor(p);
 }
 

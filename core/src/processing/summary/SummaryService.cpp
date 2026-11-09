@@ -190,6 +190,9 @@ void SummaryService::summarize(const SummaryRequest& req)
     }
     m_forceNotes = false;
     m_resplitDone = false;
+    m_truncated = false;
+    m_lastTruncated = false;
+    m_notesRetried.clear();
     m_notes = QVector<PartNotes>(m_parts.size());
     m_done = QVector<bool>(m_parts.size(), false);
     loadCache();
@@ -353,6 +356,7 @@ void SummaryService::call(const QString& system, const QString& user, int maxTok
         job->deleteLater();
         if (!self || self->m_cancelled) return;
         self->m_job.clear();
+        self->m_lastTruncated = job->truncated();
         onText(text);
     });
     const qint64 inputChars = system.size() + user.size();
@@ -371,6 +375,15 @@ void SummaryService::call(const QString& system, const QString& user, int maxTok
         }
         self->fail(error);
     });
+}
+
+// After a failed final call: what to do when its reply was cut at the reply-size limit (else empty).
+QString SummaryService::cutHint() const
+{
+    return m_lastTruncated
+        ? QLatin1Char(' ') + tr("A modell válasza a válaszkeretnél megszakadt (%1 token): emeld a „Max. tokenek” "
+                                "értékét a szolgáltató Haladó beállításaiban.").arg(m_req.maxTokens)
+        : QString();
 }
 
 void SummaryService::startNextNotes()
@@ -395,7 +408,23 @@ void SummaryService::startNextNotes()
     user += part.markdown;
     user += reminder();
 
-    call(prompt(m_req.notesPrompt, "notes"), user, m_req.notesMaxTokens, [this, k, n](const QString& text) {
+    // A part whose note was cut gets the run's full reply size on its second (and last) try.
+    const int notesCap = m_notesRetried.contains(k) ? qMax(m_req.maxTokens, m_req.notesMaxTokens)
+                                                    : m_req.notesMaxTokens;
+    call(prompt(m_req.notesPrompt, "notes"), user, notesCap, [this, k, n](const QString& text) {
+        if (m_lastTruncated) {
+            // Cut at the reply-size limit (a thinking model spends part of it before answering): the end of
+            // the note is missing. Once more with the full size; a second cut is kept and reported.
+            if (!m_notesRetried.contains(k) && m_req.maxTokens > m_req.notesMaxTokens) {
+                m_notesRetried.insert(k);
+                qWarning().noquote() << "[Summary] part note" << k + 1 << "/" << n
+                                     << "cut at the reply-size limit — retrying with" << m_req.maxTokens << "tokens";
+                startNextNotes();
+                return;
+            }
+            qWarning().noquote() << "[Summary] part note" << k + 1 << "/" << n << "is still cut — kept as is";
+            m_truncated = true;
+        }
         const PartNotes notes = parseNotes(text, m_parts.at(k));
         if (notes.isEmpty()) {
             qWarning().noquote() << "[Summary] empty part notes (" << k + 1 << "/" << n
@@ -421,9 +450,10 @@ void SummaryService::startMerge()
         if (!r.ok) {
             qWarning().noquote() << "[Summary] merge response cannot be parsed — raw response:\n" << text.left(3000);
             fail(tr("Az összegzés válasza nem értelmezhető: %1. A részjegyzetek megmaradtak — "
-                    "újrapróbáláskor csak az összegzés fut le újra.").arg(r.error));
+                    "újrapróbáláskor csak az összegzés fut le újra.").arg(r.error) + cutHint());
             return;
         }
+        if (m_lastTruncated) m_truncated = true;
         m_running = false;
         if (!m_req.cachePath.isEmpty()) QFile::remove(m_req.cachePath);
         emit summaryReady(buildSummary(r, m_notes, m_speakers, m_lines));
@@ -447,12 +477,13 @@ void SummaryService::startSingle()
                 const int cut = text.indexOf(QLatin1Char('{'));
                 storeCache(0, cut > 0 ? text.left(cut) : text);
                 fail(tr("Az összefoglaló válasza nem értelmezhető: %1. A jegyzet megmaradt — "
-                        "újrapróbáláskor csak az összegzés fut le újra.").arg(r.merge.error));
+                        "újrapróbáláskor csak az összegzés fut le újra.").arg(r.merge.error) + cutHint());
             } else {
-                fail(tr("Az összefoglaló válasza nem értelmezhető: %1.").arg(r.merge.error));
+                fail(tr("Az összefoglaló válasza nem értelmezhető: %1.").arg(r.merge.error) + cutHint());
             }
             return;
         }
+        if (m_lastTruncated) m_truncated = true;
         m_running = false;
         if (!m_req.cachePath.isEmpty()) QFile::remove(m_req.cachePath);
         m_notes[0] = r.notes;

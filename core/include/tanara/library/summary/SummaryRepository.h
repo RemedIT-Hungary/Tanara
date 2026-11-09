@@ -36,6 +36,9 @@ struct SummaryMeta {
     // since). Unknown for an old summary (Known = false).
     QString     contextNote;
     bool        contextNoteKnown = false;
+    // A reply the summary was built from was cut at the model's reply-size limit: it may be incomplete
+    // (the Summary tab says so and names the setting to raise).
+    bool        truncated = false;
 };
 
 struct SummaryDocument {

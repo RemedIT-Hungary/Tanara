@@ -54,6 +54,7 @@ QString typeName(providers::ConfigFieldType t)
     case providers::ConfigFieldType::Number: return QStringLiteral("number");
     case providers::ConfigFieldType::Combo:  return QStringLiteral("combo");
     case providers::ConfigFieldType::Url:    return QStringLiteral("url");
+    case providers::ConfigFieldType::Choice: return QStringLiteral("choice");
     case providers::ConfigFieldType::Text:   break;
     }
     return QStringLiteral("text");
@@ -226,6 +227,12 @@ QVariantList SettingsProviderModel::fieldList(bool advanced) const
         m[QStringLiteral("minValue")] = f.minValue;
         m[QStringLiteral("maxValue")] = f.maxValue;
         m[QStringLiteral("decimals")] = f.key == QLatin1String("temperature") ? 2 : 0;
+        // Choice: the fixed options with their labels (a segmented selector).
+        QVariantList choices;
+        if (f.type == providers::ConfigFieldType::Choice)
+            for (const providers::ConfigOption& o : f.options)
+                choices << QVariantMap{{QStringLiteral("value"), o.value}, {QStringLiteral("label"), o.label}};
+        m[QStringLiteral("choices")] = choices;
         out << m;
     }
     return out;
@@ -269,7 +276,10 @@ QVariant SettingsProviderModel::value(const QString& key) const
     for (const providers::ConfigField& f : d.fields) {
         if (f.key != key) continue;
         if (f.isSecret) return m_vm->draftSecret(f.secretKey);
-        return configValue(configs().value(d.id), f);
+        const QVariant v = configValue(configs().value(d.id), f);
+        // A choice not stored yet (a config from before the field existed) shows the descriptor's default.
+        if (f.type == providers::ConfigFieldType::Choice && v.toString().isEmpty()) return f.defaultValue;
+        return v;
     }
     return {};
 }
