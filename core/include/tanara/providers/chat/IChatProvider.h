@@ -12,6 +12,13 @@
 
 namespace tanara::providers {
 
+// The ids of the external chat presets (own key; providers/core/BuiltinProviders.cpp). Both run the
+// OpenAI-compatible provider with the preset's ChatDialect; providerKindOf() puts them on the External route.
+namespace chatproviders {
+inline const QString AnthropicId = QStringLiteral("anthropic");
+inline const QString OpenAiId = QStringLiteral("openai");
+}
+
 struct ChatMessage {
     QString role;       // "system" | "user" | "assistant"
     QString content;

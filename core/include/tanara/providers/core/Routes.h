@@ -47,8 +47,8 @@ QString providerKindKey(ProviderKind kind);
 QList<Capability> allCapabilities();
 
 // The kind of a built-in provider id (the same value its descriptor carries): the Tanara Cloud ids ->
-// Cloud, Soniox -> External, everything else (whisper-compat, openai-compat, the local embedding
-// endpoint, unknown ids) -> Local.
+// Cloud, Soniox and the external chat presets (anthropic, openai) -> External, everything else
+// (whisper-compat, openai-compat, the local embedding endpoint, unknown ids) -> Local.
 ProviderKind providerKindOf(const QString& providerId);
 // The non-cloud route of a provider kind (Cloud -> nullopt).
 std::optional<Route> routeOfKind(ProviderKind kind);

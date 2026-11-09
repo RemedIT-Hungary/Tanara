@@ -58,16 +58,18 @@ ReasoningSwitch reasoningSwitchFor(const QString& setting, const QString& model)
     return ReasoningSwitch::Effort;   // Gemma and everything else: a server that does not know it ignores it
 }
 
-QJsonObject buildChatCompletionBody(const ProviderConfig& cfg, const LlmRequest& req)
+QJsonObject buildChatCompletionBody(const ProviderConfig& cfg, const LlmRequest& req, const ChatDialect& dialect)
 {
     const QString model = !req.model.isEmpty() ? req.model : cfg.model;
     QVector<ChatMessage> msgs = req.messages;
     QJsonObject body;
     body.insert(QStringLiteral("model"), model);
-    body.insert(QStringLiteral("temperature"), req.temperature);
-    body.insert(QStringLiteral("max_tokens"), req.maxTokens);
+    if (dialect.sendTemperature)
+        body.insert(QStringLiteral("temperature"), req.temperature);
+    body.insert(dialect.maxTokensField.isEmpty() ? QStringLiteral("max_tokens") : dialect.maxTokensField,
+                qMax(req.maxTokens, dialect.minMaxTokens));
     body.insert(QStringLiteral("stream"), false);
-    switch (reasoningSwitchFor(cfg.reasoning, model)) {
+    switch (dialect.reasoningSwitch ? reasoningSwitchFor(cfg.reasoning, model) : ReasoningSwitch::None) {
     case ReasoningSwitch::None:
         break;
     case ReasoningSwitch::Effort:
@@ -137,7 +139,7 @@ OpenAiCompatibleJob::~OpenAiCompatibleJob() = default;
 
 void OpenAiCompatibleJob::start()
 {
-    const QJsonObject body = buildChatCompletionBody(m_cfg, m_req);
+    const QJsonObject body = buildChatCompletionBody(m_cfg, m_req, m_dialect);
 
     QNetworkRequest request(chatCompletionsUrl(m_cfg.baseUrl));
     request.setHeader(QNetworkRequest::ContentTypeHeader,
@@ -263,9 +265,16 @@ OpenAiCompatibleProvider::OpenAiCompatibleProvider(const ProviderConfig& cfg, QO
 
 OpenAiCompatibleProvider::OpenAiCompatibleProvider(const ProviderContext& ctx, const ProviderConfig& cfg,
                                                    QObject* parent)
+    : OpenAiCompatibleProvider(ctx, cfg, ChatDialect{}, parent)
+{
+}
+
+OpenAiCompatibleProvider::OpenAiCompatibleProvider(const ProviderContext& ctx, const ProviderConfig& cfg,
+                                                   const ChatDialect& dialect, QObject* parent)
     : QObject(parent)
     , m_ctx(ctx)
     , m_cfg(cfg)
+    , m_dialect(dialect)
     , m_http(ctx.http ? ctx.http.data() : new net::HttpClient(this))
 {
 }
@@ -285,6 +294,7 @@ bool OpenAiCompatibleProvider::supportsStreaming() const
 LlmJob* OpenAiCompatibleProvider::chat(const LlmRequest& req)
 {
     auto* job = new OpenAiCompatibleJob(m_http, m_ctx, m_cfg, req, this);
+    job->setDialect(m_dialect);
     m_ctx.cancel.onCancel([j = QPointer<OpenAiCompatibleJob>(job)]() { if (j) j->cancel(); });
     // We push the start of the request into the event loop so the caller can connect the signals
     // before finished/failed (even for a fast / cached response).

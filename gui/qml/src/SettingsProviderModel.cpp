@@ -167,7 +167,8 @@ QVariantList SettingsProviderModel::providers() const
     return out;
 }
 
-void SettingsProviderModel::fillDefaults(providers::ProviderConfig& cfg, const providers::ProviderDescriptor& d) const
+void SettingsProviderModel::fillDefaults(providers::ProviderConfig& cfg, const providers::ProviderDescriptor& d,
+                                         bool fresh) const
 {
     cfg.type = d.id;
     for (const providers::ConfigField& f : d.fields) {
@@ -175,8 +176,9 @@ void SettingsProviderModel::fillDefaults(providers::ProviderConfig& cfg, const p
         const QVariant v = configValue(cfg, f);
         // For number fields 0 also means "not set" (because of old, partially filled configs).
         const bool zeroIsValid = f.minValue != f.maxValue && f.minValue <= 0.0;   // e.g. temperature 0
-        const bool empty = f.type == providers::ConfigFieldType::Number ? (v.toDouble() == 0.0 && !zeroIsValid)
-                                                             : v.toString().trimmed().isEmpty();
+        const bool empty = f.type == providers::ConfigFieldType::Number
+            ? (fresh || (v.toDouble() == 0.0 && !zeroIsValid))
+            : v.toString().trimmed().isEmpty();
         if (!empty) continue;
         if (f.type == providers::ConfigFieldType::Number)
             setConfigValue(cfg, f, f.defaultValue.toDouble());
@@ -192,8 +194,9 @@ void SettingsProviderModel::setProviderId(const QString& id)
     if (d.id.isEmpty()) return;   // unregistered provider
     selectedId() = id;
     // The other provider's settings stay in the map; the new one starts with the defaults.
+    const bool fresh = !configs().contains(id);
     providers::ProviderConfig cfg = configs().value(id);
-    fillDefaults(cfg, d);
+    fillDefaults(cfg, d, fresh);
     configs().insert(id, cfg);
     m_models.clear();
     m_modelsFor.clear();
@@ -297,7 +300,16 @@ void SettingsProviderModel::setValue(const QString& key, const QVariant& value)
 
 bool SettingsProviderModel::reasoningAvailable() const
 {
-    return m_kind == providers::CapabilityKind::Chat && !loginProvider();
+    // Only where the request can carry the switch (ChatDialect: Anthropic's layer ignores it).
+    return m_kind == providers::CapabilityKind::Chat && !loginProvider() && descriptor().chat.reasoningSwitch;
+}
+
+bool SettingsProviderModel::contextAvailable() const
+{
+    // The context is loaded / probed on a server at your own address (LM Studio); a hosted service
+    // (kind External) has nothing to set.
+    return m_kind == providers::CapabilityKind::Chat && !loginProvider()
+        && descriptor().kind != providers::ProviderKind::External;
 }
 
 QString SettingsProviderModel::reasoning() const
@@ -327,7 +339,7 @@ int SettingsProviderModel::contextLength() const
 
 void SettingsProviderModel::setContextLength(int tokens)
 {
-    if (!reasoningAvailable()) return;
+    if (!contextAvailable()) return;
     const int v = qMax(0, tokens);
     const providers::ProviderDescriptor d = descriptor();
     providers::ProviderConfig cfg = configs().value(d.id);
@@ -385,7 +397,7 @@ void SettingsProviderModel::clearServerInfo()
 void SettingsProviderModel::refreshServerInfo()
 {
     app::ISettingsFacade* f = m_vm->facade();
-    if (!reasoningAvailable() || !f) return;
+    if (!contextAvailable() || !f) return;
     m_probing = true;
     f->probeLlmServer(runtimeConfig());
 }

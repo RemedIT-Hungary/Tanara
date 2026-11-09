@@ -373,8 +373,20 @@ providers::ProviderConfig ProviderRuns::llmConfigFor(CloudRunPtr& run, const QSt
                                                      const QString& kind) const
 {
     if (!usesCloud(providers::WorkflowStep::Summarize, meetingId)) {
-        providers::ProviderConfig cfg = effectiveProviders(meetingId).llm.selected();
-        cfg.apiKey = m_deps.secrets->get(keys::LlmApiKey);   // LM Studio: may be empty
+        const providers::CapabilityProviders llm = effectiveProviders(meetingId).llm;
+        providers::ProviderConfig cfg = llm.selected();
+        // The API key's slot is provider-dependent: the descriptor's secretKey tells it (llm.apiKey for the
+        // OpenAI-compatible endpoint, where it may be empty; llm.anthropic.apiKey / llm.openai.apiKey for
+        // the external presets). An unknown provider falls back to the endpoint's slot.
+        QString slot = keys::LlmApiKey;
+        const providers::ProviderDescriptor desc =
+            m_deps.registry->descriptor(providers::CapabilityKind::Chat, llm.selectedId);
+        for (const providers::ConfigField& f : desc.fields)
+            if (f.isSecret && !f.secretKey.isEmpty()) {
+                slot = f.secretKey;
+                break;
+            }
+        cfg.apiKey = m_deps.secrets->get(slot);
         return cfg;
     }
     if (!run) run = newCloudRun(meetingId, kind);

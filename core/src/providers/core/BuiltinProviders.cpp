@@ -18,7 +18,7 @@ namespace tanara::providers {
 namespace {
 
 // Origin (see ProviderDescriptor.h): Cloud = ONLY the Tanara Cloud; every service reached with the
-// user's own key / address (Soniox BYO, OpenAI, LM Studio, Ollama, a Whisper server) = CustomEndpoint;
+// user's own key / address (Soniox BYO, Anthropic, OpenAI, LM Studio, Ollama, a Whisper server) = CustomEndpoint;
 // Local = runs inside Tanara on this machine. dataLeavesDevice reflects the DEFAULT address.
 Traits remoteTraits(InputKind input, bool metered)
 {
@@ -137,6 +137,124 @@ ProviderDescriptor openAiCompatDescriptor()
     d.fields = { baseUrl, model, temperature, maxTokens, apiKey };
     d.probe = { QStringLiteral("/models"), true };   // the same as the model fetch uses
     return d;
+}
+
+// --- External chat presets (own key): Anthropic and OpenAI ---
+// One row of the preset list: everything that differs between the services. The form is the same as the
+// OpenAI-compatible endpoint's (address, model, max tokens, key), prefilled from here; the request's
+// deviations travel in the ChatDialect, the connection test's in the ConnectionProbe.
+struct ChatPreset {
+    QString id;
+    QString displayName;
+    QString baseUrl;
+    QString defaultModel;
+    QString secretKey;
+    QString keyHelp;
+    ConnectionProbe probe;
+    ChatDialect dialect;
+};
+
+ProviderDescriptor chatPresetDescriptor(const ChatPreset& preset)
+{
+    ProviderDescriptor d;
+    d.id                = preset.id;
+    d.displayName       = preset.displayName;
+    d.capability        = CapabilityKind::Chat;
+    d.origin            = Origin::CustomEndpoint;     // the user's own key
+    d.kind              = ProviderKind::External;
+    d.traits            = remoteTraits(InputKind::Text, /*metered*/ true);
+    d.authMode          = AuthMode::ApiKey;
+    d.supportsStreaming = false;
+    d.networkRequired   = true;
+
+    ConfigField baseUrl;
+    baseUrl.key          = QStringLiteral("baseUrl");
+    baseUrl.label        = QCoreApplication::translate("BuiltinProviders", "Cím (URL)");
+    baseUrl.type         = ConfigFieldType::Url;
+    baseUrl.required     = true;
+    baseUrl.defaultValue = preset.baseUrl;
+
+    ConfigField model;
+    model.key            = QStringLiteral("model");
+    model.label          = QCoreApplication::translate("BuiltinProviders", "Modell");
+    model.type           = ConfigFieldType::Combo;
+    model.dynamicOptions = true;
+    model.defaultValue   = preset.defaultModel;
+
+    // No temperature field: the preset does not send it (ChatDialect::sendTemperature).
+    ConfigField maxTokens;
+    maxTokens.key          = QStringLiteral("maxTokens");
+    maxTokens.label        = QCoreApplication::translate("BuiltinProviders", "Max. tokenek");
+    maxTokens.type         = ConfigFieldType::Number;
+    maxTokens.defaultValue = QStringLiteral("16000");   // the model's thinking counts against it too
+    maxTokens.advanced     = true;
+    maxTokens.minValue     = 256;
+    maxTokens.maxValue     = 1000000;
+    maxTokens.help         = QCoreApplication::translate("BuiltinProviders",
+        "A válasz felső korlátja. A modell gondolkodása is ebből a keretből megy.");
+
+    ConfigField apiKey;
+    apiKey.key       = QStringLiteral("apiKey");
+    apiKey.label     = QCoreApplication::translate("BuiltinProviders", "API-kulcs");
+    apiKey.type      = ConfigFieldType::Secret;
+    apiKey.required  = true;
+    apiKey.isSecret  = true;
+    apiKey.secretKey = preset.secretKey;
+    apiKey.help      = preset.keyHelp;
+
+    d.fields = { baseUrl, model, maxTokens, apiKey };
+    d.probe = preset.probe;
+    d.chat = preset.dialect;
+    return d;
+}
+
+// Anthropic through its OpenAI-compatible /chat/completions layer. The current Claude models refuse a
+// temperature below 1 and ignore reasoning_effort; thinking is on by default and cannot be switched off
+// there, hence the reply-size floor. The model list is the native API's: x-api-key + anthropic-version.
+ProviderDescriptor anthropicDescriptor()
+{
+    ChatPreset p;
+    p.id           = chatproviders::AnthropicId;
+    p.displayName  = QStringLiteral("Anthropic (Claude)");
+    p.baseUrl      = QStringLiteral("https://api.anthropic.com/v1");
+    p.defaultModel = QStringLiteral("claude-opus-5-5");
+    p.secretKey    = QStringLiteral("llm.anthropic.apiKey");
+    p.keyHelp      = QCoreApplication::translate("BuiltinProviders",
+        "A Claude Console-ban (platform.claude.com) létrehozott API-kulcs. A Claude-előfizetés "
+        "(Pro / Max) önmagában nem ad ilyen kulcsot.");
+    p.probe.path        = QStringLiteral("/models?limit=1000");   // the default page is 20 models
+    p.probe.listsModels = true;
+    p.probe.keyHeader   = QByteArrayLiteral("x-api-key");
+    p.probe.headers     = { { QByteArrayLiteral("anthropic-version"), QByteArrayLiteral("2023-06-01") } };
+    p.dialect.sendTemperature = false;
+    p.dialect.reasoningSwitch = false;
+    p.dialect.minMaxTokens    = 4096;
+    return chatPresetDescriptor(p);
+}
+
+// The OpenAI API itself. Its current models are reasoning models: "max_tokens" is refused in favor of
+// "max_completion_tokens", a non-default temperature is refused, and the reasoning tokens count against
+// the reply size. The thinking switch stays ("reasoning_effort": "none" unless the setting is "on").
+ProviderDescriptor openAiDescriptor()
+{
+    ChatPreset p;
+    p.id           = chatproviders::OpenAiId;
+    p.displayName  = QStringLiteral("OpenAI");
+    p.baseUrl      = QStringLiteral("https://api.openai.com/v1");
+    p.defaultModel = QStringLiteral("gpt-6.1-sol");
+    p.secretKey    = QStringLiteral("llm.openai.apiKey");
+    p.keyHelp      = QCoreApplication::translate("BuiltinProviders",
+        "A platform.openai.com oldalon létrehozott API-kulcs. A ChatGPT-előfizetés önmagában nem ad "
+        "ilyen kulcsot.");
+    p.probe.path        = QStringLiteral("/models");
+    p.probe.listsModels = true;
+    // The list mixes chat models with embedding, speech and image models: only the chat families are offered.
+    p.probe.modelFilter = QStringLiteral(
+        "^(?!.*(audio|realtime|transcribe|tts|image|embedding|moderation|search))(gpt-|chatgpt-|o[0-9])");
+    p.dialect.sendTemperature = false;
+    p.dialect.maxTokensField  = QStringLiteral("max_completion_tokens");
+    p.dialect.minMaxTokens    = 4096;
+    return chatPresetDescriptor(p);
 }
 
 ProviderDescriptor whisperCompatDescriptor()
@@ -328,6 +446,16 @@ void registerBuiltinProviders(ProviderRegistry& registry)
         [](const ProviderContext& ctx, const ProviderConfig& c, QObject* p) -> IChatProvider* {
             return new OpenAiCompatibleProvider(ctx, c, p);
         });
+    // The external presets: the same provider with the descriptor's dialect. No local-server handler:
+    // there is nothing to load or probe behind a hosted API.
+    for (const ProviderDescriptor& preset : { anthropicDescriptor(), openAiDescriptor() }) {
+        const ChatDialect dialect = preset.chat;
+        registry.add<IChatProvider>(
+            preset,
+            [dialect](const ProviderContext& ctx, const ProviderConfig& c, QObject* p) -> IChatProvider* {
+                return new OpenAiCompatibleProvider(ctx, c, dialect, p);
+            });
+    }
     // The optional local-server handler of the same chat provider (LM Studio's native API; for another
     // server it reports "unknown" and the task starts without preparation).
     registry.add<ILocalModelServer>(

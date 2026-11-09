@@ -369,6 +369,15 @@ Column {
                 font.pixelSize: Theme.fontCaption
                 wrapMode: Text.Wrap
             }
+            TLabel {
+                objectName: "llmExternalNote"
+                visible: sumCard.route === "external"
+                Layout.fillWidth: true
+                text: qsTr("Külső szolgáltató: az átirat szövege a kiválasztott szolgáltatóhoz megy, a saját API-kulcsoddal; a használatot ő számlázza.")
+                muted: true
+                font.pixelSize: Theme.fontCaption
+                wrapMode: Text.Wrap
+            }
             AskBlock {
                 visible: sumCard.route === "ask"
                 card: sumCard

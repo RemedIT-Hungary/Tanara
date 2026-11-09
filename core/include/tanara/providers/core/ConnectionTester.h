@@ -3,7 +3,8 @@
 // ConnectionTester: the backend of the Settings "Test connection" button.
 //
 // WHAT IT CHECKS (and what not): it sends a single GET request to the probe endpoint given in the
-// provider's descriptor (ConnectionProbe: typically GET <baseUrl>/models), with the given API key.
+// provider's descriptor (ConnectionProbe: typically GET <baseUrl>/models), with the given API key
+// ("Authorization: Bearer", or the header the probe names, e.g. Anthropic's "x-api-key").
 //  - whether the address is reachable (DNS, TCP, TLS) and how long it takes to answer;
 //  - whether the provider accepts the key (401 / 403 = no);
 //  - whether it gives an API-like answer (a JSON model list) and the configured model is in it.
@@ -89,7 +90,8 @@ private:
     // Second probe after a 404 / 405 (ConnectionProbe::originFallbackPath).
     void startFallback(int id, const QUrl& url, qint64 startedMs, const ProviderDescriptor& d,
                        const ProviderConfig& cfg, const ConnectionTestResult& primary);
-    QNetworkRequest makeRequest(const QUrl& url, const ProviderConfig& cfg) const;
+    // The probe's request: the key as "Authorization: Bearer" or in the probe's keyHeader, + its fixed headers.
+    QNetworkRequest makeRequest(const QUrl& url, const ProviderConfig& cfg, const ConnectionProbe& probe) const;
 
     QPointer<net::HttpClient> m_http;
     QHash<int, QPointer<QNetworkReply>> m_replies;

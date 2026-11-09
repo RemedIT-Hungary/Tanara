@@ -117,7 +117,7 @@ public:
     bool reasoningAvailable() const;
     QString reasoning() const;
     void setReasoning(const QString& mode);
-    bool contextAvailable() const { return reasoningAvailable(); }
+    bool contextAvailable() const;
     int contextLength() const;
     void setContextLength(int tokens);
     QVariantList contextOptions() const;
@@ -140,8 +140,11 @@ public:
     tanara::providers::ProviderDescriptor descriptor() const;
     tanara::providers::ProviderDescriptor descriptor(const QString& id) const;
     QVector<tanara::providers::ProviderDescriptor> allDescriptors() const;
-    // Fills the missing (empty) fields with the descriptor's defaults.
-    void fillDefaults(tanara::providers::ProviderConfig& cfg, const tanara::providers::ProviderDescriptor& d) const;
+    // Fills the missing (empty) fields with the descriptor's defaults. `fresh`: a provider that had no
+    // config yet: its number fields take the descriptor's defaults too (a preset's own max tokens),
+    // instead of ProviderConfig's built-in ones.
+    void fillDefaults(tanara::providers::ProviderConfig& cfg, const tanara::providers::ProviderDescriptor& d,
+                      bool fresh = false) const;
     // The draft's runtime config for the selected provider (with the key).
     tanara::providers::ProviderConfig runtimeConfig() const;
     // Field errors for the pre-save validation: key -> text.

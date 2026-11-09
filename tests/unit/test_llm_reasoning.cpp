@@ -10,6 +10,7 @@
 #include <QJsonObject>
 
 #include "tanara/providers/chat/OpenAiCompatibleProvider.h"
+#include "tanara/providers/core/ProviderRegistry.h"
 
 using namespace tanara;
 
@@ -80,6 +81,8 @@ private slots:
     void switchByModelFamily_data();
     void switchByModelFamily();
     void requestBodies();
+    void presetDialects();
+    void presetRequestOnTheWire();
     void reasoningNeverReachesContent();
     void onlyThinkingFails();
     void stripThinkingVariants();
@@ -178,6 +181,92 @@ void LlmReasoningTest::requestBodies()
 
     // providers::ProviderConfig's default is "auto".
     QCOMPARE(providers::ProviderConfig{}.reasoning, QStringLiteral("auto"));
+}
+
+// The external presets' request bodies (ProviderDescriptor::chat): what Anthropic and OpenAI refuse is
+// not sent, the reply size has a floor; the plain dialect is unchanged.
+void LlmReasoningTest::presetDialects()
+{
+    providers::ProviderRegistry reg;
+    providers::registerBuiltinProviders(reg);
+    const providers::ChatDialect plain =
+        reg.descriptor(providers::CapabilityKind::Chat, QStringLiteral("openai-compat")).chat;
+    const providers::ChatDialect anthropic =
+        reg.descriptor(providers::CapabilityKind::Chat, providers::chatproviders::AnthropicId).chat;
+    const providers::ChatDialect openai =
+        reg.descriptor(providers::CapabilityKind::Chat, providers::chatproviders::OpenAiId).chat;
+
+    providers::ProviderConfig cfg;
+    cfg.model = QStringLiteral("claude-opus-5-5");
+    providers::LlmRequest req = userRequest();   // maxTokens 123, temperature 0.2
+
+    // The plain OpenAI-compatible endpoint: as before.
+    QJsonObject b = providers::buildChatCompletionBody(cfg, req, plain);
+    QCOMPARE(b.value("temperature").toDouble(), 0.2);
+    QCOMPARE(b.value("max_tokens").toInt(), 123);
+    QCOMPARE(b.value("reasoning_effort").toString(), QStringLiteral("none"));
+    QCOMPARE(b, providers::buildChatCompletionBody(cfg, req));   // the default argument is the plain dialect
+
+    // Anthropic: no temperature (a value below 1 is refused), no thinking switch (ignored there), the
+    // reply size raised to the floor (thinking counts against it), the messages untouched.
+    b = providers::buildChatCompletionBody(cfg, req, anthropic);
+    QVERIFY(!b.contains("temperature"));
+    QVERIFY(!b.contains("reasoning_effort"));
+    QCOMPARE(b.value("max_tokens").toInt(), 4096);
+    QVERIFY(!b.contains("max_completion_tokens"));
+    QCOMPARE(b.value("model").toString(), QStringLiteral("claude-opus-5-5"));
+    QCOMPARE(b.value("messages").toArray().size(), 2);
+    QCOMPARE(b.value("stream").toBool(true), false);
+    // A larger request keeps its own size; "on" changes nothing here.
+    req.maxTokens = 16000;
+    cfg.reasoning = QStringLiteral("on");
+    b = providers::buildChatCompletionBody(cfg, req, anthropic);
+    QCOMPARE(b.value("max_tokens").toInt(), 16000);
+    QVERIFY(!b.contains("reasoning_effort"));
+
+    // OpenAI: no temperature, the new name of the reply-size field, the thinking switch kept.
+    cfg.model = QStringLiteral("gpt-6.1-sol");
+    cfg.reasoning = QStringLiteral("auto");
+    req.maxTokens = 123;
+    b = providers::buildChatCompletionBody(cfg, req, openai);
+    QVERIFY(!b.contains("temperature"));
+    QVERIFY(!b.contains("max_tokens"));
+    QCOMPARE(b.value("max_completion_tokens").toInt(), 4096);
+    QCOMPARE(b.value("reasoning_effort").toString(), QStringLiteral("none"));
+    QCOMPARE(b.value("messages").toArray().size(), 2);
+    cfg.reasoning = QStringLiteral("on");
+    b = providers::buildChatCompletionBody(cfg, req, openai);
+    QVERIFY(!b.contains("reasoning_effort"));
+}
+
+// The same through the registry's factory, on the wire: the provider created for the preset id sends
+// the preset's body to <baseUrl>/chat/completions.
+void LlmReasoningTest::presetRequestOnTheWire()
+{
+    providers::ProviderRegistry reg;
+    providers::registerBuiltinProviders(reg);
+    FakeServer srv;
+    srv.reply = completion(QStringLiteral("ok"));
+    providers::ProviderConfig cfg;
+    cfg.type = providers::chatproviders::AnthropicId;
+    cfg.baseUrl = srv.base();
+    cfg.model = QStringLiteral("claude-opus-5-5");
+    cfg.apiKey = QStringLiteral("titok");
+    QObject owner;
+    providers::IChatProvider* p =
+        reg.create<providers::IChatProvider>(providers::chatproviders::AnthropicId, providers::ProviderContext{}, cfg, &owner);
+    QVERIFY(p);
+    providers::LlmJob* job = p->chat(userRequest());
+    QSignalSpy fin(job, &providers::LlmJob::finished);
+    QSignalSpy err(job, &providers::LlmJob::failed);
+    QTRY_VERIFY_WITH_TIMEOUT(fin.count() + err.count() == 1, 5000);
+    QCOMPARE(fin.count(), 1);
+    QCOMPARE(fin[0][0].toString(), QStringLiteral("ok"));
+    QCOMPARE(srv.bodies.size(), 1);
+    const QJsonObject b = srv.bodies.first();
+    QVERIFY(!b.contains("temperature"));
+    QVERIFY(!b.contains("reasoning_effort"));
+    QCOMPARE(b.value("max_tokens").toInt(), 4096);
 }
 
 void LlmReasoningTest::reasoningNeverReachesContent()

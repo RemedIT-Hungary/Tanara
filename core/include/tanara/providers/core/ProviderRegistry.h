@@ -82,7 +82,8 @@ private:
 };
 
 // Registers the built-in providers into a registry: Soniox + Whisper-compatible STT, the
-// OpenAI-compatible chat (+ its LM Studio LocalModelServer handler), and the two text-embedding
+// OpenAI-compatible chat (+ its LM Studio LocalModelServer handler), the external chat presets
+// (Anthropic, OpenAI: the same chat provider with a ChatDialect), and the two text-embedding
 // descriptors (local endpoint, Tanara Cloud). The caller calls it once per registry (adding again
 // only replaces the same entries).
 void registerBuiltinProviders(ProviderRegistry& registry);

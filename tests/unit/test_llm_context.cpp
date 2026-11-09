@@ -606,6 +606,7 @@ void LlmContextTest::connectionTestReportsServer()
     providers::ProviderDescriptor d;
     d.id = QStringLiteral("openai-compat");
     d.capability = providers::CapabilityKind::Chat;
+    d.kind = providers::ProviderKind::Local;   // a server at your own address (a hosted one is not asked)
     d.authMode = providers::AuthMode::None;
     d.probe = {QStringLiteral("/models"), true};
     providers::ConnectionTester tester;

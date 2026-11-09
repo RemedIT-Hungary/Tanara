@@ -8,6 +8,7 @@
 #include "tanara/providers/chat/IChatProvider.h"
 #include "tanara/providers/chat/ILocalModelServer.h"
 #include "tanara/providers/chat/LlmContext.h"
+#include "tanara/providers/core/Routes.h"
 
 #include <QDateTime>
 #include <QDir>
@@ -81,7 +82,9 @@ void TopicQueue::extractTopics(const QString& meetingId)
     auto* svc = new ComplexSummaryService(provider, o);
     svc->setLanguage(s.summaryLanguage);
     emit jobProgress(meetingId, run ? tr("Témák kigyűjtése a Tanara Cloudban…")
-                                    : tr("Témák kigyűjtése a helyi modellel…"));
+                     : providers::providerKindOf(llmId) == providers::ProviderKind::External
+                           ? tr("Témák kigyűjtése a külső szolgáltatónál…")
+                           : tr("Témák kigyűjtése a helyi modellel…"));
 
     const QString key = SummarizationService::callKey(meetingId, JobKind::ExtractTopics);
     const QString statsKey = QStringLiteral("topics/%1/%2").arg(llmId, cfg.model);

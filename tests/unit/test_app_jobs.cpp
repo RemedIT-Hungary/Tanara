@@ -28,7 +28,9 @@
 #include "tanara/editing/session/SpeakerEditSession.h"
 #include "tanara/editing/session/SpeakerOverlay.h"
 #include "tanara/library/jobs/JobErrors.h"
+#include "tanara/providers/chat/IChatProvider.h"
 #include "tanara/providers/chat/LlmServer.h"
+#include "tanara/providers/core/Routes.h"
 
 using namespace tanara;
 
@@ -38,7 +40,7 @@ using namespace tanara;
 namespace {
 
 // ---- minimal fake HTTP server ----
-struct FakeRequest { QByteArray method; QString path; QByteArray body; };
+struct FakeRequest { QByteArray method; QString path; QByteArray body; QByteArray auth; };
 struct FakeReply {
     int status = 200;
     QByteArray body = "{}";
@@ -81,6 +83,8 @@ private:
         }
         if (buf.size() < headEnd + 4 + len) return;   // the body has not fully arrived yet
         FakeRequest req;
+        for (const QByteArray& line : head.split('\n'))
+            if (line.trimmed().toLower().startsWith("authorization:")) req.auth = line.trimmed().mid(14).trimmed();
         const QList<QByteArray> first = head.left(head.indexOf('\r')).split(' ');
         req.method = first.value(0);
         req.path = QString::fromUtf8(first.value(1));
@@ -161,6 +165,7 @@ private slots:
     void cancelDuringMixdownKeepsOldMixdown();
     void standaloneMixdownCancel();
     void summarizePersistsStructureAndMeta();
+    void summarizeThroughExternalPreset();
     void summarizeCancelAndFailure();
     void summarizeLongMeetingInParts();
     void summarizePartFailureResumes();
@@ -615,6 +620,47 @@ void AppJobsTest::summarizePersistsStructureAndMeta()
     QVERIFY(doc.markdown.contains("## Vezetői összefoglaló"));
     // The note copy went into the sandbox too.
     QVERIFY(!QDir(m_home->filePath("notes")).entryList({"*.md"}).isEmpty());
+}
+
+// The summary on the External route (the Anthropic preset): the preset's own key slot and request body,
+// and no LM Studio preparation in front of a hosted service.
+void AppJobsTest::summarizeThroughExternalPreset()
+{
+    const QString json = QStringLiteral(R"({"execSummary":"Külső összefoglaló.","decisions":[],"actionItems":[],"participants":[]})");
+    m_http->handler = [json](const FakeRequest& r) -> FakeReply {
+        if (r.path.endsWith("/chat/completions")) return {200, chat(json)};
+        return {404, "{}"};
+    };
+    tanara::app::AppSettings s = m_app->settings()->settings();
+    const QString id = providers::chatproviders::AnthropicId;
+    s.providers.llm.selectedId = id;
+    s.providers.llm.configs[id].type = id;
+    s.providers.llm.configs[id].baseUrl = m_http->base();
+    s.providers.llm.configs[id].model = QStringLiteral("claude-opus-5-5");
+    s.routes.normalize(s.providers);
+    QCOMPARE(s.routes.llm.route, providers::Route::External);
+    m_app->settings()->setSettings(s);
+    m_app->setSecret(app::keys::LlmApiKey, QStringLiteral("helyi-kulcs"));               // the local endpoint's slot
+    m_app->setSecret(QStringLiteral("llm.anthropic.apiKey"), QStringLiteral("anthropic-kulcs"));
+
+    const Meeting m = transcribed("Külső szolgáltató");
+    QSignalSpy ready(m_app.get(), &app::AppController::summaryReady);
+    m_app->summarizeMeeting(m.id);
+    QVERIFY(ready.wait(10000));
+    QVERIFY2(m_errors.isEmpty(), qPrintable(m_errors.join("; ")));
+    QCOMPARE(m_app->summaryDocument(m.id).summary.execSummary, QStringLiteral("Külső összefoglaló."));
+
+    QCOMPARE(m_http->count("GET", QStringLiteral("/api/v1/models")), 0);   // no LM Studio probe / load
+    QCOMPARE(m_http->count("POST", QStringLiteral("/chat/completions")), 1);
+    for (const FakeRequest& r : std::as_const(m_http->log)) {
+        if (!r.path.endsWith("/chat/completions")) continue;
+        QCOMPARE(r.auth, QByteArray("Bearer anthropic-kulcs"));
+        const QJsonObject body = QJsonDocument::fromJson(r.body).object();
+        QCOMPARE(body.value("model").toString(), QStringLiteral("claude-opus-5-5"));
+        QVERIFY(!body.contains("temperature"));
+        QVERIFY(!body.contains("reasoning_effort"));
+        QVERIFY(body.value("max_tokens").toInt() >= 4096);
+    }
 }
 
 void AppJobsTest::summarizeCancelAndFailure()

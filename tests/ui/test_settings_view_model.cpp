@@ -643,7 +643,8 @@ private slots:
         QVERIFY(sttIds.contains(QStringLiteral("soniox")));
         QVERIFY(sttIds.contains(QStringLiteral("whisper-compat")));
         QVERIFY(!sttIds.contains(tanara::cloud::ProviderId));
-        QCOMPARE(llmIds, QStringList{QStringLiteral("openai-compat")});
+        // The local endpoint and the external presets, by display name.
+        QCOMPARE(llmIds, (QStringList{QStringLiteral("anthropic"), QStringLiteral("openai"), QStringLiteral("openai-compat")}));
 
         // The fields come from the descriptor: for Soniox address + model + required key, no advanced ones.
         QCOMPARE(vm.stt()->providerId(), QStringLiteral("soniox"));
@@ -1541,7 +1542,7 @@ private slots:
         QVERIFY(stt["local"]["enabled"].toBool() && stt["external"]["enabled"].toBool());
         QCOMPARE(stt["cloud"]["code"].toString(), QStringLiteral("cloud_unavailable"));
         QCOMPARE(stt["ask"]["code"].toString(), QStringLiteral("ask_unavailable"));
-        QCOMPARE(options("llm")["external"]["code"].toString(), QStringLiteral("no_external"));
+        QVERIFY(options("llm")["external"]["enabled"].toBool());   // the Anthropic / OpenAI presets
         QCOMPARE(options("diarization")["cloud"]["code"].toString(), QStringLiteral("diarization_later"));
         QVERIFY(vm.routeOptions(QStringLiteral("nincs")).isEmpty());
 
@@ -1586,6 +1587,79 @@ private slots:
         for (const QVariant& p : vm.stt()->providers())
             QCOMPARE(p.toMap().value("kind").toString(),
                      vm.providerKind(p.toMap().value("value").toString()));
+    }
+
+    // The summary's External route: the Anthropic / OpenAI presets on the same form, prefilled from the
+    // descriptor; the local provider's settings stay and come back with the Local route.
+    void llmExternalPresets()
+    {
+        startApp();
+        SettingsViewModel vm(services());
+        QCOMPARE(vm.route(QStringLiteral("llm")), QStringLiteral("local"));
+        const QString localUrl = vm.llm()->value(QStringLiteral("baseUrl")).toString();
+        vm.llm()->setValue(QStringLiteral("model"), QStringLiteral("helyi-modell"));
+
+        // The External route selects the first preset (sorted ids) with its defaults.
+        QVERIFY(vm.setRoute(QStringLiteral("llm"), QStringLiteral("external")));
+        QCOMPARE(vm.route(QStringLiteral("llm")), QStringLiteral("external"));
+        QCOMPARE(vm.llm()->providerId(), QStringLiteral("anthropic"));
+        QCOMPARE(vm.providerKind(QStringLiteral("anthropic")), QStringLiteral("external"));
+        QCOMPARE(vm.providerKind(QStringLiteral("openai")), QStringLiteral("external"));
+        QCOMPARE(vm.llm()->value(QStringLiteral("baseUrl")).toString(), QStringLiteral("https://api.anthropic.com/v1"));
+        QCOMPARE(vm.llm()->value(QStringLiteral("model")).toString(), QStringLiteral("claude-opus-5-5"));
+        QCOMPARE(vm.llm()->value(QStringLiteral("maxTokens")).toInt(), 16000);   // the preset's, not the built-in 8000
+        QVERIFY(vm.llm()->testable());
+        // No temperature field (the preset does not send it); the key is required.
+        QStringList keys;
+        for (const QVariant& f : vm.llm()->fields()) keys << f.toMap().value("key").toString();
+        for (const QVariant& f : vm.llm()->advancedFields()) keys << f.toMap().value("key").toString();
+        QVERIFY(!keys.contains(QStringLiteral("temperature")));
+        QVERIFY(keys.contains(QStringLiteral("apiKey")) && keys.contains(QStringLiteral("maxTokens")));
+        QCOMPARE(vm.llm()->placeholder(QStringLiteral("apiKey")), QStringLiteral("illeszd be a kulcsot"));
+        // Anthropic ignores the thinking switch; a hosted service has no context to load.
+        QVERIFY(!vm.llm()->reasoningAvailable());
+        QVERIFY(!vm.llm()->contextAvailable());
+
+        // The other preset, picked on the card: its own defaults; the thinking switch applies there.
+        vm.llm()->setProviderId(QStringLiteral("openai"));
+        QCOMPARE(vm.route(QStringLiteral("llm")), QStringLiteral("external"));
+        QCOMPARE(vm.llm()->value(QStringLiteral("baseUrl")).toString(), QStringLiteral("https://api.openai.com/v1"));
+        QCOMPARE(vm.llm()->value(QStringLiteral("maxTokens")).toInt(), 16000);
+        QVERIFY(!vm.llm()->value(QStringLiteral("model")).toString().isEmpty());
+        QVERIFY(vm.llm()->reasoningAvailable());
+        QVERIFY(!vm.llm()->contextAvailable());
+        // The keys are separate secrets.
+        vm.llm()->setValue(QStringLiteral("apiKey"), QStringLiteral("openai-kulcs"));
+        vm.llm()->setProviderId(QStringLiteral("anthropic"));
+        QVERIFY(vm.llm()->value(QStringLiteral("apiKey")).toString().isEmpty());
+        vm.llm()->setValue(QStringLiteral("apiKey"), QStringLiteral("anthropic-kulcs"));
+        vm.llm()->setProviderId(QStringLiteral("openai"));
+        QCOMPARE(vm.llm()->value(QStringLiteral("apiKey")).toString(), QStringLiteral("openai-kulcs"));
+
+        // Only the providers of the route's kind are listed with that kind.
+        QStringList external;
+        for (const QVariant& p : vm.llm()->providers())
+            if (p.toMap().value("kind").toString() == QLatin1String("external")) external << p.toMap().value("value").toString();
+        QCOMPARE(external, (QStringList{QStringLiteral("anthropic"), QStringLiteral("openai")}));
+
+        // Back to Local: the local provider with its own (edited) settings.
+        QVERIFY(vm.setRoute(QStringLiteral("llm"), QStringLiteral("local")));
+        QCOMPARE(vm.llm()->providerId(), QStringLiteral("openai-compat"));
+        QCOMPARE(vm.llm()->value(QStringLiteral("baseUrl")).toString(), localUrl);
+        QCOMPARE(vm.llm()->value(QStringLiteral("model")).toString(), QStringLiteral("helyi-modell"));
+        QVERIFY(vm.llm()->reasoningAvailable());
+        QVERIFY(vm.llm()->contextAvailable());
+        // And External again remembers the last external provider.
+        QVERIFY(vm.setRoute(QStringLiteral("llm"), QStringLiteral("external")));
+        QCOMPARE(vm.llm()->providerId(), QStringLiteral("openai"));
+
+        // Saved: the route, the selection and the preset's config.
+        QVERIFY(vm.save());
+        QCOMPARE(live().routes.llm.route, tanara::providers::Route::External);
+        QCOMPARE(live().providers.llm.selectedId, QStringLiteral("openai"));
+        QCOMPARE(live().providers.llm.selected().baseUrl, QStringLiteral("https://api.openai.com/v1"));
+        QCOMPARE(live().providers.llm.selected().maxTokens, 16000);
+        QCOMPARE(live().providers.llm.configs.value(QStringLiteral("openai-compat")).model, QStringLiteral("helyi-modell"));
     }
 
     // ---- S4: the Tanara Cloud page ----

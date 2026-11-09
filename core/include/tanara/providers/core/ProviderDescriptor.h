@@ -3,6 +3,8 @@
 // Provider descriptor + declarative config schema (headless value types).
 // The Settings UI is rendered generically from these, and the ReadinessModel gating is based on them.
 // Does NOT link Qt Widgets.
+#include <QByteArray>
+#include <QPair>
 #include <QString>
 #include <QStringList>
 #include <QVector>
@@ -39,7 +41,7 @@ enum class Origin { Local, Cloud, CustomEndpoint };
 // The processing-route segment a provider belongs to (providers/core/Routes.h):
 //  Local    - your machine or network, no key (a Whisper server, LM Studio, an OpenAI-compatible endpoint
 //             at your own address, the local embedding endpoint);
-//  External - a third-party service with your own key (Soniox);
+//  External - a third-party service with your own key (Soniox; the Anthropic and OpenAI chat presets);
 //  Cloud    - the Tanara Cloud.
 enum class ProviderKind { Local, External, Cloud };
 
@@ -89,7 +91,7 @@ struct ConfigField {
 // "Test connection": what the tester asks the provider (providers/core/ConnectionTester.h).
 // Declarative, so a new provider only needs to give a descriptor. An empty `path` = the provider
 // cannot be tested this way (the UI offers no button). The request: GET <baseUrl><path>, with the API key
-// as "Authorization: Bearer". It must NEVER be a paid / state-changing call.
+// as "Authorization: Bearer" (or in `keyHeader`). It must NEVER be a paid / state-changing call.
 struct ConnectionProbe {
     QString path;                       // pl. "/models"
     // The response gives a model list ({"data":[{"id":...}]} or {"models":[{"id":...}]}): the tester checks
@@ -99,7 +101,33 @@ struct ConnectionProbe {
     // origin = baseUrl without a trailing slash and a trailing "/v1" (e.g. "/health" for whisper.cpp's
     // whisper-server, which has no /v1/models). A 2xx there counts as reachable, with no model list.
     QString originFallbackPath;
+    // How the key travels. Empty = "Authorization: Bearer <key>"; otherwise the key goes as the value of
+    // this header (Anthropic's native API: "x-api-key").
+    QByteArray keyHeader;
+    // Fixed headers the endpoint needs on every probe (Anthropic: "anthropic-version").
+    QVector<QPair<QByteArray, QByteArray>> headers;
+    // Regular expression (case-insensitive) an id must match to be OFFERED in the model list; empty =
+    // every id. For a service whose list mixes chat models with others (OpenAI: embeddings, speech,
+    // images). The "configured model is not in the list" check still uses the whole list.
+    QString modelFilter;
     bool isValid() const { return !path.isEmpty(); }
+};
+
+// How a chat provider's /chat/completions request differs from the plain OpenAI-compatible shape (a local
+// LM Studio / Ollama server). The descriptor carries it, the factory hands it to OpenAiCompatibleProvider:
+// a new service preset is a descriptor, not a code branch.
+struct ChatDialect {
+    // false = the "temperature" field is left out (the service fixes the sampling itself: the current
+    // Claude and the OpenAI reasoning models answer a non-default value with HTTP 400).
+    bool sendTemperature = true;
+    // Name of the reply-size field: "max_tokens", or "max_completion_tokens" where the old name is refused.
+    QString maxTokensField{QStringLiteral("max_tokens")};
+    // false = no thinking switch at all (neither "reasoning_effort" nor a prefill): the service ignores it
+    // (Anthropic's OpenAI-compatible layer), so ProviderConfig::reasoning has no effect there.
+    bool reasoningSwitch = true;
+    // Floor of the reply-size field (0 = none). Where thinking cannot be reliably turned off, its tokens
+    // count against the reply size: a small cap (the tag suggester's 400) would leave no room for the answer.
+    int minMaxTokens = 0;
 };
 
 struct ProviderDescriptor {
@@ -121,6 +149,7 @@ struct ProviderDescriptor {
     // Empty = "<id>.token" (the earlier convention).
     QString loginSecretKey;
     ConnectionProbe probe;              // "Test connection" (empty = none)
+    ChatDialect chat;                   // Chat providers only: the request's deviations (default = none)
 };
 
 } // namespace tanara::providers

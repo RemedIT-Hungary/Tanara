@@ -279,7 +279,9 @@ void SummarizationService::summarize(const QString& meetingId)
     QObject* providerObj = dynamic_cast<QObject*>(provider);
     auto* svc = new SummaryService(provider, this);
     emit jobProgress(meetingId, run ? tr("Összefoglalás a Tanara Cloudban…")
-                                    : tr("Összefoglalás a helyi modellel…"));
+                     : providers::providerKindOf(llmId) == providers::ProviderKind::External
+                           ? tr("Összefoglalás a külső szolgáltatónál…")
+                           : tr("Összefoglalás a helyi modellel…"));
 
     const bool locked = promptsLocked(meetingId, run, s,
                                       {QStringLiteral("single"), QStringLiteral("notes"), QStringLiteral("merge")});

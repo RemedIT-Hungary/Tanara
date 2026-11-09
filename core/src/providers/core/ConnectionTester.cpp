@@ -11,6 +11,7 @@
 #include "tanara/foundation/net/HttpClient.h"
 #include <QNetworkReply>
 #include <QNetworkRequest>
+#include <QRegularExpression>
 #include <QTimer>
 #include <QUrl>
 
@@ -96,6 +97,31 @@ QStringList parseModels(const QByteArray& body, bool* ok)
     }
     out.sort();
     out.removeDuplicates();
+    return out;
+}
+
+// The service's own error sentence from an error body: {"error":{"message":...}} (OpenAI, Anthropic) or
+// {"error":"..."}; empty if the body has none. Shortened: it goes next to our sentence in the UI.
+QString serverErrorMessage(const QByteArray& body)
+{
+    const QJsonDocument doc = QJsonDocument::fromJson(body);
+    if (!doc.isObject()) return {};
+    const QJsonValue ev = doc.object().value(QStringLiteral("error"));
+    QString msg = ev.isObject() ? ev.toObject().value(QStringLiteral("message")).toString() : ev.toString();
+    msg = msg.simplified();
+    if (msg.size() > 200) msg = msg.left(199) + QChar(0x2026);
+    return msg;
+}
+
+// The ids the probe's modelFilter lets through (an empty or invalid filter = all of them).
+QStringList offeredModels(const QStringList& all, const QString& filter)
+{
+    if (filter.isEmpty()) return all;
+    const QRegularExpression re(filter, QRegularExpression::CaseInsensitiveOption);
+    if (!re.isValid()) return all;
+    QStringList out;
+    for (const QString& id : all)
+        if (re.match(id).hasMatch()) out << id;
     return out;
 }
 
@@ -219,7 +245,7 @@ int ConnectionTester::test(const ProviderDescriptor& descriptor, const ProviderC
     }
 
     if (!m_http) m_http = new net::HttpClient(this);
-    const QNetworkRequest req = makeRequest(url, cfg);
+    const QNetworkRequest req = makeRequest(url, cfg, descriptor.probe);
 
     const qint64 started = QDateTime::currentMSecsSinceEpoch();
     QNetworkReply* reply = m_http->get(req);
@@ -230,21 +256,28 @@ int ConnectionTester::test(const ProviderDescriptor& descriptor, const ProviderC
     return id;
 }
 
-QNetworkRequest ConnectionTester::makeRequest(const QUrl& url, const ProviderConfig& cfg) const
+QNetworkRequest ConnectionTester::makeRequest(const QUrl& url, const ProviderConfig& cfg,
+                                              const ConnectionProbe& probe) const
 {
     QNetworkRequest req(url);
     req.setTransferTimeout(m_timeoutMs);
     req.setRawHeader(QByteArrayLiteral("Accept"), QByteArrayLiteral("application/json"));
-    if (!cfg.apiKey.trimmed().isEmpty())
-        req.setRawHeader(QByteArrayLiteral("Authorization"),
-                         QByteArrayLiteral("Bearer ") + cfg.apiKey.trimmed().toUtf8());
+    const QByteArray key = cfg.apiKey.trimmed().toUtf8();
+    if (!key.isEmpty()) {
+        if (probe.keyHeader.isEmpty())
+            req.setRawHeader(QByteArrayLiteral("Authorization"), QByteArrayLiteral("Bearer ") + key);
+        else
+            req.setRawHeader(probe.keyHeader, key);
+    }
+    for (const auto& h : probe.headers)
+        req.setRawHeader(h.first, h.second);
     return req;
 }
 
-void ConnectionTester::startFallback(int id, const QUrl& url, qint64 startedMs, const ProviderDescriptor&,
+void ConnectionTester::startFallback(int id, const QUrl& url, qint64 startedMs, const ProviderDescriptor& d,
                                      const ProviderConfig& cfg, const ConnectionTestResult& primary)
 {
-    QNetworkReply* reply = m_http->get(makeRequest(url, cfg));
+    QNetworkReply* reply = m_http->get(makeRequest(url, cfg, d.probe));
     m_replies.insert(id, reply);
     connect(reply, &QNetworkReply::finished, this, [this, id, reply, startedMs, primary] {
         reply->deleteLater();
@@ -293,23 +326,33 @@ void ConnectionTester::onFinished(int id, QNetworkReply* reply, qint64 startedMs
         }
         if (r.ok() && d.probe.listsModels) {
             bool parsed = false;
-            r.models = parseModels(reply->readAll(), &parsed);
+            const QStringList all = parseModels(reply->readAll(), &parsed);
+            r.models = offeredModels(all, d.probe.modelFilter);
             if (!parsed) {
                 r.status = ConnectionTestResult::Status::NotAnApi;
                 r.code = QStringLiteral("EBADRESPONSE");
                 r.message = QCoreApplication::translate("ConnectionTester", "A cím válaszol, de nem a várt API-választ adja. Biztosan ez az API címe?");
-            } else if (!cfg.model.trimmed().isEmpty() && !r.models.isEmpty()
-                       && !r.models.contains(cfg.model.trimmed())) {
+            } else if (!cfg.model.trimmed().isEmpty() && !all.isEmpty()
+                       && !all.contains(cfg.model.trimmed())) {
                 r.warning = QCoreApplication::translate("ConnectionTester", "A beállított modell (%1) nincs a szolgáltató listájában.")
                                 .arg(cfg.model.trimmed());
             }
+        } else if (!r.ok() && r.status == ConnectionTestResult::Status::ServerError
+                   && http < 500 && http != 429) {
+            // An HTTP status we have no sentence for (400, 402, 422 ...): the service's own words tell
+            // what it missed (a header, a parameter), so they go next to ours.
+            const QString said = serverErrorMessage(reply->readAll());
+            if (!said.isEmpty())
+                r.message = QCoreApplication::translate("ConnectionTester", "A végpont váratlan választ adott: %1").arg(said);
         }
     } else {
         describeNetworkError(reply->error(), local, &r);
     }
-    // An LLM with your own key: the native server API (LM Studio): loaded context, parallelism.
-    // Read-only (GET); if there is no such API, the result is unchanged.
-    if (r.ok() && d.capability == CapabilityKind::Chat && d.authMode != AuthMode::Login) {
+    // An LLM at your own address: the native server API (LM Studio): loaded context, parallelism.
+    // Read-only (GET); if there is no such API, the result is unchanged. Not for a hosted service
+    // (kind External): there is no such API behind it.
+    if (r.ok() && d.capability == CapabilityKind::Chat && d.authMode != AuthMode::Login
+        && d.kind != ProviderKind::External) {
         auto* probe = new LlmServerProbe(this);
         probe->setHttpClient(m_http);
         probe->setTimeoutMs(qMin(m_timeoutMs, 3000));

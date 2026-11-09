@@ -37,7 +37,7 @@ I started Tanara after switching to Linux. I had been using [Jamie](https://www.
 3. **Separate the speakers.** Soniox does this itself. For Whisper, Tanara's local diarization (a pyannote segmentation model plus the speaker-embedding models, all ONNX, all on your machine) tells who speaks when.
 4. **Identify speakers.** Local voice fingerprints match transcript segments to people you already know; track energy tells the microphone side from the call side.
 5. **Review and correct.** A focused review flow shows only the doubtful lines, one at a time, with a suggestion and one-key decisions. Every decision teaches the voice models.
-6. **Summarize.** The corrected transcript goes to an OpenAI-compatible endpoint (a local LM Studio, or a service with your key) with your own prompts, and comes back as a summary with source references into the transcript.
+6. **Summarize.** The corrected transcript goes to a language model (a local LM Studio or another OpenAI-compatible endpoint, or Anthropic / OpenAI with your own API key) with your own prompts, and comes back as a summary with source references into the transcript.
 
 Each component does what it is good at. Tanara connects them into one workflow and keeps the data on your disk.
 

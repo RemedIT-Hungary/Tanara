@@ -11,6 +11,7 @@
 #include <QTcpSocket>
 
 #include "tanara/providers/core/ConnectionTester.h"
+#include "tanara/providers/chat/IChatProvider.h"
 #include "tanara/providers/core/ProviderRegistry.h"
 
 #include <functional>
@@ -20,7 +21,10 @@ using namespace tanara;
 
 namespace {
 
-struct FakeRequest { QByteArray method; QString path; QByteArray auth; };
+struct FakeRequest {
+    QByteArray method; QString path; QByteArray auth;
+    QHash<QByteArray, QByteArray> headers;   // every header, the name in lower case
+};
 struct FakeReply { int status = 200; QByteArray body = "{}"; };
 
 // Minimal fake HTTP server (as in test_app_jobs.cpp), recording the request headers.
@@ -58,6 +62,8 @@ private:
         for (const QByteArray& line : head.split('\n')) {
             const QByteArray l = line.trimmed();
             if (l.toLower().startsWith("authorization:")) req.auth = l.mid(14).trimmed();
+            const int colon = l.indexOf(':');
+            if (colon > 0) req.headers.insert(l.left(colon).trimmed().toLower(), l.mid(colon + 1).trimmed());
         }
         buf.clear();
         log.append(req);
@@ -261,6 +267,100 @@ private slots:
         r = run(probeDescriptor(), cfg);
         QCOMPARE(r.status, providers::ConnectionTestResult::Status::ServerError);
         QCOMPARE(r.code, QStringLiteral("HTTP 429"));
+    }
+
+    // The Anthropic preset: the key in x-api-key, the fixed version header, the whole list in one page,
+    // and no LM Studio probe after it (a hosted service has no native server API).
+    void anthropicPresetProbe()
+    {
+        providers::ProviderRegistry reg;
+        providers::registerBuiltinProviders(reg);
+        const providers::ProviderDescriptor d =
+            reg.descriptor(providers::CapabilityKind::Chat, providers::chatproviders::AnthropicId);
+        QCOMPARE(d.kind, providers::ProviderKind::External);
+        FakeHttp http;
+        http.handler = [](const FakeRequest&) {
+            return FakeReply{200, "{\"data\":[{\"type\":\"model\",\"id\":\"claude-opus-5-5\"},"
+                                  "{\"type\":\"model\",\"id\":\"claude-haiku-5-5\"}],\"has_more\":false}"};
+        };
+        providers::ProviderConfig cfg;
+        cfg.baseUrl = http.base();
+        cfg.model = QStringLiteral("claude-opus-5-5");
+        cfg.apiKey = QStringLiteral("titok");
+        const providers::ConnectionTestResult r = run(d, cfg);
+        QVERIFY(r.ok());
+        QCOMPARE(r.models, (QStringList{QStringLiteral("claude-haiku-5-5"), QStringLiteral("claude-opus-5-5")}));
+        QVERIFY(r.warning.isEmpty());
+        QVERIFY(r.serverText.isEmpty());
+        QCOMPARE(http.log.size(), 1);                       // no second (LM Studio) request
+        const FakeRequest& req = http.log.first();
+        QCOMPARE(req.path, QStringLiteral("/v1/models?limit=1000"));
+        QCOMPARE(req.headers.value("x-api-key"), QByteArray("titok"));
+        QCOMPARE(req.headers.value("anthropic-version"), QByteArray("2023-06-01"));
+        QVERIFY(req.auth.isEmpty());                        // not as a Bearer token
+    }
+
+    // The OpenAI preset: a Bearer key; only the chat families are offered, but the "configured model is
+    // not in the list" check uses the whole list.
+    void openAiPresetOffersOnlyChatModels()
+    {
+        providers::ProviderRegistry reg;
+        providers::registerBuiltinProviders(reg);
+        const providers::ProviderDescriptor d =
+            reg.descriptor(providers::CapabilityKind::Chat, providers::chatproviders::OpenAiId);
+        FakeHttp http;
+        http.handler = [](const FakeRequest&) {
+            return FakeReply{200, "{\"data\":[{\"id\":\"gpt-6.1-sol\"},{\"id\":\"gpt-6-astra\"},{\"id\":\"o4-mini\"},"
+                                  "{\"id\":\"chatgpt-latest\"},{\"id\":\"text-embedding-3-large\"},"
+                                  "{\"id\":\"gpt-image-2\"},{\"id\":\"gpt-6-realtime\"},{\"id\":\"gpt-6-transcribe\"},"
+                                  "{\"id\":\"whisper-1\"},{\"id\":\"tts-1\"},{\"id\":\"dall-e-3\"},"
+                                  "{\"id\":\"omni-moderation-latest\"}]}"};
+        };
+        providers::ProviderConfig cfg;
+        cfg.baseUrl = http.base();
+        cfg.model = QStringLiteral("gpt-6.1-sol");
+        cfg.apiKey = QStringLiteral("titok");
+        providers::ConnectionTestResult r = run(d, cfg);
+        QVERIFY(r.ok());
+        QCOMPARE(r.models, (QStringList{QStringLiteral("chatgpt-latest"), QStringLiteral("gpt-6-astra"),
+                                        QStringLiteral("gpt-6.1-sol"), QStringLiteral("o4-mini")}));
+        QVERIFY(r.warning.isEmpty());
+        QCOMPARE(http.log.size(), 1);
+        QCOMPARE(http.log.first().path, QStringLiteral("/v1/models"));
+        QCOMPARE(http.log.first().auth, QByteArray("Bearer titok"));
+        // A model the service has but the filter hides: no "not in the list" warning.
+        cfg.model = QStringLiteral("whisper-1");
+        r = run(d, cfg);
+        QVERIFY(r.ok());
+        QVERIFY(r.warning.isEmpty());
+        // A model the service does not have at all: the warning.
+        cfg.model = QStringLiteral("nincs-ilyen");
+        r = run(d, cfg);
+        QVERIFY(r.ok());
+        QVERIFY(r.warning.contains(QStringLiteral("nincs-ilyen")));
+    }
+
+    // A status we have no sentence for (400 ...): the service's own words go next to ours.
+    void unexpectedStatusCarriesTheServicesWords()
+    {
+        FakeHttp http;
+        http.handler = [](const FakeRequest&) {
+            return FakeReply{400, "{\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\","
+                                  "\"message\":\"anthropic-version: header is required\"}}"};
+        };
+        providers::ProviderConfig cfg;
+        cfg.baseUrl = http.base();
+        cfg.apiKey = QStringLiteral("titok");
+        providers::ConnectionTestResult r = run(probeDescriptor(), cfg);
+        QCOMPARE(r.status, providers::ConnectionTestResult::Status::ServerError);
+        QCOMPARE(r.code, QStringLiteral("HTTP 400"));
+        QVERIFY2(r.message.contains(QStringLiteral("anthropic-version: header is required")), qPrintable(r.message));
+        // No error body: the plain sentence stays.
+        http.handler = [](const FakeRequest&) { return FakeReply{400, "nem json"}; };
+        r = run(probeDescriptor(), cfg);
+        QCOMPARE(r.code, QStringLiteral("HTTP 400"));
+        QVERIFY(!r.message.isEmpty());
+        QVERIFY(!r.message.contains(QLatin1Char(':')));
     }
 
     void connectionRefused()

@@ -113,6 +113,9 @@ private slots:
         QCOMPARE(providers::providerKindOf(QStringLiteral("soniox")), providers::ProviderKind::External);
         QCOMPARE(providers::providerKindOf(QStringLiteral("whisper-compat")), providers::ProviderKind::Local);
         QCOMPARE(providers::providerKindOf(QStringLiteral("openai-compat")), providers::ProviderKind::Local);
+        // The external chat presets (own key).
+        QCOMPARE(providers::providerKindOf(QStringLiteral("anthropic")), providers::ProviderKind::External);
+        QCOMPARE(providers::providerKindOf(QStringLiteral("openai")), providers::ProviderKind::External);
         QCOMPARE(providers::providerKindOf(cloud::ProviderId), providers::ProviderKind::Cloud);
         QCOMPARE(providers::providerKindOf(providers::embeddingproviders::CloudId), providers::ProviderKind::Cloud);
     }

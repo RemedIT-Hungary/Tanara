@@ -1,4 +1,5 @@
 #include "tanara/providers/core/Routes.h"
+#include "tanara/providers/chat/IChatProvider.h"
 #include "tanara/providers/embedding/ITextEmbedder.h"
 
 namespace tanara::providers {
@@ -102,7 +103,9 @@ QList<Capability> allCapabilities()
 ProviderKind providerKindOf(const QString& providerId)
 {
     if (providerId == CloudProviderId || providerId == embeddingproviders::CloudId) return ProviderKind::Cloud;
-    if (providerId == QLatin1String("soniox")) return ProviderKind::External;
+    if (providerId == QLatin1String("soniox") || providerId == chatproviders::AnthropicId
+        || providerId == chatproviders::OpenAiId)
+        return ProviderKind::External;
     return ProviderKind::Local;
 }
 

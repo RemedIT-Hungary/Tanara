@@ -1,6 +1,7 @@
 #pragma once
 //
-// OpenAI-compatible LLM provider (LM Studio / Ollama / OpenAI / Claude proxy).
+// OpenAI-compatible LLM provider (LM Studio / Ollama / a Claude proxy; with a ChatDialect also the
+// Anthropic and OpenAI presets).
 // MVP: non-streaming, a single /chat/completions POST.
 #include "tanara/providers/chat/IChatProvider.h"
 #include "tanara/providers/core/ProviderConfig.h"
@@ -25,8 +26,11 @@ enum class ReasoningSwitch {
 // known switches (enable_thinking, think:false, /no_think, chat_template_kwargs); measured: only these two work.
 ReasoningSwitch reasoningSwitchFor(const QString& setting, const QString& model);
 
-// Body of the /chat/completions request (with the reasoning switch): a testable pure function.
-QJsonObject buildChatCompletionBody(const ProviderConfig& cfg, const LlmRequest& req);
+// Body of the /chat/completions request (with the reasoning switch): a testable pure function. The
+// dialect (ProviderDescriptor::chat) says what the service deviates in: no temperature, another name for
+// the reply-size field, no thinking switch, a floor for the reply size.
+QJsonObject buildChatCompletionBody(const ProviderConfig& cfg, const LlmRequest& req,
+                                    const ChatDialect& dialect = ChatDialect{});
 
 // Strips the leftover thinking from the response content: a leading <think>...</think> block (or,
 // after a prefill, a lone leading </think>). An unterminated <think> -> empty (all of it was
@@ -50,6 +54,9 @@ public:
                         QObject* parent = nullptr);
     ~OpenAiCompatibleJob() override;
 
+    // The service's request deviations; set before start() (default = plain OpenAI-compatible).
+    void setDialect(const ChatDialect& dialect) { m_dialect = dialect; }
+
     void start();
     void cancel() override;
 
@@ -61,6 +68,7 @@ private:
     ProviderContext m_ctx;
     ProviderConfig m_cfg;
     LlmRequest m_req;
+    ChatDialect m_dialect;
     QPointer<QNetworkReply> m_reply;
     bool m_done = false;
 };
@@ -70,6 +78,9 @@ class OpenAiCompatibleProvider : public QObject, public IChatProvider {
 public:
     explicit OpenAiCompatibleProvider(const ProviderConfig& cfg, QObject* parent = nullptr);
     OpenAiCompatibleProvider(const ProviderContext& ctx, const ProviderConfig& cfg, QObject* parent = nullptr);
+    // A service preset (Anthropic, OpenAI): the same provider with the descriptor's dialect.
+    OpenAiCompatibleProvider(const ProviderContext& ctx, const ProviderConfig& cfg, const ChatDialect& dialect,
+                             QObject* parent = nullptr);
     ~OpenAiCompatibleProvider() override;
 
     QString name() const override;            // "openai-compat"
@@ -79,6 +90,7 @@ public:
 private:
     ProviderContext m_ctx;
     ProviderConfig m_cfg;
+    ChatDialect m_dialect;
     net::HttpClient* m_http;       // m_ctx.http, or an own one (this as parent)
 };
 

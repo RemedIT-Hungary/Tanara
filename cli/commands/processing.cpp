@@ -313,7 +313,7 @@ void registerProcessingCommands(CommandRegistry& r)
     // TODO(P12c): transcribe / summarize go through the processing services once those are on main.
     r.add({"transcribe", m, "Transcribe a meeting (the selected STT provider; local speaker separation when it gives none)",
            "transcribe <meetingId> [--yes] [--run local|external|cloud] [--local-diarization on|off]", true, cmd_transcribe});
-    r.add({"summarize", m, "Summarize a meeting (LM Studio or Tanara Cloud)",
+    r.add({"summarize", m, "Summarize a meeting (a local model, Anthropic / OpenAI with your own key, or Tanara Cloud)",
            "summarize <meetingId> [--yes] [--complex] [--run local|external|cloud]", true, cmd_transcribe});
     // TODO(P12d): identify runs on the voice-analysis service.
     r.add({"identify", m, "Identify the speakers of a meeting from the voiceprints", "identify <meetingId>", true, cmd_identify});

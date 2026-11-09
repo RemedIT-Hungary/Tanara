@@ -48,6 +48,18 @@
         <translation>Max tokens</translation>
     </message>
     <message>
+        <source>A válasz felső korlátja. A modell gondolkodása is ebből a keretből megy.</source>
+        <translation>Upper limit of the reply. The model&apos;s thinking counts against it too.</translation>
+    </message>
+    <message>
+        <source>A Claude Console-ban (platform.claude.com) létrehozott API-kulcs. A Claude-előfizetés (Pro / Max) önmagában nem ad ilyen kulcsot.</source>
+        <translation>An API key created in the Claude Console (platform.claude.com). A Claude subscription (Pro / Max) alone does not include one.</translation>
+    </message>
+    <message>
+        <source>A platform.openai.com oldalon létrehozott API-kulcs. A ChatGPT-előfizetés önmagában nem ad ilyen kulcsot.</source>
+        <translation>An API key created at platform.openai.com. A ChatGPT subscription alone does not include one.</translation>
+    </message>
+    <message>
         <source>Whisper (OpenAI-kompatibilis)</source>
         <translation>Whisper (OpenAI-compatible)</translation>
     </message>
@@ -424,6 +436,10 @@
     <message>
         <source>A beállított modell (%1) nincs a szolgáltató listájában.</source>
         <translation>The configured model (%1) is not in the provider&apos;s list.</translation>
+    </message>
+    <message>
+        <source>A végpont váratlan választ adott: %1</source>
+        <translation>The endpoint gave an unexpected response: %1</translation>
     </message>
 </context>
 <context>
@@ -5202,6 +5218,10 @@
         <translation>Local: LM Studio or another OpenAI-compatible server on your machine or network, without a key.</translation>
     </message>
     <message>
+        <source>Külső szolgáltató: az átirat szövege a kiválasztott szolgáltatóhoz megy, a saját API-kulcsoddal; a használatot ő számlázza.</source>
+        <translation>External provider: the transcript text goes to the selected provider with your own API key; the provider bills the usage.</translation>
+    </message>
+    <message>
         <source>Nyelve</source>
         <translation>Language</translation>
     </message>
@@ -9573,6 +9593,10 @@
         <translation>Summarizing in Tanara Cloud…</translation>
     </message>
     <message>
+        <source>Összefoglalás a külső szolgáltatónál…</source>
+        <translation>Summarising with the external provider…</translation>
+    </message>
+    <message>
         <source>Összefoglalás a helyi modellel…</source>
         <translation>Summarising with the local model…</translation>
     </message>
@@ -9685,6 +9709,10 @@
     <message>
         <source>Témák kigyűjtése a Tanara Cloudban…</source>
         <translation>Collecting topics in Tanara Cloud…</translation>
+    </message>
+    <message>
+        <source>Témák kigyűjtése a külső szolgáltatónál…</source>
+        <translation>Extracting topics with the external provider…</translation>
     </message>
     <message>
         <source>Témák kigyűjtése a helyi modellel…</source>
