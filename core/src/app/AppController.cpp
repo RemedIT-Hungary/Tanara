@@ -741,7 +741,14 @@ bool AppController::addRecordingDevice(const AudioDeviceInfo& device) { return d
 
 bool AppController::stopRecordingDevice(const QString& deviceName) { return d->recording->stopDevice(deviceName); }
 
-void AppController::setSecret(const QString& name, const QString& value) { d->secrets->set(name, value); }
+void AppController::setSecret(const QString& name, const QString& value)
+{
+    const QString before = d->secrets->get(name);
+    if (!d->secrets->set(name, value)) return;
+    // A key decides what can run, like a setting does. Settings saves the settings first and the keys
+    // after, so without this the views refreshed by settingsChanged keep "the key is missing".
+    if (before != value) d->settings->notifyChanged();
+}
 bool AppController::hasSecret(const QString& name) const { return !d->secrets->get(name).isEmpty(); }
 QString AppController::secret(const QString& name) const { return d->secrets->get(name); }
 QString AppController::secretBackend() const { return d->secrets->backendName(); }

@@ -586,7 +586,8 @@ public slots:
     // restarts preparation. Empty id = no embedding (basic level).
     void setEmbeddingProvider(const QString& providerId, const tanara::providers::ProviderConfig& config);
 
-    // Sets a secret (e.g. the Soniox API key) in the SecretStore. name e.g. "soniox.apiKey".
+    // Sets a secret (e.g. the Soniox API key) in the SecretStore. name e.g. "soniox.apiKey". A changed
+    // value announces itself as SettingsManager::settingsChanged (the readiness depends on it).
     void setSecret(const QString& name, const QString& value);
     bool hasSecret(const QString& name) const;
     // The stored secret's value ("" if none), for the Settings key field (eye button) and the

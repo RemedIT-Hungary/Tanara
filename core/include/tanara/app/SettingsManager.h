@@ -55,6 +55,10 @@ public:
     // Absolute path of the settings.json in use.
     QString settingsFilePath() const;
 
+    // Something the readiness depends on changed outside settings.json (an API key in the SecretStore):
+    // the views that follow settingsChanged refresh. Nothing is written.
+    void notifyChanged() { emit settingsChanged(); }
+
     // Sensible default settings (fixed in the contract). Paths stay empty (= platform default).
     static AppSettings defaults();
     // Fills the gaps of a loaded settings value from the defaults (empty speaker name, provider

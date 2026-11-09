@@ -1653,8 +1653,18 @@ private slots:
         QVERIFY(vm.setRoute(QStringLiteral("llm"), QStringLiteral("external")));
         QCOMPARE(vm.llm()->providerId(), QStringLiteral("openai"));
 
-        // Saved: the route, the selection and the preset's config.
+        // Saved: the route, the selection and the preset's config. The key is written after the settings:
+        // the last settingsChanged of the save must already see it (the main window's readiness follows
+        // that signal; it showed "the key is missing" until a restart).
+        QList<bool> keySeen;
+        const QMetaObject::Connection seen = connect(m_app->settings(), &tanara::app::SettingsManager::settingsChanged,
+            this, [this, &keySeen] { keySeen << m_app->hasSecret(QStringLiteral("llm.openai.apiKey")); });
         QVERIFY(vm.save());
+        disconnect(seen);
+        QVERIFY(!keySeen.isEmpty());
+        QVERIFY(keySeen.last());
+        QCOMPARE(m_app->secret(QStringLiteral("llm.openai.apiKey")), QStringLiteral("openai-kulcs"));
+        QCOMPARE(m_app->secret(QStringLiteral("llm.anthropic.apiKey")), QStringLiteral("anthropic-kulcs"));
         QCOMPARE(live().routes.llm.route, tanara::providers::Route::External);
         QCOMPARE(live().providers.llm.selectedId, QStringLiteral("openai"));
         QCOMPARE(live().providers.llm.selected().baseUrl, QStringLiteral("https://api.openai.com/v1"));
