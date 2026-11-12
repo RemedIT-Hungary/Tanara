@@ -120,6 +120,9 @@ MergeResult parseMergeJson(const QString& raw);
 struct SingleResult {
     PartNotes   notes;            // empty if the model wrote no notes (e.g. an old custom prompt)
     MergeResult merge;
+    // Character position in the raw answer where the short form (the SUMMARY heading / the JSON) starts;
+    // -1 = the answer never got there (in a cut reply: the notes themselves are incomplete).
+    int         notesEnd = -1;
 };
 SingleResult parseSingle(const QString& raw, const TranscriptPart& part);
 

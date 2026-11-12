@@ -169,6 +169,8 @@ private slots:
     void summarizeThroughExternalPreset();
     void summarizeWholeOrInPartsByProviderSetting();
     void summarizeRetriesACutPartNote();
+    void summarizeCutOneCallReplyKeepsItsNotes();
+    void summarizeCutOneCallNotesGoOnInParts();
     void summarizeCancelAndFailure();
     void summarizeLongMeetingInParts();
     void summarizePartFailureResumes();
@@ -901,25 +903,134 @@ void AppJobsTest::summarizeRetriesACutPartNote()
     QVERIFY(m_app->summaryDocument(m.id).meta.truncated);
     QVERIFY(library::SummaryRepository::load(m.folder).meta.truncated);
 
-    // A cut final call that still parses: the same mark.
+    // A cut final (merge) call is never a finished summary, even though the JSON repair makes it parse:
+    // the run fails, the earlier summary stays, the part notes are kept.
     alwaysCut = false;
     m_http->handler = [](const FakeRequest& r) -> FakeReply {
         if (!r.path.endsWith("/chat/completions")) return {404, "{}"};
         const int k = notesPart(r);
-        return {200, k > 0 ? chat(partNotes(k)) : chat(QString::fromUtf8(kMergeOk), "length")};
+        return {200, k > 0 ? chat(partNotes(k))
+                           : chat(QStringLiteral(R"({"execSummary":"Félbemaradt mond)"), "length")};
     };
+    QSignalSpy finished(m_app->jobs(), &library::MeetingJobTracker::jobFinished);
+    const int readyBefore = ready.count();
+    m_errors.clear();
     m_app->summarizeMeeting(m.id);
-    QVERIFY(ready.wait(10000));
-    QVERIFY(m_app->summaryDocument(m.id).meta.truncated);
-    // A whole run afterwards clears it.
+    QTRY_COMPARE(finished.count(), 1);
+    QCOMPARE(finished.at(0).at(2).value<JobOutcome>(), JobOutcome::Failed);
+    QCOMPARE(ready.count(), readyBefore);
+    QVERIFY2(m_errors.join("; ").contains(QStringLiteral("félbemaradt")), qPrintable(m_errors.join("; ")));
+    QVERIFY2(m_errors.join("; ").contains(QStringLiteral("Max. tokenek")), qPrintable(m_errors.join("; ")));
+    QVERIFY(QDir(m.folder).exists("summary.notes.json"));
+    QCOMPARE(m_app->summaryDocument(m.id).summary.execSummary, QStringLiteral("Hosszú megbeszélés összegzése."));
+    // The retry runs only the merge; a whole run clears the mark.
     m_http->handler = [](const FakeRequest& r) -> FakeReply {
         if (!r.path.endsWith("/chat/completions")) return {404, "{}"};
         const int k = notesPart(r);
         return {200, chat(k > 0 ? partNotes(k) : QString::fromUtf8(kMergeOk))};
     };
+    m_errors.clear();
+    const int beforeRetry = m_http->count("POST", "/chat/completions");
     m_app->summarizeMeeting(m.id);
     QVERIFY(ready.wait(10000));
+    QCOMPARE(m_http->count("POST", "/chat/completions") - beforeRetry, 1);
     QVERIFY(!m_app->summaryDocument(m.id).meta.truncated);
+    QVERIFY(!QDir(m.folder).exists("summary.notes.json"));
+}
+
+// Selects the local endpoint in "whole" mode (one call for a long meeting too).
+static void selectWholeMode(app::AppController* app)
+{
+    tanara::app::AppSettings s = app->settings()->settings();
+    s.providers.llm.configs[s.providers.llm.selectedId].extra.insert(providers::chatproviders::SummarySplitKey,
+                                                                      providers::chatproviders::SplitWhole);
+    app->settings()->setSettings(s);
+}
+
+// The one-call reply of a long meeting is cut after its notes (the short form at the end is lost, as on
+// the 2 h 43 min meeting of 2026-11-12): the notes are kept and only the short form runs again, from the
+// notes. Nothing of the cut short form is used.
+void AppJobsTest::summarizeCutOneCallReplyKeepsItsNotes()
+{
+    selectWholeMode(m_app.get());
+    const QString cutSingle = partNotes(1) + QStringLiteral("SUMMARY\n{\"execSummary\":\"Félbemaradt mond");
+    int calls = 0;
+    QStringList userTexts;
+    QVector<int> caps;
+    m_http->handler = [&](const FakeRequest& r) -> FakeReply {
+        if (!r.path.endsWith("/chat/completions")) return {404, "{}"};
+        const QJsonObject body = QJsonDocument::fromJson(r.body).object();
+        userTexts << body.value("messages").toArray().at(1).toObject().value("content").toString();
+        caps << body.value("max_tokens").toInt();
+        return ++calls == 1 ? FakeReply{200, chat(cutSingle, "length")} : FakeReply{200, chat(QString::fromUtf8(kMergeOk))};
+    };
+    const Meeting m = transcribedLong("Hosszú, egyben", 40);
+    QStringList trail;
+    connect(m_app->jobs(), &library::MeetingJobTracker::jobProgressChanged, this, [&](const QString&, const JobProgress& p) {
+        if (p.kind != JobKind::Summarize) return;
+        QString line;
+        for (const JobStage& st : p.stages) line += st.id + ":" + QString::number(int(st.state)) + " ";
+        if (trail.isEmpty() || trail.last() != line) trail << line;
+    });
+    QSignalSpy ready(m_app.get(), &app::AppController::summaryReady);
+    m_app->summarizeMeeting(m.id);
+    QVERIFY(ready.wait(10000));
+    QVERIFY2(m_errors.isEmpty(), qPrintable(m_errors.join("; ")));
+    QCOMPARE(calls, 2);
+    // 1st: the whole transcript; 2nd: the merge from the kept notes, without the transcript.
+    QVERIFY(userTexts.at(0).contains(QStringLiteral("A(z) 79. bekezdés")));
+    QVERIFY(userTexts.at(1).contains(QStringLiteral("Tárgy 1")));
+    QVERIFY(!userTexts.at(1).contains(QStringLiteral("bekezdés szövege")));
+    QCOMPARE(caps.at(1), 8000);
+    // The stages: the single one done, then a merge stage that appeared for the second call.
+    QVERIFY2(trail.contains("single:2 merge:1 "), qPrintable(trail.join(" | ")));
+    const library::SummaryDocument doc = m_app->summaryDocument(m.id);
+    QCOMPARE(doc.summary.execSummary, QStringLiteral("Hosszú megbeszélés összegzése."));   // the merge's, not the cut one
+    QCOMPARE(doc.summary.decisions, QStringList({"Marad a terv."}));
+    QCOMPARE(doc.summary.memo.size(), 1);
+    QCOMPARE(doc.summary.memo[0].title, QStringLiteral("Tárgy 1"));
+    QVERIFY(!doc.meta.truncated);
+    QVERIFY(!QDir(m.folder).exists("summary.notes.json"));
+}
+
+// The one-call reply is cut inside its notes: the meeting does not fit one reply, the run goes on in the
+// usual quarter-hour parts.
+void AppJobsTest::summarizeCutOneCallNotesGoOnInParts()
+{
+    selectWholeMode(m_app.get());
+    int calls = 0;
+    m_http->handler = [&](const FakeRequest& r) -> FakeReply {
+        if (!r.path.endsWith("/chat/completions")) return {404, "{}"};
+        if (++calls == 1)
+            return {200, chat(QStringLiteral("TOPICS\n### [00:00-00:40] Tárgy 1\n- Egy pont, ami félbe"), "length")};
+        const int k = notesPart(r);
+        return {200, chat(k > 0 ? partNotes(k) : QString::fromUtf8(kMergeOk))};
+    };
+    const Meeting m = transcribedLong("Hosszú, egyben, sok jegyzet", 40);
+    QSignalSpy ready(m_app.get(), &app::AppController::summaryReady);
+    m_app->summarizeMeeting(m.id);
+    QVERIFY(ready.wait(10000));
+    QVERIFY2(m_errors.isEmpty(), qPrintable(m_errors.join("; ")));
+    QCOMPARE(calls, 5);                                         // the cut one + 3 notes + the merge
+    const library::SummaryDocument doc = m_app->summaryDocument(m.id);
+    QCOMPARE(doc.summary.memo.size(), 3);
+    QCOMPARE(doc.summary.execSummary, QStringLiteral("Hosszú megbeszélés összegzése."));
+    QVERIFY(!doc.meta.truncated);
+
+    // A short (one-part) meeting cut inside its notes has nothing to fall back to: a clear failure.
+    calls = 0;
+    m_errors.clear();
+    m_http->handler = [](const FakeRequest& r) -> FakeReply {
+        if (!r.path.endsWith("/chat/completions")) return {404, "{}"};
+        return {200, chat(QStringLiteral("TOPICS\n### [00:00-00:40] Tárgy 1\n- Egy pont, ami félbe"), "length")};
+    };
+    const Meeting shortM = transcribed("Rövid, megszakad");
+    QSignalSpy finished(m_app->jobs(), &library::MeetingJobTracker::jobFinished);
+    m_app->summarizeMeeting(shortM.id);
+    QTRY_COMPARE(finished.count(), 1);
+    QCOMPARE(finished.at(0).at(2).value<JobOutcome>(), JobOutcome::Failed);
+    QVERIFY2(m_errors.join("; ").contains(QStringLiteral("Max. tokenek")), qPrintable(m_errors.join("; ")));
+    QVERIFY(!m_app->store()->load(shortM.id).hasSummary);
 }
 
 void AppJobsTest::summarizePartFailureResumes()

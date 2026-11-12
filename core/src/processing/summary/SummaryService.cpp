@@ -193,6 +193,7 @@ void SummaryService::summarize(const SummaryRequest& req)
     m_truncated = false;
     m_lastTruncated = false;
     m_notesRetried.clear();
+    m_singleSplit = false;
     m_notes = QVector<PartNotes>(m_parts.size());
     m_done = QVector<bool>(m_parts.size(), false);
     loadCache();
@@ -453,11 +454,55 @@ void SummaryService::startMerge()
                     "újrapróbáláskor csak az összegzés fut le újra.").arg(r.error) + cutHint());
             return;
         }
-        if (m_lastTruncated) m_truncated = true;
+        if (m_lastTruncated) {
+            // The JSON repair closes a cut object, so it "parses": a summary sentence ending mid-word and
+            // empty decisions / action items. Not a finished summary; the notes stay for the retry.
+            qWarning().noquote() << "[Summary] merge reply cut at the reply-size limit — not accepted";
+            fail(tr("Az összegzés félbemaradt. A részjegyzetek megmaradtak — újrapróbáláskor csak az "
+                    "összegzés fut le újra.") + cutHint());
+            return;
+        }
         m_running = false;
         if (!m_req.cachePath.isEmpty()) QFile::remove(m_req.cachePath);
         emit summaryReady(buildSummary(r, m_notes, m_speakers, m_lines));
     });
+}
+
+// The one-call reply was cut at the reply-size limit. The answer is the notes first and the short form
+// last, and the notes grow with the meeting's length, so on a long meeting the short form is what gets
+// lost. Nothing of a cut short form is used (the JSON repair would make it "parse").
+void SummaryService::recoverCutSingle(const QString& text, const SingleResult& r)
+{
+    if (r.notesEnd >= 0 && !r.notes.isEmpty()) {
+        // The notes are complete: kept (cached like a part note), and only the short form is asked again,
+        // from the notes, as its own call with its own reply size.
+        qWarning().noquote() << "[Summary] one-call reply cut after its notes — running the merge from the notes";
+        m_notes[0] = r.notes;
+        m_done[0] = true;
+        storeCache(0, text.left(r.notesEnd));
+        startMerge();
+        return;
+    }
+    // Cut inside the notes: the whole meeting does not fit one reply. Once per run: on in parts.
+    if (!m_singleSplit) {
+        const QVector<TranscriptPart> parts = splitTranscript(m_req.transcript.segments(), kDefaultPartMs);
+        if (parts.size() > 1) {
+            m_singleSplit = true;
+            qWarning().noquote() << "[Summary] one-call reply cut inside its notes — continuing in"
+                                 << parts.size() << "parts";
+            m_parts = parts;
+            m_notes = QVector<PartNotes>(m_parts.size());
+            m_done = QVector<bool>(m_parts.size(), false);
+            loadCache();   // part notes of an earlier run are fine
+            int cached = 0;
+            for (bool d : std::as_const(m_done)) cached += d ? 1 : 0;
+            emit partsChanged(int(m_parts.size()), cached);
+            startFlow();
+            return;
+        }
+    }
+    qWarning().noquote() << "[Summary] one-call reply cut at the reply-size limit — nothing usable in it";
+    fail(tr("Az összefoglaló félbemaradt.") + cutHint());
 }
 
 void SummaryService::startSingle()
@@ -469,6 +514,7 @@ void SummaryService::startSingle()
     user += reminder();
     call(prompt(m_req.singlePrompt, "single"), user, m_req.maxTokens, [this](const QString& text) {
         const SingleResult r = parseSingle(text, m_parts.at(0));
+        if (m_lastTruncated) { recoverCutSingle(text, r); return; }
         if (!r.merge.ok) {
             qWarning().noquote() << "[Summary] single-pass response cannot be parsed — raw response:\n"
                                  << text.left(3000);
@@ -477,13 +523,12 @@ void SummaryService::startSingle()
                 const int cut = text.indexOf(QLatin1Char('{'));
                 storeCache(0, cut > 0 ? text.left(cut) : text);
                 fail(tr("Az összefoglaló válasza nem értelmezhető: %1. A jegyzet megmaradt — "
-                        "újrapróbáláskor csak az összegzés fut le újra.").arg(r.merge.error) + cutHint());
+                        "újrapróbáláskor csak az összegzés fut le újra.").arg(r.merge.error));
             } else {
-                fail(tr("Az összefoglaló válasza nem értelmezhető: %1.").arg(r.merge.error) + cutHint());
+                fail(tr("Az összefoglaló válasza nem értelmezhető: %1.").arg(r.merge.error));
             }
             return;
         }
-        if (m_lastTruncated) m_truncated = true;
         m_running = false;
         if (!m_req.cachePath.isEmpty()) QFile::remove(m_req.cachePath);
         m_notes[0] = r.notes;

@@ -328,13 +328,15 @@ void SummarizationService::summarize(const QString& meetingId)
     clock->start();
 
     // Context-adapted re-split: the stages switch to per-part notes.
-    connect(svc, &SummaryService::partsChanged, this, [this, jobs, meetingId](int parts, int cached) {
+    connect(svc, &SummaryService::partsChanged, this, [this, jobs, meetingId, svc](int parts, int cached) {
         if (!jobs->isRunning(meetingId, JobKind::Summarize)) return;
         QVector<JobStage> stages;
         if (const JobStage* model = jobs->job(meetingId, JobKind::Summarize).stage(QStringLiteral("model")))
             stages.append(*model);
         stages.append({ QStringLiteral("notes"), tr("Jegyzetelés részenként"), StageState::Waiting, -1,
-                        tr("%n rész (a modell kontextusához igazítva)", nullptr, parts) });
+                        svc->splitForReplyLimit()
+                            ? tr("%n rész (egy válaszba nem fért bele)", nullptr, parts)
+                            : tr("%n rész (a modell kontextusához igazítva)", nullptr, parts) });
         stages.append({ QStringLiteral("merge"), tr("Összegzés"), StageState::Waiting, -1, QString() });
         jobs->setStages(meetingId, JobKind::Summarize, stages);
         jobs->setCounts(meetingId, JobKind::Summarize, cached, parts);
@@ -361,6 +363,16 @@ void SummarizationService::summarize(const QString& meetingId)
             return;
         }
         if (stage == QLatin1String("merge")) {
+            const JobProgress jp = jobs->job(meetingId, JobKind::Summarize);
+            if (!jp.stage(QStringLiteral("merge"))) {
+                // The one-call reply was cut after its notes: the short form runs as a call of its own.
+                QVector<JobStage> stages = jp.stages;
+                for (JobStage& st : stages)
+                    if (st.id == QLatin1String("single")) st.state = StageState::Done;
+                stages.append({ QStringLiteral("merge"), tr("Összegzés"), StageState::Waiting, -1,
+                                tr("a válasz megszakadt, a jegyzetből újra") });
+                jobs->setStages(meetingId, JobKind::Summarize, stages);
+            }
             jobs->setStage(meetingId, JobKind::Summarize, QStringLiteral("merge"), StageState::Running);
             emit jobProgress(meetingId, tr("Összegzés a részjegyzetekből…"));
         }

@@ -784,6 +784,7 @@ SingleResult parseSingle(const QString& raw, const TranscriptPart& part)
         pos += int(l.size()) + 1;
     }
     if (cut < 0) cut = raw.indexOf(QLatin1Char('{'));
+    r.notesEnd = cut;
     const QString notesText = cut >= 0 ? raw.left(cut) : raw;
     const QString jsonText = cut >= 0 ? raw.mid(cut) : QString();
     r.notes = parseNotesImpl(notesText, part, /*fallbackWithoutHeadings*/ false);

@@ -9655,6 +9655,13 @@
         <translation>Writing the summary</translation>
     </message>
     <message numerus="yes">
+        <source>%n rész (egy válaszba nem fért bele)</source>
+        <translation>
+            <numerusform>%n part (it did not fit one reply)</numerusform>
+            <numerusform>%n parts (it did not fit one reply)</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
         <source>%n rész (a modell kontextusához igazítva)</source>
         <translation>
             <numerusform>%n part (fitted to the model&apos;s context)</numerusform>
@@ -9675,6 +9682,10 @@
     <message>
         <source>Jegyzetelés: %1/%2. rész…</source>
         <translation>Taking notes: part %1/%2…</translation>
+    </message>
+    <message>
+        <source>a válasz megszakadt, a jegyzetből újra</source>
+        <translation>the reply was cut; again from the notes</translation>
     </message>
     <message>
         <source>Összegzés a részjegyzetekből…</source>
@@ -9710,6 +9721,14 @@
     <message>
         <source>Az összegzés válasza nem értelmezhető: %1. A részjegyzetek megmaradtak — újrapróbáláskor csak az összegzés fut le újra.</source>
         <translation>The summing-up response cannot be read: %1. The part notes are kept — a retry runs only the summing-up again.</translation>
+    </message>
+    <message>
+        <source>Az összegzés félbemaradt. A részjegyzetek megmaradtak — újrapróbáláskor csak az összegzés fut le újra.</source>
+        <translation>The summary step was cut short. The part notes are kept — a retry runs only the summary step.</translation>
+    </message>
+    <message>
+        <source>Az összefoglaló félbemaradt.</source>
+        <translation>The summary was cut short.</translation>
     </message>
     <message>
         <source>Az összefoglaló válasza nem értelmezhető: %1. A jegyzet megmaradt — újrapróbáláskor csak az összegzés fut le újra.</source>

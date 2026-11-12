@@ -81,10 +81,13 @@ public:
     void summarize(const SummaryRequest& req);
     // Cancels the running call; no signal follows. The cache is kept.
     void cancel();
-    // A reply of the finished run was cut at the reply-size limit and went into the result as it was
-    // (a part note still cut after one retry with the full size, or the final call): the summary may be
-    // incomplete. Valid from summaryReady.
+    // A part note of the finished run was still cut at the reply-size limit after its retry with the full
+    // size, and went into the result as it was: the summary may be incomplete. Valid from summaryReady.
+    // (A cut final call is never accepted: the run fails and keeps the notes.)
     bool truncated() const { return m_truncated; }
+    // The one-call reply was cut inside its notes, so the run went on part by part (the reason of the
+    // last partsChanged).
+    bool splitForReplyLimit() const { return m_singleSplit; }
 
     // The built-in single-step prompt for a short meeting ("single").
     static QString defaultSystemPrompt();
@@ -106,6 +109,7 @@ signals:
 
 private:
     QString cutHint() const;
+    void recoverCutSingle(const QString& text, const summarypipe::SingleResult& r);
     void startNextNotes();
     void startMerge();
     void startSingle();
@@ -141,6 +145,7 @@ private:
     bool m_lastTruncated = false;  // the last call's reply was cut at the reply-size limit
     bool m_truncated = false;      // a cut reply went into the result (truncated())
     QSet<int> m_notesRetried;      // parts whose cut note was asked again with the full reply size
+    bool m_singleSplit = false;    // a cut one-call reply turned the run into parts (once per run)
     bool m_resplitDone = false;    // the error-driven re-split happens once per run
 };
 
