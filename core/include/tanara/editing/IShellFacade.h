@@ -96,6 +96,14 @@ public:
     // unknown meeting / without a live backend.
     virtual editing::SpeakerEditSession* editSession(const QString& meetingId) = 0;
     virtual editing::RecheckService* recheckService(const QString& meetingId) = 0;
+    // The remote lines' owners from the meeting's voices (ParticipantService::assignRemoteLines): the number of
+    // lines changed, -1 if it could not run (*whyNot: "single-track" | "no-seeds" | "no-embeddings" | ...).
+    virtual int assignRemoteLines(const QString& meetingId, QString* whyNot)
+    {
+        Q_UNUSED(meetingId);
+        if (whyNot) *whyNot = QStringLiteral("unsupported");
+        return -1;
+    }
     // The display name of a person (the people list refreshed first); empty if unknown.
     virtual QString personName(const PersonId& person) = 0;
     virtual void requestLlmContext(int tokens) = 0;

@@ -1,6 +1,8 @@
-// tanara-cli, editing module: review, lines, reslice, side-split, participants, track-sides. All output is English, no tr().
+// tanara-cli, editing module: review, lines, reslice, side-split, participants, track-sides, remote-lines. All output is
+// English, no tr().
 #include "Commands.h"
 #include "ParticipantsCommand.h"
+#include "RemoteLinesCommand.h"
 #include "ResliceCommand.h"
 #include "ReviewCommand.h"
 #include "SideSplitCommand.h"
@@ -66,6 +68,12 @@ void registerEditingCommands(CommandRegistry& r)
     r.add({"track-sides", m, "Local / remote side check of the tracks",
            "track-sides <meeting-folder> [--frame-ms 50] [--json] [--no-cache] [--write-cache] [--legacy]", false,
            [](CliContext&, const QStringList& a) { return runTrackSidesCommand(a); }});
+    r.add({"remote-lines", m, "Remote lines' owners from the meeting's voices (dry run by default)",
+           "remote-lines <meeting-folder> [--apply] [--json]\n"
+           "remote-lines <meeting-folder> --truth <file> [--strip-utterances] [--seeds N] [--exclude-meeting-prints]\n"
+           "             [--approval] [--audio mixdown|tracks] [--single-track] [--merge 0.30] [--seed-min-ms 2000]\n"
+           "             [--cache-file F] [--json]", false,
+           [](CliContext&, const QStringList& a) { return runRemoteLinesCommand(a); }});
 }
 
 } // namespace tanara::cli

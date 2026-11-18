@@ -233,6 +233,10 @@ private:
     QSet<QString> m_skipIdentify;           // the user TURNED OFF identification after transcription (per process)
     QSet<QString> m_speechCheckRunning;     // meetingIds being measured now
     QSet<QString> m_speechChecked;          // measured in this process (not repeated even on error)
+    // The side split's activity measurement in progress after a transcript (meetingId -> token): a cancel drops
+    // the entry, so the late callback does not continue into the identification.
+    QHash<QString, quint64> m_sideSplitWaits;
+    quint64 m_sideSplitToken = 0;
     bool m_autoMixdown = true;
     providers::Route baseRoute(providers::Capability cap) const;   // the override, else the setting (may be Ask)
     providers::Route usable(providers::Capability cap, providers::Route r) const;   // Ask / dead Cloud -> fallback

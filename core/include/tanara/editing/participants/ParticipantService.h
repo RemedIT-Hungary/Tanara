@@ -35,6 +35,7 @@ class PeopleStore;
 namespace tanara::editing {
 
 class MeetingUndoRegistry;
+class RecheckService;
 class SpeakerEditSession;
 
 // The voice-analysis side of the participant operations.
@@ -79,6 +80,9 @@ public:
         // The meeting's transcript-editor session: created on demand / only an open one.
         std::function<SpeakerEditSession*(const QString& meetingId)> editorFor;
         std::function<SpeakerEditSession*(const QString& meetingId)> existingEditor;
+        // The voice analysis (line embeddings) of the meeting's editor session; may be empty (no automatic
+        // remote-line assignment after a transcription then).
+        std::function<RecheckService*(const QString& meetingId)> recheckFor;
     };
 
     explicit ParticipantService(const Deps& deps, QObject* parent = nullptr);
@@ -102,6 +106,17 @@ public:
     // The transcript arrived: binding + applying the decision (approve / "only me"). true if the decision
     // covered the speakers (automatic identification is skipped).
     bool applyParticipantsToTranscript(const QString& meetingId);
+
+    // ---- remote lines from the meeting's voices (editing/review/RemoteLineClusters.h) ----
+    // Assigns the Remote lines by clustering their embeddings (the analysis clusters' windows and the voiceprints
+    // bind the clusters to the participants), as ONE step of the meeting's shared undo (the editor step).
+    // Manual decisions are kept. Returns the number of lines changed; -1 if it could not run (*whyNot: a
+    // language-neutral reason, see SpeakerEditSession::RemoteAssignPlan::skipped).
+    int assignRemoteLines(const QString& meetingId, QString* whyNot = nullptr);
+    // After a transcription: computes the line embeddings in the background (the editor session's
+    // RecheckService) and then runs assignRemoteLines once per transcript, unless the user edited the
+    // transcript meanwhile (then the menu action is left to them).
+    void assignRemoteLinesWhenEmbedded(const QString& meetingId);
     bool approveParticipants(const QString& meetingId, const QVector<Participant>& accepted);
     bool skipApproval(const QString& meetingId);
     bool unbindParticipant(const QString& meetingId, const QString& participantId);

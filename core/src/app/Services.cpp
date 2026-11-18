@@ -35,6 +35,7 @@
 // --- P12f: transcription, workflows, editor sessions ---
 #include "tanara/app/Workflows.h"
 #include "tanara/editing/session/EditorSessions.h"
+#include "tanara/library/jobs/MeetingJobTracker.h"
 #include "tanara/library/tags/TagService.h"
 #include "tanara/processing/stt/TranscriptionService.h"
 // --- end P12f ---
@@ -378,7 +379,8 @@ Services::Services(const ServicesDeps& deps)
     , m_participantAnalysis(std::make_unique<ParticipantAnalysisAdapter>(m_voiceAnalysis.get()))
     , m_participants(std::make_unique<editing::ParticipantService>(editing::ParticipantService::Deps{
           deps.store, deps.people, m_people.get(), m_meetingUndo.get(), m_participantAnalysis.get(),
-          deps.editorFor, deps.existingEditor}))
+          deps.editorFor, deps.existingEditor,
+          [this](const QString& id) { return m_editorSessions ? m_editorSessions->recheck(id) : nullptr; }}))
     // --- end P12d ---
     // --- P16: detector registry ---
     , m_detectors(std::make_unique<watcher::MeetingDetectorRegistry>(watcher::MeetingDetectorRegistry::withBuiltins()))
@@ -405,6 +407,14 @@ Services::Services(const ServicesDeps& deps)
                      [participants](const QString& meetingId, const QVector<SpeakerVoiceMatch>& matches) {
                          participants->commitIdentification(meetingId, matches);
                      });
+    // A finished transcription (also a local re-diarization): the remote lines from the meeting's voices, once the
+    // line embeddings are computed in the background (RemoteLineClusters.h).
+    if (deps.jobs)
+        QObject::connect(deps.jobs, &library::MeetingJobTracker::jobFinished, participants,
+                         [participants](const QString& meetingId, JobKind kind, JobOutcome outcome) {
+                             if (kind == JobKind::Transcribe && outcome == JobOutcome::Done)
+                                 participants->assignRemoteLinesWhenEmbedded(meetingId);
+                         });
     // --- end P12f ---
 }
 

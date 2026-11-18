@@ -2,6 +2,7 @@
 
 #include "tanara/editing/participants/ParticipantSample.h"
 
+#include "tanara/editing/recheck/RecheckService.h"
 #include "tanara/editing/review/SideAnalysis.h"
 #include "tanara/editing/session/SpeakerEditSession.h"
 #include "tanara/editing/session/SpeakerOverlay.h"
@@ -13,6 +14,8 @@
 #include "tanara/library/tracks/TrackCatalog.h"
 
 #include <QDateTime>
+#include <QLoggingCategory>
+#include <QPointer>
 #include <QSet>
 #include <QUuid>
 
@@ -258,8 +261,54 @@ bool ParticipantService::applyParticipantsToTranscript(const QString& meetingId)
     const PersonId self = m_deps.peopleService ? m_deps.peopleService->selfPerson().id : PersonId();
     if (m_deps.analysis)
         bindings = m_deps.analysis->approvalBindings(m.participants, accepted, lines, m, /*trackVeto*/ true, self);
+    // Applied by the pipeline: a line-level split is an automatic decision, not the user's line correction (the
+    // remote-line assignment may refine it later; locked lines are skipped).
+    for (SpeakerBinding& b : bindings) b.automatic = true;
     applySpeakerBindings(meetingId, bindings, tr("Résztvevők jóváhagyása"));
     return true;
+}
+
+// ---- remote lines from the meeting's voices ----------------------------------------------------------
+
+int ParticipantService::assignRemoteLines(const QString& meetingId, QString* whyNot)
+{
+    auto fail = [whyNot](const QString& why) { if (whyNot) *whyNot = why; return -1; };
+    const Meeting m = m_deps.store->load(meetingId);
+    if (m.id.isEmpty() || !m.hasTranscript) return fail(QStringLiteral("no-transcript"));
+    SpeakerEditSession* ed = editorFor(meetingId);
+    if (!ed || !ed->hasTranscript()) return fail(QStringLiteral("no-transcript"));
+    SpeakerEditSession::RemoteAssignContext ctx;
+    ctx.analysisClusters = m_deps.analysis ? m_deps.analysis->analysisClusters(m.folder) : QVector<VoiceCluster>();
+    ctx.participants = m.participants;
+    const SpeakerEditSession::RemoteAssignPlan plan = ed->planRemoteAssignment(ctx);
+    if (!plan.ran) return fail(plan.skipped);
+    const int changed = ed->applyRemoteAssignment(plan);
+    qCInfo(lcApp).noquote() << QStringLiteral("remote lines %1: %2 clusters (%3 anonymous), %4 lines changed, %5 uncertain")
+                                   .arg(meetingId).arg(plan.result.clusters.size()).arg(plan.result.anonymous)
+                                   .arg(changed).arg(plan.weak);
+    return changed;
+}
+
+void ParticipantService::assignRemoteLinesWhenEmbedded(const QString& meetingId)
+{
+    SpeakerEditSession* ed = editorFor(meetingId);
+    RecheckService* rc = m_deps.recheckFor ? m_deps.recheckFor(meetingId) : nullptr;
+    if (!ed || !rc || !ed->hasTranscript() || ed->remoteAssignmentDone() || !rc->embeddingsSupported()) return;
+    // "Nothing was edited meanwhile": the editor's undo steps at this moment.
+    const QVector<quint64> steps = ed->undoSerials();
+    QPointer<SpeakerEditSession> session(ed);
+    auto run = [this, meetingId, steps, session](bool complete) {
+        if (!complete || !session || session->remoteAssignmentDone()) return;
+        if (session->undoSerials() != steps) {
+            qCInfo(lcApp).noquote() << QStringLiteral("remote lines %1: skipped, the transcript was edited meanwhile")
+                                           .arg(meetingId);
+            return;
+        }
+        assignRemoteLines(meetingId);
+    };
+    if (rc->embeddingsComplete()) { run(true); return; }
+    connect(rc, &RecheckService::embeddingFinished, this, run, Qt::SingleShotConnection);
+    rc->startEmbedding();   // already running: the connection waits for its end
 }
 
 bool ParticipantService::approveParticipants(const QString& meetingId, const QVector<Participant>& accepted)

@@ -1070,6 +1070,7 @@ struct SpeakerEditSession::Private {
         ov = snapshot;
         ov.identified = cur.identified;
         ov.transcriptFingerprint = cur.transcriptFingerprint;
+        ov.remoteAssignedAt = cur.remoteAssignedAt;   // an undone automatic run does not run by itself again
         if (snapshot.summaryEpoch != cur.summaryEpoch) {
             // A new summary was made meanwhile (or "Fine as is"): relative to it the undo is also a speaker change.
             ov.summaryEpoch = cur.summaryEpoch;
@@ -1143,10 +1144,44 @@ struct SpeakerEditSession::Private {
             OverlayUtterance& u = ov.utterances[lines[i].id];
             u.speaker = key;
             u.corrected = true;     // a manual decision: no longer uncertain
+            u.automatic = false;
             u.rechecked = false;
             u.recheckHint.clear();
             u.ignored = false;      // we know who said it: identifiable again
             if (noisy) u.noisy = true;
+        }
+        appendUnique(s.affectedSpeakers, key);
+    }
+
+    // The line's speaker without automatic overrides (the raw label -> merge redirect, or a manual override).
+    QString baseKeyAt(int i) const
+    {
+        const auto it = ov.utterances.constFind(lines[i].id);
+        if (it == ov.utterances.constEnd() || !it->automatic) return assigned.value(i);
+        SpeakerOverlay probe;
+        probe.merged = ov.merged;
+        return resolveSpeakerKey(probe, lines[i]);
+    }
+
+    // An automatic assignment of the lines (not locked: the caller skips locked lines). Back to the base speaker
+    // (or the base speaker's person) = the automatic override is dropped.
+    void setAutomatic(const QVector<int>& idx, const QString& key, Step& s)
+    {
+        for (int i : idx) {
+            const QString base = baseKeyAt(i);
+            const PersonId person = personOf(key);
+            const bool same = base == key || (!person.isNull() && personOf(base) == person);
+            auto it = ov.utterances.find(lines[i].id);
+            if (same) {
+                if (it == ov.utterances.end() || !it->automatic) continue;
+                it->speaker.clear();
+                it->automatic = false;
+                if (it->isDefault()) ov.utterances.erase(it);
+                continue;
+            }
+            OverlayUtterance& u = it != ov.utterances.end() ? it.value() : ov.utterances[lines[i].id];
+            u.speaker = key;
+            u.automatic = true;
         }
         appendUnique(s.affectedSpeakers, key);
     }
@@ -1797,13 +1832,15 @@ bool SpeakerEditSession::applyBindings(const QVector<SpeakerBinding>& bindings, 
         if (key.isEmpty()) key = d->createParticipant(person, s);
         QVector<int> idx;
         for (int i : all) {
+            if (b.automatic && d->lockedAt(i)) continue;   // an automatic binding never overrides the user
             const auto o = d->ov.utterances.constFind(d->lines[i].id);
             const QString cur = (o != d->ov.utterances.constEnd() && !o->speaker.isEmpty())
                 ? o->speaker : d->assigned.value(i);
             if (cur != key) idx.append(i);
         }
         if (idx.isEmpty()) continue;
-        d->moveLines(idx, key, s);
+        if (b.automatic) d->setAutomatic(idx, key, s);
+        else d->moveLines(idx, key, s);
         changed = true;
     }
     if (!changed) return false;
@@ -2464,6 +2501,237 @@ bool SpeakerEditSession::applyRecheckMarks(const QVector<RecheckMark>& marks,
     if (sameEdits(s.before, d->ov)) return false;
     d->commit(s, undoText ? undoText() : QString());
     return true;
+}
+
+// ---- remote lines from the meeting's voices ----------------------------------------------------------
+
+MeetingActivity SpeakerEditSession::activityNow() const
+{
+    if (d->activity) return *d->activity;
+    const ActivityProvider provider = d->activityProvider ? d->activityProvider : d->defaultActivityProvider;
+    if (!provider || !d->store) return {};
+    const Meeting m = d->store->load(d->meetingId);
+    return m.id.isEmpty() ? MeetingActivity{} : provider(m);
+}
+
+bool SpeakerEditSession::remoteAssignmentDone() const { return !d->ov.remoteAssignedAt.isEmpty(); }
+
+SpeakerEditSession::RemoteAssignPlan SpeakerEditSession::planRemoteAssignment(const RemoteAssignContext& ctx) const
+{
+    RemoteAssignPlan plan;
+    const int n = d->lines.size();
+    if (n == 0 || !d->store) { plan.skipped = QStringLiteral("no-transcript"); return plan; }
+    if (d->fused.isEmpty()) { plan.skipped = QStringLiteral("no-embeddings"); return plan; }
+    const Meeting m = d->store->load(d->meetingId);
+
+    // Sides: without both a mic and a loopback track every line is Unknown (single-track meeting).
+    const MeetingActivity act = ctx.activity ? *ctx.activity : activityNow();
+    const QVector<Side> sideOf = sides::classifyLineSides(act, d->lines);
+    bool mic = false, loop = false;
+    for (const TrackActivity& t : act.tracks) {
+        mic |= t.kind == TrackKind::Mic;
+        loop |= t.kind == TrackKind::Loopback;
+    }
+    plan.singleTrack = !(mic && loop);
+    if (plan.singleTrack && !ctx.singleTrack) { plan.skipped = QStringLiteral("single-track"); return plan; }
+
+    // ---- targets: the visible speakers (one per person) + the participants' persons without a speaker ----
+    QHash<PersonId, const Participant*> participantOf;
+    for (const Participant& p : ctx.participants)
+        if (!p.personId.isNull() && !participantOf.contains(p.personId)) participantOf.insert(p.personId, &p);
+    auto personIsLocal = [&](const PersonId& person) {
+        if (person.isNull()) return false;
+        if (d->self.is(person)) return true;
+        const Participant* p = participantOf.value(person);
+        if (!p) return false;
+        if (!p->tracks.isEmpty()) return sides::sideOfTracks(m, p->tracks) == Side::Local;
+        return p->sides == QStringList{QStringLiteral("mic")};
+    };
+    auto keyIsLocal = [&](const QString& key) {
+        const QStringList tracks = d->ov.speakerTracks.value(key);
+        if (!tracks.isEmpty()) return sides::sideOfTracks(m, tracks) == Side::Local;
+        return personIsLocal(d->personOf(key));
+    };
+    // The person of an analysis cluster: its participant's, else its accepted match.
+    QHash<QString, PersonId> personOfParticipant;
+    for (const Participant& p : ctx.participants) personOfParticipant.insert(p.id, p.personId);
+    auto clusterPerson = [&](const VoiceCluster& c) {
+        const auto it = personOfParticipant.constFind(c.participantId);
+        return it != personOfParticipant.constEnd() ? it.value() : c.matchPersonId;
+    };
+    const bool remoteOnly = !plan.singleTrack;
+    QHash<PersonId, QVector<QPair<qint64, qint64>>> windowsOf;
+    QVector<QPair<qint64, qint64>> otherWindows;
+    for (const VoiceCluster& c : ctx.analysisClusters) {
+        if (remoteOnly && c.side != QStringLiteral("loopback")) continue;
+        const PersonId person = clusterPerson(c);
+        if (person.isNull()) otherWindows += c.windows;
+        else windowsOf[person] += c.windows;
+    }
+
+    QVector<remotelines::Target> targets;
+    QHash<QString, QString> targetOfKey;          // speaker key -> target id
+    QHash<PersonId, QString> targetOfPerson;
+    auto addTarget = [&](const QString& id, const PersonId& person, bool local) {
+        remotelines::Target t;
+        t.id = id;
+        t.local = local;
+        t.named = !person.isNull();
+        if (t.named) {
+            t.windows = windowsOf.value(person);
+            if (d->voiceprints)
+                for (const auto& fp : d->fusedPrints(person))
+                    if (ctx.excludePrintsOfMeeting.isEmpty() || fp.sourceMeetingId != ctx.excludePrintsOfMeeting)
+                        t.prints.append(fp.vec);
+            targetOfPerson.insert(person, id);
+        }
+        targets.append(t);
+        plan.targetKey.insert(id, id.startsWith(QLatin1String("person:")) ? QStringLiteral("+") + id : id);
+    };
+    // One target per person: the person's speaker with the most lines.
+    QHash<QString, int> linesOfKey;
+    for (const QString& k : std::as_const(d->assigned)) ++linesOfKey[k];
+    QStringList keys = d->visibleKeys();
+    std::stable_sort(keys.begin(), keys.end(), [&](const QString& a, const QString& b) {
+        return linesOfKey.value(a) > linesOfKey.value(b);
+    });
+    for (const QString& key : std::as_const(keys)) {
+        const PersonId person = d->personOf(key);
+        if (!person.isNull() && targetOfPerson.contains(person)) {
+            targetOfKey.insert(key, targetOfPerson.value(person));
+            continue;
+        }
+        addTarget(key, person, keyIsLocal(key));
+        targetOfKey.insert(key, key);
+    }
+    for (const Participant& p : ctx.participants) {
+        if (p.personId.isNull() || targetOfPerson.contains(p.personId)) continue;
+        addTarget(QStringLiteral("person:") + p.personId.toString(), p.personId, personIsLocal(p.personId));
+    }
+
+    // ---- lines ----
+    plan.input.resize(n);
+    plan.hasVector.fill(false, n);
+    plan.currentKey.resize(n);
+    QVector<remotelines::Line> in(n);
+    for (int i = 0; i < n; ++i) {
+        const TranscriptLine& l = d->lines[i];
+        remotelines::Line& x = in[i];
+        x.id = l.id;
+        x.startMs = l.startMs;
+        x.endMs = l.endMs;
+        x.rawLabel = l.rawLabel;
+        x.side = plan.singleTrack ? Side::Unknown : sideOf.value(i, Side::Unknown);
+        x.embedding = d->fused.value(l.id);
+        x.ignored = d->ignoredAt(i);
+        x.currentTarget = targetOfKey.value(d->assigned[i]);
+        if (d->lockedAt(i)) x.lockedTarget = targetOfKey.value(d->assigned[i]);
+        plan.currentKey[i] = d->assigned[i];
+        plan.hasVector[i] = !x.embedding.isEmpty();
+        plan.input[i] = x;
+        plan.input[i].embedding.clear();
+    }
+    remotelines::Options opt = ctx.options;
+    opt.sideKnown = !plan.singleTrack;
+    plan.result = remotelines::assign(in, targets, otherWindows, opt);
+    if (!plan.result.ran) { plan.skipped = plan.result.skipped; return plan; }
+    plan.ran = true;
+
+    // ---- anonymous voices -> an anonymous speaker of the meeting holding most of its lines, else a new one ----
+    QSet<QString> takenAnon;
+    for (const remotelines::Cluster& c : std::as_const(plan.result.clusters)) {
+        if (!remotelines::isAnonymous(c.target) || plan.targetKey.contains(c.target)) continue;
+        QHash<QString, qint64> per;
+        qint64 total = 0;
+        for (int i = 0; i < n; ++i) {
+            if (plan.result.lines[i].target != c.target) continue;
+            const qint64 dur = d->lines[i].endMs - d->lines[i].startMs;
+            per[d->assigned[i]] += dur;
+            total += dur;
+        }
+        QString best;
+        qint64 bestV = 0;
+        for (auto it = per.cbegin(); it != per.cend(); ++it) {
+            const QString& k = it.key();
+            if (takenAnon.contains(k) || !d->visible(k) || !d->personOf(k).isNull() || keyIsLocal(k)) continue;
+            if (it.value() > bestV || (it.value() == bestV && k < best)) { best = k; bestV = it.value(); }
+        }
+        if (!best.isEmpty() && 2 * bestV >= total) {
+            takenAnon.insert(best);
+            plan.targetKey.insert(c.target, best);
+        } else {
+            plan.targetKey.insert(c.target, QStringLiteral("+") + c.target);
+        }
+    }
+
+    plan.newKey = plan.currentKey;
+    plan.hintKey.resize(n);
+    QSet<QString> created;
+    for (int i = 0; i < n; ++i) {
+        const remotelines::LineDecision& dec = plan.result.lines[i];
+        if (dec.target.isEmpty() || d->lockedAt(i)) continue;
+        QString key = plan.targetKey.value(dec.target);
+        if (key.isEmpty()) continue;
+        // The same person under another key of the meeting: unchanged.
+        const PersonId person = key.startsWith(QLatin1Char('+')) ? PersonId() : d->personOf(key);
+        const bool samePerson = !person.isNull() && d->personOf(d->assigned[i]) == person;
+        if (key != d->assigned[i] && !samePerson) {
+            plan.newKey[i] = key;
+            ++plan.changed;
+            if (key.startsWith(QLatin1Char('+'))) created.insert(key);
+        }
+        if (dec.weak) {
+            plan.hintKey[i] = plan.targetKey.value(dec.hint);
+            ++plan.weak;
+        }
+    }
+    plan.newParticipants = created.size();
+    return plan;
+}
+
+int SpeakerEditSession::applyRemoteAssignment(const RemoteAssignPlan& plan)
+{
+    if (!plan.ran || plan.newKey.size() != d->lines.size()) return 0;
+    Step s = d->begin();
+    QHash<QString, QString> made;   // "+..." placeholder -> the participant created
+    auto keyFor = [&](const QString& k, bool create) -> QString {
+        if (!k.startsWith(QLatin1Char('+'))) return d->visible(k) ? k : QString();
+        auto it = made.find(k);
+        if (it != made.end()) return it.value();
+        PersonId person;
+        if (k.startsWith(QLatin1String("+person:"))) {
+            person = PersonId::fromString(k.mid(8));
+            const QString existing = d->speakerKeyForPerson(person);
+            if (!existing.isEmpty()) return made.insert(k, existing).value();
+        }
+        if (!create) return {};
+        return made.insert(k, d->createParticipant(person, s)).value();
+    };
+    QMap<QString, QVector<int>> byKey;
+    int changed = 0;
+    for (int i = 0; i < d->lines.size(); ++i) {
+        if (d->lockedAt(i) || d->ignoredAt(i) || plan.newKey[i] == plan.currentKey.value(i)) continue;
+        const QString key = keyFor(plan.newKey[i], /*create*/ true);
+        if (!key.isEmpty() && key != d->assigned[i]) { byKey[key].append(i); ++changed; }
+    }
+    for (auto it = byKey.cbegin(); it != byKey.cend(); ++it) d->setAutomatic(it.value(), it.key(), s);
+    // Weak decisions: uncertain, with the runner-up as the suggestion.
+    for (int i = 0; i < d->lines.size(); ++i) {
+        const QString hint = plan.hintKey.value(i);
+        if (hint.isEmpty() || d->lockedAt(i) || d->ignoredAt(i)) continue;
+        const QString hk = keyFor(hint, /*create*/ false);
+        OverlayUtterance& u = d->ov.utterances[d->lines[i].id];
+        u.rechecked = true;
+        u.recheckHint = hk;
+    }
+    d->ov.remoteAssignedAt = QDateTime::currentDateTime().toString(Qt::ISODate);
+    if (sameEdits(s.before, d->ov)) {
+        // Nothing to undo: only the record of the run is stored.
+        if (!d->folder.isEmpty()) library::TranscriptRepository::writeOverlay(d->folder, d->ov);
+        return 0;
+    }
+    d->commit(s, tr("Hívás-oldali sorok a hangok alapján: %n sor", nullptr, changed));
+    return changed;
 }
 
 } // namespace tanara::editing

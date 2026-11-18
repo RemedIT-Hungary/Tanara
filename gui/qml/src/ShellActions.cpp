@@ -16,6 +16,7 @@
 #include <QFileInfo>
 #include <QEventLoop>
 #include <QMetaMethod>
+#include <QPointer>
 #include <QTimer>
 #include <QUrl>
 
@@ -859,6 +860,56 @@ void ShellActions::recheckSpeakers(const QString& meetingId)
     runRecheck(meetingId, tr("Beszélők újraellenőrzése"),
                tr("Újraellenőrizzem a sorokat a megerősített és javított sorok hangja alapján? "
                   "A kétséges sorokat az Átnézendő szűrőbe teszem, hogy átnézhesd őket."));
+}
+
+void ShellActions::assignRemoteLines(const QString& meetingId)
+{
+    if (!m_facade || !m_facade->live() || meetingId.isEmpty())
+        return;
+    tanara::editing::SpeakerEditSession* ed = m_facade->editSession(meetingId);
+    tanara::editing::RecheckService* recheck = ed ? m_facade->recheckService(meetingId) : nullptr;
+    if (!ed || !recheck || !ed->hasTranscript()) {
+        toast(tr("Ennek a megbeszélésnek nincs szerkeszthető átirata."));
+        return;
+    }
+    if (!recheck->embeddingsComplete() && !recheck->embeddingsSupported()) {
+        toast(tr("A hangok szétválasztásához nincs telepítve a hangmodell."));
+        return;
+    }
+    if (!confirm(tr("Hívás-oldali sorok a hangok alapján"),
+                 tr("A hívás oldalán elhangzott sorokat a megbeszélés hangjai szerint csoportosítom, és a "
+                    "csoportokat a résztvevőkhöz rendelem. A kézzel javított és megerősített sorokhoz nem "
+                    "nyúlok; a bizonytalanokat az Átnézendő szűrőbe teszem. Ctrl+Z visszavonja."),
+                 tr("Besorolás"), false))
+        return;
+    QPointer<ShellActions> self(this);
+    auto run = [self, meetingId](bool complete) {
+        if (!self || !self->m_facade) return;
+        if (!complete) {
+            self->toast(tr("A sorok hang-elemzése nem készült el, így a besorolás elmaradt."));
+            return;
+        }
+        QString why;
+        const int n = self->m_facade->assignRemoteLines(meetingId, &why);
+        if (n > 0) {
+            if (meetingId == self->m_currentMeetingId) self->showTab(1);   // the Transcript tab
+            self->toast(tr("%n hívás-oldali sort soroltam át a hangok alapján.", "", n));
+        } else if (n == 0) {
+            self->toast(tr("A hívás-oldali sorok a hangok alapján is a helyükön vannak."));
+        } else if (why == QLatin1String("single-track")) {
+            self->toast(tr("Ennek a megbeszélésnek nincs külön mikrofon- és hívássávja, így nem tudom, "
+                           "mely sorok szóltak a hívásból."));
+        } else {
+            self->toast(tr("Nem találtam elég hosszú hívás-oldali sort a hangok szétválasztásához."));
+        }
+    };
+    if (recheck->embeddingsComplete()) {
+        run(true);
+        return;
+    }
+    toast(tr("A sorok hang-elemzése fut; a végén besorolom a hívás-oldali sorokat."));
+    connect(recheck, &tanara::editing::RecheckService::embeddingFinished, this, run, Qt::SingleShotConnection);
+    recheck->startEmbedding();
 }
 
 void ShellActions::runRecheck(const QString& meetingId, const QString& title, const QString& text)

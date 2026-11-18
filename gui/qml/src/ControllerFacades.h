@@ -60,6 +60,7 @@ public:
     bool participantApprovalPending(const QString& meetingId) const override;
     tanara::editing::SpeakerEditSession* editSession(const QString& meetingId) override;
     tanara::editing::RecheckService* recheckService(const QString& meetingId) override;
+    int assignRemoteLines(const QString& meetingId, QString* whyNot) override;
     QString personName(const tanara::PersonId& person) override;
     void requestLlmContext(int tokens) override;
     void cancelJob(const QString& meetingId, tanara::JobKind kind) override;

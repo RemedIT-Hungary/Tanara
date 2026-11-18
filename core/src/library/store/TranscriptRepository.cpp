@@ -257,6 +257,7 @@ SpeakerOverlay TranscriptRepository::readOverlay(const QString& meetingFolder)
         u.rechecked = o.value(QStringLiteral("rechecked")).toBool();
         u.recheckHint = o.value(QStringLiteral("recheckHint")).toString();
         u.ignored = o.value(QStringLiteral("ignored")).toBool();
+        u.automatic = o.value(QStringLiteral("auto")).toBool() && !u.speaker.isEmpty() && !u.corrected;
         if (!u.isDefault()) ov.utterances.insert(it.key(), u);
     }
 
@@ -274,6 +275,7 @@ SpeakerOverlay TranscriptRepository::readOverlay(const QString& meetingFolder)
     for (const QJsonValue& v : sum.value(QStringLiteral("changedSpeakers")).toArray())
         ov.changedSinceSummary << speakerkeys::normalizeSpeakerLabel(v.toString());
     ov.summaryEpoch = sum.value(QStringLiteral("epoch")).toInt();
+    ov.remoteAssignedAt = root.value(QStringLiteral("remoteAssignedAt")).toString();
     return ov;
 }
 
@@ -289,6 +291,7 @@ SpeakerOverlay TranscriptRepository::readOverlayFor(const QString& meetingFolder
         ov.removedRaw.clear();
         ov.utterances.clear();
         ov.speakerTracks.clear();
+        ov.remoteAssignedAt.clear();
         ov.nextParticipant = 1;
         ov.nextAnonymous = 1;
     }
@@ -339,6 +342,7 @@ bool TranscriptRepository::writeOverlay(const QString& meetingFolder, const Spea
         QJsonObject o;
         if (!it.value().speaker.isEmpty()) o[QStringLiteral("speaker")] = it.value().speaker;
         if (it.value().corrected) o[QStringLiteral("corrected")] = true;
+        if (it.value().automatic) o[QStringLiteral("auto")] = true;
         if (it.value().confirmed) o[QStringLiteral("confirmed")] = true;
         if (it.value().noisy.has_value()) o[QStringLiteral("noisy")] = *it.value().noisy;
         if (it.value().ignored) o[QStringLiteral("ignored")] = true;
@@ -364,6 +368,7 @@ bool TranscriptRepository::writeOverlay(const QString& meetingFolder, const Spea
     sum[QStringLiteral("changedSpeakers")] = QJsonArray::fromStringList(ov.changedSinceSummary);
     sum[QStringLiteral("epoch")] = ov.summaryEpoch;
     root[QStringLiteral("summary")] = sum;
+    if (!ov.remoteAssignedAt.isEmpty()) root[QStringLiteral("remoteAssignedAt")] = ov.remoteAssignedAt;
 
     return writeBytes(path, QJsonDocument(root).toJson(QJsonDocument::Indented));
 }

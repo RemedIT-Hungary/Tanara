@@ -331,6 +331,11 @@ tanara::editing::RecheckService* ShellControllerFacade::recheckService(const QSt
     return m_c ? m_c->recheckService(meetingId) : nullptr;
 }
 
+int ShellControllerFacade::assignRemoteLines(const QString& meetingId, QString* whyNot)
+{
+    return m_c ? m_c->assignRemoteLines(meetingId, whyNot) : -1;
+}
+
 QString ShellControllerFacade::personName(const tanara::PersonId& person)
 {
     tanara::library::PeopleStore* people = m_c ? m_c->people() : nullptr;

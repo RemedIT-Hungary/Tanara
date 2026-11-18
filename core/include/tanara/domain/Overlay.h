@@ -50,14 +50,19 @@ struct OverlayUtterance {
     // 2-means, side learning, candidate profile, voiceprint), never uncertain, and not put in a
     // "To review" group. Stronger than noisy (a locked core may still use a noisy line).
     bool    ignored = false;
+    // The speaker override comes from an AUTOMATIC assignment (the remote-line clustering,
+    // editing/review/RemoteLineClusters.h, or a line-level binding of the participant approval), not
+    // from the user: the line is not locked (corrected stays false), and a rerun may replace it.
+    // Persisted as "auto": true next to "speaker".
+    bool    automatic = false;
     bool isDefault() const {
         return speaker.isEmpty() && !corrected && !confirmed && !noisy.has_value() && !rechecked
-            && !ignored;
+            && !ignored && !automatic;
     }
     bool operator==(const OverlayUtterance& o) const {
         return speaker == o.speaker && corrected == o.corrected && confirmed == o.confirmed
             && noisy == o.noisy && rechecked == o.rechecked && recheckHint == o.recheckHint
-            && ignored == o.ignored;
+            && ignored == o.ignored && automatic == o.automatic;
     }
 };
 
@@ -87,11 +92,14 @@ struct SpeakerOverlay {
     QMap<QString, OverlayIdentification> identified;// raw label -> result of the voice identification
     QStringList changedSinceSummary;                // keys of the speakers corrected since the summary
     int summaryEpoch = 0;                           // grows when the summary is regenerated / accepted
+    // The automatic remote-line assignment ran on this transcript (ISO time; empty = not yet). The pipeline
+    // runs it by itself only once per transcript; dropped with the line corrections on a new transcript.
+    QString remoteAssignedAt;
 
     // Whether there is a line-/speaker-level correction (identification and the stale flag do not count).
     bool hasEdits() const {
         return !participants.isEmpty() || !merged.isEmpty() || !removedRaw.isEmpty()
-            || !utterances.isEmpty() || !speakerTracks.isEmpty();
+            || !utterances.isEmpty() || !speakerTracks.isEmpty() || !remoteAssignedAt.isEmpty();
     }
     bool isEmpty() const {
         return !hasEdits() && identified.isEmpty() && changedSinceSummary.isEmpty()

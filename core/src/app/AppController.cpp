@@ -998,6 +998,11 @@ editing::RecheckService* AppController::recheckService(const QString& meetingId)
     return d->services ? d->services->editorSessions().recheck(meetingId) : nullptr;
 }
 
+int AppController::assignRemoteLines(const QString& meetingId, QString* whyNot)
+{
+    return d->services ? d->services->participants().assignRemoteLines(meetingId, whyNot) : -1;
+}
+
 void AppController::closeEditSession(const QString& meetingId) { d->editors->close(meetingId); }
 
 QVector<editing::PersonInfo> AppController::peopleDirectory() const

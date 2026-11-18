@@ -57,6 +57,9 @@ struct SpeakerBinding {
     QString     rawLabel;
     PersonId    personId;
     QStringList utteranceIds;   // empty = the whole raw speaker
+    // A line list from an automatic decision (the approval's track split, applied by the pipeline): the
+    // lines are marked automatic (OverlayUtterance::automatic), not corrected, and locked lines are skipped.
+    bool        automatic = false;
 };
 
 // Groups of the approval dialog: Certain (voice + another source), Doubtful (voice only, or

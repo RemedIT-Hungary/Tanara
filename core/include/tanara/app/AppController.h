@@ -224,6 +224,9 @@ public:
     editing::SpeakerEditSession* editSession(const QString& meetingId);
     // The voice analysis (embeddings, recheck) of the same session (created with it on demand).
     editing::RecheckService* recheckService(const QString& meetingId);
+    // The remote lines' owners from the meeting's voices (editing::ParticipantService::assignRemoteLines): one
+    // undo step; the number of lines changed, -1 if it could not run (*whyNot).
+    int assignRemoteLines(const QString& meetingId, QString* whyNot = nullptr);
     // Closes the session (undo stack dropped; the corrections stay on disk).
     void closeEditSession(const QString& meetingId);
 

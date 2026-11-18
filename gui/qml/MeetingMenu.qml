@@ -55,6 +55,13 @@ TMenu {
         onTriggered: if (root.shell) root.shell.recheckSpeakers(root.meetingId)
     }
     TMenuItem {
+        objectName: "assignRemoteLinesItem"
+        text: qsTr("Hívás-oldali sorok a hangok alapján…")
+        iconName: "audio-lines"
+        enabled: root.hasMeeting && root.hasTranscript
+        onTriggered: if (root.shell) root.shell.assignRemoteLines(root.meetingId)
+    }
+    TMenuItem {
         text: qsTr("Újra-átírás…")
         iconName: "rotate-ccw"
         enabled: root.hasMeeting && root.hasTranscript

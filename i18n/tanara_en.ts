@@ -1671,6 +1671,10 @@
         <translation>Re-check…</translation>
     </message>
     <message>
+        <source>Hívás-oldali sorok a hangok alapján…</source>
+        <translation>Call-side lines by voice…</translation>
+    </message>
+    <message>
         <source>Újra-átírás…</source>
         <translation>Re-transcribe…</translation>
     </message>
@@ -9237,6 +9241,13 @@
         <source>Átnézendő</source>
         <translation>To review</translation>
     </message>
+    <message numerus="yes">
+        <source>Hívás-oldali sorok a hangok alapján: %n sor</source>
+        <translation>
+            <numerusform>Call-side lines by voice: %n line</numerusform>
+            <numerusform>Call-side lines by voice: %n lines</numerusform>
+        </translation>
+    </message>
 </context>
 <context>
     <name>tanara::library::ArchiveService</name>
@@ -13208,6 +13219,49 @@
     <message>
         <source>Újraellenőrizzem a sorokat a megerősített és javított sorok hangja alapján? A kétséges sorokat az Átnézendő szűrőbe teszem, hogy átnézhesd őket.</source>
         <translation>Shall I re-verify the lines against the audio of the confirmed and corrected lines? I put the doubtful lines into the To review filter so you can go through them.</translation>
+    </message>
+    <message>
+        <source>A hangok szétválasztásához nincs telepítve a hangmodell.</source>
+        <translation>The voice model needed to separate the voices is not installed.</translation>
+    </message>
+    <message>
+        <source>Hívás-oldali sorok a hangok alapján</source>
+        <translation>Call-side lines by voice</translation>
+    </message>
+    <message>
+        <source>A hívás oldalán elhangzott sorokat a megbeszélés hangjai szerint csoportosítom, és a csoportokat a résztvevőkhöz rendelem. A kézzel javított és megerősített sorokhoz nem nyúlok; a bizonytalanokat az Átnézendő szűrőbe teszem. Ctrl+Z visszavonja.</source>
+        <translation>I group the lines spoken on the call side by the voices of this meeting and assign the groups to the participants. Lines you corrected or confirmed are left alone; the uncertain ones go into the To review filter. Ctrl+Z undoes it.</translation>
+    </message>
+    <message>
+        <source>Besorolás</source>
+        <translation>Assign</translation>
+    </message>
+    <message>
+        <source>A sorok hang-elemzése nem készült el, így a besorolás elmaradt.</source>
+        <translation>The voice analysis of the lines did not finish, so nothing was assigned.</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n hívás-oldali sort soroltam át a hangok alapján.</source>
+        <translation>
+            <numerusform>I reassigned %n call-side line by voice.</numerusform>
+            <numerusform>I reassigned %n call-side lines by voice.</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>A hívás-oldali sorok a hangok alapján is a helyükön vannak.</source>
+        <translation>The call-side lines are already where their voices put them.</translation>
+    </message>
+    <message>
+        <source>Ennek a megbeszélésnek nincs külön mikrofon- és hívássávja, így nem tudom, mely sorok szóltak a hívásból.</source>
+        <translation>This meeting has no separate microphone and call tracks, so I cannot tell which lines came from the call.</translation>
+    </message>
+    <message>
+        <source>Nem találtam elég hosszú hívás-oldali sort a hangok szétválasztásához.</source>
+        <translation>I found no call-side lines long enough to separate the voices.</translation>
+    </message>
+    <message>
+        <source>A sorok hang-elemzése fut; a végén besorolom a hívás-oldali sorokat.</source>
+        <translation>The voice analysis of the lines is running; when it finishes I assign the call-side lines.</translation>
     </message>
     <message numerus="yes">
         <source>%n kétséges sort jelöltem meg — az Átnézendő szűrőben találod.</source>

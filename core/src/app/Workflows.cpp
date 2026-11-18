@@ -388,7 +388,13 @@ void Workflows::continueAfterTranscript(const QString& meetingId)
         loopback |= t.kind == TrackKind::Loopback;
     }
     if (mic && loopback && m_deps.voice.measureActivity && m_deps.transcription) {
-        m_deps.voice.measureActivity(m, [this, meetingId](const MeetingActivity& activity) {
+        const quint64 token = ++m_sideSplitToken;
+        m_sideSplitWaits.insert(meetingId, token);
+        m_deps.voice.measureActivity(m, [this, meetingId, token](const MeetingActivity& activity) {
+            // Cancelled meanwhile (or a newer run took over): the job is already closed, nothing continues.
+            if (m_sideSplitWaits.value(meetingId) != token) return;
+            m_sideSplitWaits.remove(meetingId);
+            if (!m_deps.jobs->isRunning(meetingId, JobKind::Transcribe)) return;
             splitLinesBySide(meetingId, activity);
             identifyAfterTranscript(meetingId);
         });
@@ -457,6 +463,11 @@ bool Workflows::cancel(const QString& meetingId, JobKind kind)
             // Diarization step: the worker stops; its outcome (cancelled) closes the job.
             m_deps.jobs->setCancelling(meetingId, kind);
             return m_deps.diarization->cancel(meetingId);
+        }
+        if (m_sideSplitWaits.remove(meetingId) > 0) {
+            // The side split's activity measurement: its late result is dropped (see continueAfterTranscript).
+            m_deps.jobs->cancelled(meetingId, kind);
+            return true;
         }
         const auto wait = m_mixWaits.find(meetingId);
         const bool stt = m_deps.transcription && m_deps.transcription->running(meetingId);

@@ -415,6 +415,7 @@ void discardForNewTranscript(const QString& meetingFolder)
     ov.removedRaw.clear();
     ov.utterances.clear();
     ov.speakerTracks.clear();
+    ov.remoteAssignedAt.clear();
     ov.identified.clear();      // the new diarization's labels mean something else
     ov.nextParticipant = 1;
     ov.nextAnonymous = 1;

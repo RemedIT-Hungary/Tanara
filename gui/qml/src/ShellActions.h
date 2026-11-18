@@ -107,6 +107,9 @@ public:
     // feedback; if it cannot run, it says why. "Identify participants" ends up here too once
     // every speaker has a name.
     Q_INVOKABLE void recheckSpeakers(const QString& meetingId);
+    // "Hívás-oldali sorok a hangok alapján" (header "..." menu): the remote lines' owners from the meeting's
+    // voices (one undo step). Without the line embeddings it computes them first and runs at their end.
+    Q_INVOKABLE void assignRemoteLines(const QString& meetingId);
     Q_INVOKABLE void cancelJob(const QString& meetingId, int jobKind);
     // "Load with larger context" (LM Studio): before the next LLM task the model is reloaded
     // with at least this many tokens of context. The caller restarts the task.

@@ -58,6 +58,7 @@ private slots:
     void manualDiarizeFailureAndGates();
     void askRouteResolution();
     void sideSplitBeforeIdentification();
+    void cancelDuringSideSplitMeasurement();
 
 private:
     Meeting recorded(const QString& title, bool freshMix = false, bool unmeasured = false);
@@ -951,6 +952,39 @@ void WorkflowsTest::sideSplitBeforeIdentification()
     QCOMPARE(library::TranscriptRepository::readTokens(m.folder).sideCuts.size(), 1);
     QVERIFY(m_calls.contains(QStringLiteral("apply")));
     QVERIFY(m_calls.contains(QStringLiteral("identify:%1:1").arg(m.id)));
+}
+
+// Cancelled while the side split's activity is measured: the job closes as cancelled at once, and the late
+// measurement does not continue into the split / binding / identification.
+void WorkflowsTest::cancelDuringSideSplitMeasurement()
+{
+    Meeting m = recorded(QStringLiteral("Mégse a mérés alatt"), /*freshMix*/ true);
+    m.tracks[1].kind = TrackKind::Loopback;
+    m_store->saveMeeting(m);
+    runToStt(m.id);
+    QVector<QPair<QString, QString>> words;
+    for (int i = 0; i < 20; ++i) words.append({QStringLiteral("1"), QStringLiteral(" w%1").arg(i)});
+    emit m_log->jobs.first()->finished(testing::sttResult(words));
+    QVERIFY(m_measureDone);
+    QVERIFY(m_jobs->isRunning(m.id, JobKind::Transcribe));
+
+    QVERIFY(m_wf->cancel(m.id, JobKind::Transcribe));
+    QVERIFY(!m_jobs->isRunning(m.id, JobKind::Transcribe));
+    QCOMPARE(outcome(m.id), JobOutcome::Cancelled);
+
+    MeetingActivity act;
+    for (const auto& [id, kind] : {std::pair{QStringLiteral("mic"), TrackKind::Mic},
+                                   std::pair{QStringLiteral("sys"), TrackKind::Loopback}}) {
+        TrackActivity t;
+        t.trackId = id;
+        t.kind = kind;
+        t.dbAboveFloor = QVector<float>(140, 30.0f);
+        act.tracks << t;
+    }
+    m_measureDone(act);
+    QVERIFY(!m_calls.contains(QStringLiteral("apply")));
+    QVERIFY(!m_calls.contains(QStringLiteral("identify:%1:1").arg(m.id)));
+    QVERIFY(library::TranscriptRepository::readTokens(m.folder).sideCuts.isEmpty());
 }
 
 QTEST_GUILESS_MAIN(WorkflowsTest)

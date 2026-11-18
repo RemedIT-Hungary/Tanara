@@ -16,7 +16,10 @@
 //  - The raw diarization is untouched; corrections live in an overlay (transcript.speakers.json).
 //  - Manual reassignment does NOT train a voiceprint; that happens only on an explicit action.
 //  - A speaker change marks the summary stale; it never regenerates by itself.
+#include "tanara/domain/Activity.h"
+#include "tanara/domain/Participant.h"
 #include "tanara/editing/review/CandidateRanker.h"
+#include "tanara/editing/review/RemoteLineClusters.h"
 #include "tanara/editing/review/ReviewGroups.h"
 #include "tanara/editing/review/SpeakerAnalysis.h"
 #include "tanara/editing/session/SpeakerEditTypes.h"
@@ -28,6 +31,7 @@
 #include <QVector>
 #include <functional>
 #include <memory>
+#include <optional>
 
 namespace tanara::library { class MeetingRepository; }
 namespace tanara::library { class PeopleStore; }
@@ -235,6 +239,45 @@ public:
     QVector<SimilarVoices> similarVoices() const;
     // The latest side analysis (inactive until it has run / there are no two sides).
     SideReport sideReport() const;
+
+    // ---- remote lines from the meeting's voices (review/RemoteLineClusters.h) ----------------
+    // The owner of a Remote line comes from clustering the remote side's line embeddings, bound to the
+    // participants by the pre-transcript voice windows and the voiceprints; manual decisions (confirmed /
+    // corrected lines) are never changed and seed their speaker's cluster. The assignment is AUTOMATIC
+    // (OverlayUtterance::automatic, corrected stays false); a weak decision is marked uncertain (the recheck
+    // flag, with the runner-up as suggestion). Needs the line embeddings (RecheckService).
+    struct RemoteAssignContext {
+        QVector<VoiceCluster> analysisClusters;     // the pre-transcript voice analysis (participants.analysis.json)
+        QVector<Participant> participants;          // the meeting's participants (the clusters' persons)
+        std::optional<MeetingActivity> activity;    // empty: the session's activity provider (synchronously)
+        QString excludePrintsOfMeeting;             // voiceprints made in this meeting are not used (evaluation)
+        remotelines::Options options;
+        bool singleTrack = remotelines::kClusterSingleTrack;   // cluster a meeting without side knowledge too
+    };
+    struct RemoteAssignPlan {
+        bool ran = false;
+        QString skipped;                    // why not: "no-transcript" | "no-embeddings" | "single-track" | ...
+        bool singleTrack = false;           // the meeting has no side knowledge
+        remotelines::Result result;
+        QVector<remotelines::Line> input;   // per transcript line (the embeddings are not kept: empty)
+        QVector<bool> hasVector;            // per line: it had a fused vector
+        QVector<QString> currentKey;        // per line: the speaker now
+        QVector<QString> newKey;            // per line: the speaker after (equal = unchanged); "+person:<uuid>" /
+                                            // "+anon:<n>": a participant created when applied
+        QVector<QString> hintKey;           // per line: the suggested speaker of a weak decision
+        QHash<QString, QString> targetKey;  // target id -> speaker key (or the "+..." placeholder)
+        int changed = 0;                    // lines whose speaker changes
+        int weak = 0;                       // lines marked uncertain
+        int newParticipants = 0;
+    };
+    RemoteAssignPlan planRemoteAssignment(const RemoteAssignContext& ctx) const;
+    // Applies the plan as ONE undo step (a stale plan's unknown lines are skipped; locked lines never change).
+    // Records the run (SpeakerOverlay::remoteAssignedAt). Returns the number of lines whose speaker changed.
+    int applyRemoteAssignment(const RemoteAssignPlan& plan);
+    // Whether the automatic run already happened on this transcript.
+    bool remoteAssignmentDone() const;
+    // The track activity now (cached, else the session's provider, synchronously; may be empty).
+    MeetingActivity activityNow() const;
 
     // ---- summary staleness / re-transcription ----------------------------
     SummaryStaleInfo summaryStale() const;
