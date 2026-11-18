@@ -49,6 +49,12 @@ struct MergedTranscript {
     // "speakers": {"source": ..., "models": [...]}.
     QString speakerSource;
     QStringList speakerModels;           // that source's models (segmentation id, then the embedding ids)
+    // Side cuts (editing/review/SideSplit.h): the ORIGINAL start times of the tokens before which a line
+    // is cut because the talker moved between the local (mic) and the remote (loopback) side. A line
+    // breaks before its token whose startMs is listed, like at a pause. tokens.json: "sideCuts": [ms...].
+    QVector<qint64> sideCuts;
+    // The token indices of the lines, in the order of segments() (the same grouping, before padding).
+    QVector<QVector<int>> lineTokenGroups() const;
     QVector<Utterance> segments() const; // per speaker, pause-based blocks in time order
     QString renderMarkdown() const;      // impl: the TranscriptMerger module
 };

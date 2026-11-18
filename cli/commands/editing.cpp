@@ -1,8 +1,9 @@
-// tanara-cli, editing module: review, lines, reslice, participants, track-sides. All output is English, no tr().
+// tanara-cli, editing module: review, lines, reslice, side-split, participants, track-sides. All output is English, no tr().
 #include "Commands.h"
 #include "ParticipantsCommand.h"
 #include "ResliceCommand.h"
 #include "ReviewCommand.h"
+#include "SideSplitCommand.h"
 #include "TrackSidesCommand.h"
 
 #include "tanara/app/AppController.h"
@@ -56,6 +57,9 @@ void registerEditingCommands(CommandRegistry& r)
     r.add({"reslice", m, "Re-pad Soniox lines, carrying the line ids over",
            "reslice <meeting-folder> [--dry-run] [--json]", false,
            [](CliContext&, const QStringList& a) { return runResliceCommand(a); }});
+    r.add({"side-split", m, "Cut lines where the talker moved between mic and loopback, carrying ids over",
+           "side-split <meeting-folder> [--apply] [--json]", false,
+           [](CliContext&, const QStringList& a) { return runSideSplitCommand(a); }});
     r.add({"participants", m, "Participants and candidates of a meeting",
            "participants <meeting-folder> [--analyze [--write] | --remove <id>] [--json]\nparticipants <meetingId>", false,
            cmdParticipants});

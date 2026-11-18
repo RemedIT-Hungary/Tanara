@@ -57,6 +57,7 @@ private slots:
     void manualDiarizeSpeakers();
     void manualDiarizeFailureAndGates();
     void askRouteResolution();
+    void sideSplitBeforeIdentification();
 
 private:
     Meeting recorded(const QString& title, bool freshMix = false, bool unmeasured = false);
@@ -916,6 +917,40 @@ void WorkflowsTest::askRouteResolution()
     runToStt(m.id);
     QCOMPARE(m_asked, asked + 1);
     QCOMPARE(m_wf->route(Capability::Stt, m.id), Route::External);
+}
+
+// A meeting with a mic AND a loopback track: after the STT the lines are cut where the talker moved
+// sides (the track activity comes from the voice side's measurement), then the binding / identification.
+void WorkflowsTest::sideSplitBeforeIdentification()
+{
+    Meeting m = recorded(QStringLiteral("Két oldal"), /*freshMix*/ true);
+    m.tracks[1].kind = TrackKind::Loopback;
+    m_store->saveMeeting(m);
+    runToStt(m.id);
+    QVector<QPair<QString, QString>> words;
+    for (int i = 0; i < 20; ++i) words.append({QStringLiteral("1"), QStringLiteral(" w%1").arg(i)});
+    emit m_log->jobs.first()->finished(testing::sttResult(words));
+    QCOMPARE(library::TranscriptRepository::readSegments(m.folder).size(), 1);
+    QVERIFY(m_calls.contains(QStringLiteral("measure")));
+    QVERIFY(!m_calls.contains(QStringLiteral("apply")));   // the binding waits for the side split
+    QVERIFY(m_measureDone);
+
+    // Local speech for 3 s, then remote speech.
+    MeetingActivity act;
+    for (const auto& [id, kind, from, to] : {std::tuple{QStringLiteral("mic"), TrackKind::Mic, 0, 3000},
+                                             std::tuple{QStringLiteral("sys"), TrackKind::Loopback, 3000, 6000}}) {
+        TrackActivity t;
+        t.trackId = id;
+        t.kind = kind;
+        t.dbAboveFloor = QVector<float>(140, 0.0f);
+        for (int f = from / 50; f < to / 50; ++f) t.dbAboveFloor[f] = 30.0f;
+        act.tracks << t;
+    }
+    m_measureDone(act);
+    QCOMPARE(library::TranscriptRepository::readSegments(m.folder).size(), 2);
+    QCOMPARE(library::TranscriptRepository::readTokens(m.folder).sideCuts.size(), 1);
+    QVERIFY(m_calls.contains(QStringLiteral("apply")));
+    QVERIFY(m_calls.contains(QStringLiteral("identify:%1:1").arg(m.id)));
 }
 
 QTEST_GUILESS_MAIN(WorkflowsTest)

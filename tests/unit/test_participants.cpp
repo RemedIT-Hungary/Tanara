@@ -358,12 +358,17 @@ void ParticipantsTest::approvalSideVetoSplitsBySide()
     const QVector<editing::Side> sidesOf = editing::sides::classifyLineSides(act, lines);
     QVERIFY(sidesOf == (QVector<editing::Side>{editing::Side::Local, editing::Side::Remote, editing::Side::Local, editing::Side::Remote, editing::Side::Remote}));
 
-    // Béla's assignment is missing, so no exclusion: the old, whole binding.
+    // Béla's assignment is missing, so no exclusion; but Ádám is the single local participant (his
+    // manual mic track): Speaker 1's call lines are never his, so Speaker 1 goes anonymous and the
+    // microphone lines go to him per line (local-side ownership); the call lines stay anonymous.
     ps[0].tracks = {QStringLiteral("mic")};
     QVector<SpeakerBinding> bind = processing::participants::approvalBindings(ps, {"v1", "v2"}, lines, {a, b}, &act, &m);
-    QCOMPARE(bind.size(), 2);
+    QCOMPARE(bind.size(), 3);
     QVERIFY(bind[0].utteranceIds.isEmpty());
-    QCOMPARE(bind[0].personId, P(QStringLiteral("Ádám")));
+    QCOMPARE(bind[0].rawLabel, QStringLiteral("speaker:1"));
+    QVERIFY(bind[0].personId.isNull());
+    QCOMPARE(bind[2].personId, P(QStringLiteral("Ádám")));
+    QCOMPARE(bind[2].utteranceIds, QStringList({"u1000", "u21000"}));
 
     // Both assigned: Speaker 1 is anonymous; Ádám gets the microphone lines, Béla the call line in
     // his voice; the 30 s call line stays anonymous.

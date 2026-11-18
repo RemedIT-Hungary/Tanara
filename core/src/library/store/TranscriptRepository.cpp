@@ -82,6 +82,7 @@ MergedTranscript TranscriptRepository::readTokens(const QString& meetingFolder)
         t.trackId    = o.value(QStringLiteral("trackId")).toString();
         mt.tokens.append(t);
     }
+    for (const QJsonValue& c : root.value(QStringLiteral("sideCuts")).toArray()) mt.sideCuts.append(qint64(c.toDouble()));
     return mt;
 }
 
@@ -105,6 +106,11 @@ bool TranscriptRepository::writeTokens(const QString& meetingFolder, const Merge
     if (!mt.speakerSource.isEmpty())   // the labels came from the local diarization (not the STT provider)
         root[QStringLiteral("speakers")] = QJsonObject{{QStringLiteral("source"), mt.speakerSource},
                                                        {QStringLiteral("models"), QJsonArray::fromStringList(mt.speakerModels)}};
+    if (!mt.sideCuts.isEmpty()) {   // the lines are cut where the talker changed sides (editing/review/SideSplit.h)
+        QJsonArray cuts;
+        for (qint64 c : mt.sideCuts) cuts.append(double(c));
+        root[QStringLiteral("sideCuts")] = cuts;
+    }
     root[QStringLiteral("tokens")] = arr;
     return writeBytes(tokensPath(meetingFolder), QJsonDocument(root).toJson(QJsonDocument::Compact));
 }

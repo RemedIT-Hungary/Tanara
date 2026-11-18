@@ -255,8 +255,9 @@ bool ParticipantService::applyParticipantsToTranscript(const QString& meetingId)
     QStringList accepted;
     for (const Participant& p : m.participants)
         if (p.approved) accepted << p.id;
+    const PersonId self = m_deps.peopleService ? m_deps.peopleService->selfPerson().id : PersonId();
     if (m_deps.analysis)
-        bindings = m_deps.analysis->approvalBindings(m.participants, accepted, lines, m, /*trackVeto*/ true);
+        bindings = m_deps.analysis->approvalBindings(m.participants, accepted, lines, m, /*trackVeto*/ true, self);
     applySpeakerBindings(meetingId, bindings, tr("Résztvevők jóváhagyása"));
     return true;
 }
@@ -343,7 +344,7 @@ bool ParticipantService::unbindParticipant(const QString& meetingId, const QStri
         Participant named = p;   // only their bindings (with a person, so two-sided lines come out)
         if (named.personId.isNull()) named.personId = PersonId::fromString(QStringLiteral("?"));
         if (m_deps.analysis)
-            for (SpeakerBinding b : m_deps.analysis->approvalBindings({named}, {p.id}, lines, m, /*trackVeto*/ false)) {
+            for (SpeakerBinding b : m_deps.analysis->approvalBindings({named}, {p.id}, lines, m, /*trackVeto*/ false, PersonId())) {
                 b.personId = PersonId();
                 bindings.append(b);
             }

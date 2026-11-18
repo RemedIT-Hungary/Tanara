@@ -7,6 +7,7 @@
 #include <QStringList>
 #include <QHash>
 #include <QRegularExpression>
+#include <QSet>
 #include <algorithm>
 
 namespace tanara::processing {
@@ -60,43 +61,64 @@ QString renderUtterancesMarkdown(const QVector<Utterance>& utterances) {
 // the merge algorithm, hence in namespace tanara.
 namespace tanara {
 
-QVector<Utterance> MergedTranscript::segments() const {
-    // Soniox subword tokens are concatenated DIRECTLY (the leading space marks the word boundary).
-    // We arrange into pause-based (1.5 s) blocks per speaker, then by time.
-    const qint64 GAP_MS = 1500;
+namespace {
 
-    QHash<QString, QVector<const TranscriptToken*>> bySpeaker;
-    QStringList speakerOrder;
-    for (const TranscriptToken& t : tokens) {
-        if (!bySpeaker.contains(t.speaker)) speakerOrder << t.speaker;
-        bySpeaker[t.speaker].append(&t);
-    }
-
-    QVector<Utterance> utts;
-    for (const QString& spk : speakerOrder) {
-        Utterance cur; bool have = false;
-        for (const TranscriptToken* t : bySpeaker[spk]) {
-            if (!have || (t->startMs - cur.endMs) > GAP_MS) {
-                if (have) utts.append(cur);
-                cur = Utterance{t->startMs, t->endMs, spk, t->text};
-                have = true;
-            } else {
-                cur.text += t->text;
-                cur.endMs = t->endMs;
-            }
-        }
-        if (have) utts.append(cur);
-    }
-
+QString lineText(const MergedTranscript& mt, const QVector<int>& group)
+{
     static const QRegularExpression multiSpace(QStringLiteral("[ \\t]{2,}"));
-    QVector<Utterance> out;
-    for (Utterance u : utts) {
-        u.text.replace(multiSpace, QStringLiteral(" "));
-        u.text = u.text.trimmed();
-        if (!u.text.isEmpty()) out.append(u);
+    QString text;
+    for (int i : group) text += mt.tokens.at(i).text;
+    text.replace(multiSpace, QStringLiteral(" "));
+    return text.trimmed();
+}
+
+} // namespace
+
+QVector<QVector<int>> MergedTranscript::lineTokenGroups() const {
+    // Soniox subword tokens are concatenated DIRECTLY (the leading space marks the word boundary).
+    // We arrange into pause-based (1.5 s) blocks per speaker, then by time. A side cut breaks a block too.
+    const qint64 GAP_MS = 1500;
+    const QSet<qint64> cuts(sideCuts.cbegin(), sideCuts.cend());
+
+    QHash<QString, QVector<int>> bySpeaker;
+    QStringList speakerOrder;
+    for (int i = 0; i < tokens.size(); ++i) {
+        const QString& spk = tokens.at(i).speaker;
+        if (!bySpeaker.contains(spk)) speakerOrder << spk;
+        bySpeaker[spk].append(i);
     }
-    std::stable_sort(out.begin(), out.end(),
-                     [](const Utterance& a, const Utterance& b) { return a.startMs < b.startMs; });
+
+    QVector<QVector<int>> groups;
+    for (const QString& spk : std::as_const(speakerOrder)) {
+        QVector<int> cur;
+        qint64 curEnd = 0;
+        for (int i : std::as_const(bySpeaker[spk])) {
+            const TranscriptToken& t = tokens.at(i);
+            if (!cur.isEmpty() && ((t.startMs - curEnd) > GAP_MS || cuts.contains(t.startMs))) {
+                groups.append(cur);
+                cur.clear();
+            }
+            cur.append(i);
+            curEnd = t.endMs;
+        }
+        if (!cur.isEmpty()) groups.append(cur);
+    }
+
+    QVector<QVector<int>> out;
+    for (const QVector<int>& g : std::as_const(groups))
+        if (!lineText(*this, g).isEmpty()) out.append(g);
+    std::stable_sort(out.begin(), out.end(), [this](const QVector<int>& a, const QVector<int>& b) {
+        return tokens.at(a.first()).startMs < tokens.at(b.first()).startMs;
+    });
+    return out;
+}
+
+QVector<Utterance> MergedTranscript::segments() const {
+    QVector<Utterance> out;
+    for (const QVector<int>& g : lineTokenGroups()) {
+        const TranscriptToken& first = tokens.at(g.first());
+        out.append(Utterance{first.startMs, tokens.at(g.last()).endMs, first.speaker, lineText(*this, g)});
+    }
     // Emission-moment timing (Soniox): grouping used the ORIGINAL token times (so lines neither merge nor
     // split); now the finished lines get the pre-/post-roll.
     if (emissionTiming) processing::sonioxtiming::padUtterances(out);

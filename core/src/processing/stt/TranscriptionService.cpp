@@ -87,6 +87,22 @@ bool TranscriptionService::replaceTranscript(const QString& meetingId, const Mer
     return true;
 }
 
+bool TranscriptionService::applySideCuts(const QString& meetingId, const QVector<qint64>& cuts)
+{
+    const Meeting mm = m_deps.store ? m_deps.store->load(meetingId) : Meeting();
+    if (mm.id.isEmpty()) return false;
+    MergedTranscript merged = currentTranscript(meetingId);
+    if (merged.tokens.isEmpty() || merged.sideCuts == cuts) return false;
+    merged.sideCuts = cuts;
+    TranscriptRepository::writeMarkdown(mm.folder, merged.renderMarkdown());
+    TranscriptRepository::writeTokens(mm.folder, merged);
+    TranscriptRepository::writeSegments(mm.folder, merged.segments());
+    m_cache.insert(mm.id, merged);
+    ++m_generation[meetingId];   // new lines: the running identifications' results are stale
+    emit transcriptReady(mm.id, TranscriptRepository::markdownPath(mm.folder));
+    return true;
+}
+
 QString TranscriptionService::transcriptStamp(const QString& meetingId, const QString& folder) const
 {
     const FileStamp fs = FileStamp::of(TranscriptRepository::tokensPath(folder));

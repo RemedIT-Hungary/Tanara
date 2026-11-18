@@ -60,7 +60,8 @@ public:
         return false;   // no analysis file
     }
     QVector<SpeakerBinding> approvalBindings(const QVector<Participant>&, const QStringList&,
-                                             const QVector<TranscriptLine>&, const Meeting&, bool) override
+                                             const QVector<TranscriptLine>&, const Meeting&, bool,
+                                             const PersonId&) override
     {
         return {};
     }

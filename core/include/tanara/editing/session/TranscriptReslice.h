@@ -14,6 +14,7 @@
 //
 // UI-independent, no QObject.
 #include "tanara/domain/Transcript.h"
+#include "tanara/editing/review/SideSplit.h"
 #include "tanara/editing/session/SpeakerOverlay.h"
 
 #include <QMap>
@@ -71,11 +72,68 @@ struct ApplyResult {
     QStringList backups;        // .bak files made now (an existing one is not overwritten)
     QStringList written;        // files rewritten
     bool embeddingsRemoved = false;
+    int  embeddingsDropped = 0;     // side split: embedding entries dropped (changed lines)
     bool markdownRegenerated = false;
 };
 
 // Applies the plan (needs Verdict::Reslice). First the .bak copies (transcript.tokens.json /
 // .segments.json / .speakers.json / summary.json / transcript.md), then the write.
 ApplyResult apply(const QString& meetingFolder, const Plan& plan);
+
+// ---- side split of an existing transcript (the core of `tanara-cli side-split`) ----
+//
+// The lines are cut where the talker moved between the mic and the loopback side
+// (editing/review/SideSplit.h); the cuts go into tokens.json ("sideCuts", added to the ones already there,
+// none is removed), the tokens stay untouched. Id bookkeeping: the first part of a cut line keeps the id
+// "u<startMs>", the other parts get their own ids. Overlay (transcript.speakers.json, if it belongs to the
+// current transcript): a new part inherits the original line's entry (speaker, corrected, noisy,
+// ignored) unless its side contradicts the side of the line's speaker; it never inherits confirmed /
+// rechecked. The first part keeps its entry, but loses the speaker, corrected, confirmed and recheck
+// flags if its side contradicts. summary.json: every reference to a cut line lists all its parts, the
+// source span times are refreshed. transcript.embeddings.bin: the entries of the changed lines are dropped
+// (they are recomputed), the rest is kept under the new fingerprint.
+
+struct SplitPlan {
+    bool ok = false;
+    QString error;
+    bool active = false;                // mic + loopback activity (otherwise nothing to do)
+    sides::SplitResult split;           // the cuts found (computed afresh)
+    QVector<qint64> newCuts;            // the cuts not yet in tokens.json
+    QVector<qint64> allCuts;            // tokens.json's cuts after applying
+
+    QVector<TranscriptLine> oldLines;   // the current segments.json
+    QVector<Utterance> newSegments;     // the cut lines (the new content of segments.json)
+    QVector<TranscriptLine> newLines;   // the same, with ids
+    QMap<QString, QStringList> partsOf; // old id -> new ids (one for an uncut line; the first keeps the line)
+    int cutLines = 0;                   // old lines that are cut
+    int parts = 0;                      // the parts they become
+    qint64 cutMs = 0;                   // total duration of the cut lines
+    int renamedIds = 0;                 // old lines whose (first) id changes
+
+    bool overlayPresent = false;
+    bool overlayStale = false;          // belongs to an earlier transcript: left untouched
+    int overlayEntriesCut = 0;          // overlay entries of cut lines
+    int overlayInherited = 0;           // new parts that got the original line's entry
+    int overlayContradicted = 0;        // parts whose side contradicts the speaker (no speaker inherited)
+    int confirmedNotInherited = 0;      // new parts of a confirmed line (the flag stays on the first part only)
+    SpeakerOverlay newOverlay;          // the overlay after the split (valid if overlayPresent && !overlayStale)
+
+    bool summaryPresent = false;
+    int summaryRefs = 0;                // references to cut / renamed lines in summary.json
+
+    bool embeddingsPresent = false;
+    QStringList changedIds;             // old ids whose line changes (their embeddings are dropped)
+
+    bool hasWork() const { return ok && !newCuts.isEmpty(); }
+};
+
+// Analysis, without writing. activity: the meeting's track activity (processing::loadOrComputeSideActivity);
+// self / hints: the person sides of the overlay inheritance (analyzeSides).
+SplitPlan planSideSplit(const QString& meetingFolder, const MeetingActivity& activity, const SelfPerson& self,
+                        const SideHints& hints = {});
+
+// Applies the plan (needs hasWork()). First the .side-split.bak copies (tokens / segments / speakers /
+// summary / transcript.md; an existing one is not overwritten), then the write.
+ApplyResult applySideSplit(const QString& meetingFolder, const SplitPlan& plan);
 
 } // namespace tanara::editing::reslice

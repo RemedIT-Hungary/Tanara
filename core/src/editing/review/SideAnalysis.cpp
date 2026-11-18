@@ -262,18 +262,32 @@ bool vetoes(bool vetoActive, Side personManualSide, Side lineSide)
     return vetoActive && opposite(personManualSide, lineSide);
 }
 
+bool bothSidesActive(const MeetingActivity& activity)
+{
+    return hasKind(activity, TrackKind::Mic) && hasKind(activity, TrackKind::Loopback);
+}
+
+QMap<QString, float> speechLevels(const MeetingActivity& activity)
+{
+    QMap<QString, float> speech;
+    for (const TrackActivity& t : activity.tracks) speech.insert(t.trackId, speechLevelDb(t));
+    return speech;
+}
+
+Side classifyWindow(const MeetingActivity& activity, const QMap<QString, float>& speech, qint64 startMs, qint64 endMs)
+{
+    float micRel = qQNaN(), loopRel = qQNaN();
+    kindRelativeDb(activity, speech, TrackKind::Mic, startMs, endMs, &micRel);
+    kindRelativeDb(activity, speech, TrackKind::Loopback, startMs, endMs, &loopRel);
+    return classifyLevels(micRel, loopRel);
+}
+
 QVector<Side> classifyLineSides(const MeetingActivity& activity, const QVector<TranscriptLine>& lines)
 {
     QVector<Side> out(lines.size(), Side::Unknown);
-    if (!hasKind(activity, TrackKind::Mic) || !hasKind(activity, TrackKind::Loopback)) return out;
-    QMap<QString, float> speech;
-    for (const TrackActivity& t : activity.tracks) speech.insert(t.trackId, speechLevelDb(t));
-    for (int i = 0; i < lines.size(); ++i) {
-        float micRel = qQNaN(), loopRel = qQNaN();
-        kindRelativeDb(activity, speech, TrackKind::Mic, lines[i].startMs, lines[i].endMs, &micRel);
-        kindRelativeDb(activity, speech, TrackKind::Loopback, lines[i].startMs, lines[i].endMs, &loopRel);
-        out[i] = classifyLevels(micRel, loopRel);
-    }
+    if (!bothSidesActive(activity)) return out;
+    const QMap<QString, float> speech = speechLevels(activity);
+    for (int i = 0; i < lines.size(); ++i) out[i] = classifyWindow(activity, speech, lines[i].startMs, lines[i].endMs);
     return out;
 }
 

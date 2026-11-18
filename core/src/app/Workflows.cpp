@@ -1,5 +1,7 @@
 #include "tanara/app/Workflows.h"
 
+#include "tanara/editing/review/SideSplit.h"
+
 #include "tanara/editing/session/SpeakerOverlay.h"
 #include "tanara/editing/session/TrackSpeech.h"
 #include "tanara/editing/undo/MeetingUndoRegistry.h"
@@ -373,6 +375,39 @@ bool Workflows::diarizeSpeakers(const QString& meetingId, int speakerCount, QStr
 }
 
 void Workflows::continueAfterTranscript(const QString& meetingId)
+{
+    // Side split: where the talker moved between the mic and the loopback side, the lines are cut BEFORE
+    // the binding / identification, so every consumer sees the same lines. It needs the track activity:
+    // the speech check's cache, else measured on the voice analysis's pool. A meeting without an active mic
+    // AND an active loopback track (single track, import) goes straight on.
+    const Meeting m = m_deps.store ? m_deps.store->load(meetingId) : Meeting();
+    bool mic = false, loopback = false;
+    for (const Track& t : m.tracks) {
+        if (!t.active) continue;
+        mic |= t.kind == TrackKind::Mic;
+        loopback |= t.kind == TrackKind::Loopback;
+    }
+    if (mic && loopback && m_deps.voice.measureActivity && m_deps.transcription) {
+        m_deps.voice.measureActivity(m, [this, meetingId](const MeetingActivity& activity) {
+            splitLinesBySide(meetingId, activity);
+            identifyAfterTranscript(meetingId);
+        });
+        return;
+    }
+    identifyAfterTranscript(meetingId);
+}
+
+void Workflows::splitLinesBySide(const QString& meetingId, const MeetingActivity& activity)
+{
+    const MergedTranscript t = m_deps.transcription->currentTranscript(meetingId);
+    const editing::sides::SplitResult split = editing::sides::splitLinesBySide(t, activity);
+    if (!split.active) return;
+    if (m_deps.transcription->applySideCuts(meetingId, split.cuts))
+        qCInfo(lcVoice).noquote() << "Side split:" << split.lines.size() << "lines cut into" << split.parts()
+                                  << "parts (" << split.affectedMs() / 1000 << "s)";
+}
+
+void Workflows::identifyAfterTranscript(const QString& meetingId)
 {
     // Voice ID: auto-matching the diarized speakers against the voiceprint DB, on a background thread, as
     // the last stage of the transcription task (the UI stays usable, cancellable). (If the user skipped it

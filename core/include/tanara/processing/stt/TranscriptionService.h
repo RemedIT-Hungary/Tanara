@@ -73,6 +73,11 @@ public:
     // (markdown, tokens with their metadata, segments), the cache, a new generation; the old speaker names are
     // cleared (the labels mean other people now). transcriptReady follows. false: unknown meeting.
     bool replaceTranscript(const QString& meetingId, const MergedTranscript& merged);
+    // Sets the side cuts of the meeting's current transcript (MergedTranscript::sideCuts, computed by
+    // editing/review/SideSplit.h): the transcript files (tokens with the cut list, segments, markdown), the
+    // cache, a new generation. The speaker names stay (the raw labels did not change). transcriptReady
+    // follows. false: unknown meeting, no transcript, or the cuts are the same.
+    bool applySideCuts(const QString& meetingId, const QVector<qint64>& cuts);
 
 signals:
     void jobProgress(QString meetingId, QString message);

@@ -626,10 +626,108 @@ QString lineSide(const TranscriptLine& line, const QVector<VoiceCluster>& cluste
     return pm > pl ? kSideMic : kSideLoopback;
 }
 
+PersonId singleLocalPerson(const QVector<Participant>& all, const QStringList& acceptedIds, const Meeting& meeting,
+                           const PersonId& self)
+{
+    const bool fixedMic = std::any_of(meeting.tracks.cbegin(), meeting.tracks.cend(), [](const Track& t) {
+        return t.active && t.fixedSpeaker && t.kind == TrackKind::Mic;
+    });
+    PersonId local;
+    for (const Participant& p : all) {
+        if (!acceptedIds.contains(p.id) || p.personId.isNull()) continue;
+        const editing::Side manual = editing::sides::sideOfTracks(meeting, p.tracks);
+        const bool isLocal = manual == editing::Side::Local
+            || (manual == editing::Side::Unknown && fixedMic && !self.isNull() && p.personId == self);
+        const bool maybeLocal = manual == editing::Side::Mixed
+            || (manual == editing::Side::Unknown && p.sides == QStringList{kSideMic});
+        if (isLocal) {
+            if (!local.isNull() && local != p.personId) return {};   // two local people
+            local = p.personId;
+        } else if (maybeLocal) {
+            return {};   // someone else may speak on the mic too
+        }
+    }
+    return local;
+}
+
+namespace {
+
+// Local-side ownership on top of the approval's bindings (see approvalBindings).
+void applyLocalOwnership(QVector<SpeakerBinding>& out, const QVector<TranscriptLine>& lines,
+                         const QVector<editing::Side>& sideOfLine, const PersonId& local, const SpeakerOverlay* ov)
+{
+    auto entry = [ov](const QString& id) -> const OverlayUtterance* {
+        if (!ov) return nullptr;
+        const auto it = ov->utterances.constFind(id);
+        return it == ov->utterances.constEnd() ? nullptr : &it.value();
+    };
+    auto locked = [&](const QString& id) {
+        const OverlayUtterance* u = entry(id);
+        return u && (u->corrected || u->confirmed);
+    };
+    auto overridden = [&](const QString& id) {
+        const OverlayUtterance* u = entry(id);
+        return u && !u->speaker.isEmpty();
+    };
+
+    // Who the bindings give each line to: a per-line binding wins over the raw speaker's.
+    QHash<QString, PersonId> rawOwner, lineOwner;
+    for (const SpeakerBinding& b : std::as_const(out)) {
+        if (b.utteranceIds.isEmpty()) rawOwner.insert(b.rawLabel, b.personId);
+        else for (const QString& id : b.utteranceIds) lineOwner.insert(id, b.personId);
+    }
+    auto ownedByLocal = [&](const TranscriptLine& l) {
+        if (const auto it = lineOwner.constFind(l.id); it != lineOwner.constEnd()) return *it == local;
+        return !overridden(l.id) && rawOwner.contains(l.rawLabel) && rawOwner.value(l.rawLabel) == local;
+    };
+
+    QMap<QString, QStringList> toLocal;      // raw label -> Local lines given to the local person
+    QMap<QString, QSet<QString>> remote;     // raw label -> Remote lines taken from the local person
+    for (int i = 0; i < lines.size(); ++i) {
+        const TranscriptLine& l = lines.at(i);
+        if (locked(l.id)) continue;
+        const editing::Side sd = sideOfLine.value(i, editing::Side::Unknown);
+        if (sd == editing::Side::Local && !ownedByLocal(l)) toLocal[l.rawLabel] << l.id;
+        else if (sd == editing::Side::Remote && ownedByLocal(l)) remote[l.rawLabel].insert(l.id);
+    }
+
+    for (auto it = remote.cbegin(); it != remote.cend(); ++it) {
+        const QString& label = it.key();
+        const QSet<QString>& ids = it.value();
+        // Out of the local person's per-line bindings.
+        // (A binding left without lines would mean "the whole raw speaker": it is marked and dropped below.)
+        for (SpeakerBinding& b : out) {
+            if (b.rawLabel != label || b.personId != local || b.utteranceIds.isEmpty()) continue;
+            b.utteranceIds.erase(std::remove_if(b.utteranceIds.begin(), b.utteranceIds.end(),
+                                                [&](const QString& id) { return ids.contains(id); }),
+                                 b.utteranceIds.end());
+            if (b.utteranceIds.isEmpty()) b.rawLabel.clear();
+        }
+        // The whole raw speaker was the local person's: it goes anonymous, its other lines go to them per line.
+        if (rawOwner.value(label) != local) continue;
+        bool replaced = false;
+        for (SpeakerBinding& b : out)
+            if (b.rawLabel == label && b.utteranceIds.isEmpty() && b.personId == local) { b.personId = PersonId(); replaced = true; }
+        if (!replaced) continue;
+        QStringList keep;
+        for (const TranscriptLine& l : lines)
+            if (l.rawLabel == label && !ids.contains(l.id) && !lineOwner.contains(l.id) && !overridden(l.id)
+                && !toLocal.value(label).contains(l.id))
+                keep << l.id;
+        if (!keep.isEmpty()) out.append({label, local, keep});
+    }
+    out.erase(std::remove_if(out.begin(), out.end(), [](const SpeakerBinding& b) { return b.rawLabel.isEmpty(); }),
+              out.end());
+    for (auto it = toLocal.cbegin(); it != toLocal.cend(); ++it) out.append({it.key(), local, it.value()});
+}
+
+} // namespace
+
 QVector<SpeakerBinding> approvalBindings(const QVector<Participant>& all, const QStringList& acceptedIds,
                                          const QVector<TranscriptLine>& lines,
                                          const QVector<VoiceCluster>& clusters,
-                                         const MeetingActivity* activity, const Meeting* meeting)
+                                         const MeetingActivity* activity, const Meeting* meeting,
+                                         const PersonId& self, const SpeakerOverlay* overlay)
 {
     // Track veto: if every checked, named participant has a manual track, the line's unambiguous side
     // (the speech-level-normalized classification) excludes whoever has none of their tracks on that side.
@@ -714,6 +812,15 @@ QVector<SpeakerBinding> approvalBindings(const QVector<Participant>& all, const 
             if (!rawSideOf(id).isEmpty() || acceptedRaw.contains(label)) continue;
             out.append({label, PersonId(), {}});
             acceptedRaw.insert(label);
+        }
+    }
+    // Local-side ownership: the single local participant gets every Local line and no Remote one.
+    if (meeting && activity) {
+        const PersonId local = singleLocalPerson(all, acceptedIds, *meeting, self);
+        if (!local.isNull()) {
+            const QVector<editing::Side> sides =
+                veto ? sideOfLine : editing::sides::classifyLineSides(*activity, lines);
+            applyLocalOwnership(out, lines, sides, local, overlay);
         }
     }
     return out;

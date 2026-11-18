@@ -49,11 +49,12 @@ public:
     // Binds the analysis clusters to the transcript's raw speakers. false: no analysis, or nothing changed.
     virtual bool bindRawSpeakers(QVector<Participant>& participants, const QString& meetingFolder,
                                  const QVector<TranscriptLine>& lines) = 0;
-    // The approval's bindings (the analysis clusters and track activity of the meeting are loaded here);
-    // trackVeto: the meeting is passed for the manual-track veto.
+    // The approval's bindings (the analysis clusters, track activity and overlay of the meeting are loaded
+    // here); trackVeto: the meeting is passed for the manual-track veto and the local-side ownership (self:
+    // the user's own person, for a fixed-speaker mic track).
     virtual QVector<SpeakerBinding> approvalBindings(const QVector<Participant>& all, const QStringList& acceptedIds,
                                                      const QVector<TranscriptLine>& lines, const Meeting& m,
-                                                     bool trackVeto) = 0;
+                                                     bool trackVeto, const PersonId& self) = 0;
     // Whether the meeting's pre-transcript voice analysis is running; cancelling its result.
     virtual bool analysisRunning(const QString& meetingId) const = 0;
     virtual void cancelAnalysis(const QString& meetingId) = 0;

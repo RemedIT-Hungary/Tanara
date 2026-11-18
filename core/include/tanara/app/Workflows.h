@@ -213,6 +213,9 @@ private:
     void transcribed(const QString& meetingId);
     void diarized(const QString& meetingId, const processing::DiarizationOutcome& outcome);
     void continueAfterTranscript(const QString& meetingId);
+    // The side split of the new transcript's lines (editing/review/SideSplit.h) once the activity is there.
+    void splitLinesBySide(const QString& meetingId, const MeetingActivity& activity);
+    void identifyAfterTranscript(const QString& meetingId);
     void startSpeechCheck(const QString& meetingId, bool thenMixdown);
     void finishSpeechCheck(const QString& meetingId, const MeetingActivity& activity, bool thenMixdown);
     bool analyzeParticipants(const QString& meetingId);

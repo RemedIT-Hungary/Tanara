@@ -81,6 +81,21 @@ inline constexpr float kLowDb = -20.0f;
 // Both at speech level: if the loopback is at least this far below its own level -> echo.
 inline constexpr float kEchoDb = -5.0f;
 
+// ---- side split of a line (SideSplit.h) ----
+// Picked on a real 114-minute two-track meeting: with these, 37 cuts in 31 lines; 1 s on each side
+// of the cut is Local vs Remote for 21, one side Local/Remote and the other Mixed/Unknown (a pause or
+// overlap at the change) for 15, the same side for 1. A shorter run (800 ms) or 1 word cut ~20%
+// more with a similar share of clean cuts; 1500 ms halved the cuts.
+// A line is classified in sliding windows of this width (classifyWindow), stepped by kSplitStepMs.
+inline constexpr qint64 kSplitWindowMs = 400;
+inline constexpr qint64 kSplitStepMs = 100;
+// A Local or Remote run counts only if it spans at least this long and holds at least this many
+// words (tokens that start a word); a weaker run is absorbed, Mixed / Unknown windows are neutral.
+inline constexpr qint64 kSplitMinRunMs = 1000;
+inline constexpr int kSplitMinRunWords = 2;
+// Emission-timed (Soniox) tokens mark the END of a word: the line's sound starts this much earlier.
+inline constexpr qint64 kSplitLeadMs = 300;
+
 struct Thresholds {
     float loRemote = kDefaultLoRemote;
     float hiLocal = kDefaultHiLocal;
@@ -228,6 +243,13 @@ bool vetoes(bool vetoActive, Side personManualSide, Side lineSide);
 // Sides of the lines (the speech-level-normalized classification) from track activity only; the
 // same as the LineSide::side field of analyzeSides. With single-track activity everything is Unknown.
 QVector<Side> classifyLineSides(const MeetingActivity& activity, const QVector<TranscriptLine>& lines);
+// The pieces of classifyLineSides, for sub-windows of a line (SideSplit.h):
+// whether there is mic AND loopback activity (otherwise every side is Unknown);
+bool bothSidesActive(const MeetingActivity& activity);
+// the speech level of every track (track id -> speechLevelDb);
+QMap<QString, float> speechLevels(const MeetingActivity& activity);
+// the side of one time window (classifyLevels on the window's levels relative to the speech levels).
+Side classifyWindow(const MeetingActivity& activity, const QMap<QString, float>& speech, qint64 startMs, qint64 endMs);
 } // namespace sides
 
 } // namespace tanara::editing

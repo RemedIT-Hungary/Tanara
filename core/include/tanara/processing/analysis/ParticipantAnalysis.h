@@ -148,10 +148,24 @@ QString lineSide(const TranscriptLine& line, const QVector<VoiceCluster>& cluste
 // sides::classifyLineSides): the person gets only the non-excluded lines; excluded ones go to
 // the best (by its clusters) non-excluded participant of the other side, failing that they stay
 // anonymous (the whole raw speaker is anonymous, the remaining lines go to the person via utteranceIds).
+// Local-side ownership (needs meeting + activity, see singleLocalPerson): with exactly one local
+// participant every Local line goes to that person (per line, whatever raw speaker the provider gave
+// it), and a Remote line is never bound to them (it stays with what the rules above give it, minus the
+// local person: anonymous when the whole raw speaker was theirs). Lines the overlay locks (corrected or
+// confirmed) are never moved by this; a confirmed line keeps its owner.
 QVector<SpeakerBinding> approvalBindings(const QVector<Participant>& all, const QStringList& acceptedIds,
                                          const QVector<TranscriptLine>& lines,
                                          const QVector<VoiceCluster>& clusters,
-                                         const MeetingActivity* activity, const Meeting* meeting = nullptr);
+                                         const MeetingActivity* activity, const Meeting* meeting = nullptr,
+                                         const PersonId& self = {}, const SpeakerOverlay* overlay = nullptr);
+
+// The meeting's single local participant (null if there is none or more than one): among the checked,
+// named participants the one whose manual tracks are all on the mic side, or (without manual tracks)
+// the user's own person when the meeting has an active fixed-speaker mic track. Another checked, named
+// participant that may speak on the mic too (manual tracks on both sides, or heard only on the mic
+// without manual tracks) makes it ambiguous: null.
+PersonId singleLocalPerson(const QVector<Participant>& all, const QStringList& acceptedIds, const Meeting& meeting,
+                           const PersonId& self);
 
 } // namespace participants
 } // namespace tanara::processing

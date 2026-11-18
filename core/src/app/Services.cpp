@@ -138,14 +138,17 @@ public:
     }
     QVector<SpeakerBinding> approvalBindings(const QVector<Participant>& all, const QStringList& acceptedIds,
                                              const QVector<TranscriptLine>& lines, const Meeting& m,
-                                             bool trackVeto) override
+                                             bool trackVeto, const PersonId& self) override
     {
         const processing::ParticipantAnalysisFile file = processing::ParticipantAnalysisFile::load(m.folder);
         const MeetingActivity act =
             MeetingActivity::load(m.folder, processing::trackactivity::activityFingerprint(m, m.folder));
+        // The overlay's locks (manual corrections, confirmed lines) always win over the local-side ownership.
+        const SpeakerOverlay ov = editing::speakeredit::loadOverlayFor(m.folder, lines);
         return processing::participants::approvalBindings(all, acceptedIds, lines,
                                                           editing::participantsample::withMerges(file.clusters, all),
-                                                          act.isEmpty() ? nullptr : &act, trackVeto ? &m : nullptr);
+                                                          act.isEmpty() ? nullptr : &act, trackVeto ? &m : nullptr,
+                                                          self, &ov);
     }
     QVector<VoiceCluster> analysisClusters(const QString& meetingFolder) override
     {
