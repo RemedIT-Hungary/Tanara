@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(tanara VERSION 0.5.340 LANGUAGES CXX)
+project(tanara VERSION 0.5.341 LANGUAGES CXX)
 if(APPLE)
     enable_language(OBJCXX)   # core/src/**/platform/macos/*.mm
 endif()

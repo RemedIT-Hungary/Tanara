@@ -469,6 +469,7 @@ private slots:
         QTRY_VERIFY(visual("reviewFocusOffer"));
 
         // No: disappears; it does not come back even after another identical decision.
+        pump(100);      // the offer bar's layout after the undo, so the click lands on the button
         click(visual("reviewOfferNo"));
         QTRY_VERIFY(!visual("reviewFocusOffer"));
         const QString key_ = view()->property("offerData").toMap().value(QStringLiteral("key")).toString();
@@ -482,7 +483,7 @@ private slots:
         m_tab->forceActiveFocus();
         key(Qt::Key_Return);
         pump(60);
-        QVERIFY(!visual("reviewFocusOffer"));
+        QTRY_VERIFY(!visual("reviewFocusOffer"));   // not there once the decision has settled
     }
 
     // The focus card's y with the offer bar (and an expanded list) is the same as without it.

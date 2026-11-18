@@ -1918,8 +1918,9 @@ private slots:
         click(center(visual("pairOfferAccept")));
         QVERIFY(!m_vm->pairOfferActive());
         QTRY_VERIFY(!barShown());
+        // The notice is posted after the bar goes (a slow runner saw it empty right here).
+        QTRY_VERIFY(m_shell->property("toasts").toString().contains(QStringLiteral(" között")));
         const QString toast = m_shell->property("toasts").toString();
-        QVERIFY2(toast.contains(QStringLiteral(" között")), qPrintable(toast));
         QVERIFY2(m_vm->undoText().startsWith(QStringLiteral("Átnézés: ")) || toast.startsWith(QStringLiteral("A megerősített")),
                  qPrintable(m_vm->undoText()));
 
@@ -1937,8 +1938,9 @@ private slots:
         m_shell->setProperty("toasts", QString());
         click(center(choices.first()));
         QTRY_VERIFY(popupGone("speakerWhyPopover"));
-        const QString toast2 = m_shell->property("toasts").toString();
-        QVERIFY2(toast2.contains(QStringLiteral("Fehér Ádám és ") + other), qPrintable(toast2));
+        // The notice may arrive after the popover has closed.
+        QTRY_VERIFY2(m_shell->property("toasts").toString().contains(QStringLiteral("Fehér Ádám és ") + other),
+                     qPrintable(m_shell->property("toasts").toString()));
         QVERIFY(m_warnings.isEmpty());
     }
 
